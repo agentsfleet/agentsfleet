@@ -1,18 +1,9 @@
 //! Durable dependency ownership; every wake still uses ordinary turns.
 
-mod claim;
-mod cleanup;
-mod fanout;
-mod finish;
-mod maintenance;
-mod read;
-mod row;
-pub(super) use maintenance::maintain;
 mod completion;
 mod types;
 pub(super) use completion::record as complete;
-pub(crate) use read::ReadPermit;
-pub use types::{CompletionScope, VerifiedCompletion, WaitMaintenance};
+pub use types::{CompletionScope, VerifiedCompletion};
 
 use super::{
     Tasks,

@@ -44,10 +44,10 @@ const MAX_MESSAGE_CHARS: usize = 1_048_576;
 /// Mirrored for the reason `MAX_MESSAGE_CHARS` above is: importing the wire
 /// type's constant would make a bound that MOVED read the same as a bound that
 /// was always this, and the sentence below is a public one.
-const MAX_OPERATION_ID_BYTES: usize = 200;
+const MAX_OPERATION_ID_BYTES: usize = 2647;
 
 /// The sentence an operation id outside that bound earns.
-const OPERATION_ID_DETAIL: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
+const OPERATION_ID_DETAIL: &str = "operation_id, when sent, must be 1 to 2647 bytes with no NUL character; omit it to send without retry protection";
 
 /// The sentence a message holding NUL earns.
 const MESSAGE_NUL_DETAIL: &str = "message must not contain a NUL character";

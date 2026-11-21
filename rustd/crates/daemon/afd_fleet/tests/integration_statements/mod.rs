@@ -11,13 +11,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
 use afd_db::Migrator;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use sqlx::PgConnection;
-use sqlx::Row as _;
 
 /// A fresh database, migrated by the canonical list.
 async fn migrated() -> (TestDatabase, afd_db::Db) {
@@ -31,5 +28,4 @@ async fn migrated() -> (TestDatabase, afd_db::Db) {
 }
 
 mod statements;
-mod sweep_plans;
 mod task_lock_privileges;

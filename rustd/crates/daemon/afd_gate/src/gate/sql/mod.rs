@@ -5,9 +5,8 @@
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
 //! (`afd_db/schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
-//! database's: the row is stamped `now()`, its deadline is `now()` plus the
-//! rule's timeout, and whether that deadline has passed is read against
-//! `statement_timestamp()`.
+//! database's: the row is stamped `now()`, and its deadline, which a card
+//! shows and nothing enforces, is `now()` plus the rule's timeout.
 
 use std::time::Duration;
 
@@ -18,8 +17,7 @@ use sqlx::query::QueryScalar;
 
 use crate::gate::{Claim, Stated};
 
-/// The durable status of one approval gate, and whether its deadline has
-/// passed on the database clock.
+/// The durable status of one approval gate.
 ///
 /// `ORDER BY created_at DESC, id DESC LIMIT 1` rather than a bare lookup, and
 /// it is not defensive: `action_id` carries no unique constraint, so a
@@ -27,11 +25,6 @@ use crate::gate::{Claim, Stated};
 /// is the one a poll must honour. Dropping the ordering would resolve against
 /// whichever row the scan reached first; the `id` tie-break orders two raised
 /// in one millisecond by the order they were minted.
-///
-/// The lapse rides the same read because a pending gate is the one a poll
-/// reaches this statement for — its answer is not in the mirror yet — so the
-/// deadline comparison costs no round trip of its own and reads the clock that
-/// stamped the deadline.
 ///
 /// `$1` action.
 pub const SELECT_GATE_STATUS: &str = include_str!("select_gate_status.sql");

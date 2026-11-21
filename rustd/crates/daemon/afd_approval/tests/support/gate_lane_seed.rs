@@ -77,6 +77,42 @@ impl Lane {
         action
     }
 
+    /// One pending `question` gate, the shape a run's `waiting` report
+    /// raises, returning its action id.
+    pub(crate) async fn seed_question(&self, window: Window) -> Uuid7 {
+        let action = self.seed_gate(window).await;
+        sqlx::query("UPDATE fleet.approval_gates SET gate_type = $1 WHERE action_id = $2")
+            .bind(afd_api_wire::approval::GATE_TYPE_QUESTION)
+            .bind(&action)
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("the gate becomes a question");
+        action
+    }
+
+    /// Moves `action`'s deadline to `ago` before the database's clock.
+    pub(crate) async fn lapse_by(&self, action: &Uuid7, ago: Duration) {
+        sqlx::query(
+            "UPDATE fleet.approval_gates SET expires_at = now() - $2::interval \
+             WHERE action_id = $1",
+        )
+        .bind(action)
+        .bind(ago)
+        .execute(&mut *self.connection().await)
+        .await
+        .expect("the deadline moves");
+    }
+
+    /// Archives the lane's fleet.
+    pub(crate) async fn archive_fleet(&self) {
+        sqlx::query("UPDATE fleet.fleets SET status = $1 WHERE id = $2")
+            .bind(afd_fleet_lifecycle::FleetStatus::Archived.as_str())
+            .bind(&self.fleet)
+            .execute(&mut *self.connection().await)
+            .await
+            .expect("the fleet archives");
+    }
+
     /// Seeds the turn a gate held a run for: a continuation resumes it, and
     /// `fk_turns_resumes_turn_id` refuses a continuation of no turn.
     pub(crate) async fn seed_turn(&self, turn: &Uuid7) {

@@ -21,8 +21,6 @@ pub use self::local::LocalMemory;
 /// The category a memory stored with none is kept under: read first by
 /// every later run.
 pub const CORE_CATEGORY: &str = "core";
-/// The most memories one recall answers with.
-pub const RECALL_LIMIT_MAX: usize = 50;
 /// How many entries a recall answers with when the model names no limit.
 const RECALL_DEFAULT: usize = 5;
 /// What a recall that matched nothing reads back.
@@ -140,7 +138,7 @@ pub struct Recall {
     /// Text to look for in each memory's key and content, ignoring case;
     /// empty matches every memory.
     query: String,
-    /// The most memories to answer with: 5 when absent, never more than 50.
+    /// The most memories to answer with: 5 when absent.
     limit: Option<usize>,
 }
 
@@ -203,10 +201,7 @@ impl Handler for MemoryRecall<'_> {
     type Arguments = Recall;
 
     async fn run(&self, arguments: Recall, _context: Context<'_>) -> ToolOutput {
-        let limit = arguments
-            .limit
-            .unwrap_or(RECALL_DEFAULT)
-            .min(RECALL_LIMIT_MAX);
+        let limit = arguments.limit.unwrap_or(RECALL_DEFAULT);
         match self.backend.recall(&arguments.query, limit).await {
             Ok(recalled) => ToolOutput::succeeded(
                 lines(&recalled, |found| {

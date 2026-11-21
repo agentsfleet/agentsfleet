@@ -6,7 +6,7 @@ mod fixture;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
+use afd_gate::gate::{Gates, Verdict, Waiting};
 
 use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, bus, config, config_gates};
 
@@ -83,16 +83,11 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
     fixture.cleanup().await;
 }
 
-/// A pending gate lapses on the database's clock, and the poll that reads it
-/// ends the event.
-///
-/// The deadline is the row's `expires_at`, stamped `now()` plus the rule's
-/// timeout when the gate was raised; the poll compares it against
-/// `statement_timestamp()`. Moving the deadline behind that clock is what a
-/// day passing would do, and the very next poll answers Expired.
+/// A pending gate past its deadline keeps its event waiting: nothing expires
+/// a gate, and a late answer still decides it (`M253_003` §2).
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
+async fn a_pending_gate_past_its_deadline_keeps_its_event_waiting() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
@@ -111,8 +106,8 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
     fixture.lapse(event).await;
     assert_eq!(
         gates.check(fixture.check(event, &ruled), NOW).await,
-        Verdict::Refuse(Refused::Expired),
-        "past its deadline on the database's clock, the event ends"
+        Verdict::Await(Waiting::Pending),
+        "past its deadline the event still waits for a person"
     );
 
     fixture.cleanup().await;

@@ -258,7 +258,7 @@ fn fleet_tools_are_offered_only_when_declared() {
         .unwrap();
     assert!(with.offers("fleet_steer"));
     assert!(with.offers("fleet_activity"));
-    assert_eq!(PUBLISHED.len(), 35);
+    assert_eq!(PUBLISHED.len(), 36);
 }
 
 /// A tool a run builds over its own backends is offered with no handler, and

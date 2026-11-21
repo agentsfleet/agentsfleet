@@ -95,7 +95,6 @@ impl Error {
             | ErrorKind::TaskStorageRequest { .. }
             | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence

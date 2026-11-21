@@ -3,9 +3,7 @@
 use super::Session;
 use crate::{Result, error};
 use af_core::id::Uuid7;
-use af_wire::task::{
-    CHECKPOINT_PAGE_BYTES, CHECKPOINT_PAGES, CheckpointEntry, CheckpointReadQuery,
-};
+use af_wire::task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
 use std::collections::BTreeMap;
 
 impl Session<'_> {
@@ -59,9 +57,6 @@ impl Session<'_> {
         entries: &mut BTreeMap<String, CheckpointEntry>,
         bytes: &mut usize,
     ) -> Result<Vec<String>> {
-        if ids.len() > usize::try_from(CHECKPOINT_PAGES).unwrap_or(usize::MAX) {
-            return Err(error::config("checkpoint page count exceeds its bound"));
-        }
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
         let mut digests = Vec::new();
         let mut history = Vec::new();

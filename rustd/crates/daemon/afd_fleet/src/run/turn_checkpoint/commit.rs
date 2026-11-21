@@ -2,9 +2,10 @@
 
 use af_core::id::Uuid7;
 use af_crypto::envelope::Envelope;
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
-    FoldRef, TURN_CHECKPOINT_BYTES, TurnCheckpointAction, TurnCheckpointCommand,
-    TurnCheckpointRead, TurnCheckpointResponse, TurnPrivateRoot,
+    FoldRef, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRead,
+    TurnCheckpointResponse, TurnPrivateRoot,
 };
 
 use super::{
@@ -100,7 +101,7 @@ fn readable(
         root: root.clone(),
         folds: folds.to_vec(),
     }));
-    if !af_validate::serialized_within(&response, TURN_CHECKPOINT_BYTES - READ_ENVELOPE_BYTES) {
+    if !af_validate::serialized_within(&response, MESSAGE_BYTES_MAX - READ_ENVELOPE_BYTES) {
         return Err(TurnCheckpointRefusal::Limit.into());
     }
     Ok(())

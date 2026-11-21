@@ -194,13 +194,7 @@ fn receipt_bound<C: ?Sized>(receipt: &DecisionReceipt, _context: &C) -> garde::R
             .validate()
             .map_err(|_report| garde::Error::new("decision failure metadata exceeds its bounds"))?;
     }
-    if crate::decision::serialized_within(receipt, crate::decision::REPLY_MAX_BYTES) {
-        Ok(())
-    } else {
-        Err(garde::Error::new(
-            "serialized decision receipt exceeds its byte bound",
-        ))
-    }
+    Ok(())
 }
 
 /// Semantic usability is separate from a recorded charge and native authority.

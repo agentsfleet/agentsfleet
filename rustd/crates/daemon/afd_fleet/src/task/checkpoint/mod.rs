@@ -31,9 +31,6 @@ pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
 pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
 pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
 
-const BASE_BYTES: u64 = 16 * 1024 * 1024 * 1024;
-const INCREMENTAL_BYTES: u64 = 1024 * 1024 * 1024;
-const WORKSPACE_BYTES: i64 = 50 * 1024 * 1024 * 1024;
 const TRANSFER_SECONDS: i32 = 15 * 60;
 const PIN_SECONDS: i32 = 30 * 60;
 const URL_SECONDS: u64 = 5 * 60;

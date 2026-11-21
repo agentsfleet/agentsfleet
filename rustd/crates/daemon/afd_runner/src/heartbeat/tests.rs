@@ -8,7 +8,8 @@
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_wire::runner::{CONTROLLER_NAME_MAX_BYTES, HeartbeatRequest, REPORT_CONTROLLERS_MAX};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::runner::HeartbeatRequest;
 use serde_json::json;
 
 use super::{EVENT_LIVENESS_WRITE, bounded_report, refuse_selftest, report};
@@ -47,11 +48,10 @@ fn reported(controllers: &[String]) -> bool {
 fn test_capability_report_out_of_bounds_is_ignored() {
     let named = |count: usize| vec!["cpu".to_owned(); count];
     assert!(reported(&named(2)));
-    assert!(reported(&named(REPORT_CONTROLLERS_MAX)));
-    // Seventeen controllers: the beat parses and lands, the report is not one.
-    assert!(!reported(&named(REPORT_CONTROLLERS_MAX + 1)));
+    assert!(reported(&named(64)), "a report carries no count bound");
+    // An empty name: the beat parses and lands, the report is not one.
     assert!(!reported(&[String::new()]));
-    assert!(!reported(&["c".repeat(CONTROLLER_NAME_MAX_BYTES + 1)]));
+    assert!(!reported(&["c".repeat(TEXT_MAX_CHARS + 1)]));
 }
 
 #[test]

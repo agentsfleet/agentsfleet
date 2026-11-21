@@ -1,17 +1,15 @@
 //! The billing families as they reach the wire: what a settlement's unpriced
-//! tokens and a sweep's repairs add, and what a sweep that could not read the
-//! ledger leaves behind.
+//! tokens and a funds check add.
 //!
 //! In the capture binary because both read values back, which only the
 //! capturing install can do. Each case reads a delta or names its own series,
 //! because the install and its counters are shared with the runner cases.
 
 use af_observability::metrics::declared::billing::{
-    BILLING_FUNDS_CHECK_TOTAL, BILLING_SWEEPER_RESETTLED_TOTAL, BILLING_UNPRICED_TOKENS_TOTAL,
-    BILLING_UNSETTLED_NANOS, BILLING_UNSETTLED_OLDEST_SECONDS,
+    BILLING_FUNDS_CHECK_TOTAL, BILLING_UNPRICED_TOKENS_TOTAL,
 };
 use af_observability::metrics::label::billing::{FundsOutcome, WorkType};
-use af_observability::producers::billing::{self, Owed};
+use af_observability::producers::billing;
 use af_observability::semconv;
 use af_observability::test_util::Capture;
 
@@ -21,15 +19,6 @@ const MODEL: &str = "billing-capture-model";
 
 /// Tokens a settlement carried with no published price.
 const UNPRICED: u64 = 1_250;
-
-/// Works one sweep settled.
-const RESETTLED: u64 = 3;
-
-/// One sweep's reading of what is still owed, every value distinct.
-const OWED: Owed = Owed {
-    unsettled_nanos: [5_000, 7_000],
-    oldest_seconds: 90,
-};
 
 /// Unpriced tokens count under the provider and model that carried them, and a
 /// settlement that carried none adds nothing.
@@ -64,57 +53,4 @@ fn should_count_each_funds_check_under_its_answer() {
     billing::funds_checked(WorkType::FleetRun, FundsOutcome::Short);
 
     assert_eq!(capture.sum(family, &series), before + 1);
-}
-
-/// A sweep's settlement groups count under their work type; a sweep that repaired
-/// nothing adds nothing.
-#[test]
-fn should_count_only_the_settlement_groups_a_sweep_settled() {
-    let capture = Capture::install();
-    let series = [(semconv::LABEL_WORK_TYPE, WorkType::SetupRun.as_str())];
-    let family = BILLING_SWEEPER_RESETTLED_TOTAL.wire_name();
-    let before = capture.sum(family, &series);
-
-    billing::sweeper_resettled(WorkType::SetupRun, 0);
-    let after_none = capture.sum(family, &series);
-    billing::sweeper_resettled(WorkType::SetupRun, RESETTLED);
-
-    assert_eq!(after_none, before, "an empty sweep counts nothing");
-    assert_eq!(capture.sum(family, &series), before + RESETTLED);
-}
-
-/// A sweep's reading is published as it was read, and a sweep whose read
-/// failed withdraws it: an operator sees a gap, never a stale balance or a
-/// zero nobody measured.
-#[test]
-fn should_withdraw_what_is_owed_when_the_read_fails() {
-    let capture = Capture::install();
-    let fleet = [(semconv::LABEL_WORK_TYPE, WorkType::FleetRun.as_str())];
-    let attempt = [(semconv::LABEL_WORK_TYPE, WorkType::SetupRun.as_str())];
-    let unsettled = BILLING_UNSETTLED_NANOS.wire_name();
-    let oldest = BILLING_UNSETTLED_OLDEST_SECONDS.wire_name();
-
-    billing::owed_observed(Some(OWED));
-    let published = (
-        capture.gauge(unsettled, &fleet),
-        capture.gauge(unsettled, &attempt),
-        capture.gauge(oldest, &[]),
-    );
-    billing::owed_observed(None);
-    let withdrawn = (
-        capture.gauge(unsettled, &fleet),
-        capture.gauge(unsettled, &attempt),
-        capture.gauge(oldest, &[]),
-    );
-
-    assert_eq!(
-        published,
-        (
-            Some(OWED.unsettled_nanos[0]),
-            Some(OWED.unsettled_nanos[1]),
-            Some(OWED.oldest_seconds),
-        ),
-        "each cell carries what the sweep read"
-    );
-    assert_eq!(withdrawn, (None, None, None));
 }

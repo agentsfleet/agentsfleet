@@ -64,8 +64,6 @@ pub struct GatewayDependencies {
 pub struct RecoverySettings {
     /// Maximum active assignments across credited hosts.
     pub max_concurrent_assignments: std::num::NonZeroUsize,
-    /// Independent lost-notification probe cadence.
-    pub assign_fallback: std::time::Duration,
 }
 
 impl Default for RecoverySettings {
@@ -73,7 +71,6 @@ impl Default for RecoverySettings {
         const ASSIGNMENTS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
         Self {
             max_concurrent_assignments: ASSIGNMENTS,
-            assign_fallback: af_core::timing::ASSIGN_FALLBACK_TICK,
         }
     }
 }

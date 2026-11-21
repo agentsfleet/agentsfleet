@@ -12,6 +12,12 @@ WITH held AS MATERIALIZED (
       AND l.task_id IS NULL AND l.task_generation IS NULL
     FOR UPDATE OF l
 )
-SELECT id, fleet_id, workspace_id, turn_id, setup_revision_id,
-       fence, run_expires_at, thread_fence, thread_expires_at, fleet_status, model, provider
-FROM held
+-- An answer's run ($4 is the answer's producer) saves and restores the asking turn's
+-- checkpoint, so `turn_id` is that turn's and `run_turn_id` the run's own.
+SELECT h.id, h.fleet_id, h.workspace_id, COALESCE(a.resumes_turn_id, h.turn_id) AS turn_id,
+       h.turn_id AS run_turn_id, h.setup_revision_id,
+       h.fence, h.run_expires_at, h.thread_fence, h.thread_expires_at, h.fleet_status,
+       h.model, h.provider
+FROM held h
+LEFT JOIN thread.turns a
+  ON a.id = h.turn_id AND a.thread_id = h.fleet_id AND a.producer = $4

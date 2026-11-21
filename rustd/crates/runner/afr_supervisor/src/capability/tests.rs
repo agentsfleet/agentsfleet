@@ -90,7 +90,7 @@ fn every_missing_mechanism_fails_its_own_check() {
         report
             .checks
             .iter()
-            .all(|check| check.detail.len() <= af_wire::runner::CHECK_DETAIL_MAX_BYTES)
+            .all(|check| check.detail.chars().count() <= af_validate::TEXT_MAX_CHARS)
     );
 }
 

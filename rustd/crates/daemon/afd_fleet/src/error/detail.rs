@@ -10,7 +10,7 @@
 ///
 /// Client-visible, so changing it is a wire change: what a caller reads is
 /// behaviour (RULE UFS).
-pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
+pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-2676 chars";
 
 /// The enrolment refusal for a malformed registry allowlist entry.
 pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";

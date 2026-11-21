@@ -96,6 +96,31 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
     assert_eq!(report.telemetry.time_to_first_token_ms, 0);
 }
 
+/// Dimension 1.2: a run that asked the person reports `waiting` with its
+/// question, not a failure.
+#[test]
+fn a_waiting_run_reports_waiting() {
+    let run = payload(RUN_ID, FLEET_ID);
+    let mut output = answer();
+    output.result = ExecutionResult {
+        outcome: ResultOutcome::Waiting,
+        content: "Ship it?".into(),
+        ..output.result
+    };
+    let ending = Ending::Ran {
+        output: Box::new(output),
+        first_chunk: None,
+    };
+
+    let report = report(&run, &ending, &Meter::default(), Duration::ZERO, None, None);
+
+    assert_eq!(report.outcome, Outcome::Waiting);
+    assert_eq!(report.failure_reason, None);
+    assert_eq!(report.failure_detail, "");
+    assert_eq!(report.response_text, "Ship it?");
+    assert!(!ending.processed(), "a waiting run holds no sandbox");
+}
+
 #[test]
 fn a_run_that_never_finished_still_reports_what_it_spent() {
     let run = payload(RUN_ID, FLEET_ID);

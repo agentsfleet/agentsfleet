@@ -2,28 +2,22 @@
 //! with, the two `custom` rules garde has no built-in for, and the label-list
 //! rule every writer of a runner's labels shares.
 //!
-//! The caps are declared once here so `agentsfleet-runner` and `agentsfleetd`
-//! agree on what is legal. The content rules judge content only; each field's
-//! length is garde's own `length`, declared beside the rule.
+//! The bounds are declared once here so `agentsfleet-runner` and
+//! `agentsfleetd` agree on what is legal. The content rules judge content only;
+//! each field's length is garde's own `length`, declared beside the rule.
 
 use std::borrow::Cow;
 
-use af_validate::{ascii_digits, charset, nul_free};
+use af_validate::{TEXT_MAX_CHARS, ascii_digits, charset, nul_free};
 use garde::Validate as _;
 
-/// The longest host identifier an enrolment may name.
-pub const HOST_ID_MAX_BYTES: usize = 256;
-
-/// The most labels one enrolment may carry. Labels are stored on the runner
-/// row and re-read by every runner page, so an unbounded list is a
-/// persistence-amplification channel.
-pub const LABELS_MAX: usize = 32;
-
-/// The longest one label may be.
-pub const LABEL_MAX_BYTES: usize = 64;
-
-/// The most registry hosts one assignment may name.
-pub const REGISTRY_ENTRIES_MAX: usize = 32;
+/// The longest host identifier an enrolment may name: what one btree index
+/// row holds.
+///
+/// The index is `runner.runners`' UNIQUE (`tenant_id`, `host_id`). Postgres
+/// refuses an index row past 2,704 bytes; less its 8-byte tuple header, the
+/// 16-byte `uuid` and the host id's 4-byte varlena header, 2,676 remain.
+pub const HOST_ID_MAX_BYTES: usize = 2704 - 8 - 16 - 4;
 
 /// The longest registry entry: a 253-character host, a colon, a five-digit
 /// port.
@@ -32,27 +26,15 @@ pub const REGISTRY_ENTRY_MAX_BYTES: usize = 259;
 /// The longest decimal port a registry entry may carry.
 pub const REGISTRY_PORT_MAX_DIGITS: usize = 5;
 
-/// The most extra binds one assignment may add.
-pub const EXTRA_BINDS_MAX: usize = 16;
-
 /// The shortest bind path: `/` and one character.
 pub const BIND_PATH_MIN_BYTES: usize = 2;
 
 /// The longest bind path.
 pub const BIND_PATH_MAX_BYTES: usize = 4096;
 
-/// The longest operator note on one bind.
-pub const BIND_NOTE_MAX_BYTES: usize = 200;
-
-/// The most cgroup controllers one capability report may name.
-pub const REPORT_CONTROLLERS_MAX: usize = 16;
-
-/// The longest one controller name may be.
-pub const CONTROLLER_NAME_MAX_BYTES: usize = 64;
-
 /// What [`label_list`] reports. Never read by a caller: each daemon route
 /// answers the path with its own sentence.
-const NOT_LABEL_LIST: &str = "must hold a bounded number of bounded labels";
+const NOT_LABEL_LIST: &str = "must hold labels within the text ceiling";
 
 /// A label list borrowed from whichever request carries it.
 ///
@@ -61,13 +43,10 @@ const NOT_LABEL_LIST: &str = "must hold a bounded number of bounded labels";
 /// cannot drift apart on what a legal label set is.
 #[derive(garde::Validate)]
 #[garde(transparent)]
-struct LabelList<'r>(
-    #[garde(length(max = LABELS_MAX), inner(length(bytes, max = LABEL_MAX_BYTES)))]
-    &'r [Cow<'r, str>],
-);
+struct LabelList<'r>(#[garde(inner(length(chars, max = TEXT_MAX_CHARS)))] &'r [Cow<'r, str>]);
 
-/// Every runner label list is at most [`LABELS_MAX`] labels of at most
-/// [`LABEL_MAX_BYTES`] bytes each.
+/// Every label in a runner label list is at most [`TEXT_MAX_CHARS`]
+/// characters.
 ///
 /// # Errors
 /// [`NOT_LABEL_LIST`], at the field's own path, for a list past either bound.

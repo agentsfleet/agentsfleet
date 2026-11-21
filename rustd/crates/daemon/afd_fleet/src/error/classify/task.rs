@@ -17,7 +17,6 @@ impl Error {
             | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
@@ -82,7 +81,6 @@ impl Error {
             | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }

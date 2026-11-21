@@ -9,8 +9,6 @@ pub(super) struct ConfigToml {
     #[garde(dive)]
     pub outbound: Outbound,
     #[garde(skip)]
-    pub maintenance: super::maintenance::Maintenance,
-    #[garde(skip)]
     pub fleet: Fleet,
     #[garde(dive)]
     pub server: Server,
@@ -160,9 +158,6 @@ pub(super) struct Recovery {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Scheduling {
-    /// Strictly shorter than the longest run lifetime, `MAX_RUN_SECONDS`.
-    #[garde(range(min = 1, max = 3_599))]
-    pub missed_wake_probe_seconds: Option<u32>,
     #[garde(range(min = 1, max = 64))]
     pub max_concurrent_recovery_assignments: Option<usize>,
 }

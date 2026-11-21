@@ -192,19 +192,6 @@ impl Pricing {
         }
     }
 
-    /// Prices for a pass that logs run time only, as an expired run's last
-    /// slice does: run time is charged under both postures and reads no
-    /// catalogue.
-    pub(crate) fn runtime_only(posture: Posture, provider: String, model: String) -> Self {
-        Self {
-            book: PriceBook::default(),
-            posture,
-            provider,
-            model,
-            looked_up_at: None,
-        }
-    }
-
     /// `requests` and the measured `slice` priced as lines of `run_id`,
     /// wrapped as the settlement its biller charges.
     ///

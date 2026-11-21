@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::{
     decision::{DecisionAssignment, DecisionPurpose, DecisionRequest},
-    task::{DecisionAssessment, DecisionReservationInput, TaskState, UNFINISHED_MAX},
+    task::{DecisionAssessment, DecisionReservationInput, TaskState},
 };
 use afd_billing::price::PriceBook;
 use serde::Serialize;
@@ -161,13 +161,9 @@ pub(super) async fn candidates(
     let mut rows: Vec<Candidate> = sqlx::query_as(sql::CANDIDATES)
         .bind(&scope.fleet_id)
         .bind(&scope.workspace_id)
-        .bind(i64::from(UNFINISHED_MAX) + 1)
         .fetch_all(connection)
         .await
         .map_err(query("read complete native decision candidates"))?;
-    if rows.len() > usize::try_from(UNFINISHED_MAX).unwrap_or(usize::MAX) {
-        return Err(TaskRefusal::LimitExhausted.into());
-    }
     for (ordinal, candidate) in rows.iter_mut().enumerate() {
         crate::task::row::state(&candidate.stamp.state)?;
         candidate.alias = format!("t{ordinal}");

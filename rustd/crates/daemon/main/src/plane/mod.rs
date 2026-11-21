@@ -80,12 +80,6 @@ impl ServingPlane {
         &self.runner_streams
     }
 
-    /// Shares the request-path task owner with supervised maintenance.
-    #[must_use]
-    pub(crate) fn task_owner(&self) -> afd_fleet::task::Tasks {
-        self.tasks.clone()
-    }
-
     /// Keeps a daemon integration lane's connector calls on its local vendor.
     #[cfg(feature = "test-util")]
     #[must_use]

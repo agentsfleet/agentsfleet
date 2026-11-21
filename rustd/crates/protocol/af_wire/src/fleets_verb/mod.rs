@@ -2,25 +2,12 @@
 //! workspace holds, and what one of them did recently.
 //!
 //! Both reads are run-proven and scoped to the run's workspace. Another
-//! fleet's words are cut to an excerpt here, so the runner's tool and the
-//! daemon's route agree on how much of them one read carries.
+//! fleet's words arrive whole: the model reading them is the one that judges
+//! what matters.
 
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
-
-/// The most bytes of another fleet's request or answer one turn row carries.
-///
-/// A digest needs a line, not a transcript, and the full answer stays in the
-/// dashboard. Kept small because a model reads every row it is handed.
-pub const EXCERPT_MAX_BYTES: usize = 1024;
-
-/// `text` cut to at most [`EXCERPT_MAX_BYTES`], never inside a character.
-#[must_use]
-pub fn excerpt(text: &str) -> &str {
-    let (kept, _rest) = text.split_at(text.floor_char_boundary(EXCERPT_MAX_BYTES));
-    kept
-}
 
 /// One fleet of the run's workspace.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -75,10 +62,10 @@ pub struct FleetTurnItem<'a> {
     /// When it was admitted.
     #[serde(with = "crate::instant")]
     pub created_at: jiff::Timestamp,
-    /// What it was asked, cut to [`EXCERPT_MAX_BYTES`].
+    /// What it was asked.
     #[serde(borrow)]
     pub request_excerpt: Cow<'a, str>,
-    /// What it answered, cut to [`EXCERPT_MAX_BYTES`]. Omitted until it answers.
+    /// What it answered. Omitted until it answers.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub response_excerpt: Option<Cow<'a, str>>,
     /// What refused or failed the run. Omitted on a clean one.

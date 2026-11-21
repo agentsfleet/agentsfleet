@@ -1,4 +1,5 @@
-//! An answer or expiry waits for a park that has written but not committed.
+//! An answer, on time or past the deadline, waits for a park that has written
+//! but not committed.
 
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
@@ -25,13 +26,13 @@ const WAITER: &str = "SELECT pid FROM pg_stat_activity \
 // seam=none; no_claim=all gate interleavings. A database trigger holds the write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn answers_and_expiry_clear_a_park_that_was_uncommitted_when_resolution_started() {
-    for expire in [false, true] {
-        resolve_during_park(expire).await;
+async fn answers_on_time_and_late_clear_a_park_that_was_uncommitted_when_resolution_started() {
+    for late in [false, true] {
+        resolve_during_park(late).await;
     }
 }
 
-async fn resolve_during_park(expire: bool) {
+async fn resolve_during_park(late: bool) {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
@@ -49,7 +50,7 @@ async fn resolve_during_park(expire: bool) {
     let park_pid = waiter(&fixtures, blocker_pid, None)
         .await
         .expect("park is blocked");
-    let resolving = start_resolution(&fixtures, action, expire).await;
+    let resolving = start_resolution(&fixtures, action, late).await;
     let _wait = waiter(&fixtures, park_pid, Some(&resolving)).await;
     sqlx::query(UNLOCK)
         .bind(fleet.as_str())
@@ -66,7 +67,7 @@ async fn resolve_during_park(expire: bool) {
             .expect("committed park state");
     assert!(
         !parked,
-        "expire={expire}: a resolved gate cannot strand its head"
+        "late={late}: a resolved gate cannot strand its head"
     );
     assert_eq!(
         next(&fixtures.runs_with_dead_bus(), &runner)
@@ -83,9 +84,9 @@ async fn resolve_during_park(expire: bool) {
 async fn start_resolution(
     fixtures: &Fixtures,
     action: Uuid7,
-    expire: bool,
+    late: bool,
 ) -> tokio::task::JoinHandle<()> {
-    if expire {
+    if late {
         sqlx::query("UPDATE fleet.approval_gates SET expires_at=now()-interval '1 second' WHERE action_id=$1")
             .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("age gate"))
             .await.expect("gate expires");
@@ -97,23 +98,19 @@ async fn start_resolution(
         Turns::for_tests(fixtures.database.clone(), bus),
     );
     tokio::spawn(async move {
-        if expire {
-            assert_eq!(inbox.expire().await.expect("expiry commits"), 1);
-        } else {
-            assert!(matches!(
-                inbox
-                    .resolve(
-                        action.as_str(),
-                        Decision::Approved,
-                        "fixture:human",
-                        "",
-                        None
-                    )
-                    .await
-                    .expect("answer commits"),
-                Resolution::Resolved(_)
-            ));
-        }
+        assert!(matches!(
+            inbox
+                .resolve(
+                    action.as_str(),
+                    Decision::Approved,
+                    "fixture:human",
+                    "",
+                    None
+                )
+                .await
+                .expect("answer commits"),
+            Resolution::Resolved(_)
+        ));
     })
 }
 

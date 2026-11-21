@@ -1,7 +1,7 @@
 //! Retained progress makes a timed-out fairness check explain what stopped.
 
 use super::{Hot, Scenario, wire};
-use af_core::{id::Uuid7, timing::ASSIGN_FALLBACK_TICK};
+use af_core::id::Uuid7;
 use af_wire::{protocol::Down, run::TaggedRun};
 use afd_db::Db;
 
@@ -26,7 +26,7 @@ pub(super) struct Assigned {
 
 pub(super) async fn assigned(scene: &Scenario) -> Assigned {
     let frame = tokio::time::timeout(
-        ASSIGN_FALLBACK_TICK + af_core::timing::STREAM_ANSWER_TIMEOUT,
+        af_core::timing::STREAM_ANSWER_TIMEOUT.saturating_mul(2),
         scene.native_session().await.assign(),
     )
     .await
@@ -114,10 +114,4 @@ pub(super) async fn probes(database: &Db) -> u64 {
         .into_iter()
         .map(|count| u64::try_from(count).expect("statement counts are nonnegative"))
         .sum()
-}
-
-pub(super) async fn wait_for_probes(database: &Db, target: u64) {
-    while probes(database).await < target {
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
 }

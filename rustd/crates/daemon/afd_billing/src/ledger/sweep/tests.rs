@@ -41,8 +41,6 @@ fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
         price_id: None,
         unpriced_token_count: 0,
         charged_nanos: 1,
-        logged_at: Timestamp::UNIX_EPOCH,
-        line_id: id(9),
     }
 }
 

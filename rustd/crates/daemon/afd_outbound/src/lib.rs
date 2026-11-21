@@ -5,12 +5,12 @@
 //!                        │  then a lossy af.delivery.wake ping
 //!                        ▼
 //!                   Worker::run ── claims lane heads from thread.deliveries
-//!                        │         on the ping, or every CLAIM_PASS
+//!                        │         at start, on the ping, or when a job ends
 //!                        ▼
 //!                   dispatch by provider ──► the poster ──► the vendor
 //!                        │
 //!                        ▼
-//!                   stamp, release or abandon, matching the holder's token
+//!                   stamp or abandon, matching the holder's token
 //! ```
 //!
 //! # Invariant 9 lives at this crate's boundary

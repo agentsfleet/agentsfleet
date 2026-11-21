@@ -7,12 +7,13 @@
 //! a compromised host can lie, so placement trust stays operator-assigned.
 //!
 //! Every bound an enrolment, an assignment or a capability report must meet
-//! is declared on its type with garde; the caps, the two grammar rules and the
+//! is declared on its type with garde; the bounds, the two grammar rules and the
 //! shared label-list rule live in [`rules`](self::rules), and a reader proves
 //! them by validating.
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -24,15 +25,11 @@ mod selftest;
 pub use self::capability::CapabilityReport;
 pub use self::holds::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 pub use self::rules::{
-    BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, CONTROLLER_NAME_MAX_BYTES,
-    EXTRA_BINDS_MAX, HOST_ID_MAX_BYTES, LABEL_MAX_BYTES, LABELS_MAX, REGISTRY_ENTRIES_MAX,
-    REGISTRY_ENTRY_MAX_BYTES, REGISTRY_PORT_MAX_DIGITS, REPORT_CONTROLLERS_MAX, label_list,
+    BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, HOST_ID_MAX_BYTES, REGISTRY_ENTRY_MAX_BYTES,
+    REGISTRY_PORT_MAX_DIGITS, label_list,
 };
 use self::rules::{bind_path, registry_entry};
-pub use self::selftest::{
-    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SELFTEST_CHECKS_MAX, SELFTEST_POLICY_MAX_BYTES,
-    SelftestCheck, SelftestReport,
-};
+pub use self::selftest::{SelftestCheck, SelftestReport};
 
 /// The isolation strength assigned to a runner.
 //
@@ -99,7 +96,7 @@ pub struct ExtraBind<'a> {
     pub mode: BindMode,
     /// Operator note explaining why the bind exists.
     #[serde(borrow)]
-    #[garde(length(bytes, max = BIND_NOTE_MAX_BYTES))]
+    #[garde(length(chars, max = TEXT_MAX_CHARS))]
     pub note: Cow<'a, str>,
 }
 
@@ -131,13 +128,10 @@ pub struct AssignedPolicy<'a> {
     /// Default package registries added to each assignment's allowed network hosts. An empty
     /// list uses the runner's defaults.
     #[serde(borrow)]
-    #[garde(
-        length(max = REGISTRY_ENTRIES_MAX),
-        inner(
-            length(bytes, min = 1, max = REGISTRY_ENTRY_MAX_BYTES),
-            custom(registry_entry)
-        )
-    )]
+    #[garde(inner(
+        length(bytes, min = 1, max = REGISTRY_ENTRY_MAX_BYTES),
+        custom(registry_entry)
+    ))]
     pub registry_allowlist: Vec<Cow<'a, str>>,
     /// Concurrent workers the runner may start. Clamped on both sides.
     // Clamped, never refused, so it carries no bound: `WorkerCount::clamping`.
@@ -145,7 +139,7 @@ pub struct AssignedPolicy<'a> {
     pub worker_count: u32,
     /// Extra host paths bound into every run's sandbox.
     #[serde(borrow)]
-    #[garde(length(max = EXTRA_BINDS_MAX), dive)]
+    #[garde(dive)]
     pub extra_binds: Vec<ExtraBind<'a>>,
 }
 

@@ -8,7 +8,7 @@ import { listApprovalsAction } from "@/lib/actions/fleet-approvals";
 export type SummaryApproval = z.infer<typeof Gate>;
 type ApprovalRead = {kind: "loading"} | {kind: "ready"; gate: SummaryApproval | null} | {kind: "failed" | "inaccessible"};
 const Gate = z.object({gate_id: z.string().min(1), workspace_id: z.string(), fleet_id: z.string(),
-  status: z.literal(APPROVAL_STATUS.PENDING), proposed_action: z.string(), tool_name: z.string(), action_name: z.string(), blast_radius: z.string(),
+  status: z.enum([APPROVAL_STATUS.PENDING, APPROVAL_STATUS.TIMED_OUT]), gate_type: z.string().optional(), proposed_action: z.string(), tool_name: z.string(), action_name: z.string(), blast_radius: z.string(),
   detail: z.string().optional(), evidence: z.record(z.string(), z.unknown()).optional(), expires_at: z.iso.datetime({offset: true}).optional()});
 
 /** One bounded read per observed gate change. Key the caller by authenticated scope. */

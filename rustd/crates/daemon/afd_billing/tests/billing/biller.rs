@@ -14,13 +14,12 @@ use afd_billing::biller::conformance::{self, BALANCE};
 use afd_billing::biller::{
     Account, Ask, Attribution, Biller, FailOpen, Funds, RecordingBiller, Settlement, WorkKey,
 };
-use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
+use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::limits::fleet_spend;
 use afd_billing::price::RatedLine;
 use afd_billing::{Nanos, Posture};
 use afd_db::test_util::{mint_id, unreachable_db};
 use jiff::Timestamp;
-use sqlx::Connection as _;
 
 use crate::lane::Lane;
 
@@ -190,95 +189,6 @@ async fn test_usage_lines_deduplicate_on_sequence() {
         balance.balance.as_i64(),
         BALANCE.as_i64() - LINE.as_i64() * 2
     );
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_unsettled_lines_are_resettled() {
-    // Its own database: the pass reads the oldest unsettled lines it can see.
-    let lane = Lane::isolated().await;
-    lane.wallet(BALANCE.as_i64(), None, Timestamp::now()).await;
-    let payer = Account {
-        tenant: lane.tenant.clone(),
-        workspace: lane.workspace.clone(),
-    };
-    let biller = ledger(&lane);
-    let work = WorkKey::FleetRun(mint_id());
-    let lines = settlement(&lane, &payer, &work, vec![rated(0)]);
-    // The work's transaction logs the line and commits; the settlement never runs.
-    let mut connection = lane.pool.acquire().await.expect("the lane answers");
-    let mut transaction = connection.begin().await.expect("a transaction opens");
-    log_lines(&mut *transaction, &Entropy::new(), Timestamp::now(), &lines)
-        .await
-        .expect("logs the line");
-    transaction.commit().await.expect("the work commits");
-    drop(connection);
-    assert_eq!(
-        settled_at(&lane, &work).await,
-        vec![None],
-        "logged, not settled"
-    );
-    let balance = |biller: &LedgerBiller| {
-        let biller = biller.clone();
-        let payer = payer.clone();
-        async move {
-            biller
-                .balance(&payer)
-                .await
-                .expect("balance answers")
-                .balance
-                .as_i64()
-        }
-    };
-    assert_eq!(
-        balance(&biller).await,
-        BALANCE.as_i64(),
-        "nothing charged yet"
-    );
-
-    // The relay's own pass, not a hand-rolled retry.
-    let swept = resettle(&lane.pool, &biller, None)
-        .await
-        .expect("the pass reads");
-    assert!(swept.settled >= 1, "{swept:?}");
-    let stamped = settled_at(&lane, &work).await;
-    assert!(
-        matches!(stamped.as_slice(), [Some(_)]),
-        "the sweeper settled the line: {stamped:?}"
-    );
-    assert_eq!(
-        balance(&biller).await,
-        BALANCE.as_i64() - LINE.as_i64(),
-        "the logged line is charged once"
-    );
-
-    resettle(&lane.pool, &biller, None)
-        .await
-        .expect("the pass reads");
-    assert_eq!(
-        settled_at(&lane, &work).await,
-        stamped,
-        "a second pass settles nothing"
-    );
-    assert_eq!(
-        balance(&biller).await,
-        BALANCE.as_i64() - LINE.as_i64(),
-        "a second pass charges nothing"
-    );
-    lane.cleanup().await;
-}
-
-/// `settled_at` of each of `work`'s lines, oldest first, as text.
-async fn settled_at(lane: &Lane, work: &WorkKey) -> Vec<Option<String>> {
-    sqlx::query_scalar(
-        "SELECT settled_at::text FROM billing.usage_lines \
-          WHERE work_type = $1 AND work_id = $2 ORDER BY seq",
-    )
-    .bind(work.work_type())
-    .bind(work.id())
-    .fetch_all(&mut *lane.pool.acquire().await.expect("the lane answers"))
-    .await
-    .expect("reads the lines")
 }
 
 #[tokio::test]

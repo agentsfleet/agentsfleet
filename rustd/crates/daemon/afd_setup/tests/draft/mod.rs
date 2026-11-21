@@ -15,7 +15,6 @@ mod fleet_context;
 mod funnel;
 mod listing;
 mod locks;
-mod maintenance;
 mod messages;
 mod model_keys;
 mod model_metadata;

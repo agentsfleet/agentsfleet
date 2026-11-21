@@ -1,8 +1,9 @@
 //! A self-test verdict as the host reports it, with the bounds the daemon
-//! stores it under.
+//! stores it under: every text within the text ceiling.
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +17,7 @@ use serde::{Deserialize, Serialize};
 pub struct SelftestCheck<'a> {
     /// What was checked.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CHECK_NAME_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub name: Cow<'a, str>,
     /// Whether it passed.
     #[garde(skip)]
@@ -25,21 +26,9 @@ pub struct SelftestCheck<'a> {
     // Never empty: an empty cause reads to the dashboard as a leaked internal
     // identifier and is hidden, so the check would arrive explanation-less.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CHECK_DETAIL_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub detail: Cow<'a, str>,
 }
-
-/// The longest name one self-test check may carry.
-pub const CHECK_NAME_MAX_BYTES: usize = 128;
-
-/// The longest prose cause one check may carry.
-pub const CHECK_DETAIL_MAX_BYTES: usize = 256;
-
-/// How many checks one probe run may report.
-pub const SELFTEST_CHECKS_MAX: usize = 32;
-
-/// The longest tier or policy spelling a report may carry.
-pub const SELFTEST_POLICY_MAX_BYTES: usize = 64;
 
 // The tier and policy travel WITH the verdict rather than being read from the
 // runner row at render time: a result outlives the assignment that produced
@@ -58,7 +47,7 @@ pub struct SelftestReport<'a> {
     // them, where one flat predicate over the whole vector could only say that
     // some check was out of bounds.
     #[serde(borrow)]
-    #[garde(length(max = SELFTEST_CHECKS_MAX), dive)]
+    #[garde(dive)]
     pub checks: Vec<SelftestCheck<'a>>,
     /// Whether every check passed.
     // Reported by the host rather than derived on arrival, and cross-checked
@@ -68,10 +57,10 @@ pub struct SelftestReport<'a> {
     pub all_ok: bool,
     /// The tier in force when the probe ran.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub sandbox_tier: Cow<'a, str>,
     /// Outgoing network access policy in effect during the self-test.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = SELFTEST_POLICY_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub network_policy: Cow<'a, str>,
 }

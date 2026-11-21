@@ -25,16 +25,6 @@
 //! `cleanup` here would be a call every test makes that does nothing, implying
 //! an isolation boundary that is not there.
 //!
-//! # The sweeper is global, so its tests take a lock
-//!
-//! `Inbox::expire` is a system-wide statement by design — `WHERE resolved_at
-//! IS NULL AND expires_at <= now()`, no workspace or fleet in it — which is what
-//! a sweeper must be in production and what no amount of identifier minting can
-//! isolate. A test that sweeps therefore expires every OTHER test's lapsed
-//! gate, and a test whose premise is a gate past its window finds it already
-//! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
-//! everything else still runs concurrently.
-//!
 //! Each lane's connection to the integration lane's NATS carries activity
 //! frames and wake notifications, and a test subscribes through the same
 //! handle the inbox publishes on.
@@ -65,21 +55,6 @@ mod read;
 mod seed;
 
 pub(crate) use self::seed::Window;
-
-/// Serialises the tests the global sweeper cannot be isolated from.
-///
-/// Held for the whole test body by anything that calls `Inbox::expire`, and by
-/// anything that seeds a gate already past its window and expects to find it
-/// PENDING. Both sides are needed: the lock exists to keep those two groups
-/// apart, and a lock only one side takes keeps nothing apart at all.
-///
-/// A `tokio` mutex rather than the standard library's, because the guard is
-/// held across `await` points, and it does not poison — one failing test leaves
-/// the rest runnable rather than turning a single red into a suite of them.
-pub(crate) async fn sweeper_exclusive() -> tokio::sync::MutexGuard<'static, ()> {
-    static SWEEPER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    SWEEPER.lock().await
-}
 
 /// The instant a fixture row is raised at, and identifiers are minted at.
 ///

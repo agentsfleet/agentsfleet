@@ -5,15 +5,15 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FleetApprovalSummary } from "./FleetApprovalSummary";
 import { WorkApprovals } from "../conversation/summary/WorkContextSections";
 
-const mocks = vi.hoisted(() => ({list: vi.fn(), deny: vi.fn(), approve: vi.fn(), refresh: vi.fn(), capture: vi.fn()}));
-vi.mock("@/lib/actions/fleet-approvals", () => ({listApprovalsAction: mocks.list, denyApprovalAction: mocks.deny, approveApprovalAction: mocks.approve}));
+const mocks = vi.hoisted(() => ({list: vi.fn(), deny: vi.fn(), approve: vi.fn(), answer: vi.fn(), refresh: vi.fn(), capture: vi.fn()}));
+vi.mock("@/lib/actions/fleet-approvals", () => ({listApprovalsAction: mocks.list, denyApprovalAction: mocks.deny, approveApprovalAction: mocks.approve, answerApprovalAction: mocks.answer}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: mocks.refresh})}));
 vi.mock("@/lib/analytics/posthog", () => ({captureProductEvent: mocks.capture}));
 const PROPS = {workspaceId: "workspace", fleetId: "fleet", revision: 1, count: 1, href: "/w/workspace/fleets/fleet#fleet-approvals"};
-const GATE = {gate_id: "gate-one", workspace_id: PROPS.workspaceId, fleet_id: PROPS.fleetId, status: "pending",
+const GATE = {gate_id: "gate-one", workspace_id: PROPS.workspaceId, fleet_id: PROPS.fleetId, status: "pending", gate_type: "destructive_action",
   proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"};
 const page = (items: Array<typeof GATE & {detail?: string; evidence?: Record<string, unknown>; expires_at?: string}> = [GATE]) => ({ok: true, data: {items, next_cursor: null}});
-beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.list.mockResolvedValue(page());});
+beforeEach(() => {vi.clearAllMocks(); mocks.list.mockReset(); mocks.deny.mockReset(); mocks.approve.mockReset(); mocks.answer.mockReset(); mocks.list.mockResolvedValue(page());});
 afterEach(cleanup);
 
 it("reads only this fleet's pending gate and exposes decisions without page navigation", async () => {
@@ -64,7 +64,7 @@ it("retains an uncertain decision error and permits status review", async () => 
 });
 
 it.each([
-  {...GATE, workspace_id: "another-workspace"}, {...GATE, fleet_id: "another-fleet"}, {...GATE, status: "approved"}, {bad: true},
+  {...GATE, workspace_id: "another-workspace"}, {...GATE, fleet_id: "another-fleet"}, {...GATE, status: "approved"}, {...GATE, status: "answered"}, {bad: true},
 ])("never exposes actions for mismatched or malformed gate data %#", async gate => {
   mocks.list.mockResolvedValue({ok: true, data: {items: [gate], next_cursor: null}});
   render(<FleetApprovalSummary {...PROPS} />);
@@ -225,5 +225,71 @@ it("drops a pending decision and its late receipt when a refreshed read revokes 
   }}}));
   expect(screen.queryByText("Request approved.")).toBeNull();
   expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
+  expect(mocks.capture).not.toHaveBeenCalled();
+});
+
+const QUESTION = {...GATE, gate_id: "question-one", gate_type: "question", proposed_action: "Which region should the rollback target?",
+  tool_name: "ask_user", action_name: "ask", blast_radius: ""};
+const receipt = (gate_id: string, outcome: string) => ({ok: true, data: {kind: "resolved", data: {
+  gate_id, action_id: "ask", outcome, resolved_at: "2026-11-21T10:00:00Z", resolved_by: "reviewer"}}});
+
+it("keeps both decisions on a gate whose deadline passed", async () => {
+  mocks.list.mockResolvedValue(page([{...GATE, status: "timed_out", expires_at: "2026-11-21T08:00:00Z"}]));
+  mocks.approve.mockResolvedValue(receipt("gate-one", "approved"));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText("Deadline passed")).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Approve"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: "Deny"})).toHaveProperty("disabled", false);
+  fireEvent.click(screen.getByRole("button", {name: "Approve"}));
+  expect(await screen.findByText("Request approved.")).toBeTruthy();
+  expect(mocks.approve).toHaveBeenCalledWith("workspace", "gate-one", undefined);
+  expect(screen.queryByText("Deadline passed")).toBeNull();
+});
+
+it("says nothing about a deadline while the gate is still pending", async () => {
+  render(<FleetApprovalSummary {...PROPS} />);
+  await screen.findByText(GATE.proposed_action);
+  expect(screen.queryByText("Deadline passed")).toBeNull();
+});
+
+it("answers a question in place and never offers approval", async () => {
+  mocks.list.mockResolvedValue(page([{...QUESTION, status: "timed_out"}]));
+  mocks.answer.mockResolvedValue(receipt("question-one", "answered"));
+  render(<FleetApprovalSummary {...PROPS} />);
+  expect(await screen.findByText(QUESTION.proposed_action)).toBeTruthy();
+  expect(screen.getByText("Deadline passed")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Approve"})).toBeNull();
+  const send = screen.getByRole("button", {name: "Send answer"});
+  expect(send).toHaveProperty("disabled", true);
+  fireEvent.change(screen.getByLabelText("Your answer"), {target: {value: "   "}});
+  expect(send).toHaveProperty("disabled", true);
+  fireEvent.change(screen.getByLabelText("Your answer"), {target: {value: "  eu-west-1, 東京 after  "}});
+  fireEvent.click(send);
+  expect(await screen.findByText("Request answered.")).toBeTruthy();
+  expect(mocks.answer).toHaveBeenCalledWith("workspace", "question-one", "eu-west-1, 東京 after");
+  expect(mocks.approve).not.toHaveBeenCalled();
+  expect(mocks.deny).not.toHaveBeenCalled();
+});
+
+it("dismisses a question through deny", async () => {
+  mocks.list.mockResolvedValue(page([QUESTION]));
+  mocks.deny.mockResolvedValue(receipt("question-one", "denied"));
+  render(<FleetApprovalSummary {...PROPS} />);
+  fireEvent.click(await screen.findByRole("button", {name: "Dismiss"}));
+  expect(await screen.findByText("Request denied.")).toBeTruthy();
+  expect(mocks.deny).toHaveBeenCalledWith("workspace", "question-one", undefined);
+  expect(mocks.answer).not.toHaveBeenCalled();
+});
+
+it("keeps the typed answer and shows the refusal when the fleet was archived", async () => {
+  mocks.list.mockResolvedValue(page([QUESTION]));
+  mocks.answer.mockResolvedValue({ok: false, status: 409, error: "fleet is archived", errorCode: "UZ-AGT-020"});
+  render(<FleetApprovalSummary {...PROPS} />);
+  fireEvent.change(await screen.findByLabelText("Your answer"), {target: {value: "Roll back"}});
+  fireEvent.click(screen.getByRole("button", {name: "Send answer"}));
+  expect(await screen.findByRole("alert")).toBeTruthy();
+  expect(screen.queryByText("Request answered.")).toBeNull();
+  expect(screen.getByLabelText("Your answer")).toHaveProperty("value", "Roll back");
+  expect(screen.getByRole("button", {name: "Send answer"})).toHaveProperty("disabled", false);
   expect(mocks.capture).not.toHaveBeenCalled();
 });

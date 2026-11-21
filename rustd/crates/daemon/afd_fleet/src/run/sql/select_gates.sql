@@ -1,8 +1,8 @@
 -- Every fact the gates judge before an issue, in one read: the
 -- fleet's day and month spend, windowed as `afd_billing`'s
 -- `select_fleet_spend.sql` windows it; the gate this event already holds,
--- with its newest row's status and whether its deadline passed on the
--- database clock; and the integrations the fleet holds a standing grant for.
+-- with its newest row's status; and the integrations the fleet holds a
+-- standing grant for.
 -- Floors are cut to the millisecond the TIMESTAMPTZ(3) columns hold, so a
 -- line stamped exactly at the day floor counts.
 WITH floors AS (
@@ -23,7 +23,7 @@ WITH floors AS (
   ORDER BY g.created_at DESC, g.id DESC
   LIMIT 1
 ), standing AS (
-  SELECT g.status, g.expires_at <= statement_timestamp() AS lapsed
+  SELECT g.status
   FROM recorded r
   JOIN fleet.approval_gates g ON g.action_id = r.action_id
   ORDER BY g.created_at DESC, g.id DESC
@@ -32,7 +32,6 @@ WITH floors AS (
 SELECT s.day_nanos, s.month_nanos,
        (SELECT action_id FROM recorded) AS gate_action_id,
        (SELECT status FROM standing) AS gate_status,
-       (SELECT lapsed FROM standing) AS gate_lapsed,
        ARRAY(SELECT i.service FROM connector.integration_grants i
              WHERE i.fleet_id = $2 AND i.status = $5
              ORDER BY i.service) AS approved_services

@@ -136,8 +136,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 The report writes a `question` gate in `fleet.approval_gates` with its `turn_id`, the question, and a deadline from `af_fleet_runtime::config::DEFAULT_TIMEOUT`. The turn becomes `waiting`, and the card shows the question with an answer box.
 
-- **Dimension 1.1** — a question becomes a gate → Test `an_ask_user_ending_writes_a_question_gate` (integration): a run ending on `ask_user`. Expected: one `question` gate for the turn, the turn `waiting`, and a checkpoint at the waiting point.
-- **Dimension 1.2** — waiting is not a failure → Test `a_waiting_run_reports_waiting` (unit): a loop ending `Waiting`. Expected: the report's outcome is waiting, with no `DETAIL_WAITING`.
+- **Dimension 1.1** — DONE (integration test runs with the lane at the end) — a question becomes a gate → Test `an_ask_user_ending_writes_a_question_gate` (integration): a run ending on `ask_user`. Expected: one `question` gate for the turn, the turn `waiting`, and a checkpoint at the waiting point.
+- **Dimension 1.2** — DONE — waiting is not a failure → Test `a_waiting_run_reports_waiting` (unit): a loop ending `Waiting`. Expected: the report's outcome is waiting, with no `DETAIL_WAITING`.
 
 ### §2 — An answer, early or late, lets the turn continue
 
@@ -149,12 +149,12 @@ A policy-gate approval releases the parked turn, and a denial fails it, as today
 
 Its run resumes from the checkpoint, and `DriveState::resume` gives the answer as the asking call's result. A repeat of the same answer returns 200 with the same state.
 
-- **Dimension 2.1** — a late approval continues → Test `an_approval_after_the_deadline_releases_the_turn` (integration): a policy gate timed out 2 hours ago, then approved. Expected: the turn is assigned and answered.
-- **Dimension 2.2** — a late question answer resumes → Test `a_question_answered_after_the_deadline_resumes_the_run` (integration): a `question` gate timed out, then answered "yes". Expected: one continuation turn, and its run's next request holds "yes" as the asking call's result.
-- **Dimension 2.3** — two answers make one decision → Test `two_answers_to_one_gate_resolve_it_once` (integration): approve and deny race. Expected: one wins, the other gets `UZ-APPROVAL-006`, and at most one continuation exists.
-- **Dimension 2.4** — an archived fleet's gate closes → Test `an_answer_to_an_archived_fleets_gate_is_refused` (integration): archive, then approve. Expected: `UZ-AGT-020`, and no turn written.
-- **Dimension 2.5** — another workspace cannot answer → Test `a_member_of_another_workspace_cannot_answer_a_gate` (integration): a token for workspace B. Expected: 404.
-- **Dimension 2.6** — the card stays answerable → Test `an_expired_gate_card_still_offers_approve_and_deny` (e2e): a Playwright run of the conversation with a timed-out gate, the API mocked with `page.route`. Expected: "Deadline passed" with both buttons enabled.
+- **Dimension 2.1** — DONE (integration test runs with the lane at the end) — a late approval continues → Test `an_approval_after_the_deadline_releases_the_turn` (integration): a policy gate timed out 2 hours ago, then approved. Expected: the turn is assigned and answered.
+- **Dimension 2.2** — DONE (integration test runs with the lane at the end) — a late question answer resumes → Test `a_question_answered_after_the_deadline_resumes_the_run` (integration): a `question` gate timed out, then answered "yes". Expected: one continuation turn, and its run's next request holds "yes" as the asking call's result.
+- **Dimension 2.3** — DONE (integration test runs with the lane at the end) — two answers make one decision → Test `two_answers_to_one_gate_resolve_it_once` (integration): approve and deny race. Expected: one wins, the other gets `UZ-APPROVAL-006`, and at most one continuation exists.
+- **Dimension 2.4** — DONE (integration test runs with the lane at the end) — an archived fleet's gate closes → Test `an_answer_to_an_archived_fleets_gate_is_refused` (integration): archive, then approve. Expected: `UZ-AGT-020`, and no turn written.
+- **Dimension 2.5** — DONE (integration test runs with the lane at the end) — another workspace cannot answer → Test `a_member_of_another_workspace_cannot_answer_a_gate` (integration): a token for workspace B. Expected: 404.
+- **Dimension 2.6** — DONE — the card stays answerable → Test `an_expired_gate_card_still_offers_approve_and_deny` (e2e): a Playwright run of the conversation with a timed-out gate, the API mocked with `page.route`. Expected: "Deadline passed" with both buttons enabled.
 
 ### §3 — A retried effect lands once
 

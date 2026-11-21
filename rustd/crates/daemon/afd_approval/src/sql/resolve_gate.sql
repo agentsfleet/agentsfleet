@@ -8,6 +8,8 @@ WITH resolved AS (
           WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id)
   WHERE action_id = $4 AND resolved_at IS NULL
     AND (fleet_id = $5 OR $5 IS NULL)
+    AND NOT EXISTS (SELECT 1 FROM fleet.fleets z
+                     WHERE z.id = fleet.approval_gates.fleet_id AND z.status = $10)
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,
             resolved_by, detail, gate_type, evidence, turn_id
 ), granted AS (

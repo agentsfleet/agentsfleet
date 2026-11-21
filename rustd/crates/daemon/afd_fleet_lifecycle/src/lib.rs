@@ -152,8 +152,6 @@ mod tests {
         assert_eq!(runnable, [FleetStatus::Active]);
     }
 
-    use af_observability::metrics::label::fleet::FleetStatusLabel;
-
     use super::FleetStatus;
 
     #[test]
@@ -161,29 +159,6 @@ mod tests {
         for status in FleetStatus::ALL {
             assert_eq!(FleetStatus::parse(status.as_str()), Some(status));
         }
-    }
-
-    /// The census label set and this enum agree member for member.
-    ///
-    /// They cannot share a type — this crate depends on the observability
-    /// crate, not the reverse — so the agreement is asserted. Compared as
-    /// ORDERED spellings: a status added to one side, renamed on one side, or
-    /// reordered on one side all fail here, and each is a census row about to
-    /// be wrong.
-    #[test]
-    fn the_census_label_set_mirrors_the_lifecycle() {
-        let lifecycle: Vec<&str> = FleetStatus::ALL
-            .iter()
-            .map(|status| status.as_str())
-            .collect();
-        let census: Vec<&str> = FleetStatusLabel::ALL
-            .iter()
-            .map(|status| status.as_str())
-            .collect();
-        assert_eq!(
-            lifecycle, census,
-            "a fleet status the census cannot spell is a fleet the dashboard cannot count"
-        );
     }
 
     #[test]

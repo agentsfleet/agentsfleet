@@ -39,16 +39,6 @@ VALUES ($1, $2, $3, $4, $5, $6,
         $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
 
-const INSERT_THREAD: &str = "\
-INSERT INTO thread.threads
-  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
-   created_at, updated_at)
-VALUES ($1, $1, $2, 1, $3::timestamptz, $4::timestamptz,
-        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))
-ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing_token = 1,
-    run_expires_at = EXCLUDED.run_expires_at, hold_expires_at = EXCLUDED.hold_expires_at,
-    created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at";
-
 /// A setup draft's run: it names its draft and no fleet, and no foreign key
 /// reaches a draft, so the draft and its turn are opaque ids here.
 const INSERT_SETUP_RUN: &str = "\
@@ -104,25 +94,6 @@ pub(crate) async fn payload(connection: &mut PgConnection, row: RunRow<'_>) -> U
         .await
         .expect("the run seeds");
     event
-}
-
-/// Seeds a fleet's thread, last held by `runner`.
-pub(crate) async fn thread(
-    connection: &mut PgConnection,
-    (fleet, runner): (&Uuid7, &Uuid7),
-    run_expires_at: Timestamp,
-    hold_expires_at: Option<Timestamp>,
-    stamped_at: Option<Timestamp>,
-) {
-    sqlx::query(INSERT_THREAD)
-        .bind(fleet)
-        .bind(runner)
-        .bind(run_expires_at.to_sqlx())
-        .bind(hold_expires_at.map(Timestamp::to_sqlx))
-        .bind(stamped_at.map(Timestamp::to_sqlx))
-        .execute(&mut *connection)
-        .await
-        .expect("the thread seeds");
 }
 
 /// What a setup run holds, and whether it still runs.

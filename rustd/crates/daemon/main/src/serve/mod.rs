@@ -271,20 +271,14 @@ fn serve_runner(
     );
 }
 
-/// Start maintenance before either listener can answer through the assembled router.
+/// Start the event-driven workers before either listener can answer through
+/// the assembled router.
 async fn start_workers(
     supervisor: &mut Supervisor,
     config: &BootConfig,
     analytics: &Analytics,
     runtime: &Runtime,
 ) {
-    crate::sweepers::spawn(
-        supervisor,
-        &runtime.database,
-        analytics,
-        runtime.plane.task_owner(),
-        &config.runtime,
-    );
     spawn_background(
         supervisor,
         config,

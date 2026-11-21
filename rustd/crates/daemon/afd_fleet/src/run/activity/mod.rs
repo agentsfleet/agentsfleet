@@ -48,10 +48,6 @@ pub use self::vocabulary::{ACTIVITY_VARIANTS, RenderedFrame, rendered_frames};
 /// A frame could not be published; the tail loses it and the run does not care.
 const EVENT_DROPPED: &str = "activity_frame_dropped";
 
-/// Match the public history window; keep JSON overhead below the stored row cap.
-const TASK_HISTORY_FACTS: i64 = 128;
-const TASK_HISTORY_BYTES: i64 = 120_000;
-
 /// What one publish needs: whose channel, and which event the frames belong to.
 #[derive(Debug, Clone)]
 pub struct Target {
@@ -96,13 +92,9 @@ impl Runs {
                 .bind(runner_id)
                 .bind(target.fence)
                 .bind(sql::RUN_STATUS_ACTIVE)
-                .bind(TASK_HISTORY_FACTS)
-                .bind(TASK_HISTORY_BYTES)
                 .fetch_optional(&mut *connection)
                 .await
-                .map_err(query(
-                    "retain bounded task progress before live publication",
-                ))?;
+                .map_err(query("retain task progress before live publication"))?;
         Ok(history.map(|value| value.0))
     }
 

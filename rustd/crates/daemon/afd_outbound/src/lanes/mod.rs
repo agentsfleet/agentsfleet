@@ -51,7 +51,12 @@
 //!
 //! A lane asked to stop finishes nothing new; a job whose delivery the
 //! shutdown interrupted, or that the lane had taken and not started, releases
-//! its claim at once, so another replica can take it on its next claim pass.
+//! its claim at once, so another replica can take it on its next claim.
+//!
+//! # A failed delivery is final
+//!
+//! A delivery whose inline attempts all end retryably is abandoned, the same
+//! as one the destination refused. Nothing reschedules it (Indy, Nov 21, 2026).
 //! One still queued behind it keeps its claim until
 //! [`CLAIM_TTL`](crate::delivery::CLAIM_TTL) lapses.
 
@@ -70,12 +75,6 @@ use std::time::Duration;
 
 use crate::delivery::{AbandonReason, CLAIM_RENEW, Claimed};
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_policy};
-
-/// Delivery cycles an answer gets before it is abandoned.
-pub const MAX_DELIVERY_CYCLES: i64 = 12;
-
-/// How long a retryable answer waits before it is due again.
-pub const CYCLE_BACKOFF: Duration = Duration::from_secs(30);
 
 mod claim;
 mod dispatch;
@@ -310,7 +309,7 @@ impl<S: Deliver + 'static> Inner<S> {
             Verdict::Permanent => {
                 crate::abandon::delivery(&self.database, job, AbandonReason::Refused).await;
             }
-            Verdict::Retryable => self.retry_later(job, attempts).await,
+            Verdict::Retryable => self.fail(job, attempts).await,
         }
     }
 

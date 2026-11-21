@@ -25,16 +25,12 @@
 //! the scan the pagination exists to avoid, and the paging rule declares null to mean "not
 //! computed" rather than letting the key vanish.
 
+// The longest model identifier is the wire's, one rule on both request types,
+// so the bound cannot hold on the create and not on the change. The refusal
+// sentence spells the same number; both move together.
+use af_wire::inference::MODEL_ID_MAX_BYTES;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-/// The longest model identifier this surface accepts.
-///
-/// One rule and two request types, so the bound cannot hold on the create and
-/// not on the change — which is exactly how `model_id` ended up bounded on the
-/// catalogue route and unbounded on this one. The refusal sentence spells the
-/// same number in words; both move together or neither does.
-pub const MODEL_ID_MAX_BYTES: usize = 256;
 
 /// One configured model, as the registry page shows it.
 ///

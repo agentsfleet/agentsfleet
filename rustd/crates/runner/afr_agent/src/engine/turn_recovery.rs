@@ -1,8 +1,9 @@
 //! Ordinary private state binds to its original event and the matching workspace.
 
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
-    CheckpointOperationId, FoldRef, RunPayload, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
-    TurnResume, TurnScope, TurnWorkspace,
+    CheckpointOperationId, FoldRef, RunPayload, TURN_CHECKPOINT_FORMAT, TurnResume, TurnScope,
+    TurnWorkspace,
 };
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -74,7 +75,7 @@ struct History {
 
 #[derive(Validate)]
 struct Encoded<'a> {
-    #[garde(length(max = TURN_CHECKPOINT_BYTES))]
+    #[garde(length(max = MESSAGE_BYTES_MAX))]
     bytes: &'a [u8],
 }
 
@@ -104,7 +105,7 @@ impl TurnSnapshot {
             root,
         };
         history.validate()?;
-        if !af_validate::serialized_within(&history, TURN_CHECKPOINT_BYTES) {
+        if !af_validate::serialized_within(&history, MESSAGE_BYTES_MAX) {
             return Err(recovery_invalid(
                 "ordinary private history exceeds its byte limit",
             ));
@@ -178,7 +179,9 @@ fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
     let scope = TurnScope {
         workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
         fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
-        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
+        // An answer's run resumes, and goes on saving, the asking turn's
+        // checkpoint.
+        turn_id: CheckpointOperationId(run.event.checkpoint_turn_id().into_owned()),
         setup_revision_id: CheckpointOperationId(revision.to_string()),
         workspace,
     };

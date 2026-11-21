@@ -1,5 +1,4 @@
-//! Answering a gate under a race, and expiring the
-//! ones nobody answered.
+//! Answering a gate under a race, and reading one past its deadline.
 //!
 //! # Why the race is proven against a live datastore and not a stub
 //!
@@ -13,7 +12,7 @@
 //!
 //! What an approval lands, and what it leaves untouched, is
 //! `integration_inbox_continuation.rs`; this suite is the race, the scope and
-//! the sweep.
+//! a late gate's read.
 
 #![expect(
     clippy::expect_used,
@@ -23,7 +22,7 @@
 use af_core::id::Uuid7;
 use afd_approval::{Decision, Filter, Resolution};
 
-use crate::lane::{Lane, Window, sweeper_exclusive};
+use crate::lane::{Lane, Window};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -31,9 +30,6 @@ const OTHER_OPERATOR: &str = "human:somebody-else";
 
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
-
-/// The resolver a swept gate records, mirrored from the store.
-const SWEEPER: &str = "system:approval_gate_sweeper";
 
 /// One gate, two answers, exactly one decision.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -214,89 +210,41 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
     assert!(found.is_none(), "another workspace's gate is not visible");
 }
 
-/// The sweeper takes gates whose window closed, and only those.
+/// Nothing sweeps a gate: past its deadline it reads `timed_out`, its row
+/// stays `pending`, and the `pending` queue still lists it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
-    // the sweep is global; a sibling's lapsed gate is in its statement.
-    let _sweeper = sweeper_exclusive().await;
+async fn a_gate_past_its_deadline_reads_timed_out_and_stays_answerable() {
     let lane = Lane::isolated().await;
-
     let lapsed = lane.seed_gate(Window::Lapsed).await;
     let waiting = lane.seed_gate(Window::Open).await;
 
-    let swept = lane.inbox.expire().await.expect("the sweep must not fault");
-    assert!(swept >= 1, "the lapsed gate is taken");
-
-    assert_eq!(
-        lane.status_of(&lapsed).await,
-        "timed_out",
-        "a window that closed with no answer times the gate out"
-    );
-    assert_eq!(
-        lane.status_of(&waiting).await,
-        "pending",
-        "a gate still inside its window is left alone"
-    );
-}
-
-/// Expiry clears the durable park so the fleet can run its oldest row.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_expired_gate_wakes_its_fleet() {
-    // the sweep is global; a sibling's lapsed gate is in its statement.
-    let _sweeper = sweeper_exclusive().await;
-    let lane = Lane::isolated().await;
-    crate::tail_watch::park_delivery(&lane).await;
-    let lapsed = lane.seed_gate(Window::Lapsed).await;
-
-    lane.inbox.expire().await.expect("the sweep must not fault");
-
-    assert_eq!(lane.status_of(&lapsed).await, "timed_out");
-    assert!(
-        crate::tail_watch::delivery_unparked(&lane).await,
-        "expiry durably clears the park in the gate transaction"
-    );
-}
-
-/// An answer that landed first outranks the clock.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_gate_answered_before_the_deadline_is_not_swept() {
-    // the sweep is global; a sibling's lapsed gate is in its statement.
-    let _sweeper = sweeper_exclusive().await;
-    let lane = Lane::isolated().await;
-    // Deadline already past, and a person answered anyway — the ordering a
-    // sweep must not undo.
-    let action = lane.seed_gate(Window::Lapsed).await;
-
-    lane.inbox
-        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
+    let page = lane
+        .inbox
+        .page(&lane.workspace, Filter::default(), None, 10)
         .await
-        .expect("the resolve must not fault");
-    lane.inbox.expire().await.expect("the sweep must not fault");
+        .expect("the read must not fault");
+    let status = |action: &Uuid7| {
+        page.iter()
+            .find(|row| &row.action_id == action)
+            .map(|row| row.status.clone())
+    };
+    assert_eq!(status(&lapsed).as_deref(), Some("timed_out"));
+    assert_eq!(status(&waiting).as_deref(), Some("pending"));
+    assert_eq!(lane.status_of(&lapsed).await, "pending", "no sweep moved the row");
 
-    assert_eq!(
-        lane.status_of(&action).await,
-        "approved",
-        "the operator's decision outranks the deadline"
-    );
-}
-
-/// A swept gate records who took it and why.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_swept_gate_says_the_system_took_it() {
-    // the sweep is global; a sibling's lapsed gate is in its statement.
-    let _sweeper = sweeper_exclusive().await;
-    let lane = Lane::isolated().await;
-    let action = lane.seed_gate(Window::Lapsed).await;
-    lane.inbox.expire().await.expect("the sweep must not fault");
-
-    // Attribution matters: an audit reading this row has to be able to tell a
-    // gate a human denied from one that simply ran out of time.
-    let resolved_by = lane.gate_column(&action, "resolved_by").await;
-    let detail = lane.gate_column(&action, "detail").await;
-    assert_eq!(resolved_by, SWEEPER);
-    assert!(!detail.is_empty(), "a swept gate says why it closed");
+    let queued = lane
+        .inbox
+        .page(
+            &lane.workspace,
+            Filter {
+                status: Some(afd_api_wire::approval::GateStatus::Pending),
+                ..Filter::default()
+            },
+            None,
+            10,
+        )
+        .await
+        .expect("the read must not fault");
+    assert_eq!(queued.len(), 2, "a late gate still waits on a person");
 }

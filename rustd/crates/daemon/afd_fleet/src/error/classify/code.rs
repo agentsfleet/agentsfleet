@@ -49,7 +49,6 @@ impl Error {
             | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
             ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
             | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
                 error_code::TASK_DECISION_UNAVAILABLE

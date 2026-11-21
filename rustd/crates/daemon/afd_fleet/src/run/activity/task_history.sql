@@ -1,6 +1,6 @@
 -- Thread, run and event ownership are rechecked in the write, not a preflight.
 -- Cosmetic progress may be dropped under contention; never wait across ownership locks.
--- The existing event row serializes bounded progress updates. No new work queue.
+-- The existing event row serializes progress updates. No new work queue.
 WITH held_thread AS MATERIALIZED (
     SELECT s.fleet_id FROM thread.threads s
     WHERE s.fleet_id = $1 AND s.last_runner_id = $5 AND s.fencing_token = $6
@@ -31,15 +31,10 @@ WITH held_thread AS MATERIALIZED (
         (item->'progress'->>'completed')::bigint DESC,
         COALESCE((item->'progress'->'bytes'->>'acknowledged')::bigint, 0) DESC,
         COALESCE((item->'progress'->'bytes'->>'reused')::bigint, 0) DESC, position DESC
-), bounded AS (
-    SELECT item, position, sum(octet_length(item::text) + 2) OVER (ORDER BY position DESC) AS bytes
-    FROM newest ORDER BY position DESC LIMIT $8
-), retained AS (
-    SELECT item, position FROM bounded WHERE bytes <= $9
 )
 UPDATE thread.turns e SET
-    task_activity = COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM retained), jsonb_build_array()),
+    task_activity = COALESCE((SELECT jsonb_agg(item ORDER BY position) FROM newest), jsonb_build_array()),
     task_activity_sequence = held.task_activity_sequence + jsonb_array_length($3::jsonb),
-    task_activity_truncated = held.task_activity_truncated OR (SELECT count(*) FROM newest) > (SELECT count(*) FROM retained)
+    task_activity_truncated = held.task_activity_truncated
 FROM held WHERE e.id = held.id
 RETURNING jsonb_build_object('items', e.task_activity, 'truncated', e.task_activity_truncated)

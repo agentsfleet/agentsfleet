@@ -67,6 +67,8 @@ pub const MEMORY_LIST: Entry = Entry::new("memory_list", Runtime::Supervisor);
 pub const MEMORY_FORGET: Entry = Entry::new("memory_forget", Runtime::Supervisor);
 /// The model's plan steps, as the thread renders them.
 pub const UPDATE_PLAN: Entry = Entry::new("update_plan", Runtime::Supervisor);
+/// A question for the person; the run ends waiting, and the answer resumes it.
+pub const ASK_USER: Entry = Entry::new("ask_user", Runtime::Supervisor);
 /// A message to the event's thread, through a runner verb.
 pub const MESSAGE: Entry = Entry::new("message", Runtime::Supervisor);
 /// Work this fleet puts on another fleet in its workspace, through a runner
@@ -122,7 +124,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 35] = [
+pub const PUBLISHED: [&Entry; 36] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -132,6 +134,7 @@ pub const PUBLISHED: [&Entry; 35] = [
     &MEMORY_LIST,
     &MEMORY_FORGET,
     &UPDATE_PLAN,
+    &ASK_USER,
     &MESSAGE,
     &FLEET_STEER,
     &FLEET_ACTIVITY,
@@ -163,7 +166,7 @@ pub const PUBLISHED: [&Entry; 35] = [
 /// Every published tool a run builds over its own backends when it starts:
 /// every tool of `guffbolt`'s this catalog publishes. The provider's
 /// `web_search` and this runner's own fleet tools are the rest.
-pub const BACKED: [&Entry; 32] = [
+pub const BACKED: [&Entry; 33] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -172,6 +175,7 @@ pub const BACKED: [&Entry; 32] = [
     &MEMORY_LIST,
     &MEMORY_FORGET,
     &UPDATE_PLAN,
+    &ASK_USER,
     &MESSAGE,
     &SCHEDULE,
     &CRON_ADD,

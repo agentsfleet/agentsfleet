@@ -16,7 +16,7 @@ use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
 
 use super::announce::Answer;
-use super::row::{StoredResolution, StoredWin};
+use super::row::{StoredLoss, StoredWin};
 use super::{Inbox, Resolution, Resolved};
 use crate::decision::Decision;
 use crate::request::KIND_INTEGRATION_GRANT;
@@ -44,12 +44,49 @@ const CONTEXT_CONTINUE: &str = "gate.inbox.continuation";
 /// join back through the gate table.
 const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 
-/// The body a continuation carries.
-///
-/// Empty rather than a copy of the original request: the runner re-reads the
-/// blocked event's own body through `resumes_turn_id`, and duplicating it here
-/// would make two rows that could disagree about what was asked.
-const CONTINUATION_BODY: &str = "{}";
+/// What continues the run a resolved gate held.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Continues {
+    /// An approved policy gate: the body is empty, since the runner re-reads
+    /// the blocked event's own body through `resumes_turn_id`, and a copy
+    /// here would make two rows that could disagree about what was asked.
+    Approval,
+    /// An answered question: the body is the answer, and the continuation's
+    /// runs resume the asking turn's checkpoint.
+    Answer,
+}
+
+impl Continues {
+    /// What `status` continues, if anything.
+    pub(super) fn of(status: &str) -> Option<Self> {
+        if status == status::APPROVED {
+            Some(Self::Approval)
+        } else if status == status::ANSWERED {
+            Some(Self::Answer)
+        } else {
+            None
+        }
+    }
+
+    /// The producer the continuation is keyed under.
+    pub(super) const fn producer(self) -> afd_turns::Producer {
+        match self {
+            Self::Approval => afd_turns::Producer::GateContinuation,
+            Self::Answer => afd_turns::Producer::QuestionAnswer,
+        }
+    }
+
+    /// The continuation's body, for the gate `resolved` that held `turn_id`.
+    fn body(self, resolved: &Resolved, turn_id: &Uuid7) -> serde_json::Value {
+        match self {
+            Self::Approval => serde_json::json!({}),
+            Self::Answer => serde_json::json!(af_wire::turn::QuestionAnswer {
+                message: Cow::Borrowed(&resolved.detail),
+                asked_turn_id: Cow::Borrowed(turn_id.as_str()),
+            }),
+        }
+    }
+}
 
 impl Inbox {
     /// Answers one gate, atomically.
@@ -95,6 +132,7 @@ impl Inbox {
             .bind(GRANT_APPROVED)
             .bind(GRANT_REVOKED)
             .bind(KIND_INTEGRATION_GRANT)
+            .bind(afd_fleet_lifecycle::FleetStatus::Archived.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
@@ -105,10 +143,10 @@ impl Inbox {
             return Ok(Resolution::Resolved(resolved));
         }
 
-        // Nothing updated: either somebody answered first, or there was never
-        // a gate. The second read is what tells those apart, and it runs only
-        // on the losing path so the winner pays one statement.
-        let existing = sqlx::query_as::<_, StoredResolution>(sql::SELECT_GATE_BY_ACTION)
+        // Nothing updated: somebody answered first, the fleet is archived, or
+        // there was never a gate. The second read is what tells those apart,
+        // and it runs only on the losing path so the winner pays one statement.
+        let existing = sqlx::query_as::<_, StoredLoss>(sql::SELECT_GATE_BY_ACTION)
             .bind(action)
             .bind(scope)
             .fetch_optional(&mut *connection)
@@ -117,7 +155,8 @@ impl Inbox {
 
         drop(connection);
         Ok(match existing {
-            Some(row) => Resolution::AlreadyResolved(self.stood(row.into()).await?),
+            Some(row) if row.unanswered => Resolution::FleetArchived,
+            Some(row) => Resolution::AlreadyResolved(self.stood(row.resolution.into()).await?),
             None => Resolution::NotFound,
         })
     }
@@ -136,10 +175,10 @@ impl Inbox {
         // The continuation is part of RESOLVING, not something a caller
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
-        let continuation = if resolved.status == status::APPROVED
+        let continuation = if let Some(continues) = Continues::of(&resolved.status)
             && let Some(turn_id) = resolved.turn_id.clone()
         {
-            self.continue_from(&resolved, &turn_id).await
+            self.continue_from(&resolved, &turn_id, continues).await
         } else {
             // Resolution already cleared the durable park. Notify a waiting
             // poll that the original delivery is available again.
@@ -182,13 +221,20 @@ impl Inbox {
     /// lands here, and only here: the run verb announces the rows it
     /// writes, and this one is already there when the runner pulls it, so a
     /// watcher would otherwise never see the continued run open.
-    async fn continue_from(&self, resolved: &Resolved, turn_id: &Uuid7) -> Result<Option<Uuid7>> {
+    async fn continue_from(
+        &self,
+        resolved: &Resolved,
+        turn_id: &Uuid7,
+        continues: Continues,
+    ) -> Result<Option<Uuid7>> {
         let actor = format!("{CONTINUATION_ACTOR_PREFIX}{turn_id}");
         let kind = af_wire::turn::TurnKind::Continuation.as_str();
+        let body = continues.body(resolved, turn_id);
+        let request_json = body.to_string();
         let admitted = self
             .turns
             .admit(afd_turns::IncomingTurn {
-                producer: afd_turns::Producer::GateContinuation,
+                producer: continues.producer(),
                 // The gate's ACTION, which a retried resolve repeats: two
                 // people answering one gate, or one person's retry, continue
                 // the run exactly once.
@@ -197,7 +243,7 @@ impl Inbox {
                 workspace: &resolved.workspace_id,
                 actor: actor.as_str(),
                 event_type: af_wire::turn::TurnKind::Continuation,
-                request_json: CONTINUATION_BODY,
+                request_json: &request_json,
                 // The run a gate parked answers where it would have: a thread
                 // that asked before the gate still gets the answer after it.
                 reply: afd_turns::Reply::Inherit { turn_id },
@@ -205,7 +251,7 @@ impl Inbox {
             .await?;
 
         let (inserted, counters) = self
-            .insert_continuation(resolved, &admitted.stored.id, &actor, turn_id)
+            .insert_continuation(resolved, &admitted.stored.id, &actor, turn_id, body)
             .await?;
         // Once, on the write that landed the row: a retried resolve finds it
         // already there and announces nothing, as the run verb does.
@@ -242,6 +288,7 @@ impl Inbox {
         stored_id: &Uuid7,
         actor: &str,
         turn_id: &Uuid7,
+        body: serde_json::Value,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
         let landed = sqlx::query_as::<_, Landed>(afd_turns::view::sql::INSERT_TURN)
@@ -250,7 +297,7 @@ impl Inbox {
             .bind(&resolved.workspace_id)
             .bind(actor)
             .bind(af_wire::turn::TurnKind::Continuation.as_str())
-            .bind(sqlx::types::Json(serde_json::json!({})))
+            .bind(sqlx::types::Json(body))
             .bind(turn_id)
             .bind(af_core::turn::status::RECEIVED)
             .fetch_one(&mut *connection)

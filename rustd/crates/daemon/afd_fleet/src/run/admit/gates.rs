@@ -77,7 +77,6 @@ struct GatesRow {
     month_nanos: i64,
     gate_action_id: Option<Uuid7>,
     gate_status: Option<String>,
-    gate_lapsed: Option<bool>,
     approved_services: Vec<String>,
 }
 
@@ -93,7 +92,6 @@ impl Runs {
                 recorded: Recorded::observed(
                     row.gate_action_id.as_ref(),
                     row.gate_status.as_deref(),
-                    row.gate_lapsed,
                 ),
                 granted: row.approved_services.into_iter().collect(),
             },

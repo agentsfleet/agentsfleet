@@ -14,8 +14,7 @@
 //! its own token in `receipt`, delivers, and stamps, counts, releases or
 //! abandons only while that token still holds. A worker that dies mid-delivery
 //! simply stops renewing; its claim lapses after [`CLAIM_TTL`] and the next
-//! claim pass retakes the row, while the dead holder's late write matches
-//! nothing.
+//! claim retakes the row, while the dead holder's late write matches nothing.
 
 use std::time::Duration;
 
@@ -225,12 +224,19 @@ pub async fn renew(database: &Db, job: &Claimed) -> Result<bool> {
     hold(database, sql::RENEW_CLAIM, job, CLAIM_TTL).await
 }
 
-/// Gives `job`'s claim back, due again after `after`.
+/// Gives `job`'s claim back, claimable at once; `false` when it had lapsed.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn release(database: &Db, job: &Claimed, after: Duration) -> Result<bool> {
-    hold(database, sql::RELEASE_CLAIM, job, after).await
+pub async fn release(database: &Db, job: &Claimed) -> Result<bool> {
+    let mut connection = database.acquire().await?;
+    let done = sqlx::query(sql::RELEASE_CLAIM)
+        .bind(&job.id)
+        .bind(&job.token)
+        .execute(&mut *connection)
+        .await
+        .map_err(crate::error::query(CONTEXT_HOLD))?;
+    Ok(done.rows_affected() == 1)
 }
 
 async fn hold(

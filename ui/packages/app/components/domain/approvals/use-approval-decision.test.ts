@@ -5,8 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { APPROVAL_DECISION } from "@/lib/api/approvals-types";
 import { useApprovalDecision } from "./use-approval-decision";
 
-const mocks = vi.hoisted(() => ({approve: vi.fn(), deny: vi.fn(), capture: vi.fn()}));
-vi.mock("@/lib/actions/fleet-approvals", () => ({approveApprovalAction: mocks.approve, denyApprovalAction: mocks.deny}));
+const mocks = vi.hoisted(() => ({approve: vi.fn(), deny: vi.fn(), answer: vi.fn(), capture: vi.fn()}));
+vi.mock("@/lib/actions/fleet-approvals", () => ({approveApprovalAction: mocks.approve, denyApprovalAction: mocks.deny, answerApprovalAction: mocks.answer}));
 vi.mock("@/lib/analytics/posthog", () => ({captureProductEvent: mocks.capture}));
 const OUTCOME: ResolveOutcome = {kind: "resolved", data: {
   gate_id: "gate", action_id: "publish", outcome: "denied", resolved_at: "2026-11-12T10:00:00Z", resolved_by: "reviewer",
@@ -49,6 +49,29 @@ it.each(["fulfilled", "rejected"])("ignores a %s decision response after its sco
     else request.reject(new Error("Response lost"));
     await submitted;
   });
+  expect(onResolved).not.toHaveBeenCalled();
+  expect(mocks.capture).not.toHaveBeenCalled();
+});
+
+it("sends a question's trimmed answer and records no reason for it", async () => {
+  const answered: ResolveOutcome = {kind: "resolved", data: {...OUTCOME.data, outcome: "answered"}};
+  mocks.answer.mockResolvedValue({ok: true, data: answered});
+  const onResolved = vi.fn();
+  const {result} = renderHook(() => useApprovalDecision("workspace", "gate", onResolved));
+  await act(() => result.current.resolve(APPROVAL_DECISION.ANSWER, "  Rotate the key first  "));
+  expect(mocks.answer).toHaveBeenCalledWith("workspace", "gate", "Rotate the key first");
+  expect(mocks.approve).not.toHaveBeenCalled();
+  expect(mocks.deny).not.toHaveBeenCalled();
+  expect(mocks.capture).toHaveBeenCalledWith("approval_resolved", {gate_id: "gate", decision: "answer", has_reason: false});
+  expect(onResolved).toHaveBeenCalledWith(answered);
+});
+
+it("refuses to confirm an answer the daemon recorded as a denial", async () => {
+  mocks.answer.mockResolvedValue({ok: true, data: OUTCOME});
+  const onResolved = vi.fn();
+  const {result} = renderHook(() => useApprovalDecision("workspace", "gate", onResolved));
+  await act(() => result.current.resolve(APPROVAL_DECISION.ANSWER, "Yes"));
+  expect(result.current.error).toMatch(/could not be confirmed/);
   expect(onResolved).not.toHaveBeenCalled();
   expect(mocks.capture).not.toHaveBeenCalled();
 });

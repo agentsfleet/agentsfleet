@@ -15,7 +15,6 @@ use afd_fleet::task::{TaskLifecycle as _, Tasks};
 use serde_json::Value;
 use std::sync::Arc;
 
-mod maintenance;
 mod support;
 use support::{Observation, checkpoint_row, counts, decision, observe};
 

@@ -4,7 +4,6 @@
 //! guard. Capacity reservations alone never transfer ownership of a job.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -35,16 +34,16 @@ impl<S: Deliver + 'static> Inner<S> {
     /// Delivers one taken job; `true` when the lane must stop.
     async fn run_job(&self, job: &Claimed) -> bool {
         // Between jobs, and before a permit is waited for: a job taken here
-        // and not delivered gives its claim back due at once, so another
-        // replica takes it on its next claim pass.
+        // and not delivered gives its claim back at once, so another
+        // replica takes it on its next claim.
         if self.token.is_cancelled() {
-            self.release(job, Duration::ZERO).await;
+            self.release(job).await;
             return true;
         }
         let permit = tokio::select! {
             biased;
             () = self.token.cancelled() => {
-                self.release(job, Duration::ZERO).await;
+                self.release(job).await;
                 return true;
             }
             permit = self.permits.acquire() => permit,

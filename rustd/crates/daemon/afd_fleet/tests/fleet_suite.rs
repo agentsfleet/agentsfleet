@@ -21,10 +21,6 @@ mod run_renewal;
 #[path = "support/fleet_setup.rs"]
 mod setup;
 
-#[path = "support/fleet_billing_lines.rs"]
-mod billing_lines;
-#[path = "support/fleet_faulty_biller.rs"]
-mod faulty_biller;
 #[path = "support/fleet_queue.rs"]
 mod queue;
 #[path = "support/fleet_recovery_seed.rs"]
@@ -54,12 +50,6 @@ mod view_heartbeat;
 mod integration_activity_publish;
 #[path = "integration_assignment_delivery.rs"]
 mod integration_assignment_delivery;
-#[path = "integration_billing_relay.rs"]
-mod integration_billing_relay;
-#[path = "integration_billing_sweep.rs"]
-mod integration_billing_sweep;
-#[path = "integration_billing_sweep_faults.rs"]
-mod integration_billing_sweep_faults;
 mod integration_credential_mint;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
@@ -101,6 +91,8 @@ mod integration_report_commit;
 mod integration_report_fence;
 #[path = "integration_report_items.rs"]
 mod integration_report_items;
+#[path = "integration_report_question.rs"]
+mod integration_report_question;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;

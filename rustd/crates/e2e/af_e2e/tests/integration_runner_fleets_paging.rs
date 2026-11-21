@@ -1,5 +1,5 @@
 //! The runner's fleets and events reads page, refuse a bound or cursor they
-//! did not issue, and cut an answer to its excerpt.
+//! did not issue, and carry a long answer whole.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -11,7 +11,6 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::fleets_verb::EXCERPT_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::Value;
 use url::form_urlencoded::Serializer;
@@ -47,27 +46,19 @@ fn route(run: &str, tail: &str, fence: u64, query: &str) -> String {
     format!("/v1/runners/me/runs/{run}/{tail}?fencing_token={fence}{query}")
 }
 
-/// The answer of `event`, read from whichever of `pages` lists it, is the
-/// start of `answer` cut before the character that straddles the excerpt bound.
-fn assert_cut_at_a_boundary(pages: &[&Value], event: &Uuid7, answer: &str) {
-    let cut = pages
+/// The answer of `event`, read from whichever of `pages` lists it, is
+/// `answer` whole.
+fn assert_whole(pages: &[&Value], event: &Uuid7, answer: &str) {
+    let listed = pages
         .iter()
         .filter_map(|page| page["items"].as_array())
         .flatten()
         .find(|item| item["turn_id"] == event.as_str())
         .expect("the long answer's event is on a page");
-    let excerpt = cut["response_excerpt"]
-        .as_str()
-        .expect("an answer has an excerpt");
-    assert!(excerpt.len() <= EXCERPT_MAX_BYTES, "{}", excerpt.len());
-    assert!(
-        answer.starts_with(excerpt),
-        "the excerpt is the answer's own start"
-    );
     assert_eq!(
-        excerpt.len(),
-        EXCERPT_MAX_BYTES - 1,
-        "cut before the character that straddles the bound"
+        listed["response_excerpt"].as_str(),
+        Some(answer),
+        "the answer arrives whole"
     );
 }
 
@@ -106,15 +97,15 @@ async fn fleets_read_walks_its_pages() {
     crew.finish(supervisor).await;
 }
 
-/// One fleet's events walk in pages, newest first, and an answer longer than
-/// the excerpt bound comes back cut at a character boundary, never inside one.
+/// One fleet's events walk in pages, newest first, and a long answer comes
+/// back whole.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn events_read_walks_its_pages_and_cuts_answers() {
+async fn events_read_walks_its_pages_and_keeps_answers_whole() {
     let mut supervisor = Supervisor::new();
     let crew = Crew::boot(&mut supervisor).await;
     let target = crew.sibling("page-events").await;
-    let long = format!("a{}", "é".repeat(2 * EXCERPT_MAX_BYTES));
+    let long = format!("a{}", "é".repeat(2048));
     let longest = crew.answered_event(&target, &long).await;
     for answer in ["first", "second"] {
         crew.answered_event(&target, answer).await;
@@ -136,7 +127,7 @@ async fn events_read_walks_its_pages_and_cuts_answers() {
         "{first} {second}"
     );
 
-    assert_cut_at_a_boundary(&[&first, &second], &longest, &long);
+    assert_whole(&[&first, &second], &longest, &long);
     crew.finish(supervisor).await;
 }
 

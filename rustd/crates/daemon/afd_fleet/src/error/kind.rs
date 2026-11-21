@@ -43,11 +43,6 @@ pub(crate) enum ErrorKind {
     },
     #[error("the native GitHub request returned status {status}")]
     TaskRemoteStatus { status: u16 },
-    #[error("the native GitHub read exceeded its absolute deadline")]
-    TaskRemoteDeadline {
-        #[source]
-        source: tokio::time::error::Elapsed,
-    },
     #[error("GitHub requested a cooldown after status {status}")]
     TaskRemoteCooldown { status: u16, until: jiff::Timestamp },
     #[error("the complete decision request cannot be represented within its reviewed bounds")]

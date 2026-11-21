@@ -17,7 +17,7 @@ use af_core::clock;
 use af_wire::credentials::MintCredentialRequest;
 use std::borrow::Cow;
 
-pub(super) use publish::{ReceiptIdentity, Reconciled};
+pub(super) use publish::Reconciled;
 pub(super) use types::{BoundPr, Workflow};
 
 /// Trusted publisher transport; credentials never reach the coding model.
@@ -58,19 +58,6 @@ impl Github {
             client,
             master,
         }
-    }
-
-    pub(in crate::task) async fn dependency_session(
-        &self,
-        permit: super::ReadPermit,
-    ) -> Result<http::Session<'_>> {
-        let installation = permit.installation();
-        let deadline = permit.deadline();
-        let credential = self.plane.mint_wait_reader(&permit, clock::now()).await?;
-        Ok(
-            http::Session::new(&self.client, credential, installation, true)
-                .with_deadline(deadline),
-        )
     }
 
     pub(super) async fn session(&self, run: TaskRun<'_>) -> Result<http::Session<'_>> {

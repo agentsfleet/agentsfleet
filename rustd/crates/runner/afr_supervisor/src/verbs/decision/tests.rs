@@ -51,7 +51,7 @@ type StatusCase = (
     Option<Duration>,
 );
 
-fn statuses() -> [StatusCase; 5] {
+fn statuses() -> [StatusCase; 6] {
     [
         (
             429,
@@ -71,7 +71,15 @@ fn statuses() -> [StatusCase; 5] {
             DecisionRetryDelay::WithinBudget { milliseconds: 0 },
             Some(Duration::ZERO),
         ),
-        (529, Some("3"), DecisionRetryDelay::TooLong, None),
+        (
+            429,
+            Some("60"),
+            DecisionRetryDelay::WithinBudget {
+                milliseconds: 60_000,
+            },
+            Some(Duration::from_secs(60)),
+        ),
+        (529, Some("61"), DecisionRetryDelay::TooLong, None),
         (500, Some("1"), DecisionRetryDelay::Unspecified, None),
     ]
 }

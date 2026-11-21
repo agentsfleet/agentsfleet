@@ -37,9 +37,6 @@ pub(super) struct UnsettledRow {
     pub(super) price_id: Option<Uuid7>,
     pub(super) unpriced_token_count: i64,
     pub(super) charged_nanos: i64,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub(super) logged_at: Timestamp,
-    pub(super) line_id: Uuid7,
 }
 
 impl UnsettledRow {

@@ -25,7 +25,7 @@ use crate::request_id::RequestId;
 const DETAIL_BODY_REQUIRED: &str = "Request body required";
 const DETAIL_MALFORMED_JSON: &str = "Malformed JSON";
 const DETAIL_PROVIDER_LEN: &str = "provider must be 1–32 chars";
-const DETAIL_MODEL_LEN: &str = "model must be 1–256 chars";
+const DETAIL_MODEL_LEN: &str = "model must be 1–2595 chars";
 const DETAIL_WORKSPACE_ID: &str = "source_workspace_id must be a canonical UUIDv7";
 const DETAIL_BASE_URL: &str = "base_url invalid: openai-compatible needs an https SSRF-safe URL; a named provider must omit it";
 const DETAIL_WORKSPACE_UNKNOWN: &str =

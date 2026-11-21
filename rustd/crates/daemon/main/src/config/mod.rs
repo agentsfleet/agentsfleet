@@ -1,6 +1,5 @@
 //! Deployment files feed the same validators as environment-based startup.
 
-pub(crate) mod maintenance;
 mod origins;
 mod policies;
 mod settings;
@@ -8,8 +7,6 @@ mod timing;
 mod urls;
 mod values;
 
-#[cfg(test)]
-mod maintenance_tests;
 #[cfg(test)]
 mod origin_tests;
 #[cfg(test)]

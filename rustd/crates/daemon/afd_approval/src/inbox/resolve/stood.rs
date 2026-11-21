@@ -9,6 +9,7 @@
 use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 
+use super::Continues;
 use super::super::{Inbox, Resolved};
 use crate::Result;
 
@@ -32,10 +33,12 @@ impl Inbox {
             self.wake_parked_delivery(&resolved.fleet_id).await;
             return Ok(resolved);
         }
-        if resolved.status == status::APPROVED
+        if let Some(continues) = Continues::of(&resolved.status)
             && let Some(turn_id) = resolved.turn_id.clone()
         {
-            resolved.continuation_turn_id = self.owed_continuation(&resolved, &turn_id).await?;
+            resolved.continuation_turn_id = self
+                .owed_continuation(&resolved, &turn_id, continues)
+                .await?;
         }
         Ok(resolved)
     }
@@ -51,23 +54,22 @@ impl Inbox {
         &self,
         resolved: &Resolved,
         turn_id: &Uuid7,
+        continues: Continues,
     ) -> Result<Option<Uuid7>> {
         let landed = self
             .turns
-            .find_repeated(
-                afd_turns::Producer::GateContinuation,
-                resolved.action_id.as_str(),
-            )
+            .find_repeated(continues.producer(), resolved.action_id.as_str())
             .await?;
         match landed {
             Some(admitted) => Ok(Some(admitted.id)),
-            None => self.continue_from(resolved, turn_id).await,
+            None => self.continue_from(resolved, turn_id, continues).await,
         }
     }
 }
 
 /// Whether the next poll reads the original delivery: a gate that held no
-/// run, or a run the answer ended. An approved run lands a continuation.
+/// run, or a run the answer ended. An approved or answered run lands a
+/// continuation.
 pub(super) fn leaves_delivery_parked(answer: &str, turn_id: Option<&str>) -> bool {
-    turn_id.is_none() || answer == status::DENIED || answer == status::TIMED_OUT
+    turn_id.is_none() || answer == status::DENIED
 }

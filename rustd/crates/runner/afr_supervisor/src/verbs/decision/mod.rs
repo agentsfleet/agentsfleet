@@ -11,7 +11,7 @@ use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
 use af_wire::task::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionRetryDelay,
-    DecisionUnavailableCause,
+    DecisionUnavailableCause, RETRY_DELAY_MAX_MILLIS,
 };
 use afr_tools::verbs::DecisionEvaluation;
 
@@ -249,9 +249,13 @@ fn unavailable(failure: &af_providers::Error) -> DecisionUnavailableCause {
         .map_or(DecisionUnavailableCause::Transport, |status| {
             let retry_delay = match failure.decision_retry_after() {
                 None => DecisionRetryDelay::Unspecified,
-                Some(delay) if delay <= std::time::Duration::from_secs(2) => {
+                Some(delay)
+                    if delay
+                        <= std::time::Duration::from_millis(u64::from(RETRY_DELAY_MAX_MILLIS)) =>
+                {
                     DecisionRetryDelay::WithinBudget {
-                        milliseconds: u16::try_from(delay.as_millis()).unwrap_or(2000),
+                        milliseconds: u16::try_from(delay.as_millis())
+                            .unwrap_or(RETRY_DELAY_MAX_MILLIS),
                     }
                 }
                 Some(_) => DecisionRetryDelay::TooLong,

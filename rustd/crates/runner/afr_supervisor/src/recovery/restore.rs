@@ -262,9 +262,6 @@ impl Session<'_> {
         for batch in ids.chunks(4) {
             let chunks = self.download_batch(batch).await?;
             for (id, bytes) in batch.iter().zip(chunks) {
-                if history.len().saturating_add(bytes.expose().len()) > 64 * 1024 * 1024 {
-                    return Err(error::config("checkpoint history expanded bound exceeded"));
-                }
                 digests.push((
                     id.clone(),
                     af_core::etag::sha256_hex(bytes.expose()),

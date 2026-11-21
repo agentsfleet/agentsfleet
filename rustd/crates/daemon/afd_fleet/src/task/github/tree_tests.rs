@@ -206,19 +206,6 @@ async fn a_truncated_listing_a_missing_deletion_or_an_irregular_entry_is_an_inva
     }
 }
 
-/// The longest contents the wire admits decode to two bytes past one MiB.
-#[tokio::test]
-async fn contents_past_one_mebibyte_exhaust_the_limit() {
-    let origin = Origin::start(vec![commit(), tree(&json!([]), false)]).await;
-    let largest = "A".repeat(1_398_104);
-    let effect = input(vec![change("README.md", Some(&largest))]);
-
-    let rebuilt = reproduce(&origin.session(false), &target(), &effect).await;
-
-    assert_eq!(outcome(rebuilt), Err(Some(TaskRefusal::LimitExhausted)));
-    assert_eq!(origin.requests(), [COMMIT, ROOT]);
-}
-
 #[tokio::test]
 async fn a_rebuilt_tree_that_is_not_the_tested_one_is_an_invalid_target() {
     for rebuilt_sha in [BASE, "3333333333333333333333333333333333333333"] {

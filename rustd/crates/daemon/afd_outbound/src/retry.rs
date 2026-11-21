@@ -20,12 +20,12 @@
 //!
 //! # The budget is small on purpose
 //!
-//! Three attempts, two sleeps, under a second of waiting. A longer budget does
-//! not buy reliability here, because the claim already provides it: a row this
-//! worker stops renewing lapses, and the next claim pass retakes it. What
-//! the inline retry covers is the narrow case that budget suits — a 429, a
-//! brief 5xx — and holding the worker on one job for a minute would stall every
-//! answer behind it, because delivery is serial.
+//! Three attempts, two sleeps, under a second of waiting. These attempts are
+//! the only retries an answer gets: once they all end retryably the delivery
+//! is marked failed and nothing reschedules it (Indy, Nov 21, 2026). They
+//! cover the narrow case that budget suits — a 429, a brief 5xx — and holding
+//! the worker on one job for a minute would stall every answer behind it,
+//! because delivery is serial.
 
 use std::time::Duration;
 
@@ -33,7 +33,7 @@ use backon::ExponentialBuilder;
 use garde::Validate;
 use serde::Deserialize;
 
-/// Inline delivery attempts; a durable delivery remains claimable after exhaustion.
+/// Inline delivery attempts; a delivery that exhausts them is marked failed.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RetrySettings {
@@ -58,7 +58,7 @@ impl Default for RetrySettings {
     }
 }
 
-/// Checked inline retry policy, independent of the durable claim scan cadence.
+/// Checked inline retry policy.
 #[derive(Debug, Clone, Copy)]
 pub struct RetryPolicy {
     attempts: usize,

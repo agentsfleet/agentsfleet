@@ -3,8 +3,16 @@
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Largest provider-native requested model identity, shared with the catalogue.
-pub const MODEL_ID_MAX_BYTES: usize = 256;
+/// Largest provider-native model identity, in bytes: what one btree index row
+/// holds.
+///
+/// The tighter of its two indexes is `model.tenant_models`' UNIQUE
+/// (`tenant_id`, `workspace_id`, `model_name`, `secret_ref`). Postgres refuses
+/// an index row past 2,704 bytes; less its 8-byte tuple header, the two 16-byte
+/// `uuid`s, the name's 4-byte varlena header and a `secret_ref` at the vault's
+/// 64-byte name bound with its 1-byte header, 2,595 remain. The catalogue's
+/// UNIQUE (`provider`, `model_name`) holds more.
+pub const MODEL_ID_MAX_BYTES: usize = 2704 - 8 - 16 - 16 - 4 - 65;
 
 /// The provider API rig uses for this configured model.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

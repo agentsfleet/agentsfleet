@@ -151,7 +151,7 @@ mod tests {
     fn a_widest_message_at_the_ceiling_fits_the_text_body() {
         let request = json!({
             "message": "\u{1}".repeat(TEXT_MAX_CHARS),
-            "operation_id": "\u{1}".repeat(200),
+            "operation_id": "\u{1}".repeat(af_wire::turn::OPERATION_ID_MAX_BYTES),
         });
         let bytes = serde_json::to_vec(&request).unwrap_or_default();
         assert!(bytes.len() > 6 * 1024 * 1024, "{} bytes", bytes.len());

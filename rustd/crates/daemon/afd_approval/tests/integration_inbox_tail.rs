@@ -18,8 +18,8 @@
 use afd_approval::{Decision, Inbox, Resolution};
 use serde_json::json;
 
-use crate::lane::{Lane, Window, sweeper_exclusive};
-use crate::tail_watch::{NOTE, OPERATOR, SWEEPER, next_frame, tail};
+use crate::lane::{Lane, Window};
+use crate::tail_watch::{NOTE, OPERATOR, next_frame, tail};
 
 /// A decision is announced on the fleet's live tail, count included.
 ///
@@ -30,7 +30,6 @@ use crate::tail_watch::{NOTE, OPERATOR, SWEEPER, next_frame, tail};
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decision_is_announced_on_the_fleets_live_tail() {
-    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
 
     let mut tail = tail(&lane).await;
@@ -43,7 +42,6 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         .expect("the resolve must not fault");
 
     assert_decision_frame(&lane, &answered, &mut tail).await;
-    assert_swept_frames(&lane, &mut tail).await;
 }
 
 async fn assert_decision_frame(
@@ -72,53 +70,6 @@ async fn assert_decision_frame(
         Some(&json!(1)),
         "the sibling gate still waits, and the frame says so"
     );
-}
-
-async fn assert_swept_frames(lane: &Lane, tail: &mut afd_bus::Subscription) {
-    // The sweeper announces what it takes, the same way: two seeded lapsed,
-    // so this sweep takes both — reading the fleet's counters once for the
-    // pair — and the sibling above stays.
-    let lapsed = lane.seed_gate(Window::Lapsed).await;
-    let lapsed_too = lane.seed_gate(Window::Lapsed).await;
-    lane.inbox.expire().await.expect("the sweep must not fault");
-    let swept = next_frame(tail)
-        .await
-        .expect("the sweep reaches the fleet's tail");
-    let swept_too = next_frame(tail)
-        .await
-        .expect("the second swept gate reaches the tail too");
-    assert_eq!(swept_too.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(
-        swept_too.get("events_processed"),
-        swept.get("events_processed"),
-        "one fleet, one read: both frames carry the same snapshot"
-    );
-    assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(swept.get("status"), Some(&json!("timed_out")));
-    assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
-    let counters = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
-        .await
-        .expect("the counters read back");
-    assert_eq!(
-        swept.get("events_processed"),
-        Some(&json!(counters.events_processed)),
-        "the sweeper's frame carries where the fleet stands"
-    );
-    let mut swept_events = [
-        swept.get("turn_id").cloned(),
-        swept_too.get("turn_id").cloned(),
-    ];
-    swept_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
-    let mut seeded_events = [
-        Some(json!(lane.gate_column(&lapsed, "turn_id").await)),
-        Some(json!(lane.gate_column(&lapsed_too, "turn_id").await)),
-    ];
-    seeded_events.sort_by_key(|value| value.as_ref().map(ToString::to_string));
-    assert_eq!(
-        swept_events, seeded_events,
-        "both lapsed gates are announced"
-    );
-    assert_eq!(swept.get("pending_approvals"), Some(&json!(1)));
 }
 
 /// A re-raised action's rows are answered together, and counted together.

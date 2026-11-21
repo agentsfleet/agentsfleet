@@ -214,7 +214,6 @@ ttl_seconds = 40
 resume_from_checkpoint = false
 
 [runner.scheduling]
-missed_wake_probe_seconds = 2
 max_concurrent_recovery_assignments = 4
 [nats]
 dev_namespace = "dev-fixture"

@@ -1,11 +1,11 @@
 //! Behavior of the existing native task owner, shared by person and runner APIs.
 
-use super::{
-    DecisionMaintenance, DecisionMaintenanceCursor, ReservedDecision, TaskAdoption, TaskAfter,
-    TaskControl, TaskPage, TaskRun, TaskScope, TaskSnapshot,
-};
 #[cfg(any(test, feature = "test-util"))]
 use super::{PreparedPlan, TaskBindings};
+use super::{
+    ReservedDecision, TaskAdoption, TaskAfter, TaskControl, TaskPage, TaskRun, TaskScope,
+    TaskSnapshot,
+};
 use crate::Result;
 use af_core::id::Uuid7;
 use std::pin::Pin;
@@ -15,8 +15,6 @@ pub type TaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>
 
 /// Behavior of the authoritative task owner; all writes are fenced natively.
 pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
-    /// Observe due native dependencies with bounded concurrency, without an agent run.
-    fn maintain_waits(&self) -> TaskFuture<'_, super::WaitMaintenance>;
     /// Retain verified provider evidence; it can only request an independent native read.
     fn record_github_completion<'a>(
         &'a self,
@@ -92,8 +90,6 @@ pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
         checkpoint: &'a Uuid7,
         input: &'a garde::Valid<af_wire::task::CheckpointCommitInput>,
     ) -> TaskFuture<'a, af_wire::task::CheckpointPlan>;
-    /// Reconcile issued effects using bounded expiring read-only custody, including after deletion.
-    fn maintain_effects(&self) -> TaskFuture<'_, super::EffectMaintenance>;
     /// Acknowledge accepted input application or its own original reply delivery.
     fn accept_input<'a>(
         &'a self,
@@ -140,11 +136,6 @@ pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
         adoption: &'a TaskAdoption,
     ) -> TaskFuture<'a, TaskSnapshot>;
 
-    /// Release expired reservations only when native history proves no issuance.
-    fn maintain_decisions<'a>(
-        &'a self,
-        cursor: &'a mut DecisionMaintenanceCursor,
-    ) -> TaskFuture<'a, DecisionMaintenance>;
     /// Reserve one physical call; replays cannot issue another credential.
     fn reserve_decision<'a>(
         &'a self,

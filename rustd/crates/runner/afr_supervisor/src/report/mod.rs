@@ -184,6 +184,10 @@ fn verdict(ending: &Ending) -> (Outcome, Option<FailureClass>, Cow<'_, str>) {
                 failure.class,
                 Cow::Borrowed(failure.detail.as_ref()),
             ),
+            ExecutionResult {
+                outcome: ResultOutcome::Waiting,
+                ..
+            } => (Outcome::Waiting, None, Cow::Borrowed("")),
             ExecutionResult { .. } => (Outcome::Processed, None, Cow::Borrowed("")),
         },
         Ending::Failed { class, detail } => {

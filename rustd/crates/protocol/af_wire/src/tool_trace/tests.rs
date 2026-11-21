@@ -12,7 +12,6 @@ use super::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
     ToolCallStatus, ToolTrace, ToolTraceCall, TraceRejection, edge_fits,
 };
-use crate::activity::CALL_ID_MAX_BYTES;
 
 /// One call with small arguments and both edges, valid against every bound.
 fn call(call_id: &str) -> ToolTraceCall<'static> {
@@ -173,8 +172,9 @@ fn a_call_id_that_is_not_a_call_number_refuses_the_trace() {
         );
     }
     assert_eq!(
-        trace(vec![call(&"1".repeat(CALL_ID_MAX_BYTES + 1))]).validate(),
-        Err(TraceRejection::CallIdUnusable)
+        trace(vec![call(&"1".repeat(20))]).validate(),
+        Err(TraceRejection::CallIdUnusable),
+        "twenty ones is past `i64::MAX`"
     );
 }
 

@@ -2,6 +2,7 @@
 //! together: the children ride the root's drive state.
 
 use af_secrets::Scrub;
+use af_wire::run::TurnWorkspace;
 use af_wire::task::TaskContext;
 use afr_memory::Loaded;
 use guffbolt::Message;
@@ -55,7 +56,10 @@ pub(super) fn prepare_root<'run>(
     };
     let memory = if let Some(saved) = &mut state {
         opening = std::mem::take(&mut saved.messages);
-        opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
+        // An answer resumes at the asking call: its result is the next message.
+        if run.run.event.question_answer().is_none() {
+            opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
+        }
         Loaded::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
     } else {
         opening.push(Message::User(scrub.text(message).into_owned()));
@@ -68,7 +72,7 @@ pub(super) fn prepare_root<'run>(
     })
 }
 
-impl Harness<'_, '_> {
+impl<'run> Harness<'_, 'run> {
     pub(super) async fn capture_task_root(
         &self,
         task: TaskContext<'static>,
@@ -108,25 +112,58 @@ impl Harness<'_, '_> {
     }
 
     pub(super) async fn save_boundary(&mut self, driver: &DriveState) -> Option<Ending> {
-        if self.depth != 0 || driver.completed_steps() == 0 {
-            return None;
-        }
-        let sink = self.shared.recovery?;
-        let workspace = if self.task.is_none() {
-            match sink.workspace() {
-                Ok(workspace) => Some(workspace),
-                Err(reason) => {
-                    skipped(reason);
-                    return None;
-                }
-            }
-        } else {
-            None
-        };
+        let (sink, workspace) = self.boundary(driver)?;
         let Some(pause) = self.shared.registry.pause().await else {
             skipped(RecoverySkip::BusyChildren);
             return None;
         };
+        self.save_under(sink, workspace, driver, &pause).await
+    }
+
+    /// A checkpoint at the call that asked the person, under the pause the
+    /// run's end took, so the answer resumes the run from the asking call. A
+    /// refused save already logged why; the run still reports its question.
+    pub(super) async fn save_waiting(&mut self, pause: Option<&Pause>) {
+        let driver = self.driver.clone();
+        let Some((sink, workspace)) = self.boundary(&driver) else {
+            return;
+        };
+        let Some(pause) = pause else {
+            skipped(RecoverySkip::BusyChildren);
+            return;
+        };
+        let _ending = self.save_under(sink, workspace, &driver, pause).await;
+    }
+
+    /// Where a root's checkpoint goes and the workspace it records, when this
+    /// loop takes one at all.
+    fn boundary(
+        &self,
+        driver: &DriveState,
+    ) -> Option<(&'run dyn crate::RecoveryBoundarySink, Option<TurnWorkspace>)> {
+        if self.depth != 0 || driver.completed_steps() == 0 {
+            return None;
+        }
+        let sink = self.shared.recovery?;
+        if self.task.is_some() {
+            return Some((sink, None));
+        }
+        match sink.workspace() {
+            Ok(workspace) => Some((sink, Some(workspace))),
+            Err(reason) => {
+                skipped(reason);
+                None
+            }
+        }
+    }
+
+    async fn save_under(
+        &mut self,
+        sink: &dyn crate::RecoveryBoundarySink,
+        workspace: Option<TurnWorkspace>,
+        driver: &DriveState,
+        pause: &Pause,
+    ) -> Option<Ending> {
         if !self.shared.run.sessions.is_quiescent() {
             skipped(RecoverySkip::BusySessions);
             return None;
@@ -138,7 +175,7 @@ impl Harness<'_, '_> {
                 return None;
             }
         };
-        let snapshot = match self.snapshot_state(driver, &pause, workspace).await {
+        let snapshot = match self.snapshot_state(driver, pause, workspace).await {
             Ok(state) => RecoverySnapshot {
                 run_id: self.shared.run_id.to_owned(),
                 turn_id: self.shared.payload.event.turn_id.to_string(),
@@ -194,7 +231,7 @@ impl Harness<'_, '_> {
         &self,
         driver: &DriveState,
         pause: &Pause,
-        workspace: Option<af_wire::run::TurnWorkspace>,
+        workspace: Option<TurnWorkspace>,
     ) -> Result<RecoveryState> {
         let root = self.root_snapshot(driver, pause).await?;
         if let Some(mut task) = self

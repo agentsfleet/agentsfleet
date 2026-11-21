@@ -46,7 +46,6 @@ pub(super) async fn reproduce(
         return Err(TaskRefusal::InvalidTarget.into());
     }
     let mut changes = Vec::with_capacity(input.changes.len());
-    let mut bytes = 0_usize;
     for (index, change) in input.changes.iter().enumerate() {
         if input.changes.iter().take(index).any(|previous| {
             previous.path == change.path
@@ -65,13 +64,9 @@ pub(super) async fn reproduce(
         )
         .await?;
         let sha = if let Some(content) = &change.contents {
-            let decoded = BASE64_STANDARD
+            BASE64_STANDARD
                 .decode(content)
                 .map_err(|_invalid| TaskRefusal::InvalidTarget)?;
-            bytes = bytes.saturating_add(decoded.len());
-            if bytes > 1024 * 1024 {
-                return Err(TaskRefusal::LimitExhausted.into());
-            }
             let blob: Object = session
                 .post(
                     &path(&["repos", owner, name, "git", "blobs"])?,

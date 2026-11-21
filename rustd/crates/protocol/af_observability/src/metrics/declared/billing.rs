@@ -5,7 +5,7 @@
 //! relay pass made it. The two gauges are the billing relay's: it is the one
 //! reader that already scans the unsettled lines.
 
-use crate::metrics::family::{CounterKind, Declared, GaugeKind};
+use crate::metrics::family::{CounterKind, Declared};
 
 /// Funds checks by their answer.
 ///
@@ -24,19 +24,3 @@ pub const BILLING_SETTLE_TOTAL: Declared<CounterKind> =
 /// Labels: `gen_ai.provider.name,gen_ai.request.model`.
 pub const BILLING_UNPRICED_TOKENS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_unpriced_tokens_total");
-
-/// Work/provider/model/posture groups whose unsettled lines the relay settled.
-///
-/// Labels: `work_type`.
-pub const BILLING_SWEEPER_RESETTLED_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_billing_sweeper_resettled_total");
-
-/// Nanos logged and not yet settled, as the last relay pass read them.
-///
-/// Labels: `work_type`.
-pub const BILLING_UNSETTLED_NANOS: Declared<GaugeKind> =
-    Declared::new("agentsfleet_billing_unsettled_nanos");
-
-/// Age of the oldest unsettled line, as the last relay pass read it.
-pub const BILLING_UNSETTLED_OLDEST_SECONDS: Declared<GaugeKind> =
-    Declared::new("agentsfleet_billing_unsettled_oldest_seconds");

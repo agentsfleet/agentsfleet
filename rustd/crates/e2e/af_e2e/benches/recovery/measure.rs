@@ -22,6 +22,8 @@ use std::{collections::BTreeMap, time::Duration};
 const ACCEPTED: &str = "The source accepted this recovery checkpoint.";
 const MARKER: &str = "burst-fleet/";
 const WINDOW_MS: i64 = 60_000;
+/// How long replacement runners settle before the source runners are killed.
+const REPLACEMENTS_SETTLE: Duration = Duration::from_secs(5);
 
 pub(super) async fn run(n: usize) -> Checked {
     let mut daemon = Supervisor::new();
@@ -35,7 +37,7 @@ pub(super) async fn run(n: usize) -> Checked {
     stage("all source checkpoints committed")?;
     let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
     stage("replacement runners connected")?;
-    tokio::time::sleep(af_core::timing::ASSIGN_FALLBACK_TICK).await;
+    tokio::time::sleep(REPLACEMENTS_SETTLE).await;
     let _logs = try_join_all(source.into_iter().map(Worker::kill)).await?;
     let eligible = eligibility(&run, &fleets, &source_ids).await?;
     stage("runners stopped; waiting for expiry")?;

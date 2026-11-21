@@ -14,7 +14,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_rustls::{TlsAcceptor, server::TlsStream};
-mod barrier;
 mod exchange;
 
 const HOST: &str = "api.github.com";
@@ -23,7 +22,6 @@ pub(super) struct Server {
     pub client: reqwest::Client,
     replies: Arc<Mutex<VecDeque<Value>>>,
     exchange: Arc<Mutex<Option<exchange::Exchange>>>,
-    barrier: Arc<barrier::Barrier>,
     stop: Option<oneshot::Sender<()>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -51,8 +49,6 @@ impl Server {
         let owned = Arc::clone(&replies);
         let exchange = Arc::new(Mutex::new(None));
         let app = Arc::clone(&exchange);
-        let barrier = Arc::new(barrier::Barrier::default());
-        let held = Arc::clone(&barrier);
         let (stop, mut stopped) = oneshot::channel();
         let worker = tokio::spawn(async move {
             loop {
@@ -62,14 +58,13 @@ impl Server {
                 };
                 let (socket, _) = accepted.expect("native reader connects");
                 let mut stream = tls.accept(socket).await.expect("verified TLS handshake");
-                respond(&mut stream, &owned, &app, &held).await;
+                respond(&mut stream, &owned, &app).await;
             }
         });
         Self {
             client,
             replies,
             exchange,
-            barrier,
             stop: Some(stop),
             worker: Some(worker),
         }
@@ -81,9 +76,6 @@ impl Server {
     }
     pub(super) fn push(&self, reply: Value) {
         self.replies.lock().expect("replies").push_back(reply);
-    }
-    pub(super) fn hold_response(&self, path: &str) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
-        self.barrier.hold(path)
     }
     pub(super) async fn finish(mut self) {
         self.stop
@@ -115,7 +107,6 @@ async fn respond(
     stream: &mut TlsStream<tokio::net::TcpStream>,
     replies: &Mutex<VecDeque<Value>>,
     exchange: &Mutex<Option<exchange::Exchange>>,
-    barrier: &barrier::Barrier,
 ) {
     let request = read(stream).await;
     let app = exchange
@@ -124,7 +115,6 @@ async fn respond(
         .as_mut()
         .and_then(|app| app.respond(&request));
     let reply = app.unwrap_or_else(|| evidence(&request, replies));
-    barrier.wait(&request.path).await;
     let status = reply
         .get("fixture_http_status")
         .and_then(Value::as_u64)

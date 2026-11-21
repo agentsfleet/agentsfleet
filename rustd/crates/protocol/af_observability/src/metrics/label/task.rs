@@ -21,16 +21,12 @@ closed_set! {
         DecisionReserve => "decision_reserve",
         /// Record one canonical result or retained accounting uncertainty.
         DecisionRecord => "decision_record",
-        /// Release reservations natively proved unsent after their deadline.
-        DecisionSweep => "decision_sweep",
         /// Acknowledge accepted input at its original delivery.
         InputReceipt => "input_receipt",
         /// Allocate and issue one native exact-head publication.
         EffectPublish => "effect_publish",
         /// Reconcile/read immutable publication history.
         EffectRead => "effect_read",
-        /// Reconcile admitted writes with expiring read custody.
-        EffectSweep => "effect_sweep",
         /// Allocate a complete checkpoint plan.
         CheckpointPlan => "checkpoint_plan",
         /// Read or freeze an immutable bounded manifest page.
@@ -49,26 +45,8 @@ closed_set! {
         ReportPrepare => "report_prepare",
         /// Commit a native task disposition beside its financial report.
         ReportCommit => "report_commit",
-        /// Observe one native dependency without allocating agent work.
-        WaitRead => "wait_read",
-        /// Advance bounded native wait maintenance.
-        WaitSweep => "wait_sweep",
         /// Retain and match a verified workflow completion.
         CompletionMatch => "completion_match",
-    }
-}
-
-closed_set! {
-    /// Result of one completed recovery attempt, without task identifiers.
-    DecisionRecoveryOutcome {
-        /// Native proof released a previously unsent reservation.
-        Expired => "expired",
-        /// Another writer changed or removed the discovered candidate.
-        Obsolete => "obsolete",
-        /// Existing financial locks were busy; a later scan retries.
-        Contended => "contended",
-        /// A row-local failure retained uncertainty for operator repair.
-        Failed => "failed",
     }
 }
 

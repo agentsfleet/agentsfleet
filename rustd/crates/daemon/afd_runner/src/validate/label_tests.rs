@@ -69,44 +69,32 @@ fn labels_differing_only_in_case_are_distinct() {
 }
 
 #[test]
-fn too_many_labels_are_refused_with_the_enrolment_sentence() {
-    let at_cap = vec![Cow::Borrowed("gpu"); LABELS_MAX];
-    let (enrolled, replaced) = both(&at_cap);
-    assert!(
-        enrolled.is_ok() && replaced.is_ok(),
-        "the cap itself is legal"
-    );
+fn many_labels_are_legal_and_stored_once_each() {
+    let repeated = vec![Cow::Borrowed("gpu"); 64];
+    let (enrolled, replaced) = both(&repeated);
+    assert_eq!(enrolled.expect("a long list is legal").len(), 1);
+    assert_eq!(replaced.expect("a long list is legal").len(), 1);
 
-    let distinct_at_cap: Vec<Cow<'static, str>> = (0..LABELS_MAX)
+    let distinct: Vec<Cow<'static, str>> = (0..64)
         .map(|index| Cow::Owned(format!("l{index}")))
         .collect();
-    let (enrolled, replaced) = both(&distinct_at_cap);
-    assert_eq!(enrolled.expect("cap of distinct labels").len(), LABELS_MAX);
-    assert_eq!(replaced.expect("cap of distinct labels").len(), LABELS_MAX);
-
-    // The count is proved before the collapse, so 33 copies of one label are
-    // refused even though they would store as one.
-    let past_cap = vec![Cow::Borrowed("gpu"); LABELS_MAX + 1];
-    let (enrolled, replaced) = both(&past_cap);
-    assert_eq!(refusal(&enrolled), Some(DETAIL_LABELS));
-    assert_eq!(refusal(&replaced), Some(DETAIL_LABELS));
+    let (enrolled, replaced) = both(&distinct);
+    assert_eq!(enrolled.expect("distinct labels").len(), 64);
+    assert_eq!(replaced.expect("distinct labels").len(), 64);
 }
 
 #[test]
 fn an_over_long_label_is_refused_with_the_enrolment_sentence() {
-    let at_edge = vec![Cow::Owned("l".repeat(LABEL_MAX_BYTES))];
+    let at_edge = vec![Cow::Owned("€".repeat(TEXT_MAX_CHARS))];
     let (enrolled, replaced) = both(&at_edge);
     assert!(
         enrolled.is_ok() && replaced.is_ok(),
-        "the edge itself is legal"
+        "the edge itself is legal, counted in characters"
     );
 
-    // Bytes, not characters: 22 three-byte characters is 66 bytes.
-    for past_edge in ["l".repeat(LABEL_MAX_BYTES + 1), "€".repeat(22)] {
-        let (enrolled, replaced) = both(&[Cow::Owned(past_edge)]);
-        assert_eq!(refusal(&enrolled), Some(DETAIL_LABELS));
-        assert_eq!(refusal(&replaced), Some(DETAIL_LABELS));
-    }
+    let (enrolled, replaced) = both(&[Cow::Owned("l".repeat(TEXT_MAX_CHARS + 1))]);
+    assert_eq!(refusal(&enrolled), Some(DETAIL_LABELS));
+    assert_eq!(refusal(&replaced), Some(DETAIL_LABELS));
 }
 
 #[test]

@@ -167,12 +167,8 @@ fn every_declared_ceiling_admits_its_label_product() {
     }
 }
 
-fn task_products() -> [(&'static str, usize); 3] {
+fn task_products() -> [(&'static str, usize); 2] {
     [
-        (
-            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
-            task_labels::DecisionRecoveryOutcome::ALL.len(),
-        ),
         (
             task::TASK_OPERATIONS_TOTAL.wire_name(),
             task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
@@ -184,7 +180,7 @@ fn task_products() -> [(&'static str, usize); 3] {
     ]
 }
 
-fn billing_products() -> [(&'static str, usize); 4] {
+fn billing_products() -> [(&'static str, usize); 2] {
     [
         (
             billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
@@ -193,14 +189,6 @@ fn billing_products() -> [(&'static str, usize); 4] {
         (
             billing::BILLING_SETTLE_TOTAL.wire_name(),
             billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len(),
-        ),
-        (
-            billing::BILLING_UNSETTLED_NANOS.wire_name(),
-            billing_labels::WorkType::ALL.len(),
         ),
     ]
 }
@@ -218,7 +206,7 @@ fn http_products() -> [(&'static str, usize); 2] {
     ]
 }
 
-fn fleet_products() -> [(&'static str, usize); 10] {
+fn fleet_products() -> [(&'static str, usize); 9] {
     [
         (
             fleet::RUNNER_CORDON_CHANGES_TOTAL.wire_name(),
@@ -235,10 +223,6 @@ fn fleet_products() -> [(&'static str, usize); 10] {
         (
             fleet::TURNS_TOTAL.wire_name(),
             fleet_labels::IncomingTurnOutcome::ALL.len(),
-        ),
-        (
-            fleet::FLEETS.wire_name(),
-            fleet_labels::FleetStatusLabel::ALL.len(),
         ),
         (
             fleet::FLEET_RUNS_STARTED_TOTAL.wire_name(),

@@ -17,7 +17,6 @@ pub mod error;
 mod funnel;
 #[cfg(test)]
 mod limits;
-mod maintenance;
 mod message;
 mod observe;
 mod paging;
@@ -33,7 +32,6 @@ pub use self::access::Access;
 pub use self::creation::{Creations, SavedFleet, SetupCheck, SetupProgress, SystemSetup};
 pub use self::draft::Drafts;
 pub use self::error::{Error, Result};
-pub use self::maintenance::Maintenance;
 pub use self::message::Conversation;
 pub use self::observe::{Notice, Observation, View};
 pub use self::setup::Setup;

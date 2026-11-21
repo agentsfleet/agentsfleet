@@ -25,11 +25,8 @@ const HASH_PREFIX: &str = "setup:v1:sha256:";
 /// How long a receipt answers its key, measured from its `created_at`.
 ///
 /// Inside it the same key and body replay the first result; at and past it the
-/// key is new and the receipt is swept.
+/// key is new and a claim of it deletes the old receipt.
 pub(crate) const REPLAY_WINDOW: Duration = af_core::timing::DAY;
-
-/// The most receipts one maintenance pass deletes.
-const SWEEP_LIMIT: i64 = 64;
 
 pub(crate) fn digest(value: &impl Serialize) -> Result<String> {
     let value = serde_json::to_value(value).map_err(stored)?;
@@ -179,18 +176,4 @@ pub(crate) async fn reserve(
         .await
         .map_err(query(CONTEXT))?;
     Ok(inserted.rows_affected() == 1)
-}
-
-/// Deletes one bounded batch of receipts past [`REPLAY_WINDOW`], returning how
-/// many went.
-///
-/// A row a claim is deleting is waited for, not skipped; see [`sql::SWEEP`].
-pub(crate) async fn sweep(connection: &mut PgConnection) -> Result<u64> {
-    let swept = sqlx::query(sql::SWEEP)
-        .bind(REPLAY_WINDOW)
-        .bind(SWEEP_LIMIT)
-        .execute(connection)
-        .await
-        .map_err(query(CONTEXT))?;
-    Ok(swept.rows_affected())
 }

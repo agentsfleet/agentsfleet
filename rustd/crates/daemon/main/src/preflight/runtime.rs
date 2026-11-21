@@ -1,6 +1,6 @@
 //! Runtime policy is resolved once before opening any service.
 
-use std::{num::NonZeroUsize, sync::Arc, time::Duration};
+use std::{num::NonZeroUsize, sync::Arc};
 
 use af_core::{
     env::EnvSource,
@@ -16,7 +16,6 @@ pub struct RuntimeSettings {
     pub(crate) operations: Arc<OperationalSettings>,
     pub(crate) clock: RunClock,
     pub(crate) resume_from_checkpoint: bool,
-    pub(crate) fallback: Duration,
     pub(crate) assignments: NonZeroUsize,
     pub(crate) requests: NonZeroUsize,
 }
@@ -25,24 +24,19 @@ pub struct RuntimeSettings {
 pub(crate) struct OperationalSettings {
     pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
-    pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
 }
 
 impl RuntimeSettings {
     pub(crate) fn announce(&self) {
-        let (run_ttl_seconds, resume_from_checkpoint, assign_fallback_seconds) = (
-            self.clock.ttl().as_secs(),
-            self.resume_from_checkpoint,
-            self.fallback.as_secs(),
-        );
+        let (run_ttl_seconds, resume_from_checkpoint) =
+            (self.clock.ttl().as_secs(), self.resume_from_checkpoint);
         let (max_concurrent_assignments, max_in_flight_requests) =
             (self.assignments.get(), self.requests.get());
         tracing::info!(
             event = "daemon_configuration_loaded",
             run_ttl_seconds,
             resume_from_checkpoint,
-            assign_fallback_seconds,
             max_concurrent_assignments,
             max_in_flight_requests
         );
@@ -57,29 +51,20 @@ struct Readings {
     assignments: NonZeroUsize,
     #[garde(custom(|value: &NonZeroUsize, &()| maximum::<65_536>(value.get())))]
     requests: NonZeroUsize,
-    #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
-    fallback_seconds: u64,
-    /// A lapsed run must be found and billed within one run lifetime of lapsing.
-    #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
-    expired_work_interval_seconds: u64,
 }
 
 #[cfg(test)]
 pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, Refusal> {
-    let operations = operations(crate::config::maintenance::Maintenance::default())?;
+    let operations = operations()?;
     configured(env, operations, RunSettings::default())
 }
 
-/// Default operational policy around the given maintenance settings.
+/// The default operational policy.
 #[cfg(test)]
-pub(crate) fn operations(
-    maintenance: crate::config::maintenance::Maintenance,
-) -> Result<OperationalSettings, Refusal> {
+pub(crate) fn operations() -> Result<OperationalSettings, Refusal> {
     Ok(OperationalSettings {
         tasks: afd_fleet::task::policy::TaskPolicy::default(),
         outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
-        maintenance: crate::config::maintenance::MaintenancePolicy::resolve(maintenance)
-            .map_err(|report| refused("maintenance", report.to_string()))?,
         telemetry: garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()
             .map_err(|report| refused("telemetry.otlp", report.to_string()))?,
@@ -108,12 +93,6 @@ pub(crate) fn configured(
             "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
             afd_http::admission::DEFAULT_MAX_IN_FLIGHT,
         )?,
-        fallback_seconds: value(
-            env,
-            "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
-            defaults.assign_fallback.as_secs(),
-        )?,
-        expired_work_interval_seconds: operations.maintenance.loops.expired_work.interval_seconds,
     })
     .validate()
     .map_err(|report| refused("runtime", report.to_string()))?;
@@ -121,7 +100,6 @@ pub(crate) fn configured(
         operations: Arc::new(operations),
         clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
-        fallback: Duration::from_secs(readings.fallback_seconds),
         assignments: readings.assignments,
         requests: readings.requests,
     })

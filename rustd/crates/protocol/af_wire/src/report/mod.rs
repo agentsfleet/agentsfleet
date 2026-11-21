@@ -23,6 +23,11 @@ pub enum Outcome {
     /// `UZ-RUN-022`, or a renewal refused with it. Usage is billed and the
     /// run's items stay, but the turns it served get no answer.
     Stopped,
+    /// The run asked the person a question and ended to wait for the answer.
+    ///
+    /// `response_text` carries the question. The runner saved a checkpoint at
+    /// the asking call, and the answer resumes the run from it.
+    Waiting,
 }
 
 impl Outcome {
@@ -38,6 +43,7 @@ impl Outcome {
             Self::Processed => "processed",
             Self::FleetError => "fleet_error",
             Self::Stopped => "stopped",
+            Self::Waiting => "waiting",
         }
     }
 }
@@ -185,7 +191,7 @@ pub struct ReportRequest<'a> {
     /// Human-readable cause, stored only on failure.
     #[serde(borrow)]
     pub failure_detail: Cow<'a, str>,
-    /// The run's output.
+    /// The run's output, or its question when the outcome is `waiting`.
     #[serde(borrow)]
     pub response_text: Cow<'a, str>,
     /// The run's total tokens, for the event history. Billing charges

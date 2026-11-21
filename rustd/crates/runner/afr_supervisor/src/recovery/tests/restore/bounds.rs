@@ -90,10 +90,7 @@ async fn assert_retained_case(fault: &str) -> crate::Result<()> {
 #[tokio::test]
 async fn aggregate_manifest_bounds_refuse_before_allocating_files_or_downloading_objects()
 -> crate::Result<()> {
-    for (fault, expected) in [
-        ("history", "checkpoint history object bound exceeded"),
-        ("pages", "checkpoint page count exceeds its bound"),
-    ] {
+    for (fault, expected) in [("history", "checkpoint history object bound exceeded")] {
         assert_bounded(bounded_archive(fault)?, expected).await?;
     }
     Ok(())
@@ -117,9 +114,6 @@ fn bounded_archive(fault: &str) -> crate::Result<Archive> {
             (BASE_PAGE, second_digest.as_str()),
         ]));
         archive.pages.insert(BASE_PAGE.to_owned(), second);
-    }
-    if fault == "pages" {
-        archive.plan.page_ids = vec![PAGE.to_owned(); 65];
     }
     Ok(archive)
 }

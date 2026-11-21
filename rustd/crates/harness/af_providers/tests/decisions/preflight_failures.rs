@@ -92,7 +92,7 @@ async fn profile_refusals_cost_no_physical_send() {
     assert_eq!(server.connections(), 0);
     assert_eq!(server.unconsumed(), 0);
     server.shutdown().await;
-    super::limits::escaped_state_and_complete_questions_keep_their_bounds().await;
+    super::limits::escaped_state_is_sent_whole().await;
 }
 
 fn invalid_cases() -> Vec<(&'static str, Value, DecisionInvalid)> {

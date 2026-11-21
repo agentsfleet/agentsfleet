@@ -948,7 +948,6 @@ version = "0.78.0"
 dependencies = [
  "af_core",
  "af_crypto",
- "af_observability",
  "afd_api_wire",
  "afd_db",
  "afd_state",
@@ -1454,6 +1453,7 @@ version = "0.78.0"
 dependencies = [
  "af_core",
  "af_secrets",
+ "af_validate",
  "af_wire",
  "aho-corasick",
  "async-trait",

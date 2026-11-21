@@ -31,7 +31,7 @@ pub struct SteerRequest<'a> {
     #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub message: Cow<'a, str>,
 
-    /// Your retry identifier, 1 to 200 bytes with no NUL character (U+0000).
+    /// Your retry identifier, 1 to 2,647 bytes with no NUL character (U+0000).
     ///
     /// Reuse it with the same message and sender for one run and charge. Reuse with different
     /// text or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys
@@ -53,16 +53,18 @@ pub struct SteerRequest<'a> {
     pub operation_id: Option<Cow<'a, str>>,
 }
 
-/// The longest client operation identity a steer may carry.
+/// The longest client operation identity a steer may carry: what one btree
+/// index row holds.
 ///
-/// Generous enough for a UUID, a ULID, a vendor's delivery id or a short
-/// composite, and bounded because it is stored per turn and indexed: an
-/// unbounded key would let a caller decide how much of the ledger's index one
-/// of its retries occupies.
+/// The ledger stores it as `<fleet_id>:<operation_id>` in `thread.turns`'
+/// UNIQUE (`producer`, `producer_key`). Postgres refuses an index row past
+/// 2,704 bytes; less its 8-byte tuple header, the producer `steer` with its
+/// 1-byte header padded to 8 bytes, the key's 4-byte varlena header and the
+/// 37-byte `<fleet_id>:` prefix, 2,647 remain.
 ///
 /// The `operation_id` description spells this number out, because that
 /// description is published and a constant's name means nothing to a client.
-pub const OPERATION_ID_MAX_BYTES: usize = 200;
+pub const OPERATION_ID_MAX_BYTES: usize = 2704 - 8 - 8 - 4 - 37;
 
 /// Where an accepted steer went.
 ///

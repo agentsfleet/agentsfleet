@@ -1,4 +1,4 @@
-//! A recovery hint fills real connection credits without another five-second probe.
+//! A recovery hint fills real connection credits in one wake.
 
 use super::*;
 use crate::connection::AssignMode;
@@ -35,7 +35,6 @@ async fn drain_burst(fleets: usize) -> TestResult {
     }
     let scheduler = schedule(&registry, &wake, &stop);
     tokio::task::yield_now().await;
-    let started = tokio::time::Instant::now();
     wake.recheck();
     let result = tokio::time::timeout(
         Duration::from_secs(1),
@@ -50,7 +49,6 @@ async fn drain_burst(fleets: usize) -> TestResult {
         "one wake left {} of {fleets} fleets waiting",
         remaining.load(Ordering::SeqCst)
     );
-    assert!(started.elapsed() < af_core::timing::ASSIGN_FALLBACK_TICK);
     drop(registrations);
     Ok(())
 }

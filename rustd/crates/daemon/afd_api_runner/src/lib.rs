@@ -52,7 +52,10 @@ pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
         RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),
         RunnerRoute::MemoryLoad => get(handler::runner::memory::load::<D>),
-        RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
+        // A push carries every entry a run stored, each at the text ceiling,
+        // so it is bounded by the runner frame alone.
+        RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>)
+            .layer(DefaultBodyLimit::max(MESSAGE_BYTES_MAX)),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
         // A post of full tool records is bounded by the runner frame alone,
         // past axum's 2 MiB default: no field, event or post cap applies.

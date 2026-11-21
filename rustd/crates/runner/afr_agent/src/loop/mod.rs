@@ -173,6 +173,9 @@ impl AgentEngine for Loop {
                 root.assignment_answered = false;
                 recovery_boundary::restored(&run);
             }
+            if let Some(answer) = run.run.event.question_answer() {
+                root.answered(&answer.message);
+            }
             let ending = children.beside(&shared, root.drive()).await;
             // Every child is dropped before the ledger closes, so each one's
             // open call ends `interrupted` in the trace the report carries.
@@ -233,6 +236,16 @@ pub(crate) struct Harness<'s, 'run> {
 }
 
 impl Harness<'_, '_> {
+    /// Gives a person's answer to the question the run asked as the asking
+    /// call's result. A run restored with no question waiting reads the
+    /// answer as the person's next message instead.
+    fn answered(&mut self, answer: &str) {
+        let answer = self.shared.scrub.text(answer).into_owned();
+        if self.driver.resume(&mut self.transcript, answer.clone()).is_none() {
+            self.transcript.push(guffbolt::Message::User(answer));
+        }
+    }
+
     /// Runs the root's turns to their end, with a durable task's additions
     /// when it is one; `guffbolt` drives every child's.
     pub(crate) async fn drive(&mut self) -> Ending {

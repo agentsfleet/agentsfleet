@@ -173,7 +173,7 @@ fn capture_requires_plain_authority_a_frozen_setup_and_a_bounded_complete_root()
             0 => run.durable_tasks = true,
             1 => run.setup_revision_id = None,
             _ => root.messages.push(Message::User(
-                "x".repeat(af_wire::run::TURN_CHECKPOINT_BYTES),
+                "x".repeat(af_wire::protocol::MESSAGE_BYTES_MAX),
             )),
         }
         assert!(

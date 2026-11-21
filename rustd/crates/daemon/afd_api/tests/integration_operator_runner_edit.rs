@@ -216,10 +216,7 @@ async fn assert_revoked_runner_refuses_the_whole_save(
         "a refused save wrote half of itself"
     );
 
-    let past_cap: Vec<String> = (0..=af_wire::runner::LABELS_MAX)
-        .map(|index| format!("l{index}"))
-        .collect();
-    let invalid = json!({ "labels": past_cap }).to_string();
+    let invalid = json!({ "labels": ["l".repeat(af_validate::TEXT_MAX_CHARS + 1)] }).to_string();
     let refused = patch(router, &fixture.token, path, &invalid).await;
     assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
     assert_eq!(

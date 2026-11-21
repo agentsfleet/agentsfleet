@@ -1,4 +1,4 @@
-//! Maintenance skips contention in the ordinary financial parent-lock order.
+//! Decision accounting takes its financial parents in the lifecycle lock order.
 
 use af_core::id::Uuid7;
 use sqlx::PgConnection;
@@ -6,49 +6,31 @@ use sqlx::PgConnection;
 use super::{row::Call, sql};
 use crate::{Result, error::query};
 
-#[derive(Clone, Copy)]
-pub(super) enum Mode {
-    Wait,
-    Nowait,
-}
-
-impl Mode {
-    pub(super) const fn statement(
-        self,
-        waiting: &'static str,
-        immediate: &'static str,
-    ) -> &'static str {
-        match self {
-            Self::Wait => waiting,
-            Self::Nowait => immediate,
-        }
-    }
-
-    pub(super) async fn parents(self, connection: &mut PgConnection, call: &Call) -> Result<()> {
-        sqlx::query_scalar::<_, Uuid7>(self.statement(sql::LOCK_PARENT, sql::TRY_PARENT))
-            .bind(&call.fleet_id)
-            .bind(&call.workspace_id)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query("protect any remaining decision parent"))?;
-        sqlx::query_scalar::<_, Uuid7>(
-            self.statement(crate::task::sql::LOCK_SCOPE_THREAD, sql::TRY_THREAD),
-        )
+/// Takes the financial parent locks of `call`, in the lifecycle order.
+pub(super) async fn parents(connection: &mut PgConnection, call: &Call) -> Result<()> {
+    sqlx::query_scalar::<_, Uuid7>(sql::LOCK_PARENT)
         .bind(&call.fleet_id)
+        .bind(&call.workspace_id)
         .fetch_optional(&mut *connection)
         .await
-        .map_err(query(
-            "serialize decision accounting with physical issuance",
-        ))?;
-        if let Some(task) = &call.task_id {
-            sqlx::query_scalar::<_, i64>(self.statement(sql::LOCK_TASK, sql::TRY_TASK))
-                .bind(task)
-                .bind(&call.fleet_id)
-                .bind(&call.workspace_id)
-                .fetch_optional(connection)
-                .await
-                .map_err(query("lock any remaining decision budget owner"))?;
-        }
-        Ok(())
+        .map_err(query("protect any remaining decision parent"))?;
+    sqlx::query_scalar::<_, Uuid7>(
+        crate::task::sql::LOCK_SCOPE_THREAD,
+    )
+    .bind(&call.fleet_id)
+    .fetch_optional(&mut *connection)
+    .await
+    .map_err(query(
+        "serialize decision accounting with physical issuance",
+    ))?;
+    if let Some(task) = &call.task_id {
+        sqlx::query_scalar::<_, i64>(sql::LOCK_TASK)
+            .bind(task)
+            .bind(&call.fleet_id)
+            .bind(&call.workspace_id)
+            .fetch_optional(connection)
+            .await
+            .map_err(query("lock any remaining decision budget owner"))?;
     }
+    Ok(())
 }

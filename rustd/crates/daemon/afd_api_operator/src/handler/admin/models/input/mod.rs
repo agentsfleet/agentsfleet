@@ -26,7 +26,7 @@ const FIELD_PRICE_CONDITIONS: &str = "prices[].conditions";
 const FIELD_PRICE_TIER: &str = "prices[].prompt_tokens_above";
 
 const DETAIL_PROVIDER_LEN: &str = "provider must be 1–64 chars";
-const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–256 chars";
+const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–2595 chars";
 const DETAIL_CAP_POSITIVE: &str = "context_cap_tokens must be > 0";
 const DETAIL_DISPLAY_NAME_LEN: &str = "metadata.display_name must be 1–128 bytes";
 const DETAIL_CONTEXT_SOURCE_LEN: &str = "metadata.context_source_url must be 1–2048 bytes";

@@ -18,12 +18,13 @@ use super::{Budgets, IncomingTurn, Key, Producer, Reply};
 /// Written out rather than derived: a variant added without a spelling here
 /// fails to compile at the `match` in [`Producer::as_str`] and fails the
 /// count below, which is two failures naming the same omission.
-const EVERY_PRODUCER: [Producer; 7] = [
+const EVERY_PRODUCER: [Producer; 8] = [
     Producer::Steer,
     Producer::Webhook,
     Producer::WebhookApp,
     Producer::ScheduleFire,
     Producer::GateContinuation,
+    Producer::QuestionAnswer,
     Producer::TaskContinuation,
     Producer::SlackMention,
 ];

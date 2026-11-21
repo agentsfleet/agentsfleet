@@ -1,9 +1,10 @@
 //! Every turn request carries a stable semantic operation and the live attempt fence.
 
 use super::{
-    CheckpointOperationId, FoldRef, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
-    TURN_CHECKPOINT_PAGE_BYTES, TurnCheckpointKind, TurnResume, TurnWorkspace,
+    CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
+    TurnCheckpointKind, TurnResume, TurnWorkspace,
 };
+use crate::protocol::MESSAGE_BYTES_MAX;
 use crate::task::{
     CheckpointPage, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
 };
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct TurnPrivateRoot {
     /// Versioned UTF-8 JSON; complete-message size is checked independently.
-    #[garde(length(bytes, min = 1, max = TURN_CHECKPOINT_BYTES))]
+    #[garde(length(bytes, min = 1, max = MESSAGE_BYTES_MAX))]
     pub history: String,
 }
 

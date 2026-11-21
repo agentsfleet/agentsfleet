@@ -6,9 +6,7 @@
 )]
 
 use af_core::limits::MAX_WORKERS;
-use af_wire::runner::{
-    BindMode, ExtraBind, HOST_ID_MAX_BYTES, NetworkPolicy, REGISTRY_ENTRIES_MAX, SandboxTier,
-};
+use af_wire::runner::{BindMode, ExtraBind, HOST_ID_MAX_BYTES, NetworkPolicy, SandboxTier};
 
 use super::*;
 
@@ -106,12 +104,13 @@ fn test_register_request_bounds_refuse_with_their_sentences() {
         Some(DETAIL_HOST_ID_BOUNDS)
     );
 
-    let entries = (0..=REGISTRY_ENTRIES_MAX)
+    let entries = (0..=64)
         .map(|index| Cow::Owned(format!("registry-{index}.example")))
         .collect();
     assert_eq!(
         refused(&request(host(), policy(entries, 1))),
-        Some(DETAIL_REGISTRY_ALLOWLIST)
+        None,
+        "an allowlist carries no count bound"
     );
     let six_digit_port = vec![Cow::Borrowed("registry.example:123456")];
     assert_eq!(
@@ -119,18 +118,8 @@ fn test_register_request_bounds_refuse_with_their_sentences() {
         Some(DETAIL_REGISTRY_ALLOWLIST)
     );
 
-    let too_many = (0..=EXTRA_BINDS_MAX)
-        .map(|index| ExtraBind {
-            path: Cow::Owned(format!("/srv/models-{index}")),
-            ..bind("/srv/models")
-        })
-        .collect();
-    assert_eq!(
-        refused(&request(host(), with_binds(too_many))),
-        Some(DETAIL_EXTRA_BINDS_COUNT)
-    );
     let long_note = ExtraBind {
-        note: Cow::Owned("n".repeat(BIND_NOTE_MAX_BYTES + 1)),
+        note: Cow::Owned("n".repeat(TEXT_MAX_CHARS + 1)),
         ..bind("/srv/models")
     };
     assert_eq!(
@@ -147,27 +136,22 @@ fn test_register_request_bounds_refuse_with_their_sentences() {
         ..request(host(), policy(Vec::new(), 1))
     };
     assert_eq!(
-        refused(&labelled(vec![Cow::Borrowed("gpu"); LABELS_MAX])),
-        None
+        refused(&labelled(vec![Cow::Borrowed("gpu"); 64])),
+        None,
+        "a label list carries no count bound"
     );
     assert_eq!(
-        refused(&labelled(vec![Cow::Borrowed("gpu"); LABELS_MAX + 1])),
-        Some(DETAIL_LABELS)
-    );
-    assert_eq!(
-        refused(&labelled(vec![Cow::Owned("l".repeat(LABEL_MAX_BYTES + 1))])),
+        refused(&labelled(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS + 1))])),
         Some(DETAIL_LABELS)
     );
 }
 
 #[test]
 fn each_bind_sentence_names_its_own_bound() {
-    // Three bounds used to share one sentence that named none of them.
-    assert!(DETAIL_EXTRA_BINDS_COUNT.contains(&EXTRA_BINDS_MAX.to_string()));
-    assert!(DETAIL_EXTRA_BIND_NOTE.contains(&BIND_NOTE_MAX_BYTES.to_string()));
+    // Bounds used to share one sentence that named none of them.
+    assert!(DETAIL_EXTRA_BIND_NOTE.contains(&TEXT_MAX_CHARS.to_string()));
     assert!(DETAIL_EXTRA_BINDS.contains(&BIND_PATH_MAX_BYTES.to_string()));
-    assert!(DETAIL_LABELS.contains(&LABELS_MAX.to_string()));
-    assert!(DETAIL_LABELS.contains(&LABEL_MAX_BYTES.to_string()));
+    assert!(DETAIL_LABELS.contains(&TEXT_MAX_CHARS.to_string()));
 }
 
 #[test]
@@ -240,22 +224,13 @@ fn test_extra_bind_validation_accepts_only_canonical_unprotected_paths() {
 }
 
 #[test]
-fn test_extra_bind_validation_enforces_list_path_and_note_bounds() {
-    let at_cap = (0..EXTRA_BINDS_MAX)
+fn test_extra_bind_validation_carries_no_count_bound() {
+    let many = (0..64)
         .map(|index| ExtraBind {
             path: Cow::Owned(format!("/srv/models-{index}")),
             mode: BindMode::ReadOnly,
             note: Cow::Borrowed(""),
         })
         .collect::<Vec<_>>();
-    let _stored = assignment(&with_binds(at_cap.clone())).expect("sixteen binds fit");
-
-    let mut over = at_cap;
-    over.push(bind("/srv/one-too-many"));
-    assert_eq!(
-        assignment(&with_binds(over))
-            .err()
-            .map(|error| error.detail()),
-        Some(DETAIL_EXTRA_BINDS_COUNT)
-    );
+    let _stored = assignment(&with_binds(many)).expect("any number of binds fits");
 }

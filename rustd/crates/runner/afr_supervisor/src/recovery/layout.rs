@@ -21,13 +21,6 @@ impl Pages {
     }
 
     fn next(&mut self) -> Result<()> {
-        if self.items.len()
-            >= usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX)
-        {
-            return Err(error::capture_limit(
-                "checkpoint manifest exceeds its page bound",
-            ));
-        }
         let page = CheckpointPage {
             page_number: u32::try_from(self.items.len())
                 .map_err(|source| error::boundary("checkpoint page count overflow", source))?,

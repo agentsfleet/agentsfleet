@@ -5,9 +5,9 @@
 
 use std::borrow::Cow;
 
-use af_wire::memory::{
-    MAX_CONTENT_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility,
-};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::memory::{MemoryDelta, PINNED_CATEGORY, Visibility};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use afr_memory::{Loaded, Seed};
 use serde_json::json;
 
@@ -99,9 +99,9 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
         empty.text
     );
 
-    let content = "c".repeat(MAX_CONTENT_LEN);
+    let content = "c".repeat(TEXT_MAX_CHARS);
     let mut full = None;
-    for at in 0..=(MAX_PUSH_BYTES / MAX_CONTENT_LEN) {
+    for at in 0..=(MESSAGE_BYTES_MAX / TEXT_MAX_CHARS) {
         let output = call_built(
             &run,
             "memory_store",
@@ -118,9 +118,9 @@ async fn a_store_the_daemon_would_skip_is_refused_with_its_code() {
 }
 
 #[tokio::test]
-async fn recall_never_answers_more_than_its_ceiling() {
+async fn recall_answers_the_limit_it_was_asked_for() {
     let run = Run::default();
-    for at in 0..RECALL_LIMIT_MAX + 10 {
+    for at in 0..60 {
         call_built(
             &run,
             "memory_store",
@@ -129,8 +129,8 @@ async fn recall_never_answers_more_than_its_ceiling() {
         .await;
     }
 
-    let recalled = call_built(&run, "memory_recall", json!({"query": "k", "limit": 500})).await;
-    assert_eq!(recalled.text.lines().count(), RECALL_LIMIT_MAX);
+    let recalled = call_built(&run, "memory_recall", json!({"query": "k", "limit": 55})).await;
+    assert_eq!(recalled.text.lines().count(), 55);
     let defaulted = call_built(&run, "memory_recall", json!({"query": "k"})).await;
     assert_eq!(defaulted.text.lines().count(), 5);
 }

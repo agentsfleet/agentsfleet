@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  answerApproval,
   approveApproval,
   denyApproval,
   type AlreadyResolvedResponse,
@@ -186,6 +187,52 @@ describe("denyApproval", () => {
     if (result.kind === "already_resolved") {
       expect(result.data.outcome).toBe("denied");
     }
+  });
+});
+
+// ── answerApproval — a question gate takes the answer as its body ─────
+
+describe("answerApproval", () => {
+  const ANSWER = "Yes — ship the 東京 build";
+  const answered = (status: number, extra: Record<string, unknown> = {}) => jsonResponse({
+    gate_id: GATE_ID, action_id: "ask_user", outcome: "answered",
+    resolved_at: "2026-11-21T10:00:00Z", resolved_by: "user:x", ...extra,
+  }, status);
+
+  it("posts the answer to /answer and returns the answered receipt", async () => {
+    fetchMock.mockResolvedValueOnce(answered(200));
+    const result = await answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}/answer`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ answer: ANSWER });
+    expect(result).toEqual({ kind: "resolved", data: {
+      gate_id: GATE_ID, action_id: "ask_user", outcome: "answered", resolved_at: "2026-11-21T10:00:00Z", resolved_by: "user:x",
+    } });
+  });
+
+  it("refuses a 200 whose receipt names another decision", async () => {
+    fetchMock.mockResolvedValueOnce(answered(200, { outcome: "denied" }));
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER)).rejects.toMatchObject({ status: 502, code: "UZ-UNKNOWN" });
+  });
+
+  it("returns already_resolved when another answer decided the gate first", async () => {
+    fetchMock.mockResolvedValueOnce(answered(409, { error_code: ERR_ALREADY_RESOLVED, detail: "already answered" }));
+    const result = await answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, "No");
+    expect(result.kind).toBe("already_resolved");
+    expect(result.data.outcome).toBe("answered");
+  });
+
+  it("throws the archived fleet's refusal as an ApiError carrying UZ-AGT-020", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error_code: "UZ-AGT-020", detail: "fleet is archived" }, 409));
+    const { ApiError } = await import("./errors");
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER)).rejects.toSatisfy((err: unknown) =>
+      err instanceof ApiError && err.code === "UZ-AGT-020" && err.status === 409 && err.message === "fleet is archived");
+  });
+
+  it("throws the refusal of an empty answer instead of confirming it", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error_code: "UZ-REQ-001", detail: "answer is empty" }, 400));
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, "")).rejects.toMatchObject({ status: 400, code: "UZ-REQ-001" });
   });
 });
 

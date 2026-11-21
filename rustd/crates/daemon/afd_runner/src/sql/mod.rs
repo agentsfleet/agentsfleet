@@ -11,10 +11,7 @@
 
 use jiff::Timestamp;
 
-pub(crate) use afd_state::sql::{
-    FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUNNER_STATUS_ACTIVE, RUNNER_STATUS_DRAINED,
-    RUNNER_STATUS_DRAINING,
-};
+pub(crate) use afd_state::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE, RUNNER_STATUS_ACTIVE};
 
 /// `runner.runners.last_seen_at` for a runner that has never connected.
 ///
@@ -29,7 +26,6 @@ pub mod holds;
 pub mod runner;
 pub mod runner_admin;
 pub mod runner_view;
-pub mod sweep;
 
 /// `runner.history.metadata` keys.
 ///

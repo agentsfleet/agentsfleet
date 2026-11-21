@@ -117,12 +117,14 @@ fn inconsistent_keys_and_unbounded_recall_state_cannot_restore() -> TestResult {
 #[test]
 fn an_overlay_larger_than_one_push_is_refused_by_its_bound() -> TestResult {
     use garde::Validate as _;
-    let content = "a".repeat(af_wire::memory::MAX_CONTENT_LEN);
-    let pending = (0..17)
+    let content = "a".repeat(af_validate::TEXT_MAX_CHARS);
+    let one = crate::loaded::push_bytes(&entry("k00", &content));
+    let past = crate::loaded::PUSH_BUDGET_BYTES / one + 1;
+    let pending = (0..past)
         .map(|index| entry(&format!("k{index:02}"), &content))
         .collect();
     let Err(report) = MemoryRecovery::new(pending, vec![], 0).validate() else {
-        return Err("seventeen full entries fit one push".into());
+        return Err("one entry past the push frame still fit".into());
     };
     assert!(
         report

@@ -1,7 +1,7 @@
 //! Grant-card ownership, contention, and release against the real schema.
 #![expect(clippy::expect_used, reason = "test preconditions must fail loudly")]
 
-use crate::lane::{Lane, NOW, mint, sweeper_exclusive};
+use crate::lane::{Lane, NOW, mint};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_approval::{Decision, IntegrationGrants, Origin, Requested, Wanted};
@@ -107,25 +107,6 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
         ));
         assert_eq!(counts(&lane).await, (1, 0));
     }
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn expiry_releases_the_reference_for_one_replacement_card() {
-    let _sweeper = sweeper_exclusive().await;
-    let lane = Lane::isolated().await;
-    request(&lane, SERVICE).await;
-    // Lapsed on the database's own clock, which is the one the sweep reads.
-    sqlx::query("UPDATE fleet.approval_gates SET expires_at = now() WHERE fleet_id = $1")
-        .bind(&lane.fleet)
-        .execute(&mut *lane.pool.acquire().await.expect("connection"))
-        .await
-        .expect("deadline fixture");
-    lane.inbox.expire().await.expect("expiry");
-    assert_eq!(counts(&lane).await, (1, 0));
-    assert_eq!(request(&lane, SERVICE).await, Requested::Raised);
-    assert_eq!(request(&lane, SERVICE).await, Requested::Pending);
-    assert_eq!(counts(&lane).await, (2, 1));
 }
 
 #[tokio::test]

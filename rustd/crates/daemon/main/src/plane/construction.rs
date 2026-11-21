@@ -106,7 +106,6 @@ impl NativeInputs<'_> {
         let streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
             recovery: afd_gateway::RecoverySettings {
                 max_concurrent_assignments: self.runtime.assignments,
-                assign_fallback: self.runtime.fallback,
             },
             database: self.database.clone(),
             runners: runners.clone(),

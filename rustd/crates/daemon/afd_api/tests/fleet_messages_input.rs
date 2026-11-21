@@ -48,7 +48,7 @@ const FLEET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetWrite]);
 const A_SOUND_STEER: &str = r#"{"message":"ship it"}"#;
 
 /// A page size past the top of the served band.
-const OVER_THE_BAND: i64 = 26;
+const OVER_THE_BAND: i64 = afd_turns::view::THREAD_MAX_LIMIT + 1;
 
 /// One request at a fresh router holding one scoped person.
 async fn send(
@@ -185,7 +185,7 @@ async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() -> af_cor
     for query in [
         "",
         "limit=1",
-        "limit=25",
+        "limit=100",
         &format!("starting_after={issued}"),
     ] {
         let response = reading(&paged(query)).await;

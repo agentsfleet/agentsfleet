@@ -13,6 +13,7 @@ fn runner_outcomes_use_the_same_spelling_in_rows_and_json() {
         (Outcome::Processed, "processed"),
         (Outcome::FleetError, "fleet_error"),
         (Outcome::Stopped, "stopped"),
+        (Outcome::Waiting, "waiting"),
     ] {
         assert_eq!(outcome.as_str(), stored);
         let encoded = serde_json::to_value(outcome);

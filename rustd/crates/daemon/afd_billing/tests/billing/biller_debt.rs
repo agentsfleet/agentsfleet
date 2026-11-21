@@ -11,7 +11,7 @@ use af_observability::{Analytics, Telemetry};
 use afd_billing::Nanos;
 use afd_billing::biller::conformance;
 use afd_billing::biller::{Account, Ask, Biller, Funds, Observed, WorkKey};
-use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
+use afd_billing::ledger::{LedgerBiller, log_lines, unsettled_work};
 use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 
@@ -293,9 +293,7 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
         "the logged slices count before the relay charges them: {before_relay:?}"
     );
 
-    resettle(&lane.pool, &biller, None)
-        .await
-        .expect("the relay passes");
+    settle_logged(&lane, &biller, &works).await;
     let owed = biller.balance(&payer).await.expect("answers");
     let spent = LINE.as_i64() * i64::try_from(PARALLEL_RUNS).expect("ten fits");
     assert_eq!(
@@ -356,4 +354,20 @@ async fn racing_settlements_across_zero_report_exhaustion_once() {
     }
     assert_eq!(crossed, 1, "one debit crosses zero");
     assert_eq!(recorded.events().len(), 1, "the crossing is reported once");
+}
+
+/// Settles every logged slice of `works` through `biller`, the way a relay
+/// pass once did; no relay runs any more (Indy, Nov 21, 2026).
+async fn settle_logged(lane: &Lane, biller: &LedgerBiller, works: &[WorkKey]) {
+    for work in works {
+        let settlements = unsettled_work(
+            &mut *lane.pool.acquire().await.expect("the lane answers"),
+            work,
+        )
+        .await
+        .expect("the logged slice reads");
+        for settlement in &settlements {
+            biller.settle(settlement).await.expect("the slice settles");
+        }
+    }
 }

@@ -1,7 +1,7 @@
 //! The inbox's word on the fleet's live tail: a gate was answered.
 //!
 //! Split from [`super`] on the seam between deciding and announcing. The
-//! resolve and the sweep move rows; this tells whoever is watching the fleet
+//! resolve moves a row; this tells whoever is watching the fleet
 //! that they did, and how many answers the fleet is still owed — the count
 //! rides the frame so a console shows "N approvals waiting" without a read,
 //! and it rode the statement that moved the row so the count costs no read of
@@ -34,7 +34,7 @@ pub(super) struct Answer<'a> {
     pub turn_id: Option<&'a str>,
     /// Where the gate now stands.
     pub status: &'a str,
-    /// Who answered — a person, or the sweeper.
+    /// Who answered.
     pub resolved_by: &'a str,
     /// How many of the fleet's gates still wait, as the moving statement counted.
     pub pending_approvals: i64,

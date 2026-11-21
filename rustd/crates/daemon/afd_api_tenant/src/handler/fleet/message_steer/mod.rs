@@ -79,7 +79,7 @@ const DETAIL_MESSAGE_NUL: &str = "message must not contain a NUL character";
 /// and a NUL inside it), so a caller told only the one it did not break never
 /// goes looking at the wrong limit. It also says omitting the field is valid,
 /// since the field is optional.
-const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
+const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to 2647 bytes with no NUL character; omit it to send without retry protection";
 
 /// A refused steer's sentence by the field its report names.
 ///

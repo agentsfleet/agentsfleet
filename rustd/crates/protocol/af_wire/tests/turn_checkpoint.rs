@@ -1,8 +1,7 @@
 //! Ordinary recovery refuses ambiguous authority and never prints private root contents.
 
-use af_wire::run::{
-    TURN_CHECKPOINT_BYTES, TurnCheckpointCommand, TurnCheckpointKind, TurnPrivateRoot,
-};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
+use af_wire::run::{TurnCheckpointCommand, TurnCheckpointKind, TurnPrivateRoot};
 use garde::Validate;
 use serde_json::json;
 
@@ -58,18 +57,18 @@ fn native_turn_commands_use_reports_and_count_escaped_envelope_bytes() -> Checke
         Some(2)
     );
     TurnMessageSize {
-        bytes: TURN_CHECKPOINT_BYTES,
+        bytes: MESSAGE_BYTES_MAX,
     }
     .validate()?;
     assert!(
         TurnMessageSize {
-            bytes: TURN_CHECKPOINT_BYTES + 1
+            bytes: MESSAGE_BYTES_MAX + 1
         }
         .validate()
         .is_err()
     );
     let root = TurnPrivateRoot {
-        history: "\u{0001}".repeat(TURN_CHECKPOINT_BYTES / 4),
+        history: "\u{0001}".repeat(MESSAGE_BYTES_MAX / 4),
     };
     root.validate()?;
     let encoded = serde_json::to_vec(&root)?;
@@ -190,7 +189,7 @@ fn checkpoint_debug_output_does_not_quote_root_history() -> Checked {
     request.validate()?;
     assert!(!format!("{request:?}").contains(private));
     let too_large = TurnPrivateRoot {
-        history: "x".repeat(TURN_CHECKPOINT_BYTES + 1),
+        history: "x".repeat(MESSAGE_BYTES_MAX + 1),
     };
     assert_eq!(paths(too_large.validate()), vec!["history"]);
     Ok(())

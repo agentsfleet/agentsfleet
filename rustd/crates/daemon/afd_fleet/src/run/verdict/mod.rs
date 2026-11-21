@@ -42,6 +42,9 @@ pub enum Verdict<'a> {
     /// A person stopped the run's turn. The run is billed; its turns get no
     /// answer and stay cancelled.
     Stopped,
+    /// The run asked the person a question: the turn settles `waiting`, its
+    /// answer is the question, and a `question` gate waits on the person.
+    Waiting,
 }
 
 impl<'a> Verdict<'a> {
@@ -58,6 +61,7 @@ impl<'a> Verdict<'a> {
             Outcome::Processed => Self::Succeeded,
             Outcome::FleetError => Self::Failed { class, detail },
             Outcome::Stopped => Self::Stopped,
+            Outcome::Waiting => Self::Waiting,
         }
     }
 
@@ -81,12 +85,19 @@ impl<'a> Verdict<'a> {
         matches!(self, Self::Stopped)
     }
 
+    /// Whether the run ended asking the person a question.
+    #[must_use]
+    pub const fn waiting(self) -> bool {
+        matches!(self, Self::Waiting)
+    }
+
     /// The status the event's terminal row takes.
     pub(super) const fn status(self) -> &'static str {
         match self {
             Self::Succeeded => af_core::turn::status::PROCESSED,
             Self::Failed { .. } => af_core::turn::status::FLEET_ERROR,
             Self::Stopped => af_core::turn::status::CANCELLED,
+            Self::Waiting => af_core::turn::status::WAITING,
         }
     }
 
@@ -99,7 +110,9 @@ impl<'a> Verdict<'a> {
     /// hit at issue and the ceiling hit mid-run, so an operator greps once.
     pub(super) fn label(self) -> Option<String> {
         match self {
-            Self::Succeeded | Self::Stopped | Self::Failed { class: None, .. } => None,
+            Self::Succeeded | Self::Stopped | Self::Waiting | Self::Failed { class: None, .. } => {
+                None
+            }
             Self::Failed {
                 class: Some(class), ..
             } => af_core::spelling::to_spelling(&class),
@@ -112,7 +125,9 @@ impl<'a> Verdict<'a> {
             // A clean run has no cause, and a failure that named none stores
             // NULL rather than an empty string — so a consumer testing
             // `IS NULL` cannot be fooled by a runner that sent `""`.
-            Self::Succeeded | Self::Stopped | Self::Failed { detail: "", .. } => None,
+            Self::Succeeded | Self::Stopped | Self::Waiting | Self::Failed { detail: "", .. } => {
+                None
+            }
             Self::Failed { detail, .. } => Some(
                 detail
                     .split_at(detail.floor_char_boundary(MAX_FAILURE_DETAIL_BYTES))

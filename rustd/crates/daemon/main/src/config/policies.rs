@@ -16,8 +16,6 @@ pub(super) fn read(
                 .map_err(|report| invalid(format!("outbound.retries: {report}")))?,
         ),
         tasks: afd_fleet::task::policy::TaskPolicy::new(&tasks),
-        maintenance: super::maintenance::MaintenancePolicy::resolve(settings.maintenance)
-            .map_err(|report| invalid(format!("maintenance: {report}")))?,
         telemetry: garde::Unvalidated::new(settings.telemetry.otlp)
             .validate()
             .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,
@@ -37,6 +35,28 @@ mod tests {
         for section in [
             "[inference]\nconnect_timeout_seconds=2",
             "[authoring.turn]\nmax_wall_seconds=60",
+        ] {
+            let mut file = tempfile::NamedTempFile::new()?;
+            write!(file, "{section}")?;
+            let environment = MapEnv::default();
+            let refused = ConfigBuilder::new(&environment)
+                .file(Some(file.path()))
+                .build();
+            assert!(refused.is_err(), "{section} was accepted");
+        }
+        Ok(())
+    }
+
+    /// The daemon runs no timed loop (Indy, Nov 21, 2026), so a file still
+    /// tuning one is refused rather than silently ignored.
+    #[test]
+    fn a_timed_loop_setting_refuses_startup() -> Result<(), Box<dyn std::error::Error>> {
+        for section in [
+            "[maintenance]\nstartup_spread_ms = 5000",
+            "[maintenance.runner_liveness]\ninterval_seconds = 10",
+            "[maintenance.outbound_delivery]\ninterval_seconds = 30",
+            "[maintenance.runner_history]\nkeep_days = 30",
+            "[runner.scheduling]\nmissed_wake_probe_seconds = 2",
         ] {
             let mut file = tempfile::NamedTempFile::new()?;
             write!(file, "{section}")?;

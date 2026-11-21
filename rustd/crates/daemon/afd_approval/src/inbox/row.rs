@@ -109,6 +109,9 @@ pub enum Resolution {
     Resolved(Resolved),
     /// An earlier writer had already terminated the row.
     AlreadyResolved(Resolved),
+    /// The gate is unanswered and its fleet is archived, so it takes no
+    /// answer.
+    FleetArchived,
     /// No gate for that action, in that scope.
     NotFound,
 }
@@ -226,6 +229,15 @@ impl From<StoredResolution> for Resolved {
             continuation_turn_id: None,
         }
     }
+}
+
+/// What the losing resolve reads: the attribution, and whether the gate is
+/// still unanswered, which only an archived fleet leaves it.
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct StoredLoss {
+    #[sqlx(flatten)]
+    pub(super) resolution: StoredResolution,
+    pub(super) unanswered: bool,
 }
 
 /// What the winning resolve returns: the attribution, and how many of the

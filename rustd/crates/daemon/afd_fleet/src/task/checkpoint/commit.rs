@@ -242,13 +242,6 @@ async fn scan_pages(
         *manifest_bytes = manifest_bytes
             .checked_add(bytes.len())
             .ok_or(TaskRefusal::LimitExhausted)?;
-        if *manifest_bytes
-            > af_wire::task::CHECKPOINT_PAGE_BYTES
-                * usize::try_from(af_wire::task::CHECKPOINT_PAGES)
-                    .map_err(|_overflow| TaskRefusal::LimitExhausted)?
-        {
-            return Err(TaskRefusal::LimitExhausted.into());
-        }
         let digest = page.digest.ok_or(TaskRefusal::CheckpointIncompatible)?;
         if af_core::etag::sha256_hex(&bytes) != digest {
             return Err(TaskRefusal::CheckpointIncompatible.into());

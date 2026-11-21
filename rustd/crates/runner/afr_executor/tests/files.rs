@@ -102,7 +102,7 @@ async fn a_write_too_long_for_one_message_is_refused_before_it_is_sent() {
 
     let refused = harness
         .client
-        .write_file("huge", Bytes::from(vec![0_u8; 16 * MIB]))
+        .write_file("huge", Bytes::from(vec![0_u8; 64 * MIB]))
         .await
         .unwrap_err();
     let still_open = harness.client.list_dir(".").await.unwrap();

@@ -1,7 +1,6 @@
 //! Immutable expected-head publication through the existing task/run owner.
 
 mod allocate;
-mod maintenance;
 mod read;
 mod record;
 mod recover;
@@ -15,10 +14,6 @@ use af_wire::task::{TaskEffect, TaskEffectInput, TaskEffectsPage, TaskEffectsQue
 pub(in crate::task) use record::PublicationPermit;
 
 pub(super) const PREPARATION_SECONDS: f64 = 90.0;
-
-pub(super) async fn maintain(tasks: &Tasks) -> Result<super::EffectMaintenance> {
-    maintenance::sweep(tasks).await
-}
 
 pub(super) async fn publish(
     tasks: &Tasks,

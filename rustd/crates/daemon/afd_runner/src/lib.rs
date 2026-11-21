@@ -5,7 +5,7 @@
 //! It was, and nothing about a RUNNER required it to be. `afd_fleet` is the
 //! run's plane — runs, gates, the vault a run opens — and this crate is the
 //! HOST's: enrolment, liveness, the verdict matrix over what a machine may
-//! assert about itself, and the sweepers that notice when one goes quiet.
+//! assert about itself.
 //! The two meet at exactly one point, the `run_released` audit row the
 //! run's finalize writes, and that meeting is a vocabulary import from
 //! [`sql`] rather than a shared module.
@@ -43,7 +43,6 @@ mod scope;
 pub mod spelling;
 pub mod sql;
 pub mod store;
-pub mod sweep;
 pub mod validate;
 pub mod view;
 

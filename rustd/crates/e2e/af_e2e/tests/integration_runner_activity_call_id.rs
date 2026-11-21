@@ -1,7 +1,6 @@
 //! Native tool activity retains its run-scoped call identity and bounded outcome.
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
-use af_wire::activity::CALL_ID_MAX_BYTES;
 use af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
@@ -33,7 +32,6 @@ async fn test_activity_carries_a_required_call_id() {
     for refused in [
         json!({"frames": [{"tool_call_progress": {"name":TOOL_NAME, "elapsed_ms":5}}]}),
         json!({"frames": [{"tool_call_started": {"name":TOOL_NAME, "args_redacted":"{}", "call_id":""}}]}),
-        json!({"frames": [{"tool_call_started": {"name":TOOL_NAME, "args_redacted":"{}", "call_id":"c".repeat(CALL_ID_MAX_BYTES + 1)}}]}),
         json!({"frames": [{"tool_call_completed": {"name":TOOL_NAME, "ms":5, "call_id":CALL_ID, "status":"succeeded", "retries":1}}]}),
     ] {
         tailed = tailed.refused(&refused).await;

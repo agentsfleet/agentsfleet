@@ -76,7 +76,10 @@ pub struct TaskProposedItem {
     #[garde(inner(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")))]
     pub task_id: Option<String>,
     /// Compact label; the accepted objective remains the original source text.
-    #[garde(length(bytes, min = 1, max = super::TITLE_MAX_BYTES), custom(af_validate::nul_free))]
+    #[garde(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::nul_free)
+    )]
     pub title: String,
     /// Bounded explanation retained in the native interpretation receipt.
     #[garde(
@@ -123,7 +126,7 @@ pub struct TaskBindingsInput {
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub message_decision_call_id: String,
     /// The complete interpretation; no prefix can be partially accepted.
-    #[garde(length(min = 1, max = super::ITEMS_MAX), dive)]
+    #[garde(length(min = 1), dive)]
     pub items: Vec<TaskBindingItem>,
 }
 

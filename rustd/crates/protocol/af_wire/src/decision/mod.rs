@@ -9,7 +9,6 @@ mod result;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub(crate) use af_validate::serialized_within;
 pub use answer::answer_matches;
 pub use assignment::DecisionAssignment;
 pub use config::{
@@ -20,13 +19,6 @@ pub(crate) use question::state_bound;
 pub use question::{ChoiceOption, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria};
 pub use result::{DecisionAnswer, DecisionInvalid, DecisionOutcome, DecisionResult, DecisionUsage};
 
-/// Maximum typed questions in one physical request.
-pub const QUESTIONS_MAX: usize = 8;
-/// Maximum compiled question, including all native candidate options.
-/// Authored questions retain their separate 1 KiB setup bound.
-pub const QUESTION_MAX_BYTES: usize = 16 * 1024;
-/// Maximum response collected from the provider.
-pub const REPLY_MAX_BYTES: usize = 64 * 1024;
 /// Longest decision revision, in bytes: what one btree index row holds.
 ///
 /// The index is `model.decision_revisions`' UNIQUE (`platform_model_id`,
@@ -115,7 +107,7 @@ pub struct DecisionProfile {
     #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub endpoint: String,
     /// Requested model; an alias is not evidence of a resolved serving version.
-    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 256))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 2595))]
     #[garde(length(bytes, min = 1, max = crate::inference::MODEL_ID_MAX_BYTES))]
     pub model: String,
     /// Reviewed reported model names; activation owns alias/version evidence.

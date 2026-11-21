@@ -5,8 +5,6 @@
 
 use serde_json::{Map, Value};
 
-use crate::activity::CALL_ID_MAX_BYTES;
-
 use super::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, ToolTraceCall, TraceRejection, changes_free_of_nul,
     edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
@@ -36,15 +34,13 @@ pub(super) fn call_free_of_nul<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C
 }
 
 /// A call id is a call number the record verb keys by: decimal digits naming
-/// 1 to `i64::MAX`, within the frame's [`CALL_ID_MAX_BYTES`].
+/// 1 to `i64::MAX`.
 ///
 /// The trace's id is what "show all" resolves, as `{fence}:{call_id}`, so an
 /// id the read cannot parse would be a call whose full output can never be
-/// opened. The byte bound is not implied by the number's: leading zeros parse,
-/// so `0…01` names call 1 at any length.
+/// opened. Leading zeros parse, so `0…01` names call 1 at any length.
 pub(super) fn call_number<C: ?Sized>(call_id: &str, context: &C) -> garde::Result {
-    let numbered = call_id.len() <= CALL_ID_MAX_BYTES
-        && af_validate::ascii_digits(call_id, context).is_ok()
+    let numbered = af_validate::ascii_digits(call_id, context).is_ok()
         && call_id
             .parse::<i64>()
             .is_ok_and(|number| number >= FIRST_CALL);
@@ -99,18 +95,17 @@ fn leaves_fit(value: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CALL_ID_MAX_BYTES, call_number};
+    use super::call_number;
 
     /// Call 1, zero-padded to `bytes`.
     fn padded(bytes: usize) -> String {
         format!("{}1", "0".repeat(bytes - 1))
     }
 
-    /// Leading zeros parse, so the byte bound is a check of its own: call 1
-    /// spelled at the bound is a call id, and one byte past it is not.
+    /// Leading zeros parse, so call 1 spelled at any width is a call id.
     #[test]
-    fn a_call_id_is_held_to_the_frame_bound_however_it_is_padded() {
-        assert_eq!(call_number(&padded(CALL_ID_MAX_BYTES), &()), Ok(()));
-        assert!(call_number(&padded(CALL_ID_MAX_BYTES + 1), &()).is_err());
+    fn a_zero_padded_call_id_names_its_call_at_any_width() {
+        assert_eq!(call_number(&padded(1), &()), Ok(()));
+        assert_eq!(call_number(&padded(4096), &()), Ok(()));
     }
 }

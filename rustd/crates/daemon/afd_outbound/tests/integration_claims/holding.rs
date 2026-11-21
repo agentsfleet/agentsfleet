@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ledger::{PATIENCE, thief};
 use crate::poster::Recorder;
-use crate::{Ledger, POLL, sql, until};
+use crate::{Ledger, sql, until};
 
 /// A claimed job whose row another replica retook before its cycle began, as
 /// one does after the claim lapses while the job waits, is never posted: the
@@ -111,7 +111,7 @@ async fn a_worker_claims_only_what_its_lanes_can_start() -> Result<(), &'static 
     let gate = CancellationToken::new();
     let poster = Recorder::default().with_gate(gate.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     until(|| held.iter().all(|event| poster.attempts_of(event) == 1)).await;
     let replica = delivery::claim(&ledger.database, 8, &mint_id())

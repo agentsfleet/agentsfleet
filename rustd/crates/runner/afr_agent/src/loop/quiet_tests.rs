@@ -1,8 +1,3 @@
-#![expect(
-    clippy::panic,
-    reason = "test module: a failed precondition should fail the test loudly"
-)]
-
 //! A fleet run that asks the person while a child it started still runs
 //! ends waiting only once that child has answered: `guffbolt`'s root waits
 //! for the run's children itself, and `Harness` adds nothing for it.
@@ -15,7 +10,6 @@ use guffbolt::{Describe, Message, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::finish::DETAIL_WAITING;
 use super::tests::{drive, engine};
 use crate::ResultOutcome;
 use crate::fixture::{Script, call, payload, say, unbounded};
@@ -75,10 +69,12 @@ async fn test_a_question_waits_for_a_running_child_to_answer() {
 
     let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
-    let ResultOutcome::Failed(failure) = output.result.outcome else {
-        panic!("a run waiting on a question is not a completed one");
-    };
-    assert_eq!(failure.detail, DETAIL_WAITING);
+    assert_eq!(
+        output.result.outcome,
+        ResultOutcome::Waiting,
+        "a run waiting on a question reports waiting, not a failure"
+    );
+    assert_eq!(output.result.content, "Ship it?", "the report carries the question");
     let sent = script.sent();
     let child = sent.iter().filter(|request| {
         matches!(request.messages.first(), Some(Message::User(text)) if text.starts_with(DELEGATED))

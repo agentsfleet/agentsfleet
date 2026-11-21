@@ -22,7 +22,6 @@ use crate::{
     },
 };
 
-const WORKSPACE_BYTES: i64 = 50 * 1024 * 1024 * 1024;
 const ORPHAN_SECONDS: i32 = 60 * 60;
 const FILE: &str = "file";
 
@@ -185,7 +184,6 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
     let reserved = sqlx::query(checkpoint::QUOTA_RESERVE)
         .bind(&custody.owner.current.workspace_id)
         .bind(bytes)
-        .bind(WORKSPACE_BYTES)
         .execute(&mut *custody.owner.tx)
         .await
         .map_err(query("reserve shared turn storage quota"))?;

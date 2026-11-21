@@ -67,6 +67,18 @@ impl Lane {
             .flatten()
     }
 
+    /// How many turns `producer` keyed on `action`.
+    pub(crate) async fn continuations(&self, producer: afd_turns::Producer, action: &Uuid7) -> i64 {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM thread.turns WHERE producer = $1 AND producer_key = $2",
+        )
+        .bind(producer.as_str())
+        .bind(action.as_str())
+        .fetch_one(&mut *self.connection().await)
+        .await
+        .expect("the ledger reads")
+    }
+
     /// The continuation remains available for a ledger assignment.
     pub(crate) async fn continuation_is_unsettled(&self, action: &Uuid7) -> bool {
         let mut connection = self.connection().await;

@@ -37,7 +37,6 @@ pub(crate) enum Row<'a> {
     /// A `model` usage line, by event id and the runner's request number.
     ModelLine(&'a Uuid7, &'a str),
     /// A `decision` usage line, by event id and its call's number.
-    DecisionLine(&'a Uuid7, &'a str),
     /// The event's `runtime` usage line, for a run that billed one slice.
     RuntimeLine(&'a Uuid7),
 }
@@ -85,12 +84,6 @@ impl<'a> Row<'a> {
                 "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
                 Some(Second::KindSeq(LineKind::Model, seq)),
-            ),
-            Self::DecisionLine(event, seq) => (
-                "billing.usage_lines",
-                "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
-                event,
-                Some(Second::KindSeq(LineKind::Decision, seq)),
             ),
             Self::RuntimeLine(event) => (
                 "billing.usage_lines",

@@ -36,7 +36,6 @@ pub mod preflight;
 pub mod probes;
 pub mod serve;
 pub mod supervisor;
-pub mod sweepers;
 pub mod telemetry;
 #[cfg(feature = "test-util")]
 pub mod test_util;

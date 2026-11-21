@@ -6,7 +6,6 @@ WITH heads AS (
         ON lane.provider = o.provider AND lane.workspace_id = o.workspace_id
      WHERE o.delivered_at IS NULL AND o.abandoned_at IS NULL
        AND o.claim_expires_at <= statement_timestamp()
-       AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= statement_timestamp())
        AND NOT EXISTS (
            SELECT 1
              FROM thread.deliveries e

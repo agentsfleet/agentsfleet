@@ -13,7 +13,7 @@
 
 use af_core::id::Uuid7;
 use af_core::paging::Cursor;
-use af_wire::memory::MAX_KEY_LEN;
+use af_wire::memory::INDEXED_TEXT_MAX_BYTES;
 use afd_memory::page::View;
 
 use super::{
@@ -270,23 +270,29 @@ fn should_decode_an_encoded_percent_in_a_key() {
     assert_eq!(memory_key(&item("100%25")).unwrap(), "100%");
 }
 
-/// A key outside 1..=255 decoded bytes is refused before a statement.
+/// A key outside 1..=2,668 decoded bytes is refused before a statement.
 #[test]
 fn should_bound_a_key_by_its_decoded_length() {
-    let at_cap = "k".repeat(MAX_KEY_LEN);
-    assert_eq!(memory_key(&item(&at_cap)).unwrap().len(), MAX_KEY_LEN);
-
-    let over = "k".repeat(MAX_KEY_LEN + 1);
-    assert!(
-        memory_key(&item(&over)).is_err(),
-        "256 bytes is over the cap"
+    let at_cap = "k".repeat(INDEXED_TEXT_MAX_BYTES);
+    assert_eq!(
+        memory_key(&item(&at_cap)).unwrap().len(),
+        INDEXED_TEXT_MAX_BYTES
     );
 
-    // The bound is on the DECODED bytes: 255 three-character escapes are 765
-    // characters of path and exactly one stored key's worth of bytes.
-    let encoded = "%41".repeat(MAX_KEY_LEN);
-    assert_eq!(memory_key(&item(&encoded)).unwrap().len(), MAX_KEY_LEN);
-    let encoded_over = "%41".repeat(MAX_KEY_LEN + 1);
+    let over = "k".repeat(INDEXED_TEXT_MAX_BYTES + 1);
+    assert!(
+        memory_key(&item(&over)).is_err(),
+        "one byte past the index row is over the bound"
+    );
+
+    // The bound is on the DECODED bytes: one three-character escape per byte
+    // is three times the path and exactly one stored key's worth of bytes.
+    let encoded = "%41".repeat(INDEXED_TEXT_MAX_BYTES);
+    assert_eq!(
+        memory_key(&item(&encoded)).unwrap().len(),
+        INDEXED_TEXT_MAX_BYTES
+    );
+    let encoded_over = "%41".repeat(INDEXED_TEXT_MAX_BYTES + 1);
     memory_key(&item(&encoded_over)).unwrap_err();
 }
 

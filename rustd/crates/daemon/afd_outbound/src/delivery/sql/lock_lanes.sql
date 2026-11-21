@@ -3,13 +3,12 @@
 -- is taken after these locks, and a claim commits before it lets them go, so
 -- every claim of a lane sees the one before it: a row that commits late cannot
 -- be taken beside a head another claim is still writing. A lane another claim
--- holds is skipped; a hash collision between two lanes only skips one a pass.
+-- holds is skipped; a hash collision between two lanes only skips one a claim.
 WITH candidates AS MATERIALIZED (
     SELECT o.provider, o.workspace_id
       FROM thread.deliveries o
      WHERE o.delivered_at IS NULL AND o.abandoned_at IS NULL
        AND o.claim_expires_at <= statement_timestamp()
-       AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= statement_timestamp())
        AND NOT EXISTS (
            SELECT 1
              FROM thread.deliveries e

@@ -7,10 +7,10 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_wire::memory::{
-    MAX_CONTENT_LEN, MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility,
-};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::memory::{INDEXED_TEXT_MAX_BYTES, MemoryDelta, PINNED_CATEGORY, Visibility};
 
+use super::loaded::{PUSH_BUDGET_BYTES, push_bytes};
 use super::{Forgotten, Loaded, Recalled, Seed};
 
 fn entry(key: &str, content: &str, category: &str) -> MemoryDelta<'static> {
@@ -81,8 +81,8 @@ async fn a_store_replaces_its_key_and_only_stores_reach_the_push() {
 #[test]
 fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
     let mut memory = Loaded::default();
-    let long_key = "k".repeat(MAX_KEY_LEN + 1);
-    let long_content = "c".repeat(MAX_CONTENT_LEN + 1);
+    let long_key = "k".repeat(INDEXED_TEXT_MAX_BYTES + 1);
+    let long_content = "c".repeat(TEXT_MAX_CHARS + 1);
 
     for (refused, field) in [
         (entry("", "c", PINNED_CATEGORY), "key"),
@@ -96,7 +96,11 @@ fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
         assert!(error.detail().starts_with(field), "{}", error.detail());
     }
     memory
-        .store(entry(&"k".repeat(MAX_KEY_LEN), "c", PINNED_CATEGORY))
+        .store(entry(
+            &"k".repeat(INDEXED_TEXT_MAX_BYTES),
+            "c",
+            PINNED_CATEGORY,
+        ))
         .unwrap();
     assert_eq!(
         memory.into_pending().len(),
@@ -106,10 +110,10 @@ fn a_store_breaking_a_wire_bound_is_refused_and_names_the_field() {
 }
 
 #[test]
-fn a_store_past_the_push_cap_is_refused_and_a_replacement_is_not_counted_twice() {
+fn a_store_past_the_push_frame_is_refused_and_a_replacement_is_not_counted_twice() {
     let mut memory = Loaded::default();
-    let content = "c".repeat(MAX_CONTENT_LEN);
-    let fits = MAX_PUSH_BYTES / entry("k00", &content, "c").bytes();
+    let content = "c".repeat(TEXT_MAX_CHARS);
+    let fits = PUSH_BUDGET_BYTES / push_bytes(&entry("k00", &content, "c"));
     for at in 0..fits {
         memory
             .store(entry(&format!("k{at:02}"), &content, "c"))
@@ -139,7 +143,7 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
     assert_eq!(memory.forget("scratch"), Forgotten::ForThisRun);
     assert_eq!(memory.forget("never-stored"), Forgotten::Unknown);
     assert_eq!(
-        memory.forget(&"k".repeat(MAX_KEY_LEN + 1)),
+        memory.forget(&"k".repeat(INDEXED_TEXT_MAX_BYTES + 1)),
         Forgotten::Unknown,
         "a key past the wire bound was never stored, so none is held for it"
     );

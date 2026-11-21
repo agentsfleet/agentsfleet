@@ -79,22 +79,10 @@ pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
-/// Installed fleets by lifecycle status, as the last census pass counted them.
-///
-/// Labels: `status`.
-pub const FLEETS: Declared<GaugeKind> = Declared::new("agentsfleet_fleets");
-
 /// Accepted and replayed turns, database refusals, and budget refusals.
 ///
 /// Labels: `outcome`.
 pub const TURNS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_turns_total");
-
-/// Unsettled fleet turns counted by the last fleet census pass.
-pub const TURN_BACKLOG: Declared<GaugeKind> = Declared::new("agentsfleet_turn_backlog");
-
-/// How long the oldest unsettled fleet turn has waited.
-pub const TURN_BACKLOG_OLDEST_AGE_SECONDS: Declared<GaugeKind> =
-    Declared::new("agentsfleet_turn_backlog_oldest_age_seconds");
 
 /// Failure rate per reason.
 ///

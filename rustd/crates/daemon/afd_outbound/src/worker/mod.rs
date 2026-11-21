@@ -1,19 +1,19 @@
 //! The claim loop: Postgres holds every owed answer, and the worker claims
-//! lane heads when it is pinged or when its pass comes round, so no answer
-//! depends on a ping arriving.
+//! lane heads when it starts, when it is pinged, and when a delivery finishes.
+//! It runs no timed pass (Indy, Nov 21, 2026).
 //!
 //! ```text
-//!   report commits ──► af.delivery.wake (lossy) ─┐
-//!                                                 ├─► claim lane heads ─► lanes
-//!   every CLAIM_PASS ─────────────────────────────┘        (FOR UPDATE SKIP LOCKED)
+//!   worker starts ────────────────────────────────┐
+//!   report commits ──► af.delivery.wake (lossy) ──┼─► claim lane heads ─► lanes
+//!   a delivery finishes ──────────────────────────┘    (FOR UPDATE SKIP LOCKED)
 //! ```
 //!
-//! # A lost ping costs only latency
+//! # A lost ping waits for the next event
 //!
-//! The ping is at-most-once. A replica that misses it claims the row on its
-//! next pass, at most [`CLAIM_PASS`] later; a full batch claims again as soon
-//! as the lanes have room, and every finished job rings the loop, so a backlog
-//! drains without waiting for passes.
+//! The ping is at-most-once. A row whose ping every replica missed is claimed
+//! on the next ping, the next finished delivery, or the next worker start. A
+//! full batch claims again as soon as the lanes have room, and every finished
+//! job rings the loop, so a backlog drains without a timer.
 //!
 //! # The claim is the ordering, and the lanes are the concurrency
 //!
@@ -35,16 +35,15 @@ use crate::delivery;
 use crate::lanes::Lanes;
 use crate::poster::{Deliver, Posters};
 
-/// How often a replica claims without being pinged, by default.
-pub const CLAIM_PASS: Duration = Duration::from_secs(30);
-
-/// Logged around each claim. A claim polls Postgres every pass, so both halves
-/// sit at `debug`.
+/// Logged around each claim. A claim runs on every ping and finished
+/// delivery, so both halves sit at `debug`.
 const EVENT_CLAIM_STARTED: &str = "outbound_claim_started";
 const EVENT_CLAIM_COMPLETED: &str = "outbound_claim_completed";
-/// Logged when a claim could not be made; the next pass retries.
+/// Logged when a claim could not be made; the next ping or finished delivery
+/// claims again.
 const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
-/// Logged when pings stop reaching this worker; its pass carries it alone.
+/// Logged when pings stop reaching this worker; only finished deliveries and
+/// the next start claim for it then.
 const EVENT_WAKE_SUBSCRIBE_FAILED: &str = "outbound_wake_subscribe_failed";
 const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
 
@@ -53,7 +52,8 @@ const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
 pub(crate) enum Via {
     /// A committed report's ping.
     Ping,
-    /// The periodic pass, or a full batch draining a backlog.
+    /// The worker's start, a finished delivery, or a full batch draining a
+    /// backlog.
     Scan,
 }
 
@@ -64,7 +64,6 @@ pub struct Worker<S> {
     bus: Handle,
     posters: Posters<S>,
     entropy: Entropy,
-    pass: Duration,
     renew: Duration,
     retries: crate::retry::RetryPolicy,
 }
@@ -78,18 +77,9 @@ impl<S: Deliver + 'static> Worker<S> {
             bus,
             posters,
             entropy,
-            pass: CLAIM_PASS,
             renew: delivery::CLAIM_RENEW,
             retries: crate::retry::RetryPolicy::DEFAULT,
         }
-    }
-
-    /// Replaces how often the worker claims unpinged, such as from a
-    /// configuration file.
-    #[must_use]
-    pub const fn with_claim_pass(mut self, pass: Duration) -> Self {
-        self.pass = pass;
-        self
     }
 
     /// Applies the checked inline retry budget to every delivery lane.
@@ -115,7 +105,6 @@ impl<S: Deliver + 'static> Worker<S> {
             bus,
             posters,
             entropy,
-            pass,
             renew,
             retries,
         } = self;
@@ -136,7 +125,7 @@ impl<S: Deliver + 'static> Worker<S> {
                         continue;
                     }
                     Ok(_partial) => {}
-                    // The next ping or pass claims again.
+                    // The next ping or finished delivery claims again.
                     Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
             }
@@ -146,7 +135,6 @@ impl<S: Deliver + 'static> Worker<S> {
                 () = pinged(&mut wake) => Via::Ping,
                 // A finished job may have freed its lane's next row.
                 () = lanes.finished() => Via::Scan,
-                () = tokio::time::sleep(pass) => Via::Scan,
             };
         }
         lanes.drain().await;
@@ -198,8 +186,8 @@ impl Via {
     }
 }
 
-/// Returns on the next ping, or never when the subscription is gone; the pass
-/// then carries the worker alone.
+/// Returns on the next ping, or never when the subscription is gone; finished
+/// deliveries then carry the worker alone.
 async fn pinged(wake: &mut Option<Subscription>) {
     let Some(subscription) = wake.as_mut() else {
         return std::future::pending().await;
@@ -211,11 +199,12 @@ async fn pinged(wake: &mut Option<Subscription>) {
     }
 }
 
-/// Logs that pings stopped; answers now wait up to one claim pass.
+/// Logs that pings stopped; owed answers now wait for a finished delivery or
+/// the next start.
 fn unpinged(event: &'static str, failure: &afd_bus::Error) {
     let error_code = failure.code().as_str();
     let reason = failure.reason();
-    tracing::warn!(error_code, reason, event, "claims wait for the pass");
+    tracing::warn!(error_code, reason, event, "claims wait for the next event");
 }
 
 /// Logs a failure the loop continues past.

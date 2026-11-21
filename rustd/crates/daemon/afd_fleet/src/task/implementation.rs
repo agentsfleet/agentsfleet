@@ -1,11 +1,10 @@
 //! Task lifecycle entry points retain one operation observation and their original tracing spans.
 
 use super::{
-    CheckpointMaintenance, CheckpointMaintenanceCursor, DecisionMaintenance,
-    DecisionMaintenanceCursor, EffectMaintenance, ReservedDecision, TaskAdoption, TaskAfter,
+    CheckpointMaintenance, CheckpointMaintenanceCursor, ReservedDecision, TaskAdoption, TaskAfter,
     TaskControl, TaskFuture as Reply, TaskLifecycle, TaskPage, TaskRun, TaskScope, TaskSnapshot,
-    Tasks, VerifiedCompletion, WaitMaintenance, adoption, bindings, checkpoint, control, decision,
-    effects, input_receipt, inputs, list, observe, read, waits,
+    Tasks, VerifiedCompletion, adoption, bindings, checkpoint, control, decision, effects,
+    input_receipt, inputs, list, observe, read, waits,
 };
 #[cfg(any(test, feature = "test-util"))]
 use super::{PreparedPlan, TaskBindings, admit};
@@ -15,9 +14,6 @@ use af_wire::task as wire;
 use garde::Valid;
 
 impl TaskLifecycle for Tasks {
-    fn maintain_waits(&self) -> Reply<'_, WaitMaintenance> {
-        observe::call(TaskOperation::WaitSweep, waits::maintain(self))
-    }
     fn record_github_completion<'a>(
         &'a self,
         completion: &'a VerifiedCompletion,
@@ -147,9 +143,6 @@ impl TaskLifecycle for Tasks {
             tracing::info_span!("commit_checkpoint", run_id = run.run_id.as_str()),
         )
     }
-    fn maintain_effects(&self) -> Reply<'_, EffectMaintenance> {
-        observe::call(TaskOperation::EffectSweep, effects::maintain(self))
-    }
     fn accept_input<'a>(
         &'a self,
         run: TaskRun<'a>,
@@ -218,24 +211,6 @@ impl TaskLifecycle for Tasks {
         )
     }
 
-    fn maintain_decisions<'a>(
-        &'a self,
-        cursor: &'a mut DecisionMaintenanceCursor,
-    ) -> Reply<'a, DecisionMaintenance> {
-        let span = tracing::info_span!("task_decision_maintenance");
-        observe::traced(
-            TaskOperation::DecisionSweep,
-            decision::maintain(self, cursor),
-            |swept| {
-                if swept.failed == 0 {
-                    TaskOutcome::Accepted
-                } else {
-                    TaskOutcome::Failed
-                }
-            },
-            span,
-        )
-    }
     fn reserve_decision<'a>(
         &'a self,
         run: TaskRun<'a>,

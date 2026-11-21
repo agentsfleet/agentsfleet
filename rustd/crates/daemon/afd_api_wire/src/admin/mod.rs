@@ -83,7 +83,7 @@ pub struct RunnerAdminPatchRequest<'a> {
     #[serde(borrow)]
     #[garde(skip)]
     pub assigned_policy: Option<AssignedPolicy<'a>>,
-    /// Replaces all runner labels: at most 32 labels of 64 bytes each. Duplicates are removed
+    /// Replaces all runner labels, each at most 1,048,576 characters. Duplicates are removed
     /// in their original order. An empty list clears labels.
     #[serde(borrow)]
     #[garde(inner(custom(label_list)))]

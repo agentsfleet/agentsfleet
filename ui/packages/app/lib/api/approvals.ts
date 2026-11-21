@@ -15,7 +15,7 @@ import { confirmedApprovalResolution } from "./approval-resolution";
 // (`GateRow` in rustd/crates/daemon/afd_approval/src/inbox/row.rs)
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
-export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "archived";
+export type ApprovalStatus = "pending" | "approved" | "denied" | "answered" | "timed_out" | "archived";
 
 export type ApprovalStatusValue = ApprovalStatus | (string & {});
 
@@ -35,7 +35,11 @@ export type ApprovalGate = {
   detail: string;
   /** RFC 3339 instant */
   created_at: string;
-  /** RFC 3339 instant — sweeper auto-denies after this */
+  /**
+   * RFC 3339 instant — the answer's deadline, for display only. Nothing
+   * closes the gate when it passes: the read reports `timed_out`, and the gate
+   * still takes an approval, a denial or an answer.
+   */
   expires_at: string;
   /** RFC 3339 instant; null when still pending */
   resolved_at: string | null;
@@ -70,6 +74,10 @@ export type ResolveOutcome =
   | { kind: "resolved"; data: ResolveResponse }
 
   | { kind: "already_resolved"; data: AlreadyResolvedResponse };
+
+// The decision's body: an optional note on approve and deny, the answer itself
+// on a question gate.
+type ResolveFields = {reason?: string; answer?: string};
 
 export type ListApprovalsOpts = {
   status?: string;
@@ -108,9 +116,9 @@ async function resolveAction(
   gateId: string,
   decision: ApprovalDecision,
   token: string,
-  reason?: string,
+  fields: ResolveFields,
 ): Promise<ResolveOutcome> {
-  const body = JSON.stringify(reason ? { reason } : {});
+  const body = JSON.stringify(fields);
   // `/decision` as its own segment, not `:decision`. The daemon's router binds
   // one parameter per path segment and refuses a literal after it, so the
   // custom verb cannot ride the gate identifier — see `WorkspaceRoute::
@@ -144,7 +152,9 @@ async function resolveAction(
   if (res.status === 200 || res.status === 409) {
     const outcome = confirmedApprovalResolution({kind: res.status === 200 ? "resolved" : "already_resolved", data: json}, gateId, decision);
     if (outcome) return outcome;
-    throw new ApiError("The decision could not be confirmed. Review the request's current status before trying again.", 502, "UZ-UNKNOWN");
+    // A 409 that is no competing decision is a refusal, such as an archived
+    // fleet's `UZ-AGT-020`; it falls through to the problem body below.
+    if (res.status === 200) throw new ApiError("The decision could not be confirmed. Review the request's current status before trying again.", 502, "UZ-UNKNOWN");
   }
   // RFC 7807 problem+json, same shape `request()` throws on — see client.ts.
   // A bare `Error` here would discard `error_code` before `presentErrorString`
@@ -167,9 +177,14 @@ async function resolveAction(
 }
 
 export function approveApproval(workspaceId: string, gateId: string, token: string, reason?: string) {
-  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.APPROVE, token, reason);
+  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.APPROVE, token, reason ? {reason} : {});
 }
 
 export function denyApproval(workspaceId: string, gateId: string, token: string, reason?: string) {
-  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.DENY, token, reason);
+  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.DENY, token, reason ? {reason} : {});
+}
+
+/** Answer a `question` gate; the daemon refuses `approve` on one. */
+export function answerApproval(workspaceId: string, gateId: string, token: string, answer: string) {
+  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.ANSWER, token, {answer});
 }

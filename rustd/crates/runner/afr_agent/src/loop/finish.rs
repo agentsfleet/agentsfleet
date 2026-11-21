@@ -9,9 +9,6 @@ use crate::engine::RunOutput;
 
 /// What a run stopped by its run reports as its detail.
 pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished";
-/// What a run that asked the person a question fails with: no run carries
-/// a question to its person yet, so the run cannot wait on one.
-pub(super) const DETAIL_WAITING: &str = "the run asked a question this run cannot deliver";
 /// The event a run's end logs when it killed sessions still open.
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
@@ -83,6 +80,9 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         self.record_answer(&ending);
+        if matches!(ending, Ending::Waiting(_)) {
+            self.save_waiting(pause).await;
+        }
         let recovery = self.final_recovery(&mut ending, pause).await;
         let folded_through_sequence = self
             .folded_through()
@@ -107,13 +107,10 @@ impl Harness<'_, '_> {
                 };
                 (ResultOutcome::Failed(stopped), String::new())
             }
-            Ending::Waiting(_) => {
-                let waiting = Failure {
-                    class: None,
-                    detail: DETAIL_WAITING.into(),
-                };
-                (ResultOutcome::Failed(waiting), String::new())
-            }
+            Ending::Waiting(waiting) => (
+                ResultOutcome::Waiting,
+                shared.scrub.text(&waiting.question).into_owned(),
+            ),
         };
         let usage = shared.meter.read();
         let (trace, records) = shared.ledger.finish();

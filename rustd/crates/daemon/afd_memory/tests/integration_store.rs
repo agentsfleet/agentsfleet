@@ -6,7 +6,7 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
+use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_memory::window::DAILY_RETENTION;
 
 use crate::workspace::{Grants, Workspace, delta};
@@ -78,34 +78,6 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .expect("an empty capture");
     assert_eq!(swept.swept, 1, "the expired daily entry is swept");
 
-    // Eviction: past the cap, the coldest non-core rows go and core stays.
-    let filler: Vec<_> = (0..MAX_ENTRIES_PER_FLEET)
-        .map(|at| delta(&format!("f{at:04}"), CONVERSATION, Visibility::Fleet))
-        .collect();
-    let capped = memories
-        .capture(
-            &fleet,
-            &filler,
-            af_core::clock::after(
-                START_AT,
-                DAILY_RETENTION + std::time::Duration::from_millis(3),
-            ),
-        )
-        .await
-        .expect("a capture to the cap");
-    assert_eq!(
-        capped.evicted, 2,
-        "two rows past the cap of {MAX_ENTRIES_PER_FLEET}"
-    );
-    let window = memories.load(&fleet).await.expect("a load");
-    assert!(
-        window.memory.iter().any(|entry| entry.key == "pinned"),
-        "the pinned entry survives eviction"
-    );
-    assert!(
-        window.memory.iter().all(|entry| entry.key != "chat"),
-        "the oldest non-core entry was evicted"
-    );
     space.cleanup().await;
 }
 

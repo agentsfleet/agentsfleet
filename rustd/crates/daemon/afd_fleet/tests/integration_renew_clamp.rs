@@ -57,7 +57,7 @@ pub(crate) const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
 
 // Value: protects=a run of any age renews for a full run lifetime, the
 // thread with it; fails_when=a renewal clamps a grant to the run's start again;
-// why_new=the 12-hour ceiling is gone (M253_003 §8); seam=the per-run
+// why_new=the 12-hour ceiling is gone (`M253_003` §8); seam=the per-run
 // renewal over live Postgres; no_claim=the batch, which
 // `host_batch_extends_live_refuses_fenced` covers.
 #[tokio::test]

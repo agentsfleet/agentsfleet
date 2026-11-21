@@ -70,9 +70,12 @@ impl TurnKind {
     }
 }
 
+mod answer;
 mod entry;
 mod message;
 mod steer;
+
+pub use self::answer::QuestionAnswer;
 
 pub use self::message::{MESSAGE, message_of};
 

@@ -1,13 +1,15 @@
 //! Ordinary recovery belongs to an event and never impersonates a native task.
 
+use crate::protocol::MESSAGE_BYTES_MAX;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Budget for the complete native command or response, including its envelope.
+/// Budget for the complete native command or response, including its envelope:
+/// the reports stream's frame, which carries it.
 #[derive(Debug, Clone, Copy, Validate)]
 pub struct TurnMessageSize {
     /// Serialized payload bytes, excluding only the native length prefix.
-    #[garde(range(min = 1, max = TURN_CHECKPOINT_BYTES))]
+    #[garde(range(min = 1, max = MESSAGE_BYTES_MAX))]
     pub bytes: usize,
 }
 
@@ -19,8 +21,6 @@ pub use command::{
 };
 pub use response::{TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointResponse};
 
-/// Complete native messages, including envelope and escaping, must fit this bound.
-pub const TURN_CHECKPOINT_BYTES: usize = 1024 * 1024;
 /// The independently versioned private root format.
 pub const TURN_CHECKPOINT_FORMAT: u32 = 1;
 /// A page fits together with native correlation and authority fields.

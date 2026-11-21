@@ -154,14 +154,6 @@ impl RunService {
             .await
     }
 
-    pub(crate) async fn mint_wait_reader(
-        &self,
-        permit: &crate::task::ReadPermit,
-        now: Timestamp,
-    ) -> Result<Minted> {
-        self.mint_scoped(permit.scope(), "github", now, Some(permit.installation()))
-            .await
-    }
 }
 
 mod admission;

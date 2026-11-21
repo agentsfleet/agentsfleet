@@ -142,12 +142,12 @@ impl TaskActivityRecord {
     }
 }
 
-/// Retained activity is bounded independently of the task's private history.
+/// Retained activity, kept apart from the task's private history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskActivityHistory {
-    /// Latest 128 operation/stage facts, in observed order.
+    /// The newest fact of each operation and stage, in observed order.
     pub items: Vec<TaskActivityRecord>,
-    /// Whether earlier stages were omitted by the public history bound.
+    /// Whether earlier stages were omitted when the history was bounded.
     pub truncated: bool,
 }

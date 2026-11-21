@@ -1,6 +1,6 @@
 //! Expiring exact-repository read custody survives loss of the live task owner.
 
-use super::{BoundPr, Github, http::Session};
+use super::{BoundPr, Github};
 use crate::{
     Result,
     error::query,
@@ -11,8 +11,6 @@ use af_crypto::{
     aad::Aad,
     envelope::{Envelope, Sealer},
 };
-use afd_credential::credential::outcome::Minted;
-use afd_vault::StoredEnvelope;
 use jiff_sqlx::ToSqlx as _;
 use serde::{Deserialize, Serialize};
 use sqlx::PgConnection;
@@ -30,22 +28,6 @@ struct Capability<'a> {
 pub(in crate::task) struct Sealed {
     envelope: Envelope,
     expires_at: jiff::Timestamp,
-}
-
-#[derive(sqlx::FromRow)]
-pub(in crate::task) struct Stored {
-    #[sqlx(flatten)]
-    envelope: StoredEnvelope,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    pub expires_at: jiff::Timestamp,
-}
-
-pub(in crate::task) struct Opened<'a> {
-    pub session: Session<'a>,
-    pub repository: String,
-    pub branch: String,
-    pub repository_id: u64,
-    pub installation_id: u64,
 }
 
 impl Github {
@@ -81,35 +63,6 @@ impl Github {
         Ok(Sealed {
             envelope,
             expires_at: credential.expires_at,
-        })
-    }
-
-    pub(in crate::task) fn open_recovery(
-        &self,
-        workspace: &Uuid7,
-        effect: &Uuid7,
-        stored: Stored,
-    ) -> Result<Opened<'_>> {
-        if stored.expires_at <= clock::now() {
-            return Err(TaskRefusal::EffectUncertain.into());
-        }
-        let plaintext = stored
-            .envelope
-            .into_envelope()?
-            .open(&self.master, &Aad::effect_recovery(workspace, effect))?;
-        let capability: Capability<'_> =
-            serde_json::from_slice(plaintext.expose()).map_err(af_core::json::Unreadable::from)?;
-        let credential = Minted {
-            token: Zeroizing::new(capability.token.to_owned()),
-            expires_at: stored.expires_at,
-            rotated_refresh_token: None,
-        };
-        Ok(Opened {
-            session: Session::new(&self.client, credential, capability.installation_id, true),
-            repository: capability.repository.to_owned(),
-            branch: capability.branch.to_owned(),
-            repository_id: capability.repository_id,
-            installation_id: capability.installation_id,
         })
     }
 }

@@ -79,13 +79,7 @@ pub(in crate::task) async fn create(
         input.commit_oid.as_deref(),
     )
     .await?;
-    if input.mode == CheckpointMode::RetainBase && input.base_id.is_some()
-        || input.upload_budget_bytes
-            > match input.mode {
-                CheckpointMode::RetainBase => super::BASE_BYTES,
-                CheckpointMode::Incremental => super::INCREMENTAL_BYTES,
-            }
-    {
+    if input.mode == CheckpointMode::RetainBase && input.base_id.is_some() {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     identity::quota(&mut tx, &owned.current.workspace_id).await?;

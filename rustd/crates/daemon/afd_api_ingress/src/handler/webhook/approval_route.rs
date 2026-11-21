@@ -64,6 +64,9 @@ const DETAIL_INVALID_BODY: &str =
 /// The refusal a body naming an answer that is not one earns.
 const DETAIL_INVALID_DECISION: &str = "The decision must be approve or deny.";
 
+/// The refusal an answer to an archived fleet's approval earns.
+const DETAIL_FLEET_ARCHIVED: &str = "The fleet is archived, so its approvals take no answer.";
+
 /// The refusal a payload naming no gate of this fleet's earns.
 const DETAIL_NOT_FOUND: &str = "No pending approval matches this action for this fleet.";
 
@@ -137,9 +140,8 @@ pub(crate) async fn receive<D: IngressPlane>(
     let outcome = match answer.decision.as_str() {
         DECISION_APPROVE => Decision::Approved,
         DECISION_DENY => Decision::Denied,
-        // `TimedOut` is deliberately unreachable from here: expiring a gate is
-        // the sweeper's, and a sender that could spell it would be writing a
-        // decision no person made.
+        // A question's answer is the dashboard's: a chat button carries no
+        // answer text.
         _unknown => {
             return Err(Refusal::coded(
                 error_code::WEBHOOK_MALFORMED,
@@ -167,6 +169,12 @@ pub(crate) async fn receive<D: IngressPlane>(
     // `resolved`.
     match resolution {
         Resolution::Resolved(_) | Resolution::AlreadyResolved(_) => {}
+        Resolution::FleetArchived => {
+            return Err(Refusal::coded(
+                error_code::AGENTSFLEET_ARCHIVED,
+                DETAIL_FLEET_ARCHIVED,
+            ));
+        }
         Resolution::NotFound => {
             return Err(Refusal::coded(
                 error_code::APPROVAL_NOT_FOUND,

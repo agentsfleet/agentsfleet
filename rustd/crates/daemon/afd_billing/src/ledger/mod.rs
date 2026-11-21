@@ -23,13 +23,13 @@ use crate::{Nanos, Result};
 
 mod lines;
 mod settle;
+#[cfg(any(test, feature = "test-util"))]
 mod sweep;
 pub mod unreadable;
 
 pub use self::lines::log_lines;
 #[cfg(feature = "test-util")]
 pub use self::sweep::unsettled_work;
-pub use self::sweep::{Resettled, Resume, resettle, unsettled};
 
 const INSERT_LINES: &str = include_str!("sql/insert_lines.sql");
 const SETTLE_LINES: &str = include_str!("sql/settle_lines.sql");

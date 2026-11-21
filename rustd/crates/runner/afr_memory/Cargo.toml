@@ -24,17 +24,19 @@ aho-corasick.workspace = true
 async-trait.workspace = true
 # `error_shell!` and the registry codes a refused store carries.
 af_core.workspace = true
-# The entry shape, its bounds and the push cap, declared once for daemon and runner.
+# The entry shape and its bounds, declared once for daemon and runner, and the frame a push rides.
 af_wire.workspace = true
 # An entry is checked against the bounds `af_wire` declares on it.
 garde.workspace = true
+# A store is charged its encoded size against the push's frame.
+serde_json.workspace = true
 thiserror.workspace = true
 # The one line a recall past the window leaves when the daemon does not answer.
 tracing.workspace = true
 
 [dev-dependencies]
-# Exercise the same private serialization that the root snapshot embeds.
-serde_json.workspace = true
+# The text ceiling a stored entry's content is held to.
+af_validate.workspace = true
 # The instant a shared entry was last written, in the fakes.
 jiff.workspace = true
 tokio = { workspace = true, features = ["macros", "rt"] }

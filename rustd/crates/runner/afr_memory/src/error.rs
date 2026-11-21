@@ -4,8 +4,8 @@
 //! `af_core::error_shell!` hull. Both codes are the registry's request codes:
 //! the model wrote the entry, and the daemon would have skipped it.
 
+use crate::loaded::PUSH_BUDGET_BYTES;
 use af_core::error_code::{self, ErrorCode};
-use af_wire::memory::MAX_PUSH_BYTES;
 
 af_core::error_shell!(
     /// A refused store, with the backtrace of where it was refused.
@@ -32,7 +32,9 @@ pub(crate) enum ErrorKind {
     },
 
     /// The run's stored entries would no longer fit one push.
-    #[error("the run's stored memory would take {needed} bytes, past the push's {MAX_PUSH_BYTES}")]
+    #[error(
+        "the run's stored memory would take {needed} bytes, past the push's {PUSH_BUDGET_BYTES}"
+    )]
     Full {
         /// The bytes the stored entries would take with this one.
         needed: usize,

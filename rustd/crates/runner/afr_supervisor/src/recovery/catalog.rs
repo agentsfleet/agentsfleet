@@ -7,7 +7,6 @@ use std::{collections::BTreeMap, sync::Arc};
 use zeroize::Zeroizing;
 
 const PLACEHOLDER: &str = "00000000-0000-7000-8000-000000000000";
-const MAX_HISTORY: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 enum Source {
@@ -74,9 +73,6 @@ impl Catalog {
         base_paths: Vec<String>,
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
-        if history.len() > MAX_HISTORY {
-            return Err(error::capture_limit("checkpoint history exceeds its bound"));
-        }
         let inventory = root
             .map(|root| root.inventory(stop))
             .transpose()?

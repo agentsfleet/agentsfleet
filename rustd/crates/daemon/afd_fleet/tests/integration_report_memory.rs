@@ -1,6 +1,6 @@
 //! A report carrying the run's memory: written before the settle commits,
-//! fenced on the run's own token as the settle is, cut at the push's byte
-//! cap, and never a reason the answer is lost.
+//! fenced on the run's own token as the settle is, and never a reason the
+//! answer is lost.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -13,16 +13,13 @@ use std::borrow::Cow;
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
+use af_wire::memory::{MemoryDelta, Visibility};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_fleet::run::RunService;
 use afd_memory::Memories;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID};
 use crate::report_seed::{Held, SLICE_MS, held};
-
-/// The counter a capture's cut entries are counted on.
-const TRUNCATED: &str = "agentsfleet_memory_capture_truncated_total";
 
 /// What the run learned, key and content.
 const LEARNED: [(&str, &str); 2] = [("build", "cargo needs two jobs here"), ("owner", "indy")];
@@ -177,51 +174,6 @@ async fn test_superseded_report_writes_no_memory() {
 
 /// Memory past the push's byte cap is cut, newest kept, and the report
 /// settles: a run's answer is never refused for what it remembered.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_oversize_report_memory_is_cut_and_counted() {
-    let held = held().await;
-    let metrics = af_observability::test_util::Capture::install();
-    let truncated_before = metrics.sum(TRUNCATED, &[]);
-    let content = "m".repeat(MAX_CONTENT_LEN);
-    // Twenty full entries, 16 KiB each: fifteen fit the 256 KiB cap.
-    let oversize = deltas((0..20).map(|index| {
-        (
-            Cow::Owned(format!("key-{index:02}")),
-            Cow::Borrowed(content.as_str()),
-        )
-    }));
-
-    held.fixtures
-        .plane()
-        .report_with(
-            &held.runner,
-            &report(&held, held.fence.as_u64(), oversize),
-            held.now,
-            None,
-            &mut af_observability::verb_span::VerbClock::untimed(),
-        )
-        .await
-        .expect("an oversize memory does not refuse the report");
-
-    let kept: Vec<String> = stored(&held)
-        .await
-        .into_iter()
-        .map(|(key, _)| key)
-        .collect();
-    let first_fifteen: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
-    assert_eq!(
-        (
-            kept,
-            metrics.sum(TRUNCATED, &[]) - truncated_before,
-            held.fixtures.turn_settled(&held.turn_id).await,
-        ),
-        (first_fifteen, 5, true),
-        "fifteen kept, five counted as cut, the report settled"
-    );
-    held.fixtures.cleanup().await;
-}
-
 /// A memory store that will not answer costs the run its memory, never its
 /// answer: the report settles and the failure is logged once.
 #[tokio::test]

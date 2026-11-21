@@ -124,7 +124,6 @@ impl Ledger {
         sqlx::query_as(
             "SELECT delivered_at IS NOT NULL AS delivered, abandoned_at IS NOT NULL AS abandoned, \
              attempt_count, receipt, \
-             COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
              extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
              FROM thread.deliveries WHERE turn_id = $1",
         )
@@ -163,10 +162,10 @@ impl Ledger {
         .await;
     }
 
-    /// A worker pinged over the lane's NATS under this test's namespace,
-    /// claiming every `pass`. Every worker of one test shares the namespace.
-    pub(super) async fn worker(&self, poster: &Recorder, pass: Duration) -> Worker<Recorder> {
-        self.worker_on(self.bus().await, poster, pass)
+    /// A worker pinged over the lane's NATS under this test's namespace.
+    /// Every worker of one test shares the namespace.
+    pub(super) async fn worker(&self, poster: &Recorder) -> Worker<Recorder> {
+        self.worker_on(self.bus().await, poster)
     }
 
     /// A connection to the lane's NATS under this test's namespace.
@@ -177,12 +176,7 @@ impl Ledger {
     }
 
     /// [`Ledger::worker`], pinged over `bus`.
-    pub(super) fn worker_on(
-        &self,
-        bus: afd_bus::Handle,
-        poster: &Recorder,
-        pass: Duration,
-    ) -> Worker<Recorder> {
+    pub(super) fn worker_on(&self, bus: afd_bus::Handle, poster: &Recorder) -> Worker<Recorder> {
         Worker::new(
             self.database.clone(),
             bus,
@@ -191,7 +185,6 @@ impl Ledger {
             },
             Entropy::new(),
         )
-        .with_claim_pass(pass)
     }
 
     pub(super) async fn cleanup(self) {
@@ -206,8 +199,6 @@ pub(super) struct Row {
     pub(super) abandoned: bool,
     pub(super) attempt_count: i64,
     pub(super) receipt: Uuid7,
-    /// Released with the cycle backoff still ahead of it.
-    pub(super) due_later: bool,
     pub(super) claim_expires: f64,
 }
 

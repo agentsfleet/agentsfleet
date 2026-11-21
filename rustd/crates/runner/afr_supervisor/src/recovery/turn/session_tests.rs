@@ -364,7 +364,7 @@ async fn a_command_larger_than_one_native_message_is_never_sent() -> Checked {
         .command(Action::Commit {
             checkpoint: reference(),
             root: TurnPrivateRoot {
-                history: "a".repeat(af_wire::run::TURN_CHECKPOINT_BYTES),
+                history: "a".repeat(af_wire::protocol::MESSAGE_BYTES_MAX),
             },
             manifest_root: af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(
                 &str,

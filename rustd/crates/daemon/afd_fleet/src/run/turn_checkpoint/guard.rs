@@ -16,7 +16,11 @@ pub(super) struct Current {
     pub id: Uuid7,
     pub fleet_id: Uuid7,
     pub workspace_id: Uuid7,
+    /// The turn whose checkpoint this run saves and restores: the asking
+    /// turn for an answer's run, and the run's own turn otherwise.
     pub turn_id: Uuid7,
+    /// The turn this run serves.
+    pub run_turn_id: Uuid7,
     pub setup_revision_id: Option<Uuid7>,
     pub fence: i64,
     pub thread_fence: i64,
@@ -144,6 +148,7 @@ async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
         .bind(presented.run_id)
         .bind(presented.runner_id)
         .bind(sql::RUN_STATUS_ACTIVE)
+        .bind(afd_turns::Producer::QuestionAnswer.as_str())
         .fetch_optional(connection)
         .await
         .map_err(query("hold ordinary turn run"))?
@@ -152,14 +157,14 @@ async fn current(connection: &mut PgConnection, presented: TurnRun<'_>) -> Resul
 
 async fn hold_turn(connection: &mut PgConnection, current: &Current) -> Result<()> {
     let held: HeldTurn = sqlx::query_as(include_str!("sql/lock_turn.sql"))
-        .bind(&current.turn_id)
+        .bind(&current.run_turn_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query("hold the ordinary source turn"))?
         .ok_or_else(run_not_found)?;
-    if held.id != current.turn_id
+    if held.id != current.run_turn_id
         || held.run_fence != Some(current.fence)
         || held.parked
         || held.settled

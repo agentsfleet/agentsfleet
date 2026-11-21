@@ -123,7 +123,8 @@ async fn accepted(
         .bind(&current.task_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(row::sql_counter(batch, "input batch limit")?)
+        // An unset batch knob is `usize::MAX`, which reads every input.
+        .bind(i64::try_from(batch).unwrap_or(i64::MAX))
         .bind(
             input
                 .after_input_sequence
@@ -177,13 +178,9 @@ async fn candidates(
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(i64::from(af_wire::task::UNFINISHED_MAX) + 1)
         .fetch_all(&mut *connection)
         .await
         .map_err(query("read native input association candidates"))?;
-    if candidates.len() > usize::try_from(af_wire::task::UNFINISHED_MAX).unwrap_or(usize::MAX) {
-        return Err(super::TaskRefusal::LimitExhausted.into());
-    }
     let candidates = candidates
         .into_iter()
         .map(|candidate| {

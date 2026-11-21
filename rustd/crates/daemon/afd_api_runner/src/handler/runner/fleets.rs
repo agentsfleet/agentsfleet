@@ -7,12 +7,11 @@
 //! runs in. Nothing in a query names a workspace, so a runner cannot read
 //! another workspace's fleets, and a fleet id from one reads as unknown.
 //!
-//! # Another fleet's words are excerpts
+//! # Another fleet's words arrive whole
 //!
-//! An event row carries at most `EXCERPT_MAX_BYTES` of what the fleet was
-//! asked and what it answered: a digest needs a line, and the full answer
-//! stays in the dashboard. The reads are the stores' own, so a fleet sees
-//! the list the dashboard shows and the thread its chat shows.
+//! An event row carries what the fleet was asked and what it answered. The
+//! reads are the stores' own, so a fleet sees the list the dashboard shows
+//! and the thread its chat shows.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -23,7 +22,7 @@ use af_core::paging::{
     CEILING, Cursor as PageCursor, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER,
 };
 use af_validate::{Ceiling, Limit};
-use af_wire::fleets_verb::{FleetItem, FleetTurnItem, FleetTurnsPage, FleetsPage, excerpt};
+use af_wire::fleets_verb::{FleetItem, FleetTurnItem, FleetTurnsPage, FleetsPage};
 use af_wire::turn::message_of;
 use afd_fleet::run::Standing;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
@@ -275,13 +274,10 @@ fn events_page(fetched: &[TurnDetailRow], rows: i64) -> FleetTurnsPage<'_> {
     }
 }
 
-/// One event as another fleet reads it, its bodies cut to excerpts.
+/// One event as another fleet reads it.
 fn event_item(detail: &TurnDetailRow) -> FleetTurnItem<'_> {
     let row = &detail.row;
-    let request_excerpt = match message_of(&detail.request_json) {
-        Cow::Borrowed(text) => Cow::Borrowed(excerpt(text)),
-        Cow::Owned(text) => Cow::Owned(excerpt(&text).to_owned()),
-    };
+    let request_excerpt = message_of(&detail.request_json);
     FleetTurnItem {
         turn_id: Cow::Borrowed(row.turn_id.as_str()),
         actor: Cow::Borrowed(&row.actor),
@@ -289,10 +285,7 @@ fn event_item(detail: &TurnDetailRow) -> FleetTurnItem<'_> {
         status: Cow::Borrowed(&row.status),
         created_at: row.created_at,
         request_excerpt,
-        response_excerpt: detail
-            .response_text
-            .as_deref()
-            .map(|text| Cow::Borrowed(excerpt(text))),
+        response_excerpt: detail.response_text.as_deref().map(Cow::Borrowed),
         failure_label: row.failure_label.as_deref().map(Cow::Borrowed),
     }
 }

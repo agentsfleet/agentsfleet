@@ -62,43 +62,10 @@ max_idle_hold_seconds = 600
 resume_from_checkpoint = false
 
 [runner.scheduling]
-missed_wake_probe_seconds = 5
 max_concurrent_recovery_assignments = 8
 
-[maintenance]
-startup_spread_ms = 5_000
-
-[maintenance.runner_liveness]
-interval_seconds = 10
-batch_size = 100
-
-[maintenance.expired_work]
-interval_seconds = 2
-
-[maintenance.fleet_census]
-interval_seconds = 30
-
-[maintenance.setup_cleanup]
-interval_seconds = 10
-
-[maintenance.billing]
-interval_seconds = 5
-retry_oldest_after_seconds = 60
-max_drain_passes = 10
-
-[maintenance.durable_tasks]
-interval_seconds = 10
-pass_timeout_seconds = 30
-
-[maintenance.checkpoint_storage]
-interval_seconds = 300
-pass_timeout_seconds = 240
-
-[maintenance.outbound_delivery]
-interval_seconds = 30
-
-# Inline vendor sends per answer, the first included; once exhausted, a later
-# claim of the durable delivery retries it.
+# Inline vendor sends per answer, the first included; once exhausted, the
+# delivery is abandoned.
 [outbound.retries]
 max_attempts = 3
 initial_backoff_ms = 200

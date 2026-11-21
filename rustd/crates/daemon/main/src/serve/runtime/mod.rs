@@ -189,8 +189,7 @@ pub(super) async fn spawn_background(
             );
         }
     });
-    // The connector answer-delivery worker, beside the sweepers `serve`
-    // spawned just before this, and for the same reason. It claims from
+    // The connector answer-delivery worker. It claims from
     // Postgres and is pinged over the bus — see `crate::outbound`. It opens its
     // own grant store over the SAME key the plane seals with, which is why the
     // KEK arrives shared rather than rebuilt here.

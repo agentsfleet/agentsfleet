@@ -15,15 +15,13 @@ mod pings;
 mod plan;
 mod poster;
 
-use std::time::Duration;
-
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_db::test_util::mint_id;
 use afd_outbound::delivery::{self, Delivery};
 use tokio_util::sync::CancellationToken;
 
-use self::ledger::{DESTINATION, Lane, Ledger, POLL, sql, until};
+use self::ledger::{DESTINATION, Lane, Ledger, sql, until};
 use self::poster::Recorder;
 
 #[tokio::test(flavor = "multi_thread")]
@@ -38,8 +36,8 @@ async fn two_workers_keep_one_lane_in_order() {
     }
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let first = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
-    let second = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let first = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
+    let second = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     ledger.until_delivered(20).await;
     token.cancel();
@@ -66,7 +64,7 @@ async fn two_workers_keep_one_lane_in_order() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn failing_head_blocks_only_its_lane() {
+async fn a_failing_head_is_marked_failed_and_its_lane_moves_on() {
     let ledger = Ledger::create().await;
     let (a, b) = (ledger.lane().await, ledger.lane().await);
     let head = ledger.owe(&a, "a1").await;
@@ -76,18 +74,19 @@ async fn failing_head_blocks_only_its_lane() {
     }
     let poster = Recorder::failing(head.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
-    ledger.until_delivered(5).await;
+    ledger.until_delivered(6).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
     assert_eq!(poster.delivered_to(&b.workspace).len(), 5, "lane B drained");
-    assert!(
-        !poster.attempted().contains(&behind),
-        "A's second row is never claimed before its head"
+    assert!(ledger.row(&head).await.abandoned, "A's head is marked failed");
+    assert_eq!(
+        poster.delivered_to(&a.workspace),
+        vec![behind],
+        "A's second row is delivered once its head failed"
     );
-    assert!(poster.attempted().contains(&head), "A's head was tried");
     ledger.cleanup().await;
 }
 
@@ -129,40 +128,6 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     assert_eq!(ledger.delivered().await, 1, "one delivery in total");
     ledger.cleanup().await;
     Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn lost_ping_is_caught_by_the_claim_pass() {
-    let metrics = af_observability::test_util::Capture::install();
-    let scans = || metrics.sum("agentsfleet_outbound_claims_total", &[("via", "scan")]);
-    let ledger = Ledger::create().await;
-    let lane = ledger.lane().await;
-    let poster = Recorder::default();
-    let token = CancellationToken::new();
-    let worker = tokio::spawn(
-        ledger
-            .worker(&poster, Duration::from_millis(200))
-            .await
-            .run(token.clone()),
-    );
-    // Let the worker's opening claim find nothing before the row exists.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    let before = scans();
-
-    let event = ledger.owe(&lane, "unpinged").await;
-    ledger.until_delivered(1).await;
-    token.cancel();
-    worker.await.expect("the worker stops");
-
-    assert_eq!(poster.delivered_to(&lane.workspace), vec![event]);
-    // At least one: the capture is process-wide and sibling tests also scan,
-    // but none of them pings, so any rise here is a pass.
-    assert!(
-        scans() - before >= 1,
-        "the pass, not a ping, claimed the row"
-    );
-    ledger.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

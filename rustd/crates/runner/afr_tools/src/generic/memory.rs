@@ -10,19 +10,17 @@
 
 use std::borrow::Cow;
 
-use af_wire::memory::{MemoryDelta, PINNED_CATEGORY, RECALL_LIMIT_MAX, Visibility};
+use af_wire::memory::{MemoryDelta, PINNED_CATEGORY, Visibility};
 use afr_memory::{Forgotten, Loaded, MemoryRecovery, Recalled};
 use guffbolt::tools::code;
 use guffbolt::tools::memory::{
-    CORE_CATEGORY, Forgot, Memory, MemoryFuture, MemoryRefused, MemoryStore,
-    RECALL_LIMIT_MAX as HARNESS_RECALL_LIMIT_MAX, Reach, Remembered,
+    CORE_CATEGORY, Forgot, Memory, MemoryFuture, MemoryRefused, MemoryStore, Reach, Remembered,
 };
 use tokio::sync::Mutex;
 
-// A recall is capped by the harness's figure, which must be the wire's. The
-// default category needs no such check: a store under the harness's default
-// is kept under the wire's pinned one by name, below.
-const _: () = assert!(HARNESS_RECALL_LIMIT_MAX == RECALL_LIMIT_MAX);
+// The default category needs no figure checked against the wire's: a store
+// under the harness's default is kept under the wire's pinned one by name,
+// below.
 
 /// One run's memory: what the memory tools are built over, and what the
 /// supervisor pushes before the report.

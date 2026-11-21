@@ -2,7 +2,7 @@
 //! which says what happened. Each sentence is client-visible.
 
 /// The sentence an out-of-bounds host identifier earns.
-pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
+pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-2676 chars";
 
 /// The sentence a malformed registry allowlist earns.
 pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";

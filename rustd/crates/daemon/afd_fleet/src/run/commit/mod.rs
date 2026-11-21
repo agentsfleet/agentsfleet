@@ -29,6 +29,7 @@ use crate::run::unanswered;
 use crate::run::usage::Pricing;
 use crate::run::verdict::Terminal;
 
+mod question;
 mod steps;
 
 use self::steps::{Step, apply_notice, next_step, release, warn_unknown_reply};
@@ -263,6 +264,19 @@ impl Runs {
         }
         if settled.owed.is_none() {
             warn_unknown_reply(report.run, settled.reply_provider.as_deref());
+        }
+        let mut settled = settled;
+        if report.outcome.verdict.waiting()
+            && let Some(closed) = settled.closed.as_mut()
+        {
+            self.raise_question(
+                &mut transaction,
+                report.run,
+                report.outcome.response_text,
+                report.now,
+            )
+            .await?;
+            closed.pending_approvals = closed.pending_approvals.saturating_add(1);
         }
         let succeeded = report.outcome.verdict.succeeded();
         // A failed or stopped run's folds settle nothing: each message stays

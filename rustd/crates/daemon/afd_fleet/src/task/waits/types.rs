@@ -40,14 +40,3 @@ pub struct VerifiedCompletion {
     #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub run_attempt: u32,
 }
-
-/// Bounded maintenance result; identities stay in traces, never metric labels.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct WaitMaintenance {
-    /// Native status observations attempted.
-    pub checked: u32,
-    /// One current wait consumed through an ordinary turn.
-    pub woken: u32,
-    /// Reads deferred or refused without an agent or model call.
-    pub deferred: u32,
-}

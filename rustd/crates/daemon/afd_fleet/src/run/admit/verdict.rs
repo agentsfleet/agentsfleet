@@ -32,9 +32,6 @@ impl Admission {
             Verdict::Refuse(Refused::Denied) => Some(Self::Refuse(Refusal::labelled(
                 af_core::turn::label::APPROVAL_DENIED,
             ))),
-            Verdict::Refuse(Refused::Expired) => Some(Self::Refuse(Refusal::labelled(
-                af_core::turn::label::APPROVAL_EXPIRED,
-            ))),
             Verdict::Archived => Some(Self::Refuse(Refusal::labelled(
                 af_core::turn::label::FLEET_ARCHIVED,
             ))),
@@ -50,13 +47,12 @@ mod tests {
 
     /// Every verdict the gate can answer, so the table below is walked in full
     /// rather than sampled — a new arm shows up here as a missing row.
-    const EVERY_VERDICT: [Verdict; 8] = [
+    const EVERY_VERDICT: [Verdict; 7] = [
         Verdict::Pass,
         Verdict::Await(Waiting::Parked),
         Verdict::Await(Waiting::Pending),
         Verdict::Await(Waiting::Unreadable),
         Verdict::Refuse(Refused::Denied),
-        Verdict::Refuse(Refused::Expired),
         Verdict::Archived,
         Verdict::Unavailable,
     ];
@@ -75,8 +71,9 @@ mod tests {
     #[test]
     fn only_a_terminal_answer_ends_the_event() {
         // A terminal row is a one-way door, so which verdicts write one is the
-        // sharpest question in this mapping. Three do: a human's refusal, a
-        // lapse, and an archived fleet that will never run the event.
+        // sharpest question in this mapping. Two do: a human's refusal and an
+        // archived fleet that will never run the event. A lapsed deadline
+        // writes none: the event waits for a late answer.
         let ends: Vec<_> = EVERY_VERDICT
             .into_iter()
             .filter(|verdict| matches!(Admission::of_gate(*verdict), Some(Admission::Refuse(_))))
@@ -84,11 +81,7 @@ mod tests {
 
         assert_eq!(
             ends,
-            vec![
-                Verdict::Refuse(Refused::Denied),
-                Verdict::Refuse(Refused::Expired),
-                Verdict::Archived
-            ]
+            vec![Verdict::Refuse(Refused::Denied), Verdict::Archived]
         );
     }
 
@@ -100,12 +93,6 @@ mod tests {
             Admission::of_gate(Verdict::Refuse(Refused::Denied)),
             Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
                 af_core::turn::label::APPROVAL_DENIED
-            )))
-        );
-        assert_eq!(
-            Admission::of_gate(Verdict::Refuse(Refused::Expired)),
-            Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::turn::label::APPROVAL_EXPIRED
             )))
         );
     }

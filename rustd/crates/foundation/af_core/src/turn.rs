@@ -69,6 +69,11 @@ pub mod status {
     /// cancelled and leaves it so: the turn gets no answer (`commit_report.sql`
     /// closes only a [`RECEIVED`] turn).
     pub const CANCELLED: &str = "cancelled";
+
+    /// The status a run that asked the person a question settles its turn
+    /// in: the turn's answer is the question, a `question` gate waits on the
+    /// person, and the answer continues the work in a new turn.
+    pub const WAITING: &str = "waiting";
 }
 
 /// Why the daemon ended an event itself, as `thread.turns.failure_reason`: a
@@ -95,9 +100,6 @@ pub mod label {
 
     /// A human refused the action.
     pub const APPROVAL_DENIED: &str = "approval_denied";
-
-    /// A human was asked and the deadline passed.
-    pub const APPROVAL_EXPIRED: &str = "approval_expired";
 
     /// The event tripped an anomaly rule and its fleet was archived.
     ///

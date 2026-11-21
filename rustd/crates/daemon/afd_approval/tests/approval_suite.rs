@@ -14,10 +14,9 @@
 //! suite went red on it three runs running.
 //!
 //! What makes it safe is `docs/architecture/testing.md` rules ISO-1 to ISO-3, and those
-//! hold at any binary count: every test mints its own workspace and fleet, and
-//! the tests that meet the global sweeper take `lane::sweeper_exclusive`. Both
-//! tests in one file already ran concurrently, so neither this file nor its
-//! absence ever changed that.
+//! hold at any binary count: every test mints its own workspace and fleet.
+//! Both tests in one file already ran concurrently, so neither this file nor
+//! its absence ever changed that.
 
 #[path = "support/tail_watch.rs"]
 #[allow(
@@ -54,8 +53,8 @@ mod integration_inbox_paging;
 mod integration_inbox_resolved_once;
 #[path = "integration_inbox_resolved_once_race.rs"]
 mod integration_inbox_resolved_once_race;
-#[path = "integration_inbox_sweep_decode.rs"]
-mod integration_inbox_sweep_decode;
+#[path = "integration_inbox_late.rs"]
+mod integration_inbox_late;
 #[path = "integration_inbox_tail.rs"]
 mod integration_inbox_tail;
 #[path = "integration_inbox_tail_continuation.rs"]

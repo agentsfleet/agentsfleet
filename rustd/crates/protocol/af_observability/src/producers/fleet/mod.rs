@@ -1,11 +1,10 @@
-//! What the runner plane, the sweepers and the account paths record.
+//! What the runner plane and the account paths record.
 //!
 //! The handles are claimed here and the recording functions are split by the
 //! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, run-poll
 //! and readiness paths — each of which is one or two call sites.
 
 pub mod cache;
-pub mod census;
 pub mod fold;
 pub mod history;
 pub mod hold;
@@ -18,9 +17,8 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
-use crate::metrics::instrument::{Instruments, Reading};
+use crate::metrics::instrument::Instruments;
 use crate::metrics::label::fleet::{DeliveryStage, ReadyWake, RunStart, SignupFailure};
-use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
 use crate::semconv;
@@ -32,29 +30,7 @@ use crate::semconv;
 /// difference rather than for the failure.
 pub(super) const UNMODELLED_REASON: &str = "unknown";
 
-/// Unsettled fleet turns counted by the fleet census.
-static TURN_BACKLOG: Observed = Observed::new();
-
-/// How long the oldest of them had waited, in seconds.
-static TURN_BACKLOG_OLDEST: Observed = Observed::new();
-
-/// Publishes the unsettled backlog counted by a completed census pass.
-///
-/// Both readings together, because they describe one backlog: rows without
-/// an age cannot say whether the sweeper is keeping up. An empty backlog
-/// publishes zero rows and zero age, which is a measurement, not a gap.
-pub fn turn_backlog_observed(rows: u64, oldest_age_seconds: u64) {
-    TURN_BACKLOG.publish(rows);
-    TURN_BACKLOG_OLDEST.publish(oldest_age_seconds);
-}
-
-/// Withdraw a failed census reading rather than publishing an invented zero.
-pub fn turn_backlog_withdrawn() {
-    TURN_BACKLOG.withdraw();
-    TURN_BACKLOG_OLDEST.withdraw();
-}
-
-/// The instruments the runner plane and the sweepers record through.
+/// The instruments the runner plane records through.
 #[derive(Debug)]
 pub struct Handles {
     stream: runner::stream::Handles,
@@ -132,21 +108,13 @@ impl Handles {
 
     /// Registers every gauge this domain observes, after the counters above.
     ///
-    /// The backlog gauges read a snapshot cell their publisher writes; the two
-    /// runner gauges read the same bounded table the counters admit runners
-    /// into, so each takes its own handle on `runners`.
+    /// The two runner gauges read the same bounded table the counters admit
+    /// runners into, so each takes its own handle on `runners`.
     ///
     /// # Errors
     ///
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     fn observe_gauges(instruments: &Instruments, runners: &Arc<RunnerMetrics>) -> Result<()> {
-        instruments.gauge_u64(&declared::FLEETS, census::fleet_census_readings)?;
-        instruments.gauge_u64(&declared::TURN_BACKLOG, unlabelled(&TURN_BACKLOG))?;
-        instruments.gauge_u64(
-            &declared::TURN_BACKLOG_OLDEST_AGE_SECONDS,
-            unlabelled(&TURN_BACKLOG_OLDEST),
-        )?;
-
         let seen = Arc::clone(runners);
         instruments.gauge_u64(&declared::RUNNER_LAST_SEEN_SECONDS, move || {
             seen.last_seen_readings()
@@ -158,12 +126,6 @@ impl Handles {
         })?;
         Ok(())
     }
-}
-
-/// The collection callback for one snapshot cell: its reading, unlabelled, or
-/// nothing when no publisher has vouched for one.
-fn unlabelled(cell: &'static Observed) -> impl Fn() -> Vec<Reading> + Send + Sync + 'static {
-    move || cell.load().into_iter().map(Reading::unlabelled).collect()
 }
 
 /// Records an account opened from a verified signup delivery.

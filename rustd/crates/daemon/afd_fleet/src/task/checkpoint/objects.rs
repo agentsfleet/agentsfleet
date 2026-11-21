@@ -162,7 +162,6 @@ async fn reserve(
     let reserved = sqlx::query(super::QUOTA_RESERVE)
         .bind(&plan.workspace_id)
         .bind(new_bytes)
-        .bind(super::WORKSPACE_BYTES)
         .execute(&mut *connection)
         .await
         .map_err(query("reserve unique private storage bytes"))?;

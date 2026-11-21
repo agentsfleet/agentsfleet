@@ -13,7 +13,7 @@ use af_core::id::Uuid7;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_turns::{Budgets, Turns};
 
-use crate::lane::{Lane, Window, sweeper_exclusive};
+use crate::lane::{Lane, Window};
 
 /// Who answers, when a test needs an operator.
 const OPERATOR: &str = "human:fixture";
@@ -161,17 +161,11 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 /// desk, and a person approves it at 14:00 — three hours after the window
 /// closed. That approval lands, and the run it blocked continues.
 ///
-/// # This test exists to stop a well-meaning sweeper from breaking it
+/// # Nothing sweeps a gate
 ///
-/// `Inbox::expire` flips `pending` → `timed_out`, and this daemon spawns no
-/// sweeper that calls it: it has no production caller. That gap reads like an
-/// omission, and the obvious "fix" is to wire a sweeper — which would take the
-/// 10:00 gate at 11:00 and make the 14:00 approval answer `AlreadyResolved`
-/// instead of resuming anything.
-///
-/// So the absence is load-bearing for as long as a human is the approver, and
-/// this is the test that says so. Wiring a sweeper is a PRODUCT decision about
-/// whether an unanswered approval should lapse, and it fails here first.
+/// A sweep would take the 10:00 gate at 11:00 and make the 14:00 approval
+/// answer `AlreadyResolved` instead of resuming anything. A read reports
+/// `timed_out` past the deadline and the gate stays answerable (`M253_003` §2).
 ///
 /// # The late-answer inconsistency this used to name is gone
 ///
@@ -184,8 +178,6 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
-    // this gate is past its window, so a sibling's sweep would take it.
-    let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
 
     // The deadline passed an hour ago on the database's clock — the clock a

@@ -31,9 +31,7 @@
 )]
 
 use af_validate::TEXT_MAX_CHARS;
-use af_wire::runner::{
-    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SelftestCheck, SelftestReport,
-};
+use af_wire::runner::{SelftestCheck, SelftestReport};
 use af_wire::turn::{OPERATION_ID_MAX_BYTES, SteerRequest};
 use garde::Validate as _;
 
@@ -188,10 +186,8 @@ fn a_mutation_that_parses_is_still_held_to_its_bounds() {
         let probe = mutate(&mut rng, source);
 
         if let Ok(check) = serde_json::from_slice::<SelftestCheck<'_>>(&probe) {
-            let within = check.name.len() <= CHECK_NAME_MAX_BYTES
-                && !check.name.is_empty()
-                && check.detail.len() <= CHECK_DETAIL_MAX_BYTES
-                && !check.detail.is_empty();
+            let within = (1..=TEXT_MAX_CHARS).contains(&check.name.chars().count())
+                && (1..=TEXT_MAX_CHARS).contains(&check.detail.chars().count());
             assert_eq!(
                 check.validate().is_ok(),
                 within,

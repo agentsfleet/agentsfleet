@@ -13,7 +13,7 @@ const PAST_FIVE_MINUTES: Duration = Duration::from_mins(6);
 
 // Value: protects=a setup run renews past five minutes; fails_when=a setup run
 // is refused or clamped at an age again; why_new=the 300-second setup runtime is
-// gone (M253_003 §8); seam=the production draft assignment and renewal over live
+// gone (`M253_003` §8); seam=the production draft assignment and renewal over live
 // Postgres, the run's start aged; no_claim=the funds gate, which
 // `a_setup_run_on_an_empty_wallet_is_refused` covers.
 #[tokio::test]

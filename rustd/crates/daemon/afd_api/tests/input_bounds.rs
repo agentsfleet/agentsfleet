@@ -38,8 +38,9 @@ const INVALID_REQUEST: &str = "UZ-REQ-001";
 /// The code a catalogue filter over its bound answers.
 const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = "UZ-LIBRARY-003";
 
-/// The longest memory key, in decoded bytes.
-const MAX_KEY_LEN: usize = 255;
+/// The longest memory key, in decoded bytes: what one btree index row of
+/// `memory.entries` holds beside its `uuid` and `timestamptz`.
+const MAX_KEY_LEN: usize = 2668;
 
 /// The longest event identifier a path may name.
 const TURN_ID_MAX_LEN: usize = 256;
@@ -91,7 +92,7 @@ fn fleet_path(rest: &str) -> String {
 
 #[tokio::test]
 async fn test_path_segments_are_bounded_on_their_path_type() {
-    // The memory key is measured DECODED: 256 bytes of key, whatever the URL.
+    // The memory key is measured DECODED: one byte past its bound, whatever the URL.
     let key = "k".repeat(MAX_KEY_LEN + 1);
     assert_refused(
         Method::DELETE,

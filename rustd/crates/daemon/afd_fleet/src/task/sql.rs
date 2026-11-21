@@ -17,7 +17,6 @@ pub(super) const RUN_SCOPE: &str = include_str!("sql/run_scope.sql");
 pub(super) const LOCK_SCOPE: &str = include_str!("sql/lock_scope.sql");
 pub(super) const LOCK_ISSUE_SCOPE: &str = include_str!("sql/lock_issue_scope.sql");
 pub(super) const LOCK_WORKSPACE: &str = include_str!("checkpoint/sql/lock_workspace.sql");
-pub(super) const COLLECT_COMPLETIONS: &str = include_str!("waits/sql/collect_completions.sql");
 pub(super) const LOCK_SCOPE_THREAD: &str = include_str!("sql/lock_scope_thread.sql");
 
 pub(super) const BIND_TURN: &str = include_str!("sql/bind_turn.sql");

@@ -5,6 +5,9 @@ use af_core::error_code::{Coded as _, Logged};
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use tokio_util::sync::CancellationToken;
 
+/// The longest wait between two subscription repairs.
+const REPAIR_BACKOFF_MAX: std::time::Duration = std::time::Duration::from_secs(5);
+
 pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
     let wake = &gateway.inner.dependencies.wake;
     let mut retry = std::time::Duration::from_millis(100);
@@ -35,7 +38,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             }
             Err(source) => timed_out(source),
         }
-        // One outage transition requests one pass. The independent probe covers the outage.
+        // One outage transition requests one pass.
         if !lost {
             wake.recheck();
             lost = true;
@@ -45,10 +48,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
             () = stop.cancelled() => return Ok(()),
             () = tokio::time::sleep(retry) => {}
         }
-        // Use the configured probe cadence as the subscription-repair backoff ceiling too.
-        retry = retry
-            .saturating_mul(2)
-            .min(gateway.inner.dependencies.recovery.assign_fallback);
+        retry = retry.saturating_mul(2).min(REPAIR_BACKOFF_MAX);
     }
 }
 

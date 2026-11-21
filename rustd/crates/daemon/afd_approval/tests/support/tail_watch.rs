@@ -20,9 +20,6 @@ pub(crate) const OPERATOR: &str = "human:fixture";
 /// The note an operator leaves.
 pub(crate) const NOTE: &str = "looks right";
 
-/// The resolver a swept gate records, mirrored from the store.
-pub(crate) const SWEEPER: &str = "system:approval_gate_sweeper";
-
 /// The actor prefix a continuation is recorded under.
 ///
 /// Mirrored from `afd_approval::inbox`, which keeps it private. A fixture

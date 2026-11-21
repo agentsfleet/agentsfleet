@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -16,15 +17,6 @@ pub use task::{
     TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
     TaskActivityRecord, TaskTransferBytes,
 };
-
-/// The longest call identity a tool frame may carry.
-///
-/// A runner's own counter needs a few bytes. The bound leaves room for a
-/// provider's call id, should a runner forward one, and keeps one frame from
-/// deciding how much of every subscriber's buffer an identity takes. The three
-/// `call_id` descriptions spell this number out, because they are published
-/// and a constant's name means nothing to a runner's author.
-pub const CALL_ID_MAX_BYTES: usize = 64;
 
 /// A tool call started. `args_redacted` contains JSON text with secret values masked, never
 /// the resolved secrets.
@@ -40,10 +32,10 @@ pub struct ToolCallStarted<'a> {
     #[serde(borrow)]
     #[garde(skip)]
     pub args_redacted: Cow<'a, str>,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
 }
 
@@ -95,10 +87,10 @@ pub struct ToolCallCompleted<'a> {
     /// How long it took, in milliseconds.
     #[garde(skip)]
     pub ms: i64,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
     /// How the call ended.
     #[garde(skip)]
@@ -141,10 +133,10 @@ pub struct ToolCallProgress<'a> {
     /// How long it has been running, in milliseconds.
     #[garde(skip)]
     pub elapsed_ms: i64,
-    /// Which call of the run this frame belongs to, 1 to 64 bytes: every frame
+    /// Which call of the run this frame belongs to, never empty: every frame
     /// of one call carries the same value.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CALL_ID_MAX_BYTES))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
     pub call_id: Cow<'a, str>,
 }
 
@@ -219,7 +211,7 @@ impl ActivityFrame<'_> {
     }
 
     /// Whether the call this frame names, if any, is 1 to
-    /// [`CALL_ID_MAX_BYTES`] bytes: the one bound the frame types declare.
+    /// [`TEXT_MAX_CHARS`] characters: the one bound the frame types declare.
     #[must_use]
     pub fn call_id_usable(&self) -> bool {
         self.validate().is_ok()

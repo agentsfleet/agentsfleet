@@ -99,9 +99,7 @@ async fn commit_on(
 ) -> Result<(Written, Option<Payload>)> {
     let mut transaction = transaction::begin(connection).await?;
     // Match lifecycle lock order, including when either live parent is gone.
-    super::locks::Mode::Wait
-        .parents(&mut transaction, call)
-        .await?;
+    super::locks::parents(&mut transaction, call).await?;
     let call = owned(&mut transaction, task_run, &call.id).await?;
     let plan = account::classify(&call, receipt, digest)?;
     let written = Recording {

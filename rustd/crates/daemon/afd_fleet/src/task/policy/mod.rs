@@ -1,4 +1,4 @@
-//! Admission policy can narrow protocol ceilings without invalidating saved work.
+//! Admission policy a deployment configures; unset, a knob limits nothing.
 
 mod defaults;
 mod interpretation;
@@ -6,7 +6,7 @@ mod interpretation;
 pub use defaults::TaskDefaults;
 
 use af_fleet_runtime::config::decision::{MAX_COMPLETION_STATEMENTS, MAX_QUESTION_TEXT_BYTES};
-use af_wire::task::{self, TaskLimits};
+use af_wire::task::TaskLimits;
 use garde::Validate;
 use serde::Deserialize;
 
@@ -15,19 +15,19 @@ use serde::Deserialize;
 #[serde(default, deny_unknown_fields)]
 pub struct TaskSettings {
     /// Concurrent unfinished objectives admitted per fleet.
-    #[garde(range(min = 1, max = task::UNFINISHED_MAX))]
+    #[garde(range(min = 1))]
     pub max_unfinished_per_fleet: u32,
     /// Accepted inputs recovered beyond the saved incorporation cursor per read.
-    #[garde(range(min = 1, max = task::INPUT_BATCH_MAX))]
+    #[garde(range(min = 1))]
     pub max_inputs_per_safe_boundary: usize,
     /// Complete immutable actions accepted from one human message.
-    #[garde(range(min = 1, max = task::ITEMS_MAX))]
+    #[garde(range(min = 1))]
     pub max_actions_per_message: usize,
     /// Original source bytes retained as one new objective.
-    #[garde(range(min = 1, max = task::OBJECTIVE_MAX_BYTES))]
+    #[garde(range(min = 1))]
     pub max_objective_bytes: usize,
     /// UTF-8 bytes in a new interpretation's compact label.
-    #[garde(range(min = 1, max = task::TITLE_MAX_BYTES))]
+    #[garde(range(min = 1))]
     pub max_title_bytes: usize,
     /// Completion statements frozen with a new objective's accepted setup.
     #[garde(range(min = 1, max = MAX_COMPLETION_STATEMENTS))]
@@ -36,7 +36,7 @@ pub struct TaskSettings {
     #[garde(range(min = 1, max = MAX_QUESTION_TEXT_BYTES))]
     pub max_question_text_bytes: usize,
     /// Bytes in the authored question and its criteria together.
-    #[garde(range(min = 1, max = task::QUESTION_MAX_BYTES))]
+    #[garde(range(min = 1))]
     pub max_authored_question_bytes: usize,
     /// Allowances saved on new objectives only.
     #[garde(dive)]
@@ -46,14 +46,14 @@ pub struct TaskSettings {
 impl Default for TaskSettings {
     fn default() -> Self {
         Self {
-            max_unfinished_per_fleet: task::UNFINISHED_MAX,
-            max_inputs_per_safe_boundary: task::INPUT_BATCH_MAX,
-            max_actions_per_message: task::ITEMS_MAX,
-            max_objective_bytes: task::OBJECTIVE_MAX_BYTES,
-            max_title_bytes: task::TITLE_MAX_BYTES,
+            max_unfinished_per_fleet: u32::MAX,
+            max_inputs_per_safe_boundary: usize::MAX,
+            max_actions_per_message: usize::MAX,
+            max_objective_bytes: usize::MAX,
+            max_title_bytes: usize::MAX,
             max_completion_questions: MAX_COMPLETION_STATEMENTS,
             max_question_text_bytes: MAX_QUESTION_TEXT_BYTES,
-            max_authored_question_bytes: task::QUESTION_MAX_BYTES,
+            max_authored_question_bytes: usize::MAX,
             defaults: TaskDefaults::default(),
         }
     }

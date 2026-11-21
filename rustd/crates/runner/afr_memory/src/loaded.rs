@@ -9,7 +9,8 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use af_wire::memory::{MAX_KEY_LEN, MAX_PUSH_BYTES, MemoryDelta};
+use af_wire::memory::{INDEXED_TEXT_MAX_BYTES, MemoryDelta};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use aho_corasick::AhoCorasick;
 use garde::Validate as _;
 
@@ -19,6 +20,19 @@ use crate::{Forgotten, MemoryRecovery};
 
 /// A recall asked `agentsfleetd` past the window and could not get an answer.
 const EVENT_MISS_FAILED: &str = "memory_recall_miss_failed";
+
+/// A push's fields beside its entries, at their widest: a 36-character run id
+/// and a `u64` fencing token of 20 digits.
+const PUSH_ENVELOPE_BYTES: usize = r#"{"run_id":"","fencing_token":,"memory":[]}"#.len() + 36 + 20;
+
+/// What the entries of one push may take: the runner frame its route accepts
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`), less the push's other fields.
+pub(crate) const PUSH_BUDGET_BYTES: usize = MESSAGE_BYTES_MAX - PUSH_ENVELOPE_BYTES;
+
+/// What `delta` charges against one push: its JSON, and the comma after it.
+pub(crate) fn push_bytes(delta: &MemoryDelta<'_>) -> usize {
+    serde_json::to_string(delta).map_or(usize::MAX, |json| json.len() + 1)
+}
 
 /// One remembered entry, and whether the push still has to carry it.
 #[derive(Debug)]
@@ -34,8 +48,8 @@ pub struct Loaded<'run> {
     entries: Vec<Entry<'run>>,
     /// What `agentsfleetd` loaded beside them, read and never written.
     seed: Seed<'run>,
-    /// What the pending entries charge against one push, kept as they come
-    /// and go so a store never re-sums them.
+    /// What the pending entries charge against one push, as [`push_bytes`]
+    /// counts them, kept as they come and go so a store never re-sums them.
     pending_bytes: usize,
     /// Keys this run stored or forgot. `agentsfleetd`'s copy under each is
     /// stale or forgotten, so an ask past the window never brings one back.
@@ -112,13 +126,13 @@ impl<'run> Loaded<'run> {
             if delta.visibility.is_workspace() && !seed.publish {
                 return Err(error::not_granted());
             }
-            memory.pending_bytes += delta.bytes();
+            memory.pending_bytes = memory.pending_bytes.saturating_add(push_bytes(&delta));
             memory.entries.push(Entry {
                 delta,
                 pending: true,
             });
         }
-        if memory.pending_bytes > MAX_PUSH_BYTES {
+        if memory.pending_bytes > PUSH_BUDGET_BYTES {
             return Err(error::full(memory.pending_bytes));
         }
         memory.misses.store(saved.misses, Ordering::Relaxed);
@@ -133,7 +147,9 @@ impl<'run> Loaded<'run> {
             .position(|entry| entry.delta.key == key)?;
         let removed = self.entries.remove(at);
         if removed.pending {
-            self.pending_bytes = self.pending_bytes.saturating_sub(removed.delta.bytes());
+            self.pending_bytes = self
+                .pending_bytes
+                .saturating_sub(push_bytes(&removed.delta));
         }
         Some(removed)
     }
@@ -225,9 +241,12 @@ impl Loaded<'_> {
             .entries
             .iter()
             .find(|kept| kept.pending && kept.delta.key == entry.key)
-            .map_or(0, |kept| kept.delta.bytes());
-        let needed = self.pending_bytes.saturating_sub(replaced) + entry.bytes();
-        if needed > MAX_PUSH_BYTES {
+            .map_or(0, |kept| push_bytes(&kept.delta));
+        let needed = self
+            .pending_bytes
+            .saturating_sub(replaced)
+            .saturating_add(push_bytes(&entry));
+        if needed > PUSH_BUDGET_BYTES {
             return Err(error::full(needed));
         }
         self.remove(&entry.key);
@@ -281,7 +300,7 @@ impl Loaded<'_> {
     pub fn forget(&mut self, key: &str) -> Forgotten {
         // A key past the wire bound was never stored, because the daemon
         // refuses one, so there is no durable copy to hide and nothing to hold.
-        if key.len() > MAX_KEY_LEN {
+        if key.len() > INDEXED_TEXT_MAX_BYTES {
             return Forgotten::Unknown;
         }
         // Recorded even when the window held nothing under the key: the

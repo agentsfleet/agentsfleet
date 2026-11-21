@@ -139,24 +139,6 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
 }
 
 #[test]
-fn oversized_history_is_refused_before_a_native_plan_can_be_allocated() -> crate::Result<()> {
-    let result = Catalog::build(
-        None,
-        Zeroizing::new(vec![0; 64 * 1024 * 1024 + 1]),
-        vec![],
-        &tokio_util::sync::CancellationToken::new(),
-    );
-    let Err(failure) = result else {
-        return Err(crate::error::config("oversized history was accepted"));
-    };
-    assert!(
-        matches!(failure.kind(), crate::error::ErrorKind::CaptureLimit { detail }
-        if *detail == "checkpoint history exceeds its bound")
-    );
-    Ok(())
-}
-
-#[test]
 fn chunk_diagnostics_never_include_the_private_history_buffer() -> crate::Result<()> {
     let private = b"private accepted repair history";
     let catalog = Catalog::build(

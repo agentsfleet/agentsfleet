@@ -10,7 +10,6 @@ use super::stood::leaves_delivery_parked;
 fn an_ended_run_or_a_runless_gate_leaves_its_delivery_parked() {
     let run = Some("019feca5-bc9b-72e8-b71f-e2714f6b0122");
     assert!(leaves_delivery_parked(status::DENIED, run));
-    assert!(leaves_delivery_parked(status::TIMED_OUT, run));
     assert!(leaves_delivery_parked(status::APPROVED, None));
     assert!(leaves_delivery_parked(status::DENIED, None));
 }
@@ -21,5 +20,6 @@ fn an_ended_run_or_a_runless_gate_leaves_its_delivery_parked() {
 fn an_approved_run_leaves_nothing_parked() {
     let run = Some("019feca5-bc9b-72e8-b71f-e2714f6b0122");
     assert!(!leaves_delivery_parked(status::APPROVED, run));
+    assert!(!leaves_delivery_parked(status::ANSWERED, run));
     assert!(!leaves_delivery_parked(status::PENDING, run));
 }

@@ -145,10 +145,8 @@ impl RunService {
         let Captured {
             stored,
             skipped,
-            truncated,
             unpublished,
             swept,
-            evicted,
         } = counted;
         {
             let (fleet_id, event, message) = (
@@ -161,10 +159,8 @@ impl RunService {
                 fleet_id,
                 stored,
                 skipped,
-                truncated,
                 unpublished,
                 swept,
-                evicted,
                 event
             );
         };

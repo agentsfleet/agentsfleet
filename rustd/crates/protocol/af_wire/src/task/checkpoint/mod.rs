@@ -21,8 +21,6 @@ pub const CHECKPOINT_FORMAT: u32 = 1;
 pub const CHECKPOINT_OBJECT_BYTES: u64 = 8 * 1024 * 1024;
 /// Maximum bytes in a complete serialized page.
 pub const CHECKPOINT_PAGE_BYTES: usize = 1024 * 1024;
-/// Maximum pages in the complete logical manifest.
-pub const CHECKPOINT_PAGES: u32 = 64;
 /// Maximum objects registered or authorized in one request.
 pub const CHECKPOINT_BATCH: usize = 256;
 

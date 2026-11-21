@@ -26,13 +26,13 @@ fn published() -> Value {
     serde_json::to_value(<Request as PartialSchema>::schema()).expect("a schema serializes")
 }
 
-/// The published `maxItems` on one of the request's lists.
-fn published_cap(schema: &Value, key: &str) -> usize {
-    schema
-        .pointer(&format!("/properties/{key}/maxItems"))
-        .and_then(Value::as_u64)
-        .and_then(|cap| usize::try_from(cap).ok())
-        .unwrap_or_else(|| panic!("`{key}` publishes no maxItems"))
+/// The published `maxItems` on one of the request's lists; none when the
+/// list is not capped.
+fn published_cap(schema: &Value, key: &str) -> Option<usize> {
+    let cap = schema
+        .pointer(&format!("/properties/{key}/maxItems"))?
+        .as_u64()?;
+    usize::try_from(cap).ok()
 }
 
 /// What the parser, the validator and the schema each say about one body.
@@ -52,7 +52,7 @@ fn verdicts(key: &str, entry: &Value, count: usize) -> Verdicts {
     };
     Verdicts {
         validator: batch.validate().is_ok(),
-        schema: count <= published_cap(&published(), key),
+        schema: published_cap(&published(), key).is_none_or(|cap| count <= cap),
     }
 }
 

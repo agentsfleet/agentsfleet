@@ -1,4 +1,4 @@
-//! Notifications schedule assignments. A separate, replica-wide recovery probe covers lost notifications.
+//! Notifications schedule assignments; no timer probes for work a lost notification left waiting.
 
 mod recovery;
 mod subscriptions;
@@ -13,12 +13,11 @@ use afd_bus::wake::Wake;
 use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-/// Subscription repair, notification handling and recovery keep independent progress.
+/// Subscription repair and notification handling keep independent progress.
 pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
     let _cancel_on_exit = stop.clone().drop_guard();
     tokio::try_join!(
         subscriptions::run(gateway.clone(), stop.clone()),
-        recovery::run(gateway.clone(), stop.clone()),
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,

@@ -204,38 +204,6 @@ closed_set! {
 }
 
 closed_set! {
-    /// Where a fleet stands in its life, as the census counts it.
-    ///
-    /// The spellings are `fleet.fleets.status`'s, byte for byte, and the set
-    /// mirrors the lifecycle crate's own status enum — that crate depends on
-    /// this one, so the two cannot share a type, and a test over there holds
-    /// them equal member for member instead.
-    FleetStatusLabel {
-        /// The row exists; setup checks have not activated the fleet.
-        Installing => "installing",
-        /// Leasable. The only status the runner's candidate query admits.
-        Active => "active",
-        /// Terminal: archived by an operator or by the platform gate.
-        Archived => "archived",
-    }
-}
-
-impl FleetStatusLabel {
-    /// The member a stored spelling names, if this build models it.
-    ///
-    /// `None` rather than a default: a row holding a status this build does
-    /// not know is dropped from the census and reported, never counted under
-    /// a member it is not.
-    #[must_use]
-    pub fn from_spelling(raw: &str) -> Option<Self> {
-        Self::ALL
-            .iter()
-            .copied()
-            .find(|status| status.as_str() == raw)
-    }
-}
-
-closed_set! {
     /// One measured boundary between event creation, the run, the first
     /// streamed chunk, the report and the event's completion.
     DeliveryStage {

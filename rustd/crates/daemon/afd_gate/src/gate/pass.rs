@@ -72,13 +72,12 @@ impl Waiting {
     }
 }
 
-/// Why the pass ended the event.
+/// Why the pass ended the event. A lapsed deadline is not one: an unanswered
+/// gate stays answerable, and its event waits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refused {
     /// A human said no.
     Denied,
-    /// The deadline passed with no answer.
-    Expired,
 }
 
 /// What the gate pass decided about one event.
@@ -89,7 +88,7 @@ pub enum Verdict {
     /// A human owes an answer. Answer no-work and write nothing — the delivery
     /// stays leasable and the next poll re-reads the recorded gate.
     Await(Waiting),
-    /// End the event; a human refused it or the question lapsed.
+    /// End the event; a human refused it.
     Refuse(Refused),
     /// The fleet ran away: one action repeated past an anomaly threshold, and
     /// the fleet is archived. Archive is terminal, so the event that tripped
@@ -125,8 +124,7 @@ impl Gates {
     /// note gives: every fault reachable here has one correct response, and the
     /// caller has no decision left to make about it.
     ///
-    /// `now` mints the identifiers a first encounter's card is written under;
-    /// whether a recorded gate has lapsed is the database's call.
+    /// `now` mints the identifiers a first encounter's card is written under.
     pub async fn check(&self, request: Check<'_>, now: Timestamp) -> Verdict {
         // ONE lookup, and all three states come out of it. `Unreadable` stays
         // distinct from `Absent` because collapsing them is unsafe in both
@@ -213,7 +211,6 @@ const fn decided(evaluation: Evaluation) -> Verdict {
     match evaluation {
         Evaluation::Approved => Verdict::Pass,
         Evaluation::Denied => Verdict::Refuse(Refused::Denied),
-        Evaluation::Expired => Verdict::Refuse(Refused::Expired),
         Evaluation::Pending => Verdict::Await(Waiting::Pending),
     }
 }

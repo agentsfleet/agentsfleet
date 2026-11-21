@@ -3,6 +3,7 @@
 use std::error::Error as _;
 use std::time::Duration;
 
+use af_inference::transport::REPLY_MAX_BYTES;
 use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
 use af_providers::{
     observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
@@ -20,7 +21,10 @@ async fn physical_failures_are_bounded_and_never_retried_implicitly() {
     let cases = vec![
         (Reply::Bytes(exact), MeasuredOutcome::Oversize),
         (
-            Reply::Chunks(vec![vec![b' '; 40 * 1024], vec![b' '; 40 * 1024]]),
+            Reply::Chunks(vec![
+                vec![b' '; REPLY_MAX_BYTES / 2 + 1],
+                vec![b' '; REPLY_MAX_BYTES / 2 + 1],
+            ]),
             MeasuredOutcome::Oversize,
         ),
         (Reply::Bytes(b"{".to_vec()), MeasuredOutcome::Malformed),
@@ -179,7 +183,7 @@ async fn missing_usage_and_provider_refusal_remain_separate_from_answers() {
 
 async fn exact_response_succeeds() -> Vec<u8> {
     let mut exact = serde_json::to_vec(&fixture::native_reply()).expect("fixture JSON");
-    exact.resize(64 * 1024, b' ');
+    exact.resize(REPLY_MAX_BYTES, b' ');
     let mut valid = Server::start(vec![Reply::Bytes(exact.clone())]).await;
     assert!(
         DecisionClient::with_client(

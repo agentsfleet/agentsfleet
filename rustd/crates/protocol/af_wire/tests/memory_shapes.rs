@@ -10,7 +10,7 @@ use std::borrow::Cow;
 
 use af_wire::memory::{
     MemoryCaptureResponse, MemoryDelta, MemoryLoadResponse, MemoryRecallRequest, PINNED_CATEGORY,
-    RECALL_LIMIT_MAX, SharedMemory, Visibility,
+    SharedMemory, Visibility,
 };
 use garde::Validate as _;
 
@@ -98,7 +98,8 @@ fn test_a_load_reply_carries_grants_only_when_given() {
 }
 
 /// The published recall `limit` is the range the request type proves, so a
-/// client generated from the spec never sends a limit the daemon refuses.
+/// client generated from the spec never sends a limit the daemon refuses: at
+/// least one, and no ceiling.
 #[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_recall_limit_is_the_proved_range() {
@@ -110,11 +111,7 @@ fn test_the_published_recall_limit_is_the_proved_range() {
             .and_then(serde_json::Value::as_u64)
     };
     assert_eq!(limit("minimum"), Some(1), "{schema}");
-    assert_eq!(
-        limit("maximum").and_then(|max| usize::try_from(max).ok()),
-        Some(RECALL_LIMIT_MAX),
-        "{schema}"
-    );
+    assert_eq!(limit("maximum"), None, "{schema}");
 }
 
 /// A recall query holding NUL is malformed, named on `query`: the search runs

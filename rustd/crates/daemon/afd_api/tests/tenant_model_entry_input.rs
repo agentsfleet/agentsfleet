@@ -17,7 +17,7 @@
 use crate::harness;
 use crate::harness::{code_of, detail_of};
 
-use afd_api_wire::tenant_model_entry::MODEL_ID_MAX_BYTES;
+use af_wire::inference::MODEL_ID_MAX_BYTES;
 use afd_auth::scope::{Scope, ScopeSet};
 use base64::Engine as _;
 use http::{Method, StatusCode};
@@ -135,7 +135,7 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
         assert_eq!(
             detail_of(refused).await,
-            "model_id must be at most 256 chars",
+            "model_id must be at most 2595 chars",
             "{method} {path}: an oversized model names the bound"
         );
 

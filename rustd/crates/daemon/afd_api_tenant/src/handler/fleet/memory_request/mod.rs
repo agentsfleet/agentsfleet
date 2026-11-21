@@ -28,7 +28,7 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
-use af_wire::memory::MAX_KEY_LEN;
+use af_wire::memory::INDEXED_TEXT_MAX_BYTES;
 use afd_memory::page::View;
 use garde::Validate as _;
 
@@ -49,7 +49,7 @@ const DETAIL_MALFORMED_QUERY: &str = "malformed query string";
 const DETAIL_LIMIT: &str = "limit must be a positive integer";
 
 /// The refusal a key outside its length bounds earns.
-const DETAIL_KEY_BOUNDS: &str = "memory key must be 1..255 chars";
+const DETAIL_KEY_BOUNDS: &str = "memory key must be 1..2668 bytes";
 
 /// The refusal a key this daemon cannot decode earns.
 const DETAIL_KEY_ENCODING: &str = "memory key has invalid URL encoding";
@@ -273,7 +273,7 @@ fn row(id: &str) -> Option<(Uuid7, &str)> {
 ///
 /// # Errors
 /// Refuses a malformed escape, bytes this daemon cannot read as text, and a key
-/// outside 1..=255 bytes. All three are the request being unusable, so none of
+/// outside 1..=2,668 bytes. All three are the request being unusable, so none of
 /// them spends a statement discovering it.
 pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
     let raw = path.rsplit('/').next().unwrap_or_default();
@@ -289,12 +289,10 @@ pub(super) fn memory_key(path: &str) -> Result<String, Refusal> {
 ///
 /// The bound is on the DECODED bytes, which is what a stored key is measured
 /// in — the same bound `af_wire::memory::MemoryDelta` declares on the key a
-/// runner writes. `decodePathSegment` reaches the same answer by writing into a
-/// `[MAX_KEY_LEN]u8` and refusing the overflow; the buffer is the workaround,
-/// the bound is the rule.
+/// runner writes, which is what one btree index row holds.
 #[derive(Debug, garde::Validate)]
 struct DecodedKey {
-    #[garde(length(min = 1, max = MAX_KEY_LEN))]
+    #[garde(length(min = 1, max = INDEXED_TEXT_MAX_BYTES))]
     bytes: Vec<u8>,
 }
 

@@ -117,7 +117,7 @@ async fn a_runner_of_another_tenant_is_never_given_a_drafts_setup_run() {
 // Value: protects=a payer whose wallet cannot fund a run's first slice is told so
 // and is not run; fails_when=the balance gate is dropped from the assignment, it
 // prices the slice at zero, or its refusal stalls the pass; why_new=the balance arm
-// had no live case, and setup's whole-run estimate is gone (M253_003 §8); seam=the
+// had no live case, and setup's whole-run estimate is gone (`M253_003` §8); seam=the
 // production poll over live Postgres, with the seat's wallet emptied.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

@@ -94,50 +94,30 @@ impl Gates {
 
     /// What this poll makes of `reference`.
     ///
-    /// One read of the durable row, which also answers whether the deadline
-    /// has passed, on the database clock.
+    /// One read of the durable row.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
     pub async fn evaluate(&self, reference: &GateRef) -> Result<Evaluation> {
-        // A reference whose row cannot be found has no deadline to lapse: only
-        // a purge removes the row. Waiting is the fail-safe direction.
-        let Some(standing) = self.standing(reference.action_id()).await? else {
-            return Ok(Evaluation::Pending);
-        };
-        Ok(evaluate(standing.status.and_then(answer), standing.lapsed))
+        // A reference whose row cannot be found is unanswered: only a purge
+        // removes the row. Waiting is the fail-safe direction.
+        let status = self.standing(reference.action_id()).await?;
+        Ok(evaluate(status.and_then(answer)))
     }
 
-    /// Where `action_id`'s newest gate stands, or nothing if it has no row.
-    async fn standing(&self, action_id: &Uuid7) -> Result<Option<Standing>> {
+    /// Where `action_id`'s newest gate stands, or nothing if it has no row or
+    /// its status is a word this build does not know.
+    async fn standing(&self, action_id: &Uuid7) -> Result<Option<GateStatus>> {
         let mut connection = self.database.acquire().await?;
-        let row = sqlx::query_as::<_, StoredStanding>(sql::SELECT_GATE_STATUS)
+        let status: Option<String> = sqlx::query_scalar(sql::SELECT_GATE_STATUS)
             .bind(action_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_STATUS))?;
 
-        Ok(row.map(|stored| Standing {
-            // A spelling this daemon does not know is treated as no status at
-            // all, which leaves the gate PENDING. Guessing in either direction
-            // would either release an event on an unrecognised word or kill one.
-            status: from_spelling::<GateStatus>(&stored.status),
-            lapsed: stored.lapsed,
-        }))
+        // A spelling this daemon does not know is treated as no status at
+        // all, which leaves the gate PENDING. Guessing in either direction
+        // would either release an event on an unrecognised word or kill one.
+        Ok(status.as_deref().and_then(from_spelling::<GateStatus>))
     }
-}
-
-/// The durable gate row as [`sql::SELECT_GATE_STATUS`] returns it.
-#[derive(Debug, sqlx::FromRow)]
-struct StoredStanding {
-    status: String,
-    lapsed: bool,
-}
-
-/// Where a gate stands: its status, when this build knows the word, and
-/// whether its deadline has passed on the database clock.
-#[derive(Debug, Clone, Copy)]
-struct Standing {
-    status: Option<GateStatus>,
-    lapsed: bool,
 }

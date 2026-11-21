@@ -6,7 +6,7 @@ use crate::{
     e2e_native::Stored,
     e2e_seed, wire,
 };
-use af_core::{id::Uuid7, timing::ASSIGN_FALLBACK_TICK};
+use af_core::id::Uuid7;
 use afd_db::{
     Db, Migrator,
     config::DbRole,
@@ -24,8 +24,10 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 const FLEETS: usize = 1_000;
 const HOT_TICK: Duration = Duration::from_millis(10);
+/// How long old work may take to progress while hot notifications continue.
+const PROGRESS_BUDGET: Duration = Duration::from_secs(15);
 mod measurement;
-use measurement::{Witness, assigned, probes, progress, wait_for_probes, zero_usage};
+use measurement::{Witness, assigned, probes, progress};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -48,7 +50,7 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
     let traffic = population.hot.produce(stop.clone(), Arc::clone(&produced));
     let mut witness = Witness::default();
     let measured = tokio::time::timeout(
-        ASSIGN_FALLBACK_TICK * 3,
+        PROGRESS_BUDGET,
         progress(&scene, &owner, &population.hot, first, before, &mut witness),
     )
     .await;
@@ -56,45 +58,13 @@ async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notificatio
     traffic.await.expect("the hot producer joins");
     assert!(
         measured.is_ok(),
-        "old unhinted work and the independent probe must progress under hot notifications: {witness:?}; matching_probes={}",
+        "old unhinted work must progress under hot notifications: {witness:?}; matching_probes={}",
         probes(&owner).await.saturating_sub(before)
     );
     assert!(
         produced.load(Ordering::Relaxed) > 2,
         "the producer ran throughout the measurement"
     );
-    cleanup(scene, owner, database, supervisor).await;
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_busy_runner_remembers_recovery_when_its_worker_becomes_free() {
-    let mut supervisor = Supervisor::new();
-    let (database, owner, scene) = setup(&mut supervisor).await;
-    let population = Population::seed(&scene, 2).await;
-    wire::heartbeat(&scene, &wire::capable_beat()).await;
-    let first = assigned(&scene).await;
-    assert_eq!(first.fleet, population.hot.fleet);
-    population.activate(&scene, 2).await;
-    let before = probes(&owner).await;
-    tokio::time::timeout(
-        ASSIGN_FALLBACK_TICK * 3,
-        wait_for_probes(&owner, before + 2),
-    )
-    .await
-    .expect("the independent clock probes while the sole worker is busy");
-    population.hot.admit().await;
-    wire::report(&scene, &zero_usage(&first))
-        .await
-        .expect("the worker finishes");
-    let next = assigned(&scene).await;
-    assert_eq!(
-        next.fleet, scene.fleet,
-        "returning capacity must serve the older unhinted turn"
-    );
-    wire::report(&scene, &zero_usage(&next))
-        .await
-        .expect("the old turn settles");
     cleanup(scene, owner, database, supervisor).await;
 }
 

@@ -5,36 +5,6 @@ use std::ops::Range;
 use af_core::id::Uuid7;
 use af_wire::task::{TaskContext, TaskLimits, TaskState};
 
-/// Bounded recovery of reservations for calls whose credentials were never issued.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DecisionMaintenance {
-    /// Expired unissued candidates examined by this pass.
-    pub scanned: u64,
-    /// Reservations proved unsent and released through native accounting.
-    pub expired: u64,
-    /// Candidates deferred because their existing financial locks were busy.
-    pub deferred: u64,
-    /// Candidate failures; an already-committed expiry remains counted above.
-    pub failed: u64,
-    /// Largest observed delay beyond the original issuance deadline.
-    pub oldest_overdue_ms: u64,
-}
-
-/// Native exact-effect evidence reads never create another publication or agent run.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct EffectMaintenance {
-    /// Retained read capabilities examined by this pass.
-    pub scanned: u64,
-    /// Exact marker, parent and tree confirmed by GitHub.
-    pub confirmed: u64,
-    /// Absence retained as uncertainty.
-    pub unknown: u64,
-    /// Expired encrypted read capabilities erased without a false refusal.
-    pub expired: u64,
-    /// Deferred read/record failures.
-    pub failed: u64,
-}
-
 /// Bounded private retention and acknowledged storage cleanup.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CheckpointMaintenance {
@@ -57,16 +27,6 @@ pub struct CheckpointMaintenance {
 pub struct CheckpointMaintenanceCursor {
     pub(crate) turn_after: Option<Uuid7>,
     pub(super) identity_after: Option<(jiff::Timestamp, Uuid7)>,
-    pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
-    pub(super) cutoff: Option<jiff::Timestamp>,
-}
-
-/// Local scan progress, retained by the existing supervised billing loop.
-///
-/// This carries no task authority. Advancing before an attempt allows the next
-/// pass to progress after cancellation, malformed rows or lock contention.
-#[derive(Debug, Default)]
-pub struct DecisionMaintenanceCursor {
     pub(super) after: Option<(jiff::Timestamp, Uuid7)>,
     pub(super) cutoff: Option<jiff::Timestamp>,
 }

@@ -18,7 +18,7 @@ pub(crate) const OWE_DELIVERY: &str = include_str!("owe_delivery.sql");
 pub(crate) const LOCK_LANES: &str = include_str!("lock_lanes.sql");
 
 /// Claims up to `$1` lane heads among the lanes [`LOCK_LANES`] locked: open,
-/// due, unheld, with no earlier open row in their (provider, workspace) lane,
+/// unheld, with no earlier open row in their (provider, workspace) lane,
 /// in `sequence` order. `$2` the claim's token · `$3` the claim's life ·
 /// `$4` the locked lanes' providers · `$5` their workspaces, pairwise.
 pub(crate) const CLAIM_HEADS: &str = include_str!("claim_heads.sql");
@@ -26,8 +26,7 @@ pub(crate) const CLAIM_HEADS: &str = include_str!("claim_heads.sql");
 /// Extends a live claim. `$1` id · `$2` token · `$3` the claim's life.
 pub(crate) const RENEW_CLAIM: &str = include_str!("renew_claim.sql");
 
-/// Gives a claim back after a retryable failure, due again after `$3`.
-/// `$1` id · `$2` token.
+/// Gives a claim back at shutdown, claimable at once. `$1` id · `$2` token.
 pub(crate) const RELEASE_CLAIM: &str = include_str!("release_claim.sql");
 
 /// Records delivery. `$1` id · `$2` token; zero rows means the claim lapsed.

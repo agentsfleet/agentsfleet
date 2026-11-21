@@ -33,6 +33,10 @@ pub enum ResultOutcome<'a> {
     Completed(Completed),
     /// The run failed.
     Failed(Failure<'a>),
+    /// The run asked the person a question and ended to wait for the answer:
+    /// the result's `content` is the question, and a checkpoint taken at the
+    /// asking call is what the answer resumes.
+    Waiting,
 }
 
 /// The terminal stage result the runner produces and the report consumes.

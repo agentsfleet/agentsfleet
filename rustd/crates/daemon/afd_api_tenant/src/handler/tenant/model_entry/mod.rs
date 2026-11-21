@@ -88,7 +88,7 @@ pub const DETAIL_ENTRY_ID: &str = "id must be a valid UUIDv7";
 pub const DETAIL_MODEL_ID_REQUIRED: &str = "model_id is required";
 
 /// The refusal a model name past its bound earns.
-pub const DETAIL_MODEL_ID_TOO_LONG: &str = "model_id must be at most 256 chars";
+pub const DETAIL_MODEL_ID_TOO_LONG: &str = "model_id must be at most 2595 chars";
 
 /// The refusal a body naming no credential earns.
 ///

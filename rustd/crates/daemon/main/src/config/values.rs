@@ -77,11 +77,6 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     );
     insert(
         values,
-        "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
-        runner.scheduling.missed_wake_probe_seconds,
-    );
-    insert(
-        values,
         "AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS",
         runner.scheduling.max_concurrent_recovery_assignments,
     );

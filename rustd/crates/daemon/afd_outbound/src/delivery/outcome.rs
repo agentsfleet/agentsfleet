@@ -29,8 +29,9 @@ pub enum AbandonReason {
     /// channel, a removed bot, an address naming nowhere. The poster's own
     /// failure event names which.
     Refused,
-    /// Every delivery cycle it was allowed ended retryable.
-    CyclesExhausted,
+    /// Every inline attempt of its one delivery cycle ended retryable; a
+    /// failed delivery is never retried.
+    AttemptsExhausted,
     /// Its stored connector id names no connector, so no poster could deliver
     /// it: a connector removed from the catalogue, or an edit made out of band.
     Unaddressable,
@@ -42,7 +43,7 @@ impl AbandonReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Refused => "refused",
-            Self::CyclesExhausted => "cycles_exhausted",
+            Self::AttemptsExhausted => "attempts_exhausted",
             Self::Unaddressable => "unaddressable",
         }
     }

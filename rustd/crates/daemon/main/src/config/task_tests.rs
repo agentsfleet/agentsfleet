@@ -9,22 +9,21 @@ use super::{ConfigBuilder, FILE_KNOB};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
-fn task_admission_settings_respect_protocol_ceilings() -> TestResult {
+fn task_admission_settings_refuse_zero_and_setup_ceilings() -> TestResult {
     let environment = MapEnv::default();
     for (setting, field) in [
-        ("max_unfinished_per_fleet = 17", "max_unfinished_per_fleet"),
+        ("max_unfinished_per_fleet = 0", "max_unfinished_per_fleet"),
         (
-            "max_inputs_per_safe_boundary = 5",
+            "max_inputs_per_safe_boundary = 0",
             "max_inputs_per_safe_boundary",
         ),
         ("max_actions_per_message = 0", "max_actions_per_message"),
-        ("max_actions_per_message = 5", "max_actions_per_message"),
-        ("max_objective_bytes = 16385", "max_objective_bytes"),
-        ("max_title_bytes = 161", "max_title_bytes"),
+        ("max_objective_bytes = 0", "max_objective_bytes"),
+        ("max_title_bytes = 0", "max_title_bytes"),
         ("max_completion_questions = 7", "max_completion_questions"),
         ("max_question_text_bytes = 513", "max_question_text_bytes"),
         (
-            "max_authored_question_bytes = 1025",
+            "max_authored_question_bytes = 0",
             "max_authored_question_bytes",
         ),
     ] {

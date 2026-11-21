@@ -44,8 +44,7 @@ pub fn total_bytes(entries: &[MemoryDelta<'_>]) -> usize {
 fn is_pinned(entry: &MemoryDelta<'_>) -> bool {
     // Anything unrecognised is windowed. Custom categories are expected — the
     // column carries no CHECK — and the default must be the safe one: an
-    // unknown string that pinned itself would starve the window and could never
-    // be evicted.
+    // unknown string that pinned itself would starve the window.
     entry.category == PINNED_CATEGORY
 }
 

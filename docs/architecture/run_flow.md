@@ -341,7 +341,7 @@ A runner with a held sandbox checks that fleet first. Other runners skip the fle
 
 **What carries over.** Fleet memory: the memory window is `LOAD_WINDOW_BYTES`, 256 KiB, with every `core` entry pinned first.
 
-A recall reads up to `RECALL_LIMIT_MAX = 50` entries past the window (`af_wire`'s memory module; [Runner Fleet](./runner_fleet.md) §"Memory continuity"). Memory belongs to the fleet, not the PR.
+A recall reads as many entries past the window as it asks for (`af_wire`'s memory module; [Runner Fleet](./runner_fleet.md) §"Memory continuity"). Memory belongs to the fleet, not the PR.
 
 The second review knows the first only if its instructions have it read the existing reviews or recall what it stored.
 

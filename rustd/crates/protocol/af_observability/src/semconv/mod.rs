@@ -215,9 +215,6 @@ pub const LABEL_SURFACE: &str = "surface";
 /// Which stage of a library read a measurement times.
 pub const LABEL_STAGE: &str = "stage";
 
-/// Which lifecycle status a fleet count is about.
-pub const LABEL_STATUS: &str = "status";
-
 /// Which kind of thing a count is split by, where one family counts two
 /// causes of the same event — a run started fresh or by reassignment.
 pub const LABEL_KIND: &str = "kind";
@@ -261,7 +258,6 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_OPERATION,
     LABEL_SURFACE,
     LABEL_STAGE,
-    LABEL_STATUS,
     LABEL_KIND,
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,

@@ -1,7 +1,6 @@
 //! The Postgres store's reads: the load input, recall, and the operator
 //! page.
 
-use af_wire::memory::MAX_ENTRIES_PER_FLEET;
 use afd_db::statement::Bound;
 use sqlx::PgConnection;
 
@@ -14,12 +13,6 @@ use crate::sql;
 /// Statement names, for the context a query failure carries.
 const CONTEXT_LIST: &str = "memory list";
 const CONTEXT_RECALL: &str = "memory recall";
-
-/// The most shared rows one load reads before the window spends its budget:
-/// one fleet's cap, so a workspace of many publishers costs one fleet's read.
-fn shared_scan_limit() -> i64 {
-    i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX)
-}
 
 /// Runs `statement` and reads every row it returns.
 async fn fetch(
@@ -39,7 +32,7 @@ async fn fetch(
 impl PgStore {
     /// Every entry `owner.fleet` holds, newest first; then, when `reads`, the
     /// workspace-visible entries other fleets in `owner.workspace` hold, newest
-    /// first and bounded by one fleet's cap.
+    /// first.
     ///
     /// # Errors
     /// The database cannot answer.
@@ -51,8 +44,7 @@ impl PgStore {
             if reads {
                 let shared = sqlx::query(sql::SELECT_SHARED_IN_WORKSPACE)
                     .bind(owner.workspace)
-                    .bind(owner.fleet)
-                    .bind(shared_scan_limit());
+                    .bind(owner.fleet);
                 rows.extend(fetch(connection, shared, failure).await?);
             }
             Ok(rows)

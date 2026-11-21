@@ -73,7 +73,7 @@ fn a_logged_failure_reason_carries_no_code_prefix() {
 }
 
 /// A worker whose bus refuses the subscription says so once and runs on its
-/// pass alone.
+/// finished deliveries alone.
 #[tokio::test]
 async fn a_wake_that_cannot_subscribe_is_logged() -> TestResult {
     let capture = Capture::install();
@@ -191,7 +191,7 @@ async fn a_refused_draw_claims_nothing() -> TestResult {
 }
 
 /// The loop logs a failed claim once at `warn`, under the failure's own code,
-/// and claims again on its next ping or pass.
+/// and claims again on its next ping or finished delivery.
 #[tokio::test]
 async fn a_failed_claim_is_logged_by_the_loop() -> TestResult {
     let capture = Capture::install();

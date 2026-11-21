@@ -49,23 +49,21 @@ pub const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision
 pub use decision::ReservedDecision;
 #[cfg(feature = "test-util")]
 pub use decision::{
-    DECISION_BUDGET_STATEMENT, EXPIRED_DECISION_CALLS_STATEMENT, LOCKED_DECISION_CALL_STATEMENT,
+    DECISION_BUDGET_STATEMENT, LOCKED_DECISION_CALL_STATEMENT,
 };
 pub use dependencies::TaskDependencies;
 pub use github::Github;
 use prepared::PreparedItem;
 pub use refusal::TaskRefusal;
 pub use types::{
-    CheckpointMaintenance, CheckpointMaintenanceCursor, DecisionMaintenance,
-    DecisionMaintenanceCursor, EffectMaintenance, PreparedPlan, PreparedTask, TaskAdoption,
+    CheckpointMaintenance, CheckpointMaintenanceCursor, PreparedPlan, PreparedTask, TaskAdoption,
     TaskAfter, TaskBinding, TaskBindings, TaskControl, TaskPage, TaskRun, TaskScope, TaskSnapshot,
     TaskSummary,
 };
 
 pub use lifecycle::{TaskFuture, TaskLifecycle};
 pub use report::{CheckpointGuard, PreparedReport, TaskReportOwner, TaskSettlement};
-pub(crate) use waits::ReadPermit;
-pub use waits::{CompletionScope, VerifiedCompletion, WaitMaintenance};
+pub use waits::{CompletionScope, VerifiedCompletion};
 pub(crate) async fn settle_report(
     connection: &mut sqlx::PgConnection,
     run: &Uuid7,
@@ -122,6 +120,3 @@ pub const TASK_SCOPE_LOCK_STATEMENT: &str = sql::LOCK_SCOPE;
 /// Actual checkpoint parent-lock statement for API-role migration proofs.
 #[cfg(feature = "test-util")]
 pub const CHECKPOINT_WORKSPACE_LOCK_STATEMENT: &str = sql::LOCK_WORKSPACE;
-/// Actual bounded receipt collection statement for API-role migration proofs.
-#[cfg(feature = "test-util")]
-pub const TASK_COMPLETION_COLLECTION_STATEMENT: &str = sql::COLLECT_COMPLETIONS;

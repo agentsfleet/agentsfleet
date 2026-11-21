@@ -787,7 +787,7 @@ The daemon stores them in `thread.items`, a child table of `thread.turns`, keyed
 
 `call_id` is the runner's own counter for the run. It is minted when a call starts and repeated on each of its frames (`afr_agent`'s ledger).
 
-The daemon accepts `call_id` as optional and bounded by `CALL_ID_MAX_BYTES`. It publishes it as `{fence}:{call_id}` under the run's fencing token.
+The daemon accepts `call_id` as optional and bounded by the text ceiling, `af_validate::TEXT_MAX_CHARS`. It publishes it as `{fence}:{call_id}` under the run's fencing token.
 
 A reclaimed run re-runs the same turn from a fresh runner whose counter restarts at 1. The fence keeps its calls apart from the dead run's.
 

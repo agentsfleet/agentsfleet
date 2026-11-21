@@ -11,13 +11,13 @@
 //! a wire fact — a client reads them.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 use af_core::id::Uuid7;
 use af_core::limits::WorkerCount;
-use af_validate::Sentences;
+use af_validate::{Sentences, TEXT_MAX_CHARS};
 use af_wire::runner::{
-    AssignedPolicy, BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, EXTRA_BINDS_MAX,
-    LABEL_MAX_BYTES, LABELS_MAX, RegisterRequest, label_list,
+    AssignedPolicy, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, RegisterRequest, label_list,
 };
 use const_format::concatcp;
 use garde::Validate as _;
@@ -37,24 +37,18 @@ pub const DETAIL_EXTRA_BINDS: &str = concatcp!(
     " bytes outside the daemon-owned baseline and the sensitive set, with no traversal"
 );
 
-/// The refusal for an assignment adding too many binds.
-pub const DETAIL_EXTRA_BINDS_COUNT: &str =
-    concatcp!("extra_binds holds at most ", EXTRA_BINDS_MAX, " entries");
-
-/// The refusal for a bind note past its bound.
+/// The refusal for a bind note past the text ceiling.
 pub const DETAIL_EXTRA_BIND_NOTE: &str = concatcp!(
     "extra_binds notes must be at most ",
-    BIND_NOTE_MAX_BYTES,
-    " bytes"
+    TEXT_MAX_CHARS,
+    " characters"
 );
 
-/// The refusal for too many labels, or one past its bound.
+/// The refusal for a label past the text ceiling.
 pub const DETAIL_LABELS: &str = concatcp!(
-    "labels holds at most ",
-    LABELS_MAX,
-    " entries of at most ",
-    LABEL_MAX_BYTES,
-    " bytes each"
+    "labels must each be at most ",
+    TEXT_MAX_CHARS,
+    " characters"
 );
 
 const PATH_HOST_ID: &str = "host_id";
@@ -63,12 +57,10 @@ const PATH_POLICY_DECISION_MODEL: &str = "assigned_policy.decision_model_id";
 const PATH_LABELS: &str = "labels";
 const PATH_ALLOWLIST: &str = "registry_allowlist";
 const PATH_ALLOWLIST_ENTRY: &str = "registry_allowlist[]";
-const PATH_BINDS: &str = "extra_binds";
 const PATH_BIND_NOTE: &str = "extra_binds[].note";
 const PATH_BIND_PATH: &str = "extra_binds[].path";
 const PATH_POLICY_ALLOWLIST: &str = "assigned_policy.registry_allowlist";
 const PATH_POLICY_ALLOWLIST_ENTRY: &str = "assigned_policy.registry_allowlist[]";
-const PATH_POLICY_BINDS: &str = "assigned_policy.extra_binds";
 const PATH_POLICY_BIND_NOTE: &str = "assigned_policy.extra_binds[].note";
 const PATH_POLICY_BIND_PATH: &str = "assigned_policy.extra_binds[].path";
 
@@ -80,7 +72,6 @@ const POLICY: Sentences = Sentences::new(
         (PATH_DECISION_MODEL, DETAIL_DECISION_MODEL_ID),
         (PATH_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
-        (PATH_BINDS, DETAIL_EXTRA_BINDS_COUNT),
         (PATH_BIND_NOTE, DETAIL_EXTRA_BIND_NOTE),
         (PATH_BIND_PATH, DETAIL_EXTRA_BINDS),
     ],
@@ -95,7 +86,6 @@ const REGISTRATION: Sentences = Sentences::new(
         (PATH_POLICY_DECISION_MODEL, DETAIL_DECISION_MODEL_ID),
         (PATH_POLICY_ALLOWLIST, DETAIL_REGISTRY_ALLOWLIST),
         (PATH_POLICY_ALLOWLIST_ENTRY, DETAIL_REGISTRY_ALLOWLIST),
-        (PATH_POLICY_BINDS, DETAIL_EXTRA_BINDS_COUNT),
         (PATH_POLICY_BIND_NOTE, DETAIL_EXTRA_BIND_NOTE),
         (PATH_POLICY_BIND_PATH, DETAIL_EXTRA_BINDS),
         (PATH_LABELS, DETAIL_LABELS),
@@ -146,8 +136,8 @@ pub struct StoredEnrolment<'a> {
 /// Proves an assignment's bounds and resolves what will actually be stored.
 ///
 /// # Errors
-/// Refuses the first broken bound with its sentence: the allowlist's count or
-/// grammar, the bind count, a bind note, or a bind path.
+/// Refuses the first broken bound with its sentence: the allowlist's grammar,
+/// a bind note, or a bind path.
 pub fn assignment(policy: &AssignedPolicy<'_>) -> Result<StoredAssignment> {
     policy
         .validate()
@@ -177,7 +167,7 @@ pub fn registration<'a>(request: &RegisterRequest<'a>) -> Result<StoredEnrolment
 /// identically whichever of the two wrote it.
 ///
 /// # Errors
-/// Refuses too many labels, or one past its bound, with [`DETAIL_LABELS`].
+/// Refuses a label past the text ceiling with [`DETAIL_LABELS`].
 pub fn labels<'a>(labels: &[Cow<'a, str>]) -> Result<Vec<Cow<'a, str>>> {
     label_list(labels, &()).map_err(|_broken| rejected(DETAIL_LABELS))?;
     Ok(distinct(labels))
@@ -187,13 +177,13 @@ pub fn labels<'a>(labels: &[Cow<'a, str>]) -> Result<Vec<Cow<'a, str>>> {
 ///
 /// Placement matches a fleet's required tags as a subset of these
 /// (`required_tags <@ labels`), which a repeat cannot change, so collapsing
-/// one loses nothing and stops a list reading back padded. Private and called
-/// only after the bound is proved: the scan is quadratic, and the bound is
-/// what keeps that to 32 labels.
+/// one loses nothing and stops a list reading back padded. One pass over a
+/// set, so a long list costs its length.
 fn distinct<'a>(labels: &[Cow<'a, str>]) -> Vec<Cow<'a, str>> {
-    let mut stored: Vec<Cow<'a, str>> = Vec::with_capacity(labels.len());
+    let mut seen: HashSet<&str> = HashSet::with_capacity(labels.len());
+    let mut stored = Vec::with_capacity(labels.len());
     for label in labels {
-        if !stored.contains(label) {
+        if seen.insert(label.as_ref()) {
             stored.push(label.clone());
         }
     }

@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{DecisionPurpose, QUESTION_MAX_BYTES, QUESTIONS_MAX, serialized_within};
+use super::DecisionPurpose;
 
 /// Accepted meanings of a true and false assessment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -97,7 +97,7 @@ pub struct DecisionRequest {
     #[garde(custom(state_bound))]
     pub state: serde_json::Value,
     /// Complete reviewed question set; partial delivery is forbidden.
-    #[garde(length(min = 1, max = QUESTIONS_MAX), dive, custom(question_bounds))]
+    #[garde(length(min = 1), dive, custom(question_bounds))]
     pub questions: Vec<NamedQuestion>,
 }
 
@@ -116,11 +116,6 @@ fn question_bounds<C: ?Sized>(questions: &[NamedQuestion], _context: &C) -> gard
     for question in questions {
         if !names.insert(&question.name) {
             return Err(garde::Error::new("decision question names must be unique"));
-        }
-        if !serialized_within(question, QUESTION_MAX_BYTES) {
-            return Err(garde::Error::new(
-                "serialized decision question exceeds its byte bound",
-            ));
         }
     }
     Ok(())
