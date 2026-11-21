@@ -273,11 +273,12 @@ async fn main() -> Result<(), guffbolt_ai::Error> {
 
 The id is `MiniMax-M3.1-Flash`, MiniMax's own name (platform.minimax.io text-generation guide); there is no plain `MiniMax-M3.1`.
 
-- **Dimension 4.1** — a chat answers → Test `a_chat_answers_one_prompt` (unit, guffbolt): a scripted `Model` answering "toml". Expected: `Ending::Answered("toml")`, and the transcript holds both messages.
-- **Dimension 4.2** — a chat runs its tools → Test `a_chat_runs_a_tool_and_answers_with_its_output` (unit): a model that calls `note`, then answers. Expected: the tool ran once, and the answer follows its result.
-- **Dimension 4.3** — a model failure ends the chat → Test `a_chat_whose_model_fails_ends_failed` (unit): a model whose stream errs. Expected: `Ending::Failed` carrying that error.
+- **Dimension 4.1** — a chat answers → Test `a_chat_answers_one_prompt` (unit, guffbolt): a scripted `Model` answering "toml". Expected: `Ending::Answered("toml")`, and the transcript holds both messages. — DONE
+- **Dimension 4.2** — a chat runs its tools → Test `a_chat_runs_a_tool_and_answers_with_its_output` (unit): a model that calls `note`, then answers. Expected: the tool ran once, and the answer follows its result. — DONE
+- **Dimension 4.3** — a model failure ends the chat → Test `a_chat_whose_model_fails_ends_failed` (unit): a model whose stream errs. Expected: `Ending::Failed` carrying that error. — DONE
 - **Dimension 4.4** — the README program runs on the real path → Test `the_minimax_example_answers_against_a_fake_provider` (e2e, subprocess): `cargo run --example minimax_chat` with a fake TLS provider and its base URL passed as an argument. Expected: exit 0 and the fake's answer on stdout.
 - **Dimension 4.5** — live MiniMax answers → Test `live_minimax_chat` (manual): Indy runs `examples/minimax_chat` with his `MINIMAX_API_KEY`. Expected: one sentence printed; the command and its output land in the PR Session Notes.
+- 4.4 and 4.5 follow §3: the example connects through `Models` and `providers::minimax()`, which §3 builds.
 
 ### §5 — agentsfleet runs on guffbolt-ai with no behaviour change
 
@@ -315,7 +316,7 @@ Moved here from M253_003 (Indy, Nov 21, 2026) so the end-to-end run covers guffb
 
 ## Interfaces
 
-- **guffbolt (unchanged paths):** every name in `guffbolt/src/lib.rs:95-105` still resolves. New: `guffbolt::Chat<M>` with `new(model, instructions)`, `with_tools(tools)`, `prompt(text) -> Ending<M::Error>` and `stop()`.
+- **guffbolt (unchanged paths):** every name in `guffbolt/src/lib.rs:95-105` still resolves. New: `guffbolt::Chat<M>` with `new(model, instructions)`, `with_tools(tools)`, `prompt(text) -> Ending<ChatFailure<M::Error>>` and `stop() -> &CancellationToken`; `guffbolt::ChatFailure<E>` is `Model(E)` or `Silent { cut }`.
 - **guffbolt-ai types:** `Model`, `Request`, `Chunk`, `End`, `Hosted`, `TextKind`, `Usage`, `Call`, `Message`, `Replay`, `ToolSpec`, `Image`, `ImageKind`.
 - **guffbolt-ai models:** `Models::{new, builtin, with, get, connect, connect_with_key}`, `Provider` with `with_base_url`, `Spec { id, context_tokens, max_output_tokens, images }`, `providers::<name>()` per feature.
 - **guffbolt-ai wire:** `Api { Chat, Responses, Messages, Gemini, Ollama }` with `carries_images`, `Route::new`, `Route::supports_tools`, `Route::host`, `Connected` implementing `Model`, `Connected::{with_transport, with_reply_bound, with_retry, with_timeouts, with_observer}`, `transport::{Send, SendError}`, `Retry`, `Timeouts`, `log_filter`, `Error`, `Result`.
@@ -438,6 +439,11 @@ N/A: no product or operator signal changes. The provider metric families and the
   - `af_inference` is a shim until §5: `Configured` (garde, `provider_endpoint`, `accepts_endpoint`) over `guffbolt_ai::wire::Route`, `Timeouts` (agentsfleet's 10 s connect beside the wire's `Timeouts`), `TimeoutSettings`, and `transport::REPLY_MAX_BYTES` = `af_wire::protocol::MESSAGE_BYTES_MAX`, so `runner/main` builds unchanged.
   - `af_providers::RetryPolicy` wraps `guffbolt_ai::wire::Retry`; `Connector::connect` builds a `Connected` over its guarded client (`Reqwest::refusing(af_egress::blocked_address)`) with the frame as its reply bound, and `Turns` maps its failures to the same kinds, codes and classes.
   - `estimate`, `context_document` and `retry_after` are public in `guffbolt_ai::wire`: the scripted model, the context index and the decision client use them.
+- **Settled while building §4 (Nov 22, 2026):**
+  - `Chat` fails with `ChatFailure<M::Error>`, not `M::Error`. The loop asks the conversation for a blank first step's failure (`Conversation::silent`), and no `M::Error` can be built for any `M`. `ChatFailure::Model(E)` displays as `E` and answers `E`'s source; `Silent { cut }` holds no cause.
+  - The loop calls the chat's model as `dyn Model<Error = ChatFailure<M::Error>>`, over a private wrapper that lifts the model's error, so no wrapper type joins the public API.
+  - `Chat` keeps its `DriveState`: each prompt's ending answers that prompt alone, calls number after earlier prompts, and a prompt sent while a question waits is its answer.
+  - `Chat::request` sends `Request::model` empty, because `Model` names no id. `Connected` counts input with `request.model` (`guffbolt-ai/src/wire/connected/mod.rs:138,143,168`), so §3 has `Connected` count with its own id before 4.4 runs.
 - **Unverified (`[?]`):**
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.

@@ -57,6 +57,10 @@
 //! name it holds no tool for, and a call from a step cut at the output limit,
 //! read the harness's own refusals ([`ToolOutput`]).
 //!
+//! [`Chat`] is a ready [`Conversation`] for a plain chat: a model, its
+//! instructions and, optionally, tools lent nothing. [`Chat::prompt`] sends
+//! one message and drives the loop with [`Plain`].
+//!
 //! A run's children are [`agents`]: loops a subagent call starts, each over
 //! the embedder's conversation with its own transcript and its parent's
 //! tools or fewer, driven by the harness beside the root. A finished child
@@ -79,6 +83,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod agents;
+mod chat;
 mod conversation;
 mod drive;
 mod extension;
@@ -91,6 +96,7 @@ pub mod tools;
 mod transcript;
 mod window;
 
+pub use self::chat::{Chat, ChatFailure};
 pub use self::conversation::Conversation;
 pub use self::drive::{ANSWER_JOIN, DriveState, Input, Mark, drive};
 pub use self::extension::{Answer, Budget, Extension, Plain};
