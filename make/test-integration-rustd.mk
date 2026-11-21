@@ -98,7 +98,9 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #   foundation  the foundation/ and protocol/ layers
 #   harness     the harness/ layer
 #   runner      the runner/ layer
-#   daemon      the daemon/ layer, then the suites that need the cluster alone
+#   daemon-api  the daemon/ layer's two heaviest suites: afd_api* and afd_fleet*
+#   daemon      the rest of the daemon/ layer, then the suites that need the
+#               cluster alone (afd_bus holds them)
 #   e2e         the daemon-and-runner suites (af_e2e)
 #   guffbolt    the published harness, graded at RUSTD_GUFFBOLT_FLOOR too
 # afd_bench is measured by no shard: its sampled counters are measurements,
@@ -110,11 +112,12 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 RUSTD_COVER_FOUNDATION_DIRS := crates/foundation/* crates/protocol/*
 RUSTD_COVER_HARNESS_DIRS := crates/harness/*
 RUSTD_COVER_RUNNER_DIRS := crates/runner/*
-RUSTD_COVER_DAEMON_DIRS := crates/daemon/*
+RUSTD_COVER_DAEMON_API_DIRS := crates/daemon/afd_api* crates/daemon/afd_fleet*
+RUSTD_COVER_DAEMON_DIRS := crates/daemon/afd_ad* crates/daemon/afd_app* crates/daemon/afd_au* crates/daemon/afd_b* crates/daemon/afd_c* crates/daemon/afd_d* crates/daemon/afd_g* crates/daemon/afd_h* crates/daemon/afd_i* crates/daemon/afd_m* crates/daemon/afd_o* crates/daemon/afd_r* crates/daemon/afd_s* crates/daemon/afd_t* crates/daemon/afd_v* crates/daemon/main
 RUSTD_COVER_E2E_DIRS := crates/e2e/*
 RUSTD_COVER_GUFFBOLT_DIRS := guffbolt
 RUSTD_COVER_SKIP := afd_bench
-RUSTD_SHARDS := foundation harness runner daemon e2e guffbolt
+RUSTD_SHARDS := foundation harness runner daemon-api daemon e2e guffbolt
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Plus the kernel lane's report (test-coverage-runner-kernel): not a shard,
 # because it needs root and a real kernel.
@@ -160,6 +163,10 @@ endif
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard runner: the runner layer..."; \
 	$(call _rustd_shard_lane,RUNNER,runner,runner)
+endif
+ifneq ($(filter daemon-api,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard daemon-api: the daemon layer's API and fleet suites..."; \
+	$(call _rustd_shard_lane,DAEMON_API,daemon-api,daemon API and fleet)
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard daemon: the daemon layer, then the suites that need the cluster alone..."; \
