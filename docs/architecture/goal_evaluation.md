@@ -245,7 +245,7 @@ Each role requires its exact native criterion keys; all wording and criterion te
 Statements retain stable IDs and their reviewed order. Empty, duplicate, unknown, NUL-containing and oversized policy is refused, never filled with hidden questions.
 
 Question and criterion text is at most 512 UTF-8 bytes; each complete authored question is at most 1 KiB. The actual rendered request must independently satisfy the selected provider's request bounds.
-The shared [Linkwarden policy fixture](../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/goal-repair/decision-policy.json) illustrates the editable representation.
+The shared [Linkwarden policy fixture](../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/ci-repairer/decision-policy.json) illustrates the editable representation.
 
 ## Question display in setup and task views
 

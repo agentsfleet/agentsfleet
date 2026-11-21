@@ -66,10 +66,10 @@ impl Default for FixtureSetup {
     }
 }
 
-/// The owner criteria the `goal-repair` corpus fleet declares, which the
+/// The owner criteria the `ci-repairer` corpus fleet declares, which the
 /// decision suites of `afd_fleet` and `afd_api` seed.
 pub const DECISION_POLICY: &str =
-    include_str!("../tests/fixtures/fleets/goal-repair/decision-policy.json");
+    include_str!("../tests/fixtures/fleets/ci-repairer/decision-policy.json");
 
 /// The corpus fleets a sibling crate's suite installs, each with its native
 /// setup exactly as it sits in `tests/fixtures/fleets/<name>/definition.json`.

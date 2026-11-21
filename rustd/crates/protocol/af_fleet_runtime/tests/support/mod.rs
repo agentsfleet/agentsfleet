@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use af_fleet_runtime::Definition;
 
 /// The corpus root, relative to this crate.
-const CORPUS: &str = "tests/fixtures/fleets";
+const CORPUS: &str = "tests/fixtures";
 
 /// The file each first-party fleet directory holds its native setup in.
 const DEFINITION_FILE: &str = "definition.json";
@@ -68,7 +68,7 @@ pub(crate) fn fixture(relative: &str) -> String {
 
 /// The relative path of a first-party fleet's native setup.
 pub(crate) fn definition_path(slug: &str) -> String {
-    format!("{slug}/{DEFINITION_FILE}")
+    format!("fleets/{slug}/{DEFINITION_FILE}")
 }
 
 /// A corpus Definition that must parse, with its placeholders filled.

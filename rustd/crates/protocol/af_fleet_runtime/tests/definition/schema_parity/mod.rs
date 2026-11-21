@@ -70,14 +70,14 @@ fn corpus() -> Vec<String> {
     let mut found: Vec<String> = std::fs::read_dir(&root)
         .unwrap_or_else(|_missing| panic!("{} should be readable", root.display()))
         .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-        .filter(|slug| root.join(definition_path(slug)).is_file())
+        .filter(|slug| root.join("..").join(definition_path(slug)).is_file())
         .map(|slug| definition_path(&slug))
         .collect();
     // The accepted per-setting files carry the shapes no fleet does: a
     // cron with no timezone, a webhook with no repositories, and
     // `tool_window: "auto"` with a templated model.
     found.extend(
-        ["minimal", "full", "with_model_and_context"].map(|name| format!("definition/{name}.json")),
+        ["minimal", "full", "with_model_and_context"].map(|name| format!("definitions/{name}.json")),
     );
     found.sort();
     found

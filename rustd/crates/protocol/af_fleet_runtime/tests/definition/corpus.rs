@@ -26,19 +26,19 @@ enum Verdict {
 
 /// Every purpose-built document, with the verdict its bytes must earn.
 const CORPUS_CASES: [(&str, Verdict); 6] = [
-    ("definition/minimal.json", Verdict::Accepts),
-    ("definition/full.json", Verdict::Accepts),
-    ("definition/with_model_and_context.json", Verdict::Accepts),
+    ("definitions/minimal.json", Verdict::Accepts),
+    ("definitions/full.json", Verdict::Accepts),
+    ("definitions/with_model_and_context.json", Verdict::Accepts),
     (
-        "definition/missing_name.json",
+        "definitions/missing_name.json",
         Verdict::Refuses("`name` is required"),
     ),
     (
-        "definition/runtime_at_top_level.json",
+        "definitions/runtime_at_top_level.json",
         Verdict::Refuses("belongs under the `x-agentsfleet` block"),
     ),
     (
-        "definition/unknown_runtime_key.json",
+        "definitions/unknown_runtime_key.json",
         Verdict::Refuses("`contxt` is not a known `x-agentsfleet` key"),
     ),
 ];
@@ -91,7 +91,7 @@ fn every_first_party_definition_agrees_with_its_directory_name() {
 /// substitution above load-bearing rather than decorative.
 #[test]
 fn an_unsubstituted_template_is_refused() {
-    let raw = raw_fixture("definition/with_model_and_context.json");
+    let raw = raw_fixture("definitions/with_model_and_context.json");
 
     assert!(
         Definition::parse(&raw).is_err(),

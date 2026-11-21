@@ -20,7 +20,7 @@ use crate::support::{CONTEXT_CAP_VALUE, MODEL_VALUE, definition, definition_path
 /// `minimal.json` carries the cron trigger, tool and ceiling it declares.
 #[test]
 fn the_minimal_definition_carries_its_authored_values() {
-    let parsed = definition("definition/minimal.json");
+    let parsed = definition("definitions/minimal.json");
     let config = parsed.runtime();
 
     assert_eq!(config.name().as_str(), "minimal-setup");
@@ -43,7 +43,7 @@ fn the_minimal_definition_carries_its_authored_values() {
 /// its description.
 #[test]
 fn the_full_definition_carries_every_authored_block() {
-    let parsed = definition("definition/full.json");
+    let parsed = definition("definitions/full.json");
     let config = parsed.runtime();
 
     assert_eq!(config.name().as_str(), "full-setup");
@@ -70,7 +70,7 @@ fn the_full_definition_carries_every_authored_block() {
 /// refusal: the one knob that takes a WORD where its siblings take a number.
 #[test]
 fn an_auto_tool_window_resolves_to_the_zero_sentinel() {
-    let parsed = definition("definition/with_model_and_context.json");
+    let parsed = definition("definitions/with_model_and_context.json");
     let config = parsed.runtime();
     let Some(context) = config.context() else {
         panic!("with_model_and_context.json declares a context block");
