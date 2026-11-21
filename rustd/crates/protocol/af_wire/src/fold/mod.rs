@@ -46,9 +46,10 @@ pub struct FoldedInput<'a> {
     pub text: Cow<'a, str>,
 }
 
-/// `POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned to
-/// the run that it has not read, oldest first. The reply is cut to one frame
-/// ([`FoldResponse::keep_within`]). The next fold returns the rest.
+/// `POST /v1/runners/me/runs/{run_id}/folds` reply: the run's unread messages.
+///
+/// Oldest first, cut to one frame ([`FoldResponse::keep_within`]). The next
+/// fold returns the rest.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

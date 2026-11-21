@@ -25384,7 +25384,7 @@
       },
       "FoldResponse": {
         "type": "object",
-        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned to\nthe run that it has not read, oldest first. The reply is cut to one frame\n([`FoldResponse::keep_within`]). The next fold returns the rest.",
+        "description": "`POST /v1/runners/me/runs/{run_id}/folds` reply: the run's unread messages.\n\nOldest first, cut to one frame ([`FoldResponse::keep_within`]). The next\nfold returns the rest.",
         "required": [
           "inputs"
         ],
