@@ -48,6 +48,9 @@ afr_agent.workspace = true
 # Every tool the loop hosts, and the guarded network its egress tools send on.
 afr_tools.workspace = true
 af_egress.workspace = true
+# The bounds the runner's `[tools]` section chooses for the built-in tools
+# and a run's subagents, spelled as `guffbolt` takes them.
+guffbolt.workspace = true
 # `probe` answers with the supervisor's own mapping of the host onto the wire,
 # so what the command prints is what a heartbeat would carry.
 afr_supervisor.workspace = true
@@ -92,7 +95,6 @@ af_otlp.workspace = true
 # through their catalog and the agent loop, as this binary links them.
 af_crypto.workspace = true
 afr_executor.workspace = true
-guffbolt.workspace = true
 hyper.workspace = true
 futures-util.workspace = true
 libtest-mimic.workspace = true

@@ -16,7 +16,7 @@ use std::time::Duration;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, Method, Url};
 
-use super::{BlockedAddress, Capped, Network, guarded_lookup, origin_of};
+use super::{BlockedAddress, Capped, Limits, Network, guarded_lookup, origin_of};
 use crate::error::raise;
 use crate::fixture::shown;
 use crate::testing::FakeResolver;
@@ -44,7 +44,19 @@ fn resolver() -> Arc<FakeResolver> {
 
 /// The guarded client, resolving through [`resolver`].
 fn network() -> Network {
-    Network::build(Client::builder(), resolver()).unwrap()
+    Network::build(Client::builder(), resolver(), Limits::DEFAULT).unwrap()
+}
+
+#[test]
+fn a_limited_network_holds_and_reports_the_limits_it_was_given() {
+    let limits = Limits {
+        connect_timeout: Duration::from_secs(1),
+        request_timeout: Duration::from_secs(2),
+        max_redirects: 1,
+    };
+    let network = Network::build(Client::builder(), resolver(), limits).unwrap();
+    assert_eq!(Transport::limits(&network), limits);
+    assert_eq!(Transport::limits(&self::network()), Limits::DEFAULT);
 }
 
 /// A plain-HTTP server on a loopback port that reads one request's head,
@@ -202,6 +214,7 @@ async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() 
     let address = answering_and_holding(b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nok\xff");
     let network = Network {
         client: Client::new(),
+        limits: Limits::DEFAULT,
     };
     let outbound = Outbound {
         method: Method::GET,
@@ -241,6 +254,7 @@ async fn should_discard_redirect_bodies_before_waiting_for_them() {
             .no_proxy()
             .build()
             .unwrap(),
+        limits: Limits::DEFAULT,
     };
     let outbound = Outbound {
         method: Method::GET,
@@ -291,7 +305,7 @@ async fn should_disable_implicit_tool_request_retries() {
             let (address, seen, task) = resetting_server().await;
             let builder = Client::builder().http2_prior_knowledge();
             let builder = if guarded_tool {
-                super::tool_client(builder, resolver())
+                super::tool_client(builder, resolver(), Limits::DEFAULT)
             } else {
                 // Inference uses this shared guard and retains reqwest's default
                 // two retries of a remote REFUSED_STREAM protocol failure.
@@ -301,6 +315,7 @@ async fn should_disable_implicit_tool_request_retries() {
             // tool configuration, including its retry override, is unchanged.
             let network = Network {
                 client: builder.https_only(false).build().unwrap(),
+                limits: Limits::DEFAULT,
             };
             let outbound = Outbound {
                 method: method.clone(),

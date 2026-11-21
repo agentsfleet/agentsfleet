@@ -25,6 +25,8 @@ pub(crate) struct SessionSender {
     pub(crate) requests: Arc<Requests>,
     pub(crate) queues: Queues,
     pub(crate) budget: Budget,
+    /// The frame ceilings the connection's welcome announced.
+    pub(crate) ceilings: af_stream::Ceilings,
     pub(crate) stop: CancellationToken,
 }
 
@@ -131,7 +133,15 @@ impl SessionSender {
             message,
             Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. }
         );
-        let frame = af_stream::encode(message, &self.budget, kind, &self.stop, deadline).await?;
+        let frame = af_stream::encode_within(
+            message,
+            &self.budget,
+            kind,
+            self.ceilings.of(kind),
+            &self.stop,
+            deadline,
+        )
+        .await?;
         if matches!(message, Up::TurnCheckpoint { .. }) {
             af_wire::run::TurnMessageSize {
                 bytes: frame.as_bytes().len(),

@@ -21,6 +21,7 @@ pub struct Reader<R> {
     kind: StreamKind,
     stop: CancellationToken,
     partial_timeout: Duration,
+    ceiling: usize,
 }
 
 impl<R> std::fmt::Debug for Reader<R> {
@@ -46,7 +47,14 @@ impl<R: AsyncRead + Unpin> Reader<R> {
             kind,
             stop,
             partial_timeout,
+            ceiling: kind.message_bytes_max(),
         }
+    }
+
+    /// Refuse a frame longer than `ceiling` from here on, never past the
+    /// kind's own ceiling: what the peer announced it frames to.
+    pub fn limit(&mut self, ceiling: usize) {
+        self.ceiling = ceiling.min(self.kind.message_bytes_max());
     }
 
     /// Read one payload, refusing an oversized prefix before reserving memory.
@@ -74,7 +82,7 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     async fn frame(&mut self, mut prefix: [u8; 4], deadline: Instant) -> Result<OwnedFrame> {
         let [_, tail @ ..] = &mut prefix;
         self.input.read_exact(tail).await?;
-        let length = Length::prove(usize::try_from(u32::from_be_bytes(prefix))?, self.kind)?;
+        let length = Length::within(usize::try_from(u32::from_be_bytes(prefix))?, self.ceiling)?;
         let reservation = self
             .budget
             .reserve(self.kind, length.bytes, &self.stop, deadline)

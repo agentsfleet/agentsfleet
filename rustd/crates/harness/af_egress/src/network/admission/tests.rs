@@ -38,8 +38,12 @@ async fn should_refuse_mixed_dns_after_public_http_admission() {
             IpAddr::V4(Ipv4Addr::LOCALHOST),
         ],
     )]);
-    let network =
-        Network::build(reqwest::Client::builder(), Arc::new(resolver)).expect("valid client");
+    let network = Network::build(
+        reqwest::Client::builder(),
+        Arc::new(resolver),
+        super::super::Limits::DEFAULT,
+    )
+    .expect("valid client");
     let refused = network
         .send(Outbound {
             method: admitted.method,

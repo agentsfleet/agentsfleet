@@ -69,6 +69,7 @@ pub mod web;
 
 #[cfg(test)]
 pub(crate) mod fake;
+mod limits;
 mod local;
 mod refusal;
 mod schema;
@@ -87,6 +88,7 @@ pub use self::builder::{
 };
 pub use self::clock::Wake;
 pub use self::env::{Env, LocalEnv};
+pub use self::limits::Limits;
 pub use self::local::Local;
 pub use self::memory::{LocalMemory, MemoryStore};
 pub use self::message::{Channel, LocalChannel};

@@ -12,7 +12,7 @@ use garde::Valid;
 
 use crate::Result;
 
-pub use client::DecisionClient;
+pub use client::{DecisionClient, DecisionTimeouts};
 
 /// The configured transport owns its frozen profile and credentials.
 ///

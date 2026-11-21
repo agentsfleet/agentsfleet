@@ -7,7 +7,7 @@ use super::FencedVerbs;
 use crate::{Result, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
-use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
+use af_providers::decision::{DecisionClient, DecisionEvaluator as _, DecisionTimeouts};
 use af_wire::task::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt, DecisionRecorded,
     DecisionReservationInput, DecisionReservationResult, DecisionRetryDelay,
@@ -106,7 +106,7 @@ impl FencedVerbs<'_> {
         .await;
         let expires_at = dispatch.expires_at;
         let attempt = dispatch.attempt;
-        let receipt = physical(dispatch, self.stop).await;
+        let receipt = physical(dispatch, self.plane.tuning.decision, self.stop).await;
         let retry = retry_delay(&receipt)
             .filter(|_| attempt == 0)
             .map(|delay| (delay, expires_at));
@@ -194,6 +194,7 @@ fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activ
 
 async fn physical(
     dispatch: DecisionDispatch<'_>,
+    timeouts: DecisionTimeouts,
     stop: &tokio_util::sync::CancellationToken,
 ) -> DecisionReceipt {
     let credential = SecretString::new(dispatch.api_key.into_owned());
@@ -213,7 +214,7 @@ async fn physical(
             cause: DecisionNotSentCause::Preflight,
         };
     };
-    let Ok(client) = DecisionClient::new(profile, credential) else {
+    let Ok(client) = DecisionClient::new(profile, credential, timeouts) else {
         return DecisionReceipt::NotSent {
             cause: DecisionNotSentCause::Build,
         };

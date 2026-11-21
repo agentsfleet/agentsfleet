@@ -23,6 +23,7 @@ use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
+pub use self::shared::RunLimits;
 use self::shared::Shared;
 use crate::context::Checkpoints;
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
@@ -51,17 +52,26 @@ pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
 pub struct Loop {
     catalog: Catalog,
     connect: Box<dyn Connect>,
+    limits: RunLimits,
 }
 
 impl Loop {
     /// A loop hosting `catalog`'s handlers and reaching models through
-    /// `connect`.
+    /// `connect`, holding every run to the default [`RunLimits`].
     #[must_use]
     pub fn new(catalog: Catalog, connect: impl Connect + 'static) -> Self {
         Self {
             catalog,
             connect: Box::new(connect),
+            limits: RunLimits::default(),
         }
+    }
+
+    /// The same loop, holding every run to `limits`.
+    #[must_use]
+    pub const fn with_limits(mut self, limits: RunLimits) -> Self {
+        self.limits = limits;
+        self
     }
 }
 
@@ -145,10 +155,11 @@ impl AgentEngine for Loop {
         // memory, verbs, guard, sandbox and children borrow it, and every loop
         // borrows them. A recovered root brings its children back from its
         // saved state.
-        let tools_run = shared::run_state(&run, memory, provider.as_ref());
+        let tools_run = shared::run_state(&run, memory, provider.as_ref(), self.limits);
+        let caps = self.limits.caps;
         let (registry, requests) = state.as_ref().map_or_else(
-            || Agents::new(shared::CAPS),
-            |recovered| Agents::restored(shared::CAPS, &recovered.driver),
+            || Agents::new(caps),
+            |recovered| Agents::restored(caps, &recovered.driver),
         );
         let backends = Backends::new(&tools_run, run.executor, self.catalog.transport())
             .with_agents(&registry);

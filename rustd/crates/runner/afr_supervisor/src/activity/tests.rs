@@ -100,10 +100,30 @@ pub(super) fn posted_frames(calls: &[crate::client::Call]) -> Vec<Vec<String>> {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_chosen_batch_count_holds_fewer_batches_before_dropping() {
+    let (plane, _calls) = activities(|_call| Answer::Stall);
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let tuning = crate::config::Tuning {
+        activity_batches_held: 2,
+        ..crate::config::Tuning::DEFAULT
+    };
+    let (sink, mut pump) = channel(&plane, &run, &tuning);
+    // As below, with one batch queued rather than three: the second, third
+    // and fourth each fill while the one slot is held, and are dropped.
+    for _ in 0..5 {
+        sink.emit(chunk("x".repeat(MAX_BATCH_BYTES / 2 + 1)));
+    }
+    drop(sink);
+    let stalled = tokio::time::timeout(Duration::from_secs(5), pump.run()).await;
+    assert!(stalled.is_err(), "the daemon never answers");
+    assert_eq!(pump.dropped, 3, "two batches held, so three full ones drop");
+}
+
+#[tokio::test(start_paused = true)]
 async fn test_activity_sender_drops_past_four_batches() {
     let (plane, _calls) = activities(|_call| Answer::Stall);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     // Each frame fills more than half a batch, so each rides alone. The burst
     // lands before the poster takes one in flight, so three queue; the fourth
     // fills while it waits and is dropped when the fifth arrives; the fifth,
@@ -141,7 +161,7 @@ async fn test_activity_sender_drops_past_four_batches() {
 async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
     let (plane, _calls) = activities(|_call| Answer::Stall);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     let tick = super::FLUSH_EVERY * 2;
 
     let (stalled, ()) = tokio::join!(tokio::time::timeout(STALL_BUDGET, pump.run()), async {
@@ -172,7 +192,7 @@ async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
 async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     sink.emit(tool(TOOL));
     assert_eq!(
         sink.timing().first_chunk,
@@ -210,7 +230,7 @@ async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
 async fn a_frame_after_a_quiet_spell_waits_a_full_period_before_it_is_sent() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
 
     let ((), ()) = tokio::join!(pump.run(), async {
         sink.emit(chunk("first".to_owned()));
@@ -239,7 +259,7 @@ fn a_frame_is_measured_as_encoded() {
     let frame = tool(TOOL);
 
     assert_eq!(
-        encoded_len(&frame),
+        encoded_len(&frame, MAX_BATCH_BYTES),
         serde_json::to_vec(&frame).unwrap().len()
     );
 }
@@ -249,7 +269,7 @@ async fn a_failed_post_is_only_logged() {
     let (plane, mut calls) =
         activities(|_call| Answer::Fail(error::unavailable(Verb::Progress, 503)));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     sink.emit(tool(TOOL));
     drop(sink);
 
@@ -269,7 +289,7 @@ async fn a_failed_post_is_only_logged() {
 async fn dropping_a_pump_with_a_blocked_writer_counts_its_pending_frames() {
     let (writer, mut calls) = activities(|_| Answer::Stall);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&writer, &run);
+    let (sink, mut pump) = channel(&writer, &run, &crate::config::Tuning::DEFAULT);
     sink.emit(tool(TOOL));
     drop(sink);
     let (tally, recorded) = Tally::new();

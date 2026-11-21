@@ -13,10 +13,12 @@
 //! offered `shell` can, inside the same environment and under the same limits,
 //! and nothing here tries to refuse those routes one by one.
 
+use std::time::Duration;
+
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::oneshot::{run_to_end, timeout_of};
+use super::oneshot::{TIMEOUT_DEFAULT, run_to_end, timeout_of};
 use super::with_environment;
 use crate::tool::ToolOutput;
 use crate::tools::env::{Env, Spawn};
@@ -61,6 +63,8 @@ pub struct Git<'run> {
     /// The directory git runs in, relative to the environment's root; the
     /// root when `None`.
     repository: Option<&'run str>,
+    /// How long a command runs when the model names no timeout.
+    default_timeout: Duration,
 }
 
 impl<'run> Git<'run> {
@@ -69,7 +73,19 @@ impl<'run> Git<'run> {
     /// names one with `-C`.
     #[must_use]
     pub const fn new(env: &'run dyn Env, repository: Option<&'run str>) -> Self {
-        Self { env, repository }
+        Self {
+            env,
+            repository,
+            default_timeout: TIMEOUT_DEFAULT,
+        }
+    }
+
+    /// The same tool, a command running for `default_timeout` when the model
+    /// names no timeout.
+    #[must_use]
+    pub const fn with_default_timeout(mut self, default_timeout: Duration) -> Self {
+        self.default_timeout = default_timeout;
+        self
     }
 }
 
@@ -99,7 +115,13 @@ impl Handler for Git<'_> {
             Some(repository) => spawn.cwd(repository),
             None => spawn,
         };
-        run_to_end(self.env, spawn, timeout_of(arguments.timeout_ms), run_id).await
+        run_to_end(
+            self.env,
+            spawn,
+            timeout_of(arguments.timeout_ms, self.default_timeout),
+            run_id,
+        )
+        .await
     }
 }
 

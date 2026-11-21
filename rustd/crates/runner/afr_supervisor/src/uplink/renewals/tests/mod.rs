@@ -183,6 +183,7 @@ impl RenewalPeer {
             requests: crate::downlink::pending::Requests::new(),
             queues,
             budget: output,
+            ceilings: af_stream::Ceilings::PROTOCOL,
             stop: tokio_util::sync::CancellationToken::new(),
         });
         let (current, session) = tokio::sync::watch::channel(Some(Arc::clone(&sender)));

@@ -116,6 +116,7 @@ impl Harness {
             requests: Requests::new(),
             queues,
             budget: Budget::default(),
+            ceilings: af_stream::Ceilings::PROTOCOL,
             stop: CancellationToken::new(),
         });
         self.current.send_replace(Some(Arc::clone(&sender)));

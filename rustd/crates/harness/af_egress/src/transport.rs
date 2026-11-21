@@ -109,6 +109,11 @@ impl fmt::Debug for Inbound {
 /// Where an admitted request is sent.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + fmt::Debug {
+    /// The bounds it holds every request to; a fake holds the defaults.
+    fn limits(&self) -> crate::Limits {
+        crate::Limits::DEFAULT
+    }
+
     /// Sends `outbound` and reads what comes back, up to the response cap.
     ///
     /// # Errors

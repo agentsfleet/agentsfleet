@@ -20,7 +20,9 @@ use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::process::output;
 use crate::tools::{Context, Handler, code};
 
-/// The lines a read carries when the model names no limit.
+/// The lines a read carries when the model names no limit, unless the
+/// embedder chooses another
+/// ([`Limits::default_read_lines`](crate::tools::Limits::default_read_lines)).
 pub const LINES_DEFAULT: usize = 2000;
 /// How a read that stopped before the file ended says where to go on.
 const CONTINUES_AT: &str = "... the file continues at line";
@@ -45,9 +47,31 @@ pub struct Window {
     limit: Option<NonZeroUsize>,
 }
 
-backed! {
-    /// Reads part of a file.
-    FileRead over Env
+/// Reads part of a file.
+#[derive(Debug, Clone, Copy)]
+pub struct FileRead<'run> {
+    backend: &'run dyn Env,
+    /// Lines a read carries when the model names no limit.
+    default_lines: usize,
+}
+
+impl<'run> FileRead<'run> {
+    /// The tool, reading from `backend`, [`LINES_DEFAULT`] lines when the
+    /// model names no limit.
+    #[must_use]
+    pub const fn new(backend: &'run dyn Env) -> Self {
+        Self {
+            backend,
+            default_lines: LINES_DEFAULT,
+        }
+    }
+
+    /// The same tool, `default_lines` lines when the model names no limit.
+    #[must_use]
+    pub const fn with_default_lines(mut self, default_lines: usize) -> Self {
+        self.default_lines = default_lines;
+        self
+    }
 }
 
 impl Handler for FileRead<'_> {
@@ -59,11 +83,11 @@ impl Handler for FileRead<'_> {
     type Arguments = Window;
 
     async fn run(&self, arguments: Window, _context: Context<'_>) -> ToolOutput {
-        settled(read(self.backend, &arguments).await)
+        settled(read(self.backend, &arguments, self.default_lines).await)
     }
 }
 
-async fn read(env: &dyn Env, window: &Window) -> Answer {
+async fn read(env: &dyn Env, window: &Window, default_lines: usize) -> Answer {
     let path = inside(env, &window.path)?;
     let fetched = env
         .read_file(path, MAX_READ_BYTES)
@@ -71,7 +95,7 @@ async fn read(env: &dyn Env, window: &Window) -> Answer {
         .map_err(|failure| failed(&failure))?;
     let text = String::from_utf8_lossy(&fetched.data);
     let first = window.offset.map_or(1, NonZeroUsize::get);
-    let limit = window.limit.map_or(LINES_DEFAULT, NonZeroUsize::get);
+    let limit = window.limit.map_or(default_lines, NonZeroUsize::get);
     let page = Page::of(&text, first, limit, output::budget(None)).ok_or_else(|| {
         let lines = text.split_inclusive('\n').count();
         let past = if fetched.truncated {

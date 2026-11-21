@@ -247,6 +247,7 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
         release: &release,
         home: &home,
         env: &ProcessEnv,
+        tuning: afr_sandbox::EngineTuning::DEFAULT,
     };
     let host_paths = HostPaths {
         cgroup_root: paths.cgroup_root,

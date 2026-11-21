@@ -238,6 +238,7 @@ async fn events_after(
         requests: Arc::clone(&requests),
         queues,
         budget: Budget::default(),
+        ceilings: af_stream::Ceilings::PROTOCOL,
         stop: stop.clone(),
     };
     let mut dispatch = Dispatch {

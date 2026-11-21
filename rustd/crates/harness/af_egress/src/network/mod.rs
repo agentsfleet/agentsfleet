@@ -32,11 +32,39 @@ use crate::transport::{Inbound, Outbound, Transport};
 /// The most of one response a tool reads: the published tools page's 1 MiB.
 pub const RESPONSE_MAX_BYTES: usize = 1 << 20;
 
-/// How long one request may take, connection to last byte.
+/// How long one request may take, connection to last byte, unless the
+/// runner chooses another ([`Limits::request_timeout`]).
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// How long connecting may take.
+/// How long connecting may take, unless the runner chooses another.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const _: () = assert!(CONNECT_TIMEOUT.as_secs() <= REQUEST_TIMEOUT.as_secs());
+
+/// The bounds every egress request is held to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// How long connecting may take; no longer than `request_timeout`.
+    pub connect_timeout: Duration,
+    /// How long one request may take, connection to last byte; a GET's whole
+    /// redirect chain shares it.
+    pub request_timeout: Duration,
+    /// Redirects a GET follows before it gives up.
+    pub max_redirects: u8,
+}
+
+impl Limits {
+    /// The bounds egress held before the runner could choose them.
+    pub const DEFAULT: Self = Self {
+        connect_timeout: CONNECT_TIMEOUT,
+        request_timeout: REQUEST_TIMEOUT,
+        max_redirects: redirect::MAX_REDIRECTS,
+    };
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
 /// What the runner calls itself; GitHub refuses a request that names nothing.
 const USER_AGENT: &str = concat!("agentsfleet-runner/", env!("CARGO_PKG_VERSION"));
 
@@ -49,6 +77,7 @@ const NOT_READ: &str = "the response could not be read";
 #[derive(Debug, Clone)]
 pub struct Network {
     client: Client,
+    limits: Limits,
 }
 
 impl Network {
@@ -56,12 +85,20 @@ impl Network {
     ///
     /// # Errors
     /// The TLS backend or the client refused the configuration.
+    pub fn new() -> Result<Self> {
+        Self::limited(Limits::DEFAULT)
+    }
+
+    /// The production client, holding every request to `limits`.
+    ///
+    /// # Errors
+    /// As [`Network::new`].
     #[expect(
         clippy::disallowed_methods,
         reason = "this is the runner's egress owner: guarded_by wraps the builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on and carries no guard"
     )]
-    pub fn new() -> Result<Self> {
-        Self::build(Client::builder(), Arc::new(SystemResolver))
+    pub fn limited(limits: Limits) -> Result<Self> {
+        Self::build(Client::builder(), Arc::new(SystemResolver), limits)
     }
 
     /// A client that reaches each `(host, address)` at that address and
@@ -82,27 +119,39 @@ impl Network {
             .fold(Client::builder(), |builder, (host, address)| {
                 builder.resolve(host, *address)
             });
-        Self::build(builder.add_root_certificate(root), Arc::new(SystemResolver))
+        Self::build(
+            builder.add_root_certificate(root),
+            Arc::new(SystemResolver),
+            Limits::DEFAULT,
+        )
     }
 
-    fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> Result<Self> {
-        let client = tool_client(builder, resolver).build()?;
-        Ok(Self { client })
+    fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>, limits: Limits) -> Result<Self> {
+        let client = tool_client(builder, resolver, limits).build()?;
+        Ok(Self { client, limits })
     }
 }
 
 /// The tool transport's configuration, separate from inference's guarded client.
-fn tool_client(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> ClientBuilder {
+fn tool_client(
+    builder: ClientBuilder,
+    resolver: Arc<dyn Resolve>,
+    limits: Limits,
+) -> ClientBuilder {
     guarded_by(builder, resolver)
         .https_only(true)
-        .timeout(REQUEST_TIMEOUT)
-        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(limits.request_timeout)
+        .connect_timeout(limits.connect_timeout)
         .retry(reqwest::retry::never())
         .user_agent(USER_AGENT)
 }
 
 #[async_trait::async_trait]
 impl Transport for Network {
+    fn limits(&self) -> Limits {
+        self.limits
+    }
+
     async fn send(&self, outbound: Outbound) -> Result<Inbound> {
         let discard_redirect_body = outbound.discard_redirect_body;
         let host = outbound.host().to_owned();

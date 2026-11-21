@@ -7,8 +7,9 @@ use std::time::Duration;
 
 use af_core::env::{EnvSource, LOG_LEVEL_VAR};
 
-use super::{READY_TIMEOUT, SANDBOX_HOST_IDS};
+use super::SANDBOX_HOST_IDS;
 use crate::bubblewrap::SANDBOX_SUBCOMMAND;
+use crate::engine::EngineTuning;
 use crate::host::HostTools;
 use crate::probe::ProbePaths;
 use crate::toolbox::Toolbox;
@@ -35,19 +36,21 @@ pub struct BubblewrapConfig {
     pub log_level: Option<OsString>,
     /// How long a sandbox may take to answer before the run is refused.
     pub ready_timeout: Duration,
+    /// Disk bytes each run's sandbox may read, and write, per second.
+    pub io_bytes_per_second: u64,
 }
 
 impl BubblewrapConfig {
     /// What a runner host builds sandboxes from: its admitted `toolbox`, the
     /// cgroup delegated to it, `state_dir` for each run's directory, and
-    /// `entry`, the runner binary every sandbox starts. The log level is the
-    /// one `env` names.
+    /// `entry`, the runner binary every sandbox starts, paced as `tuning`
+    /// says. The log level is the one `env` names.
     #[must_use]
     pub fn for_host(
         toolbox: Arc<Toolbox>,
-        cgroup_root: PathBuf,
-        state_dir: PathBuf,
+        (cgroup_root, state_dir): (PathBuf, PathBuf),
         entry: PathBuf,
+        tuning: EngineTuning,
         env: &impl EnvSource,
     ) -> Self {
         Self {
@@ -59,7 +62,8 @@ impl BubblewrapConfig {
             entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
             sandbox_ids: SANDBOX_HOST_IDS,
             log_level: env.get(LOG_LEVEL_VAR).map(OsString::from),
-            ready_timeout: READY_TIMEOUT,
+            ready_timeout: tuning.ready_timeout,
+            io_bytes_per_second: tuning.io_bytes_per_second,
         }
     }
 

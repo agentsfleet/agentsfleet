@@ -17,7 +17,9 @@ use crate::tools::code;
 use crate::tools::env::{Ending, Env, Process, Spawn};
 use crate::tools::files::failed;
 
-/// How long a command runs when the model names no timeout.
+/// How long a command runs when the model names no timeout, unless the
+/// embedder chooses another
+/// ([`Limits::default_timeout`](crate::tools::Limits::default_timeout)).
 pub const TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);
 /// The longest a command runs, whatever the model asks:
 /// 2^31 - 1 milliseconds, about 24.8 days. It is no working limit; it keeps
@@ -30,15 +32,15 @@ pub const EVENT_TIMED_OUT: &str = "process_timed_out";
 /// The event a command the kernel killed for memory logs under.
 pub const EVENT_OUT_OF_MEMORY: &str = "sandbox_out_of_memory";
 
-/// How long a command may run: what the model asked, or the default, never
+/// How long a command may run: what the model asked, or `default`, never
 /// past the ceiling.
 ///
 /// `asked` is the model's `timeout_ms` argument, a count of milliseconds
 /// because that is the name and unit the tool schema publishes; it becomes a
 /// `Duration` here, the one place the count is read.
-pub(super) fn timeout_of(asked: Option<u64>) -> Duration {
+pub(super) fn timeout_of(asked: Option<u64>, default: Duration) -> Duration {
     asked
-        .map_or(TIMEOUT_DEFAULT, Duration::from_millis)
+        .map_or(default, Duration::from_millis)
         .min(TIMEOUT_MAX)
 }
 

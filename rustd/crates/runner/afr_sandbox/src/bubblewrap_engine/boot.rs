@@ -22,6 +22,8 @@ pub struct BubblewrapBackend<'a, E: EnvSource> {
     pub home: &'a ToolboxHome,
     /// Host settings the backend passes into its sandbox.
     pub env: &'a E,
+    /// How every sandbox is started and paced.
+    pub tuning: crate::EngineTuning,
 }
 
 impl<E: EnvSource> Backend for BubblewrapBackend<'_, E> {
@@ -38,9 +40,9 @@ impl<E: EnvSource> Backend for BubblewrapBackend<'_, E> {
         let resources = MountedToolboxes::from(toolboxes);
         let config = BubblewrapConfig::for_host(
             toolbox,
-            paths.cgroup_root.clone(),
-            paths.state_dir.clone(),
+            (paths.cgroup_root.clone(), paths.state_dir.clone()),
             self.entry,
+            self.tuning,
             self.env,
         );
         Ok(Started {

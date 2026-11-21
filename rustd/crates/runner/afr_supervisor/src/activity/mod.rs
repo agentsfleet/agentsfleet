@@ -39,16 +39,18 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 
 use crate::client::ControlPlane;
+use crate::config::Tuning;
 
 mod timing;
 
 use self::timing::RunClock;
 pub(crate) use self::timing::RunTiming;
 
-/// Batches queued or in flight at once; past that a batch waits with the
-/// batcher.
+/// Batches queued or in flight at once unless the runner's file chooses
+/// another ([`Tuning`]); past that a batch waits with the batcher.
 pub(crate) const MAX_BATCHES_HELD: usize = 4;
-/// The most frame bytes one batch carries; a single larger frame rides alone.
+/// The most frame bytes one batch carries unless the runner's file chooses
+/// another; a single larger frame rides alone.
 pub(crate) const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// How long a partial batch waits for company before it is sent anyway; a
 /// run's first frame and first answer chunk do not wait (see `Early`).
@@ -133,6 +135,8 @@ pub(crate) struct ActivityPump<'a, W: ActivityWriter + ?Sized = ControlPlane> {
     /// beside the batcher, and lock-free like everything on this path.
     held: Arc<AtomicU64>,
     early: Early,
+    /// Batches queued or in flight at once, and the bytes one carries.
+    bounds: (usize, usize),
 }
 
 impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
@@ -151,6 +155,7 @@ impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
 pub(crate) fn channel<'a, W: ActivityWriter + ?Sized>(
     plane: &'a W,
     run_id: &'a Uuid7,
+    tuning: &Tuning,
 ) -> (ActivitySink, ActivityPump<'a, W>) {
     let (sender, receiver) = mpsc::unbounded_channel();
     let pump = ActivityPump {
@@ -160,6 +165,7 @@ pub(crate) fn channel<'a, W: ActivityWriter + ?Sized>(
         dropped: 0,
         held: Arc::default(),
         early: Early::default(),
+        bounds: (tuning.activity_batches_held, tuning.activity_batch_bytes),
     };
     let sink = ActivitySink {
         frames: sender,
@@ -176,7 +182,7 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
     /// sent.
     pub(crate) async fn run(&mut self) {
         // The poster holds one batch in flight; the channel queues the rest.
-        let (posts, mut queued) = mpsc::channel::<Batch>(MAX_BATCHES_HELD - 1);
+        let (posts, mut queued) = mpsc::channel::<Batch>(self.bounds.0.saturating_sub(1).max(1));
         let plane = self.plane;
         let run_id = self.run_id;
         let held = Arc::clone(&self.held);
@@ -193,6 +199,7 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
     async fn batch(&mut self, posts: mpsc::Sender<Batch>) {
         let mut batch = Vec::new();
         let mut bytes = 0;
+        let batch_bytes = self.bounds.1;
         let mut flush = tokio::time::interval_at(Instant::now() + FLUSH_EVERY, FLUSH_EVERY);
         loop {
             tokio::select! {
@@ -200,8 +207,8 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
                 biased;
                 frame = self.frames.recv() => {
                     let Some(frame) = frame else { break };
-                    let size = encoded_len(&frame);
-                    if !batch.is_empty() && bytes + size > MAX_BATCH_BYTES {
+                    let size = encoded_len(&frame, batch_bytes);
+                    if !batch.is_empty() && bytes + size > batch_bytes {
                         // Full. Sent, or dropped when every slot is still
                         // held: a full batch is the only kind this pump drops.
                         if let Err(full) = posts.try_send(std::mem::take(&mut batch)) {
@@ -286,9 +293,9 @@ fn frame_count(frames: usize) -> u64 {
 }
 
 /// A frame's encoded size, measured without allocating its encoding.
-fn encoded_len(frame: &ActivityFrame<'_>) -> usize {
+fn encoded_len(frame: &ActivityFrame<'_>, batch_bytes: usize) -> usize {
     // Encoding a wire frame cannot fail; were it to, the frame rides alone.
-    af_validate::serialized_len(frame).unwrap_or(MAX_BATCH_BYTES)
+    af_validate::serialized_len(frame).unwrap_or(batch_bytes)
 }
 
 #[cfg(test)]

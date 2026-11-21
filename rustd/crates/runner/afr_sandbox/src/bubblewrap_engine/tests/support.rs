@@ -182,6 +182,7 @@ impl FakeHost {
             sandbox_ids: (65_534, 65_534),
             log_level: Some(OsString::from("debug")),
             ready_timeout: READY,
+            io_bytes_per_second: crate::cgroup::DEFAULT_IO_BYTES_PER_SECOND,
         };
         Self { dir, config, probe }
     }

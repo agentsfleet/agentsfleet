@@ -9,8 +9,12 @@ use tokio::time::{Instant, timeout_at};
 use crate::{Configured, Result, error::ErrorKind, stream::TurnControl, transport::HttpTransport};
 use af_wire::inference::InferenceApi;
 
-const COUNT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
-const COUNT_REPLY_BYTES: usize = 16 * 1024;
+/// How long a native count may take unless the caller's timeouts say
+/// otherwise ([`crate::Timeouts::with_count`]).
+pub(crate) const COUNT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// The largest count reply accepted unless the caller's timeouts say
+/// otherwise.
+pub(crate) const COUNT_REPLY_BYTES: usize = 16 * 1024;
 const COMMON_GENERATION: &[&str] = &["stream", "temperature", "top_p", "metadata"];
 const RESPONSES_GENERATION: &[&str] = &[
     "max_output_tokens",
@@ -59,15 +63,13 @@ pub(super) async fn count(
     control: &TurnControl,
 ) -> Result<u64> {
     let request = request(route, model, key, body)?;
-    let deadline = (Instant::now() + COUNT_TIMEOUT).min(
-        control
-            .deadline
-            .unwrap_or_else(|| Instant::now() + COUNT_TIMEOUT),
-    );
+    let within = control.timeouts.count();
+    let deadline =
+        (Instant::now() + within).min(control.deadline.unwrap_or_else(|| Instant::now() + within));
     tokio::select! {
         biased;
         () = control.cancellation.cancelled() => Err(ErrorKind::StreamCancelled.into()),
-        counted = timeout_at(deadline, read(transport, request, route.settings.api)) => {
+        counted = timeout_at(deadline, read(transport, request, route.settings.api, control.timeouts.count_reply_bytes())) => {
             counted.map_err(|_elapsed| ErrorKind::StreamDeadline)?
         }
     }
@@ -140,6 +142,7 @@ async fn read(
     transport: &HttpTransport,
     request: http::Request<Bytes>,
     api: InferenceApi,
+    reply_bytes: usize,
 ) -> Result<u64> {
     let response = transport.send_streaming(request).await?;
     if response.status() != http::StatusCode::OK {
@@ -151,7 +154,7 @@ async fn read(
     let mut stream = response.into_body();
     let mut bytes = BytesMut::new();
     while let Some(chunk) = stream.try_next().await? {
-        if bytes.len().saturating_add(chunk.len()) > COUNT_REPLY_BYTES {
+        if bytes.len().saturating_add(chunk.len()) > reply_bytes {
             return Err(ErrorKind::ReplyTooLarge.into());
         }
         bytes.extend_from_slice(&chunk);

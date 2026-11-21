@@ -68,6 +68,7 @@ fn session(stop: &CancellationToken) -> (Arc<SessionSender>, Receivers) {
             queues,
             budget,
             requests: Requests::new(),
+            ceilings: af_stream::Ceilings::PROTOCOL,
             stop: stop.child_token(),
         }),
         receivers,

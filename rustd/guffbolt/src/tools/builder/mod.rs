@@ -12,6 +12,7 @@
 //!    .with_channel(&channel)    message
 //!    .with_notifier(&vendor)    notify
 //!    .with_agents(&agents)      spawn_agent, send_input, followup_task, ...
+//!    .with_limits(limits)       the bounds those tools hold a run's calls to
 //!    .with_tool(tool)           a tool built with a backend of its own
 //!    .build(&config) ─► Tools, or MissingBackend { tool, backend }
 //! ```
@@ -29,7 +30,8 @@ use std::fmt;
 use crate::agents::Agents;
 use crate::tool::{Tool, Tools};
 use crate::tools::{
-    Channel, Context, ContextTool, Env, MemoryStore, Notifier, Outbound, Scheduler, Sessions,
+    Channel, Context, ContextTool, Env, Limits, MemoryStore, Notifier, Outbound, Scheduler,
+    Sessions,
 };
 
 use self::config::Pattern;
@@ -227,6 +229,14 @@ impl<'run> ToolsBuilder<'run> {
         self
     }
 
+    /// The builder, its tools holding a run's calls to `limits`; without
+    /// it, to [`Limits::DEFAULT`].
+    #[must_use]
+    pub const fn with_limits(mut self, limits: Limits) -> Self {
+        self.given.limits = limits;
+        self
+    }
+
     /// The builder, also holding `tool`, built already with whatever backend
     /// it takes. A config entry matching its name offers it, ahead of a
     /// built-in tool of the same name.
@@ -282,6 +292,7 @@ struct Given<'run> {
     channel: Option<&'run dyn Channel>,
     notifier: Option<&'run dyn Notifier>,
     agents: Option<&'run Agents>,
+    limits: Limits,
 }
 
 impl<'run> Given<'run> {

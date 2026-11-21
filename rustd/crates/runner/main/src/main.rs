@@ -138,12 +138,19 @@ fn answer(host: &afr_sandbox::HostProbe, out: &mut impl std::io::Write) -> ExitC
 /// Starts the export when an endpoint is configured, serves runs until the
 /// process is asked to stop, and delivers what the export holds on the way
 /// out.
+///
+/// The runner's file is read first, so a refused value stops the start before
+/// anything is exported.
 fn run(args: RunArgs) -> ExitCode {
-    let telemetry = match exporting(&ProcessEnv) {
+    let settings = match config::read(&ProcessEnv) {
+        Ok(settings) => settings,
+        Err(refused) => return refused,
+    };
+    let telemetry = match exporting(&ProcessEnv, settings.max_run_spans) {
         Ok(telemetry) => telemetry,
         Err(refused) => return refused,
     };
-    let ended = supervise(args).unwrap_or_else(|failed| failed);
+    let ended = supervise(args, &settings).unwrap_or_else(|failed| failed);
     if let Some(telemetry) = telemetry {
         telemetry.close();
     }
@@ -157,9 +164,13 @@ fn run(args: RunArgs) -> ExitCode {
 /// run, and before the subscriber so the subscriber carries the export's
 /// layer from its first record. A refusal is logged through a subscriber
 /// without it, naming the knob and never its value.
-fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
-    let resolved = Endpoint::from_env(env)
-        .and_then(|endpoint| endpoint.as_ref().map(Telemetry::install).transpose());
+fn exporting(env: &impl EnvSource, max_run_spans: u32) -> Result<Option<Telemetry>, ExitCode> {
+    let resolved = Endpoint::from_env(env).and_then(|endpoint| {
+        endpoint
+            .as_ref()
+            .map(|endpoint| Telemetry::install_capped(endpoint, max_run_spans))
+            .transpose()
+    });
     let telemetry = match resolved {
         Ok(telemetry) => telemetry,
         Err(refused) => {
@@ -189,17 +200,18 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
 ///
 /// # Errors
 /// The failure, already logged under `run_failed`, as the exit status.
-fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
-    let settings = config::read(&ProcessEnv)?;
+fn supervise(args: RunArgs, settings: &config::Settings) -> Result<ExitCode, ExitCode> {
     let (config, home) = afr_supervisor::boot(&ProcessEnv).or_exit()?;
-    let config = config.with_runtime(settings.supervisor);
+    let config = config
+        .with_runtime(settings.supervisor)
+        .with_tuning(settings.tuning);
     // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
-    let host = args.host(&home)?;
+    let host = args.host(&home, settings.engine)?;
     let _resources = host.resources;
     let engine = host.engine;
     let probe = host.probe;
-    let agent = host::agent(settings.inference, settings.provider_retries)?;
+    let agent = host::agent(settings)?;
     let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
     runtime
         .block_on(serve(&config, home, engine, agent, probe))
@@ -213,12 +225,12 @@ impl RunArgs {
     ///
     /// # Errors
     /// The failure, already logged, as the exit status.
-    fn host(self, home: &StorageHome) -> Result<Host, ExitCode> {
+    fn host(self, home: &StorageHome, tuning: afr_sandbox::EngineTuning) -> Result<Host, ExitCode> {
         #[cfg(debug_assertions)]
         if self.unsandboxed {
             return Host::unsandboxed(home);
         }
-        self.engine.boot(home)
+        self.engine.boot(home, tuning)
     }
 }
 

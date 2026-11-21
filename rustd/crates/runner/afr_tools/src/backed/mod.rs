@@ -104,7 +104,8 @@ impl<'b, 'run> Backends<'b, 'run> {
             .with_memory(&run.memory)
             .with_scheduler(&self.fenced)
             .with_channel(&self.fenced)
-            .with_notifier(&self.pushover);
+            .with_notifier(&self.pushover)
+            .with_limits(run.limits);
         // In the one repository the run holds; with several, the model names
         // one itself.
         if let [only] = run.checkouts.as_slice() {

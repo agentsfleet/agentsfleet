@@ -1,7 +1,7 @@
 //! Fault scenarios verify bounded sends, retained usage and diagnostic outcomes.
 
 use af_crypto::secret::SecretString;
-use af_providers::decision::{DecisionClient, DecisionEvaluator as _};
+use af_providers::decision::{DecisionClient, DecisionEvaluator as _, DecisionTimeouts};
 use af_providers::{
     observe::labels::{DecisionOutcome as MeasuredOutcome, DecisionPurpose},
     testing::{Observed, Tally, scoped},
@@ -52,7 +52,7 @@ async fn profile_refusals_cost_no_physical_send() {
         let profile = Unvalidated::new(profile)
             .validate()
             .expect("profile shape is valid; capability/endpoint judgment is native");
-        let client = DecisionClient::new(profile, fixture::credential())
+        let client = DecisionClient::new(profile, fixture::credential(), DecisionTimeouts::DEFAULT)
             .expect("the production guarded client can be constructed");
         let (tally, received) = Tally::new();
         let error = scoped(tally, client.evaluate(&fixture::request()))

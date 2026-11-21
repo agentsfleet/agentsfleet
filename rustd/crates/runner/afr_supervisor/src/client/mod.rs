@@ -31,7 +31,7 @@ mod task;
 mod turn_checkpoint;
 mod verb;
 
-pub(crate) use self::http::HttpRunnerApi;
+pub(crate) use self::http::{CALL_TIMEOUT, HttpRunnerApi};
 #[cfg(test)]
 pub(crate) use self::verb::Method;
 pub(crate) use self::verb::Verb;
@@ -99,6 +99,7 @@ pub struct ControlPlane {
     api: Box<dyn RunnerApi>,
     pub(crate) stream: crate::uplink::StreamHandle,
     pub(crate) runtime: crate::config::RuntimePolicy,
+    pub(crate) tuning: crate::config::Tuning,
 }
 
 impl ControlPlane {
@@ -108,7 +109,13 @@ impl ControlPlane {
             api,
             stream,
             runtime: crate::config::RuntimePolicy::DEFAULT,
+            tuning: crate::config::Tuning::DEFAULT,
         }
+    }
+
+    pub(crate) const fn with_tuning(mut self, tuning: crate::config::Tuning) -> Self {
+        self.tuning = tuning;
+        self
     }
 
     pub(crate) const fn with_runtime(mut self, runtime: crate::config::RuntimePolicy) -> Self {

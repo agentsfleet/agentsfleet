@@ -52,7 +52,7 @@ pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
 pub use self::bubblewrap::Requirements as BubblewrapRequirements;
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{
-    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, SANDBOX_HOST_IDS,
 };
 pub use self::cgroup::{
     DEFAULT_IO_BYTES_PER_SECOND, Freezer, MECHANISM_DELEGATED_CGROUP, RunCgroup, SANDBOX_LEAF,
@@ -60,7 +60,7 @@ pub use self::cgroup::{
 };
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
-    HostWorkspace, Killed, Limits, Sandbox, SandboxRequest,
+    EngineTuning, HostWorkspace, Killed, Limits, Sandbox, SandboxRequest,
 };
 pub use self::error::{Error, Result, ToolboxRefusal};
 #[cfg(target_os = "linux")]

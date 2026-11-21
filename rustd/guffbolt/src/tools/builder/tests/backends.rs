@@ -109,3 +109,43 @@ fn a_name_no_built_in_has_builds_nothing() {
 
     assert!(super::super::catalog::tool(given, "no_such_tool").is_none());
 }
+
+/// The limits a builder is given reach the tools it builds: `file_read`
+/// reads its chosen default of lines, and `sleep` waits no longer than its
+/// chosen ceiling.
+#[tokio::test(start_paused = true)]
+async fn the_builders_limits_reach_the_tools_it_builds() {
+    let root = tempfile::tempdir().expect("a scratch directory");
+    std::fs::write(root.path().join("five.txt"), "1\n2\n3\n4\n5\n").expect("the fixture writes");
+    let local = local_at(root.path());
+    let limits = crate::tools::Limits {
+        default_read_lines: 2,
+        max_sleep: std::time::Duration::from_millis(5),
+        ..crate::tools::Limits::DEFAULT
+    };
+    let tools = local
+        .builder()
+        .with_limits(limits)
+        .build(&config(&["file_read", "sleep"]))
+        .expect("the environment is given");
+    let at = first_call();
+
+    let read = tools
+        .dispatch(
+            "file_read",
+            &json!({"path": "five.txt"}),
+            local.context(&at),
+        )
+        .await;
+    let slept = tools
+        .dispatch("sleep", &json!({"duration_ms": 60_000}), local.context(&at))
+        .await;
+
+    assert!(read.text.contains("1\n2\n"), "{}", read.text);
+    assert!(
+        !read.text.contains("3\n"),
+        "two lines, not five: {}",
+        read.text
+    );
+    assert_eq!(slept.text, "Slept 5 ms");
+}

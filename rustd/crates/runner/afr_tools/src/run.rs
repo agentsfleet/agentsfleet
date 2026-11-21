@@ -16,7 +16,7 @@ use af_egress::Egress;
 use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
-use guffbolt::tools::Sessions;
+use guffbolt::tools::{Limits, Sessions};
 
 use crate::generic::RunMemory;
 use crate::sandbox::Checkout;
@@ -36,6 +36,8 @@ pub struct Run<'run> {
     /// The processes the run's calls keep open across calls; the run's end
     /// closes whatever is left.
     pub sessions: Sessions,
+    /// The bounds the run's built-in tools hold its calls to.
+    pub limits: Limits,
     /// The repositories checked out in the run's workspace.
     pub checkouts: Vec<Checkout<'run>>,
     /// Whether the model's wire takes an image with a call's result; `image`
@@ -90,6 +92,7 @@ impl<'run> Run<'run> {
             memory: RunMemory::new(memory),
             egress: Mutex::new(egress),
             sessions: Sessions::default(),
+            limits: Limits::DEFAULT,
             checkouts: Vec::new(),
             image_input: false,
             verbs,
@@ -101,6 +104,16 @@ impl<'run> Run<'run> {
     #[must_use]
     pub fn with_checkouts(mut self, checkouts: Vec<Checkout<'run>>) -> Self {
         self.checkouts = checkouts;
+        self
+    }
+
+    /// The same run, its built-in tools holding its calls to `limits` and
+    /// keeping at most `max_sessions` sessions open. Set before any call
+    /// opens a session: the registry is replaced.
+    #[must_use]
+    pub fn with_limits(mut self, limits: Limits, max_sessions: usize) -> Self {
+        self.limits = limits;
+        self.sessions = Sessions::new(max_sessions);
         self
     }
 

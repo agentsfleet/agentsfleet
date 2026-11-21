@@ -3,6 +3,8 @@
 mod messages;
 mod native;
 
+pub(crate) use native::{COUNT_REPLY_BYTES, COUNT_TIMEOUT};
+
 use rig_core::completion::{CompletionRequest, Usage};
 use sha2::{Digest as _, Sha256};
 

@@ -5,6 +5,12 @@ use garde::Validate;
 use serde::Deserialize;
 use std::{path::PathBuf, process::ExitCode};
 
+mod tuning;
+
+use self::tuning::{
+    DaemonTuning, EgressTuning, ProviderTuning, SandboxTuning, TelemetryTuning, ToolsTuning,
+};
+
 /// Optional numeric deployment profile; tokens and bootstrap addresses stay in the environment.
 pub(super) const ENV_CONFIG_FILE: &str = "AGENTSFLEET_RUNNER_CONFIG_FILE";
 
@@ -17,20 +23,48 @@ struct Profile {
     provider_retries: af_providers::RetrySettings,
     #[garde(dive)]
     supervisor: afr_supervisor::config::RuntimeSettings,
+    #[garde(dive)]
+    sandbox: SandboxTuning,
+    #[garde(dive)]
+    tools: ToolsTuning,
+    #[garde(dive)]
+    provider: ProviderTuning,
+    #[garde(dive)]
+    egress: EgressTuning,
+    #[garde(dive)]
+    daemon: DaemonTuning,
+    #[garde(dive)]
+    telemetry: TelemetryTuning,
 }
 
 pub(super) struct Settings {
     pub(super) inference: af_inference::Timeouts,
     pub(super) provider_retries: af_providers::RetryPolicy,
     pub(super) supervisor: afr_supervisor::config::RuntimePolicy,
+    /// The supervisor's daemon link, decision calls and sandbox limits.
+    pub(super) tuning: afr_supervisor::config::Tuning,
+    /// How the engine starts and paces every sandbox.
+    pub(super) engine: afr_sandbox::EngineTuning,
+    /// What the agent loop holds every run to.
+    pub(super) run_limits: afr_agent::RunLimits,
+    /// The bounds every egress request is held to.
+    pub(super) egress: af_egress::Limits,
+    /// Spans one run may export.
+    pub(super) max_run_spans: u32,
 }
 
 pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
     let profile = load(env).map_err(|error| super::refused(&error))?;
+    let inference = af_inference::Timeouts::new(&checked(profile.inference)?);
     Ok(Settings {
-        inference: af_inference::Timeouts::new(&checked(profile.inference)?),
+        inference: profile.provider.counting(inference),
         provider_retries: af_providers::RetryPolicy::new(&checked(profile.provider_retries)?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
+        tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
+        engine: profile.sandbox.engine(),
+        run_limits: profile.tools.run_limits(),
+        egress: profile.egress.limits(),
+        max_run_spans: profile.telemetry.max_spans_per_run,
     })
 }
 
@@ -50,3 +84,5 @@ fn checked<T: Validate<Context = ()>>(raw: T) -> Result<garde::Valid<T>, ExitCod
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tuning_tests;

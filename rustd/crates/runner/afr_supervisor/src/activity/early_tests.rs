@@ -35,7 +35,7 @@ const OWN_MS: i64 = 60;
 async fn test_first_frame_posts_without_waiting() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
 
     let ((), ()) = tokio::join!(pump.run(), async {
         sink.emit(tool(TOOL));
@@ -58,7 +58,7 @@ async fn test_first_frame_posts_without_waiting() {
 async fn test_first_answer_chunk_flushes_in_order() {
     let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
 
     let ((), ()) = tokio::join!(pump.run(), async {
         sink.emit(started(CALL));
@@ -92,7 +92,7 @@ async fn test_first_answer_chunk_flushes_in_order() {
 async fn test_early_flush_keeps_drop_accounting() {
     let (plane, _calls) = activities(|_call| Answer::Stall);
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &run);
+    let (sink, mut pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     // The same burst as `test_activity_sender_drops_past_four_batches`: the
     // first frame goes at once instead of on the second frame's arrival, the
     // next two fill the queue, the fourth fills while it waits and is dropped
@@ -134,7 +134,7 @@ async fn test_early_flush_keeps_drop_accounting() {
 async fn test_the_run_clock_splits_tools_from_the_model() {
     let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, _pump) = channel(&plane, &run);
+    let (sink, _pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     tokio::time::advance(Duration::from_millis(500)).await;
     sink.run_started();
     sink.run_started();
@@ -171,7 +171,7 @@ async fn test_the_run_clock_splits_tools_from_the_model() {
 async fn test_overlapping_calls_count_their_union() {
     let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, _pump) = channel(&plane, &run);
+    let (sink, _pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     sink.run_started();
     sink.emit(started(CALL));
     tokio::time::advance(MODEL_STEP).await;
@@ -199,7 +199,7 @@ async fn test_overlapping_calls_count_their_union() {
 async fn test_a_reused_call_id_stays_open_until_its_last_completion() {
     let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let run = Uuid7::parse(RUN_ID).unwrap();
-    let (sink, _pump) = channel(&plane, &run);
+    let (sink, _pump) = channel(&plane, &run, &crate::config::Tuning::DEFAULT);
     sink.run_started();
     sink.emit(started(CALL));
     sink.emit(started(CALL));

@@ -84,7 +84,7 @@ impl Lessee {
         tracing::info!(run_id, event = EVENT_ACQUIRED);
         let meter = Arc::new(Meter::new(Arc::clone(&self.clock)));
         let started = Instant::now();
-        let (sink, mut pump) = activity::channel(&self.plane, &id);
+        let (sink, mut pump) = activity::channel(&self.plane, &id, &self.plane.tuning);
         let renewal = Renewal::new(
             &self.plane,
             &id,

@@ -11,7 +11,8 @@ mod privacy;
 mod target;
 pub use target::Target;
 
-/// The largest number of continuations for a single tool call.
+/// The largest number of continuations for a single tool call, unless the
+/// runner chooses another ([`Chain::with_max_redirects`]).
 pub const MAX_REDIRECTS: u8 = 3;
 
 /// Closed stopping reasons; none holds private target data.
@@ -53,6 +54,7 @@ pub struct Chain {
     seen: BTreeSet<String>,
     privacy: privacy::Privacy,
     hops: u8,
+    max_hops: u8,
     stripped: bool,
     started: bool,
     ending: &'static str,
@@ -112,12 +114,20 @@ impl Chain {
             seen: BTreeSet::from([identity(current)]),
             privacy: privacy::Privacy::default(),
             hops: 0,
+            max_hops: MAX_REDIRECTS,
             stripped: false,
             started: false,
             ending: "interrupted",
             began: Instant::now(),
             status: 0,
         }
+    }
+
+    /// The same chain, following at most `max_redirects` before it gives up.
+    #[must_use]
+    pub const fn with_max_redirects(mut self, max_redirects: u8) -> Self {
+        self.max_hops = max_redirects;
+        self
     }
 
     /// Draft a continuation, which must pass the same run's admission before send.
@@ -151,7 +161,7 @@ impl Chain {
         if self.seen.contains(&identity(&target.resolved)) {
             return Err(Stop::Loop);
         }
-        if self.hops == MAX_REDIRECTS {
+        if self.hops >= self.max_hops {
             return Err(Stop::HopLimit);
         }
         if self.current.origin() != target.resolved.origin() {

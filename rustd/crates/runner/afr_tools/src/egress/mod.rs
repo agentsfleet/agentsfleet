@@ -11,7 +11,6 @@ use std::borrow::Cow;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use af_egress::REQUEST_TIMEOUT;
 use af_egress::redirect::{Chain, Stop};
 use af_egress::{Draft, Error, Inbound, Placement, Refusal, Transport};
 use guffbolt::tools::code;
@@ -169,7 +168,8 @@ async fn send_get(
     run: &Run<'_>,
     draft: Draft,
 ) -> Result<Inbound, Refused> {
-    tokio::time::timeout(REQUEST_TIMEOUT, get_chain(tool, transport, run, draft))
+    let within = transport.limits().request_timeout;
+    tokio::time::timeout(within, get_chain(tool, transport, run, draft))
         .await
         .unwrap_or_else(|_expired| Err(read_expired(tool, run.run_id)))
 }
@@ -201,7 +201,8 @@ async fn get_chain(
         .prepare(draft)
         .await
         .map_err(|failure| refused(tool, run.run_id, &failure))?;
-    let mut chain = Chain::new(outbound.url(), headers);
+    let mut chain =
+        Chain::new(outbound.url(), headers).with_max_redirects(transport.limits().max_redirects);
     loop {
         let mut inbound = transport
             .send(outbound.for_redirect_read())

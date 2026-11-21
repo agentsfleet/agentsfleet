@@ -29,6 +29,20 @@ fn should_bound_total_redirect_work() {
 }
 
 #[test]
+fn a_chosen_redirect_count_stops_the_chain_sooner() {
+    let first = Url::parse(FIRST).expect("fixture URL");
+    let mut chain = Chain::new(&first, Vec::new()).with_max_redirects(1);
+    let mut reply = redirected(302, &first, "/hop/1");
+    let draft = chain
+        .next(&mut reply)
+        .expect("bounded hop")
+        .expect("continuation");
+    let current = Url::parse(&draft.url).expect("draft URL");
+    let mut second = redirected(302, &current, "/hop/2");
+    assert!(matches!(chain.next(&mut second), Err(Stop::HopLimit)));
+}
+
+#[test]
 fn should_refuse_repeated_normalized_targets_before_the_hop_limit() {
     let first = Url::parse("https://API.GITHUB.COM:443/start#initial").expect("fixture URL");
     let mut chain = Chain::new(&first, Vec::new());

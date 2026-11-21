@@ -26,8 +26,10 @@ use crate::tools::{Context, Handler, NoArguments, code};
 
 /// How long a wait lasts when the model names no timeout.
 const WAIT_DEFAULT: Duration = Duration::from_secs(30);
-/// The longest wait: an hour. Zero is allowed, to only look.
-const WAIT_MAX: Duration = Duration::from_hours(1);
+/// The longest wait unless the embedder chooses another
+/// ([`Limits::max_wait`](crate::tools::Limits::max_wait)): an hour. Zero is
+/// allowed, to only look.
+pub const WAIT_MAX: Duration = Duration::from_hours(1);
 /// What a `fork_turns` the tool cannot read answers.
 const FORK_TURNS: &str = "fork_turns must be `none`, `all` or a number of turns";
 
@@ -119,9 +121,38 @@ agent_tool! {
     FollowupTask
 }
 
-agent_tool! {
-    /// Waits for a child's turn to end.
-    WaitAgent
+/// Waits for a child's turn to end.
+#[derive(Debug, Clone)]
+pub struct WaitAgent {
+    agents: Agents,
+    max_wait: Duration,
+}
+
+impl WaitAgent {
+    /// The tool, over the children `agents` keeps, waiting at most
+    /// [`WAIT_MAX`].
+    #[must_use]
+    pub fn new(agents: &Agents) -> Self {
+        Self {
+            agents: agents.clone(),
+            max_wait: WAIT_MAX,
+        }
+    }
+
+    /// The same tool, waiting at most `max_wait`.
+    #[must_use]
+    pub const fn with_max_wait(mut self, max_wait: Duration) -> Self {
+        self.max_wait = max_wait;
+        self
+    }
+
+    /// The answer that hands the loop `action`.
+    fn order(&self, action: Action) -> Ready<ToolOutput> {
+        ready(ToolOutput::ordering(Order::new(
+            self.agents.clone(),
+            action,
+        )))
+    }
 }
 
 agent_tool! {
@@ -225,7 +256,7 @@ impl Handler for WaitAgent {
         let timeout = arguments
             .timeout_ms
             .map_or(WAIT_DEFAULT, Duration::from_millis)
-            .min(WAIT_MAX);
+            .min(self.max_wait);
         self.order(Action::Wait {
             target: arguments.target,
             timeout,

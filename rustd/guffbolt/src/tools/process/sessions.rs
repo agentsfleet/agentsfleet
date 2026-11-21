@@ -24,7 +24,8 @@ use tokio::sync::Mutex as Held;
 use super::output::Collected;
 use crate::tools::env::{Ending, Env, Process, ProcessId};
 
-/// The most sessions one run keeps open.
+/// The most sessions one run keeps open, unless the embedder chooses another
+/// ([`Sessions::new`]).
 pub const SESSIONS_PER_RUN_MAX: usize = 64;
 /// How many of the most recently used sessions room is never made from.
 pub const SESSIONS_PROTECTED: usize = 8;
@@ -56,9 +57,18 @@ struct Book {
 }
 
 /// The sessions one run keeps open.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Sessions {
     book: Mutex<Book>,
+    /// The most kept open at once.
+    max: usize,
+}
+
+impl Default for Sessions {
+    /// A registry keeping [`SESSIONS_PER_RUN_MAX`] open at most.
+    fn default() -> Self {
+        Self::new(SESSIONS_PER_RUN_MAX)
+    }
 }
 
 /// One session's place, held until its process opens in it. Dropped unopened
@@ -75,6 +85,17 @@ impl Drop for Slot<'_> {
 }
 
 impl Sessions {
+    /// A registry keeping `max` sessions open at most. Room is never made
+    /// from the [`SESSIONS_PROTECTED`] most recently used, so a `max` at or
+    /// below that many is not held.
+    #[must_use]
+    pub fn new(max: usize) -> Self {
+        Self {
+            book: Mutex::default(),
+            max,
+        }
+    }
+
     /// A capture may proceed only when neither open nor starting sessions exist.
     #[must_use]
     pub fn is_quiescent(&self) -> bool {
@@ -88,7 +109,7 @@ impl Sessions {
         let pruned = {
             let mut book = self.book();
             book.reserved += 1;
-            let full = book.open.len() + book.reserved > SESSIONS_PER_RUN_MAX;
+            let full = book.open.len() + book.reserved > self.max;
             let pruned = full.then(|| book.pruned()).flatten();
             drop(book);
             pruned

@@ -190,6 +190,136 @@ The commented-out keys are refused if set, because the daemon does not read them
 
 `max_message_mib` and `max_control_message_mib` are sent to a runner in its
 welcome as `max_message_bytes` and `max_control_message_bytes`; a welcome
-without them means 32 MiB and 2 MiB. The runner does not act on them yet, and
-both sides still frame against the 32 MiB and 2 MiB the protocol compiles in,
-so these keys can only announce a value at or below those.
+without them means 32 MiB and 2 MiB. The runner frames that connection to them
+(see the runner's section below); the daemon still frames against the 32 MiB
+and 2 MiB the protocol compiles in, so these keys can only announce a value at
+or below those.
+
+# `agentsfleet-runner` configuration reference
+
+`agentsfleet-runner` reads one TOML file, named by
+`AGENTSFLEET_RUNNER_CONFIG_FILE`; a blank or unset variable means every
+default. Every key is optional, and each default below is the value the
+runner used before the key existed. The parser lives in
+`rustd/crates/runner/main/src/config/` (`mod.rs` for the file's shape,
+`tuning.rs` for the sections below). The file already accepted
+`[inference]`, `[provider_retries]` and `[supervisor]`; they are unchanged.
+
+## Boot checks
+
+`run` refuses the file, with `UZ-STARTUP-004`, before it exports or dials the
+daemon, when:
+
+- a count, size or timeout is `0`;
+- `min_exec_yield_ms` exceeds `max_exec_yield_ms`, or `[egress]
+  connect_timeout_seconds` exceeds `request_timeout_seconds`;
+- `default_shell_timeout_seconds` is over 29: with the executor's 5-second
+  ending grace it must stay under the run's 35-second lease;
+- `max_sessions_per_run` is 8 or fewer: the 8 most recently used sessions are
+  never closed to make room, so a smaller cap would not hold;
+- `max_subagent_depth` is over 2, the depth a restore checks a checkpoint's
+  children against;
+- `[daemon] call_timeout_seconds` is 12 or less, the daemon's own message
+  deadline, or `max_activity_batches_held` is under 2 (one in flight, one
+  queued);
+- a key below is commented out: it is refused as unknown.
+
+## Sections
+
+```toml
+[sandbox]                                   # the box each run executes in
+memory_mib                   = 2_048        # memory one run may use
+disk_mib                     = 4_096        # disk one run may use
+io_mib_per_second            = 200          # disk read/write speed one run may use
+ready_timeout_seconds        = 10           # how long a new sandbox may take to start
+# server_grace_seconds         = 5            # how long the in-sandbox server gets to stop  (not read; see below)
+# far_connect_timeout_seconds  = 3            # how long connecting into the sandbox may take  (not read; see below)
+# max_attach_attempts          = 7            # tries to attach to a starting sandbox  (not read; see below)
+# min_retry_delay_ms           = 100          # first pause between attach tries  (not read; see below)
+# max_retry_delay_seconds      = 30           # longest pause between attach tries  (not read; see below)
+
+[tools]                                     # what a run's tools may do
+default_shell_timeout_seconds = 10          # how long a shell command runs when the model names no timeout
+min_exec_yield_ms            = 250          # shortest wait for a running command's output
+max_exec_yield_ms            = 30_000       # longest wait for a running command's output
+max_sessions_per_run         = 64           # interactive shell sessions one run may keep open
+# output_edge_kib              = 512          # command output kept from the start and end  (not read; see below)
+# max_read_mib                 = 8            # largest file a read returns  (not read; see below)
+default_read_lines           = 2_000        # lines a read returns when the model names no limit
+max_image_dimension_px       = 2_048        # larger images are scaled down to this before the model sees them
+max_image_mib                = 5            # largest image sent to the model after scaling
+max_sleep_hours              = 12           # longest a sleep may wait
+# mcp_call_timeout_seconds     = 300          # how long one MCP tool call may take  (not read; see below)
+max_wait_seconds             = 3_600        # longest a run waits for a subagent
+max_open_subagents           = 6            # subagents open at once in one run
+max_subagent_depth           = 2            # how deep subagents may start their own subagents
+
+[provider]                                  # decision calls and token counts
+connect_timeout_seconds      = 3            # how long connecting to a provider for a decision call may take
+physical_timeout_seconds     = 12           # how long one decision call may take, its whole reply included
+count_timeout_seconds        = 10           # how long a token-count call may take
+max_count_reply_kib          = 16           # largest token-count reply accepted
+
+[egress]                                    # outbound HTTP from tools (web fetch, connectors)
+connect_timeout_seconds      = 10           # how long connecting may take
+request_timeout_seconds      = 30           # how long one request may take; a GET's redirect chain shares it
+# max_response_mib             = 1            # largest response a tool reads  (not read; see below)
+# max_construction_mib         = 10           # largest request a tool may build  (not read; see below)
+# max_target_kib               = 8            # longest URL a tool may call  (not read; see below)
+max_redirects                = 3            # redirects followed before giving up
+
+[daemon]                                    # this runner's link to agentsfleetd
+call_timeout_seconds         = 20           # how long one call to the daemon may take
+# max_report_mib               = 1            # largest run report sent at once  (not read; see below)
+# max_activity_kib             = 128          # largest live-activity update sent at once  (not read; see below)
+max_activity_batches_held    = 4            # activity updates held while the daemon is busy
+max_activity_batch_kib       = 64           # largest held activity batch
+
+# [executor]                                # the process that runs commands inside the sandbox
+# max_frame_mib                = 64           # largest message between the runner and the executor  (not read; see below)
+
+[telemetry]
+max_spans_per_run            = 256          # traces kept per run
+```
+
+`[provider]` bounds decision calls (`af_providers::decision`) and native token
+counts; the model stream's own connect and silence bounds stay
+`[inference] connect_timeout_seconds` and `stream_idle_timeout_seconds`.
+
+The commented-out keys are refused if set, because no runner code reads them:
+
+- `[sandbox] server_grace_seconds`: the only 5-second server grace is the
+  unsandboxed engine's, which a release build refuses to construct.
+- `[sandbox] far_connect_timeout_seconds`: the 3-second timeout belongs to the
+  kernel lane's `test-util` far host, not to a running sandbox.
+- `[sandbox] max_attach_attempts`: the 7 is how many more free loop devices
+  are tried after the first when another process takes the one offered (8
+  tries in all), not attaches to a sandbox.
+- `[sandbox] min_retry_delay_ms` and `max_retry_delay_seconds`: loop-device
+  tries do not pause; the 100 ms to 30 s backoff is the warm-slot pool's, which
+  `agentsfleet-runner` never starts.
+- `[tools] output_edge_kib` and `max_read_mib`: the executor inside each
+  sandbox cuts output and reads to these, in its own process, which cannot
+  read this file.
+- `[executor] max_frame_mib`: both ends of the executor link frame against it,
+  and the end inside the sandbox cannot read this file.
+- `[tools] mcp_call_timeout_seconds`: no run reaches an MCP server; the client
+  that carries the 300 seconds is not linked into a run's tools.
+- `[egress] max_response_mib`: the 1 MiB is also the redaction pass's budget
+  and the figure `guffbolt` words its truncation notice by, so the network's
+  cap cannot move alone.
+- `[egress] max_construction_mib`: the 10 MiB bounds the automaton that masks
+  credentials in a redirected response, not a request a tool builds.
+- `[egress] max_target_kib`: the 8 KiB bounds a redirect's `Location`, not the
+  URL a tool calls.
+- `[daemon] max_report_mib` and `max_activity_kib`: no runner code caps a
+  report or a live-activity update at these; the figures are a test's payload
+  sizes. A report is bounded by the runner link's frame.
+
+## The runner link's frames
+
+The runner reads `max_message_bytes` and `max_control_message_bytes` from the
+daemon's welcome and frames every stream of that connection to them: it
+refuses to send or read a frame past them. A welcome without them, from a
+daemon that predates them, means 32 MiB and 2 MiB, and an announced value
+above those is held to them.

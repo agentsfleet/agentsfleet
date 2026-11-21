@@ -16,7 +16,9 @@ use crate::tool::ToolOutput;
 use crate::tools::process::saturating_millis;
 use crate::tools::{Context, Handler, NoArguments};
 
-/// The longest a sleep waits, whatever the model asks: twelve hours.
+/// The longest a sleep waits, whatever the model asks, unless the embedder
+/// chooses another ([`Limits::max_sleep`](crate::tools::Limits::max_sleep)):
+/// twelve hours.
 pub const SLEEP_MAX: Duration = Duration::from_hours(12);
 
 /// What a run pokes when new input reaches it, so a sleeping call wakes.
@@ -67,8 +69,24 @@ pub struct Nap {
 }
 
 /// Waits, waking early for new input.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct Sleep;
+#[derive(Debug, Clone, Copy)]
+pub struct Sleep {
+    max: Duration,
+}
+
+impl Sleep {
+    /// The tool, waiting at most `max` whatever the model asks.
+    #[must_use]
+    pub const fn new(max: Duration) -> Self {
+        Self { max }
+    }
+}
+
+impl Default for Sleep {
+    fn default() -> Self {
+        Self::new(SLEEP_MAX)
+    }
+}
 
 impl Handler for Sleep {
     const NAME: &'static str = "sleep";
@@ -77,7 +95,7 @@ impl Handler for Sleep {
     type Arguments = Nap;
 
     async fn run(&self, arguments: Nap, context: Context<'_>) -> ToolOutput {
-        let asked = Duration::from_millis(arguments.duration_ms).min(SLEEP_MAX);
+        let asked = Duration::from_millis(arguments.duration_ms).min(self.max);
         let started = Instant::now();
         let woke = if let Some(wake) = context.wake {
             tokio::select! {

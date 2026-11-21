@@ -44,7 +44,7 @@ pub use self::engine::{
     RecoverySnapshot, RecoveryState, RunOutput, TurnRecovery, TurnSnapshot,
 };
 pub use self::error::{Error, Result, Unhosted};
-pub use self::harness::Loop;
+pub use self::harness::{Loop, RunLimits};
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
 pub use self::setup::{SetupContext, SetupOutput, SetupRun};
 

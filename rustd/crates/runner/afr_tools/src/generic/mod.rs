@@ -23,7 +23,7 @@ use serde_json::Value;
 
 use crate::runtime::{RunTool, ToolContext};
 
-pub use self::env::{LazySandboxEnv, SandboxEnv};
+pub use self::env::{DEFAULT_TIMEOUT_CEILING, LazySandboxEnv, SandboxEnv};
 pub use self::memory::RunMemory;
 
 /// A generic tool one run built over its backends, lent the run's place per

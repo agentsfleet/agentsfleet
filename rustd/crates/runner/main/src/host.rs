@@ -64,7 +64,10 @@ impl Host {
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
     #[cfg(target_os = "linux")]
-    pub(crate) fn production(home: &StorageHome) -> Result<Self, ExitCode> {
+    pub(crate) fn production(
+        home: &StorageHome,
+        tuning: afr_sandbox::EngineTuning,
+    ) -> Result<Self, ExitCode> {
         use std::fs::File;
         use std::io::BufReader;
         use std::path::Path;
@@ -87,6 +90,7 @@ impl Host {
             release: &release,
             home: &toolbox,
             env: &ProcessEnv,
+            tuning,
         };
         let paths = HostPaths {
             cgroup_root,
@@ -101,7 +105,10 @@ impl Host {
     /// Always: the first mechanism the host's probe found missing, already
     /// logged, as the exit status.
     #[cfg(not(target_os = "linux"))]
-    pub(crate) fn production(_home: &StorageHome) -> Result<Self, ExitCode> {
+    pub(crate) fn production(
+        _home: &StorageHome,
+        _tuning: afr_sandbox::EngineTuning,
+    ) -> Result<Self, ExitCode> {
         let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Err(cannot_sandbox(
             afr_sandbox::BubblewrapRequirements::missing(&probe)
@@ -136,20 +143,19 @@ impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
 
 /// The agent loop every run's turn runs on: every tool this runner hosts,
 /// their egress through the guarded network, and the model providers the
-/// shipped registry names.
+/// shipped registry names, each bounded as the runner's file says.
 ///
 /// # Errors
 /// The failure, already logged, as the exit status.
-pub(crate) fn agent(
-    timeouts: af_inference::Timeouts,
-    retries: af_providers::RetryPolicy,
-) -> Result<afr_agent::Loop, ExitCode> {
-    let network = af_egress::Network::new().or_exit()?;
-    let connector = af_providers::Connector::configured(timeouts, retries).or_exit()?;
-    Ok(afr_agent::Loop::new(
-        afr_tools::Catalog::hosted(Arc::new(network)),
-        connector,
-    ))
+pub(crate) fn agent(settings: &crate::config::Settings) -> Result<afr_agent::Loop, ExitCode> {
+    let network = af_egress::Network::limited(settings.egress).or_exit()?;
+    let connector =
+        af_providers::Connector::configured(settings.inference, settings.provider_retries)
+            .or_exit()?;
+    Ok(
+        afr_agent::Loop::new(afr_tools::Catalog::hosted(Arc::new(network)), connector)
+            .with_limits(settings.run_limits),
+    )
 }
 
 /// A step `run` cannot go on from: its failure, whichever crate raised it,

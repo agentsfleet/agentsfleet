@@ -21,16 +21,47 @@ use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Run, RunTools, Selection};
 use guffbolt::agents::{Agents, Caps, Raise, Seat};
+use guffbolt::tools::Limits;
+use guffbolt::tools::process::sessions::SESSIONS_PER_RUN_MAX;
 use tokio_util::sync::CancellationToken;
 
 use super::Harness;
 use crate::engine::{AgentRun, Checkpoint, EventSink, Meter};
 use crate::ledger::Ledger;
 
-/// How far one run's children may go: two loops deep, and six open at once;
-/// a run may start any number over its life. A restore checks a checkpoint's
-/// children against them too.
+/// How far one run's children may go unless the runner chooses otherwise
+/// ([`RunLimits::caps`]): two loops deep, and six open at once; a run may
+/// start any number over its life. A restore checks a checkpoint's children
+/// against this depth, the deepest any run may go.
 pub(crate) const CAPS: Caps = Caps { depth: 2, open: 6 };
+
+/// What every run's loop holds it to: its built-in tools' bounds, the
+/// sessions it keeps open and how far its children go.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunLimits {
+    /// The bounds `guffbolt`'s built-in tools hold a run's calls to.
+    pub tools: Limits,
+    /// The most interactive sessions one run keeps open.
+    pub max_sessions: usize,
+    /// How deep a run's children go, and how many are open at once; the
+    /// depth no deeper than [`CAPS`]'s, which a restore checks against.
+    pub caps: Caps,
+}
+
+impl RunLimits {
+    /// The bounds every run held before the runner could choose them.
+    pub const DEFAULT: Self = Self {
+        tools: Limits::DEFAULT,
+        max_sessions: SESSIONS_PER_RUN_MAX,
+        caps: CAPS,
+    };
+}
+
+impl Default for RunLimits {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
@@ -88,6 +119,7 @@ pub(crate) fn run_state<'run>(
     run: &AgentRun<'run>,
     memory: Loaded<'run>,
     provider: &Provider,
+    limits: RunLimits,
 ) -> Run<'run> {
     let policy = &run.run.policy;
     Run::new(
@@ -97,6 +129,7 @@ pub(crate) fn run_state<'run>(
     )
     .with_checkouts(checkouts(policy).unwrap_or_default())
     .with_image_input(provider.accepts_images())
+    .with_limits(limits.tools, limits.max_sessions)
 }
 
 impl<'run> Shared<'run> {

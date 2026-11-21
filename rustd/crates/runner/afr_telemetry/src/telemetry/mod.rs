@@ -12,7 +12,7 @@ use tracing::Metadata;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::{Layer as _, Registry};
 
-use crate::budget::{Limits, Monotonic, RunSampler, Seconds};
+use crate::budget::{Limits, MAX_RUN_SPANS, Monotonic, RunSampler, Seconds};
 use crate::endpoint::Endpoint;
 use crate::error::Result;
 use crate::families::{self, Families};
@@ -69,15 +69,32 @@ impl Telemetry {
     /// A census the instrument layer refuses, or a transport that will not
     /// build from the accepted endpoint.
     pub fn install(endpoint: &Endpoint) -> Result<Self> {
-        Self::install_on(endpoint, Monotonic::start())
+        Self::install_capped(endpoint, MAX_RUN_SPANS)
+    }
+
+    /// [`Self::install`], one run exporting at most `max_run_spans` spans,
+    /// its root included.
+    ///
+    /// # Errors
+    /// As [`Self::install`].
+    pub fn install_capped(endpoint: &Endpoint, max_run_spans: u32) -> Result<Self> {
+        let limits = Limits {
+            per_run: max_run_spans,
+            ..Limits::default()
+        };
+        Self::install_on(endpoint, Monotonic::start(), limits)
     }
 
     /// [`Self::install`], charging the span budget against `clock`'s seconds.
     ///
     /// The seam a suite moves time through: the budget's per-second window is
     /// the behaviour under test, and a real clock makes that test wait it out.
-    pub(crate) fn install_on(endpoint: &Endpoint, clock: impl Seconds + 'static) -> Result<Self> {
-        let sampler = RunSampler::new(Limits::default(), clock, || {
+    pub(crate) fn install_on(
+        endpoint: &Endpoint,
+        clock: impl Seconds + 'static,
+        limits: Limits,
+    ) -> Result<Self> {
+        let sampler = RunSampler::new(limits, clock, || {
             record::spans_suppressed(1);
         });
         let config = endpoint.config();

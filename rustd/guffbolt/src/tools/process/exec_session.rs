@@ -23,9 +23,11 @@ use crate::tools::env::{Ending, Env, ProcessId, Spawn};
 use crate::tools::files::failed;
 use crate::tools::{Context, Handler, code};
 
-/// The shortest a call waits for output.
+/// The shortest a call waits for output, unless the embedder chooses another
+/// ([`Limits::min_yield`](crate::tools::Limits::min_yield)).
 pub const YIELD_MIN: Duration = Duration::from_millis(250);
-/// The longest a call waits for output.
+/// The longest a call waits for output, unless the embedder chooses another
+/// ([`Limits::max_yield`](crate::tools::Limits::max_yield)).
 pub const YIELD_MAX: Duration = Duration::from_secs(30);
 /// How long a call waits when the model names no yield.
 pub const YIELD_DEFAULT: Duration = Duration::from_secs(10);
@@ -95,6 +97,18 @@ pub struct Input {
 struct Held<'run> {
     env: &'run dyn Env,
     sessions: &'run Sessions,
+    /// The shortest and longest a call waits for output.
+    yields: (Duration, Duration),
+}
+
+impl<'run> Held<'run> {
+    const fn new(env: &'run dyn Env, sessions: &'run Sessions) -> Self {
+        Self {
+            env,
+            sessions,
+            yields: (YIELD_MIN, YIELD_MAX),
+        }
+    }
 }
 
 /// Opens a session.
@@ -105,7 +119,15 @@ impl<'run> ExecCommand<'run> {
     /// The tool, starting processes in `env` and keeping them in `sessions`.
     #[must_use]
     pub const fn new(env: &'run dyn Env, sessions: &'run Sessions) -> Self {
-        Self(Held { env, sessions })
+        Self(Held::new(env, sessions))
+    }
+
+    /// The same tool, a call waiting at least `min` and at most `max` for
+    /// output; `max` wins where the two cross.
+    #[must_use]
+    pub const fn with_yields(mut self, min: Duration, max: Duration) -> Self {
+        self.0.yields = (min, max);
+        self
     }
 }
 
@@ -118,7 +140,11 @@ impl Handler for ExecCommand<'_> {
     type Arguments = Open;
 
     async fn run(&self, arguments: Open, context: Context<'_>) -> ToolOutput {
-        let Held { env, sessions } = self.0;
+        let Held {
+            env,
+            sessions,
+            yields: (min, max),
+        } = self.0;
         let slot = sessions.make_room(env).await;
         let spawn = spawn_of(&arguments);
         let process = match env.spawn(&spawn).await {
@@ -131,7 +157,7 @@ impl Handler for ExecCommand<'_> {
         let shared = sessions.open(slot, process);
         let mut process = shared.lock().await;
         let mut collected = Collected::default();
-        let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MIN);
+        let deadline = Instant::now() + yield_of(arguments.yield_time_ms, min, max);
         let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
         let run_id = context.run_id;
@@ -150,7 +176,15 @@ impl<'run> WriteStdin<'run> {
     /// The tool, writing to the processes `sessions` keeps in `env`.
     #[must_use]
     pub const fn new(env: &'run dyn Env, sessions: &'run Sessions) -> Self {
-        Self(Held { env, sessions })
+        Self(Held::new(env, sessions))
+    }
+
+    /// The same tool, a call waiting at least `min` and at most `max` for
+    /// output; `max` wins where the two cross.
+    #[must_use]
+    pub const fn with_yields(mut self, min: Duration, max: Duration) -> Self {
+        self.0.yields = (min, max);
+        self
     }
 }
 
@@ -162,7 +196,11 @@ impl Handler for WriteStdin<'_> {
     type Arguments = Input;
 
     async fn run(&self, arguments: Input, context: Context<'_>) -> ToolOutput {
-        let Held { env, sessions } = self.0;
+        let Held {
+            env,
+            sessions,
+            yields: (min, max),
+        } = self.0;
         let id = ProcessId::new(arguments.session_id);
         let Some(shared) = sessions.get(id) else {
             return not_open(id);
@@ -181,14 +219,14 @@ impl Handler for WriteStdin<'_> {
                 EMPTY_WRITE_YIELD_MIN
             } else {
                 match env.write(id, Bytes::from(arguments.chars)).await {
-                    Ok(()) => YIELD_MIN,
+                    Ok(()) => min,
                     // Ended between the look above and the write: its ending
                     // is on its way, behind whatever it left to say. The call
                     // waits its yield for it and reads the session as running
                     // until it lands; an environment that is gone ends the events.
                     Err(failure) if failure.is_unknown_process() => {
                         refused = Some(WRITE_UNDELIVERED);
-                        YIELD_MIN
+                        min
                     }
                     // The process would not take it: it closed its input, or
                     // has not read what it was sent. It runs on.
@@ -197,12 +235,12 @@ impl Handler for WriteStdin<'_> {
                         let event = EVENT_WRITE_REFUSED;
                         tracing::debug!(session_id, event);
                         refused = Some(INPUT_REFUSED);
-                        YIELD_MIN
+                        min
                     }
                     Err(failure) => return unavailable(&failure),
                 }
             };
-            let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor);
+            let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor, max);
             collected.until(&mut process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
@@ -223,15 +261,15 @@ fn spawn_of(open: &Open) -> Spawn {
 }
 
 /// How long a call waits: what the model asked, or the default, held between
-/// `floor` and the longest yield.
+/// `floor` and `max`; `max` wins where the two cross.
 ///
 /// `asked` is the model's `yield_time_ms` argument, a count of milliseconds
 /// because that is the name and unit the tool schema publishes; it becomes a
 /// `Duration` here, the one place the count is read.
-fn yield_of(asked: Option<u64>, floor: Duration) -> Duration {
+fn yield_of(asked: Option<u64>, floor: Duration, max: Duration) -> Duration {
     asked
         .map_or(YIELD_DEFAULT, Duration::from_millis)
-        .clamp(floor, YIELD_MAX)
+        .clamp(floor.min(max), max)
 }
 
 /// One call's answer on session `id` of run `run_id`: what arrived, why a

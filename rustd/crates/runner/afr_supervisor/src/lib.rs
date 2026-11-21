@@ -176,14 +176,15 @@ fn compose(
     let (stream, downlink, assignments) = downlink::Downlink::new(config)?;
     Ok(Runner {
         plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream)
-            .with_runtime(config.runtime()),
+            .with_runtime(config.runtime())
+            .with_tuning(config.tuning()),
         downlink,
         assignments,
         home,
         engine,
         agent,
         probe,
-        limits: Limits::default(),
+        limits: config.tuning().limits,
         clock: Arc::new(SystemClock),
     })
 }

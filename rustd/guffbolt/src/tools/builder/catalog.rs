@@ -20,7 +20,7 @@ use crate::tools::schedule::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, ScheduleOnce,
 };
 use crate::tools::web::{HttpRequest, WebFetch};
-use crate::tools::{ContextTool, Handler, Typed};
+use crate::tools::{ContextTool, Handler, Limits, Typed};
 
 use super::{Backend, BuiltIn, Given};
 
@@ -91,23 +91,34 @@ fn boxed<'run, H: Handler + 'run>(handler: H) -> Box<ContextTool<'run>> {
 /// The built-in tool named `name`, over what `given` holds; `None` for a
 /// name no built-in has, or one whose backend was not given.
 pub(super) fn tool<'run>(given: Given<'run>, name: &str) -> Option<Box<ContextTool<'run>>> {
-    plain_tool(name)
+    plain_tool(name, given.limits)
         .or_else(|| env_tool(name, given))
-        .or_else(|| file_tool(name, given.env?))
+        .or_else(|| file_tool(name, given))
         .or_else(|| backed_tool(name, given))
-        .or_else(|| agent_tool(name, given.agents?))
+        .or_else(|| agent_tool(name, given))
 }
 
 /// The tool named `name` that runs a process or drives the browser in the
 /// environment.
 fn env_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'run>>> {
     let env = given.env?;
+    let limits = given.limits;
+    let (min_yield, max_yield) = (limits.min_yield, limits.max_yield);
     Some(match name {
-        "shell" => boxed(Shell::new(env)),
-        "exec_command" => boxed(ExecCommand::new(env, given.sessions?)),
-        "write_stdin" => boxed(WriteStdin::new(env, given.sessions?)),
-        "git" => boxed(Git::new(env, given.repository)),
-        "image" => boxed(ImageTool::new(env, given.image_input)),
+        "shell" => boxed(Shell::new(env).with_default_timeout(limits.default_timeout)),
+        "exec_command" => {
+            boxed(ExecCommand::new(env, given.sessions?).with_yields(min_yield, max_yield))
+        }
+        "write_stdin" => {
+            boxed(WriteStdin::new(env, given.sessions?).with_yields(min_yield, max_yield))
+        }
+        "git" => {
+            boxed(Git::new(env, given.repository).with_default_timeout(limits.default_timeout))
+        }
+        "image" => boxed(
+            ImageTool::new(env, given.image_input)
+                .with_bounds(limits.max_image_dimension, limits.max_image_bytes),
+        ),
         "browser_open" => boxed(BrowserOpen::new(env)),
         "browser" => boxed(Browse::new(env)),
         "screenshot" => boxed(Screenshot::new(env)),
@@ -116,9 +127,12 @@ fn env_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'run
 }
 
 /// The tool named `name` that reads or changes the environment's files.
-fn file_tool<'run>(name: &str, env: &'run dyn crate::tools::Env) -> Option<Box<ContextTool<'run>>> {
+fn file_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'run>>> {
+    let env = given.env?;
     Some(match name {
-        "file_read" => boxed(FileRead::new(env)),
+        "file_read" => {
+            boxed(FileRead::new(env).with_default_lines(given.limits.default_read_lines))
+        }
         "file_read_hashed" => boxed(FileReadHashed::new(env)),
         "file_write" => boxed(FileWrite::new(env)),
         "file_append" => boxed(FileAppend::new(env)),
@@ -157,15 +171,13 @@ fn backed_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'
 }
 
 /// The subagent tool named `name`, over the run's children.
-fn agent_tool<'run>(
-    name: &str,
-    agents: &'run crate::agents::Agents,
-) -> Option<Box<ContextTool<'run>>> {
+fn agent_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'run>>> {
+    let agents = given.agents?;
     Some(match name {
         "spawn_agent" => boxed(SpawnAgent::new(agents)),
         "send_input" => boxed(SendInput::new(agents)),
         "followup_task" => boxed(FollowupTask::new(agents)),
-        "wait_agent" => boxed(WaitAgent::new(agents)),
+        "wait_agent" => boxed(WaitAgent::new(agents).with_max_wait(given.limits.max_wait)),
         "list_agents" => boxed(ListAgents::new(agents)),
         "close_agent" => boxed(CloseAgent::new(agents)),
         "interrupt_agent" => boxed(InterruptAgent::new(agents)),
@@ -174,12 +186,12 @@ fn agent_tool<'run>(
 }
 
 /// The tool named `name` that takes no backend.
-fn plain_tool<'run>(name: &str) -> Option<Box<ContextTool<'run>>> {
+fn plain_tool<'run>(name: &str, limits: Limits) -> Option<Box<ContextTool<'run>>> {
     Some(match name {
         "update_plan" => boxed(UpdatePlan),
         "ask_user" => boxed(AskUser),
         "current_time" => boxed(CurrentTime),
-        "sleep" => boxed(Sleep),
+        "sleep" => boxed(Sleep::new(limits.max_sleep)),
         _other => return None,
     })
 }

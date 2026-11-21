@@ -39,7 +39,7 @@ pub use self::egress::Egress;
 pub use self::error::{Error, Result};
 pub use self::mint::{Mint, Minted};
 pub use self::network::{
-    Network, REQUEST_TIMEOUT, RESPONSE_MAX_BYTES, blocked_address, guarded, guarded_by,
+    Limits, Network, REQUEST_TIMEOUT, RESPONSE_MAX_BYTES, blocked_address, guarded, guarded_by,
 };
 pub use self::refusal::Refusal;
 pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, blocked_literal, unblocked};

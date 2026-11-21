@@ -225,6 +225,7 @@ impl Downlink {
             requests: Arc::clone(&requests),
             queues,
             budget,
+            ceilings: connected.ceilings,
             stop: stop.clone(),
         });
         let (frames_tx, mut frames) = mpsc::channel(16);

@@ -171,7 +171,8 @@ impl Run<'_> {
     /// The run, its renewal and its live tail, then the settle.
     async fn run(&self, turns: &FleetTurns) -> Result<Ending> {
         let lessee = self.lessee;
-        let (sink, mut pump) = activity::channel(&lessee.plane, &self.ids.run);
+        let (sink, mut pump) =
+            activity::channel(&lessee.plane, &self.ids.run, &lessee.plane.tuning);
         let renewal = Renewal::new(
             &lessee.plane,
             &self.ids.run,

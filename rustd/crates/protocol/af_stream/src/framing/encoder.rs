@@ -54,7 +54,7 @@ impl Encoder {
     /// # Errors
     /// Refuses a value past its stream's ceiling, or a failed serialization.
     pub fn frame<T: Serialize + ?Sized>(&mut self, value: &T) -> Result<()> {
-        let length = Length::measure(value, self.kind)?;
+        let length = Length::measure(value, self.kind.message_bytes_max())?;
         // Dropped before a replacement is allocated, so its charge returns first.
         self.framed = None;
         let charge = self.budget.try_reserve(self.kind, length.bytes).ok();

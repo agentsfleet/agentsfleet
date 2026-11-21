@@ -17,7 +17,7 @@ use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{EVENT_CLOSE_TIMED_OUT, EVENT_DISABLED, EVENT_STARTED, Telemetry, announce_disabled};
 use crate::budget::tests::Hand;
-use crate::budget::{MAX_RUN_SPANS, RUNNER_SPANS_PER_SECOND};
+use crate::budget::{Limits, MAX_RUN_SPANS, RUNNER_SPANS_PER_SECOND};
 use crate::endpoint::Endpoint;
 
 /// The runner's root span, as the supervisor names it.
@@ -132,6 +132,29 @@ fn the_pipeline_sheds_a_run_past_its_budget() {
     );
 }
 
+/// A chosen per-run cap reaches the pipeline's sampler: a run under a cap
+/// below one second's budget exports no more than that cap.
+#[test]
+fn a_chosen_run_cap_sheds_a_run_past_it() {
+    let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
+        .expect("every knob reads")
+        .expect("an endpoint is configured");
+    let cap = 8;
+    let telemetry = Telemetry::install_capped(&endpoint, cap).expect("the pipeline builds");
+    let subscriber = tracing_subscriber::registry().with(telemetry.layer());
+
+    tracing::subscriber::with_default(subscriber, || {
+        let run = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.run");
+        let _entered = run.enter();
+        for _call in 0..cap * 4 {
+            tracing::info_span!(target: RUNNER_SCOPE_NAME, "execute_tool").in_scope(|| {});
+        }
+    });
+    telemetry.flush();
+
+    assert_eq!(telemetry.exports().spans_lost().count(), cap as usize);
+}
+
 /// A finished run gives its slot back through the production pipeline: a
 /// runner that has run more runs than its table holds still exports a new
 /// run's children.
@@ -147,7 +170,8 @@ fn a_finished_run_frees_its_slot_through_the_production_pipeline() {
     let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
         .expect("every knob reads")
         .expect("an endpoint is configured");
-    let telemetry = Telemetry::install_on(&endpoint, clock.clone()).expect("the pipeline builds");
+    let telemetry = Telemetry::install_on(&endpoint, clock.clone(), Limits::default())
+        .expect("the pipeline builds");
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
     let runs = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX) * 4;
 

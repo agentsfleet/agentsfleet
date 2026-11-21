@@ -34,12 +34,15 @@ use crate::tool::{Image, ImageKind, ToolOutput};
 use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::{Context, Handler, code};
 
-/// The most an image the model is shown may weigh: the Messages wire's cap
-/// per image, the stricter of the two wires that take one. It bounds the
-/// picture after any scaling.
+/// The most an image the model is shown may weigh.
+///
+/// The Messages wire's cap per image, the stricter of the two wires that take
+/// one. It bounds the picture after any scaling, unless the embedder chooses
+/// another ([`Limits::max_image_bytes`](crate::tools::Limits::max_image_bytes)).
 pub const IMAGE_MAX_BYTES: u64 = 5 * 1024 * 1024;
 /// The longest side, in pixels, of a picture the model is shown; a longer one
-/// is scaled to fit.
+/// is scaled to fit. The embedder may choose another
+/// ([`Limits::max_image_dimension`](crate::tools::Limits::max_image_dimension)).
 pub const IMAGE_MAX_DIMENSION: u32 = 2048;
 /// How a PNG begins.
 pub const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
@@ -99,6 +102,16 @@ pub struct ImageTool<'run> {
     /// Whether the model's wire takes an image with a call's result; the
     /// tool refuses before any read when it does not.
     image_input: bool,
+    /// The bounds on what the model is shown.
+    bounds: Bounds,
+}
+
+/// The longest side a picture is scaled to fit, and the most the scaled
+/// picture may weigh.
+#[derive(Debug, Clone, Copy)]
+struct Bounds {
+    max_dimension: u32,
+    max_bytes: u64,
 }
 
 impl<'run> ImageTool<'run> {
@@ -106,7 +119,26 @@ impl<'run> ImageTool<'run> {
     /// call's result when `image_input` says so.
     #[must_use]
     pub const fn new(env: &'run dyn Env, image_input: bool) -> Self {
-        Self { env, image_input }
+        Self {
+            env,
+            image_input,
+            bounds: Bounds {
+                max_dimension: IMAGE_MAX_DIMENSION,
+                max_bytes: IMAGE_MAX_BYTES,
+            },
+        }
+    }
+
+    /// The same tool, a picture longer than `max_dimension` pixels on a side
+    /// scaled to fit, and one weighing more than `max_bytes` after scaling
+    /// refused.
+    #[must_use]
+    pub const fn with_bounds(mut self, max_dimension: u32, max_bytes: u64) -> Self {
+        self.bounds = Bounds {
+            max_dimension,
+            max_bytes,
+        };
+        self
     }
 }
 
@@ -118,11 +150,11 @@ impl Handler for ImageTool<'_> {
     type Arguments = Named;
 
     async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
-        settled(view(self.env, self.image_input, &arguments.path).await)
+        settled(view(self.env, self.image_input, self.bounds, &arguments.path).await)
     }
 }
 
-async fn view(env: &dyn Env, image_input: bool, path: &str) -> Answer {
+async fn view(env: &dyn Env, image_input: bool, bounds: Bounds, path: &str) -> Answer {
     if !image_input {
         return Err(ToolOutput::failed(
             code::IMAGE_INPUT_UNAVAILABLE,
@@ -146,15 +178,16 @@ async fn view(env: &dyn Env, image_input: bool, path: &str) -> Answer {
             &format!("{path} is not a PNG, JPEG, GIF or WebP image"),
         )
     })?;
-    let shown = fitted(path, kind, fetched.data)?;
+    let shown = fitted(path, kind, fetched.data, bounds.max_dimension)?;
     let bytes = shown.image.data.len();
     let scaled = shown
         .scaled
         .map_or_else(String::new, |scaled| format!(", scaled from {scaled}"));
-    if u64::try_from(bytes).unwrap_or(u64::MAX) > IMAGE_MAX_BYTES {
+    let max_bytes = bounds.max_bytes;
+    if u64::try_from(bytes).unwrap_or(u64::MAX) > max_bytes {
         return Err(ToolOutput::failed(
             code::FILE_TOO_LARGE,
-            &format!("{path} is longer than {IMAGE_MAX_BYTES} bytes{scaled}"),
+            &format!("{path} is longer than {max_bytes} bytes{scaled}"),
         ));
     }
     let attached = ToolOutput::succeeded(format!(
@@ -213,12 +246,17 @@ impl Metadata {
 }
 
 /// `data`, a `kind` picture at `path`, as the model is shown it: decoded, and
-/// scaled to fit [`IMAGE_MAX_DIMENSION`] when it is longer.
+/// scaled to fit `max_dimension` when it is longer.
 ///
 /// # Errors
 /// The picture does not decode as `kind`, or the scaled picture could not
 /// be written.
-fn fitted(path: &str, kind: ImageKind, data: Bytes) -> Result<Shown, ToolOutput> {
+fn fitted(
+    path: &str,
+    kind: ImageKind,
+    data: Bytes,
+    max_dimension: u32,
+) -> Result<Shown, ToolOutput> {
     let undecodable = |_undecodable: ImageError| {
         ToolOutput::failed(
             code::NOT_AN_IMAGE,
@@ -238,17 +276,13 @@ fn fitted(path: &str, kind: ImageKind, data: Bytes) -> Result<Shown, ToolOutput>
     };
     let picture = DynamicImage::from_decoder(decoder).map_err(undecodable)?;
     let from = (picture.width(), picture.height());
-    if from.0 <= IMAGE_MAX_DIMENSION && from.1 <= IMAGE_MAX_DIMENSION {
+    if from.0 <= max_dimension && from.1 <= max_dimension {
         return Ok(Shown {
             image: Image { kind, data },
             scaled: None,
         });
     }
-    let resized = picture.resize(
-        IMAGE_MAX_DIMENSION,
-        IMAGE_MAX_DIMENSION,
-        FilterType::Triangle,
-    );
+    let resized = picture.resize(max_dimension, max_dimension, FilterType::Triangle);
     let scaled = Scaled {
         from,
         to: (resized.width(), resized.height()),

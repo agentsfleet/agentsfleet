@@ -50,6 +50,7 @@ fn boot(lane: &Lane, root: &Path, state: &Path) -> Result<Booted<BubblewrapEngin
         release: &release,
         home: &home,
         env: &ProcessEnv,
+        tuning: afr_sandbox::EngineTuning::DEFAULT,
     };
     Ok(afr_sandbox::boot(
         backend,
@@ -120,6 +121,7 @@ pub(crate) fn refuses_unavailable(lane: &Lane) -> Result<(), Failed> {
             release: &release,
             home: &home,
             env: &ProcessEnv,
+            tuning: afr_sandbox::EngineTuning::DEFAULT,
         };
         let result = afr_sandbox::boot(
             backend,
@@ -153,6 +155,7 @@ pub(crate) fn refuses_populated(lane: &Lane) -> Result<(), Failed> {
                 release: &release,
                 home: &home,
                 env: &ProcessEnv,
+                tuning: afr_sandbox::EngineTuning::DEFAULT,
             };
             let error = afr_sandbox::boot(
                 backend,

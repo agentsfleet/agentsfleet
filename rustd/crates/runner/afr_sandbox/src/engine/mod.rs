@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use afr_executor::Executor;
 
@@ -23,6 +24,31 @@ pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// run too, killed for memory at its first allocation.
 const SHARED_MEMORY_SHARE: u64 = 4;
 
+/// How an engine starts and paces every sandbox it builds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EngineTuning {
+    /// How long a new sandbox may take to answer before its run is refused:
+    /// the kernel lane measures executor-ready in tens of milliseconds, so
+    /// the default only ends a sandbox that will never answer.
+    pub ready_timeout: Duration,
+    /// Disk bytes a run's sandbox may read, and write, per second.
+    pub io_bytes_per_second: u64,
+}
+
+impl EngineTuning {
+    /// The pacing every engine used before the runner's file could choose it.
+    pub const DEFAULT: Self = Self {
+        ready_timeout: Duration::from_secs(10),
+        io_bytes_per_second: crate::cgroup::DEFAULT_IO_BYTES_PER_SECOND,
+    };
+}
+
+impl Default for EngineTuning {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// What one run's sandbox enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
@@ -38,16 +64,19 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Self {
-            memory_bytes: DEFAULT_MEMORY_BYTES,
-            cpu_millis: DEFAULT_CPU_MILLIS,
-            pids: DEFAULT_PIDS,
-            disk_bytes: DEFAULT_DISK_BYTES,
-        }
+        Self::DEFAULT
     }
 }
 
 impl Limits {
+    /// Every default above, which the runner's file may change.
+    pub const DEFAULT: Self = Self {
+        memory_bytes: DEFAULT_MEMORY_BYTES,
+        cpu_millis: DEFAULT_CPU_MILLIS,
+        pids: DEFAULT_PIDS,
+        disk_bytes: DEFAULT_DISK_BYTES,
+    };
+
     /// What the sandbox's `/dev/shm` may hold, in bytes: a full one answers
     /// `ENOSPC` while the tenant keeps the rest of its memory.
     #[must_use]

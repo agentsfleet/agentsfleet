@@ -8,25 +8,73 @@ use serde::Serialize;
 use crate::Result;
 
 #[derive(Debug, Validate)]
-#[garde(context(StreamKind as kind))]
+#[garde(context(usize as ceiling))]
 pub(crate) struct Length {
-    #[garde(range(min = 1, max = kind.message_bytes_max()))]
+    #[garde(range(min = 1, max = *ceiling))]
     pub(crate) bytes: usize,
 }
 
 impl Length {
     /// A declared length a frame of `kind` may carry.
     pub(crate) fn prove(bytes: usize, kind: StreamKind) -> Result<Valid<Self>> {
-        Ok(Unvalidated::new(Self { bytes }).validate_with(&kind)?)
+        Self::within(bytes, kind.message_bytes_max())
     }
 
-    /// The exact bytes `value` serializes to, proved before anything is
-    /// reserved or allocated for it.
-    pub(crate) fn measure<T: Serialize + ?Sized>(
-        value: &T,
-        kind: StreamKind,
-    ) -> Result<Valid<Self>> {
-        Self::prove(af_validate::serialized_len(value)?, kind)
+    /// A declared length at or under `ceiling`.
+    pub(crate) fn within(bytes: usize, ceiling: usize) -> Result<Valid<Self>> {
+        Ok(Unvalidated::new(Self { bytes }).validate_with(&ceiling)?)
+    }
+
+    /// The exact bytes `value` serializes to, proved at or under `ceiling`
+    /// before anything is reserved or allocated for it.
+    pub(crate) fn measure<T: Serialize + ?Sized>(value: &T, ceiling: usize) -> Result<Valid<Self>> {
+        Self::within(af_validate::serialized_len(value)?, ceiling)
+    }
+}
+
+/// The largest frame each stream kind carries on one connection: what the
+/// peer announced, never past what the protocol compiles in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ceilings {
+    message_bytes: usize,
+    control_message_bytes: usize,
+}
+
+impl Ceilings {
+    /// The protocol's own ceilings: 32 MiB, and 2 MiB on the control stream.
+    pub const PROTOCOL: Self = Self {
+        message_bytes: af_wire::protocol::MESSAGE_BYTES_MAX,
+        control_message_bytes: af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX,
+    };
+
+    /// The ceilings a peer announced, each held to the protocol's.
+    #[must_use]
+    pub fn announced(message_bytes: u32, control_message_bytes: u32) -> Self {
+        let held = |announced: u32, protocol: usize| {
+            usize::try_from(announced).map_or(protocol, |bytes| bytes.min(protocol))
+        };
+        Self {
+            message_bytes: held(message_bytes, Self::PROTOCOL.message_bytes),
+            control_message_bytes: held(
+                control_message_bytes,
+                Self::PROTOCOL.control_message_bytes,
+            ),
+        }
+    }
+
+    /// The largest frame of `kind`.
+    #[must_use]
+    pub const fn of(self, kind: StreamKind) -> usize {
+        match kind {
+            StreamKind::Control => self.control_message_bytes,
+            StreamKind::Work | StreamKind::Reports | StreamKind::Progress => self.message_bytes,
+        }
+    }
+}
+
+impl Default for Ceilings {
+    fn default() -> Self {
+        Self::PROTOCOL
     }
 }
 
@@ -59,14 +107,32 @@ mod tests {
     }
 
     #[test]
+    fn announced_ceilings_hold_below_the_protocols_and_refuse_past_them() -> crate::Result<()> {
+        let ceilings = super::Ceilings::announced(1024, u32::MAX);
+        assert_eq!(ceilings.of(StreamKind::Work), 1024);
+        assert_eq!(ceilings.of(StreamKind::Reports), 1024);
+        assert_eq!(ceilings.of(StreamKind::Control), CONTROL_MESSAGE_BYTES_MAX);
+        assert_eq!(super::Ceilings::default(), super::Ceilings::PROTOCOL);
+        assert_eq!(
+            Length::within(1024, ceilings.of(StreamKind::Work))?.bytes,
+            1024
+        );
+        let refused = Length::within(1025, ceilings.of(StreamKind::Work))
+            .err()
+            .ok_or(crate::error::ErrorKind::Protocol)?;
+        assert_eq!(refused.reason(), crate::Reason::Protocol);
+        Ok(())
+    }
+
+    #[test]
     fn a_control_frame_past_its_bound_is_refused_where_a_work_frame_is_not() -> crate::Result<()> {
         let value = "x".repeat(CONTROL_MESSAGE_BYTES_MAX);
-        let refused = Length::measure(&value, StreamKind::Control)
+        let refused = Length::measure(&value, StreamKind::Control.message_bytes_max())
             .err()
             .ok_or(crate::error::ErrorKind::Protocol)?;
         assert_eq!(refused.reason(), crate::Reason::Protocol);
         assert_eq!(
-            Length::measure(&value, StreamKind::Work)?.bytes,
+            Length::measure(&value, StreamKind::Work.message_bytes_max())?.bytes,
             CONTROL_MESSAGE_BYTES_MAX + 2
         );
         Ok(())
@@ -105,7 +171,7 @@ mod tests {
             request: Box::new(Cow::Owned(request)),
         };
         assert_eq!(report.stream_kind(), StreamKind::Reports);
-        let refused = Length::measure(&report, report.stream_kind())
+        let refused = Length::measure(&report, report.stream_kind().message_bytes_max())
             .err()
             .ok_or(crate::error::ErrorKind::Protocol)?;
         assert_eq!(refused.reason(), crate::Reason::Protocol);

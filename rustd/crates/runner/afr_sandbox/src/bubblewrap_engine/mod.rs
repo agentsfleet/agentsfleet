@@ -13,7 +13,7 @@ use af_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
 
 use crate::bubblewrap::{self, Layout, NetworkLayout};
-use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, RunCgroup};
+use crate::cgroup::{Freezer, RunCgroup};
 use crate::egress::{self, Kernel};
 use crate::engine::{Engine, HostWorkspace, Killed, Limits, RunName, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, unconfined};
@@ -41,10 +41,6 @@ use self::parts::Parts;
 /// `nobody` and `nogroup` on every Debian-family host, so nothing a sandbox
 /// writes is owned by an account that can log in or holds a privilege.
 pub const SANDBOX_HOST_IDS: (u32, u32) = (65_534, 65_534);
-/// How long a sandbox may take to answer before its run is refused: the
-/// kernel lane measures executor-ready in tens of milliseconds, so this only
-/// ends a sandbox that will never answer.
-pub const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A run's directory: others may pass through to the binds beneath it, but
 /// not list or write it.
@@ -188,7 +184,7 @@ impl BubblewrapEngine {
             name.as_str(),
             &limits,
         )?);
-        cgroup.limit_io(device, DEFAULT_IO_BYTES_PER_SECOND)?;
+        cgroup.limit_io(device, self.config.io_bytes_per_second)?;
         let procs = cgroup.procs();
         let tenant = TenantFiles::open(&cgroup.tenant_procs(), &cgroup.tenant_events())?;
         let (handover, link) = Handover::with_link(tenant)?;

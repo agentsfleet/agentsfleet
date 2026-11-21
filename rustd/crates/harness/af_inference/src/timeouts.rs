@@ -30,6 +30,8 @@ impl Default for TimeoutSettings {
 pub struct Timeouts {
     connect: Duration,
     stream_idle: Duration,
+    count: Duration,
+    count_reply_bytes: usize,
 }
 
 impl Default for Timeouts {
@@ -43,6 +45,8 @@ impl Timeouts {
     pub const DEFAULT: Self = Self {
         connect: super::stream::CONNECT_TIMEOUT,
         stream_idle: super::stream::READ_TIMEOUT,
+        count: super::count::COUNT_TIMEOUT,
+        count_reply_bytes: super::count::COUNT_REPLY_BYTES,
     };
 
     /// Accepts only settings whose positive, finite bounds were checked.
@@ -51,7 +55,29 @@ impl Timeouts {
         Self {
             connect: Duration::from_secs(settings.connect_timeout_seconds),
             stream_idle: Duration::from_secs(settings.stream_idle_timeout_seconds),
+            ..Self::DEFAULT
         }
+    }
+
+    /// The same timeouts, a native token count taking at most `count` and
+    /// its reply at most `reply_bytes`.
+    #[must_use]
+    pub const fn with_count(mut self, count: Duration, reply_bytes: usize) -> Self {
+        self.count = count;
+        self.count_reply_bytes = reply_bytes;
+        self
+    }
+
+    /// How long a native token count may take.
+    #[must_use]
+    pub const fn count(self) -> Duration {
+        self.count
+    }
+
+    /// The largest native token-count reply accepted, in bytes.
+    #[must_use]
+    pub const fn count_reply_bytes(self) -> usize {
+        self.count_reply_bytes
     }
 
     /// Physical connection establishment limit.

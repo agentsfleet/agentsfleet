@@ -26,6 +26,7 @@ pub(super) fn spawn(
         work,
         reports,
         progress,
+        ..
     } = connected;
     write_pipes(
         control.writer,

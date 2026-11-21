@@ -78,7 +78,31 @@ pub async fn encode<T: Serialize + Sync + ?Sized>(
     stop: &CancellationToken,
     deadline: Instant,
 ) -> Result<OwnedFrame> {
-    let length = Length::measure(value, kind)?;
+    encode_within(
+        value,
+        budget,
+        kind,
+        kind.message_bytes_max(),
+        stop,
+        deadline,
+    )
+    .await
+}
+
+/// [`encode`], refusing a value longer than `ceiling`: what the peer
+/// announced it frames `kind` to.
+///
+/// # Errors
+/// As [`encode`].
+pub async fn encode_within<T: Serialize + Sync + ?Sized>(
+    value: &T,
+    budget: &Budget,
+    kind: StreamKind,
+    ceiling: usize,
+    stop: &CancellationToken,
+    deadline: Instant,
+) -> Result<OwnedFrame> {
+    let length = Length::measure(value, ceiling.min(kind.message_bytes_max()))?;
     let reservation = budget.reserve(kind, length.bytes, stop, deadline).await?;
     let mut buffer = Buffer::exact(&length);
     buffer.fill(value)?;
@@ -159,6 +183,36 @@ mod tests {
                 .is_some_and(<dyn std::error::Error>::is::<garde::Report>)
         );
         assert_eq!(budget.available(StreamKind::Control), available);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_announced_ceiling_bounds_what_is_encoded_and_read() -> Result<()> {
+        let budget = Budget::default();
+        let value = "x".repeat(64);
+        let stop = CancellationToken::new();
+        let refused = encode_within(&value, &budget, StreamKind::Work, 32, &stop, deadline())
+            .await
+            .err()
+            .ok_or(error::ErrorKind::Protocol)?;
+        assert_eq!(refused.reason(), crate::Reason::Protocol);
+        let frame = encode(&value, &budget, StreamKind::Work, &stop, deadline()).await?;
+        let mut wire = Vec::new();
+        write(&mut wire, &frame, &stop, deadline()).await?;
+        let mut reader = crate::Reader::new(
+            std::io::Cursor::new(wire),
+            budget,
+            StreamKind::Work,
+            stop,
+            std::time::Duration::from_secs(1),
+        );
+        reader.limit(32);
+        let refused = reader
+            .next()
+            .await
+            .err()
+            .ok_or(error::ErrorKind::Protocol)?;
+        assert_eq!(refused.reason(), crate::Reason::Protocol);
         Ok(())
     }
 
