@@ -9,7 +9,6 @@ use crate::{LiveRun, Producer, RunFacts, Turns, sql};
 /// The context a run-facts read that failed carries.
 const CONTEXT_RUN_FACTS: &str = "read a steer's run facts";
 
-
 /// The statement's one row.
 #[derive(Debug, sqlx::FromRow)]
 struct FactsRow {
