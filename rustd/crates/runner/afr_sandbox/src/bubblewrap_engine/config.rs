@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_core::env::{EnvSource, LOG_LEVEL_VAR};
+use afr_executor::Sizes;
 
 use super::SANDBOX_HOST_IDS;
 use crate::bubblewrap::SANDBOX_SUBCOMMAND;
@@ -38,6 +39,9 @@ pub struct BubblewrapConfig {
     pub ready_timeout: Duration,
     /// Disk bytes each run's sandbox may read, and write, per second.
     pub io_bytes_per_second: u64,
+    /// What each sandbox's executor is started with and its client connects
+    /// with.
+    pub sizes: Sizes,
 }
 
 impl BubblewrapConfig {
@@ -64,6 +68,7 @@ impl BubblewrapConfig {
             log_level: env.get(LOG_LEVEL_VAR).map(OsString::from),
             ready_timeout: tuning.ready_timeout,
             io_bytes_per_second: tuning.io_bytes_per_second,
+            sizes: tuning.sizes,
         }
     }
 

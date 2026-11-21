@@ -2,7 +2,10 @@
 //! unsafe value, or a key the runner does not read, refuses startup.
 
 use std::io::Write as _;
+use std::path::Path;
 use std::time::Duration;
+
+use afr_executor::Executor as _;
 
 use af_core::env::MapEnv;
 
@@ -51,6 +54,7 @@ fn an_empty_profile_selects_todays_values() -> Checked {
     assert_eq!(selected.egress, af_egress::Limits::DEFAULT);
     assert_eq!(selected.max_run_spans, afr_telemetry::MAX_RUN_SPANS);
     assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(selected.engine.sizes, afr_executor::Sizes::DEFAULT);
     Ok(())
 }
 
@@ -86,6 +90,80 @@ fn tools_values_reach_the_run_limits() -> Checked {
     assert_eq!(limits.tools.max_sleep, Duration::from_hours(1));
     assert_eq!(limits.tools.max_wait, Duration::from_mins(1));
     assert_eq!((limits.caps.open, limits.caps.depth), (3, 1));
+    Ok(())
+}
+
+#[test]
+fn executor_sizes_reach_the_engine_and_the_tools() -> Checked {
+    let selected = settings(
+        "[tools]\nmax_file_read_mib = 2\noutput_edge_kib = 64\n\n\
+         [executor]\nmax_frame_mib = 16\n",
+    )?;
+    let sizes = afr_executor::Sizes {
+        max_read_bytes: 2 * 1024 * 1024,
+        edge_bytes: 64 * 1024,
+        max_frame_bytes: 16 * 1024 * 1024,
+    };
+    // The engine starts every executor with what the tools word their
+    // limits by.
+    assert_eq!(selected.engine.sizes, sizes);
+    assert_eq!(selected.run_limits.sizes, sizes);
+    Ok(())
+}
+
+/// A runner told to read 1 MiB at a time starts its executor so: the
+/// executor cuts a 2 MiB file at 1 MiB, though the call asks for all of it.
+#[tokio::test]
+async fn the_executor_uses_the_sizes_the_runner_sent() -> Checked {
+    let selected = settings("[tools]\nmax_file_read_mib = 1\n")?;
+    let sizes = selected.engine.sizes;
+    // What the engine tells the sandbox entry, as the entry reads it back.
+    let inherited = afr_sandbox::Inherited {
+        tenant: afr_sandbox::TenantDescriptors {
+            tenant_procs: 3,
+            tenant_events: 4,
+        },
+        executor: 5,
+    };
+    let told = afr_sandbox::bubblewrap::arguments(&afr_sandbox::bubblewrap::Layout {
+        toolbox: Path::new("/t"),
+        workspace: Path::new("/w"),
+        tmp: Path::new("/tmp"),
+        entry: Path::new("/e"),
+        entry_args: &[],
+        inherited,
+        sizes,
+        shared_memory_bytes: 1,
+        log_level: None,
+        network: afr_sandbox::bubblewrap::NetworkLayout::Isolated,
+    });
+    let entry_at = told
+        .iter()
+        .rposition(|part| part == afr_sandbox::bubblewrap::SANDBOX_ENTRY)
+        .ok_or("the entry is named")?;
+    let entry = afr_sandbox::Entry::parse_from(told.into_iter().skip(entry_at))?;
+    let scratch = tempfile::tempdir()?;
+    let (socket, root) = (
+        scratch.path().join("executor.sock"),
+        scratch.path().join("w"),
+    );
+    std::fs::create_dir(&root)?;
+    std::fs::write(root.join("big.bin"), vec![b'x'; 2 * 1024 * 1024])?;
+    let server = afr_executor::bind(&socket)?.with_sizes(entry.sizes());
+    let serving = tokio::spawn(async move { server.serve(&root).await });
+    let client =
+        afr_executor::Client::connect_within(&socket, Duration::from_secs(5), sizes).await?;
+
+    let read = client.read_file("big.bin", u64::MAX).await?;
+
+    assert_eq!(
+        read.data.len(),
+        1024 * 1024,
+        "cut at the size the runner sent"
+    );
+    assert!(read.truncated, "the file runs past one read");
+    drop(client);
+    serving.await??;
     Ok(())
 }
 
@@ -158,6 +236,9 @@ const ZEROES: &[(&str, &str)] = &[
     ("tools", "max_subagent_wait_seconds"),
     ("tools", "max_open_subagents"),
     ("tools", "max_subagent_depth"),
+    ("tools", "max_file_read_mib"),
+    ("tools", "output_edge_kib"),
+    ("executor", "max_frame_mib"),
     ("provider", "decision_connect_timeout_seconds"),
     ("provider", "decision_call_timeout_seconds"),
     ("provider", "token_count_timeout_seconds"),
@@ -214,6 +295,13 @@ fn values_past_their_bounds_are_refused() -> Checked {
         "[daemon]\nmax_activity_batches_held = 1\n",
         "max_activity_batches_held",
     )?;
+    // A frame a full directory listing would not fit in.
+    refused_naming("[executor]\nmax_frame_mib = 6\n", "max_frame_mib")?;
+    // A frame too short to carry one whole read as base64.
+    refused_naming(
+        "[tools]\nmax_file_read_mib = 12\n\n[executor]\nmax_frame_mib = 16\n",
+        "max_frame_mib",
+    )?;
     Ok(())
 }
 
@@ -225,22 +313,18 @@ const NOT_READ: &[(&str, &str)] = &[
     ("sandbox", "max_attach_attempts"),
     ("sandbox", "min_retry_delay_ms"),
     ("sandbox", "max_retry_delay_seconds"),
-    ("tools", "output_edge_kib"),
-    ("tools", "max_read_mib"),
     ("tools", "mcp_call_timeout_seconds"),
     ("egress", "max_response_mib"),
     ("egress", "max_construction_mib"),
     ("egress", "max_target_kib"),
     ("daemon", "max_report_mib"),
     ("daemon", "max_activity_kib"),
-    ("executor", "max_frame_mib"),
 ];
 
 #[test]
 fn keys_the_runner_does_not_read_are_refused() -> Checked {
     for (section, key) in NOT_READ {
-        let named = if *section == "executor" { section } else { key };
-        refused_naming(&format!("[{section}]\n{key} = 1\n"), named)?;
+        refused_naming(&format!("[{section}]\n{key} = 1\n"), key)?;
     }
     Ok(())
 }

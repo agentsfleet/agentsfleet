@@ -78,7 +78,7 @@ impl Live {
             let (socket, root) = (socket.clone(), root.clone());
             async move { afr_executor::serve(&socket, &root).await }
         });
-        let client = Client::connect_within(&socket, PATIENCE)
+        let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
             .await
             .expect("the executor answers on its socket");
         Self {

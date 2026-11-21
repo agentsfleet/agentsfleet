@@ -194,12 +194,17 @@ fn should_put_a_line_on_a_line_of_its_own() {
 
 #[test]
 fn should_budget_four_bytes_a_token() {
-    assert_eq!(budget(None), 40_000);
-    assert_eq!(budget(Some(3)), 12);
+    assert_eq!(budget(None, EDGE_BYTES), 40_000);
+    assert_eq!(budget(Some(3), EDGE_BYTES), 12);
     assert_eq!(
-        budget(Some(usize::MAX)),
+        budget(Some(usize::MAX), EDGE_BYTES),
         2 * EDGE_BYTES,
         "capped at the two edges a call can hold"
+    );
+    assert_eq!(
+        budget(None, 1024),
+        2048,
+        "an environment keeping smaller edges caps lower"
     );
 }
 

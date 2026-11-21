@@ -24,11 +24,12 @@ use super::launch::Plan;
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    DELIMITER, KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
-    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE,
-    METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult,
-    WriteFileParams, WriteParams, decoded, line,
+    DELIMITER, KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE,
+    PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams,
+    decoded, line,
 };
+use crate::sizes::Sizes;
 
 /// A line that is not JSON-RPC at all.
 const DETAIL_UNREADABLE: &str = "the message is not a JSON-RPC request";
@@ -74,16 +75,20 @@ pub(super) struct Session {
     running: JoinSet<u64>,
     calls: JoinSet<()>,
     next_process: u64,
+    /// The read clamp and the frame cap its starter chose.
+    sizes: Sizes,
 }
 
 impl Session {
     /// A session answering through `outbound`, its processes placed by
-    /// `placement` and speaking through `output`.
+    /// `placement` and speaking through `output`, its reads and lines held to
+    /// `sizes`.
     pub(super) fn new(
         workspace: Arc<Workspace>,
         placement: Arc<dyn Placement>,
         outbound: mpsc::UnboundedSender<Bytes>,
         output: mpsc::Sender<Bytes>,
+        sizes: Sizes,
     ) -> Self {
         Self {
             workspace,
@@ -94,6 +99,7 @@ impl Session {
             running: JoinSet::new(),
             calls: JoinSet::new(),
             next_process: 0,
+            sizes,
         }
     }
 
@@ -106,7 +112,7 @@ impl Session {
         let codec = AnyDelimiterCodec::new_with_max_length(
             vec![DELIMITER],
             vec![DELIMITER],
-            MAX_FRAME_BYTES,
+            self.sizes.max_frame_bytes,
         );
         let mut lines = FramedRead::new(read, codec);
         loop {
@@ -169,11 +175,16 @@ impl Session {
                     params::<KillParams>(request).and_then(|kill| self.kill(kill.process_id));
                 self.answer(id, killed);
             }
-            METHOD_READ_FILE => self.on_files(
-                id,
-                params(request),
-                |workspace, read: ReadParams<'static>| workspace.read(&read.path, read.max_bytes),
-            ),
+            METHOD_READ_FILE => {
+                let most = self.sizes.max_read_bytes;
+                self.on_files(
+                    id,
+                    params(request),
+                    move |workspace, read: ReadParams<'static>| {
+                        workspace.read(&read.path, read.max_bytes.min(most))
+                    },
+                );
+            }
             METHOD_WRITE_FILE => self.on_files(
                 id,
                 params(request),

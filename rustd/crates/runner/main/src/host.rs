@@ -117,14 +117,20 @@ impl Host {
     }
 
     /// An engine that builds no sandbox: each run's tools run in a scratch
-    /// directory under the storage home. A debug build alone has it, and the
-    /// engine itself refuses to exist in a release build.
+    /// directory under the storage home, its executor serving `sizes`. A
+    /// debug build alone has it, and the engine itself refuses to exist in a
+    /// release build.
     ///
     /// # Errors
     /// The engine refused, already logged, as the exit status.
     #[cfg(debug_assertions)]
-    pub(crate) fn unsandboxed(home: &StorageHome) -> Result<Self, ExitCode> {
-        let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes()).or_exit()?;
+    pub(crate) fn unsandboxed(
+        home: &StorageHome,
+        sizes: afr_executor::Sizes,
+    ) -> Result<Self, ExitCode> {
+        let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes())
+            .or_exit()?
+            .with_sizes(sizes);
         let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Ok(Self::new(engine, probe, None))
     }

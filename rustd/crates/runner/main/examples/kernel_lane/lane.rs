@@ -299,18 +299,18 @@ fn delegate() -> std::io::Result<PathBuf> {
     Ok(root)
 }
 
-/// The sandbox side: take the descriptors the engine named, harden, then
-/// serve the executor until the lane hangs up.
+/// The sandbox side: take the descriptors and sizes the engine named,
+/// harden, then serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    let inherited = match afr_sandbox::Inherited::parse_from(std::env::args_os().skip(1)) {
-        Ok(inherited) => inherited,
+    let entry = match afr_sandbox::Entry::parse_from(std::env::args_os().skip(1)) {
+        Ok(entry) => entry,
         Err(refused) => {
             // the sandbox side starts no subscriber; stderr is its only report
             eprintln!("{NOT_TOLD}: {refused}");
             return ExitCode::FAILURE;
         }
     };
-    match afr_sandbox::serve_sandboxed(inherited) {
+    match afr_sandbox::serve_sandboxed(entry) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the sandbox stopped: {error}");

@@ -44,7 +44,9 @@ async fn test_exec_session_survives_across_calls() {
         let (socket, root) = (socket.clone(), root.clone());
         async move { afr_executor::serve(&socket, &root).await }
     });
-    let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
+    let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+        .await
+        .unwrap();
     let (catalog, _sent) = hosted();
     let names = [EXEC_COMMAND.name(), WRITE_STDIN.name()];
     let selection = catalog.select(&names).unwrap();

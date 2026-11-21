@@ -49,10 +49,13 @@ async fn workspace_with_shot() -> (tempfile::TempDir, afr_executor::Client) {
     )
     .unwrap();
     tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
-    let client =
-        afr_executor::Client::connect_within(&scratch.path().join("executor.sock"), PATIENCE)
-            .await
-            .unwrap();
+    let client = afr_executor::Client::connect_within(
+        &scratch.path().join("executor.sock"),
+        PATIENCE,
+        afr_executor::Sizes::DEFAULT,
+    )
+    .await
+    .unwrap();
     (scratch, client)
 }
 

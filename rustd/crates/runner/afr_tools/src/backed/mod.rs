@@ -51,7 +51,8 @@ pub struct Backends<'b, 'run> {
 }
 
 impl<'b, 'run> Backends<'b, 'run> {
-    /// The backends of `run`: the sandbox `executor` hands over, its memory
+    /// The backends of `run`: the sandbox `executor` hands over, held to the
+    /// sizes `run` names, its memory
     /// and sessions, its verbs as its scheduler and channel, and its guard
     /// sending web requests and Pushover notifications through `transport`.
     /// No subagent tool is built until [`Backends::with_agents`] gives the
@@ -64,7 +65,7 @@ impl<'b, 'run> Backends<'b, 'run> {
     ) -> Self {
         Self {
             run,
-            env: LazySandboxEnv::new(executor),
+            env: LazySandboxEnv::new(executor, run.sizes),
             outbound: Egressed::new(transport, run),
             fenced: Fenced::new(run),
             pushover: Pushover::new(Egressed::new(transport, run)),

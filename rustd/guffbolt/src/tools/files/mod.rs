@@ -20,7 +20,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::tool::ToolOutput;
-use crate::tools::env::{Env, EnvError, MAX_READ_BYTES};
+use crate::tools::env::{Env, EnvError};
 use crate::tools::process::unavailable;
 use crate::tools::{Context, Handler, code};
 
@@ -99,12 +99,13 @@ pub(crate) fn failed(failure: &EnvError) -> ToolOutput {
     }
 }
 
-/// The refusal for a file at `path` longer than one read carries: the one
-/// wording for a file found that long and for a patch that would make it so.
-pub(crate) fn too_long(path: &str) -> ToolOutput {
+/// The refusal for a file at `path` longer than one read of `max_read_bytes`
+/// carries: the one wording for a file found that long and for a patch that
+/// would make it so.
+pub(crate) fn too_long(path: &str, max_read_bytes: u64) -> ToolOutput {
     ToolOutput::failed(
         code::FILE_TOO_LARGE,
-        &format!("{path} {LONGER_THAN} {MAX_READ_BYTES} bytes"),
+        &format!("{path} {LONGER_THAN} {max_read_bytes} bytes"),
     )
 }
 
@@ -112,12 +113,13 @@ pub(crate) fn too_long(path: &str) -> ToolOutput {
 /// carries cannot be edited whole, so it is refused rather than cut, and so
 /// is one that is not text, which an edit would write back mangled.
 pub(crate) async fn whole(env: &dyn Env, path: &str) -> Result<String, ToolOutput> {
+    let most = env.max_read_bytes();
     let fetched = env
-        .read_file(path, MAX_READ_BYTES)
+        .read_file(path, most)
         .await
         .map_err(|failure| failed(&failure))?;
     if fetched.truncated {
-        return Err(too_long(path));
+        return Err(too_long(path, most));
     }
     String::from_utf8(fetched.data.to_vec()).map_err(|_bytes| {
         ToolOutput::failed(

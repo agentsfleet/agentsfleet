@@ -16,7 +16,7 @@ use tokio::time::Instant;
 
 use crate::tool::ErrorCode;
 use crate::tools::code;
-use crate::tools::env::{EDGE_BYTES, Ending, Process, ProcessEvent};
+use crate::tools::env::{Ending, Process, ProcessEvent};
 
 /// The bytes one token is taken to cover.
 const BYTES_PER_TOKEN: usize = 4;
@@ -38,9 +38,6 @@ const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 /// nothing written after the drain gave it up is shown.
 const ABANDONED: &str =
     "... the process ended with its output still open; what was written after is not shown ...";
-/// The most tokens a call reads back, whatever the model asks: the two edges
-/// a call can hold, at four bytes a token.
-const OUTPUT_TOKENS_MAX: usize = (2 * EDGE_BYTES).div_euclid(BYTES_PER_TOKEN);
 
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
@@ -181,11 +178,15 @@ pub fn with_line(mut text: String, line: &str) -> String {
 
 /// The bytes a call reads back for `tokens` tokens, or for the default when
 /// the model names none.
+///
+/// Never more tokens than the two edges of `edge_bytes` a call can hold, at
+/// four bytes a token, whatever the model asks.
 #[must_use]
-pub fn budget(tokens: Option<usize>) -> usize {
+pub fn budget(tokens: Option<usize>, edge_bytes: usize) -> usize {
+    let most = edge_bytes.saturating_mul(2).div_euclid(BYTES_PER_TOKEN);
     tokens
         .unwrap_or(OUTPUT_TOKENS_DEFAULT)
-        .min(OUTPUT_TOKENS_MAX)
+        .min(most)
         .saturating_mul(BYTES_PER_TOKEN)
 }
 

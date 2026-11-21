@@ -64,6 +64,7 @@ async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
     let client = afr_executor::Client::connect_within(
         &scratch.path().join("executor.sock"),
         Duration::from_secs(20),
+        afr_executor::Sizes::DEFAULT,
     )
     .await
     .unwrap();

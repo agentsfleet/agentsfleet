@@ -47,7 +47,7 @@ fn a_file_that_fits_is_read_whole_and_says_nothing_more() {
 
     assert_eq!(page.text, "a\nb\n");
     assert_eq!(page.next, None);
-    assert_eq!(page.read_back(false), "a\nb\n");
+    assert_eq!(page.read_back(None), "a\nb\n");
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn a_window_starts_at_its_offset_and_stops_at_its_limit() {
 
     assert_eq!(page.text, "line 2\nline 3\n");
     assert_eq!(
-        page.read_back(false),
+        page.read_back(None),
         "line 2\nline 3\n... the file continues at line 4; read on with offset 4"
     );
 }
@@ -68,7 +68,7 @@ fn paging_from_where_each_page_says_reads_the_whole_file_once() {
     let file = numbered(300);
     // Every line fits the smallest budget, so none is cut; under the real
     // one, the limit is what stops each page.
-    let in_use = output::budget(None);
+    let in_use = output::budget(None, guffbolt::tools::env::EDGE_BYTES);
     for (budget, limit) in [
         (64, Limits::DEFAULT.default_read_lines),
         (in_use, 7),
@@ -104,7 +104,7 @@ fn a_line_longer_than_the_budget_is_cut_and_says_so() {
     assert_eq!(page.text, "x".repeat(9), "é would cross the budget");
     assert_eq!(page.next, Some(2));
     assert_eq!(
-        page.read_back(false),
+        page.read_back(None),
         format!(
             "{}\n... line 1 was cut at 9 of its 12 bytes\n... the file continues at line 2; read on with offset 2",
             "x".repeat(9)
@@ -144,7 +144,7 @@ fn a_cut_line_is_alone_on_its_page() {
 fn an_offset_past_the_last_line_is_none_and_an_empty_file_reads_empty() {
     assert_eq!(Page::of("a\n", 2, 1, 100), None);
     assert_eq!(Page::of("", 2, 1, 100), None);
-    assert_eq!(Page::of("", 1, 1, 100).unwrap().read_back(false), "");
+    assert_eq!(Page::of("", 1, 1, 100).unwrap().read_back(None), "");
 }
 
 #[tokio::test]

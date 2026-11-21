@@ -220,6 +220,7 @@ impl BubblewrapEngine {
             entry_args: &self.config.entry_args,
             log_level: self.config.log_level.as_deref(),
             inherited,
+            sizes: self.config.sizes,
             shared_memory_bytes: limits.shared_memory_bytes(),
             network,
         })
@@ -231,7 +232,7 @@ impl BubblewrapEngine {
     /// timeout as not ready.
     async fn ready(&self, parts: &mut Parts, link: UnixStream) -> Result<Client> {
         let waited = self.config.ready_timeout;
-        let client = Client::connected(link).map_err(not_ready(waited))?;
+        let client = Client::connected(link, self.config.sizes).map_err(not_ready(waited))?;
         let listed = tokio::select! {
             exited = parts.exited() => return Err(exited),
             listed = tokio::time::timeout(waited, client.list_dir(READY_PROBE)) => listed,

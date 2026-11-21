@@ -44,7 +44,11 @@ pub(super) struct Peer(BufReader<UnixStream>);
 
 pub(super) fn pair() -> (Witness, Peer) {
     let (ours, theirs) = UnixStream::pair().expect("socket pair");
-    let client = Client::connected(ours.into_std().expect("native socket")).expect("native client");
+    let client = Client::connected(
+        ours.into_std().expect("native socket"),
+        afr_executor::Sizes::DEFAULT,
+    )
+    .expect("native client");
     (
         Witness {
             client,

@@ -56,6 +56,9 @@ guffbolt.workspace = true
 afr_supervisor.workspace = true
 # `sandbox` hardens and serves; `probe` reads the host.
 afr_sandbox.workspace = true
+# The sizes the runner's `[tools]` and `[executor]` sections choose for every
+# executor link, spelled as the executor takes them.
+afr_executor.workspace = true
 # The log filter that holds the model library's own lines to its warnings, and
 # the providers the loop reaches models through.
 af_providers.workspace = true
@@ -94,7 +97,6 @@ af_otlp.workspace = true
 # kernel, driven with the supervisor's own checkout, the runner's real tools
 # through their catalog and the agent loop, as this binary links them.
 af_crypto.workspace = true
-afr_executor.workspace = true
 hyper.workspace = true
 futures-util.workspace = true
 libtest-mimic.workspace = true

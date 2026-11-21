@@ -26,7 +26,7 @@ use serde::Deserialize;
 use super::changes::{Change, report};
 use super::{Answer, failed, inside, settled, too_long, whole};
 use crate::tool::ToolOutput;
-use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::env::Env;
 use crate::tools::{Context, Handler, code};
 
 #[path = "../../../vendor/apply_patch/mod.rs"]
@@ -189,7 +189,7 @@ async fn plan<'hunk>(
     match hunk {
         Hunk::AddFile { path, contents } => {
             let path = inside(env, named(path))?;
-            fits(path, contents)?;
+            fits(env, path, contents)?;
             overlay.leave(path, Some(contents.clone()));
             Ok(Planned::Add { path, contents })
         }
@@ -218,7 +218,7 @@ async fn plan<'hunk>(
                 .filter(|to| key(to) != key(path));
             let original = overlay.text(env, path).await?;
             let updated = grammar::updated(path, &original, chunks).map_err(invalid)?;
-            fits(moved_to.unwrap_or(path), &updated.contents)?;
+            fits(env, moved_to.unwrap_or(path), &updated.contents)?;
             overlay.update(path, moved_to, &updated.contents);
             Ok(Planned::Update {
                 path,
@@ -237,11 +237,12 @@ fn named(path: &Path) -> &str {
 }
 
 /// Refuses a hunk leaving `text` at `path` when `whole` could not read it
-/// back: `land` re-reads every update, so the cap on a read is the cap on a
-/// write, and the refusal reads as a read's does.
-fn fits(path: &str, text: &str) -> Result<(), ToolOutput> {
-    if u64::try_from(text.len()).unwrap_or(u64::MAX) > MAX_READ_BYTES {
-        return Err(too_long(path));
+/// back from `env`: `land` re-reads every update, so the cap on a read is the
+/// cap on a write, and the refusal reads as a read's does.
+fn fits(env: &dyn Env, path: &str, text: &str) -> Result<(), ToolOutput> {
+    let most = env.max_read_bytes();
+    if u64::try_from(text.len()).unwrap_or(u64::MAX) > most {
+        return Err(too_long(path, most));
     }
     Ok(())
 }
@@ -264,7 +265,7 @@ async fn land(env: &dyn Env, planned: &Planned<'_>) -> Result<(), ToolOutput> {
             let updated = grammar::updated(path, &now, chunks).map_err(invalid)?;
             // Planning held each spelling under the cap; two spellings of one
             // file, a link and its target, can still cross it together here.
-            fits(moved_to.unwrap_or(path), &updated.contents)?;
+            fits(env, moved_to.unwrap_or(path), &updated.contents)?;
             write(env, moved_to.unwrap_or(path), &updated.contents).await?;
             if moved_to.is_some() {
                 delete(env, path).await

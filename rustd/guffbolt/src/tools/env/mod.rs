@@ -34,11 +34,13 @@ pub use self::local::LocalEnv;
 pub use self::pipe::{Feed, Piped, pipe};
 pub use self::spawn::Spawn;
 
-/// The most of one file a read carries: a file longer than this is read to
-/// here and marked truncated.
+/// The most of one file a read carries when its environment names none
+/// ([`Env::max_read_bytes`]): a file longer than this is read to here and
+/// marked truncated.
 pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 /// The most of a process's unread output an environment keeps at each edge,
-/// its head and its tail; what falls between them is dropped and counted.
+/// its head and its tail, when it names none ([`Env::edge_bytes`]); what falls
+/// between them is dropped and counted.
 pub const EDGE_BYTES: usize = 512 * 1024;
 /// How long past a command's timeout an environment takes to report how it
 /// ended, when it says nothing else: a kill's grace, a drain's grace, and a
@@ -303,6 +305,18 @@ pub trait Env: Send + Sync + fmt::Debug {
     /// how it ended; a command's wait gives up after its timeout and this.
     fn ending_grace(&self) -> Duration {
         ENDING_GRACE_DEFAULT
+    }
+
+    /// The most of one file a read carries here: the file tools ask for this
+    /// much and name it when a file runs past it.
+    fn max_read_bytes(&self) -> u64 {
+        MAX_READ_BYTES
+    }
+
+    /// The most of a process's unread output this environment keeps at each
+    /// edge: a call reads back no more than both edges hold.
+    fn edge_bytes(&self) -> usize {
+        EDGE_BYTES
     }
 
     /// The browser the browser tools drive.

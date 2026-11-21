@@ -26,7 +26,13 @@ async fn a_file_worker_remains_busy_after_its_call_has_left_the_agent() -> TestR
     let workspace = Arc::new(Workspace::open(directory.path())?);
     let (outbound, mut answers) = mpsc::unbounded_channel();
     let (output, _events) = mpsc::channel(1);
-    let mut session = Session::new(workspace, Arc::new(Inherit), outbound, output);
+    let mut session = Session::new(
+        workspace,
+        Arc::new(Inherit),
+        outbound,
+        output,
+        Sizes::DEFAULT,
+    );
     assert!(query(&mut session, &mut answers)?);
     let (release, wait) = std::sync::mpsc::channel();
     let (entered, started) = tokio::sync::oneshot::channel();

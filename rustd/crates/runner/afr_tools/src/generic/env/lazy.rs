@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use afr_executor::{ExecutorSource, WORKSPACE_ROOT};
+use afr_executor::{ExecutorSource, Sizes, WORKSPACE_ROOT};
 use bytes::Bytes;
 use guffbolt::tools::env::{
     Browser, Env, EnvError, EnvErrorKind, EnvFuture, FileContent, Listing, Process, ProcessId,
@@ -16,13 +16,18 @@ use super::{ENDING_GRACE, SandboxEnv, WAITS_FOR_FIRECRACKER};
 #[derive(Debug, Clone, Copy)]
 pub struct LazySandboxEnv<'a> {
     source: &'a dyn ExecutorSource,
+    /// The sizes the run's executor is started with, known before it is:
+    /// a tool asks for its read size before the call that waits for the
+    /// sandbox.
+    sizes: Sizes,
 }
 
 impl<'a> LazySandboxEnv<'a> {
-    /// The environment of the sandbox `source` hands over, once it does.
+    /// The environment of the sandbox `source` hands over, once it does,
+    /// whose executor holds to `sizes`.
     #[must_use]
-    pub const fn new(source: &'a dyn ExecutorSource) -> Self {
-        Self { source }
+    pub const fn new(source: &'a dyn ExecutorSource, sizes: Sizes) -> Self {
+        Self { source, sizes }
     }
 
     /// The sandbox's environment, waiting for the build when it has not
@@ -76,6 +81,14 @@ impl Env for LazySandboxEnv<'_> {
 
     fn ending_grace(&self) -> Duration {
         ENDING_GRACE
+    }
+
+    fn max_read_bytes(&self) -> u64 {
+        self.sizes.max_read_bytes
+    }
+
+    fn edge_bytes(&self) -> usize {
+        self.sizes.edge_bytes
     }
 
     fn browser(&self) -> Result<&dyn Browser, &str> {

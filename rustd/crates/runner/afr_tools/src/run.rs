@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex as StdMutex, PoisonError};
 
 use af_egress::Egress;
+use afr_executor::Sizes;
 use afr_memory::Loaded;
 use tokio::sync::Mutex;
 
@@ -38,6 +39,9 @@ pub struct Run<'run> {
     pub sessions: Sessions,
     /// The bounds the run's built-in tools hold its calls to.
     pub limits: Limits,
+    /// What the run's executor holds to: the read size and the output edges
+    /// its tools word their limits by.
+    pub sizes: Sizes,
     /// The repositories checked out in the run's workspace.
     pub checkouts: Vec<Checkout<'run>>,
     /// Whether the model's wire takes an image with a call's result; `image`
@@ -93,6 +97,7 @@ impl<'run> Run<'run> {
             egress: Mutex::new(egress),
             sessions: Sessions::default(),
             limits: Limits::DEFAULT,
+            sizes: Sizes::DEFAULT,
             checkouts: Vec::new(),
             image_input: false,
             verbs,
@@ -114,6 +119,14 @@ impl<'run> Run<'run> {
     pub fn with_limits(mut self, limits: Limits, max_sessions: usize) -> Self {
         self.limits = limits;
         self.sessions = Sessions::new(max_sessions);
+        self
+    }
+
+    /// The same run, whose executor holds to `sizes`: what the runner
+    /// starts every sandbox's executor with.
+    #[must_use]
+    pub const fn with_sizes(mut self, sizes: Sizes) -> Self {
+        self.sizes = sizes;
         self
     }
 

@@ -158,7 +158,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 - Dimension 0.1 — DONE → Test `a_fleet_budget_has_no_ceiling_but_its_own` (unit): a definition with a $50,000 daily budget parses and is read back. Expected: accepted.
 - Dimension 0.2 — DONE → Test `a_request_slower_than_the_read_timeout_is_dropped` and `a_live_stream_outlives_the_read_timeout` (integration). Expected: the slow request's connection closes; the stream keeps sending.
-- Dimension 0.3 → Test `the_executor_uses_the_sizes_the_runner_sent` (unit): a runner config with a 1 MiB read size; the executor refuses a 2 MiB read. Expected: refused at 1 MiB.
+- Dimension 0.3 — DONE → Test `the_executor_uses_the_sizes_the_runner_sent` (unit): a runner config with a 1 MiB read size; the executor refuses a 2 MiB read. Expected: refused at 1 MiB.
 
 ### §1 — guffbolt-ai owns the provider-facing types, and guffbolt re-exports them
 

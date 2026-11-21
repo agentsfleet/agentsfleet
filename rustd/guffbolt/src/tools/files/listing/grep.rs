@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use super::{LIMIT_REACHED, answer, glob, joined, start, walk};
 use crate::tool::ToolOutput;
-use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::env::Env;
 use crate::tools::files::{Answer, settled};
 use crate::tools::{Context, Handler, code};
 
@@ -93,7 +93,7 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
         {
             continue;
         }
-        let Ok(file) = env.read_file(&path, MAX_READ_BYTES).await else {
+        let Ok(file) = env.read_file(&path, env.max_read_bytes()).await else {
             continue;
         };
         // A file that is not text holds no line to show.
@@ -112,5 +112,5 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
         }
     }
     let note = cut.then_some(LIMIT_REACHED);
-    Ok(ToolOutput::succeeded(answer(lines, note)))
+    Ok(ToolOutput::succeeded(answer(env, lines, note)))
 }

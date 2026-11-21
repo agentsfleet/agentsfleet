@@ -17,8 +17,9 @@ use bytes::{Buf as _, Bytes};
 
 use crate::api::Stream;
 
-/// How much of each edge a process keeps unread: 512 KiB of head and of
-/// tail, 1 MiB per process.
+/// How much of each edge a process keeps unread when the client's starter
+/// names none ([`crate::Sizes`]): 512 KiB of head and of tail, 1 MiB per
+/// process.
 pub const EDGE_BYTES: usize = 512 * 1024;
 
 /// The most bytes before the tail's first character that can belong to one

@@ -6,11 +6,21 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use afr_executor::Sizes;
+
 use super::{Layout, NetworkLayout, arguments};
+use crate::serve::Entry;
 use crate::tenant::{Inherited, TenantDescriptors};
 
 /// What a test's `/dev/shm` may hold.
 const SHARED_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// What a test's executor serves with: neither size its default.
+const SIZES: Sizes = Sizes {
+    max_read_bytes: 1024 * 1024,
+    max_frame_bytes: 16 * 1024 * 1024,
+    ..Sizes::DEFAULT
+};
 
 /// The numbers a test's tenant leaf and executor link are named under.
 const INHERITED: Inherited = Inherited {
@@ -39,6 +49,7 @@ fn with_network(level: Option<&str>, network: NetworkLayout<'_>) -> Vec<String> 
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
         inherited: INHERITED,
+        sizes: SIZES,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network,
     })
@@ -146,7 +157,7 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
     let argv = argv();
 
     assert_eq!(
-        argv[argv.len() - 9..],
+        argv[argv.len() - 13..],
         [
             "--",
             "/opt/agentsfleet/agentsfleet-runner",
@@ -156,7 +167,11 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
             "--tenant-events",
             "9",
             "--executor",
-            "11"
+            "11",
+            "--max-read-bytes",
+            "1048576",
+            "--max-frame-bytes",
+            "16777216"
         ]
     );
     // The executor owns `PATH`; the only variable passed in is the log level.
@@ -203,7 +218,7 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
 }
 
 #[test]
-fn test_the_entry_reads_back_the_descriptors_it_was_named() {
+fn test_the_entry_reads_back_the_descriptors_and_sizes_it_was_named() {
     let argv = arguments(&Layout {
         toolbox: Path::new("/t"),
         workspace: Path::new("/w"),
@@ -212,6 +227,7 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
         entry_args: &[],
         log_level: None,
         inherited: INHERITED,
+        sizes: SIZES,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network: NetworkLayout::Isolated,
     });
@@ -221,9 +237,18 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
         .rposition(|part| part == "/opt/agentsfleet/agentsfleet-runner")
         .unwrap_or_else(|| unreachable!("no entry in {argv:?}"));
 
-    let parsed = Inherited::parse_from(argv[entry..].iter().cloned());
+    let parsed = Entry::parse_from(argv[entry..].iter().cloned()).ok();
 
-    assert_eq!(parsed.ok(), Some(INHERITED), "the flags round-trip");
+    assert_eq!(
+        parsed,
+        Some(Entry::new(INHERITED, SIZES)),
+        "the flags round-trip"
+    );
+    assert_eq!(
+        parsed.map(Entry::sizes),
+        Some(SIZES),
+        "the executor serves the sizes the runner sent"
+    );
 }
 
 /// Each policy gets its namespace: `allow_all` shares the host's, and every

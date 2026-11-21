@@ -59,8 +59,9 @@ enum Command {
     /// Print what this host's kernel can enforce.
     Probe,
     /// Harden this process and serve the executor; started inside each sandbox,
-    /// told the descriptors it inherited: the tenant leaf's and its link's.
-    Sandbox(afr_sandbox::Inherited),
+    /// told the descriptors it inherited, the tenant leaf's and its link's,
+    /// and the sizes its executor serves with.
+    Sandbox(afr_sandbox::Entry),
 }
 
 /// How `run` builds each run's sandbox.
@@ -81,15 +82,15 @@ fn main() -> ExitCode {
     match Cli::parse().command {
         // First and alone: hardening refuses once a second thread exists, so
         // nothing may start one before it.
-        Command::Sandbox(inherited) => sandbox(inherited),
+        Command::Sandbox(entry) => sandbox(entry),
         Command::Probe => probe(),
         Command::Run(args) => run(args),
     }
 }
 
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
-fn sandbox(inherited: afr_sandbox::Inherited) -> ExitCode {
-    exited(afr_sandbox::serve_sandboxed(inherited))
+fn sandbox(entry: afr_sandbox::Entry) -> ExitCode {
+    exited(afr_sandbox::serve_sandboxed(entry))
 }
 
 /// SUCCESS for an entry that ended cleanly, otherwise its refusal.
@@ -228,7 +229,7 @@ impl RunArgs {
     fn host(self, home: &StorageHome, tuning: afr_sandbox::EngineTuning) -> Result<Host, ExitCode> {
         #[cfg(debug_assertions)]
         if self.unsandboxed {
-            return Host::unsandboxed(home);
+            return Host::unsandboxed(home, tuning.sizes);
         }
         self.engine.boot(home, tuning)
     }

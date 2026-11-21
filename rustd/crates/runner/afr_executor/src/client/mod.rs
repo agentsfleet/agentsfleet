@@ -32,11 +32,12 @@ use tokio_util::sync::CancellationToken;
 use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
-    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE,
-    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
-    SpawnParams, WriteFileParams, WriteParams, decoded, request,
+    KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
+    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE,
+    PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof, SpawnParams,
+    WriteFileParams, WriteParams, decoded, request,
 };
+use crate::sizes::Sizes;
 use crate::timing::CALL_DEADLINE;
 
 mod call;
@@ -49,9 +50,6 @@ use self::link::Link;
 const CALL_BACKLOG: usize = 64;
 /// The pause between attempts to reach a socket that is not listening yet.
 const CONNECT_RETRY_DELAY: Duration = Duration::from_millis(10);
-/// The longest line a call may be: a frame the executor reads, and its
-/// delimiter.
-const MAX_LINE_BYTES: usize = MAX_FRAME_BYTES + 1;
 /// A call too long for the executor to read, refused before it is sent: the
 /// executor would answer it by closing the connection.
 const DETAIL_TOO_LONG: &str = "the call is longer than the executor reads";
@@ -65,11 +63,15 @@ pub struct Client {
     ids: Arc<CallIds>,
     lost: CancellationToken,
     deadline: Duration,
+    /// What both ends of the link hold to: the executor was started with the
+    /// same.
+    sizes: Sizes,
 }
 
 impl Client {
     /// Connects to the executor on `socket`, retrying until it listens or
-    /// `deadline` passes.
+    /// `deadline` passes, holding the link to the `sizes` the executor was
+    /// started with.
     ///
     /// The executor binds its socket as it starts, so a supervisor that
     /// starts one connects within the time a start takes rather than at once.
@@ -77,7 +79,7 @@ impl Client {
     /// # Errors
     /// The last attempt's failure once `deadline` passes, or at once for a
     /// failure that waiting cannot fix, such as a refused permission.
-    pub async fn connect_within(socket: &Path, deadline: Duration) -> Result<Self> {
+    pub async fn connect_within(socket: &Path, deadline: Duration, sizes: Sizes) -> Result<Self> {
         let attempts = deadline
             .as_millis()
             .div_euclid(CONNECT_RETRY_DELAY.as_millis());
@@ -88,32 +90,38 @@ impl Client {
             .retry(policy)
             .when(not_listening_yet)
             .await?;
-        Ok(Self::over(stream, CALL_DEADLINE))
+        Ok(Self::over(stream, CALL_DEADLINE, sizes))
     }
 
     /// A client over `stream`, already connected to an executor: the engine's
-    /// end of the socket pair its sandbox inherited. Nothing is retried, as
-    /// nothing has to bind first.
+    /// end of the socket pair its sandbox inherited, started with `sizes`.
+    /// Nothing is retried, as nothing has to bind first.
     ///
     /// # Errors
     /// The stream cannot be made non-blocking or join the runtime.
-    pub fn connected(stream: std::os::unix::net::UnixStream) -> Result<Self> {
+    pub fn connected(stream: std::os::unix::net::UnixStream, sizes: Sizes) -> Result<Self> {
         stream.set_nonblocking(true)?;
-        Ok(Self::over(UnixStream::from_std(stream)?, CALL_DEADLINE))
+        Ok(Self::over(
+            UnixStream::from_std(stream)?,
+            CALL_DEADLINE,
+            sizes,
+        ))
     }
 
     /// A client over a connected `stream` whose calls wait at most `deadline`.
-    pub(crate) fn over(stream: UnixStream, deadline: Duration) -> Self {
+    pub(crate) fn over(stream: UnixStream, deadline: Duration, sizes: Sizes) -> Self {
         let (calls, queue) = mpsc::channel(CALL_BACKLOG);
         let ids = Arc::new(CallIds::default());
         let lost = CancellationToken::new();
         let outbox = calls.downgrade();
-        tokio::spawn(Link::new(stream, queue, outbox, Arc::clone(&ids), lost.clone()).run());
+        let link = Link::new(stream, queue, outbox, Arc::clone(&ids), lost.clone(), sizes);
+        tokio::spawn(link.run());
         Self {
             calls,
             ids,
             lost,
             deadline,
+            sizes,
         }
     }
 
@@ -131,7 +139,8 @@ impl Client {
         }
         let id = self.ids.next();
         let line = request(id, method, params)?;
-        if line.len() > MAX_LINE_BYTES {
+        // A frame the executor reads, and its delimiter.
+        if line.len() > self.sizes.max_frame_bytes.saturating_add(1) {
             return Err(error::invalid_params(DETAIL_TOO_LONG));
         }
         let (reply, answer) = oneshot::channel();
@@ -185,6 +194,10 @@ fn not_listening_yet(failure: &io::Error) -> bool {
 
 #[async_trait::async_trait]
 impl Executor for Client {
+    fn sizes(&self) -> Sizes {
+        self.sizes
+    }
+
     async fn recovery_idle(&self) -> Result<bool> {
         self.fetch(
             METHOD_RECOVERY_IDLE,

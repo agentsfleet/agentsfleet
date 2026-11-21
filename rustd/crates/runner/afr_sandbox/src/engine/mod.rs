@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use afr_executor::Executor;
+use afr_executor::{Executor, Sizes};
 
 use crate::error::{Error, Result};
 use crate::network::{Allowlist, Network};
@@ -33,6 +33,9 @@ pub struct EngineTuning {
     pub ready_timeout: Duration,
     /// Disk bytes a run's sandbox may read, and write, per second.
     pub io_bytes_per_second: u64,
+    /// What every sandbox's executor serves with and its client holds the
+    /// link to: the engine starts the one and connects the other with these.
+    pub sizes: Sizes,
 }
 
 impl EngineTuning {
@@ -40,6 +43,7 @@ impl EngineTuning {
     pub const DEFAULT: Self = Self {
         ready_timeout: Duration::from_secs(10),
         io_bytes_per_second: crate::cgroup::DEFAULT_IO_BYTES_PER_SECOND,
+        sizes: Sizes::DEFAULT,
     };
 }
 

@@ -179,7 +179,9 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     std::fs::create_dir(&dir).unwrap();
     let socket = dir.join(super::SOCKET_NAME);
     let listener = tokio::net::UnixListener::bind(&socket).unwrap();
-    let client = super::connect(&socket).await.unwrap();
+    let client = super::connect(&socket, afr_executor::Sizes::DEFAULT)
+        .await
+        .unwrap();
     let (_peer, _) = listener.accept().await.unwrap();
     let server = tokio::spawn(std::future::pending());
     let abort = server.abort_handle();

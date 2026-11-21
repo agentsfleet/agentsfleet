@@ -31,6 +31,8 @@ struct Shared {
 
 #[derive(Debug)]
 struct State {
+    /// How much each edge keeps: a fresh store after a read keeps the same.
+    edge: usize,
     unread: Unread,
     /// How the process ended, until the reader takes it.
     ending: Option<Ending>,
@@ -82,12 +84,20 @@ pub struct Feed {
 
 impl Events {
     /// A new pair: the feed the link (or a stand-in executor) writes, and
-    /// the events a caller reads.
+    /// the events a caller reads, keeping [`EDGE_BYTES`] at each edge.
     #[must_use]
     pub fn channel() -> (Feed, Self) {
+        Self::keeping(EDGE_BYTES)
+    }
+
+    /// [`Events::channel`], keeping `edge_bytes` of unread output at each
+    /// edge: what the client's starter chose.
+    #[must_use]
+    pub fn keeping(edge_bytes: usize) -> (Feed, Self) {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
-                unread: Unread::new(EDGE_BYTES),
+                edge: edge_bytes,
+                unread: Unread::new(edge_bytes),
                 ending: None,
                 output_abandoned: false,
                 finished: false,
@@ -171,8 +181,9 @@ impl Events {
                 ending,
                 output_abandoned: state.output_abandoned,
             });
+            let fresh = Unread::new(state.edge);
             (
-                std::mem::replace(&mut state.unread, Unread::new(EDGE_BYTES)),
+                std::mem::replace(&mut state.unread, fresh),
                 ending,
                 state.finished,
             )

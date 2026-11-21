@@ -183,6 +183,7 @@ impl FakeHost {
             log_level: Some(OsString::from("debug")),
             ready_timeout: READY,
             io_bytes_per_second: crate::cgroup::DEFAULT_IO_BYTES_PER_SECOND,
+            sizes: afr_executor::Sizes::DEFAULT,
         };
         Self { dir, config, probe }
     }

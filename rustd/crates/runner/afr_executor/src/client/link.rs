@@ -22,9 +22,10 @@ use crate::api::{Ending, Process, ProcessId};
 use crate::error::{self, Result};
 use crate::events::{Events, Feed};
 use crate::protocol::{
-    DELIMITER, ExitedParams, MAX_FRAME_BYTES, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams,
-    READ_CHUNK_BYTES, SpawnResult, decoded,
+    DELIMITER, ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES,
+    SpawnResult, decoded,
 };
+use crate::sizes::Sizes;
 
 /// The link took its socket.
 const EVENT_LINK_STARTED: &str = "executor_link_started";
@@ -69,6 +70,8 @@ pub(super) struct Link {
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
     processes: HashMap<ProcessId, Feed>,
+    /// What each process's events keep unread at each edge.
+    edge_bytes: usize,
     /// Whether a chunk past one read was warned about: the first is worth a
     /// warning, the rest a debug line, so a hostile sandbox cannot flood the
     /// journal.
@@ -78,19 +81,20 @@ pub(super) struct Link {
 impl Link {
     /// A link over `stream`, taking calls from `calls`, whose weak sender
     /// `outbox` each process's events queue their kill on, given up when
-    /// `lost` is cancelled.
+    /// `lost` is cancelled, reading lines and keeping output as `sizes` says.
     pub(super) fn new(
         stream: UnixStream,
         calls: mpsc::Receiver<Call>,
         outbox: mpsc::WeakSender<Call>,
         ids: Arc<CallIds>,
         lost: CancellationToken,
+        sizes: Sizes,
     ) -> Self {
         let (read, write) = stream.into_split();
         let codec = AnyDelimiterCodec::new_with_max_length(
             vec![DELIMITER],
             vec![DELIMITER],
-            MAX_FRAME_BYTES,
+            sizes.max_frame_bytes,
         );
         Self {
             lines: FramedRead::new(read, codec),
@@ -101,6 +105,7 @@ impl Link {
             lost,
             pending: HashMap::new(),
             processes: HashMap::new(),
+            edge_bytes: sizes.edge_bytes,
             oversized_warned: false,
         }
     }
@@ -203,7 +208,7 @@ impl Link {
     fn register(&mut self, raw: &RawValue) -> Result<Process> {
         let started: SpawnResult = decoded(raw)?;
         let id = ProcessId::new(started.process_id);
-        let (feed, mut events) = Events::channel();
+        let (feed, mut events) = Events::keeping(self.edge_bytes);
         events.on_connection(self.lost.clone());
         let ids = Arc::clone(&self.ids);
         events.on_abandon(call::kill_on_abandon(self.outbox.clone(), ids, id));

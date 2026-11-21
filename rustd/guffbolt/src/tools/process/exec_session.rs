@@ -173,7 +173,7 @@ impl Handler for ExecCommand<'_> {
         let mut collected = Collected::default();
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, min, max);
         let ended = collected.until(&mut process, deadline).await;
-        let budget = output::budget(arguments.max_output_tokens);
+        let budget = output::budget(arguments.max_output_tokens, env.edge_bytes());
         let run_id = context.run_id;
         // `process` stays locked through the close inside `reply`: a call that
         // locked a finished process before then would find its ending already
@@ -263,7 +263,7 @@ impl Handler for WriteStdin<'_> {
             let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor, max);
             collected.until(&mut process, deadline).await
         };
-        let budget = output::budget(arguments.max_output_tokens);
+        let budget = output::budget(arguments.max_output_tokens, env.edge_bytes());
         let run_id = context.run_id;
         // Locked through the close inside `reply`, as in `ExecCommand::run`.
         reply(sessions, run_id, id, &collected, ended, budget, refused)

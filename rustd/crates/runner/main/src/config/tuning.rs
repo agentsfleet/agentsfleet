@@ -34,6 +34,9 @@ const SUBAGENT_DEPTH_MAX: u8 = afr_agent::RunLimits::DEFAULT.caps.depth;
 /// One live-tail batch in flight and one queued.
 const ACTIVITY_BATCHES_MIN: usize = 2;
 
+/// The shortest frame a full directory listing still fits in.
+const FRAME_MIB_MIN: usize = afr_executor::Sizes::LISTING_BYTES / MIB_USIZE + 1;
+
 /// The box each run executes in.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
@@ -75,11 +78,13 @@ impl SandboxTuning {
         }
     }
 
-    /// How the engine starts and paces every sandbox.
-    pub(super) fn engine(&self) -> afr_sandbox::EngineTuning {
+    /// How the engine starts and paces every sandbox, starting each
+    /// executor with `sizes`.
+    pub(super) fn engine(&self, sizes: afr_executor::Sizes) -> afr_sandbox::EngineTuning {
         afr_sandbox::EngineTuning {
             ready_timeout: Duration::from_secs(self.ready_timeout_seconds),
             io_bytes_per_second: self.io_mib_per_second.saturating_mul(MIB),
+            sizes,
         }
     }
 }
@@ -121,6 +126,13 @@ pub(super) struct ToolsTuning {
     /// How deep subagents may start their own subagents.
     #[garde(range(min = 1, max = SUBAGENT_DEPTH_MAX))]
     pub max_subagent_depth: u8,
+    /// The most of one file a single read carries.
+    #[garde(range(min = 1))]
+    pub max_file_read_mib: u64,
+    /// The most of a command's unread output kept at each end, its head and
+    /// its tail.
+    #[garde(range(min = 1))]
+    pub output_edge_kib: usize,
 }
 
 /// Whole milliseconds in `duration`, which is far below `u64::MAX` of them.
@@ -144,13 +156,16 @@ impl Default for ToolsTuning {
             max_subagent_wait_seconds: tools.max_wait.as_secs(),
             max_open_subagents: run.caps.open,
             max_subagent_depth: run.caps.depth,
+            max_file_read_mib: run.sizes.max_read_bytes / MIB,
+            output_edge_kib: run.sizes.edge_bytes / KIB,
         }
     }
 }
 
 impl ToolsTuning {
-    /// What the agent loop holds every run to.
-    pub(super) fn run_limits(&self) -> afr_agent::RunLimits {
+    /// What the agent loop holds every run to, its executor holding to
+    /// `sizes`.
+    pub(super) fn run_limits(&self, sizes: afr_executor::Sizes) -> afr_agent::RunLimits {
         afr_agent::RunLimits {
             tools: guffbolt::tools::Limits {
                 default_timeout: Duration::from_secs(self.default_shell_timeout_seconds),
@@ -167,7 +182,52 @@ impl ToolsTuning {
                 depth: self.max_subagent_depth,
                 open: self.max_open_subagents,
             },
+            sizes,
         }
+    }
+}
+
+/// The link between the runner and each sandbox's executor.
+#[derive(Debug, Clone, Copy, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct ExecutorTuning {
+    /// The longest message either end reads; a full directory listing must
+    /// fit.
+    #[garde(range(min = FRAME_MIB_MIN))]
+    pub max_frame_mib: usize,
+}
+
+impl Default for ExecutorTuning {
+    fn default() -> Self {
+        Self {
+            max_frame_mib: afr_executor::Sizes::DEFAULT.max_frame_bytes / MIB_USIZE,
+        }
+    }
+}
+
+/// Refuses a frame too short to carry one whole read of `read_mib`: base64
+/// writes four bytes for every three, and the answer around it needs room.
+pub(super) fn carries_a_read(read_mib: u64) -> impl FnOnce(&ExecutorTuning, &()) -> garde::Result {
+    move |executor, ()| {
+        let frame_mib = u64::try_from(executor.max_frame_mib).unwrap_or(u64::MAX);
+        if frame_mib.saturating_mul(3) > read_mib.saturating_mul(4) {
+            Ok(())
+        } else {
+            Err(garde::Error::new(
+                "max_frame_mib must exceed four thirds of [tools] max_file_read_mib",
+            ))
+        }
+    }
+}
+
+/// What every executor link holds to: the read size and output edges
+/// `tools` chooses, and the frame `executor` chooses. The engine starts each
+/// executor with them and the tools word their limits by them.
+pub(super) const fn sizes(tools: &ToolsTuning, executor: ExecutorTuning) -> afr_executor::Sizes {
+    afr_executor::Sizes {
+        max_read_bytes: tools.max_file_read_mib.saturating_mul(MIB),
+        edge_bytes: tools.output_edge_kib.saturating_mul(KIB),
+        max_frame_bytes: executor.max_frame_mib.saturating_mul(MIB_USIZE),
     }
 }
 

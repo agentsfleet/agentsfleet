@@ -6,9 +6,9 @@
 //! never more bytes than a command's output reads back. A read that stops
 //! before the file ends says on its last line where the next one starts, so a
 //! model pages a large file instead of taking it whole into its window. The
-//! environment reads at most `MAX_READ_BYTES` of a file, from its top; a file
-//! longer than that is paged up to there, and its last line names `shell` for
-//! the rest.
+//! environment reads at most its [`Env::max_read_bytes`] of a file, from its
+//! top; a file longer than that is paged up to there, and its last line names
+//! `shell` for the rest.
 
 use std::num::NonZeroUsize;
 
@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
-use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::env::Env;
 use crate::tools::process::output;
 use crate::tools::{Context, Handler, Limits, Schema, code};
 
@@ -94,17 +94,19 @@ impl Handler for FileRead<'_> {
 
 async fn read(env: &dyn Env, window: &Window, default_lines: usize) -> Answer {
     let path = inside(env, &window.path)?;
+    let most = env.max_read_bytes();
     let fetched = env
-        .read_file(path, MAX_READ_BYTES)
+        .read_file(path, most)
         .await
         .map_err(|failure| failed(&failure))?;
     let text = String::from_utf8_lossy(&fetched.data);
     let first = window.offset.map_or(1, NonZeroUsize::get);
     let limit = window.limit.map_or(default_lines, NonZeroUsize::get);
-    let page = Page::of(&text, first, limit, output::budget(None)).ok_or_else(|| {
+    let budget = output::budget(None, env.edge_bytes());
+    let page = Page::of(&text, first, limit, budget).ok_or_else(|| {
         let lines = text.split_inclusive('\n').count();
         let past = if fetched.truncated {
-            format!("the {lines} lines of the first {MAX_READ_BYTES} bytes of {path}; {READ_REST}")
+            format!("the {lines} lines of the first {most} bytes of {path}; {READ_REST}")
         } else {
             format!("the end of {path}, which has {lines} lines")
         };
@@ -113,7 +115,9 @@ async fn read(env: &dyn Env, window: &Window, default_lines: usize) -> Answer {
             &format!("offset {first} is past {past}"),
         )
     })?;
-    Ok(ToolOutput::succeeded(page.read_back(fetched.truncated)))
+    Ok(ToolOutput::succeeded(
+        page.read_back(fetched.truncated.then_some(most)),
+    ))
 }
 
 /// The lines one read carries, and where the next read would start.
@@ -165,8 +169,10 @@ impl Page {
     }
 
     /// What the model reads: the lines, then what it is owed about the rest.
+    /// `cut_at` names the bytes one read carried when the file runs past
+    /// them.
     #[must_use]
-    pub fn read_back(self, beyond_one_read: bool) -> String {
+    pub fn read_back(self, cut_at: Option<u64>) -> String {
         let mut said = self.text;
         if let Some((number, kept, bytes)) = self.cut {
             let note = format!("... line {number} {CUT_AT} {kept} of its {bytes} bytes");
@@ -176,11 +182,12 @@ impl Page {
             Some(next) => {
                 output::with_line(said, &format!("{CONTINUES_AT} {next}; {READ_ON} {next}"))
             }
-            None if beyond_one_read => output::with_line(
-                said,
-                &format!("{CONTINUES_PAST} {MAX_READ_BYTES} bytes; {READ_REST}"),
-            ),
-            None => said,
+            None => match cut_at {
+                Some(most) => {
+                    output::with_line(said, &format!("{CONTINUES_PAST} {most} bytes; {READ_REST}"))
+                }
+                None => said,
+            },
         }
     }
 }

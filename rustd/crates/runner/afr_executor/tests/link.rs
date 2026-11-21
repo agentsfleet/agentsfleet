@@ -43,7 +43,9 @@ impl Fake {
 async fn connect() -> (tempfile::TempDir, Client, Fake) {
     let (scratch, socket, _root) = scratch();
     let listener = UnixListener::bind(&socket).unwrap();
-    let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
+    let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+        .await
+        .unwrap();
     let (stream, _peer): (UnixStream, _) = listener.accept().await.unwrap();
     let (read, writer) = stream.into_split();
     (

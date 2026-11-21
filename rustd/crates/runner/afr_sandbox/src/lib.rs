@@ -73,7 +73,9 @@ pub use self::probe::{
     MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
-pub use self::serve::{serve_confined, serve_sandboxed};
+pub use self::serve::{
+    Entry, MAX_FRAME_BYTES_FLAG, MAX_READ_BYTES_FLAG, serve_confined, serve_sandboxed,
+};
 pub use self::tenant::{
     EXECUTOR_FLAG, Inherited, TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors,
 };

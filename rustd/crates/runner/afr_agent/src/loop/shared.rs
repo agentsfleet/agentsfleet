@@ -16,7 +16,7 @@ use af_providers::Provider;
 use af_providers::observe::labels::Provider as ProviderLabel;
 use af_secrets::Scrub;
 use af_wire::policy::ContextBudget;
-use afr_executor::ExecutorSource;
+use afr_executor::{ExecutorSource, Sizes};
 use afr_memory::Loaded;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Run, RunTools, Selection};
@@ -46,6 +46,9 @@ pub struct RunLimits {
     /// How deep a run's children go, and how many are open at once; the
     /// depth no deeper than [`CAPS`]'s, which a restore checks against.
     pub caps: Caps,
+    /// What every run's executor holds to: the sandbox's executor is started
+    /// with the same, so the tools word their limits by its figures.
+    pub sizes: Sizes,
 }
 
 impl RunLimits {
@@ -54,6 +57,7 @@ impl RunLimits {
         tools: Limits::DEFAULT,
         max_sessions: SESSIONS_PER_RUN_MAX,
         caps: CAPS,
+        sizes: Sizes::DEFAULT,
     };
 }
 
@@ -130,6 +134,7 @@ pub(crate) fn run_state<'run>(
     .with_checkouts(checkouts(policy).unwrap_or_default())
     .with_image_input(provider.accepts_images())
     .with_limits(limits.tools, limits.max_sessions)
+    .with_sizes(limits.sizes)
 }
 
 impl<'run> Shared<'run> {

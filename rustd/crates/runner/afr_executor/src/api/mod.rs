@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, file_calls_unsupported};
 use crate::events::Events;
+use crate::sizes::Sizes;
 
 mod ending;
 
@@ -255,6 +256,13 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Unsupported or unreachable executors cannot authorize a checkpoint.
     async fn recovery_idle(&self) -> Result<bool> {
         Err(file_calls_unsupported())
+    }
+
+    /// What this executor's link holds to: its read size, the output its
+    /// events keep at each edge and its frame. A stand-in keeps the
+    /// defaults.
+    fn sizes(&self) -> Sizes {
+        Sizes::DEFAULT
     }
 
     /// Starts a process and returns the channel its events arrive on.

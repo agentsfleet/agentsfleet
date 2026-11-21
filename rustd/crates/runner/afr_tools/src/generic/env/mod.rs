@@ -39,8 +39,8 @@ const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(DRAIN_GRACE)
     .saturating_add(REPLY_SLACK);
 const _: () = assert!(ENDING_GRACE.as_nanos() <= af_core::timing::ENGINE_STOP_GRACE.as_nanos());
-// The tools word their limits by the harness's figures, which must be the
-// executor's.
+// Unconfigured, the harness and the executor hold one read size and one edge;
+// configured, the tools read the executor's through `Env`.
 const _: () = assert!(guffbolt::tools::env::MAX_READ_BYTES == afr_executor::MAX_READ_BYTES);
 const _: () = assert!(guffbolt::tools::env::EDGE_BYTES == afr_executor::EDGE_BYTES);
 /// What each browser tool reads back after its name.
@@ -288,6 +288,14 @@ impl Env for SandboxEnv<'_> {
 
     fn ending_grace(&self) -> Duration {
         ENDING_GRACE
+    }
+
+    fn max_read_bytes(&self) -> u64 {
+        self.executor.sizes().max_read_bytes
+    }
+
+    fn edge_bytes(&self) -> usize {
+        self.executor.sizes().edge_bytes
     }
 
     fn browser(&self) -> Result<&dyn Browser, &str> {

@@ -16,7 +16,7 @@ use std::borrow::Cow;
 
 use super::{ApplyPatch, FileAppend, FileEdit, FileEditHashed, FileWrite};
 use crate::tools::Handler;
-use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::env::Env;
 
 /// The line the report starts with.
 pub const HEADER: &str = "Lines changed:";
@@ -132,7 +132,7 @@ pub fn reported(output: &str) -> Vec<Change> {
 /// not there, none for one that cannot be read whole as text, whose lines
 /// cannot be counted.
 pub(crate) async fn before(env: &dyn Env, path: &str) -> Option<String> {
-    match env.read_file(path, MAX_READ_BYTES).await {
+    match env.read_file(path, env.max_read_bytes()).await {
         Ok(fetched) if !fetched.truncated => String::from_utf8(fetched.data.to_vec()).ok(),
         Ok(_longer) => None,
         Err(failure) if failure.is_not_found() => Some(String::new()),

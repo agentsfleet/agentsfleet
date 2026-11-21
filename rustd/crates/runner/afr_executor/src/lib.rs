@@ -36,6 +36,7 @@ mod edges;
 mod events;
 mod protocol;
 mod server;
+mod sizes;
 mod slot;
 
 pub use self::api::{
@@ -48,4 +49,5 @@ pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
 pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES};
 pub use self::server::{Server, Tenant, WORKSPACE_ROOT, bind, connected, serve};
+pub use self::sizes::Sizes;
 pub use self::slot::{ExecutorSlot, ExecutorSource, Outcome, Unavailable};

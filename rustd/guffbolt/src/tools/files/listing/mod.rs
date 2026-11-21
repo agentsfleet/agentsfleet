@@ -102,6 +102,7 @@ async fn list(env: &dyn Env, arguments: &Directory) -> Answer {
     let cut = names.len() > limit || listing.truncated;
     names.truncate(limit);
     Ok(ToolOutput::succeeded(answer(
+        env,
         names,
         cut.then_some(LIMIT_REACHED),
     )))
@@ -141,7 +142,7 @@ async fn find(env: &dyn Env, arguments: &Search) -> Answer {
         walked.cut.then_some(WALK_CUT)
     };
     found.truncate(limit);
-    Ok(ToolOutput::succeeded(answer(found, note)))
+    Ok(ToolOutput::succeeded(answer(env, found, note)))
 }
 
 /// The path a call starts from: the model's, checked, or the root.
@@ -225,10 +226,10 @@ fn joined(root: &str, relative: &str) -> String {
     }
 }
 
-/// `lines`, one to a line, cut to a command's output budget, with `note`
-/// last when there is one.
-fn answer(lines: Vec<String>, note: Option<&str>) -> String {
-    let budget = output::budget(None);
+/// `lines`, one to a line, cut to a command's output budget in `env`, with
+/// `note` last when there is one.
+fn answer(env: &dyn Env, lines: Vec<String>, note: Option<&str>) -> String {
+    let budget = output::budget(None, env.edge_bytes());
     let mut said = String::new();
     for line in lines {
         if said.len() + line.len() + 1 > budget {

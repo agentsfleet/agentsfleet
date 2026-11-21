@@ -69,7 +69,7 @@ pub(super) async fn run_to_end(
         .until(&mut process, Instant::now() + runner_wait)
         .await
         .unwrap_or_else(|| missing_ending(&mut process, run_id, timeout, runner_wait));
-    let text = collected.text(output::budget(None));
+    let text = collected.text(output::budget(None, env.edge_bytes()));
     let text = match ending {
         Ending::Exited(0) => text,
         Ending::TimedOut => {

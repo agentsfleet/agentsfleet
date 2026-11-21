@@ -13,7 +13,7 @@
 //! fit and written again: the aspect ratio kept, the triangle filter, a PNG,
 //! JPEG or WebP in its own kind and a GIF as a PNG, with its RGB color profile
 //! and its EXIF data. One that already fits is passed on as the file holds it. A file is read whole
-//! or refused, so one longer than one read carries ([`MAX_READ_BYTES`]) is
+//! or refused, so one longer than one read carries ([`Env::max_read_bytes`]) is
 //! not scaled. [`Limits::max_image_bytes`](crate::tools::Limits::max_image_bytes)
 //! bounds what the model is shown, so a picture still heavier once scaled is
 //! refused.
@@ -34,7 +34,7 @@ use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
 use crate::tool::ToolOutput;
-use crate::tools::env::{Env, MAX_READ_BYTES};
+use crate::tools::env::Env;
 use crate::tools::{Context, Handler, Limits, Schema, code};
 use guffbolt_ai::{Image, ImageKind};
 
@@ -165,14 +165,15 @@ async fn view(env: &dyn Env, image_input: bool, bounds: Bounds, path: &str) -> A
         ));
     }
     let path = inside(env, path)?;
+    let most = env.max_read_bytes();
     let fetched = env
-        .read_file(path, MAX_READ_BYTES)
+        .read_file(path, most)
         .await
         .map_err(|failure| failed(&failure))?;
     if fetched.truncated {
         return Err(ToolOutput::failed(
             code::FILE_TOO_LARGE,
-            &format!("{path} is longer than {MAX_READ_BYTES} bytes"),
+            &format!("{path} is longer than {most} bytes"),
         ));
     }
     let kind = sniffed(&fetched.data).ok_or_else(|| {

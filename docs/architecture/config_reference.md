@@ -375,6 +375,16 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `max_subagent_wait_seconds` | 3,600 | Runs give up on slow subagents too soon |
 | `max_open_subagents` | 6 | Runs need more subagents at once, or use too many |
 | `max_subagent_depth` | 2 | You want subagents to start fewer levels of their own |
+| `max_file_read_mib` | 8 | File tools refuse or cut files the model needs whole, or one read holds too much memory |
+| `output_edge_kib` | 512 | Command output loses the middle the model needs, or each running command holds too much memory |
+
+### `[executor]`
+
+The runner starts each sandbox's executor with these sizes and holds its own end of the link to the same.
+
+| Key | Default | Change it when… |
+|---|---|---|
+| `max_frame_mib` | 64 | File writes are refused as longer than the executor reads, or a hostile sandbox could make the runner buffer too much |
 
 ### `[egress]` and `[telemetry]`
 
@@ -419,7 +429,8 @@ The runner also refuses:
 - `default_shell_timeout_seconds` over 2,147,483, the longest timer tokio holds;
 - `max_shell_processes_per_run` of 8 or fewer, since the 8 newest shells are never closed to make room;
 - `max_subagent_depth` over 2, and `[daemon] call_timeout_seconds` of 12 or less;
-- `max_activity_batches_held` under 2, one in flight and one queued.
+- `max_activity_batches_held` under 2, one in flight and one queued;
+- `[executor] max_frame_mib` under 7, the longest a full directory listing serializes to, or at most four thirds of `[tools] max_file_read_mib`, since one read travels as base64.
 
 ### Precedence
 

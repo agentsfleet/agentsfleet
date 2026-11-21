@@ -8,7 +8,8 @@ use std::{path::PathBuf, process::ExitCode};
 mod tuning;
 
 use self::tuning::{
-    DaemonTuning, EgressTuning, ProviderTuning, SandboxTuning, TelemetryTuning, ToolsTuning,
+    DaemonTuning, EgressTuning, ExecutorTuning, ProviderTuning, SandboxTuning, TelemetryTuning,
+    ToolsTuning, carries_a_read,
 };
 
 /// Optional numeric deployment profile; tokens and bootstrap addresses stay in the environment.
@@ -27,6 +28,8 @@ struct Profile {
     sandbox: SandboxTuning,
     #[garde(dive)]
     tools: ToolsTuning,
+    #[garde(dive, custom(carries_a_read(self.tools.max_file_read_mib)))]
+    executor: ExecutorTuning,
     #[garde(dive)]
     provider: ProviderTuning,
     #[garde(dive)]
@@ -56,13 +59,14 @@ pub(super) struct Settings {
 pub(super) fn read(env: &impl EnvSource) -> Result<Settings, ExitCode> {
     let profile = load(env).map_err(|error| super::refused(&error))?;
     let inference = af_inference::Timeouts::new(&checked(profile.inference)?);
+    let sizes = tuning::sizes(&profile.tools, profile.executor);
     Ok(Settings {
         inference: profile.provider.counting(inference),
         provider_retries: af_providers::RetryPolicy::new(&checked(profile.provider_retries)?),
         supervisor: afr_supervisor::config::RuntimePolicy::new(&checked(profile.supervisor)?),
         tuning: tuning::supervisor(&profile.sandbox, &profile.provider, &profile.daemon),
-        engine: profile.sandbox.engine(),
-        run_limits: profile.tools.run_limits(),
+        engine: profile.sandbox.engine(sizes),
+        run_limits: profile.tools.run_limits(sizes),
         egress: profile.egress.limits(),
         max_run_spans: profile.telemetry.max_spans_per_run,
     })
