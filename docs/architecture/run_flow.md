@@ -118,7 +118,7 @@ The gateway assigns a queued turn and its fleet's thread.
 6. Read installed configuration, resolve billing and check approval gates. Parked work frees the thread and keeps its place in the queue.
 7. Assemble credentials and policy, then insert the `thread.runs` row under the raised fence.
 
-An expired run exposes the same unsettled turn. Redelivery keeps its turn id, intake time and prior billing identity.
+An expired run leaves its turn unsettled. The next assignment of that turn marks the run expired in the same statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`); no daemon timer does it. Redelivery keeps its turn id, intake time and prior billing identity.
 
 A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread release and any owed delivery.
 See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, notifications and recovery limits.
@@ -378,7 +378,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
   A run renews at any age; its fleet's budget, its tenant's balance or a person's Stop ends it.
   Heartbeats run every 10 seconds, a runner counts as offline after 105 seconds, and a sandbox hold lasts 10 minutes.
 
-- Assignment and intake: at most 64 candidate fleets per assign pass; no per-fleet turn cap.
+- Assignment and intake: `[runners] assign_batch_size` candidate turns per assignment pass ([configuration reference](./config_reference.md)); no per-fleet turn cap.
   [Queue limits](./datastore_scaling.md#the-turns-ledger-is-the-queue) describe the sampled deployment budget.
 
 ---
@@ -389,7 +389,7 @@ Each gap names what would close it.
 
 1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate`'s egress write rules, an exact path with `event` locked to `COMMENT`, closes it.
 2. **No daemon path answers a PR**. The App webhook admits with `Reply::None` (`afd_ingress`'s deliver), and only Slack posters exist (`afd_outbound`'s posters). A GitHub poster in the outbound worker closes it.
-3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. [Workspace recovery](runner_execution.md#workspace-between-runs) owns the limits.
+3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. A retried `message` or schedule request lands once, and a replacement run is told which calls the dead run finished ([Runner Fleet](./runner_fleet.md) §"Failure recovery model"). [Workspace recovery](runner_execution.md#workspace-between-runs) owns the limits.
 4. **Semantic resume context is separate.** `thread.threads.resume_context` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
 6. **A gate trip never reaches a running run**: it writes only the status. Renewal ignores the fleet's status but still enforces its stored budget ceiling. Archive and delete send Cancel ([Runner Fleet](./runner_fleet.md) §"Steer, archive, delete"); a Cancel from the gate's archive closes it.
@@ -400,7 +400,7 @@ Each gap names what would close it.
 11. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
 12. **A rotating-CDN host can fail mid-run under `allow_list_egress`.** The set is pinned at run bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.
 13. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its turn row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before intake, with a durable inbox, closes it.
-14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for the repair sweeper's evidence closes it.
+14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for that evidence closes it.
 
 
 ## Original Pull Request repair

@@ -614,7 +614,7 @@ Charge reservations against unique stored bytes within a workspace; track logica
 | Live retention | Latest three compatible generations per DT plus any generation protected by a current input/effect dependency or reader; no expiry of a live task's sole recoverable state. |
 | Terminal retention | Seven days after terminal state; explicit authorized deletion starts cleanup immediately. |
 | Pins | Thirty-minute reader/writer pins renewed every minute; expired pins cannot publish or attach files. |
-| Collection | One-hour orphan grace after the last live pin; five-minute scans, at most 256 objects per pass. Referenced objects never use blind bucket-expiry rules. |
+| Collection | One-hour orphan grace after the last live pin, at most 256 objects per pass. The daemon runs no timed loop, so what starts a pass is undecided. Referenced objects never use blind bucket-expiry rules. |
 
 Before large checkout/restore, reserve the task's declared disk limit and available host capacity for staging and expanded files.
 The six-GiB acceptance fixture uses a 32-GiB workspace disk; fleet limits below required capacity produce an explicit refusal.

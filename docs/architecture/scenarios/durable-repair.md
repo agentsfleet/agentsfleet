@@ -131,21 +131,21 @@ API-only tasks need no mandatory checkout, and recovery grants no incidental Git
 
 ## Continue from exact-head checks
 
-A signed completion or bounded fallback read can wake the matching wait.
+A signed completion wakes the matching wait; no fallback read polls GitHub since M253_003.
 The wake requests fresh evidence; it does not certify success.
-[Event matching and fallback timing](../durable_tasks.md#event-delivery-and-fallback-timing) owns deadlines, duplicate handling and competing transitions.
+[Event delivery](../durable_tasks.md#event-delivery) owns deadlines, duplicate handling and competing transitions.
 
 ```text
 CI(Y1) passes -> one Search continuation -> current-head proof -> done
 CI(C) fails  -> one Import continuation -> correction D -> wait for CI(D)
-CI(Z1) event missed -> bounded fallback -> pending: retain wait, no inference
-                       later changed evidence -> Export continuation -> proof -> done
+CI(Z1) event missed -> wait stays armed, no inference
+                       a later signed event -> Export continuation -> proof -> done
 CI(D) passes -> Import continuation -> accepted goal + native proof -> done
 ```
 
 Each continuation rechecks current workspace access, repository grants, target identity and remaining task limits.
 Duplicate events, old heads and replaced wait generations cannot complete newer work.
-An unchanged fallback observation retains the wait without restoring files or starting another model call.
+A missed event costs no model call or restore; the wait stays armed until a signed event matches it or the task's deadline passes.
 
 Jev proposes a goal result against the accepted questions and current evidence.
 Native proof checks decide whether the task may finish.

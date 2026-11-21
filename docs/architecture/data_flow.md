@@ -172,12 +172,12 @@ report transaction -> usage + turn answer + thread resume_context
        +-> af.delivery.wake ping -> outbound worker takes the row -> connector thread
 ```
 
-A lost notification changes priority only. Each replica's recovery probe reads Postgres every 5 s (`ASSIGN_FALLBACK_TICK`).
-An expired run exposes the same unsettled turn with its original turn and billing identities.
+No timer re-reads the ledger. An assignment pass starts on a thread wake, on a full recheck when the bus reports a gap or the wake subscription reconnects, or when a runner connection gains free slots (`afd_gateway`'s scheduler and `connection/dispatch`). A notification the bus drops without a gap waits for the next of those events; the turn stays in Postgres.
+An expired run exposes the same unsettled turn with its original turn and billing identities. The next assignment that wins its thread marks the old run expired (`expire_prior_run.sql`).
 
 The outbound worker takes durable `thread.deliveries` rows from Postgres.
 The report writes each row with a fresh `receipt` token and a lapsed `claim_expires_at`, so any replica may take it at once.
-A lost `af.delivery.wake` ping costs latency only, because every replica also passes every 30 s (`CLAIM_PASS`).
+The worker claims at start, on an `af.delivery.wake` ping and when one of its deliveries finishes; it runs no timed pass. A lost ping leaves the row owed until one of those events. A delivery whose inline attempts all fail is abandoned, and nothing retries it (`afd_outbound`'s lanes and retry modules).
 
 The poster stamps `delivered_at` only after successful delivery. Abandoning an exhausted job must not mark its answer delivered.
 
@@ -276,7 +276,7 @@ Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_
 | `af.thread.<thread_id>.items` | Core NATS subject | Each process's NATS hub | A fleet's live frames, where a gap or reconnect recovers durable history through the turns list, or a draft's setup progress, where a lost subscription sends `draft.resync`. |
 | `af.thread.<thread_id>.wake` | Core NATS subject, read through one `af.thread.*.wake` wildcard per replica | The gateway's assignment scheduler | Starts an assignment pass and puts its thread first. The local queue holds at most 64 distinct threads by default. |
 | `af.runner.<runner_id>.cmd` | Core NATS subject | The gateway holding the runner's connection | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/connection/commands.rs`). |
-| `af.delivery.wake` | Core NATS subject | Outbound worker | Pings the worker after a report commits; a lost ping waits for the 30 s pass. |
+| `af.delivery.wake` | Core NATS subject | Outbound worker | Pings the worker after a report commits; a lost ping waits for the next ping, a finished delivery or a restart. |
 
 A development namespace prefixes every subject with `dev.<namespace>.` (`afd_bus/src/nats/config.rs`).
 
@@ -660,10 +660,10 @@ A runner that disappears leaves an unsettled turn. Once its run expires, another
 
 The turn keeps its original time and billing identities. The previous holder cannot settle through the newer fence.
 
-Approval resolution or expiry unparks eligible heads and attempts a wake notification.
-The 5 s recovery probe reads Postgres too, so notification loss cannot leave that work stranded.
+Approval resolution unparks eligible heads and attempts a wake notification. Nothing expires a gate: one past its deadline reads `timed_out` and stays answerable (`afd_approval`'s inbox module).
+No timer re-reads Postgres, so work behind a lost notification waits for the next event that starts an assignment pass.
 
-See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets, probe costs and recovery limits.
+See [the queue design](./datastore_scaling.md#the-turns-ledger-is-the-queue) for budgets and recovery limits.
 See [provider key boundaries](./billing_and_provider_keys.md#82-the-api_key-visibility-boundary) for plaintext ownership.
 The [runner sequence](./runner_execution.md#one-run-end-to-end) owns sandbox startup, agent runs and teardown.
 
@@ -816,7 +816,7 @@ activation + initial turn -> commit together
 read back the same initial turn -> Accepted
 read-back unavailable -> Pending; retry confirms the same turn
 register schedules independently
-lost wake -> the next 5 s recovery probe still reads the ledger
+lost wake -> the turn waits in the ledger for the next pass (another wake, a bus gap recheck or a runner's free slot)
 ```
 
 Do not delete the retained fleet on setup failure. Do not report activation after a zero-row update or submit another initial turn on retry.

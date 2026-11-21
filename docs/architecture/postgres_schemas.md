@@ -165,13 +165,14 @@ there is no generic repository trait.
   Both fleet references are `ON DELETE SET NULL`, so purging a fleet never blocks on, or
   deletes, someone's private draft.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
-  field); the sweeper deletes past `expires_at`. The sweep deletes the draft's live runs, and cascades
-  its thread, turns, runs and candidates. Usage lines and replay receipts stay.
-- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` (`afd_setup::replay::REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
-- At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own. `Drafts::maintain` sweeps the rest in bounded batches, waiting for concurrent receipt deletion.
+  field). Past `expires_at` the draft reads and lists as gone (`afd_setup`'s `sql/draft/lock.sql` and
+  `page.sql`). Nothing deletes it on a timer since M253_003; a user delete cascades its thread, turns,
+  runs and candidates. Usage lines and replay receipts stay.
+- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` by default (`[setup] replay_window_hours`, [configuration reference](./config_reference.md); `afd_setup`'s `DEFAULT_REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
+- At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own (`afd_setup`'s `replay/sql/expire.sql`). An expired receipt whose key is never reused stays.
 - The message API returns `thread.turns.operation_id`, written at acceptance, because the turn outlives its receipt.
-- **Lapse sweep.** A setup run is a `thread.runs` row, so the expiry sweep bills a lapsed setup run
-  as it bills a fleet run.
+- **Lapsed runs.** A setup run is a `thread.runs` row, so it lapses as a fleet run does: the next
+  assignment of its draft message expires it, and its last slice after the final renewal is not billed.
 - The setup JSON is copied onto each frozen revision table on purpose. A shared definitions table
   would turn draft deletion from a cascade into a reference-counted sweep.
 
@@ -241,7 +242,7 @@ omit its model and review then resolves the tenant default.
 | `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `task_activity` keeps at most 128 public stages / 120 KB |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
-| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
+| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` is no longer written: a delivery whose inline attempts fail is abandoned |
 
 `runs.turn_created_at` is the producer's instant billing uses, copied so billing reads it without a join.
 The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassignment already does.
@@ -267,9 +268,9 @@ Run counts per runner are a metric, `agentsfleet_runner_runs_total`, and no tabl
 Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
 keeping "no self-test yet" distinct from "self-test failed".
 
-The metering sweep finds expired runs with an unbilled tail through
-`idx_runs_run_expires_at_unbilled`, partial on `last_metered_at < run_expires_at`. A run
-leaves the index once metering reaches its expiry, so the index holds only the backlog.
+`idx_runs_run_expires_at_unbilled`, partial on `last_metered_at < run_expires_at`, served the
+metering sweep that billed an expired run's unbilled tail. That sweep went in M253_003, so no
+statement reads the index, and a dead run's last slice after its final renewal is not billed.
 
 ## connector
 
@@ -327,7 +328,7 @@ that reads them (rule 7).
 
 | Root deleted | Goes with it | Stays | Scrubbed immediately |
 |---|---|---|---|
-| Draft (user delete or 30-day sweep) | its thread, turns and runs, candidates, draft context checkpoint | usage lines, replay receipts | none |
+| Draft (user delete) | its thread, turns and runs, candidates, draft context checkpoint | usage lines, replay receipts | none |
 | User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, usage lines | none |
 | Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Each removed object first records its location and charged bytes for remote cleanup |
@@ -369,8 +370,7 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`model.platform_defaults.base_url`: kept.** The file `20261108121400_model_platform_defaults.sql` declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
 - **`thread.runs.last_metered_at`: kept.** The file `20261108123200_thread_runs.sql` declares it as the run's runtime cursor
-  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_runs.sql` and
-  `bill_expired_slice.sql`).
+  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). Nothing bills an expired run's last slice since M253_003 removed the expiry sweep.
 
   The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the run's token cursors and the slot's cursors instead.

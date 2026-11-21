@@ -11,7 +11,7 @@ The specs quote his words.
 |---|---|
 | Postgres accepts every message and fences every run | `thread.turns` is the only acceptance store. `thread.threads.fencing_token` is the only execution authority. |
 | Messages fold into a running run | A person's message in the run's conversation joins that run before its next model call. A call in flight is never interrupted. A message no person sent, such as a webhook, waits for a run of its own and is never passed. Revised Nov 08, 2026: a plain run takes a durable task's rule (M242_002 Discovery). |
-| Runners hold one stream | Work is pushed over one outbound connection. Each daemon replica retains one database recovery probe every five seconds. |
+| Runners hold one stream | Work is pushed over one outbound connection. No timer probes the database for missed work; a lost wake waits for the next event (M253_003). |
 | Direct HTTP/3 with HTTP/2 fallback | The runner opens a connection to a reachable daemon endpoint. Fly-hosted services can use private networking; external operators supply connectivity and trusted certificates. Cloudflare and WebSocket are not required. See [the implementation design](runner_protocol.md), revised Nov 08, 2026. |
 | Core NATS is the bus | NATS carries signals only: no JetStream, no key-value (KV) store. Every durable fact lives in Postgres. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
@@ -32,7 +32,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The run path is not a general scheduler | `runner_fleet.md` | M243 |
 | Config is never cached | `runner_fleet.md` | M245, done: config is cached by the head revision id the assignment reads |
-| Timers have no central deadline scheduler | `concurrency.md` | M245, done: one daemon expiry clock and one runner host timer |
+| Timers have no central deadline scheduler | `concurrency.md` | M245, done. Since M253_003 the daemon runs no expiry clock: the assignment that takes a lapsed run's work expires that run (`afd_fleet`'s `expire_prior_run.sql`) |
 
 ## Where each fact lives
 
@@ -42,10 +42,10 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | Run assigned, and its fence | `thread.threads`, `thread.runs` | The runner's connection, rebuilt from Postgres on reconnect |
 | Message folded into a run | `thread.turns.input_run_id` and `input_fence` (#803; `assign_inputs.sql` for any other run) | None |
 | Run deadline | `thread.runs.run_expires_at`, one clock | None |
-| Usage and money | `billing.usage_lines` and the billing relay | None |
-| Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker; a 30 s scan is the backstop |
+| Usage and money | `billing.usage_lines`; no relay settles them since M253_003 | None |
+| Outbound reply owed | `thread.deliveries` | A NATS ping wakes a worker, which also claims at start and after each delivery; nothing rescans for a lost ping |
 | Device-login session, OAuth nonce | Postgres rows (M244) | None |
-| Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; each has a Postgres backstop (below) |
+| Live tail, wake-ups, runner commands | Core NATS subjects | Lossy; the table below names what each loss costs |
 
 ## Proposed tables by milestone
 
@@ -63,7 +63,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 
 ## Recovery and scheduling fairness
 
-The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary intake and steering ring immediately. The replica-wide five-second database probe repairs a lost wake.
+The Bus keeps bounded fleet reminders and publishes independent ordinary and recovery generations. Ordinary intake and steering ring immediately. No timer repairs a lost wake: the work waits in Postgres for the next ring, a runner's new credits or a reconnect (`afd_gateway`'s `scheduler/mod.rs`).
 
 A recovery generation starts one bounded round-robin drain across credited runner connections. The database orders eligible turns by durable time and ID. An unassignable full page advances the connection's cursor, which wraps after a short empty page or 64 later assignments.
 
@@ -136,20 +136,20 @@ A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src
 
 ```
 report commits ─► thread.deliveries row ─► ping (lossy) ─► worker claims the lane's head row
-                                                        └─ 30 s scan claims it if the ping is lost
+                                                        └─ a lost ping waits for the next ping or worker start
 ```
 
-Only the head of each `(provider, workspace)` lane is claimable, so claims never reorder a lane.
+Only the head of each `(provider, workspace)` lane is claimable, so claims never reorder a lane. A delivery whose inline attempts all fail is abandoned; nothing retries it later (`afd_outbound`'s `lanes/mod.rs`).
 
 ### A host dies mid-turn
 
 ```
-host stops ──┬─► saved run deadline ─► eligible runner is assigned T under fence F+1
+host stops ──┬─► saved run deadline ─► next assignment pass gives T to an eligible runner under fence F+1
              │                           └─► committed checkpoint ─► resume T
-             └─► heartbeat silence ─► atomic offline record + automatic cordon
+             └─► heartbeat silence ─► operator views read the runner offline from last_seen_at
 ```
 
-Run expiry permits reassignment; automatic quarantine leaves the saved deadline unchanged.
+Run expiry permits reassignment at the next assignment pass: a bus ring, a runner's new credits or a reconnect. No timer re-offers an expired run, and nothing cordons or records a silent runner on its own.
 The issued replacement tries one `run_restarted` publication before its `Down::Run`.
 Every output carries the daemon's run fence, so clients reject delayed output from older runs.
 
@@ -159,14 +159,14 @@ Unsaved work can repeat; external effects have no exactly-once guarantee.
 
 ## When a signal is lost
 
-Every NATS subject is at most once. Each one names its Postgres backstop.
+Every NATS subject is at most once. Each one names its Postgres backstop, or says it has none.
 
 | Subject | A lost message costs | Backstop |
 |---|---|---|
 | `af.thread.<id>.items` | Frames missing on screen | Gap signal, then a backfill from Postgres |
-| `af.thread.<id>.wake` | Work assigned up to 5 s late | Each replica's 5 s recovery probe (`ASSIGN_FALLBACK_TICK`) |
+| `af.thread.<id>.wake` | Work waits until the next ring, credit increase or reconnect | None: the turn stays in `thread.turns` |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
-| Outbound ping | A reply sent late | The 30 s deliveries scan |
+| Outbound ping | A reply waits until the next ping or worker start | None: the row stays in `thread.deliveries` |
 
 ## Milestones
 

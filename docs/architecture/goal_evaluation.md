@@ -455,36 +455,17 @@ Use the original run's `WorkKey::FleetRun`; binding an intent call to a later ta
 The call record retains its runner, original turn/run, optional task, authorized generation, native usage sequence, immutable profile/price snapshot and reservation.
 Coding usage keeps `[0, 2^31)`, runtime uses `[2^31, 3 * 2^30)`, and native decision calls use `[3 * 2^30, 2^32)`; both native allocators refuse exhaustion.
 
-Runtime-line counts in `meter_run.sql` and `bill_expired_slice.sql` must exclude decision sequences.
+Runtime-line counts in `meter_run.sql` must exclude decision sequences.
 
 Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
 Do not pass decision usage through the coding run's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
-The existing billing sweeper groups those three attributes with work identity.
+The usage log groups a work's unsettled lines by those three attributes (`afd_billing`'s `ledger::unsettled_work`); no relay settles them since M253_003.
 
 Native reservations and PATCH receipts retain original ownership. The source continuation
 uses the existing report drainer for encrypted late decision receipts; renew/report
 settlement retains the existing accounting path. Crash and acknowledgement-loss acceptance remain pending.
 
-The existing thirty-second billing loop also calls the native task owner's decision maintenance.
-Its local typed cursor seeks by deadline and call UUID, advances before each attempt, and wraps after exhaustion.
-Each cycle freezes a database-time cutoff, so new arrivals cannot postpone retries of skipped work.
-
-Cancellation preserves that cursor; restarting the daemon safely begins another scan.
-
-Each pass reads at most 100 expired unissued candidates, with a ten-second deadline and the existing bounded statements.
-Maintenance takes the ordinary parent, thread, task and call locks with `NOWAIT`; contention skips the whole candidate.
-The owner rechecks issuance and accounting before releasing any reservation.
-
-Proved-unsent expiry uses the same receipt journal and task-budget update as other receipts, without adding a zero-cost usage line.
-Future reservations and issued calls with missing results retain their capacity.
-Fleet deletion cannot recreate private request data during this financial recovery.
-
-Malformed rows retain their reservations while later candidates proceed; discovery and connection outages fail the pass.
-The cursor reaches later work even when a whole earlier page remains blocked.
-
-Per-candidate expiry and deferral events use debug; the completed-pass event reports scanned, expired, deferred and failed counts plus observed overdue age.
-Completed passes with row failures use warn and the first registered error code; ordinary completed scans use info.
-The shared operation metrics add `decision_sweep`; recovery attempts and overdue age have bounded families in the [metric census](../../rustd/crates/protocol/af_observability/src/metrics/census.tsv).
+No daemon loop releases an expired unissued call's reservation: M253_003 deleted the decision maintenance pass with the billing loop that ran it, so the reservation stays held.
 
 ### Running task authority and source attribution
 
@@ -527,13 +508,13 @@ Only confirmed `Hold::Held` admits a new paid decision; an unconfirmed or absent
 Resolve the platform-admin secret freshly after confirmation; missing or revoked keys do not select a tenant or environment substitute.
 
 One receipt recorder serves PATCH, renew and report.
-It authenticates the original call owner, validates usage once, and commits call accounting plus `ledger::log_lines` in the same transaction; settlement follows commit.
+It authenticates the original call owner, validates usage once, and commits call accounting plus `ledger::log_lines` in the same transaction. No relay settles the lines since M253_003.
 Identical receipts replay; conflicting known usage fails.
 
 An unknown result creates no zero-cost placeholder that could consume the actual billing sequence.
 Record attributable late usage before rejecting stale work; accounting does not grant current task-transition authority.
 
-Report and sweep release the whole run hold only after all physical calls are reconciled, including calls whose original run is no longer active.
+A report releases the whole run hold only after all physical calls are reconciled, including calls whose original run is no longer active.
 The existing whole-hold API conservatively retains excess headroom until then; it cannot lower a live ceiling safely.
 
 ## Concrete repair decision example

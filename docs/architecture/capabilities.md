@@ -41,7 +41,7 @@ Each trap is enforced in its owner section; this list is the index. §5 (What th
 
 - The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
 
-- A fleet that hoards everything as `core` defeats the pinning, since an over-cap all-`core` set evicts the coldest `core` (§4).
+- A fleet that hoards everything as `core` defeats the pinning: once the `core` entries alone fill the load budget, the oldest ones stay in Postgres and do not load (§4).
 
 - The GitHub App private key never rides the run envelope, the `secrets_map`, or the runner (§3, §5).
 
@@ -177,19 +177,19 @@ A pinned request that cannot fit the physical window fails before provider acces
 
 ### Memory hygiene (what to store so it survives)
 
-Durable memory is selected rather than searched. Loading pins the `core` category first (newest-first, within the byte budget), then fills the remaining budget with the newest non-core entries. Cap eviction takes non-core rows before any `core` row (see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+Durable memory is selected rather than searched. Loading pins the `core` category first (newest-first, within the byte budget), then fills the remaining budget with the newest non-core entries. No entry count caps a fleet's memory; what does not fit the budget stays in Postgres and is not loaded (`afd_memory`'s `window.rs`; see [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
 
 Four habits make that selection work for the fleet instead of against it:
 
-- **Store load-bearing facts as `core`**. Owner, deploy target, customer plan and standing constraints belong in `core`, as does anything the fleet must still know at entry 1001. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of loading.
+- **Store load-bearing facts as `core`**. Owner, deploy target, customer plan and standing constraints belong in `core`, as does anything the fleet must still know once newer entries fill the budget. `daily`, `conversation`, and any custom category are windowed by recency and are the first to age out of loading.
 
-  `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (`afd_memory`). Every other category stays until cap eviction; `memory_forget` hides a key for the current run only (`afr_memory`).
+  `daily` additionally expires outright: rows older than the 72-hour retention window are deleted on the fleet's next capture push (`afd_memory`). Every other category stays until a store under its key replaces it; `memory_forget` hides a key for the current run only (`afr_memory`).
 
 - **Reuse stable keys.** Re-storing a key is an upsert, so it refreshes the entry instead of duplicating it. `deploy_target` beats a dated `deploy_target_jun12`.
 
 - **Replace what's stale**. A store under the same key replaces the stored copy, while `memory_forget` only hides a key for the rest of the run.
 
-  A Fleet that hoards everything as `core` defeats the pinning. An all-`core` set over the entry cap evicts the coldest `core` as last resort.
+  A Fleet that hoards everything as `core` defeats the pinning. When the `core` entries alone pass the budget, the oldest `core` entries stay unloaded.
 
 - **Keep entries small.** The loading budget is bytes rather than entries, so one bloated entry crowds out many small ones. Snapshot conclusions, never transcripts.
 

@@ -54,7 +54,7 @@ Postgres holds every durable fact. Threads, turns, runs, items, outbound deliver
 
 Core NATS carries disposable signals on five subjects: thread wake, thread items, runner commands, delivery wake and bus gap. It stores nothing, because JetStream is off.
 
-A lost signal costs latency, never work. A 5 s recovery probe finds pending work, and a viewer that misses frames gets `catching_up` and reloads from `thread.turns`.
+A lost signal never loses work: the turn stays queued in Postgres. A detected bus gap starts a recovery pass; a silently lost wake waits for the next wake or freed runner capacity, because no timer polls. A viewer that misses frames gets `catching_up` and reloads from `thread.turns`.
 
 Runners never reach either store. Each runner host holds one stream to a replica, and work is pushed down it.
 

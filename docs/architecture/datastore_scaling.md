@@ -76,7 +76,7 @@ The heading keeps its old words because other pages link to it. The queue is the
 ```text
 producer -> commit queued thread.turns row -> publish af.thread.<thread_id>.wake
                          |
-wake ring or 5 s recovery probe -> assignment pass -> Postgres head probe
+wake ring, bus gap or freed capacity -> assignment pass -> Postgres head probe
                          |
               thread row lock + head turn opened
                          |
@@ -87,10 +87,10 @@ report -> usage + terminal turn status + settlement + delivery
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-A wake ring starts an assignment pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`).
+A wake ring starts an assignment pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`). A bus gap the replica detects, such as a lagged or lost wake subscription, starts a recovery pass over every eligible connection (`afd_bus/src/wake/mod.rs`).
 
-Each replica also asks Postgres for pending work every 5 s (`af_core::timing::ASSIGN_FALLBACK_TICK`, wired in `afd_gateway/src/lib.rs`).
-A lost ring therefore costs up to 5 s, never work.
+A runner connection that reports more free capacity asks for its own assignment (`afd_gateway/src/connection/dispatch/mod.rs`). No timer asks Postgres for pending work.
+A lost ring leaves the turn queued in Postgres until the next ring on that replica or the next runner that reports free capacity.
 
 The candidate query first checks whether any unsettled fleet turn exists. An empty queue skips fleet scans.
 When work exists, it reads each eligible fleet's oldest unsettled turn through `idx_turns_thread_id_sequence_unsettled` on `(thread_id, sequence)`.
@@ -121,10 +121,9 @@ One fleet's messages therefore commit in sequence order.
 
 That lock still lets concurrent foreign-key checks on the fleet row proceed. No per-fleet cap exists; the deployment ceiling bounds the total.
 
-The deployment ceiling estimates 100,000 unsettled turns. It refreshes every 1,000 turns or five seconds, and every 500 milliseconds while refusing.
+The deployment ceiling estimates unsettled turns against `[turns] max_queued_turns` ([`config_reference.md`](./config_reference.md)). It refreshes every 1,000 turns or five seconds, and every 500 milliseconds while refusing.
 
 Each process adds its own accepted turns between samples. Concurrent replicas can overshoot this estimate; one fleet's sequence stays serialized.
-The census publishes `agentsfleet_turn_backlog` and `agentsfleet_turn_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
 
 ### Signals on core NATS, facts in Postgres
 
@@ -132,16 +131,16 @@ The live tail publishes on `af.thread.<thread_id>.items`. After a reconnect, a s
 
 Wake notifications publish on `af.thread.<thread_id>.wake`, and each replica reads them all through one `af.thread.*.wake` wildcard subscription (`afd_bus/src/wake/mod.rs`).
 Each replica keeps a local queue of at most 64 threads by default (`afd_bus/src/wake/config.rs`).
-A full queue evicts its oldest thread, and the 5 s recovery probe still finds that thread's work.
+A full queue evicts its oldest thread. That thread's work stays queued in Postgres, and the next assignment pass reads it.
 
 The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.delivery.wake`.
 A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
-A claim lasts 30 s, the holder renews it every 10 s, and every replica also claims every 30 s.
+A claim lasts 30 s and the holder renews it every 10 s (`afd_outbound/src/delivery/mod.rs`). A worker claims at start, on a ping and when a lane finishes; no timed pass claims, so a lost ping waits for the next one.
 
 Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).
 Every write after a claim matches the holder's token, so a lapsed holder's late write changes nothing.
 
-Device-login sessions are `identity.device_sessions` rows: 300 s of life, a 60 s replay window, and five verify attempts (`afd_tenant/src/session/store.rs`).
+Device-login sessions are `identity.device_sessions` rows: by default 300 s of life, a 60 s replay window, and five verify attempts (`afd_tenant/src/session/store.rs`; the `[auth]` keys in [`config_reference.md`](./config_reference.md)).
 OAuth nonces are `connector.oauth_nonces` rows that live 600 s and are spent once by `DELETE … RETURNING`.
 
 Nothing sweeps expired sessions or nonces. Every read refuses them by `expires_at`, and spending an expired nonce removes it.

@@ -132,7 +132,7 @@ The failure these rules codify had no error in it. Every red was a query that su
 
 - a count of 2 where a test expected 0, because the rows were a sibling's;
 
-- a gate correctly marked `timed_out`, because a sibling ran the sweeper;
+- a gate correctly marked `timed_out`, because a sibling ran the approval sweeper, since deleted;
 
 - a chunk delivered to the right subscriber, because a sibling's daemon had held this test's event.
 
@@ -148,7 +148,7 @@ A run poll can choose any eligible fleet in its database.
 A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
 A minted fleet identity alone cannot isolate a global candidate scan.
 
-**ISO-3: Exclude global work by design.** `Inbox::expire` runs `UPDATE fleet.approval_gates … WHERE resolved_at IS NULL AND expires_at <= now()` with no workspace or fleet filter, because the sweeper is system-wide.
+**ISO-3: Exclude global work by design.** A booted daemon's outbound worker claims open lane heads of `thread.deliveries` in every workspace (`afd_outbound/src/delivery/sql/lock_lanes.sql` and `claim_heads.sql`), because the worker is system-wide.
 
 The actor and tests that depend on its input must both take the same named lock.
 Hold the lock for the entire test body. Prefer a fixture-owned guard; `Scenario` holds the placement guard as its last field.

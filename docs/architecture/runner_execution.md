@@ -46,7 +46,7 @@ Remove the private transcript from server-rendered and browser caches, and close
 
 | Copy | Owner / removal | Disclosed residual bound |
 |---|---|---|
-| Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
+| Draft/message/candidate rows and private replay bodies | Daemon DELETE; no timed loop expires a draft, and a replay body goes when its key is claimed again past the replay window (`afd_setup`'s `replay/sql/expire.sql`); content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
 | Runner memory / in-flight request | Daemon deletes the active run and publishes a stop hint; the next renewal finds no run, and the runner cancels the turn and drops its local buffers | An online runner stops on the hint or at its next five-second renewal; a disconnected runner's run expires within 35 seconds. Upstream completion may outlive local abort. |
 | Pending setup report | Worker memory holds the encoded report until the daemon acknowledges or refuses it; no report files are written (`afr_supervisor/src/setup_run/mod.rs`) | The report's bytes are zeroed when the worker drops them. Process loss discards pending memory. |
@@ -60,7 +60,7 @@ The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shu
 
 An offline runner does not delay the 204. A late report or context save from a deleted run finds no run and writes nothing.
 
-Closed private history expires 30 days after close, only when no active work exists.
+A closed draft is stamped with a private retention deadline 30 days after close (`afd_setup`'s `creation/mod.rs`). No timed loop deletes it at that deadline, so its private history stays until the draft is deleted.
 
 ## The job it is built for
 
@@ -232,7 +232,7 @@ The loader depends on parsing and validation libraries, without depending on eit
 ```text
 daemon TOML -> af_config -> checked daemon policies
                             |-- stores and accepted attempt snapshots
-                            |-- maintenance and telemetry clocks
+                            |-- telemetry clocks
                             `-- provider pool; storage keeps its own timeout policy
 
 runner TOML -> af_config -> checked runner policies
@@ -293,7 +293,9 @@ The generic tools are `guffbolt`'s, behind its `tools` feature (`rustd/guffbolt/
 
 A runner run's tools are built only over the run's sandbox or with no environment at all. `LazySandboxEnv` waits for the run's build, then calls `SandboxEnv`. `guffbolt::tools::LocalEnv` runs commands on the host it runs on, and a runner host holds the provider key, so the runner never builds one. The translation is one to one: the same spawn plus the sandbox's git identity, the same `/workspace` root, the executor's own wire message and log code for a failure, the same egress refusal codes and `tool_refused` line, the same memory visibility and grants.
 
-The harness also carries tools this runner does not offer yet: an MCP client (`mcp__<server>__<tool>`, `list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`), `ask_user`, `tool_search`, `current_time`, `sleep`, `ls`, `find` and `grep`. `ask_user` ends a run `Ending::Waiting { call_id, question }` once its turn's other calls ran, and `DriveState::resume` answers it; a run that reached one today fails with `the run asked a question this run cannot deliver`, because no run carries a question to its person yet.
+The harness also carries tools this runner does not offer yet: an MCP client (`mcp__<server>__<tool>`, `list_mcp_resources`, `list_mcp_resource_templates`, `read_mcp_resource`), `tool_search`, `current_time`, `sleep`, `ls`, `find` and `grep`.
+
+`ask_user` is published (`afr_tools`' catalog). It ends a fleet run `waiting` once its turn's other calls ran, and the run saves a checkpoint first (`afr_agent`'s `loop/finish.rs`). The report raises a `question` gate on the turn in its own transaction (`afd_fleet`'s `run/commit/question.rs`). The gate's deadline is shown and never enforced, so an answer, early or late, resumes the turn. A setup run that asks fails with `the setup run asked a question no setup run delivers`.
 
 | Tool | Runtime | Needs |
 |---|---|---|

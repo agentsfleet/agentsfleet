@@ -59,8 +59,7 @@ Nothing adds a deadline for a person to answer or approve.
 
 A daemon file that still names `[inference]` or `[authoring.turn]` refuses startup (`daemon/main/src/config/policies.rs`).
 
-Maintenance settings control job cadence, page sizes and pass deadlines.
-Bounded startup staggering separates replicas' first passes while retaining each job's maximum initial delay.
+The daemon runs no timed loop, so it has no job cadence to configure. A file that still names a `[maintenance.*]` section or `[runner.scheduling] missed_wake_probe_seconds` refuses startup (`daemon/main/src/config/policies.rs`).
 OpenTelemetry settings control actual exporter queues, batch sizes, timeouts and export intervals.
 
 The daemon makes no model call, so it has no provider settings.
@@ -80,8 +79,8 @@ A tenant's runner is never assigned a setup turn on the platform model, whose ke
 Both run kinds use `guffbolt::drive`; the setup loop lives in `afr_agent/src/setup`.
 
 `[outbound.retries]` controls inline vendor-delivery attempts and exponential pauses.
-Exhausting that budget leaves the durable delivery available to later claims.
-The delivery scan cadence remains under `[maintenance.outbound_delivery]`.
+A delivery whose inline attempts all end retryably is marked abandoned, and nothing reschedules it (`afd_outbound`'s `lanes/mod.rs`).
+The worker claims owed deliveries at start, on a bus ping and when a delivery finishes; it runs no timed pass (`main/src/outbound.rs`).
 
 The runner owns a separate profile at `deploy/baremetal/agentsfleet-runner.toml`.
 `AGENTSFLEET_RUNNER_CONFIG_FILE` selects it; host deployment installs it, and local acceptance mounts it read-only.
@@ -113,7 +112,7 @@ Worker capacity remains assigned per runner in PostgreSQL.
 | `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
 | `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
 | `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |
-| `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits without replacing durable claims |
+| `afd_outbound/src/{retry,worker/mod,lanes/mod,poster/mod}.rs`, `main/src/outbound.rs` | Checked retry policy and `deliver_with_policy` | Apply inline delivery limits; an exhausted delivery is final |
 
 This extension adds no SQL column, index or foreign key.
 The migration-lock diagnostic now reports 29 planned sleeps for 30 polls; database request time is additional.
@@ -156,7 +155,6 @@ A durable task's run keeps its own saved execution deadline, and a renewal past 
 
 Startup requires a run lifetime greater than the existing 32-second renewal/reconnect budget and at most one hour (`af_core`'s `timing/run.rs`).
 A daemon file that still names `runner.run.max_runtime_seconds` refuses startup.
-The recovery probe interval must be positive and shorter than the run lifetime.
 
 The configuration extension is under verification. Source inspection and
 focused checks are recorded in the [review ledger](../v2/reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration).
@@ -213,16 +211,16 @@ saved deadline   +-> turn is eligible after its old run and thread expire
                  |   -> covered folds are adopted under fence N+1
                  |   -> first resumed model request -> one fenced settlement
                  |
-heartbeat sweep  `-> separate offline record and automatic quarantine
+next assignment  `-> the expired run is marked expired in the same statement
 ```
 
 The 35-second run TTL starts at the last grant or renewal. It governs reclaim.
 
-A separate sweep quarantines a host after 105 seconds without a valid heartbeat. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
+No daemon timer re-offers an expired run. The assignment that takes the turn expires the dead run's row in its own statement (`afd_fleet`'s `sql/shared/expire_prior_run.sql`), so the turn moves when a bus wake, a connection's freed capacity or a replacement's connection starts an assignment pass. [Run and liveness timing](../../rustd/crates/foundation/af_core/src/timing/mod.rs) · [Runner status](runner_fleet.md#failure-recovery-model)
 
 The run TTL includes a 5-second tick, 5-second answer window, 7-second reconnect, and 15-second renewal margin. The compile-time sums require 32 seconds within the 35-second run, and 14 seconds for the second answer and physical cleanup within that 15-second margin.
 
-Host quarantine tolerates three run lifetimes of heartbeat silence and is evaluated by the paced 10-second sweep. [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction) · [Liveness sweep](../../rustd/crates/daemon/afd_runner/src/sweep/liveness/mod.rs)
+A host silent for three run lifetimes, 105 seconds, reads `offline` when an operator view derives it (`afd_runner`'s `view/decode.rs`). Nothing writes a `runner_offline` row or cordons a silent host. Its sandbox hold stops protecting its fleet once its last beat is older than that window (`assign_turn_head.sql`). [Renewal decision](../v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md#renewal-recovery-budget-correction)
 
 ```text
 brief link break + reconnect before expiry -> same run and fence
@@ -231,7 +229,7 @@ expiry + capacity still busy               -> turn waits for a later assignment
 replacement + ready head                   -> restore root and matching files
 replacement + absent head                  -> original input and unsettled folds
 replacement + invalid head or file         -> stop before model or tools
-return + 30 s of continuous healthy beats  -> automatic quarantine lifts
+cordoned + 30 s of continuous healthy beats -> the heartbeat lifts a missed_heartbeats cordon
 ```
 
 After dispatch, a required file restore waits for runner admission while run renewal continues. The supervisor validates the exact turn, setup, generation, root, and toolbox.
@@ -244,7 +242,7 @@ The final result and usage settle through the report transaction. [Result and ru
 
 ## How a recovery burst drains
 
-A disposable wake can be lost between the durable turn write and its notification. The replica's independent five-second probe supplies a recovery generation.
+A disposable wake can be lost between the durable turn write and its notification. No timer probes for it. A recovery generation starts when the bus reports a gap or lag, an unreadable notification arrives, the wake subscription opens or is lost, or an ordinary assignment finds a host's recovery request pending (`afd_bus`'s `wake/mod.rs`, `afd_gateway`'s `scheduler/subscriptions.rs`). A wake lost with no such signal waits for the next event.
 
 Ordinary rings retain their successful-issue budget and fleet locality.
 
@@ -272,7 +270,7 @@ When a worker becomes free, `Ready` wakes the existing bounded drain before anot
 Only an actual empty recovery scan clears the host's matching request.
 
 ```text
-Probe -> busy host: remember recovery request
+Recheck -> busy host: remember recovery request
 Worker finishes -> Ready -> wake bounded drain -> oldest compatible turn
 Empty recovery scan -> clear the matching request
 Newer request arrives -> an older empty result preserves the newer request
@@ -282,7 +280,7 @@ A completed drain acknowledges only its original recovery generation. [Recovery 
 
 After skipping a full locked page, the connection revisits its prefix after a short empty page or 64 later assignments. This bounds the delay for older rows that become eligible while newer work stays ready. [Locked-page regression](../../rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/recovery_page.rs)
 
-The previous recovery pass spent one successful-assignment credit per fallback probe. The new drain lets B use its available worker credits after the first probe. A stalled connection leaves other connections moving.
+The drain lets B use its available worker credits in one recovery pass. A stalled connection leaves other connections moving.
 
 The benchmark ledger records the observed throughput separately. [Measured comparison](../v2/reviews/m247-review-ledger.md#performance-and-coverage-acceptance)
 
@@ -319,11 +317,10 @@ One subsequent readback command authenticates the batch before commit. [Upload b
 | F01 and F02 restore already verified objects in workspace W | Recheck run, pin, and scope. Lock quota only when newly verified upload receipts change accounting. |
 | F16 reports a sandbox hold as its run expires | Keep shared host authority from before the hold decision through commit. Competing issue serializes with the report. |
 | A four-chunk authenticated readback needs more time | Apply a 35-second answer budget with 25 seconds of daemon work, plus limits of two in-flight verifications per session and eight per replica. |
-| The oldest checkpoint owner is locked | Defer it and advance the indexed cursor, keeping later maintenance work moving. |
 
 Remote object I/O runs outside the checkpoint transaction. The return path checks the pin deadline and rechecks custody before recording verified receipts.
 
-[Transfer guard](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/transfer.rs) · [Report SQL](../../rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql) · [Maintenance](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs)
+[Transfer guard](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/transfer.rs) · [Report SQL](../../rustd/crates/daemon/afd_fleet/src/run/sql/commit_report.sql) 
 
 The product database is development-only. Columns and indexes are defined in their owning initial schema files.
 
@@ -369,7 +366,7 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_bus/src/wake/queue.rs`](../../rustd/crates/daemon/afd_bus/src/wake/queue.rs) | WakeQueue | Keep fleet reminders in the locality queue and store generation counters in the watch. |
 | [`rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs) | notifications, pass | Preserve ordinary locality and ring budgets. Route recovery hints to bounded round-robin and acknowledge only the observed generation. |
 | **New** `rustd/crates/daemon/afd_gateway/src/scheduler/recovery/drain.rs` | drain, Host | Rotate credited connections using a queue and up to eight concurrent assignments. An uncertain reply defers that host. |
-| [`rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) | notifications, probe_ticks | Record recovery intent on busy hosts and run the existing bounded drain. |
+| [`rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs) | notifications | Record recovery intent on busy hosts and run the existing bounded drain. |
 | [`rustd/crates/daemon/afd_gateway/src/registry/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/registry/mod.rs) | Registry::request_recovery | Give every connected host the observed request, including busy hosts. |
 | [`rustd/crates/daemon/afd_gateway/src/connection/mod.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) | SchedulingState::recovery_pending, recovered | Retain recovery across capacity updates and protect newer requests from older empty results. |
 | [`rustd/crates/daemon/afd_gateway/src/connection/assignments.rs`](../../rustd/crates/daemon/afd_gateway/src/connection/assignments.rs) | AssignMode, AssignOutcome, ConnectionHandle::claim | Carry the selection mode to the connection's existing assignment owner and return its outcome. |
@@ -446,6 +443,8 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_db/schema/20261117154626_runner_turn_recovery.sql`](../../rustd/crates/daemon/afd_db/schema/20261117154626_runner_turn_recovery.sql) | runner.turn_recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
 | [`rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql`](../../rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
 | [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter. |
+
+The maintenance pass in these rows (`Tasks::maintain_checkpoints`) has no production caller: the daemon runs no timed loop, so only tests run it. A running daemon deletes no settled turn's checkpoint after `[turns.checkpoints] retention_days` and collects no orphaned upload ([configuration reference](config_reference.md)).
 
 ### Native connection settings
 

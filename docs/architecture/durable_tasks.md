@@ -170,7 +170,7 @@ Each remote effect has an immutable identity, request digest, expected target st
 | Prepare effect | Check live run, current grants, approved target and stop generation; save immutable effect intent before the remote request. |
 | Save checkpoint | Hold publication pins; verify immutable uploads; publish a compatible manifest and convert live pins to references under current generations. |
 | Enter wait | Commit report, usage, recovery pointer, wait and turn settlement before releasing the fleet's thread. |
-| Wake | Atomically consume one current wait and append its continuation turn; competing completions and fallback reads return the same result. |
+| Wake | Atomically consume one current wait and append its continuation turn; competing completions return the same result. |
 | Finish | Recheck current target and mandatory evidence; save terminal outcome and existing outbound delivery in settlement. |
 | Stop | Advance stop generation; reject new effect intents and wakes; reconcile remote requests already issued. |
 
@@ -342,12 +342,12 @@ Task mutations lock workspace and fleet parents against deletion. They then lock
 Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
 
 Callers still prove fleet and run authority.
-Completion collection uses a similarly restricted helper to lock expired, finished parent receipts before their fanout children, retaining `SKIP LOCKED`. Its intrinsic minimum retention is 72 hours and its maximum batch is 256; no update privilege is granted on immutable completion rows.
+The schema keeps a similarly restricted helper, `fleet.lock_expired_task_completions`, that locks expired, finished parent receipts before their fanout children with `SKIP LOCKED`, at least 72 hours old and at most 256 per call. No statement calls it since M253_003 removed completion collection; no update privilege is granted on immutable completion rows.
 
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
 Network calls, encryption, scanning and object transfer happen outside database transactions.
 
-Collectors never acquire a task lock after locking an object; orphan-only passes need no task lock.
+Collectors never acquire a task lock after locking an object; orphan-only passes need no task lock. No production path runs a collection pass since M253_003; the passes remain in `afd_fleet`'s `task/checkpoint/maintenance/`, called only by tests.
 Object deletion runs only after a committed tombstone and rechecks pins/references before the remote delete.
 
 ## Proposed input claims and scheduling
@@ -542,14 +542,14 @@ Task rows and canonical billing lines remain the source of truth; emit signals f
 
 | Operator question | Recorded signals and intended measurement |
 |---|---|
-| Is work advancing? | `dt_transition`; counts by bounded state/reason and current-state gauges through existing census machinery. |
-| Are steers accepted and waits waking? | `dt_input_accepted`, `dt_wake_claimed`; accepted/replayed/stale outcomes and due-wake delay. |
+| Is work advancing? | `dt_transition`; counts by bounded state/reason. No current-state gauge: the fleet census pass that published backlog gauges was deleted in M253_003. |
+| Are steers accepted and waits waking? | `dt_input_accepted`, `dt_wake_claimed`; accepted/replayed/stale outcomes. |
 | What do decisions cost? | `dt_decision_recorded`; provider/purpose/outcome counts and latency. Existing billing records hold per-model tokens, cache categories and cost exactly once. |
 | Why could a decision not start? | `dt_decision_funding_refused` names the bounded funding reason and run; `agentsfleet_task_operations_total` and `agentsfleet_task_operation_seconds` measure native outcomes and latency without identity labels. |
 | Are writes confirmed? | `dt_effect_uncertain` plus native effect outcomes; uncertain/reconciled/refused/confirmed state and reconciliation latency. |
 | How expensive is save/restore? | `dt_checkpoint_published`; capture/upload/verify/restore duration, unique uploaded/reused/readback bytes and quota/integrity failures. |
 | What does the person see? | `task_decision_started`, `task_decision_completed`, `task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |
-| Is work stranded? | Ready backlog/oldest age, overdue wait age and maintenance freshness distinguish queue starvation, expired ownership and delayed dependency reads. |
+| Is work stranded? | Run expiry and reassignment events, read from logs and traces. No backlog or overdue-wait gauge exists since M253_003 removed the passes that sampled them. |
 
 Logs and traces carry approved task, turn, run, decision-call, effect and checkpoint identities for correlation.
 Metrics use bounded enums; never label a series with those identities, private paths, URLs, prompts or arbitrary model output.
@@ -569,7 +569,7 @@ OpenClaw's [test audit](https://github.com/openclaw/openclaw/blob/68f6775adfe02a
 | Checkpoint transfer | Timeout, failed PUT, interrupted upload and missing object prevent manifest commit; retries preserve acknowledged-byte accounting. |
 | Restore | Missing/corrupt bytes, disk-full and memory-limit death leave no attached writable partial workspace; the prior checkpoint remains recoverable. |
 | Worker death | An isolated memory-limited child or existing kernel fixture supplies the real exit signal; recovery retains task identity and cumulative allowances. |
-| Scheduling | Queued work behind another DT, expired runs, duplicate wakes and overdue waits either advance once or show an attributable blocked reason. |
+| Scheduling | Queued work behind another DT, expired runs and duplicate wakes either advance once or show an attributable blocked reason. |
 | Diagnostics | Closed outcome/failure labels, duration/age signals and task/run correlation identify failure without exposing goals, credentials or private paths. |
 
 Prefer channels and barriers over shared mutable test state; bound every wait and join, release owned resources on failure and abort owned children.
@@ -594,7 +594,7 @@ Keep this evidence available while implementing M236; a duration total alone can
 | Was intake slow? | Turn-to-run and first-output latency, ready backlog/oldest age, run expiry/reclaim and eligible runner capacity. |
 | Was useful work slow? | Active work time separately from queued, externally waiting, blocked, paused and restoring time; completed action groups and interruption reasons. |
 | Were models slow or expensive? | Coding versus decision protocol, reviewed model/profile and price revision, physical request count, latency, token/cache categories, refusal, timeout and unknown spend. |
-| Were tools or the database slow? | Existing tool spans and database/pool signals, bounded operation latency, contention/refusal and maintenance lag; no duplicate duration for nested spans. |
+| Were tools or the database slow? | Existing tool spans and database/pool signals, bounded operation latency, contention/refusal; no duplicate duration for nested spans. |
 | Did repository recovery dominate? | Exact base/head, initial checkout duration/bytes, cold versus warm base, scanned/logical bytes, unique acknowledged upload/readback bytes and reuse. |
 | Did infrastructure differ? | Runner/build revision, sandbox/toolbox format, resource limits and memory/disk/transport failures, carried as bounded native evidence or trace attributes. |
 | Is a comparison valid? | Baseline/candidate revisions, workload/query/window, runner configuration, model/profile, cache state, repetitions, comparable sample counts and missing-data flags. |
@@ -603,7 +603,6 @@ Task/turn/run, physical-call, effect and checkpoint identities join logs/traces 
 Metrics carry closed operation, stage and outcome labels; add each implemented family to `rustd/crates/protocol/af_observability/src/metrics/census.tsv` with its actual producer and cardinality bound.
 Reuse existing exporters, tool/model instrumentation, run delivery metrics and Grafana data sources before introducing another measurement.
 
-Publish queue/wait gauges from native maintenance snapshots; failed sampling withdraws the reading rather than publishing a false zero.
 Record completed stage durations once at their owner, with monotonic elapsed time and correlated failure outcomes.
 
 For example, Indy can ask: `Investigate why PR repair slowed between baseline B and candidate C; identify the dominant stage and propose a measured fix`.
@@ -676,7 +675,7 @@ Disable automatic mutation retries, keep run renewal independent and bound the s
 
 Save confirmed, refused or unknown outcome even if stop or run expiry occurs during the request.
 A repeated confirmed request returns its receipt; an unknown result blocks another send until authoritative reconciliation.
-Reconciliation may read remote evidence through supervised maintenance; it cannot autonomously dispatch a queued write.
+No daemon pass reconciles an unknown result since M253_003; nothing dispatches a queued write on its own.
 
 This follows the existing synchronous setup model-call pattern in `afd_setup`'s model dispatch module.
 No client `/dispatch` request, background publisher queue or generic operations service is proposed.
@@ -706,7 +705,7 @@ An expired owner can be replaced only through a new live run's atomic adoption a
 
 Complete manifests remain readable under authorized handoff; incomplete plans never become recovery pointers.
 
-## Proposed limits and maintenance
+## Proposed limits
 
 These are proposed resource limits, not measured speed or availability guarantees.
 Smaller fleet budgets, run limits and host capacity always win.
@@ -720,38 +719,23 @@ Changing these defaults requires reviewed configuration and boundary tests.
 | Running time and attempts | Two hours cumulative running time; 12 execution runs; eight repair publications maximum. |
 | Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source turn. |
 | Human input boundary | Four messages/four action items per message; check after each completed action group. |
-| Fallback wait | First read after 60 seconds, then 120, 240 and 300-second capped spacing; no more than 24 fallback reads per task. |
-| Maintenance | Existing supervised-daemon framework, ten-second scan interval, 64 due rows per pass with `SKIP LOCKED`; no new scheduler service. |
+| Fallback reads | `max_fallback_reads` (24 by default, `af_wire::task::limits`) is stored per task, but nothing reads GitHub on a timer since M253_003. |
 
-Unchanged fallback reads retain the wait generation without adding an agent turn.
-Changed eligible evidence consumes the current wait and creates at most one deduplicated continuation.
-Task deadline, cancelled state or exhausted cumulative bounds prevent another fallback turn.
+A task reserves nothing against these bounds. Each gate reads spent against the maximum, such as `used_model_nanos < max_model_nanos` (`afd_fleet`'s `assign_turn_head.sql` and `task/decision/budget.rs`), so concurrent decision calls on one task can overshoot the model budget by one call's cost. A decision call counts against `max_decision_calls` once, on its first report (`task/decision/sql/account_task.sql`).
 
-The supervised worker also advances abandoned input claims, uncertain effects and checkpoint cleanup in bounded passes.
+No daemon pass runs for durable tasks since M253_003 (Indy, Nov 21, 2026: "Delete all now"). Nothing advances abandoned input claims, reconciles uncertain effects, collects checkpoint objects or ends an expired task on a timer. An expired task is no longer assigned, because the assignment requires `expires_at` in the future (`afd_fleet`'s `assign_turn_head.sql`).
 
 Provider/model reservations and unknown physical call outcomes are tracked separately from task ready/wait state.
 
-Task maintenance runs under the daemon binary's sweepers, following their supervision and shutdown pattern.
 Do not spawn detached recovery loops or a recurring user-visible cron for each DT.
 Workspace authorization and repository grants are checked again on every continuation, even when stored files remain available.
 
-### Event delivery and fallback timing
+### Event delivery
 
-Sixty seconds is a proposed backup interval, not a provider requirement, measured optimum or delay imposed on signed events.
-A matching signed completion makes the DT eligible immediately; the next run still needs the fleet's thread.
-After arming a wait, make one authoritative status read to close the event-before-registration race.
+A matching signed completion makes the DT eligible immediately; the next run still needs the fleet's thread (`afd_fleet`'s `task/waits/completion.rs`).
+Arming a wait records the dependency status read at that moment, which closes the event-before-registration race (`task/waits/mod.rs`).
 
-Subsequent fallback checks read only the exact recorded PR/head/check status through trusted daemon code.
-They do not acquire an agent run, restore files or call a decision model when evidence remains unchanged.
-Only changed evidence, a head advance or a named blocker creates a deduplicated continuation or native blocked outcome.
-
-Each native read claims the current wait for 30 seconds and rechecks task generation, deadline, workspace ownership and current GitHub grants.
-Mint only repository-scoped read permissions within those grants; the wait checker admits no arbitrary URL or repository write.
-Keep network requests outside database transactions and reject a stale result before changing state or adding a turn.
-
-Allow at most four concurrent native wait checks per daemon and ten seconds per request, with no immediate same-pass retry.
-Honor provider rate-limit cooldowns even when they exceed the normal 300-second spacing.
-After 24 fallback reads, stop autonomous polling and show its exhausted state; valid signed completion or authorized refresh may still advance the live wait.
+No fallback check reads GitHub on a timer: M253_003 deleted the wait polling with the task pass. A wait whose signed completion never arrives stays armed; once the task's deadline passes, the task is no longer assigned.
 
 The cap of 16 unfinished DTs bounds stored work and intent candidates, not simultaneous workers or expected everyday workload.
 It is a proposed initial product limit and needs workload evidence before any claim that it is optimal.

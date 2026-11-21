@@ -108,8 +108,7 @@ Structured failures distinguish the whole-read deadline from server statement ca
 Task and run identifiers belong in traces and structured events; prompts, criteria and private evidence never become metric labels.
 
 Three candidate objectives have metric producers. Their targets remain unproven;
-the table records the available measurements. Backlog age is a diagnostic until
-a pickup objective is measured.
+the table records the available measurements.
 
 | Indicator | Good events over valid events | Target | Where the target came from |
 |---|---|---|---|
@@ -117,9 +116,10 @@ a pickup objective is measured.
 | Runner success | `agentsfleet_runner_runs_total{outcome="succeeded"}` over `outcome=~"succeeded\|failed"`, less the workload reasons of `agentsfleet_runner_failures_total` | 95% | unproven. Measured on 2026-09-17: 7 runs succeeded and 3 failed, the failures split 2 `startup_posture` and 1 `runner_crash`, both platform reasons, so excluding workload reasons leaves the measured 70% unchanged. |
 | Queued turns that started | `agentsfleet_fleet_runs_started_total{kind="fresh"}` over `agentsfleet_turns_total{outcome="accepted"}` | 99% | unproven. Measure both families from a ledger-queue daemon before assigning this target. |
 
-`agentsfleet_turn_backlog_oldest_age_seconds` reports the oldest unsettled
-turn. Parked work remains unsettled, so backlog age includes time waiting
-for an answer. The ledger has no replay interval that defines a pickup deadline.
+No family reports backlog age. `agentsfleet_turn_backlog` and
+`agentsfleet_turn_backlog_oldest_age_seconds` were census gauges published by
+`sweeper:fleet-census`, and went with it (M253_003). The ledger has no replay
+interval that defines a pickup deadline.
 
 `over_budget` is excluded from valid events on purpose. The deployment refuses
 that work because a budget is spent, which is the budget doing its job.
@@ -483,7 +483,7 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 A verb that reaches no stage records nothing. The common case is an assign pass that finds no work.
 
-The recovery probe runs every 5 s per replica, and a span for each would flood `SPAN_QUEUE`. An assignment the gates refused reached `claim`, so it keeps its span.
+The scheduler runs an assign pass on every bus wake, and a span for each empty pass would flood `SPAN_QUEUE`. An assignment the gates refused reached `claim`, so it keeps its span.
 
 Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
 

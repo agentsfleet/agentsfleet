@@ -116,7 +116,7 @@ Retries exclude `origin` when comparing request bodies and retain the original r
 
 `Draft = {id,state,title,etag,setup_model_ref,candidate?,review?,linked_fleet_id?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate.
 
-Closing sets expiry 30 days later; a linked active setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. A queued or running setup turn blocks PATCH and Save.
+Closing sets expiry 30 days later; a linked active setup blocks expiry. Past it, list and lock reads skip the draft (`afd_setup`'s `sql/draft/page.sql` and `lock.sql`); its rows stay, because nothing purges them. Cancelled setup returns `editing`, removing close/expiry fields. A queued or running setup turn blocks PATCH and Save.
 
 `Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`.
 

@@ -287,7 +287,7 @@ A grant is **requested at Save**. When a saved fleet's readiness review finds a 
 
 The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The run path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s run deliver).
 
-Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
+Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook and an append-only audit. Nothing expires a gate: a read reports `timed_out` once its deadline passes, and the gate stays answerable (`afd_approval`'s inbox).
 
 **A gate is a per-turn decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
 
@@ -354,7 +354,7 @@ The ten-second budget is a hard deadline rather than a target. It is shared acro
 
 Deduplication is still worth every line. The redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed. That is exactly when a duplicate review would otherwise appear on a pull request.
 
-`deployment_status` and repair-branch deliveries are classified unsupported and dropped until the repair-evidence writer is ported. The repair sweeper waits rather than acting on evidence it never received (`afd_api_ingress`'s App route).
+Signed workflow completions first match native task waits. `deployment_status` and other repair-branch deliveries are classified unsupported and dropped, so completion evidence never fans out an unrelated investigation (`afd_api_ingress`'s App route).
 
 Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
 

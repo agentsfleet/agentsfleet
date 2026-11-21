@@ -98,24 +98,21 @@ Private answer previews use a request-owned publisher (`afd_setup`'s preview pub
 The inventory is asserted, not described. `test_boot_to_ready_on_compose`
 (the daemon's `integration_serve` test) compares a booted
 daemon's whole inventory against the names below. A task added to boot without
-a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
+a name, or a named task that boot no longer spawns, is a failing test. The daemon runs no timed loop: every task below waits on a socket, a bus message, a runner connection or cancellation.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
 | accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
 | Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
-| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` | claims lane heads from `thread.deliveries`, at most as many as its lanes have free delivery slots, and hands each row to the outbound lanes. A claim runs on an `af.delivery.wake` ping, on a finished lane, or every `CLAIM_PASS` (30 s). | a per-lane `pg_try_advisory_xact_lock` taken before the heads are chosen, `FOR UPDATE SKIP LOCKED`, and the holder's token, which the attempt count re-proves before each post; no in-process lock shared with other tasks | `select!` over `cancelled()`, the ping, a finished lane and the pass sleep → loop breaks → the lanes drain → joined |
+| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` | claims lane heads from `thread.deliveries`, at most as many as its lanes have free delivery slots, and hands each row to the outbound lanes. A claim runs at start, on an `af.delivery.wake` ping and on a finished lane; no timed pass claims. | a per-lane `pg_try_advisory_xact_lock` taken before the heads are chosen, `FOR UPDATE SKIP LOCKED`, and the holder's token, which the attempt count re-proves before each post; no in-process lock shared with other tasks | `select!` over `cancelled()`, the ping and a finished lane → loop breaks → the lanes drain → joined |
 | NATS hub pump (one per subject with readers, `afd_bus::nats`'s hub) | `Bus::subscribe`, for a subject's first local reader | that subject's one native subscription: frames out to every local reader, and an `Af-Gap` marker turned into `Gap` | the channel map under its own mutex; the pump never takes it to forward a frame | the last reader's drop aborts the pump, which unsubscribes; `Bus::shutdown` aborts and joins every pump |
 | NATS gap watcher (`afd_bus::nats`'s signals watcher) | `afd_bus::nats::connect`, once per process | client events (reconnect, slow consumer), the publish debt, and the `af.bus.gap` broadcast | the debt under a short mutex the client's event callback also takes; the callback only sets flags and wakes the watcher | `Bus::shutdown` aborts and joins it before the client drains; the supervised `bus_shutdown` calls that shutdown on cancellation |
 | runner wake listener (`afd_bus::wake`) | `Wake::listen`, from the gateway scheduler (`afd_gateway/src/scheduler/subscriptions.rs`) | one `af.thread.*.wake` wildcard subscription; one shared queue of at most 64 thread IDs by default | leaf mutex; never held across an await | the stop token, or a closed subscription; the scheduler then resubscribes with backoff |
-| liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through a clone of the API pool, shared with request handlers, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
-| setup, billing, task and task-storage sweepers (`sweeper:setup`, `sweeper:billing`, `sweeper:tasks`, `sweeper:task-storage`; the setup sweeper purges deleted drafts and expires replay receipts) | the daemon's sweepers module | Postgres through a clone of the API pool, shared with request handlers | none shared | as above |
-| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises thirteen tasks | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
+| runner-stream scheduler (`runner_stream_scheduler`) | `serve::runner_stream::spawn` | the gateway's connection registry and Postgres through the API pool; starts an assignment pass on a wake ring, a detected bus gap or a subscription restored, and resubscribes the wake listener with backoff | none shared mutable; each connection's assignment runs on its own supervisor | the stop token's child → its notification and repair loops return → joined |
+| runner-stream listener (`runner_stream_listener`) | `serve::runner_stream::spawn` | the runner listener socket and one gateway connection service per runner | each connection enters the drain | the stop signal → the listener stops accepting → joined |
+| telemetry flush (`otlp_export`) | `serve::open_telemetry`, and only where an OpenTelemetry Protocol (OTLP) endpoint is configured; a normal boot without one supervises six tasks, the accept loop included | the four software development kit (SDK) providers (tracer, cumulative and delta meters, logger); the exporting itself happens on the SDK's own batch threads and periodic readers, never on this task | the SDK's batch queues; spans and metric cycles it failed to deliver are counted on atomics | samples the resident-set gauge on each collection tick until cancelled, then `telemetry::flush_within` force-flushes every provider before the pools they describe are dropped → joined |
 | analytics flush (`analytics_flush`) | `serve::open`, last | the product-analytics client's queued events | none shared mutable | awaits cancellation, then flushes before the client is dropped |
-
-A sweep that fails is reported and retried on the next pass. Every pass here is idempotent and bounded. A sweeper that exited on a datastore blip would need a daemon restart to get liveness back.
 
 New process-lifetime background work belongs to the supervisor. Request-owned work must retain an abortable handle and a bounded completion path.
 
@@ -150,9 +147,9 @@ below are the concurrency view.
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
 | `thread.turns` | PostgreSQL queue | producers commit turns; assignment passes take the oldest unsettled turn per eligible fleet | thread and turn fences; reports settle in the usage transaction |
 | `thread.deliveries` | PostgreSQL rows claimed per lane | the report path writes the row in its transaction → any replica's outbound worker claims the lane head | durable; the claim's token names the holder, and a lapsed holder's late write matches no row |
-| `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A lost ping waits for the next 30 s claim pass. |
+| `af.delivery.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the delivery, but the worker reads only the ping and claims from Postgres. A lost ping waits for the next ping or finished lane on some replica; no timed pass claims. |
 | `af.thread.<thread_id>.items` | core NATS subject (at most once) | `agentsfleetd` publishers (+ runner-forwarded frames) → each process's one native subscription per subject, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | intake and gate-answer commits publish thread IDs to every replica | ephemeral; each replica's 5 s recovery probe still reads PostgreSQL |
+| `af.thread.<thread_id>.wake` | core NATS subject, read through the `af.thread.*.wake` wildcard | intake and gate-answer commits publish thread IDs to every replica | ephemeral; a detected gap (lag, lost subscription, unreadable payload) starts a recovery pass that reads PostgreSQL; a silently lost ring waits for the next ring or freed runner capacity |
 
 Each process holds exactly **one** NATS connection for all viewers and
 publishers, with one native subscription per subject that has local readers
@@ -303,13 +300,11 @@ map to keep consistent and no generation check to get wrong.
 `CancellationToken` is edge-triggered, so a task selecting over its own I/O and
 `cancelled()` is interrupted mid-read.
 
-Per-call timeouts stay where they are. Recurring deadline passes are another
-matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
-every `maintenance.expired_work.interval_seconds` (2 s by default); startup refuses an interval as long as one run lifetime.
-
-It bills the last slice of every run that expired unreported, a fleet's
-or a setup draft's, in one tick. The runner arms one host timer for its runs' deadlines.
-A failed pass logs and waits for the next tick.
+Per-call timeouts stay where they are. The daemon runs no recurring deadline
+pass. A run that expired unreported is marked expired by the assignment that
+next takes its turn (`afd_fleet/src/run/sql/shared/expire_prior_run.sql`), and
+its last runtime slice is not billed. The runner arms one host timer for its
+runs' deadlines.
 
 ---
 
@@ -340,7 +335,7 @@ The setup assignment is the one path that holds a host and then asks for a draft
 
 Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its cascade deletes that runner's `thread.runs` rows and clears `thread.threads.last_runner_id`. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
 
-Runtime reports take the run row and never the runner, setup or wallet rows. Only the billing relay writes a wallet row, in its own transactions. It stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
+Runtime reports take the run row and never the runner, setup or wallet rows. A report logs usage lines unsettled; no production path settles them or debits a wallet, because the billing relay that did is gone and nothing else calls `Biller::settle` (`afd_billing/src/ledger/sweep/mod.rs`). `afd_billing`'s settlement, when called, stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
@@ -355,8 +350,6 @@ The API login carries two bounds through `ALTER ROLE` (`afd_db::login`). A lock 
 No product transaction sets its own with `set_config`. The four that did were removed on Nov 07, 2026; each repeated or loosened the login's bounds.
 
 Both codes mean "not now", so one predicate reads them (`afd_db::error::is_bound_reached`). A caller answers a reached bound as retryable unavailability. The fleet task paths answer 503, billing counts it as an unanswered read, and setup activation reads it as still installing.
-
-The decision sweep defers a candidate whose fleet row is locked to its next pass, which `PASS_TIMEOUT` still caps.
 
 ### The setup chat claim never waits on a row
 

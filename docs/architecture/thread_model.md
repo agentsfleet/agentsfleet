@@ -48,7 +48,7 @@ One row per fleet and one per draft, written in the statement that creates its o
 
 Checks: exactly one of `fleet_id` and `draft_id` is set, and `id` equals it. Which one is set is the thread's kind.
 
-Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set for the hold sweep. The report sets `resume_context` in the same update that releases the run.
+Indexes: `fleet_id` and `draft_id` partial, `last_runner_id` for the foreign key, and `last_runner_id` where a hold is set, which the capacity count and the dropped-hold clear read per runner (`afd_runner`'s `capacity/sql/census.sql` and `holds/clear_dropped_holds.sql`). The report sets `resume_context` in the same update that releases the run.
 
 Saving a draft creates a new fleet, so the fleet gets its own thread. The draft's thread stays with the draft until the draft is deleted.
 
@@ -182,13 +182,13 @@ One row per answer owed to one destination. It replaces `fleet.obligations`.
 | `answer` | `TEXT` | no | as today | the text sent |
 | `receipt` | `UUID` | yes | as today | the worker holding it |
 | `taken_until` | `TIMESTAMPTZ(3)` | yes | `claim_expires_at` | the worker's hold |
-| `next_attempt_at`, `attempt_count`, `delivered_at`, `abandoned_at` | as today | as today | as today | retry state |
+| `next_attempt_at`, `attempt_count`, `delivered_at`, `abandoned_at` | as today | as today | as today | delivery state. Nothing writes `next_attempt_at` since M253_003: a delivery whose inline attempts fail is abandoned |
 
 Unique `(turn_id, provider, destination)`, so one turn can owe a Slack answer and an email to each recipient.
 
 ## runner.history
 
-It replaces `runner.events`, column for column, except that `event_type` becomes `kind`. It keeps the append-only trigger and the unique `(runner_id, last_seen_at)` index for offline events. Its rows are kept until a retention policy is chosen; no sweep deletes them.
+It replaces `runner.events`, column for column, except that `event_type` becomes `kind`. It keeps the append-only trigger and the unique `(runner_id, last_seen_at)` index, written for offline events, which nothing records since M253_003 removed the liveness sweep. Its rows are kept until a retention policy is chosen; nothing deletes them.
 
 ## Tables that point at the replaced ones
 
