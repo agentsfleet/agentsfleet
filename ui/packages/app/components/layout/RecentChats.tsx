@@ -79,8 +79,8 @@ function FleetRow({fleet, workspace, pathname, onNavigate, deleting, onDelete}: 
         {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="text-eyebrow text-muted-foreground">Archived</span> : null}
       </Link>
     </NavItem>
-    <IconAction variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={deleting}
-      className="absolute right-xs top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+    <IconAction revealOnRowFocus variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={deleting}
+      className="absolute right-xs top-1/2 -translate-y-1/2"
       onClick={onDelete}><TrashIcon size={14} aria-hidden="true" /></IconAction>
   </div>;
 }

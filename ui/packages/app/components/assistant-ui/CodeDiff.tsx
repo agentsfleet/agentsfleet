@@ -2,8 +2,8 @@
 "use client";
 
 import { FileTextIcon } from "@phosphor-icons/react/ssr";
-import { DashboardPanel, cn } from "@agentsfleet/design-system";
-import { codeScroll, codeSurface, mono, outputHeader, outputPanel } from "./surfaces";
+import { OutputPanel, cn } from "@agentsfleet/design-system";
+import { codeScroll, codeSurface, mono } from "./surfaces";
 
 export type DiffKind = "context" | "added" | "removed";
 
@@ -32,11 +32,7 @@ export function CodeDiff({
   lines: readonly DiffLine[];
 }) {
   return (
-    <DashboardPanel padding="none"
-      data-slot="code-diff"
-      className={outputPanel}
-    >
-      <div className={cn(outputHeader, "min-w-0")}>
+    <OutputPanel data-slot="code-diff" header={<>
         <FileTextIcon aria-hidden="true" className="size-4 shrink-0" /><span className="min-w-0 [overflow-wrap:anywhere]">{filename}</span>
         {showCounts ? <span className={cn(mono, "ml-auto shrink-0 tabular-nums")}>
           <span className="text-success">
@@ -44,7 +40,7 @@ export function CodeDiff({
           </span>{" "}
           <span className="text-destructive">−{deletions}</span>
         </span> : null}
-      </div>
+    </>}>
       <div className={cn(codeScroll, "bg-surface-deep py-sm")}>
         <div className={codeSurface}>
           {lines.map((line, i) => (
@@ -66,6 +62,6 @@ export function CodeDiff({
           ))}
         </div>
       </div>
-    </DashboardPanel>
+    </OutputPanel>
   );
 }

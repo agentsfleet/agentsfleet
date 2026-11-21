@@ -1,3 +1,35 @@
+.fleet-thread { @apply relative flex min-h-0 flex-1 flex-col overflow-clip bg-background; }
+.fleet-thread-viewport { @apply flex min-h-0 flex-1 flex-col overflow-y-auto; }
+.fleet-thread-content { @apply flex min-w-0 flex-1 flex-col; }
+.fleet-thread-log { @apply flex min-w-0 flex-1 flex-col px-xl pt-xl sm:px-chat-inset sm:pt-2xl; }
+.fleet-thread-footer {
+  @apply sticky bottom-0 z-10 flex shrink-0 flex-col bg-background px-xl pb-5 pt-lg sm:px-chat-inset max-[42.5rem]:px-lg;
+  max-height: calc(100% - 3rem - var(--sp-sm));
+}
+.fleet-thread-jump { @apply absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full disabled:pointer-events-none disabled:invisible; }
+
+.fleet-thread[data-centered] {
+  --max-w-chat: var(--max-w-new-fleet);
+  --chat-input-height: var(--new-fleet-input-height);
+  @variant summary { --chat-inset: var(--sp-3xl); }
+  .fleet-thread-content { @apply mt-4xl flex-none sm:mt-auto sm:-translate-y-xl; }
+  .fleet-thread-log { @apply pt-0 max-[42.5rem]:px-5; }
+  .fleet-thread-footer { @apply relative bottom-auto mb-2xl pb-0 pt-3xl max-[42.5rem]:px-5 sm:mb-auto sm:-translate-y-xl; }
+}
+
+@variant summary {
+  .fleet-thread[data-summary] {
+    .fleet-thread-viewport {
+      display: grid;
+      grid-template: 1fr auto / minmax(0, 1fr) var(--summary-width);
+      @apply gap-x-lg pr-lg summary-medium:gap-x-xl summary-medium:pr-xl summary-wide:gap-x-3xl summary-wide:pr-2xl;
+    }
+    .fleet-thread-content { display: contents; }
+    .fleet-thread-log { grid-area: 1 / 1; }
+    .fleet-thread-footer { grid-area: 2 / 1; max-height: calc(100dvh - 9rem); }
+  }
+}
+
 .fleet-trace-action {
   @apply flex min-h-11 w-fit max-w-full cursor-pointer list-none items-center gap-2 rounded-md px-2 text-label leading-5 text-muted-foreground;
   @apply hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:min-h-9 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden;
@@ -17,6 +49,13 @@
   @apply flex min-h-8 min-w-0 items-center gap-md rounded-sm py-sm text-label leading-label;
   @apply hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11;
 }
+
+summary.fleet-resource-row {
+  cursor: pointer;
+  list-style: none;
+  &::-webkit-details-marker { display: none; }
+}
+.fleet-pull-request-link { @apply flex min-h-9 items-center gap-md py-sm break-words text-label font-medium leading-label hover:underline; }
 
 .fleet-resource-detail {
   @apply max-h-40 overflow-auto whitespace-pre-wrap break-words border-l border-border pl-md text-eyebrow text-muted-foreground;

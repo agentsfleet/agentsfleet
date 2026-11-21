@@ -21,7 +21,7 @@ export function DraftSidebarItem({card, workspace, active, disabled, onNavigate,
         <span className="col-start-3 inline-flex shrink-0 items-center gap-sm text-eyebrow text-pulse">Resume<CaretRightIcon className="size-3.5" aria-hidden="true" /></span>
       </Link>
     </NavItem></TooltipTrigger><TooltipContent side="right" className="ph-no-capture ph-no-record max-w-xs break-words"><p>{card.title}</p><p className="text-muted-foreground">{status}</p></TooltipContent></Tooltip></TooltipProvider>
-    <IconAction variant="ghost" label={`Delete chat: ${card.title}`} disabled={disabled} className="col-start-2 row-start-1 z-10 text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+    <IconAction revealOnRowFocus variant="ghost" label={`Delete chat: ${card.title}`} disabled={disabled} className="col-start-2 row-start-1 z-10"
       onClick={onDelete}><TrashIcon size={CHAT_ICON_SIZE} aria-hidden="true" /></IconAction>
   </div>;
 }

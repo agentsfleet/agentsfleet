@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ResourceRow } from "@agentsfleet/design-system";
 
 type Props = {
   kind: "key" | "session";
@@ -11,18 +12,14 @@ type Props = {
 };
 
 export function SecurityResourceRow({kind, title, icon, detail, badge, lastUsed, action}: Props) {
-  const Row = kind === "key" ? "li" : "div";
+  const session = kind === "session";
   return (
-    <Row className="settings-resource-row" data-kind={kind}>
-      <div className="settings-resource-copy security-resource-identity">
-        <span className="settings-resource-icon" aria-hidden="true">{icon}</span>
-        <div className="min-w-0">
-          <div className="security-resource-title"><span>{title}</span>{badge}</div>
-          <p className="security-resource-detail">{detail}</p>
-        </div>
-      </div>
+    <ResourceRow as={session ? "div" : "li"} density={session ? "compact" : "default"} icon={icon} actions={<>
       {lastUsed && <span className="text-eyebrow text-text-dim">{lastUsed}</span>}
       {action}
-    </Row>
+    </>}>
+      <div className="security-resource-title"><span>{title}</span>{badge}</div>
+      <p className={session ? "mt-1.5 text-label text-muted-foreground" : "mt-sm text-label text-muted-foreground"}>{detail}</p>
+    </ResourceRow>
   );
 }

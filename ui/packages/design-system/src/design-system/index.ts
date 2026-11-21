@@ -24,12 +24,14 @@ export {
 export {
   DashboardPanel,
   DashboardPanelHeader,
+  OutputPanel,
   DashboardPanelTitle,
   DashboardPanelDescription,
   DashboardPanelContent,
   dashboardPanelVariants,
   type DashboardPanelProps,
 } from "./DashboardPanel";
+export { ResourceRow } from "./ResourceRow";
 export { MetaGrid, type MetaGridItem, type MetaGridProps } from "./MetaGrid";
 export {
   StatusPill,

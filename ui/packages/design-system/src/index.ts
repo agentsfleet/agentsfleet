@@ -16,6 +16,8 @@ export {
   type CardProps,
   DashboardPanel,
   DashboardPanelHeader,
+  OutputPanel,
+  ResourceRow,
   DashboardPanelTitle,
   DashboardPanelDescription,
   DashboardPanelContent,

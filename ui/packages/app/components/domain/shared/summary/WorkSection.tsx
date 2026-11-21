@@ -4,9 +4,13 @@ import { CurrentWorkSummaryContext } from "./FleetWorkSidebar";
 
 export function WorkSection({title, children, count, attention = false, id}: {id?: string; title: string; children: ReactNode; count?: number; attention?: boolean}) {
   const currentWork = use(CurrentWorkSummaryContext);
-  return <Section asChild className="block gap-0"><section id={id} aria-label={title} className={cn("min-w-0 border-t border-border",
+  return <Section id={id} aria-label={title} className={cn("block min-w-0 gap-0 border-t border-border",
     currentWork ? "pt-md not-last:pb-md summary:pt-lg summary:not-last:pb-lg" : "space-y-md pt-md first:border-0 first:pt-0")}>
-    <h2 className={cn("flex items-center justify-between gap-md text-eyebrow leading-eyebrow font-medium", currentWork && "mb-md", attention ? "text-warning" : "text-text-dim")}>{title}{count === undefined ? null : <Badge className="h-5.5 min-w-5.5 justify-center border-0 bg-muted p-0 text-eyebrow leading-eyebrow text-current">{count}</Badge>}</h2>{children}
-  </section></Section>;
+    <h2 className={cn("flex items-center justify-between gap-md text-eyebrow leading-eyebrow font-medium", currentWork && "mb-md", attention ? "text-warning" : "text-text-dim")}>
+      {title}
+      {count === undefined ? null : <Badge className="h-5.5 min-w-5.5 justify-center border-0 bg-muted p-0 text-eyebrow leading-eyebrow text-current">{count}</Badge>}
+    </h2>
+    {children}
+  </Section>;
 }
 

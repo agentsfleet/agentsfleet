@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import {
   Badge, Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuTrigger, Section, SectionHeader,
+  DropdownMenuTrigger, ResourceRow, Section, SectionHeader,
 } from "@agentsfleet/design-system";
 import { CpuIcon, DotsThreeIcon, KeyIcon } from "@phosphor-icons/react/ssr";
 import { providerLabel } from "@/lib/api/model-library-types";
@@ -88,16 +88,7 @@ function ModelRow({entry, workspaceName, actions}: {entry: TenantModelEntry; wor
   const workspaceId = entry.workspace_id;
   const switchHint = !workspaceId ? "The credential workspace is unavailable" : !entry.has_key ? "A provider key is required" : undefined;
   return (
-    <li aria-label={entry.model_id} className="settings-resource-row">
-      <span className="settings-resource-icon" aria-hidden="true"><CpuIcon size={16} /></span>
-      <div className="settings-resource-copy">
-        <p title={entry.model_id} className="break-words text-label font-medium">{entry.display_name ?? entry.model_id}</p>
-        <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>
-        <p className="model-credential">
-          <KeyIcon size={14} aria-hidden="true" />
-          <span className="break-words">{entry.has_key ? entry.secret_ref : "Key required"} · {workspaceName}</span>
-        </p>
-      </div>
+    <ResourceRow aria-label={entry.model_id} icon={<CpuIcon size={16} />} actions={<>
       {entry.active ? <Active /> : (
         <Button variant="outline" aria-label={`Make active: ${entry.model_id}`} title={switchHint}
           disabled={actions.pending || !workspaceId || !entry.has_key}
@@ -114,6 +105,13 @@ function ModelRow({entry, workspaceName, actions}: {entry: TenantModelEntry; wor
           <DropdownMenuItem disabled={entry.active} onSelect={() => actions.onRemove(entry)}>Remove model</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </li>
+    </>}>
+        <p title={entry.model_id} className="break-words text-label font-medium">{entry.display_name ?? entry.model_id}</p>
+        <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>
+        <p className="model-credential">
+          <KeyIcon size={14} aria-hidden="true" />
+          <span className="break-words">{entry.has_key ? entry.secret_ref : "Key required"} · {workspaceName}</span>
+        </p>
+    </ResourceRow>
   );
 }
