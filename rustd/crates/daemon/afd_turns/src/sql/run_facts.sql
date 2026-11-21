@@ -8,13 +8,12 @@
 -- A steer names no reply, so its conversation is the unaddressed one. With no
 -- live run, any earlier unsettled message waits ahead of it. With one, the
 -- message in the way is assign_inputs.sql's barrier: in that conversation,
--- after the run's own, parked, task-bound or sent by no person. Only the
--- first $7 messages after the run's own are looked at, so the read costs the
--- same however long the backlog is; a barrier past them reads as clear.
+-- after the run's own, parked, task-bound or sent by no person. Every message
+-- between the run's own and the steer is looked at, so a barrier anywhere in
+-- the backlog is found.
 --
 -- $1 fleet · $2 the steer's turn · $3 active run status ·
--- $4 steer producer · $5 machine actor · $6 person actor pattern ·
--- $7 messages to look at
+-- $4 steer producer · $5 machine actor · $6 person actor pattern
 WITH message AS MATERIALIZED (
     SELECT a.thread_id AS fleet_id, a.sequence
     FROM thread.turns a
@@ -49,8 +48,6 @@ SELECT r.run_turn_id,
                       AND a.reply_provider IS NULL AND a.reply_address IS NULL
                       AND a.settled_at IS NULL
                       AND a.sequence > r.head_sequence AND a.sequence < m.sequence
-                    ORDER BY a.sequence
-                    LIMIT $7
                 ) ahead
                 WHERE NOT (ahead.parked_at IS NULL AND ahead.task_id IS NULL
                            AND ahead.producer = $4 AND ahead.actor <> $5

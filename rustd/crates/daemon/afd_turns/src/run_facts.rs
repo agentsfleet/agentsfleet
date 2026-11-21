@@ -9,9 +9,6 @@ use crate::{LiveRun, Producer, RunFacts, Turns, sql};
 /// The context a run-facts read that failed carries.
 const CONTEXT_RUN_FACTS: &str = "read a steer's run facts";
 
-/// How many messages after the run's own the read looks at: a bound on this
-/// read's cost however long the backlog, never on what a run or a person sees.
-const MESSAGES_LOOKED_AT: i64 = 64;
 
 /// The statement's one row.
 #[derive(Debug, sqlx::FromRow)]
@@ -54,7 +51,6 @@ impl Turns {
             .bind(Producer::Steer.as_str())
             .bind(person.machine_actor)
             .bind(person.actor_pattern)
-            .bind(MESSAGES_LOOKED_AT)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUN_FACTS))?;
