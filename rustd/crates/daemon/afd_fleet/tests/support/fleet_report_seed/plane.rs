@@ -91,11 +91,7 @@ impl Fixtures {
             runs: self.runs(),
             gates: self.gates(),
             accounts: Accounts::new(self.database.clone()),
-            biller: Arc::new(LedgerBiller::new(
-                self.database.clone(),
-                Entropy::new(),
-                Arc::new(af_core::clock::SystemClock),
-            )),
+            biller: Arc::new(LedgerBiller::new(self.database.clone())),
             memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),
             vault: afd_vault::Vault::new(self.database.clone(), kek, Entropy::new()),

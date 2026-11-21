@@ -13,14 +13,6 @@
 //! Cost: one lookup per event, ungated fleets included. It is bought on the
 //! path that issues a run — a whole model run — so it does not register.
 //!
-//! # The anomaly counter is reached only on a FIRST encounter
-//!
-//! It is an increment. Re-polling a parked event through it would count one
-//! waiting human as N runaway attempts and eventually stop the fleet for being
-//! patient. The ordering above is what prevents that, which is why
-//! [`Gates::anomaly`] takes no [`RefState`]: by the time it is called, the
-//! question is settled.
-//!
 //! # What the pass never does
 //!
 //! It writes no `thread.turns` row. Every outcome below is a decision the
@@ -90,10 +82,6 @@ pub enum Verdict {
     Await(Waiting),
     /// End the event; a human refused it.
     Refuse(Refused),
-    /// The fleet ran away: one action repeated past an anomaly threshold, and
-    /// the fleet is archived. Archive is terminal, so the event that tripped
-    /// it ends too; nothing would ever run it.
-    Archived,
     /// A datastore would not answer. Nothing was decided and nothing written.
     Unavailable,
 }

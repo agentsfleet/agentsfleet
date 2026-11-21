@@ -20,7 +20,7 @@ const REPORT_STATEMENT: &[u8] = b"WITH cells AS";
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn connection_loss_during_the_report_read_keeps_money_and_retry_intact() {
     let f = Fixture::shared().await;
-    fixture::record(&f, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     let (options, target) = api_target().await;
     let proxy = CutProxy::new(target, REPORT_STATEMENT).await;
@@ -90,7 +90,7 @@ pub(super) fn config_through(options: &PgConnectOptions, addr: SocketAddr) -> Po
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_closed_report_pool_returns_an_unavailable_error_without_changing_the_ledger() {
     let f = Fixture::shared().await;
-    fixture::record(&f, &[Line::setup(&f.tenant, 17)]).await;
+    fixture::seed(&f.admin, &[Line::setup(&f.tenant, 17)]).await;
     let before = fixture::written(&f.admin, &f.tenant).await;
     f.api.close().await;
     let error = f
@@ -100,7 +100,7 @@ async fn a_closed_report_pool_returns_an_unavailable_error_without_changing_the_
         .unwrap_err();
     assert!(error.is_datastore_unavailable());
     assert_eq!(error.code(), error_code::INTERNAL_DB_UNAVAILABLE);
-    assert_eq!(before.ledger, (1, 17, 1));
+    assert_eq!(before.ledger, (1, 17));
     assert_eq!(fixture::written(&f.admin, &f.tenant).await, before);
     f.close().await;
 }

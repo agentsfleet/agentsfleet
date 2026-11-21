@@ -67,14 +67,6 @@ const LIST_LIMIT_DEFAULT: i64 = 100;
 /// first page is what they read and the rest is paging they will not do.
 const RECALL_LIMIT_DEFAULT: i64 = 20;
 
-/// The most rows one page may carry, whatever the caller asks for.
-///
-/// CLAMPED rather than refused, which is
-/// this surface's own vocabulary — the workspace directory answers a 400 for
-/// the same ask, and a client sitting on either would change class if the two
-/// were made to agree.
-const LIMIT_MAX: i64 = 100;
-
 /// Which rows the caller asked for, holding the text they asked with.
 ///
 /// The owned twin of [`View`], and the reason it exists rather than a pair of
@@ -146,7 +138,7 @@ pub(super) struct Read {
     lens: Lens,
     /// Where the page resumes, or the start.
     pub(super) after: Option<Boundary>,
-    /// How many rows to answer with, already clamped.
+    /// How many rows to answer with.
     pub(super) limit: i64,
 }
 
@@ -216,11 +208,10 @@ fn decode_pairs(query: &str) -> Result<Pairs<'_>, Refusal> {
         .collect()
 }
 
-/// The page size asked for, clamped, or the lens's default.
+/// The page size asked for, or the lens's default.
 ///
 /// # Errors
-/// Refuses anything that is not a positive integer. Over the ceiling is NOT
-/// refused — see [`LIMIT_MAX`].
+/// Refuses anything that is not a positive integer.
 fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
     let default = if lens.view().is_recall() {
         RECALL_LIMIT_DEFAULT
@@ -232,7 +223,6 @@ fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
             .parse::<i64>()
             .ok()
             .filter(|asked| *asked >= 1)
-            .map(|asked| asked.min(LIMIT_MAX))
             .ok_or_else(|| Refusal::malformed(DETAIL_LIMIT))
     })
 }

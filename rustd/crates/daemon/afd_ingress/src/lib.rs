@@ -70,7 +70,7 @@ use afd_db::Db;
 use afd_turns::Turns;
 use afd_vault::Vault;
 
-pub use self::app::{Fanout, MAX_FANOUT, replay_id};
+pub use self::app::{Fanout, replay_id};
 pub use self::binding::Binding;
 pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};

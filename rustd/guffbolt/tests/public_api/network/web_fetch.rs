@@ -94,31 +94,6 @@ async fn web_fetch_cuts_a_plain_body_at_max_chars_by_character() {
 }
 
 #[tokio::test]
-async fn web_fetch_reads_at_most_fifty_thousand_chars_when_no_limit_is_named() {
-    let long = "a".repeat(50_001);
-    let hook = Canned::ok(response(200, &long));
-    let tools = web(&hook, &["web_fetch"]);
-
-    let output = dispatch(&tools, "web_fetch", json!({"url": "https://docs.test/"})).await;
-
-    assert!(
-        output
-            .text
-            .ends_with("\n\n[Content truncated at 50000 chars, total 50001 chars]"),
-        "{}",
-        output
-            .text
-            .get(output.text.len().saturating_sub(80)..)
-            .unwrap_or_default()
-    );
-    assert_eq!(
-        output.text.split("\n\n").next().map(str::len),
-        Some(50_000),
-        "the kept text is the first fifty thousand characters"
-    );
-}
-
-#[tokio::test]
 async fn web_fetch_fails_on_a_status_outside_2xx_and_on_the_hooks_refusal() {
     let missing = Canned::ok(response(404, "not here"));
     let refused = Canned::answering(Err(Refused::new(

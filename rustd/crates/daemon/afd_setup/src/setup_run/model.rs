@@ -52,8 +52,8 @@ pub(crate) fn first_slice(clock: RunClock) -> Result<i64> {
         .ok_or_else(|| ErrorKind::Balance.into())
 }
 
-/// The assignment gate: whether `tenant`'s balance, less every line it logged
-/// and the relay has not yet charged, covers `required`.
+/// The assignment gate: whether `tenant`'s balance, every line it logged
+/// already debited, covers `required`.
 ///
 /// Read on the assignment's own transaction from the ledger's tables, never
 /// through a second pooled connection, which would starve the pool under
@@ -66,7 +66,7 @@ pub(crate) async fn gate(
 ) -> Result<()> {
     match afd_billing::ledger::balance(&mut *connection, tenant).await {
         Ok(balance) => {
-            if balance.left().as_i64() < required {
+            if balance.balance.as_i64() < required {
                 return Err(ErrorKind::Balance.into());
             }
             Ok(())

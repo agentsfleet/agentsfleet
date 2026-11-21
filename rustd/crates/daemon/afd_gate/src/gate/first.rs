@@ -16,7 +16,6 @@
 //! those. What bounds a write fleet now is that grant, the fleet's
 //! `budget.daily_nanos`, and `agentsfleet fleet grants revoke`.
 
-use af_core::error_code::{Coded as _, Logged};
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -26,10 +25,7 @@ use crate::gate::park::{Park, Parked};
 use crate::gate::pass::{Check, Verdict, Waiting};
 use crate::gate::route::{RefState, Route, route};
 use crate::gate::store::Gates;
-use crate::gate::{Anomaly, Decision, match_rule};
-
-/// A fleet could not be archived after a gate decided it should be.
-const EVENT_ARCHIVE_FAILED: &str = "gate_archive_failed";
+use crate::gate::{Decision, match_rule};
 
 /// The pass reached an arm its own ordering has already answered.
 const EVENT_ROUTE_UNREACHABLE: &str = "gate_route_unreachable";
@@ -49,18 +45,6 @@ impl Gates {
         let Some(policy) = request.config.gates() else {
             return Verdict::Pass;
         };
-
-        // Reached only on a first encounter — see the module note on why that
-        // matters for an increment.
-        if self.anomaly(
-            request.fleet_id,
-            request.event_type,
-            request.actor,
-            policy.anomaly_rules(),
-        ) == Anomaly::Archive
-        {
-            return self.stop(request).await;
-        }
 
         let context = parse_context(request.request_json);
         let matched = match_rule(policy, request.event_type, request.actor, context.as_ref());
@@ -133,32 +117,6 @@ impl Gates {
             Parked::Awaiting(_) => Verdict::Await(Waiting::Parked),
             Parked::Unavailable => Verdict::Unavailable,
         }
-    }
-
-    /// Archive the fleet the anomaly rule caught.
-    ///
-    /// A failed archive does NOT change the verdict: the gate decided this fleet
-    /// should stop, and reporting that it did not while also admitting the
-    /// event would be the worst of both. The event that ran away ends either
-    /// way, and the next repeat trips the same rule against a fleet still
-    /// active.
-    async fn stop(&self, request: &Check<'_>) -> Verdict {
-        if let Err(fault) = self.archive(request.fleet_id).await {
-            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let fleet = request.fleet_id.as_str();
-            let Logged { error_code, reason } = fault.logged();
-            {
-                let (event, fleet_id, message) = (
-                    &EVENT_ARCHIVE_FAILED,
-                    &fleet,
-                    format_args!(
-                        "the gate archived this fleet and the row would not flip; it stays active"
-                    ),
-                );
-                tracing::error!(message, error_code, event, fleet_id, reason);
-            };
-        }
-        Verdict::Archived
     }
 }
 

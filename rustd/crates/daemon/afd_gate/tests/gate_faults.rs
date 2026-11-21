@@ -2,11 +2,9 @@
 //!
 //! No datastore, deliberately: the pool points at a reserved port and the bus
 //! refuses every publish and subscribe as a disconnected broker does, so every
-//! read and write fails. One kill-rule check walks two failure arms in order — the lookup
-//! that could not be read and the archive that could not be written — and each
-//! says why in a `reason` an operator can read without the registry code, which
-//! the line's own fields already carry, or a captured backtrace. The anomaly
-//! brake counts in memory and cannot fail to answer.
+//! read and write fails. Each failure says why in a `reason` an operator can
+//! read without the registry code, which the line's own fields already carry,
+//! or a captured backtrace.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -22,7 +20,7 @@ use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
 use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Verdict, Waiting};
 
-use self::fixture::{RUNAWAY_AT_TWO, config_gates};
+use self::fixture::config_gates;
 
 /// How long a parked question would wait for its answer.
 const PARK_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
@@ -32,9 +30,6 @@ const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee1";
 
 /// The lookup that could not tell whether the event already holds a gate.
 const EVENT_LOOKUP_UNREADABLE: &str = "gate_ref_lookup_failed";
-
-/// The archive that could not be written.
-const EVENT_ARCHIVE_FAILED: &str = "gate_archive_failed";
 
 /// Gates over a pool and a bus that both refuse.
 fn unreachable_gates() -> Gates {
@@ -57,37 +52,6 @@ fn told_reason(capture: &Capture, event: &str) -> String {
     );
     logged.assert_uncoded_reason();
     logged.field("reason").unwrap_or_default().to_owned()
-}
-
-#[tokio::test]
-async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
-    let gates = unreachable_gates();
-    let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
-    let event = mint_id();
-    let config = config_gates(RUNAWAY_AT_TWO);
-
-    let check = Check {
-        fleet_id: &fleet,
-        workspace_id: &fleet,
-        turn_id: &event,
-        event_type: "chat",
-        actor: "user:fixture",
-        request_json: "{}",
-        config: &config,
-    };
-    // The first repeat only counts; the capture opens for the second, which
-    // trips the rule, so each failure below is logged exactly once.
-    gates.check(check, jiff::Timestamp::UNIX_EPOCH).await;
-    let capture = Capture::install();
-    let verdict = gates.check(check, jiff::Timestamp::UNIX_EPOCH).await;
-
-    assert_eq!(
-        verdict,
-        Verdict::Archived,
-        "a failed archive does not change what the gate decided"
-    );
-    told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
-    told_reason(&capture, EVENT_ARCHIVE_FAILED);
 }
 
 /// A rule that asks a human about every chat.

@@ -1,6 +1,6 @@
 //! A draft run's renewal: the shared extension under the host lock, its
 //! usage lines logged in the same transaction, and the payer's funds checked
-//! first. Nothing is reserved; only the billing relay moves money.
+//! first. Nothing is reserved; logging a line is what moves money.
 //!
 //! The fleet's renewal batch reads fleet rows, so a session sends a draft's
 //! run here, one statement set per run, beside its fleet batch.
@@ -148,8 +148,8 @@ impl RunService {
         })
     }
 
-    /// Logs a draft run's priced lines in the caller's transaction; the
-    /// relay settles them.
+    /// Logs a draft run's priced lines in the caller's transaction, which
+    /// charges them.
     pub(super) async fn log_draft(
         &self,
         connection: &mut PgConnection,
@@ -163,8 +163,8 @@ impl RunService {
         Ok(())
     }
 
-    /// Whether the payer can fund one more slice of `run`: the balance, less
-    /// every logged line the relay has not charged, against the floor one
+    /// Whether the payer can fund one more slice of `run`: the balance, every
+    /// logged line already debited, against the floor one
     /// renewal may spend. A check only. A payer with no wallet admits the
     /// renewal, as a fleet's does. So does a price or a balance that cannot be
     /// read, which says nothing about whether it covers the run, and is logged.

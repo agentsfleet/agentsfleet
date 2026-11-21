@@ -1,4 +1,4 @@
-//! A balance past zero: the debt a settlement leaves, the checks it refuses,
+//! A balance past zero: the debt a logged line leaves, the checks it refuses,
 //! the top-up that repays it, parallel work that spends past the balance
 //! before its next check, and a payer with no wallet to debit at all.
 #![expect(
@@ -6,23 +6,38 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_crypto::entropy::Entropy;
-use af_observability::{Analytics, Telemetry};
 use afd_billing::Nanos;
 use afd_billing::biller::conformance;
-use afd_billing::biller::{Account, Ask, Biller, Funds, Observed, WorkKey};
-use afd_billing::ledger::{LedgerBiller, log_lines, unsettled_work};
+use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
+use afd_billing::ledger::LedgerBiller;
 use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 
-use crate::biller::{LINE, funded_lane, ledger, rated, settlement};
+use crate::biller::{LINE, funded_lane, ledger, log, rated, settlement};
 use crate::lane::Lane;
 
+/// A line half again past the balance: the wallet takes the whole charge and
+/// owes the rest, and the payer is short of every check until a grant repays it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_settlement_past_the_balance_leaves_a_debt() {
+async fn a_line_past_the_balance_leaves_a_debt() {
     let (lane, payer) = funded_lane().await;
-    conformance::a_short_settlement_leaves_a_debt(&ledger(&lane), payer).await;
+    let past = conformance::BALANCE.as_i64() + conformance::BALANCE.as_i64() / 2;
+    let mut costly = rated(0);
+    costly.charged = Nanos::from_i64(past);
+    log(
+        &lane,
+        &settlement(&lane, &payer, &WorkKey::FleetRun(mint_id()), vec![costly]),
+    )
+    .await;
+    let biller = ledger(&lane);
+    let owed = biller.balance(&payer).await.expect("answers");
+    assert_eq!(
+        owed.balance.as_i64(),
+        conformance::BALANCE.as_i64() - past,
+        "the wallet owes what it could not cover"
+    );
+    conformance::a_payer_in_debt_is_short(&biller, payer).await;
 }
 
 /// Raises the lane's wallet by `nanos`, as a credit grant would.
@@ -57,34 +72,27 @@ fn ask(payer: &Account, next: Nanos) -> Ask {
     }
 }
 
-/// Settles one line that drains the balance to zero, then one that takes it
-/// a line below.
+/// Logs one line that drains the balance to zero, then one that takes it a
+/// line below.
 async fn drain_into_debt(biller: &dyn Biller, lane: &Lane, payer: &Account) {
     let work = WorkKey::FleetRun(mint_id());
-    biller
-        .settle(&settlement(lane, payer, &work, vec![rated(0)]))
-        .await
-        .expect("the first line drains the balance");
+    log(lane, &settlement(lane, payer, &work, vec![rated(0)])).await;
     let drained = biller.balance(payer).await.expect("answers");
     assert_eq!(drained.balance, Nanos::ZERO, "drained to exactly zero");
     assert!(drained.exhausted_at.is_some(), "a drained balance ran out");
 
-    let receipt = biller
-        .settle(&settlement(lane, payer, &work, vec![rated(1)]))
-        .await
-        .expect("a line past the balance settles");
-    assert_eq!(receipt.taken, LINE, "the debit takes the whole line");
+    log(lane, &settlement(lane, payer, &work, vec![rated(1)])).await;
     let owed = biller.balance(payer).await.expect("answers");
     assert_eq!(
         owed.balance.as_i64(),
         -LINE.as_i64(),
-        "the balance owes a line"
+        "the debit takes the whole line, and the balance owes it"
     );
     assert!(owed.exhausted_at.is_some(), "a debt stays exhausted");
 }
 
-/// A balance that settles past zero owes the rest, covers no check while it
-/// does, and a top-up repays the debt before any of it is spendable.
+/// A balance that is debited past zero owes the rest, covers no check while
+/// it does, and a top-up repays the debt before any of it is spendable.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_debt_refuses_checks_until_a_top_up_repays_it() {
@@ -117,110 +125,67 @@ async fn a_debt_refuses_checks_until_a_top_up_repays_it() {
     );
 }
 
-/// `exhausted_at` follows the balance through drain, top-up and drain again,
-/// and each crossing to zero or below is reported once.
+/// `exhausted_at` follows the balance through drain, top-up and drain again.
 ///
 /// The debit is the one writer of the flag on the money path: it sets it when
-/// a settlement empties the balance and clears it when one leaves the balance
+/// a logged line empties the balance and clears it when one leaves the balance
 /// positive, so a tenant topped up after running dry reads as exhausted only
-/// until its next charge lands with credit to spare. A debit while the balance
-/// stays exhausted crosses nothing and reports nothing.
+/// until its next charge lands with credit to spare.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn exhaustion_follows_the_balance_through_a_top_up() {
     let (lane, payer) = one_line_lane().await;
-    let (analytics, recorded) = Analytics::recording();
-    let biller = Observed::new(ledger(&lane), analytics);
+    let biller = ledger(&lane);
     let work = WorkKey::FleetRun(mint_id());
-    let exhausted = |balance: afd_billing::biller::Balance| balance.exhausted_at.is_some();
-    let settle = async |lines| {
+    let exhausted = async || {
         biller
-            .settle(&settlement(&lane, &payer, &work, lines))
+            .balance(&payer)
             .await
+            .expect("answers")
+            .exhausted_at
+            .is_some()
     };
+    let charge = async |lines| log(&lane, &settlement(&lane, &payer, &work, lines)).await;
 
-    let drained = settle(vec![rated(0)])
-        .await
-        .expect("the first line drains the balance");
+    charge(vec![rated(0)]).await;
     assert!(
-        drained.exhausted,
-        "the debit that empties the balance crosses"
+        exhausted().await,
+        "the debit that empties the balance sets it"
     );
-    assert!(exhausted(biller.balance(&payer).await.expect("answers")));
-
-    let deeper = settle(vec![rated(1)])
-        .await
-        .expect("a line past zero settles");
-    assert!(
-        !deeper.exhausted,
-        "a debit while already exhausted crosses nothing"
-    );
+    charge(vec![rated(1)]).await;
+    assert!(exhausted().await, "a debit while exhausted keeps it");
 
     top_up(&lane, LINE.as_i64() * 3).await;
-    let refilled = settle(vec![rated(2)])
-        .await
-        .expect("a line after the top-up settles");
-    assert!(!refilled.exhausted);
+    charge(vec![rated(2)]).await;
     assert!(
-        !exhausted(biller.balance(&payer).await.expect("answers")),
+        !exhausted().await,
         "a charge that leaves credit clears the flag"
     );
 
-    let again = settle(vec![rated(3), rated(4)])
-        .await
-        .expect("draining again settles");
-    assert!(again.exhausted, "running dry again crosses again");
-    assert!(
-        exhausted(biller.balance(&payer).await.expect("answers")),
-        "running dry again sets it again"
-    );
-
-    let reported = Telemetry::WalletExhausted {
-        tenant_id: lane.tenant.as_str().to_owned(),
-    };
-    assert_eq!(recorded.events(), vec![reported.clone(), reported]);
+    charge(vec![rated(3), rated(4)]).await;
+    assert!(exhausted().await, "running dry again sets it again");
 }
 
-/// Usage that happened settles even for a tenant with no wallet row: there
-/// is nothing to debit, so nothing is taken, and the line never sits
-/// unsettled in front of the sweeper's oldest-first scan.
+/// Usage that happened is logged even for a tenant with no wallet row: there
+/// is nothing to debit, so nothing is taken, and the line is still recorded.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
+async fn a_tenant_without_a_wallet_logs_with_nothing_taken() {
     let lane = Lane::create().await;
     let payer = Account {
         tenant: lane.tenant.clone(),
         workspace: lane.workspace.clone(),
     };
-    let biller = ledger(&lane);
     let work = WorkKey::FleetRun(mint_id());
-
-    let capture = af_core::test_util::trace::Capture::install();
-    let receipt = biller
-        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
-        .await
-        .expect("a missing wallet still settles");
-    let warned = capture.only("billing_settled_without_wallet");
-    assert_eq!(warned.field("tenant_id"), Some(payer.tenant.as_str()));
-    assert_eq!(
-        warned.field("work_type"),
-        Some(afd_billing::sql::work::FLEET_RUN)
-    );
-    assert_eq!(warned.field("work_id"), Some(work.id().as_str()));
-    assert_eq!(
-        warned.field("charged_nanos"),
-        Some(LINE.as_i64().to_string().as_str())
-    );
-    drop(capture);
-    assert_eq!(receipt.settled_lines, 1);
-    assert_eq!(receipt.charged, LINE, "the line's cost is still recorded");
-    assert_eq!(receipt.taken, Nanos::ZERO, "no wallet, nothing debited");
-
-    let again = biller
-        .settle(&settlement(&lane, &payer, &work, vec![rated(0)]))
-        .await
-        .expect("a retry answers");
-    assert_eq!(again.settled_lines, 0, "the line is settled once");
+    let logged = log(&lane, &settlement(&lane, &payer, &work, vec![rated(0)])).await;
+    assert_eq!(logged, LINE, "the line's cost is still recorded");
+    let wallets: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM billing.wallets WHERE tenant_id = $1")
+            .bind(&lane.tenant)
+            .fetch_one(&mut *lane.pool.acquire().await.expect("the lane answers"))
+            .await
+            .expect("counts wallets");
+    assert_eq!(wallets, 0, "no wallet is opened to take the debit");
 }
 
 /// Ten runs a payer starts at once, on a balance that funds three slices.
@@ -246,25 +211,11 @@ async fn start_together(biller: &LedgerBiller, payer: &Account, works: &[WorkKey
     .await
 }
 
-/// Each work logs the one slice it spent before its next check.
-async fn spend_a_slice_each(lane: &Lane, payer: &Account, works: &[WorkKey]) {
-    for work in works {
-        log_lines(
-            &mut *lane.pool.acquire().await.expect("the lane answers"),
-            &Entropy::new(),
-            Timestamp::now(),
-            &settlement(lane, payer, work, vec![rated(0)]),
-        )
-        .await
-        .expect("each run logs the slice it spent");
-    }
-}
-
 /// Ten runs start at the same moment against a balance that funds three of
 /// their slices. Nothing is set aside, so every start check is covered. Each
-/// run then spends one slice before its next check: the relay charges them
-/// all, the balance ends seven slices below zero, and every next check is
-/// refused until a grant repays the debt.
+/// run then logs one slice before its next check, which debits it: the
+/// balance ends seven slices below zero, and every next check is refused
+/// until a grant repays the debt.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
@@ -285,21 +236,15 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
         starts.iter().all(|funds| *funds == Funds::Covered),
         "nothing is set aside, so every run starts: {starts:?}"
     );
-    spend_a_slice_each(&lane, &payer, &works).await;
-    let first = works.first().expect("ten runs");
-    let before_relay = biller.check(&slice(&payer, first)).await.expect("answers");
-    assert!(
-        matches!(before_relay, Funds::Short { .. }),
-        "the logged slices count before the relay charges them: {before_relay:?}"
-    );
-
-    settle_logged(&lane, &biller, &works).await;
+    for work in &works {
+        log(&lane, &settlement(&lane, &payer, work, vec![rated(0)])).await;
+    }
     let owed = biller.balance(&payer).await.expect("answers");
     let spent = LINE.as_i64() * i64::try_from(PARALLEL_RUNS).expect("ten fits");
     assert_eq!(
         owed.balance.as_i64(),
         start - spent,
-        "every slice is charged once"
+        "every slice is charged once, as it is logged"
     );
     for work in &works {
         assert_eq!(
@@ -312,62 +257,4 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
         );
     }
     lane.cleanup().await;
-}
-
-/// Settlements racing past zero report the crossing once: the debits queue on
-/// the wallet row, so exactly one sees a funded balance become exhausted.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn racing_settlements_across_zero_report_exhaustion_once() {
-    const RACERS: usize = 6;
-    let lane = Lane::create().await;
-    lane.wallet(LINE.as_i64() * 3, None, Timestamp::now()).await;
-    let payer = Account {
-        tenant: lane.tenant.clone(),
-        workspace: lane.workspace.clone(),
-    };
-    let (analytics, recorded) = Analytics::recording();
-    let biller = std::sync::Arc::new(Observed::new(ledger(&lane), analytics));
-    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RACERS));
-    let mut racing = tokio::task::JoinSet::new();
-    for _ in 0..RACERS {
-        let work = WorkKey::FleetRun(mint_id());
-        let settlement = settlement(&lane, &payer, &work, vec![rated(0)]);
-        let (biller, barrier) = (
-            std::sync::Arc::clone(&biller),
-            std::sync::Arc::clone(&barrier),
-        );
-        racing.spawn(async move {
-            barrier.wait().await;
-            biller.settle(&settlement).await
-        });
-    }
-    let mut crossed = 0;
-    while let Some(joined) = racing.join_next().await {
-        if joined
-            .expect("the settlement joins")
-            .expect("the settlement answers")
-            .exhausted
-        {
-            crossed += 1;
-        }
-    }
-    assert_eq!(crossed, 1, "one debit crosses zero");
-    assert_eq!(recorded.events().len(), 1, "the crossing is reported once");
-}
-
-/// Settles every logged slice of `works` through `biller`, the way a relay
-/// pass once did; no relay runs any more (Indy, Nov 21, 2026).
-async fn settle_logged(lane: &Lane, biller: &LedgerBiller, works: &[WorkKey]) {
-    for work in works {
-        let settlements = unsettled_work(
-            &mut *lane.pool.acquire().await.expect("the lane answers"),
-            work,
-        )
-        .await
-        .expect("the logged slice reads");
-        for settlement in &settlements {
-            biller.settle(settlement).await.expect("the slice settles");
-        }
-    }
 }

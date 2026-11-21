@@ -46,7 +46,6 @@ mod gates_read;
 mod history;
 mod lapses;
 mod restart;
-mod runaway;
 mod seed;
 mod slack;
 mod stops;

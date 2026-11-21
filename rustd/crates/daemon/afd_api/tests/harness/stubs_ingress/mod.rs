@@ -91,12 +91,6 @@ pub(crate) struct Scripted {
     installation: Option<Uuid7>,
     /// The fleets [`WebhookIngress::subscribers`] fans out to.
     subscribers: Vec<Binding>,
-    /// A matched count above the ceiling, when the test is about the ceiling.
-    ///
-    /// Separate from [`Self::subscribers`] because `Fanout::TooMany` carries a
-    /// COUNT and no bindings — building a hundred and one real bindings to
-    /// reach a branch that discards them would be arranging the wrong thing.
-    over_ceiling: Option<usize>,
     /// Every append, in the order the route made them.
     log: Mutex<Vec<Recorded>>,
     /// The source each binding read named, in order — `None` for the routes
@@ -145,13 +139,6 @@ impl Scripted {
     #[must_use]
     pub(crate) fn subscribed(mut self, fleets: Vec<Binding>) -> Self {
         self.subscribers = fleets;
-        self
-    }
-
-    /// A matched set larger than one delivery may wake.
-    #[must_use]
-    pub(crate) const fn matching(mut self, count: usize) -> Self {
-        self.over_ceiling = Some(count);
         self
     }
 

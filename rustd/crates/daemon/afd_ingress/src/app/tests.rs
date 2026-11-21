@@ -19,7 +19,7 @@ use af_core::id::Uuid7;
 use af_core::money::NANOS_PER_USD;
 use afd_fleet_lifecycle::FleetStatus;
 
-use super::{Fanout, MAX_FANOUT, fanout, replay_id};
+use super::{Fanout, fanout, replay_id};
 use crate::binding::Binding;
 
 /// The provider whose App ingress these rules belong to.
@@ -137,23 +137,5 @@ fn one_subscriber_fans_out() {
     assert!(
         matches!(fanout(subscribers(1)), Fanout::To(ref fleets) if fleets.len() == 1),
         "a single match is a delivery to make, carrying exactly that fleet"
-    );
-}
-
-/// The ceiling is inclusive, and the boundary is where a bound gets it wrong.
-#[test]
-fn the_ceiling_admits_exactly_its_own_count_and_refuses_one_more() {
-    let at_the_ceiling = fanout(subscribers(MAX_FANOUT));
-    let past_it = fanout(subscribers(MAX_FANOUT + 1));
-
-    assert!(
-        matches!(at_the_ceiling, Fanout::To(ref fleets) if fleets.len() == MAX_FANOUT),
-        "a workspace wired to exactly the ceiling is wired legally and its \
-         delivery must land"
-    );
-    assert!(
-        matches!(past_it, Fanout::TooMany(count) if count == MAX_FANOUT + 1),
-        "one past the ceiling is refused whole, never truncated — waking the \
-         first hundred of a hundred and one silently picks whose fleet runs"
     );
 }

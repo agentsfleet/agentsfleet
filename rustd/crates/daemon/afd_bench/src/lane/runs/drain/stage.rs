@@ -144,11 +144,7 @@ pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunSe
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench
         // lane reaches neither, so the bare ledger is the same money path.
-        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
-            database.clone(),
-            Entropy::new(),
-            Arc::new(af_core::clock::SystemClock),
-        )),
+        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone())),
         memories: Memories::new(database.clone(), Entropy::new()),
         providers: Providers::new(database.clone(), Arc::clone(kek), Entropy::new()),
         vault: Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),

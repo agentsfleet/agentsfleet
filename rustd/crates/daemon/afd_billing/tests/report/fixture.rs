@@ -1,11 +1,8 @@
-//! Seeds unsettled ledger lines and settles them through the production biller,
-//! so every rollup row a report reads was written by the settle transaction.
+//! Seeds ledger lines through the usage log's own insert, so every rollup row
+//! and wallet debit a report test reads was written by the production triggers.
 
 use af_core::id::Uuid7;
 use af_wire::usage::LineKind;
-use afd_billing::biller::{Biller as _, Receipt, Settlement, WorkKey};
-use afd_billing::ledger::{self, LedgerBiller};
-use afd_billing::price::RatedLine;
 use afd_billing::report::{Aggregate, Filter, Report, Request, Window, dimension};
 use afd_billing::sql::{posture, work};
 use afd_billing::tenant::Billing;
@@ -13,9 +10,7 @@ use afd_db::test_util::{TenantSeed, TestDatabase, WalletSeed, mint_id};
 use afd_db::{Db, DbRole};
 use jiff::Timestamp;
 
-pub(super) use super::rollup::{
-    DailyRow, RunRow, Written, ledger_daily, ledger_runs, runs_daily, usage_daily, written,
-};
+pub(super) use super::rollup::{ledger_daily, ledger_runs, runs_daily, usage_daily, written};
 
 pub(super) const MODEL_A: &str = "report-model-a";
 pub(super) const MODEL_B: &str = "report-model-b";
@@ -28,12 +23,13 @@ pub(super) const LATER: &str = "2026-10-25T12:02:00Z";
 pub(super) const INPUT: i64 = 23;
 pub(super) const OUTPUT: i64 = 7;
 pub(super) const RUNTIME: i64 = 31;
-/// What each fixture wallet opens with; settlements debit it.
+/// What each fixture wallet opens with; every logged line debits it.
 pub(super) const BALANCE: i64 = 1_000_000_000;
 
-/// Writes lines as a work's own transaction logs them: unsettled. A fleet line
-/// names its fleet and turn; a setup line names no fleet, the draft message
-/// its run answered as its turn, and the run as its `run_id`.
+/// Writes lines as a work's own statement logs them, a line already logged
+/// left as it is. A fleet line names its fleet and turn; a setup line names no
+/// fleet, the draft message its run answered as its turn, and the run as its
+/// `run_id`. Only a runtime slice carries run time, as in production.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
     id, work_type, work_id, seq, kind, tenant_id, workspace_id,
@@ -41,24 +37,25 @@ INSERT INTO billing.usage_lines (
     requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
-    settled_at, created_at, updated_at
+    created_at, updated_at
 )
 SELECT id, work_kind, work_id, seq, kind, tenant, tenant,
        fleet, name, turn, CASE WHEN fleet IS NULL THEN work_id END,
-       model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16, $17,
-       unpriced, money, NULL, at::timestamptz, at::timestamptz
+       model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16,
+       CASE WHEN kind = $18 THEN $17 ELSE 0 END,
+       unpriced, money, at::timestamptz, at::timestamptz
   FROM unnest($1, $2::text[], $3, $4::bigint[], $5::text[],
               $6, $7, $8::text[], $9::text[], $10::text[],
               $11::text[], $12::bigint[], $13::bigint[], $14)
     AS source(id, work_kind, work_id, seq, kind, tenant, fleet, name, model, posture, at, money,
               unpriced, turn)
+ON CONFLICT (work_type, work_id, kind, seq) DO NOTHING
 ";
 
 pub(super) struct Fixture {
     pub(super) admin: Db,
     pub(super) api: Db,
     pub(super) billing: Billing,
-    pub(super) biller: LedgerBiller,
     pub(super) tenant: Uuid7,
     pub(super) foreign: Uuid7,
     pub(super) fleet: Uuid7,
@@ -75,7 +72,6 @@ impl Fixture {
         let api = database.open(DbRole::Api, &[]).await;
         let fixture = Self {
             billing: Billing::new(api.clone()),
-            biller: LedgerBiller::on_system_clock(api.clone()),
             admin,
             api,
             tenant: id(),
@@ -151,7 +147,7 @@ impl Line {
     }
 
     /// The first model call of a new setup run, answering a draft message of
-    /// its own, so the sweep settles it as the setup run it is.
+    /// its own.
     pub(super) fn setup(tenant: &Uuid7, money: i64) -> Self {
         let mut line = Self::runtime(tenant, &id(), money);
         line.work_type = work::SETUP_RUN;
@@ -171,14 +167,6 @@ impl Line {
             sequence,
             money,
             ..self.clone()
-        }
-    }
-
-    pub(super) fn work(&self) -> WorkKey {
-        if self.work_type == work::FLEET_RUN {
-            WorkKey::FleetRun(self.work_id.clone())
-        } else {
-            WorkKey::SetupRun(self.work_id.clone())
         }
     }
 }
@@ -223,7 +211,7 @@ pub(super) fn group<'a>(report: &'a Report, dimension: i32, key: Option<&str>) -
     found.unwrap()
 }
 
-/// Logs `lines` unsettled, as the work's own transaction does.
+/// Logs `lines` as the work's own statement does, which charges each new one.
 pub(super) async fn seed(db: &Db, lines: &[Line]) {
     let column = |field: fn(&Line) -> String| lines.iter().map(field).collect::<Vec<_>>();
     sqlx::query(INSERT_LINES)
@@ -269,74 +257,23 @@ pub(super) async fn seed(db: &Db, lines: &[Line]) {
         .bind(INPUT)
         .bind(OUTPUT)
         .bind(RUNTIME)
+        .bind(LineKind::Runtime.as_str())
         .execute(&mut *db.acquire().await.unwrap())
         .await
         .unwrap();
 }
 
-/// `work`'s unsettled lines as the relay groups them for the biller.
-pub(super) async fn pending(db: &Db, work: &WorkKey) -> Vec<Settlement> {
-    ledger::unsettled_work(&mut *db.acquire().await.unwrap(), work)
-        .await
-        .unwrap()
-}
-
-/// Settles every unsettled line of `work` through the production biller.
-/// Answers the lines settled and the nanos charged, summed over its groups.
-pub(super) async fn settle(biller: &LedgerBiller, db: &Db, work: &WorkKey) -> (usize, i64) {
-    let mut total = (0, 0);
-    for settlement in pending(db, work).await {
-        let receipt: Receipt = biller.settle(&settlement).await.unwrap();
-        total.0 += receipt.settled_lines;
-        total.1 += receipt.charged.as_i64();
-    }
-    total
-}
-
-/// Settles only the unsettled lines of `work` that `keep` selects: one relay
-/// batch of a work whose other lines a later batch settles.
-pub(super) async fn settle_only(
-    biller: &LedgerBiller,
-    db: &Db,
-    work: &WorkKey,
-    keep: impl Fn(&RatedLine) -> bool,
-) -> (usize, i64) {
-    let mut total = (0, 0);
-    for mut settlement in pending(db, work).await {
-        settlement.lines.retain(&keep);
-        if settlement.lines.is_empty() {
-            continue;
-        }
-        let receipt = biller.settle(&settlement).await.unwrap();
-        total.0 += receipt.settled_lines;
-        total.1 += receipt.charged.as_i64();
-    }
-    total
-}
-
-/// Whether `rated` is `line`, by the key settlement matches on.
-pub(super) fn is(rated: &RatedLine, line: &Line) -> bool {
-    rated.usage.kind == line.kind && i64::from(rated.usage.seq) == line.sequence
-}
-
-/// Seeds `lines` and settles each of their works, as the relay would.
-pub(super) async fn record(f: &Fixture, lines: &[Line]) {
-    seed(&f.admin, lines).await;
-    let mut works: Vec<WorkKey> = Vec::new();
-    for work in lines.iter().map(Line::work) {
-        if !works.contains(&work) {
-            works.push(work);
-        }
-    }
-    for work in works {
-        settle(&f.biller, &f.admin, &work).await;
-    }
-}
-
-/// Includes pending rows, so a report that mutates money or settlement fails the check.
-pub(super) async fn ledger(db: &Db, tenant: &Uuid7) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint, COUNT(settled_at)::bigint FROM billing.usage_lines WHERE tenant_id=$1")
-        .bind(tenant).fetch_one(&mut *db.acquire().await.unwrap()).await.unwrap()
+/// Every line `tenant` logged: how many, and what they cost. A report that
+/// moved money or wrote a line would change it.
+pub(super) async fn ledger(db: &Db, tenant: &Uuid7) -> (i64, i64) {
+    sqlx::query_as(
+        "SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos), 0)::bigint \
+         FROM billing.usage_lines WHERE tenant_id = $1",
+    )
+    .bind(tenant)
+    .fetch_one(&mut *db.acquire().await.unwrap())
+    .await
+    .unwrap()
 }
 
 pub(super) async fn balance(db: &Db, tenant: &Uuid7) -> i64 {

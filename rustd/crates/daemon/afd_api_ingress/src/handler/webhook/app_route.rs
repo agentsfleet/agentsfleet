@@ -74,9 +74,6 @@ const EVENT_PING: &str = "ping";
 /// The refusal a path naming no served provider earns.
 const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown App ingress provider";
 
-/// The refusal a delivery matching more fleets than the ceiling earns.
-const DETAIL_TOO_MANY: &str = "This delivery matches more fleets than one event may wake.";
-
 /// What a `ping` is answered with.
 const STATUS_PONG: &str = "pong";
 
@@ -237,15 +234,6 @@ async fn route<D: IngressPlane>(
                 error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str(),
             ));
         }
-        // Refused rather than truncated. Waking the first hundred of a hundred
-        // and one is a silent, order-dependent choice about whose fleet runs,
-        // and the operator who wired it that way is the one who has to know.
-        Fanout::TooMany(_matched) => {
-            return Err(Refusal::coded(
-                error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND,
-                DETAIL_TOO_MANY,
-            ));
-        }
     };
 
     fan_out(services, &fleets, &digest, &body).await
@@ -253,10 +241,9 @@ async fn route<D: IngressPlane>(
 
 /// Appends the delivery once per subscribed fleet.
 ///
-/// Sequential rather than concurrent: the fan-out is bounded at
-/// [`afd_ingress::MAX_FANOUT`] and each append is one round trip, so the
-/// latency this saves is not worth a hundred simultaneous claims against one
-/// connection pool on a public endpoint.
+/// Sequential rather than concurrent: each append is one round trip, and
+/// simultaneous claims against one connection pool on a public endpoint cost
+/// more than the latency they would save.
 ///
 /// A single failed append fails the whole delivery. That is deliberate and it
 /// is what makes a REDELIVERY safe: the claim is per fleet, so the fleets that

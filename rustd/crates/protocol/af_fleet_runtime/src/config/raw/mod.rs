@@ -51,33 +51,19 @@ mod predicate;
 mod trigger;
 
 pub(crate) use self::document::{Document, Runtime};
-pub use self::gates::{Access, Pattern};
-pub(crate) use self::gates::{AnomalyRule, GateRule, Gates};
+pub use self::gates::Access;
+pub(crate) use self::gates::{GateRule, Gates};
 pub(crate) use self::policy::{Budget, Context, Knob, Network};
 pub(crate) use self::trigger::{Trigger, Verifier};
 
-/// Most events one trigger may name.
-const MAX_EVENTS: usize = 16;
 /// Longest one event name may be.
 const MAX_EVENT_LEN: usize = 64;
-/// Most repositories one list may name.
-const MAX_REPOSITORIES: usize = 64;
 /// Longest one repository name may be.
 const MAX_REPOSITORY_LEN: usize = 255;
-/// Most tools one fleet may declare.
-///
-/// `tools` and `credentials` are both stored and both re-read by the fleet
-/// page, so leaving either unbounded would be a persistence-amplification
-/// channel with no gate in front of it.
-const MAX_TOOLS: usize = 128;
 /// Longest one tool name may be.
 const MAX_TOOL_LEN: usize = 128;
-/// Most credentials one fleet may declare.
-const MAX_CREDENTIALS: usize = 64;
 /// Longest one credential reference may be.
 const MAX_CREDENTIAL_LEN: usize = 128;
-/// Most hosts an egress allow-list may name.
-const MAX_ALLOW_ENTRIES: usize = 64;
 /// Longest one host or path may be.
 const MAX_ALLOW_LEN: usize = 255;
 /// Longest a base branch may be.

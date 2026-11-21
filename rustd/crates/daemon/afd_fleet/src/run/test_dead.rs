@@ -76,11 +76,7 @@ pub(crate) fn plane() -> RunService {
 
 /// The built-in biller over the dead pool.
 pub(crate) fn biller() -> afd_billing::ledger::LedgerBiller {
-    afd_billing::ledger::LedgerBiller::new(
-        database(),
-        Entropy::new(),
-        Arc::new(af_core::clock::SystemClock),
-    )
+    afd_billing::ledger::LedgerBiller::new(database())
 }
 
 /// A fixed identifier, distinct per `seed`.

@@ -8,7 +8,7 @@ use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 
-use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, bus, config, config_gates};
+use self::fixture::{Fixture, NOW, bus, config, config_gates};
 
 /// The rule a gate rules fleet is parked by, and the only one this suite parks on.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","gate_kind":"deploy","blast_radius":"production"}]}"#;
@@ -149,7 +149,7 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route() {
+async fn an_authored_rule_parks_its_first_encounter() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
@@ -160,16 +160,6 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
     assert_eq!(
         gates.check(fixture.check(&mint_id(), &approval), NOW).await,
         Verdict::Await(Waiting::Parked)
-    );
-
-    let anomaly = config_gates(RUNAWAY_AT_TWO);
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Pass
-    );
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Archived
     );
 
     fixture.cleanup().await;
@@ -194,26 +184,5 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
         Verdict::Unavailable,
         "a gate with no durable identity cannot release the event"
     );
-    fixture.cleanup().await;
-}
-
-/// A runaway trip archives the fleet: archive is terminal, so nothing returns
-/// it to `active`, and a runaway cannot restart itself. It is the only way the
-/// gate archives a fleet; a matching rule only ever asks a person.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn gate_trip_archives_the_fleet() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
-    let archived = afd_fleet_lifecycle::FleetStatus::Archived.as_str();
-
-    let anomaly = config_gates(RUNAWAY_AT_TWO);
-    gates.check(fixture.check(&mint_id(), &anomaly), NOW).await;
-    assert_eq!(
-        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
-        Verdict::Archived
-    );
-    assert_eq!(fixture.status().await, archived, "a runaway trip archives");
     fixture.cleanup().await;
 }

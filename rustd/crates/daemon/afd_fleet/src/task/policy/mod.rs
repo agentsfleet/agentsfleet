@@ -5,7 +5,6 @@ mod interpretation;
 
 pub use defaults::TaskDefaults;
 
-use af_fleet_runtime::config::decision::{MAX_COMPLETION_STATEMENTS, MAX_QUESTION_TEXT_BYTES};
 use af_wire::task::TaskLimits;
 use garde::Validate;
 use serde::Deserialize;
@@ -31,10 +30,10 @@ pub struct TaskSettings {
     #[garde(range(min = 1))]
     pub max_title_bytes: usize,
     /// Completion statements frozen with a new objective's accepted setup.
-    #[garde(range(min = 1, max = MAX_COMPLETION_STATEMENTS))]
+    #[garde(range(min = 1))]
     pub max_completion_questions: usize,
     /// UTF-8 bytes in each new objective's completion question text.
-    #[garde(range(min = 1, max = MAX_QUESTION_TEXT_BYTES))]
+    #[garde(range(min = 1))]
     pub max_question_text_bytes: usize,
     /// Bytes in the authored question and its criteria together.
     #[garde(range(min = 1))]
@@ -52,8 +51,8 @@ impl Default for TaskSettings {
             max_actions_per_message: usize::MAX,
             max_objective_bytes: usize::MAX,
             max_title_bytes: usize::MAX,
-            max_completion_questions: MAX_COMPLETION_STATEMENTS,
-            max_question_text_bytes: MAX_QUESTION_TEXT_BYTES,
+            max_completion_questions: usize::MAX,
+            max_question_text_bytes: usize::MAX,
             max_authored_question_bytes: usize::MAX,
             defaults: TaskDefaults::default(),
         }

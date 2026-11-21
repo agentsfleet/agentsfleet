@@ -213,8 +213,6 @@ pub struct MentionThread {
     pub fetched: bool,
     /// How many of its messages the fleet was told.
     pub count: usize,
-    /// Whether a cap cut the thread short.
-    pub truncated: bool,
 }
 
 /// The flat object a `workflow_run` becomes on the stream.

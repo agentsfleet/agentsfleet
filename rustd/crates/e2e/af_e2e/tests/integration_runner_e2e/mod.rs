@@ -42,9 +42,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 
 use crate::e2e::{Scenario, scenario};
-use crate::reads::{
-    balance, event_column, ledger_rows, relay_settled, run_column, run_rows, unsettled_lines,
-};
+use crate::reads::{balance, event_column, ledger_rows, run_column, run_rows};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
     post, report_body, wait_for_seeded_assignment, wait_without_assignment,
@@ -231,16 +229,11 @@ async fn assert_settled(scene: &Scenario, run_id: &str, before: Option<i64>) {
         ledger_rows(scene).await >= 1,
         "the scene's usage is logged, at least the report's final slice"
     );
-    relay_settled(scene).await;
-    assert_eq!(
-        unsettled_lines(scene).await,
-        0,
-        "and the billing relay settles every line shortly after the report answers"
-    );
     let after = balance(scene).await;
     assert!(
         after < before,
-        "a priced scene draws the tenant's wallet down: {before:?} → {after:?}"
+        "a priced scene draws the tenant's wallet down in the report's own commit: \
+         {before:?} → {after:?}"
     );
 }
 
@@ -275,7 +268,7 @@ async fn assert_replay_returns_the_stored_outcome(scene: &Scenario, run_id: &str
         logged,
         "and logs no line: nothing claimed, so nothing charged"
     );
-    // No new line, so nothing for the relay to charge: the balance is final.
+    // No new line, so no new debit: the balance is final.
     assert_eq!(
         balance(scene).await,
         drawn,

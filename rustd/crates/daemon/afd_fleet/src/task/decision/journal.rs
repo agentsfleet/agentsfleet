@@ -1,4 +1,4 @@
-//! Financial evidence commits before live-state reads; the billing relay charges it.
+//! Financial evidence commits before live-state reads; logging its line charges it.
 
 use af_crypto::entropy::Entropy;
 use af_wire::{

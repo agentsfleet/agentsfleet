@@ -4,7 +4,7 @@
 //! # The server never interprets a preference
 //!
 //! A stored value is a client-owned JSON blob. The whole validation surface is
-//! the key allowlist ([`PrefKey`]) and the byte cap ([`MAX_PREF_VALUE_BYTES`]),
+//! the key allowlist ([`PrefKey`]) and `af_validate::TEXT_MAX_CHARS`,
 //! so a new dashboard toggle costs one variant here and one in the TypeScript
 //! mirror (`ui/packages/app/lib/api/preferences.ts`) — the variant's wire
 //! spelling IS the key, so there is no second spelling to drift from (RULE UFS).
@@ -30,12 +30,6 @@ use jiff::Timestamp;
 
 use crate::sql::preference as sql;
 use crate::{Result, error};
-
-/// The cap one preference value may hold.
-///
-/// An opaque blob with no ceiling is free tenant storage. One kibibyte is
-/// also the TypeScript client's bound, so the two refuse the same values.
-pub const MAX_PREF_VALUE_BYTES: usize = 1024;
 
 /// The actor prefix a steer event carries.
 ///

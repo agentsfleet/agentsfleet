@@ -12,9 +12,7 @@ impl Fleet {
 
     fn setup_gateway(&self, database: Db) -> Gateway {
         let bus = self.runner_commands.clone();
-        let biller = Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
-            database.clone(),
-        ));
+        let biller = Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone()));
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let runs = RunService {
             task_reports: None,

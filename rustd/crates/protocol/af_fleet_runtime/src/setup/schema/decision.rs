@@ -3,12 +3,13 @@
 use serde_json::{Map, Value, json};
 
 use super::{
-    KEY_ITEMS, KEY_MAX_ITEMS, KEY_MAX_LENGTH, KEY_MIN_LENGTH, KEY_PATTERN, KEY_TYPE, TYPE_ARRAY,
-    TYPE_STRING, object,
+    KEY_ITEMS, KEY_MAX_LENGTH, KEY_MIN_LENGTH, KEY_PATTERN, KEY_TYPE, TYPE_ARRAY, TYPE_STRING,
+    object,
 };
+use af_validate::TEXT_MAX_CHARS;
+
 use crate::config::decision::{
-    ASSOCIATION_CRITERIA, INTENT_OPTIONS, MAX_COMPLETION_STATEMENTS, NEXT_ACTION_OPTIONS,
-    NOUL_CRITERIA,
+    ASSOCIATION_CRITERIA, INTENT_OPTIONS, NEXT_ACTION_OPTIONS, NOUL_CRITERIA,
 };
 
 const KEY_QUESTION: &str = "question";
@@ -24,8 +25,7 @@ pub(super) fn policy() -> Value {
                 "multiple_requests": question(&NOUL_CRITERIA),
             }), &["intent", "association", "multiple_requests"]),
             "completion": object(&json!({
-                "statements": {KEY_TYPE: TYPE_ARRAY, "minItems": 1,
-                    KEY_MAX_ITEMS: MAX_COMPLETION_STATEMENTS, KEY_ITEMS: statement()},
+                "statements": {KEY_TYPE: TYPE_ARRAY, "minItems": 1, KEY_ITEMS: statement()},
                 "next_action": question(&NEXT_ACTION_OPTIONS),
             }), &["statements", "next_action"]),
         }),
@@ -34,7 +34,7 @@ pub(super) fn policy() -> Value {
 }
 
 fn text() -> Value {
-    json!({KEY_TYPE: TYPE_STRING, KEY_MIN_LENGTH: 1, KEY_MAX_LENGTH: 512,
+    json!({KEY_TYPE: TYPE_STRING, KEY_MIN_LENGTH: 1, KEY_MAX_LENGTH: TEXT_MAX_CHARS,
         KEY_PATTERN: "\\S"})
 }
 

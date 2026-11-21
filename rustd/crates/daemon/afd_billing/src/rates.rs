@@ -17,7 +17,7 @@
 //! than a reason to stop the platform. So an unpriceable model answers
 //! [`Estimate::Unpriceable`] and the gate admits.
 //!
-//! The same failure at renew or settle fails CLOSED, because there the number
+//! The same failure at renew or report fails CLOSED, because there the number
 //! IS the charge. That inversion is why pricing returns a value describing what
 //! happened rather than a bare `Option` that has already chosen for both.
 

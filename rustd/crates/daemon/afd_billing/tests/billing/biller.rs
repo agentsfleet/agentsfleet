@@ -1,13 +1,10 @@
 //! The billing lifecycle: the conformance suite on both billers, the outage
-//! policy, and the usage log's once-per-line rule.
+//! policy, and the usage log's once-per-line charge.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
-
-use af_core::clock::SystemClock;
 use af_crypto::entropy::Entropy;
 use af_wire::usage::UsageLine;
 use afd_billing::biller::conformance::{self, BALANCE};
@@ -27,7 +24,20 @@ use crate::lane::Lane;
 pub(crate) const LINE: Nanos = Nanos::from_i64(25_000);
 
 pub(crate) fn ledger(lane: &Lane) -> LedgerBiller {
-    LedgerBiller::new(lane.pool.clone(), Entropy::new(), Arc::new(SystemClock))
+    LedgerBiller::new(lane.pool.clone())
+}
+
+/// Logs `settlement` on its own connection, as a work's transaction does, and
+/// answers the model spend it newly wrote.
+pub(crate) async fn log(lane: &Lane, settlement: &Settlement) -> Nanos {
+    log_lines(
+        &mut *lane.pool.acquire().await.expect("the lane answers"),
+        &Entropy::new(),
+        Timestamp::now(),
+        settlement,
+    )
+    .await
+    .expect("the work logs its lines")
 }
 
 pub(crate) async fn funded_lane() -> (Lane, Account) {
@@ -103,22 +113,15 @@ async fn the_recording_biller_passes_the_conformance_suite() {
     .await;
 }
 
+/// A logged line is debited as it is written, so the very next check weighs
+/// the balance it left.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_unsettled_lines_count_against_a_check() {
+async fn test_a_logged_line_counts_against_a_check() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
     let work = WorkKey::FleetRun(mint_id());
-    let mut connection = lane.pool.acquire().await.expect("the lane answers");
-    log_lines(
-        &mut *connection,
-        &Entropy::new(),
-        Timestamp::now(),
-        &settlement(&lane, &payer, &work, vec![rated(0)]),
-    )
-    .await
-    .expect("the work logs its line");
-    drop(connection);
+    log(&lane, &settlement(&lane, &payer, &work, vec![rated(0)])).await;
     let left = Nanos::from_i64(BALANCE.as_i64() - LINE.as_i64());
     let check = |next: Nanos| {
         let (biller, payer, work) = (biller.clone(), payer.clone(), work.clone());
@@ -141,7 +144,7 @@ async fn test_unsettled_lines_count_against_a_check() {
             available: left,
             asked: past
         },
-        "the uncharged line counts before the relay settles it"
+        "the logged line is already charged"
     );
 }
 
@@ -155,26 +158,31 @@ async fn test_billing_outage_fails_open() {
         },
         next: LINE,
     };
-    let unreachable = || LedgerBiller::new(unreachable_db(), Entropy::new(), Arc::new(SystemClock));
-    let open = FailOpen::new(unreachable());
+    let open = FailOpen::new(LedgerBiller::new(unreachable_db()));
     assert_eq!(
         open.check(&ask).await.expect("an open check answers"),
         Funds::Unconfirmed
     );
 }
 
+/// A line logged twice is one row and one debit: the second write finds the
+/// line under its `(work, kind, seq)` and charges nothing, while a new line in
+/// the same write is charged once.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_usage_lines_deduplicate_on_sequence() {
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_logged_line_debits_its_wallet_once() {
     let (lane, payer) = funded_lane().await;
     let biller = ledger(&lane);
     let work = WorkKey::FleetRun(mint_id());
     let first = settlement(&lane, &payer, &work, vec![rated(0)]);
-    biller.settle(&first).await.expect("settles");
-    biller.settle(&first).await.expect("settles again");
+    assert_eq!(log(&lane, &first).await, LINE, "the first write is new");
+    assert_eq!(
+        log(&lane, &first).await,
+        Nanos::ZERO,
+        "the repeat writes nothing new"
+    );
     let next = settlement(&lane, &payer, &work, vec![rated(0), rated(1)]);
-    let receipt = biller.settle(&next).await.expect("settles a new line");
-    assert_eq!(receipt.settled_lines, 1, "only the new sequence is charged");
+    assert_eq!(log(&lane, &next).await, LINE, "only the new line is new");
     let rows: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM billing.usage_lines WHERE work_type = $1 AND work_id = $2",
     )
@@ -183,11 +191,12 @@ async fn test_usage_lines_deduplicate_on_sequence() {
     .fetch_one(&mut *lane.pool.acquire().await.expect("the lane answers"))
     .await
     .expect("counts lines");
-    assert_eq!(rows, 2, "each (work, seq) is one row");
+    assert_eq!(rows, 2, "each (work, kind, seq) is one row");
     let balance = biller.balance(&payer).await.expect("balance answers");
     assert_eq!(
         balance.balance.as_i64(),
-        BALANCE.as_i64() - LINE.as_i64() * 2
+        BALANCE.as_i64() - LINE.as_i64() * 2,
+        "each line is debited once"
     );
 }
 
@@ -195,17 +204,12 @@ async fn test_usage_lines_deduplicate_on_sequence() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_fleets_spend_is_the_sum_of_its_lines() {
     let (lane, payer) = funded_lane().await;
-    let biller = ledger(&lane);
     let work = WorkKey::FleetRun(mint_id());
-    biller
-        .settle(&settlement(
-            &lane,
-            &payer,
-            &work,
-            vec![rated(0), rated(1), rated(2)],
-        ))
-        .await
-        .expect("settles");
+    log(
+        &lane,
+        &settlement(&lane, &payer, &work, vec![rated(0), rated(1), rated(2)]),
+    )
+    .await;
     let spend = fleet_spend(
         &mut *lane.pool.acquire().await.expect("the lane answers"),
         &lane.workspace,

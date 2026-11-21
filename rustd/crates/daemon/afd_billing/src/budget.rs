@@ -13,7 +13,7 @@
 //! datastore answers, an admitted run overshoots by at most one renewal window
 //! before its next `/renew` refuses it. During an outage the check fails open
 //! (below), so every renewal in that outage is admitted and the overshoot grows
-//! with its length; settlement still charges each line in full.
+//! with its length; each line is still charged in full as it is logged.
 //!
 //! # Two failures that look alike and point opposite ways
 //!

@@ -34,9 +34,9 @@ Every row is taken from the sections below; the owner column names the section t
 | Multi-replica gauges | counters exact via `sum by`; `active_runs` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
-| Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live run's runner; a gate trip stops new runs only; the heartbeat names no run | §Steer, archive, delete |
+| Cancel latency | the runner's next Cancel message | archive and delete send Cancel to each live run's runner; the heartbeat names no run | §Steer, archive, delete |
 | Config freshness | named by the assignment | the assignment returns the head revision id and a replica holds the parsed definition under that id, so the next run sees the change; no reload signal | §Config |
-| Usage point | the run's usage, per renewal | nothing is reserved at issue; each `/renew` and the report log the slice as a usage line, and a funds check reads the balance less unsettled lines; nothing settles the lines into the wallet | §Money gates |
+| Usage point | the run's usage, per renewal | nothing is reserved at issue; each `/renew` and the report log the slice as a usage line, whose insert debits the wallet; a funds check reads the wallet's balance | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
 | Turns queue | `thread.turns` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
 
@@ -851,8 +851,6 @@ That message is a barrier, and nothing after it folds. The model call in flight 
 
 - **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing runs. It cancels setup grants, marks live runs `cancel_requested_at` and sends each runner a Cancel (`afd_setup`'s creation patch). History stays readable, and archive is terminal.
 
-- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the turn that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a run in flight runs to its own end or to its fleet's budget ceiling.
-
 - **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_setup`'s creation release), then purges the rows. A runner that reads the Cancel after its run row is gone stops at its next renewal, which answers `RUN_NOT_FOUND`.
 
 Archive and delete reach a running run only through the runner Cancel message; the heartbeat still names no run.
@@ -897,7 +895,7 @@ A config change never alters a language-model turn already in flight. The next r
 
 ## Money gates
 
-The gates run before the run is issued and charge nothing, and nothing is reserved. Each `/renew` and the report log the slice's usage as a line. A funds check reads the wallet balance less every unsettled line (`afd_billing`'s `select_balance.sql`); no production path settles the lines or debits the wallet since the billing sweeper was removed. An uncovered renewal is refused `UZ-RUN-012` ([billing_and_provider_keys.md](./billing_and_provider_keys.md) §3, One debit point).
+The gates run before the run is issued and charge nothing, and nothing is reserved. Each `/renew` and the report log the slice's usage as a line. Logging a line debits the payer's wallet in the same statement, and a funds check reads the wallet's balance (`afd_billing`'s `select_wallet.sql`). An uncovered renewal is refused `UZ-RUN-012` ([billing_and_provider_keys.md](./billing_and_provider_keys.md) §3, One debit point).
 
 ## Datastore topology
 

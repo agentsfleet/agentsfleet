@@ -18,11 +18,6 @@ impl Admission {
     /// `None` is the one answer that CONTINUES the pass — every other arm ends
     /// it — which is what lets the caller write `if let Some(stop) = …` beside
     /// the money gates that answer the same shape.
-    ///
-    /// [`Verdict::Archived`] ends the event under
-    /// [`af_core::turn::label::FLEET_ARCHIVED`], through the same refusal a
-    /// human's no takes. Archive is terminal, so a retry would leave the event
-    /// waiting forever on a fleet that never runs again.
     #[must_use]
     pub const fn of_gate(verdict: Verdict) -> Option<Self> {
         match verdict {
@@ -31,9 +26,6 @@ impl Admission {
             Verdict::Await(waiting) => Some(Self::Await(waiting)),
             Verdict::Refuse(Refused::Denied) => Some(Self::Refuse(Refusal::labelled(
                 af_core::turn::label::APPROVAL_DENIED,
-            ))),
-            Verdict::Archived => Some(Self::Refuse(Refusal::labelled(
-                af_core::turn::label::FLEET_ARCHIVED,
             ))),
             Verdict::Unavailable => Some(Self::Retry(Transient { at: GATE })),
         }
@@ -47,13 +39,12 @@ mod tests {
 
     /// Every verdict the gate can answer, so the table below is walked in full
     /// rather than sampled — a new arm shows up here as a missing row.
-    const EVERY_VERDICT: [Verdict; 7] = [
+    const EVERY_VERDICT: [Verdict; 6] = [
         Verdict::Pass,
         Verdict::Await(Waiting::Parked),
         Verdict::Await(Waiting::Pending),
         Verdict::Await(Waiting::Unreadable),
         Verdict::Refuse(Refused::Denied),
-        Verdict::Archived,
         Verdict::Unavailable,
     ];
 
@@ -71,18 +62,14 @@ mod tests {
     #[test]
     fn only_a_terminal_answer_ends_the_event() {
         // A terminal row is a one-way door, so which verdicts write one is the
-        // sharpest question in this mapping. Two do: a human's refusal and an
-        // archived fleet that will never run the event. A lapsed deadline
-        // writes none: the event waits for a late answer.
+        // sharpest question in this mapping. One does: a human's refusal. A
+        // lapsed deadline writes none: the event waits for a late answer.
         let ends: Vec<_> = EVERY_VERDICT
             .into_iter()
             .filter(|verdict| matches!(Admission::of_gate(*verdict), Some(Admission::Refuse(_))))
             .collect();
 
-        assert_eq!(
-            ends,
-            vec![Verdict::Refuse(Refused::Denied), Verdict::Archived]
-        );
+        assert_eq!(ends, vec![Verdict::Refuse(Refused::Denied)]);
     }
 
     #[test]
@@ -93,18 +80,6 @@ mod tests {
             Admission::of_gate(Verdict::Refuse(Refused::Denied)),
             Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
                 af_core::turn::label::APPROVAL_DENIED
-            )))
-        );
-    }
-
-    #[test]
-    fn an_archived_fleet_ends_the_delivery_that_archived_it() {
-        // Archive is terminal: a retry would leave this delivery waiting on a
-        // fleet that never runs again, so it ends under its own label.
-        assert_eq!(
-            Admission::of_gate(Verdict::Archived),
-            Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::turn::label::FLEET_ARCHIVED
             )))
         );
     }

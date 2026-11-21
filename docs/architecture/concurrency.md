@@ -335,11 +335,11 @@ The setup assignment is the one path that holds a host and then asks for a draft
 
 Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its cascade deletes that runner's `thread.runs` rows and clears `thread.threads.last_runner_id`. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
 
-Runtime reports take the run row and never the runner, setup or wallet rows. A report logs usage lines unsettled; no production path settles them or debits a wallet, because the billing relay that did is gone and nothing else calls `Biller::settle` (`afd_billing/src/ledger/sweep/mod.rs`). `afd_billing`'s settlement, when called, stamps the lines first and debits the wallet last, so the row is locked only from the debit to the commit.
+Runtime reports take the run row and never the runner or setup rows. The statement that logs a report's or a renewal's usage lines also writes their daily rollup rows in key order, then debits the payer's wallet row, last and in tenant order (the `billing.usage_lines` triggers). The wallet row stays locked from that statement to the commit, so a tenant's concurrent writes of usage take turns on it.
 
 Verify two-replica expiry races and lock-order timeouts before claiming these guarantees.
 
-No setup chat path locks the wallet row. The assignment gate reads the balance less every unsettled line, without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_balance.sql`). The only setup wallet lock left is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
+The setup assignment gate reads the balance without a lock (`afd_setup`'s setup-run model gate, `afd_billing`'s `select_wallet.sql`). A setup run's renewal and report lock the owner's wallet row only through the debit their usage lines write; the other setup wallet lock is fleet creation's at Save (`afd_setup`'s creation `wallet.sql`).
 
 Stop and delete take the draft, then its thread or runs, and never take the runner row (`afd_setup`'s `message/stop.rs` and `privacy.rs`).
 

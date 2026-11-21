@@ -27,8 +27,6 @@ pub(crate) use output::{CANCELLED, EDITING, QUEUED, RUNNING};
 
 /// Bound on opaque model references, independent of their current spelling.
 pub const MAX_MODEL_REF_BYTES: usize = 256;
-/// Bound on a human draft title, separate from a setup slug.
-pub const MAX_TITLE_CHARS: usize = 100;
 pub(crate) const MAX_CURSOR_BYTES: usize = 4096;
 /// Longest chat search a list accepts, in characters.
 pub(crate) const MAX_QUERY_CHARS: usize = 200;

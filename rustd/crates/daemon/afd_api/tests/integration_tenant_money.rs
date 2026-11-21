@@ -24,6 +24,9 @@ mod setup;
 
 const SUBJECT: &str = "user_live_money_catalogue";
 const BALANCE: i64 = 42_000;
+/// What the fixture's two seeded charge rows cost, 7 nanos each: writing a
+/// line debits its payer's wallet, so the balance reads this much less.
+const SEEDED_SPEND: i64 = 14;
 
 /// The caller's wallet, and the first page of its charges, one row long.
 const BILLING: &str = "/v1/tenants/me/billing";
@@ -106,7 +109,7 @@ async fn exercise_catalogue(router: &axum::Router, fixture: &Fixture) {
 }
 
 async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
-    assert_wallet_reads_its_balance(router, fixture).await;
+    assert_wallet_reads_its_balance(router, fixture, SEEDED_SPEND).await;
     assert_charges_page_through(router, fixture).await;
 
     fixture.remove_wallet().await;
@@ -114,13 +117,14 @@ async fn exercise_billing(router: &axum::Router, fixture: &Fixture) {
     assert_eq!(missing.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
-/// The wallet answers its seeded balance and is not exhausted.
-async fn assert_wallet_reads_its_balance(router: &axum::Router, fixture: &Fixture) {
+/// The wallet answers its seeded balance less the `spent` its seeded lines
+/// debited as they were written, and is not exhausted.
+async fn assert_wallet_reads_its_balance(router: &axum::Router, fixture: &Fixture, spent: i64) {
     let (status, wallet) = exchange(router, Method::GET, BILLING, Some(&fixture.token), "").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         wallet.get("balance_nanos").and_then(Value::as_str),
-        Some(BALANCE.to_string().as_str())
+        Some((BALANCE - spent).to_string().as_str())
     );
     assert_eq!(
         wallet.get("is_exhausted").and_then(Value::as_bool),

@@ -124,7 +124,7 @@ fn the_shared_complete_fixture_is_accepted_by_both() {
 }
 
 #[test]
-fn owner_question_roles_publish_the_same_required_keys_and_text_bounds() {
+fn owner_question_roles_publish_the_same_required_keys_and_text_rules() {
     let components = components();
     let document = super::decision_policy::document();
     assert!(components.admits(&definition_component(), &document));
@@ -137,10 +137,6 @@ fn owner_question_roles_publish_the_same_required_keys_and_text_bounds() {
         (
             "/completion/next_action/criteria",
             serde_json::json!({"CONTINUE":"Go","WAIT":"Wait","DONE":"Done","BLOCKED":"Blocked","PUBLISH":"Anywhere"}),
-        ),
-        (
-            "/routing/intent/criteria/conversation",
-            serde_json::json!("A".repeat(513)),
         ),
         (
             "/routing/multiple_requests/criteria/true",

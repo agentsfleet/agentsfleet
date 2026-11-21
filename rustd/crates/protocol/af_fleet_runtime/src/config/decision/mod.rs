@@ -10,10 +10,6 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-/// Most accepted semantic completion statements in a task goal.
-pub const MAX_COMPLETION_STATEMENTS: usize = 6;
-/// The existing typed decision protocol's UTF-8 text ceiling.
-pub const MAX_QUESTION_TEXT_BYTES: usize = 512;
 /// Stable statement-key ceiling; the key's character set is ASCII.
 pub const MAX_STATEMENT_ID_BYTES: usize = 64;
 #[cfg(feature = "openapi")]

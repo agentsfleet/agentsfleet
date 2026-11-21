@@ -124,8 +124,7 @@ fn context_refusals_preserve_the_shared_code_without_exposing_private_notes() {
 #[tokio::test]
 async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
     use afd_billing::biller::{Account, Biller as _};
-    let ledger =
-        afd_billing::ledger::LedgerBiller::on_system_clock(afd_db::test_util::unreachable_db());
+    let ledger = afd_billing::ledger::LedgerBiller::new(afd_db::test_util::unreachable_db());
     let payer = Account {
         tenant: afd_db::test_util::mint_id(),
         workspace: afd_db::test_util::mint_id(),

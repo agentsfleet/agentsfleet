@@ -77,8 +77,8 @@ async fn usage_keeps_deleted_fleet_models() {
     f.close().await;
 }
 
-/// One run crossing UTC midnight, with a runtime-only slice, a setup run
-/// and a line still unsettled; the fleet identifier has no live fleet row.
+/// One run crossing UTC midnight, with a runtime-only slice, and a setup run;
+/// the fleet identifier has no live fleet row.
 async fn seed_days(f: &Fixture) {
     let mut first = Line::runtime(&f.tenant, &f.fleet, 17);
     first.at = BEFORE_MIDNIGHT;
@@ -91,9 +91,7 @@ async fn seed_days(f: &Fixture) {
     let mut setup = Line::setup(&f.tenant, 29);
     setup.at = MIDNIGHT;
     setup.unpriced = 5;
-    let pending = Line::runtime(&f.tenant, &f.fleet, 999);
-    fixture::seed(&f.admin, std::slice::from_ref(&pending)).await;
-    fixture::record(f, &[first, second, runtime, setup]).await;
+    fixture::seed(&f.admin, &[first, second, runtime, setup]).await;
 }
 
 fn days(report: &Report) -> impl Iterator<Item = &Aggregate> {

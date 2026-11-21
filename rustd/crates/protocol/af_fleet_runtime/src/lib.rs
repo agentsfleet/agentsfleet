@@ -24,10 +24,9 @@
 //! triggers may not share a source, a repository binding is optional as a WHOLE
 //! rather than key by key.
 //!
-//! Four verdicts are worth knowing before reading a refusal, and each is
-//! declared in [`error`]: a malformed field never reports as a missing one, a
-//! non-string `model` is never silently dropped, a gate failure keeps its own
-//! class, and a threshold is bounded by a constant named for what it bounds.
+//! Two verdicts are worth knowing before reading a refusal, and each is
+//! declared in [`error`]: a malformed field never reports as a missing one,
+//! and a non-string `model` is never silently dropped.
 //! [`Definition`] adds one more: a key outside the supported setup is refused,
 //! because setup a reviewer cannot see must not reach a runner.
 //!

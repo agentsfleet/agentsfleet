@@ -1,8 +1,6 @@
 //! The reads a recorded gate is resolved through: the durable `approval_gates`
 //! row, and nothing else.
 
-use std::sync::Arc;
-
 use af_core::id::Uuid7;
 use af_core::spelling::from_spelling;
 use af_crypto::entropy::Entropy;
@@ -10,7 +8,6 @@ use afd_api_wire::approval::GateStatus;
 use afd_bus::Handle;
 use afd_db::Db;
 
-use super::anomaly::{ANOMALY_KEYS_MAX, Brake};
 use super::sql;
 use crate::error::{Result, query};
 use crate::gate::decision::answer;
@@ -22,17 +19,15 @@ const CONTEXT_STATUS: &str = "approval gate status";
 /// The statement that finds an event's gate.
 const CONTEXT_REFERENCE: &str = "approval gate event reference";
 
-/// The gate reads and writes, and this replica's anomaly brake.
+/// The gate reads and writes.
 ///
 /// The question, its answer and the event it holds are durable in Postgres; a
-/// parked gate announces on the bus. The brake counts in memory and is shared
-/// by every clone, so one replica keeps one set of windows.
+/// parked gate announces on the bus.
 #[derive(Debug, Clone)]
 pub struct Gates {
     pub(super) database: Db,
     bus: Handle,
     entropy: Entropy,
-    brake: Arc<Brake>,
 }
 
 impl Gates {
@@ -49,13 +44,7 @@ impl Gates {
             database,
             bus,
             entropy,
-            brake: Arc::new(Brake::new(ANOMALY_KEYS_MAX)),
         }
-    }
-
-    /// This replica's anomaly windows.
-    pub(super) fn brake(&self) -> &Brake {
-        &self.brake
     }
 
     /// The bus a parked gate announces on.

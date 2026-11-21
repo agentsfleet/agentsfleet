@@ -1,15 +1,13 @@
-//! The recording biller's own bookkeeping, and the counting wrapper's answer
-//! to a settlement that charged nothing new.
+//! The recording biller's own bookkeeping, and the counting wrapper passing
+//! its answers through.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use afd_billing::Nanos;
-use afd_billing::biller::{Account, Biller, Observed, RecordingBiller, WorkKey};
+use afd_billing::biller::{Account, Biller, Observed, RecordingBiller, conformance};
 use afd_db::test_util::mint_id;
-
-use crate::biller::{LINE, rated};
 
 /// The first funding, replaced by the second.
 const FIRST_FUNDING: Nanos = Nanos::from_i64(10);
@@ -20,23 +18,6 @@ fn payer() -> Account {
     Account {
         tenant: mint_id(),
         workspace: mint_id(),
-    }
-}
-
-/// A settlement against no lane: the recording biller keeps no fleet rows.
-fn settlement(payer: &Account, work: &WorkKey) -> afd_billing::biller::Settlement {
-    afd_billing::biller::Settlement {
-        work: work.clone(),
-        payer: payer.clone(),
-        attribution: afd_billing::biller::Attribution::Fleet {
-            fleet: mint_id(),
-            fleet_name: "recorded".to_owned(),
-            turn_id: mint_id(),
-        },
-        provider: "recorded".to_owned(),
-        model: "recorded".to_owned(),
-        posture: afd_billing::Posture::Platform,
-        lines: vec![rated(1)],
     }
 }
 
@@ -53,53 +34,15 @@ async fn funding_a_known_payer_replaces_its_balance() {
         .await
         .expect("a funded payer answers");
     assert_eq!(balance.balance, SECOND_FUNDING);
-    assert_eq!(balance.unsettled, Nanos::from_i64(0));
     assert_eq!(balance.exhausted_at, None);
 }
 
-/// Every settlement is kept, in order, for a domain test to read.
+/// A payer funded below zero owes a debt, and the counting wrapper answers
+/// every check for it as the biller it wraps does.
 #[tokio::test]
-async fn settlements_are_kept_in_order() {
-    let biller = RecordingBiller::new();
+async fn an_observed_payer_in_debt_is_short() {
+    let inner = RecordingBiller::new();
     let payer = payer();
-    biller.fund(&payer.tenant, SECOND_FUNDING);
-    let work = WorkKey::FleetRun(mint_id());
-    let charged = settlement(&payer, &work);
-    biller
-        .settle(&charged)
-        .await
-        .expect("the settlement answers");
-    assert_eq!(biller.settlements(), vec![charged]);
-}
-
-/// A retried settlement charges nothing, and the counting wrapper passes the
-/// empty receipt through with the balance untouched by the retry.
-#[tokio::test]
-async fn an_observed_retry_charges_nothing_new() {
-    let payer = payer();
-    let work = WorkKey::FleetRun(mint_id());
-    let charged = settlement(&payer, &work);
-    let inner = Observed::new(
-        {
-            let inner = RecordingBiller::new();
-            inner.fund(&payer.tenant, SECOND_FUNDING);
-            inner
-        },
-        af_observability::Analytics::silent(),
-    );
-    let first = inner
-        .settle(&charged)
-        .await
-        .expect("the first settle answers");
-    assert_eq!(first.settled_lines, 1);
-    assert_eq!(first.taken, LINE);
-    let again = inner.settle(&charged).await.expect("the retry answers");
-    assert_eq!(again.settled_lines, 0);
-    assert_eq!(again.charged, Nanos::from_i64(0));
-    assert_eq!(again.taken, Nanos::from_i64(0));
-    let balance = inner.balance(&payer).await.expect("the balance answers");
-    assert_eq!(
-        balance.balance,
-        Nanos::from_i64(SECOND_FUNDING.as_i64() - LINE.as_i64())
-    );
+    inner.fund(&payer.tenant, Nanos::from_i64(-SECOND_FUNDING.as_i64()));
+    conformance::a_payer_in_debt_is_short(&Observed::new(inner), payer).await;
 }

@@ -19,7 +19,7 @@ closed_set! {
 closed_set! {
     /// What a funds check answered.
     FundsOutcome {
-        /// The balance, less what is logged and not yet charged, covers the ask.
+        /// The balance covers the ask.
         Covered => "covered",
         /// It could not cover it.
         Short => "short",

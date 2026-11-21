@@ -181,8 +181,8 @@ pub fn payer_gate(
 /// Payer → balance → fleet budget. Every gate that can refuse permanently
 /// runs before the run is issued, so a refused event is never charged. The
 /// payer gate judges the read the caller made; it reads nothing itself. Nothing
-/// is charged here: the run's usage is logged as it runs and the billing
-/// relay charges it.
+/// is charged here: the run's usage is charged as it runs, when each line is
+/// logged.
 ///
 /// # Errors
 /// Datastore faults do NOT reach the caller as `Err` — each gate absorbs its

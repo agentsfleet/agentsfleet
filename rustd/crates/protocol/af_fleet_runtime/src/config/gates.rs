@@ -1,19 +1,4 @@
-//! Which actions need a human, and which repetitions end the run.
-//!
-//! # Two thresholds that are not money
-//!
-//! `threshold_count` is a count of repeated actions and `threshold_window_s` a
-//! span of seconds. Reporting either as a budget failure, against a constant
-//! named for dollars, would tell an operator their spend ceiling is wrong when
-//! their anomaly rule is. Both bounds are named for what they bound here, and
-//! answer [`Error::InvalidThreshold`].
-//!
-//! # Zero is unrepresentable rather than rejected
-//!
-//! A threshold of zero would trip on the first action forever. A plain `u32`
-//! checked once at parse could still be zero to every later reader;
-//! [`NonZeroU32`] carries the proof instead, so the anomaly evaluator has no
-//! zero case to consider and no branch to forget.
+//! Which actions need a human before they run.
 //!
 //! # The timeout is a span from the parse on
 //!
@@ -23,7 +8,6 @@
 
 use std::time::Duration;
 
-use crate::config::anomaly::AnomalyRule;
 use crate::config::raw;
 use crate::error::{Error, Result, missing};
 
@@ -78,13 +62,11 @@ impl TryFrom<raw::GateRule> for GateRule {
     }
 }
 
-/// A fleet's approval and anomaly policy.
+/// A fleet's approval policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatePolicy {
     /// Which actions need a human.
     rules: Box<[GateRule]>,
-    /// Which repetitions end the run.
-    anomaly_rules: Box<[AnomalyRule]>,
     /// How long an approval may wait before it lapses.
     timeout: Duration,
 }
@@ -94,12 +76,6 @@ impl GatePolicy {
     #[must_use]
     pub fn rules(&self) -> &[GateRule] {
         &self.rules
-    }
-
-    /// Which repetitions end the run.
-    #[must_use]
-    pub fn anomaly_rules(&self) -> &[AnomalyRule] {
-        &self.anomaly_rules
     }
 
     /// How long an approval may wait.
@@ -112,7 +88,7 @@ impl GatePolicy {
     ///
     /// Behind `test-util` (`M-TEST-UTIL`) because the production door is
     /// [`TryFrom<raw::Gates>`](GatePolicy) and it is the one that VALIDATES —
-    /// thresholds proved non-zero, timeout clamped into range. A constructor
+    /// rules proved complete, timeout clamped into range. A constructor
     /// that skipped all of it would be a second way to build a policy, and a
     /// second way to build one is a way to build an invalid one.
     ///
@@ -122,14 +98,9 @@ impl GatePolicy {
     /// JSON fixture whose parse is not what the test is about.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn from_parts(
-        rules: Vec<GateRule>,
-        anomaly_rules: Vec<AnomalyRule>,
-        timeout: Duration,
-    ) -> Self {
+    pub fn from_parts(rules: Vec<GateRule>, timeout: Duration) -> Self {
         Self {
             rules: rules.into_boxed_slice(),
-            anomaly_rules: anomaly_rules.into_boxed_slice(),
             timeout,
         }
     }
@@ -145,12 +116,6 @@ impl TryFrom<raw::Gates> for GatePolicy {
                 .unwrap_or_default()
                 .into_iter()
                 .map(GateRule::try_from)
-                .collect::<Result<_>>()?,
-            anomaly_rules: authored
-                .anomaly_rules
-                .unwrap_or_default()
-                .into_iter()
-                .map(AnomalyRule::try_from)
                 .collect::<Result<_>>()?,
             timeout: clamp_timeout(authored.timeout_ms),
         })
@@ -237,32 +202,6 @@ mod tests {
                 .expect("zero is not `lapse immediately`")
                 .timeout(),
             DEFAULT_TIMEOUT
-        );
-    }
-
-    #[test]
-    fn a_zero_repeat_threshold_is_refused_as_a_threshold_not_as_a_budget() {
-        let failure = parse(
-            r#"{"anomaly_rules": [{"pattern": "same_action", "threshold_count": 0, "threshold_window_s": 60}]}"#,
-        )
-        .expect_err("zero would trip on the first action");
-
-        assert!(
-            matches!(failure.kind(), ErrorKind::InvalidThreshold { field, .. } if *field == "threshold_count"),
-            "a count of actions is not money: {failure:?}"
-        );
-    }
-
-    #[test]
-    fn a_window_past_a_day_is_refused() {
-        let failure = parse(
-            r#"{"anomaly_rules": [{"pattern": "same_action", "threshold_count": 3, "threshold_window_s": 86401}]}"#,
-        )
-        .expect_err("a window longer than a day is out of range");
-
-        assert!(
-            matches!(failure.kind(), ErrorKind::InvalidThreshold { field, .. } if *field == "threshold_window_s"),
-            "{failure:?}"
         );
     }
 

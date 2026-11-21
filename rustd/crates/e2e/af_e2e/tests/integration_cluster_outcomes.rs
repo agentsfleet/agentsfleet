@@ -42,7 +42,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{Scenario, scenario};
-use crate::reads::{balance, ledger_rows, relay_settled, run_column, unsettled_lines};
+use crate::reads::{balance, ledger_rows, run_column};
 use crate::tail::{next_frame, settle};
 use crate::wire::{
     capable_beat, field, report_body, wait_for_assignment, wait_for_seeded_assignment,
@@ -162,9 +162,8 @@ async fn a_frame_crosses_the_cluster_to_its_subscriber(scene: &Scenario, run_id:
 ///
 /// # The hazard
 ///
-/// The result, its usage line and the terminal run state commit in one
-/// Postgres transaction, and the billing relay charges the line afterwards. A
-/// report that charged per delivery would debit a retried report twice, which
+/// The result, its usage line, the line's wallet debit and the terminal run
+/// state commit in one Postgres transaction. A report that charged per delivery would debit a retried report twice, which
 /// is invisible in the success path, so the repeat is asserted rather than
 /// assumed.
 async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
@@ -189,16 +188,10 @@ async fn a_report_settles_once(scene: &Scenario, run_id: &str, fence: u64) {
         logged >= 1,
         "the scene's usage is logged in the report's own transaction, at least its final slice"
     );
-    relay_settled(scene).await;
-    assert_eq!(
-        unsettled_lines(scene).await,
-        0,
-        "and the billing relay settles it shortly after the report answered"
-    );
     let after = balance(scene).await;
     assert!(
         after < before,
-        "a priced scene draws the wallet down: {before:?} → {after:?}"
+        "a priced scene draws the wallet down in the report's own commit: {before:?} → {after:?}"
     );
 
     assert_replayed_report(scene, run_id, &report, logged, after).await;
@@ -253,7 +246,7 @@ async fn assert_replayed_report(
         logged,
         "the repeat logs no usage line"
     );
-    // No new line, so nothing for the relay to charge: the balance is final.
+    // No new line, so no new debit: the balance is final.
     assert_eq!(
         balance(scene).await,
         after,

@@ -3,9 +3,8 @@
 //!
 //! All three read through the environment's file calls, never a spawned
 //! `find` or `rg`, so they work wherever the file tools do and start no
-//! process. A walk skips `.git`, follows no link, visits at most
-//! [`WALK_MAX`] entries and says when it stopped early; every answer is cut
-//! to a command's output budget.
+//! process. A walk skips `.git`, follows no link and says when a directory
+//! listing stopped early; every answer is cut to a command's output budget.
 
 mod grep;
 
@@ -29,15 +28,13 @@ pub use self::grep::{Grep, Lines};
 const LS_DEFAULT: usize = 500;
 /// The paths `find` answers with when the model names no limit.
 const FIND_DEFAULT: usize = 1000;
-/// The most entries one walk visits, so a call over a vast tree ends.
-pub const WALK_MAX: usize = 20_000;
 /// The directory a walk never enters.
 const SKIPPED: &str = ".git";
 /// The root, as a walk names it.
 const HERE: &str = ".";
 /// What an answer that stopped at its limit says last.
 const LIMIT_REACHED: &str = "... limit reached; narrow the path or the pattern";
-/// What a walk that stopped at its ceiling says last.
+/// What a walk whose directory listing stopped early says last.
 const WALK_CUT: &str = "... the walk stopped early; narrow the path";
 
 /// `ls`'s arguments.
@@ -184,13 +181,12 @@ struct Walked {
 }
 
 /// Every file below `root`, breadth first, skipping [`SKIPPED`] and every
-/// link, at most [`WALK_MAX`] entries in all.
+/// link.
 async fn walk(env: &dyn Env, root: &str) -> Result<Walked, ToolOutput> {
     let mut walked = Walked {
         files: Vec::new(),
         cut: false,
     };
-    let mut visited = 0;
     let mut pending = VecDeque::from([String::new()]);
     while let Some(relative) = pending.pop_front() {
         let directory = if relative.is_empty() {
@@ -204,11 +200,6 @@ async fn walk(env: &dyn Env, root: &str) -> Result<Walked, ToolOutput> {
             .map_err(|failure| failed(&failure))?;
         walked.cut |= listing.truncated;
         for entry in listing.entries {
-            visited += 1;
-            if visited > WALK_MAX {
-                walked.cut = true;
-                return Ok(walked);
-            }
             let skipped = entry.name == SKIPPED;
             let path = if relative.is_empty() {
                 entry.name

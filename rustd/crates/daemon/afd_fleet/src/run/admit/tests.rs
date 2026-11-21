@@ -131,8 +131,8 @@ async fn decided_on_a_dead_ledger(
 
 /// Asserts the dead-ledger outcome: both read gates failed open under their own
 /// names and the run was admitted. Nothing is charged at admission, so no
-/// write gate is left to end the pass; the run's usage is the relay's to
-/// charge once it runs.
+/// write gate is left to end the pass; the run's usage is charged as its
+/// lines are logged.
 #[cfg(feature = "test-util")]
 fn assert_read_gates_fail_open_and_admit(
     decided: &super::Admission,

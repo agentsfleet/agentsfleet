@@ -2,7 +2,7 @@
 #![expect(clippy::expect_used, reason = "integration preconditions fail loudly")]
 
 use crate::e2e::Scenario;
-use af_core::{clock, id::Uuid7, timing::STREAM_RECOVERY_BUDGET};
+use af_core::{clock, id::Uuid7};
 
 pub(super) struct Snapshot {
     pub(super) run: Uuid7,
@@ -100,12 +100,11 @@ pub(super) async fn assert_settled_once(scene: &Scenario) {
         count, 1,
         "connection recovery never redispatches this completed turn"
     );
-    wait_for_billing(scene).await;
-    let lines: Vec<(i64,i64,i64,bool)> = sqlx::query_as("SELECT seq,input_token_count,output_token_count,settled_at IS NOT NULL FROM billing.usage_lines WHERE turn_id=$1 AND seq=$2 AND kind=$3")
+    let lines: Vec<(i64,i64,i64)> = sqlx::query_as("SELECT seq,input_token_count,output_token_count FROM billing.usage_lines WHERE turn_id=$1 AND seq=$2 AND kind=$3")
         .bind(&scene.turn_id).bind(0_i64).bind(af_wire::usage::LineKind::Model.as_str())
         .fetch_all(&mut *scene.booted.database.acquire().await.expect("provider receipt observer"))
         .await.expect("real provider receipt");
-    assert_eq!(lines, vec![(0, 12000, 4000, true)]);
+    assert_eq!(lines, vec![(0, 12000, 4000)]);
     assert_eq!(
         crate::reads::event_column(scene, &scene.turn_id, "status")
             .await
@@ -130,31 +129,4 @@ pub(super) async fn process_stopped_by(pid: u32, expires_at: jiff::Timestamp) {
     })
     .await
     .expect("the physical tool process ends before the confirmed run expires");
-}
-
-async fn wait_for_billing(scene: &Scenario) {
-    tokio::time::timeout(STREAM_RECOVERY_BUDGET, async {
-        loop {
-            let remaining: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM billing.usage_lines WHERE turn_id=$1 AND settled_at IS NULL",
-            )
-            .bind(&scene.turn_id)
-            .fetch_one(
-                &mut *scene
-                    .booted
-                    .database
-                    .acquire()
-                    .await
-                    .expect("billing completion observer"),
-            )
-            .await
-            .expect("all scoped usage lines are visible");
-            if remaining == 0 {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("saved report completes billing");
 }

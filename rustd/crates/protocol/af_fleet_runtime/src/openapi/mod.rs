@@ -61,8 +61,8 @@ pub(crate) enum Bound {
     List {
         /// The fewest entries. Zero publishes no minimum.
         min: usize,
-        /// The most entries.
-        max: usize,
+        /// The most entries. `None` publishes no maximum.
+        max: Option<usize>,
         /// The bound on each string entry, when the entries are strings.
         entry: Option<Text>,
     },
@@ -146,7 +146,7 @@ impl Bound {
             }
             (&Self::List { min, max, entry }, Schema::Array(array)) => {
                 array.min_items = (min > 0).then_some(min);
-                array.max_items = Some(max);
+                array.max_items = max;
                 if let (Some(text), ArrayItems::RefOrSchema(items)) = (entry, &mut array.items)
                     && let RefOr::T(Schema::Object(item)) = items.as_mut()
                 {

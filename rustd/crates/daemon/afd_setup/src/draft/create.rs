@@ -8,11 +8,12 @@ use crate::{
     candidate,
     error::{ErrorKind, raise::query},
     message, replay, sql,
-    types::{Accepted, CreateDraft, Created, EDITING, MAX_TITLE_CHARS, SourcePin},
+    types::{Accepted, CreateDraft, Created, EDITING, SourcePin},
 };
 use af_core::{error_code::SETUP_NOT_FOUND, id::Uuid7};
 use af_fleet_runtime::Definition;
 use af_observability::SetupStep;
+use af_validate::TEXT_MAX_CHARS;
 use jiff::Timestamp;
 use sqlx::{Connection as _, PgConnection};
 
@@ -190,7 +191,7 @@ fn initial_title(message: Option<&str>, source: Option<&Definition>) -> String {
         .or_else(|| source.map(Definition::description).and_then(first_line))
         .map_or_else(
             || DEFAULT_TITLE.to_owned(),
-            |line| line.chars().take(MAX_TITLE_CHARS).collect(),
+            |line| line.chars().take(TEXT_MAX_CHARS).collect(),
         )
 }
 
@@ -245,7 +246,7 @@ async fn write_draft(
 mod tests {
     use af_fleet_runtime::Definition;
 
-    use super::{DEFAULT_TITLE, MAX_TITLE_CHARS, initial_title};
+    use super::{DEFAULT_TITLE, initial_title};
 
     /// A source setup describing itself as `description`.
     fn source(description: &str) -> Definition {
@@ -279,16 +280,5 @@ mod tests {
         ] {
             assert_eq!(initial_title(message, from), expected, "from {message:?}");
         }
-    }
-
-    #[test]
-    fn a_long_first_line_is_cut_to_the_title_cap_at_a_character() {
-        let long = "é".repeat(MAX_TITLE_CHARS + 5);
-        let title = initial_title(Some(&long), None);
-        assert_eq!(title.chars().count(), MAX_TITLE_CHARS);
-        assert!(
-            title.chars().all(|letter| letter == 'é'),
-            "never split inside a character"
-        );
     }
 }

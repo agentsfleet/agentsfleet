@@ -45,7 +45,7 @@
 //! to write on a finer code — and the detail they need is in the message, which
 //! is where the structure below goes.
 //!
-//! # Four verdicts a reader might guess wrong
+//! # Two verdicts a reader might guess wrong
 //!
 //! 1. A wrong-typed `name`, `triggers`, `tools`, `network` or `budget` answers
 //!    [`InvalidFieldType`](Error::InvalidFieldType), never
@@ -54,12 +54,6 @@
 //!    rather than being dropped, so a fleet never silently runs on a model its
 //!    author did not name. A non-string `description` answers the same shape
 //!    error for the identical input.
-//! 3. A gate rule's failure keeps its own class: a `threshold_count` of zero
-//!    answers [`InvalidThreshold`](Error::InvalidThreshold), not a missing field.
-//! 4. An out-of-range anomaly threshold answers
-//!    [`InvalidThreshold`](Error::InvalidThreshold), not `InvalidBudget`. It
-//!    bounds a COUNT OF ACTIONS, so it borrows neither a constant nor an error
-//!    named for dollars (RULE UFS).
 
 use af_core::error_code::{self, ErrorCode};
 
@@ -183,18 +177,6 @@ pub(crate) enum ErrorKind {
         reason: &'static str,
     },
 
-    /// An anomaly rule's threshold is outside its bound.
-    ///
-    /// Separate from [`InvalidBudget`](Error::InvalidBudget) because these
-    /// bound a count of actions and a span of seconds, not money.
-    #[error("`{field}` is not a threshold: {reason}")]
-    InvalidThreshold {
-        /// Which threshold.
-        field: &'static str,
-        /// Which rule it broke.
-        reason: &'static str,
-    },
-
     /// The trigger set is over its cap, holds a duplicate, or names a channel
     /// or source its kind cannot use.
     ///
@@ -280,9 +262,9 @@ impl Error {
     #[must_use]
     pub fn field(&self) -> Option<&'static str> {
         match self.kind() {
-            ErrorKind::MissingRequiredField { field }
-            | ErrorKind::InvalidBudget { field, .. }
-            | ErrorKind::InvalidThreshold { field, .. } => Some(*field),
+            ErrorKind::MissingRequiredField { field } | ErrorKind::InvalidBudget { field, .. } => {
+                Some(*field)
+            }
             ErrorKind::RuntimeKeyOutsideBlock { field } => crate::config::runtime_key(field),
             ErrorKind::UnsupportedKey { setting, .. } => *setting,
             ErrorKind::UnknownRuntimeKey { .. } | ErrorKind::RuntimeBlockRequired => {

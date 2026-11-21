@@ -21,9 +21,7 @@ mod notice_owner;
 mod route;
 
 pub use self::admit::MentionTurn;
-pub use self::message::{
-    Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
-};
+pub use self::message::{Composed, THREAD_HEADING, THREAD_UNAVAILABLE, compose};
 pub use self::notice::{NoticeOwed, notice_text};
 pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
 pub use self::route::{Notice, Route, route};

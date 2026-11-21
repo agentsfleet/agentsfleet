@@ -246,7 +246,7 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::PREF_VALUE_TOO_LARGE,
         status: 400,
         title: "Preference value too large",
-        hint: "A preference value exceeds 1 KiB. A preference holds one small toggle, not a document; store larger state where it belongs.",
+        hint: "A preference value exceeds the text limit. A preference holds one small toggle, not a document; store larger state where it belongs.",
         user_message: Some("That setting is too large to save. Reload the page and try again."),
     },
     Problem {

@@ -1,4 +1,4 @@
-//! Settled setup chats share the tenant's cost history without private text.
+//! Setup chats share the tenant's cost history without private text.
 
 use super::*;
 
@@ -25,7 +25,9 @@ async fn setup_costs_page_with_runs_without_exposing_other_tenants_or_private_te
     let rows = walk(&router, &owner).await;
     assert_scoped_history(&rows, &owner);
     assert_setup_row(&rows, &setup);
-    assert_wallet_reads_its_balance(&router, &owner).await;
+    // The owner's two fleet charges and two setup runs, 50 nanos in all, each
+    // debited the wallet as its line was written.
+    assert_wallet_reads_its_balance(&router, &owner, 50).await;
     setup.remove(&owner).await;
     foreign.remove(&other).await;
     owner.cleanup().await;

@@ -1,30 +1,26 @@
-//! Any biller, counted: the one choke point every funds check and settlement
-//! passes through, whichever product path or relay pass made it.
+//! Any biller, counted: the one choke point every funds check passes through,
+//! whichever product path made it.
 
-use af_observability::metrics::label::billing::{FundsOutcome, SettleOutcome, WorkType};
-use af_observability::metrics::label::cost::ChargeClass;
-use af_observability::producers::{billing as metrics, cost};
-use af_observability::{Analytics, Telemetry};
+use af_observability::metrics::label::billing::{FundsOutcome, WorkType};
+use af_observability::producers::billing as metrics;
 
-use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
+use super::{Account, Ask, Balance, Biller, Funds, WorkKey};
 use crate::Result;
 
-/// `inner`, with every funds check's answer and every settlement's outcome,
-/// spend and unpriced tokens recorded, and a wallet's exhaustion reported.
+/// `inner`, with every funds check's answer counted.
 ///
 /// Wraps outside [`super::FailOpen`] so a check it admitted is counted as
 /// `unconfirmed` rather than vanishing as an error.
 #[derive(Debug)]
 pub struct Observed<B> {
     inner: B,
-    analytics: Analytics,
 }
 
 impl<B> Observed<B> {
-    /// `inner`, counted, reporting product events to `analytics`.
+    /// `inner`, counted.
     #[must_use]
-    pub const fn new(inner: B, analytics: Analytics) -> Self {
-        Self { inner, analytics }
+    pub const fn new(inner: B) -> Self {
+        Self { inner }
     }
 }
 
@@ -43,53 +39,9 @@ impl<B: Biller> Biller for Observed<B> {
         answer
     }
 
-    async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
-        let answer = self.inner.settle(settlement).await;
-        let work = work_type(&settlement.work);
-        match &answer {
-            Ok(receipt) => {
-                metrics::settled(work, SettleOutcome::Ok);
-                record_spend(settlement, receipt);
-                // The settlement committed before `settle` returned, so a
-                // rolled-back debit never reports.
-                if receipt.exhausted {
-                    self.analytics.report(&Telemetry::WalletExhausted {
-                        tenant_id: settlement.payer.tenant.as_str().to_owned(),
-                    });
-                }
-            }
-            Err(fault) if fault.is_unanswered() => {
-                metrics::settled(work, SettleOutcome::DatastoreUnavailable);
-            }
-            Err(_defect) => metrics::settled(work, SettleOutcome::Defect),
-        }
-        answer
-    }
-
     async fn balance(&self, payer: &Account) -> Result<Balance> {
         self.inner.balance(payer).await
     }
-}
-
-/// What one landed settlement spent and left unpriced.
-///
-/// Spend is what left the balance (`taken`): the whole charge, or nothing for a
-/// payer with no wallet to debit. Unpriced tokens count only when this
-/// call charged lines, so a relay's retry of lines already settled adds
-/// nothing.
-fn record_spend(settlement: &Settlement, receipt: &Receipt) {
-    if receipt.settled_lines == 0 {
-        return;
-    }
-    let posture = settlement.posture.as_str();
-    if let Ok(taken) = u64::try_from(receipt.taken.as_i64()) {
-        cost::credits_consumed(&settlement.model, posture, ChargeClass::Settle, taken);
-    }
-    let unpriced = settlement
-        .lines
-        .iter()
-        .fold(0_u64, |sum, line| sum.saturating_add(line.unpriced_tokens));
-    metrics::unpriced_tokens(&settlement.provider, &settlement.model, unpriced);
 }
 
 /// The label a work's kind is counted under.

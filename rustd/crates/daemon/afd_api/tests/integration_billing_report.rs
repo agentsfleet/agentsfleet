@@ -1,14 +1,12 @@
-//! Served tenant reports over the settled rollup and actual authorization layers.
-//! Every line reaches the report the way production's does: logged unsettled,
-//! then charged by the built-in biller.
+//! Served tenant reports over the daily rollups and actual authorization layers.
+//! Every line reaches the report the way production's does: the insert that
+//! logs it charges it and adds it to the rollups in the same statement.
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "live-schema preconditions fail loudly")]
 
 use crate::harness::{self, text};
 use crate::integration_workspace_members::fixture::{Members, Person, owner_scopes};
 use af_core::id::Uuid7;
-use afd_billing::biller::{Biller as _, WorkKey};
-use afd_billing::ledger::{self, LedgerBiller};
 use afd_billing::sql::{posture, work};
 use afd_db::test_util::mint_id;
 use http::{Method, StatusCode, header};
@@ -19,20 +17,21 @@ const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 const MODEL: &str = "billing-report-model";
 const NOW: &str = "2026-10-25T12:01:00Z";
 
-/// Setup-run lines as the run's own transaction logs them: unsettled, naming
-/// no fleet, the run as their work and run, and the draft message it answered
-/// as their turn. A line's references are opaque, so neither needs a row.
+/// Setup-run lines as the run's own transaction logs them: the run as their
+/// work and run, the draft message it answered as their turn, and the fleet
+/// and model they are attributed to. A line's references are opaque, so none
+/// needs a row. A model line carries no run time, as production's never does.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
-    id, work_type, work_id, seq, kind, tenant_id, workspace_id, turn_id, run_id,
-    provider, model, posture, requested_at, input_token_count, cached_input_token_count,
+    id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
+    run_id, provider, model, posture, requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
-    settled_at, created_at, updated_at
+    created_at, updated_at
 )
-SELECT id, $5, id, 0, 'model', $2, $3, message, id, $4, $4, $6,
-       '2026-10-25T12:00:00Z', 23, 0, 0, 0, 0, 7, 31, 0, $7,
-       NULL, '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z'
+SELECT id, $5, id, 0, 'model', $2, $3, $9, $10, message, id, $4, $11, $6,
+       '2026-10-25T12:00:00Z', 23, 0, 0, 0, 0, 7, 0, 0, $7,
+       '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z'
   FROM unnest($1, $8) AS source(id, message)
 ";
 
@@ -40,10 +39,8 @@ SELECT id, $5, id, 0, 'model', $2, $3, message, id, $4, $4, $6,
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn report_returns_exact_full_totals_without_private_setup_content() {
     let members = Members::create().await;
-    let ids = seed(&members, &members.john, 4, 17).await;
-    settle(&members, &ids).await;
-    let foreign = seed(&members, &members.stranger, 3, 999).await;
-    settle(&members, &foreign).await;
+    seed(&members, &members.john, 4, 17).await;
+    seed(&members, &members.stranger, 3, 999).await;
     let response = get(&members, &members.john, REPORT).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
@@ -85,7 +82,7 @@ async fn report_returns_exact_full_totals_without_private_setup_content() {
         !body.contains("draft_id") && !body.contains("messages"),
         "{body}"
     );
-    assert_ledger(&members, &members.john, (4, 68, 4)).await;
+    assert_ledger(&members, &members.john, (4, 68)).await;
     members.cleanup().await;
 }
 
@@ -105,7 +102,7 @@ async fn an_empty_report_has_exact_zero_totals() {
         None,
         "the report offers no model filter"
     );
-    assert_ledger(&members, &members.john, (0, 0, 0)).await;
+    assert_ledger(&members, &members.john, (0, 0)).await;
     members.cleanup().await;
 }
 
@@ -114,17 +111,20 @@ async fn an_empty_report_has_exact_zero_totals() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn equal_spending_uses_stable_fleet_and_model_ordering() {
     let members = Members::create().await;
-    let ids = seed(&members, &members.john, 4, 17).await;
-    sqlx::query(
-        "UPDATE billing.usage_lines SET fleet_id=$2,fleet_name='Fleet',model=$3 WHERE id=ANY($1)",
+    seed(&members, &members.john, 2, 17).await;
+    // The second attribution bucket is written as such: a line joins its
+    // rollup row as it is logged, so its attribution is fixed then.
+    seed_as(
+        &members,
+        &members.john,
+        Lines {
+            count: 2,
+            money: 17,
+            fleet: Some((&members.fleet, "Fleet")),
+            model: "second-report-model",
+        },
     )
-    .bind(ids.get(..2).expect("four logged charges"))
-    .bind(&members.fleet)
-    .bind("second-report-model")
-    .execute(&mut *members.database.acquire().await.expect("a connection"))
-    .await
-    .expect("second attribution bucket, before settlement");
-    settle(&members, &ids).await;
+    .await;
     let response = get(&members, &members.john, REPORT).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = harness::json_body(response).await;
@@ -157,7 +157,7 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
     );
     assert_eq!(body.pointer("/filters/models"), None);
     assert_eq!(body.pointer("/filters/fleets/0/id"), Some(&Value::Null));
-    assert_ledger(&members, &members.john, (4, 68, 4)).await;
+    assert_ledger(&members, &members.john, (4, 68)).await;
     members.cleanup().await;
 }
 
@@ -165,10 +165,7 @@ async fn equal_spending_uses_stable_fleet_and_model_ordering() {
 #[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn served_daily_report_includes_zero_days_and_complete_models() {
     let members = Members::create().await;
-    let ids = seed(&members, &members.john, 3, 17).await;
-    settle(&members, &ids).await;
-    // Logged but never charged: absent from every total below.
-    seed(&members, &members.john, 1, 999).await;
+    seed(&members, &members.john, 3, 17).await;
     let path = format!("{REPORT}?period=week");
     let body = harness::json_body(get(&members, &members.john, &path).await).await;
     assert_week_projection(&body);
@@ -193,7 +190,7 @@ async fn served_daily_report_includes_zero_days_and_complete_models() {
             .is_some_and(|fleets| !fleets.is_empty()),
         "a filter keeps the unfiltered choices"
     );
-    assert_ledger(&members, &members.john, (4, 1050, 3)).await;
+    assert_ledger(&members, &members.john, (3, 51)).await;
     members.cleanup().await;
 }
 
@@ -234,11 +231,32 @@ fn now() -> Timestamp {
     NOW.parse().expect("a fixed instant")
 }
 
+/// What [`seed_as`] logs: `count` one-line setup runs, each charged `money`,
+/// attributed to `fleet` (its id and name) and `model`.
+#[derive(Clone, Copy)]
+struct Lines<'a> {
+    count: usize,
+    money: i64,
+    fleet: Option<(&'a Uuid7, &'a str)>,
+    model: &'a str,
+}
+
 /// Logs `count` one-line setup runs for `person`, each answering a draft
-/// message of its own, unsettled. Answers the runs, which share their line's id.
-async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> Vec<Uuid7> {
-    let ids: Vec<_> = (0..count).map(|_| mint_id()).collect();
-    let messages: Vec<_> = (0..count).map(|_| mint_id()).collect();
+/// message of its own and naming no fleet; logging charges them.
+async fn seed(members: &Members, person: &Person, count: usize, money: i64) {
+    let lines = Lines {
+        count,
+        money,
+        fleet: None,
+        model: MODEL,
+    };
+    seed_as(members, person, lines).await;
+}
+
+/// Logs `lines` for `person`, as [`seed`] does with their attribution.
+async fn seed_as(members: &Members, person: &Person, lines: Lines<'_>) {
+    let ids: Vec<_> = (0..lines.count).map(|_| mint_id()).collect();
+    let messages: Vec<_> = (0..lines.count).map(|_| mint_id()).collect();
     sqlx::query(INSERT_LINES)
         .bind(&ids)
         .bind(&person.tenant)
@@ -246,34 +264,19 @@ async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> V
         .bind(MODEL)
         .bind(work::SETUP_RUN)
         .bind(posture::PLATFORM)
-        .bind(money)
+        .bind(lines.money)
         .bind(&messages)
+        .bind(lines.fleet.map(|(fleet, _)| fleet))
+        .bind(lines.fleet.map(|(_, name)| name))
+        .bind(lines.model)
         .execute(&mut *members.database.acquire().await.expect("a connection"))
         .await
         .expect("report lines seed");
-    ids
 }
 
-/// Charges each run's lines through the built-in biller, as the relay does.
-async fn settle(members: &Members, runs: &[Uuid7]) {
-    let biller = LedgerBiller::on_system_clock(members.database.clone());
-    for run in runs {
-        let work = WorkKey::SetupRun(run.clone());
-        let pending = ledger::unsettled_work(
-            &mut *members.database.acquire().await.expect("a connection"),
-            &work,
-        )
-        .await
-        .expect("the run's lines read");
-        for settlement in pending {
-            biller.settle(&settlement).await.expect("the lines settle");
-        }
-    }
-}
-
-/// The person's logged lines, their money and how many are settled.
-async fn assert_ledger(members: &Members, person: &Person, expected: (i64, i64, i64)) {
-    let stored: (i64, i64, i64) = sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint, COUNT(settled_at)::bigint FROM billing.usage_lines WHERE tenant_id=$1")
+/// The person's logged lines and their money.
+async fn assert_ledger(members: &Members, person: &Person, expected: (i64, i64)) {
+    let stored: (i64, i64) = sqlx::query_as("SELECT COUNT(*)::bigint, COALESCE(SUM(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1")
         .bind(&person.tenant).fetch_one(&mut *members.database.acquire().await.expect("a connection"))
         .await.expect("ledger remains readable");
     assert_eq!(stored, expected);

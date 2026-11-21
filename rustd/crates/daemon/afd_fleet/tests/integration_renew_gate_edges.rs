@@ -27,9 +27,10 @@ const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-edges","x-agentsfleet":{"trigg
 /// The line an unreadable gate is logged under.
 const GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
 
-/// Takes the charge column away, so every read that sums charges fails as a
-/// database fault: the run's own (the hold gate) and the fleet's (the spend
-/// gate). Only in a database of the case's own.
+/// Takes the charge column away, so the fleet's spend read (the spend gate)
+/// fails as a database fault. The balance gate reads the wallet alone, which
+/// every logged line has already debited, so it still answers. Only in a
+/// database of the case's own.
 const HIDE_CHARGES: &str =
     "ALTER TABLE billing.usage_lines RENAME COLUMN charged_nanos TO charged_nanos_hidden";
 
@@ -93,9 +94,8 @@ async fn test_an_uninstalled_fleet_renews() {
 }
 
 /// Charges that cannot be summed, then a ceiling that cannot be read, each
-/// admit the renewal and name every gate that could not be read: the hold and
-/// the spend first, then the hold and the ceiling, which stops before the
-/// spend is asked.
+/// admit the renewal and name every gate that could not be read: the spend
+/// first, then the ceiling, which stops before the spend is asked.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
@@ -137,6 +137,6 @@ async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
         );
     }
 
-    assert_eq!(gates, [["balance", "spend"], ["balance", "budget"]]);
+    assert_eq!(gates, [["spend"], ["budget"]]);
     close(held).await;
 }

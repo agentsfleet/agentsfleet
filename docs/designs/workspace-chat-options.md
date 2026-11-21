@@ -77,7 +77,7 @@ Current navigation comes from `ui/packages/app/components/layout/sidebar-navigat
 | Drawer / control | Options | Guard / recovery |
 |---|---|---|
 | Job | Name, display description, Markdown instructions | Idle typed candidate, If-Match; stale edit shows refreshed difference. |
-| Access | Tools, credential names, repository/network policy, gates, anomaly rules | No aliases or secret values in chat. Dedicated connection/secret forms; actual grant readiness. |
+| Access | Tools, credential names, repository/network policy, gates | No aliases or secret values in chat. Dedicated connection/secret forms; actual grant readiness. |
 | Triggers | Supported API/event/cron/mention fields | Exactly reviewed configuration; registration after activation. No hidden trigger mutation on Save. |
 | Setup model | Owner-eligible setup entries | Idle If-Match selection update survives reload; queued/running work blocks changes. Earlier turns keep their model. Unavailable selection offers another eligible model or owner recovery. |
 | Runtime model | Owner-eligible runtime entries | Candidate config.model; review reflects selection. |

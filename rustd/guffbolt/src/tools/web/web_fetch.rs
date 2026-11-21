@@ -15,8 +15,6 @@ use crate::tools::{Context, Handler};
 
 /// The one method a fetch sends.
 const METHOD: &str = "GET";
-/// How many characters a fetch reads back when the model names no limit.
-pub const DEFAULT_MAX_CHARS: usize = 50_000;
 /// The columns a page's text wraps at: wide, so a paragraph stays a line.
 const TEXT_WIDTH: usize = 200;
 /// What marks a response as a page to read as text.
@@ -28,7 +26,7 @@ const HTML: &str = "html";
 pub struct Fetch {
     /// An https URL on a host the network policy lists.
     url: String,
-    /// The most characters to read back: 50000 when absent.
+    /// The most characters to read back: the whole text when absent.
     max_chars: Option<usize>,
 }
 
@@ -65,8 +63,11 @@ impl Handler for WebFetch<'_> {
                 } else {
                     inbound.body
                 };
-                let limit = arguments.max_chars.unwrap_or(DEFAULT_MAX_CHARS);
-                answered(inbound.status, at_most(text, limit))
+                let text = match arguments.max_chars {
+                    Some(limit) => at_most(text, limit),
+                    None => text,
+                };
+                answered(inbound.status, text)
             }
             Err(refused) => refused.into(),
         }

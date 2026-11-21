@@ -221,21 +221,6 @@ fn gate_refusals() -> Vec<(&'static str, Change)> {
             "a gate rule with no tool",
             Remove(runtime("/gates/rules/0/tool")),
         ),
-        (
-            "a zero anomaly threshold",
-            Set(runtime("/gates/anomaly_rules/0/threshold_count"), json!(0)),
-        ),
-        (
-            "an anomaly threshold above its cap",
-            Set(
-                runtime("/gates/anomaly_rules/0/threshold_count"),
-                json!(u32::MAX),
-            ),
-        ),
-        (
-            "an unknown anomaly rule key",
-            Insert(runtime("/gates/anomaly_rules/0"), "scope", json!("run")),
-        ),
     ]
 }
 

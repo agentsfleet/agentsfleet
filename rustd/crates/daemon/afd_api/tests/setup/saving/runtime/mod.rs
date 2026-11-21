@@ -89,8 +89,7 @@ impl Saved {
         (status, json_body(response).await)
     }
 
-    /// Archives the fleet against its current tag; an archived fleet meets the
-    /// same ingress refusal the anomaly gate's archive does.
+    /// Archives the fleet against its current tag.
     async fn archive(&self) {
         let current = send(
             &self.router,

@@ -4,7 +4,6 @@ use af_egress::testing::{RecordingTransport, Sent, inbound};
 use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
-use super::DEFAULT_MAX_CHARS;
 use crate::catalog::{HTTP_REQUEST, WEB_FETCH};
 use crate::egress::SharedTransport;
 use crate::runtime::ToolErrorCode;
@@ -52,18 +51,6 @@ async fn test_web_fetch_is_get_only_and_credential_free() {
     assert!(sent.iter().all(|request| request.method == "GET"
         && request.headers.is_empty()
         && request.body.is_none()));
-
-    let long = "x".repeat(2 << 20);
-    let (transport, _sent) = replying(200, &long);
-    let cut = fetch(transport, json!({"url": PAGE})).await;
-    assert_eq!(
-        cut.text,
-        format!(
-            "{}\n\n[Content truncated at {DEFAULT_MAX_CHARS} chars, total {} chars]",
-            "x".repeat(DEFAULT_MAX_CHARS),
-            2 << 20
-        )
-    );
 }
 
 #[tokio::test]

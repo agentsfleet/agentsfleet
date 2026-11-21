@@ -30,18 +30,15 @@ afd_db.workspace = true
 afd_turns.workspace = true
 # A fleet's declared policy, as its config spells it.
 af_fleet_runtime.workspace = true
-# The fleet status the auto-kill writes (`archived`), spelled where the fleet's
-# lifecycle declares it rather than as a literal in the statement.
-afd_fleet_lifecycle.workspace = true
 # The approval status vocabulary this plane shares with the operator's.
 afd_api_wire.workspace = true
 af_wire.workspace = true
+# The one ceiling model-authored card text is held to.
+af_validate.workspace = true
 # The gate reference a parked run is resumed by is base64url on the wire.
 base64.workspace = true
 # The instant an identifier is minted at; every other instant is the database's.
 jiff.workspace = true
-# The runaway brake's bounded window map.
-moka = { workspace = true, features = ["sync"] }
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
@@ -61,3 +58,5 @@ test-util = [
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 afd_db = { workspace = true, features = ["test-util"] }
+# The fleet status the fixtures seed, spelled where the lifecycle declares it.
+afd_fleet_lifecycle.workspace = true

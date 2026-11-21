@@ -36,7 +36,7 @@ use self::harness::webhook as signed;
 use self::harness::{Fleet, Scripted, json_body, send_with_headers};
 use af_core::error_code;
 use af_webhook::Scheme;
-use afd_ingress::{MAX_FANOUT, Surface};
+use afd_ingress::Surface;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -244,39 +244,6 @@ async fn a_ping_is_answered_only_on_the_far_side_of_the_signature() {
         "an unverified ping must not be told the path answers: {document}"
     );
     assert!(ingress.deliveries().is_empty(), "and must wake nothing");
-}
-
-#[tokio::test]
-async fn a_matched_set_past_the_ceiling_is_refused_rather_than_truncated() {
-    // Waking the first hundred of a hundred and one is a silent,
-    // order-dependent choice about whose fleet runs. The operator who wired it
-    // that way is the one who has to know.
-    let ingress = Arc::new(
-        Scripted::new()
-            .app_signing(APP_SECRET)
-            .installed_in(signed::id(signed::WORKSPACE))
-            .matching(MAX_FANOUT + 1),
-    );
-    let refused = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_PULL_REQUEST,
-        APP_SECRET,
-        &app_pull_request(),
-    )
-    .await;
-
-    let status = refused.status();
-    let document = json_body(refused).await;
-    assert!(status.is_client_error(), "{status} {document}");
-    assert_eq!(
-        harness::error_code(&document),
-        Some(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str())
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "none of them, not the first hundred"
-    );
 }
 
 #[tokio::test]

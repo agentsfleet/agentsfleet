@@ -85,7 +85,7 @@ The route reads the body once with `github::Delivery::read`. It takes `installat
 
 `subscribers` (`afd_ingress`) runs `SELECT_APP_SUBSCRIBERS`: every `fleet.fleets` row in that workspace with `status = active`, joined to `connector.integration_grants` where `service = 'github'` and `status = approved`. The document half is in Rust. `Binding::read_for_source` picks the webhook trigger whose `source` is `github`, then `serves_repository(repository)` and `admits(event)` decide.
 
-`serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive. `admits` is the opposite: no `events` list means every event. More than `MAX_FANOUT = 100` matches refuses the delivery.
+`serves_repository` is fail-closed: a trigger with no `repositories` list subscribes to nothing, and the match is case-insensitive. `admits` is the opposite: no `events` list means every event. Every match gets the delivery.
 
 The fleet slug `agent-bob-01` receives the request through linkwarden's installation, which maps to Indy's workspace.
 Each active fleet there with an approved `github` grant receives one turn when its reviewed setup includes the following webhook trigger.
@@ -392,15 +392,14 @@ Each gap names what would close it.
 3. **Recovery stops at the saved boundary.** The paired file/root checkpoint resumes committed work; later external actions can repeat. A retried `message` or schedule request lands once, and a replacement run is told which calls the dead run finished ([Runner Fleet](./runner_fleet.md) §"Failure recovery model"). [Workspace recovery](runner_execution.md#workspace-between-runs) owns the limits.
 4. **Semantic resume context is separate.** `thread.threads.resume_context` supplies no recovery cursor. Task and ordinary recovery descriptors name the state a replacement can restore.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools`' sandbox git). The push path in [`runner_execution.md`](./runner_execution.md) §"Repository writes" closes it.
-6. **A gate trip never reaches a running run**: it writes only the status. Renewal ignores the fleet's status but still enforces its stored budget ceiling. Archive and delete send Cancel ([Runner Fleet](./runner_fleet.md) §"Steer, archive, delete"); a Cancel from the gate's archive closes it.
-7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
-8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
-9. **Limits are not per fleet.** The run carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.
-10. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held runs go unchecked. A reserve the worker checks before it runs closes it.
-11. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
-12. **A rotating-CDN host can fail mid-run under `allow_list_egress`.** The set is pinned at run bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.
-13. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its turn row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before intake, with a durable inbox, closes it.
-14. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for that evidence closes it.
+6. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
+7. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
+8. **Limits are not per fleet.** The run carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.
+9. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held runs go unchecked. A reserve the worker checks before it runs closes it.
+10. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
+11. **A rotating-CDN host can fail mid-run under `allow_list_egress`.** The set is pinned at run bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.
+12. **GitHub never auto-redelivers and gives ten seconds;** a leg that fails before its turn row commits is lost outright ([`connectors.md`](./connectors.md)). Answering 202 before intake, with a durable inbox, closes it.
+13. **`deployment_status` and repair-branch deliveries are acknowledged and dropped,** because repair evidence has a reader and no writer (`afd_api_ingress`'s App route). A writer for that evidence closes it.
 
 
 ## Original Pull Request repair

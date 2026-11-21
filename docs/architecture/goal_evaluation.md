@@ -245,7 +245,7 @@ Each role requires its exact native criterion keys; all wording and criterion te
 
 Statements retain stable IDs and their reviewed order. Empty, duplicate, unknown, NUL-containing and oversized policy is refused, never filled with hidden questions.
 
-Question and criterion text is at most 512 UTF-8 bytes; each complete authored question is at most 1 KiB. The actual rendered request must independently satisfy the selected provider's request bounds.
+Question and criterion text is nonblank and holds no NUL. The actual rendered request must independently satisfy the selected provider's request bounds.
 The shared [Linkwarden policy fixture](../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/ci-repairer/decision-policy.json) illustrates the editable representation.
 
 ## Question display in setup and task views
@@ -406,7 +406,7 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 | Bound | Proposed value |
 |---|---|
 | State | No bound of its own: text, an object or an array. State and questions together must fit the profile's `input_max_bytes`, at most 24,576 bytes; past it the daemon refuses with `UZ-REQ-002` before reserving. |
-| Questions | At most eight; authored questions stay within 1 KiB each. Each compiled question permits 16 KiB for the complete native option set; no images, long-context header or external assets. |
+| Questions | At most eight. Each compiled question permits 16 KiB for the complete native option set; no images, long-context header or external assets. |
 | Response | At most 64 KiB; exact question-key coverage and known options required. |
 | Call deadline | Three-second connect timeout; 12 seconds per physical request; 30 seconds total per logical decision. |
 | Retry | One retry after 429/529, at most two seconds of jittered backoff or Retry-After within the remaining deadline. |
@@ -459,7 +459,7 @@ Runtime-line counts in `meter_run.sql` must exclude decision sequences.
 
 Reuse `afd_billing::price::{PriceBook, Rater}` with frozen decision tiers and platform posture.
 Do not pass decision usage through the coding run's `usage::Pricing`; distinct provider/model/posture lines produce separate settlements under the same work identity.
-The usage log groups a work's unsettled lines by those three attributes (`afd_billing`'s `ledger::unsettled_work`); no relay settles them since M253_003.
+Each line names those three attributes, and its insert debits the original payer's wallet (billing §3).
 
 Native reservations and PATCH receipts retain original ownership. The source continuation
 uses the existing report drainer for encrypted late decision receipts; renew/report

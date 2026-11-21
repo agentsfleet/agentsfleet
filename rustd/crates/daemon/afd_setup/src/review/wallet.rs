@@ -9,8 +9,8 @@ use crate::{
     types::{Action, ActionKind, CheckKind, CheckState},
 };
 
-/// Ready when the owner's balance, less its unsettled lines, still funds one
-/// run interval of runtime: the least a setup chat can run before its first
+/// Ready when the owner's balance, every logged line already debited, still
+/// funds one run interval of runtime: the least a setup chat can run before its first
 /// renewal asks again. Read on the caller's transaction, never a second pooled
 /// connection.
 pub(super) async fn observe(
@@ -24,7 +24,7 @@ pub(super) async fn observe(
             let interval = i64::try_from(clock.ttl().as_secs())
                 .ok()
                 .and_then(|seconds| afd_billing::RUN_NANOS_PER_SEC.checked_mul(seconds));
-            interval.is_some_and(|interval| balance.left().as_i64() >= interval)
+            interval.is_some_and(|interval| balance.balance.as_i64() >= interval)
         }
         Err(fault) if fault.is_wallet_missing() => false,
         Err(fault) => return Err(fault.into()),

@@ -30,11 +30,6 @@ pub const EDITS: [&str; 5] = [
     ApplyPatch::NAME,
 ];
 
-/// How many edits a line diff searches before it counts the lines between
-/// the files' common start and end as all replaced: still a true diff, and
-/// a cost bounded however far apart two long files are.
-const MAX_EDITS: i64 = 1000;
-
 /// One file an edit changed, and how.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
@@ -146,8 +141,7 @@ pub(crate) async fn before(env: &dyn Env, path: &str) -> Option<String> {
 }
 
 /// Lines `after` adds to `before` and lines it removes, by the shortest line
-/// diff between them; past [`MAX_EDITS`] edits, the lines between their common
-/// start and end count as all replaced.
+/// diff between them.
 fn line_counts(before: &str, after: &str) -> (u64, u64) {
     let old: Vec<&str> = before.lines().collect();
     let new: Vec<&str> = after.lines().collect();
@@ -170,13 +164,13 @@ fn line_counts(before: &str, after: &str) -> (u64, u64) {
 }
 
 /// The most lines `old` and `new` share in order, by Myers' greedy search for
-/// the shortest edit script; none past [`MAX_EDITS`] edits.
+/// the shortest edit script.
 fn shared_lines<'a>(old: &[&'a str], new: &[&'a str]) -> Option<usize> {
     let (n, m) = (
         i64::try_from(old.len()).ok()?,
         i64::try_from(new.len()).ok()?,
     );
-    let limit = (n + m).min(MAX_EDITS);
+    let limit = n + m;
     let offset = limit + 1;
     let slot = |diagonal: i64| usize::try_from(diagonal + offset).ok();
     let line = |lines: &[&'a str], at: i64| -> Option<&'a str> {

@@ -1,5 +1,5 @@
-//! Which actions need a human, which repetitions end the run, and how far a
-//! fleet's repository credentials reach.
+//! Which actions need a human, and how far a fleet's repository credentials
+//! reach.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::predicate::not_daemon_owned;
 use super::{MAX_REFERENCE_LEN, MAX_TOOL_LEN};
 
-/// Approval and anomaly rules for a fleet's tool actions.
+/// Approval rules for a fleet's tool actions.
 #[derive(Debug, Deserialize, Validate)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionGates))]
 pub(crate) struct Gates {
@@ -20,9 +20,6 @@ pub(crate) struct Gates {
     /// The tool actions that need a person's approval.
     #[garde(dive)]
     pub(crate) rules: Option<Vec<GateRule>>,
-    /// The repeated-action patterns that stop a run.
-    #[garde(dive)]
-    pub(crate) anomaly_rules: Option<Vec<AnomalyRule>>,
 }
 
 /// One rule for when a tool action needs a person: a matching action always
@@ -61,37 +58,6 @@ pub(crate) struct GateRule {
     #[serde(default)]
     #[garde(length(chars, max = MAX_REFERENCE_LEN))]
     pub(crate) blast_radius: String,
-}
-
-/// One repeated-action pattern that stops a run.
-//
-// Its thresholds are bounded by `NonZeroU32` and an explicit cap in `gates`,
-// not here: zero has to be UNREPRESENTABLE downstream rather than merely
-// refused at the door.
-#[derive(Debug, Deserialize, Validate)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionAnomalyRule))]
-pub(crate) struct AnomalyRule {
-    /// The pattern to watch for.
-    #[garde(skip)]
-    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
-    pub(crate) pattern: Option<Pattern>,
-    /// How many repeats stop the run.
-    #[garde(skip)]
-    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
-    pub(crate) threshold_count: Option<u32>,
-    /// The window, in seconds, the repeats are counted in.
-    #[garde(skip)]
-    #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
-    pub(crate) threshold_window_s: Option<u32>,
-}
-
-/// A repeated-action pattern.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionAnomalyPattern))]
-#[serde(rename_all = "snake_case")]
-pub enum Pattern {
-    /// The same action, again and again.
-    SameAction,
 }
 
 /// How far a fleet's repository credentials reach.

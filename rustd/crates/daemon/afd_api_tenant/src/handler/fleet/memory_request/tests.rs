@@ -16,18 +16,10 @@ use af_core::paging::Cursor;
 use af_wire::memory::INDEXED_TEXT_MAX_BYTES;
 use afd_memory::page::View;
 
-use super::{
-    LIMIT_MAX, LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key, row_id,
-};
+use super::{LIST_LIMIT_DEFAULT, RECALL_LIMIT_DEFAULT, Read, form_decode, memory_key, row_id};
 
 /// The fleet that wrote a cursor's boundary row.
 const WRITER: &str = "01990000-0000-7000-8000-0000000000d1";
-
-/// A page size far past what any page will serve.
-///
-/// Derived from the ceiling rather than spelled, so it stays over it however
-/// the ceiling moves — a literal would silently become a valid ask.
-const OVER_THE_CEILING: i64 = LIMIT_MAX * 1_000;
 
 /// A path under the memories item template, as the router hands it over.
 fn item(key: &str) -> String {
@@ -90,16 +82,11 @@ fn should_size_a_search_page_differently_from_a_list_page() {
     assert_ne!(RECALL_LIMIT_DEFAULT, LIST_LIMIT_DEFAULT);
 }
 
-/// A limit is taken as asked, up to the ceiling.
+/// A limit is taken as asked.
 #[test]
-fn should_take_the_limit_asked_for_up_to_the_ceiling() {
+fn should_take_the_limit_asked_for() {
     assert_eq!(Read::parse("limit=25").unwrap().limit, 25);
     assert_eq!(Read::parse("limit=1").unwrap().limit, 1);
-    assert_eq!(Read::parse("limit=100").unwrap().limit, LIMIT_MAX);
-    // Over the ceiling CLAMPS rather than refusing — this surface's own
-    // vocabulary, kept so a client sitting on it does not change class.
-    let asked = format!("limit={OVER_THE_CEILING}");
-    assert_eq!(Read::parse(&asked).unwrap().limit, LIMIT_MAX);
 }
 
 /// A limit that is not a positive integer is refused, never coerced.

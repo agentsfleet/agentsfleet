@@ -170,9 +170,7 @@ fn funding_events(capture: &Capture, case: &Case) {
 async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservationInput>) {
     let case = fixture.case;
     let mut dependencies = fixture.dependencies.clone();
-    dependencies.biller = Arc::new(FailOpen::new(LedgerBiller::on_system_clock(
-        unreachable_db(),
-    )));
+    dependencies.biller = Arc::new(FailOpen::new(LedgerBiller::new(unreachable_db())));
     let unconfirmed = Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
     let failure = unconfirmed
         .reserve_decision(case.run(), input)

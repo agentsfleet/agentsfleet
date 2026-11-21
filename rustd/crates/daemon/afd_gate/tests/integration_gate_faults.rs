@@ -10,35 +10,12 @@ mod fixture;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Claim, Evaluation, GateRef, Gates, Park, Parked, Stated, Verdict};
+use afd_gate::gate::{Claim, Evaluation, GateRef, Gates, Park, Parked, Stated};
 
-use self::fixture::{Fixture, NOW, RUNAWAY_AT_TWO, config, config_gates};
+use self::fixture::{Fixture, NOW, config};
 
 /// How long a parked question waits for its answer.
 const REFERENCE_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_runaway_archives_the_fleet_even_when_the_bus_is_unreachable() {
-    let fixture = Fixture::create().await;
-    fixture.seed().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        afd_bus::test_util::unreachable(),
-        Entropy::new(),
-    );
-    let runaway = config_gates(RUNAWAY_AT_TWO);
-
-    gates.check(fixture.check(&mint_id(), &runaway), NOW).await;
-    let verdict = gates.check(fixture.check(&mint_id(), &runaway), NOW).await;
-
-    assert_eq!(verdict, Verdict::Archived);
-    assert_eq!(
-        fixture.status().await,
-        afd_fleet_lifecycle::FleetStatus::Archived.as_str()
-    );
-    fixture.cleanup().await;
-}
 
 /// Gates over `database` and a bus that refuses every publish and subscribe.
 fn gates_without_a_bus(database: afd_db::Db) -> Gates {

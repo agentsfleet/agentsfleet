@@ -9,7 +9,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
-use crate::reads::{assert_shape, line_output_tokens, relay_settled, run_column};
+use crate::reads::{assert_shape, line_output_tokens, run_column};
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, post, report_body,
     wait_for_seeded_assignment,
@@ -78,7 +78,6 @@ const LEDGER_SHAPE: &[&str] = &[
     "platform_model_price_id",
     "unpriced_token_count",
     "charged_nanos",
-    "settled_at",
     "created_at",
     "updated_at",
 ];
@@ -151,8 +150,6 @@ async fn complete_cycle(http: &reqwest::Client, scene: &Scenario) -> String {
 }
 
 async fn assert_rows(scene: &Scenario, run_id: &str) {
-    // `settled_at` is part of the recorded line shape; the relay fills it.
-    relay_settled(scene).await;
     let run = Uuid7::parse(run_id).expect("the daemon answers a canonical run id");
     assert_shape(scene, "thread.runs", "id = $1", &run, RUN_SHAPE).await;
     assert_shape(

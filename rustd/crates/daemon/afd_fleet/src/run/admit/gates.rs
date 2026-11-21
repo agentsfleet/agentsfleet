@@ -125,9 +125,8 @@ const EVENT_BUDGET_BREACH: &str = "run_budget_breach";
 /// The tenant's credit pool against this run's floor cost.
 ///
 /// Answers a refusal when the pool cannot cover the run's floor. The pool is
-/// the biller's balance less every line the tenant has logged and the relay
-/// has not yet charged, so what runs already in flight spent counts against
-/// it.
+/// the biller's balance, which every line the tenant has logged already
+/// debited, so what runs already in flight spent counts against it.
 ///
 /// Two reads, and BOTH are taken even when the first answers that the run
 /// cannot be priced. An unpriceable model costs zero to admit against, but the
@@ -153,7 +152,7 @@ pub(super) async fn balance<F: error_code::Coded + Sync>(
         workspace: request.workspace_id.clone(),
     };
     let available = match biller.balance(&payer).await {
-        Ok(funds) => funds.left(),
+        Ok(funds) => funds.balance,
         Err(fault) if fault.is_wallet_missing() => return None,
         Err(fault) => return BALANCE.absorb(&fault),
     };

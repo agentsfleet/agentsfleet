@@ -202,19 +202,6 @@ pub(crate) async fn line_output_tokens(scene: &Scenario) -> i64 {
     .await
 }
 
-/// How many of those lines the biller has not yet settled.
-///
-/// Zero once a report has answered: the run path settles its lines after
-/// commit and before it replies, and only a failed settle leaves one for the
-/// billing sweeper.
-pub(crate) async fn unsettled_lines(scene: &Scenario) -> i64 {
-    count_lines(
-        scene,
-        "SELECT count(*) FROM billing.usage_lines WHERE turn_id = $1 AND settled_at IS NULL",
-    )
-    .await
-}
-
 /// One count over the scenario event's usage lines.
 async fn count_lines(scene: &Scenario, statement: &'static str) -> i64 {
     let mut connection = scene
@@ -255,20 +242,4 @@ pub(crate) async fn run_rows(scene: &Scenario) -> i64 {
         .expect("the run count must scene")
         .try_get(0)
         .expect("a count is a bigint")
-}
-
-/// How long a test waits for the daemon's billing relay to settle a report's
-/// lines before its assertion names what is left; generous, so a slow
-/// machine never fails a correct relay.
-const RELAY_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
-/// How often the wait reads again.
-const RELAY_POLL: std::time::Duration = std::time::Duration::from_millis(250);
-
-/// Waits until the relay has settled every line the scenario's event logged,
-/// or the limit passes; the caller's assertion names what is left.
-pub(crate) async fn relay_settled(scene: &Scenario) {
-    let deadline = tokio::time::Instant::now() + RELAY_LIMIT;
-    while unsettled_lines(scene).await > 0 && tokio::time::Instant::now() < deadline {
-        tokio::time::sleep(RELAY_POLL).await;
-    }
 }

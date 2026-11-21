@@ -18,13 +18,13 @@ use crate::lane::Lane;
 /// Long enough for the cap on a loaded lane; a read still waiting past it hung.
 const BOUND: Duration = Duration::from_secs(10);
 
-/// Takes the lock every read of the usage log waits behind.
-const LOCK_LINES: &str = "LOCK TABLE billing.usage_lines IN ACCESS EXCLUSIVE MODE";
+/// Takes the lock every funds read waits behind: the wallet is all it reads.
+const LOCK_WALLETS: &str = "LOCK TABLE billing.wallets IN ACCESS EXCLUSIVE MODE";
 
 /// Postgres ended the lock wait at the login's `lock_timeout`.
 const LOCK_NOT_AVAILABLE: &str = "55P03";
 
-/// The login's lock bound, which ends a read waiting on the locked log.
+/// The login's lock bound, which ends a read waiting on the locked wallets.
 fn cap() -> Duration {
     let millis = afd_db::login::LOCK_TIMEOUT
         .strip_suffix("ms")
@@ -49,7 +49,7 @@ fn sqlstate(fault: &afd_billing::Error) -> Option<String> {
     None
 }
 
-/// With the usage log locked, a funds check and a balance read each end at
+/// With the wallets locked, a funds check and a balance read each end at
 /// the login's lock bound, with an error the outage policy counts as
 /// unanswered, and an open policy runs the work. Once the lock goes, the same check answers.
 ///
@@ -74,10 +74,10 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         .begin()
         .await
         .expect("the holder's transaction opens");
-    sqlx::query(LOCK_LINES)
+    sqlx::query(LOCK_WALLETS)
         .execute(&mut *lock)
         .await
-        .expect("the usage log locks");
+        .expect("the wallets lock");
 
     let biller = ledger(&lane);
     let started = Instant::now();
@@ -108,7 +108,7 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         .expect("an open check answers");
     assert_eq!(answered, Funds::Unconfirmed);
 
-    lock.rollback().await.expect("the usage log unlocks");
+    lock.rollback().await.expect("the wallets unlock");
     drop(holder);
     assert_eq!(
         biller.check(&ask).await.expect("the check answers"),

@@ -2,10 +2,10 @@
 //!
 //! # Why this module cannot move money
 //!
-//! Only settlement debits the wallet: the billing relay settles the usage that
-//! renewals and reports log, and a setup chat settles its own. Signup bootstrap
-//! adds the starter grant. This module holds none of those
-//! writes; it is the read side those movements are
+//! Only a usage line debits the wallet, in the statement that writes it:
+//! renewals, reports and a setup chat log their lines through the ledger or
+//! their own statements. Signup bootstrap adds the starter grant. This module
+//! holds none of those writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so
 //! it is stated where somebody adding a write will read it.
@@ -60,7 +60,7 @@ impl Billing {
         Self { database }
     }
 
-    /// Full-period settled totals, spending groups and filter choices.
+    /// Full-period totals, spending groups and filter choices.
     ///
     /// # Errors
     /// Reports an unavailable datastore or an unreadable rollup row.

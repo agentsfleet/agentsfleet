@@ -1,6 +1,6 @@
 //! An edit's line counts and the report that carries them.
 
-use super::{Change, HEADER, MAX_EDITS, appended, report, reported};
+use super::{Change, HEADER, appended, report, reported};
 
 /// `count` numbered lines, each `prefix` then its number, joined.
 fn numbered(prefix: &str, count: usize) -> String {
@@ -67,22 +67,6 @@ fn identical_text_counts_nothing() {
     assert_eq!(
         Change::between("same.txt", "a\nb\n", "a\nb"),
         change("same.txt", 0, 0)
-    );
-}
-
-#[test]
-fn a_rewrite_past_the_search_bound_counts_the_lines_between_whole() {
-    let lines = usize::try_from(MAX_EDITS).unwrap_or_default();
-    let before = format!("head\n{}tail\n", numbered("a", lines));
-    let after = format!("head\n{}tail\n", numbered("b", lines));
-    assert_eq!(
-        Change::between("big.txt", &before, &after),
-        change(
-            "big.txt",
-            MAX_EDITS.unsigned_abs(),
-            MAX_EDITS.unsigned_abs()
-        ),
-        "the shared head and tail stay out of the counts"
     );
 }
 

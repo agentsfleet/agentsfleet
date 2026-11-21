@@ -8,12 +8,12 @@ use af_core::{
     timing::{RENEWAL_TICK, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET},
 };
 
-const LINES: &str = "SELECT work_id, seq, input_token_count, output_token_count, charged_nanos, settled_at IS NOT NULL, kind FROM billing.usage_lines WHERE work_id = ANY($1) ORDER BY work_id, kind, seq";
-type Line = (Uuid7, i64, i64, i64, i64, bool, String);
+const LINES: &str = "SELECT work_id, seq, input_token_count, output_token_count, charged_nanos, kind FROM billing.usage_lines WHERE work_id = ANY($1) ORDER BY work_id, kind, seq";
+type Line = (Uuid7, i64, i64, i64, i64, String);
 
 /// Whether `row` is one of the runner's model calls, by its stored kind.
 fn is_model(row: &Line) -> bool {
-    row.6 == af_wire::usage::LineKind::Model.as_str()
+    row.5 == af_wire::usage::LineKind::Model.as_str()
 }
 
 pub(super) async fn owner(scene: &Scenario) -> Uuid7 {
@@ -85,14 +85,14 @@ pub(super) async fn settled(scene: &Scenario, held: &[Held; 2], expected: [usize
     let rows = tokio::time::timeout(STREAM_ANSWER_TIMEOUT + STREAM_RECOVERY_BUDGET, async {
         loop {
             let rows = lines(scene, held).await;
-            if counts(&rows, held) == expected && rows.iter().all(|row| row.5) {
+            if counts(&rows, held) == expected {
                 return rows;
             }
             tokio::task::yield_now().await;
         }
     })
     .await
-    .expect("replayed renewals and final reports settle every usage line");
+    .expect("replayed renewals and final reports log every usage line");
     provider_rows(&rows, held, expected);
     let total: i64 = rows.iter().map(|row| row.4).sum();
     let balance: i64 =
@@ -107,7 +107,7 @@ pub(super) async fn settled(scene: &Scenario, held: &[Held; 2], expected: [usize
                     .expect("usage replay observer"),
             )
             .await
-            .expect("settled wallet balance");
+            .expect("debited wallet balance");
     assert_eq!(
         balance,
         DEEP_POOL - total,

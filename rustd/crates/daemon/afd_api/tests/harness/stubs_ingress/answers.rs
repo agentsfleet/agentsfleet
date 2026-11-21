@@ -166,17 +166,12 @@ impl WebhookIngress for HarnessIngress {
 }
 
 impl Scripted {
-    /// The three answers a route acts on, from what this store was told.
-    ///
-    /// The ceiling wins over the subscriber list when both are arranged, which
-    /// is the only order that makes sense: a test setting a matched count is
-    /// asking for the refusal, and a list beside it is the fleets that count
-    /// stands for.
+    /// The two answers a route acts on, from what this store was told.
     fn fanout(&self) -> Fanout {
-        match (self.over_ceiling, self.subscribers.is_empty()) {
-            (Some(count), _) => Fanout::TooMany(count),
-            (None, true) => Fanout::Nobody,
-            (None, false) => Fanout::To(self.subscribers.clone()),
+        if self.subscribers.is_empty() {
+            Fanout::Nobody
+        } else {
+            Fanout::To(self.subscribers.clone())
         }
     }
 

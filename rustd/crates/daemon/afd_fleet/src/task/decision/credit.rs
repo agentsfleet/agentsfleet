@@ -16,6 +16,6 @@ pub(super) async fn required_on(
         .fetch_one(connection)
         .await
         .map_err(query("read unresolved physical decision credit"))?;
-    // The biller already subtracts logged unsettled lines from spendable credit.
+    // The wallet already holds every logged line's debit.
     Ok(Nanos::from_i64(unresolved).saturating_add(coding_headroom))
 }

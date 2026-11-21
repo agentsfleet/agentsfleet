@@ -7,8 +7,8 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_connector::slack::{MAX_MESSAGES, READ_DEADLINE, Unavailable};
-use afd_ingress::slack::{THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE};
+use afd_connector::slack::{READ_DEADLINE, Unavailable};
+use afd_ingress::slack::{THREAD_HEADING, THREAD_UNAVAILABLE};
 use serde_json::json;
 
 use super::*;
@@ -71,12 +71,11 @@ async fn told(fixture: &Fixture, event_id: &str) -> Value {
     serde_json::from_str(&admitted.request_json).expect("the event body is JSON")
 }
 
-/// A thread of thirty messages is told as the announcement and
-/// the latest nineteen replies, parent first and within the cap, and the event
-/// says the thread was cut.
+/// A thread of thirty messages is told whole: the announcement, then every
+/// reply in thread order.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn thread_context_keeps_parent_and_latest_replies() {
+async fn thread_context_tells_the_parent_and_every_reply() {
     let (fixture, router) = with_responder(Fixture::create().await).await;
     fixture.slack.answer(THREAD_TS, 200, &announced_thread(29));
 
@@ -86,7 +85,7 @@ async fn thread_context_keeps_parent_and_latest_replies() {
     let request = told(&fixture, "EvThread01").await;
     assert_eq!(
         request.get("thread"),
-        Some(&json!({ "fetched": true, "count": MAX_MESSAGES, "truncated": true })),
+        Some(&json!({ "fetched": true, "count": 30 })),
         "{request}"
     );
     let message = request
@@ -97,7 +96,6 @@ async fn thread_context_keeps_parent_and_latest_replies() {
         .split_once(&format!("\n\n{THREAD_HEADING}\n"))
         .expect("the thread is told under its heading, after the question");
     assert_eq!(question, QUESTION);
-    assert!(thread.chars().count() <= THREAD_CAP, "{message}");
 
     let lines: Vec<&str> = thread.lines().collect();
     assert_eq!(
@@ -115,11 +113,8 @@ async fn thread_context_keeps_parent_and_latest_replies() {
         .iter()
         .filter_map(|line| line.strip_prefix(&format!("- {PERSON}: ")))
         .collect();
-    let latest: Vec<String> = (11..=29).map(|reply| format!("reply {reply}")).collect();
-    assert_eq!(
-        replies, latest,
-        "the oldest replies are dropped, the rest told in thread order"
-    );
+    let every: Vec<String> = (1..=29).map(|reply| format!("reply {reply}")).collect();
+    assert_eq!(replies, every, "every reply is told, in thread order");
     assert_eq!(fixture.slack.reads(), 1, "one thread, one read");
 
     fixture.cleanup().await;
@@ -168,7 +163,7 @@ async fn failed_reread_degrades_to_the_mention() {
         );
         assert_eq!(
             request.get("thread"),
-            Some(&json!({ "fetched": false, "count": 0, "truncated": false })),
+            Some(&json!({ "fetched": false, "count": 0 })),
             "{reason:?}"
         );
     }

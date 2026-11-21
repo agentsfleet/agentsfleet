@@ -1514,7 +1514,7 @@ Order is load-bearing:
 5. Select only active fleets in that workspace with an approved GitHub integration grant and a matching GitHub trigger. The trigger's explicit `repositories` must contain `repository.full_name`, and its `events` must admit the incoming event. Missing `repositories` means no App delivery; it remains valid for the manual fleet-addressed route.
 6. Hash the authenticated request body and write one queued turn per fleet in `thread.turns`, keyed by fleet and body digest. The ledger's unique `(producer, producer_key)` index turns a redelivery into a no-op (`rustd/crates/daemon/afd_ingress/src/deliver.rs`). The committed turn stays queued until a run takes it; wake notifications are best effort ([turn flow](architecture/data_flow.md)).
 
-   Changing the unsigned delivery header cannot bypass replay protection. More matches than `afd_ingress::MAX_FANOUT` are refused with `UZ-WH-022` rather than truncated.
+   Changing the unsigned delivery header cannot bypass replay protection. Every matching fleet gets a turn.
 
 Pull Request events and completed failed `workflow_run` events are normalized into the ordinary webhook event envelope. Receiving the event does not disclose credentials. A later GitHub API tool call still crosses the runner-token mint boundary and rechecks the fleet's approved integration grant.
 

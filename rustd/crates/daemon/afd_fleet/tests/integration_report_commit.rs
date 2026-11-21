@@ -243,9 +243,9 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     let run_id = &held.issued.run_id;
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL),
-        "the report's transaction logs usage and moves no money: the biller charges \
-         after commit"
+        Some(DEEP_POOL - slice),
+        "the report's transaction logs the slice and debits it in the same commit, once \
+         however many times the report is sent"
     );
     assert_eq!(
         held.fixtures.ledger_rows(&held.turn_id).await,

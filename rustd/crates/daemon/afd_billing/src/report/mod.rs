@@ -1,4 +1,5 @@
-//! Settled usage reports over the existing ledger; no HTTP and no money writes.
+//! Usage reports over the daily rollups the usage lines write; no HTTP and no
+//! money writes.
 
 mod queries;
 mod types;
@@ -26,7 +27,7 @@ use afd_db::Db;
 
 use crate::{Result, error};
 
-const CONTEXT_READ: &str = "read settled usage report";
+const CONTEXT_READ: &str = "read usage report";
 
 /// Read the period's totals, groups and choices from the daily usage rollup.
 pub(crate) async fn read(database: &Db, tenant: &Uuid7, request: &Request) -> Result<Report> {

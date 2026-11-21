@@ -5,9 +5,8 @@ import { Effect, Schema } from "effect";
 
 type Question = {readonly question: string; readonly criteria: {readonly true: string; readonly false: string}};
 
-const encoder = new TextEncoder();
 const TextSchema = Schema.String.check(Schema.makeFilter((text: string) =>
-  encoder.encode(text).byteLength <= 512 && text.trim().length > 0 && !text.includes("\0")));
+  text.trim().length > 0 && !text.includes("\0")));
 const NoulCriteriaSchema = Schema.Struct({true: TextSchema, false: TextSchema});
 const NoulQuestionSchema = Schema.Struct({question: TextSchema, criteria: NoulCriteriaSchema});
 const StatementSchema = Schema.Struct({id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_.-]+$/), Schema.isMaxLength(64)),
@@ -24,7 +23,7 @@ const DecisionPolicySchema = Schema.Struct({
     multiple_requests: NoulQuestionSchema,
   }),
   completion: Schema.Struct({
-    statements: Schema.Array(StatementSchema).check(Schema.isMinLength(1), Schema.isMaxLength(6),
+    statements: Schema.Array(StatementSchema).check(Schema.isMinLength(1),
       Schema.makeFilter((statements: ReadonlyArray<typeof StatementSchema.Type>) =>
         new Set(statements.map((statement) => statement.id)).size === statements.length)),
     next_action: Schema.Struct({question: TextSchema, criteria: Schema.Struct({

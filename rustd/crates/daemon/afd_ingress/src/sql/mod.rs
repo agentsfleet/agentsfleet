@@ -61,11 +61,9 @@ pub const SELECT_INSTALL_WORKSPACE: &str = include_str!("select_install_workspac
 ///
 /// The candidate rows crossing the wire are not pre-filtered by repository, so
 /// a workspace pays for its active granted fleets rather than its subscribed
-/// ones. The set is bounded by the same ceiling the fan-out is — a workspace
-/// with more matching fleets than [`crate::MAX_FANOUT`] has a delivery this
-/// daemon refuses either way.
+/// ones.
 ///
-/// Ordered by id so a truncated fan-out is the same set every replica sees.
+/// Ordered by id so every replica fans out in the same order.
 pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sql");
 
 /// The fleets in a workspace a chat mention could reach, for

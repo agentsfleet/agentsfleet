@@ -118,7 +118,7 @@ Connecting Slack or saving a notice binding proves no memory capture or recall.
 
 ## 5. What the fleet is told
 
-Slack's mention event carries the mention and nothing else. The daemon re-reads the thread before admitting the event: `conversations.replies` for the thread root, parent first, then the latest replies, at most 20 messages, each capped, under a 1.5 second deadline, with the bot token loaded and the pool connection released before the call (`afd_connector/src/slack/replies/mod.rs`). The parent is the GitHub announcement, so it carries the run link. Attachment and block text are flattened into the message so the link survives.
+Slack's mention event carries the mention and nothing else. The daemon re-reads the thread before admitting the event: `conversations.replies` for the thread root, every message in thread order, each told whole, under a 1.5 second deadline, with the bot token loaded and the pool connection released before the call (`afd_connector/src/slack/replies/mod.rs`). The parent is the GitHub announcement, so it carries the run link. Attachment and block text are flattened into the message so the link survives.
 
 The runner reads the request's `message` string and falls back to the whole body (`af_wire/src/turn/message.rs:14-24`). The daemon therefore composes one `message`: the mention text, then the thread under a fixed heading that labels it untrusted data. A failed or forbidden re-read degrades to the mention alone, and the message says so.
 

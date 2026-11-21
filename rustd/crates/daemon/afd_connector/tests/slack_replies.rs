@@ -75,7 +75,6 @@ async fn a_thread_is_read_across_pages_with_the_bots_bearer() {
     let replies = read(&fake).await.expect("both pages answered");
     let texts: Vec<&str> = replies.messages.iter().map(|m| m.text.as_str()).collect();
     assert_eq!(texts, ["build failed", "looking", "it is the cache"]);
-    assert_eq!(replies.seen, 3);
 
     let requests = fake.requests();
     assert_eq!(requests.len(), 2, "one request per page");

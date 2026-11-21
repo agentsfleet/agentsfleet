@@ -1,5 +1,6 @@
--- One priced provider request or runtime slice. No foreign keys: a line outlives what it names,
--- so references are opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
+-- One priced provider request or runtime slice, charged by the statement that writes it (below,
+-- and the daily rollups' files). No foreign keys: a line outlives what it names, so references are
+-- opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
 -- By `work_type`: a fleet line sets `fleet_id` and `turn_id`; a setup line sets `run_id`, and
 -- `turn_id` to the draft message its run answered.
 CREATE TABLE billing.usage_lines (
@@ -30,7 +31,6 @@ CREATE TABLE billing.usage_lines (
     platform_model_price_id     UUID,
     unpriced_token_count        BIGINT NOT NULL,
     charged_nanos               BIGINT NOT NULL,
-    settled_at                  TIMESTAMPTZ(3),
     created_at                  TIMESTAMPTZ(3) NOT NULL,
     updated_at                  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_usage_lines_work_type_work_id_kind_seq UNIQUE (work_type, work_id, kind, seq),
@@ -51,9 +51,6 @@ CREATE INDEX idx_usage_lines_fleet_id_created_at
 CREATE INDEX idx_usage_lines_fleet_id_turn_id
     ON billing.usage_lines (fleet_id, turn_id) INCLUDE (charged_nanos)
     WHERE fleet_id IS NOT NULL;
-
-CREATE INDEX idx_usage_lines_created_at_unsettled
-    ON billing.usage_lines (created_at) WHERE settled_at IS NULL;
 
 -- Only an insert moves the budget, because a line's price never changes. A setup-chat line and a
 -- purged fleet write none.
@@ -79,9 +76,30 @@ CREATE TRIGGER trg_usage_lines_bump_budget
     FOR EACH ROW WHEN (NEW.fleet_id IS NOT NULL)
     EXECUTE FUNCTION billing.usage_lines_bump_budget();
 
-GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;
+-- A statement's new lines debit their payers' wallets, past zero if they must: a debt the next
+-- grant repays. A line the unique key turned away is not in `inserted`, so a retry charges nothing.
+-- Wallets lock in tenant order, last: this trigger's name sorts after the rollups'. `exhausted_at`
+-- keeps the first crossing to zero or below until a debit leaves credit. No wallet, no debit.
+CREATE FUNCTION billing.usage_lines_debit_wallets() RETURNS trigger
+    LANGUAGE plpgsql SET search_path TO pg_catalog, billing
+AS $$
+BEGIN
+    PERFORM 1 FROM billing.wallets w
+      WHERE w.tenant_id IN (SELECT line.tenant_id FROM inserted line WHERE line.charged_nanos > 0)
+      ORDER BY w.tenant_id FOR NO KEY UPDATE OF w;
+    UPDATE billing.wallets w
+       SET balance_nanos = w.balance_nanos - spent.nanos, updated_at = now(),
+           exhausted_at = CASE WHEN w.balance_nanos - spent.nanos <= 0
+                               THEN COALESCE(w.exhausted_at, now()) END
+      FROM (SELECT line.tenant_id, sum(line.charged_nanos)::bigint AS nanos FROM inserted line
+             WHERE line.charged_nanos > 0 GROUP BY line.tenant_id) spent
+     WHERE w.tenant_id = spent.tenant_id;
+    RETURN NULL;
+END;
+$$;
 
--- Funds checks sum a tenant's unsettled lines; the partial index keeps that read small however
--- long the tenant's history.
-CREATE INDEX idx_usage_lines_tenant_id_unsettled
-    ON billing.usage_lines (tenant_id) INCLUDE (charged_nanos) WHERE settled_at IS NULL;
+CREATE TRIGGER trg_usage_lines_debit_wallets
+    AFTER INSERT ON billing.usage_lines REFERENCING NEW TABLE AS inserted
+    FOR EACH STATEMENT EXECUTE FUNCTION billing.usage_lines_debit_wallets();
+
+GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;

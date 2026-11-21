@@ -146,7 +146,6 @@ OAuth nonces are `connector.oauth_nonces` rows that live 600 s and are spent onc
 Nothing sweeps expired sessions or nonces. Every read refuses them by `expires_at`, and spending an expired nonce removes it.
 
 Gate references come from `fleet.approval_gates` (`afd_gate/src/gate/store/mod.rs`).
-The anomaly brake counts in each replica's memory, one window per rule, bounded at 10,000 keys, and fails open (`afd_gate/src/gate/anomaly.rs`).
 
 See [Shared local development](#shared-local-development) for ownership and reset rules.
 

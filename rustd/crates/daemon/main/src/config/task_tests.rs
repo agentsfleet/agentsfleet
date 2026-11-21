@@ -9,7 +9,7 @@ use super::{ConfigBuilder, FILE_KNOB};
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 #[test]
-fn task_admission_settings_refuse_zero_and_setup_ceilings() -> TestResult {
+fn task_admission_settings_refuse_zero() -> TestResult {
     let environment = MapEnv::default();
     for (setting, field) in [
         ("max_unfinished_per_fleet = 0", "max_unfinished_per_fleet"),
@@ -20,8 +20,8 @@ fn task_admission_settings_refuse_zero_and_setup_ceilings() -> TestResult {
         ("max_actions_per_message = 0", "max_actions_per_message"),
         ("max_objective_bytes = 0", "max_objective_bytes"),
         ("max_title_bytes = 0", "max_title_bytes"),
-        ("max_completion_questions = 7", "max_completion_questions"),
-        ("max_question_text_bytes = 513", "max_question_text_bytes"),
+        ("max_completion_questions = 0", "max_completion_questions"),
+        ("max_question_text_bytes = 0", "max_question_text_bytes"),
         (
             "max_authored_question_bytes = 0",
             "max_authored_question_bytes",

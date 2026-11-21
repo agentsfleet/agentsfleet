@@ -15,7 +15,6 @@
 //! `Arc` of the same value. A gate that needs one field reads it off that
 //! value rather than parsing the whole document again per request.
 
-mod anomaly;
 mod attach;
 mod binding_match;
 pub mod budget;
@@ -32,7 +31,6 @@ use garde::Validate as _;
 use crate::error::{Error, ErrorKind, Result, missing};
 use crate::name::{CredentialName, FleetName};
 
-pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
 pub use self::decision::DecisionPolicy;

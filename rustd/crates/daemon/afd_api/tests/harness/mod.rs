@@ -191,11 +191,7 @@ pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependenci
         admin_workspace: None,
         github: None,
         storage: None,
-        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(
-            database.clone(),
-            Entropy::new(),
-            Arc::new(af_core::clock::SystemClock),
-        )),
+        biller: Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone())),
         providers: Providers::new(
             database,
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),

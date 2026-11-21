@@ -54,7 +54,7 @@ pub(crate) enum ErrorKind {
     ///
     /// Told apart from [`Self::Query`] because a line insert or the wallet
     /// debit inside a report or renewal transaction waits on rows other
-    /// settlements hold, and a runner counts a 500 toward its self-termination
+    /// writes hold, and a runner counts a 500 toward its self-termination
     /// ceiling where it retries a 503.
     #[error("the billing store gave up waiting to {context}")]
     TimedOut {

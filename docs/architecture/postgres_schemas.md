@@ -309,13 +309,13 @@ Routing follows those settings; credential endpoint restrictions must match them
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `wallets` | The tenant's balance; the only row money moves on | `balance_nanos` is signed: negative while the tenant owes a debt |
-| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs and setup chat both write it (billing §11) |
-| `usage_daily` | Settled usage per tenant, UTC day, work type, fleet and model; what the Usage report reads | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id, model)` · written in the settle transaction · rebuildable from `usage_lines` |
-| `runs_daily` | Settled runs per tenant, UTC day, work type and fleet | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id)` · a run counts once, on its first runtime slice |
+| `wallets` | The tenant's balance; the only row money moves on; what every funds check reads | `balance_nanos` is signed: negative while the tenant owes a debt · debited by `trg_usage_lines_debit_wallets` as each line is written |
+| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs and setup chat both write it (billing §11) · each insert statement charges its new lines through three statement-level triggers (billing §3) |
+| `usage_daily` | Usage per tenant, UTC day, work type, fleet and model; what the Usage report reads | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id, model)` · written by `trg_usage_lines_add_daily` in the lines' insert · rebuildable from `usage_lines` |
+| `runs_daily` | Runs per tenant, UTC day, work type and fleet; what the Usage report counts | natural key `UNIQUE NULLS NOT DISTINCT (tenant_id, day, work_type, fleet_id)` · written by `trg_usage_lines_count_runs` · a run counts once, on its first runtime slice |
 
-Nothing is set aside before work runs. A funds check reads the balance less the payer's unsettled
-lines, and no `holds` table exists (billing §11).
+Nothing is set aside before work runs. A funds check reads the wallet's balance, which every
+logged line has already debited, and no `holds` table exists (billing §11).
 
 Money outlives every deletion. `usage_lines` carries opaque `tenant_id`, `workspace_id`,
 `fleet_id` and `run_id` values with no foreign key, and `usage_daily` and

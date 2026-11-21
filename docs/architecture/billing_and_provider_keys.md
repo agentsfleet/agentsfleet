@@ -30,14 +30,14 @@ Every row is extracted from the numbered sections below; the owner column names 
 |---|---|---|---|
 | Currency unit | nanos; 1 USD = 1,000,000,000 | `billing.wallets.balance_nanos BIGINT`, signed; i64 caps one tenant at ~$9.2B | §2 |
 | Postures | exactly 2, selected by the saved runtime reference | `platform-default` uses `platform`; an owner's model registration uses `self_managed`; both debit the owner's wallet | §1 |
-| Debit point | usage only | each renewal's and the report's slice is one usage line; assignment charges nothing; no daemon path settles a line or debits a wallet today, because the billing relay was removed (Indy, Nov 21, 2026) | §3 |
+| Debit point | usage only, as it is written | each renewal's and the report's slice is one usage line; the statement that inserts a line debits the payer's wallet and adds it to the daily rollups (Indy, Nov 22, 2026: "apply at write"); assignment charges nothing | §3 |
 | Line charge | `⌈runtime⌉ + Σ ⌈tokens × rate⌉` | the `Rater`: run fee under both postures, each token category under platform, each rounded up on its own | §4.1 |
-| Short balance | `balance − unsettled`, below zero if it must | `Balance::left` counts every logged line; a payer below zero is refused by every funds check until a grant repays it | §3, §5, §11 |
-| Run writes per slice | fence, cursors, one usage line | `METER_RUN` moves no money; the line is logged, unsettled, in the same transaction | §3 |
-| Line keying | `UNIQUE (work_type, work_id, kind, seq)` | a retried renewal or report logs each line once, and a repeated `settle` charges it once | §3, §11 |
+| Short balance | the wallet's balance, below zero if it must | every logged line is already debited, so a funds check reads `billing.wallets` alone; a payer below zero is refused by every funds check until a grant repays it | §3, §5, §11 |
+| Run writes per slice | fence, cursors, one usage line | `METER_RUN` moves no money; the line logged in the same transaction debits the wallet | §3 |
+| Line keying | `UNIQUE (work_type, work_id, kind, seq)` | a retried renewal or report logs and charges each line once: a line the key turns away debits nothing | §3, §11 |
 | Free usage | the starter grant only | a balance that drains, bounded by `exhausted_at`; no promotional window and no mechanism for one | §2.3 |
 | Mid-run exhaustion | refused within three renewals | funds are checked once per payer on a stream's first tick, then every `FUNDS_CHECK_TICKS` (3) ticks; a short payer's runs answer `UZ-RUN-012` and end at their current deadlines, never extended | §3, §5 |
-| Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
+| Money set aside | none | a funds check reads the balance; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
 | Statement bounds | the API login role's | 2 s lock wait, 5 s statement; no billing statement sets its own; a bound reached is a biller with no answer | §11 |
 | Budget gate | per-fleet, independent of the balance gate | `daily_nanos` rolling 24 h · `monthly_nanos` Coordinated Universal Time (UTC) calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
 | Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
@@ -83,10 +83,10 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Saved model settings select the endpoint and API | the curation allowlist supplies prices; it does not route inference | §9, §10 |
 | A provider is priced, or records why it never will be | "not yet priced" read as a queue nobody was working; 87 providers sat in it | §10 |
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
-| Usage is logged per renewal; nothing settles it yet | a run and its usage commit together; the relay that settled lines went with every timed loop (Indy, Nov 21, 2026: "Delete all now"), so funds checks bound spend through the unsettled lines | §3, §11 |
+| Usage is charged as it is logged | a run, its usage and the debit commit together; the relay that settled lines later went with every timed loop (Indy, Nov 21, 2026: "Delete all now"), and the debit moved into the line's insert (Indy, Nov 22, 2026: "apply at write") | §3, §11 |
 | Budget gate fails open on database failure | a metering outage must not halt every fleet on the platform | §5.1 |
 | One billing lifecycle behind `Arc<dyn Biller>` | fleet runs and setup chat disagreed on rounding, pricing and outages; a billing service or third party must be able to bill | §11 |
-| No holds: check funds, accept bounded debt | holds reserved too little to stop parallel overspend and kept a second balance in sync; one source of truth is the balance less unsettled lines (Indy, Nov 05, 2026) | §5, §11 |
+| No holds: check funds, accept bounded debt | holds reserved too little to stop parallel overspend and kept a second balance in sync; one source of truth is the wallet's balance (Indy, Nov 05, 2026) | §5, §11 |
 | Billing outages fail open, flippable at one construction site | early adoption favours the optimistic path; closing it is one line | §11 |
 | Statement bounds live on the login role, not on billing statements | one `ALTER ROLE` covers every daemon statement; per-statement overrides drifted from it | §11; M242_001 |
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
@@ -109,11 +109,11 @@ Model disable, wallet absence, membership removal and policy-marker drift fail c
 
 **Bound.** A setup run must fund its first slice, one run lifetime of runtime fees, as a fleet run must (`afd_setup`'s `setup_run::model::first_slice`). It is the amount the assignment checks for, not money set aside. No whole-run estimate exists, because the balance check at every renewal ends a runaway.
 
-**Assignment.** The gate reads the owner's balance less the lines not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused.
+**Assignment.** The gate reads the owner's balance (`afd_billing::ledger::balance`), which every logged line has already debited. It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused.
 
 **Renewal.** Each renewal checks the payer's funds first (`afd_fleet`'s `run/draft/renew.rs`). It logs the runtime slice since the run's cursor and every model request the renewal carries. A refused renewal still logs the request lines, because the runner spent them.
 
-**Report.** The report transaction settles the run under its fence and logs the last slice and request lines with `log_lines`. The `Rater` prices each line by its whole-request tier. The lines stay unsettled (§3).
+**Report.** The report transaction settles the run under its fence and logs the last slice and request lines with `log_lines`, which debits the owner's wallet. The `Rater` prices each line by its whole-request tier (§3).
 
 A replayed report finds the run settled and writes nothing. A report at a superseded fence is refused and writes nothing. A dead run's last slice, from its last renewal to its deadline, is not billed (Indy, Nov 21, 2026).
 
@@ -123,7 +123,7 @@ A replayed report finds the run settled and writes nothing. A report at a supers
 
 Stop locks the draft, then cancels the turn through the Stop every thread shares (`afd_setup`'s `message/stop.rs`). The run serving the turn is marked and told to end.
 
-The next renewal of a stopped run is refused, and its request lines are still logged. Its report settles the usage already spent. Stop does not undo provider work already started.
+The next renewal of a stopped run is refused, and its request lines are still logged and charged. Its report logs the usage already spent. Stop does not undo provider work already started.
 
 Save uses the reviewed candidate after queued and running messages have stopped. Closing the draft keeps its usage lines.
 
@@ -214,9 +214,9 @@ They will never be a branch inside the charge functions.
 
 ---
 
-## 3. One debit point: usage, settled through the biller
+## 3. One debit point: usage, charged as it is written
 
-A fleet run is charged for what it uses, and only that: no turn costs anything to receive. The run's usage is logged inside the run's own transactions and the money moves afterwards, through the `Biller` every product path holds (§11).
+A fleet run is charged for what it uses, and only that: no turn costs anything to receive. The run's usage is logged inside the run's own transactions, and the statement that writes a line moves its money: the payer's wallet is debited and the daily rollups gain the line in that statement (Indy, Nov 22, 2026: "apply at write").
 
 ```text
  ONE turn → the fleet runs in a sandbox, renewing as it works:
@@ -229,11 +229,13 @@ A fleet run is charged for what it uses, and only that: no turn costs anything t
    inside the run's transaction (fenced; a lost or capped pass writes nothing):
      ① move the deadlines or flip the run to reported, advance the run's cursor
      ② log every line in billing.usage_lines (work = the run), once per (work, kind, seq)
+        the same statement, through the table's triggers, for each NEW line only:
+          add it to billing.usage_daily, count the run in billing.runs_daily on its
+          first runtime slice, and debit the payer's billing.wallets row (last)
    on the run path, through Arc<dyn Biller>:
      issue  → nothing                      the assignment gate already checked the floor
      renew  → check(floor)                 once per payer every third tick, before the host's statement
      report → nothing
-   settle(lines): no daemon caller since the billing relay was removed (Indy, Nov 21, 2026)
 ```
 
 `afd_fleet`'s task decision intent module assigns the native decision range before dispatch.
@@ -243,9 +245,8 @@ The runner reserves and records intent and goal calls through these routes; the 
 | Step | What moves | Where in `afd_fleet` |
 |---|---|---|
 | Assign | nothing; the balance and budget gates read (§5) | the run admit module |
-| Renew | on a checked tick, the payer must fund one more floor after its unsettled lines; every tick logs the slice | the run renew and coverage modules |
-| Report | the final slice is logged in the report's transaction; nothing else | the run report and settle modules |
-| Settle | nothing: no daemon path calls `Biller::settle` | `afd_billing`'s ledger settle module, run only by the biller conformance tests |
+| Renew | on a checked tick, the payer's balance must fund one more floor; every tick logs and charges the slice | the run renew and coverage modules |
+| Report | the final slice is logged and charged in the report's transaction | the run report and settle modules |
 
 **Request lines.** The runner reports one line per provider request, `{seq, at, input, cached input, three cache-write classes, output}`, in each renewal and in its report (`af_wire::usage::RequestUsage`). It numbers them from zero and keeps every line the daemon has not recorded.
 
@@ -276,11 +277,19 @@ Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep t
 
 The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s run billing races suite).
 
-**Settling.** Nothing settles a line today. The run path never settled, and the relay that did, `sweeper:billing`, was removed with every other timed loop (Indy, Nov 21, 2026). `Biller::settle` is called only by the biller conformance tests (`afd_billing/src/biller/conformance.rs`).
+**Charging.** Three lines insert usage: `log_lines` (`afd_billing/src/ledger/sql/insert_lines.sql`), the fleet report (`commit_report.sql`) and the fleet's host renewal (`renew_batch.sql`). None of them charges by hand. Three statement-level triggers on `billing.usage_lines` read the statement's new lines and charge them in that statement (`afd_db/schema/`):
 
-So `billing.wallets.balance_nanos` does not fall and the Usage page's rollup gains no rows ([Billing reporting](billing_reporting.md)). Spending still counts against the payer: every funds check reads the balance less the unsettled lines (§5).
+| Trigger | What it writes | Schema file |
+|---|---|---|
+| `trg_usage_lines_add_daily` | the lines' sums into their `billing.usage_daily` rows | `…_billing_usage_daily.sql` |
+| `trg_usage_lines_count_runs` | a run into `billing.runs_daily`, on the UTC day of its first runtime slice | `…_billing_runs_daily.sql` |
+| `trg_usage_lines_debit_wallets` | each payer's `billing.wallets` row, by the lines' summed cost | `…_billing_usage_lines.sql` |
 
-`settle` keys on `(work, kind, seq)`, so a repeated call never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
+A line the unique key turns away is not among the statement's new lines, so a retried renewal or report charges nothing twice. Postgres fires a statement's triggers in name order, so the wallet row is the last one a write locks. Rows are written in key order and wallets lock in tenant order, so two writes never wait on each other in a cycle.
+
+A balance that cannot cover a line takes it anyway and goes below zero (§11). The debit sets `exhausted_at` when a charge leaves the balance at or below zero and clears it when one leaves credit. A payer with no wallet row has nothing to debit; its line is still logged and rolled up.
+
+Every write of a payer's usage now holds that payer's wallet row from the line's insert until its transaction commits, so a tenant's concurrent reports and renewals take turns on that one row.
 
 **Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: setup`) logged it.
 
@@ -365,14 +374,14 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ## 5. The balance gate: code path
 
-`money_gates` in `afd_fleet`'s run admit module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is logged as it runs and counts against the balance unsettled (§3).
+`money_gates` in `afd_fleet`'s run admit module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is charged as it is logged (§3).
 
 ```mermaid
 flowchart TD
     A([Run poll: assign the oldest unsettled turn]) --> B[UPDATE thread.turns<br/>SET status=received, opened_at]
     B --> C[Resolve saved runtime model and posture<br/>Providers::resolve_reference]
     C --> D[Estimate the run's floor<br/>Accounts::estimate through the Rater]
-    D --> E{balance − unsettled lines<br/>≥ floor?}
+    D --> E{balance<br/>≥ floor?}
     E -->|no| Block[UPDATE thread.turns<br/>SET status=gate_blocked<br/>failure_reason=balance_exhausted]
     Block --> X1([Settle the fenced turn, terminal])
     E -->|yes| BG{fleet budget<br/>gates::fleet_budget}
@@ -382,20 +391,20 @@ flowchart TD
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
     H --> J[Issue run]
-    J --> Renew[Runner /renew ticks<br/>check funds, log the slice §3]
+    J --> Renew[Runner /renew ticks<br/>check funds, log and charge the slice §3]
     Renew --> K[Runner reports result]
     K --> L[UPDATE thread.turns SET status=processed<br/>log the final slice, release affinity<br/>and settle the fenced turn in the transaction]
-    L --> X2([The usage lines stay unsettled; the next funds check counts them])
+    L --> X2([The final slice debited the wallet in the same statement])
 ```
 
 Properties:
 
-- **The balance is what the biller says is available**. The gate reads `Biller::balance` and covers the floor from `Balance::left`: the balance less the unsettled lines. What runs in flight spent therefore counts against it.
-- **A tenant with no wallet row is admitted**, as an operator gap rather than a refusal. A settle for it would debit nothing and log `billing_settled_without_wallet`.
+- **The balance is what the biller says is available**. The gate reads `Biller::balance` and covers the floor from the wallet's balance, which every logged line has already debited. What runs in flight spent therefore counts against it.
+- **A tenant with no wallet row is admitted**, as an operator gap rather than a refusal. Its lines are logged and rolled up with nothing debited.
 - **A tenant in debt is refused**. What it has left is below zero, so it covers no floor, even a zero one (`afd_fleet`'s money-gates debt suite).
 - **The floor is small on purpose**. The runner does not know its token counts at run time, so the floor is `ESTIMATE_FLOOR_INPUT_TOKENS` and `ESTIMATE_FLOOR_OUTPUT_TOKENS` at the issue instant.
-- **A balance crossing zero mid-run ends the run.** Each renewal checks that `Balance::left` covers one more floor. When it cannot, the biller answers `Short` and the renewal is refused with `UZ-RUN-012`.
-- **Concurrent turns on a near-zero balance.** Nothing is set aside, so runs that start together all pass against the same balance. Each spends about one slice before its next renewal check sees their lines and refuses.
+- **A balance crossing zero mid-run ends the run.** Each renewal checks that the balance covers one more floor. When it cannot, the biller answers `Short` and the renewal is refused with `UZ-RUN-012`.
+- **Concurrent turns on a near-zero balance.** Nothing is set aside, so runs that start together all pass against the same balance. Each spends about one slice before its next renewal check sees the debits and refuses.
 - **That spend still counts**, so what is left can end below zero by about one slice per run. The debt refuses new work until a grant repays it (`parallel_runs_overdraw_by_at_most_a_slice_each_then_stop`).
 - **An outage admits.** A funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines are logged in the run's own transaction (§11).
 
@@ -407,7 +416,7 @@ The balance gate above bounds what a **tenant** may spend: one credit pool, one 
 
 | | Balance gate | Budget gate |
 |---|---|---|
-| Scope | tenant (`billing.wallets.balance_nanos` less unsettled lines) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
+| Scope | tenant (`billing.wallets.balance_nanos`) | one fleet (the selected revision's `config` → `x-agentsfleet.budget`) |
 | Question | "can this tenant afford one more run?" | "has this fleet spent its own allowance?" |
 | Pre-run refusal | `gate_blocked` + `balance_exhausted` | `gate_blocked` + `budget_breach` |
 | Mid-run refusal | `/renew` → `UZ-RUN-012` → `renewal_terminate` | `/renew` → `UZ-RUN-015` → `budget_breach` |
@@ -451,7 +460,7 @@ When the gate blocks, the user's surfaces show:
 - **`agentsfleet usage show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
 - **Dashboard turns list** (`/w/{workspaceId}/turns`) renders the row with an amber `gate_blocked` status.
 - **Slack thread**, when the turn was a mention: the thread gets one fixed notice naming `balance_exhausted`.
-- **Dashboard `/settings/billing`** shows period and fleet controls, settled totals, daily spending and a by-fleet table. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters and unavailable states.
+- **Dashboard `/settings/billing`** shows period and fleet controls, totals, daily spending and a by-fleet table. **Add credits** opens a support email; the shared dashboard header shows the balance. Unavailable usage is explained; [Billing reporting](billing_reporting.md) owns filters and unavailable states.
 
 The blocked row is **terminal** (turn settled, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed turns answered, they re-trigger from the source (push another commit, send another steer).
 
@@ -667,31 +676,28 @@ They rounded differently, priced cached tokens differently, failed differently d
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
   request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
-  setup chat       cache_write,         posture, one rounding rule              │ settle: no daemon caller today
-  makes its own)   cache_write_5m,                                              ▼
-                   cache_write_1h,                               Arc<dyn Biller>   check / settle / balance
-                   output, runtime}                              ├─ LedgerBiller: billing.wallets + billing.usage_lines (built in)
+  setup chat       cache_write,         posture, one rounding rule        its insert debits billing.wallets and
+  makes its own)   cache_write_5m,                                        adds to the daily rollups (triggers)
+                   cache_write_1h,                               Arc<dyn Biller>   check / balance
+                   output, runtime}                              ├─ LedgerBiller: billing.wallets (built in)
                                                                  ├─ a billing service in its own process (later)
                                                                  └─ a third-party metering API (later)
 ```
 
-**Two layers, on purpose.** The usage log records what happened and what it costs. It is ours, written in the work's own transaction, so a run and its usage commit or roll back together. The `Biller` checks funds before work and charges after it, and sets no money aside.
+**Two layers, on purpose.** The usage log records what happened and what it costs, and writing a line charges it. It is ours, written in the work's own transaction, so a run, its usage and the wallet debit commit or roll back together. The `Biller` checks funds before work and sets no money aside.
 
-The run path calls the biller only to check. The usage log is the outbox, and nothing drains it today: the relay that handed committed lines to `settle`, `sweeper:billing`, was removed with every other timed loop (Indy, Nov 21, 2026).
-
-A biller in another process never joins or delays our transaction, and the run code does not change when the biller moves. `settle` is idempotent on `(work, kind, seq)`, so a repeated call never doubles a charge. A check counts the payer's unsettled lines, so undrained lines never hide spend.
+The run path calls the biller only to check. Lines once waited in the log for a relay to charge them; the relay went with every timed loop (Indy, Nov 21, 2026), and the charge moved into the line's own insert (Indy, Nov 22, 2026: "apply at write"). Each line is charged once, on `(work, kind, seq)`, so a repeated write never doubles a charge.
 
 **The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`, the shape `afd_setup`'s provider `Transport` already uses.
 
 | Method | When | Idempotent on |
 |---|---|---|
 | `check(&Ask) -> Funds` | each fleet renewal and each setup run renewal | writes nothing |
-| `settle(&Settlement) -> Receipt` | no daemon caller today; the conformance tests | `(work, kind, seq)` |
-| `balance(&Account) -> Balance` | the tenant billing page | read only |
+| `balance(&Account) -> Balance` | the assignment and issue gates | read only |
 
 `WorkKey` is `FleetRun(id)` or `SetupRun(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, which the outage policy lets through.
 
-A `Settlement` carries each line's raw usage and the daemon's price. A biller that prices for itself may ignore our price, and `LedgerBiller` charges it.
+A `Settlement` carries each line's raw usage and the daemon's price; `afd_billing::ledger::log_lines` writes it, and the insert charges that price.
 
 **Pricing.** One `Rater` prices a line from the catalogue's `model.platform_model_prices`.
 
@@ -707,7 +713,7 @@ Each token category rounds **up** per line. The platform therefore never under-b
 
 **Outage.** `FailOpen<B>` wraps any biller.
 
-A `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` is changed; a failed `settle` leaves its lines unsettled.
+A `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` is changed: the work's lines are still charged as it logs them.
 
 A biller with no answer (`Error::is_unanswered`) is either an outage or contention. An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides.
 
@@ -717,27 +723,25 @@ No billing statement sets a bound of its own. The wait for a pool connection com
 
 A constraint, syntax or decode failure is a defect and is refused. The wrapper is applied once, where `agentsfleetd` builds the biller; there is no closed alternative, because early adoption favours the optimistic path.
 
-**The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
+**The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: the payer's `billing.wallets` row, the same statement the billing page reads (`afd_billing/src/sql/select_wallet.sql`). Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing. The read costs one row however long the payer's history grows.
 
-The read sums only unsettled lines, through the partial index `idx_usage_lines_tenant_id_unsettled`. Its cost grows with the unsettled lines alone, which with no settle caller is every line logged since the relay was removed.
+The debit (§3) takes a line's whole charge, past zero if it must, and the tenant owes the rest (Indy, 2026-10-19).
 
-`settle` locks the payer's wallet row, then charges only lines still unsettled, so repeated calls are idempotent. A settlement takes its whole charge, past zero if it must, and the tenant owes the rest (Indy, 2026-10-19).
-
-A grant adds to the balance as it stands, so it repays a debt first. The debit sets `exhausted_at` when a charge leaves the balance at or below zero. A tenant with no wallet row settles with nothing taken, and `billing_settled_without_wallet` is logged.
+A grant adds to the balance as it stands, so it repays a debt first. The debit sets `exhausted_at` when a charge leaves the balance at or below zero. A tenant with no wallet row has its lines logged with nothing taken.
 
 **No holds (Indy, Nov 05, 2026).** Holds once reserved money per work. A fleet's hold covered only 200 tokens at issue, too little to stop parallel overspend, and it kept a second balance in sync.
 
-A check against `Balance::left` is the one source of truth. The cost is bounded debt: runs that start together all pass, and each spends about one slice before its next check refuses. Slot 2210 dropped the holds table.
+A check against the wallet's balance is the one source of truth. The cost is bounded debt: runs that start together all pass, and each spends about one slice before its next check refuses. Slot 2210 dropped the holds table.
 
 **An expired run's last slice is not billed.** A run that ends unreported leaves the run time between its last renewal and its deadline unlogged. The pass that billed it went with `sweeper:expiry`; Indy decided on Nov 21, 2026 that this slice, at most one run lifetime at the runtime rate, goes unbilled.
 
 **Pricing in code.** `afd_billing::price::PriceBook::load` reads one model's tiers; `Rater::new(&book, posture, window).rate(&line)` answers a `RatedLine { usage, price, charged, unpriced_tokens }`. A category whose rate is unpublished, or a request no range covers, counts in `unpriced_tokens` and charges nothing for those tokens, visibly rather than silently.
 
-**Tests every biller runs.** `afd_billing::biller::conformance::every_check` (test-util) runs against `LedgerBiller` on a live database and against `RecordingBiller`, the in-memory double domain tests use.
+**Tests every biller runs.** `afd_billing::biller::conformance::every_check` (test-util) runs against `LedgerBiller` on a live database and against `RecordingBiller`, the in-memory double domain tests use. `conformance::a_payer_in_debt_is_short` takes a payer each biller drove into debt its own way.
 
-**Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller moves the money. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
+**Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller answers the checks. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy. It records `agentsfleet_billing_funds_check_total`, `agentsfleet_billing_settle_total`, `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`). All but the funds-check counter are recorded on `settle` (`afd_billing/src/biller/observed.rs`), so they stay at zero while nothing settles. The unsettled gauges went with the relay.
+**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and records `agentsfleet_billing_funds_check_total` (`afd_billing/src/biller/observed.rs`). `agentsfleet_billing_settle_total`, `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` are still declared (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`), as is the `wallet_exhausted` product event, but nothing records them: their one producer was `settle`, which went with the relay.
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, and the pricing and debit inside the run metering statement. The base-tier-only price read, `slice_charge` and its round-down rule went too.
 
@@ -752,7 +756,7 @@ The run `metered_*` token cursors and the thread row's runtime cursor are gone. 
 - **Stripe Purchase Credits flow.** v2.1. Adds a credit-purchases table, a Stripe webhook handler, the dashboard button, and a command-line subcommand if one is warranted.
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
 - **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in the charge functions.
-- **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering). The run debit follows the real run via per-`/renew` deltas plus a settle at report. The credit drained equals actual runtime × rate plus actual tokens, so there is nothing to reconcile or refund after the fact.
+- **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering). The run debit follows the real run via per-`/renew` lines plus the report's last line. The credit drained equals actual runtime × rate plus actual tokens, so there is nothing to reconcile or refund after the fact.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). This is v3 and needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
 - **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.

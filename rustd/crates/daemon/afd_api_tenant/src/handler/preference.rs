@@ -26,8 +26,9 @@
 use std::sync::Arc;
 
 use af_core::error_code;
+use af_validate::TEXT_MAX_CHARS;
 use afd_api_wire::preference::{OnboardingResponse, PreferencesResponse};
-use afd_tenant::preference::{MAX_PREF_VALUE_BYTES, Pref, PrefKey, bag_is_true};
+use afd_tenant::preference::{Pref, PrefKey, bag_is_true};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -53,7 +54,7 @@ const DETAIL_USER_CONTEXT: &str = "User context required";
 const DETAIL_KEY_UNKNOWN: &str = "pref_key is not a known preference";
 
 /// The refusal an oversize value earns.
-const DETAIL_VALUE_TOO_LARGE: &str = "pref value exceeds the 1 KiB limit";
+const DETAIL_VALUE_TOO_LARGE: &str = "pref value exceeds the text limit";
 
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED_JSON: &str = "Malformed JSON";
@@ -86,7 +87,7 @@ pub(crate) struct PreferencePath {
     summary = "Write one dashboard preference",
     description = concat!(
         "Saves one dashboard preference and returns all your workspace preferences. Send ",
-        "any valid JSON value up to 1 KiB; it is stored unchanged. Unknown `pref_key` ",
+        "any valid JSON value; it is stored unchanged. Unknown `pref_key` ",
         "values return `UZ-PREFS-001`. Concurrent updates to one key keep the last write.",
     ),
     request_body(content = serde_json::Value, description = "The preference's value, as any JSON document"),
@@ -215,23 +216,21 @@ fn respond_with_bag(bag: &[Pref]) -> Response {
 
 /// Reads a write body as the opaque JSON text it will be stored as.
 ///
-/// Bounded BEFORE it is parsed: the cap exists so an unbounded blob cannot
-/// become free tenant storage, and parsing a megabyte to then refuse it would
-/// spend exactly what the cap is there to save.
+/// Bounded before it is parsed, at the one ceiling every stored text takes.
 fn read_value(body: &Bytes) -> Result<&str, Refusal> {
     if body.is_empty() {
         return Err(Refusal::malformed(DETAIL_BODY_REQUIRED));
-    }
-    if body.len() > MAX_PREF_VALUE_BYTES {
-        return Err(Refusal::coded(
-            error_code::PREF_VALUE_TOO_LARGE,
-            DETAIL_VALUE_TOO_LARGE,
-        ));
     }
     // Parsed only to refuse malformed input at the boundary. The TEXT is what
     // is stored, so a value always round-trips byte for byte.
     let text =
         std::str::from_utf8(body).map_err(|_invalid| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
+    if text.chars().count() > TEXT_MAX_CHARS {
+        return Err(Refusal::coded(
+            error_code::PREF_VALUE_TOO_LARGE,
+            DETAIL_VALUE_TOO_LARGE,
+        ));
+    }
     serde_json::from_str::<&RawValue>(text)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
     Ok(text)

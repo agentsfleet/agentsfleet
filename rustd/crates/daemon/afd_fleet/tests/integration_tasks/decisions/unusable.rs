@@ -46,8 +46,7 @@ async fn unusable(case: &Case) {
         }
     })
     .await;
-    assert_eq!(fixture.wallet().await, balance);
-    fixture.case.held.relay().await;
+    // Each unusable answer's line debited the wallet as it was logged.
     assert_eq!(fixture.wallet().await, balance - 9);
     uncertain(&fixture, &task, |r| r.usage = None).await;
     uncertain(&fixture, &task, |r| {
@@ -67,7 +66,6 @@ async fn unusable(case: &Case) {
         expected
     );
     assert_eq!(fixture.counts().await, (5, 5, 5));
-    fixture.case.held.relay().await;
     assert_eq!(fixture.wallet().await, balance - 15);
     ledger(&fixture).await;
     fixture
@@ -177,7 +175,6 @@ async fn late_known(
         )
     );
     assert!(fixture.record(&request.call_id, valid).await.replayed);
-    fixture.case.held.relay().await;
     assert_eq!(fixture.wallet().await, balance - 3);
     assert_eq!(fixture.counts().await, (before.0, before.1, before.2 + 1));
 }

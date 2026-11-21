@@ -68,8 +68,7 @@ impl RunService {
 
     /// Whether the payer can fund one more slice.
     ///
-    /// The balance, less every line the payer has logged and the relay has not
-    /// yet charged, must cover the same floor the issue gate admits against,
+    /// The balance, every line the payer has logged already debited, must cover the same floor the issue gate admits against,
     /// so issue and renewal share one credit policy. Nothing is set aside: a
     /// payer whose parallel runs spent past the balance since their last
     /// renewals carries that as a debt, and this check stops each run at its

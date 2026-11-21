@@ -6,8 +6,8 @@ use serde::{Deserialize, Deserializer};
 
 use super::predicate::{is_not_reserved_source, is_repository, is_token};
 use super::{
-    MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_EVENTS, MAX_REFERENCE_LEN,
-    MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MENTION_CHANNELS,
+    MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_REFERENCE_LEN, MAX_REPOSITORY_LEN,
+    MENTION_CHANNELS,
 };
 use crate::error::Result;
 use crate::name::is_slug_char;
@@ -36,13 +36,13 @@ pub(crate) enum Trigger {
         // A list that is PRESENT and names nothing would subscribe to nothing,
         // so the minimum is one.
         #[garde(inner(
-            length(min = 1, max = MAX_EVENTS),
+            length(min = 1),
             inner(length(chars, min = 1, max = MAX_EVENT_LEN), custom(is_token))
         ))]
         events: Option<Vec<String>>,
         /// The repositories whose deliveries may start a run, as `owner/name`.
         #[garde(inner(
-            length(min = 1, max = MAX_REPOSITORIES),
+            length(min = 1),
             inner(length(chars, min = 1, max = MAX_REPOSITORY_LEN), custom(is_repository))
         ))]
         repositories: Option<Vec<String>>,

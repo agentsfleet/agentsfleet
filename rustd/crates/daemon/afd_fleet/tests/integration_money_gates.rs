@@ -22,10 +22,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
-
 use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
 use af_fleet_runtime::config::FleetConfig;
 use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
@@ -101,11 +98,7 @@ pub(crate) const fn request<'a>(
 
 /// The built-in biller over the fixture database.
 pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
-    LedgerBiller::new(
-        fixtures.database.clone(),
-        Entropy::new(),
-        Arc::new(af_core::clock::SystemClock),
-    )
+    LedgerBiller::new(fixtures.database.clone())
 }
 
 /// A workspace that resolves to no tenant ends the event, and is not charged.
@@ -222,8 +215,8 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     fixtures.cleanup().await;
 }
 
-/// Admission moves no money: the gates read, and the run's usage is the
-/// relay's to charge once the run runs.
+/// Admission moves no money: the gates read, and the run's usage is charged
+/// as its lines are logged once the run runs.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admitted_run_is_charged_nothing_at_admission() {
@@ -260,7 +253,7 @@ async fn an_admitted_run_is_charged_nothing_at_admission() {
     fixtures.cleanup().await;
 }
 
-/// Seeds one settled ledger row draining `nanos` for `fleet`.
+/// Seeds one ledger row draining `nanos` for `fleet`, debited as it is written.
 async fn seed_spend(
     fixtures: &Fixtures,
     tenant: &Uuid7,

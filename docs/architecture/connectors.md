@@ -335,7 +335,7 @@ assignment pass → thread row fence → run → Down::Run on the runner connect
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
 
-If one fan-out leg fails before its turn commits, redelivery retries that leg. Fleets already holding the turn answer `replayed`; redelivery writes turns only for the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
+If one fan-out leg fails before its turn commits, redelivery retries that leg. Fleets already holding the turn answer `replayed`; redelivery writes turns only for the missing fleets. Every matching fleet is woken (`afd_ingress`'s App routing).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries".
 

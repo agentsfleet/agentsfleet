@@ -47,7 +47,7 @@ impl Common {
                 deployment_backlog: tuning.turns.max_queued_turns,
             })
             .with_notice_fanout(tuning.server.max_live_activity_notices);
-        let biller = crate::billing::biller(parts.database.clone(), parts.analytics.clone());
+        let biller = crate::billing::biller(parts.database.clone());
         let drafts = afd_setup::Drafts::new(parts.database.clone(), Entropy::new())
             .with_tuning(setup_tuning(&tuning.setup))
             .with_list_page(pages(&tuning.api).list)

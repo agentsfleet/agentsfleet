@@ -1,4 +1,4 @@
-//! Transport-independent inputs and rows for settled usage reporting.
+//! Transport-independent inputs and rows for usage reporting.
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -71,7 +71,7 @@ pub struct Aggregate {
     pub output_tokens: i64,
     /// Recorded runtime.
     pub runtime_ms: i64,
-    /// Number of settled physical usage lines.
+    /// Number of physical usage lines.
     pub line_count: i64,
     /// Runs counted on their first runtime slice's day; only the totals and
     /// fleet groups carry one, since one run spans several models and days.

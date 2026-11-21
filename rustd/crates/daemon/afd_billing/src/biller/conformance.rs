@@ -3,25 +3,18 @@
 //! and any later billing service or third-party biller.
 //!
 //! The caller supplies `fresh`, which answers a new payer funded with exactly
-//! [`BALANCE`], so each check starts from a clean account.
+//! [`BALANCE`], so each check starts from a clean account. How a payer comes
+//! to owe a debt is the biller's own business, so [`a_payer_in_debt_is_short`]
+//! takes one the caller drove there.
 
-use af_wire::usage::{LineKind, UsageLine};
-use jiff::Timestamp;
-
-use super::{Account, Ask, Attribution, Biller, Funds, Receipt, Settlement, WorkKey};
-use crate::price::RatedLine;
-use crate::{Nanos, Posture};
+use super::{Account, Ask, Biller, Funds, WorkKey};
+use crate::Nanos;
 
 /// What an answering biller's `expect` says, per call.
 const CHECKS: &str = "check answers";
-const SETTLES: &str = "settle answers";
 const BALANCES: &str = "balance answers";
-/// The provider, model and fleet name a conformance line names.
-const NAMED: &str = "conformance";
 /// What every fresh payer is funded with.
 pub const BALANCE: Nanos = Nanos::from_i64(1_000_000);
-/// A line's charge in the settle checks.
-const LINE: Nanos = Nanos::from_i64(100_000);
 
 /// Runs every check against `biller`.
 ///
@@ -34,69 +27,23 @@ where
 {
     an_ask_within_the_balance_is_covered(biller, fresh().await).await;
     an_ask_past_the_balance_is_short(biller, fresh().await).await;
-    settling_twice_charges_once(biller, fresh().await).await;
-    lines_of_different_kinds_may_share_a_number(biller, fresh().await).await;
-    a_short_settlement_leaves_a_debt(biller, fresh().await).await;
 }
 
 fn work() -> WorkKey {
     WorkKey::FleetRun(afd_db::test_util::mint_id())
 }
 
-fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {
+fn ask(payer: &Account, next: Nanos) -> Ask {
     Ask {
-        work: work.clone(),
+        work: work(),
         payer: payer.clone(),
         next,
     }
 }
 
-const fn line(seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
-    line_of(LineKind::Runtime, seq, charged, runtime_ms)
-}
-
-const fn line_of(kind: LineKind, seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
-    RatedLine {
-        usage: UsageLine {
-            kind,
-            seq,
-            at: Timestamp::UNIX_EPOCH,
-            input_tokens: 0,
-            cached_input_tokens: 0,
-            cache_write_tokens: 0,
-            cache_write_5m_tokens: 0,
-            cache_write_1h_tokens: 0,
-            output_tokens: 0,
-            runtime_ms,
-        },
-        price: None,
-        charged,
-        unpriced_tokens: 0,
-    }
-}
-
-fn settlement(work: &WorkKey, payer: &Account, lines: Vec<RatedLine>) -> Settlement {
-    Settlement {
-        work: work.clone(),
-        payer: payer.clone(),
-        attribution: Attribution::Fleet {
-            fleet: afd_db::test_util::mint_id(),
-            fleet_name: NAMED.to_owned(),
-            turn_id: afd_db::test_util::mint_id(),
-        },
-        provider: NAMED.to_owned(),
-        model: NAMED.to_owned(),
-        posture: Posture::Platform,
-        lines,
-    }
-}
-
 #[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
 async fn an_ask_within_the_balance_is_covered(biller: &dyn Biller, payer: Account) {
-    let funds = biller
-        .check(&ask(&work(), &payer, BALANCE))
-        .await
-        .expect(CHECKS);
+    let funds = biller.check(&ask(&payer, BALANCE)).await.expect(CHECKS);
     assert_eq!(funds, Funds::Covered, "the whole balance is covered");
     let balance = biller.balance(&payer).await.expect(BALANCES);
     assert_eq!(balance.balance, BALANCE, "a check moves no money");
@@ -105,10 +52,7 @@ async fn an_ask_within_the_balance_is_covered(biller: &dyn Biller, payer: Accoun
 #[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
 async fn an_ask_past_the_balance_is_short(biller: &dyn Biller, payer: Account) {
     let asked = Nanos::from_i64(BALANCE.as_i64() + 1);
-    let funds = biller
-        .check(&ask(&work(), &payer, asked))
-        .await
-        .expect(CHECKS);
+    let funds = biller.check(&ask(&payer, asked)).await.expect(CHECKS);
     assert_eq!(
         funds,
         Funds::Short {
@@ -119,110 +63,31 @@ async fn an_ask_past_the_balance_is_short(biller: &dyn Biller, payer: Account) {
     );
 }
 
-#[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
-async fn settling_twice_charges_once(biller: &dyn Biller, payer: Account) {
-    let work = work();
-    let lines = settlement(&work, &payer, vec![line(0, LINE, 0), line(1, LINE, 0)]);
-    let first = biller.settle(&lines).await.expect(SETTLES);
-    let again = biller.settle(&lines).await.expect(SETTLES);
-    assert_eq!(
-        first.charged.as_i64(),
-        LINE.as_i64() * 2,
-        "both lines are charged"
-    );
-    assert_eq!(
-        again.charged,
-        Nanos::ZERO,
-        "a repeated settlement charges nothing"
-    );
-    assert_eq!(
-        again.settled_lines, 0,
-        "a repeated settlement settles no line"
-    );
-    let balance = biller.balance(&payer).await.expect(BALANCES);
-    assert_eq!(
-        balance.balance.as_i64(),
-        BALANCE.as_i64() - LINE.as_i64() * 2
-    );
-    assert_eq!(balance.unsettled, Nanos::ZERO, "nothing is left to charge");
-}
-
-/// A model line and a runtime line of one work may carry the same number: the
-/// usage log keys a line by its work, kind and number, so both are charged, and
-/// neither is mistaken for the other's repeat.
-#[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
-async fn lines_of_different_kinds_may_share_a_number(biller: &dyn Biller, payer: Account) {
-    let work = work();
-    let lines = settlement(
-        &work,
-        &payer,
-        vec![
-            line_of(LineKind::Model, 0, LINE, 0),
-            line_of(LineKind::Runtime, 0, LINE, 1),
-        ],
-    );
-    let first = biller.settle(&lines).await.expect(SETTLES);
-    assert_eq!(
-        first.settled_lines, 2,
-        "a model line and a runtime line numbered alike are two lines"
-    );
-    assert_eq!(first.charged.as_i64(), LINE.as_i64() * 2);
-    let again = biller.settle(&lines).await.expect(SETTLES);
-    assert_eq!(again.settled_lines, 0, "a repeat settles neither");
-    assert_eq!(again.charged, Nanos::ZERO, "and charges nothing");
-}
-
-/// A settlement half again past the balance: the balance takes the whole
-/// charge and goes below zero, records that it ran out, and refuses the next
-/// check until a grant repays the debt.
+/// A payer whose balance is below zero: it records that it ran out, and is
+/// short of every ask, even one for nothing, until a grant repays the debt.
 ///
 /// # Panics
-/// When the biller takes less than the charge, leaves the balance anywhere but
-/// the debt, or covers any ask for a payer in debt.
+/// When the biller covers any ask for `payer`, or reports no exhaustion.
 #[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
-pub async fn a_short_settlement_leaves_a_debt(biller: &dyn Biller, payer: Account) -> Receipt {
-    let settled = work();
-    let past = Nanos::from_i64(BALANCE.as_i64() + BALANCE.as_i64() / 2);
-    let receipt = biller
-        .settle(&settlement(&settled, &payer, vec![line(0, past, 0)]))
-        .await
-        .expect(SETTLES);
-    assert_eq!(receipt.charged, past, "the line's whole cost is charged");
-    assert_eq!(receipt.taken, past, "the balance takes all of it");
+pub async fn a_payer_in_debt_is_short(biller: &dyn Biller, payer: Account) {
     let balance = biller.balance(&payer).await.expect(BALANCES);
-    assert_eq!(
-        balance.balance.as_i64(),
-        BALANCE.as_i64() - past.as_i64(),
-        "the balance owes what it could not cover"
+    assert!(
+        balance.balance.as_i64() < 0,
+        "the caller drove it into debt"
     );
     assert!(
         balance.exhausted_at.is_some(),
         "a balance in debt records when it ran out"
     );
-    let asked = Nanos::from_i64(1);
-    let funds = biller
-        .check(&ask(&work(), &payer, asked))
-        .await
-        .expect(CHECKS);
-    assert_eq!(
-        funds,
-        Funds::Short {
-            available: Nanos::ZERO,
-            asked
-        },
-        "a payer in debt is covered for nothing, not even one nano"
-    );
-    let free = biller
-        .check(&ask(&work(), &payer, Nanos::ZERO))
-        .await
-        .expect(CHECKS);
-    assert_eq!(
-        free,
-        Funds::Short {
-            available: Nanos::ZERO,
-            asked: Nanos::ZERO
-        },
-        "a payer in debt is short even of an ask for nothing, as a self-managed run's"
-    );
-    receipt
+    for asked in [Nanos::from_i64(1), Nanos::ZERO] {
+        let funds = biller.check(&ask(&payer, asked)).await.expect(CHECKS);
+        assert_eq!(
+            funds,
+            Funds::Short {
+                available: Nanos::ZERO,
+                asked
+            },
+            "a payer in debt is short even of an ask for nothing, as a self-managed run's"
+        );
+    }
 }

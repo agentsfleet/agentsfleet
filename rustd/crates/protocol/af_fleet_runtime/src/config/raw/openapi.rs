@@ -5,18 +5,14 @@
 //! (a fleet name is a `FleetName`, a channel is a `ChannelId`, a trigger set
 //! has a size), the stronger bound is the one published.
 
-use std::num::NonZeroU32;
-
 use utoipa::ToSchema as _;
 
 use super::policy::{FRACTION_MAX, FRACTION_MIN};
 use super::{
-    AnomalyRule, Budget, Context, Document, GateRule, Gates, MAX_ALLOW_ENTRIES, MAX_ALLOW_LEN,
-    MAX_BASE_BRANCH_LEN, MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_CREDENTIALS, MAX_EVENT_LEN,
-    MAX_EVENTS, MAX_REFERENCE_LEN, MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MAX_TOOL_LEN, MAX_TOOLS,
-    MENTION_CHANNELS, Network, Runtime, Trigger, Verifier,
+    Budget, Context, Document, GateRule, Gates, MAX_ALLOW_LEN, MAX_BASE_BRANCH_LEN,
+    MAX_CHANNEL_ID_LEN, MAX_CREDENTIAL_LEN, MAX_EVENT_LEN, MAX_REFERENCE_LEN, MAX_REPOSITORY_LEN,
+    MAX_TOOL_LEN, MENTION_CHANNELS, Network, Runtime, Trigger, Verifier,
 };
-use crate::config::anomaly::{MAX_ANOMALY_REPEATS, MAX_ANOMALY_WINDOW_S};
 use crate::config::budget::MAX_NANOS_DIGITS;
 use crate::config::trigger::{CHANNEL_MIN_LEN, MAX_TRIGGERS};
 use crate::name::MAX_NAME_LEN;
@@ -43,7 +39,7 @@ const REPOSITORIES: (&str, Bound) = (
     "repositories",
     Bound::List {
         min: NOT_EMPTY,
-        max: MAX_REPOSITORIES,
+        max: None,
         entry: Some(Text::chars(NOT_EMPTY, MAX_REPOSITORY_LEN)),
     },
 );
@@ -54,14 +50,6 @@ const NANOS: Bound = Bound::Text(Text {
     max: MAX_NANOS_DIGITS,
     pattern: Some(DIGITS),
 });
-
-/// An anomaly threshold: never zero, never above `cap`.
-fn threshold(cap: u32) -> Bound {
-    Bound::Range {
-        min: NonZeroU32::MIN.get().into(),
-        max: cap.into(),
-    }
-}
 
 /// Every configuration component and the bounds it publishes.
 pub(crate) fn published() -> Vec<Published> {
@@ -120,7 +108,7 @@ fn runtime() -> Published {
                 "triggers",
                 Bound::List {
                     min: 0,
-                    max: MAX_TRIGGERS,
+                    max: Some(MAX_TRIGGERS),
                     entry: None,
                 },
             ),
@@ -128,7 +116,7 @@ fn runtime() -> Published {
                 "tools",
                 Bound::List {
                     min: 0,
-                    max: MAX_TOOLS,
+                    max: None,
                     entry: Some(Text::chars(NOT_EMPTY, MAX_TOOL_LEN)),
                 },
             ),
@@ -136,7 +124,7 @@ fn runtime() -> Published {
                 "credentials",
                 Bound::List {
                     min: 0,
-                    max: MAX_CREDENTIALS,
+                    max: None,
                     entry: Some(Text::chars(NOT_EMPTY, MAX_CREDENTIAL_LEN)),
                 },
             ),
@@ -163,7 +151,7 @@ fn trigger() -> Published {
                 "events",
                 Bound::List {
                     min: NOT_EMPTY,
-                    max: MAX_EVENTS,
+                    max: None,
                     entry: Some(Text::chars(NOT_EMPTY, MAX_EVENT_LEN)),
                 },
             ),
@@ -176,7 +164,7 @@ fn trigger() -> Published {
                 "channels",
                 Bound::List {
                     min: MENTION_CHANNELS,
-                    max: MENTION_CHANNELS,
+                    max: Some(MENTION_CHANNELS),
                     entry: Some(Text::chars(CHANNEL_MIN_LEN, MAX_CHANNEL_ID_LEN)),
                 },
             ),
@@ -188,7 +176,7 @@ fn trigger() -> Published {
 fn network() -> Published {
     let entries = Bound::List {
         min: 0,
-        max: MAX_ALLOW_ENTRIES,
+        max: None,
         entry: Some(Text::chars(NOT_EMPTY, MAX_ALLOW_LEN)),
     };
     Published {
@@ -207,27 +195,17 @@ fn gates() -> Published {
     }
 }
 
-/// The approval and anomaly rules' bounds.
-fn rules() -> [Published; 2] {
-    [
-        Published {
-            component: GateRule::name,
-            closed: true,
-            bounds: vec![
-                ("tool", required(MAX_TOOL_LEN)),
-                ("action", required(MAX_TOOL_LEN)),
-                ("condition", optional(MAX_REFERENCE_LEN)),
-                ("gate_kind", optional(MAX_REFERENCE_LEN)),
-                ("blast_radius", optional(MAX_REFERENCE_LEN)),
-            ],
-        },
-        Published {
-            component: AnomalyRule::name,
-            closed: true,
-            bounds: vec![
-                ("threshold_count", threshold(MAX_ANOMALY_REPEATS)),
-                ("threshold_window_s", threshold(MAX_ANOMALY_WINDOW_S)),
-            ],
-        },
-    ]
+/// The approval rules' bounds.
+fn rules() -> [Published; 1] {
+    [Published {
+        component: GateRule::name,
+        closed: true,
+        bounds: vec![
+            ("tool", required(MAX_TOOL_LEN)),
+            ("action", required(MAX_TOOL_LEN)),
+            ("condition", optional(MAX_REFERENCE_LEN)),
+            ("gate_kind", optional(MAX_REFERENCE_LEN)),
+            ("blast_radius", optional(MAX_REFERENCE_LEN)),
+        ],
+    }]
 }

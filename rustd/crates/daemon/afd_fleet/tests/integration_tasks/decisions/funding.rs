@@ -118,8 +118,7 @@ async fn recover(fixture: &Decisions<'_>, call: &Value, balance: i64) {
     replay.replayed = true;
     assert_eq!(fixture.record(&request.call_id, receipt).await, replay);
     assert_eq!(fixture.counts().await, (1, 1, 1));
-    assert_eq!(fixture.wallet().await, balance);
-    case.held.relay().await;
+    // The known receipt's line debited the wallet as it was logged, once.
     assert_eq!(
         case.held.fixtures.balance(&case.held.tenant).await,
         Some(balance - 3)

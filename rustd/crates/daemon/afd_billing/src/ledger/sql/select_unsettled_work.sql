@@ -1,9 +1,0 @@
-SELECT work_type, work_id, kind, seq, tenant_id,
-       workspace_id, fleet_id, fleet_name, turn_id,
-       provider, model, posture, requested_at, input_token_count, cached_input_token_count,
-       cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
-       output_token_count, runtime_ms, platform_model_price_id AS price_id,
-       unpriced_token_count, charged_nanos
-FROM billing.usage_lines
-WHERE work_type = $1 AND work_id = $2 AND settled_at IS NULL
-ORDER BY kind, seq

@@ -1,7 +1,7 @@
 //! The balance gate against a tenant in debt.
 //!
-//! A settlement takes its whole charge, so a balance can sit below zero; the
-//! gate reads the balance less every unsettled line, and a debt must refuse.
+//! A usage line takes its whole charge as it is logged, so a balance can sit
+//! below zero; the gate reads the balance, and a debt must refuse.
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
 #![cfg(feature = "test-util")]
@@ -26,7 +26,7 @@ const DEBT_NANOS: i64 = 50;
 /// A tenant in debt is refused at the balance gate, and admitted once its
 /// balance is back above zero.
 ///
-/// A settlement takes its whole charge, so a balance can sit below zero. The
+/// A usage line takes its whole charge, so a balance can sit below zero. The
 /// model is unpriced, so the floor is zero: what refuses here is the debt
 /// alone, and a turn gate that clamped the balance at zero would cover a
 /// zero floor and admit a payer who owes money.

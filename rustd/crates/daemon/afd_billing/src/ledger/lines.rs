@@ -15,12 +15,14 @@ use crate::{Nanos, Result};
 /// What the statement was doing, for [`query`].
 const CONTEXT_LOG: &str = "log usage lines";
 
-/// Writes `settlement`'s lines, unsettled, on `executor`.
+/// Writes `settlement`'s lines on `executor`, charging each new one.
 ///
 /// Called inside the WORK's transaction, so a run and what it cost commit or
-/// roll back together; a biller settles them after commit. A line already
-/// logged under its `(work, kind, seq)` is left as it is, so a retried report
-/// and the built-in biller's own call both land each line once.
+/// roll back together. The insert debits the payer's wallet by the new lines'
+/// cost and adds them to the daily rollups in the same statement (the
+/// `billing.usage_lines` triggers). A line already logged under its
+/// `(work, kind, seq)` is left as it is and charged nothing, so a retried
+/// report lands and charges each line once.
 /// Returns only newly inserted coding-request cost, excluding runtime and
 /// decision lines. Task accounting can consume this exact delta
 /// without rescanning history or assuming requests finish in sequence order.

@@ -101,13 +101,6 @@ pub mod label {
     /// A human refused the action.
     pub const APPROVAL_DENIED: &str = "approval_denied";
 
-    /// The event tripped an anomaly rule and its fleet was archived.
-    ///
-    /// Archive is terminal, so nothing would ever run the event again; it
-    /// ends under this label rather than waiting on a fleet that cannot
-    /// resume.
-    pub const FLEET_ARCHIVED: &str = "fleet_archived";
-
     /// A human refused the fleet's standing permission to mint an integration.
     ///
     /// Distinct from [`APPROVAL_DENIED`], which is one action refused: this is

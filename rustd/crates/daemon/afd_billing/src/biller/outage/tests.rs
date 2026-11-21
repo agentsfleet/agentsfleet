@@ -2,7 +2,7 @@ use afd_db::error::database_answer;
 
 use super::FailOpen;
 use crate::Result;
-use crate::biller::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
+use crate::biller::{Account, Ask, Balance, Biller, Funds, WorkKey};
 use crate::error::query;
 
 /// A biller whose `check` always fails the way it was built to.
@@ -13,10 +13,6 @@ struct Failing(fn() -> sqlx::Error);
 impl Biller for Failing {
     async fn check(&self, _ask: &Ask) -> Result<Funds> {
         Err(query("read a balance")((self.0)()))
-    }
-
-    async fn settle(&self, _settlement: &Settlement) -> Result<Receipt> {
-        Ok(Receipt::default())
     }
 
     async fn balance(&self, _payer: &Account) -> Result<Balance> {

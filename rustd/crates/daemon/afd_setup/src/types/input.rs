@@ -1,8 +1,9 @@
 //! Strict native sources and bounded human mutations. There is no file source.
 
-use super::{MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
+use super::MAX_MODEL_REF_BYTES;
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
+use af_validate::TEXT_MAX_CHARS;
 use serde::{Deserialize, Serialize};
 
 /// Native setup captured before allocating a private draft.
@@ -47,7 +48,7 @@ pub struct CreateDraft {
         deserialize_with = "super::present",
         skip_serializing_if = "Option::is_none"
     )]
-    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
     pub message: Option<String>,
     /// Save the finalized candidate when this message completes successfully.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -63,7 +64,7 @@ pub struct CreateDraft {
 #[serde(deny_unknown_fields)]
 pub struct SendMessage {
     /// User text, never trimmed or interpreted as executable setup.
-    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub message: String,
     /// Durable authorization to save the candidate finalized by this turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -84,7 +85,7 @@ pub struct DraftPatch {
     pub instance_name: Option<String>,
     /// Human display name; cannot change authored slugs.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(chars, min = 1, max = MAX_TITLE_CHARS), custom(af_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
     pub title: Option<String>,
     /// Applies only to future messages.
     #[serde(default, deserialize_with = "super::present")]

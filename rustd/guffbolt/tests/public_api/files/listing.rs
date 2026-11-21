@@ -82,40 +82,6 @@ async fn ls_and_find_say_so_when_a_directory_holds_more_than_one_listing() {
     );
 }
 
-/// A walk stops after its 20,000th entry and says so, though no directory
-/// it read held more than one listing.
-#[tokio::test]
-async fn find_says_so_when_the_walk_stops_at_its_last_entry() {
-    let desk = Desk::new();
-    // 21 directories and 21 × 999 files: 21,000 entries, past the walk's
-    // 20,000, and none of them more than one listing of 1000 holds.
-    for directory in 0..21 {
-        let directory = desk.path(&format!("d{directory:02}"));
-        std::fs::create_dir(&directory).expect("a directory");
-        for number in 0..999 {
-            std::fs::write(directory.join(format!("f{number:03}")), "").expect("written");
-        }
-    }
-    let tools = desk.tools(false);
-
-    let found = call(&tools, "find", json!({"pattern": "f000"})).await;
-
-    assert!(
-        found
-            .text
-            .ends_with("... the walk stopped early; narrow the path"),
-        "{}",
-        found.text
-    );
-    // A listing comes in the directory's own order, so the 20th directory
-    // walked may have been cut before or after its own match.
-    assert!(
-        (20..=21).contains(&found.text.lines().count()),
-        "19 or 20 directories' matches and the note: {}",
-        found.text
-    );
-}
-
 #[tokio::test]
 async fn find_matches_a_glob_below_the_path_and_skips_git_and_links() {
     let desk = Desk::new();

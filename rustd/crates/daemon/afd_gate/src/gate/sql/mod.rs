@@ -58,16 +58,6 @@ pub const SELECT_EVENT_GATE: &str = include_str!("select_event_gate.sql");
 /// `$10` blast radius, `$11` timeout, `$12` status, `$13` event.
 pub const INSERT_GATE: &str = include_str!("insert_gate.sql");
 
-/// Archive a fleet, so nothing else of its work is admitted.
-///
-/// Written by a tripped anomaly rule, the gate's only archive, and by nothing
-/// else in this crate. Kept here with
-/// the crate's other statements, per RULE SQLMOD, so every statement it runs
-/// can be reviewed in one place.
-///
-/// `$1` the archived status, `$2` fleet.
-pub const ARCHIVE_FLEET: &str = include_str!("archive_fleet.sql");
-
 /// One pending gate, bound to [`INSERT_GATE`] in `$n` order.
 ///
 /// The shape a high-arity statement takes in this workspace (see

@@ -26,7 +26,6 @@ use crate::harness::code_of;
 
 use af_core::error_code;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_tenant::preference::MAX_PREF_VALUE_BYTES;
 use http::{Method, StatusCode};
 
 use self::harness::{Fleet, OWNED_WORKSPACE};
@@ -125,42 +124,6 @@ async fn a_key_outside_the_registry_is_refused_with_its_own_code() {
             "{unknown}: the code names the key, not the body"
         );
     }
-}
-
-/// A value past one kibibyte is refused with the OTHER code.
-///
-/// The split is the point: `UZ-PREFS-002` says the key was fine and the value
-/// was not, which is a different thing for a client to do about.
-#[tokio::test]
-async fn a_value_past_the_bound_is_refused_with_its_own_code() {
-    let oversize = format!("\"{}\"", "x".repeat(MAX_PREF_VALUE_BYTES));
-    assert!(oversize.len() > MAX_PREF_VALUE_BYTES);
-
-    let response = authorised(Method::PUT, &item(KNOWN_KEY), &oversize).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(
-        code_of(response).await,
-        error_code::PREF_VALUE_TOO_LARGE.as_str(),
-        "an oversize value is not a malformed one"
-    );
-}
-
-/// A value AT the bound is not refused by the bound.
-///
-/// The off-by-one that would make the documented limit a lie. It gets past the
-/// cap and reaches the store, which is what a datastore refusal proves.
-#[tokio::test]
-async fn a_value_exactly_at_the_bound_reaches_the_store() {
-    // Two bytes of quotes plus the fill, landing exactly on the cap.
-    let at_bound = format!("\"{}\"", "x".repeat(MAX_PREF_VALUE_BYTES - 2));
-    assert_eq!(at_bound.len(), MAX_PREF_VALUE_BYTES);
-
-    let response = authorised(Method::PUT, &item(KNOWN_KEY), &at_bound).await;
-    assert_ne!(
-        code_of(response).await,
-        error_code::PREF_VALUE_TOO_LARGE.as_str(),
-        "a value at the cap is within it"
-    );
 }
 
 /// A body that is not JSON never reaches the store.

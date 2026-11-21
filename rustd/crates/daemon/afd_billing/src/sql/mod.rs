@@ -3,16 +3,18 @@
 //!
 //! The wallet read, the rate reads and the tenant's charges pages. The rest of
 //! the money path sits beside its callers: the run renewal and report
-//! statements in `afd_fleet/src/run/sql/` log the usage lines, the ledger's
-//! own statements in `ledger/sql/` settle them, and `INSERT_WALLET` in
-//! `afd_tenant` opens a wallet with its starter grant.
+//! statements in `afd_fleet/src/run/sql/` and the ledger's `ledger/sql/` log
+//! the usage lines, the `billing.usage_lines` triggers charge each line as it
+//! is written, and `INSERT_WALLET` in `afd_tenant` opens a wallet with its
+//! starter grant.
 //!
 //! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
 //! checked against the rebuilt schema by `afd_db`'s
 //! `test_every_sql_file_prepares`.
 
 /// The tenant's credit pool, for the billing page
-/// ([`crate::tenant::Billing::snapshot`]).
+/// ([`crate::tenant::Billing::snapshot`]) and every funds check
+/// ([`crate::ledger::balance`]).
 ///
 /// A tenant with no wallet row has no row to return, and the caller refuses it
 /// as the bootstrap-invariant violation it is.

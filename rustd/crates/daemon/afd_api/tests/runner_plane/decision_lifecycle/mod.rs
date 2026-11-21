@@ -29,7 +29,7 @@ async fn decision_http_replays_never_resend_credentials_or_charge_another_owner(
         receipt: known(&request),
     };
     foreign(&fixture, &input, &receipt, &request.call_id).await;
-    settle_and_replay(&fixture, &receipt, &request.call_id).await;
+    record_and_replay(&fixture, &receipt, &request.call_id).await;
     let saved = success(
         &fixture,
         Method::POST,
@@ -98,7 +98,7 @@ async fn issue_and_replay(
     (input, request)
 }
 
-async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
+async fn record_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, call: &str) {
     refuse_invalid_receipts(fixture, receipt, call).await;
     let recorded = success(
         fixture,
@@ -109,8 +109,7 @@ async fn settle_and_replay(fixture: &Fixture, receipt: &DecisionReceiptInput, ca
     )
     .await;
     assertions::recorded(&recorded, call, false);
-    assertions::logged_before_relay(fixture).await;
-    assertions::relay_once(fixture).await;
+    // The receipt logs its line, which debits the wallet in the same commit.
     assertions::one_charge(fixture).await;
     let repeated = success(
         fixture,

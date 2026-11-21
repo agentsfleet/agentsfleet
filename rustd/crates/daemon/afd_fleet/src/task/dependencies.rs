@@ -14,7 +14,7 @@ pub struct TaskDependencies {
     pub policy: super::policy::TaskPolicy,
     /// Deployment-owned Secrets workspace, never selected by fleet/model input.
     pub admin_workspace: Option<af_core::id::Uuid7>,
-    /// The same payer funds check as fleet runs; the relay settles logged usage.
+    /// The same payer funds check as fleet runs; logging a line charges it.
     pub biller: Arc<dyn Biller>,
     /// Fresh platform-admin provider-secret resolution.
     pub providers: Providers,

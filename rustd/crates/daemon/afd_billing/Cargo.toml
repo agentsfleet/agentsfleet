@@ -25,8 +25,8 @@ af_crypto.workspace = true
 af_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
 af_wire.workspace = true
-# The billing families: every reservation and settlement is counted where the
-# biller is called, the one place both products and the sweeper pass through.
+# The billing families: every funds check is counted where the biller is
+# called, the one place both products pass through.
 af_observability.workspace = true
 # `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
 async-trait.workspace = true
@@ -51,8 +51,7 @@ test-util = ["af_core/test-util", "afd_db/test-util"]
 [dev-dependencies]
 # The cursor tests spell tokens out as base64url bytes.
 base64.workspace = true
-af_observability = { workspace = true, features = ["test-util"] }
-# The integration suite races two reservations on one task.
+# The debt suite starts ten runs' funds checks at once.
 futures-util.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["json"] }
