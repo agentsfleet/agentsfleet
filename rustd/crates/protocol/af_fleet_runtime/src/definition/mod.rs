@@ -27,7 +27,6 @@ use crate::error::{ErrorKind, Result, missing};
 pub use self::digest::canonical_digest;
 pub use self::document::ConfigDocument;
 pub(crate) use self::document::RUNTIME_BLOCK;
-#[cfg(feature = "openapi")]
 pub use self::edit::{ConfigOp, EditBatch, InstructionEdit};
 #[cfg(feature = "openapi")]
 pub use self::schema::DefinitionSchema;

@@ -4,7 +4,6 @@
 mod openapi;
 mod patch;
 
-#[cfg(feature = "openapi")]
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
