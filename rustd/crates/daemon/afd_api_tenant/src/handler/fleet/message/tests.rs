@@ -72,7 +72,7 @@ fn should_refuse_a_size_outside_the_band_rather_than_clamp_it() {
     // These are the bytes a caller sends, not a value this daemon holds, so
     // naming them would name nothing.
     // pin test: literal is the contract
-    for asked in ["0", "26", "-1", "1000", " 5", "5.0", "five", "0x10"] {
+    for asked in ["0", "101", "-1", "1000", " 5", "5.0", "five", "0x10"] {
         assert!(
             requested_limit(Some(asked)).is_err(),
             "{asked} is not a page size this surface serves"

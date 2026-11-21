@@ -61,7 +61,7 @@ fn event_type(asked: Result<Query<TurnFilter>, QueryRejection>) -> Result<Option
 }
 
 /// The refusal a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 25";
+const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
 
 /// The refusal a continuation this walk did not issue earns.
 const DETAIL_CURSOR: &str = "invalid starting_after cursor";
