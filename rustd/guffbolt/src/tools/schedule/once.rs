@@ -10,7 +10,7 @@
 //!
 //! A cron fires on a minute's first second. A moment inside a minute rounds up
 //! to the next one, so the run is never early, and the rounded minute must be
-//! at least [`LEAD`] away: a scheduler has to hold the job before its minute
+//! at least a minute away: a scheduler has to hold the job before its minute
 //! begins, or the expression's next match is a year later.
 
 use std::time::Duration;

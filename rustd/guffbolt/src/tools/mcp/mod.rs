@@ -318,7 +318,7 @@ impl<'c> Tool<Context<'c>> for McpTool {
 }
 
 /// `mcp__<server>__<tool>`, every character a function wire refuses made an
-/// underscore and the whole kept to [`NAME_MAX`].
+/// underscore and the whole kept to 64 characters.
 #[must_use]
 pub fn tool_name(server: &str, tool: &str) -> String {
     let named: String = format!("{PREFIX}{server}{SEPARATOR}{tool}")

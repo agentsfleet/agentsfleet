@@ -24,7 +24,7 @@ const PROXY_HEADROOM_PERCENT: usize = 125;
 const PERCENT: usize = 100;
 
 /// Exact for a model `tiktoken-rs` resolves, otherwise the `o200k_base` count
-/// raised by [`PROXY_HEADROOM_PERCENT`]. Billing uses the provider's usage.
+/// raised by a quarter. Billing uses the provider's usage.
 #[must_use]
 pub fn input_tokens(model: &str, text: &str) -> usize {
     tiktoken_rs::bpe_for_model(model).map_or_else(

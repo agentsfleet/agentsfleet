@@ -38,11 +38,13 @@ Each provider is a feature. Feature `all` turns on every one.
 
 `Models::new().with(providers::minimax())` registers one provider.
 `Models::builtin()` registers every provider the build has.
+`get(provider, id)` answers the model's catalogue row.
 `connect(provider, id)` reads the key from the provider's variable.
 `connect_with_key` takes the key instead.
 A missing key fails with the variable's name and never its value.
+`Provider::with_base_url` sends a provider's requests to a proxy or a regional host.
 
-## A chat
+## Quick start
 
 With guffbolt, a connected model answers a prompt in a few lines. guffbolt carries this program as `examples/minimax_chat.rs`.
 
@@ -74,8 +76,26 @@ it reads images. The rows come from rig-core 0.47's bundled catalogue. They
 hold the tool-calling models with both limits, and no deprecated ones.
 rig has no Fireworks rows, so `Provider::with_spec` adds a Fireworks model.
 
+A model no provider names is reached with `wire::Route::new`. It names the
+API, base URL, dialect and limits, and `wire::Connected::new` adds the key and
+transport.
+
 ## Transport
 
 A connected model sends through the default `reqwest` client. That client
 follows no redirect, so the key reaches only the provider's host.
-`Connected::with_transport` replaces it with your own `Send`.
+`Connected::with_transport` replaces it with your own `transport::Send`.
+`transport::Reqwest::with_client` takes your own client, which must follow no
+redirect either.
+
+## Features
+
+The default build is the types alone, so a provider crate links no wire.
+
+| Feature | What it adds |
+|---|---|
+| `wire` | `Route`, `Connected`, retries, timeouts and the transport seam |
+| `reqwest` | the default transport, `Models`, `Provider` and `Spec` |
+| one per provider, and `all` | that provider's factory and catalogue rows |
+| `log-filter` | a filter that keeps rig's own log lines quiet |
+| `test-util` | a fake provider's TLS listener and a client that trusts it |

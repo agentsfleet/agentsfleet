@@ -510,7 +510,7 @@ Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` 
 
 `rustd/guffbolt/README.md` follows `~/Projects/oss/js/pi/packages/agent/README.md`'s shape: install, the shortest working chat over a real provider through guffbolt-ai, then the loop, tools, events, sessions and how to add a provider or a tool. Plain words for an engineer building a harness on it; no marketing, no internal agentsfleet names. Every code block compiles.
 
-- Dimension 11.1 — the README's code runs → Test `the_readme_examples_compile` (unit, doc-test): each Rust block in the README is included as a doc-test. Expected: all compile; the chat example runs against a stub provider.
+- Dimension 11.1 — the README's code runs → Test `the_readme_examples_compile` (unit, doc-test): each Rust block in the README is included as a doc-test. Expected: all compile; the chat example runs against a stub provider. — DONE: the test is the `ReadmeDoctests` doctest set in `guffbolt/src/lib.rs`, whose name stays because renaming it is a code change. Its 18 blocks compile, and the 15 without `no_run` run, among them `Chat` over a scripted `Echo` model (`cargo test --locked --all-features -p guffbolt -p guffbolt-ai --doc`: 19 passed, with guffbolt-ai's block).
 
 ### §12 — agentsfleet is built on guffbolt, as pi is on pi-core (Indy, Nov 22, 2026)
 

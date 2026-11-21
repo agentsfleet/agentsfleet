@@ -2,7 +2,7 @@
 //! response, in `http`'s types and never rig's, so a rig upgrade does not
 //! break an embedder's transport.
 //!
-//! Under rig, every send goes through [`HttpTransport`], which reads the body
+//! Under rig, every send goes through one private adapter, which reads the body
 //! as it arrives and stops it at the byte bound the embedder set, if one.
 //! The default transport, behind feature `reqwest`, follows no redirect: the
 //! key goes only to the host the route names.

@@ -16,7 +16,7 @@ impl Agents {
     /// each turn to start.
     ///
     /// Every child `state` holds was idle or closed when it was saved, as
-    /// one saved under a [`super::Pause`] is: each comes back as it was,
+    /// one saved under a [`Pause`](crate::agents::Pause) is: each comes back as it was,
     /// its transcript with it, and the ids and counts go on from where they
     /// were. A child saved running, which no pause allows, comes back
     /// interrupted.
