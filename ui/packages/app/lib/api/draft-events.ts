@@ -13,11 +13,17 @@ export const DRAFT_EVENT = {
 const MAX_HINT_CHARACTERS = 64 * 1024;
 const ACCOUNTING_POLL_MS = 5_000;
 const ACCOUNTING_POLL_JITTER_MS = 1_000;
-const HintSchema = z.object({draft_id: z.uuidv7()});
+const HintSchema = z.object({draft_id: z.uuidv7(), sequence: z.unknown().optional()});
+const Sequence = z.string().regex(/^[1-9][0-9]{0,18}$/);
 export const DRAFT_DELTA_EVENT = "message.delta";
 export const DRAFT_RESYNC_EVENT = "draft.resync";
 export const DRAFT_CONTEXT_EVENT = "context.progress";
-export type DraftProgressCallbacks = {readonly delta: (data: string) => boolean; readonly context?: (data: string) => boolean; readonly gap: () => void};
+export type DraftProgressCallbacks = {
+  readonly delta: (data: string) => boolean;
+  readonly context?: (data: string) => boolean;
+  readonly started?: (sequence: string) => void;
+  readonly gap: () => void;
+};
 
 export async function followDraft(path: string, draft: string, owner: AbortSignal, reconcile: () => Promise<boolean>, needsPolling: () => boolean = () => false, progress?: DraftProgressCallbacks): Promise<void> {
   owner.throwIfAborted();
@@ -51,7 +57,7 @@ class DraftProgress {
         if (name === DRAFT_DELTA_EVENT) return progress?.delta(data) ?? false;
         if (name === DRAFT_CONTEXT_EVENT) return progress?.context?.(data) ?? false;
         if (name === DRAFT_RESYNC_EVENT) { progress?.gap(); void this.#refresh(); return true; }
-        return this.#hint(name, data);
+        return this.#hint(name, data, progress);
       },
     });
     this.#source.start();
@@ -103,12 +109,16 @@ class DraftProgress {
     this.#retryTimer = setTimeout(() => { this.#retryTimer = undefined; void this.#refresh(); }, delay);
   }
 
-  #hint(name: string, data: string): boolean {
+  #hint(name: string, data: string, progress?: DraftProgressCallbacks): boolean {
     if (this.#closed || data.length > MAX_HINT_CHARACTERS || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const hint = HintSchema.safeParse(value);
     if (!hint.success || hint.data.draft_id !== this.#draft) return false;
+    if (name === DRAFT_EVENT.running) {
+      const sequence = Sequence.safeParse(hint.data.sequence);
+      if (sequence.success) progress?.started?.(sequence.data);
+    }
     if (name === DRAFT_EVENT.deleted) this.#stop(new SetupUnavailable("This private draft was deleted", 404));
     else void this.#refresh();
     return true;

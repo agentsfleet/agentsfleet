@@ -19,13 +19,13 @@ import { SetupWakeups } from "./SetupWakeups";
 // DraftClient records this failure in view.error before rejecting the request.
 const errorAlreadyVisible = (): void => undefined;
 
-export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet, modelsHref, empty }: { empty: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string }) {
+export function ChatComposer({ client, view, workspace, canStop, onOpenFleet, onRetry, modelsHref, empty }: { empty: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string }) {
   const stopDisabled = view.busy || view.pending || view.inaccessible || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing && !savedDraft(view));
-  const disabled = stopDisabled || !view.model || blocked;
+  const disabled = stopDisabled || !view.model;
   const input = useRef<HTMLTextAreaElement>(null);
   const placeholder = view.fleet || view.preview?.setupRevision ? "Ask a question or change the setup…" : CHAT_PLACEHOLDER;
   return <>
-    <SetupSaveFlap client={client} view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
+    <SetupSaveFlap client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} onRetry={onRetry} modelsHref={modelsHref} />
     <SetupWakeups client={client} view={view} workspace={workspace} />
     <ChatComposerFrame stackActions={empty} label="Setup chat composer" inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       input={<WorkspaceFleetAddressInput workspace={workspace} inSetup inputRef={input} placeholder={placeholder} disabled={disabled} />}

@@ -23,9 +23,10 @@ import { cn } from "../utils";
 type Props = ComponentProps<"div"> & {
   gap?: boolean;
   asChild?: boolean;
+  variant?: "stack" | "divided";
 };
 
-export default function Section({ gap, asChild, className, ref, ...rest }: Props) {
+export default function Section({ gap, asChild, className, ref, variant = "stack", ...rest }: Props) {
   const labelled = rest["aria-label"] != null || rest["aria-labelledby"] != null;
   const Comp = asChild ? Slot : labelled ? "section" : "div";
   return (
@@ -33,7 +34,8 @@ export default function Section({ gap, asChild, className, ref, ...rest }: Props
       ref={ref}
       data-section={gap ? "gap" : "stack"}
       className={cn(
-        "grid min-w-0 grid-cols-1 gap-xl",
+        "min-w-0",
+        variant === "divided" ? "block border-t border-border" : "grid grid-cols-1 gap-xl",
         gap && "py-5xl [&+[data-section=gap]]:pt-0",
         className,
       )}

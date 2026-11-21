@@ -14,7 +14,7 @@ describe("mergeBackfill", () => {
   // A waiting row never moves back. A server page read before the
   // runner took the message still says `queued`; the live tab has since seen
   // `event_received`, and that frame is spent, so a regression here would hold
-  // the row at "Queued" until the turn completes.
+  // the row at "On it" until the turn completes.
   it("should keep a received row running when a server page restates it as queued", () => {
     const live = evt({ id: "e1", status: AGENTSFLEET_EVENT_STATUS.RECEIVED, text: "check the tests" });
     const merged = mergeBackfill([live], [

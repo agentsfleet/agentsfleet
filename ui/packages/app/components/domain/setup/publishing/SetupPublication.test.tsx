@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ChatFixture, CHAT_PROPS } from "@/tests/workspace-chat/fixture";
 import { DRAFT, REVIEW } from "@/tests/helpers/draft-fixtures";
@@ -14,9 +14,9 @@ beforeEach(async () => {
   await client.initialize(); await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup();client.dispose();vi.useRealTimers();vi.unstubAllGlobals();});
-function Publication({dirty = false}: {dirty?: boolean}) {
+function Publication() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <><SetupPublication client={client} view={view} workspace={CHAT_PROPS.workspace} dirty={dirty} />
+  return <><SetupPublication client={client} view={view} workspace={CHAT_PROPS.workspace} />
     {view.pending ? <button onClick={() => {void client.retry();}}>Retry</button> : null}</>;
 }
 
@@ -55,16 +55,6 @@ it("retries an interrupted publication with the original key and body without sa
   expect(writes[1]?.body).toEqual(writes[0]?.body);
   expect(fixture.publicationKeys.size).toBe(1);
   expect(fixture.saveAttempts).toBe(0);
-});
-
-it("does not publish while manual edits are unsaved", async () => {
-  const {rerender} = render(<Publication dirty />);
-  expect(screen.queryByRole("button", {name: "Save and publish"})).toBeNull();
-  expect(fixture.writes()).toHaveLength(0);
-  rerender(<Publication />);
-  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await waitFor(() => expect(fixture.publicationAttempts).toBe(1));
-  expect(fixture.writes()[0]?.body).toMatchObject({label: REVIEW.effective.instance_name});
 });
 
 it("publishes an already materialized source without creating another draft", async () => {

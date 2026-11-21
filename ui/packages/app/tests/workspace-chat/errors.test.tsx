@@ -3,18 +3,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DraftSidebarProvider } from "@/components/layout/draft-sidebar-state";
-import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("explains unavailable setup, preserves the lock, and offers reload or fleet navigation", async () => {
+it("explains unavailable setup and keeps the reload action", async () => {
   fixture.fetch.mockResolvedValueOnce(response({}, 404));
   const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Fleet setup isn’t available");
-  expect(screen.getByRole("link", {name: "Your fleets"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets`);
+  expect(screen.queryByRole("link", {name: "Your Fleets"})).toBeNull();
   expect(screen.queryByRole("button", {name: /Watch a pull request/})).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Reload"}));
@@ -54,10 +54,10 @@ it("shows an oversized message refusal inside the chat without creating a draft"
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
-  expect((await screen.findByRole("alert")).textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
+  expect((await screen.findByRole("alert")).textContent).toContain("Couldn’t complete this request");
   fireEvent.change(input, {target: {value: "Review the callback regression"}});
-  fireEvent.click(screen.getByRole("button", {name: "Dismiss error notice"}));
-  expect(screen.getByRole("alert").textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
+  expect(screen.getByLabelText("Setup status").textContent).toContain("Setup needs attention");
+  expect(screen.getByRole("alert").textContent).toContain("Couldn’t complete this request");
   expect(input).toHaveProperty("value", "Review the callback regression");
   expect(fixture.writes()).toEqual([]);
 });
@@ -135,7 +135,7 @@ it("reopens the current fleet setup after an initial read fails without creating
   render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByText(unavailable);
   expect(screen.queryByRole("textbox")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Start over from current setup"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   expect(await screen.findByRole("heading", {name: FLEET_DETAIL.name})).toBeTruthy();
   await waitFor(() => expect(screen.getByRole("textbox")).toHaveProperty("disabled", false));
   expect(screen.queryByText(unavailable)).toBeNull();
@@ -161,11 +161,10 @@ it("loads the new saved revision when the same fleet source changes in place", a
   current = {...FLEET_DETAIL, name: nextName, setup_revision: "2", definition: {...FLEET_DETAIL.definition, instructions_md: nextInstructions}};
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "2"}} />);
   expect(await screen.findByRole("heading", {name: nextName})).toBeTruthy();
-  expect(screen.getByText("Fleet setup · v2")).toBeTruthy();
+  expect(screen.getByText("Draft", {exact: true})).toBeTruthy();
   expect(screen.queryByRole("heading", {name: FLEET_DETAIL.name})).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
-  await chooseSetupAction("Instructions");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", nextInstructions);
+  expect(screen.queryByRole("button", {name: "Edit instructions"})).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });
 
@@ -182,9 +181,9 @@ it("refreshes a draft after an edit refusal while retaining the unsent message",
   const refused = "Conversation name could not be saved";
   fixture.fetch.mockResolvedValueOnce(response({user_message: refused}, 503));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
-  await screen.findByText(refused);
+  await screen.findByText("Couldn’t complete this request");
   fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-  await waitFor(() => expect(screen.queryByText(refused)).toBeNull());
+  await waitFor(() => expect(screen.queryByText("Couldn’t complete this request")).toBeNull());
   expect(input).toHaveProperty("value", unsent);
   expect(input).toHaveProperty("disabled", false);
   expect(screen.getByRole("button", {name: "Save name"})).toHaveProperty("disabled", false);

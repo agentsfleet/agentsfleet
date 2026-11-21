@@ -12,9 +12,6 @@ export async function getTenantBilling(token: string): Promise<TenantBilling> {
   return BillingSchema.parse(await request<unknown>("/v1/tenants/me/billing", { method: "GET" }, token));
 }
 
-// Per-request deduped billing read. Multiple regions in one render (e.g. the
-// Wall's ExhaustionBanner and any billing-linked copy) share a single
-// GET /v1/tenants/me/billing instead of each firing their own. Mirrors
-// `listTenantWorkspacesCached`. Billing is tenant-scoped, so the cache key is
-// the token alone — no workspace dimension.
+// The rail's credits and the fleet header share one billing read per request.
+// Billing is tenant-scoped, so the token alone identifies the cache entry.
 export const getTenantBillingCached = cache(getTenantBilling);

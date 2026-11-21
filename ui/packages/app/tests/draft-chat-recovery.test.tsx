@@ -32,9 +32,9 @@ function RuntimeStop() {
 it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_state for %s without a durable assistant row", async (state) => {
   fixture.messages = [{...MESSAGE, state}];
   await client.resume(DRAFT.id); render(<Live />);
-  const label = state === "queued" ? "Queued" : "Thinking";
+  const label = state === "queued" ? "On it" : "Thinking";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
-  expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "Queued"})).toBeNull();
+  expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "On it"})).toBeNull();
   expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
 });
 
@@ -187,7 +187,7 @@ it("retries an unaccounted turn by resending it, without a Stop", async () => {
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<Live />);
-  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(writes).toEqual(["send"]));
   await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
   expect(client.getSnapshot().error).toBeNull();
@@ -211,7 +211,7 @@ it("retries the failed turn's request instead of a newer message or composer tex
   });
   await client.resume(DRAFT.id); render(<Live />);
   fireEvent.change(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER}), {target: {value: "Unsent text"}});
-  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(sent).toEqual([MESSAGE.text]));
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("value", "Unsent text");
 });

@@ -66,7 +66,7 @@ it("renames a chat with a conditional patch and retains the editor on a refusal"
   fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "Build repair"}});
   fixture.fetch.mockResolvedValueOnce(response({user_message: "This chat changed. Try again."}, 412));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
-  await screen.findByText("This chat changed. Try again.");
+  await screen.findByText("Couldn’t complete this request");
   expect(screen.getByLabelText("Chat name")).toHaveProperty("value", "Build repair");
   fixture.fetch.mockResolvedValueOnce(response({...DRAFT, title: "Build repair"}));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));

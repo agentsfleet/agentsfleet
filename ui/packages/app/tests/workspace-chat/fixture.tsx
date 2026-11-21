@@ -1,7 +1,8 @@
 import type { Draft, Message } from "@/lib/api/draft-types";
 import { vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PLUGIN, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import userEvent from "@testing-library/user-event";
+import { DRAFT, FLEET, FLEET_ID, MESSAGE, MODEL, PLUGIN, PUBLICATION, REVIEW, WORKSPACE, applyToolSelection, response } from "@/tests/helpers/draft-fixtures";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 // Load the real dynamic children before interaction deadlines start.
 import "@/components/domain/setup/conversation/DraftConversation";
@@ -54,7 +55,10 @@ export class ChatFixture {
       return response({status: "accepted", sequence, replayed: false}, 202);
     }
     if (path.endsWith("/messages")) return response({items: this.messages, next_cursor: null});
-    if (path.endsWith(`/drafts/${this.draft.id}`)) return response(this.draft);
+    if (path.endsWith(`/drafts/${this.draft.id}`)) {
+      if (call.method === "PATCH") this.draft = applyToolSelection(this.draft, body);
+      return response(this.draft);
+    }
     if (path.endsWith("/fleets") && call.method === "POST") {
       this.saveAttempts++;
       if (this.failSave && this.saveAttempts === 1) throw new TypeError("network interrupted");
@@ -85,14 +89,15 @@ export class ChatFixture {
 export const CHAT_PROPS = {account: "account-one", workspace: WORKSPACE};
 
 export async function setupAction(name: string): Promise<HTMLElement> {
-  if (name === "Rename chat" && !screen.queryByRole("button", {name})) fireEvent.click(await screen.findByRole("button", {name: "Edit instructions"}));
-  return screen.findByRole("button", {name: name === "Instructions" ? "Edit instructions" : name});
+  if (name === "Rename chat") {
+    await userEvent.setup().click(await screen.findByRole("button", {name: "Draft actions"}));
+    return screen.getByRole("menuitem", {name});
+  }
+  return screen.findByRole("button", {name});
 }
 
 export async function chooseSetupAction(name: string): Promise<void> {
-  fireEvent.click(await setupAction(name));
-  // The instructions editor is loaded on demand; opening the dialog shell is not readiness.
-  if (name === "Instructions") await screen.findByRole("textbox", {name: "Instructions"});
+  await userEvent.setup().click(await setupAction(name));
 }
 
 export async function saveInChat(): Promise<void> {

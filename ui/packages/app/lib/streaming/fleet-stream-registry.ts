@@ -58,7 +58,7 @@ export class FleetStreams {
 private adopt(workspaceId: string, fleetId: string, initial: EventRow[]): LiveEntry {
   const entry: LiveEntry = {
     ...createEntry(workspaceId, initial),
-    apply: (next, facts) => setEvents(entry, next, facts),
+    apply: (next, facts, replyEventId) => setEvents(entry, next, facts, replyEventId),
     isCurrent: () => this.#entries.get(fleetId) === entry,
   };
   watchRunningRows(entry, initial);

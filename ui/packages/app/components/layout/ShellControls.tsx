@@ -11,7 +11,7 @@ export function ShellControls({workspaceId, collapsed}: {workspaceId: string | n
     <Button asChild variant="ghost" className={cn("h-11 w-11 min-w-0 justify-center px-0 hover:bg-muted hover:text-foreground [&_svg]:size-11 md:[&_svg]:size-12 md:size-12", !collapsed && "md:w-full md:justify-start md:gap-lg md:px-0")} aria-label="agentsfleet home">
       <Link href={workspaceId ? workspacePath(workspaceId, "fleets/new") : "/"} prefetch={false}>
         <BrandMark viewBox="-4 -4 32 32" className="size-11 shrink-0 rounded-control md:size-12 bg-brand-tile text-brand-ray" />
-        {!collapsed ? <span className="hidden text-label font-control md:inline">agentsfleet</span> : null}
+        {!collapsed ? <span className="hidden text-label font-semibold text-foreground md:inline">agentsfleet</span> : null}
       </Link>
     </Button>
   </div>;

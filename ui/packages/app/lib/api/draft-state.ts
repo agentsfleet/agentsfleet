@@ -22,6 +22,7 @@ export type DraftView = {
   readonly activities?: readonly SetupActivity[];
   readonly liveReply?: DraftReply | null;
   readonly contextProgress?: DraftCompaction | null;
+  readonly startedTurn?: {readonly draftId: string; readonly sequence: string} | null;
   readonly optimistic?: {readonly operation: string; readonly save?: boolean; readonly text: string; readonly createdAt: string} | null;
   readonly models: readonly WorkspaceModel[];
   readonly cards: readonly DraftCard[];
@@ -46,7 +47,7 @@ export type DraftView = {
   /** Successful saved-setup reads invalidate approvals even with unchanged history. */
   readonly readinessRevision: number;
 };
-export type DrawerEdit = {readonly definition: Definition; readonly instanceName: string; readonly runtimeModel?: string};
+export type DrawerEdit = {readonly definition: Definition; readonly instanceName?: string; readonly runtimeModel?: string};
 
 export const EMPTY_DRAFT_VIEW: DraftView = {draft: null, messages: [], models: [], cards: [], moreModels: false, moreChats: false, listStatus: DRAFT_LIST_STATUS.loading,
   model: "", fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,

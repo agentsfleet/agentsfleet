@@ -51,6 +51,10 @@ test("the workspace picker inserts only active fleets and keeps the unsent words
   const picker = page.getByRole("listbox", {name: "Workspace fleets"});
   await expect(picker.getByRole("option")).toHaveCount(1);
   await expect(picker.getByRole("option", {name: "@bob", exact: true})).toBeVisible();
+  await expect(picker.getByRole("option", {name: "@bob", exact: true})).toHaveCSS("font-weight", "600");
+  const panel = picker.locator("..");
+  const composer = page.getByLabel("Chat composer", {exact: true});
+  expect((await panel.boundingBox())?.width).toBeCloseTo((await composer.boundingBox())?.width ?? 0);
   await page.screenshot({path: info.outputPath("workspace-fleet-picker.png"), animations: "disabled"});
   await input.press("Enter");
   await expect(input).toHaveValue("@bob Please check");

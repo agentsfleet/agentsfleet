@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {TooltipProvider} from "@agentsfleet/design-system";
-import {ChatFixture, CHAT_PROPS, chooseSetupAction} from "./fixture";
+import {ChatFixture, CHAT_PROPS} from "./fixture";
 import {WorkspaceChat} from "@/components/domain/setup/conversation/WorkspaceChat";
 import {DRAFT, FAILED_SCHEDULE, FLEET, FLEET_ID, REVIEW, SCHEDULE, response} from "@/tests/helpers/draft-fixtures";
 
@@ -40,8 +40,8 @@ it("recovers a failed setup continuation from the conversation without reopening
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />, {wrapper: TooltipProvider});
   fireEvent.click(await screen.findByRole("button", {name: "Finish setup"}));
-  await screen.findByText("Setup retry unavailable");
-  const retry = screen.getByRole("button", {name: "Finish setup"});
+  await screen.findByText("Couldn’t complete this request");
+  const retry = screen.getByRole("button", {name: /^Retry$/});
   expect(retry).toHaveProperty("disabled", false);
   expect(continued).toBe(false);
   fireEvent.click(retry);
@@ -72,13 +72,11 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />, {wrapper: TooltipProvider});
   if (source === "updated") {
-    await chooseSetupAction("Instructions");
-    fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Review releases and preserve the schedule"}});
-    fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(await screen.findByRole("button", {name: "Save and publish"}));
+    await screen.findByRole("link", {name: "Open fleet"});
   }
   fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));
-  await screen.findByText("Registration retry unavailable");
+  await screen.findByText("Couldn’t complete this request");
   const retry = screen.getByRole("button", {name: "Retry registration"});
   expect(retry).toHaveProperty("disabled", false);
   expect(synced).toBe(false);

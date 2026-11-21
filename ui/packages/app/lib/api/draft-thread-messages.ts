@@ -11,18 +11,19 @@ type ProjectMessage = typeof threadMessage;
 
 /** One conversation owns its cache; unchanged rows keep their runtime identity during streaming. */
 export function createDraftThreadProjection(): (view: DraftView) => ThreadMessageLike[] {
-  const cache = new WeakMap<Message, Map<string, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; saving: boolean; request?: string; row: ThreadMessageLike}>>();
+  const cache = new WeakMap<Message, Map<string, {live: string | undefined; context: ContextProgress | undefined; stopped: boolean; saving: boolean; queued: boolean; row: ThreadMessageLike}>>();
   const activities = new WeakMap<SetupActivity, ThreadMessageLike>();
-  const project: ProjectMessage = (message, view, cutoff, request, prefix) => {
+  const project: ProjectMessage = (message, view, cutoff, prefix) => {
     const live = message.role === MESSAGE_ROLE.assistant && isRunning(message) && view.liveReply?.sequence === message.sequence ? view.liveReply.text : undefined;
     const stopped = isStopped(message, cutoff);
     const context = compactionFor(message, view, cutoff);
     const saving = isSaving(message, view);
+    const queued = isQueued(message, view);
     const entries = cache.get(message) ?? new Map();
     const old = entries.get(prefix);
-    if (old && old.live === live && old.context === context && old.stopped === stopped && old.saving === saving && old.request === request) return old.row;
-    const row = threadMessage(message, view, cutoff, request, prefix);
-    entries.set(prefix, {live, context, stopped, saving, request, row}); cache.set(message, entries);
+    if (old && old.live === live && old.context === context && old.stopped === stopped && old.saving === saving && old.queued === queued) return old.row;
+    const row = threadMessage(message, view, cutoff, prefix);
+    entries.set(prefix, {live, context, stopped, saving, queued, row}); cache.set(message, entries);
     return row;
   };
   let previous: {id: string | undefined; time: number}[] = [];
@@ -47,15 +48,13 @@ export function createDraftThreadProjection(): (view: DraftView) => ThreadMessag
 export function draftThreadMessages(view: DraftView, project: ProjectMessage = threadMessage, projectActivity = activityMessage, order = sortRows): ThreadMessageLike[] {
   const cutoff = view.draft?.cancelled_through ?? "0";
   const assistants = new Set<string>();
-  const requests = new Map<string, string>();
   for (const message of view.messages) {
     if (message.role === MESSAGE_ROLE.assistant) assistants.add(message.sequence);
-    else if (message.text) requests.set(message.sequence, message.text);
   }
   const rows = view.messages.flatMap(message => {
-    const row = project(message, view, cutoff, requests.get(message.sequence));
+    const row = project(message, view, cutoff, "");
     if (message.role !== MESSAGE_ROLE.user || !isRunning(message) || assistants.has(message.sequence)) return [row];
-    return [row, project({...message, role: MESSAGE_ROLE.assistant, text: undefined}, view, cutoff)];
+    return [row, project({...message, role: MESSAGE_ROLE.assistant, text: undefined}, view, cutoff, "")];
   });
   const pending = view.optimistic;
   if (pending && !view.messages.some(message => message.operation_id === pending.operation)) {
@@ -65,9 +64,9 @@ export function draftThreadMessages(view: DraftView, project: ProjectMessage = t
       content: [{type: "text", text: view.liveReply?.text ?? ""}], status: {type: "running"},
       metadata: {custom: {admitting: true, startedAtMs: Date.parse(pending.createdAt), saving: view.saveOperation === pending.operation && !view.error}}});
   }
-  const previousView = {...view, liveReply: null, contextProgress: null, saveOperation: null};
+  const previousView = {...view, liveReply: null, contextProgress: null, startedTurn: null, saveOperation: null};
   const previous = (view.previousDrafts ?? []).flatMap(history => history.messages.map(message =>
-    project(message, previousView, history.cancelledThrough, undefined, `${history.id}:`)));
+    project(message, previousView, history.cancelledThrough, `${history.id}:`)));
   const activity = (view.activities ?? []).map(projectActivity);
   return order([...previous, ...rows, ...activity]);
 }
@@ -81,7 +80,7 @@ function activityMessage(row: SetupActivity): ThreadMessageLike {
     content: [{type: "text", text: setupActivityText(row)}], metadata: {custom: {activity: true}}};
 }
 
-function threadMessage(message: Message, view: DraftView, cutoff: string, request?: string, prefix = ""): ThreadMessageLike {
+function threadMessage(message: Message, view: DraftView, cutoff: string, prefix: string): ThreadMessageLike {
   const failure = message.failure;
   const stopped = isStopped(message, cutoff);
   const pending = isRunning(message) && !stopped;
@@ -90,10 +89,15 @@ function threadMessage(message: Message, view: DraftView, cutoff: string, reques
   const text = [live ?? message.text ?? "",
     message.role === MESSAGE_ROLE.assistant && (message.state === MESSAGE_STATE.cancelled || (stopped && isRunning(message))) ? "Request stopped." : ""].filter(Boolean).join("\n\n");
   return {id: `${prefix}${message.sequence}:${message.role}`, role: message.role, content: [{type: "text", text}], createdAt: new Date(message.created_at),
-    metadata: {custom: {saving, pending, queued: pending && message.state === MESSAGE_STATE.queued,
+    metadata: {custom: {saving, pending, queued: pending && isQueued(message, view),
       contextProgress: compactionFor(message, view, cutoff),
-      failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined, retryText: failure ? request : undefined}},
+      failure: message.role === MESSAGE_ROLE.assistant ? failure : undefined}},
     ...(message.role === MESSAGE_ROLE.assistant ? {status: pending || saving ? {type: "running"} : {type: "complete", reason: "stop"}} : {})};
+}
+
+function isQueued(message: Message, view: DraftView): boolean {
+  const started = view.startedTurn;
+  return message.state === MESSAGE_STATE.queued && !(started?.draftId === view.draft?.id && started?.sequence === message.sequence);
 }
 
 function isSaving(message: Message, view: DraftView): boolean {

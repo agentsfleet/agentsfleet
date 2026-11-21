@@ -1,3 +1,4 @@
+import { isPreviewCommand } from "@/lib/streaming/fleet-preview-command";
 import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -97,7 +98,7 @@ function observeProcess(tool: FleetToolCall, eventId: string, running: ResourceS
   if (session && typeof tool.args?.cmd === "string") {
     const command = tool.args.cmd;
     const key = eventId + ":process:" + session[1];
-    const label = /^(?:bun|npm|pnpm|yarn)(?: run)? preview(?:\s|$)/.test(command) ? "Preview server" : command.split("\n")[0] || "Command";
+    const label = isPreviewCommand(command) ? "Preview server" : command.split("\n")[0] || "Command";
     return record(rows, {key, kind: "process", label, state: running, detail: command + "\n" + output});
   }
 }

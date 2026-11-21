@@ -82,7 +82,7 @@ test.describe("fleet thread surface", () => {
 
     // The persistent Primary rail keeps the return route reachable beside the conversation.
     await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Your fleets", exact: true }),
+      page.getByRole("navigation", { name: "Primary" }).locator("summary").filter({hasText: "Your Fleets"}),
     ).toBeVisible();
     await expect(page.getByText(fleet.name, { exact: true }).first()).toBeVisible();
 

@@ -3,7 +3,7 @@ import type { Draft, Fleet } from "@/lib/api/draft-types";
 import { vi } from "vitest";
 import { DraftClient } from "@/lib/api/drafts";
 import { FakeEventSource } from "./fake-event-source";
-import { ACCEPTED, APP_ORIGIN, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, response } from "./draft-fixtures";
+import { ACCEPTED, APP_ORIGIN, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, applyToolSelection, response } from "./draft-fixtures";
 
 type Call = {readonly path: string; readonly search: string; readonly method: string; readonly body: unknown; readonly headers: Headers};
 type Override = (call: Call) => Response | undefined | Promise<Response | undefined>;
@@ -31,7 +31,10 @@ export class DraftClientFixture {
       if (path.includes("/fleets/") && path.endsWith("/messages") && call.method === "GET") return response({items: [], next_cursor: null});
       if (path.endsWith("/messages") && call.method === "GET") return response({items: [MESSAGE], next_cursor: null});
       if (path.endsWith("/messages") && call.method === "POST") return response(ACCEPTED, 202);
-      if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response(this.current);
+      if (path.endsWith(`/drafts/${DRAFT_ID}`)) {
+        if (call.method === "PATCH") this.current = applyToolSelection(this.current, call.body);
+        return response(this.current);
+      }
       if (path.endsWith("/fleets") && call.method === "POST") return response(FLEET, 201);
       if (path.endsWith(`/fleets/${FLEET_ID}`)) return response(this.fleet);
       if (path.endsWith("/plugins") && call.method === "POST") return response(PUBLICATION, 201);

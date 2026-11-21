@@ -388,7 +388,7 @@ test("setup Summary retains full inline phone content and room for policy labels
     await expect(summary).toBeVisible();
     const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
       scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(320);
+    if (info.project.name === "chromium") expect(layout.width).toBe(248);
     else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
     const footer = page.getByTestId("fleet-chat-footer");
     expect(await footer.evaluate(node => {

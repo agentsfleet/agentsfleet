@@ -88,7 +88,7 @@ export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {
   const length = useAuiState(state => state.message.content.reduce((total, part) => total + (part.type === "text" ? part.text.length : 0), 0));
   const running = useAuiState(state => state.message.status?.type === "running");
   return <MessageExpansion length={length} running={running}>{display => <MarkdownTextPrimitive className={BODY_CLASS} components={REPLY_COMPONENTS}
-    remarkPlugins={REMARK_PLUGINS} preprocess={display} smooth defer />}</MessageExpansion>;
+    remarkPlugins={REMARK_PLUGINS} preprocess={display} smooth={false} defer />}</MessageExpansion>;
 });
 
 export const FleetMarkdown = memo(function FleetMarkdown({ children, expandable = false }: { children: string; expandable?: boolean }) {

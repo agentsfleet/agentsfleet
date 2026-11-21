@@ -30,6 +30,7 @@ export type UseFleetEventStreamResult = {
   tasksSeq: number;
   approvalsSeq: number;
   events: FleetEvent[];
+  workEvents: readonly FleetEvent[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string, replayed: boolean, foldedInto?: string | null) => boolean;
@@ -103,6 +104,7 @@ export function useFleetEventStream(
     tasksSeq: snapshot.tasksSeq,
     approvalsSeq: snapshot.approvalsSeq,
     events: snapshot.events,
+    workEvents: snapshot.workEvents,
     connectionStatus: snapshot.connectionStatus,
 
     appendOptimistic,

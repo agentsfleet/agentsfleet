@@ -51,8 +51,8 @@ it.each([false, true])("keeps a failed or unconfirmed operation separate from sa
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it.each([false, true])("marks manual and proposed changes as unsaved (%s)", dirty => {
-  render(<SetupStatusFlap showPublication view={{...SAVED, draft: dirty ? null : DRAFT}} workspace={WORKSPACE} dirty={dirty} />);
+it("marks a proposal for an existing fleet as unsaved", () => {
+  render(<SetupStatusFlap showPublication view={{...SAVED, draft: DRAFT}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toBe("Unsaved setup changes");
   expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
   expect(screen.queryByRole("link")).toBeNull();

@@ -5,7 +5,7 @@ import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, WORKSPACE, applyToolSelection, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -14,6 +14,51 @@ afterEach(() => fixture.dispose());
 
 describe("private setup editing and recovery boundaries", () => {
   const edit = () => ({definition: structuredClone(REVIEW.effective.definition), instanceName: REVIEW.effective.instance_name});
+
+  it("selects an authoring model before the unfinished setup list returns", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise : undefined;
+    const instance = fixture.create();
+    const initialized = instance.initialize();
+    await vi.waitFor(() => expect(instance.getSnapshot().model).toBe(MODEL_REF));
+    expect(instance.getSnapshot().listStatus).toBe("loading");
+    sidebar.resolve(response({items: [], next_cursor: null}));
+    await initialized;
+    expect(instance.getSnapshot().listStatus).toBe("ready");
+  });
+
+  it("keeps the active chat usable when the unfinished setup list fails late", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise.then(value => value.clone()) : undefined;
+    const instance = fixture.create();
+    const initialized = expect(instance.initialize()).rejects.toMatchObject({status: 503});
+    await vi.waitFor(() => expect(instance.getSnapshot().model).toBe(MODEL_REF));
+    await instance.send("Create a private setup");
+    sidebar.resolve(response({}, 503));
+    await initialized;
+    expect(instance.getSnapshot()).toMatchObject({draft: DRAFT, listStatus: "unavailable", error: null});
+  });
+
+  it("reuses default tools already applied when their response was lost before a chat Save", async () => {
+    const instance = await ready(true);
+    fixture.override = ({method, body}) => {
+      if (method !== "PATCH") return;
+      fixture.current = applyToolSelection(fixture.current, body);
+      return response({}, 503);
+    };
+    await expect(instance.send("Save")).rejects.toMatchObject({status: 503});
+    expect(instance.getSnapshot().pending).toBe(true);
+    await instance.retry();
+    expect(mutations().map(call => call.method)).toEqual(["PATCH", "POST"]);
+    expect(mutations()[1]?.body).toMatchObject({message: "Save", save: true});
+  });
+
+  it("opens a saved draft with one draft read and one message page", async () => {
+    const instance = await ready(true);
+    expect(calls.filter(({path}) => path.endsWith(`/drafts/${DRAFT_ID}`))).toHaveLength(1);
+    expect(calls.filter(({path}) => path.endsWith(`/drafts/${DRAFT_ID}/messages`))).toHaveLength(1);
+    expect(instance.getSnapshot().messages).toEqual([MESSAGE]);
+  });
 
   it("changes the authoring model locally before creation and conditionally after creation", async () => {
     const instance = await ready(); await instance.selectModel("model:second");
@@ -232,9 +277,9 @@ describe("private browser chat", () => {
     fixture.override = ({path, method}) => path.endsWith("/fleets") && method === "POST" ? response(FLEET, 201) : undefined;
     await instance.save(); expect(instance.getSnapshot().fleet?.id).toBe(FLEET_ID);
     await instance.retry();
-    const saved = mutations(); expect(saved).toHaveLength(2); expect(saved[0]?.body).toEqual(saved[1]?.body);
+    const saved = mutations().filter(call => call.method === "POST"); expect(saved).toHaveLength(2); expect(saved[0]?.body).toEqual(saved[1]?.body);
     expect(saved[0]?.headers.get("Idempotency-Key")).toBe(saved[1]?.headers.get("Idempotency-Key"));
-    expect(saved[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
+    expect(saved[0]?.body).toMatchObject({review_digest: "review-with-tools", start: {kind: "none"}});
   });
   it("pins Apply to the setup tag whose revision matches the displayed Review", async () => {
     fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};

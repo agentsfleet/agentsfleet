@@ -17,7 +17,7 @@ afterEach(() => {cleanup();client.dispose();vi.unstubAllGlobals();});
 async function open(extension: Record<string, unknown> = baseConfig) {
   const definition = {...REVIEW.effective.definition, config: {name: "repairer", "x-agentsfleet": extension}};
   fixture.draft = {...DRAFT, candidate: {...DRAFT.candidate!, definition}, review: {...REVIEW,
-    effective: {...REVIEW.effective, definition}, requirements: {...baseConfig, repositories: [], credentials: []}}};
+    effective: {...REVIEW.effective, definition}, requirements: {...extension, repositories: [], credentials: []}}};
   await client.initialize();await client.resume(DRAFT.id);
   render(<LiveSummary />);
 }
@@ -27,14 +27,29 @@ function LiveSummary() {
 }
 const patch = () => fixture.writes().find(call => call.method === "PATCH");
 
+it("creates a network policy from the off state without asking the model or editing instructions", async () => {
+  await open({tools: ["shell"], budget: {daily_nanos: "1000000000"}});
+  const publicAccess = screen.getByRole("switch", {name: "Allow all public internet access"});
+  const packages = screen.getByRole("switch", {name: "Enable package manager domains"});
+  expect(publicAccess.getAttribute("aria-checked")).toBe("false");
+  expect(packages.getAttribute("aria-checked")).toBe("false");
+  expect(packages).toHaveProperty("disabled", false);
+
+  const before = fixture.calls.length;
+  fireEvent.click(publicAccess);
+  await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
+  expect(fixture.writes()).toHaveLength(1);
+  expect(fixture.calls.slice(before).map(call => call.method)).toEqual(["PATCH"]);
+  expect(patch()?.body).toEqual({config_ops: [{op: "add", path: "/config/x-agentsfleet/network", value: {http_egress: "public"}}], instruction_edits: []});
+});
+
 // Value: protects=policy edits preserve existing restrictions and package choices;
 // fails_when=toggling public access replaces the policy object; seam=native draft edit; no_claim=server authorization.
 it("preserves the domain list, read-only flag, packages, tools and budget when toggling Allow all", async () => {
   await open();
   fireEvent.click(screen.getByRole("switch", {name: "Allow all public internet access"}));
   await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
-  expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet", value: {
-    ...baseConfig, network: {...network, http_egress: "public"}}}]});
+  expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet/network", value: {...network, http_egress: "public"}}], instruction_edits: []});
   expect(fixture.saveAttempts).toBe(0);
 });
 
@@ -42,7 +57,7 @@ it("changes package registry access without changing existing destination restri
   await open();
   fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
   await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
-  expect(patch()?.body).toMatchObject({config_ops: [{value: {...baseConfig, network: {...network, package_manager_domains: false}}}]});
+  expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet/network", value: {...network, package_manager_domains: false}}]});
 });
 
 it.each([false, true])("adds repositories with a valid paired binding while preserving existing write policy (%s)", async existing => {
@@ -53,7 +68,9 @@ it.each([false, true])("adds repositories with a valid paired binding while pres
   fireEvent.change(field, {target: {value: "agentsfleet/web\n agentsfleet/docs \n"}});
   fireEvent.click(screen.getByRole("button", {name: "Apply selection"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(patch()?.body).toMatchObject({config_ops: [{value: {...baseConfig, repositories: ["agentsfleet/web", "agentsfleet/docs"], repository_access: existing ? "write" : "read", ...(existing ? {repository_base: "main"} : {})}}]});
+  expect(patch()?.body).toMatchObject({config_ops: expect.arrayContaining([{op: existing ? "replace" : "add", path: "/config/x-agentsfleet/repositories", value: ["agentsfleet/web", "agentsfleet/docs"]}])});
+  const policy = patch()?.body as {config_ops: {path: string; value?: unknown}[]};
+  expect(policy.config_ops.find(operation => operation.path.endsWith("/repository_access"))?.value).toBe(existing ? undefined : "read");
   expect(fixture.saveAttempts).toBe(0);
 });
 
@@ -63,7 +80,7 @@ it("clears an empty repository binding as a whole rather than sending an invalid
   fireEvent.change(await screen.findByRole("textbox", {name: "Repositories"}), {target: {value: ""}});
   fireEvent.click(screen.getByRole("button", {name: "Apply selection"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(patch()?.body).toMatchObject({config_ops: [{value: baseConfig}]});
+  expect(patch()?.body).toMatchObject({config_ops: ["repositories", "repository_access", "repository_base", "repository_publication"].map(key => ({op: "remove", path: `/config/x-agentsfleet/${key}`}))});
 });
 
 it("keeps refused repository edits available for correction and reload", async () => {
@@ -92,8 +109,9 @@ it("selects stored secret names through the existing scoped catalog and native e
   await open();fireEvent.click(screen.getByRole("button", {name: "Manage secrets"}));
   fireEvent.click(await screen.findByRole("checkbox", {name: "github-token"}));
   fireEvent.click(screen.getByRole("button", {name: "Apply selection"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(patch()?.body).toMatchObject({config_ops: [{value: {...baseConfig, credentials: ["github-token"]}}]});
+  await waitFor(() => expect(screen.queryByRole("checkbox", {name: "github-token"})).toBeNull());
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet/credentials", value: ["github-token"]}], instruction_edits: []});
   expect(secretList).toHaveBeenCalledWith(CHAT_PROPS.workspace);
 });
 

@@ -40,13 +40,13 @@ export function WorkspaceFleetAddressInput({workspace, inSetup, ...props}: Props
     if (row) row.scrollIntoView({block: "nearest"});
   }, [activeId]);
 
-  return <div className="relative flex min-w-0 flex-1" onKeyDownCapture={picker.keyDown}
+  return <div className="flex min-w-0 flex-1" onKeyDownCapture={picker.keyDown}
     onFocus={event => {picker.focus(true); if (event.target instanceof HTMLTextAreaElement) picker.caret(event.target);}} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget)) picker.focus(false);}}>
     <ChatComposerInput {...props}
       aria-autocomplete="list" aria-controls={picker.open ? listId : undefined} aria-activedescendant={activeId}
       onSelect={event => picker.caret(event.currentTarget)} onChange={picker.change} />
     {picker.open ? <DashboardPanel padding="none" className="fleet-address-options" ref={listRef}>
-      <SectionLabel variant="navigation" className="block px-md py-sm">Workspace fleets</SectionLabel>
+      <SectionLabel variant="navigation" className="block px-md py-sm text-eyebrow font-semibold text-muted-foreground">Workspace fleets</SectionLabel>
       <SuggestionList id={listId} label="Workspace fleets" active={picker.selected} onChoose={picker.choose}
         options={picker.choices.map(fleet => ({key: fleet.id, value: fleet.name, label: `@${fleet.name}`}))} />
       <PickerStatus picker={picker} />

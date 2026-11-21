@@ -36,8 +36,8 @@ function AssistantTurn({sender, timestamp, annotation, children, footer}: TurnPr
 
 function OperatorTurn({sender, timestamp, annotation, children, footer, showSender}: TurnProps) {
   return (
-    <div className="flex w-full min-w-0 max-w-full flex-col items-end gap-md sm:w-9/10">
-      <div className="w-full min-w-0 max-w-full rounded-lg rounded-br-[6px] border border-border bg-muted px-5 py-xl">
+    <div className="flex w-fit min-w-0 max-w-full flex-col items-end gap-md sm:max-w-9/10">
+      <div className="min-w-0 max-w-full rounded-lg rounded-br-[6px] border border-border bg-muted px-5 py-lg">
         <MessageContent sender={sender}>{children}</MessageContent>
       </div>
       <MessageMetadata sender={sender} timestamp={timestamp} annotation={annotation} showSender={showSender} />

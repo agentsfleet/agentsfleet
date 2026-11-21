@@ -90,7 +90,7 @@ summary.fleet-resource-row {
 }
 
 .fleet-composer-surface {
-  @apply min-h-0 shrink-0 rounded-lg bg-card px-xl pt-xl transition-colors duration-150;
+  @apply relative min-h-0 shrink-0 rounded-lg bg-card px-xl pt-xl transition-colors duration-150;
   padding-bottom: calc(var(--sp-lg) + 1px);
   &:focus-within { border-color: var(--muted-foreground); }
   @media (prefers-reduced-motion: reduce) { transition: none; }
@@ -107,13 +107,18 @@ summary.fleet-resource-row {
 }
 
 .fleet-address-options {
-  @apply absolute inset-x-0 bottom-full z-20 mb-sm overflow-y-auto rounded-lg border border-border bg-popover p-sm text-foreground shadow-floating;
-  max-height: min(16rem, 40dvh);
+  @apply absolute -inset-x-px bottom-full z-20 overflow-y-auto rounded-md border border-border bg-card p-md text-foreground shadow-floating;
+  max-height: 32dvh;
 }
 
 .fleet-setup-receipt {
   @apply flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground;
   @apply motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream;
+}
+
+.setup-policy-row {
+  @apply flex min-h-11 items-center justify-between gap-md;
+  & + & { @apply border-t border-border-subtle pt-md; }
 }
 
 .fleet-changes-flap {
@@ -122,13 +127,8 @@ summary.fleet-resource-row {
 }
 
 .fleet-changes-trigger {
-  @apply h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-sm text-left text-foreground;
+  @apply h-auto min-h-11 w-full justify-start gap-md whitespace-normal px-0 py-xs text-left text-foreground;
   @apply summary:min-h-9;
-}
-
-.fleet-changes-file-count {
-  @apply ml-sm shrink-0 text-eyebrow font-normal leading-eyebrow text-muted-foreground;
-  @apply summary:ml-0 summary:mt-0.5 summary:block;
 }
 
 .fleet-sources-trigger {

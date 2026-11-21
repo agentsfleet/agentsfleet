@@ -87,14 +87,14 @@ it("keeps an empty private draft list quiet beside the account fleet list", asyn
       <DraftSidebarHistory account="account" workspace={WORKSPACE} onNavigate={() => {}} /></DraftSidebarProvider>);
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
-    expect(screen.getByText("Fleets")).toBeTruthy();
+    expect(screen.getByText("Your Fleets")).toBeTruthy();
   } finally {fetcher.mockRestore();}
 });
 
 it("keeps the fleet list private when no account is supplied", () => {
   const fetcher = vi.spyOn(globalThis, "fetch");
   render(<DraftSidebarHistory workspace={WORKSPACE} onNavigate={vi.fn()} />);
-  expect(screen.queryByText("Fleets")).toBeNull();
+  expect(screen.queryByText("Your Fleets")).toBeNull();
   expect(fetcher).not.toHaveBeenCalled();
   fetcher.mockRestore();
 });

@@ -16,9 +16,9 @@ type Status = {label: string; icon: PhosphorIcon; busy?: boolean; confirmed?: bo
 const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadSimpleIcon}, saving: {label: "Saving", icon: FloppyDiskIcon}, publishing: {label: "Publishing", icon: UploadSimpleIcon}};
 
 /** Only accepted fleet revisions and publication receipts receive a success tick. */
-export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref, showPublication = false}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string; showPublication?: boolean}) {
+export function SetupStatusFlap({view, workspace, onOpenFleet, onRetry, modelsHref, showPublication = false}: {view: DraftView; workspace: string; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string; showPublication?: boolean}) {
   if (view.inaccessible) return null;
-  const status = setupStatus(view, dirty, modelsHref, showPublication);
+  const status = setupStatus(view, modelsHref, showPublication, Boolean(onRetry));
   if (!status) return null;
   const publication = view.draft?.publication;
   const published = showPublication && publication && publication.canonical_digest === view.draft.candidate?.canonical_digest;
@@ -27,18 +27,20 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
       className="fleet-setup-receipt">
-      {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span>{status.label}</span></>}
+      {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span className={status.confirmed ? "text-foreground" : undefined}>{status.label}</span></>}
+      {status.confirmed && view.fleet ? <span aria-hidden="true">·</span> : null}
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Button>
         : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
       {status.link ? <Link className="inline-flex items-center gap-xs hover:underline" href={status.link.href}>{status.link.label}<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
       {status.confirmed && query ? <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/new?${query}`}>New fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
+      {onRetry ? <><span aria-hidden="true">·</span><Button type="button" variant="link" size="eyebrow" disabled={view.busy || chatRecovery(view).pending} className="px-0 text-foreground" onClick={() => {void onRetry().catch(() => undefined);}}>Retry</Button></> : null}
     </output>
   </div>;
 }
 
-function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undefined, showPublication: boolean): Status | null {
-  if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
+function setupStatus(view: DraftView, modelsHref: string | undefined, showPublication: boolean, retry: boolean): Status | null {
+  if (view.error || retry) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
   if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
   if (view.optimistic) return {label: "Sending request", icon: UploadSimpleIcon, busy: true};
@@ -46,14 +48,13 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undef
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
     return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparkleIcon : ClockIcon, busy: true};
   }
-  const unusableModels = modelStatus(view, modelsHref);
-  if (unusableModels) return unusableModels;
-  if (dirty) return {label: "Unsaved setup changes", icon: PencilSimpleIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
     return {label: SAVED_SETUP_LABEL, icon: CheckCircleIcon, confirmed: true};
   }
   if (showPublication && view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
+  const unusableModels = modelStatus(view, modelsHref);
+  if (unusableModels) return unusableModels;
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};
   return null;
 }

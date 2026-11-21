@@ -1,7 +1,7 @@
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { withReplyPage } from "./fixtures/reply-page";
-import { CHAT_COPY, editSetupAction, setupAction } from "./fixtures/private-chat";
+import { CHAT_COPY, editSetupAction } from "./fixtures/private-chat";
 
 const PART = { model: '[data-composer-part="model"]', hint: '[data-composer-part="hint"]' } as const;
 const SIZES = {model: "12px", hint: "12px"} as const;
@@ -36,18 +36,12 @@ for (const scenario of CASES) {
       expect(inputStyle.fontFamily).toContain("Manrope");
       await expect(page.getByRole("button", { name: "Save fleet", exact: true })).toHaveCount(0);
       await setupInput.fill("Keep my unsent setup edit");
-      await (await setupAction(page, CHAT_COPY.editSetup)).click();
-      const editor = page.getByRole("dialog", {name: CHAT_COPY.instructions, exact: true});
-      await expect(editor.getByLabel(CHAT_COPY.instructions, {exact: true})).toBeVisible();
-      await page.keyboard.press("Escape");
-      await expect(editor).toBeHidden();
-      const opener = page.getByRole("button", {name: "Edit instructions", exact: true});
-      await expect(opener).toBeFocused();
-      await expect(setupInput).toHaveValue("Keep my unsent setup edit");
-      await (await setupAction(page, CHAT_COPY.editSetup)).click();
-      await editor.getByRole("button", {name: "Cancel", exact: true}).click();
-      await expect(editor).toBeHidden();
-      await expect(opener).toBeFocused();
+      const manage = page.getByRole("button", {name: "Manage secrets", exact: true});
+      await manage.click();
+      await expect(manage).toHaveAttribute("aria-expanded", "true");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await manage.click();
+      await expect(manage).toHaveAttribute("aria-expanded", "false");
       await expect(setupInput).toHaveValue("Keep my unsent setup edit");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
       expect(overflow).toBe(false);

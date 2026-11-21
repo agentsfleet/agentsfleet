@@ -91,11 +91,13 @@ test("native fleet streaming deduplicates completion and backfills after disconn
     await expect(chat).toBeVisible();
     await connected.promise;
     recordRefreshes(page, href, counts);
+    const firstLiveLineStarted = performance.now();
     mounted.resolve();
-    await expect(chat.getByText(LIVE_MARKER, { exact: true })).toHaveCount(1);
     // The completion inlines LIVE_MARKER, so it could paint on its own. This
     // run never completes: only the live chunk path can put its text on screen.
-    await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toHaveCount(1);
+    await expect(chat.getByText(STREAMING_MARKER, { exact: true })).toBeVisible();
+    const firstLiveLineUiObservationMs = performance.now() - firstLiveLineStarted;
+    await expect(chat.getByText(LIVE_MARKER, { exact: true })).toHaveCount(1);
     // The completion's figures ride its frame into the reply's Run details.
     const liveReply = chat.locator('[data-role="assistant"]').filter({ hasText: LIVE_MARKER });
     await liveReply.getByRole("button", { name: RUN_DETAILS_LABEL, exact: true }).click();
@@ -139,6 +141,7 @@ test("native fleet streaming deduplicates completion and backfills after disconn
       body: JSON.stringify({
         transport: "native EventSource with fixture SSE and history responses",
         ...counts,
+        firstLiveLineUiObservationMs,
         backfillUiObservationMs: performance.now() - recoveryStarted,
         latencyInterpretation: "diagnostic sample, not a backend benchmark or regression threshold",
       }),

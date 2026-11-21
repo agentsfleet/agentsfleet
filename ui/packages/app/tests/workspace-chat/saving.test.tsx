@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { saveInChat, ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
+import { saveInChat, ChatFixture, CHAT_PROPS, chatRouter } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -69,7 +69,7 @@ describe("private chat Save", () => {
     expect(fixture.saveAttempts).toBe(0);
     await waitFor(() => expect(screen.getByRole("button", {name: "Save and publish"})).toHaveProperty("disabled", false));
   });
-  it("sends ordinary text and opens the confirmed fleet after the native chat Save", async () => {
+  it("keeps the saved receipt and opens the confirmed fleet on demand", async () => {
     await converse();
     const message = fixture.writes()[0];
     expect(message?.body).toMatchObject({message: "Investigate failures", source: {kind: "blank"}});
@@ -79,7 +79,8 @@ describe("private chat Save", () => {
     await screen.findByRole("heading", {name: "Saved setup"});
     expect(fixture.saveAttempts).toBe(1);
     expect(chatRouter.push).not.toHaveBeenCalled();
-    await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
+    expect(chatRouter.replace).not.toHaveBeenCalled();
+    expect(new URL(window.location.href).searchParams.get("draft")).toBe(fixture.draft.id);
     expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
     expect(fixture.writes().filter((call) => call.path.endsWith("/plugins"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/messages"));
@@ -91,11 +92,11 @@ describe("private chat Save", () => {
     await converse();
     await setup();
     await saveInChat();
-    await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
+    await screen.findByText("Couldn’t complete this request");
     const writes = fixture.writes().length;
     expect(fixture.writes().filter(call => call.path.endsWith("/messages"))).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", {name: "Dismiss error notice"}));
-    expect(screen.getByRole("alert", {name: "Chat recovery"}).textContent).toContain("The request could not be confirmed. Retry the same operation.");
+    expect(screen.getByLabelText("Setup status").textContent).toContain("Update not confirmed");
+    expect(screen.getAllByRole("button", {name: /^Retry$/})).toHaveLength(1);
     expect(fixture.writes()).toHaveLength(writes);
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
     await screen.findByRole("heading", {name: "Saved setup"});
@@ -114,17 +115,6 @@ describe("private chat Save", () => {
     expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
     expect(fixture.saveAttempts).toBe(1);
     expect(fixture.writes().find(call => call.path.endsWith("/fleets"))?.body).toMatchObject({name: "repairer", start: {kind: "none"}});
-  });
-
-  it("edits instructions through the menu and keeps saving the fleet explicit", async () => {
-    await converse();
-    await chooseSetupAction("Instructions");
-    const dialog = screen.getByRole("dialog", {name: "Instructions"});
-    expect(within(dialog).getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", "Investigate failures.\n");
-    fireEvent.change(within(dialog).getByRole("textbox", {name: "Instructions"}), {target: {value: "Inspect failures safely"}});
-    fireEvent.click(within(dialog).getByRole("button", {name: "Save changes"}));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(fixture.saveAttempts).toBe(0);
   });
 
   it("clears private messages when the account changes", async () => {

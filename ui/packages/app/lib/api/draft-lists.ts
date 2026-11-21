@@ -81,14 +81,15 @@ export class DraftLists {
     }
   }
 
-  async open(signal: AbortSignal): Promise<DraftListsView> {
+  async open(signal: AbortSignal, updates?: {modelsReady: (view: DraftListsView) => void; failed: (cause: unknown) => void}): Promise<DraftListsView> {
     this.clear();
     const generation = this.#generation;
-    const [models, cards] = await Promise.all([this.#modelPage(null, signal), this.#cardPage(null, signal)]);
-    if (generation === this.#generation) {
-      this.#models = models.items; this.#modelCursor = models.next_cursor;
-      this.#cards = cards.items; this.#cardCursor = cards.next_cursor;
-    }
+    const read = (list: DraftList) => this.#append(list, null, generation, signal).catch((cause: unknown) => {
+      updates?.failed(cause);
+      throw cause;
+    });
+    const models = read(DRAFT_LIST.models).then(view => { if (view) updates?.modelsReady(view); });
+    await Promise.all([models, read(DRAFT_LIST.chats)]);
     return this.view;
   }
 
@@ -105,7 +106,7 @@ export class DraftLists {
     return load;
   }
 
-  async #append(list: DraftList, cursor: string, generation: number, signal: AbortSignal): Promise<DraftListsView | null> {
+  async #append(list: DraftList, cursor: string | null, generation: number, signal: AbortSignal): Promise<DraftListsView | null> {
     try {
       if (list === DRAFT_LIST.models) {
         const page = await this.#modelPage(cursor, signal);

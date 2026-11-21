@@ -150,7 +150,7 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
     expect(screen.getByText("Last confirmed answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("region", {name: "Sources"}).querySelector("summary")!);
     expect(screen.getByRole("link", {name: "agentsfleet/agentsfleet"}).getAttribute("href")).toBe("https://github.com/agentsfleet/agentsfleet");
-    expect(screen.getByText("1 file")).toBeTruthy();
+    expect(screen.getByRole("region", {name: "Changes"}).textContent?.includes("1 file changed")).toBeTruthy();
     const requestSignal = network.mock.calls[0]?.[1]?.signal;
     const detailSignal = network.mock.calls[1]?.[1]?.signal;
     expect(detailSignal?.aborted).toBe(false);

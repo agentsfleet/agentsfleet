@@ -97,6 +97,40 @@ test.describe("authenticated dashboard fluidity", () => {
     streamWorkspaceId = null;
   });
 
+  test("New fleet opens its composer while unfinished setups are loading", async ({page}, info) => {
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    await signInAs(page, FIXTURE_KEY.regular);
+    const path = `**/live/v1/workspaces/${workspaceId}/drafts?*`;
+    const release = Promise.withResolvers<void>();
+    let sidebarRequested = false;
+    await page.route(path, async route => {
+      sidebarRequested = true;
+      await release.promise;
+      await route.continue();
+    });
+    try {
+      await page.goto(`/w/${workspaceId}/fleets/new`, {waitUntil: "domcontentloaded"});
+      await expect.poll(() => sidebarRequested, {timeout: ROUTE_TIMEOUT_MS}).toBe(true);
+      const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
+      const loadingSetups = page.getByLabel("Loading unfinished setups", {exact: true});
+      await expect(loadingSetups).toBeVisible();
+      await expect(composer).toBeEnabled({timeout: ROUTE_TIMEOUT_MS});
+      await composer.fill("Review the release checklist.");
+      await info.attach("setup-composer-performance", {contentType: "application/json", body: JSON.stringify({
+        composerReadyMs: await page.evaluate(() => Math.round(performance.now())),
+        sidebarRequested,
+        sidebarResponseHeld: true,
+      })});
+      release.resolve();
+      await expect(loadingSetups).toBeHidden({timeout: ROUTE_TIMEOUT_MS});
+      await expect(page.getByText("Unfinished setups could not be loaded.", {exact: false})).toHaveCount(0);
+      await expect(composer).toHaveValue("Review the release checklist.");
+    } finally {
+      release.resolve();
+      await page.unroute(path);
+    }
+  });
+
   test(
     "test_shell_navigation_and_workspace_creation_survive_boundary_split",
     async ({ page }) => {
@@ -134,7 +168,10 @@ test.describe("authenticated dashboard fluidity", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       const mobileNavigation = page.getByRole("navigation", {name: "Primary", exact: true});
       await expect(mobileNavigation).toBeVisible();
-      await mobileNavigation.getByRole("link", { name: "Your fleets", exact: true }).click();
+      await mobileNavigation.getByRole("button", {name: "Open navigation", exact: true}).click();
+      const expanded = page.getByRole("navigation", {name: "Expanded navigation"});
+      await expect(expanded.locator("summary").filter({hasText: "Your Fleets"})).toBeVisible();
+      await expanded.getByRole("link", {name: "New fleet", exact: true}).click();
       await expect(page).toHaveURL(workspaceEntryPattern(workspaceId), {
         timeout: ROUTE_TIMEOUT_MS,
       });
