@@ -18,10 +18,10 @@ beforeEach(async () => {
   await client.initialize();await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup();client.dispose();vi.useRealTimers();vi.unstubAllGlobals();});
-function Flap({dirty = false, patch = {}}: {dirty?: boolean; patch?: Partial<DraftView>}) {
+function Flap({patch = {}}: {patch?: Partial<DraftView>}) {
   const current = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const view = {...current, ...patch};
-  return <><SetupSaveFlap client={client} view={view} workspace={CHAT_PROPS.workspace} dirty={dirty} />
+  return <><SetupSaveFlap client={client} view={view} workspace={CHAT_PROPS.workspace} />
     {current.pending ? <button onClick={() => {void client.retry().catch(() => undefined);}}>Retry save</button> : null}</>;
 }
 
@@ -31,9 +31,10 @@ it("saves v1 through the fleet API with the same flap label and no Plugin reques
   render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   await screen.findByText("Saved setup");
-  expect(fixture.writes()).toHaveLength(1);
-  expect(fixture.writes()[0]).toMatchObject({path: expect.stringMatching(/\/fleets$/), method: "POST",
-    body: {name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: "none"}}});
+  expect(fixture.writes()).toMatchObject([
+    {method: "PATCH", body: {config_ops: [{path: "/config/x-agentsfleet/tools", value: ["exec_command", "write_stdin", "file_read", "file_write", "file_edit", "web_fetch"]}]}},
+    {path: expect.stringMatching(/\/fleets$/), method: "POST", body: {name: REVIEW.effective.instance_name, review_digest: "review-with-tools", start: {kind: "none"}}},
+  ]);
   expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
@@ -64,7 +65,7 @@ it("retries an uncertain fleet save with the original key and body", async () =>
   fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   fireEvent.click(await screen.findByRole("button", {name: "Retry save"}));
   await screen.findByText("Saved setup");
-  const writes = fixture.writes();expect(writes).toHaveLength(2);
+  const writes = fixture.writes().filter(call => call.method === "POST");expect(writes).toHaveLength(2);
   expect(writes[1]?.body).toEqual(writes[0]?.body);
   expect(writes[1]?.headers.get("Idempotency-Key")).toBe(writes[0]?.headers.get("Idempotency-Key"));
   expect(fixture.publicationAttempts).toBe(0);
@@ -143,13 +144,6 @@ it.each([
   {draft: null, preview: null},
 ])("keeps incomplete, unavailable or owned operations from exposing a save %#", async patch => {
   render(<Flap patch={patch} />);
-  expect(screen.queryByRole("button", {name: "Save and publish"})).toBeNull();
-  expect(fixture.writes()).toEqual([]);
-});
-
-it("retains manual changes without starting a write", () => {
-  render(<Flap dirty />);
-  expect(screen.getByText("Unsaved setup changes")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Save and publish"})).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });

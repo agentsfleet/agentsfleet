@@ -1,5 +1,5 @@
 import { type EventRow, type EventsPage } from "@/lib/api/events";
-import { backfillFleetEventsUrl, backfillWorkspaceEventsUrl, type EventsQuery } from "@/lib/api/events-types";
+import { backfillFleetEventsUrl } from "@/lib/api/events-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
@@ -46,12 +46,6 @@ export type BackfillRequest = {
   onPage: (rows: EventRow[]) => void;
 };
 
-export type WorkspaceBackfillRequest = Omit<BackfillRequest, "fleetId">;
-type BackfillQuery = Pick<EventsQuery, "cursor" | "since" | "limit">;
-type BackfillWalkRequest = WorkspaceBackfillRequest & {
-  pageUrl: (query: BackfillQuery) => string;
-};
-
 // One page of the backfill list, or null when the fetch failed (already
 // diagnosed). Upstream rejects `cursor` together with `since`, so the caller
 // sends exactly one of them.
@@ -87,26 +81,8 @@ function oldestCreatedAt(rows: EventRow[]): number | null {
 // A never-seeded fleet has no anchor to walk back to, so it takes exactly one
 // most-recent page — following the cursor there would drag in all of history.
 export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome> {
-  return runBackfillWalk({
-    ...req,
-    pageUrl: (query) => backfillFleetEventsUrl(req.workspaceId, req.fleetId, query),
-  });
-}
-
-export async function runWorkspaceBackfill(
-  req: WorkspaceBackfillRequest,
-): Promise<BackfillOutcome> {
-  return runBackfillWalk({
-    ...req,
-    pageUrl: (query) => backfillWorkspaceEventsUrl(req.workspaceId, query),
-  });
-}
-
-// Every page is merged before any is handed over: each hand-over is a merge, a
-// sort and a notify, so a three-page recovery repainted its subscribers three
-// times for one gap. Rows already fetched still land when a later page fails
-// or throws, as they did page by page; a walk whose owner is gone lands none.
-async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcome> {
+  // Notify once even when recovery needs several pages. A later failure
+  // still delivers the rows already fetched to a live owner.
   const fetched: EventRow[] = [];
   try {
     return await walkPages(req, fetched);
@@ -115,8 +91,8 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
   }
 }
 
-async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
-  const { anchorMs, stillCurrent, pageUrl } = req;
+async function walkPages(req: BackfillRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
+  const { anchorMs, stillCurrent, workspaceId, fleetId } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
   let cursor: string | undefined;
@@ -130,7 +106,7 @@ async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise
           }
         : { cursor, limit: BACKFILL_PAGE_LIMIT };
 
-    const body = await fetchBackfillPage(pageUrl(query));
+    const body = await fetchBackfillPage(backfillFleetEventsUrl(workspaceId, fleetId, query));
     if (body === null) return { ok: false };
     if (!stillCurrent()) return { ok: false };
 

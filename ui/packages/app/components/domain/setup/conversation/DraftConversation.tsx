@@ -4,7 +4,7 @@ import type { AppendMessage, ThreadMessageLike, MessageRuntimeState } from "@ass
 import type { DraftView } from "@/lib/api/draft-state";
 import type { DraftClient } from "@/lib/api/drafts";
 import type { ReactNode } from "react";
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useSyncExternalStore } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
 import { GitPullRequestIcon, UsersIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
@@ -12,43 +12,40 @@ import nextDynamic from "next/dynamic";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
-import { chatRecovery } from "@/lib/api/draft-recovery";
+import { chatRecovery, retryableDraftTurn } from "@/lib/api/draft-recovery";
 import { CHAT_STARTERS } from "../chat-defaults";
 import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
 import { setupActivity } from "@/lib/api/draft-activity";
 import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
-import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
+import { DraftMessage } from "./DraftMessage";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "../../approvals/SetupApprovalSummary";
 import { AuthoringPrompt } from "../composer/AuthoringPrompt";
 
 const SetupReview = nextDynamic(() => import("../summary/SetupReview").then(module => module.SetupReview), {ssr: false});
+const asThreadMessage = (message: ThreadMessageLike): ThreadMessageLike => message;
 
-export function DraftConversation({client, view, workspace, subject, children, unfinished, errorNotice, instructionsDirty = false, onOpenFleet, modelsHref}: {client: DraftClient; view: DraftView; workspace: string; subject?: string; children?: ReactNode; unfinished?: ReactNode; errorNotice?: ReactNode; instructionsDirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
+export function DraftConversation({client, view, workspace, subject, children, unfinished, onRequestRetry, onOpenFleet, modelsHref}: {client: DraftClient; view: DraftView; workspace: string; subject?: string; children?: ReactNode; unfinished?: ReactNode; onRequestRetry?: () => Promise<void>; onOpenFleet?: () => void; modelsHref?: string}) {
   const recovery = chatRecovery(view);
-  const [project] = useState(createDraftThreadProjection);
-  const messages = useMemo(() => project(view), [project, view]);
   const anchor = setupAnchor(view);
-  const saving = Boolean(view.saveOperation) && !view.error;
-  const adapter = useMemo(() => ({
-    messages, isRunning: recovery.pending || Boolean(view.optimistic) || saving, convertMessage: (message: ThreadMessageLike) => message,
-    onNew: async (message: AppendMessage) => {
-      const text = chatMessageText(message);
-      await client.send(text);
-    },
-    onCancel: () => client.stop(),
-  }), [client, messages, recovery.pending, view.optimistic, saving]);
-  const runtime = useExternalStoreRuntime(adapter);
   const renderMessage = useCallback(({message}: {message: MessageRuntimeState}) => <><DraftMessage message={message} />{message.id === anchor ? children : null}</>, [anchor, children]);
-  const empty = messages.length === 0 && !view.fleet && !view.draft && !view.preview;
+  const hasMessages = Boolean(view.messages.length || view.optimistic || view.activities?.length || view.previousDrafts?.some(history => history.messages.length));
+  const empty = !hasMessages && !view.fleet && !view.draft && !view.preview;
+  const failedTurn = retryableDraftTurn(view);
+  const retry = view.error ? onRequestRetry ?? (() => client.retry()) : failedTurn && view.model ? async () => {
+    const current = client.getSnapshot();
+    if (current.draft?.id !== view.draft?.id) return;
+    const turn = retryableDraftTurn(current);
+    if (turn?.operation_id === failedTurn.operation_id && turn.text) await client.send(turn.text);
+  } : undefined;
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <AuthoringPrompt hasMessages={messages.length > 0} />
-      <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
+    <DraftRuntime client={client} view={view} pending={recovery.pending}>
+      <AuthoringPrompt hasMessages={hasMessages} />
       <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" centered={empty}
-        footer={<>{errorNotice}<ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />
+        footer={<>{view.error && !failedTurn ? <p role="alert" className="mx-auto mb-sm text-label text-destructive">Couldn’t complete this request</p> : null}
+          <ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} onRetry={retry} />
           {empty ? <><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} /><p className="mb-xl mt-5 text-center text-eyebrow leading-label text-text-dim">No fleet selected. Start something new, or open your fleets from the rail.</p>{unfinished}</> : null}</>}>
         <div role="log" aria-live="off" className={cn("mx-auto flex w-full max-w-chat flex-1 flex-col", !empty && "py-3xl")}>
           {empty ? <ChatEntrance /> : null}
@@ -61,10 +58,26 @@ export function DraftConversation({client, view, workspace, subject, children, u
           <ThreadPrimitive.Messages>{renderMessage}</ThreadPrimitive.Messages>
         </div>
       </ChatThread></SetupConversationLayout>
-      </DraftRetryProvider>
-    </AssistantRuntimeProvider>
+    </DraftRuntime>
   );
 }
+
+/** Streaming updates the runtime while its composer and summary keep their layout props. */
+function DraftRuntime({client, view, pending, children}: {client: DraftClient; view: DraftView; pending: boolean; children: ReactNode}) {
+  const snapshot = useCallback(() => client.getLayoutSnapshot() === view ? client.getSnapshot() : view, [client, view]);
+  const progress = useSyncExternalStore(client.subscribe, snapshot, snapshot);
+  const [project] = useState(createDraftThreadProjection);
+  const messages = useMemo(() => project(progress), [project, progress]);
+  const running = pending || Boolean(view.optimistic || (view.saveOperation && !view.error));
+  const adapter = useMemo(() => ({
+    messages, isRunning: running, convertMessage: asThreadMessage,
+    onNew: (message: AppendMessage) => client.send(chatMessageText(message)),
+    onCancel: () => client.stop(),
+  }), [client, messages, running]);
+  const runtime = useExternalStoreRuntime(adapter);
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+}
+
 function SetupConversationLayout({client, view, workspace, subject, children}: {client: DraftClient; view: DraftView; workspace: string; subject?: string; children: ReactNode}) {
   const [refresh, setRefresh] = useState<{client: DraftClient; fleet: string; subject: string | undefined} | null>(null);
   useEffect(() => {
@@ -78,7 +91,7 @@ function SetupConversationLayout({client, view, workspace, subject, children}: {
     void client.refreshFleetSetup(true).catch(() => undefined);
   }, [client, refresh, subject, view.busy, view.fleet?.id, view.inaccessible]);
   const resolved = (fleet: string) => setRefresh({client, fleet, subject});
-  return <FleetConversationLayout summary="setup" className="[--summary-width:var(--setup-summary-width)]" work={view.draft || view.preview || view.fleet ? <div className="space-y-lg">
+  return <FleetConversationLayout summary="setup" work={view.draft || view.preview || view.fleet ? <div className="space-y-lg">
     <SetupApprovalSummary view={view} workspace={workspace} subject={subject} onResolved={resolved} />
     <SetupReview client={client} view={view} workspace={workspace} />
   </div> : undefined}>

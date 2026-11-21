@@ -19,16 +19,12 @@ const FLEET_URL = /\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/;
 /** The words the shipped chat shows, held here so a spec pins what a person reads. */
 export const CHAT_COPY = {
   setup: "Fleet setup",
-  editSetup: "Instructions",
-  instructions: "Instructions",
-  updateInstructions: "Save changes",
   openFleet: "Open fleet",
   improve: "Edit setup",
   composer: "Setup chat composer",
   send: "Send message",
   // An empty composer starts a fleet; its button names that (ChatComposer.tsx).
   start: "New fleet from message",
-  unavailable: "Chat is unavailable",
   recovery: "Chat recovery",
   historyUnavailable: "Unfinished setups could not be loaded.",
 } as const;
@@ -40,10 +36,6 @@ export function draftHref(workspaceId: string, draftId: string): string {
 /** The private chat's entry under Unfinished setups on New fleet. */
 export function historyEntry(page: Page, draftId: string): Locator {
   return page.locator(`a[href$="?draft=${encodeURIComponent(draftId)}"]`);
-}
-
-export async function setupAction(page: Page, name: string): Promise<Locator> {
-  return page.getByRole("button", {name: name === CHAT_COPY.editSetup ? "Edit instructions" : name, exact: true});
 }
 
 /** Exercise the runtime header menu rather than bypassing it through the footer. */
@@ -65,10 +57,11 @@ export async function privateSaveButton(page: Page): Promise<Locator> {
   return page.getByRole("button", {name: CHAT_COPY.send, exact: true});
 }
 
-/** A confirmed save navigates to the same workspace's durable fleet and revision. */
+/** Open a confirmed setup in its workspace and verify the saved revision. */
 export async function openSavedFleet(page: Page, {handle, workspaceId, revision = "1"}: {
   handle: ClientHandle; workspaceId: string; revision?: string;
 }): Promise<string> {
+  if (!FLEET_URL.test(page.url())) await page.getByRole("link", {name: CHAT_COPY.openFleet, exact: true}).click({timeout: SAVE_TIMEOUT_MS});
   await expect(page).toHaveURL(FLEET_URL, {timeout: SAVE_TIMEOUT_MS});
   const id = new URL(page.url()).pathname.split("/").at(-1);
   if (!id) throw new Error("Saving returned no fleet identity");
@@ -87,7 +80,7 @@ export function setupSummary(page: Page): Locator {
   return page.getByRole("region", {name: CHAT_COPY.setup, exact: true});
 }
 
-/** Lost access to a chat leaves the persistent recovery alert with Reload (ChatErrorNotice, WorkspaceChat). */
+/** Lost access to a chat leaves the persistent recovery alert with Reload in WorkspaceChat. */
 export function chatUnavailable(page: Page): Locator {
   return page.getByRole("alert", {name: CHAT_COPY.recovery, exact: true})
     .filter({has: page.getByRole("button", {name: "Reload", exact: true})});

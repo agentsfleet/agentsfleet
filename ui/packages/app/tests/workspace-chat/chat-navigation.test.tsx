@@ -66,7 +66,7 @@ it("renames a chat with a conditional patch and retains the editor on a refusal"
   fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "Build repair"}});
   fixture.fetch.mockResolvedValueOnce(response({user_message: "This chat changed. Try again."}, 412));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
-  await screen.findByText("This chat changed. Try again.");
+  await screen.findByText("Couldn’t complete this request");
   expect(screen.getByLabelText("Chat name")).toHaveProperty("value", "Build repair");
   fixture.fetch.mockResolvedValueOnce(response({...DRAFT, title: "Build repair"}));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
@@ -80,7 +80,16 @@ it("renames a chat with a conditional patch and retains the editor on a refusal"
 });
 
 it("retries the selected chat after an initial read failure without showing a blank fleet", async () => {
-  fixture.fetch.mockRejectedValueOnce(new TypeError("network unavailable"));
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  let failDraft = true;
+  fixture.fetch.mockImplementation((input, init) => {
+    if (failDraft && typeof input === "string" && input.endsWith(`/drafts/${DRAFT.id}`)) {
+      failDraft = false;
+      return Promise.reject(new TypeError("network unavailable"));
+    }
+    return base(input, init);
+  });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   fireEvent.click(await screen.findByRole("button", {name: "Retry"}));
   expect(screen.queryByText("What should your fleet do?")).toBeNull();

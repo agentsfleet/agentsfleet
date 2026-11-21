@@ -28,12 +28,9 @@ const TEXT_BECKON = "text-beckon";
 const TOOL_SHIMMER_KEYFRAMES = "tool-shimmer";
 
 const FOCUS_RING_REACH = "--focus-ring-reach";
-const MOTION_DURATION_STREAM = "--motion-duration-stream";
-const TRANSITION_DURATION_STREAM = "--transition-duration-stream";
 const PULSE = "--pulse";
 const FONT_DISPLAY_TOKEN = "--ff-display";
 const PROBE_FONT = "Georgia";
-const PROBE_DURATION = "200ms";
 const RING_REACH_DELTA_PX = 10;
 const VISIBLE_CONTENT = "visible";
 const AUTO_CONTENT = "auto";
@@ -59,10 +56,6 @@ async function styleOf(page: Page, attrs: Record<string, string>, props: string[
 
 async function animationOf(page: Page, attr: string, value: string): Promise<Style> {
   return styleOf(page, { [attr]: value }, ["animation-name", "animation-duration"]);
-}
-
-async function rootProperty(page: Page, name: string): Promise<string> {
-  return page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name);
 }
 
 async function setRootProperty(page: Page, name: string, value: string): Promise<void> {
@@ -127,12 +120,6 @@ test.describe("tokens derive from one declaration and the spinner steps in CSS",
     const without = await roomAt("0px");
     const withReach = await roomAt(`${RING_REACH_DELTA_PX}px`);
     expect(withReach - without).toBe(RING_REACH_DELTA_PX);
-  });
-
-  test("the stream transition utility follows the stream motion token", async ({ page }) => {
-    expect(await rootProperty(page, TRANSITION_DURATION_STREAM)).toBe(await rootProperty(page, MOTION_DURATION_STREAM));
-    await setRootProperty(page, MOTION_DURATION_STREAM, PROBE_DURATION);
-    expect(await rootProperty(page, TRANSITION_DURATION_STREAM)).toBe(PROBE_DURATION);
   });
 
   test("display, interface, and technical font roles resolve independently", async ({ page }) => {

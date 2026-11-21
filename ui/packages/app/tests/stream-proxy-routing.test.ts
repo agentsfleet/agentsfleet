@@ -11,11 +11,9 @@ import { describe, expect, it, vi } from "vitest";
 import nextConfig from "../next.config";
 import {
   backfillFleetEventsUrl,
-  backfillWorkspaceEventsUrl,
   fleetEventDetailUrl,
   fleetToolCallUrl,
   streamFleetEventsUrl,
-  streamWorkspaceEventsUrl,
 } from "@/lib/api/events-types";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 
@@ -28,14 +26,15 @@ const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "z_1";
 const EVENT_ID = "1790573387481-566";
 const CALL_ID = "7:3";
+const WORKSPACE_EVENTS_PROXY = `/live/v1/workspaces/${WORKSPACE_ID}/events`;
 
 // Every browser-facing URL whose request MUST be intercepted by a Route
 // Handler that injects the api-audience Bearer server-side, with the method
 // the browser sends it.
 const PROXY_ROUTES: ReadonlyArray<readonly [string, "GET" | "POST"]> = [
-  [streamWorkspaceEventsUrl(WORKSPACE_ID), "GET"],
+  [`${WORKSPACE_EVENTS_PROXY}/stream`, "GET"],
   [streamFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
-  [backfillWorkspaceEventsUrl(WORKSPACE_ID), "GET"],
+  [WORKSPACE_EVENTS_PROXY, "GET"],
   [backfillFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
   [fleetEventDetailUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID), "GET"],
   [fleetToolCallUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID, CALL_ID), "GET"],

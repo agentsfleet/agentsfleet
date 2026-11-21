@@ -20,6 +20,17 @@ describe("NavItem", () => {
     expect(link).toHaveAttribute("href", "/fleets");
   });
 
+  it("gives the New fleet rail action a quiet accent and preserves the compact fleet list", () => {
+    render(<>
+      <NavItem href="/fleets/new" appearance="rail" tone="accent">New fleet</NavItem>
+      <NavItem href="/fleets/review" appearance="list" active>Readiness review</NavItem>
+    </>);
+    expect(screen.getByRole("link", {name: "New fleet"})).toHaveClass("min-h-11", "bg-primary/10");
+    const fleet = screen.getByRole("link", {name: "Readiness review"});
+    expect(fleet).toHaveClass("text-label", "leading-label");
+    expect(fleet).toHaveAttribute("aria-current", "page");
+  });
+
   it("composes router links without nested anchors or losing click handlers", () => {
     const onClick = vi.fn((event: { preventDefault(): void }) => event.preventDefault());
     render(<NavItem asChild active className="w-full"><a href="/events" onClick={onClick}>Events</a></NavItem>);

@@ -80,21 +80,21 @@ function tree(view: DraftView, running = false) {
 }
 afterEach(() => { cleanup(); vi.clearAllMocks(); identity.userId = "reader"; });
 
-it("keeps an empty private draft list quiet beside the account fleet list", async () => {
+it.each([false, true])("keeps an empty private draft list quiet beside the account fleet list (overlay %s)", async overlay => {
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response({items: [], total: null, next_cursor: null}));
   try {
     render(<DraftSidebarProvider><Bridge view={{...initial, draft: null}} />
-      <DraftSidebarHistory account="account" workspace={WORKSPACE} onNavigate={() => {}} /></DraftSidebarProvider>);
+      <DraftSidebarHistory account="account" workspace={WORKSPACE} overlay={overlay} onNavigate={() => {}} /></DraftSidebarProvider>);
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(screen.queryByText("Your setup chats will appear here.")).toBeNull();
-    expect(screen.getByText("Fleets")).toBeTruthy();
+    expect(screen.getByText("Your Fleets")).toBeTruthy();
   } finally {fetcher.mockRestore();}
 });
 
 it("keeps the fleet list private when no account is supplied", () => {
   const fetcher = vi.spyOn(globalThis, "fetch");
   render(<DraftSidebarHistory workspace={WORKSPACE} onNavigate={vi.fn()} />);
-  expect(screen.queryByText("Fleets")).toBeNull();
+  expect(screen.queryByText("Your Fleets")).toBeNull();
   expect(fetcher).not.toHaveBeenCalled();
   fetcher.mockRestore();
 });

@@ -3,7 +3,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
-import { ArrowUpRightIcon, CaretDownIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { confirmed } from "../../tasks/use-task-read";
 import { FleetApprovalSummary } from "../../approvals/FleetApprovalSummary";
 import { AttachedSources, PreviewOutputs } from "./RunResources";
@@ -66,15 +66,18 @@ export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) 
   return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
     <Button variant="ghost" size="compact" className="fleet-changes-trigger">
       <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="flex min-w-0 flex-1 items-baseline summary:block" title={group.repository?.fullName}><RepositoryName name={group.label} />
-        <span className="fleet-changes-file-count">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}</span></span>
+      <span className="min-w-0 flex-1" title={group.repository?.fullName}>
+        <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
+        {group.label ? <RepositoryName name={group.label} className="text-eyebrow font-normal text-muted-foreground" /> : null}
+      </span>
       {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
+      <CaretRightIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </Button>
   </RecordedChangesDialog>)}</WorkSection>;
 }
 
-function RepositoryName({name}: {name: string | undefined}) {
-  return <span className="repo-name min-w-0 font-medium"><span>{name}</span></span>;
+function RepositoryName({name, className = "font-medium"}: {name: string; className?: string}) {
+  return <span className={`repo-name min-w-0 ${className}`}><span>{name}</span></span>;
 }
 
 export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
@@ -87,7 +90,7 @@ export function WorkSources({sources, files}: {sources?: FleetSources; files?: r
 
 function RepositorySources({sources}: {sources: FleetSources}) {
   const {repositories, access, publication} = sources;
-  const label = repositories.length === 1 ? repositories[0] : `${repositories.length} repositories`;
+  const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
   const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
   if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
   return <details className="group">

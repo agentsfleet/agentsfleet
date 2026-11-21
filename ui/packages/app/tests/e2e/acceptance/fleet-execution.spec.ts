@@ -142,7 +142,7 @@ test.describe("fleet execution", () => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
 
     // ── 1.1 A reviewed save reaches active ──
-    // Edit instructions, save without leaving authoring, then open the fleet.
+    // Save the reviewed setup and open the fleet from the receipt.
     await signInAs(page, FIXTURE_KEY.regular);
     const fleetId = await saveFleetViaUI(page, EXECUTING_TEMPLATE, {
       handle: FIXTURE_KEY.regular,

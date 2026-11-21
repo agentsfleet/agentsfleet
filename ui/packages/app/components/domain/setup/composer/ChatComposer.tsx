@@ -19,17 +19,17 @@ import { SetupWakeups } from "./SetupWakeups";
 // DraftClient records this failure in view.error before rejecting the request.
 const errorAlreadyVisible = (): void => undefined;
 
-export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet, modelsHref, empty }: { empty: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string }) {
+export function ChatComposer({ client, view, workspace, canStop, onOpenFleet, onRetry, modelsHref, empty }: { empty: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string }) {
   const stopDisabled = view.busy || view.pending || view.inaccessible || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing && !savedDraft(view));
-  const disabled = stopDisabled || !view.model || blocked;
+  const disabled = stopDisabled || !view.model;
   const input = useRef<HTMLTextAreaElement>(null);
   const placeholder = view.fleet || view.preview?.setupRevision ? "Ask a question or change the setup…" : CHAT_PLACEHOLDER;
   return <>
-    <SetupSaveFlap client={client} view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
+    <SetupSaveFlap client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} onRetry={onRetry} modelsHref={modelsHref} />
     <SetupWakeups client={client} view={view} workspace={workspace} />
     <ChatComposerFrame stackActions={empty} label="Setup chat composer" inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       input={<WorkspaceFleetAddressInput workspace={workspace} inSetup inputRef={input} placeholder={placeholder} disabled={disabled} />}
-      toolbar={<>{empty && <SetupContextControls input={input} disabled={disabled} />}<ChatToolbar client={client} view={view} /></>}
+      toolbar={<>{empty && <SetupContextControls input={input} disabled={disabled} />}<ChatToolbar client={client} view={view} inputRef={input} /></>}
       actions={canStop ? <Button variant="secondary" size="icon" className="size-9 [&_svg]:size-4.5" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4.5" /></Button>
         : <ComposerPrimitive.Send asChild><Button size={empty ? "default" : "icon"} className={cn("disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100", empty ? "max-[42.5rem]:min-h-11 max-[42.5rem]:px-md [&_svg]:size-4" : "size-9 rounded-full max-[42.5rem]:size-9 max-[42.5rem]:min-h-9 [&_svg]:size-4.5")} aria-label={empty ? "New fleet from message" : "Send message"} onClick={() => input.current?.focus({preventScroll: true})} {...(disabled ? {disabled: true} : {})}>{empty ? <><NotePencilIcon size={16} />New fleet</> : <ArrowUpIcon className="size-4.5" />}</Button></ComposerPrimitive.Send>} />
     <ChatComposerHint hint={empty ? "Start with a goal. You can edit the setup before saving." : undefined}>{empty ? null : view.preview?.setupRevision || view.draft?.linked_fleet_id

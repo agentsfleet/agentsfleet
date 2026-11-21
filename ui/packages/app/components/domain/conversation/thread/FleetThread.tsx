@@ -45,6 +45,7 @@ export type FleetThreadProps = {
   modelLabel?: string;
   setupRevision?: string;
   setup?: ReactNode;
+  setupSummary?: ReactNode;
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
@@ -91,8 +92,9 @@ function OwnedFleetThread(props: FleetThreadProps) {
   const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount, files} = useThreadRuntime(props);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
+  const {workEvents} = stream;
   const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} readOnly={props.archived} />, [props.sources, props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq, stream.events, props.archived]);
+    subject={taskSubject} revision={stream.tasksSeq} events={workEvents} sources={props.sources} readOnly={props.archived} showRepositories={!props.setupSummary} />, [props.sources, props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq, workEvents, props.archived, props.setupSummary]);
   return (
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -104,8 +106,8 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
-              <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+              <FleetTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={workEvents} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
+              <FleetConversationLayout summary={props.setupSummary ? "setup" : "current-work"} work={taskSubject && props.setupSummary ? <div className="space-y-lg">{props.setupSummary}{work}</div> : work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
                 archived={props.archived}
                 eventsCount={stream.events.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}

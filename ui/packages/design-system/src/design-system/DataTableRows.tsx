@@ -74,7 +74,7 @@ function DataTableCells<T extends DataTableRowData>({row, columnsByKey, disclosu
     // Calling the renderer preserves cell state when its callback is recreated.
     const content = definition.cell(row.original);
     return <td key={cell.id} role={DATA_TABLE_ROLE.cell} className={cn(
-      "h-12 px-table-inline py-table-block align-middle text-foreground",
+      "h-12 px-table-inline py-table-block align-middle leading-label text-foreground",
       definition.primary && "font-medium", definition.numeric && "text-right tabular-nums",
       definition.numeric && cell.column.getCanSort() && "pr-3xl",
       definition.hideOnMobile && "hidden sm:table-cell",

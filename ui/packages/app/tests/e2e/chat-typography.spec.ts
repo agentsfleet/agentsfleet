@@ -3,6 +3,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
+test("the chat row uses the design-system stream motion token", async ({page, chatProbe}) => {
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  await page.goto(chatProbe);
+  const reply = page.locator('[data-role="assistant"]').first();
+  await expect(reply).toHaveCSS("transition-duration", "0.08s");
+  await page.evaluate(() => document.documentElement.style.setProperty("--motion-duration-stream", "200ms"));
+  await expect(reply).toHaveCSS("transition-duration", "0.2s");
+});
+
 test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
   for (const route of ["?loading=1", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
@@ -388,7 +397,7 @@ test("setup Summary retains full inline phone content and room for policy labels
     await expect(summary).toBeVisible();
     const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
       scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(320);
+    if (info.project.name === "chromium") expect(layout.width).toBe(248);
     else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
     const footer = page.getByTestId("fleet-chat-footer");
     expect(await footer.evaluate(node => {

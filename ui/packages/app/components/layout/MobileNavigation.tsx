@@ -18,7 +18,7 @@ export function MobileNavigation({pathname, workspaceId, account}: {pathname: st
       <DialogTitle className="mb-xl">Navigation</DialogTitle>
       <Nav aria-label="Expanded navigation" className="space-y-xl">
         <NavSection items={entries} activeHref={activeHref} workspaceId={workspaceId} collapsed={false} overlay onNavigate={close} />
-        <Suspense><DraftSidebarHistory account={account} workspace={workspaceId} onNavigate={close} /></Suspense>
+        <Suspense><DraftSidebarHistory account={account} workspace={workspaceId} onNavigate={close} overlay /></Suspense>
       </Nav>
     </DialogContent>
   </Dialog>;

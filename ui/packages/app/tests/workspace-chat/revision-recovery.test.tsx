@@ -1,7 +1,7 @@
 import type { Message } from "@/lib/api/draft-types";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
+import { CHAT_PROPS, chatRouter } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
@@ -61,10 +61,8 @@ it("keeps a saved fleet-page conversation on the fleet page", async () => {
   };
   render(<WorkspaceChat {...CHAT_PROPS} fleetPage source={{kind: SOURCE_KIND.fleet, fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByRole("heading", {name: fixture.fleet.name});
-  await chooseSetupAction("Instructions");
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Keep this fleet conversation visible."}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  fireEvent.click(await screen.findByRole("button", {name: "Save and publish"}));
+  await screen.findByRole("button", {name: "Open fleet"});
   expect(fixture.fleet.setup_revision).toBe("2");
   expect(chatRouter.replace).not.toHaveBeenCalled();
   expect(screen.getByRole("heading", {name: fixture.fleet.name})).toBeTruthy();

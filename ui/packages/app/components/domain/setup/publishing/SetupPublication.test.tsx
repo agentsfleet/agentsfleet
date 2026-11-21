@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ChatFixture, CHAT_PROPS } from "@/tests/workspace-chat/fixture";
 import { DRAFT, REVIEW } from "@/tests/helpers/draft-fixtures";
@@ -14,9 +14,9 @@ beforeEach(async () => {
   await client.initialize(); await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup();client.dispose();vi.useRealTimers();vi.unstubAllGlobals();});
-function Publication({dirty = false}: {dirty?: boolean}) {
+function Publication() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <><SetupPublication client={client} view={view} workspace={CHAT_PROPS.workspace} dirty={dirty} />
+  return <><SetupPublication client={client} view={view} workspace={CHAT_PROPS.workspace} />
     {view.pending ? <button onClick={() => {void client.retry();}}>Retry</button> : null}</>;
 }
 
@@ -57,16 +57,6 @@ it("retries an interrupted publication with the original key and body without sa
   expect(fixture.saveAttempts).toBe(0);
 });
 
-it("does not publish while manual edits are unsaved", async () => {
-  const {rerender} = render(<Publication dirty />);
-  expect(screen.queryByRole("button", {name: "Save and publish"})).toBeNull();
-  expect(fixture.writes()).toHaveLength(0);
-  rerender(<Publication />);
-  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await waitFor(() => expect(fixture.publicationAttempts).toBe(1));
-  expect(fixture.writes()[0]?.body).toMatchObject({label: REVIEW.effective.instance_name});
-});
-
 it("publishes an already materialized source without creating another draft", async () => {
   client.fresh({kind: "definition", definition: REVIEW.effective.definition});await client.refreshSetup();
   await client.edit({definition: REVIEW.effective.definition, instanceName: REVIEW.effective.instance_name});
@@ -76,4 +66,10 @@ it("publishes an already materialized source without creating another draft", as
   await screen.findByText("Setup published");
   expect(fixture.writes()).toHaveLength(creations + 1);
   expect(fixture.writes().at(-1)?.path).toMatch(/\/plugins$/);
+});
+
+it("keeps a ready publication action beside the setup status", () => {
+  render(<SetupPublication client={client} view={client.getSnapshot()} workspace={CHAT_PROPS.workspace} onRetry={vi.fn()} />);
+  expect(screen.getByRole("button", {name: "Save and publish"})).toBeTruthy();
+  expect(screen.getByRole("status", {name: "Setup status"}).textContent).toContain("Setup needs attention");
 });

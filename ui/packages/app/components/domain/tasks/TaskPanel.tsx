@@ -24,12 +24,13 @@ const EMPTY_TASKS: readonly TaskSummary[] = [];
 const EMPTY_EVENTS: readonly FleetEvent[] = [];
 
 /** Standalone consumers share the same owner; the fleet chat supplies it above both surfaces. */
-export function TaskPanel(props: FleetTaskProps) {
+export function TaskPanel({showRepositories = true, ...props}: FleetTaskProps & {showRepositories?: boolean}) {
   const view = useFleetTaskView();
-  return view ? <CurrentWork /> : <FleetTaskProvider {...props}><CurrentWork /></FleetTaskProvider>;
+  const work = <CurrentWork showRepositories={showRepositories} />;
+  return view ? work : <FleetTaskProvider {...props}>{work}</FleetTaskProvider>;
 }
 
-function CurrentWork() {
+function CurrentWork({showRepositories}: {showRepositories: boolean}) {
   const view = useFleetTaskView();
   const [workOpen, setWorkOpen] = useState(false);
   const [expandedTask, setExpandedTask] = useState("");
@@ -52,9 +53,9 @@ function CurrentWork() {
         title="View task details" onClick={() => {setWorkOpen(true); setExpandedTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
     <WorkChanges events={events} repositories={view.changeRepositories} />
-    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0} />
+    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0 || !showRepositories} />
     <RunResources rows={resources.flatMap(run => run.rows)} />
-    <WorkSources sources={sources} files={files} />
+    {showRepositories || files?.length ? <WorkSources sources={showRepositories ? sources : undefined} files={files} /> : null}
     {tasks.length ? <div className="border-t border-border pt-sm"><Accordion type="single" collapsible value={workOpen ? "tasks" : ""} onValueChange={value => setWorkOpen(value === "tasks")}><AccordionItem value="tasks" className="border-0">
       <AccordionTrigger className="min-h-11 gap-md py-sm text-label font-normal md:min-h-9"><span className="flex flex-1 items-center justify-between gap-md"><span className="inline-flex items-center gap-sm">Tasks{needsAttention ? <WarningIcon size={14} className="text-warning" aria-label="Needs attention" /> : null}</span><span className="text-eyebrow text-muted-foreground">{tasks.length}</span></span></AccordionTrigger>
       <AccordionContent><TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} expandedTask={expandedTask} onExpand={setExpandedTask} /></AccordionContent>

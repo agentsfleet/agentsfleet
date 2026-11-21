@@ -33,7 +33,9 @@ export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log:
       landedTop = frame.scrollTop;
     });
     const leave = () => {
-      if (frame.scrollHeight - frame.clientHeight - frame.scrollTop > AT_BOTTOM_PX && (!jumps || frame.scrollTop < landedTop)) stop();
+      // History can grow before the scroll event from our last landing arrives.
+      const scrolledUp = frame.scrollTop < landedTop - AT_BOTTOM_PX;
+      if (scrolledUp && frame.scrollHeight - frame.clientHeight - frame.scrollTop > AT_BOTTOM_PX) stop();
     };
     const stop = () => {
       land.disconnect();

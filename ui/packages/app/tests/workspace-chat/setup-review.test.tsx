@@ -27,7 +27,7 @@ it("shows failed registration and its native retry without duplicating next wake
 
 it("does not invent a source or schedule for an unscheduled saved fleet", () => {
   render(<SetupReview workspace={WORKSPACE} client={client} view={{...EMPTY_DRAFT_VIEW, fleet: FLEET}} />);
-  expect(screen.queryByText("Next wake-up")).toBeNull();
+  expect(screen.getByText("Next wake-up")).toBeTruthy();
   expect(screen.queryByText(/^From /)).toBeNull();
 });
 

@@ -19,13 +19,15 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
   const actual = view.state === "error" ? alert : strip;
   await expect(actual).toBeVisible(); await expect(design).toBeVisible();
   const chat = page.getByRole("log", {name: "Chat"});
+  const input = page.getByRole("textbox", {name: /Message/i}).first();
+  if (view.state === "wake-up") await expect(input).toBeFocused();
   for (const theme of ["dark", "light"]) {
     for (const surface of [page, reference]) await surface.evaluate(async theme => {document.documentElement.dataset.theme = theme; await document.fonts.ready;}, theme);
     await match(actual, design, frame);
     await match(page.getByRole("heading", {name: view.name, exact: true}), reference.locator(".title-group h1"), type);
     await match(chat.locator('[data-role="user"] p').first(), reference.locator(".user-bubble p"), type);
     await match(chat.locator('[data-role="assistant"] p').first(), reference.locator(".assistant-turn > p").first(), type);
-    await match(page.getByRole("textbox", {name: /Message/i}).first(), reference.locator(".composer textarea"), ["font-family", "font-size", "line-height"]);
+    await match(input, reference.locator(".composer textarea"), ["font-family", "font-size", "line-height"]);
     if (view.state === "error") {
       const heading = alert.getByRole("heading", {name: "Couldn’t complete this request"});
       const primary = alert.getByRole("button", {name: "Try again"});
@@ -37,7 +39,30 @@ for (const view of views) test(`${view.state} follows the reference on desktop a
       expect(await verticalGap(alert.locator("p").first(), primary)).toBe(await verticalGap(design.locator("p").first(), design.locator(".primary")));
     } else {
       const receipts = reference.locator(".event-line");
+      const summary = page.getByRole("complementary", {name: "Summary"});
+      await expect(summary.getByText("MiniMax M3.1 Flash")).toBeVisible();
+      await expect(summary.getByText("$1.00 / day")).toBeVisible();
+      await expect(summary.locator("dd time")).toBeVisible();
+      await expect(summary.getByText("agentsfleet/agentsfleet", {exact: true})).toBeVisible();
+      const publicAccess = summary.getByRole("link", {name: /Allow all public internet access \(on\)/});
+      const packages = summary.getByRole("switch", {name: "Enable package manager domains"});
+      await expect(publicAccess).toBeVisible();
+      await expect(packages).toBeDisabled();
+      await expect(packages).toBeChecked();
+      await expect(summary.getByText("github", {exact: true})).toBeVisible();
+      const designSummary = reference.locator(".summary");
+      await match(summary.getByRole("heading", {name: "Summary"}), designSummary.locator("h2"), type);
+      for (const label of ["Model", "Spending limit", "Next wake-up", "Repositories", "Public internet access", "Secrets"]) {
+        await match(summary.getByText(label, {exact: true}), designSummary.getByText(label, {exact: true}), ["font-size", "color"]);
+      }
+      const switchStyle = ["width", "height", "background-color", "opacity"];
+      await match(publicAccess.locator("[data-state]").first(), designSummary.locator("#setup-public-internet"), switchStyle);
+      await match(packages, designSummary.getByRole("switch", {name: "Enable package manager domains"}), switchStyle);
+      if (!isMobile) await match(summary, designSummary, ["width", "background-color", "border-top-color", "border-top-left-radius"]);
       await match(strip, design, [...type, "margin-left", "margin-right", "margin-bottom"]);
+      const seam = await composerSeam(strip, page.locator(".fleet-composer-surface"));
+      expect(seam).toEqual(await composerSeam(design, reference.locator(".composer")));
+      expect(seam).toEqual(isMobile ? [8, 8, -1] : [20, 20, -1]);
       await match(strip.locator('fieldset > div > span').first(), design.locator(":scope > span"), type);
       await match(strip.getByRole("button", {name: "Edit wake-up"}).locator("svg"), design.locator("button i").first(), ["width", "height"]);
       for (let i=0; i<2; i++) {
@@ -94,4 +119,10 @@ async function match(actual: Locator, reference: Locator, properties: string[]) 
 async function verticalGap(first: Locator, second: Locator) {
   const a = (await first.boundingBox())!, b = (await second.boundingBox())!;
   return Math.round(b.y - a.y - a.height);
+}
+
+async function composerSeam(strip: Locator, composer: Locator) {
+  const a = (await strip.boundingBox())!;
+  const b = (await composer.boundingBox())!;
+  return [Math.round(a.x - b.x), Math.round(b.x + b.width - a.x - a.width), Math.round(b.y - a.y - a.height)];
 }

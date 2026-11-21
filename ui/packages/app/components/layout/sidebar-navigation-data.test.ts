@@ -8,5 +8,6 @@ it.each([false, true])("keeps the Plugin entry reversible through the one UI swi
   feature.enabled = enabled;
   const names = primaryNavigation().map(entry => entry.label);
   expect(names.includes("Plugins")).toBe(enabled);
-  expect(names).toContain("Your fleets");expect(names).toContain("Connected apps");
+  expect(names).not.toContain("Your Fleets");
+  expect(names).toContain("Connected apps");
 });

@@ -108,22 +108,21 @@ it("stops authoring at the durable watermark and replaces Working with the termi
 });
 
 it.each([
-  ["insufficient_balance", "There aren’t enough credits to finish this request."],
-  ["model_unavailable", "This model isn’t available right now."],
-  ["context_too_large", "This conversation is too long for the selected model."],
-  ["provider_failed", "The model didn’t finish its response."],
-  ["provider_usage_unknown", "Usage is still being reconciled."],
-  ["attempt_timed_out", "The model didn’t finish in time, so there’s no complete response."],
-  ["policy_changed", "The setup or its permissions changed during this request."],
-  ["new-failure-reason", "The model didn’t finish its response."],
+  ["insufficient_balance", "More credits needed"],
+  ["model_unavailable", "Model unavailable"],
+  ["context_too_large", "Conversation too long"],
+  ["provider_failed", "Couldn’t complete this request"],
+  ["provider_usage_unknown", "Usage is still being reconciled"],
+  ["attempt_timed_out", "Model request timed out"],
+  ["policy_changed", "Setup changed"],
+  ["new-failure-reason", "Couldn’t complete this request"],
 ])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
     text: undefined, failure: {reason, error_code: "UZ-TEST-001", recovery_action: "retry_message"}}]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
   expect(screen.getByRole("log").textContent).not.toContain("UZ-TEST-001");
-  fireEvent.click(screen.getByRole("button", {name: "View details"}));
-  expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
+  expect(screen.queryByRole("button", {name: "View details"})).toBeNull();
   expect(screen.getByRole("log").textContent).not.toContain("Send a new message to try again");
   expect(screen.queryByRole("button", {name: /Retry request/})).toBeNull();
   expect(screen.getByText(/Showing the latest conversation messages/)).toBeTruthy();

@@ -38,7 +38,7 @@ describe("FleetThread — reply parts", () => {
     expect(screen.getByText("deploy the canary")).toBeTruthy();
     // The reply row exists before any word, holding only the wait state.
     const reply = replyRow();
-    expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();
+    expect(within(reply).getByRole("status", { name: "On it" })).toBeTruthy();
     expect(within(reply).queryByRole("list", { name: TOOL_CALLS })).toBeNull();
     expect(within(reply).queryByRole("button")).toBeNull();
     // A running reply marks the thread running, and the composer still steers.

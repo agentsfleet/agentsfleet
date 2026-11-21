@@ -89,6 +89,16 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   await screen.findByText("No outputs yet.");
 });
 
+it("shows attached files without duplicating the setup's repositories", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(page([])));
+  const sources = {repositories: ["agentsfleet/docs"], access: "read", publication: "existing_pr"} as const;
+  render(<TaskPanel {...SCOPE} showRepositories={false} sources={sources} files={[{id: "file", name: "release.txt"}]} />);
+  const section = await screen.findByRole("region", {name: "Sources"});
+  await userEvent.click(section.querySelector("summary")!);
+  expect(within(section).getByText("release.txt")).toBeTruthy();
+  expect(within(section).queryByText(sources.repositories[0])).toBeNull();
+});
+
 it.each([[1, "Request details unavailable."], [2, "Request details unavailable."]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
   const network = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {status: 503}));
   vi.stubGlobal("fetch", network);

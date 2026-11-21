@@ -5,6 +5,7 @@ import { EYEBROW_CLASS } from "./eyebrow";
 const SECTION_LABEL_STYLE = {
   eyebrow: EYEBROW_CLASS,
   navigation: "font-sans text-label leading-label font-medium",
+  summary: "mb-0 text-eyebrow font-normal leading-summary-label text-text-dim",
 } as const;
 
 /*
@@ -24,8 +25,8 @@ const SECTION_LABEL_STYLE = {
  * `as="p"`.
  */
 export type SectionLabelProps = ComponentProps<"h2"> & {
-  /** `"h2"` when the eyebrow names the section; `"p"` when a heading follows it. */
-  as?: "h2" | "p";
+  /** Heading level for the section, or `"p"` when a heading follows it. */
+  as?: "h2" | "h3" | "p";
   variant?: keyof typeof SECTION_LABEL_STYLE;
 };
 

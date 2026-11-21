@@ -29,11 +29,17 @@ import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixture
 import { useFleetUploadPreviews } from "@/components/domain/conversation/composer/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolRegistry";
 import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
+import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
+import { fleetSetupPath } from "@/lib/workspace-routes";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { latestFigures } from "@/lib/events/run-summary";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
+const SCHEDULED_DEFINITION = {...FLEET_DETAIL.definition, config: {name: "merge-watch", "x-agentsfleet": {
+  repositories: ["agentsfleet/agentsfleet"], tools: ["shell"], credentials: ["github"],
+  budget: {daily_nanos: "1000000000"}, network: {http_egress: "public", package_manager_domains: true},
+}}};
 
 
 /** Current production conversation, activity, composer, and Summary; sample data. */
@@ -52,6 +58,8 @@ export function RefreshVisualFixture() {
   }, [phase, started]);
   const grouped = useFleetThreadEntries(events, convertEvent);
   const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
+  const scheduled = phase === "wake-up" && !archived;
+  const schedules = phase === "wake-up" ? [visualWakeup(started)] : [];
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
     setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
@@ -72,11 +80,13 @@ export function RefreshVisualFixture() {
       </div>
       <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
-      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
+      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules, pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={schedules} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
-        <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
+        <FleetConversationLayout summary={scheduled ? "setup" : "current-work"} work={scheduled
+          ? <SetupSummary definition={SCHEDULED_DEFINITION} schedules={schedules} modelLabel="MiniMax M3.1 Flash" sourceLabel="Pull request reviewer · v3" editHref={fleetSetupPath(WORKSPACE, FLEET_ID, FLEET_DETAIL.setup_revision)} />
+          : <TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />

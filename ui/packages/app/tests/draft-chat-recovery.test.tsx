@@ -32,9 +32,9 @@ function RuntimeStop() {
 it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_state for %s without a durable assistant row", async (state) => {
   fixture.messages = [{...MESSAGE, state}];
   await client.resume(DRAFT.id); render(<Live />);
-  const label = state === "queued" ? "Queued" : "Thinking";
+  const label = state === "queued" ? "On it" : "Thinking";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
-  expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "Queued"})).toBeNull();
+  expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "On it"})).toBeNull();
   expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
 });
 
@@ -45,6 +45,23 @@ it("keeps the composer open after a failure whose usage is unaccounted, and offe
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
   expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
   expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
+});
+
+it("retries a direct conversation request error through the draft client", () => {
+  const retry = vi.spyOn(client, "retry").mockResolvedValue(undefined);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), error: "Network failed"}} />);
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+  expect(retry).toHaveBeenCalledOnce();
+});
+
+it("ignores the old failed turn's Retry when a different draft owns the conversation", async () => {
+  await client.resume(DRAFT.id);
+  const send = vi.spyOn(client, "send").mockResolvedValue(undefined);
+  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"} as const;
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(),
+    draft: {...DRAFT, id: "another-draft"}, messages: [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", failure}]}} />);
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+  expect(send).not.toHaveBeenCalled();
 });
 
 it.each([false, true])("stops queued work from the composer's Stop button (cancellation fails: %s)", async (fails) => {
@@ -187,7 +204,7 @@ it("retries an unaccounted turn by resending it, without a Stop", async () => {
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<Live />);
-  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(writes).toEqual(["send"]));
   await waitFor(() => expect(client.getSnapshot().busy).toBe(false));
   expect(client.getSnapshot().error).toBeNull();
@@ -211,7 +228,7 @@ it("retries the failed turn's request instead of a newer message or composer tex
   });
   await client.resume(DRAFT.id); render(<Live />);
   fireEvent.change(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER}), {target: {value: "Unsent text"}});
-  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(sent).toEqual([MESSAGE.text]));
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("value", "Unsent text");
 });

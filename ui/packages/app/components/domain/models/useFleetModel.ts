@@ -43,7 +43,7 @@ class FleetModelSave {
   async load(more: boolean): Promise<void> {
     if (this.#snapshot.loading || this.#snapshot.saving || this.#snapshot.pending || this.#snapshot.inaccessible || this.#snapshot.reloadRequired) return;
     this.#update({loading: true, error: null});
-    try { if (more) await this.#client.loadMore(DRAFT_LIST.models); else await this.#client.initialize(); }
+    try { if (more) await this.#client.loadMore(DRAFT_LIST.models); else await this.#client.loadModels(); }
     catch (cause) { this.#update({error: this.#client.getSnapshot().inaccessible ? setupErrorMessage(cause) : LOAD_FAILED}); }
     finally { this.#update({loading: false}); }
   }
@@ -102,7 +102,7 @@ class FleetModelSave {
     if (this.#disposed) return;
     const view = this.#client.getSnapshot();
     this.#snapshot = {...this.#snapshot, ...patch, models: view.models.filter(model => model.eligibility.runtime),
-      more: view.moreModels, ready: view.listStatus === DRAFT_LIST_STATUS.ready, busy: view.busy, pending: view.pending,
+      more: view.moreModels, ready: view.modelListStatus === DRAFT_LIST_STATUS.ready, busy: view.busy, pending: view.pending,
       inaccessible: view.inaccessible, retryable: this.#choice !== null};
     for (const listener of this.#listeners) listener();
   }

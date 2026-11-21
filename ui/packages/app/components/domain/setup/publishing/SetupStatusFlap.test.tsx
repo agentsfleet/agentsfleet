@@ -1,6 +1,6 @@
 import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { DRAFT, FLEET, MESSAGE, MODEL, PUBLICATION, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -51,11 +51,21 @@ it.each([false, true])("keeps a failed or unconfirmed operation separate from sa
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it.each([false, true])("marks manual and proposed changes as unsaved (%s)", dirty => {
-  render(<SetupStatusFlap showPublication view={{...SAVED, draft: dirty ? null : DRAFT}} workspace={WORKSPACE} dirty={dirty} />);
+it("marks a proposal for an existing fleet as unsaved", () => {
+  render(<SetupStatusFlap showPublication view={{...SAVED, draft: DRAFT}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toBe("Unsaved setup changes");
   expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("keeps the error and its retry on the same flap after a second failure", async () => {
+  const retry = vi.fn().mockRejectedValue(new Error("Still unavailable"));
+  render(<SetupStatusFlap view={{...SAVED, error: "A request failed"}} workspace={WORKSPACE} onRetry={retry} />);
+  const status = screen.getByRole("status", {name: "Setup status"});
+  expect(status.textContent).toContain("Setup needs attention");
+  await act(async () => {fireEvent.click(within(status).getByRole("button", {name: "Retry"}));});
+  expect(retry).toHaveBeenCalledOnce();
+  expect(status.textContent).toContain("Setup needs attention");
 });
 
 it("makes an unsaved proposal available for saving without a success tick", () => {
@@ -123,10 +133,10 @@ it("retains both actions after saving the same published setup", () => {
   expect(screen.getAllByRole("link")).toHaveLength(2);
 });
 
-const READY = {...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready};
+const READY = {...EMPTY_DRAFT_VIEW, modelListStatus: DRAFT_LIST_STATUS.ready};
 
-it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", listStatus => {
-  const {container} = render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, listStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
+it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", modelListStatus => {
+  const {container} = render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready, modelListStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
   expect(container.textContent).toBe("");
 });
 

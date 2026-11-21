@@ -12,10 +12,10 @@ export const CurrentWorkSummaryContext = createContext(false);
 export function FleetWorkSidebar({children}: {children: ReactNode}) {
   const currentWork = use(CurrentWorkSummaryContext);
   if (!children) return null;
-  return <Card asChild className="fleet-summary min-h-0 shrink-0 rounded-lg p-xl hover:border-border summary:p-lg summary-medium:p-xl">
+  return <Card asChild className={cn("fleet-summary min-h-0 shrink-0 rounded-lg p-xl hover:border-border", currentWork && "summary:p-lg summary-medium:p-xl")}>
     <aside aria-label="Summary">
       <h2 className={cn("flex items-center justify-between text-label font-semibold leading-label",
-        currentWork ? "mb-md summary:mb-xl" : "mb-lg border-b border-border pb-lg")}>Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
+        currentWork ? "mb-md summary:mb-xl" : "mb-xl border-b border-border pb-lg")}>Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
       {children}
     </aside>
   </Card>;
