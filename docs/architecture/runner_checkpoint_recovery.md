@@ -106,9 +106,9 @@ Worker capacity remains assigned per runner in PostgreSQL.
 
 | Production files | Owner or change | Effect |
 | --- | --- | --- |
-| `af_inference/src/{timeouts,stream}.rs` | `TimeoutSettings`, `Timeouts`, `TurnControl::timeouts` | Share checked physical and semantic inactivity limits |
+| `af_providers/src/settings/timeouts.rs`, `guffbolt-ai/src/wire/{timeouts,stream/mod}.rs` | `TimeoutSettings`, `Timeouts::wire`, `guffbolt_ai::wire::Timeouts` | Share checked physical and semantic inactivity limits |
 | `main/src/config/{settings,policies}.rs`, `preflight/runtime.rs`, `serve/clients.rs`, `plane/*` | Checked operational snapshot and separate storage pool owner | Inject daemon settings without changing storage timeouts |
-| `af_providers/src/{retry/settings,connect/mod,transport/mod,turn/mod,turn/progress}.rs` | `RetrySettings`, `RetryPolicy`, `Connector::configured`, `Turns::with_settings` | Bound sends and eligible reopenings independently |
+| `af_providers/src/{retry/settings,connect/mod,transport/mod}.rs`, `guffbolt-ai/src/wire/{retry/mod,connected/reopen}.rs` | `RetrySettings`, `RetryPolicy::wire`, `Connector::configured`, `Connected::with_retry` | Bound sends and eligible reopenings independently |
 | `afr_supervisor/src/config/runtime.rs`, `client/*`, `downlink/*`, `uplink/renewals/*` | `RuntimeSettings`, `RuntimePolicy`, `ControlPlane::retrying`, `run_with_interval` | Apply runner-local retry and cadence settings |
 | `afr_supervisor/src/recovery/admission.rs`, `lib.rs` | `RecoveryResources::configured`, composition | Share file admission across the runner |
 | `runner/main/src/config/mod.rs`, `main.rs`, `host.rs`, `deploy/baremetal/*`, `deploy/local/linux.sh` | Runner profile loading, installation and read-only mounting | Deliver a real profile to each runner binary |

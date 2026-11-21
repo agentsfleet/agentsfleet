@@ -171,9 +171,9 @@ The report carries every line still unrecorded, so no backlog is renewed away fi
 
 ## Crates
 
-The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. The agent harness, `guffbolt`, sits in `rustd/guffbolt/`, outside every layer, because it depends on no crate of the workspace. `af_wire` is the one wire `agentsfleetd` and the runner both speak.
+The runner's crates sit in `rustd/crates/runner/`, beside the shared `foundation/`, `protocol/` and `harness/` layers. Two standalone crates sit beside `crates/`, outside every layer: the agent harness `guffbolt` (`rustd/guffbolt/`) and its provider side `guffbolt-ai` (`rustd/guffbolt-ai/`). Each depends on no `crates/` crate and is publishable alone, so any layer may depend on either. `guffbolt` depends on `guffbolt-ai`, never the reverse (`rustd/Cargo.toml`). `af_wire` is the one wire `agentsfleetd` and the runner both speak.
 
-A crate depends on its own layer or a lower one, and `runner/` and `daemon/` never on each other, in any dependency table (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`. The `harness/` layer holds `af_inference`, the model API codecs, beside `af_providers`.
+A crate depends on its own layer or a lower one, and `runner/` and `daemon/` never on each other, in any dependency table (`rustd/Cargo.toml`). Shared crates take the `af_` prefix; a layer's binary sits in `main/`. The `harness/` layer holds `af_providers`, the adapter that runs `guffbolt-ai`'s wires for a run, beside `af_egress` and `af_secrets`.
 
 A sixth folder, `e2e/`, holds `af_e2e`: the suites that drive the runner against a booted `agentsfleetd`, and the recovery bench. It may depend on every layer, and nothing depends on it. Its `tests/layers.rs` checks every rule in this section from the manifests. The kernel lane is an example of the runner binary (`runner/main/examples/kernel_lane`).
 
@@ -185,13 +185,13 @@ The embedder implements `Conversation`. `afr_agent`'s `Harness` supplies the inp
 
 Before each model call, `guffbolt` asks the embedder for that call's `Window`, the way pi runs `transformContext`. `afr_agent/src/loop/context` fits it with `af_context`, compacting old groups into notes when they no longer fit. Each window keeps the message the run answers, and the transcript stays whole.
 
-`guffbolt` makes the model call itself. It sends the request to a `Model`, which `af_providers` implements for every wire. It reads the stream into its own `Turn`, runs the turn's calls and keeps both in the `Transcript`.
+`guffbolt` makes the model call itself. It sends the request to a `Model`. `guffbolt_ai::wire::Connected` implements it over every wire, and `af_providers` wraps it with the run's error codes and log lines (`af_providers/src/turn/mod.rs`). It reads the stream into its own `Turn`, runs the turn's calls and keeps both in the `Transcript`.
 
 `guffbolt` opens, runs and ends each tool call itself, so every call ends once. A call the stop cuts short, or whose loop is dropped, ends `interrupted`.
 
 The harness hears this work through `Observe`, and each chunk through `Listen`. It sends the text live, meters the spend, and logs and counts each turn. Its ledger numbers each call and keeps its frames, trace row and record.
 
-The turn's vocabulary is `guffbolt`'s, and a failure is the embedder's own type, so `guffbolt` links no model client or secret store. A provider's record of its reasoning rides each turn as an opaque `Replay`, which only `af_providers` reads.
+The turn's vocabulary is `guffbolt`'s, and a failure is the embedder's own type, so `guffbolt` links no model client or secret store. A provider's record of its reasoning rides each turn as an opaque `Replay`, which only `guffbolt_ai::wire` reads.
 
 The tool vocabulary is `guffbolt`'s too. `Describe` names a tool to the model, and `Tool<Cx>` runs one call with what the embedder lends it. `Tools` looks a call up and refuses one it does not hold.
 
@@ -207,9 +207,9 @@ What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `
 
 One binary supplies both the host supervisor and its in-sandbox `sandbox` entry. The sandbox entry builds only the executor server, and each sandbox binds the binary read-only. The planned Firecracker guest receives it inside the root image or a second read-only disk (§Toolbox).
 
-A run carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_inference` validates them and builds the codec, and missing settings refuse admission. [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns configuration and credential matching.
+A run carries the selected model's saved inference settings: API format, base URL, optional dialect and maximum output tokens. `af_providers::settings::Configured` validates them and builds a `guffbolt_ai::wire::Route`, and missing settings refuse admission. `Connector::connect` then builds the run's `Connected` over that route (`af_providers/src/connect/mod.rs`). [Billing and provider keys](./billing_and_provider_keys.md#9-provider-routing-saved-model-settings) owns configuration and credential matching.
 
-`rig-core` and `rig-http` speak the three supported API formats, at the version `rustd/Cargo.toml` pins. The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
+`rig-core` speaks the five supported API formats inside `guffbolt-ai`, at the version `rustd/Cargo.toml` pins: Chat Completions, Responses, Messages, Gemini and Ollama (`guffbolt-ai/src/wire/route/mod.rs`). The transport under rig is the runner's: one HTTP client per runner that follows no redirect. So a turn and its key reach the admitted host and no other.
 
 A bounded HTTP retry honours `Retry-After`.
 A separate reopening budget applies before visible output or known spend.
@@ -222,7 +222,7 @@ The reasoning a provider signs goes back with the turn that made it. A call from
 
 A call whose arguments are not JSON reaches its tool as the text the model wrote. The tool refuses it with a reason.
 
-rig traces every request and reply whole, before the scrub. So the shared log filter (`af_inference::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
+rig traces every request and reply whole, before the scrub. So the shared log filter (`guffbolt_ai::log_filter`, re-exported as `af_providers::settings::log_filter`), installed by daemon and runner, holds rig to its warnings at any level. It also turns off the one warning that repeats a provider's error message.
 
 ### Startup profiles
 
@@ -263,7 +263,7 @@ The trusted repair context stays in the system prompt, and no turn enters it. A 
 
 The Responses wire sends the fleet id as `prompt_cache_key`.
 
-A turn reports its cache writes apart from its input, split by the lifetime the provider names (`af_providers::usage`). Messages sends five minutes and one hour; Responses and Chat send a write with no lifetime. The daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)).
+A turn reports its cache writes apart from its input, split by the lifetime the provider names (`guffbolt-ai/src/wire/usage/mod.rs`). Messages sends five minutes and one hour; Responses and Chat send a write with no lifetime. The daemon prices each class at its tier's write rate ([billing §11](./billing_and_provider_keys.md#11-one-billing-lifecycle-behind-a-biller-trait)).
 
 The wire still asks for the five-minute default, and asking for one hour is not decided. Spans and their export are in [Observability](./observability.md) §"`agentsfleet-runner` — a collector of its own".
 

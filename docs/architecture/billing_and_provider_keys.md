@@ -600,7 +600,7 @@ The column is nullable; catalogue seeding fills missing settings and preserves e
 An unconfigured row stays visible to administrators and cannot drive chat or runtime inference.
 Configure its real endpoint and token limits before enabling it.
 
-`af_inference::Configured` validates these settings and builds rig's Chat Completions, Responses, Messages, native Gemini `GenerateContent`, or native Ollama chat codec. Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted.
+`af_providers::settings::Configured` validates these settings and builds a `guffbolt_ai::wire::Route`. The route picks rig's Chat Completions, Responses, Messages, native Gemini `GenerateContent`, or native Ollama chat codec (`guffbolt-ai/src/wire/route/mod.rs`). Provider names and model names identify rows; neither chooses a URL or API format. The runner's JSON routing table is deleted.
 
 Curation input for prices stays an operator tool and does not decide runtime routes.
 
@@ -619,7 +619,7 @@ The fleet's operating context cap can trigger earlier [conversation compaction](
 The selected model still supplies the physical window. Each request bounds output by the saved maximum and remaining physical headroom after complete encoded input.
 Pinned input that cannot fit refuses dispatch.
 
-`rig-core` is pinned to 0.46.0. The shared `af_inference::log_filter` filters rig's request/reply traces in both daemon and runner logging.
+`rig-core` is pinned to 0.47.0 (`rustd/Cargo.toml`). `guffbolt-ai` builds every wire on it; `af_providers` reads only rig's failures. The shared `guffbolt_ai::log_filter`, re-exported as `af_providers::settings::log_filter`, filters rig's request and reply traces in daemon and runner logging.
 
 It also filters the warning containing a provider's private error text. Model keys and private prompts never become log fields.
 
@@ -705,7 +705,7 @@ The tier comes from the request's whole prompt (uncached input, cache reads and 
 
 Self-managed work charges runtime only.
 
-Cache writes reach the line apart from uncached input. The runner takes them out of rig's prompt total and splits them by the lifetime the provider reports (`af_providers::usage`). A write therefore bills at its class's rate and never also as input.
+Cache writes reach the line apart from uncached input. The runner takes them out of rig's prompt total and splits them by the lifetime the provider reports (`guffbolt-ai/src/wire/usage/mod.rs`). A write therefore bills at its class's rate and never also as input.
 
 A write the provider names no lifetime for bills at the tier's unspecified-lifetime rate. A tier that publishes none leaves such a write unpriced, never free.
 

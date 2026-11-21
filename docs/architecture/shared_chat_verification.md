@@ -10,7 +10,7 @@ executable: false
 
 | Question | Answer |
 |---|---|
-| Where is provider streaming implemented? | `af_inference::stream::StreamTurn`, used by setup and fleet runs |
+| Where is provider streaming implemented? | `guffbolt_ai::wire::Connected`, through its private `StreamTurn` (`guffbolt-ai/src/wire/stream/mod.rs`), used by setup and fleet runs |
 | Who parses provider events? | Rig, through its native HTTP adapter and provider codecs |
 | Where is browser connection recovery implemented? | `ChatConnection`, used by both chat adapters |
 | Where are reply ordering and rendering shared? | `ReplyStream`, `ReplyStreamDecoder`, `ChatThread`, `ChatMessageRow` and `ChatComposerFrame` |
@@ -27,23 +27,25 @@ The [web architecture](web_app.md) owns routing and user flows.
 flowchart TD
     A[Private setup run: afr_agent setup loop] --> E[af_providers::Turns]
     D[Fleet execution: afr_agent] --> E
-    E --> F[af_inference::StreamTurn]
-    F --> G[Rig normalized events and final response]
+    E --> F[guffbolt_ai::wire::Connected]
+    F --> K[StreamTurn]
+    K --> G[Rig normalized events and final response]
     G --> H[HttpTransport]
-    H --> I[SendRequest purpose adapter]
+    H --> I[transport::Send purpose adapter]
     I --> J[Guarded physical HTTP sender]
 ```
 
-`af_inference`'s `StreamTurn` owns one Rig stream.
+`guffbolt-ai`'s `StreamTurn` owns one Rig stream. `af_providers::Turns` wraps `Connected` and adds registry codes and log lines.
 It handles cancellation, inactivity, finalization and partial usage.
 Neither caller owns another provider event parser.
 
 | Symbol | Inputs and result | Responsibility |
 |---|---|---|
-| `Configured::model` | Saved inference settings, model, credential and transport → Rig model | Select the native provider wire |
-| `SendRequest::send` | `Request<Bytes>` → `BoxFuture<rig_http::Result<StreamingResponse>>` | Supply guarded physical I/O without collecting the response |
-| `HttpTransport` | `Arc<dyn SendRequest>` | Adapt Rig's `HttpClientExt`; bound received bytes and retain HTTP status |
-| `StreamTurn::open` | Configuration, model, `CompletionRequest`, `TurnControl` → reader | Open one SDK attempt |
+| `af_providers::settings::Configured::new` | Saved inference settings and context window → checked `guffbolt_ai::wire::Route` | Prove bounds and endpoint rules, then select the native provider wire |
+| `Connected::new` | `Route`, model, key and transport → `guffbolt::Model` | Bind one model to its guarded transport |
+| `transport::Send::send` | `Request<Bytes>` → `Sent`, a streamed `http::Response` or a `SendError` | Supply guarded physical I/O without collecting the response |
+| `HttpTransport` | `Arc<dyn Send>` | Adapt Rig's `HttpClientExt`; bound received bytes and retain HTTP status |
+| `StreamTurn::open_counted` | `Route`, model, `CompletionRequest`, input count, `TurnControl` → reader | Open one SDK attempt |
 | `StreamTurn::next` | Mutable reader → optional normalized event or `FailureCause` | Apply cancellation, inactivity and absolute deadline |
 | `StreamTurn::finish` | Owned reader → `TurnResult` | Preserve the final or partial response and original typed failure |
 | `TurnResult::into_response` | Owned result → completed response or boxed provider error | Refuse to treat partial output as success |
@@ -304,14 +306,14 @@ It does not claim that every unchanged operation has a new tracing span.
 | `af_egress` | `vault` and guarded HTTP; reqwest, injected `Mint` and shared `Scrub` | Credential mint records contain identity and expiry, never token values |
 | `afr_executor` | `server/process` lifecycle and `edges` buffers; Tokio, `Bytes`, `Buf`, `VecDeque` and UTF-8 helpers | Existing process records use process identity; no new byte-buffer parser |
 | `afr_memory` | Borrowed memory adapter and cause-preserving refusals | Backend owns I/O; no added accessor logging |
-| `af_providers` | `Turns`, guarded transport and native Rig request construction | Shared reader; retry warnings now include a registry code |
+| `af_providers` | `Connector`, `Turns`, saved settings and the guarded transport | Shared reader; retry warnings now include a registry code |
 | `afr_sandbox` | Descriptor admission, mount ownership and release errors; rustix and digest-io | Existing admission start/end pair and typed failures retained |
 | `af_secrets` | `Secret`, `Scrub` and `Carry`; zeroize and Aho-Corasick | Retained secret copies and unprocessed stream tails now erase their owned strings |
 | `afr_supervisor` | Central daemon client and bounded HTTP waits; reqwest and backon | Existing paired debug events retained; verb fields hoisted once |
 | `afr_telemetry` | OTLP installation, filtering, sampling and bounded shutdown | Shutdown timeout now names its registry code |
 | `afr_tools` | `Handler` and `Typed<H>`; serde and schemars | Shared argument parsing and cached schema; tool-run logs remain with the agent boundary |
 | `agentsfleet_runner` | Boot, shutdown and failure rendering | Existing terminal errors carry registry codes |
-| `af_inference` | Shared provider stream, transport, failure recovery and log filtering | Paired content-free lifecycle and timing records |
+| `guffbolt-ai` | Shared provider stream, Rig request construction, transport, retry, failure recovery and log filtering | Paired content-free lifecycle and timing records |
 | `afd_setup` | Dispatch, receipt, private publisher and run guards | Paired private preview traces; no connection held during provider or bus waits |
 | `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
@@ -349,7 +351,7 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 | `make acceptance-cli` | Deterministic lane: 209 passed. Live lane: 171 passed, three failed. Two turns reached provider refusals; the missing-model setup assertion passed its focused rerun after matching setup's `pending` state |
 | Local provider prerequisite | The configured free model was absent from the live catalogue. The replacement free model is available, but a minimal live request returned HTTP 429 with `free-models-per-day`; complete acceptance requires restored account quota |
 | Guarded smoke checks | Built version and invalid-command refusal passed; a real browser rendered sign-in and redirected a synthetic private workspace URL back to sign-in without workspace controls. Authenticated exploratory flows remain blocked by the smoke browser's absent session |
-| `cargo mutants -p af_inference --all-features` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
+| `cargo mutants --all-features` on the provider-stream crate, since folded into `guffbolt-ai` | 98 mutations: 26 caught, 72 did not compile, no survivors or timeouts |
 | Rust coverage: canonical run plus the focused hub-closure regression, graded by `scripts/rustd_coverage.py` | Overall 99.6116%; changed lines 100%; all 51 measured changed source files reach 99% |
 | Setup mutation closure | 18 mutations: ten caught, eight did not compile, no survivors or timeouts |
 | Private-stream mutation closure | 26 mutations: eight caught, seventeen did not compile, one equivalent survivor, no timeouts |

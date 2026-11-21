@@ -305,8 +305,8 @@ The id is `MiniMax-M3.1-Flash`, MiniMax's own name (platform.minimax.io text-gen
 
 `runner_execution.md` §Crates names `guffbolt-ai` beside `guffbolt`, both outside every layer. `af_providers` is the adapter, and `af_inference` is gone. `docs/RUST_ERROR_STANDARD.md` gains a `guffbolt-ai` row: one hand-written `Error` with its `Result`, because the crate cannot call `error_shell!`. The guffbolt README leads with the MiniMax chat.
 
-- **Dimension 6.1** — the READMEs compile → Test the guffbolt and guffbolt-ai README doctests (unit, `make test-unit-all`). Expected: pass.
-- **Dimension 6.2** — no page names the deleted crate → Test the R3 search. Expected: no output.
+- **Dimension 6.1** — the READMEs compile → Test the guffbolt and guffbolt-ai README doctests (unit, `make test-unit-all`). Expected: pass. — DONE (the pages are written; the doctests run in §15's `make test-unit-all`)
+- **Dimension 6.2** — no page names the deleted crate → Test the R3 search. Expected: no output. — DONE (no tracked hit; `.egm/` is git-excluded review notes)
 
 ### §7 (from M253_003 §6) — M253_001's acceptance and benchmarks run at the end of M253
 

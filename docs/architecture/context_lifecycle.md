@@ -67,7 +67,7 @@ An incomplete response, tool call, malformed summary or missing usage cannot pub
 
 Validation proves the document's shape and source identity; it cannot prove that the model preserved every relevant fact.
 
-Token measurement uses `tiktoken-rs` through `af_inference`'s budget module for recognized model encodings.
+Token measurement uses `tiktoken-rs` through `guffbolt_ai::wire::input_tokens` (`guffbolt-ai/src/wire/budget.rs`) for recognized model encodings.
 Other models get the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
 
 That headroom is temporary. The `model_input_calibration` trace records each call's estimate beside the provider's reported input. Per-model ratios read from it replace the single number.
