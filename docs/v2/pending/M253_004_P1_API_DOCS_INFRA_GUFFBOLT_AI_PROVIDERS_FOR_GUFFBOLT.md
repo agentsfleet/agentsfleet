@@ -150,6 +150,16 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 ## Sections (implementation slices)
 
+### §0 — Three config fixes from M253_003's key audit, built first (Indy, Nov 22, 2026)
+
+1. **No fleet budget maxima.** A fleet's own daily and monthly budget is the limit; `af_fleet_runtime` `MAX_DAILY_NANOS` / `MAX_MONTHLY_NANOS` and their check (authoring and readback) are deleted, and no `[billing]` maximum key exists.
+2. **`[server] read_timeout_seconds = 300`.** The time a client gets to send a request's headers and body; a slow client past it is dropped. It never cuts a response, so an open live stream (SSE) is unaffected. Built on hyper's/tower-http's own timeout, not hand-rolled.
+3. **The runner tells the executor its sizes.** The file read size, the command output kept per end and the frame size become runner TOML keys (`[tools] max_file_read_mib`, `[tools] output_edge_kib`, `[executor] max_frame_mib`); the runner passes them to the in-sandbox executor when it starts it, and the executor uses what it was given. The compiled constants survive only as defaults.
+
+- Dimension 0.1 → Test `a_fleet_budget_has_no_ceiling_but_its_own` (unit): a definition with a $50,000 daily budget parses and is read back. Expected: accepted.
+- Dimension 0.2 → Test `a_request_slower_than_the_read_timeout_is_dropped` and `a_live_stream_outlives_the_read_timeout` (integration). Expected: the slow request's connection closes; the stream keeps sending.
+- Dimension 0.3 → Test `the_executor_uses_the_sizes_the_runner_sent` (unit): a runner config with a 1 MiB read size; the executor refuses a 2 MiB read. Expected: refused at 1 MiB.
+
 ### §1 — guffbolt-ai owns the provider-facing types, and guffbolt re-exports them
 
 `rustd/guffbolt-ai` joins the workspace beside `rustd/guffbolt`. It depends on no workspace crate. Its default build compiles the types alone, on `serde`, `serde_json`, `bytes` and `futures-util`.
@@ -427,6 +437,7 @@ N/A: no product or operator signal changes. The provider metric families and the
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
 - > Owner (Indy, Nov 22, 2026), on §7's Linux-only acceptance run: "Yes, one E2E run at the end (Recommended)" — context: one `orly burst acceptance --provider e2e` after §1–§9 and `make test-integration-rustd` are green, the machine deleted when the run ends.
 - > Owner (Indy, Nov 22, 2026): "now once you are done with the sibling create i want the guffbolt/README.md to have the usage like pi-core/README.md has similar one ELI20 (no cryptic, no marketing) but to an engineer who can use the harness and build on top of it. Then you have to go back to your own code and see if the guffbolt is intergrated in the way like you have written or better way that suites us. Net net - just like `pi` is built on top of `pi-core` our agentsfleet is built on top of guffbolt must be proven. There must be some live tests added with the fireworks key and tested manual for a 2$ budget max,  dont test beyond that. The testing i mean is the guffbolt-ai, guffbolt using guffbot-ai on read model. The coverage of rust code must be 99%, with all the files> 99% the patch coverage 99% so lets move the notch up in the respective coverage configuration and ensure we meet that. Ensure the CI jobs are green, greptile feedback is resolved and all green and good to merge. Donot merge, Indy will eyeball and merge." — context: adds §11–§15 below; §10 (tools brainstorm) stays last for his sign-off.
+- > Owner (Indy, Nov 22, 2026): "1. I think when you set the fleet you give a budget so this flag is pointless 2. Yes add the read_timout_seconds 3. Yes signed on the fix to pass the runner to pass the values to the executor." — context: §0 below; (1) the fleet budget maxima, (2) the HTTP API request read timeout, (3) the sizes the runner and the in-sandbox executor share.
 - **Open blockers** — none; the two `[?]` left are settled by running §1 and block nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
