@@ -72,7 +72,7 @@ describe("task progress across stream loss", () => {
     expect(taskActivityLabel(stage("saved"))).toBe("Recovery point saved");
   });
 
-  it("rejects malformed progress and tells the reader when the bounded window omits steps", () => {
+  it("rejects malformed progress and keeps every live stage past the retired 128 window", () => {
     expect(readTaskActivityHistory({items: [stage("saved", -1)], truncated: false})).toBeUndefined();
     expect(readTaskActivityHistory({items: [{...stage("saved"), progress: {...stage("saved").progress, activity_id: "-".repeat(36)}}], truncated: false})).toBeUndefined();
     let history: TaskActivityHistory | undefined;
@@ -81,10 +81,19 @@ describe("task progress across stream loss", () => {
       next.progress.activity_id = `019f0000-0000-7000-8000-${i.toString(16).padStart(12, "0")}`;
       history = addTaskActivity(history, next);
     }
-    expect(history?.items).toHaveLength(128);
-    expect(history?.truncated).toBe(true);
-    expect(mergeTaskActivity(history, {items: [], truncated: false})?.truncated).toBe(true);
+    expect(history?.items).toHaveLength(130);
+    expect(history?.truncated).toBe(false);
+    expect(readTaskActivityHistory(history)).toEqual(history);
+    expect(mergeTaskActivity(history, {items: [], truncated: false})).toBe(history);
     expect(mergeTaskActivity(history, undefined)).toBe(history);
+  });
+
+  it("reads values past the retired caps and still refuses an unsafe integer", () => {
+    const past = stage("uploading", 200_001);
+    past.progress = {...past.progress, total: 200_002, provider: "p".repeat(257), model: "m".repeat(257),
+      bytes: {acknowledged: 68_719_476_737, missing: 0, reused: 0}};
+    expect(readTaskActivityHistory({items: [past], truncated: false})?.items).toEqual([past]);
+    expect(readTaskActivityHistory({items: [stage("uploading", 2 ** 53)], truncated: false})).toBeUndefined();
   });
 });
 

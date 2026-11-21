@@ -27,6 +27,13 @@ pub const QUESTIONS_MAX: usize = 8;
 pub const QUESTION_MAX_BYTES: usize = 16 * 1024;
 /// Maximum response collected from the provider.
 pub const REPLY_MAX_BYTES: usize = 64 * 1024;
+/// Longest decision revision, in bytes: what one btree index row holds.
+///
+/// The index is `model.decision_revisions`' UNIQUE (`platform_model_id`,
+/// `revision`). Postgres refuses an index row past 2,704 bytes; less its 8-byte
+/// tuple header, the 16-byte `uuid` key and the revision's 4-byte varlena
+/// header, 2,676 remain. A revision is ASCII, so bytes are characters.
+pub const REVISION_MAX_BYTES: usize = 2704 - 8 - 16 - 4;
 
 /// Native decision protocols; none is a structured-chat substitute.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -99,26 +106,29 @@ pub struct DecisionProfile {
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub model_id: String,
     /// Reviewed profile revision used for acceptance and accounting.
-    #[garde(length(bytes, min = 1, max = 128), pattern(r"^[A-Za-z0-9_.:-]+$"))]
+    #[garde(length(bytes, min = 1, max = REVISION_MAX_BYTES), pattern(r"^[A-Za-z0-9_.:-]+$"))]
     pub revision: String,
     /// Native API selected by its catalogue entry.
     #[garde(skip)]
     pub api: DecisionApi,
     /// Exact reviewed HTTPS endpoint, including the native API path.
-    #[garde(length(bytes, min = 1, max = 2048))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub endpoint: String,
     /// Requested model; an alias is not evidence of a resolved serving version.
     #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 256))]
     #[garde(length(bytes, min = 1, max = crate::inference::MODEL_ID_MAX_BYTES))]
     pub model: String,
     /// Reviewed reported model names; activation owns alias/version evidence.
-    #[garde(length(min = 1, max = 8), inner(length(bytes, min = 1, max = 128)))]
+    #[garde(
+        length(min = 1),
+        inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))
+    )]
     pub accepted_models: Vec<String>,
     /// Capabilities verified for this exact profile revision.
     #[garde(skip)]
     pub capabilities: DecisionCapabilities,
     /// Conservative serialized evidence/question byte ceiling established for
     /// this profile, preventing providers from silently truncating its input.
-    #[garde(range(min = 1, max = 24576))]
+    #[garde(range(min = 1))]
     pub input_max_bytes: u32,
 }

@@ -48,11 +48,11 @@ pub struct ModelInference {
     #[garde(skip)]
     pub api: InferenceApi,
     /// HTTPS provider base. Host safety is proven by the credential service.
-    #[garde(length(bytes, min = 1, max = 2048))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub base_url: String,
     /// Registered rig dialect, or absent for a plain compatible gateway. The
     /// native Gemini and Ollama APIs take none.
-    #[garde(inner(length(bytes, min = 1, max = 64)))]
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialect: Option<String>,
     /// Model's configured maximum completion length, including reasoning.

@@ -1,6 +1,6 @@
 //! Complete logical file mappings; private content stays in encrypted objects.
 
-use crate::task::DecisionTaskVersion;
+use crate::task::{DecisionTaskVersion, PATH_MAX_BYTES};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -10,22 +10,19 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct CheckpointFile {
     /// Declared workspace-relative path; never followed during restoration.
-    #[garde(length(bytes, min = 1, max = 4096), custom(relative_path))]
+    #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_path))]
     pub path: String,
     /// Ordinary file executable bit.
     #[garde(skip)]
     pub executable: bool,
     /// Logical length; empty files require no objects.
-    #[garde(range(max = 25_769_803_776))]
+    #[garde(skip)]
     pub size: u64,
     /// Native chunk identities, in byte order.
-    #[garde(
-        length(max = 3072),
-        inner(
-            length(bytes, min = 36, max = 36),
-            pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-        )
-    )]
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
     pub objects: Vec<String>,
 }
 
@@ -40,22 +37,22 @@ pub enum CheckpointEntry {
     /// An explicit directory, including empty directories.
     Directory {
         /// Workspace-relative directory path, including an otherwise empty directory.
-        #[garde(length(bytes, min = 1, max = 4096), custom(relative_path))]
+        #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_path))]
         path: String,
     },
     /// A relative non-escaping symlink, validated against its parent natively.
     Symlink {
         /// Workspace-relative location at which the link is restored.
-        #[garde(length(bytes, min = 1, max = 4096), custom(relative_path))]
+        #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_path))]
         path: String,
         /// Link destination relative to its parent, checked for workspace escape.
-        #[garde(length(bytes, min = 1, max = 4096), custom(relative_link))]
+        #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_link))]
         target: String,
     },
     /// Explicit removal from the verified base.
     Remove {
         /// Workspace-relative base entry to remove, including any descendants.
-        #[garde(length(bytes, min = 1, max = 4096), custom(relative_path))]
+        #[garde(length(bytes, min = 1, max = PATH_MAX_BYTES), custom(relative_path))]
         path: String,
     },
 }
@@ -110,19 +107,16 @@ impl CheckpointEntry {
 #[serde(deny_unknown_fields)]
 pub struct CheckpointPage {
     /// Zero-based immutable page position.
-    #[garde(range(max = 63))]
+    #[garde(skip)]
     pub page_number: u32,
-    /// Logical entries, bounded again by complete serialized bytes.
-    #[garde(length(max = 4096), dive)]
+    /// Logical entries, bounded by complete serialized bytes.
+    #[garde(dive)]
     pub entries: Vec<CheckpointEntry>,
     /// Compatible private conversation objects; not independently selected history.
-    #[garde(
-        length(max = 256),
-        inner(
-            length(bytes, min = 36, max = 36),
-            pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-        )
-    )]
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
     pub history_objects: Vec<String>,
 }
 

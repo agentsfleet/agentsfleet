@@ -55,23 +55,28 @@ pub struct CheckpointPlanInput {
     /// Captured repository head; an incremental plan can use an older retained base.
     #[garde(inner(length(bytes, min = 40, max = 40), pattern(r"^[0-9a-f]{40}$")))]
     pub commit_oid: Option<String>,
-    /// Restore format, independently checked by the daemon.
+    /// Restore format, independently checked by the daemon: version 1 is the
+    /// only one.
     #[garde(range(min = 1, max = 1))]
     pub format_version: u32,
     /// Pinned host-local toolbox, excluded from checkpoint bytes.
     #[garde(custom(super::digest))]
     pub toolbox_digest: String,
-    /// Ordered page identities to allocate.
-    #[garde(range(min = 1, max = 64))]
+    /// Ordered page identities to allocate. Bounded by its Postgres `INTEGER`
+    /// column, `fleet.task_checkpoints.page_count`.
+    #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub page_count: u32,
     /// Declared unique new content allowance, clamped natively by mode.
-    #[garde(range(max = 17_179_869_184))]
+    /// Bounded by its Postgres `BIGINT` column.
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub upload_budget_bytes: u64,
-    /// Expanded logical state, independent of deduplication.
-    #[garde(range(max = 25_769_803_776))]
+    /// Expanded logical state, independent of deduplication. Bounded by its
+    /// Postgres `BIGINT` column.
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub logical_bytes: u64,
-    /// Expanded entries, checked again against complete pages.
-    #[garde(range(max = 200_000))]
+    /// Expanded entries, checked again against complete pages. Bounded by its
+    /// Postgres `INTEGER` column.
+    #[garde(range(max = i32::MAX.unsigned_abs()))]
     pub entry_count: u32,
 }
 

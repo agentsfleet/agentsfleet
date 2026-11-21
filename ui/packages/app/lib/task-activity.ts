@@ -1,19 +1,18 @@
 import * as v from "valibot";
 
 const identity = v.pipe(v.string(), v.regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u));
-const count = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(200_000));
-const label = v.pipe(v.string(), v.minLength(1), v.maxLength(256));
-const byteCount = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(68_719_476_736));
+const count = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
+const label = v.pipe(v.string(), v.minLength(1));
 const progress = v.object({
-  sequence: v.optional(v.pipe(v.number(), v.safeInteger(), v.minValue(0))),
+  sequence: v.optional(count),
   activity_id: identity, task_id: v.nullable(identity), source_turn_id: v.nullable(identity),
   operation: v.picklist(["intent", "goal", "capture", "restore"]),
   phase: v.picklist(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
   provider: v.nullable(label), model: v.nullable(label), completed: count, total: v.nullable(count),
-  bytes: v.optional(v.object({acknowledged: byteCount, missing: byteCount, reused: byteCount})),
+  bytes: v.optional(v.object({acknowledged: count, missing: count, reused: count})),
 });
 const record = v.object({kind: v.picklist(["task_decision_started", "task_decision_completed", "task_transfer_progress"]), progress});
-const history = v.object({items: v.pipe(v.array(record), v.maxLength(128)), truncated: v.boolean()});
+const history = v.object({items: v.array(record), truncated: v.boolean()});
 export type TaskActivity = v.InferOutput<typeof record>;
 export type TaskActivityHistory = v.InferOutput<typeof history>;
 
@@ -55,7 +54,7 @@ export function addTaskActivity(previous: TaskActivityHistory | undefined, next:
     || (existing.progress.bytes?.reused ?? 0) > (next.progress.bytes?.reused ?? 0)
     || JSON.stringify(existing) === JSON.stringify(next))) return previous;
   const updated = index < 0 ? [...items, next] : items.map((item, at) => at === index ? next : item);
-  return {items: updated.sort(activityOrder).slice(-128), truncated: previous?.truncated === true || updated.length > 128};
+  return {items: updated.sort(activityOrder), truncated: previous?.truncated === true};
 }
 
 /** Saved windows lead. Historical live tails require a shared ordering anchor. */

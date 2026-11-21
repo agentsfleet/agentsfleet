@@ -1,7 +1,8 @@
 //! Complete public requests reject ambiguous identities and unsafe recovery paths.
 use af_wire::{
-    decision::DecisionRequest,
-    task::{CheckpointPageInput, TaskEffectInput},
+    activity::TaskActivity,
+    decision::{DecisionProfile, DecisionRequest},
+    task::{CheckpointPageInput, CheckpointPlaintext, TaskEffectInput},
 };
 use garde::Validate;
 use serde_json::{Value, json};
@@ -135,5 +136,81 @@ fn publication_rejects_case_variant_workflow_paths_without_rejecting_adjacent_fi
             )]
         );
     }
+    Ok(())
+}
+
+/// Numbers nothing forced are gone: a value past each retired cap proves,
+/// and a size past its Postgres `BIGINT` column still does not.
+#[test]
+fn values_past_the_retired_caps_are_accepted() -> serde_json::Result<()> {
+    let past = "m".repeat(2049);
+    let profile: DecisionProfile = serde_json::from_value(json!({"model_id":ID,
+        "revision":"r".repeat(129),"api":"typesafe","endpoint":past,"model":"decision-model",
+        "accepted_models":vec![past.clone(); 9],
+        "capabilities":{"noul":true,"choice":true,"score":true},"input_max_bytes":24_577}))?;
+    assert_eq!(errors(profile.validate()), vec![]);
+    let activity: TaskActivity = serde_json::from_value(json!({"activity_id":ID,
+        "task_id":null,"source_turn_id":null,"operation":"capture","phase":"uploading",
+        "provider":past,"model":past,"completed":200_001,"total":200_001,
+        "bytes":{"acknowledged":68_719_476_737_u64,"missing":0,"reused":0}}))?;
+    assert_eq!(errors(activity.validate()), vec![]);
+    let mut plaintext: CheckpointPlaintext =
+        serde_json::from_value(json!({"sha256":"a".repeat(64),"size":8_388_609,"kind":"file"}))?;
+    assert_eq!(errors(plaintext.validate()), vec![]);
+    plaintext.size = i64::MAX.unsigned_abs() + 1;
+    assert_eq!(
+        errors(plaintext.validate())
+            .into_iter()
+            .map(|(path, _message)| path)
+            .collect::<Vec<_>>(),
+        vec!["size".to_owned()]
+    );
+    Ok(())
+}
+
+/// utoipa takes only a literal, so the published bound is held to the ceiling.
+#[cfg(feature = "openapi")]
+#[test]
+fn the_published_text_bounds_are_the_ceiling() -> serde_json::Result<()> {
+    let schema = serde_json::to_value(
+        <af_wire::decision::DecisionModelSettings as utoipa::PartialSchema>::schema(),
+    )?;
+    for field in ["endpoint", "evaluation_source_url"] {
+        assert_eq!(
+            schema.pointer(&format!("/properties/{field}/maxLength")),
+            Some(&json!(af_validate::TEXT_MAX_CHARS)),
+            "{field}"
+        );
+    }
+    assert_eq!(
+        schema.pointer("/properties/revision/maxLength"),
+        Some(&json!(af_wire::decision::REVISION_MAX_BYTES))
+    );
+    Ok(())
+}
+
+/// A revision fills its btree index row and no more: 2,704 bytes less the
+/// tuple header, the `uuid` key and the varlena header.
+#[test]
+fn a_revision_past_its_index_row_is_refused() -> serde_json::Result<()> {
+    use af_wire::decision::REVISION_MAX_BYTES;
+    assert_eq!(REVISION_MAX_BYTES, 2676);
+    let profile = |revision: String| {
+        serde_json::from_value::<DecisionProfile>(json!({"model_id":ID,"revision":revision,
+            "api":"typesafe","endpoint":"https://example.test/decide","model":"decision-model",
+            "accepted_models":["decision-model"],
+            "capabilities":{"noul":true,"choice":true,"score":true},"input_max_bytes":1}))
+    };
+    assert_eq!(
+        errors(profile("r".repeat(REVISION_MAX_BYTES))?.validate()),
+        vec![]
+    );
+    assert_eq!(
+        errors(profile("r".repeat(REVISION_MAX_BYTES + 1))?.validate())
+            .into_iter()
+            .map(|(path, _message)| path)
+            .collect::<Vec<_>>(),
+        vec!["revision".to_owned()]
+    );
     Ok(())
 }

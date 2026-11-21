@@ -4,13 +4,13 @@ import { instant } from "../../lib/instant.ts";
 
 const text = Schema.String.check(Schema.isMinLength(1));
 const count = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
-const label = text.check(Schema.isMaxLength(64), Schema.isPattern(/^[A-Za-z0-9_.-]+$/u));
-export const RunnerLabelsSchema = Schema.Array(label).check(Schema.isMaxLength(32));
+const label = text.check(Schema.isPattern(/^[A-Za-z0-9_.-]+$/u));
+export const RunnerLabelsSchema = Schema.Array(label);
 export const RunnerPolicySchema = Schema.Struct({
   sandbox_tier: Schema.Enum(SandboxTier),
   network_policy: Schema.Enum(RunnerNetworkPolicy),
   registry_allowlist: Schema.Array(text),
-  worker_count: count.check(Schema.isBetween({minimum: 1, maximum: 64})),
+  worker_count: count.check(Schema.isGreaterThanOrEqualTo(1)),
   extra_binds: Schema.Array(Schema.Struct({path: text, mode: Schema.Enum(BindMode), note: Schema.String})),
   durable_tasks_enabled: Schema.Boolean,
   decision_model_id: Schema.optionalKey(Schema.NullOr(text)),

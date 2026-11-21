@@ -48,7 +48,7 @@ pub enum TaskRequestedTarget {
     ExistingPr {
         /// Repository inside both accepted setup and current grant ceiling.
         #[garde(
-            length(bytes, min = 3, max = 255),
+            length(chars, min = 3, max = af_validate::TEXT_MAX_CHARS),
             pattern(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
         )]
         repository: String,
@@ -79,7 +79,10 @@ pub struct TaskProposedItem {
     #[garde(length(bytes, min = 1, max = super::TITLE_MAX_BYTES), custom(af_validate::nul_free))]
     pub title: String,
     /// Bounded explanation retained in the native interpretation receipt.
-    #[garde(length(bytes, min = 1, max = 16_384), custom(af_validate::nul_free))]
+    #[garde(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::nul_free)
+    )]
     pub interpretation: String,
     /// Required for new work; not an authority token.
     #[garde(dive)]

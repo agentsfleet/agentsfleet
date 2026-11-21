@@ -14,8 +14,8 @@ pub enum DecisionAssessment {
     Message,
     /// Check one action in a complete, pinned bounded interpretation.
     Item {
-        /// Zero-based action within the four-item native interpretation.
-        #[garde(range(max = 3))]
+        /// Zero-based action within the native interpretation.
+        #[garde(skip)]
         ordinal: u8,
         /// Digest of the complete proposed interpretation, not model wording.
         #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
@@ -77,7 +77,8 @@ pub enum DecisionUnavailableCause {
     Transport,
     /// An HTTP refusal carried no normalized usage.
     ProviderStatus {
-        /// Status is recorded independently of any untrusted error body.
+        /// Status is recorded independently of any untrusted error body. HTTP
+        /// defines status codes as 100 through 599 (RFC 9110, section 15).
         #[garde(range(min = 100, max = 599))]
         status: u16,
         /// A long delay remains evidence and cannot become an immediate retry.

@@ -20,14 +20,6 @@ use std::{
     sync::Arc,
 };
 
-#[derive(garde::Validate)]
-struct Bounds {
-    #[garde(range(max = 25_769_803_776))]
-    bytes: u64,
-    #[garde(range(max = 200_000))]
-    entries: usize,
-}
-
 impl TurnSession<'_, '_> {
     pub(super) async fn restore_files(
         &mut self,
@@ -95,11 +87,6 @@ impl TurnSession<'_, '_> {
                 af_core::etag::sha256_hex(&serde_json::to_vec(&page).map_err(error::encode)?),
             ));
             append(&mut entries, &mut previous, &mut bytes, page.entries)?;
-            Bounds {
-                bytes,
-                entries: entries.len(),
-            }
-            .validate()?;
         }
         if af_crypto::checkpoint_digest::manifest_root(
             digests

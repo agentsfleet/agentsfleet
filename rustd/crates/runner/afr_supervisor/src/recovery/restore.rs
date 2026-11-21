@@ -95,7 +95,7 @@ impl Restore<'_> {
             .ok_or_else(|| error::config("retained base is incomplete"))?;
         let mut entries = BTreeMap::new();
         let history = session.pages(&ids, &expected, &mut entries, &mut 0).await?;
-        if !history.is_empty() || entries.len() > 200_000 {
+        if !history.is_empty() {
             return Err(error::config("retained base manifest is incompatible"));
         }
         Ok(entries.into_keys().collect())

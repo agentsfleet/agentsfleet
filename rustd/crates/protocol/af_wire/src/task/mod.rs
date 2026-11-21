@@ -58,5 +58,9 @@ pub const TITLE_MAX_BYTES: usize = 160;
 pub const QUESTIONS_MAX: usize = 6;
 /// Maximum encoded bytes in an authored completion question and its criteria.
 pub const QUESTION_MAX_BYTES: usize = 1024;
+/// Linux's `PATH_MAX` (`linux/limits.h`): the longest path a system call
+/// takes. A checkpointed or published path names a file in a Linux
+/// workspace, so the operating system refuses anything longer.
+pub(crate) const PATH_MAX_BYTES: usize = 4096;
 /// Runner capability required before task-bound work may be issued.
 pub const CAPABILITY: &str = "durable_tasks_v1";

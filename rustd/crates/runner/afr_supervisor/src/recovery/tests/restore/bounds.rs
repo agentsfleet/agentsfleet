@@ -91,7 +91,6 @@ async fn assert_retained_case(fault: &str) -> crate::Result<()> {
 async fn aggregate_manifest_bounds_refuse_before_allocating_files_or_downloading_objects()
 -> crate::Result<()> {
     for (fault, expected) in [
-        ("expanded", "checkpoint expanded bounds exceeded"),
         ("history", "checkpoint history object bound exceeded"),
         ("pages", "checkpoint page count exceeds its bound"),
     ] {
@@ -101,22 +100,7 @@ async fn aggregate_manifest_bounds_refuse_before_allocating_files_or_downloading
 }
 
 fn bounded_archive(fault: &str) -> crate::Result<Archive> {
-    let mut archive = if fault == "expanded" {
-        Archive::saved(
-            (0..32)
-                .map(|index| {
-                    CheckpointEntry::File(CheckpointFile {
-                        path: format!("file-{index:02}"),
-                        executable: false,
-                        size: 1024 * 1024 * 1024,
-                        objects: vec![ID.to_owned(); 128],
-                    })
-                })
-                .collect(),
-        )
-    } else {
-        Archive::saved(vec![])
-    };
+    let mut archive = Archive::saved(vec![]);
     if fault == "history" {
         let first = archive.pages.get_mut(PAGE).unwrap();
         first.history_objects = vec![ID.to_owned(); 129];

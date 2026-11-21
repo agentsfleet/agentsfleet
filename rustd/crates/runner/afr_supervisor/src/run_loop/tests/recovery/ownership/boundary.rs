@@ -7,52 +7,6 @@ use afr_agent::{
 };
 use std::time::Duration;
 
-#[tokio::test]
-async fn an_oversized_ordinary_workspace_skips_after_thaw_without_stopping() -> Result<()> {
-    let mut fixture = Fixture::new(unavailable)?;
-    fixture.run.durable_tasks = false;
-    let run = fixture.run()?;
-    let root = tempfile::tempdir()?;
-    std::fs::File::create(root.path().join("large"))?.set_len(24 * 1024 * 1024 * 1024 + 1)?;
-    let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
-    let cell = OnceLock::from(sandbox);
-    let state = OnceLock::new();
-    let (_, mut owner) = BoundaryOwner::new(
-        &run,
-        Workspace::Building {
-            cell: &cell,
-            recovery: &state,
-        },
-    );
-    let mut request = snapshot(&fixture)?;
-    request.state = RecoveryState::Turn(afr_agent::TurnSnapshot {
-        scope: af_wire::run::TurnScope {
-            workspace_id: af_wire::run::CheckpointOperationId(
-                fixture.run.event.workspace_id.to_string(),
-            ),
-            fleet_id: af_wire::run::CheckpointOperationId(fixture.run.event.fleet_id.to_string()),
-            turn_id: af_wire::run::CheckpointOperationId(fixture.run.event.turn_id.to_string()),
-            setup_revision_id: af_wire::run::CheckpointOperationId(ID.to_owned()),
-            workspace: af_wire::run::TurnWorkspace::Files {
-                toolbox_digest: "a".repeat(64),
-            },
-        },
-        previous: None,
-        history: Zeroizing::new(Vec::new()),
-        folds: Vec::new(),
-    });
-    assert!(matches!(
-        owner.capture(request).await,
-        Ok(RecoverySave::Skipped(RecoverySkip::Limit))
-    ));
-    assert_eq!(engine.thawed.load(Ordering::SeqCst), 1);
-    assert!(!run.interrupt.is_cancelled());
-    drop(owner);
-    drop(run);
-    assert_eq!(fixture.rig.calls().len(), 0);
-    Ok(())
-}
-
 fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
     Ok(RecoverySnapshot {
         run_id: fixture.run.run_id.to_string(),

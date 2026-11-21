@@ -83,10 +83,8 @@ CREATE TABLE thread.turns (
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
     CONSTRAINT ck_turns_task_generation_positive CHECK (task_generation > 0),
     CONSTRAINT ck_turns_task_activity_sequence_nonnegative CHECK (task_activity_sequence >= 0),
-    -- jsonb_array_length also rejects non-arrays. 120000 bytes leaves room for metadata within
-    -- the 128 KiB public history ceiling.
-    CONSTRAINT ck_turns_task_activity_bound CHECK (jsonb_array_length(task_activity) <= 128
-        AND octet_length(task_activity::text) <= 120000)
+    -- jsonb_array_length rejects anything but an array; nothing caps how long one is.
+    CONSTRAINT ck_turns_task_activity_array CHECK (jsonb_array_length(task_activity) >= 0)
 );
 
 -- History pages, newest first: a thread's, one actor's on a thread, one kind's on a thread,

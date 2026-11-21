@@ -77,22 +77,25 @@ pub struct TaskActivity {
     #[garde(skip)]
     pub phase: TaskActivityPhase,
     /// Selected provider label; no credential or URL.
-    #[garde(inner(length(bytes, min = 1, max = 128)))]
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
     pub provider: Option<String>,
     /// Selected model label.
-    #[garde(inner(length(bytes, min = 1, max = 256)))]
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
     pub model: Option<String>,
     /// Completed objects, never an inferred success percentage.
-    #[garde(range(max = 200_000))]
+    #[garde(skip)]
     pub completed: u32,
     /// Total objects when known.
-    #[garde(inner(range(max = 200_000)))]
+    #[garde(skip)]
     pub total: Option<u32>,
     /// Deduplicated ciphertext bytes; absent for decisions and historical frames.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub bytes: Option<TaskTransferBytes>,
     /// Event-local observation order assigned by the daemon, never a worker clock.
+    ///
+    /// Bounded by JavaScript's `Number.MAX_SAFE_INTEGER`, 2^53 - 1: the browser
+    /// and the CLI read this JSON number as a double and order by it exactly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(range(max = 9_007_199_254_740_991_u64)))]
     pub sequence: Option<u64>,
@@ -104,13 +107,13 @@ pub struct TaskActivity {
 #[serde(deny_unknown_fields)]
 pub struct TaskTransferBytes {
     /// Unique bytes verified after upload or authenticated download.
-    #[garde(range(max = 68_719_476_736_u64))]
+    #[garde(skip)]
     pub acknowledged: u64,
     /// Known missing bytes still awaiting acknowledgement; not a total estimate.
-    #[garde(range(max = 68_719_476_736_u64))]
+    #[garde(skip)]
     pub missing: u64,
     /// Unique bytes already present when native authorization was read.
-    #[garde(range(max = 68_719_476_736_u64))]
+    #[garde(skip)]
     pub reused: u64,
 }
 

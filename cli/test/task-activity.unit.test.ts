@@ -111,16 +111,30 @@ test("a patch prints its recorded files, never its text", () => {
     .toBe("Confirmed local edit · not a publication\nx +1 −1");
 });
 
-test("long event streams bound replay memory while retaining recent stage deduplication", () => {
+test("long event streams deduplicate every stage, past the retired 128 and 256 windows", () => {
   const lines: string[] = [];
   const printer = new ActivityPrinter(line => lines.push(line));
-  const stage = (index: number) => ({progress: {activity_id: `019f0000-0000-7000-8000-${index.toString(16).padStart(12, "0")}`,
+  const stage = (index: number) => ({kind: "task_transfer_progress", progress: {activity_id: `019f0000-0000-7000-8000-${index.toString(16).padStart(12, "0")}`,
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}});
   for (let index = 0; index < 257; index++) printer.frame("task_transfer_progress", stage(index));
-  printer.frame("task_transfer_progress", stage(256));
-  expect(lines).toHaveLength(257);
   printer.frame("task_transfer_progress", stage(0));
-  expect(lines).toHaveLength(258);
+  expect(lines).toHaveLength(257);
+  printer.reset();
+  printer.history({items: Array.from({length: 129}, (_, index) => stage(index)), truncated: false});
+  expect(lines).toHaveLength(386);
+});
+
+test("values past the retired caps print, and the safe-integer check stays", () => {
+  const lines: string[] = [];
+  const printer = new ActivityPrinter(line => lines.push(line));
+  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", operation: "capture", phase: "uploading",
+    provider: "p".repeat(257), model: "m".repeat(257), completed: 200_001, total: 200_002,
+    bytes: {acknowledged: 68_719_476_737, missing: 0, reused: 0}};
+  printer.frame("task_transfer_progress", {progress});
+  expect(lines).toHaveLength(1);
+  expect(lines[0]).toContain("200001/200002 objects · 68719476737 bytes acknowledged");
+  printer.frame("task_transfer_progress", {progress: {...progress, completed: 2 ** 53}});
+  expect(lines).toHaveLength(1);
 });
 
 test("long tool streams retain bounded replay history without losing new command outcomes", () => {

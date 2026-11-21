@@ -14,11 +14,15 @@ pub struct CheckpointPlaintext {
     /// Private plaintext SHA-256, verified again after decryption.
     #[garde(custom(super::digest))]
     pub sha256: String,
-    /// Bounded plaintext chunk length.
-    #[garde(range(min = 1, max = 8_388_608))]
+    /// Plaintext chunk length. Bounded by its Postgres `BIGINT` column,
+    /// `fleet.task_objects.plaintext_size`.
+    #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub size: u64,
     /// Declared file, Git or history bytes.
-    #[garde(length(bytes, min = 1, max = 32), pattern(r"^[a-z_]+$"))]
+    #[garde(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        pattern(r"^[a-z_]+$")
+    )]
     pub kind: String,
 }
 
@@ -39,8 +43,8 @@ pub struct CheckpointObjectsInput {
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     )]
     pub pin_id: String,
-    /// At most one descriptor page.
-    #[garde(length(min = 1, max = 256), dive)]
+    /// One descriptor page.
+    #[garde(length(min = 1), dive)]
     pub objects: Vec<CheckpointPlaintext>,
 }
 
@@ -58,8 +62,9 @@ pub struct CheckpointUpload {
     /// Exact ciphertext and authentication tag SHA-256.
     #[garde(custom(super::digest))]
     pub ciphertext_sha256: String,
-    /// Plaintext length plus the fixed authentication tag.
-    #[garde(range(min = 17, max = 8_388_624))]
+    /// Plaintext length plus the fixed 16-byte authentication tag, so at least
+    /// 17. Bounded by its Postgres `BIGINT` column.
+    #[garde(range(min = 17, max = i64::MAX.unsigned_abs()))]
     pub ciphertext_length: u64,
 }
 
@@ -80,8 +85,8 @@ pub struct CheckpointUploadsInput {
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     )]
     pub pin_id: String,
-    /// At most one immutable descriptor page.
-    #[garde(length(min = 1, max = 256), dive)]
+    /// One immutable descriptor page.
+    #[garde(length(min = 1), dive)]
     pub objects: Vec<CheckpointUpload>,
 }
 
@@ -107,13 +112,10 @@ pub struct CheckpointAuthorizationInput {
     pub pin_id: Option<String>,
     /// Native object identities, never arbitrary bucket paths.
     #[serde(default)]
-    #[garde(
-        length(max = 256),
-        inner(
-            length(bytes, min = 36, max = 36),
-            pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
-        )
-    )]
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
     pub object_ids: Vec<String>,
 }
 

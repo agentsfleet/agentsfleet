@@ -43,17 +43,20 @@ pub struct TurnCheckpointBegin {
     /// Bind operation replay to the exact captured root before any upload.
     #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
     pub history_digest: String,
-    /// Empty only for an API-only capture.
-    #[garde(range(max = 64))]
+    /// Empty only for an API-only capture. Bounded by its Postgres `INTEGER`
+    /// column, `runner.turn_checkpoints.page_count`.
+    #[garde(range(max = i32::MAX.unsigned_abs()))]
     pub page_count: u32,
-    /// Full-capture ceiling, including authentication tags.
-    #[garde(range(max = 17_179_869_184))]
+    /// Full-capture ceiling, including authentication tags. Bounded by its
+    /// Postgres `BIGINT` column.
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub upload_budget_bytes: u64,
-    /// Expanded workspace bytes, independent of deduplication.
-    #[garde(range(max = 25_769_803_776))]
+    /// Expanded workspace bytes, independent of deduplication. Bounded by its
+    /// Postgres `BIGINT` column.
+    #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub logical_bytes: u64,
-    /// Complete manifest entry count.
-    #[garde(range(max = 200_000))]
+    /// Complete manifest entry count. Bounded by its Postgres `INTEGER` column.
+    #[garde(range(max = i32::MAX.unsigned_abs()))]
     pub entry_count: u32,
 }
 
@@ -96,7 +99,7 @@ pub enum TurnCheckpointAction {
         #[garde(dive)]
         checkpoint: TurnCheckpointRef,
         /// Immutable plaintext descriptors, before encryption or upload.
-        #[garde(length(min = 1, max = 256), dive)]
+        #[garde(length(min = 1), dive)]
         objects: Vec<CheckpointPlaintext>,
     },
     /// Commit exact ciphertext representations before transfer verification.
@@ -105,7 +108,7 @@ pub enum TurnCheckpointAction {
         #[garde(dive)]
         checkpoint: TurnCheckpointRef,
         /// Ciphertext digests and sizes bound to registered objects.
-        #[garde(length(min = 1, max = 256), dive)]
+        #[garde(length(min = 1), dive)]
         objects: Vec<CheckpointUpload>,
     },
     /// Authorize only referenced objects within the current pin deadline.
@@ -117,7 +120,7 @@ pub enum TurnCheckpointAction {
         #[garde(skip)]
         purpose: CheckpointTransferPurpose,
         /// Registered immutable objects within this generation.
-        #[garde(length(min = 1, max = 256), dive)]
+        #[garde(length(min = 1), dive)]
         object_ids: Vec<CheckpointOperationId>,
     },
     /// Publish one bounded immutable page.
@@ -171,7 +174,7 @@ pub enum TurnCheckpointAction {
         #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
         manifest_root: String,
         /// Exact input membership incorporated by the saved root.
-        #[garde(length(max = 16_384), dive)]
+        #[garde(dive)]
         folds: Vec<FoldRef>,
     },
     /// An assignment is a descriptor, never inline private history.

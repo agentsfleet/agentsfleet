@@ -28,7 +28,7 @@ pub struct TurnCheckpointPlan {
     #[garde(dive)]
     pub expected_head: Option<CheckpointOperationId>,
     /// Complete ordered pages, allocated before their first write.
-    #[garde(length(max = 64), dive)]
+    #[garde(dive)]
     pub page_ids: Vec<CheckpointOperationId>,
     /// Writer custody for this capture.
     #[garde(dive)]
@@ -52,13 +52,13 @@ pub struct TurnCheckpointRead {
     #[garde(dive)]
     pub pin: CheckpointPin,
     /// Ordered file pages; empty for explicit API-only state.
-    #[garde(length(max = 64), dive)]
+    #[garde(dive)]
     pub page_ids: Vec<CheckpointOperationId>,
     /// Complete authenticated private root; debug output is redacted.
     #[garde(dive)]
     pub root: TurnPrivateRoot,
     /// Exact saved turns, independently checked against root bytes.
-    #[garde(length(max = 16_384), dive)]
+    #[garde(dive)]
     pub folds: Vec<FoldRef>,
 }
 

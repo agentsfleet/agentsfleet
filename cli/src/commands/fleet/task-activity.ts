@@ -2,16 +2,14 @@ import { stripVTControlCharacters } from "node:util";
 import { Option, Schema } from "effect";
 import { isRecord, isString } from "../../lib/guards.ts";
 
-const label = Schema.String.check(Schema.isMaxLength(256));
-const count = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0 && value <= 200_000));
-const byteCount = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0 && value <= 68_719_476_736));
+const count = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0));
 const Progress = Schema.Struct({
-  sequence: Schema.optionalKey(Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0))),
+  sequence: Schema.optionalKey(count),
   activity_id: Schema.String.check(Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)),
   operation: Schema.Literals(["intent", "goal", "capture", "restore"]),
   phase: Schema.Literals(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
-  provider: Schema.NullOr(label), model: Schema.NullOr(label), completed: count, total: Schema.NullOr(count),
-  bytes: Schema.optionalKey(Schema.Struct({acknowledged: byteCount, missing: byteCount, reused: byteCount})),
+  provider: Schema.NullOr(Schema.String), model: Schema.NullOr(Schema.String), completed: count, total: Schema.NullOr(count),
+  bytes: Schema.optionalKey(Schema.Struct({acknowledged: count, missing: count, reused: count})),
 });
 const PHASE = {starting: "Assessing", recorded: "Assessment recorded", unavailable: "Assessment unavailable",
   preparing: "Preparing recovery files", scanning: "Scanning frozen recovery files", uploading: "Saving encrypted files", verifying: "Verifying recovery data",
@@ -47,26 +45,18 @@ export class ActivityPrinter {
       || previous.completed > p.completed || (previous.bytes?.acknowledged ?? 0) > (p.bytes?.acknowledged ?? 0)
       || (previous.bytes?.reused ?? 0) > (p.bytes?.reused ?? 0))) return true;
     this.#latest.set(operation, p);
-    if (this.#latest.size > 128) {
-      const oldest = this.#latest.keys().next().value;
-      if (oldest !== undefined) this.#latest.delete(oldest);
-    }
     const key = `${kind}:${p.activity_id}:${p.operation}:${p.phase}`;
     const bytes = p.bytes ? ` · ${p.bytes.acknowledged} bytes acknowledged · ${p.bytes.missing} known missing bytes · ${p.bytes.reused} bytes reused` : "";
     const line = `${PHASE[p.phase]} · ${p.operation}${p.model ? ` · ${p.provider ?? ""} / ${p.model}` : ""}${p.total === null ? "" : ` · ${p.completed}/${p.total} objects`}${bytes}`;
     if (this.#seen.get(key) === line) return true;
     this.#seen.set(key, line);
-    if (this.#seen.size > 256) {
-      const first = this.#seen.keys().next().value;
-      if (first !== undefined) this.#seen.delete(first);
-    }
     this.#print(activityText(line));
     return true;
   }
 
   history(value: unknown): void {
     if (!isRecord(value) || !Array.isArray(value["items"])) return;
-    for (const item of value["items"].slice(-128)) {
+    for (const item of value["items"]) {
       if (isRecord(item) && isString(item["kind"])) this.frame(item["kind"], item);
     }
     if (value["truncated"] === true && !this.#seen.has("truncated")) {

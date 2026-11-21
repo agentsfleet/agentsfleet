@@ -35,7 +35,7 @@ test.each([
   {...decision, prices: []},
   {...decision, prices: [MODEL.prices[0], MODEL.prices[0]]},
   {...decision, profile: {...profile, api: "unknown"}},
-  {...decision, profile: {...profile, input_max_bytes: 24577}},
+  {...decision, profile: {...profile, input_max_bytes: 0}},
   {...decision, profile: {...profile, accepted_models: []}},
   {...decision, profile: {...profile, goal: undefined}},
   {...decision, profile: {...profile, evaluation_digest: "invalid"}},
@@ -47,6 +47,15 @@ test.each([
     provider: MODEL.provider, model_id: MODEL.model_id, metadata: MODEL.metadata, prices: [], decision: invalid,
   }));
   expect(result.code).toBe(4); expect(fixture.calls).toHaveLength(0);
+});
+
+test("a decision definition past the retired client caps reaches the server", async () => {
+  fixture.respond = () => Response.json({id: RUNNER_ID, updated: true});
+  const past = {...profile, revision: "r".repeat(129), endpoint: `https://example.test/${"d".repeat(2049)}`,
+    accepted_models: Array.from({length: 9}, (_, index) => `m${index}`.padEnd(129, "x")), input_max_bytes: 24577};
+  const input = {metadata: MODEL.metadata, prices: [], decision: {...decision, profile: past}};
+  const result = await fixture.run(["models", "update", RUNNER_ID, "--file", "-", "--json"], JSON.stringify(input));
+  expect(result.code).toBe(0); expect(fixture.calls[0]?.body).toEqual(input);
 });
 
 test("inference-enabled models still require coding prices", async () => {

@@ -56,7 +56,10 @@ pub struct TaskInputReceiptInput {
     #[garde(skip)]
     pub mode: TaskInputMode,
     /// Required only for a conversational answer; queued text is formed natively.
-    #[garde(inner(length(bytes, min = 1, max = 16_384), custom(af_validate::nul_free)))]
+    #[garde(inner(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::nul_free)
+    ))]
     pub response_text: Option<String>,
 }
 

@@ -12,15 +12,16 @@ pub struct TaskInputsQuery {
     #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,
     /// Opaque ascending boundary returned by the previous input page.
-    #[garde(inner(length(bytes, max = 1024)))]
+    #[garde(inner(length(chars, max = af_validate::TEXT_MAX_CHARS)))]
     pub starting_after: Option<String>,
     /// Task-local position already present in this worker's recovered/current history.
     #[serde(default)]
     #[garde(inner(range(max = i64::MAX.unsigned_abs())))]
     pub after_input_sequence: Option<u64>,
-    /// At most four complete messages per safe boundary.
+    /// Complete messages per safe boundary; the daemon serves at most its
+    /// policy's input batch.
     #[serde(default = "input_page_size")]
-    #[garde(range(min = 1, max = 4))]
+    #[garde(range(min = 1))]
     pub limit: u32,
 }
 

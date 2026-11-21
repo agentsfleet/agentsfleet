@@ -10,10 +10,10 @@ use serde::{Deserialize, Serialize};
 #[serde(deny_unknown_fields)]
 pub struct TaskFileChange {
     /// Canonical relative Git path; no Git metadata or workflow changes.
-    #[garde(length(bytes, min = 1, max = 1024), custom(file_path))]
+    #[garde(length(bytes, min = 1, max = super::PATH_MAX_BYTES), custom(file_path))]
     pub path: String,
     /// Standard base64 contents; null deletes a regular file.
-    #[garde(inner(length(bytes, max = 1_398_104)))]
+    #[garde(skip)]
     pub contents: Option<String>,
 }
 
@@ -43,8 +43,8 @@ pub struct TaskEffectInput {
     /// Git tree actually tested in the isolated workspace.
     #[garde(length(bytes, min = 40, max = 40), pattern(r"^[0-9a-f]{40}$"))]
     pub tested_tree: String,
-    /// Complete changes, bounded again by one MiB of decoded bytes.
-    #[garde(length(min = 1, max = 32), dive)]
+    /// Complete changes, bounded natively by their decoded bytes.
+    #[garde(length(min = 1), dive)]
     pub changes: Vec<TaskFileChange>,
 }
 
@@ -115,11 +115,11 @@ pub struct TaskEffectsQuery {
     #[garde(skip)]
     pub ordinal_after: u64,
     /// Last native ordinal returned by the preceding page.
-    #[garde(inner(length(bytes, min = 1, max = 128)))]
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
     pub starting_after: Option<String>,
     /// Maximum effects in one response.
     #[serde(default = "default_limit")]
-    #[garde(range(min = 1, max = 50))]
+    #[garde(range(min = 1))]
     pub limit: u32,
 }
 

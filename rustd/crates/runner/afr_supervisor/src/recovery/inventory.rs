@@ -6,8 +6,6 @@ use cap_std::fs::Dir;
 use std::{collections::BTreeMap, os::unix::fs::MetadataExt as _};
 use tokio_util::sync::CancellationToken;
 
-const MAX_BYTES: u64 = 24 * 1024 * 1024 * 1024;
-const MAX_ENTRIES: usize = 200_000;
 const MAX_NAMES: usize = 64 * 1024 * 1024;
 
 pub(super) fn scan(
@@ -64,9 +62,6 @@ impl Inventory<'_> {
             };
             files::valid_path(&relative)?;
             self.charge_name(relative.len() + 128)?;
-            if self.entries.len() >= MAX_ENTRIES {
-                return Err(error::capture_limit("checkpoint entry allowance exceeded"));
-            }
             let kind = self.entry(&directory, &name, &relative)?;
             if self.entries.insert(relative, kind).is_some() {
                 return Err(error::config("checkpoint path repeated"));
@@ -96,11 +91,6 @@ impl Inventory<'_> {
                 .total
                 .checked_add(stat.len())
                 .ok_or_else(|| error::capture_limit("checkpoint size overflow"))?;
-            if self.total > MAX_BYTES {
-                return Err(error::capture_limit(
-                    "checkpoint expanded allowance exceeded",
-                ));
-            }
             Ok(Entry::File {
                 identity: Identity::of(&stat),
                 executable: stat.mode() & 0o111 != 0,
