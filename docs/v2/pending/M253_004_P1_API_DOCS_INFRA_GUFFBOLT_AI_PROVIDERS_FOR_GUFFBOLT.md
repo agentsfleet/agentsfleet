@@ -422,3 +422,9 @@ N/A: no product or operator signal changes. The provider metric families and the
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
 - **Open blockers** — Q1 to Q7 and the `[?]` items above.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
+
+### §8 — Carried from M253_003 (Indy, Nov 21, 2026)
+
+- `make test-integration-rustd` over everything M253_003 built: its integration tests are written and compiled but not yet run (§1–§4 Dimensions, the effect items, the thread page of 100, `recovery_process` reordered for the deleted fallback tick).
+- Regenerate `public/openapi.json` with `--no-banner` (page limits, the `x-request-id` header, effect item fields, removed caps).
+- `orly gate pr` on the final tree, then CI and review.
