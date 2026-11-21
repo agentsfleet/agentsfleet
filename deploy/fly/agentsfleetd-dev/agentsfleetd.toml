@@ -3,12 +3,31 @@
 port = 3000
 api_url = "https://api-dev.agentsfleet.net"
 app_url = "https://app-dev.agentsfleet.net"
+# Raise it when callers get 429 UZ-API-001 while CPU and the database pool have room;
+# lower it when requests slow down under load.
 max_in_flight_requests = 256
+# Raise it when dashboards get 503 UZ-API-002 opening live streams;
+# lower it when open streams use too much of this machine's memory.
 max_sse_streams = 256
 
+# Performance knobs: list page sizes. Values are today's compiled defaults.
+[api]
+# Raise it when clients fetch long lists one small page after another;
+# lower it when list reads are slow.
+default_page_size = 50
+# Lower it when one large list read slows the API or the database;
+# raise it when clients need bigger pages.
+max_page_size = 100
+
 [database.api]
+# Raise it when requests wait for a database connection and Postgres has free slots;
+# keep the sum across every replica under Postgres max_connections.
 max_connections = 8
+# Raise it when the first requests after a quiet spell are slow;
+# lower it when idle connections crowd Postgres.
 min_connections = 1
+# Raise it when short load spikes fail with UZ-INTERNAL-001;
+# lower it when callers should fail fast instead of waiting.
 acquire_timeout_ms = 5000
 connect_timeout_ms = 10000
 idle_timeout_seconds = 600
@@ -62,7 +81,21 @@ max_idle_hold_seconds = 600
 resume_from_checkpoint = false
 
 [runner.scheduling]
+# Assignments handed out at once when the bus wake link starts, drops or garbles a wake-up
+# and the daemon offers waiting work to every runner. Raise it when that catch-up is slow;
+# lower it when it loads the database.
 max_concurrent_recovery_assignments = 8
+
+# Performance knobs: how fast waiting turns reach runners. Values are today's compiled defaults.
+[runners]
+# Raise it when turns wait while runners sit idle;
+# lower it when each assignment pass makes slow database reads.
+turns_per_assignment_pass = 64
+
+[turns]
+# Raise it when new messages are refused during a burst runners can absorb;
+# lower it to refuse sooner when runners cannot keep up.
+max_queued_turns = 100_000
 
 # Inline vendor sends per answer, the first included; once exhausted, the
 # delivery is abandoned.
@@ -91,6 +124,8 @@ max_decision_calls = 128
 max_fallback_reads = 24
 
 [nats]
+# Raise it when agentsfleet_fleet_ready_wake_queue_events_total shows evicted wake-ups;
+# lower it to hold less in memory. Evicted work is not lost: it stays in Postgres.
 wake_queue_capacity_fleets = 64
 
 [identity]
@@ -99,6 +134,9 @@ clerk_api_base = "https://api.clerk.com/v1"
 
 [telemetry]
 log_level = "info"
+# Performance knob, today's compiled default. Raise it when runner metrics show
+# runner `_other`; lower it when the metrics backend struggles with series count.
+max_metric_series = 4_096
 otlp_endpoint = "http://otelcol-dev.internal:4318"
 
 [telemetry.otlp]

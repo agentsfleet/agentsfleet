@@ -14,7 +14,7 @@ use af_observability::{metrics::label::fleet::RunStart, producers};
 mod ledger;
 
 /// Candidate ceiling shared by discovery and its measurement, when the
-/// deployment's `[runners] assign_batch_size` names no other.
+/// deployment's `[runners] turns_per_assignment_pass` names no other.
 pub const MAX_CANDIDATES_PER_POLL: usize = 64;
 
 #[derive(Debug, Default)]

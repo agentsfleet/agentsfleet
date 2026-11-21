@@ -1,8 +1,26 @@
 # Runner-local settings. Runner work slots and tenant policy are assigned by agentsfleetd.
 # Secrets and API/private-stream bootstrap addresses remain in /etc/default/agentsfleet-runner.
 [inference]
+# Raise it when model calls fail to connect over a slow network; lower it to fail over sooner.
 connect_timeout_seconds = 10
+# Raise it when long model replies fail mid-stream after a silence; lower it to give up on a stuck provider sooner.
 stream_idle_timeout_seconds = 300
+
+# Performance knobs: what each run's sandbox may use. Values are today's compiled defaults.
+[sandbox]
+# Raise it when runs die out of memory; lower it to fit more runs on this host.
+memory_mib = 2_048
+# Raise it when runs fail with a full disk; lower it to fit more runs on this host's disk.
+disk_mib = 4_096
+# Raise it when builds and installs inside runs are slow on disk; lower it when one run starves the others.
+io_mib_per_second = 200
+
+# Performance knobs: decision calls to model providers. Values are today's compiled defaults.
+[provider]
+# Raise it when decision calls fail to connect over a slow network; lower it to fail over sooner.
+decision_connect_timeout_seconds = 3
+# Raise it when decision calls time out on a slow model; lower it to free a stuck run sooner.
+decision_call_timeout_seconds = 12
 
 # Independent limits: at most 3 generation sends per opening and 3 eligible openings.
 # Native token counting is a separate single-send request for an eligible opening.
