@@ -67,7 +67,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   const draftBytes = useMemo(() => lastDraftBytes(), []);
   return (
     <>
-    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
+    <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} inputRef={draftRef} disabled={modelChanging}
       input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
       toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>

@@ -51,6 +51,17 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
   await expect(input).toHaveValue("@bob ");
   await page.getByLabel("Choose a text document").setInputFiles({name:"handoff.md",mimeType:"text/plain",buffer:Buffer.from("Ask for the deploy status")});
   await expect(input).toHaveValue(/@bob .*handoff.md[\s\S]*deploy status/s);
+  await input.fill("Ask NAME for a receipt");
+  await input.evaluate(field => (field as HTMLTextAreaElement).setSelectionRange(4, 8));
+  await page.getByRole("button",{name:"Mention a fleet in setup"}).click();
+  await page.getByRole("option",{name:"@bob",exact:true}).click();
+  await expect(input).toHaveValue("Ask @bob for a receipt");
+  await input.fill("Ask @bo");
+  await input.press("Escape");
+  await page.getByRole("button",{name:"Mention a fleet in setup"}).click();
+  await expect(input).toHaveValue("Ask @bo");
+  await page.getByRole("option",{name:"@bob",exact:true}).click();
+  await expect(input).toHaveValue("Ask @bob ");
   await input.fill("");
   await starter.click();
   const prompt = starters.find(example => example.title === "Set up a Chief of Staff")!.prompt;

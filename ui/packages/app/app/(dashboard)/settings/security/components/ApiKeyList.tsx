@@ -77,10 +77,10 @@ export default function ApiKeyList({
   return (
     <div className="space-y-xl" aria-busy={pending || mutating}>
       {items.length ? <DashboardPanel padding="none"><ul className="divide-y divide-border">
-        {items.map(key => <li key={key.id} className="flex min-w-0 flex-wrap items-center gap-xl p-xl sm:p-5">
-          <span aria-hidden="true" className="hidden size-10 items-center sm:flex justify-center rounded-control border border-border"><KeyIcon size={16} /></span>
-          <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{key.key_name}</p>
-            <p className="mt-sm text-label text-muted-foreground"><KeyIdentifier suffix={key.display_suffix} /> · Created <Time value={key.created_at} format="date" tooltip />{key.active ? null : <> · Revoked{key.revoked_at ? <> <Time value={key.revoked_at} format="date" tooltip /></> : null}</>}</p></div>
+        {items.map(key => <li key={key.id} className="flex min-w-0 flex-wrap items-center gap-xl p-xl summary:p-5">
+          <span aria-hidden="true" className="hidden size-10 items-center summary:flex justify-center rounded-control border border-border"><KeyIcon size={16} /></span>
+          <div className="min-w-0 basis-full summary:flex-1 summary:basis-auto"><p className="break-words text-label font-medium">{key.key_name}</p>
+            <p className="mt-sm text-label text-muted-foreground"><KeyIdentifier suffix={key.display_suffix} /> · <span className="inline-block">Created <Time value={key.created_at} format="date" tooltip /></span>{key.active ? null : <> · <span className="inline-block">Revoked{key.revoked_at ? <> <Time value={key.revoked_at} format="date" tooltip /></> : null}</span></>}</p></div>
           <span className="text-eyebrow text-text-dim">Last used: unavailable</span>
           <Button variant="outline" disabled={pending || mutating} onClick={() => setTarget({...key, mode: key.active ? "revoke" : "delete"})}
             aria-label={`${key.active ? "Revoke" : "Delete"} API key ${key.key_name}`}>{key.active ? "Revoke" : "Delete"}</Button>

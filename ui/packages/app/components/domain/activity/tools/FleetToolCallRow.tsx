@@ -31,7 +31,11 @@ export type ToolCallRowProps = {
 export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, eventId}: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
   const outcome = readToolResult(result);
-  const state = cellState(outcome !== undefined, outcome?.status, running);
+  const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
+  const toolState = cellState(outcome !== undefined, outcome?.status, running);
+  const state = command && toolState === CELL_STATE.SUCCEEDED
+    ? outcome?.exitCode === undefined ? CELL_STATE.SETTLED : outcome.exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED
+    : toolState;
   // These bounded cards mount with the work group. Other tools keep their body behind the action disclosure.
   const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named) : undefined, [name, named]);
   const [shown, setShown] = useState(false);
@@ -41,18 +45,17 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   if (shown && !canShowAll) setShown(false);
   const showAll = canShowAll ? () => setShown(true) : undefined;
   const diff = card?.body.kind === TOOL_BODY.DIFF ? card.body.diff : undefined;
-  const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
   const commandBody = card?.body.kind === TOOL_BODY.COMMAND ? card.body : undefined;
   const confirmed = state === CELL_STATE.SUCCEEDED;
   const showCounts = diff !== undefined && confirmed;
-  const showSuccess = command && confirmed && (outcome?.exitCode === undefined || outcome.exitCode === 0);
+  const showSuccess = command && confirmed;
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
     className="flex min-w-0 flex-col gap-xs text-body-sm text-muted-foreground">
     <Accordion type="single" collapsible>
       <AccordionItem value={COMMAND} className="border-0">
         <AccordionTrigger className={cn(TRIGGER_CLASS, (showCounts || showSuccess) && "[&>svg:last-child]:ml-0")}>
           <ToolCallHeader name={name} args={named} state={state} />
-          {showCounts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" aria-label={`${diff.added} ${diff.added === 1 ? "addition" : "additions"}, ${diff.removed} ${diff.removed === 1 ? "deletion" : "deletions"}`}>
+          {showCounts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title="Lines in the displayed edit" aria-label={`${diff.added} ${diff.added === 1 ? "addition" : "additions"}, ${diff.removed} ${diff.removed === 1 ? "deletion" : "deletions"}`}>
             <span className="text-success">+{diff.added}</span>{" "}<span className="text-destructive">−{diff.removed}</span>
           </span> : null}
           {showSuccess ? <span className="ml-auto text-label text-success" aria-hidden="true">Succeeded</span> : null}

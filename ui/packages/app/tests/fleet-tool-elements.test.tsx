@@ -64,6 +64,15 @@ it("keeps an unfinished command unconfirmed while its output is still arriving",
   expect(cell?.textContent).not.toContain("Success");
 });
 
+it.each([
+  {outputHead: "Process running with session ID 12", exitCode: undefined, state: "settled"},
+  {outputHead: "Process failed", exitCode: 1, state: "failed"},
+])("keeps a successful tool call distinct from the command outcome: $state", ({outputHead, exitCode, state}) => {
+  const {container} = renderTools([{name: "exec_command", args: {cmd: "build"}, status: TOOL_CALL_STATUS.SUCCEEDED, outputHead, exitCode}]);
+  expect(container.querySelector('[data-tool="exec_command"]')?.getAttribute("data-state")).toBe(state);
+  expect(screen.queryByText("Succeeded")).toBeNull();
+});
+
 it("shows the recorded command outcome after one expansion when the arguments were omitted", () => {
   mockStream([ev({id: "receipt", role: "user", actor: "operator", text: "Run the check", status: "processed",
     tools: [{name: "exec_command", callId: "check", startedAtMs: 1000, ms: 10, done: true, status: TOOL_CALL_STATUS.SUCCEEDED,

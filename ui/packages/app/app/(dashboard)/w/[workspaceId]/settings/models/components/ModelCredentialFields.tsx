@@ -17,9 +17,9 @@ export function ModelCredentialFields({id, values, secrets, onChange}: Props) {
       <p id={`${id}-credential-label`} className="text-label font-semibold">Provider API key</p>
       <RadioGroup aria-labelledby={`${id}-credential-label`} value={values.mode}
         onValueChange={mode => onChange({mode: mode === KEY_MODE.saved ? KEY_MODE.saved : KEY_MODE.new, apiKey: "", savedRef: ""})}
-        className="grid min-h-13.5 grid-cols-2 gap-sm rounded-control border border-border bg-background p-sm">
+        className="grid min-h-13.5 grid-cols-2 gap-md rounded-xl max-summary:gap-sm border border-border bg-background p-sm">
         {[{mode: KEY_MODE.new, label: "Add new key"}, {mode: KEY_MODE.saved, label: "Use saved key"}].map(option =>
-          <Label key={option.mode} htmlFor={`${id}-${option.mode}`} className={`m-0 flex cursor-pointer items-center justify-center gap-md rounded-control px-md py-lg text-label ${values.mode === option.mode ? "bg-muted" : ""}`}>
+          <Label key={option.mode} htmlFor={`${id}-${option.mode}`} className={`m-0 flex cursor-pointer items-center justify-center gap-md rounded-[8px] px-md py-lg text-label ${values.mode === option.mode ? "bg-muted" : ""}`}>
             <RadioGroupItem id={`${id}-${option.mode}`} value={option.mode} />{option.label}
           </Label>)}
       </RadioGroup>
@@ -51,7 +51,7 @@ function NewCredential({id, values, secrets, onChange}: Props) {
   const custom = values.provider.trim() === OPENAI_COMPATIBLE_PROVIDER;
   const held = values.keyName.trim() !== "" && secrets.some(secret => secret.name === values.keyName.trim());
   return (
-    <div className="space-y-lg">
+    <div className="space-y-xl">
       <div className="space-y-md">
         <Label htmlFor={`${id}-key-name`}>Key name</Label>
         <Input id={`${id}-key-name`} value={values.keyName} onChange={event => onChange({keyName: event.target.value})} placeholder="Workspace model key" autoComplete="off" spellCheck={false} aria-invalid={held || undefined} />

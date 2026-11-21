@@ -11,6 +11,7 @@ import { memberName } from "./TeamConfirm";
 export const TEAM_CAPTION = "People";
 type Props = {
   viewerUserId: string;
+  memberCount: number; inviteCount: number; searching: boolean;
   members: MemberSummary[]; invites: InviteSummary[]; pending: boolean;
   onRemove: (member: MemberSummary) => void;
   onRevoke: (invite: InviteSummary) => void;
@@ -28,18 +29,18 @@ const ACTION = "col-start-2 row-start-1 min-[681px]:col-start-4 min-[901px]:col-
 
 export function TeamTable(props: Props) {
   return <div className="space-y-2xl" aria-busy={props.pending}>
-    {props.members.length > 0 ? <section aria-label="Members" className="space-y-lg">
-      <Heading count={props.members.length}>Members</Heading>
-      <DashboardPanel padding="none"><ul className="divide-y divide-border">
+    <section aria-label="Members" className="space-y-lg">
+      <Heading count={props.memberCount}>Members</Heading>
+      <DashboardPanel padding="none">{props.members.length ? <ul className="divide-y divide-border">
         {props.members.map(member => <MemberRow key={member.user_id} member={member} {...props} />)}
-      </ul></DashboardPanel>
-    </section> : null}
-    {props.invites.length > 0 ? <section aria-label="Pending invitations" className="space-y-lg">
-      <Heading count={props.invites.length}>Pending invitations</Heading>
-      <DashboardPanel padding="none"><ul className="divide-y divide-border">
+      </ul> : <p className="p-2xl text-label text-muted-foreground">{props.searching ? "No members match your search." : "No members."}</p>}</DashboardPanel>
+    </section>
+    <section aria-label="Pending invitations" className="space-y-lg">
+      <Heading count={props.inviteCount}>Pending invitations</Heading>
+      <DashboardPanel padding="none">{props.invites.length ? <ul className="divide-y divide-border">
         {props.invites.map(invite => <InvitationRow key={invite.id} invite={invite} {...props} />)}
-      </ul></DashboardPanel>
-    </section> : null}
+      </ul> : <p className="p-2xl text-label text-muted-foreground">{props.searching ? "No invitations match your search." : "No pending invitations."}</p>}</DashboardPanel>
+    </section>
   </div>;
 }
 

@@ -28,6 +28,12 @@ test("Usage renders recorded daily bars and model sets while filters request com
     await expect(page.getByRole("combobox", {name: "Fleet", exact: true})).toContainText("All Fleets");
     for (const name of ["More filters", "Charge details"]) await expect(page.getByRole("button", {name, exact: true})).toHaveCount(0);
     await expect(page.getByRole("link", {name: "Add credits", exact: true})).toHaveCount(0);
+    await expect(page.getByText("Periods in UTC · Date ranges in local time", {exact: true})).toBeVisible();
+    if (info.project.name === "mobile-chromium") {
+      const total = page.getByLabel("Period totals").locator("strong").first();
+      const label = page.getByText("Settled charges", {exact: true});
+      expect((await total.boundingBox())?.y).toBe((await label.boundingBox())?.y);
+    }
     const chart = page.getByRole("list", {name: "Daily settled charges"});
     await expect(chart.getByRole("listitem")).toHaveCount(11);
     const bars = chart.getByRole("listitem").locator('[aria-hidden="true"]');
@@ -42,7 +48,7 @@ test("Usage renders recorded daily bars and model sets while filters request com
     await expect(fleets.getByText("retired-model", {exact: true})).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({path: info.outputPath(`usage-${theme}.png`), scale: "css", animations: "disabled"});
-    await page.getByRole("combobox", {name: "Period", exact: true}).click();
+    await page.getByText("Period", {exact: true}).click();
     await page.getByRole("option", {name: "October 2026", exact: true}).click();
     await expect(page.getByRole("combobox", {name: "Period", exact: true})).toContainText("October 2026");
     await expect(chart.getByText("2026-10-01: $1.00", {exact: true})).toHaveCount(1);

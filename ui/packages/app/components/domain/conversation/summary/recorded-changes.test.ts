@@ -8,6 +8,9 @@ function write(over: Partial<FleetToolCall> = {}): FleetToolCall {
   return {name: "file_edit", args: {path: "web/page.ts", old_text: "shared\nold", new_text: "shared\nnew\nextra"},
     done: true, status: "succeeded", startedAtMs: 0, ms: 1, ...over};
 }
+function patch(path: string, added: number, removed: number): FleetToolCall {
+  return write({name: "apply_patch", args: {}, outputHead: `Success. Updated the following files:\nM ${path}\n+${added} −${removed}`});
+}
 const WEB = {id: "web-source", label: "web", fullName: "company/web"};
 const UNKNOWN = {kind: "unknown"} as const;
 
@@ -17,13 +20,14 @@ it("keeps an all-unknown receipt unknown and distinguishes an empty receipt", ()
 });
 
 it("counts complete recorded edit operations once per file, including repeated edits", () => {
-  const changes = recordedChanges([evt({tools: [write(), write({args: {path: "web/page.ts", old_text: "new", new_text: "again"}})]})]);
+  const changes = recordedChanges([evt({tools: [patch("web/page.ts", 2, 1), patch("web/page.ts", 1, 1)]})]);
   expect(changes).toEqual([{path: "web/page.ts", running: false, lines: {kind: "complete", added: 3, removed: 2}}]);
-  const repeated = recordedChanges([evt({tools: [write()]}), evt({id: "later", tools: [write()]})]);
+  const repeated = recordedChanges([evt({tools: [patch("web/page.ts", 2, 1)]}), evt({id: "later", tools: [patch("web/page.ts", 2, 1)]})]);
   expect(repeated[0]?.lines).toEqual({kind: "complete", added: 4, removed: 2});
 });
 
 const incompleteWrites: Partial<FleetToolCall>[] = [
+  {args: {path: "a", old_text: "cat", new_text: ""}, outputHead: "Replaced 3 bytes with 0 bytes in a"},
   {name: "file_write", args: {path: "a", content: "not a before/after diff"}},
   {name: "file_append", args: {path: "a", content: "the previous last line is unknown"}},
   {name: "file_delete", args: {path: "a"}},
@@ -42,7 +46,7 @@ it.each(incompleteWrites)("does not invent totals for incomplete or clipped writ
 it("keeps partial counts visible rather than treating unknown operations as zero", () => {
   const unknown = write({name: "file_write", args: {path: "web/page.ts"}});
   const running = write({done: false, status: undefined});
-  const changes = recordedChanges([evt({tools: [unknown, write(), running]})]);
+  const changes = recordedChanges([evt({tools: [unknown, patch("web/page.ts", 2, 1), running]})]);
   expect(changes[0]).toMatchObject({running: true, lines: {kind: "partial", added: 2, removed: 1}});
   expect(recordedChangeTotals([...changes, {path: "other", running: false, lines: {kind: "complete", added: 1, removed: 0}}]))
     .toEqual({kind: "partial", added: 3, removed: 1});
@@ -91,15 +95,23 @@ it("normalizes immutable historical writes only once as events stream, without c
     new_text: {get() {reads += 1; return "new";}},
   });
   const past = evt({tools: [write({args})]});
-  expect(recordedChanges([past])[0]?.lines).toEqual({kind: "complete", added: 1, removed: 1});
-  expect(reads).toBe(3);
+  expect(recordedChanges([past])[0]?.lines).toEqual(UNKNOWN);
+  expect(reads).toBe(1);
   const next = evt({id: "next", tools: [write({args: {path: "new.ts", old_text: "a", new_text: "b"}})]});
   const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
   expect(recordedChanges([past, next], {repositories}).find(change => change.path === "web/page.ts"))
     .toMatchObject({repository: WEB, lines: {kind: "complete", added: 8, removed: 2}});
   expect(recordedChanges([past, next]).find(change => change.path === "web/page.ts"))
-    .toEqual({path: "web/page.ts", running: false, lines: {kind: "complete", added: 1, removed: 1}});
-  expect(reads).toBe(3);
+    .toEqual({path: "web/page.ts", running: false, lines: UNKNOWN});
+  expect(reads).toBe(1);
+});
+
+it("joins ordinary writes, patches and repository receipts for the same workspace path", () => {
+  const tools = [write({args: {path: "/workspace/src/a.ts", old_text: "cat", new_text: ""}}), patch("./src/a.ts", 1, 2)];
+  const events = [evt({tools})];
+  expect(recordedChanges(events)).toEqual([{path: "src/a.ts", running: false, lines: {kind: "partial", added: 1, removed: 2}}]);
+  const repositories = [{eventId: "e0", path: "/workspace/./src/a.ts", repository: WEB, lines: {added: 2, removed: 3}}];
+  expect(recordedChanges(events, {repositories})).toEqual([{path: "src/a.ts", running: false, repository: WEB, lines: {kind: "complete", added: 2, removed: 3}}]);
 });
 
 it("never rereads a historical native patch receipt or argument when another event arrives", () => {

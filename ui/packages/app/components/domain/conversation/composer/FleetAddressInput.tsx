@@ -94,7 +94,7 @@ function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspac
   function change(event: ChangeEvent<HTMLTextAreaElement>) {
     trackCaret(event.currentTarget); setIndex(0); setDismissed(null);
   }
-  return {open, page, choices, selected, collection, choose, keyDown, change, focus: setFocused, caret: trackCaret};
+  return {open, page, choices, selected, collection, choose, keyDown, change, focus(value: boolean) { setFocused(value); if (!value) setDismissed(null); }, caret: trackCaret};
 }
 
 function handleAddressKey(event: KeyboardEvent<HTMLDivElement>, controls: KeyControls) {

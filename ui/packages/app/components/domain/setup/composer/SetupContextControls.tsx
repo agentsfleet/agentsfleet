@@ -32,9 +32,18 @@ export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTe
     } catch { setNotice("Couldn’t read this document. Choose it again."); }
   }
   function mention() {
-    const text = aui.composer().getState().text;
-    flushSync(() => aui.composer().setText((text && !/\s$/.test(text) ? text + " " : text) + "@"));
-    input.current?.focus();
+    const field = input.current;
+    if (!field) return;
+    const {selectionStart, selectionEnd, value} = field;
+    const prefix = value.slice(0, selectionStart);
+    if (selectionStart !== selectionEnd || !/(?:^|\s)@[a-z\d-]{0,64}$/i.test(prefix)) {
+      const mentionText = prefix && !/\s$/.test(prefix) ? " @" : "@";
+      field.setRangeText(mentionText, selectionStart, selectionEnd, "end");
+      const caret = selectionStart + mentionText.length;
+      flushSync(() => aui.composer().setText(field.value));
+      field.setSelectionRange(caret, caret);
+    }
+    field.focus();
   }
   return <>
     <input ref={filePicker} type="file" className="hidden" accept="text/*,.md,.txt,.csv,.json,.yaml,.yml,.log"

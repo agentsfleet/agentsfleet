@@ -1,7 +1,7 @@
 "use client";
 
 import { type TransitionStartFunction, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
-import { Alert, Badge, EmptyState, PageHeader, PageLayout, PageTitle, Section } from "@agentsfleet/design-system";
+import { Alert, Badge, PageHeader, PageLayout, PageTitle, Section } from "@agentsfleet/design-system";
 import { CollectionToolbar } from "@/components/domain/shared/navigation/CollectionToolbar";
 import { UsersIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
@@ -125,10 +125,10 @@ export function MembersView(props: Props) {
   const query = useDeferredValue(search.trim().toLowerCase());
   const members = team.members.filter(member => `${memberName(member)} ${member.email}`.toLowerCase().includes(query));
   const invites = team.invites.filter(invite => invite.email.toLowerCase().includes(query));
-  const ownerName = team.members.find(member => member.role === "owner")?.display_name;
+  const ownerName = team.members.find(member => member.user_id === props.viewerUserId && member.role === "owner")?.display_name;
   return (
     <PageLayout className="gap-2xl">
-      <PageHeader className="max-summary:gap-xl summary:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
+      <PageHeader className="max-summary:gap-xl summary:items-center" description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic ownerName={ownerName} onSettled={team.refresh} />}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       {/* Reachable by script only, for the focus a removal hands back. A screen
@@ -139,9 +139,11 @@ export function MembersView(props: Props) {
           <div className="min-w-0 flex-1 space-y-sm"><p className="text-label font-semibold">{ownerName ? `${ownerName}’s account` : "Your account"}</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div><div className="basis-full pl-9 summary:basis-auto summary:pl-0"><Badge>You’re the owner</Badge></div>
         </div>
         <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
-        {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}
         <TeamTable
           viewerUserId={props.viewerUserId}
+          memberCount={team.members.length}
+          inviteCount={team.invites.length}
+          searching={query !== ""}
           members={members}
           invites={invites}
           pending={team.pending}

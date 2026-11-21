@@ -1,4 +1,5 @@
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { recordedWorkspacePath } from "./recorded-patch-changes";
 import { RecordedToolWrites } from "./recorded-tool-writes";
 
 export type ChangeTotals = {kind: "unknown"} | {kind: "complete" | "partial"; added: number; removed: number};
@@ -20,7 +21,7 @@ const recordings = new RecordedToolWrites();
 
 /** Counts describe recorded operations, rather than a net diff against a repository revision. */
 export function recordedChanges(events: readonly FleetEvent[], {includeRunning = true, repositories = EMPTY_REPOSITORIES}: Options = {}): RecordedChange[] {
-  const bindings = new Map(repositories.map(binding => [bindingKey(binding.eventId, binding.path), binding]));
+  const bindings = new Map(repositories.map(binding => [bindingKey(binding.eventId, recordedWorkspacePath(binding.path)), binding]));
   const paths = new Map<string, RecordedChange>();
   for (const event of events) for (const change of changesInEvent(event, includeRunning, bindings)) {
     const key = JSON.stringify([change.repository?.id, change.path]);
@@ -60,8 +61,7 @@ function changesInEvent(event: FleetEvent, includeRunning: boolean, bindings: Re
   for (const tool of event.tools ?? []) for (const write of recordings.read(tool)) {
     const {path, running} = write;
     if (running && !includeRunning) continue;
-    const receipt = bindings.get(bindingKey(event.id, path))?.lines;
-    const totals = running || receipt ? undefined : write.totals();
+    const totals = write.lines;
     const lines: ChangeTotals = totals ? {kind: "complete", ...totals} : UNKNOWN;
     const previous = paths.get(path);
     paths.delete(path);

@@ -22,6 +22,10 @@ test("Security combines keys and sessions with compact type in both appearances"
     const button = page.getByRole("button", {name: "Create API key", exact: true});
     expect(await button.evaluate(element => getComputedStyle(element).fontFamily)).toContain("Manrope");
     expect(await button.evaluate(element => getComputedStyle(element).fontSize)).toBe("13px");
+    const key = page.getByRole("region", {name: "Account API keys"});
+    const created = key.locator("time").first();
+    expect(await created.evaluate(time => time.getClientRects().length)).toBe(1);
+    await expect(key.getByText("Last used: unavailable", {exact: true})).toBeVisible();
     const account = page.getByRole("button", {name: /^Workspace and account menu/});
     const image = account.locator("[data-account-avatar] img");
     await expect(image).toBeVisible();
@@ -50,4 +54,21 @@ test("remote session sign-out requires confirmation and unavailable sessions can
   await page.getByRole("alertdialog").getByRole("button", {name: "Sign out session", exact: true}).click();
   await expect(page.getByText("Safari on iPhone")).toBeHidden();
   await expect(page.getByText("This device", {exact: true})).toBeVisible();
+});
+
+
+test("Security keeps resource rows compact through the phone layout", async ({page, chatProbe}) => {
+  await page.setViewportSize({width: 660, height: 844});
+  await page.goto(`${chatProbe}?accountSettings=1`);
+  const keys = page.getByRole("region", {name: "Account API keys"});
+  const keyIcon = keys.getByRole("listitem").locator("svg").first();
+  const sessionIcon = page.getByRole("region", {name: "Active sessions"}).locator("svg").first();
+  await expect(keys.getByRole("button", {name: "Revoke API key platform-priming"})).toBeVisible();
+  await expect(keyIcon).toBeHidden();
+  await expect(sessionIcon).toBeHidden();
+  await page.setViewportSize({width: 1024, height: 900});
+  await expect(keyIcon).toBeVisible();
+  await expect(sessionIcon).toBeVisible();
+  expect((await keyIcon.boundingBox())?.width).toBe(16);
+  expect((await sessionIcon.boundingBox())?.width).toBe(16);
 });

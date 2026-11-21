@@ -27,7 +27,7 @@ export function ChatComposer({ client, view, workspace, canStop, blocked, dirty,
   return <>
     <SetupSaveFlap client={client} view={view} workspace={workspace} dirty={dirty} onOpenFleet={onOpenFleet} modelsHref={modelsHref} />
     <SetupWakeups client={client} view={view} workspace={workspace} />
-    <ChatComposerFrame stackActions={empty} label="Setup chat composer" placeholder={placeholder} inputRef={input} disabled={disabled} focusKey={view.focusRevision}
+    <ChatComposerFrame stackActions={empty} label="Setup chat composer" inputRef={input} disabled={disabled} focusKey={view.focusRevision}
       input={<WorkspaceFleetAddressInput workspace={workspace} inSetup inputRef={input} placeholder={placeholder} disabled={disabled} />}
       toolbar={<>{empty && <SetupContextControls input={input} disabled={disabled} />}<ChatToolbar client={client} view={view} /></>}
       actions={canStop ? <Button variant="secondary" size="icon" className="size-9 [&_svg]:size-4.5" aria-label="Stop authoring" disabled={stopDisabled} onClick={() => { void client.stop().catch(errorAlreadyVisible); }}><SquareIcon className="size-4.5" /></Button>

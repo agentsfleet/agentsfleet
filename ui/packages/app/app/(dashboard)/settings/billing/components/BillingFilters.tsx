@@ -1,7 +1,7 @@
 "use client";
 
 import type { BillingReport } from "@/lib/api/billing_report";
-import { useState, useTransition, type ReactNode } from "react";
+import { useId, useState, useTransition, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Time } from "@agentsfleet/design-system";
 import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "@/lib/api/billing-report-values";
@@ -37,7 +37,7 @@ export function BillingFilters({ report }: Props) {
     && (!month?.through || Date.parse(month.through) !== Date.parse(report.through_at));
   if (captured) periodChoices.unshift({value: "partial-month", label: <><Time value={report.from_at} format="month" /> · through <Time value={report.through_at} format="date" /></>});
   const period = captured ? "partial-month" : report.period === BILLING_PERIOD_MONTH ? report.from_at.slice(0, 7) : report.period;
-  return <div className="space-y-md"><div className="relative flex flex-wrap items-center gap-lg max-summary:gap-md [&>div:has([role=combobox])]:w-full summary:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
+  return <div className="flex flex-wrap items-center gap-lg max-summary:gap-md [&>div:has([role=combobox])]:w-full summary:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
     <Filter label="Period" value={period} disabled={pending}
       onOpenChange={open => {if (open) setCalendarNow(new Date());}}
       choices={[...periodChoices, {value: BILLING_PERIOD_WEEK, label: "Last 7 days"}, ...(report.period === BILLING_PERIOD_TODAY ? [{value: BILLING_PERIOD_TODAY, label: "Today"}] : [])]}
@@ -45,9 +45,8 @@ export function BillingFilters({ report }: Props) {
     <Filter label="Fleet" value={fleet} disabled={pending}
       choices={[{ value: BILLING_ALL, label: ALL_FLEETS_LABEL }, ...fleets]}
       onChange={value => change(BILLING_QUERY.fleet, value)} />
-    {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
-  </div>
-
+    <span className="text-eyebrow leading-label text-text-dim summary:ml-auto">Periods in UTC · Date ranges in local time</span>
+    {pending ? <Spinner size="sm" label="Updating report…" /> : null}
   </div>;
 }
 
@@ -55,10 +54,11 @@ function Filter({ label, value, choices, onChange, disabled, onOpenChange }: {
   label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const id = useId();
   return <div className="flex min-w-0 items-center gap-md">
-    <Label className="mb-0 block font-sans text-eyebrow font-normal leading-label text-muted-foreground">{label}</Label>
+    <Label htmlFor={id} className="mb-0 block font-sans text-eyebrow font-normal leading-label text-muted-foreground">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled} onOpenChange={onOpenChange}>
-      <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-auto min-w-36 max-w-[65%] pr-xl font-sans text-label font-normal text-muted-foreground summary:ml-0 summary:max-w-64 pointer-coarse:min-w-36 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
+      <SelectTrigger id={id} aria-label={label} className="ml-auto h-10 min-h-10 w-auto min-w-36 max-w-[65%] pr-xl font-sans text-label font-normal text-muted-foreground summary:ml-0 summary:max-w-64 pointer-coarse:min-w-36 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
       <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;

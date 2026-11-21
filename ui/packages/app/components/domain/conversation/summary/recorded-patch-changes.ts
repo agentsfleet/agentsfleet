@@ -13,7 +13,7 @@ const TOTAL = /^\+(\d+) −(\d+)$/;
 /** `af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES`; a byte cut can lose one UTF-8 character. */
 const EDGE_BYTES = 1024, UTF8_MAX_BYTES = 4;
 const UTF8 = new TextEncoder();
-const normalizedPath = (path: string) => workspacePath(path).split("/").filter(part => part !== "." && part !== "").join("/");
+export const recordedWorkspacePath = (path: string) => workspacePath(path).split("/").filter(part => part !== "." && part !== "").join("/");
 
 /** Native receipts retain paths and aggregate counts even when the argument leaf was cut. */
 export function recordedPatchChanges(tool: FleetToolCall, running: boolean): PatchChange[] {
@@ -47,7 +47,7 @@ function nativeReceipt(tool: FleetToolCall): Receipt {
   const complete = Boolean(lines) && (tail.length === 0 || kept.size === tool.outputLineCount) && rows.every(line => line === SUCCESS || TOTAL.test(line) || FILE.test(line));
   const paths = [...new Set(rows.flatMap(line => {
     const path = line.match(FILE)?.[2];
-    return path ? [normalizedPath(path)] : [];
+    return path ? [recordedWorkspacePath(path)] : [];
   }))];
   return {paths, complete, lines};
 }
@@ -64,9 +64,9 @@ function patchHunks(patch: string | undefined): Map<string, Lines | undefined> {
     if (header) {
       if (hunk) retain(files, hunk);
       const kind = header.slice(4, -7);
-      hunk = {path: normalizedPath(frame.slice(header.length)), kind, lines: {added: 0, removed: 0}, certain: kind !== "Delete"};
+      hunk = {path: recordedWorkspacePath(frame.slice(header.length)), kind, lines: {added: 0, removed: 0}, certain: kind !== "Delete"};
     } else if (hunk) {
-      if (frame.startsWith(MOVE)) hunk.path = normalizedPath(frame.slice(MOVE.length));
+      if (frame.startsWith(MOVE)) hunk.path = recordedWorkspacePath(frame.slice(MOVE.length));
       else if (line.startsWith("+")) hunk.lines.added += 1;
       else if (line.startsWith("-")) hunk.lines.removed += 1;
       // An empty changed line in an update may be an EOF sentinel the runner removes.
