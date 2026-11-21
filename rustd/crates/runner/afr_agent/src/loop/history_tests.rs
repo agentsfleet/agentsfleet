@@ -326,26 +326,47 @@ async fn test_earlier_calls_are_scrubbed() {
     );
 }
 
-/// A run offered no tool reads an earlier turn as what was asked and what
-/// was answered: a provider refuses tool calls in a request that declares no
-/// tools.
+/// A run offered no tool reads an earlier turn's calls as text ahead of the
+/// answer: a provider can refuse tool blocks in a request that
+/// declares no tools, and nothing the calls returned is lost.
 #[tokio::test]
-async fn test_a_run_offered_no_tool_leaves_earlier_calls_out() {
+async fn test_a_run_offered_no_tool_reads_earlier_calls_as_text() {
     let mut run = with_history(&[(ASKED, ANSWERED)]);
-    run.history[0].calls = vec![earlier_call(1, "plan one")];
+    run.history[0].calls = vec![earlier_call(1, "plan one"), earlier_call(2, "")];
 
     let sent = first_request(&run).await;
 
+    let tool = UPDATE_PLAN.name();
     assert_eq!(
         sent.messages,
         [
             Message::User(ASKED.to_owned()),
             Message::Assistant {
-                text: ANSWERED.to_owned(),
+                text: format!(
+                    "[Assistant tool calls]: {tool}(step=1)\n\n[Tool result]: plan one\n\n\
+                     [Assistant tool calls]: {tool}(step=2)\n\n{ANSWERED}"
+                ),
                 calls: Vec::new(),
                 replay: Replay::default(),
             },
             Message::User(CURRENT.to_owned()),
         ]
     );
+}
+
+/// A secret an earlier call took or returned is scrubbed from its text form
+/// as from its tool step.
+#[tokio::test]
+async fn test_earlier_calls_as_text_are_scrubbed() {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    let mut call = earlier_call(1, &format!("read {GITHUB_TOKEN}"));
+    call.arguments
+        .insert("token".to_owned(), json!(GITHUB_TOKEN));
+    run.history[0].calls = vec![call];
+
+    let sent = first_request(&run).await;
+
+    let rendered = format!("{:?}", sent.messages);
+    assert!(!rendered.contains(GITHUB_TOKEN), "{rendered}");
+    assert!(rendered.contains("[Tool result]: read "), "{rendered}");
 }

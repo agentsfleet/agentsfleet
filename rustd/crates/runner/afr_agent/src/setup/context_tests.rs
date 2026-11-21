@@ -300,11 +300,11 @@ async fn a_failed_context_load_leaves_the_run_on_its_earlier_turns_and_saves_not
 }
 
 #[tokio::test]
-async fn a_refused_context_save_fails_the_run_with_no_answer() -> TestResult {
+async fn a_superseded_context_save_fails_the_run_with_no_answer() -> TestResult {
     let model = Sized::default();
     let run = setup_payload(&FIVE, WINDOW, None);
     let context = Context {
-        refuse_saves: true,
+        refuse_saves: Some(af_core::error_code::RUN_STALE_FENCING_TOKEN),
         ..Context::stored(4, None)
     };
 
@@ -321,5 +321,24 @@ async fn a_refused_context_save_fails_the_run_with_no_answer() -> TestResult {
         None,
         "the turn was answered after a refused save"
     );
+    Ok(())
+}
+
+/// A save that fails for any reason but a newer run's fence stops the saving,
+/// and the run still answers from the summary it made.
+#[tokio::test]
+async fn a_failed_context_save_still_answers() -> TestResult {
+    let model = Sized::default();
+    let run = setup_payload(&FIVE, WINDOW, None);
+    let context = Context {
+        refuse_saves: Some(af_core::error_code::RUN_STREAM_DISCONNECTED),
+        ..Context::stored(4, None)
+    };
+
+    let output = run_setup(&model, &run, &context).await?;
+
+    assert_eq!(output.result.outcome, ResultOutcome::Completed(Completed));
+    assert_eq!(output.result.content, ANSWER);
+    assert!(model.answered().is_some(), "the turn was never answered");
     Ok(())
 }

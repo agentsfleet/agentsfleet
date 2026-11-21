@@ -98,8 +98,9 @@ pub(super) fn initialize(schedule: &str) -> Value {
 pub(super) struct Context {
     /// What a load answers; none refuses it.
     pub(super) loaded: Option<ContextLoadResponse>,
-    /// Whether every save is refused, as a superseded run's is.
-    pub(super) refuse_saves: bool,
+    /// The code every save is refused with, when saves are refused:
+    /// `RUN_STALE_FENCING_TOKEN` is a superseded run's.
+    pub(super) refuse_saves: Option<af_core::error_code::ErrorCode>,
     /// Every save the run asked for, in order.
     pub(super) saves: Mutex<Vec<ContextSaveRequest>>,
 }
@@ -140,9 +141,9 @@ impl SetupContext for Context {
     }
 
     async fn save(&self, request: ContextSaveRequest) -> crate::Result<ContextSaveResponse> {
-        if self.refuse_saves {
-            return Err(crate::Error::setup_context(af_providers::Error::refused(
-                409,
+        if let Some(code) = self.refuse_saves {
+            return Err(crate::Error::setup_context(afr_memory::Error::unanswered(
+                code,
             )));
         }
         let resource_version = request.resource_version + 1;

@@ -177,7 +177,7 @@ impl<'a> Saved<'a> {
         let mut store = Store {
             context: self.context,
             fencing_token: self.fencing_token,
-            saving: self.saving,
+            saving: &mut self.saving,
             version: &mut self.version,
         };
         let mut progress = Notifications::new(events, &task, true);

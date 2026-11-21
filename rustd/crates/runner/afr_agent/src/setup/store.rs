@@ -3,6 +3,7 @@
 //! compaction saves it.
 
 use af_context::{Checkpoint, CheckpointStore, Identity, PortFuture};
+use af_core::error_code;
 use af_wire::context::ContextSaveRequest;
 
 use super::SetupContext;
@@ -10,6 +11,7 @@ use super::SetupContext;
 const EVENT_IGNORED: &str = "context_checkpoint_ignored";
 const EVENT_UNREADABLE: &str = "context_checkpoint_unreadable";
 const EVENT_SAVED: &str = "setup_context_saved";
+const EVENT_SAVE_FAILED: &str = "setup_context_save_failed";
 
 /// The stored `document`, when it is a valid checkpoint of `identity`. A
 /// document that does not parse or validate is a corrupt store and logs a
@@ -44,10 +46,12 @@ pub(crate) fn usable(
 
 /// Publishes a compaction's checkpoint: through the context verb at the
 /// version the run last read or saved, or in memory for a run that read none.
+/// A superseded run's save fails the run; any other failed save stops the
+/// saving, and the run answers from the summary it holds in memory.
 pub(super) struct Store<'s> {
     pub(super) context: &'s dyn SetupContext,
     pub(super) fencing_token: u64,
-    pub(super) saving: bool,
+    pub(super) saving: &'s mut bool,
     pub(super) version: &'s mut u64,
 }
 
@@ -57,7 +61,7 @@ impl CheckpointStore for Store<'_> {
             if expected_generation != *self.version {
                 return Err(af_context::Error::stale());
             }
-            if !self.saving {
+            if !*self.saving {
                 *self.version = checkpoint.generation;
                 return Ok(());
             }
@@ -67,11 +71,21 @@ impl CheckpointStore for Store<'_> {
                 checkpoint: serde_json::to_value(&checkpoint)
                     .map_err(af_context::Error::boundary)?,
             };
-            let saved = self
-                .context
-                .save(request)
-                .await
-                .map_err(af_context::Error::boundary)?;
+            let saved = match self.context.save(request).await {
+                Ok(saved) => saved,
+                Err(superseded) if superseded.code() == error_code::RUN_STALE_FENCING_TOKEN => {
+                    return Err(af_context::Error::stale_fence());
+                }
+                Err(failure) => {
+                    // The stored version is unknown now, so no later save can
+                    // name it; the run keeps the summary in memory.
+                    *self.saving = false;
+                    *self.version = checkpoint.generation;
+                    let error_code = failure.code().as_str();
+                    tracing::warn!(event = EVENT_SAVE_FAILED, error_code);
+                    return Ok(());
+                }
+            };
             *self.version = saved.resource_version;
             let (generation, covered_through) = (checkpoint.generation, checkpoint.covered_through);
             tracing::info!(event = EVENT_SAVED, generation, covered_through);

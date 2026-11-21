@@ -122,9 +122,11 @@ impl<'s, 'run> Harness<'s, 'run> {
 
 /// The root's opening ahead of the event's message: the thread's saved
 /// summary when `saved` holds one, then each earlier turn it does not cover.
-/// A turn is what was asked, each call its run made and what came back when
-/// `calls` says the run is offered tools, and what was answered. Every text
-/// passes `scrub`: a secret said in an earlier turn is still a secret.
+/// A turn is what was asked, each call its run made and what came back, and
+/// what was answered. The calls are tool steps when `calls` says the run is
+/// offered tools; otherwise they open the answer as text
+/// ([`earlier_call_text`]). Every text passes `scrub`: a secret said in an
+/// earlier turn is still a secret.
 /// `saved` learns where each turn sits.
 ///
 /// # Errors
@@ -147,13 +149,18 @@ pub(super) fn opening(
         messages.push(Message::User(
             scrub.clean(turn.message.to_string()).into_inner(),
         ));
-        if calls {
-            for call in &turn.calls {
+        let mut answer = String::new();
+        for call in &turn.calls {
+            if calls {
                 messages.extend(earlier_call(scrub, call));
+            } else {
+                answer.push_str(&earlier_call_text(scrub, call));
+                answer.push_str("\n\n");
             }
         }
+        answer.push_str(&scrub.clean(turn.answer.to_string()).into_inner());
         messages.push(Message::Assistant {
-            text: scrub.clean(turn.answer.to_string()).into_inner(),
+            text: answer,
             calls: Vec::new(),
             replay: Replay::default(),
         });
@@ -162,6 +169,28 @@ pub(super) fn opening(
         }
     }
     Ok(messages)
+}
+
+/// One earlier call as text, for a run that declares no tools: a provider can
+/// refuse tool blocks in a request that declares no tools, and the model still
+/// reads what the call took and returned.
+fn earlier_call_text(scrub: &af_secrets::Scrub, call: &EarlierCall<'_>) -> String {
+    let arguments = scrub
+        .clean_json(serde_json::Value::Object(call.arguments.clone()))
+        .into_inner();
+    let listed = arguments.as_object().map_or_else(String::new, |fields| {
+        fields
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    });
+    let mut text = format!("[Assistant tool calls]: {}({listed})", call.tool);
+    if !call.output.is_empty() {
+        text.push_str("\n\n[Tool result]: ");
+        text.push_str(&call.output);
+    }
+    scrub.clean(text).into_inner()
 }
 
 /// One earlier call as `guffbolt` keeps a call: the step that made it, then
