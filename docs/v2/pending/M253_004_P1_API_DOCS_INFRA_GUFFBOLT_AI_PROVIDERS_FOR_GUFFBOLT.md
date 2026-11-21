@@ -426,6 +426,7 @@ N/A: no product or operator signal changes. The provider metric families and the
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
 - > Owner (Indy, Nov 22, 2026), on §7's Linux-only acceptance run: "Yes, one E2E run at the end (Recommended)" — context: one `orly burst acceptance --provider e2e` after §1–§9 and `make test-integration-rustd` are green, the machine deleted when the run ends.
+- > Owner (Indy, Nov 22, 2026): "now once you are done with the sibling create i want the guffbolt/README.md to have the usage like pi-core/README.md has similar one ELI20 (no cryptic, no marketing) but to an engineer who can use the harness and build on top of it. Then you have to go back to your own code and see if the guffbolt is intergrated in the way like you have written or better way that suites us. Net net - just like `pi` is built on top of `pi-core` our agentsfleet is built on top of guffbolt must be proven. There must be some live tests added with the fireworks key and tested manual for a 2$ budget max,  dont test beyond that. The testing i mean is the guffbolt-ai, guffbolt using guffbot-ai on read model. The coverage of rust code must be 99%, with all the files> 99% the patch coverage 99% so lets move the notch up in the respective coverage configuration and ensure we meet that. Ensure the CI jobs are green, greptile feedback is resolved and all green and good to merge. Donot merge, Indy will eyeball and merge." — context: adds §11–§15 below; §10 (tools brainstorm) stays last for his sign-off.
 - **Open blockers** — none; the two `[?]` left are settled by running §1 and block nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
@@ -444,6 +445,34 @@ guffbolt's grep, glob and tree listing walk the sandbox through `Env` today: one
 - Dimension 9.2 — ignored files are skipped → Test `a_search_skips_gitignored_paths` (unit): `target/` listed in `.gitignore`. Expected: no match under it.
 
 Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` only and frames messages itself; use `jsonrpsee`'s own client and server if they fit the Unix socket, else record why not.
+
+### §11 — guffbolt's README teaches an engineer to build on it (Indy, Nov 22, 2026)
+
+`rustd/guffbolt/README.md` follows `~/Projects/oss/js/pi/packages/agent/README.md`'s shape: install, the shortest working chat over a real provider through guffbolt-ai, then the loop, tools, events, sessions and how to add a provider or a tool. Plain words for an engineer building a harness on it; no marketing, no internal agentsfleet names. Every code block compiles.
+
+- Dimension 11.1 — the README's code runs → Test `the_readme_examples_compile` (unit, doc-test): each Rust block in the README is included as a doc-test. Expected: all compile; the chat example runs against a stub provider.
+
+### §12 — agentsfleet is built on guffbolt, as pi is on pi-core (Indy, Nov 22, 2026)
+
+Re-read how agentsfleet's runner (`afr_tools`, `afr_supervisor`, `af_providers`) uses guffbolt after §1–§5, against how `pi/packages/coding-agent` uses `pi/packages/agent`. Every place agentsfleet re-implements loop, tool, event or provider behaviour guffbolt already has is moved onto guffbolt's public API, or the reason is recorded here. agentsfleet reaches guffbolt only through its public API.
+
+- Dimension 12.1 — one boundary → Test `agentsfleet_reaches_guffbolt_only_through_its_public_api` (unit): a dependency check finds no `guffbolt` item outside its published API used by agentsfleet crates, and no second agent loop. Expected: none.
+
+### §13 — Live tests on Fireworks, $2 at most (Indy, Nov 22, 2026)
+
+`#[ignore]`d live tests prove guffbolt-ai alone and guffbolt over guffbolt-ai on a real Fireworks model: one chat, one streamed reply, one tool call round trip, one token-usage read. The key is `FIREWORKS_API_KEY` from the machine environment file; it is never printed. They run by hand only, on the cheapest Fireworks chat model, with a running spend tally from the provider's reported usage that stops the run at $2.
+
+- Dimension 13.1 — live proof → Test `a_fireworks_chat_round_trips_through_guffbolt_ai` and `guffbolt_runs_a_tool_call_on_fireworks` (live, manual). Expected: both pass; the recorded spend in Discovery is under $2.
+
+### §14 — Rust coverage 99% overall, per file and per patch (Indy, Nov 22, 2026)
+
+Raise `codecov.yml`'s `rust-afd` project and patch targets to 99%, `RUSTD_COVERAGE_FLOOR` and `RUSTD_PATCH_FLOOR` to 99, and add a per-file floor of 99 to the coverage judge, so every Rust file under the flag holds at least 99% lines. Tests reach the numbers; nothing is excluded to reach them.
+
+- Dimension 14.1 — the floors hold → Test `make test-coverage-rustd` (integration). Expected: overall ≥ 99%, patch ≥ 99%, no file under 99%.
+
+### §15 — The PR is green and ready, unmerged (Indy, Nov 22, 2026)
+
+Every CI job on PR #855 is green, every greptile finding is resolved or answered, and the PR is left for Indy to review and merge.
 
 ### §10 — Tools brainstorm with Indy, last (Indy, Nov 22, 2026)
 
