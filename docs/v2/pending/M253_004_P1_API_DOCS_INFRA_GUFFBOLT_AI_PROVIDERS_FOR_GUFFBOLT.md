@@ -399,6 +399,9 @@ N/A: no product or operator signal changes. The provider metric families and the
 
 ## Discovery (consult log)
 
+- > Owner (Indy, Nov 21, 2026), on the seven open questions: "Take all seven (Recommended)" — context: Q1 rig 0.47 stays the wire engine inside guffbolt-ai; Q2 the model catalogue is checked-in rows seeded from rig's; Q3 af_inference is deleted and what remains folds into af_providers; Q4 the workspace version; Q5 the count timeout and reply size move unchanged (they are TOML keys now); Q6 the 12 key-based providers first, OAuth/Bedrock/Vertex later; Q7 guffbolt::Chat is in this spec.
+- > Owner (Indy, Nov 21, 2026): "since after M253_003 you will have to fix M253_004 and perfor the spec using orly-build".
+
 - **Consults** — Indy's words, quoted:
   - > Owner (Indy, Nov 21, 2026): "we must move the guffbolt to be self sufficient. Can you refer how pi-core is invoked from the ~/Projects/oss/js/pi/ so we know how to deal with this" — context: the request; pi read at `ee6f36496`.
   - > Owner (Indy, Nov 21, 2026): "Sibling crate, as pi-ai" — context: his answer to "How should guffbolt become self-sufficient, the way pi-agent-core works on top of pi-ai?" A crate `guffbolt-ai` holds providers and a model catalogue, and `guffbolt` depends on it.
