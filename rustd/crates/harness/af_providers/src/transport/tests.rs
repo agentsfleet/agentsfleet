@@ -47,7 +47,7 @@ async fn configured_http_attempts_cap_physical_sends() {
             .uri(format!("http://{address}/"))
             .body(Bytes::new())
             .unwrap();
-        let response: rig_http::Response<rig_http::LazyBody<Bytes>> =
+        let response: rig_http::Response<rig_http::LazyBody> =
             transport.http().send(request).await.unwrap();
         assert_eq!(response.status(), http::StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(seen.load(Ordering::SeqCst), attempts);
@@ -74,7 +74,7 @@ async fn serve_chunks(chunks: usize) -> String {
 
 /// A reply of `chunks` served chunks, answered through rig's buffered seam,
 /// its body still to be read.
-async fn sent_whole(chunks: usize) -> rig_http::Response<rig_http::LazyBody<Bytes>> {
+async fn sent_whole(chunks: usize) -> rig_http::Response<rig_http::LazyBody> {
     let url = serve_chunks(chunks).await;
     let transport = Transport::new(reqwest::Client::new(), "run-1", "fake");
     let request = rig_http::Request::builder()
@@ -113,7 +113,7 @@ async fn a_whole_reply_past_the_cap_is_refused_at_rigs_buffered_seam() {
     let refused = sent.into_body().await.unwrap_err();
 
     assert!(
-        matches!(&refused, rig_http::Error::Instance(failure) if is_oversize(&**failure)),
+        matches!(&refused, rig_http::Error::Permanent(failure) if is_oversize(&**failure)),
         "{refused:?}"
     );
 }
@@ -138,13 +138,13 @@ async fn a_multipart_send_is_refused_since_no_wire_uploads_a_file() {
 
     let refused = transport
         .http()
-        .send_multipart::<Bytes>(request)
+        .send_multipart(request)
         .await
         .map(drop)
         .unwrap_err();
 
     assert!(
-        matches!(&refused, rig_http::Error::Instance(failure) if failure.to_string().contains("multipart")),
+        matches!(&refused, rig_http::Error::Permanent(failure) if failure.to_string().contains("multipart")),
         "{refused:?}"
     );
 }
@@ -187,7 +187,7 @@ async fn a_single_attempt_send_returns_the_first_failure_without_retrying() {
         .uri(format!("http://{address}/summary"))
         .body(Bytes::new())
         .unwrap();
-    let response: rig_http::Response<rig_http::LazyBody<Bytes>> =
+    let response: rig_http::Response<rig_http::LazyBody> =
         Transport::new(reqwest::Client::new(), "run-1", "fake")
             .once()
             .http()

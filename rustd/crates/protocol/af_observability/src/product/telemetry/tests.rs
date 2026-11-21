@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use posthog_rs::Event;
+use posthog::Event;
 use serde_json::Value;
 
 use super::Telemetry;

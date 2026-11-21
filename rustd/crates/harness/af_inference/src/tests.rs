@@ -69,11 +69,9 @@ fn enforces_declared_bounds_and_model_specific_output_limit() {
     let error = Configured::new(&value, 100).unwrap_err();
     assert!(error.source().is_some());
     value.max_output_tokens = 37;
-    value.base_url = "x".repeat(2049);
-    assert_eq!(
-        Configured::new(&value, 100).unwrap_err().code(),
-        af_core::error_code::INVALID_REQUEST
-    );
+    // 2,048 bytes was a retired cap; the text ceiling bounds a base URL.
+    value.base_url = format!("https://inference.example/{}", "x".repeat(2049));
+    Configured::new(&value, 100).unwrap();
     value.base_url = String::new();
     assert_eq!(
         Configured::new(&value, 100).unwrap_err().code(),
@@ -145,50 +143,42 @@ fn tool_support_follows_the_selected_sdk_api_and_dialect() {
 struct Capture(Arc<Mutex<Vec<Request<Bytes>>>>);
 
 impl HttpClientExt for Capture {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        self.0.lock().unwrap().push(req.map(Into::into));
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http::Result<Response<LazyBody>>> + WasmCompatSend + 'static {
+        self.0.lock().unwrap().push(req);
         async {
             Response::builder()
                 .status(400)
-                .body(Box::pin(async { Ok(U::from(Bytes::new())) }) as LazyBody<U>)
+                .body(Box::pin(async { Ok(Bytes::new()) }) as LazyBody)
                 .map_err(http::Error::Protocol)
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _: Request<MultipartForm>,
-    ) -> impl Future<Output = http::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        std::future::ready(Err(http::Error::instance(std::io::Error::other(
+    ) -> impl Future<Output = http::Result<Response<LazyBody>>> + WasmCompatSend + 'static {
+        std::future::ready(Err(http::Error::transient(std::io::Error::other(
             UNUSED_OPERATION,
         ))))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = http::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        self.0.lock().unwrap().push(req.map(Into::into));
-        std::future::ready(Err(http::Error::instance(std::io::Error::other(
+        req: Request<Bytes>,
+    ) -> impl Future<Output = http::Result<StreamingResponse>> + WasmCompatSend {
+        self.0.lock().unwrap().push(req);
+        std::future::ready(Err(http::Error::transient(std::io::Error::other(
             UNUSED_OPERATION,
         ))))
     }
 }
 
 const AUTHORIZATION_HEADER: &str = "authorization";
+/// The header Google authenticates a Gemini API request by.
+const GEMINI_KEY_HEADER: &str = "x-goog-api-key";
 const API_KEY_HEADER: &str = "x-api-key";
 const ROUTES: [(InferenceApi, Option<&str>, &str, &str); 6] = [
     (
@@ -251,7 +241,7 @@ async fn uses_persisted_destinations_and_accepts_arbitrary_configured_model_iden
         assert_eq!(request.uri().path(), suffix);
         assert!(request.headers().contains_key(header));
         assert_eq!(request.uri().query(), None, "a non-Gemini URL is untouched");
-        assert!(!request.headers().contains_key(header_key::KEY_HEADER));
+        assert!(!request.headers().contains_key(GEMINI_KEY_HEADER));
         let body: serde_json::Value = serde_json::from_slice(request.body()).unwrap();
         assert_eq!(
             body.get("model"),
@@ -291,7 +281,7 @@ async fn a_gemini_request_carries_its_key_in_a_header_never_in_its_url() {
         assert_eq!(request.uri().host(), Some("inference.example"));
         assert!(!request.uri().to_string().contains(GEMINI_KEY));
         assert_eq!(
-            request.headers().get(header_key::KEY_HEADER).unwrap(),
+            request.headers().get(GEMINI_KEY_HEADER).unwrap(),
             GEMINI_KEY
         );
         assert!(!format!("{request:?}").contains(GEMINI_KEY));
@@ -305,13 +295,11 @@ async fn a_gemini_request_carries_its_key_in_a_header_never_in_its_url() {
     }
 }
 
-/// A Gemini key that decodes to something no header may carry is refused at
-/// the wrapper: the request never reaches the transport, so it is never sent
-/// with the key left in its URL, and the refusal does not repeat the key.
+/// A Gemini key no header may carry is refused while the request is built:
+/// it never reaches the transport, and the refusal does not repeat the key.
 #[tokio::test]
 async fn a_gemini_key_that_cannot_be_a_header_is_never_sent() {
-    // rig splices the key into the query raw; `%0A` decodes to a newline.
-    let key = format!("{GEMINI_KEY}%0A");
+    let key = format!("{GEMINI_KEY}\n");
     let value = settings(InferenceApi::Gemini);
     let route = Configured::new(&value, 100).unwrap();
     let capture = Capture::default();

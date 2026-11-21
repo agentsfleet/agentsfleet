@@ -18,7 +18,7 @@
 mod setup;
 
 use af_core::id::Uuid7;
-use posthog_rs::Event;
+use posthog::Event;
 
 pub use self::setup::SetupStep;
 

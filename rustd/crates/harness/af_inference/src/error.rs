@@ -143,6 +143,8 @@ impl Error {
 
 impl From<Error> for rig_core::ProviderError {
     fn from(source: Error) -> Self {
-        Self::from_transport_error(rig_core::http_client::Error::instance(source))
+        // Retryable, as a transport's own failure was before rig split
+        // transient from permanent.
+        Self::from_transport_error(rig_core::http_client::Error::transient(source))
     }
 }

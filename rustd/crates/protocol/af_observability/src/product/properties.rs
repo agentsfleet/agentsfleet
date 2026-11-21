@@ -6,7 +6,7 @@
 //! so the property keys live here with the arms that write them rather than
 //! being named in one file and used in another.
 
-use posthog_rs::Event;
+use posthog::Event;
 use sha2::{Digest as _, Sha256};
 
 use super::{SetupStep, Telemetry};

@@ -79,8 +79,7 @@ fn request(
     key: &str,
     body: &CompletionRequest,
 ) -> Result<http::Request<Bytes>> {
-    let mut encoded = route.encode_key(model, key, body.clone(), Mode::Streaming)?;
-    crate::header_key::move_key(&mut encoded.request)?;
+    let encoded = route.encode_key(model, key, body.clone(), Mode::Streaming)?;
     let encoded = crate::json_request(encoded.request)?;
     let (mut parts, bytes) = encoded.into_parts();
     let mut body: Value = serde_json::from_slice(&bytes)?;

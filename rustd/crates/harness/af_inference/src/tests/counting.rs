@@ -27,7 +27,7 @@ impl SendRequest for Physical {
         let fail = self.fail;
         Box::pin(async move {
             if fail {
-                return Err(http::Error::instance(std::io::Error::other(
+                return Err(http::Error::transient(std::io::Error::other(
                     "count disconnected",
                 )));
             }

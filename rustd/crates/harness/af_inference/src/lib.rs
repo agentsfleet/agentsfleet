@@ -4,11 +4,9 @@
 
 mod budget;
 mod count;
-mod credential;
 mod document;
 mod endpoint;
 mod error;
-mod header_key;
 mod json;
 mod logs;
 pub mod stream;
@@ -18,7 +16,6 @@ pub use timeouts::{TimeoutSettings, Timeouts};
 
 pub use budget::input_tokens;
 pub use count::InputCount;
-pub use credential::validate_key;
 pub use document::decode_failed_response;
 pub use endpoint::{provider_endpoint, validate_decision};
 pub use json::json_request;
@@ -174,8 +171,7 @@ impl<'a> Configured<'a> {
                 rig_core::Model::new(self.messages(dialect, model, key), transport).erase()
             }
             Dialect::Gemini => {
-                rig_core::Model::new(self.gemini(model, key), header_key::HeaderKey(transport))
-                    .erase()
+                rig_core::Model::new(self.gemini(model, key), transport).erase()
             }
             Dialect::Ollama => rig_core::Model::new(self.ollama(model, key), transport).erase(),
         }

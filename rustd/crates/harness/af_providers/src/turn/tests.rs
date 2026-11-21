@@ -47,7 +47,7 @@ impl SendRequest for Physical {
         let silent = self.generation == Generation::Silent;
         let truncated = self.generation == Generation::Truncated;
         Box::pin(async move {
-            recorded.map_err(rig_http::Error::instance)?;
+            recorded.map_err(rig_http::Error::transient)?;
             let counting = path.ends_with(INPUT);
             let body = if counting {
                 r#"{"input_tokens":123}"#.to_owned()
@@ -68,7 +68,7 @@ impl SendRequest for Physical {
             let mut response = http::Response::new(streamed);
             *response.status_mut() =
                 http::StatusCode::from_u16(if counting { status } else { 200 })
-                    .map_err(rig_http::Error::instance)?;
+                    .map_err(rig_http::Error::transient)?;
             response.headers_mut().insert(
                 http::header::CONTENT_TYPE,
                 http::HeaderValue::from_static(if counting {

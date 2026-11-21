@@ -186,12 +186,12 @@ async fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it()
         }
     }
     let response = HttpTransport::new(std::sync::Arc::new(Oversized))
-        .send::<_, Bytes>(http::Request::new(Bytes::new()))
+        .send(http::Request::new(Bytes::new()))
         .await
         .unwrap();
     let source = response.into_body().await.unwrap_err();
     let failure = ProviderError::from_transport_error(source);
-    let reset = ProviderError::from_transport_error(rig_http::Error::instance(
+    let reset = ProviderError::from_transport_error(rig_http::Error::transient(
         std::io::Error::other("reset"),
     ));
 

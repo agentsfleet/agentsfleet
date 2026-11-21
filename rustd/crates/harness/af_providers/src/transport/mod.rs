@@ -133,10 +133,10 @@ impl SendRequest for Transport {
             let response = transport
                 .send_retrying(&parts, &body)
                 .await
-                .map_err(rig_http::Error::instance)?;
+                .map_err(rig_http::Error::transient)?;
             let status = response.status();
             let headers = response.headers().clone();
-            let stream = response.bytes_stream().map_err(rig_http::Error::instance);
+            let stream = response.bytes_stream().map_err(rig_http::Error::transient);
             let stream: rig_http::BoxedStream = Box::pin(stream);
             let mut response = http::Response::new(stream);
             *response.status_mut() = status;

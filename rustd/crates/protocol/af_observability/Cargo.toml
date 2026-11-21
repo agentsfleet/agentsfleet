@@ -46,7 +46,7 @@ rig-core.workspace = true
 # tracking, which is `tracing`'s job here and would otherwise ship a second
 # stack-trace path; `async-client` is the batching, background-flushing
 # transport a request path must never wait on.
-posthog-rs = { workspace = true, default-features = false, features = ["async-client"] }
+posthog = { workspace = true, default-features = false, features = ["async-client"] }
 # The event payloads, and the deduplication key a finished run reports under.
 serde_json.workspace = true
 sha2.workspace = true

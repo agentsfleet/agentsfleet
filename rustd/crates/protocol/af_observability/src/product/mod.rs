@@ -28,7 +28,7 @@ use std::sync::Arc;
 #[cfg(feature = "test-util")]
 use std::sync::{Mutex, PoisonError};
 
-use posthog_rs::{Client, ClientOptions};
+use posthog::{Client, ClientOptions};
 
 pub use self::telemetry::{InviteEmailOutcome, SetupStep, Telemetry};
 
@@ -69,7 +69,7 @@ impl Analytics {
             || ClientOptions::from(project_key),
             |host| ClientOptions::from((project_key, host)),
         );
-        Self(Sink::PostHog(Arc::new(posthog_rs::client(options).await)))
+        Self(Sink::PostHog(Arc::new(posthog::client(options).await)))
     }
 
     /// The reporter for a deployment holding none.

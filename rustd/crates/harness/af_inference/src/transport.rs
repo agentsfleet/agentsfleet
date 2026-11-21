@@ -76,7 +76,7 @@ impl HttpTransport {
                 };
                 let read = read.saturating_add(chunk.len());
                 if read > REPLY_MAX_BYTES {
-                    return Err(rig_http::Error::instance(Error::from(
+                    return Err(rig_http::Error::permanent(Error::from(
                         ErrorKind::ReplyTooLarge,
                     )));
                 }
@@ -87,55 +87,40 @@ impl HttpTransport {
 }
 
 impl HttpClientExt for HttpTransport {
-    fn send<T, U>(
+    fn send(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = rig_http::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        T: Into<Bytes> + WasmCompatSend,
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
+        req: Request<Bytes>,
+    ) -> impl Future<Output = rig_http::Result<Response<LazyBody>>> + WasmCompatSend + 'static {
         let transport = self.clone();
-        let request = req.map(Into::into);
         async move {
-            let response = transport
-                .streaming(request)
-                .await
-                .map_err(|source| *source)?;
+            let response = transport.streaming(req).await.map_err(|source| *source)?;
             let (parts, body) = response.into_parts();
-            let read: LazyBody<U> = Box::pin(async move {
+            let read: LazyBody = Box::pin(async move {
                 body.try_fold(BytesMut::new(), async move |mut body, chunk| {
                     body.extend_from_slice(&chunk);
                     Ok(body)
                 })
                 .await
-                .map(|body| U::from(body.freeze()))
+                .map(BytesMut::freeze)
             });
             Ok(Response::from_parts(parts, read))
         }
     }
 
-    fn send_multipart<U>(
+    fn send_multipart(
         &self,
         _request: Request<MultipartForm>,
-    ) -> impl Future<Output = rig_http::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
-    where
-        U: From<Bytes> + WasmCompatSend + 'static,
-    {
-        std::future::ready(Err(rig_http::Error::instance(Error::from(
+    ) -> impl Future<Output = rig_http::Result<Response<LazyBody>>> + WasmCompatSend + 'static {
+        std::future::ready(Err(rig_http::Error::permanent(Error::from(
             ErrorKind::Multipart,
         ))))
     }
 
-    fn send_streaming<T>(
+    fn send_streaming(
         &self,
-        req: Request<T>,
-    ) -> impl Future<Output = rig_http::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
+        req: Request<Bytes>,
+    ) -> impl Future<Output = rig_http::Result<StreamingResponse>> + WasmCompatSend {
         let transport = self.clone();
-        let request = req.map(Into::into);
-        async move { transport.streaming(request).await.map_err(|source| *source) }
+        async move { transport.streaming(req).await.map_err(|source| *source) }
     }
 }

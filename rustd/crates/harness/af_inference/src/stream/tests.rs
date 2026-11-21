@@ -145,7 +145,7 @@ async fn a_cut_response_retains_usage_and_never_becomes_a_completed_reply() {
     let pieces = [
         Ok(Bytes::from_static(TEXT.as_bytes())),
         Ok(Bytes::from_static(USAGE.as_bytes())),
-        Err(rig_http::Error::instance(std::io::Error::other(
+        Err(rig_http::Error::transient(std::io::Error::other(
             "fixture disconnect",
         ))),
     ];

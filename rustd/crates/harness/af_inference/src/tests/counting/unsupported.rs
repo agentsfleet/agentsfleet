@@ -2,7 +2,7 @@
 use super::*;
 use rig_core::completion::{ToolAnnotations, ToolDefinition};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, Document, DocumentMediaType, DocumentSourceKind,
+    AssistantContent, AssistantMessage, CallId, DocumentContent, DocumentMediaType, DocumentSourceKind,
     Image, ImageMediaType, ToolName, ToolResultContent, UserContent,
 };
 use serde_json::json;
@@ -38,7 +38,7 @@ async fn anthropic_external_media_refuses_before_network() {
             media_type: Some(ImageMediaType::PNG),
             ..Default::default()
         }),
-        UserContent::Document(Document {
+        UserContent::Document(DocumentContent {
             data: DocumentSourceKind::file_id("private-document-file").into(),
             media_type: Some(DocumentMediaType::PDF),
             ..Default::default()

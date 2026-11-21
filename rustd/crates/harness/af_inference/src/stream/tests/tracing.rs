@@ -199,7 +199,7 @@ async fn observer_excludes_recovery_and_preserves_the_provider_terminal() {
 async fn dropping_a_failed_stream_keeps_its_original_outcome() {
     let (values, observer) = observed();
     let body = stream::once(async {
-        Err(rig_http::Error::instance(std::io::Error::other(
+        Err(rig_http::Error::transient(std::io::Error::other(
             "fixture transport interruption",
         )))
     });

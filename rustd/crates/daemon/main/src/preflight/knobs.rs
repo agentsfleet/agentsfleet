@@ -105,7 +105,7 @@ pub(super) const POSTHOG_KEY_KNOB: &str = "POSTHOG_API_KEY";
 
 /// Where those events are ingested.
 ///
-/// `POSTHOG_HOST`. Unset leaves the `posthog_rs` client on its own default
+/// `POSTHOG_HOST`. Unset leaves the `posthog` client on its own default
 /// ingestion host. A knob rather than a constant because a self-hosted `PostHog`
 /// and the EU region are both real, and neither is a code change.
 pub(super) const POSTHOG_HOST_KNOB: &str = "POSTHOG_HOST";

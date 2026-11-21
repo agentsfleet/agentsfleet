@@ -547,9 +547,9 @@ aws-lc-rs = { version = "1.19.0", default-features = false, features = [
 # the build through rustls; declared so the runner's sandbox crate names it.
 rustls-pki-types = { version = "1.16.0", default-features = false, features = ["std"] }
 
-# Product analytics: the async client only. It still compiles reqwest's
-# blocking client and chrono, which nothing here calls.
-posthog-rs = { version = "0.33.1", default-features = false, features = ["async-client"] }
+# Product analytics: the official SDK's async client only. It still compiles
+# chrono, brotli and zstd, which nothing here calls.
+posthog = { version = "1.3.0", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
 # a version in a member manifest is the one place drift can start.
 petname = { version = "3.2.0", default-features = false, features = ["default-words"] }
@@ -589,8 +589,8 @@ reqwest = { version = "0.13.5", default-features = false, features = ["form", "r
 # Git on the runner host: the supervisor fetches a fleet's repository into a
 # per-workspace mirror and checks it out into the run's workspace, so the
 # token never enters the sandbox. A native library, not a spawned `git`,
-# per the operating model's native-SDK rule; Codex reads repositories with it
-# too. Network and checkout features are chosen by the crate that uses them.
+# per the operating model's native-SDK rule. Network and checkout features
+# are chosen by the crate that uses them.
 #
 # Keep checkout features narrow: `worktree-mutation` also pulls `status`,
 # `dirwalk` and removal support that this checkout does not call.
@@ -605,11 +605,11 @@ regex-automata = { version = "0.4.19", default-features = false, features = ["st
 # tag scanner.
 html2text = { version = "0.17.4", default-features = false }
 # `guffbolt`'s `image` tool decodes a picture and scales one longer than
-# 2,048 px on a side down to fit, as Codex's `codex-utils-image` does. Only the
+# 2,048 px on a side down to fit. Only the
 # four codecs the provider wires take.
 image = { version = "=0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 # The Model Context Protocol client `guffbolt`'s tools reach a server through:
-# the official SDK, Codex's and pi's choice. Client side only; a stdio server
+# the official SDK. Client side only; a stdio server
 # runs through the harness's own `Env`, so the SDK's child-process transport is
 # left out, and a remote one speaks streamable HTTP over the `reqwest` above.
 rmcp = { version = "3.11.0", default-features = false, features = ["client", "transport-streamable-http-client-reqwest"] }
@@ -623,7 +623,7 @@ rmcp = { version = "3.11.0", default-features = false, features = ["client", "tr
 # their API (0.43 listed 40 breaking entries), so an upgrade is a reviewed
 # change. No default features: the transport is ours, so no HTTP stack, async
 # runtime or TLS comes with it.
-rig-core = { version = "=0.46.0", default-features = false }
+rig-core = { version = "=0.47.0", default-features = false }
 
 # A provider's `Retry-After` in its HTTP-date form (RFC 9110, `Retry-After`). Already in
 # the lock through hyper, which parses the same header family with it.
@@ -973,8 +973,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 # person-written request goes through when it embeds a lenient runner-bound
 # type (`af_core::json::strict_object_from_slice`).
 serde_ignored = { version = "0.1.14", default-features = false }
-# The runner's kernel surface, Linux only, each the crate Codex's own sandbox
-# uses (`codex-rs/linux-sandbox/Cargo.toml`): safe system calls for process
+# The runner's kernel surface, Linux only: safe system calls for process
 # groups, signals, `no_new_privs` and mounts; Landlock rulesets; a seccomp
 # program compiled to classic BPF in Rust, the library Firecracker ships.
 rustix = { version = "1.1.6", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
@@ -987,7 +986,7 @@ jsonrpsee-types = { version = "0.26.2", default-features = false }
 # every test that needs a real filesystem.
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
-# the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
+# the calls, not their numbers.
 # tokio-quiche 0.23.0 and quiche 0.30.1 still cap this below 0.2.190; retain the published
 # transport. parking_lot 0.13 waits on the same cap: its parking_lot_core 0.10 needs 0.2.191.
 libc = { version = "=0.2.189", default-features = false }

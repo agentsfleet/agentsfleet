@@ -57,7 +57,7 @@ async fn exact_wire_limit_is_accepted_by_the_buffered_sdk_seam() {
     // The documented 32 MiB limit is independent of the implementation's constant.
     const DOCUMENTED_BYTES: usize = 33_554_432;
     let transport = transport(vec![Ok(Bytes::from(vec![b'x'; DOCUMENTED_BYTES]))]);
-    let response = transport.send::<_, Bytes>(request()).await.unwrap();
+    let response = transport.send(request()).await.unwrap();
     assert_eq!(response.into_body().await.unwrap().len(), DOCUMENTED_BYTES);
 }
 
@@ -88,7 +88,7 @@ async fn the_first_byte_past_the_limit_ends_the_stream_with_the_shared_error() {
 #[tokio::test]
 async fn buffered_and_streaming_sdk_seams_enforce_the_same_limit() {
     let transport = transport(vec![Ok(Bytes::from(vec![b'x'; REPLY_MAX_BYTES + 1]))]);
-    let response = transport.send::<_, Bytes>(request()).await.unwrap();
+    let response = transport.send(request()).await.unwrap();
     assert!(oversized(&response.into_body().await.unwrap_err()));
 }
 
@@ -96,7 +96,7 @@ async fn buffered_and_streaming_sdk_seams_enforce_the_same_limit() {
 async fn body_disconnect_preserves_its_source_and_is_never_classified_as_oversize() {
     let transport = transport(vec![
         Ok(Bytes::from_static(b"part")),
-        Err(rig_http::Error::instance(std::io::Error::other(
+        Err(rig_http::Error::transient(std::io::Error::other(
             "fixture reset",
         ))),
     ]);
@@ -116,7 +116,7 @@ async fn body_disconnect_preserves_its_source_and_is_never_classified_as_oversiz
 async fn multipart_is_refused_without_opening_the_physical_sender() {
     let transport = transport(Vec::new());
     let error = transport
-        .send_multipart::<Bytes>(Request::new(MultipartForm::new()))
+        .send_multipart(Request::new(MultipartForm::new()))
         .await
         .err()
         .unwrap();
