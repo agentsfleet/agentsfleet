@@ -92,3 +92,32 @@ fn an_exit_without_output_abandoned_decodes_as_not_abandoned() {
     assert!(!exited.output_abandoned);
     assert_eq!(exited.process_id, 7);
 }
+
+/// A frame past the old 16 MiB is read whole under Codex's 64 MiB exec-server
+/// frame, and one past the frame is refused, through the codec the executor
+/// serves with.
+#[test]
+fn the_executor_carries_a_frame_over_16_mib() {
+    use tokio_util::bytes::BytesMut;
+    use tokio_util::codec::{AnyDelimiterCodec, Decoder as _};
+
+    let codec = || {
+        AnyDelimiterCodec::new_with_max_length(vec![DELIMITER], vec![DELIMITER], MAX_FRAME_BYTES)
+    };
+    let mut line = vec![b'x'; 20 * 1024 * 1024];
+    line.push(DELIMITER);
+    let decoded = codec()
+        .decode(&mut BytesMut::from(line.as_slice()))
+        .unwrap();
+    assert_eq!(decoded.map(|frame| frame.len()), Some(20 * 1024 * 1024));
+
+    let mut past = vec![b'x'; MAX_FRAME_BYTES + 1];
+    past.push(DELIMITER);
+    let refused = codec()
+        .decode(&mut BytesMut::from(past.as_slice()))
+        .unwrap_err();
+    assert!(matches!(
+        refused,
+        tokio_util::codec::AnyDelimiterCodecError::MaxChunkLengthExceeded
+    ));
+}
