@@ -26,38 +26,12 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_validate::Ceiling;
-use af_validate::{Limit, Sentences};
+use af_validate::Limit;
 use afd_turns::view::{Cursor, Filter, glob_to_like, parse_since, prefix_to_like};
-use const_format::concatcp;
-use garde::Validate as _;
 
 use super::DETAIL_FLEET_ID;
 use crate::handler::{Refusal, decoded_parameter, parameter};
 use afd_http::handler::parse_id;
-
-/// The longest actor glob or prefix a filter may carry, decoded.
-///
-/// An actor is `webhook:github` or `user:<id>`, tens of bytes; the bound is
-/// generous for that and short enough that a filter cannot be a payload. It
-/// becomes a `LIKE` pattern, so an unbounded one is work the statement does
-/// per row for a pattern no stored actor could match.
-const MAX_ACTOR_FILTER_BYTES: usize = 256;
-
-/// The refusal an over-long `actor` glob earns.
-const DETAIL_ACTOR_BOUNDS: &str = concatcp!("actor", ACTOR_FILTER_BOUND);
-
-/// The refusal an over-long `actor_prefix` earns.
-const DETAIL_ACTOR_PREFIX_BOUNDS: &str = concatcp!("actor_prefix", ACTOR_FILTER_BOUND);
-
-/// The bound both actor filters share, as the tail of their two sentences.
-const ACTOR_FILTER_BOUND: &str = concatcp!(" must be at most ", MAX_ACTOR_FILTER_BYTES, " bytes");
-
-/// Which filter's bound a report names, keyed by the field, which is spelled
-/// as its parameter. Both cannot be present together, so one entry decides.
-const FILTER_BOUNDS: Sentences = Sentences::new(
-    &[(QUERY_ACTOR_PREFIX, DETAIL_ACTOR_PREFIX_BOUNDS)],
-    DETAIL_ACTOR_BOUNDS,
-);
 
 /// The parameter names, spelled once each (RULE UFS).
 const QUERY_LIMIT: &str = "limit";
@@ -144,21 +118,13 @@ impl WorkspaceListing {
 /// A separate step from resolving them because the exclusions are about which
 /// parameters are PRESENT — a check that cannot be made one parameter at a
 /// time, and that both listings make identically.
-#[derive(Debug, garde::Validate)]
+#[derive(Debug)]
 struct Params<'q> {
-    #[garde(skip)]
     limit: i64,
-    #[garde(skip)]
     cursor: Option<&'q str>,
-    #[garde(inner(length(bytes, max = MAX_ACTOR_FILTER_BYTES)))]
     actor: Option<Cow<'q, str>>,
-    #[garde(inner(length(bytes, max = MAX_ACTOR_FILTER_BYTES)))]
     actor_prefix: Option<Cow<'q, str>>,
-    // Parsed rather than bounded: `parse_since` reads a fixed grammar.
-    #[garde(skip)]
     since: Option<Cow<'q, str>>,
-    // Parsed rather than bounded: an identifier has one length.
-    #[garde(skip)]
     fleet_id: Option<&'q str>,
 }
 
@@ -190,9 +156,6 @@ impl<'q> Params<'q> {
         if present(query, QUERY_ACTOR) && present(query, QUERY_ACTOR_PREFIX) {
             return Err(Refusal::malformed(DETAIL_ACTOR_AMBIGUOUS));
         }
-        params
-            .validate()
-            .map_err(|report| Refusal::malformed(FILTER_BOUNDS.pick(&report)))?;
         Ok(params)
     }
 

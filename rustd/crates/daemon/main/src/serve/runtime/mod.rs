@@ -6,7 +6,6 @@
 //! each step in it constructs.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -19,20 +18,6 @@ use crate::error::BootFailure;
 use crate::plane::Shared;
 use crate::preflight::BootConfig;
 use crate::supervisor::Supervisor;
-
-/// How long boot spends establishing the pool's floor before it serves.
-///
-/// `floor × establishment`, with room for an establishment far slower than the
-/// 147-337 ms this lane measures — a cross-region TLS handshake against a
-/// loaded server is seconds, not milliseconds, and a deadline that fits only
-/// the fast case silently ships a cold pool. Fifteen seconds covers the floor
-/// a production ceiling implies at a handshake cost several times the lane's.
-///
-/// It is a deadline and not a requirement: [`Db::warm`] cannot fail, and a pool
-/// that did not fill is a slower pool rather than a broken one — the datastore
-/// was already proven reachable by `Db::connect`. Boot proceeds either way, and
-/// `pool_warm_incomplete` is what says it did.
-const POOL_WARM_DEADLINE: Duration = Duration::from_secs(15);
 
 pub(super) struct Runtime {
     pub(super) database: Db,
@@ -115,7 +100,7 @@ async fn open_database(config: &BootConfig) -> Result<Db, BootFailure> {
     // sqlx does not do this itself: it bootstraps `min_connections` only when
     // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
     // both. `warm` reports its shortfall through `pool_warm_incomplete`.
-    database.warm(POOL_WARM_DEADLINE).await;
+    database.warm().await;
     Ok(database)
 }
 

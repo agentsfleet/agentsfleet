@@ -62,8 +62,7 @@ pub struct CheckpointPlanInput {
     /// Pinned host-local toolbox, excluded from checkpoint bytes.
     #[garde(custom(super::digest))]
     pub toolbox_digest: String,
-    /// Ordered page identities to allocate. Bounded by its Postgres `INTEGER`
-    /// column, `fleet.task_checkpoints.page_count`.
+    /// Ordered page identities to allocate.
     #[garde(range(min = 1, max = i32::MAX.unsigned_abs()))]
     pub page_count: u32,
     /// Declared unique new content allowance, clamped natively by mode.

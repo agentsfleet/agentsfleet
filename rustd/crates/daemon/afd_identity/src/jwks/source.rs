@@ -23,22 +23,6 @@ pub trait KeySetSource: Send + Sync + std::fmt::Debug {
     fn fetch(&self) -> impl Future<Output = Result<Vec<u8>, VerifyError>> + Send;
 }
 
-/// Upper bound on a key-set document, in bytes.
-///
-/// Real key sets are a few kilobytes, and the URL is config-controlled rather
-/// than trusted. The cap must count DECOMPRESSED bytes, because a few
-/// kilobytes of deflated zeroes inflates past any wire limit. This daemon never
-/// negotiates a content-encoding (see the `reqwest` note in the workspace
-/// manifest), so wire bytes and decoded bytes are the same bytes and the cap is
-/// correct with no streaming decompressor to size.
-pub const MAX_RESPONSE_BYTES: usize = 256 * 1024;
-
-/// Redirects followed before giving up.
-///
-/// Identity providers commonly front a key set with one hop, and three covers a
-/// chained content-delivery redirect without following forever.
-pub const MAX_REDIRECTS: usize = 3;
-
 /// A source that answers from bytes already in hand.
 ///
 /// Ships in the library rather than behind `test-util` because a deployment —

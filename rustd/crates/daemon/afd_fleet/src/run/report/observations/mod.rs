@@ -171,15 +171,9 @@ impl TryFrom<&RunTokens> for UsageCounts {
     }
 }
 
-/// How long the runner says the run took, bounded.
-///
-/// The number is the runner's and nothing validates it upstream, so it is
-/// capped by the same bound the delivery span uses. Uncapped it reaches the
-/// duration histogram's SUM — the value every mean and latency panel divides
-/// by its count — where one absurd report is not an outlier a percentile
-/// absorbs but a total nothing recovers from until the window rolls.
+/// How long the runner says the run took.
 fn reported_wall(request: &ReportRequest<'_>) -> Duration {
-    Duration::from_millis(request.telemetry.wall_ms).min(af_observability::MAX_RUN)
+    Duration::from_millis(request.telemetry.wall_ms)
 }
 
 #[cfg(test)]

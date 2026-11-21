@@ -27,9 +27,7 @@ use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
 
-use crate::protocol::{
-    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE, WIRE_MESSAGE_MAX_BYTES,
-};
+use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
 mod raise;
 
@@ -164,17 +162,12 @@ impl Error {
     /// What anyone past this host is told: the failure and, when it has one,
     /// its cause, never the registry code or a backtrace, which are this
     /// host's. The other end of the socket reads it, and so does a model
-    /// reading why its tool call failed, so it is at most
-    /// `WIRE_MESSAGE_MAX_BYTES`: a refusal's message and a decoder's echo of
-    /// the value it refused both come from a socket the executor shares with
-    /// tenant code.
+    /// reading why its tool call failed.
     #[must_use]
     pub fn wire_message(&self) -> String {
         let kind = self.kind();
-        let mut said = std::error::Error::source(kind)
-            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"));
-        said.truncate(wire_end(&said));
-        said
+        std::error::Error::source(kind)
+            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))
     }
 
     /// Whether the path left the workspace, by name or through a link. True
@@ -229,14 +222,6 @@ impl Error {
             | ErrorKind::FileCallsUnsupported => INTERNAL_ERROR_CODE,
         }
     }
-}
-
-/// Where `text` ends once kept to `WIRE_MESSAGE_MAX_BYTES`: a character
-/// boundary, so a cut there halves no character, and `text.len()` when it
-/// fits. A boundary rather than a cut, so a borrowed flood is sliced before
-/// it is ever copied.
-const fn wire_end(text: &str) -> usize {
-    text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES)
 }
 
 /// Whether an operating-system refusal is about what the caller asked for —

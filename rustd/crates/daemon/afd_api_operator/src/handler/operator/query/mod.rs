@@ -25,7 +25,6 @@ const QUERY_EVENT_TYPE: &str = "event_type";
 const QUERY_SINCE: &str = "since";
 const QUERY_UNTIL: &str = "until";
 const MAX_FLEET_FILTER_LEN: usize = 200;
-const MAX_EVENT_TYPE_TOKENS: usize = 11;
 /// Between the tokens of an `?event_type` set.
 const EVENT_TYPE_SEPARATOR: char = ',';
 
@@ -56,13 +55,10 @@ struct FleetFilter<'q> {
     fleet: Option<&'q str>,
 }
 
-/// An `?event_type` set split into its tokens, bounded before one is parsed.
+/// An `?event_type` set split into its tokens, each non-empty.
 #[derive(garde::Validate)]
 struct EventTypeTokens<'q> {
-    #[garde(
-        length(min = 1, max = MAX_EVENT_TYPE_TOKENS),
-        inner(length(bytes, min = 1))
-    )]
+    #[garde(length(min = 1), inner(length(bytes, min = 1)))]
     tokens: Vec<&'q str>,
 }
 
@@ -195,7 +191,7 @@ fn requested_limit(
     Limit::parse(params.get(QUERY_LIMIT).map(String::as_str), ceiling).map_err(|_break| bad)
 }
 
-/// The event types a set names: split, bounded, then each token read.
+/// The event types a set names: split, then each token read.
 fn event_types(raw: &str) -> Result<Vec<RunnerEventType>, Bad> {
     let tokens = garde::Unvalidated::new(EventTypeTokens {
         tokens: split_tokens(raw),
@@ -205,15 +201,9 @@ fn event_types(raw: &str) -> Result<Vec<RunnerEventType>, Bad> {
     parse_event_types(&tokens)
 }
 
-/// A set's tokens, at most one past [`MAX_EVENT_TYPE_TOKENS`].
-///
-/// The count is checked while collecting, not after: one token past the bound
-/// is enough for garde to refuse the set, and a query string of a million
-/// commas would otherwise allocate a million slices to be told so.
+/// A set's tokens; the request head bounds how many a query carries.
 fn split_tokens(raw: &str) -> Vec<&str> {
-    raw.split(EVENT_TYPE_SEPARATOR)
-        .take(MAX_EVENT_TYPE_TOKENS + 1)
-        .collect()
+    raw.split(EVENT_TYPE_SEPARATOR).collect()
 }
 
 /// Each token of a set already inside its bounds, as a runner event type.

@@ -1,5 +1,4 @@
 import { latestFigures, sameFigures, type FleetFacts } from "@/lib/turns/run-summary";
-import { capTurns } from "./fleet-stream-cap";
 import type { Entry, FleetStreamSnapshot } from "./fleet-stream-entry";
 import { mergeFacts } from "./fleet-stream-facts";
 import type { FleetTurn } from "./fleet-stream-row";
@@ -23,10 +22,10 @@ export function setTurns(
   next: (prev: FleetTurn[]) => FleetTurn[],
   spoken: Partial<FleetFacts> = {},
 ): void {
-  // The one choke point every mutation flows through: the cap and the strip's
-  // `latest` live here once, a completion's facts fold into the same write, and
+  // The one choke point every mutation flows through: the strip's
+  // `latest` lives here once, a completion's facts fold into the same write, and
   // a frame that changed nothing (a duplicate, a malformed one) notifies no one.
-  const turns = capTurns(next(entry.snapshot.turns));
+  const turns = next(entry.snapshot.turns);
   const facts = spokenFacts(entry, spoken);
   if (turns === entry.snapshot.turns && facts.fleet === undefined) return;
   const latest = latestFigures(turns);

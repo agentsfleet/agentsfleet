@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
-use af_wire::usage::{LineKind, RUNTIME_MS_MAX};
+use af_wire::usage::LineKind;
 use afd_billing::price::RatedLine;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
@@ -149,7 +149,8 @@ impl<'a> Columns<'a> {
             .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(LineKind::Model.as_str())
             .bind(LineKind::Runtime.as_str())
-            .bind(i64::from(RUNTIME_MS_MAX))
+            // The wire's runtime field is a `u32` of milliseconds.
+            .bind(i64::from(u32::MAX))
             .bind(af_core::timing::DAY)
             .bind(afd_runner::capacity::renewable_states())
     }

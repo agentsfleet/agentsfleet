@@ -2,20 +2,16 @@
 import { isRecord, isString } from "./guards.ts";
 
 const APIERROR = "ApiError" as const;
-const MS_PER_SECOND = 1000 as const;
 
-// HTTP transport: fetch wrapper, JSON envelope unwrap, AbortController-backed
-// timeout. Every non-OK response surfaces as ApiError; the caller never sees a
-// raw Response. The retry-with-backoff layer lives in http-retry.ts.
-
-const DEFAULT_TIMEOUT_MS = 15000;
+// HTTP transport: fetch wrapper, JSON envelope unwrap, and a timeout only
+// where the caller names one. Every non-OK response surfaces as ApiError; the
+// caller never sees a raw Response. A request is sent once.
 
 export interface ApiErrorDetails {
   status?: number;
   code?: string;
   requestId?: string | null;
   body?: unknown;
-  retryAfterMs?: number | null;
 }
 
 export interface ProblemDetails {
@@ -37,7 +33,6 @@ export class ApiError extends Error {
   readonly code: string | undefined;
   readonly requestId: string | null | undefined;
   readonly body: unknown;
-  readonly retryAfterMs: number | null;
 
   constructor(message: string, details: ApiErrorDetails = {}) {
     super(message);
@@ -46,20 +41,7 @@ export class ApiError extends Error {
     this.code = details.code;
     this.requestId = details.requestId;
     this.body = details.body;
-    // retryAfterMs is captured at the apiRequest boundary (where the
-    // Response object is in scope). null when the header was absent or
-    // unparseable. apiRequestWithRetry reads this directly so the
-    // 429/Retry-After floor doesn't depend on body shape.
-    this.retryAfterMs = details.retryAfterMs ?? null;
   }
-}
-
-function parseRetryAfterHeaderValue(headerVal: string | null | undefined): number | null {
-  if (!headerVal) return null;
-  const n = Number(headerVal);
-  if (Number.isFinite(n) && n >= 0) return n * MS_PER_SECOND;
-  // HTTP-date form is rare for our APIs; fall back to ignoring.
-  return null;
 }
 
 export type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
@@ -75,14 +57,14 @@ export interface ApiRequestOptions {
 
 export async function apiRequest(url: string, options: ApiRequestOptions = {}): Promise<unknown> {
   options.signal?.throwIfAborted();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs;
   const fetchImpl: FetchImpl | undefined = options.fetchImpl ?? (globalThis.fetch as FetchImpl | undefined);
   if (typeof fetchImpl !== "function") {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
   }
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = timeoutMs === undefined ? undefined : setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
     const init: RequestInit = {
@@ -109,23 +91,18 @@ export async function apiRequest(url: string, options: ApiRequestOptions = {}): 
       const errorCode = problem.code ?? `HTTP_${res.status}`;
       const requestId = problem.requestId ?? null;
       const message = problem.message ?? res.statusText ?? "request failed";
-      // Capture Retry-After at the boundary where res.headers is still
-      // in scope; ApiError.body intentionally carries only the parsed
-      // payload, so the header lives on a dedicated field.
-      const retryAfterMs = parseRetryAfterHeaderValue(res.headers?.get?.("retry-after"));
       throw new ApiError(message, {
         status: res.status,
         code: errorCode,
         requestId,
         body: json ?? text,
-        retryAfterMs,
       });
     }
 
     return json ?? {};
   } catch (err) {
     if (options.signal?.aborted) throw options.signal.reason;
-    if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
+    if (timeoutMs !== undefined && isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,
         code: "TIMEOUT",

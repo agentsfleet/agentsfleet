@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TOOL_CALL_READ, TOOL_CALL_READ_TIMEOUT_MS, readToolCall } from "./fleet-tool-call-reader";
+import { TOOL_CALL_READ, readToolCall } from "./fleet-tool-call-reader";
 
 const AT = { workspaceId: "ws 1", fleetId: "flt_1", turnId: "evt_1", callId: "f1:3" };
 const URL_FOR_AT = "/live/v1/workspaces/ws%201/fleets/flt_1/turns/evt_1/items/f1%3A3";
@@ -73,19 +73,5 @@ describe("readToolCall", () => {
     const pending = readToolCall(AT, cancelled.signal);
     cancelled.abort();
     expect(await pending).toEqual({ kind: TOOL_CALL_READ.FAILED });
-  });
-
-  it("should fail when the read outlasts its timeout", async () => {
-    // AbortSignal.timeout runs on the real clock, so the test owns the signal
-    // it hands out instead of waiting the timeout out.
-    const timer = new AbortController();
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timer.signal);
-    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_, reject) => {
-      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
-    })));
-    const hung = readToolCall(AT, new AbortController().signal);
-    expect(timeoutSpy).toHaveBeenCalledWith(TOOL_CALL_READ_TIMEOUT_MS);
-    timer.abort(new DOMException("timed out", "TimeoutError"));
-    expect(await hung).toEqual({ kind: TOOL_CALL_READ.FAILED });
   });
 });

@@ -42,11 +42,13 @@ fn an_empty_file_selects_the_compiled_defaults() -> Checked {
 fn server_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[server]\ndrain_timeout_seconds=7\n\
-         background_task_join_timeout_seconds=12\nmax_live_activity_notices=2",
+         background_task_join_timeout_seconds=12\nmax_live_activity_notices=2\n\
+         max_request_body_mib=3",
     )?;
     assert_eq!(tuning.server.drain_timeout, Duration::from_secs(7));
     assert_eq!(tuning.server.task_join_timeout, Duration::from_secs(12));
     assert_eq!(tuning.server.max_live_activity_notices, 2);
+    assert_eq!(tuning.server.max_request_body, 3 * 1024 * 1024);
     Ok(())
 }
 
@@ -367,6 +369,7 @@ const REFUSED: &[(&str, &str)] = &[
         "[server]\nmax_live_activity_notices=0",
         "max_live_activity_notices",
     ),
+    ("[server]\nmax_request_body_mib=0", "max_request_body_mib"),
     ("[api]\nmax_page_size=0", "max_page_size"),
     ("[api]\ndefault_page_size=101", "default_page_size"),
     (

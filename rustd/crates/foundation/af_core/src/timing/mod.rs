@@ -30,6 +30,7 @@ pub const RUN_TTL: Duration = Duration::from_secs(35);
 ///
 /// Strictly below [`RUN_TTL`] so a renewal that fails transiently still
 /// has room to retry before the deadline.
+/// Kept: without it a live runner's run lapses and is handed to another runner.
 pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 
 /// How often a runner's supervision loop wakes to consider a renewal.
@@ -70,6 +71,7 @@ pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 ///
 /// The turn is already durable; a lost wake leaves work for the replica's
 /// recovery probe, and heartbeat or renewal checks repair a lost runner command.
+/// Kept: without it every committed write's request hangs while NATS is down.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
 /// Maximum time to answer an application request or finish a partial stream frame.
@@ -77,12 +79,14 @@ pub const STREAM_ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
 /// Idle interval between application pings; a silent idle path is detected within twenty seconds.
 pub const STREAM_PING_INTERVAL: Duration = Duration::from_secs(15);
 /// Preferred transport gets this much of the bounded reconnect attempt.
+/// Kept: a network that drops UDP would otherwise never reach the TCP fallback.
 pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-/// The TCP fallback gets its own bounded connection attempt.
-pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Ownership confirmation and lane attachment share the remaining recovery budget.
+/// Kept: the daemon holds a connection permit for an opening, and a peer that
+/// never says hello would hold it forever.
 pub const STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
 /// Complete carrier setup, ownership confirmation and database rebuild budget.
+/// Kept: a stuck attempt is abandoned so a fresh one fits inside a held run's lease.
 pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
 /// A connection must remain usable this long before reconnect backoff resets.
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
@@ -117,11 +121,9 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
-        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
-        + STREAM_OPEN_TIMEOUT.as_nanos()
-        == STREAM_RECOVERY_BUDGET.as_nanos(),
-    "the complete reconnect budget includes both carriers and ownership rebuild"
+    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos() + STREAM_OPEN_TIMEOUT.as_nanos()
+        < STREAM_RECOVERY_BUDGET.as_nanos(),
+    "the reconnect budget leaves the TCP fallback room after the preferred carrier"
 );
 
 /// One day.

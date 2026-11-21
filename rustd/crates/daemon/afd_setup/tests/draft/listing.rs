@@ -257,12 +257,16 @@ async fn assert_search_binds_the_cursor(f: &Fixture) {
 }
 
 async fn assert_search_bounds(f: &Fixture) {
-    for refused in ["   ".to_owned(), "x".repeat(201), "in\0box".to_owned()] {
+    for refused in [
+        "   ".to_owned(),
+        "x".repeat(af_validate::TEXT_MAX_CHARS + 1),
+        "in\0box".to_owned(),
+    ] {
         assert_eq!(
             f.drafts
                 .list(f.access(), search(&refused))
                 .await
-                .expect_err("an unbounded search is refused")
+                .expect_err("a blank, oversized or NUL search is refused")
                 .code(),
             af_core::error_code::INVALID_REQUEST,
             "refused: {:?}",

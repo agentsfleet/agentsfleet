@@ -33,7 +33,7 @@ async fn simultaneous_report_clients_overlap_and_return_every_connection() {
             ],
         )
         .await;
-    assert_eq!(api.warm(DEADLINE).await as usize, CONNECTIONS);
+    assert_eq!(api.warm().await as usize, CONNECTIONS);
     for round in 0..ROUNDS {
         run_round(&f, &api, round).await;
     }

@@ -32,7 +32,7 @@ async fn tool_search_loads_the_deferred_tools_that_best_match() {
     let nothing = call(&tools, "tool_search", json!({"query": "deploy"})).await;
     let punctuation = call(&tools, "tool_search", json!({"query": "!!! ??"})).await;
     let empty = call(&tools, "tool_search", json!({"query": ""})).await;
-    let capped = call(&tools, "tool_search", json!({"query": "a", "limit": 1000})).await;
+    let wide = call(&tools, "tool_search", json!({"query": "a", "limit": 1000})).await;
 
     assert_eq!(
         best.text,
@@ -47,10 +47,10 @@ async fn tool_search_loads_the_deferred_tools_that_best_match() {
     assert_eq!(punctuation.text, "no deferred tool matches !!! ??");
     assert_eq!(empty.text, "no deferred tool matches ");
     assert_eq!(
-        capped.text.lines().count(),
+        wide.text.lines().count(),
         5,
         "every tool holds `a`, and the note: {}",
-        capped.text
+        wide.text
     );
     assert!(deferred.is_loaded("cafe_menu"));
     assert_eq!(

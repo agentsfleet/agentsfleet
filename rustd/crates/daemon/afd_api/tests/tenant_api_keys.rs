@@ -70,15 +70,10 @@ async fn valid_requests_reach_the_production_store() {
 
 #[tokio::test]
 async fn mint_rejects_unreadable_and_invalid_bodies_before_tenant_lookup() {
-    let too_long = format!(
-        r#"{{"key_name":"deploy","description":"{}"}}"#,
-        "d".repeat(257)
-    );
     for body in [
         "{not json".to_owned(),
         r#"{"key_name":""}"#.to_owned(),
         r#"{"key_name":"contains spaces"}"#.to_owned(),
-        too_long,
     ] {
         let response = send(WRITE, Method::POST, KEYS, Some(CREDENTIAL), &body).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");

@@ -10,6 +10,7 @@
 )]
 
 use super::*;
+use af_core::paging::CEILING;
 
 /// A cursor in the clear `{instant}:{id}` form this inbox issues.
 const CLEAR_CURSOR: &str = "2025-01-01T00:00:00Z:01924f4e-0000-7000-8000-00000000a11e";
@@ -28,13 +29,13 @@ const CLEAR_CURSOR_ENCODED: &str =
 const BAD_REQUEST: u16 = 400;
 
 fn refusal_status(query: &str) -> u16 {
-    Listing::parse(query)
+    Listing::parse(query, CEILING)
         .err()
         .map_or(0, |refusal| refusal.status().as_u16())
 }
 
 fn parsed(query: &str) -> Listing {
-    Listing::parse(query)
+    Listing::parse(query, CEILING)
         .ok()
         .unwrap_or_else(|| panic!("{query} should parse"))
 }
@@ -42,7 +43,7 @@ fn parsed(query: &str) -> Listing {
 #[test]
 fn an_empty_query_is_every_state_at_the_default_size() {
     let listing = parsed("");
-    assert_eq!(listing.limit, i64::from(DEFAULT_LIMIT));
+    assert_eq!(listing.limit, i64::from(CEILING.default_rows()));
     assert!(listing.status.is_none(), "absent narrows nothing");
     assert!(listing.fleet_id.is_none());
     assert!(listing.gate_type.is_none());
@@ -107,17 +108,6 @@ fn a_fleet_id_that_is_not_an_identifier_is_refused_here() {
 }
 
 #[test]
-fn a_gate_type_is_bounded_on_its_decoded_bytes() {
-    let at_bound = format!("gate_type={}", "k".repeat(MAX_GATE_TYPE_BYTES));
-    assert_eq!(
-        parsed(&at_bound).gate_type.map(|kind| kind.len()),
-        Some(MAX_GATE_TYPE_BYTES)
-    );
-    let past = format!("gate_type={}", "k".repeat(MAX_GATE_TYPE_BYTES + 1));
-    assert_eq!(refusal_status(&past), BAD_REQUEST);
-}
-
-#[test]
 fn a_broken_escape_refuses_the_request() {
     assert_eq!(refusal_status("gate_type=%zz"), BAD_REQUEST);
 }
@@ -147,12 +137,14 @@ fn a_status_no_row_can_be_in_is_refused_rather_than_ignored() {
 }
 
 #[test]
-fn the_page_size_band_is_one_to_two_hundred() {
+fn the_page_size_band_is_the_deployments_list_page() {
+    let max = CEILING.max();
     assert_eq!(parsed("limit=1").limit, 1);
-    assert_eq!(parsed("limit=200").limit, i64::from(MAX_LIMIT));
+    assert_eq!(parsed(&format!("limit={max}")).limit, i64::from(max));
     // A form field left blank is the default page, as on every list route.
-    assert_eq!(parsed("limit=").limit, i64::from(DEFAULT_LIMIT));
-    for outside in ["limit=0", "limit=201", "limit=-1", "limit=ten"] {
+    assert_eq!(parsed("limit=").limit, i64::from(CEILING.default_rows()));
+    let past = format!("limit={}", max + 1);
+    for outside in ["limit=0", past.as_str(), "limit=-1", "limit=ten"] {
         assert_eq!(refusal_status(outside), BAD_REQUEST, "{outside}");
     }
 }

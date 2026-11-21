@@ -20,10 +20,11 @@ pub const DATA_BUFFER_BYTES_ENV: &str = "AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES";
 // of its kind, or a frame that size would wait for room its pool never has.
 const CONTROL_MIN_MIB: usize = 12;
 const DATA_MIN_MIB: usize = 2 * MESSAGE_BYTES_MAX / MIB;
-const MAX_MIB: usize = 512;
+// A pool is one tokio semaphore of bytes, which holds no more permits than this.
+const MAX_BYTES: usize = tokio::sync::Semaphore::MAX_PERMITS;
+const MAX_MIB: usize = MAX_BYTES / MIB;
 const CONTROL_MIN_BYTES: usize = CONTROL_MIN_MIB * MIB;
 const DATA_MIN_BYTES: usize = DATA_MIN_MIB * MIB;
-const MAX_BYTES: usize = MAX_MIB * MIB;
 const _: () = assert!(CONTROL_MIN_BYTES >= 2 * CONTROL_MESSAGE_BYTES_MAX);
 const _: () = assert!(DATA_MIN_BYTES >= 2 * MESSAGE_BYTES_MAX && DATA_MIN_BYTES <= MAX_BYTES);
 
@@ -95,7 +96,7 @@ impl MemoryLimits {
     pub const MIN_CONTROL_BUFFER_BYTES: usize = CONTROL_MIN_BYTES;
     /// Smallest data budget that holds a maximum work or report frame in each direction.
     pub const MIN_DATA_BUFFER_BYTES: usize = DATA_MIN_BYTES;
-    /// Largest supported frame-buffer budget across both directions.
+    /// Largest frame-buffer budget a tokio semaphore holds.
     pub const MAX_BUFFER_BYTES: usize = MAX_BYTES;
 
     /// Resolve once at boot; an invalid configured value is a startup fault.
@@ -168,11 +169,12 @@ mod tests {
         Ok(())
     }
 
-    /// Too little memory would wait forever for a reservation larger than its entire pool.
+    /// Too little memory would wait forever for a reservation larger than its
+    /// entire pool; more than a semaphore holds cannot be a pool.
     #[test]
-    fn impossible_or_excessive_memory_settings_are_refused() -> crate::Result<()> {
+    fn impossible_memory_settings_are_refused() -> crate::Result<()> {
         // The data floor holds one 32 MiB frame in each direction.
-        for (control, data) in [(0, 0), (11, 63), (513, 513), (usize::MAX, usize::MAX)] {
+        for (control, data) in [(0, 0), (11, 63), (usize::MAX, usize::MAX)] {
             for (settings, field) in [
                 (
                     MemorySettings {
@@ -279,11 +281,11 @@ mod byte_tests {
 
     #[test]
     fn byte_settings_refuse_impossible_and_overflowing_values() -> crate::Result<()> {
-        for value in ["0", "12582911", "536870913", "18446744073709551615", "bad"] {
+        for value in ["0", "12582911", "18446744073709551615", "bad"] {
             let env = MapEnv::from_pairs([(CONTROL_BUFFER_BYTES_ENV, value)]);
             assert!(MemoryLimits::from_env(&env).is_err(), "{value}");
         }
-        for value in ["12582912", "67108863", "536870913"] {
+        for value in ["12582912", "67108863"] {
             let env = MapEnv::from_pairs([(DATA_BUFFER_BYTES_ENV, value)]);
             assert!(MemoryLimits::from_env(&env).is_err(), "{value}");
         }

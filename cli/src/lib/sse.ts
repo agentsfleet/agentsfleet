@@ -15,8 +15,6 @@ import { isRecord } from "./guards.ts";
 
 const MESSAGE_KEY = "message";
 
-const DEFAULT_TIMEOUT_MS = 60_000;
-
 export interface SseFrame {
   id: string | null;
   type: string;
@@ -43,7 +41,7 @@ export async function streamGet(
   onEvent: StreamGetCallback,
   options: StreamGetOptions = {},
 ): Promise<void> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs;
   const fetchImpl: FetchImpl | undefined = options.fetchImpl ?? (globalThis.fetch as FetchImpl | undefined);
   if (typeof fetchImpl !== "function") {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
@@ -55,7 +53,7 @@ export async function streamGet(
     if (externalSignal.aborted) ctrl.abort();
     else externalSignal.addEventListener("abort", () => ctrl.abort(), { once: true });
   }
-  const timer = timeoutMs > 0 ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  const timer = timeoutMs !== undefined && timeoutMs > 0 ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
 
   try {
     const res = await fetchImpl(url, {
@@ -100,6 +98,7 @@ export async function streamGet(
   } catch (err) {
     if (isRecord(err) && (err as { name?: unknown }).name === "AbortError") {
       if (externalSignal?.aborted) return; // user-cancelled, not a timeout
+      if (timer === null) throw err;
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
     throw err;

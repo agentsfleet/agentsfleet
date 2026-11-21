@@ -295,7 +295,7 @@ It includes platform key rotation and access across tenants. Read-only inspectio
 
 The CLI reads `scopes` from `GET /v1/users/me`, which renders the closure `ScopeSet` already holds. It lists a platform command when its scope is in that list (`cli/src/program/entry/discovery.ts`). It keeps no ladder of its own.
 
-The read is one attempt bounded to two seconds. It goes out only when it is safe to present the credential. A stored login goes only to the deployment that minted it.
+The read is one attempt. It goes out only when it is safe to present the credential. A stored login goes only to the deployment that minted it.
 
 An `AGENTSFLEET_API_KEY` goes only to a target that was inferred or set in `AGENTSFLEET_API_URL`. It never goes to a host named only by `--api` on that line. It never falls back to the stored login.
 

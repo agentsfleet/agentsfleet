@@ -16,9 +16,6 @@ use afd_db::Db;
 use moka::future::Cache;
 use tokio::sync::Mutex;
 
-/// Eviction may split a local queue; the database lock still orders every write.
-const MAX_CACHED_SEND_GATES: u64 = 1024;
-
 /// Native private setup service, shared by browser and terminal chat.
 #[derive(Debug, Clone)]
 pub struct Drafts {
@@ -59,7 +56,7 @@ impl Drafts {
             database,
             entropy,
             analytics: Analytics::silent(),
-            senders: Cache::new(MAX_CACHED_SEND_GATES),
+            senders: Cache::builder().build(),
             bus: None,
             tuning: crate::tuning::SetupTuning::default(),
             list_page: af_core::paging::CEILING,

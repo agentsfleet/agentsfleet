@@ -44,6 +44,8 @@ use crate::run::store::Runs;
 
 /// The tail batch the bus admits is the bound, so a reply this inlines always
 /// fits the frame the broker accepts (`afd_bus::nats::preflight`).
+///
+/// Kept: a larger reply inlined would exceed NATS `max_payload` and fail to publish.
 const MAX_INLINE_FINAL_REPLY_BYTES: usize = afd_bus::TAIL_BATCH_BYTES;
 
 /// The event a steer body this daemon cannot show is logged under.

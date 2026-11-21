@@ -6,7 +6,6 @@ import { SetupUnavailable } from "./draft-errors";
 export { SetupUnavailable, losesAccess, setupErrorMessage, definiteRefusal } from "./draft-errors";
 
 export const REQUEST_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
-const REQUEST_TIMEOUT_MS = 30_000;
 const JSON_TYPE = "application/json";
 const ProblemSchema = z.object({
   user_message: z.string().optional(), error_code: z.string().optional(),
@@ -14,8 +13,7 @@ const ProblemSchema = z.object({
 });
 export type SetupRequest = {readonly path: string; readonly method?: string; readonly body?: unknown; readonly headers?: Readonly<Record<string, string>>; readonly list?: DraftList};
 
-export async function setupRequest<T>(request: SetupRequest, schema: z.ZodType<T>, owner: AbortSignal): Promise<T> {
-  const signal = AbortSignal.any([owner, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
+export async function setupRequest<T>(request: SetupRequest, schema: z.ZodType<T>, signal: AbortSignal): Promise<T> {
   try {
     signal.throwIfAborted();
     const response = await fetch(request.path, {method: request.method ?? REQUEST_METHOD.get, credentials: "same-origin",

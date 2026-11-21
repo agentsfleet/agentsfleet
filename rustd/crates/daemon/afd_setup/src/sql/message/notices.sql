@@ -25,15 +25,14 @@ SELECT m.sequence,
                             + l.cache_write_token_count + l.cache_write_5m_token_count
                             + l.cache_write_1h_token_count), 0)::bigint AS input_tokens,
                COALESCE(sum(l.output_token_count), 0)::bigint AS output_tokens,
-               COALESCE(sum(l.charged_nanos) FILTER (WHERE l.kind <> $4), 0)::bigint
+               COALESCE(sum(l.charged_nanos) FILTER (WHERE l.kind <> $3), 0)::bigint
                    AS provider_nanos,
-               bool_and(x.status IN ($5, $6)) AS known
+               bool_and(x.status IN ($4, $5)) AS known
           FROM thread.runs x
-          LEFT JOIN billing.usage_lines l ON l.work_type = $3 AND l.work_id = x.id
+          LEFT JOIN billing.usage_lines l ON l.work_type = $2 AND l.work_id = x.id
          WHERE x.turn_id = m.id AND x.draft_id = m.thread_id
         HAVING count(x.id) > 0
-           AND NOT bool_or(x.status = $7 AND x.run_expires_at > statement_timestamp())
+           AND NOT bool_or(x.status = $6 AND x.run_expires_at > statement_timestamp())
        ) r ON true
  WHERE m.thread_id = $1
  ORDER BY m.sequence DESC
- LIMIT $2

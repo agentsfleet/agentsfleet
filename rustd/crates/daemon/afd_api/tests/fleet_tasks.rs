@@ -147,7 +147,7 @@ async fn malformed_controls(writer: &axum::Router, token: &str, path: &str, body
             StatusCode::BAD_REQUEST
         );
     }
-    let oversized = " ".repeat(128 * 1024 + 1);
+    let oversized = " ".repeat(afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES + 1);
     assert_eq!(
         send(writer, Method::PATCH, path, Some(token), &oversized)
             .await

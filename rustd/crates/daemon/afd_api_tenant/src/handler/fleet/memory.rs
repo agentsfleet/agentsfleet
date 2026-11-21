@@ -86,7 +86,7 @@ pub(crate) async fn list<D: TenantPlane>(
     // order: `parseListParams` runs first and `resolveFleetInWorkspace` — where
     // the identifier check lives — only after. A request wrong in both halves is
     // told about the same one by either daemon.
-    let read = Read::parse(&query.unwrap_or_default())?;
+    let read = Read::parse(&query.unwrap_or_default(), services.pages().list)?;
     let fleet = parse_fleet_id(&fleet_id)?;
     let view = read.view();
     let after = read.after.as_ref().map(|boundary| After {

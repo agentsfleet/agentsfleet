@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { credential } from "@/lib/auth/credential";
 import { requireApiOrigin } from "@/lib/api/client";
 import {
-  CONNECTOR_CALLBACK_TIMEOUT_MS, CONNECTOR_COMPLETION_PATH,
+  CONNECTOR_COMPLETION_PATH,
   CONNECTOR_RETURN_COOKIE, connectorReturnPath,
   type CONNECTOR_FAILURE_COPY,
 } from "@/lib/connectors/completion";
@@ -29,20 +29,10 @@ export async function GET(req: Request, { params }: Params): Promise<Response> {
   if (!PROVIDER_ID_PATTERN.test(provider)) {
     return Response.json({ error: "Invalid connector provider" }, { status: INVALID_PROVIDER_STATUS });
   }
-  const controller = new AbortController();
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    deadline = setTimeout(() => {
-      controller.abort();
-      reject(controller.signal.reason);
-    }, CONNECTOR_CALLBACK_TIMEOUT_MS);
-  });
   try {
-    return await Promise.race([relay(req, provider, controller.signal), timeout]);
+    return await relay(req, provider, req.signal);
   } catch {
-    return failed(req, provider, controller.signal.aborted ? "timeout" : "unavailable");
-  } finally {
-    clearTimeout(deadline);
+    return failed(req, provider, "unavailable");
   }
 }
 

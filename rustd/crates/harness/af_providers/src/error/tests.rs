@@ -107,16 +107,12 @@ fn should_refuse_an_answered_status_under_the_providers_own_code() {
 #[test]
 fn should_carry_no_code_that_reads_as_a_message() {
     let quoted = r#"{"error":{"code":"your prompt said sk-live-secret"}}"#;
-    let long = format!(r#"{{"error":{{"code":"{}"}}}}"#, "x".repeat(65));
-
-    for body in [quoted, long.as_str()] {
-        let refused = raise::provider(answered(400, body));
-        assert!(
-            refused.detail().ends_with("status 400"),
-            "{}",
-            refused.detail()
-        );
-    }
+    let refused = raise::provider(answered(400, quoted));
+    assert!(
+        refused.detail().ends_with("status 400"),
+        "{}",
+        refused.detail()
+    );
 }
 
 #[test]

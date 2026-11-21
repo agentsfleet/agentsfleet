@@ -77,6 +77,8 @@ const EVENT_STATUS_UNKNOWN: &str = "grant_status_unrecognised";
 ///
 /// A span the statement adds to the database clock, so the card's deadline is
 /// stamped by the same clock the sweeper later reads it against.
+///
+/// Kept: `fleet.approval_gates.expires_at` is `NOT NULL` and read back as a timestamp.
 const GRANT_DECISION_WINDOW: Duration = DAY.saturating_mul(GRANT_DECISION_DAYS);
 
 /// The days in [`GRANT_DECISION_WINDOW`].

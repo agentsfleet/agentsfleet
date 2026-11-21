@@ -14,8 +14,7 @@ pub struct CheckpointPlaintext {
     /// Private plaintext SHA-256, verified again after decryption.
     #[garde(custom(super::digest))]
     pub sha256: String,
-    /// Plaintext chunk length. Bounded by its Postgres `BIGINT` column,
-    /// `fleet.task_objects.plaintext_size`.
+    /// Plaintext chunk length in bytes.
     #[garde(range(min = 1, max = i64::MAX.unsigned_abs()))]
     pub size: u64,
     /// Declared file, Git or history bytes.

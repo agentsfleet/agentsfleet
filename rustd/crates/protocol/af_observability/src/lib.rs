@@ -39,7 +39,7 @@ pub mod semconv;
 pub mod test_util;
 pub mod verb_span;
 
-pub use self::delivery::{Delivery, MAX_RUN, Segments};
+pub use self::delivery::{Delivery, Segments};
 pub use self::error::{Error, Result};
 pub use self::export::{CountingExporter, CountingLogExporter, LogDrops, SpanDrops};
 #[cfg(feature = "test-util")]

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
 import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
-import { PREVIEW_FILE_LIMIT } from "@/lib/api/upload-preview";
 
 const fetchMock = vi.fn();
 beforeEach(() => {fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock);});
@@ -19,13 +18,6 @@ it("uses the native pending and complete attachment states and uploads only on s
   const [url, init] = fetchMock.mock.calls[0] ?? [];
   expect(url).toBe("/live/v1/workspaces/workspace/fleets/fleet/uploads");
   expect(init?.body.get("file").name).toBe("notes.txt");
-  adapter.dispose();
-});
-
-it("rejects oversized files before a request", async () => {
-  const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
-  await expect(adapter.add({file: new File([new Uint8Array(PREVIEW_FILE_LIMIT + 1)], "large.bin")})).rejects.toThrow("5 MiB");
-  expect(fetchMock).not.toHaveBeenCalled();
   adapter.dispose();
 });
 

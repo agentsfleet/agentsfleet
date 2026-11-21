@@ -13,7 +13,6 @@ import { PageShell, VerificationCodeDisplay } from "./cli-auth-ui";
 
 const JSON_CONTENT_TYPE = "application/json";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
-const REQUEST_TIMEOUT_MS = 15_000;
 const RESTART_MESSAGE = "Start a new sign-in from your terminal. No code was sent to it.";
 const VIEW = { loading: "loading", ready: "ready", working: "working", failed: "failed" } as const;
 const DECISION = { approved: "approved", denied: "denied" } as const;
@@ -129,8 +128,7 @@ function useComparison(handoff: LoopbackHandoff) {
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
-    void loadComparison(handoff, signal).then(
+    void loadComparison(handoff, controller.signal).then(
       code => { if (!controller.signal.aborted) setView({ kind: VIEW.ready, code }); },
       () => {
         if (!controller.signal.aborted) {

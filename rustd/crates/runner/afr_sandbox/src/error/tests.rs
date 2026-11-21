@@ -62,10 +62,6 @@ fn test_each_egress_refusal_keeps_its_sentence() {
             "another runner process owns this host's egress tables and links",
         ),
         (
-            EgressRefusal::TooManyAddresses(257),
-            "257 addresses, past the 256 a run may reach",
-        ),
-        (
             EgressRefusal::NoScope,
             "the sandbox was built to no allowlist, so it has no addresses to replace",
         ),
@@ -96,7 +92,6 @@ fn test_each_egress_refusal_is_logged_under_its_own_name() {
         (EgressRefusal::NoNamespace, "no_namespace"),
         (EgressRefusal::NoSlot, "no_slot"),
         (EgressRefusal::HeldElsewhere, "held_elsewhere"),
-        (EgressRefusal::TooManyAddresses(0), "too_many_addresses"),
         (EgressRefusal::NoScope, "no_scope"),
     ];
 

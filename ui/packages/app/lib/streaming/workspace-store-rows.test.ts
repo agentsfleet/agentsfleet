@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BackfillOutcome } from "@/lib/streaming/fleet-stream-backfill";
 
 import { FRAME_KIND } from "@/lib/api/turns-types";
-import { MAX_LIVE_TURNS } from "@/lib/streaming/fleet-stream-cap";
 import {
   BLANK_FEED,
   chunk,
@@ -30,9 +29,6 @@ const FLEET_B = "fleet_b";
 const STRANGER = "fleet_stranger";
 const STANDING = { events_processed: 3, budget_used_nanos: "900000000" };
 const MOVED = { events_processed: 4, budget_used_nanos: "900000000" };
-const OVERFLOW = MAX_LIVE_TURNS + 50;
-// The first row the cap keeps once OVERFLOW settled rows have landed.
-const FIRST_KEPT = OVERFLOW - MAX_LIVE_TURNS;
 const MID_RUN_FRAMES = 10;
 const TOOL = "search_repo";
 const TURN = "e1";
@@ -101,22 +97,11 @@ describe("a tile hears only what it shows", () => {
   });
 });
 
-describe("the turn map stays bounded", () => {
-  it("the_store_still_bounds_its_event_map_without_absorb", () => {
-    // `absorb` was the only thing that ever emptied a fleet's rows; with it
-    // gone the cap has to hold on the write itself. The window shows through
-    // the feed: a late chunk for a row the cap shed finds nothing and opens a
-    // blank row, while one for a row still held changes nothing.
-    for (let index = 0; index < OVERFLOW; index += 1) {
-      push(FLEET_A, received(FLEET_A, `e${index}`));
-      push(FLEET_A, completed(FLEET_A, `e${index}`));
-    }
-    push(FLEET_A, chunk(FLEET_A, `e${FIRST_KEPT}`));
+describe("the turn map holds only subscribed fleets", () => {
+  it("keys rows only for a fleet the wall subscribed", () => {
+    push(FLEET_A, received(FLEET_A, TURN));
     expect(store.snapshot(FLEET_A).feed).toBe(TRIGGER_FEED);
-    push(FLEET_A, chunk(FLEET_A, `e${FIRST_KEPT - 1}`));
-    expect(store.snapshot(FLEET_A).feed).toBe(BLANK_FEED);
-    // And a key only for a fleet the wall subscribed: the map cannot grow
-    // with the workspace, only with the tiles on screen.
+    // The map cannot grow with the workspace, only with the tiles on screen.
     expect(store.snapshot(FLEET_B).feed).toBeUndefined();
   });
 
@@ -176,18 +161,5 @@ describe("the turn map stays bounded", () => {
     reconnectBackfill();
     await vi.waitFor(() => expect(noteServerFrameTime).toHaveBeenCalledWith(WORKSPACE_ID, CREATED_AT_MS));
     expect(store.snapshot(STRANGER).feed).toBeUndefined();
-  });
-
-  it("a reconnect backfill is capped on the same write", async () => {
-    runWorkspaceBackfill.mockImplementation(async (req) => {
-      req.onPage(Array.from({ length: OVERFLOW }, (_, index) => listRow(FLEET_A, `b${index}`, CREATED_AT_MS + index)));
-      return { ok: true, watermark: null };
-    });
-    reconnectBackfill();
-    await vi.waitFor(() => expect(runWorkspaceBackfill).toHaveBeenCalledTimes(1));
-    push(FLEET_A, chunk(FLEET_A, `b${FIRST_KEPT}`));
-    expect(store.snapshot(FLEET_A).feed).toBe(TRIGGER_FEED);
-    push(FLEET_A, chunk(FLEET_A, `b${FIRST_KEPT - 1}`));
-    expect(store.snapshot(FLEET_A).feed).toBe(BLANK_FEED);
   });
 });

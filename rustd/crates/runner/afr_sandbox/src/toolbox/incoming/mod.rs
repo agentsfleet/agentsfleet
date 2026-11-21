@@ -3,12 +3,10 @@
 //! `deploy/baremetal/toolbox.sh` lays them out and `scripts/toolbox/build.sh`
 //! and cosign name them. The runner admits that release at boot.
 
-use std::fs::{self, File};
-use std::io::Read as _;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::manifest::MANIFEST_MAX_BYTES;
 use super::{Mounter, Release, TOOLBOX_PREFIX, Toolbox, Toolboxes, image_name};
 use crate::error::{Result, ToolboxRefusal, toolbox_refused};
 
@@ -27,7 +25,8 @@ impl<M: Mounter> Toolboxes<M> {
     /// signature cannot be read, or admission refuses the release.
     pub fn admit_incoming(&self, release: &Release, incoming: &Path) -> Result<Arc<Toolbox>> {
         let manifest = staged_manifest(incoming)?;
-        let verified = release.verify(&bounded(&manifest)?, &bounded(&signature_of(&manifest))?)?;
+        let verified =
+            release.verify(&fs::read(&manifest)?, &fs::read(signature_of(&manifest))?)?;
         self.admit(&verified, &incoming.join(image_name(verified.sha256())))
     }
 }
@@ -63,18 +62,6 @@ fn signature_of(manifest: &Path) -> PathBuf {
     let mut name = manifest.as_os_str().to_owned();
     name.push(SIGNATURE_SUFFIX);
     PathBuf::from(name)
-}
-
-/// `path`'s bytes, read one byte past the most a manifest or signature may
-/// hold, so an oversized file is refused by [`Release::verify`] rather than
-/// read whole.
-fn bounded(path: &Path) -> Result<Vec<u8>> {
-    let limit = u64::try_from(MANIFEST_MAX_BYTES)
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
-    let mut bytes = Vec::new();
-    File::open(path)?.take(limit).read_to_end(&mut bytes)?;
-    Ok(bytes)
 }
 
 #[cfg(test)]

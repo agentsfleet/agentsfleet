@@ -33,6 +33,7 @@ use crate::timing::{DRAIN_GRACE, KILL_GRACE};
 /// The most output forwarded once the leader has ended: twice what the
 /// reader's backlog holds, room for that and a pipe's buffer. Past it, a
 /// descendant outside the group that keeps writing is not forwarded.
+/// Kept: a descendant writing forever would otherwise keep the exit from ever being reported.
 const DRAIN_BYTES_MAX: usize = 2 * OUTPUT_BACKLOG * READ_CHUNK_BYTES;
 /// Writes that may wait for a process to read its input; past this a write
 /// is refused rather than held.

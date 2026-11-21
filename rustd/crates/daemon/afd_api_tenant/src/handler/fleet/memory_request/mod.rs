@@ -28,6 +28,7 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_core::paging::{Cursor, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_validate::Ceiling;
 use af_wire::memory::INDEXED_TEXT_MAX_BYTES;
 use afd_memory::page::View;
 use garde::Validate as _;
@@ -53,19 +54,6 @@ const DETAIL_KEY_BOUNDS: &str = "memory key must be 1..2668 bytes";
 
 /// The refusal a key this daemon cannot decode earns.
 const DETAIL_KEY_ENCODING: &str = "memory key has invalid URL encoding";
-
-/// The page a caller who names no `limit` gets when LISTING.
-///
-/// A hundred, because a list is a person
-/// scrolling what their fleet knows and the whole set is capped at a thousand.
-const LIST_LIMIT_DEFAULT: i64 = 100;
-
-/// The page a caller who names no `limit` gets when SEARCHING.
-///
-/// A fifth of the list's, and the
-/// asymmetry is deliberate: a search is a person looking for one entry, so the
-/// first page is what they read and the rest is paging they will not do.
-const RECALL_LIMIT_DEFAULT: i64 = 20;
 
 /// Which rows the caller asked for, holding the text they asked with.
 ///
@@ -150,11 +138,11 @@ impl Read {
     /// positive integer, and a `starting_after` this daemon did not issue — in
     /// that ORDER, so a request wrong in two ways is always told about the
     /// same one.
-    pub(super) fn parse(query: &str) -> Result<Self, Refusal> {
+    pub(super) fn parse(query: &str, ceiling: Ceiling) -> Result<Self, Refusal> {
         let pairs = decode_pairs(query)?;
         let lens = Lens::of(named(&pairs, QUERY_TEXT), named(&pairs, QUERY_CATEGORY));
         Ok(Self {
-            limit: limit(named(&pairs, QUERY_LIMIT), &lens)?,
+            limit: limit(named(&pairs, QUERY_LIMIT), ceiling)?,
             after: boundary(named(&pairs, QUERY_STARTING_AFTER))?,
             lens,
         })
@@ -208,23 +196,23 @@ fn decode_pairs(query: &str) -> Result<Pairs<'_>, Refusal> {
         .collect()
 }
 
-/// The page size asked for, or the lens's default.
+/// The page size asked for, clamped to the deployment's `[api]` list page, or
+/// its default.
 ///
 /// # Errors
 /// Refuses anything that is not a positive integer.
-fn limit(raw: Option<&str>, lens: &Lens) -> Result<i64, Refusal> {
-    let default = if lens.view().is_recall() {
-        RECALL_LIMIT_DEFAULT
-    } else {
-        LIST_LIMIT_DEFAULT
-    };
-    raw.map_or(Ok(default), |asked| {
-        asked
-            .parse::<i64>()
-            .ok()
-            .filter(|asked| *asked >= 1)
-            .ok_or_else(|| Refusal::malformed(DETAIL_LIMIT))
-    })
+fn limit(raw: Option<&str>, ceiling: Ceiling) -> Result<i64, Refusal> {
+    raw.filter(|asked| !asked.is_empty()).map_or_else(
+        || Ok(i64::from(ceiling.default_rows())),
+        |asked| {
+            asked
+                .parse::<i64>()
+                .ok()
+                .filter(|asked| *asked >= 1)
+                .map(|asked| asked.min(i64::from(ceiling.max())))
+                .ok_or_else(|| Refusal::malformed(DETAIL_LIMIT))
+        },
+    )
 }
 
 /// The decoded boundary, or the refusal a foreign token earns.

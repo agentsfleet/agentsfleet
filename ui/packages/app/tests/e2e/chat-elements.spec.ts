@@ -68,11 +68,6 @@ test("native attachment preparation accepts a preview and shows its text receipt
   });
   await page.goto(`${chatProbe}?visual=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
-  const oversized = page.waitForEvent("filechooser");
-  await page.getByRole("button", {name: "Attach a preview file"}).click();
-  await (await oversized).setFiles({name: "large.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(5 * 1024 * 1024 + 1)});
-  await expect(page.getByRole("alert")).toContainText("up to 5 MiB");
-  expect(requests).toEqual([]);
   const chooser = page.waitForEvent("filechooser");
   await page.getByRole("button", {name: "Attach a preview file"}).click();
   await (await chooser).setFiles({name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("demo")});

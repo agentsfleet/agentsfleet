@@ -3,8 +3,6 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PENDING_SEND_STATE, type PendingSend, type PendingSendWriters } from "./useFleetPendingSends";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "@/lib/api/client";
-import { RETRY_DEFAULTS } from "@/lib/api/retry-config";
 import { ERROR_CODE } from "@/lib/errors";
 import { sendMarks } from "@/lib/streaming/send-marks";
 import { IN_ORDER, chunkOf, completionOf, markedSends } from "@/tests/helpers/send-marks-fixtures";
@@ -155,10 +153,6 @@ describe("useMessageDelivery", () => {
     expect(ctx.writers.find).toHaveBeenCalledWith("op-dismissed-elsewhere");
     expect(ctx.writers.begin).not.toHaveBeenCalled();
     expect(postSteer).not.toHaveBeenCalled();
-  });
-
-  it("gives a send longer than the steer route's worst case: its deadline and one attempt", () => {
-    expect(SEND_TIMEOUT_MS).toBeGreaterThanOrEqual(RETRY_DEFAULTS.deadlineMs + DEFAULT_REQUEST_TIMEOUT_MS);
   });
 });
 

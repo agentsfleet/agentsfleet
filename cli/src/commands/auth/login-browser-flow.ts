@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { ExpiredSessionError, InterruptedError, InvalidSessionError, SessionAbortedError, type CliError } from "../../errors/index.ts";
+import { InterruptedError, InvalidSessionError, SessionAbortedError, type CliError } from "../../errors/index.ts";
 import type { CliKeypair } from "../../lib/cli-flow.ts";
 import { SIGINT } from "../../constants/signals.ts";
 import { Browser } from "../../services/browser.service.ts";
@@ -78,15 +78,11 @@ interface BrowserLoginOptions {
   readonly keypair: CliKeypair;
   readonly dashboardUrl: string;
   readonly loginUrl: string;
-  readonly deadlineMs: number;
 }
 
 function decisionFailure(decision: CallbackDecision): CliError {
   if (decision.status === CALLBACK_DECISION.canceled) {
     return new InterruptedError({ detail: "login canceled", suggestion: RETRY_LOGIN });
-  }
-  if (decision.status === CALLBACK_DECISION.expired) {
-    return new ExpiredSessionError({ detail: "login session expired", suggestion: RETRY_LOGIN });
   }
   return new SessionAbortedError({ detail: "login was denied in your browser", suggestion: RETRY_LOGIN });
 }
@@ -112,7 +108,7 @@ export const browserLogin = <A, E, R>(
     });
     return yield* Effect.acquireUseRelease(
       Effect.try({
-        try: () => new LoginCallback({ sessionId: options.sessionId, dashboardOrigin: login.origin, deadlineMs: options.deadlineMs }),
+        try: () => new LoginCallback({ sessionId: options.sessionId, dashboardOrigin: login.origin }),
         catch: () => new SessionAbortedError({ detail: "could not start the local authorization listener", suggestion: "retry or use `agentsfleet login --no-open` for manual code entry" }),
       }),
       (callback) => useBrowserCallback(options, login, callback, complete),

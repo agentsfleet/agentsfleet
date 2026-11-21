@@ -12,8 +12,6 @@ use af_validate::TEXT_MAX_CHARS;
 use super::{Definition, MAX_DEFINITION_BYTES, MAX_INSTRUCTION_OFFSET, document, invalid};
 use crate::Result;
 
-const MAX_POINTER_CHARS: usize = 512;
-
 /// One JSON Patch operation on the setup: `add`, `replace` or `remove`.
 //
 // copy/move/test are left out: they add no editing power and widen what a
@@ -25,7 +23,7 @@ pub enum ConfigOp {
     /// Insert a member or array element below config.
     Add {
         /// JSON Pointer into mutable setup fields.
-        #[garde(length(chars, min = 1, max = MAX_POINTER_CHARS))]
+        #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
         path: String,
         /// The new value. The whole edited setup is validated before it is kept.
         #[garde(skip)]
@@ -34,7 +32,7 @@ pub enum ConfigOp {
     /// Replace an existing member or array element below config, or the description.
     Replace {
         /// JSON Pointer into mutable setup fields.
-        #[garde(length(chars, min = 1, max = MAX_POINTER_CHARS))]
+        #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
         path: String,
         /// The new value.
         #[garde(skip)]
@@ -43,7 +41,7 @@ pub enum ConfigOp {
     /// Remove an existing optional member or array element below config.
     Remove {
         /// JSON Pointer into mutable setup fields.
-        #[garde(length(chars, min = 1, max = MAX_POINTER_CHARS))]
+        #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
         path: String,
     },
 }

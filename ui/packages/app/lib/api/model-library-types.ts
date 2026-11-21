@@ -2,7 +2,7 @@ import { z } from "zod";
 import { metadataSchema, nanosSchema, priceSchema } from "./catalogue-types";
 
 // The model library's row shape and the catalogue helpers the model pickers share. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 export const OLLAMA_PROVIDER = "ollama";
 export const OPENAI_PROVIDER = "openai";

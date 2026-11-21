@@ -30,11 +30,11 @@ pub enum Observation {
 pub struct View {
     /// Private generation fixed when the stream opens.
     pub generation: i64,
-    /// Latest notices; clients reconcile through ordinary reads on reconnect.
+    /// Every message's notice; clients reconcile through ordinary reads on reconnect.
     pub notices: Vec<Notice>,
     /// The draft closed and this stream can end after its last notices.
     pub closed: bool,
-    /// Running state is authoritative even outside the recent notice window.
+    /// The running message, read on its own.
     pub running_sequence: Option<i64>,
 }
 

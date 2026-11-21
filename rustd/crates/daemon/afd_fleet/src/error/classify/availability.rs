@@ -28,7 +28,6 @@ impl Error {
             | ErrorKind::TaskStorageSigningParameters { .. }
             | ErrorKind::TaskStorageRequest { .. }
             | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::TaskRemoteCooldown { .. }
@@ -83,7 +82,6 @@ impl Error {
         match self.inner.kind {
             ErrorKind::TaskReadTimeout { .. } => Some("read_deadline"),
             ErrorKind::TaskStatementCancelled { .. } => Some("statement_deadline"),
-            ErrorKind::TaskStorageDeadline { .. } => Some("storage_deadline"),
             ErrorKind::TaskRemote { ref source } if source.is_timeout() => Some("remote_deadline"),
             ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
@@ -152,7 +150,6 @@ impl Error {
             | ErrorKind::TaskStorageSigningParameters { .. }
             | ErrorKind::TaskStorageRequest { .. }
             | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::DecisionRequest { .. }

@@ -9,7 +9,6 @@ import type { WorkspaceConnectionStatus } from "@/lib/streaming/workspace-stream
 import type { TileCounters, WorkspaceTileSnapshot } from "@/lib/streaming/workspace-tile";
 
 import { FRAME_KIND } from "@/lib/api/turns-types";
-import { capTurns } from "@/lib/streaming/fleet-stream-cap";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import {
   runWorkspaceBackfill,
@@ -62,10 +61,9 @@ export class WorkspaceStore {
   // notice is that walk's to clear.
   #gapsReported = 0;
   #liveFleetIds = new Set<string>();
-  // Bounded on both axes: a key only for a subscribed fleet, since frames and
-  // backfill rows reach the store through the subscriptions `connect` opened
-  // and nothing else; and `capTurns` on every write, so a tab left open on a
-  // busy fleet keeps a window rather than a history. The wall's own rows: they
+  // A key only for a subscribed fleet, since frames and backfill rows reach
+  // the store through the subscriptions `connect` opened and nothing else.
+  // The wall's own rows: they
   // order the feed and hold nothing a tile does not show, so a reply's chunks
   // and tool calls never land here once their row is open.
   #turnsByFleet = new Map<string, FleetTurn[]>();
@@ -261,7 +259,7 @@ export class WorkspaceStore {
     // a tile shows. Anything else is folded as before: a chunk for a row the
     // wall has not seen opens it, so the feed line reads as it always did.
     if (isMidRunFrame(frame) && held.some((turn) => turn.id === frame.turn_id)) return;
-    this.#turnsByFleet.set(fleetId, capTurns(applyLiveFrame(held, frame)));
+    this.#turnsByFleet.set(fleetId, applyLiveFrame(held, frame));
     // Only the four daemon-authored frames carry the snapshot; a runner's
     // mid-run frame says nothing about where the fleet stands.
     if ("events_processed" in frame || "budget_used_nanos" in frame) {
@@ -306,7 +304,7 @@ export class WorkspaceStore {
       rowsByFleet.set(row.fleet_id, fleetRows);
     }
     for (const [fleetId, fleetRows] of rowsByFleet) {
-      const turns = capTurns(mergeBackfill(this.#turnsByFleet.get(fleetId) ?? [], fleetRows));
+      const turns = mergeBackfill(this.#turnsByFleet.get(fleetId) ?? [], fleetRows);
       this.#turnsByFleet.set(fleetId, turns);
       this.#retile(fleetId);
     }

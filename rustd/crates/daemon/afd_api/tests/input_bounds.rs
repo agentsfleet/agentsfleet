@@ -48,12 +48,6 @@ const TURN_ID_MAX_LEN: usize = 256;
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
 
-/// The longest actor glob or prefix.
-const MAX_ACTOR_FILTER_BYTES: usize = 256;
-
-/// The longest gate-kind filter.
-const MAX_GATE_TYPE_BYTES: usize = 64;
-
 /// The catalogue's provider column, which the filter shares.
 const CATALOGUE_PROVIDER_BYTES: usize = 64;
 
@@ -122,29 +116,6 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
         INVALID_REQUEST,
     )
     .await;
-}
-
-#[tokio::test]
-async fn test_unbounded_filters_now_refuse_oversize() {
-    let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/turns");
-    let over = "a".repeat(MAX_ACTOR_FILTER_BYTES + 1);
-    for filter in ["actor", "actor_prefix"] {
-        let path = format!("{events}?{filter}={over}");
-        assert_refused(Method::GET, &path, INVALID_REQUEST).await;
-        let at_bound = "a".repeat(MAX_ACTOR_FILTER_BYTES);
-        assert_accepted(Method::GET, &format!("{events}?{filter}={at_bound}")).await;
-    }
-
-    let approvals = format!("/v1/workspaces/{OWNED_WORKSPACE}/approvals");
-    let kind = "g".repeat(MAX_GATE_TYPE_BYTES + 1);
-    assert_refused(
-        Method::GET,
-        &format!("{approvals}?gate_type={kind}"),
-        INVALID_REQUEST,
-    )
-    .await;
-    let at_bound = "g".repeat(MAX_GATE_TYPE_BYTES);
-    assert_accepted(Method::GET, &format!("{approvals}?gate_type={at_bound}")).await;
 }
 
 #[tokio::test]

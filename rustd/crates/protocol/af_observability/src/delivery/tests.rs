@@ -12,7 +12,7 @@ use opentelemetry::trace::{SpanId, TracerProvider as _};
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
 
-use super::{Delivery, MAX_RUN, Segments};
+use super::{Delivery, Segments};
 use crate::semconv;
 
 /// A collector that keeps what it is handed.
@@ -215,31 +215,6 @@ fn the_delivery_span_is_retro_dated_from_the_reported_duration() {
     );
 }
 
-/// A run reported as impossibly long is capped rather than believed.
-///
-/// The duration is runner-supplied. Uncapped, one wrong reading puts a span's
-/// start years in the past and drags a trace's whole timeline with it — and
-/// nobody reading the backend afterwards can filter out what they cannot see.
-#[test]
-fn an_implausible_duration_is_capped_and_the_span_still_lands() {
-    let delivery = Delivery {
-        wall: MAX_RUN * 4,
-        ..delivery()
-    };
-    let completed_at = settled_at();
-    let span = only_span(recorded(&delivery, completed_at));
-
-    assert_eq!(
-        span.start_time,
-        completed_at - MAX_RUN,
-        "the start is pulled back to the cap, not to the reported duration"
-    );
-    assert_eq!(
-        span.end_time, completed_at,
-        "the delivery is still recorded — the cap loses precision, never the span"
-    );
-}
-
 /// A duration that would start the run before the epoch records nothing.
 ///
 /// Not a panic and not a span at time zero: a run this daemon cannot place in
@@ -386,23 +361,20 @@ fn the_delivery_span_starts_at_the_events_creation() {
     );
 }
 
-/// A creation instant the span cannot start at, after the end or further back
-/// than any run this daemon describes, falls back to the reported duration.
+/// A creation instant the span cannot start at, after the end, falls back to
+/// the reported duration.
 #[test]
 fn an_unplaceable_creation_falls_back_to_the_reported_duration() {
     let completed_at = settled_at();
-    for opened_at in [completed_at + A_SECOND, completed_at - MAX_RUN - A_SECOND] {
-        let delivery = Delivery {
-            opened_at: Some(opened_at),
-            ..delivery()
-        };
-        let span = only_span(recorded(&delivery, completed_at));
-        assert_eq!(
-            (span.start_time, span.end_time),
-            (completed_at - delivery.wall, completed_at),
-            "opened at {opened_at:?}"
-        );
-    }
+    let delivery = Delivery {
+        opened_at: Some(completed_at + A_SECOND),
+        ..delivery()
+    };
+    let span = only_span(recorded(&delivery, completed_at));
+    assert_eq!(
+        (span.start_time, span.end_time),
+        (completed_at - delivery.wall, completed_at)
+    );
 }
 
 /// Each present segment is an attribute in whole milliseconds; an absent one
@@ -430,25 +402,5 @@ fn segments_are_exported_in_milliseconds_and_absent_ones_omitted() {
             (semconv::ATTR_DELIVERY_SETTLE_MS, Some("30".to_owned())),
             (semconv::ATTR_DELIVERY_COMPLETE_MS, Some("120".to_owned())),
         ]
-    );
-}
-
-/// A runner-supplied segment past any run this daemon describes is capped.
-#[test]
-fn an_implausible_segment_is_capped() {
-    let cap = MAX_RUN.as_millis().to_string();
-    let delivery = Delivery {
-        segments: Segments {
-            model: Some(Duration::MAX),
-            ..Segments::default()
-        },
-        ..delivery()
-    };
-    let span = only_span(recorded(&delivery, settled_at()));
-
-    assert_eq!(
-        attribute(&span, semconv::ATTR_DELIVERY_MODEL_MS),
-        Some(cap),
-        "capped at the longest run, not exported as years"
     );
 }

@@ -253,7 +253,6 @@ async fn refresh<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
 
     match wall.watch.verdict().await {
         Verdict::Admitted => {}
-        Verdict::Deferred => return Tick::Steady,
         Verdict::Unverified => return Tick::Unverified,
         Verdict::Revoked => {
             // Detach before returning, so no frame already queued on an

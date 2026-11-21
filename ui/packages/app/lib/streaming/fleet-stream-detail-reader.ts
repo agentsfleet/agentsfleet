@@ -9,8 +9,7 @@ import { ERROR_CODE } from "@/lib/errors";
 // read sent as one waits behind a send in flight, and the next send waits
 // behind the read.
 
-/** How long one read may take before it counts as failed. The registry's own
- * cadence reads again, so a hung proxy never pins a recovery. */
+// Kept: the registry joins a turn's pending read, so one hung read would stop that turn ever settling.
 export const TURN_DETAIL_TIMEOUT_MS = 10_000;
 
 const MALFORMED_DETAIL = "malformed turn detail";

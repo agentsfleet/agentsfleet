@@ -1,7 +1,7 @@
 import {mockStream, renderThread, postSteerMock} from "./fleet-thread/harness";
 import {act, fireEvent, screen, waitFor} from "@testing-library/react";
 import {afterEach, expect, it, vi} from "vitest";
-import {PREVIEW_FILE_LIMIT} from "@/lib/api/upload-preview";
+import {PREVIEW_FILE_COUNT} from "@/lib/api/upload-preview";
 
 afterEach(() => vi.unstubAllGlobals());
 function uploadBoundary(reply: () => Promise<Response>) {
@@ -23,13 +23,15 @@ async function choose(file: File) {
 
 it("shows and dismisses native preparation errors, then removes a staged file without a request", async () => {
   const network = uploadBoundary(async () => {throw new Error("Preparation must not upload");}); mockStream([]); renderThread();
-  await choose(new File([new Uint8Array(PREVIEW_FILE_LIMIT + 1)], "large.bin"));
-  expect((await screen.findByRole("alert")).textContent).toContain("up to 5 MiB");
+  for (let index = 0; index < PREVIEW_FILE_COUNT - 1; index += 1) await choose(new File(["sample"], `filler-${index}.txt`));
+  await choose(new File(["sample"], "notes.txt"));
+  await choose(new File(["sample"], "extra.txt"));
+  expect((await screen.findByRole("alert")).textContent).toContain("up to five");
   fireEvent.click(screen.getByRole("button", {name: "Dismiss attachment error"}));
   expect(screen.queryByRole("alert")).toBeNull();
-  await choose(new File(["sample"], "notes.txt"));
   expect(await screen.findByText("notes.txt")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Remove attachment"}));
+  // notes.txt is the last of the staged files, so its Remove is the last one.
+  fireEvent.click(screen.getAllByRole("button", {name: "Remove attachment"})[PREVIEW_FILE_COUNT - 1]!);
   await waitFor(() => expect(screen.queryByText("notes.txt")).toBeNull());
   expect(network).not.toHaveBeenCalled(); expect(postSteerMock).not.toHaveBeenCalled();
 });

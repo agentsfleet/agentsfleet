@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 /// Most fleets one runner may hold a sandbox for: one per worker, and a runner
 /// has at most `af_core::limits::MAX_WORKERS`, which `afd_runner`'s suite
 /// pins this to, since this crate carries no `af_core`.
+///
+/// Kept: it mirrors `MAX_WORKERS`, which stays; a runner holds one sandbox per worker.
 pub const HOLDS_MAX: usize = 64;
 
 /// A fleet identifier's length as text, `af_core::id::TEXT_LEN`, pinned the

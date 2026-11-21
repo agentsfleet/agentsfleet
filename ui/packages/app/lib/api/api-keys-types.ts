@@ -1,5 +1,5 @@
 // The tenant API key bounds and sort order the settings surfaces share. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 export const API_KEY_SORTS = ["-created_at", "created_at", "-key_name", "key_name"] as const;
 

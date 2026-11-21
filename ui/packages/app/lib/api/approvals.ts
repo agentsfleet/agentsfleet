@@ -1,5 +1,4 @@
 import {
-  DEFAULT_REQUEST_TIMEOUT_MS,
   classifyTransportFailure,
   isTransportInterrupt,
   request,
@@ -124,12 +123,8 @@ async function resolveAction(
   // custom verb cannot ride the gate identifier — see `WorkspaceRoute::
   // ApprovalResolve` in `rustd/crates/daemon/afd_api`, which is the served spelling.
   const url = `/v1/workspaces/${workspaceId}/approvals/${gateId}/${decision}`;
-  // Bypass `request()` so a 409 returns a body instead of throwing — but not
-  // the transport's timeout. Without one a hung resolve never settles: the
-  // inbox's optimistic row stays hidden with no error, and every later Server
-  // Action from that tab waits behind it in the router's action queue. A
-  // timeout here classifies exactly as it does in client.ts, so `withToken`
-  // hands the row back with the same `TIMEOUT` code.
+  // Bypass `request()` so a 409 returns a body instead of throwing. A failure
+  // classifies exactly as it does in client.ts.
   const base = typeof window === "undefined" ? requireApiOrigin() : "/backend";
   let res: Response;
   try {
@@ -140,7 +135,6 @@ async function resolveAction(
         Authorization: `Bearer ${token}`,
       },
       body,
-      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
     });
   } catch (cause) {
     throw classifyTransportFailure(cause, url);

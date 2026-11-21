@@ -30,6 +30,8 @@ pub(crate) mod sql;
 pub use self::outcome::{AbandonReason, abandon, count_attempt, stamp_delivered};
 
 /// How long a claim holds without renewal.
+///
+/// Kept: a crashed holder's claim must lapse, or its delivery is never retried.
 pub const CLAIM_TTL: Duration = Duration::from_secs(30);
 /// How often a holder renews while it delivers; a third of [`CLAIM_TTL`].
 pub const CLAIM_RENEW: Duration = Duration::from_secs(10);

@@ -220,6 +220,7 @@ async fn serve_plane(
     let router = afd_api::router::build(
         std::sync::Arc::clone(&runtime.plane),
         config.runtime.requests,
+        config.runtime.operations.tuning.server.max_request_body,
     );
     start_workers(supervisor, config, &analytics, &runtime).await;
     let drain = runner_drain(&gateway, &native);

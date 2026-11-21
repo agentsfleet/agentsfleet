@@ -55,13 +55,6 @@ const ERROR_INVALID_GRANT: &str = "invalid_grant";
 /// costs a round trip. The floor is the safe direction.
 pub const DEFAULT_ACCESS_TTL: Duration = Duration::from_mins(5);
 
-/// The longest `expires_in` this daemon will believe: ten years.
-///
-/// Past any real access-token lifetime, so a value beyond it is a malformed or
-/// hostile body rather than a generous provider — and believing it would park a
-/// dead token in the broker's cache for the life of the process.
-const MAX_ACCESS_TTL: Duration = Duration::from_hours(10 * 365 * 24);
-
 /// The form body of an RFC 6749 §6 refresh grant.
 ///
 /// Client authentication rides the BODY rather than a `Basic` header, which is
@@ -125,17 +118,16 @@ enum Seconds {
 impl Seconds {
     /// This lifetime as a duration, or `None` when it is not one.
     ///
-    /// Negative, non-finite and absurd values all answer `None` and take the
+    /// Negative and non-finite values answer `None` and take the
     /// malformed-body path. Nothing here converts a provider-controlled float
     /// with `as`: [`Duration::try_from_secs_f64`] rejects exactly the inputs
     /// that would make such a cast meaningless.
     fn duration(&self) -> Option<Duration> {
-        let lifetime = match self {
-            Self::Whole(seconds) => Duration::from_secs(*seconds),
-            Self::Fractional(seconds) => Duration::try_from_secs_f64(*seconds).ok()?,
-            Self::Text(seconds) => Duration::from_secs(seconds.parse().ok()?),
-        };
-        (lifetime <= MAX_ACCESS_TTL).then_some(lifetime)
+        match self {
+            Self::Whole(seconds) => Some(Duration::from_secs(*seconds)),
+            Self::Fractional(seconds) => Duration::try_from_secs_f64(*seconds).ok(),
+            Self::Text(seconds) => Some(Duration::from_secs(seconds.parse().ok()?)),
+        }
     }
 }
 

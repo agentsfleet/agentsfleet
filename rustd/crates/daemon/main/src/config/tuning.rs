@@ -551,12 +551,14 @@ pub(crate) struct Tuning {
     pub wake: afd_bus::wake::QueueBounds,
 }
 
-/// `[server]`'s timing and fan-out keys.
+/// `[server]`'s timing, fan-out and body keys.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ServerTimes {
     pub drain_timeout: Duration,
     pub task_join_timeout: Duration,
     pub max_live_activity_notices: usize,
+    /// Largest request body a route reads, in bytes.
+    pub max_request_body: usize,
 }
 
 impl Default for ServerTimes {
@@ -571,6 +573,9 @@ impl From<&super::settings::Server> for ServerTimes {
             drain_timeout: super::settings::secs(server.drain_timeout_seconds),
             task_join_timeout: super::settings::secs(server.background_task_join_timeout_seconds),
             max_live_activity_notices: server.max_live_activity_notices,
+            max_request_body: server
+                .max_request_body_mib
+                .saturating_mul(afd_http::body::MIB),
         }
     }
 }

@@ -133,7 +133,7 @@ export const runnerRegister = Effect.fn("runners.register")(function* (kind: Run
 export const runnerRotate = Effect.fn("runners.rotate")(function* (kind: RunnerKind, id: string, tokenFile: string) {
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const rotated = yield* decodePlatform(RunnerRotatedSchema, yield* platformRequest({
-      path: platformPath(kind.path, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
+      path: platformPath(kind.path, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate},
     }));
     yield* save(rotated.runner_token);
     yield* platformResult({id: rotated.id, token_file: tokenFile}, "Runner token rotated", {ID: rotated.id, "Token file": tokenFile});

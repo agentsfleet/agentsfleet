@@ -107,7 +107,7 @@ limit what a fleet can do.
 
 Browser callbacks return to `/api/connectors/{provider}/callback` on the web app.
 The API's `/v1/connectors/{provider}/callback` requires an authenticated POST.
-The web relay allows 25 seconds for completion and never retries the spent code.
+The web relay waits for the API's answer and never retries the spent code.
 
 Failures lead to a safe recovery page with a validated workspace return link;
 codes, state and vendor response bodies do not appear there. The workspace cookie

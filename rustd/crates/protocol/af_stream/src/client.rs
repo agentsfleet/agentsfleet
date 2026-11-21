@@ -87,10 +87,8 @@ impl Connection {
                 if !crate::telemetry::fallback(reason) {
                     return Err(error);
                 }
-                let attempt =
-                    deadline.min(Instant::now() + af_core::timing::STREAM_HTTP2_CONNECT_TIMEOUT);
                 let connection =
-                    Self::connect(Transport::H2, endpoint, trust, parent, attempt).await?;
+                    Self::connect(Transport::H2, endpoint, trust, parent, deadline).await?;
                 Ok(Selection {
                     connection,
                     http3_failure: Some(reason),

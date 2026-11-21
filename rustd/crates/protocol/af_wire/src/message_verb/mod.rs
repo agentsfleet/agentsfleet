@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 /// own call timeout must outlast it, or a slow channel reads to the model as a
 /// daemon that never answered, and a retried tool call posts the line twice.
 /// The runner pins that ordering at compile time.
+/// Kept: past the runner's call timeout a slow post reads as lost, and the model posts it twice.
 pub const MESSAGE_DELIVERY_DEADLINE: Duration = Duration::from_secs(12);
 
 /// `POST /v1/runners/me/runs/{run_id}/messages` request.
@@ -30,8 +31,8 @@ pub struct MessageRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     #[garde(skip)]
     pub fencing_token: u64,
-    /// The item this call is: a `UUIDv7` the runner mints once per call and
-    /// sends again on a retry, which then answers the first post's result.
+    /// The item this call is: a `UUIDv7` the runner mints once per call.
+    /// A retry sends it again and gets the first post's result.
     #[serde(borrow)]
     #[garde(skip)]
     pub item_id: Cow<'a, str>,

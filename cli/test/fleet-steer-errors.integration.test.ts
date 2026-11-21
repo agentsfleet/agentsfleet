@@ -1,5 +1,5 @@
-// Stream error handling, gate guidance, and REPL failures for fleet steer.
-import { describe, expect, test, setSystemTime } from "bun:test";
+// Stream error handling and REPL failures for fleet steer.
+import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Redacted } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
@@ -31,8 +31,6 @@ import {
 } from "./helpers-fleet-steer.ts";
 
 type StreamGetFn = typeof import("../src/lib/sse.ts").streamGet;
-
-const silentStream: StreamGetFn = async (): Promise<void> => { /* no events → sse_disconnected */ };
 
 // ── SSE error path (lines 139-141) ────────────────────────────────────────
 
@@ -104,98 +102,6 @@ describe("steer — SSE error path (lines 139-141)", () => {
     expect(rec.requests.some((r) => r.method !== POST)).toBe(true);
   });
 });
-
-describe("steer — a parked run names the gate holding it", () => {
-  const GATE_ID = "01900000-0000-7000-8000-000000099a01";
-
-  // A Fleet whose trigger declares a write capability opens a gate per run and
-  // waits. The timeout is the SYMPTOM; the gate is the cause, and before this
-  // the terminal carried only the symptom plus a suggestion pointing at
-  // `agentsfleet fleet turns`, which showed the message stuck at `received`.
-  // Narrows on `status` and `fleet_id` the way the route does. Without that a
-  // decided gate would still be offered as the explanation, and the test would
-  // pass while the CLI lied.
-  const parkedReply = (gates: Array<Record<string, unknown>>) => <T>(input: HttpRequestInput): T => {
-    if (input.method === POST) return { turn_id: TURN_ID } as T;
-    if (input.path.includes("/approvals")) {
-      const query = new URLSearchParams(input.path.split("?")[1] ?? "");
-      const status = query.get("status");
-      const fleetId = query.get("fleet_id");
-      const items = gates.filter(
-        (row) =>
-          (status === null || row.status === status) &&
-          (fleetId === null || row.fleet_id === fleetId),
-      );
-      return { items, next_cursor: null } as T;
-    }
-    return { items: [] } as T;
-  };
-
-  const runParkedSteer = async (gates: Array<Record<string, unknown>>) => {
-    const rec = makeRecorder();
-    let jumped = false;
-    const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method !== POST && !input.path.includes("/approvals") && !jumped) {
-        jumped = true;
-        setSystemTime(Date.now() + 120_000); // push past the 60s poll deadline
-      }
-      return parkedReply(gates)<T>(input);
-    };
-    try {
-      return await Effect.runPromiseExit(
-        steerEffectFromArgs(FLEET_ID, "go", {}, {
-          stdin: streamFrom([], false),
-          stdout: nullOutput(),
-          streamGet: silentStream,
-        }).pipe(Effect.provide(makeLayer(rec, httpReply))),
-      );
-    } finally {
-      setSystemTime();
-    }
-  };
-
-  test("a pending gate for this fleet replaces the generic retry suggestion", async () => {
-    const exit = await runParkedSteer([
-      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "pending" },
-    ]);
-    expect(Exit.isFailure(exit)).toBe(true);
-    const rendered = JSON.stringify(exit);
-    expect(rendered).toContain("agentsfleet fleet approvals approve");
-    expect(rendered).toContain(GATE_ID);
-    // The dead end it replaces.
-    expect(rendered).not.toContain("retry, or inspect");
-  }, 10_000);
-
-  test("several pending gates point at the list instead of one identifier", async () => {
-    const exit = await runParkedSteer([
-      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "pending" },
-      { gate_id: "01900000-0000-7000-8000-000000099a02", fleet_id: FLEET_ID, status: "pending" },
-    ]);
-    expect(JSON.stringify(exit)).toContain("agentsfleet fleet approvals list --fleet");
-  }, 10_000);
-
-  test("a gate belonging to another fleet does not explain this one's stall", async () => {
-    const exit = await runParkedSteer([
-      { gate_id: GATE_ID, fleet_id: "01900000-0000-7000-8000-0000007670ff", status: "pending" },
-    ]);
-    const rendered = JSON.stringify(exit);
-    expect(rendered).toContain("sending again may create another turn");
-    expect(rendered).not.toContain("approvals approve");
-  }, 10_000);
-
-  test("an already-decided gate is not offered as the explanation", async () => {
-    const exit = await runParkedSteer([
-      { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "approved" },
-    ]);
-    expect(JSON.stringify(exit)).toContain("sending again may create another turn");
-  }, 10_000);
-});
-
-// ── REPL tryPromise catch (lines 319-324) ─────────────────────────────────
-// onTurnError calls Effect.runPromise(renderCliError(...)). If Output.error
-// returns a failing Effect, runPromise rejects with a FiberFailure that has
-// no "_tag" in the CliError sense. That rejection propagates through
-// runSteerRepl → tryPromise.catch → lines 319-324.
 
 describe("steer — REPL tryPromise catch (lines 319-324)", () => {
   test("Output.error fail in onTurnError causes tryPromise catch with UnexpectedError", async () => {

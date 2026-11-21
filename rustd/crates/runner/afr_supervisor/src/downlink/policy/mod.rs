@@ -15,16 +15,16 @@ use tokio::sync::watch;
 
 use crate::{
     capability::{capability_report, selftest},
-    client::{ControlPlane, Verb},
+    client::ControlPlane,
     egress::Egress,
     error::{ErrorKind, Result},
     halt::Halt,
     holds::{Holds, Release},
 };
 
+/// Kept: a zero interval from the daemon would spin the beat loop.
 pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
-pub(crate) const LAST_BEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Assignment {
@@ -193,11 +193,12 @@ impl<'a> Heartbeat<'a> {
         if halt.token_refused() {
             return;
         }
-        let code = match tokio::time::timeout(LAST_BEAT_TIMEOUT, self.beat()).await {
-            Ok(Ok(_)) => return,
-            Ok(Err(failure)) if halt.stops_on(&failure) => return,
-            Ok(Err(failure)) => failure.code(),
-            Err(_source) => Verb::Heartbeat.code(),
+        // The stream's answer timeout bounds the beat, so a stop never waits
+        // on a daemon that does not answer.
+        let code = match self.beat().await {
+            Ok(_) => return,
+            Err(failure) if halt.stops_on(&failure) => return,
+            Err(failure) => failure.code(),
         };
         let error_code = code.as_str();
         tracing::warn!(event = EVENT_LAST_FAILED, error_code);

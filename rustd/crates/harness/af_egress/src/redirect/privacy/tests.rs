@@ -6,7 +6,10 @@ use super::{Chain, Stop};
 use crate::testing::{inbound, redirected};
 
 /// Redirects every chain here follows.
-const HOPS: u8 = 3;
+const HOPS: crate::Limits = crate::Limits {
+    max_redirects: 3,
+    ..crate::Limits::DEFAULT
+};
 use crate::{Inbound, Result};
 
 fn read_response(raw: &str, response: &mut Inbound) -> Result<(), Stop> {

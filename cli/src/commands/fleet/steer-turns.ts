@@ -2,7 +2,7 @@ import { ActivityPrinter, activityText } from "./task-activity.ts";
 import { AttemptOutput } from "./attempt-output.ts";
 import { ToolActivityPrinter } from "./tool-activity.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 import { CLI_ERROR_TAG, type CliError } from "../../errors/index.ts";
 import { TURN_STATUS } from "../../constants/turn-status.ts";
 import { authHeaders } from "../../lib/http.ts";
@@ -21,7 +21,6 @@ import {
 } from "../../lib/api-paths.ts";
 import { isString, isRecord } from "../../lib/guards.ts";
 
-const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 const TURN_NOT_FOUND_CODE = "UZ-AGT-015";
 export const STATUS_COMPLETE = "complete" as const;
@@ -30,7 +29,6 @@ export const STATUS_SSE_ERROR = "sse_error" as const;
 const FIELD_STATUS = "status" as const;
 const FIELD_TEXT = "text" as const;
 export const STATUS_TIMEOUT = "timeout" as const;
-const MS_PER_SECOND = 1000 as const;
 
 // Frame kinds mirror the daemon's activity_publisher KIND_* constants — the
 // wire values these frames arrive with.
@@ -41,10 +39,6 @@ export const KIND_TURN_COMPLETE = "turn_complete" as const;
 // that can't open inside this window degrades to post-then-poll; the send is
 // never blocked on a broken stream.
 export const TAIL_OPEN_MAX_WAIT_MS = 2_000;
-
-export const SSE_FALLBACK_TIMEOUT_SECONDS = Math.round(
-  SSE_FALLBACK_TIMEOUT_MS / MS_PER_SECOND,
-);
 
 export type SteerOutcome =
   | { readonly kind: typeof STATUS_COMPLETE; readonly status: string }
@@ -251,19 +245,16 @@ export const pollTurnTerminal = (
     // Turn IDs are opaque. The owned detail read avoids inferring a clock
     // from an ID or losing this turn behind a busy fleet's newest page.
     const path = wsFleetTurnPath(wsId, fleetId, turnId);
-    const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
+    // Waits as long as the turn runs: it ends at a terminal status, a failed
+    // read, or the caller's signal.
     let observed = false;
-    while (Date.now() < deadline && !signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- clock + external AbortSignal terminate it
-      const remaining = deadline - Date.now();
-      const read = yield* http.request<unknown>({ path, token, signal, timeoutMs: remaining, retry: { maxAttempts: 1 } }).pipe(
+    while (!signal?.aborted) { // oxlint-disable-line no-unmodified-loop-condition -- the external AbortSignal terminates it
+      const res = yield* http.request<unknown>({ path, token, signal }).pipe(
         // The send can return before the exact turn reaches the read store.
-        Effect.catch((error) => signal?.aborted || error.transient || (!observed &&
+        Effect.catch((error) => signal?.aborted || (!observed &&
           error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE)
           ? Effect.succeed(null) : Effect.fail(error)),
-        Effect.timeoutOption(`${remaining} millis`),
       );
-      if (Option.isNone(read)) return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;
-      const res = read.value;
       if (isRecord(res) && res.turn_id === turnId) activity.history(res["task_activity"]);
       if (isRecord(res) && res.turn_id === turnId && isString(res.status) && isTerminal(res.status)) {
         tools.history(res["tool_calls"]);
@@ -272,10 +263,8 @@ export const pollTurnTerminal = (
       }
       if (isRecord(res) && res.turn_id === turnId) observed = true;
       if (signal?.aborted) break;
-      const pause = Math.min(FALLBACK_POLL_MS, deadline - Date.now());
-      if (pause <= 0) break;
       yield* Effect.tryPromise((owner) =>
-        delay(pause, undefined, { signal: signal ? AbortSignal.any([signal, owner]) : owner }),
+        delay(FALLBACK_POLL_MS, undefined, { signal: signal ? AbortSignal.any([signal, owner]) : owner }),
       ).pipe(Effect.ignore);
     }
     return { kind: STATUS_TIMEOUT } as PolledSteerOutcome;

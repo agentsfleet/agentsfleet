@@ -243,8 +243,8 @@ The [gateway](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) and [
 
 | Setting | Default | Bounds |
 |---|---|---|
-| `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 64 MiB per replica | 64–512 MiB |
+| `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12 MiB or more |
+| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 64 MiB per replica | 64 MiB or more |
 | `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 thread identifiers | 1–65,536 identifiers |
 
 Receive and send pools are separate; each receives half the configured totals.

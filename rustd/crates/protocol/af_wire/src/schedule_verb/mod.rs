@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 pub struct ScheduleCreateRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
-    /// The item this call is: a `UUIDv7` the runner mints once per call and
-    /// sends again on a retry, which then answers the first result.
+    /// The item this call is: a `UUIDv7` the runner mints once per call.
+    /// A retry sends it again and gets the first result.
     #[serde(borrow)]
     pub item_id: Cow<'a, str>,
     /// The call's number within its run, from 1, as its record names it.
@@ -52,8 +52,8 @@ pub struct ScheduleCreateRequest<'a> {
 pub struct SchedulePatchRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
-    /// The item this call is: a `UUIDv7` the runner mints once per call and
-    /// sends again on a retry, which then answers the first result.
+    /// The item this call is: a `UUIDv7` the runner mints once per call.
+    /// A retry sends it again and gets the first result.
     #[serde(borrow)]
     pub item_id: Cow<'a, str>,
     /// The call's number within its run, from 1, as its record names it.
@@ -80,8 +80,8 @@ pub struct SchedulePatchRequest<'a> {
 pub struct ScheduleRunRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
-    /// The item this call is: a `UUIDv7` the runner mints once per call and
-    /// sends again on a retry, which then answers the first result.
+    /// The item this call is: a `UUIDv7` the runner mints once per call.
+    /// A retry sends it again and gets the first result.
     #[serde(borrow)]
     pub item_id: Cow<'a, str>,
     /// The call's number within its run, from 1, as its record names it.

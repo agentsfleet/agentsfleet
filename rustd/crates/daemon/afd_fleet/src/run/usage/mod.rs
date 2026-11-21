@@ -15,7 +15,7 @@ mod slice;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_wire::usage::{RUNTIME_MS_MAX, RequestUsage, UsageLine};
+use af_wire::usage::{RequestUsage, UsageLine};
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -283,9 +283,9 @@ impl Pricing {
         measured: &Measured,
         requests: &[RequestUsage],
     ) -> Result<Option<Vec<afd_billing::price::RatedLine>>> {
-        // The longest runtime one line may claim, which the renewal and report
-        // statements cap their own slices at, so the three charge alike.
-        let runtime_ms = count(measured.runtime_ms).min(RUNTIME_MS_MAX);
+        // At most `u32::MAX` milliseconds, the wire field, which the renewal
+        // and report statements cap their own slices at, so the three charge alike.
+        let runtime_ms = count(measured.runtime_ms);
         let runtime = (runtime_ms > 0)
             .then(|| -> Result<UsageLine> {
                 let seq =

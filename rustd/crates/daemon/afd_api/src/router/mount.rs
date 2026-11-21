@@ -8,8 +8,6 @@ use std::sync::Arc;
 
 use axum::routing::{MethodRouter, get};
 
-use axum::extract::DefaultBodyLimit;
-
 use crate::route::Route;
 
 use super::{Serving, probes};
@@ -26,15 +24,9 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         }),
         // Two planes answer this family, exactly as they do for connectors:
         // the bearer-proven half is the tenant's, and the identity provider's
-        // signature-proven signup event is the ingress plane's. It carries the
-        // webhook family's buffer cap for the same reason that one does — the
-        // proof IS the body, so the body must be read before anything can
-        // decide whether to trust it.
-        Route::Auth(verb) => afd_api_tenant::auth_handler_for::<D>(verb).or_else(|| {
-            afd_api_ingress::auth_handler_for::<D>(verb).map(|handler| {
-                handler.layer(DefaultBodyLimit::max(afd_api_ingress::BUFFER_CEILING))
-            })
-        }),
+        // signature-proven signup event is the ingress plane's.
+        Route::Auth(verb) => afd_api_tenant::auth_handler_for::<D>(verb)
+            .or_else(|| afd_api_ingress::auth_handler_for::<D>(verb)),
         Route::Tenant(verb) => afd_api_tenant::tenant_handler_for::<D>(verb),
         Route::Runner(verb) => Some(afd_api_runner::handler_for::<D>(verb)),
         Route::RunnerOps(verb) => afd_api_operator::runner_ops_handler_for::<D>(verb),
@@ -45,22 +37,8 @@ pub(super) fn handler_for<D: Serving>(route: Route) -> Option<MethodRouter<Arc<D
         // tenant's, the signature-proven events route is the ingress plane's.
         // Asking the tenant first and falling through keeps the split readable
         // as "whoever proves the caller owns the route".
-        Route::Connector(verb) => afd_api_tenant::connector_handler_for::<D>(verb).or_else(|| {
-            // Whatever the ingress plane serves here is reachable with no
-            // credential at all, because the proof IS the body and cannot be
-            // checked until the body has been read — so it carries the buffer
-            // cap the webhook family carries throughout. Today that is
-            // `ConnectorRoute::Events` alone, and matching on the verb to say
-            // so wrote an arm for the other five that `connector_handler_for`
-            // answers `None` for: unreachable by construction rather than
-            // untested.
-            afd_api_ingress::connector_handler_for::<D>(verb).map(|handler| {
-                handler.layer(DefaultBodyLimit::max(afd_api_ingress::BUFFER_CEILING))
-            })
-        }),
-        Route::Webhook(verb) => Some(
-            afd_api_ingress::webhook_handler_for::<D>(verb)
-                .layer(DefaultBodyLimit::max(afd_api_ingress::BUFFER_CEILING)),
-        ),
+        Route::Connector(verb) => afd_api_tenant::connector_handler_for::<D>(verb)
+            .or_else(|| afd_api_ingress::connector_handler_for::<D>(verb)),
+        Route::Webhook(verb) => Some(afd_api_ingress::webhook_handler_for::<D>(verb)),
     }
 }

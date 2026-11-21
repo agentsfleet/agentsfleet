@@ -9,7 +9,7 @@ use crate::harness;
 
 use af_validate::TEXT_MAX_CHARS;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_runner::validate::DETAIL_LABELS;
+use afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES;
 use http::{Method, StatusCode};
 use serde_json::json;
 
@@ -72,19 +72,18 @@ async fn a_label_edit_without_runner_write_is_forbidden() {
     }
 }
 
-/// A label past the text ceiling is refused with enrolment's own sentence, alone
-/// or beside a valid policy, before the store is asked: the bad half sinks the
-/// whole edit rather than letting the policy through.
+/// A label past the text ceiling is past the request body bound too, so it is
+/// refused 413 before the store is asked, alone or beside a valid policy: the
+/// bad half sinks the whole edit rather than letting the policy through.
 #[tokio::test]
-async fn invalid_labels_are_refused_with_the_enrolment_sentence_before_io() {
+async fn labels_past_the_text_ceiling_are_refused_before_io() {
     let router = operator(&[Scope::RunnerWrite]);
     let past_ceiling = json!(["l".repeat(TEXT_MAX_CHARS + 1)]).to_string();
     for body in [too_long(), both(&past_ceiling)] {
         let refused = patch(&router, Some(TENANT_KEY), &body).await;
-        let (status, code, detail) = harness::problem(refused).await;
         assert_eq!(
-            (status, code.as_str(), detail.as_str()),
-            (StatusCode::BAD_REQUEST, "UZ-REQ-001", DETAIL_LABELS),
+            refused.status(),
+            StatusCode::PAYLOAD_TOO_LARGE,
             "body={body}"
         );
     }
@@ -114,13 +113,14 @@ async fn an_action_beside_labels_and_a_misshapen_label_body_are_malformed() {
     }
 }
 
-/// A labels-only edit, a clear, a set at both edges and a policy-plus-labels
+/// A labels-only edit, a clear, a set at the body bound and a policy-plus-labels
 /// save all pass every guard and reach the store.
 #[tokio::test]
 async fn a_valid_label_edit_under_runner_write_reaches_the_store() {
     let router = operator(&[Scope::RunnerWrite]);
+    // The longest label the request body bound admits.
     let at_edge = json!({
-        "labels": ["l".repeat(TEXT_MAX_CHARS)]
+        "labels": ["l".repeat(DEFAULT_MAX_REQUEST_BODY_BYTES - 64)]
     })
     .to_string();
     for body in [

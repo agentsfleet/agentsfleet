@@ -51,11 +51,24 @@ describe("startChatData", () => {
     requestMock.mockResolvedValue({items: [{...MODEL, ref: "platform-default", label: "MiniMax M3.1 Flash"}], next_cursor: null});
     const data = startChat();
     const models = await data.models;
-    expect(requestMock).toHaveBeenCalledExactlyOnceWith("/v1/workspaces/ws_1/models?limit=100", {method: "GET"}, ARGS.token);
+    expect(requestMock).toHaveBeenCalledExactlyOnceWith("/v1/workspaces/ws_1/models", {method: "GET"}, ARGS.token);
     expect(runtimeModelLabel(models, undefined)).toBe("MiniMax M3.1 Flash");
     expect(runtimeModelLabel(models, "my-model")).toBe("my-model");
     requestMock.mockRejectedValue(new Error(UPSTREAM_DOWN));
     expect(runtimeModelLabel(await startChat().models, undefined)).toBe("Platform default model");
+  });
+
+  it("reads every page of models and refuses a repeated cursor", async () => {
+    resetMocks();
+    requestMock
+      .mockResolvedValueOnce({items: [{...MODEL, ref: "first", label: "First"}], next_cursor: "c1"})
+      .mockResolvedValueOnce({items: [{...MODEL, ref: "second", label: "Second"}], next_cursor: null});
+    const models = await startChat().models;
+    expect(models?.map(model => model.ref)).toEqual(["first", "second"]);
+    expect(requestMock).toHaveBeenLastCalledWith("/v1/workspaces/ws_1/models?starting_after=c1", {method: "GET"}, ARGS.token);
+    resetMocks();
+    requestMock.mockResolvedValue({items: [], next_cursor: "loop"});
+    await expect(startChat().models).resolves.toBeNull();
   });
 
   it("test_chat_single_thread_fetch: chat starts ONE thread read and no turn fan-out", () => {

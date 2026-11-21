@@ -98,14 +98,6 @@ pub const WEBHOOK_INSTALL_NOT_MAPPED: ErrorCode = ErrorCode::declare("UZ-WH-021"
 /// few of them. Almost every delivery this daemon accepts ends here.
 pub const WEBHOOK_SUBSCRIPTION_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-WH-022");
 
-/// A delivery whose body is past the ingress limit.
-///
-/// Decided on the byte count BEFORE the body is hashed, let alone parsed: the
-/// cap is what bounds the work an unauthenticated request can ask this daemon
-/// to do, so spending an HMAC over a body to find out it was too big would
-/// defeat it.
-pub const WEBHOOK_PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-WH-030");
-
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 

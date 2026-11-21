@@ -45,9 +45,8 @@ export class ApiError extends Error {
   /**
    * Server-supplied Retry-After value in milliseconds when present,
    * else `null`. Captured at the single-attempt boundary in `client.ts`
-   * while `Response.headers` is still in scope; the retry policy in
-   * `retry.ts` reads it off the error so the 429/Retry-After floor does
-   * not depend on the parsed body's shape.
+   * while `Response.headers` is still in scope, so a caller can read the
+   * server's ask without depending on the parsed body's shape.
    */
   retryAfterMs: number | null;
   /**

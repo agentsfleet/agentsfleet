@@ -33,52 +33,7 @@ pub(crate) mod verify_platform;
 pub(crate) use self::verify::verified;
 pub(crate) use self::verify_platform::{verified_app, verified_connector_events};
 
-use af_core::error_code;
-use axum::body::Bytes;
 use http::HeaderMap;
-
-use crate::handler::Refusal;
-
-/// The most bytes a delivery on this surface may CARRY.
-///
-/// The semantic cap: a body past it earns `UZ-WH-030` and a sentence naming
-/// the limit, so a sender that is posting too much learns which limit it hit.
-pub(crate) const MAX_BODY_SIZE: usize = 1024 * 1024;
-
-/// The most bytes this daemon will BUFFER before it refuses.
-///
-/// Deliberately above [`MAX_BODY_SIZE`] rather than equal to it, and the gap is
-/// the point. The transport limit exists so one unauthenticated request cannot
-/// make this daemon hold an arbitrary amount of memory; the semantic cap exists
-/// so a sender gets a coded answer. Setting them equal would collapse the
-/// second into the first — every over-cap delivery would earn `axum`'s bare 413
-/// instead of `UZ-WH-030`, and a sender reading its delivery log would see a
-/// status with no registry code to search. One doubling is enough headroom for
-/// the coded answer to be the one a real sender meets, while an absurd body is
-/// still refused before it is read.
-pub const BUFFER_CEILING: usize = MAX_BODY_SIZE * 2;
-
-/// The refusal a delivery past the cap earns.
-const DETAIL_TOO_LARGE: &str = "The webhook body exceeds the 1 MiB limit. Reduce the payload size.";
-
-/// Refuses a delivery past [`MAX_BODY_SIZE`].
-///
-/// Checked on the buffered length BEFORE the body is hashed: the cap is what
-/// bounds the work one unauthenticated request can ask of this daemon, and
-/// spending an HMAC over a body to discover it was too big would spend exactly
-/// what the cap exists to protect.
-///
-/// # Errors
-/// `UZ-WH-030`, with the limit in the sentence.
-pub(crate) fn within_cap(body: &Bytes) -> Result<(), Refusal> {
-    if body.len() > MAX_BODY_SIZE {
-        return Err(Refusal::coded(
-            error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
-            DETAIL_TOO_LARGE,
-        ));
-    }
-    Ok(())
-}
 
 /// The header GitHub names the delivery's kind in.
 ///

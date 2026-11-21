@@ -58,7 +58,6 @@ test("successful readback validates saved task detail and presents the reviewed 
   expect(requests).toHaveLength(2);
   for (const request of requests) {
     expect(request.method ?? "GET").toBe("GET");
-    expect(request.retry).toEqual({maxAttempts: 1});
     expect(request.timeoutMs).toBe(5000);
   }
 });

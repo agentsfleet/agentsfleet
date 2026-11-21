@@ -8,9 +8,6 @@
 //! original bytes. Anything else, including a changed letter, stays as the
 //! model wrote it.
 
-/// Shorter lines are too common to attribute to one span of the message.
-const MIN_RESTORED_CHARS: usize = 24;
-
 /// `text` with every line that retypes one span of `said` replaced by that span.
 pub(super) fn restore(text: &str, said: Option<&str>) -> String {
     let Some(said) = said else {
@@ -26,7 +23,7 @@ pub(super) fn restore(text: &str, said: Option<&str>) -> String {
 fn restore_line(line: &str, said: &str, source: &Folded) -> String {
     let (lead, content) = line.split_at(list_marker(line));
     let trimmed = content.trim_end();
-    if trimmed.chars().count() < MIN_RESTORED_CHARS {
+    if trimmed.is_empty() {
         return line.to_owned();
     }
     let wanted = Folded::of(trimmed).text;

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { FRAME_KIND } from "@/lib/api/turns-types";
+import { STREAM_SILENCE_TIMEOUT_MS } from "@/lib/streaming/stream-recovery-window";
 import { __resetRegistryForTests, CONNECTION_STATUS, getSnapshot, retryConnection, subscribe } from "@/tests/helpers/fleet-streams";
 
 const WORKSPACE = "renewal-workspace";
@@ -177,7 +178,7 @@ it("should retry blackholed connection attempts and eventually offer manual reco
   subscribe(WORKSPACE, FLEET, [], () => {});
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const source = current();
-    await vi.advanceTimersByTimeAsync(SLOW_RETRY_MS);
+    await vi.advanceTimersByTimeAsync(STREAM_SILENCE_TIMEOUT_MS);
     expect(source.closed).toBe(true);
     await vi.advanceTimersToNextTimerAsync();
     expect(current()).not.toBe(source);

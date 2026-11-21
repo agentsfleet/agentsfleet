@@ -93,7 +93,6 @@ impl Error {
             | ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
             | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorageDeadline { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }

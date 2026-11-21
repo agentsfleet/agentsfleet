@@ -159,13 +159,6 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::WEBHOOK_PAYLOAD_TOO_LARGE,
-        status: 413,
-        title: "Webhook payload too large",
-        hint: "The webhook body exceeds the 1 MiB limit. Reduce the payload size.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::SCHEDULE_NOT_FOUND,
         status: 404,
         title: "Schedule not found",

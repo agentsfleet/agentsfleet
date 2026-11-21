@@ -13,8 +13,6 @@ import type { TurnDetail } from "./turns";
 /** The one status a Stop writes (`PATCH …/turns/{turn_id}`). */
 export const TURN_STOP_STATUS = "cancelled";
 
-/** Bounded so a hung proxy never leaves Stop pressed forever. */
-const STOP_TIMEOUT_MS = 30_000;
 const HTTP_CONFLICT = 409;
 const CONTENT_TYPE_JSON = "application/json";
 
@@ -48,7 +46,7 @@ export async function stopTurn<T>(
       method: "PATCH",
       headers: { "Content-Type": CONTENT_TYPE_JSON },
       body: JSON.stringify({ status: TURN_STOP_STATUS }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(STOP_TIMEOUT_MS)]),
+      signal,
       cache: "no-store",
       // A signed-out request is answered with a redirect to sign-in; followed,
       // the sign-in page would read as the turn.

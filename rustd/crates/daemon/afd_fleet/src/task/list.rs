@@ -6,9 +6,6 @@ use jiff_sqlx::ToSqlx as _;
 use super::{TaskAfter, TaskPage, TaskScope, TaskSummary, Tasks, fetch, row};
 use crate::error::Result;
 
-/// Native ceiling also protects non-HTTP callers from an unbounded list.
-const PAGE_MAX: u32 = 100;
-
 #[derive(sqlx::FromRow)]
 struct SummaryRow {
     id: Uuid7,
@@ -29,7 +26,7 @@ pub(super) async fn read(
     after: Option<&TaskAfter>,
     limit: u32,
 ) -> Result<TaskPage> {
-    let limit = limit.clamp(1, PAGE_MAX);
+    let limit = limit.max(1);
     let statement = sqlx::query_as(include_str!("sql/list.sql"))
         .bind(&scope.fleet_id)
         .bind(&scope.workspace_id)

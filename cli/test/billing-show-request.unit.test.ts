@@ -43,7 +43,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     const exit = await runWith(program);
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.httpCalls.sort()).toEqual(
-      [BILLING_PATH, `${CHARGES_PATH_PREFIX}?limit=10`].sort(),
+      [BILLING_PATH, CHARGES_PATH_PREFIX].sort(),
     );
   });
 

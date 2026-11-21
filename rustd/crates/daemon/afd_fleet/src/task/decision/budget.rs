@@ -16,7 +16,6 @@ use crate::{
 };
 
 pub(super) const CALL_NANOS: i64 = 20_000_000;
-pub(super) const SOURCE_CALLS_MAX: i64 = 10;
 pub(super) const LOGICAL_SECONDS: f64 = 30.0;
 
 #[derive(sqlx::FromRow)]
@@ -37,18 +36,6 @@ pub(super) async fn check_on(
     if context.assessment.purpose() == DecisionPurpose::Goal {
         let task = &task.ok_or(TaskRefusal::InvalidTarget)?.context;
         goal(task, allocating)?;
-    } else if allocating {
-        let calls: i64 = sqlx::query_scalar(sql::SOURCE_CALLS)
-            .bind(&context.source_turn_id)
-            .bind(DecisionPurpose::Intent.as_str())
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query("check cumulative source decision allowance"))?;
-        if calls >= SOURCE_CALLS_MAX {
-            return Err(TaskRefusal::LimitExhausted.into());
-        }
-    } else {
-        // A non-goal call that allocates nothing spends no source allowance.
     }
     let config = Runs::stored_config_on(connection, &current.fleet_id, None)
         .await?

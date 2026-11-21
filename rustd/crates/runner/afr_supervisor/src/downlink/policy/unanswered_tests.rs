@@ -1,6 +1,6 @@
 //! A stop never waits on a daemon that does not answer: a beat in flight is
 //! abandoned for the last one, and the last one is given up on once
-//! [`LAST_BEAT_TIMEOUT`] passes.
+//! the stream's answer timeout passes.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::closing_tests::closing;
 use super::tests::{KEEP_GOING, probe, releasing};
-use super::{Assignment, EVENT_LAST_FAILED, Heartbeat, LAST_BEAT_TIMEOUT};
+use super::{Assignment, EVENT_LAST_FAILED, Heartbeat};
 use crate::client::ControlPlane;
 use crate::halt::Halt;
 use crate::holds::Holds;
@@ -24,7 +24,7 @@ const STOP_AFTER: Duration = Duration::from_secs(1);
 
 /// Past every wait a stop may spend: serving, then one bounded last beat. A
 /// runner still beating here waited on a daemon that never answered.
-const BOUND: Duration = STOP_AFTER.saturating_add(LAST_BEAT_TIMEOUT);
+const BOUND: Duration = STOP_AFTER.saturating_add(af_core::timing::STREAM_ANSWER_TIMEOUT);
 
 /// Serves over `plane` until `shutdown` is cancelled `STOP_AFTER` in, and
 /// answers whether the heartbeat ended inside [`BOUND`].
@@ -84,7 +84,7 @@ async fn test_an_unanswered_last_beat_is_given_up_after_its_bound() {
     let ended = stops_in_bound(&plane, shutdown).await;
 
     assert!(ended, "the stop waited on an unanswered last beat");
-    assert_eq!(started.elapsed(), LAST_BEAT_TIMEOUT);
+    assert_eq!(started.elapsed(), af_core::timing::STREAM_ANSWER_TIMEOUT);
     assert_eq!(drain(&mut calls).len(), 1, "the last beat alone");
     let failed = capture.only(EVENT_LAST_FAILED);
     let code = af_core::error_code::RUN_STREAM_DISCONNECTED.as_str();

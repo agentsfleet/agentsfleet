@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RequestCancelledError } from "./errors";
 import {
   answerApproval,
   approveApproval,
@@ -6,8 +7,6 @@ import {
   type AlreadyResolvedResponse,
   type ResolveResponse,
 } from "./approvals";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
-import { HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT } from "./errors";
 
 // The resolve half of the approvals client (approve / deny: the tagged union
 // over 200 vs 409, and the transport timeout). Split from approvals.test.ts by
@@ -234,35 +233,11 @@ describe("answerApproval", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error_code: "UZ-REQ-001", detail: "answer is empty" }, 400));
     await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, "")).rejects.toMatchObject({ status: 400, code: "UZ-REQ-001" });
   });
-});
 
-// ── the transport's timeout ───────────────────────────────────────────
-
-/** What `fetch` rejects with when an `AbortSignal.timeout` fires. */
-function timeoutAbort(): DOMException {
-  return new DOMException("signal timed out", "TimeoutError");
-}
-
-describe("resolve — bounded by the default timeout", () => {
-  it("a hung resolve aborts after the default timeout instead of pending forever", async () => {
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
-    fetchMock.mockRejectedValueOnce(timeoutAbort());
-    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toMatchObject({
-      code: RETRY_CODE_TIMEOUT,
-      status: HTTP_STATUS_REQUEST_TIMEOUT,
-    });
-    // The bypassed transport still carries the budget every request() carries,
-    // so a hung POST surfaces as ok:false and the optimistic row comes back.
-    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_REQUEST_TIMEOUT_MS);
-    const init = fetchMock.mock.calls[0]![1] as RequestInit;
-    expect(init.signal).toBe(timeoutSpy.mock.results[0]?.value);
-    timeoutSpy.mockRestore();
-  });
-
-  it("a timeout during the body read is a timeout, never an empty resolve", async () => {
-    fetchMock.mockResolvedValueOnce({ status: 200, json: () => Promise.reject(timeoutAbort()) });
-    await expect(denyApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toMatchObject({
-      code: RETRY_CODE_TIMEOUT,
-    });
+  it("reports a body read cut by navigation as a cancelled request, not an empty success", async () => {
+    const cut = new Response(null, { status: 200 });
+    vi.spyOn(cut, "json").mockRejectedValueOnce(new DOMException("The user aborted a request.", "AbortError"));
+    fetchMock.mockResolvedValueOnce(cut);
+    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toBeInstanceOf(RequestCancelledError);
   });
 });

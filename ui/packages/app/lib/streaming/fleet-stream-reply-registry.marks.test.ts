@@ -5,7 +5,7 @@ import { WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { createEntry } from "./fleet-stream-entry";
 import type { FleetTurn } from "./fleet-stream-row";
 import { dispatchReplyFrame } from "./fleet-stream-reply-registry";
-import { SEND_MARK, SEND_MARKS_MAX, sendMarks } from "./send-marks";
+import { SEND_MARK, sendMarks } from "./send-marks";
 
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 const TURN_ID = "1790573387481-566";
@@ -24,15 +24,6 @@ describe("a send's marks through the live stream", () => {
     const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     for (const frame of [chunkOf(TURN_ID), completionOf(TURN_ID)]) dispatchReplyFrame(entry, Z_A, frame, apply, () => true);
     expect(markedSends()).toEqual(IN_ORDER.map((name) => [name, OPERATION_ID]));
-  });
-
-  it("forgets the oldest accepted send past the cap, so its late frames leave no mark", () => {
-    const eventOf = (n: number) => `capped-event-${n}`;
-    for (let n = 0; n <= SEND_MARKS_MAX; n++) sendMarks.mark(SEND_MARK.ACCEPTED, `capped-op-${n}`, eventOf(n));
-    performance.clearMarks();
-    sendMarks.frame(completionOf(eventOf(0)));
-    sendMarks.frame(completionOf(eventOf(SEND_MARKS_MAX)));
-    expect(markedSends().map(([, id]) => id)).toEqual([`capped-op-${SEND_MARKS_MAX}`, `capped-op-${SEND_MARKS_MAX}`]);
   });
 
   it("leaves no frame mark for a frame that names no turn, or a turn no send here was accepted under", () => {

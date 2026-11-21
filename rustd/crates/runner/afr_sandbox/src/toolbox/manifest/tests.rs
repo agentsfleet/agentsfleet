@@ -9,7 +9,7 @@ use rustls_pki_types::SubjectPublicKeyInfoDer;
 use rustls_pki_types::pem::PemObject as _;
 use serde_json::json;
 
-use super::{MANIFEST_MAX_BYTES, Release, TOOLBOX_RELEASE_PUBLIC_KEY, debian_arch, host_arch};
+use super::{Release, TOOLBOX_RELEASE_PUBLIC_KEY, debian_arch, host_arch};
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{RUNNER, Signer, facts, manifest_bytes, sha256};
 
@@ -156,7 +156,6 @@ fn should_refuse_a_signature_that_is_not_the_release_keys() {
     let bytes = manifest_bytes(&facts(IMAGE));
     let mut tampered = bytes.clone();
     tampered[1] ^= 1;
-    let oversized = vec![b' '; MANIFEST_MAX_BYTES + 1];
     let release = signer.release();
 
     for (manifest, signature) in [
@@ -164,7 +163,6 @@ fn should_refuse_a_signature_that_is_not_the_release_keys() {
         (tampered, signer.sign(&bytes)),
         (bytes.clone(), b"not base64 at all!".to_vec()),
         (bytes.clone(), Vec::new()),
-        (oversized.clone(), signer.sign(&oversized)),
     ] {
         assert_eq!(
             refusal(&release, &manifest, &signature),
@@ -197,7 +195,6 @@ fn should_refuse_a_signed_manifest_it_cannot_read() {
         |facts: &mut serde_json::Value| facts["sha256"] = json!("a".repeat(63)),
         |facts: &mut serde_json::Value| facts["sha256"] = json!("A".repeat(64)),
         |facts: &mut serde_json::Value| facts["sha256"] = json!("g".repeat(64)),
-        |facts: &mut serde_json::Value| facts["erofs_features"] = json!(["x".repeat(200)]),
     ] {
         let mut changed = facts(IMAGE);
         edit(&mut changed);
@@ -287,38 +284,6 @@ fn each_refusal_is_spelled_apart_from_every_other() {
 
     assert_eq!(spelled.len(), all.len());
     assert_eq!(ToolboxRefusal::Digest.to_string(), "digest_mismatch");
-}
-
-/// The size cap sits at exactly a mebibyte for the manifest and its
-/// signature alike: one at the cap is read, one byte past it is not.
-#[test]
-fn should_read_up_to_the_size_cap_and_refuse_past_it() {
-    let signer = Signer::new();
-    let at_cap = vec![b' '; MANIFEST_MAX_BYTES];
-    let detail = |manifest: &[u8], signature: &[u8]| {
-        signer
-            .release()
-            .verify(manifest, signature)
-            .err()
-            .map_or_default(|refused| refused.to_string())
-    };
-
-    assert_eq!(MANIFEST_MAX_BYTES, 1_048_576);
-    assert_eq!(
-        refusal(&signer.release(), &at_cap, &signer.sign(&at_cap)),
-        Some(ToolboxRefusal::Manifest),
-        "a manifest at the cap is read, and is not JSON"
-    );
-    let bytes = manifest_bytes(&facts(IMAGE));
-    let mut padded = signer.sign(&bytes);
-    padded.resize(MANIFEST_MAX_BYTES, b'\n');
-    signer.release().verify(&bytes, &padded).unwrap();
-    padded.push(b'\n');
-    assert!(
-        detail(&bytes, &padded).contains("too large"),
-        "{}",
-        detail(&bytes, &padded)
-    );
 }
 
 /// A host names its architecture as Debian does, which is how a release

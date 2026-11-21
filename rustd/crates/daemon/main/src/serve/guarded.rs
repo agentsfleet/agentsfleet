@@ -11,11 +11,10 @@ use std::time::Duration;
 use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 
 /// The longest one storage request may take, end to end.
+///
+/// Kept: `afd_identity::direct` builds no client without one, and it is the
+/// only bound on a storage or GitHub peer that stops answering.
 const TIMEOUT: Duration = Duration::from_secs(300);
-/// The longest a storage connection may take to open.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// The longest a storage response may go silent.
-const READ_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Builds the storage client.
 ///
@@ -23,8 +22,6 @@ const READ_TIMEOUT: Duration = Duration::from_secs(300);
 /// Reports a client or TLS initialisation failure.
 pub(super) fn storage_client() -> reqwest::Result<reqwest::Client> {
     afd_identity::direct(TIMEOUT)
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
         .retry(reqwest::retry::never())
         .dns_resolver(Arc::new(Guarded))

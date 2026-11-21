@@ -112,7 +112,7 @@ pub(crate) async fn list<D: TenantPlane>(
     WorkspaceContext(owned): WorkspaceContext,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
-    let asked = Listing::parse(&query.unwrap_or_default())?;
+    let asked = Listing::parse(&query.unwrap_or_default(), services.pages().list)?;
     let resume = asked.cursor.as_ref().map(Resume::borrowed);
     let gates = services
         .approvals()

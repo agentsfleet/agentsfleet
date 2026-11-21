@@ -1,8 +1,7 @@
-import { request, requestWithRetry } from "./client";
+import { request } from "./client";
 import { TurnsPageSchema, type TurnRow, type TurnsPage } from "./turn-history-schema";
 export type { TurnRow, TurnsPage } from "./turn-history-schema";
 
-import type { RetryOptions } from "./retry";
 import type { ContextProgress } from "../context-progress";
 import { buildQuery } from "./turns-types";
 import type { TurnsQuery, FRAME_KIND } from "./turns-types";
@@ -102,17 +101,15 @@ export async function listFleetMessages(
   fleetId: string,
   token: string,
   opts?: ThreadQuery,
-  retry?: RetryOptions,
 ): Promise<ThreadPage> {
   const params = new URLSearchParams();
   if (opts?.starting_after) params.set("starting_after", opts.starting_after);
   if (opts?.limit != null) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  return requestWithRetry<ThreadPage>(
+  return request<ThreadPage>(
     `${fleetScope(workspaceId, fleetId)}/messages${qs.length > 0 ? `?${qs}` : ""}`,
     { method: "GET" },
     token,
-    retry,
   );
 }
 

@@ -54,6 +54,7 @@ Sizes use mebibytes (MiB) and kibibytes (KiB). A count, size or timeout refuses 
 | `drain_timeout_seconds` | 15 | Shutdown cuts off requests that were close to done |
 | `background_task_join_timeout_seconds` | 10 | Shutdown logs background tasks that did not stop in time |
 | `max_live_activity_notices` | 16 | Live activity on dashboards lags behind runs |
+| `max_request_body_mib` | 1 | Senders get `413` for bodies they need to send, such as webhook deliveries; lower it when large bodies use too much memory. A route that carries chat text or a runner frame reads the larger size that text or frame needs |
 
 ### `[api]`
 
@@ -381,6 +382,7 @@ Unset, the daemon stores no task checkpoints in R2, Cloudflare's object storage.
 | `egress.connect_timeout_seconds` | 10 | Web fetches fail to connect to slow sites |
 | `egress.request_timeout_seconds` | 30 | Web fetches time out on slow sites |
 | `egress.max_redirects` | 3 | Sites need longer redirect chains |
+| `egress.max_secret_mask_mib` | 10 | Redirected downloads carrying many signed URLs are refused because the matcher that masks their secrets ran out of room |
 | `telemetry.max_spans_per_run` | 256 | Long runs lose trace detail, or export too much |
 
 ## Boot checks
@@ -403,7 +405,7 @@ The daemon also refuses:
 - `drain_timeout_seconds` under 6, and `background_task_join_timeout_seconds` under 9;
 - `max_message_mib` over 32, and `max_control_message_mib` over 2;
 - `ttl_seconds` outside 33 to 3,600, a heartbeat that does not fit twice inside the offline time, or an uncordon time outside them;
-- `max_udp_payload_bytes` outside 1,200 to 65,507, a control buffer outside 12 to 512 MiB, or a data buffer outside 64 to 512 MiB;
+- `max_udp_payload_bytes` outside 1,200 to 65,507, a control buffer under 12 MiB, or a data buffer under 64 MiB;
 - `lock_max_attempts` over 1,000, or attempts times `lock_retry_interval_ms` over 300,000;
 - `[outbound.retries]` with more than 10 attempts or a backoff over 30,000 ms;
 - `[connectors.qstash]` tries and waits that cannot end inside `call_budget_seconds`, a budget of 30 seconds or more, or `max_retry_delay_ms` under 200;

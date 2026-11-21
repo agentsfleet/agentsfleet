@@ -368,7 +368,7 @@ Fleets on shared hosts run their own programs: build scripts, test suites, packa
 
   The tenant leaf's memory limit sits `SANDBOX_MEMORY_RESERVE_BYTES` below the run's. So the out-of-memory killer picks only a tenant process, and the call it ended reads `out_of_memory`.
 
-  Its throttle, `tenant/memory.high`, sits an eighth below that limit and never more than 128 MiB below it. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first. The cap keeps the slow band narrow on a large run: with no swap, everything inside it is throttled.
+  Its throttle, `tenant/memory.high`, sits an eighth below that limit. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first.
 
 - An enforced disk quota. The runner's 4 GiB default sizes the workspace disk. The disk holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full.
 

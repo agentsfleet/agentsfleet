@@ -56,7 +56,7 @@ export class SetupSession {
         this.#recovery = {action: SETUP_ACTION.save, operation_id: key, draft_candidate_id: candidateId,
           name, review_digest: reviewDigest, start_kind: start.kind};
         const request = this.#transport.call({path: this.#transport.fleets, method: HTTP_METHOD.post,
-          headers: {[IDEMPOTENCY_KEY]: key}, body, retry: null}, FleetSchema);
+          headers: {[IDEMPOTENCY_KEY]: key}, body}, FleetSchema);
         this.#continueSave = request;
         return request;
       }).pipe(Effect.tap((fleet) => Effect.sync(() => { this.#fleet = fleet; })),
@@ -90,7 +90,7 @@ export class SetupSession {
         this.#recovery = {action: SETUP_ACTION.apply, operation_id: key, draft_candidate_id: candidateId,
           fleet_id: fleetId, review_digest: reviewDigest, setup_etag: setupTag};
         return this.#transport.call({path, body, method: HTTP_METHOD.post,
-          headers: {[IF_MATCH]: setupTag, [IDEMPOTENCY_KEY]: key}, retry: null}, AppliedSchema);
+          headers: {[IF_MATCH]: setupTag, [IDEMPOTENCY_KEY]: key}}, AppliedSchema);
       }).pipe(Effect.ensuring(Effect.sync(() => { if (!this.#apply.pending) this.#recovery = undefined; })));
     });
   }

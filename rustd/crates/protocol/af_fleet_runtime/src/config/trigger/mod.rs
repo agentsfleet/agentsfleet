@@ -63,9 +63,6 @@ pub const VERIFIED_WEBHOOK_SOURCES: [&str; Scheme::ALL.len()] = [
 /// approval-decision route's.
 pub const WEBHOOK_SOURCE_APPROVAL: &str = "approval";
 
-/// Most triggers one fleet may declare.
-pub(crate) const MAX_TRIGGERS: usize = 8;
-
 /// Why a webhook trigger was refused.
 const REASON_NO_SOURCE: &str = "a webhook trigger names no source";
 /// Why a cron trigger was refused.

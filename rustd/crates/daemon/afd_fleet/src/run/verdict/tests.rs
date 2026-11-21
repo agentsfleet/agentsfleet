@@ -1,6 +1,5 @@
 use af_core::turn::status;
 use af_wire::report::{FailureClass, Outcome};
-use afd_turns::view::sql::MAX_FAILURE_DETAIL_BYTES;
 
 use super::Verdict;
 
@@ -50,29 +49,6 @@ fn an_unclassified_or_empty_failure_stores_no_invented_cause() {
 
     let empty = Verdict::of(Outcome::FleetError, Some(FailureClass::PolicyDeny), "");
     assert_eq!(empty.detail(), None);
-}
-
-#[test]
-fn failure_detail_is_byte_bounded_without_splitting_utf8() {
-    let mut detail = "a".repeat(MAX_FAILURE_DETAIL_BYTES - 1);
-    detail.push('é');
-    detail.push_str("tail");
-
-    let truncated = Verdict::of(Outcome::FleetError, None, &detail).detail();
-    assert_eq!(truncated.map(str::len), Some(MAX_FAILURE_DETAIL_BYTES - 1));
-    assert_eq!(
-        Verdict::of(Outcome::FleetError, None, "short").detail(),
-        Some("short")
-    );
-}
-
-#[test]
-fn a_detail_exactly_at_the_cap_is_stored_whole() {
-    let detail = "a".repeat(MAX_FAILURE_DETAIL_BYTES);
-
-    let stored = Verdict::of(Outcome::FleetError, None, &detail).detail();
-
-    assert_eq!(stored, Some(detail.as_str()));
 }
 
 #[test]

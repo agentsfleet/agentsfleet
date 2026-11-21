@@ -62,7 +62,7 @@ test.each([
   const row = {...ROW, state, linked_fleet_id, candidate_revision: null, setup_revision};
   const result = await run(["list"], () => Response.json({items: [row], next_cursor: null}));
   expect(result.code).toBe(0);
-  expect(new URLSearchParams(result.calls[0]?.query).get("limit")).toBe("50");
+  expect(new URLSearchParams(result.calls[0]?.query).get("limit")).toBeNull();
   expect(result.stdout).toContain(label);
   expect(result.stdout).toContain(versions);
   expect(result.stdout).not.toContain("vnull");

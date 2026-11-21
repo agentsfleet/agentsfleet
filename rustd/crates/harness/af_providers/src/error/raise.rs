@@ -9,8 +9,6 @@ use rig_core::{ProviderError, ProviderResponseError};
 
 use super::{Error, ErrorKind};
 
-/// The longest provider code a report carries; a longer one is a message.
-const CODE_CAP: usize = 64;
 /// The early end of a provider that named no code for it.
 const UNNAMED_END: &str = "provider_error";
 
@@ -143,6 +141,6 @@ fn is_code(code: &str) -> bool {
 
 #[derive(garde::Validate)]
 struct ProviderCode<'a> {
-    #[garde(length(bytes, min = 1, max = CODE_CAP), pattern(r"^[A-Za-z0-9_.:-]+$"))]
+    #[garde(length(bytes, min = 1), pattern(r"^[A-Za-z0-9_.:-]+$"))]
     value: &'a str,
 }

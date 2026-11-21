@@ -28,7 +28,6 @@ import {
   type ReplSignalSource,
 } from "../../lib/repl.ts";
 import { exitToCliError, renderCliError } from "../../lib/cli-error-render.ts";
-import { parkedGateHint } from "../approvals/pending.ts";
 import {
   DISPOSITION_FOLDED,
   DISPOSITION_QUEUED,
@@ -39,7 +38,6 @@ import {
 import {
   openTurnTail,
   pollTurnTerminal,
-  SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
   TAIL_TIMED_OUT,
   type TurnTailHandle,
@@ -166,11 +164,13 @@ const steerTurnWithTail = (
     // A folded message keeps its own turn: the run it joined answers it
     // there when that run reports, so the CLI waits on the message's own id.
     const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.turn_id, token, signal);
-    if (signal?.aborted) {
+    // The poll stops short of a terminal status only when the caller's
+    // signal ended the wait.
+    if (signal?.aborted || outcome.kind !== STATUS_COMPLETE) {
       return yield* failSteerInterrupted();
     }
     yield* readSteeredWork(wsId, fleetId, post.turn_id, token, signal);
-    yield* renderOutcome(outcome, post.turn_id, fleetId, wsId, token, post, signal);
+    yield* renderOutcome(outcome, post.turn_id, fleetId, post);
   });
 
 // A tail that never became ready may have missed the turn's opening frames;
@@ -200,14 +200,11 @@ const resolveSteerOutcome = (
   });
 
 const renderOutcome = (
-  outcome: RenderableSteerOutcome,
+  outcome: Extract<RenderableSteerOutcome, { readonly kind: typeof STATUS_COMPLETE }>,
   turnId: string,
   fleetId: string,
-  wsId: string,
-  token: Redacted.Redacted<string>,
   post: MessagesResponse,
-  signal?: AbortSignal,
-): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
+): Effect.Effect<void, CliError, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
 
@@ -218,36 +215,19 @@ const renderOutcome = (
         ...(post.folded_into_turn_id ? { folded_into_turn_id: post.folded_into_turn_id } : {}),
         ...outcome,
       });
-    } else if (outcome.kind === STATUS_COMPLETE) {
+    } else {
       yield* output.info("");
       yield* output.success(`turn ${turnId} ${outcome.status}`);
     }
 
-    if (outcome.kind === STATUS_COMPLETE) {
-      if (outcome.status !== TURN_STATUS.PROCESSED) {
-        return yield* Effect.fail(
-          new ConfigError({
-            detail: `turn ${turnId} terminated with status: ${outcome.status}`,
-            suggestion: `inspect: agentsfleet fleet turns ${fleetId}`,
-          }),
-        );
-      }
-      return;
+    if (outcome.status !== TURN_STATUS.PROCESSED) {
+      return yield* Effect.fail(
+        new ConfigError({
+          detail: `turn ${turnId} terminated with status: ${outcome.status}`,
+          suggestion: `inspect: agentsfleet fleet turns ${fleetId}`,
+        }),
+      );
     }
-    // Only the timeout outcome reaches here — the complete branch above
-    // returns — so the stall is always a timeout and the message says so once.
-    //
-    // One failure line, not two. This used to print through `output.error` AND
-    // then fail, reporting the same stall twice under two glyph lines with the
-    // same follow-up command.
-    const parked = yield* parkedGateHint(wsId, fleetId, token, signal);
-    if (signal?.aborted) return yield* failSteerInterrupted();
-    return yield* Effect.fail(
-      new ConfigError({
-        detail: `turn ${turnId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
-        suggestion: parked ?? `inspect: agentsfleet fleet turns ${fleetId}; sending again may create another turn`,
-      }),
-    );
   });
 
 export const steerEffectFromArgs = (

@@ -64,7 +64,7 @@ async fn step<R: Recheck>(mut guard: Guard<R>) -> Option<Turn<Guard<R>>> {
             () = tokio::time::sleep_until(guard.next_check) => {
                 guard.next_check = Instant::now() + RECHECK_INTERVAL;
                 match guard.watch.verdict().await {
-                    Verdict::Admitted | Verdict::Deferred => {}
+                    Verdict::Admitted => {}
                     Verdict::Revoked => return Some(Turn::Revoked),
                     // An outage is not a revocation: the stream ends with no
                     // frame, and the reconnect is authorized at open.

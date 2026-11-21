@@ -473,7 +473,7 @@ When incoming work fills its buffer budget, later messages wait for room.
 Heartbeats and commands have their own budget.
 
 The data budget's floor is 67,108,864 bytes, so each half holds one 32 MiB frame.
-The control budget's floor is 12 MiB, and both budgets stop at 512 MiB.
+The control budget's floor is 12 MiB. Neither budget has a ceiling below what a tokio semaphore holds.
 Startup refuses a value outside its range (`af_stream/src/framing/memory.rs`).
 
 The NATS queue retains recent fleet wake-up hints used by the scheduler. [Message budgets](../../rustd/crates/protocol/af_stream/src/framing/budget.rs)

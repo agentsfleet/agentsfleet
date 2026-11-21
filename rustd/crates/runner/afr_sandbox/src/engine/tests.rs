@@ -16,7 +16,7 @@ fn request(run_id: &str) -> SandboxRequest<'_> {
 /// keeping its run and limits.
 #[test]
 fn test_a_request_is_isolated_until_told_otherwise() {
-    let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is within the cap");
+    let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is an allowlist");
     let isolated = request("run-a");
 
     let shared = isolated.with_network(Network::Host);

@@ -31,13 +31,6 @@ fn a_changed_letter_is_left_as_the_model_wrote_it() {
 }
 
 #[test]
-fn a_short_line_is_never_attributed_to_the_message() {
-    let typed = "\"ms\" and \"µs\"";
-
-    assert_eq!(restore(typed, Some(SAID)), typed);
-}
-
-#[test]
 fn a_line_matching_two_spans_is_left_alone() {
     let said = "Say “keep the cache warm always” twice: “keep the cache warm always”.";
     let typed = "\"keep the cache warm always\" and more";

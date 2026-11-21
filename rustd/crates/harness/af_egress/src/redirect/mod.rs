@@ -15,6 +15,10 @@ pub use target::Target;
 /// runner's `[egress] max_redirects` names nothing else.
 pub const MAX_REDIRECTS: u8 = 3;
 
+/// The memory the automaton masking a redirect's secrets in its response may
+/// build when the runner's `[egress] max_secret_mask_mib` names nothing else.
+pub const MASK_MATCHER_BYTES: usize = 10 * 1024 * 1024;
+
 /// Closed stopping reasons; none holds private target data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stop {
@@ -106,16 +110,17 @@ impl Chain {
     }
 
     /// Begin after the first request's admission, retaining only modeled
-    /// headers and following at most `max_redirects` before giving up.
+    /// headers, following at most `limits.max_redirects` before giving up and
+    /// masking within `limits.mask_matcher_bytes`.
     #[must_use]
-    pub fn new(current: &Url, headers: Vec<(String, String)>, max_redirects: u8) -> Self {
+    pub fn new(current: &Url, headers: Vec<(String, String)>, limits: crate::Limits) -> Self {
         Self {
             current: current.clone(),
             headers,
             seen: BTreeSet::from([identity(current)]),
-            privacy: privacy::Privacy::default(),
+            privacy: privacy::Privacy::new(limits.mask_matcher_bytes),
             hops: 0,
-            max_hops: max_redirects,
+            max_hops: limits.max_redirects,
             stripped: false,
             started: false,
             ending: "interrupted",

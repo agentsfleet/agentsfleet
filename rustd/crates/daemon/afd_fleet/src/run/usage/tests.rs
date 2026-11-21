@@ -80,13 +80,13 @@ async fn an_unreadable_catalogue_logs_the_tokens_unpriced() {
 #[tokio::test]
 async fn a_slice_past_the_longest_runtime_line_is_cut_there() {
     let pricing = pricing(Posture::SelfManaged).await;
-    let past = i64::from(af_wire::usage::RUNTIME_MS_MAX) + ONE_SECOND_MS;
+    let past = i64::from(u32::MAX) + ONE_SECOND_MS;
     let settlement = pricing
         .settlement(&test_dead::id(4), slice(past, 0), &[])
         .expect("prices")
         .expect("a runtime line");
     let line = settlement.lines.first().expect("one line");
-    assert_eq!(line.usage.runtime_ms, af_wire::usage::RUNTIME_MS_MAX);
+    assert_eq!(line.usage.runtime_ms, u32::MAX);
 }
 
 /// A stored posture this daemon writes reads back; one it does not is refused,

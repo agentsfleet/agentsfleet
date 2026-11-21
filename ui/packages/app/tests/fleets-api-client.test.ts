@@ -100,7 +100,7 @@ describe("lib/api/tenant_billing", () => {
       status: 500,
       statusText: "Server Error",
       // What `Response.json()` throws for a body that is not JSON; any other
-      // error is a broken stream, which the transport hands to the retry policy.
+      // error is a broken stream, which the transport rethrows as it came.
       json: async () => {
         throw new SyntaxError("bad json");
       },

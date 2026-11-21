@@ -208,20 +208,6 @@ async fn local_env_sorts_each_failed_file_call() {
     );
 }
 
-#[cfg(unix)]
-#[tokio::test]
-async fn local_env_lists_at_most_a_thousand_entries() {
-    let (directory, env) = local();
-    for number in 0..1001 {
-        std::fs::write(directory.path().join(format!("f{number}")), b"").expect("written");
-    }
-
-    let listing = env.list_dir(".").await.expect("listed");
-
-    assert_eq!(listing.entries.len(), 1000);
-    assert!(listing.truncated);
-}
-
 /// A write or a kill naming a process the environment does not hold is
 /// refused; a kill of a running one ends it by signal, and a process the
 /// environment started takes what is written to it.

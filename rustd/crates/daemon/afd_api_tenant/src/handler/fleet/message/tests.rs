@@ -15,7 +15,7 @@
 
 use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
 
-use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
+use super::{page, parse_cursor, requested_limit};
 
 /// When the fixture thread's oldest row was stamped.
 const FIRST_AT: jiff::Timestamp = jiff::Timestamp::constant(1_700_000_000, 0);
@@ -127,54 +127,26 @@ fn should_refuse_a_continuation_this_walk_did_not_issue() {
     }
 }
 
-/// A thread with nothing in it includes nothing.
+/// A thread with nothing in it serves nothing.
 #[test]
 fn should_include_nothing_from_an_empty_thread() {
-    assert_eq!(included_under_budget(&[], THREAD_MAX_LIMIT), 0);
+    assert_eq!(page(&[], THREAD_MAX_LIMIT).items.len(), 0);
 }
 
-/// The row cap cuts a page of cheap rows, and only the cap.
+/// The row cap cuts a page, and only the cap.
 #[test]
-fn should_cut_a_page_of_cheap_rows_at_the_row_cap() {
+fn should_cut_a_page_at_the_row_cap() {
     let thread = cheap_thread(3);
-    assert_eq!(included_under_budget(&thread, 2), 2);
-    assert_eq!(included_under_budget(&thread, THREAD_MAX_LIMIT), 3);
+    assert_eq!(page(&thread, 2).items.len(), 2);
+    assert_eq!(page(&thread, THREAD_MAX_LIMIT).items.len(), 3);
 }
 
-/// A page size of zero or less includes nothing rather than the first row.
-///
-/// The first-row exemption is about the BUDGET, never about the cap: a caller
-/// who asked for no rows must not be handed one because it was free.
+/// A page size of zero or less serves nothing.
 #[test]
 fn should_include_nothing_when_the_cap_admits_nothing() {
     let thread = cheap_thread(3);
-    assert_eq!(included_under_budget(&thread, 0), 0);
-    assert_eq!(included_under_budget(&thread, -1), 0);
-}
-
-/// The first row ships whatever it costs; the second does not.
-///
-/// A single turn larger than the whole budget must not brick the thread it
-/// heads — the operator would see an empty page and no way to page past it.
-#[test]
-fn should_ship_the_first_row_whatever_it_costs() {
-    let thread: Vec<TurnDetailRow> = (0..3)
-        .map(|ordinal| row(ordinal, PAGE_BUDGET_BYTES))
-        .collect();
-    assert_eq!(included_under_budget(&thread, THREAD_MAX_LIMIT), 1);
-}
-
-/// Rows join until the budget is spent, and the cut is the budget's.
-///
-/// Six quarter-budget rows against a cap of twenty-five: three fit whatever the
-/// JSON envelope costs, and a fourth cannot however small it is, so the number
-/// is a fact about the budget rather than about this fixture's escaping.
-#[test]
-fn should_join_rows_until_the_budget_is_spent() {
-    let quarter = PAGE_BUDGET_BYTES / 4;
-    let thread: Vec<TurnDetailRow> = (0..6).map(|ordinal| row(ordinal, quarter)).collect();
-    assert!(i64::try_from(thread.len()).unwrap() < THREAD_MAX_LIMIT);
-    assert_eq!(included_under_budget(&thread, THREAD_MAX_LIMIT), 3);
+    assert_eq!(page(&thread, 0).items.len(), 0);
+    assert_eq!(page(&thread, -1).items.len(), 0);
 }
 
 /// A page that served everything fetched hands back no continuation.
@@ -206,25 +178,9 @@ fn should_continue_from_the_last_row_served() {
     assert_eq!(resume, Cursor::after(at(1), &entry_id(1)));
 }
 
-/// A page the BUDGET cut continues from the cut, not from the row cap.
-#[test]
-fn should_continue_from_the_budget_cut() {
-    let thread: Vec<TurnDetailRow> = (0..3)
-        .map(|ordinal| row(ordinal, PAGE_BUDGET_BYTES))
-        .collect();
-    let served = page(&thread, THREAD_MAX_LIMIT);
-    assert_eq!(served.items.len(), 1);
-
-    let handed = served
-        .next_cursor
-        .expect("a page the budget cut has more to serve");
-    let resume = Cursor::decode(&handed).expect("the page mints a cursor this walk reads");
-    assert_eq!(resume, Cursor::after(FIRST_AT, &entry_id(0)));
-}
-
-/// A stored trace of `calls` calls, each with both output edges at their cap.
+/// A stored trace of `calls` calls, each with a kibibyte at both output edges.
 fn heavy_trace(calls: usize) -> String {
-    let edge = "a".repeat(af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES);
+    let edge = "a".repeat(1024);
     let calls: Vec<serde_json::Value> = (1..=calls)
         .map(|n| {
             serde_json::json!({"call_id": format!("7:{n}"), "name": "shell",
@@ -233,28 +189,6 @@ fn heavy_trace(calls: usize) -> String {
         })
         .collect();
     serde_json::json!({ "calls": calls }).to_string()
-}
-
-/// A row's trace is part of what the page spends: heavy traces cut a page
-/// that their answers alone would not, and the cut stays inside the budget.
-#[test]
-fn test_thread_page_budget_counts_tool_calls() {
-    let trace = heavy_trace(30);
-    let rows: Vec<TurnDetailRow> = (0..10)
-        .map(|ordinal| row(ordinal, 2).with_tool_calls(trace.clone()))
-        .collect();
-    let answers_alone = included_under_budget(&cheap_thread(10), 10);
-    assert_eq!(answers_alone, 10, "without traces every row fits");
-
-    let served = page(&rows, 10);
-    assert!(served.items.len() < rows.len(), "the traces cut the page");
-    assert!(served.next_cursor.is_some(), "and the cut is resumable");
-    let encoded = serde_json::to_string(&served.items).expect("a page encodes");
-    assert!(
-        encoded.len() <= PAGE_BUDGET_BYTES,
-        "{} bytes over the {PAGE_BUDGET_BYTES} budget",
-        encoded.len()
-    );
 }
 
 /// The expanded row serves the stored trace as it was stored, and `null` for

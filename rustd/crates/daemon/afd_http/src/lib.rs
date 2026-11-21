@@ -8,6 +8,7 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod auth;
+pub mod body;
 pub mod client;
 pub mod envelope;
 pub mod handler;

@@ -5,7 +5,7 @@
 
 use garde::Validate as _;
 
-use super::{LineKind, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine};
+use super::{LineKind, RequestLines, RequestUsage, UsageLine};
 
 const AT: &str = "2026-10-19T10:00:00.123Z";
 const PROMPT: u32 = 1_000;
@@ -50,15 +50,6 @@ fn an_unknown_field_is_refused() {
         .expect("a line is an object")
         .insert("reasoning_tokens".to_owned(), serde_json::json!(5));
     serde_json::from_value::<UsageLine>(json).expect_err("an unknown field is refused");
-}
-
-#[test]
-fn runtime_past_an_hour_is_refused() {
-    let mut long = line(0);
-    long.runtime_ms = RUNTIME_MS_MAX + 1;
-    long.validate().expect_err("past an hour is refused");
-    long.runtime_ms = RUNTIME_MS_MAX;
-    long.validate().expect("exactly an hour is allowed");
 }
 
 fn request(seq: u32) -> RequestUsage {

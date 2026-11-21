@@ -8,6 +8,8 @@ use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use std::{collections::VecDeque, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
+/// Kept: with none a gated page ends the drain while recovery stays pending,
+/// and unbounded pages can cycle the revisited prefix forever.
 const EXTRA_PAGES_PER_HOST: usize = 4;
 
 struct Host {

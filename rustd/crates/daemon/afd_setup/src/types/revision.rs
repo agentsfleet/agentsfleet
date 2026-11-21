@@ -15,7 +15,7 @@ pub struct ApplyRevision {
     #[garde(skip)]
     pub draft_candidate_id: Uuid7,
     /// Contextual review accepted by the person.
-    #[garde(length(bytes,min=1,max=super::MAX_MODEL_REF_BYTES))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub review_digest: String,
 }
 

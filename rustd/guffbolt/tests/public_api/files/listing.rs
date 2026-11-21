@@ -51,37 +51,6 @@ async fn ls_refuses_a_path_it_cannot_list() {
     );
 }
 
-/// A directory with more entries than one listing carries is listed in
-/// part, and says so.
-#[tokio::test]
-async fn ls_and_find_say_so_when_a_directory_holds_more_than_one_listing() {
-    let desk = Desk::new();
-    for number in 0..1001 {
-        desk.put(&format!("many/f{number:04}.txt"), "");
-    }
-    let tools = desk.tools(false);
-
-    let listed = call(&tools, "ls", json!({"path": "many", "limit": 2000})).await;
-    let found = call(&tools, "find", json!({"pattern": "*.txt", "limit": 5000})).await;
-
-    assert_eq!(
-        listed.text.lines().count(),
-        1001,
-        "1000 entries and the note"
-    );
-    assert!(
-        listed.text.ends_with(LIMIT_REACHED),
-        "{}",
-        &listed.text[listed.text.len() - 60..]
-    );
-    assert_eq!(found.text.lines().count(), 1001);
-    assert!(
-        found
-            .text
-            .ends_with("... the walk stopped early; narrow the path")
-    );
-}
-
 #[tokio::test]
 async fn find_matches_a_glob_below_the_path_and_skips_git_and_links() {
     let desk = Desk::new();

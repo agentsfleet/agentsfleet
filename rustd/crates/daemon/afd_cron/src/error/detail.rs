@@ -52,7 +52,7 @@ pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so i
 pub const FIRE_UNVERIFIED: &str = "The schedule callback could not be verified.";
 
 /// Why a deployment's API URL could not become its schedule callback: it is
-/// not a URL, or is past the cap once the ingress path is on it.
+/// it is not an `http` or `https` URL with a host.
 pub const DESTINATION_UNUSABLE: &str = "The configured API URL cannot carry a schedule callback.";
 
 /// Why a deployment's API URL could not become its schedule callback: it

@@ -5,7 +5,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, cursor};
+use afd_billing::tenant::cursor;
 use jiff::Timestamp;
 
 use crate::lane::{Lane, Line};
@@ -50,7 +50,11 @@ async fn should_walk_charges_newest_first_and_resume_strictly_after_the_cursor()
     let boundary = cursor::parse(&token).expect("a token this daemon issued");
     let rest = lane
         .billing
-        .charges(&lane.tenant, CHARGES_LIMIT_DEFAULT, Some(&boundary))
+        .charges(
+            &lane.tenant,
+            af_core::paging::CEILING.default_rows(),
+            Some(&boundary),
+        )
         .await
         .expect("answers");
     let drained: Vec<i64> = rest.iter().map(|row| row.charged_nanos).collect();

@@ -15,7 +15,6 @@ pub mod meter;
 pub mod renew;
 pub mod report;
 pub mod report_statement;
-pub mod resume;
 pub mod run;
 pub mod shared;
 pub mod standing;

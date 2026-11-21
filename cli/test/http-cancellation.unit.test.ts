@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect, Fiber, Layer, Option } from "effect";
 import { apiRequest, type FetchImpl } from "../src/lib/http.ts";
-import { apiRequestWithRetry } from "../src/lib/http-retry.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, httpClientLayer } from "../src/services/http-client.ts";
 
@@ -18,22 +17,6 @@ test("an already cancelled request never reaches fetch", async () => {
   expect(requests).toBe(0);
 });
 
-test("cancelling HTTP backoff prevents another POST attempt", async () => {
-  const abort = new AbortController();
-  const retryStarted = Promise.withResolvers<void>();
-  let requests = 0;
-  const pending = apiRequestWithRetry(URL, {
-    method: "POST", signal: abort.signal,
-    retry: {baseDelayMs: 10_000},
-    onRetry: () => { retryStarted.resolve(); },
-    fetchImpl: async () => { requests++; return Response.json({}, {status: 429}); },
-  });
-  await retryStarted.promise;
-  abort.abort(new Error("operator stopped"));
-  await expect(pending).rejects.toMatchObject({name: "AbortError", cause: abort.signal.reason});
-  expect(requests).toBe(1);
-});
-
 test("cancelling an accepted HTTP write stops waiting without replaying it", async () => {
   const accepted = Promise.withResolvers<void>();
   const answer = Promise.withResolvers<Response>();
@@ -45,7 +28,7 @@ test("cancelling an accepted HTTP write stops waiting without replaying it", asy
   }});
   const abort = new AbortController();
   try {
-    const pending = apiRequestWithRetry(server.url.href, {method: "POST", signal: abort.signal});
+    const pending = apiRequest(server.url.href, {method: "POST", signal: abort.signal});
     await accepted.promise;
     abort.abort(new Error("operator stopped"));
     await expect(pending).rejects.toThrow("operator stopped");

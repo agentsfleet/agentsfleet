@@ -13,12 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::net::Ipv4Addr;
 
-use crate::error::{EgressRefusal, Result, egress_refused};
+use crate::error::Result;
 
-/// The most addresses one run's allowlist may hold: the host-side set is
-/// built in one netlink transaction, and a list this long is a mistake, not
-/// a fleet's needs.
-pub const ALLOWLIST_ADDRESSES_MAX: usize = 256;
 /// Where the rendered names file is bound inside the sandbox.
 pub const SANDBOX_HOSTS: &str = "/etc/hosts";
 /// Where the resolver-less resolver file is bound inside the sandbox.
@@ -64,8 +60,8 @@ impl Allowlist {
     /// to. A name with several addresses appears once per address.
     ///
     /// # Errors
-    /// More distinct addresses than [`ALLOWLIST_ADDRESSES_MAX`]: the run is
-    /// refused before any rule is installed.
+    /// None today: every list of entries is an allowlist. Callers on the
+    /// kernel path already carry the `Result`, so it stays.
     pub fn new(mut entries: Vec<(String, Ipv4Addr)>) -> Result<Self> {
         let mut first_seen: HashMap<String, usize> = HashMap::new();
         for (name, _address) in &entries {
@@ -80,10 +76,6 @@ impl Allowlist {
             .map(|(_name, address)| *address)
             .filter(|address| seen.insert(*address))
             .collect();
-        if addresses.len() > ALLOWLIST_ADDRESSES_MAX {
-            let refusal = EgressRefusal::TooManyAddresses(addresses.len());
-            return Err(egress_refused(refusal));
-        }
         let mut names: Vec<(String, usize)> = first_seen.into_iter().collect();
         names.sort_unstable_by_key(|(_name, order)| *order);
         Ok(Self {

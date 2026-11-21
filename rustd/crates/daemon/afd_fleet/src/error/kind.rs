@@ -31,11 +31,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: object_store::Error,
     },
-    #[error("the checkpoint storage operation exceeded its absolute deadline")]
-    TaskStorageDeadline {
-        #[source]
-        source: tokio::time::error::Elapsed,
-    },
     #[error("the native GitHub request did not produce a confirmed receipt")]
     TaskRemote {
         #[source]

@@ -14,7 +14,7 @@ use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 use utoipa::{PartialSchema, ToSchema};
 
-use super::{ConfigOp, InstructionEdit, MAX_INSTRUCTION_OFFSET, MAX_POINTER_CHARS};
+use super::{ConfigOp, InstructionEdit, MAX_INSTRUCTION_OFFSET};
 use crate::openapi::{self, Bound, Published, Text};
 
 /// The fewest characters a JSON Pointer carries.
@@ -73,7 +73,7 @@ fn config_op() -> Published {
         closed: true,
         bounds: vec![(
             "path",
-            Bound::Text(Text::chars(NOT_EMPTY, MAX_POINTER_CHARS)),
+            Bound::Text(Text::chars(NOT_EMPTY, af_validate::TEXT_MAX_CHARS)),
         )],
     }
 }

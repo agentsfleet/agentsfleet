@@ -125,10 +125,3 @@ pub const CLOSE_FOLDED_EVENTS: &str = include_str!("close_folded_events.sql");
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_COUNTERS: &str = include_str!("select_fleet_counters.sql");
-
-/// The byte ceiling on a stored failure cause.
-///
-/// Applied at the WRITE rather than at the read, so a runaway child cannot
-/// bloat the row — the cap bounds the row, not the operator's visibility,
-/// since the console renders the cause as one line anyway.
-pub const MAX_FAILURE_DETAIL_BYTES: usize = 512;

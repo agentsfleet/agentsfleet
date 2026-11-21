@@ -1,6 +1,5 @@
 //! Strict native sources and bounded human mutations. There is no file source.
 
-use super::MAX_MODEL_REF_BYTES;
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 use af_validate::TEXT_MAX_CHARS;
@@ -40,7 +39,7 @@ pub struct CreateDraft {
     #[garde(dive)]
     pub source: Source,
     /// Owner model selected explicitly by the human.
-    #[garde(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub setup_model_ref: String,
     /// First message shares the draft creation transaction.
     #[serde(
@@ -89,11 +88,11 @@ pub struct DraftPatch {
     pub title: Option<String>,
     /// Applies only to future messages.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
     pub setup_model_ref: Option<String>,
     /// Changes the Definition's runtime model through the same validator.
     #[serde(default, deserialize_with = "super::present")]
-    #[garde(inner(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES), custom(af_validate::rules::nul_free)))]
+    #[garde(inner(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free)))]
     pub runtime_model_ref: Option<String>,
     /// Supported metadata and policy patches.
     #[serde(default)]
@@ -145,7 +144,7 @@ pub struct ListQuery {
     /// case-insensitive substring. Bound into the continuation like a filter.
     #[serde(default, deserialize_with = "super::present")]
     #[garde(inner(
-        length(chars, min = 1, max = super::MAX_QUERY_CHARS),
+        length(chars, min = 1, max = TEXT_MAX_CHARS),
         custom(af_validate::rules::nul_free)
     ))]
     pub q: Option<String>,

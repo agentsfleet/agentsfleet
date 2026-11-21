@@ -1,6 +1,6 @@
 //! What a tenant may call an api-key.
 
-use af_validate::charset;
+use af_validate::{TEXT_MAX_CHARS, charset};
 use garde::{Unvalidated, Valid, Validate};
 
 use crate::Result;
@@ -8,9 +8,6 @@ use crate::error::{self, ApiKeyField};
 
 /// The longest name a key may carry.
 const NAME_MAX: usize = 64;
-
-/// The longest description a key may carry.
-const DESCRIPTION_MAX: usize = 256;
 
 /// A key name that passed its bound and its character set.
 ///
@@ -68,7 +65,7 @@ fn proved<T: Validate<Context = ()>>(field: T, named: ApiKeyField) -> Result<T> 
 /// rather than an `Option`, and the absence is resolved at the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
 #[garde(transparent)]
-pub struct Description<'a>(#[garde(length(bytes, max = DESCRIPTION_MAX))] &'a str);
+pub struct Description<'a>(#[garde(length(chars, max = TEXT_MAX_CHARS))] &'a str);
 
 impl<'a> Description<'a> {
     /// The description, for the statement.
@@ -80,7 +77,7 @@ impl<'a> Description<'a> {
     /// Accepts a description within its bound, treating absence as empty.
     ///
     /// # Errors
-    /// Refuses one past 256 characters.
+    /// Refuses one past the text ceiling, `af_validate::TEXT_MAX_CHARS`.
     pub fn parse(raw: Option<&'a str>) -> Result<Self> {
         proved(Self(raw.unwrap_or_default()), ApiKeyField::Description)
     }
@@ -170,12 +167,12 @@ mod tests {
 
     #[test]
     fn a_description_past_its_bound_is_refused() {
-        let long = "d".repeat(DESCRIPTION_MAX + 1);
+        let long = "d".repeat(TEXT_MAX_CHARS + 1);
         assert_eq!(
             refusal(Description::parse(Some(&long))),
             Some(error_code::INVALID_REQUEST)
         );
-        let at_bound = "d".repeat(DESCRIPTION_MAX);
+        let at_bound = "d".repeat(TEXT_MAX_CHARS);
         assert_eq!(refusal(Description::parse(Some(&at_bound))), None);
     }
 }

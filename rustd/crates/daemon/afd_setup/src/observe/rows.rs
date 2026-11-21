@@ -13,8 +13,6 @@ use af_wire::setup::{FailureReason, Usage};
 use serde::Serialize;
 use sqlx::PgConnection;
 
-const LIMIT: i64 = 25;
-
 /// One safe change hint. Its event name is carried by the stream framing.
 #[derive(Debug, Serialize)]
 pub struct Notice {
@@ -96,7 +94,6 @@ pub(super) async fn running_sequence(
 pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Result<Vec<Notice>> {
     let rows: Vec<Stored> = sqlx::query_as(sql::message::NOTICES)
         .bind(draft)
-        .bind(LIMIT)
         // A draft run's usage: its lines, keyed by the run as their work, shown
         // once no run of the turn is live and known once each one reported.
         .bind(afd_billing::sql::work::SETUP_RUN)

@@ -118,7 +118,7 @@ impl RunService {
             .bind(&audit_id)
             .bind(afd_runner::sql::event_type::RUN_RELEASED)
             .bind(sqlx::types::Json(&metadata))
-            .bind(i64::from(af_wire::usage::RUNTIME_MS_MAX))
+            .bind(i64::from(u32::MAX))
             .bind(digest)
             .bind(connection_id)
             .bind(None::<Vec<String>>)

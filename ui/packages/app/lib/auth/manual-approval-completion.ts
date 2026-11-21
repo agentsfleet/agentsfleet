@@ -5,7 +5,6 @@ type ReadOutcome = { kind: "waiting"; expiresAt: number | null } | { kind: "comp
 
 const POLL_MS = 2_000;
 const JITTER_MS = 400;
-const REQUEST_TIMEOUT_MS = 15_000;
 const SESSION_CONSUMED_CODE = "UZ-AUTH-012";
 const EXPIRED_MESSAGE = "This sign-in expired. Start a new sign-in from your terminal.";
 const FAILED_MESSAGE = "This sign-in could not be confirmed. Check your terminal, or start a new sign-in.";
@@ -27,8 +26,9 @@ export async function watchManualApprovalCompletion(sessionId: string,
     if (stopped()) return;
     if (Date.now() >= deadline) { update({ kind: "failed", message: EXPIRED_MESSAGE }); return; }
     try {
-      const owner = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1,
-        Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())))]);
+      // A read outliving the server's expiry could only report an expired session.
+      const owner = Number.isFinite(deadline)
+        ? AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]) : signal;
       const result = await readCompletion(sessionId, owner);
       if (stopped()) return;
       if (result.kind === "completed") { update({ kind: "completed" }); return; }

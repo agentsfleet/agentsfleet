@@ -25,7 +25,6 @@ const PURCHASE_FOOTER_LINE_2 =
   "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 
 const BILLING_SHOWN = "Billing" as const;
-const DEFAULT_LIMIT = 10;
 const LIMIT_LITERAL = /^\d+$/;
 
 interface WorkSummary {
@@ -50,8 +49,9 @@ export interface BillingShowArgs {
 
 const parseLimit = (
   raw: number | string | undefined,
-): Effect.Effect<number, ValidationError> => {
-  if (raw === undefined || raw === null) return Effect.succeed(DEFAULT_LIMIT);
+): Effect.Effect<number | null, ValidationError> => {
+  // No --limit: the server's own default page size applies.
+  if (raw === undefined || raw === null) return Effect.succeed(null);
   const n = typeof raw === "number" || LIMIT_LITERAL.test(raw) ? Number(raw) : Number.NaN;
   // Shape only: the server bounds its own page size and names it on refusal.
   if (!Number.isInteger(n) || n <= 0) {
@@ -226,9 +226,11 @@ export const billingShowEffectFromArgs = (
 
     // Limit the raw page and keep every returned row. Overfetch followed by
     // slicing grouped rows would discard setup costs before the next cursor.
-    const chargesPath = cursor
-      ? `${CHARGES_PATH}?limit=${limit}&cursor=${encodeURIComponent(cursor)}`
-      : `${CHARGES_PATH}?limit=${limit}`;
+    const query = new URLSearchParams();
+    if (limit !== null) query.set("limit", String(limit));
+    if (cursor) query.set("cursor", cursor);
+    const search = query.toString();
+    const chargesPath = search ? `${CHARGES_PATH}?${search}` : CHARGES_PATH;
     const [billing, charges] = yield* Effect.all(
       [
         http.request<unknown>({ path: TENANT_BILLING_PATH, token }).pipe(Effect.flatMap(decodeBilling)),

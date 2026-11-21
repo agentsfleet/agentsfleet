@@ -14,6 +14,8 @@ use super::{TaskRefusal, TaskScope};
 use crate::error::{Result, query};
 
 /// Includes acquisition, transaction setup, rows and commit.
+///
+/// Kept: a stalled read otherwise holds its pool permit forever (`tests/integration_tasks/read_deadline.rs`).
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(super) async fn rows<R>(

@@ -79,7 +79,7 @@ async fn grep_reads_a_digit_class() {
 }
 
 #[tokio::test]
-async fn grep_cuts_a_long_line_and_stops_at_the_output_budget() {
+async fn grep_shows_a_long_line_whole_and_stops_at_the_output_budget() {
     let desk = Desk::new();
     let long = format!("hit {}", "\u{00e9}".repeat(600));
     desk.put("long.txt", format!("{long}\n").repeat(100));
@@ -87,9 +87,8 @@ async fn grep_cuts_a_long_line_and_stops_at_the_output_budget() {
 
     let output = call(&tools, "grep", json!({"pattern": "hit"})).await;
 
-    let shown: String = long.chars().take(500).collect();
     let first = output.text.lines().next().expect("a line");
-    assert_eq!(first, format!("long.txt:1: {shown}"));
+    assert_eq!(first, format!("long.txt:1: {long}"));
     let lines = output.text.lines().count();
     assert!(
         lines < 100,

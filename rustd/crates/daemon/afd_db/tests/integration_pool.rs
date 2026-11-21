@@ -178,7 +178,7 @@ async fn test_the_warm_floor_is_established_not_merely_configured() {
         "a lazy pool opens nothing until something asks it to"
     );
 
-    let warmed = db.warm(Duration::from_secs(10)).await;
+    let warmed = db.warm().await;
 
     assert_eq!(warmed, 4, "the whole floor was established");
     assert!(
@@ -203,7 +203,7 @@ async fn test_a_zero_floor_warms_nothing() {
         )
         .await;
 
-    assert_eq!(db.warm(Duration::from_secs(10)).await, 0);
+    assert_eq!(db.warm().await, 0);
     assert_eq!(db.size(), 0, "nothing was opened");
 }
 

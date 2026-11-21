@@ -1,6 +1,5 @@
 //! Save has one retained fleet identity and an explicit initial-run choice.
 
-use super::MAX_MODEL_REF_BYTES;
 use af_core::id::Uuid7;
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +68,7 @@ pub struct SaveFleet {
     #[garde(length(bytes, min = 1, max = 64))]
     pub name: String,
     /// Digest returned by a fresh human review.
-    #[garde(length(bytes, min = 1, max = MAX_MODEL_REF_BYTES))]
+    #[garde(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS))]
     pub review_digest: String,
     /// Explicit Save or Save and run now choice.
     #[garde(dive)]

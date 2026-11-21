@@ -12,15 +12,11 @@ use crate::error::{self, Result};
 /// unverifiable.
 pub const INGRESS_PATH: &str = "/v1/ingress/qstash/schedules";
 
-/// The longest destination this daemon will register.
-pub const MAX_DESTINATION_BYTES: usize = 2048;
-
 /// Where the scheduler should call back to, for this deployment.
 ///
 /// # Errors
 /// A refusal rather than a silently truncated URL: one kind for a value that
-/// is not a URL or is past [`MAX_DESTINATION_BYTES`], another for a query or a
-/// fragment. The destination
+/// is not a URL, another for a query or a fragment. The destination
 /// rides RAW inside the provider's own request path, so a `?` or `#` here would
 /// be read as the provider request's query or fragment and register a callback
 /// this daemon never meant.
@@ -41,9 +37,5 @@ pub fn destination_url(api_url: &str) -> Result<String> {
     }
 
     let base = parsed.as_str().trim_end_matches('/');
-    let destination = format!("{base}{INGRESS_PATH}");
-    if destination.len() > MAX_DESTINATION_BYTES {
-        return Err(error::destination_unusable());
-    }
-    Ok(destination)
+    Ok(format!("{base}{INGRESS_PATH}"))
 }

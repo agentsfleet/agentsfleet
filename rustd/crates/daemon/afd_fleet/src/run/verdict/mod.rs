@@ -19,8 +19,6 @@
 
 use af_wire::report::{FailureClass, Outcome};
 
-use afd_turns::view::sql::MAX_FAILURE_DETAIL_BYTES;
-
 /// The runner's verdict, in the shape the terminal row needs.
 ///
 /// An enum where the wire carries an [`Outcome`] beside an
@@ -119,7 +117,7 @@ impl<'a> Verdict<'a> {
         }
     }
 
-    /// The stored `failure_detail`, capped, which a clean run has none of.
+    /// The stored `failure_detail`, which a clean run has none of.
     pub(super) fn detail(self) -> Option<&'a str> {
         match self {
             // A clean run has no cause, and a failure that named none stores
@@ -128,11 +126,7 @@ impl<'a> Verdict<'a> {
             Self::Succeeded | Self::Stopped | Self::Waiting | Self::Failed { detail: "", .. } => {
                 None
             }
-            Self::Failed { detail, .. } => Some(
-                detail
-                    .split_at(detail.floor_char_boundary(MAX_FAILURE_DETAIL_BYTES))
-                    .0,
-            ),
+            Self::Failed { detail, .. } => Some(detail),
         }
     }
 }

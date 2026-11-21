@@ -1,13 +1,10 @@
 import {
   hasLoopbackFragment, LOOPBACK_FAILURE, LOOPBACK_FLOW, LOOPBACK_FLOW_PARAM, LOOPBACK_KIND,
-  LOOPBACK_MAX_AGE_MS, LOOPBACK_RECORD_BYTES, parseLoopbackFragment,
+  parseLoopbackFragment,
   type BrowserHandoff, type LoopbackHandoff,
 } from "./cli-loopback";
 
 const STORAGE_KEY = "agentsfleet.cli.loopback.v1";
-// Session storage keeps the two newest login handoffs. An untrusted URL
-// fragment fills it, so the record is refused rather than grown.
-const MAX_RECORDS = 2;
 const RETURN_PARAM = "redirect_url";
 const AUTH_PATH = /^\/sign-(?:in|up)(?:\/|$)/;
 const SESSION_PATH = /^\/cli-auth\/([0-9a-f-]{36})$/;
@@ -51,7 +48,6 @@ function decodeRecord(value: unknown, now: number): ValidatedRecord | null {
   const record = value as Record<string, unknown>;
   if (Object.keys(record).length !== 2 || typeof record.fragment !== "string" || typeof record.createdAt !== "number") return null;
   if (!Number.isSafeInteger(record.createdAt) || record.createdAt < 0 || record.createdAt > now) return null;
-  if (new TextEncoder().encode(JSON.stringify(record)).length > LOOPBACK_RECORD_BYTES) return null;
   const handoff = parseLoopbackFragment(record.fragment);
   return handoff ? { record: { fragment: record.fragment, createdAt: record.createdAt }, handoff } : null;
 }
@@ -66,9 +62,8 @@ export class LoopbackStore {
   #records(): ValidatedRecord[] {
     const raw = this.#port.storage().getItem(STORAGE_KEY);
     if (raw === null) return [];
-    if (raw.length > MAX_RECORDS * LOOPBACK_RECORD_BYTES) throw new Error(LOOPBACK_FAILURE);
     const values: unknown = JSON.parse(raw);
-    if (!Array.isArray(values) || values.length > MAX_RECORDS) throw new Error(LOOPBACK_FAILURE);
+    if (!Array.isArray(values)) throw new Error(LOOPBACK_FAILURE);
     const valid: ValidatedRecord[] = [];
     for (const value of values) {
       const record = decodeRecord(value, this.#port.now());
@@ -77,12 +72,7 @@ export class LoopbackStore {
     }
     const ids = valid.map(({ handoff }) => handoff.sessionId);
     if (new Set(ids).size !== ids.length) throw new Error(LOOPBACK_FAILURE);
-    const active = valid.filter(({ record }) => this.#port.now() - record.createdAt < LOOPBACK_MAX_AGE_MS);
-    if (active.length !== valid.length) {
-      if (active.length === 0) this.#port.storage().removeItem(STORAGE_KEY);
-      else this.#port.storage().setItem(STORAGE_KEY, JSON.stringify(active.map(({ record }) => record)));
-    }
-    return active;
+    return valid;
   }
 
   capture(): void {
@@ -110,9 +100,7 @@ export class LoopbackStore {
     const existing = records.find(({ handoff }) => handoff.sessionId === sessionId);
     if (existing && existing.record.fragment !== fragment) throw new Error(LOOPBACK_FAILURE);
     if (existing) return;
-    if (records.length === MAX_RECORDS) throw new Error(LOOPBACK_FAILURE);
     const record = { fragment, createdAt: this.#port.now() };
-    if (new TextEncoder().encode(JSON.stringify(record)).length > LOOPBACK_RECORD_BYTES) throw new Error(LOOPBACK_FAILURE);
     this.#port.storage().setItem(STORAGE_KEY, JSON.stringify([...records.map((entry) => entry.record), record]));
   }
 

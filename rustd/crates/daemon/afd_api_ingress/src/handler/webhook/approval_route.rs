@@ -121,7 +121,6 @@ pub(crate) async fn receive<D: IngressPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    webhook::within_cap(&body)?;
 
     // Nothing above this line has read the body as anything but bytes.
     let proven = verified_approval(&services, &headers, body).await?;

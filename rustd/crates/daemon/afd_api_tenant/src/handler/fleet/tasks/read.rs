@@ -46,7 +46,7 @@ pub(crate) async fn list<D: TenantPlane>(
         workspace_id: owned.workspace,
         fleet_id: parse_fleet_id(&fleet_id)?,
     };
-    let (after, limit) = input::page(query.as_deref().unwrap_or_default())?;
+    let (after, limit) = input::page(query.as_deref().unwrap_or_default(), services.pages().list)?;
     let page = services
         .tasks()
         .list(&scope, after.as_ref(), limit)

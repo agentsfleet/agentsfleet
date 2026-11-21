@@ -78,7 +78,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -113,7 +112,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -145,7 +143,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -180,7 +177,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/workspaces",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -209,7 +205,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -234,7 +229,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),
@@ -260,7 +254,6 @@ describe("HttpClient", () => {
           const http = yield* HttpClient;
           return yield* http.request({
             path: "/v1/x",
-            retry: { maxAttempts: 1 },
           });
         }),
         SUITE_LAYER("https://api.test.local"),

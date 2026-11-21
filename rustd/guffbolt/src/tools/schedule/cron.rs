@@ -65,7 +65,7 @@ pub struct Update {
 pub struct Runs {
     /// The schedule's id, as `cron_list` names it.
     schedule_id: String,
-    /// How many runs to read, 1 to 100; 50 when absent.
+    /// How many runs to read; one page of the backend's size when absent.
     limit: Option<u32>,
     /// The `next_cursor` of the page before, to read further back.
     starting_after: Option<String>,

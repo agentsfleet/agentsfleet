@@ -29,12 +29,13 @@ const DETAIL_PROVIDER_LEN: &str = "provider must be 1–64 chars";
 const DETAIL_MODEL_ID_LEN: &str = "model_id must be 1–2595 chars";
 const DETAIL_CAP_POSITIVE: &str = "context_cap_tokens must be > 0";
 const DETAIL_DISPLAY_NAME_LEN: &str = "metadata.display_name must be 1–128 bytes";
-const DETAIL_CONTEXT_SOURCE_LEN: &str = "metadata.context_source_url must be 1–2048 bytes";
+const DETAIL_CONTEXT_SOURCE_LEN: &str = "metadata.context_source_url must not be empty";
 /// The schedule's refusal: its length, its base tier, and its date ranges,
 /// which must each end after they start and never overlap within one tier.
-pub(crate) const DETAIL_PRICES: &str = "prices must hold 1–64 entries, include a tier with prompt_tokens_above = 0, and give each tier date ranges that end after they start and never overlap";
-const DETAIL_PRICE_SOURCE_LEN: &str = "prices[].source_url must be 1–2048 bytes";
-const DETAIL_PRICE_CONDITIONS_LEN: &str = "prices[].conditions must be at most 1024 bytes";
+pub(crate) const DETAIL_PRICES: &str = "prices must hold at least one entry, include a tier with prompt_tokens_above = 0, and give each tier date ranges that end after they start and never overlap";
+const DETAIL_PRICE_SOURCE_LEN: &str = "prices[].source_url must not be empty";
+const DETAIL_PRICE_CONDITIONS_LEN: &str =
+    "prices[].conditions must be at most 1,048,576 characters";
 const DETAIL_PRICE_TIER: &str = "prices[].prompt_tokens_above must be >= 0";
 const DETAIL_RATES: &str =
     "every rate in prices must be a decimal string of whole nanos, at most 9223372036854775807";

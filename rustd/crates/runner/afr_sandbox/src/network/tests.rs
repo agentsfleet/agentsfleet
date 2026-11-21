@@ -5,8 +5,7 @@
 
 use std::net::Ipv4Addr;
 
-use super::{ALLOWLIST_ADDRESSES_MAX, Allowlist, RESOLV_CONF};
-use crate::error::EgressRefusal;
+use super::{Allowlist, RESOLV_CONF};
 
 fn entry(name: &str, address: [u8; 4]) -> (String, Ipv4Addr) {
     (name.to_owned(), Ipv4Addr::from(address))
@@ -96,39 +95,6 @@ fn test_an_empty_allowlist_admits_nothing() {
 
     assert_eq!(allowlist.addresses(), Vec::<Ipv4Addr>::new());
     assert_eq!(allowlist.hosts_file().lines().count(), 2, "loopback alone");
-}
-
-/// The cap counts distinct addresses: one past it refuses the run, and a
-/// list at it, repeats included, does not.
-#[test]
-fn test_an_allowlist_past_the_cap_is_refused() {
-    let at_cap: Vec<_> = (0..ALLOWLIST_ADDRESSES_MAX)
-        .map(|n| {
-            let [_, _, high, low] = u32::try_from(n).unwrap().to_be_bytes();
-            entry("host.example", [10, 1, high, low])
-        })
-        .collect();
-    let mut repeated = at_cap.clone();
-    repeated.push(entry("again.example", [10, 1, 0, 0]));
-    let mut over = at_cap.clone();
-    over.push(entry("one.more.example", [10, 2, 0, 0]));
-
-    assert_eq!(
-        Allowlist::new(at_cap).unwrap().addresses().len(),
-        ALLOWLIST_ADDRESSES_MAX
-    );
-    assert_eq!(
-        Allowlist::new(repeated).unwrap().addresses().len(),
-        ALLOWLIST_ADDRESSES_MAX,
-        "a repeat adds no address"
-    );
-    let refused = Allowlist::new(over).unwrap_err();
-    assert_eq!(
-        refused.egress_refusal(),
-        Some(&EgressRefusal::TooManyAddresses(
-            ALLOWLIST_ADDRESSES_MAX + 1
-        ))
-    );
 }
 
 /// Two resolutions that answered the same addresses, rotated and repeated as a

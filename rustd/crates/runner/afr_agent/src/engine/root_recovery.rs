@@ -13,9 +13,6 @@ use crate::Result;
 use crate::error::recovery_invalid;
 use crate::harness::shared::CAPS;
 
-// The complete ordinary native message is additionally capped at one MiB.
-const FOLD_REFS_MAX: usize = 16_384;
-
 #[derive(Default, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RootRecovery {
@@ -29,7 +26,7 @@ pub(crate) struct RootRecovery {
     pub(crate) memory: MemoryRecovery,
     #[garde(skip)]
     pub(crate) pinned: usize,
-    #[garde(length(max = FOLD_REFS_MAX), dive)]
+    #[garde(dive)]
     pub(crate) folds: Vec<FoldRef>,
 }
 

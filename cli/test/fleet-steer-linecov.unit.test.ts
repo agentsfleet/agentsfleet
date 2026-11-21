@@ -13,7 +13,7 @@
 // The event-tail suites (pre-id buffer, live path, lifecycle) live in
 // fleet-steer-tail.unit.test.ts.
 
-import { describe, expect, test, setSystemTime } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
@@ -70,39 +70,6 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
     expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
   });
-
-  test("when the poll also yields nothing, the outcome renders as timeout — still not sse_error", async () => {
-    const rec = makeRecorder();
-    let firstPoll = true;
-    const httpReply = <T>(input: HttpRequestInput): T => {
-      if (isPost(input)) return postedTurn<T>();
-      if (firstPoll) {
-        firstPoll = false;
-        setSystemTime(Date.now() + 120_000); // jump past the 60s poll deadline
-      }
-      return { items: [] } as T;
-    };
-
-    try {
-      const exit = await Effect.runPromiseExit(
-        steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
-          stdin: streamFrom([], false),
-          stdout: nullOutput(),
-          streamGet: throwingStream,
-        }).pipe(Effect.provide(makeLayer(rec, httpReply))),
-      );
-      // sse_error was overwritten by timeout; the timeout arm renders, the
-      // sse_error arm does not. The stall is reported once, on the failure —
-      // it used to print through `output.error` AND fail, so one stall
-      // produced two glyph lines naming the same follow-up command.
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(JSON.stringify(exit)).toContain("still in flight");
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
-      expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
-    } finally {
-      setSystemTime();
-    }
-  }, 10_000);
 });
 
 describe("steer — onTurnError classifies CliError turn failures via the _tag arm", () => {

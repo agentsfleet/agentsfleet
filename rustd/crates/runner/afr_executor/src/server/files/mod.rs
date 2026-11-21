@@ -25,6 +25,7 @@ use crate::protocol::{MAX_FRAME_BYTES, MAX_READ_BYTES, ReadResult};
 /// The workspace itself, named relative to itself.
 const CURRENT_DIRECTORY: &str = ".";
 /// The most entries one listing carries.
+/// Kept: a listing past one executor frame would fail the whole call.
 pub(crate) const MAX_LIST_ENTRIES: usize = 4_096;
 /// The longest one listed entry can serialize to: a 255-byte name of control
 /// characters, each escaped to six, and the entry's other fields.

@@ -37,9 +37,6 @@ const DOT_SEGMENTS: [&str; 2] = [".", ".."];
 /// What a body a rule can read is.
 const ONE_OBJECT: &str = "a JSON object whose keys are each written once";
 
-/// The most of a refused key a refusal repeats back to the model.
-const KEY_ECHO_MAX: usize = 64;
-
 /// Why a closed rule refused a request its method and path match: a query.
 const QUERY_REFUSED: &str = "it carries a query string, which this rule does not admit";
 
@@ -74,12 +71,11 @@ pub(crate) fn closed_refusal(
 
 /// The sentence naming the first key a closed rule does not list.
 ///
-/// The key is the model's own input, so it is cut to [`KEY_ECHO_MAX`]
-/// characters and quoted with its escapes: a newline, a quote or a backtick in
-/// it cannot reshape the refusal the model reads.
+/// The key is the model's own input, so it is quoted with its escapes: a
+/// newline, a quote or a backtick in it cannot reshape the refusal the model
+/// reads.
 fn key_refused(key: &str) -> String {
-    let shown: String = key.chars().take(KEY_ECHO_MAX).collect();
-    format!("it sends {shown:?}, which this rule does not list")
+    format!("it sends {key:?}, which this rule does not list")
 }
 
 /// Whether `origin`'s rules admit `method` at `url` carrying `body`.

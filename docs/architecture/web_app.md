@@ -48,20 +48,10 @@ It is the documented exception
 ([`../AUTH.md`](../AUTH.md) §"Why the dashboard rides one token"), and it is
 separate from the setup proxy.
 
-Every server fetch runs under one policy, `lib/api/retry.ts`. The policy is a
-declared schedule: a 20 s deadline, a 10 s `Retry-After` cap and full jitter.
-A replay gate is read from where the failure happened.
-
-A write the server may hold is never sent twice on a gateway error or a client
-timeout. A socket the transport reported dropping is sent again whatever the method. A reply nobody saw is usually a request that never ran.
-
-The price is named rather than hidden. A reset arriving after the server
-accepted a write can double it, and an idempotency key is what would retire
-that.
-
-The policy's dependency, `effect`, is server-only.
-A client component reads status facts from `lib/api/errors.ts`, and
-`.size-limit.mjs` fails the build if the runtime reaches a client chunk.
+Every server fetch makes one attempt and sets no deadline of its own: a
+caller that wants one passes its own signal. A failed request surfaces to the
+caller, who decides whether to send it again; a send carries its operation id,
+so a resend is answered with the first turn.
 
 **2 · `"use client"` marks a leaf, never a branch.**
 

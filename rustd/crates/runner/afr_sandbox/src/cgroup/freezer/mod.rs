@@ -35,6 +35,7 @@ const THAWED_STATE: &str = "thawed";
 const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// How many checks before the kernel is taken not to settle: one second's
 /// worth, since a freeze waits only for every task to reach a stop point.
+/// Kept: a task stuck in the kernel would otherwise block the freeze, and the worker, forever.
 const SETTLE_TRIES: usize = 200;
 
 /// Freezes and thaws one run's cgroup. A handle on its path alone, so it can

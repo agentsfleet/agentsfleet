@@ -17,7 +17,7 @@
 
 use afd_auth::verifier::VerifyError;
 use afd_identity::HttpKeySet;
-use afd_identity::jwks::source::{KeySetSource, MAX_RESPONSE_BYTES};
+use afd_identity::jwks::source::KeySetSource;
 
 const DIRECT: &afd_identity::Transport = &afd_identity::Transport::Direct;
 
@@ -131,58 +131,6 @@ fn test_the_fetcher_reports_the_endpoint_it_reads() {
     )
     .expect("a client");
     assert_eq!(source.url(), "https://issuer.example/.well-known/jwks.json");
-}
-
-/// A body past the cap is refused rather than accumulated.
-///
-/// `JWKS_MAX_RESPONSE_BYTES` is not a comment: the endpoint is
-/// config-controlled rather than trusted, so a response that claims to be a key
-/// set and is a hundred megabytes must stop being read.
-#[test]
-fn test_a_body_past_the_cap_is_refused() {
-    af_core::test_util::trace::install_subscriber();
-    block_on(async {
-        let (url, server) = serve_once(Serve::Response {
-            status: 200,
-            body: vec![b'x'; MAX_RESPONSE_BYTES + 1],
-        })
-        .await;
-
-        let refused = HttpKeySet::new(&url, TIMEOUT, DIRECT)
-            .expect("a client")
-            .fetch()
-            .await
-            .expect_err("past the cap");
-
-        assert_eq!(refused, VerifyError::KeySetUnavailable);
-        server.await.expect("the server task");
-    });
-}
-
-/// A body exactly at the cap is accepted — the bound is inclusive.
-///
-/// Worth pinning beside the refusal: an off-by-one here would refuse a
-/// legitimate key set that happened to sit on the boundary, and that failure
-/// would look like a provider outage rather than a limit.
-#[test]
-fn test_a_body_exactly_at_the_cap_is_accepted() {
-    af_core::test_util::trace::install_subscriber();
-    block_on(async {
-        let (url, server) = serve_once(Serve::Response {
-            status: 200,
-            body: vec![b'x'; MAX_RESPONSE_BYTES],
-        })
-        .await;
-
-        let fetched = HttpKeySet::new(&url, TIMEOUT, DIRECT)
-            .expect("a client")
-            .fetch()
-            .await
-            .expect("exactly at the cap is within it");
-
-        assert_eq!(fetched.len(), MAX_RESPONSE_BYTES);
-        server.await.expect("the server task");
-    });
 }
 
 /// A non-success status is refused, whatever body came with it.

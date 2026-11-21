@@ -55,6 +55,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::error_handling::HandleErrorLayer;
+use axum::extract::DefaultBodyLimit;
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
@@ -104,9 +105,17 @@ impl<D> Serving for D where
 /// table are written from. A path cannot be mounted here under a spelling the
 /// table does not know, and it cannot be mounted under a guard its own row does
 /// not declare.
-pub fn build<D: Serving>(dependencies: Arc<D>, max_in_flight: NonZeroUsize) -> Router {
+///
+/// Every route but the runner's reads a body of at most `max_request_body`
+/// bytes (`[server] max_request_body_mib`), unless its own mount names the
+/// larger limit its text or frame ceiling derives.
+pub fn build<D: Serving>(
+    dependencies: Arc<D>,
+    max_in_flight: NonZeroUsize,
+    max_request_body: usize,
+) -> Router {
     let (mut api, mut open) = (Router::new(), Router::new());
-    let (mounted, merged) = mounted_routes(&dependencies);
+    let (mounted, merged) = mounted_routes(&dependencies, max_request_body);
     for ((class, template), handler) in merged {
         if class == RouteClass::Api {
             api = api.route(template, handler);
@@ -142,12 +151,22 @@ pub fn build<D: Serving>(dependencies: Arc<D>, max_in_flight: NonZeroUsize) -> R
 /// into the merge loop; the tuple spelled inline reads as noise at both ends.
 type MountedRoute<D> = ((RouteClass, &'static str), MethodRouter<Arc<D>>);
 
-fn mounted_routes<D: Serving>(dependencies: &Arc<D>) -> (usize, Vec<MountedRoute<D>>) {
+fn mounted_routes<D: Serving>(
+    dependencies: &Arc<D>,
+    max_request_body: usize,
+) -> (usize, Vec<MountedRoute<D>>) {
     let mut mounted = 0usize;
     let mut merged = Vec::with_capacity(Route::all().count());
     for route in Route::all() {
         let Some(handler) = mount::handler_for::<D>(route) else {
             continue;
+        };
+        // Outside the mount's own limit, so a route that names a larger one
+        // keeps it. The runner's routes are bounded by its frame instead.
+        let handler = if matches!(route, Route::Runner(_)) {
+            handler
+        } else {
+            handler.layer(DefaultBodyLimit::max(max_request_body))
         };
         // Hoisted for the same reason every other call-bearing log field
         // in this crate is: the `log` bridge duplicates the expression and

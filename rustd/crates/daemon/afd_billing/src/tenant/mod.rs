@@ -37,16 +37,6 @@ const CONTEXT_SNAPSHOT: &str = "read tenant wallet";
 /// The context the charges walk reports under.
 const CONTEXT_CHARGES: &str = "list tenant charges";
 
-/// The most rows one charges page may carry.
-///
-/// Public because the HANDLER owns the refusal sentence for a limit past this,
-/// and a sentence naming a number the store does not enforce would be two
-/// truths (RULE UFS).
-pub const CHARGES_LIMIT_MAX: u32 = 200;
-
-/// The page size a caller naming nothing gets.
-pub const CHARGES_LIMIT_DEFAULT: u32 = 50;
-
 /// The tenant's billing reads.
 #[derive(Debug, Clone)]
 pub struct Billing {

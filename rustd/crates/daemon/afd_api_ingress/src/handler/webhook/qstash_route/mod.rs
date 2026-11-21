@@ -14,8 +14,7 @@
 //! route that answered 4xx for a paused schedule could get the WHOLE
 //! deployment's schedules throttled.
 //!
-//! Only two things earn a refusal: a body past the cap, and a callback that did
-//! not prove itself.
+//! Only one thing earns a refusal: a callback that did not prove itself.
 
 use std::sync::Arc;
 
@@ -75,8 +74,7 @@ const MAX_LOGGED_ID_BYTES: usize = 96;
 /// `POST /v1/ingress/qstash/schedules`.
 ///
 /// # Errors
-/// `UZ-WH-030` for a body past the cap, and `UZ-WH-010` for a callback that did
-/// not prove itself.
+/// `UZ-WH-010` for a callback that did not prove itself.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/ingress/qstash/schedules",
@@ -110,7 +108,6 @@ pub(crate) async fn receive<D: IngressPlane>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    webhook::within_cap(&body)?;
     let proven = prove(services.as_ref(), &headers, &body).await?;
     let mut observed = af_observability::producers::scheduler::Callback::begin();
 

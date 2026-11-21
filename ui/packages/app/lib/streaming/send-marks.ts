@@ -5,10 +5,6 @@ import { FRAME_KIND } from "@/lib/api/turns-types";
  * operation id in its detail, so overlapping sends never share a mark. */
 export const SEND_MARK = {SEND: "af:send", ACCEPTED: "af:accepted", FIRST_FRAME: "af:first-frame", COMPLETE: "af:complete"} as const;
 
-/** How many accepted sends wait for their frames at once. A send whose
- * completion never comes is forgotten oldest first past it. */
-export const SEND_MARKS_MAX = 64;
-
 type LeadMark = typeof SEND_MARK.SEND | typeof SEND_MARK.ACCEPTED;
 type AcceptedSend = {operationId: string; heard: boolean};
 
@@ -21,10 +17,6 @@ export class SendMarks {
   mark(name: LeadMark, operationId: string, turnId?: string): void {
     if (turnId !== undefined) {
       this.#sends.set(turnId, {operationId, heard: false});
-      for (const oldest of this.#sends.keys()) {
-        if (this.#sends.size <= SEND_MARKS_MAX) break;
-        this.#sends.delete(oldest);
-      }
     }
     leaveMark(name, operationId);
   }

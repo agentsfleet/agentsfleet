@@ -256,7 +256,7 @@ A row from before the column existed holds `NULL`, which reads as "not recorded"
 
 A call's full arguments and output are a fourth body that no page read selects. They live in `thread.items`, a child table of `thread.turns`, one row per saved call, cascading on `turn_id`. The rows are unique on the turn, the run's fencing token and the runner's call number.
 
-A page never reads them: "show all" reads one call through `GET …/turns/{turn_id}/items/{item_id}`. That keeps a thread page at its 512 KiB budget however much a run's tools returned.
+A page never reads them: "show all" reads one call through `GET …/turns/{turn_id}/items/{item_id}`. That keeps a thread page the same size however much a run's tools returned.
 
 Runner runs keep no duplicate request body. Assignment and reassignment read the payload from the turn row and find prior runs through `thread.runs.turn_id`. Settled runs can outlive deleted fleets or turns; their identifiers then stay opaque history.
 
@@ -695,8 +695,8 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                → browser EventSource opens the same-origin
                  /live/v1/workspaces/{ws}/fleets/{id}/turns/stream proxy.
                → one registry entry owns the connection and retry timers.
-                 Connection attempts expire after 30 seconds. Open connections
-                 expire after 45 seconds without a heartbeat or application frame.
+                 Connection attempts and open connections expire after 45 seconds
+                 without a heartbeat or application frame.
                  Named heartbeat events arrive every 15 idle seconds, without ids
                  or database queries. They update timing, not React snapshots.
                → actual arrivals spanning 30 seconds establish stability and

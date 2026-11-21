@@ -49,6 +49,9 @@ pub struct Limits {
     pub request_timeout: Duration,
     /// Redirects a GET follows before it gives up.
     pub max_redirects: u8,
+    /// Memory the automaton masking a redirect's secrets in its response may
+    /// build; past it the response is refused.
+    pub mask_matcher_bytes: usize,
 }
 
 impl Limits {
@@ -57,6 +60,7 @@ impl Limits {
         connect_timeout: CONNECT_TIMEOUT,
         request_timeout: REQUEST_TIMEOUT,
         max_redirects: redirect::MAX_REDIRECTS,
+        mask_matcher_bytes: redirect::MASK_MATCHER_BYTES,
     };
 }
 

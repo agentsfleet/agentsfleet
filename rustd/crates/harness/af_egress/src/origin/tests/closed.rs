@@ -6,7 +6,7 @@ use af_wire::policy::{
 };
 use reqwest::Method;
 
-use super::super::{KEY_ECHO_MAX, QUERY_REFUSED, admits, closed_refusal};
+use super::super::{QUERY_REFUSED, admits, closed_refusal};
 use super::{origin, rule, url};
 
 /// The rule `afd_gate` compiles for a Pull Request: three locked fields and
@@ -188,17 +188,17 @@ fn should_say_which_key_or_query_a_closed_rule_refused() {
 }
 
 #[test]
-fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
+fn should_echo_a_refused_key_whole_and_escaped() {
     let pulls = draft_pull_request();
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
-    let long = "k".repeat(KEY_ECHO_MAX + 36);
+    let long = "k".repeat(100);
     let body =
         format!(r#"{{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"{long}":1}}"#);
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &at, Some(&body)),
         Some(format!(
             "it sends \"{}\", which this rule does not list",
-            "k".repeat(KEY_ECHO_MAX)
+            "k".repeat(100)
         ))
     );
 

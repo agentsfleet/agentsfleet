@@ -96,3 +96,9 @@ it.each(["active", "installing", "archived"])("deletes a %s fleet without a prec
   expect(remove).toHaveBeenCalledExactlyOnceWith("release", ACTIVE.id, ACTIVE.etag);
   expect(archive).not.toHaveBeenCalled();
 });
+
+it("keeps an unencodable fleet identifier unconfirmed and makes no mutation", async () => {
+  const result = await advanceFleetLifecycle({...request(), fleetId: "\uD800"}, START);
+  expect(result).toMatchObject({kind: "retry"});
+  expect(network).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(archive).not.toHaveBeenCalled();
+});

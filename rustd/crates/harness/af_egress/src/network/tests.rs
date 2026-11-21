@@ -53,6 +53,7 @@ fn a_limited_network_holds_and_reports_the_limits_it_was_given() {
         connect_timeout: Duration::from_secs(1),
         request_timeout: Duration::from_secs(2),
         max_redirects: 1,
+        mask_matcher_bytes: 1024,
     };
     let network = Network::build(Client::builder(), resolver(), limits).unwrap();
     assert_eq!(Transport::limits(&network), limits);

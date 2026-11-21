@@ -7,7 +7,6 @@ import { matchSetupRoute, SETUP_METHOD } from "./path";
 import { boundedBody, JSON_MEDIA_TYPE, sameOrigin } from "./body";
 import { SETUP_PROXY_DETAIL, setupProblem, setupResponse } from "./response";
 
-const REQUEST_TIMEOUT_MS = 30_000;
 const FORWARDED_HEADERS = ["If-Match", "Idempotency-Key", "Last-Event-ID"] as const;
 type Context = {readonly params: Promise<{workspaceId: string; setupPath: string[]}>};
 
@@ -18,7 +17,7 @@ export async function proxySetup(request: Request, context: Context): Promise<Re
   const writing = request.method !== SETUP_METHOD.get;
   if (writing && !sameOrigin(request)) return setupProblem(403, SETUP_PROXY_DETAIL.origin);
   let lifetime: StreamLifetime | undefined;
-  const signal = route.stream ? request.signal : AbortSignal.any([request.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]);
+  const signal = request.signal;
   try {
     let body: Uint8Array<ArrayBuffer> | undefined;
     if (writing && request.method !== SETUP_METHOD.delete && !route.bodyless) {

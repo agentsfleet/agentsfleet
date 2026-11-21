@@ -7,7 +7,6 @@ pub(super) const PROFILE: &str = include_str!("sql/profile.sql");
 pub(super) const PEEK_CALL: &str = include_str!("sql/find_call.sql");
 pub(super) const FIND_CALL: &str = const_format::concatcp!(PEEK_CALL, " FOR UPDATE");
 pub(super) const PAYLOAD: &str = include_str!("sql/payload.sql");
-pub(super) const SOURCE_CALLS: &str = include_str!("sql/source_calls.sql");
 pub(super) const BUDGET: &str = const_format::concatcp!(
     "WITH charged AS (\n",
     afd_billing::limits::SELECT_FLEET_SPEND,

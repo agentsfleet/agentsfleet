@@ -61,11 +61,11 @@ export class DraftSession {
     return this.#guard(this.#send.run({message}, (key) => {
       const id = this.#id;
       return id ? this.#transport.call({path: `${this.path}/messages`, method: HTTP_METHOD.post,
-        body: {message, operation_id: key}, retry: null}, AcceptedSchema).pipe(
+        body: {message, operation_id: key}}, AcceptedSchema).pipe(
         Effect.map((accepted) => ({draft_id: id, sequence: accepted.sequence})),
         Effect.tap((sent) => Effect.sync(() => { this.#sequence = sent.sequence; })),
       )
-      : this.#transport.call({path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
+      : this.#transport.call({path: this.#transport.drafts, method: HTTP_METHOD.post,
         body: {source: this.#source, setup_model_ref: this.#model, message, operation_id: key}}, CreatedSchema).pipe(
         Effect.tap((draft) => this.#remember(draft)),
         Effect.map((draft) => ({draft_id: draft.id, sequence: draft.accepted.sequence})),
@@ -82,7 +82,7 @@ export class DraftSession {
    */
   create(): Effect.Effect<Sent, ReadError> {
     return this.#guard(this.#send.run({source: this.#source.kind}, (key) => this.#transport.call({
-      path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
+      path: this.#transport.drafts, method: HTTP_METHOD.post,
       body: {source: this.#source, setup_model_ref: this.#model, operation_id: key}}, DraftSchema).pipe(
       Effect.tap((draft) => this.#remember(draft)),
       Effect.map((draft) => ({draft_id: draft.id, sequence: this.#sequence})),
@@ -93,7 +93,7 @@ export class DraftSession {
 
   patch(patch: {setup_model_ref?: string; instance_name?: string}): Effect.Effect<Draft, ReadError> {
     return this.#guard(this.refresh().pipe(Effect.flatMap((draft) => this.#transport.call({
-      path: this.path, method: HTTP_METHOD.patch, headers: {[IF_MATCH]: draft.etag}, body: patch, retry: null,
+      path: this.path, method: HTTP_METHOD.patch, headers: {[IF_MATCH]: draft.etag}, body: patch,
     }, DraftSchema)), Effect.tap((draft) => this.#remember(draft))));
   }
 
@@ -138,13 +138,13 @@ export class DraftSession {
   /** A turn whose answer won the race answers 409; it is finished either way. */
   #stopTurn(turn: string): Effect.Effect<void, ReadError> {
     return this.#transport.empty({path: `${this.path}/turns/${turn}`, method: HTTP_METHOD.patch,
-      body: STOPPED, retry: null}).pipe(
+      body: STOPPED}).pipe(
       Effect.catchIf((error) => error._tag === CLI_ERROR_TAG.server && error.status === 409, () => Effect.void));
   }
 
   remove(): Effect.Effect<void, ReadError> {
     return this.#guard(Effect.suspend<void, ReadError, never>(() => this.#id
-      ? this.#transport.empty({path: this.path, method: HTTP_METHOD.delete, retry: null})
+      ? this.#transport.empty({path: this.path, method: HTTP_METHOD.delete})
         .pipe(Effect.tap(() => Effect.sync(() => this.clear())))
       : absent()));
   }

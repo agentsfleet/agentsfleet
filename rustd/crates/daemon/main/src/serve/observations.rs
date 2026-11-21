@@ -3,9 +3,6 @@ use af_crypto::entropy::Entropy;
 use af_observability::producers::{models, scheduler};
 use afd_admin::Models;
 use afd_db::Db;
-use std::time::Duration;
-
-const BUDGET: Duration = Duration::from_secs(2);
 
 struct Snapshot {
     catalogue: Option<(Vec<models::ModelInfo>, bool)>,
@@ -20,16 +17,15 @@ pub(super) async fn refresh(database: &Db) {
 
 async fn sample(database: &Db) -> Snapshot {
     let catalogue = Models::new(database.clone(), Entropy::new());
-    let sampled = tokio::time::timeout(BUDGET, catalogue.bounded(models::MAX_MODELS)).await;
-    let catalogue = sampled
+    let catalogue = catalogue
+        .bounded(models::MAX_MODELS)
+        .await
         .ok()
-        .and_then(Result::ok)
         .map(|(rows, clipped)| (rows.into_iter().filter_map(model_info).collect(), clipped));
     let schedules = afd_cron::Schedules::new(database.clone(), Entropy::new());
-    let sampled = tokio::time::timeout(BUDGET, schedules.health(jiff::Timestamp::now())).await;
     Snapshot {
         catalogue,
-        schedules: sampled.ok().and_then(Result::ok),
+        schedules: schedules.health(jiff::Timestamp::now()).await.ok(),
     }
 }
 

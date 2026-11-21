@@ -53,10 +53,10 @@ use afd_api_wire::ingress::IdentityAnswer;
 use afd_identity::MetadataUnwritten;
 use afd_tenant::signup::{NewAccount, personal_tenant_name};
 
+use super::Ignored;
 use super::identity_event::IdentityEvent;
 use super::text;
 use super::verify::wall;
-use super::{Ignored, within_cap};
 
 /// The scoped event a failed bootstrap is logged under.
 const EVENT_BOOTSTRAP: &str = "identity_signup_bootstrap_failed";
@@ -96,7 +96,7 @@ const DETAIL_UNVERIFIED_ADDRESS: &str =
 /// # Errors
 /// `UZ-WH-020` for a deployment with no configured secret, `UZ-WH-010` for a
 /// signature that did not match, `UZ-WH-011` for one outside its window,
-/// `UZ-WH-030` for a body past the cap, `UZ-REQ-001` for a verified body
+/// `UZ-REQ-001` for a verified body
 /// this route cannot read as an event or that names no usable address, and
 /// `UZ-AUTH-004` for an account opened whose tenant could not reach the
 /// identity provider, which the provider's redelivery finishes.
@@ -133,8 +133,6 @@ pub(crate) async fn receive<D: IngressPlane>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    within_cap(&body)?;
-
     // Nothing below this line reads the body as anything but bytes until the
     // signature has been checked over the whole of it.
     let Some(stored) = services.identity_webhook_secret() else {

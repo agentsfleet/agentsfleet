@@ -110,11 +110,13 @@ fn provider_values_reach_decisions_and_counting() -> Checked {
 #[test]
 fn egress_values_reach_the_network_limits() -> Checked {
     let selected = settings(
-        "[egress]\nconnect_timeout_seconds = 5\nrequest_timeout_seconds = 60\nmax_redirects = 1\n",
+        "[egress]\nconnect_timeout_seconds = 5\nrequest_timeout_seconds = 60\nmax_redirects = 1\n\
+         max_secret_mask_mib = 4\n",
     )?;
     assert_eq!(selected.egress.connect_timeout, Duration::from_secs(5));
     assert_eq!(selected.egress.request_timeout, Duration::from_mins(1));
     assert_eq!(selected.egress.max_redirects, 1);
+    assert_eq!(selected.egress.mask_matcher_bytes, 4 * 1024 * 1024);
     Ok(())
 }
 
@@ -163,6 +165,7 @@ const ZEROES: &[(&str, &str)] = &[
     ("egress", "connect_timeout_seconds"),
     ("egress", "request_timeout_seconds"),
     ("egress", "max_redirects"),
+    ("egress", "max_secret_mask_mib"),
     ("daemon", "call_timeout_seconds"),
     ("daemon", "max_activity_batches_held"),
     ("daemon", "max_activity_batch_kib"),

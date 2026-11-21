@@ -87,8 +87,8 @@ const ACTOR_APP_GITHUB: &str = "github-app";
 /// `POST /v1/ingress/{provider}`.
 ///
 /// # Errors
-/// `UZ-CONN-004` for a provider this daemon serves no App for, `UZ-WH-030` for
-/// a body past the cap, the wall's own refusals, `UZ-WH-002` for a verified
+/// `UZ-CONN-004` for a provider this daemon serves no App for, the
+/// wall's own refusals, `UZ-WH-002` for a verified
 /// body that is not the event its header claims, and `UZ-WH-022` for a delivery
 /// matching more fleets than one event may wake.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -134,11 +134,6 @@ pub(crate) async fn receive<D: IngressPlane>(
             DETAIL_UNKNOWN_PROVIDER,
         ));
     }
-
-    // Before the hash, and so before any work this delivery could have asked
-    // for. `Bytes::len` is the buffered length; `webhook::BUFFER_CEILING` is
-    // the layer that stopped a larger one from being buffered at all.
-    webhook::within_cap(&body)?;
 
     let event = text(&headers, HEADER_EVENT)
         .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?

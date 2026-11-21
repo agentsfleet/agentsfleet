@@ -16,33 +16,9 @@
 //! its call. No kind's numbers can claim another's, and none is capped below
 //! the `u32` the wire carries.
 
-use std::time::Duration;
-
 use garde::Validate;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
-
-/// The longest runtime one line may claim: one hour.
-///
-/// The daemon cuts a runtime line at every renewal, so a longer claim is a
-/// malformed line rather than a long run.
-pub const RUNTIME_MAX: Duration = Duration::from_hours(1);
-
-/// [`RUNTIME_MAX`] as the bound on `runtime_ms`, the wire's span field: the one
-/// place it becomes milliseconds, because `garde` takes an integer.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "the const assertion inside this block proves the value sits \
-              inside u32 before the cast runs, so a bound edited past the \
-              wire's range fails the build rather than truncating"
-)]
-pub const RUNTIME_MS_MAX: u32 = {
-    const _: () = assert!(
-        RUNTIME_MAX.as_millis() <= u32::MAX as u128,
-        "the runtime bound must be a span the wire can carry"
-    );
-    RUNTIME_MAX.as_millis() as u32
-};
 
 /// What one usage line bills.
 ///
@@ -193,7 +169,7 @@ pub struct UsageLine {
     #[garde(skip)]
     pub output_tokens: u32,
     /// Run time this line accounts for, in milliseconds.
-    #[garde(range(max = RUNTIME_MS_MAX))]
+    #[garde(skip)]
     pub runtime_ms: u32,
 }
 

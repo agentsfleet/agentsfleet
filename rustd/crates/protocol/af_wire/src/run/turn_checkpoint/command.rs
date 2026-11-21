@@ -200,6 +200,7 @@ pub enum TurnCheckpointAction {
 
 impl TurnCheckpointAction {
     /// Native answer budget for readback, including frame delivery.
+    /// Kept: both ends size the readback's wait from it, so neither reads a slow one as lost.
     pub const VERIFY_ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(35);
 
     /// Upload authorization in verification mode reads the stored ciphertext back.

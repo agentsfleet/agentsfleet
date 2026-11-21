@@ -61,16 +61,6 @@ pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
 /// A file or directory the workspace does not have: the one caller's mistake
 /// a handler names to the model, so it is told from the rest.
 pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
-/// The most `Error::wire_message` renders, whatever kind it carries. A
-/// refusal's message and a decode failure's echo of the value it choked on
-/// both come from the socket, which the executor shares with tenant code,
-/// and the sentence reaches a model's context through every handler's
-/// failure path (`afr_tools::SandboxEnv` hands it to `guffbolt`'s
-/// `tools::process::unavailable` and `tools::files::failed`): one cap at the
-/// rendering bounds all of them. Four kibibytes is one `PATH_MAX`, so a sentence quoting a path is
-/// kept whole.
-pub(crate) const WIRE_MESSAGE_MAX_BYTES: usize = 4096;
-
 /// `process/spawn` parameters: borrowed where the client sends them, owned
 /// where the executor reads them.
 #[derive(Debug, Serialize, Deserialize)]

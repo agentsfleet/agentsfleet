@@ -67,9 +67,7 @@ pub use self::error::{Error, Result, ToolboxRefusal};
 pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden, single_threaded};
 pub use self::host::{HostTools, MKE2FS_PATH};
-pub use self::network::{
-    ALLOWLIST_ADDRESSES_MAX, Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
-};
+pub use self::network::{Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
 pub use self::probe::{
     BWRAP_PATH, CGROUP_ROOT, FILESYSTEMS_PATH, HostProbe, KVM_PATH, Kvm, LSM_PATH,
     MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,

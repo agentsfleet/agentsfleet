@@ -14,9 +14,6 @@ import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 const BACKFILL_OVERLAP_MS = 2_000;
 // The upstream page maximum.
 const BACKFILL_PAGE_LIMIT = 200;
-// A hung proxy response must not pin the promise across a flapping network;
-// the next reconnect retries anyway.
-const BACKFILL_TIMEOUT_MS = 10_000;
 
 // A backfill failure is deliberately swallowed (live frames have already
 // resumed; the next reconnect retries), so this console line is its only
@@ -55,7 +52,7 @@ type BackfillWalkRequest = WorkspaceBackfillRequest & {
 async function fetchBackfillPage(
   url: string,
 ): Promise<TurnsPage | null> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(BACKFILL_TIMEOUT_MS) });
+  const res = await fetch(url);
   if (!res.ok) {
     warnBackfillFailure(`HTTP ${res.status}`);
     return null;

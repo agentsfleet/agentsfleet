@@ -25,17 +25,7 @@ const EVENT: &str = "fleet_task_control_failed";
 const MALFORMED: &str = "Task control exceeds its supported shape or bounds";
 const REQUIRED: &str = "Send the current task If-Match tag";
 const GENERATION: &str = "Task generation must be positive";
-const SIZE: &str = "Task control exceeds 128 KiB";
-const SENTENCES: Sentences = Sentences::new(
-    &[("expected_generation", GENERATION), ("bytes", SIZE)],
-    MALFORMED,
-);
-
-#[derive(garde::Validate)]
-struct Envelope<'a> {
-    #[garde(length(max = 128 * 1024))]
-    bytes: &'a [u8],
-}
+const SENTENCES: Sentences = Sentences::new(&[("expected_generation", GENERATION)], MALFORMED);
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch, path = "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks/{task_id}",
@@ -67,15 +57,7 @@ pub(crate) async fn change<D: TenantPlane>(
         fleet_id: parse_fleet_id(&fleet_id)?,
     };
     let task = input::task(&task_id)?;
-    let envelope = garde::Unvalidated::new(Envelope { bytes: &body })
-        .validate()
-        .map_err(|report| {
-            Refusal::coded(
-                af_core::error_code::PAYLOAD_TOO_LARGE,
-                SENTENCES.pick(&report),
-            )
-        })?;
-    let request: PatchTaskRequest = af_core::json::object_from_slice(envelope.bytes)
+    let request: PatchTaskRequest = af_core::json::object_from_slice(&body)
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
     let request = garde::Unvalidated::new(request)
         .validate()

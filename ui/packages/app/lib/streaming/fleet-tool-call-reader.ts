@@ -15,9 +15,6 @@ import {
 // route, as the turn re-read goes, so the token stays on the server and a
 // send in flight never queues behind it.
 
-/** How long the read may take before the dialog falls back to what it has. */
-export const TOOL_CALL_READ_TIMEOUT_MS = 10_000;
-
 export const TOOL_CALL_READ = {
   FULL: "full",
   NOT_KEPT: "not-kept",
@@ -73,10 +70,9 @@ export type ToolCallAt = { workspaceId: string; fleetId: string; turnId: string;
 /** Reads one call; never throws. A 404 means the runner kept no full output
  * for it, which the dialog says in words. */
 export async function readToolCall(at: ToolCallAt, signal: AbortSignal): Promise<ToolCallRead> {
-  const timeout = AbortSignal.timeout(TOOL_CALL_READ_TIMEOUT_MS);
   try {
     const res = await fetch(fleetTurnItemUrl(at.workspaceId, at.fleetId, at.turnId, at.callId), {
-      signal: AbortSignal.any([signal, timeout]),
+      signal,
       // A signed-out read answers with a redirect to sign-in; followed, it
       // would parse the sign-in page.
       redirect: "manual",
@@ -100,7 +96,7 @@ export async function readToolCall(at: ToolCallAt, signal: AbortSignal): Promise
       },
     };
   } catch {
-    // Aborted, timed out, dropped, or an unreadable body.
+    // Aborted, dropped, or an unreadable body.
     return { kind: TOOL_CALL_READ.FAILED };
   }
 }

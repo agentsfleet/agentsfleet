@@ -118,11 +118,6 @@ fn create_validation_pins_every_bound() {
             serde_json::json!(""),
             DETAIL_PRICE_SOURCE_LEN,
         ),
-        (
-            "/prices/0/conditions",
-            serde_json::json!("x".repeat(1025)),
-            DETAIL_PRICE_CONDITIONS_LEN,
-        ),
         ("/prices", serde_json::json!([]), DETAIL_PRICES),
     ] {
         let body = with(valid(), pointer, value);

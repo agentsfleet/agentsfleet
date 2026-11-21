@@ -1,5 +1,5 @@
 // The live-frame vocabulary and the same-origin stream URLs the streaming layer shares. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 export type TurnsQuery = {
   cursor?: string;

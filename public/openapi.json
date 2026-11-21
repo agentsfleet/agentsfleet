@@ -4660,7 +4660,7 @@
           "Runners"
         ],
         "summary": "Post a message to the event's thread",
-        "description": "Posts to the event's original thread with secrets masked. The server holds the channel credential. Events without a thread return 409 `UZ-RUN-019` with `current_state`. `delivered` is false when the channel refuses the message or retries fail within 12 seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
+        "description": "Posts to the event's original thread with secrets masked. The server holds the channel credential. Events without a thread return 409 `UZ-RUN-019` with `current_state`. `delivered` is false when the channel refuses the message or retries fail within 12 seconds. Each call posts once: a request repeating its `item_id` and `call_number` returns the first request's answer and posts nothing.",
         "operationId": "runner_post_message",
         "parameters": [
           {
@@ -4925,7 +4925,7 @@
           "Schedules"
         ],
         "summary": "Create a schedule for the running fleet",
-        "description": "Creates a schedule for the assigned fleet and registers it with QStash. Source is `fleet`; secret values are masked in its message. A fleet may create 16 schedules; excess returns `UZ-SCHED-009`. `once` retires the schedule after its first delivery. Registration failures still return 201 with `sync` state. Each request creates another schedule; `Idempotency-Key` is unsupported.",
+        "description": "Creates a schedule for the assigned fleet and registers it with QStash. Source is `fleet`; secret values are masked in its message. A fleet may create 16 schedules; excess returns `UZ-SCHED-009`. `once` retires the schedule after its first delivery. Registration failures still return 201 with `sync` state. Each call creates one schedule: a request repeating its `item_id` and `call_number` returns the first request's schedule and creates nothing.",
         "operationId": "runner_create_schedule",
         "parameters": [
           {
@@ -5202,7 +5202,7 @@
           "Schedules"
         ],
         "summary": "Change a schedule the fleet made",
-        "description": "Updates supplied fields on a fleet-created schedule and synchronizes it with the scheduler. Secret values are masked in the message. User-created schedules return `UZ-SCHED-010`. Repeating the same body is safe.",
+        "description": "Updates supplied fields on a fleet-created schedule and synchronizes it with the scheduler. Secret values are masked in the message. User-created schedules return `UZ-SCHED-010`. A request repeating its `item_id` and `call_number` returns the first request's answer and changes nothing again.",
         "operationId": "runner_update_schedule",
         "parameters": [
           {
@@ -8278,7 +8278,7 @@
           {
             "name": "limit",
             "in": "path",
-            "description": "At most four complete messages per safe boundary.",
+            "description": "Complete messages per safe boundary; the daemon serves at most its\npolicy's input batch.",
             "required": true,
             "schema": {
               "type": "integer",
@@ -11969,8 +11969,8 @@
         "tags": [
           "Approvals"
         ],
-        "summary": "Approve or reject a pending request",
-        "description": "Approves a pending request. If two callers resolve it, the first result wins. Other callers receive 409 with the existing result and resolver. ",
+        "summary": "Approve, reject or answer a pending request",
+        "description": "Approves or rejects a pending request, or answers a question with `answer` and a body of `{\"answer\":\"…\"}`. A request past its deadline still takes a decision. If two callers resolve it, the first result wins. A repeat of the standing decision receives 200 with the same result; any other caller receives 409 with the existing result and resolver. A request whose fleet is archived receives 409.",
         "operationId": "approve_workspace_approval",
         "parameters": [
           {
@@ -13905,7 +13905,7 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Page size. Defaults to 20. Clamped to a maximum of 100.",
+            "description": "Page size. Defaults to the deployment's default page size and is clamped to its maximum page size.",
             "required": false,
             "schema": {
               "type": "string"
@@ -18166,7 +18166,7 @@
           "Workspaces"
         ],
         "summary": "Write one dashboard preference",
-        "description": "Saves one dashboard preference and returns all your workspace preferences. Send any valid JSON value up to 1 KiB; it is stored unchanged. Unknown `pref_key` values return `UZ-PREFS-001`. Concurrent updates to one key keep the last write.",
+        "description": "Saves one dashboard preference and returns all your workspace preferences. Send any valid JSON value; it is stored unchanged. Unknown `pref_key` values return `UZ-PREFS-001`. Concurrent updates to one key keep the last write.",
         "operationId": "put_workspace_preference",
         "parameters": [
           {
@@ -20767,7 +20767,7 @@
             "items": {
               "$ref": "#/components/schemas/CheckpointPlaintext"
             },
-            "description": "At most one descriptor page."
+            "description": "One descriptor page."
           },
           "pin_id": {
             "type": "string",
@@ -20821,7 +20821,7 @@
             "items": {
               "$ref": "#/components/schemas/CheckpointEntry"
             },
-            "description": "Logical entries, bounded again by complete serialized bytes."
+            "description": "Logical entries, bounded by complete serialized bytes."
           },
           "history_objects": {
             "type": "array",
@@ -20955,7 +20955,7 @@
           "size": {
             "type": "integer",
             "format": "int64",
-            "description": "Bounded plaintext chunk length.",
+            "description": "Plaintext chunk length in bytes.",
             "minimum": 0
           }
         },
@@ -21117,7 +21117,7 @@
           "entry_count": {
             "type": "integer",
             "format": "int32",
-            "description": "Expanded entries, checked again against complete pages.",
+            "description": "Expanded entries, checked again against complete pages. Bounded by its\nPostgres `INTEGER` column.",
             "minimum": 0
           },
           "fencing_token": {
@@ -21129,13 +21129,13 @@
           "format_version": {
             "type": "integer",
             "format": "int32",
-            "description": "Restore format, independently checked by the daemon.",
+            "description": "Restore format, independently checked by the daemon: version 1 is the\nonly one.",
             "minimum": 0
           },
           "logical_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Expanded logical state, independent of deduplication.",
+            "description": "Expanded logical state, independent of deduplication. Bounded by its\nPostgres `BIGINT` column.",
             "minimum": 0
           },
           "mode": {
@@ -21163,7 +21163,7 @@
           "upload_budget_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Declared unique new content allowance, clamped natively by mode.",
+            "description": "Declared unique new content allowance, clamped natively by mode.\nBounded by its Postgres `BIGINT` column.",
             "minimum": 0
           }
         },
@@ -21219,7 +21219,7 @@
           "ciphertext_length": {
             "type": "integer",
             "format": "int64",
-            "description": "Plaintext length plus the fixed authentication tag.",
+            "description": "Plaintext length plus the fixed 16-byte authentication tag, so at least\n17. Bounded by its Postgres `BIGINT` column.",
             "minimum": 0
           },
           "ciphertext_sha256": {
@@ -21254,7 +21254,7 @@
             "items": {
               "$ref": "#/components/schemas/CheckpointUpload"
             },
-            "description": "At most one immutable descriptor page."
+            "description": "One immutable descriptor page."
           },
           "pin_id": {
             "type": "string",
@@ -22119,7 +22119,7 @@
               "ordinal": {
                 "type": "integer",
                 "format": "int32",
-                "description": "Zero-based action within the four-item native interpretation.",
+                "description": "Zero-based action within the native interpretation.",
                 "minimum": 0
               },
               "source_end": {
@@ -22293,11 +22293,10 @@
             "type": "array",
             "items": {
               "type": "string",
-              "maxLength": 128,
+              "maxLength": 1048576,
               "minLength": 1
             },
             "description": "Provider-reported names supported by this revision's evaluation evidence.",
-            "maxItems": 8,
             "minItems": 1
           },
           "api": {
@@ -22311,7 +22310,7 @@
           "endpoint": {
             "type": "string",
             "description": "Exact reviewed HTTPS endpoint, including its API path.",
-            "maxLength": 2048,
+            "maxLength": 1048576,
             "minLength": 1
           },
           "evaluated_at": {
@@ -22327,7 +22326,7 @@
           "evaluation_source_url": {
             "type": "string",
             "description": "Evidence location reviewed before activation; it carries no credentials.",
-            "maxLength": 2048,
+            "maxLength": 1048576,
             "minLength": 1
           },
           "goal": {
@@ -22338,7 +22337,6 @@
             "type": "integer",
             "format": "int32",
             "description": "Complete encoded-request ceiling established for the provider.",
-            "maximum": 24576,
             "minimum": 1
           },
           "intent": {
@@ -22348,7 +22346,7 @@
           "revision": {
             "type": "string",
             "description": "Immutable reviewed definition revision; changing settings needs a new one.",
-            "maxLength": 128,
+            "maxLength": 2676,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_.:-]+$"
           }
@@ -22471,7 +22469,7 @@
           "model": {
             "type": "string",
             "description": "Requested model; an alias is not evidence of a resolved serving version.",
-            "maxLength": 256,
+            "maxLength": 2595,
             "minLength": 1
           },
           "model_id": {
@@ -22538,7 +22536,7 @@
                 "items": {
                   "$ref": "#/components/schemas/ChoiceOption"
                 },
-                "description": "Sixteen eligible tasks plus new-work and unclear fit without truncation."
+                "description": "Every eligible task plus new-work and unclear fit, without truncation."
               },
               "type": {
                 "type": "string",
@@ -22958,7 +22956,7 @@
           },
           {
             "type": "object",
-            "description": "Delay fits the approved two-second retry budget.",
+            "description": "The provider named a delay; the retry waits it out.",
             "required": [
               "milliseconds",
               "kind"
@@ -22980,7 +22978,7 @@
           },
           {
             "type": "object",
-            "description": "The provider requested more time than this logical decision permits.",
+            "description": "The provider named a delay too long for the wire's milliseconds.",
             "required": [
               "kind"
             ],
@@ -23019,7 +23017,7 @@
       },
       "DecisionThreshold": {
         "type": "object",
-        "description": "Probability and native confidence requirements, in integer basis points.",
+        "description": "Probability and native confidence requirements, in integer basis points:\n10,000 is one, so no requirement exceeds it.",
         "required": [
           "probability_bps",
           "confidence_bps"
@@ -23096,7 +23094,7 @@
               "status": {
                 "type": "integer",
                 "format": "int32",
-                "description": "Status is recorded independently of any untrusted error body.",
+                "description": "Status is recorded independently of any untrusted error body. HTTP\ndefines status codes as 100 through 599 (RFC 9110, section 15).",
                 "minimum": 0
               }
             }
@@ -23156,46 +23154,9 @@
         },
         "additionalProperties": false
       },
-      "DefinitionAnomalyPattern": {
-        "type": "string",
-        "description": "A repeated-action pattern.",
-        "enum": [
-          "same_action"
-        ]
-      },
-      "DefinitionAnomalyRule": {
-        "type": "object",
-        "description": "One repeated-action pattern that stops a run.",
-        "required": [
-          "pattern",
-          "threshold_count",
-          "threshold_window_s"
-        ],
-        "properties": {
-          "pattern": {
-            "$ref": "#/components/schemas/DefinitionAnomalyPattern",
-            "description": "The pattern to watch for."
-          },
-          "threshold_count": {
-            "type": "integer",
-            "format": "int32",
-            "description": "How many repeats stop the run.",
-            "maximum": 10000,
-            "minimum": 1
-          },
-          "threshold_window_s": {
-            "type": "integer",
-            "format": "int32",
-            "description": "The window, in seconds, the repeats are counted in.",
-            "maximum": 86400,
-            "minimum": 1
-          }
-        },
-        "additionalProperties": false
-      },
       "DefinitionAssociationQuestion": {
         "type": "object",
-        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "description": "Owner-reviewed wording and exact native role criteria.",
         "required": [
           "question",
           "criteria"
@@ -23211,22 +23172,22 @@
             "properties": {
               "matching_task": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "new_work": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "unclear": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               }
@@ -23235,8 +23196,8 @@
           },
           "question": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23284,8 +23245,7 @@
             "items": {
               "$ref": "#/components/schemas/DefinitionCompletionStatement"
             },
-            "description": "One to six required statements, with unique stable IDs.",
-            "maxItems": 6,
+            "description": "At least one required statement, each with a unique stable ID.",
             "minItems": 1
           }
         },
@@ -23314,7 +23274,7 @@
           "question": {
             "type": "string",
             "description": "The completion question to assess against the task's accepted objective.",
-            "maxLength": 512,
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23362,7 +23322,7 @@
               "path": {
                 "type": "string",
                 "description": "JSON Pointer into mutable setup fields.",
-                "maxLength": 512,
+                "maxLength": 1048576,
                 "minLength": 1
               },
               "value": {
@@ -23389,7 +23349,7 @@
               "path": {
                 "type": "string",
                 "description": "JSON Pointer into mutable setup fields.",
-                "maxLength": 512,
+                "maxLength": 1048576,
                 "minLength": 1
               },
               "value": {
@@ -23415,7 +23375,7 @@
               "path": {
                 "type": "string",
                 "description": "JSON Pointer into mutable setup fields.",
-                "maxLength": 512,
+                "maxLength": 1048576,
                 "minLength": 1
               }
             },
@@ -23558,18 +23518,8 @@
       },
       "DefinitionGates": {
         "type": "object",
-        "description": "Approval and anomaly rules for a fleet's tool actions.",
+        "description": "Approval rules for a fleet's tool actions.",
         "properties": {
-          "anomaly_rules": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "$ref": "#/components/schemas/DefinitionAnomalyRule"
-            },
-            "description": "The repeated-action patterns that stop a run."
-          },
           "rules": {
             "type": [
               "array",
@@ -23630,7 +23580,7 @@
       },
       "DefinitionIntentQuestion": {
         "type": "object",
-        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "description": "Owner-reviewed wording and exact native role criteria.",
         "required": [
           "question",
           "criteria"
@@ -23649,43 +23599,43 @@
             "properties": {
               "clarify": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "conversation": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "new_work": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "refresh": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "status": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "steer": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               }
@@ -23694,8 +23644,8 @@
           },
           "question": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23716,8 +23666,7 @@
               "maxLength": 255,
               "minLength": 1
             },
-            "description": "Additional exact hosts the fleet may reach.",
-            "maxItems": 64
+            "description": "Additional exact hosts the fleet may reach."
           },
           "http_egress": {
             "oneOf": [
@@ -23757,15 +23706,14 @@
               "maxLength": 255,
               "minLength": 1
             },
-            "description": "The request paths that may still send `POST` when `read_only` is true.",
-            "maxItems": 64
+            "description": "The request paths that may still send `POST` when `read_only` is true."
           }
         },
         "additionalProperties": false
       },
       "DefinitionNextActionQuestion": {
         "type": "object",
-        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "description": "Owner-reviewed wording and exact native role criteria.",
         "required": [
           "question",
           "criteria"
@@ -23782,29 +23730,29 @@
             "properties": {
               "BLOCKED": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "CONTINUE": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "DONE": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "WAIT": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               }
@@ -23813,8 +23761,8 @@
           },
           "question": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23830,15 +23778,15 @@
         "properties": {
           "false": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           },
           "true": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23847,7 +23795,7 @@
       },
       "DefinitionNoulQuestion": {
         "type": "object",
-        "description": "Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB.",
+        "description": "Owner-reviewed wording and exact native role criteria.",
         "required": [
           "question",
           "criteria"
@@ -23862,15 +23810,15 @@
             "properties": {
               "false": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               },
               "true": {
                 "type": "string",
-                "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-                "maxLength": 512,
+                "description": "Nonblank, NUL-free text.",
+                "maxLength": 1048576,
                 "minLength": 1,
                 "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
               }
@@ -23879,8 +23827,8 @@
           },
           "question": {
             "type": "string",
-            "description": "Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length.",
-            "maxLength": 512,
+            "description": "Nonblank, NUL-free text.",
+            "maxLength": 1048576,
             "minLength": 1,
             "pattern": "^[^\\x00]*[^\\s\\x00][^\\x00]*$"
           }
@@ -23952,8 +23900,7 @@
               "maxLength": 128,
               "minLength": 1
             },
-            "description": "The workspace secrets this fleet may read, by name.",
-            "maxItems": 64
+            "description": "The workspace secrets this fleet may read, by name."
           },
           "decision_policy": {
             "$ref": "#/components/schemas/DefinitionDecisionPolicy",
@@ -23963,7 +23910,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/DefinitionGates",
-                "description": "Which tool actions need a person's approval, and which repeated actions stop a run."
+                "description": "Which tool actions need a person's approval."
               },
               {
                 "type": "null"
@@ -24000,7 +23947,6 @@
               "minLength": 1
             },
             "description": "The repositories this fleet's GitHub credentials may reach, as `owner/name`.\nSet together with `repository_access`.",
-            "maxItems": 64,
             "minItems": 1
           },
           "repository_access": {
@@ -24052,16 +23998,14 @@
               "maxLength": 128,
               "minLength": 1
             },
-            "description": "The tools this fleet may call. An empty list means the fleet only answers.",
-            "maxItems": 128
+            "description": "The tools this fleet may call. An empty list means the fleet only answers."
           },
           "triggers": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DefinitionTrigger"
             },
-            "description": "What may start a run of this fleet besides a message sent to it. Omit\nit, or leave it empty, for a fleet that is only ever talked to.",
-            "maxItems": 8
+            "description": "What may start a run of this fleet besides a message sent to it. Omit\nit, or leave it empty, for a fleet that is only ever talked to."
           }
         },
         "additionalProperties": false
@@ -24096,7 +24040,6 @@
                   "minLength": 1
                 },
                 "description": "The event names that start a run. Omit it to accept every event.",
-                "maxItems": 16,
                 "minItems": 1
               },
               "repositories": {
@@ -24110,7 +24053,6 @@
                   "minLength": 1
                 },
                 "description": "The repositories whose deliveries may start a run, as `owner/name`.",
-                "maxItems": 64,
                 "minItems": 1
               },
               "source": {
@@ -25258,7 +25200,7 @@
           },
           "request_excerpt": {
             "type": "string",
-            "description": "What it was asked, cut to [`EXCERPT_MAX_BYTES`]. Beta: this field may change shape before it is stable.",
+            "description": "What it was asked. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "response_excerpt": {
@@ -25266,7 +25208,7 @@
               "string",
               "null"
             ],
-            "description": "What it answered, cut to [`EXCERPT_MAX_BYTES`]. Omitted until it answers. Beta: this field may change shape before it is stable.",
+            "description": "What it answered. Omitted until it answers. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           },
           "status": {
@@ -26001,7 +25943,7 @@
         "properties": {
           "category": {
             "type": "string",
-            "description": "Retention category, which decides eviction order."
+            "description": "Retention category, which decides load order and retention."
           },
           "content": {
             "type": "string",
@@ -26030,7 +25972,7 @@
         "properties": {
           "category": {
             "type": "string",
-            "description": "The retention category, which decides eviction order."
+            "description": "The retention category, which decides load order and retention."
           },
           "content": {
             "type": "string",
@@ -26131,7 +26073,6 @@
           "limit": {
             "type": "integer",
             "description": "The most entries of each kind to answer with.",
-            "maximum": 50,
             "minimum": 1
           },
           "query": {
@@ -26282,14 +26223,26 @@
         "description": "`POST /v1/runners/me/runs/{run_id}/messages` request.",
         "required": [
           "fencing_token",
+          "item_id",
+          "call_number",
           "text"
         ],
         "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The call's number within its run, from 1, as its record names it.",
+            "minimum": 0
+          },
           "fencing_token": {
             "type": "integer",
             "format": "int64",
             "description": "The run's fencing token; a holder the fleet has superseded is refused.",
             "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "The item this call is: a `UUIDv7` the runner mints once per call.\nA retry sends it again and gets the first post's result."
           },
           "text": {
             "type": "string",
@@ -27822,6 +27775,13 @@
         "type": "object",
         "description": "The body a decision may carry.\n\nEvery field is optional, and so is the whole body. A decision is complete\nwithout a note, and demanding one would make the common answer the awkward\none.",
         "properties": {
+          "answer": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's answer to a `question` gate, which the `answer`\ndecision requires and stores as the gate's `detail`."
+          },
           "reason": {
             "type": [
               "string",
@@ -28033,6 +27993,13 @@
             "description": "Monotonic guard a report must echo.",
             "minimum": 0
           },
+          "finished_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EarlierCall"
+            },
+            "description": "The calls earlier runs of this turn finished before they died, oldest first.\nA resumed run reconciles them before it acts again. Empty for a turn's first run."
+          },
           "history": {
             "type": "array",
             "items": {
@@ -28168,7 +28135,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Replaces all runner labels: at most 32 labels of 64 bytes each. Duplicates are removed\nin their original order. An empty list clears labels."
+            "description": "Replaces all runner labels, each at most 1,048,576 characters. Duplicates are removed\nin their original order. An empty list clears labels."
           }
         },
         "additionalProperties": false
@@ -28814,10 +28781,18 @@
         "description": "`POST /v1/runners/me/runs/{run_id}/schedules` request.",
         "required": [
           "fencing_token",
+          "item_id",
+          "call_number",
           "cron",
           "message"
         ],
         "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The call's number within its run, from 1, as its record names it.",
+            "minimum": 0
+          },
           "cron": {
             "type": "string",
             "description": "A five-field cron expression."
@@ -28827,6 +28802,10 @@
             "format": "int64",
             "description": "The run's fencing token; a holder the fleet has superseded is refused.",
             "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "The item this call is: a `UUIDv7` the runner mints once per call.\nA retry sends it again and gets the first result."
           },
           "message": {
             "type": "string",
@@ -28900,9 +28879,17 @@
         "type": "object",
         "description": "Changes to a fleet-created schedule. The attempt number is required; omitted schedule\nfields keep their current values.",
         "required": [
-          "fencing_token"
+          "fencing_token",
+          "item_id",
+          "call_number"
         ],
         "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The call's number within its run, from 1, as its record names it.",
+            "minimum": 0
+          },
           "cron": {
             "type": [
               "string",
@@ -28915,6 +28902,10 @@
             "format": "int64",
             "description": "The run's fencing token; a holder the fleet has superseded is refused.",
             "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "The item this call is: a `UUIDv7` the runner mints once per call.\nA retry sends it again and gets the first result."
           },
           "message": {
             "type": [
@@ -28958,14 +28949,26 @@
         "type": "object",
         "description": "`POST /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs`\nrequest: run the schedule now.",
         "required": [
-          "fencing_token"
+          "fencing_token",
+          "item_id",
+          "call_number"
         ],
         "properties": {
+          "call_number": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The call's number within its run, from 1, as its record names it.",
+            "minimum": 0
+          },
           "fencing_token": {
             "type": "integer",
             "format": "int64",
             "description": "The run's fencing token; a holder the fleet has superseded is refused.",
             "minimum": 0
+          },
+          "item_id": {
+            "type": "string",
+            "description": "The item this call is: a `UUIDv7` the runner mints once per call.\nA retry sends it again and gets the first result."
           }
         },
         "additionalProperties": false
@@ -29512,7 +29515,7 @@
               "string",
               "null"
             ],
-            "description": "Your retry identifier, 1 to 200 bytes with no NUL character (U+0000).\n\nReuse it with the same message and sender for one run and charge. Reuse with different\ntext or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys\nshare one sender. Omit it to create a new message on every request. Safe retries\nremain valid after stopping or pausing the fleet."
+            "description": "Your retry identifier, 1 to 2,647 bytes with no NUL character (U+0000).\n\nReuse it with the same message and sender for one run and charge. Reuse with different\ntext or sender returns 409 `UZ-AGT-016`. Each person is one sender; workspace API keys\nshare one sender. Omit it to create a new message on every request. Safe retries\nremain valid after stopping or pausing the fleet."
           }
         },
         "additionalProperties": false
@@ -29802,7 +29805,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Event-local observation order assigned by the daemon, never a worker clock.",
+            "description": "Event-local observation order assigned by the daemon, never a worker clock.\n\nBounded by JavaScript's `Number.MAX_SAFE_INTEGER`, 2^53 - 1: the browser\nand the CLI read this JSON number as a double and order by it exactly.",
             "minimum": 0
           },
           "source_turn_id": {
@@ -29833,7 +29836,7 @@
       },
       "TaskActivityHistory": {
         "type": "object",
-        "description": "Retained activity is bounded independently of the task's private history.",
+        "description": "Retained activity, kept apart from the task's private history.",
         "required": [
           "items",
           "truncated"
@@ -29844,11 +29847,11 @@
             "items": {
               "$ref": "#/components/schemas/TaskActivityRecord"
             },
-            "description": "Latest 128 operation/stage facts, in observed order."
+            "description": "The newest fact of each operation and stage, in observed order."
           },
           "truncated": {
             "type": "boolean",
-            "description": "Whether earlier stages were omitted by the public history bound."
+            "description": "Whether earlier stages were omitted when the history was bounded."
           }
         }
       },
@@ -30335,7 +30338,7 @@
             "items": {
               "$ref": "#/components/schemas/TaskFileChange"
             },
-            "description": "Complete changes, bounded again by one MiB of decoded bytes."
+            "description": "Complete changes, bounded natively by their decoded bytes."
           },
           "covered_input_sequence": {
             "type": "integer",
@@ -31177,7 +31180,6 @@
         "description": "Measured usage retained on the objective, including stopped attempts.",
         "required": [
           "model_nanos",
-          "reserved_model_nanos",
           "running_nanos",
           "runs",
           "publications",
@@ -31206,10 +31208,6 @@
             "format": "int32",
             "description": "Physical publication attempts.",
             "minimum": 0
-          },
-          "reserved_model_nanos": {
-            "$ref": "#/components/schemas/Nanos",
-            "description": "Outstanding native model-call reservations."
           },
           "running_nanos": {
             "type": "integer",

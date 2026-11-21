@@ -26,15 +26,12 @@
 // never sees — or resends as themselves — what the last one typed, and once
 // that person's page shows a ledger, the last one's leave storage and stay
 // out, in every tab. Nothing is mirrored until the
-// user is known, entries expire after a day, and a fleet holds at most
-// `MAX_PENDING_SENDS`. The stored shape and every storage call live in
+// user is known, and entries expire after a day. The stored shape and every storage call live in
 // `pending-sends-storage.ts`.
 
 import {
-  MAX_PENDING_SENDS,
   PENDING_SEND_STATE,
   PENDING_SEND_TTL_MS,
-  capped,
   keptForeign,
   ledgerKey,
   live,
@@ -55,7 +52,7 @@ import {
 } from "./pending-sends-storage";
 import { SendLocks } from "./pending-sends-locks";
 
-export { MAX_PENDING_SENDS, PENDING_SEND_STATE, PENDING_SEND_TTL_MS, type LedgerScope, type PendingSend, type PendingSendOutcome };
+export { PENDING_SEND_STATE, PENDING_SEND_TTL_MS, type LedgerScope, type PendingSend, type PendingSendOutcome };
 
 const STORAGE_EVENT = "storage";
 const EMPTY: readonly PendingSend[] = Object.freeze([]);
@@ -166,7 +163,7 @@ function mutate(
   const stored = store === null ? null : readLedger(store, key);
   const nowMs = Date.now();
   const base = stored === null ? held : mergeIncoming(live(stored.entries, nowMs), held, UNSAVED.get(key) ?? NONE_UNSAVED);
-  const next = capped(change(base));
+  const next = change(base);
   adopt(key, next);
   const foreign = keptForeign(stored?.foreign ?? [], next, operationId, nowMs);
   if (store !== null) writeMirror(store, key, operationId, [...next, ...foreign]);

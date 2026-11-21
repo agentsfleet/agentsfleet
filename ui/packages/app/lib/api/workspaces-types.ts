@@ -1,5 +1,5 @@
 // The workspace name checks the create dialog shares, and the account-role vocabulary. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 const ASCII_EDGE_WHITESPACE_PATTERN =
   /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/gu;

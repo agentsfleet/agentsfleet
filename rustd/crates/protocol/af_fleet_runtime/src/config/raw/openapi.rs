@@ -14,7 +14,7 @@ use super::{
     MAX_TOOL_LEN, MENTION_CHANNELS, Network, Runtime, Trigger, Verifier,
 };
 use crate::config::budget::MAX_NANOS_DIGITS;
-use crate::config::trigger::{CHANNEL_MIN_LEN, MAX_TRIGGERS};
+use crate::config::trigger::CHANNEL_MIN_LEN;
 use crate::name::MAX_NAME_LEN;
 use crate::openapi::{Bound, Published, Text};
 
@@ -108,7 +108,7 @@ fn runtime() -> Published {
                 "triggers",
                 Bound::List {
                     min: 0,
-                    max: Some(MAX_TRIGGERS),
+                    max: None,
                     entry: None,
                 },
             ),

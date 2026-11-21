@@ -16,9 +16,7 @@ mod report;
 mod state;
 mod target;
 
-pub use assessment::{
-    DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause, RETRY_DELAY_MAX_MILLIS,
-};
+pub use assessment::{DecisionAssessment, DecisionRetryDelay, DecisionUnavailableCause};
 pub use context::TaskContext;
 pub use decision::{
     DecisionCallState, DecisionDispatch, DecisionNotSentCause, DecisionReceipt,

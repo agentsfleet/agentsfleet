@@ -25,11 +25,7 @@ pub use output::{
 };
 pub(crate) use output::{CANCELLED, EDITING, QUEUED, RUNNING};
 
-/// Bound on opaque model references, independent of their current spelling.
-pub const MAX_MODEL_REF_BYTES: usize = 256;
 pub(crate) const MAX_CURSOR_BYTES: usize = 4096;
-/// Longest chat search a list accepts, in characters.
-pub(crate) const MAX_QUERY_CHARS: usize = 200;
 
 pub(crate) fn present<'de, T: serde::Deserialize<'de>, D: serde::Deserializer<'de>>(
     deserializer: D,

@@ -21,7 +21,6 @@ import {
 } from "../../errors/index.ts";
 
 const TURNS_LISTED = "Fleet turns" as const;
-const DEFAULT_LIMIT = 50;
 const PREVIEW_MAX = 80;
 
 
@@ -48,11 +47,8 @@ export interface TurnsEffectFlags {
 
 const buildQuery = (flags: TurnsEffectFlags): string => {
   const qs = new URLSearchParams();
-  const limit =
-    isString(flags.limit) || isNumber(flags.limit)
-      ? String(flags.limit)
-      : String(DEFAULT_LIMIT);
-  qs.set("limit", limit);
+  // No --limit: the server's own default page size applies.
+  if (isString(flags.limit) || isNumber(flags.limit)) qs.set("limit", String(flags.limit));
   if (isString(flags.actor) && flags.actor.length > 0) qs.set("actor", flags.actor);
   if (isString(flags.since) && flags.since.length > 0) qs.set("since", flags.since);
   if (isString(flags.cursor) && flags.cursor.length > 0) qs.set("cursor", flags.cursor);

@@ -7,7 +7,6 @@ use futures_util::{Stream, stream};
 use std::{collections::HashMap, convert::Infallible, time::Duration};
 
 const QUIET: Duration = Duration::from_secs(1);
-const CHECK_DEADLINE: Duration = Duration::from_secs(10);
 const FAILED: &str = "draft_stream_recheck_failed";
 
 struct Watch {
@@ -77,11 +76,11 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             subject: &watch.subject,
         };
         match observe(&watch.drafts, access, &watch.draft, watch.generation).await {
-            Ok(Ok(Observation::Deleted)) => {
+            Ok(Observation::Deleted) => {
                 watch.done = true;
                 return Some((Ok(deleted(&watch.draft)?), watch));
             }
-            Ok(Ok(Observation::Current(view))) => {
+            Ok(Observation::Current(view)) => {
                 watch.generation = view.generation;
                 if let Some(pending) = pending
                     && let Some(event) = preview(&watch.draft, &view, pending)
@@ -100,12 +99,11 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                     return Some((Ok(heartbeat()), watch));
                 }
             }
-            Ok(Err(error)) => {
+            Err(error) => {
                 let error_code = error.code().as_str();
                 tracing::info!(event = FAILED, error_code, "private stream access ended");
                 return None;
             }
-            Err(_) => return None,
         }
     }
     None
@@ -118,8 +116,8 @@ async fn observe(
     access: Access<'_>,
     draft: &Uuid7,
     generation: i64,
-) -> Result<afd_setup::Result<Observation>, tokio::time::error::Elapsed> {
-    tokio::time::timeout(CHECK_DEADLINE, drafts.observe(access, draft, generation)).await
+) -> afd_setup::Result<Observation> {
+    drafts.observe(access, draft, generation).await
 }
 
 fn heartbeat() -> Event {

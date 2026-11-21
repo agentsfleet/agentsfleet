@@ -12,8 +12,6 @@ use crate::tools::{Context, Handler, code};
 
 /// The matches `grep` answers with when the model names no limit.
 const GREP_DEFAULT: usize = 100;
-/// The most characters of one matching line `grep` shows.
-const LINE_MAX: usize = 500;
 
 /// `grep`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -48,8 +46,8 @@ impl Handler for Grep<'_> {
     const NAME: &'static str = "grep";
     const DESCRIPTION: &'static str = "Search the files in the working directory for a pattern, a \
         regular expression or, with `literal`, text, and read back each matching line as \
-        `path:line: text`. `glob` keeps only files whose path matches it. `.git` is skipped, \
-        and a line is cut at 500 characters. At most `limit` lines (100 when absent).";
+        `path:line: text`. `glob` keeps only files whose path matches it. `.git` is skipped. \
+        At most `limit` lines (100 when absent).";
     type Arguments = Lines;
 
     async fn run(&self, arguments: Lines, _context: Context<'_>) -> ToolOutput {
@@ -110,8 +108,7 @@ async fn grep(env: &dyn Env, arguments: &Lines) -> Answer {
                 cut = true;
                 break 'files;
             }
-            let shown: String = line.chars().take(LINE_MAX).collect();
-            lines.push(format!("{relative}:{}: {shown}", number + 1));
+            lines.push(format!("{relative}:{}: {line}", number + 1));
         }
     }
     let note = cut.then_some(LIMIT_REACHED);

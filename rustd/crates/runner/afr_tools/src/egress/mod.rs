@@ -206,7 +206,7 @@ async fn get_chain(
         .prepare(draft)
         .await
         .map_err(|failure| refused(tool, run.run_id, &failure))?;
-    let mut chain = Chain::new(outbound.url(), headers, transport.limits().max_redirects);
+    let mut chain = Chain::new(outbound.url(), headers, transport.limits());
     loop {
         let mut inbound = transport
             .send(outbound.for_redirect_read())

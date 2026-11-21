@@ -1,5 +1,5 @@
 //! What a report writes around its one statement: the session document it
-//! stores, the events it ends beside the money, and the cap those texts take.
+//! stores and the events it ends beside the money.
 //!
 //! The report statement ([`Runs::commit_report`](crate::run::commit)) ends
 //! the run's own event, stores the session checkpoint and writes the audit row
@@ -21,12 +21,6 @@
 //! would tell the runner to retry a report whose money cannot be charged
 //! twice. What an operator gets is a warn line naming the write that did not
 //! land.
-//!
-//! # The cap lands on a character boundary
-//!
-//! A response cut at a byte cap can split a multi-byte character and store
-//! text that is not UTF-8. [`str::floor_char_boundary`] backs off to the last
-//! character boundary at or below the cap.
 
 use af_core::id::Uuid7;
 use afd_turns::view::Closed;
@@ -34,7 +28,6 @@ use afd_turns::view::Closed;
 use sqlx::PgConnection;
 
 use crate::error::Result;
-use crate::run::sql::resume::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::run::store::Runs;
 use crate::run::verdict::Terminal;
 
@@ -52,13 +45,11 @@ struct Checkpoint<'a> {
 }
 
 /// The session document a run's checkpoint stores: the event it resumes
-/// after, and its answer cut to the checkpoint's byte cap.
+/// after, and its whole answer.
 pub(crate) fn checkpoint_document(last_turn_id: &Uuid7, last_response: &str) -> String {
     serde_json::json!(Checkpoint {
         last_turn_id,
-        last_response: last_response
-            .split_at(last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES))
-            .0,
+        last_response,
     })
     .to_string()
 }

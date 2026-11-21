@@ -5,11 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::decision::DecisionPurpose;
 
-/// The longest provider-requested delay one decision retry waits, in
-/// milliseconds: 60 seconds. A provider asking for more ends the logical
-/// decision instead.
-pub const RETRY_DELAY_MAX_MILLIS: u16 = 60_000;
-
 /// The native meaning being assessed, independently of its physical calls.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
@@ -61,13 +56,13 @@ impl DecisionAssessment {
 pub enum DecisionRetryDelay {
     /// No provider delay; the caller still applies bounded jitter.
     Unspecified,
-    /// Delay is at most [`RETRY_DELAY_MAX_MILLIS`].
+    /// The provider named a delay; the retry waits it out.
     WithinBudget {
         /// Earliest retry, relative to the recorded failure.
-        #[garde(range(max = RETRY_DELAY_MAX_MILLIS))]
-        milliseconds: u16,
+        #[garde(skip)]
+        milliseconds: u32,
     },
-    /// The provider requested more time than this logical decision permits.
+    /// The provider named a delay too long for the wire's milliseconds.
     TooLong,
 }
 

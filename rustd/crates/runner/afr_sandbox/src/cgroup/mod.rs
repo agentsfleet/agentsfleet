@@ -42,10 +42,6 @@ const MEMORY_HIGH: &str = "memory.high";
 /// pages already handed to the disk to finish writing, so a tenant writing
 /// past its disk is slowed until it reads `ENOSPC`, not killed first.
 const TENANT_HIGH_SHARE: u64 = 8;
-/// The most headroom that share may take. Write-back needs only so much room,
-/// and with no swap every byte inside the band is throttled, so an eighth of a
-/// large run would slow allocation-heavy work across a wide slow band.
-const TENANT_HIGH_HEADROOM_MAX_BYTES: u64 = 128 * 1024 * 1024;
 /// Swap a cgroup may use; zero, so a runaway is killed rather than paged out.
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
 /// Processor bandwidth: a quota per period, both in microseconds.
@@ -89,6 +85,8 @@ const DRAIN_TRIES: usize = 1_000;
 pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
 /// Memory the sandbox's own processes keep when the tenant's are at their
 /// limit: room for the executor's resident set and bubblewrap's.
+///
+/// Kept: without it the out-of-memory killer may pick the executor and end the sandbox.
 pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// One run's cgroup. Removing it is the only cleanup, and it consumes it.
@@ -152,8 +150,8 @@ impl RunCgroup {
     }
 
     /// Hands the run's controllers to its two leaves, caps the tenant
-    /// leaf's memory below the run's, and throttles it a bounded headroom
-    /// below that cap. The run's own swap limit already covers both leaves.
+    /// leaf's memory below the run's, and throttles it an eighth below that
+    /// cap. The run's own swap limit already covers both leaves.
     fn split(&self, limits: &Limits) -> Result<()> {
         let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
         self.write(SUBTREE_CONTROL, &enable.join(" "))?;
@@ -163,10 +161,7 @@ impl RunCgroup {
         let tenant = limits
             .memory_bytes
             .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
-        let high = tenant
-            - tenant
-                .div_euclid(TENANT_HIGH_SHARE)
-                .min(TENANT_HIGH_HEADROOM_MAX_BYTES);
+        let high = tenant - tenant.div_euclid(TENANT_HIGH_SHARE);
         fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string())
             .map_err(cgroup(MEMORY_MAX))?;
         fs::write(self.tenant().join(MEMORY_HIGH), high.to_string()).map_err(cgroup(MEMORY_HIGH))

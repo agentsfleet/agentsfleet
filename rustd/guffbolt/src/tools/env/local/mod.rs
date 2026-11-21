@@ -37,8 +37,6 @@ use super::{
     ProcessId, Spawn, pipe,
 };
 
-/// The most entries one listing carries.
-const LIST_MAX: usize = 1000;
 /// What a path that leaves the root reads back.
 const LEAVES_ROOT: &str = "the path leaves the working directory";
 /// What a call naming a process the environment no longer holds reads back.
@@ -293,10 +291,6 @@ impl Env for LocalEnv {
                 .await
                 .map_err(|failure| failed(&failure))?
             {
-                if listing.entries.len() == LIST_MAX {
-                    listing.truncated = true;
-                    break;
-                }
                 let metadata = tokio::fs::symlink_metadata(entry.path())
                     .await
                     .map_err(|failure| failed(&failure))?;

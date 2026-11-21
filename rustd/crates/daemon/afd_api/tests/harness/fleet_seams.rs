@@ -311,7 +311,11 @@ impl Fleet {
     }
 
     pub(crate) fn router(self) -> Router {
-        build(Arc::new(self), DEFAULT_MAX_IN_FLIGHT)
+        build(
+            Arc::new(self),
+            DEFAULT_MAX_IN_FLIGHT,
+            afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES,
+        )
     }
 
     /// An instance whose ingress ANSWERS, rather than refusing at an acquire.

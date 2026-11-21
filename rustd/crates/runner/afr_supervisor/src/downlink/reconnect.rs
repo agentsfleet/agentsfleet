@@ -63,8 +63,6 @@ impl Preference {
         deadline: Instant,
     ) -> crate::Result<Connection> {
         if self.skips_http3(Instant::now()) {
-            let deadline =
-                deadline.min(Instant::now() + af_core::timing::STREAM_HTTP2_CONNECT_TIMEOUT);
             return Ok(Connection::connect(
                 Transport::H2,
                 &config.endpoint,

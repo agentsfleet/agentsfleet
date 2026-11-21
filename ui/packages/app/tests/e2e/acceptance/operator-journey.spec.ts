@@ -263,10 +263,7 @@ test.describe("operator journey", () => {
 
     const revokedCli = await spawnAgentsfleet(
       ["fleet", "list", "--workspace", wsId, "--limit", "1"],
-      cliEnv({
-        ...commandEnv,
-        AGENTSFLEET_NO_RETRY: "1",
-      }),
+      cliEnv(commandEnv),
     );
     const revokedOutput = combinedOutput(revokedCli);
     expect(revokedCli.code).not.toBe(0);

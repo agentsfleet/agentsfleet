@@ -32,7 +32,6 @@ import {
   inputSequence,
   credsWith,
   configAt,
-  failingHttp,
   countingHttp,
   failureValue,
 } from "./helpers-login-device-flow.ts";
@@ -253,18 +252,27 @@ describe("decryptIssuedToken — opaque-channel failure", () => {
 });
 
 describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
-  test("two wrong codes surface VerificationFailedError after the retry prompt", async () => {
+  test("a wrong code re-prompts until the server ends the session", async () => {
     const keypair = await generateCliKeypair();
     const rec = { warnings: [] as string[] };
+    const http = countingHttp([
+      { status: 400, code: "UZ-AUTH-011" },
+      { status: 400, code: "UZ-AUTH-011" },
+      { status: 410, code: "UZ-AUTH-012" },
+    ]);
     const exit = await Effect.runPromiseExit(
       verifyAndDecryptWithRetry("sess_retry", keypair, { noInput: false }).pipe(
-        Effect.provide(failingHttp(400, "UZ-AUTH-010")),
+        Effect.provide(http.layer),
         Effect.provide(inputReturning("000000")),
         Effect.provide(outputRecording(rec)),
       ),
     );
-    expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
-    expect(rec.warnings).toEqual(["verification code didn't match — one more try"]);
+    expect(failureValue(exit)).toMatchObject({ _tag: "ServerError", status: 410 });
+    expect(http.calls()).toBe(3);
+    expect(rec.warnings).toEqual([
+      "verification code didn't match — try again",
+      "verification code didn't match — try again",
+    ]);
   });
 
   test("non-6-digit and empty entries re-prompt locally with no /verify round-trip", async () => {

@@ -16,10 +16,6 @@ use serde::Deserialize;
 use crate::tool::{ToolOutput, ToolSpec};
 use crate::tools::{Context, Handler};
 
-/// How many tools a search loads when the model names no limit.
-const LIMIT_DEFAULT: usize = 5;
-/// The most tools one search loads.
-const LIMIT_MAX: usize = 20;
 /// What a search that found nothing reads back.
 const FOUND_NOTHING: &str = "no deferred tool matches";
 /// What a search that loaded tools reads back last.
@@ -106,7 +102,7 @@ impl Deferred {
 pub struct Query {
     /// What the tool should do, in a few words, such as `create github issue`.
     query: String,
-    /// The most tools to load: 5 when absent, at most 20.
+    /// The most tools to load: every match when absent.
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -138,7 +134,7 @@ impl Handler for ToolSearch {
         arguments: Query,
         _context: Context<'_>,
     ) -> impl Future<Output = ToolOutput> + Send {
-        let limit = arguments.limit.unwrap_or(LIMIT_DEFAULT).min(LIMIT_MAX);
+        let limit = arguments.limit.unwrap_or(usize::MAX);
         let found = self.deferred.search(&arguments.query, limit);
         let answer = if found.is_empty() {
             format!("{FOUND_NOTHING} {}", arguments.query)

@@ -31,8 +31,6 @@ const SCRATCH: &str = "schedules.json.partial";
 const UTC: &str = "UTC";
 /// The most fires one job remembers, newest kept.
 const RUNS_KEPT: usize = 100;
-/// How many fires a runs page holds when the call names no limit.
-const RUNS_PAGE_DEFAULT: u32 = 50;
 /// What a runs cursor that is no fired moment reads back, before it.
 const BAD_CURSOR: &str = "starting_after must be a next_cursor runs answered, not";
 /// What an id no job has reads back, before the id.
@@ -281,8 +279,9 @@ impl Scheduler for LocalScheduler {
                 })?,
                 None => Timestamp::MAX,
             };
-            let limit = page.limit.unwrap_or(RUNS_PAGE_DEFAULT);
-            let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+            let limit = page.limit.map_or(usize::MAX, |limit| {
+                usize::try_from(limit).unwrap_or(usize::MAX)
+            });
             let fired: Vec<String> = (job.fired.iter().rev())
                 .filter(|fired| **fired < before)
                 .take(limit)

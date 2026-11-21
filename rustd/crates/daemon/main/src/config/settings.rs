@@ -85,6 +85,9 @@ pub(super) struct Server {
     /// Live-activity updates sent to dashboards at the same time.
     #[garde(range(min = 1))]
     pub max_live_activity_notices: usize,
+    /// Largest request body a route reads; a larger one is refused 413.
+    #[garde(range(min = 1))]
+    pub max_request_body_mib: usize,
 }
 
 /// A runner answer in flight when the drain starts must finish inside it.
@@ -112,6 +115,8 @@ impl Default for Server {
             drain_timeout_seconds: seconds(crate::serve::DRAIN_TIMEOUT),
             background_task_join_timeout_seconds: seconds(crate::supervisor::JOIN_TIMEOUT),
             max_live_activity_notices: afd_turns::view::activity::DEFAULT_ACTIVITY_NOTICES,
+            max_request_body_mib: afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES
+                / afd_http::body::MIB,
         }
     }
 }

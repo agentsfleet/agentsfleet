@@ -79,7 +79,14 @@ fn statuses() -> [StatusCase; 6] {
             },
             Some(Duration::from_secs(60)),
         ),
-        (529, Some("61"), DecisionRetryDelay::TooLong, None),
+        (
+            529,
+            Some("61"),
+            DecisionRetryDelay::WithinBudget {
+                milliseconds: 61_000,
+            },
+            Some(Duration::from_secs(61)),
+        ),
         (500, Some("1"), DecisionRetryDelay::Unspecified, None),
     ]
 }

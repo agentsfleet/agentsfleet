@@ -7,7 +7,10 @@ use super::{Chain, Stop, Target, follows};
 use crate::testing::{inbound, redirected};
 
 /// Redirects every chain here follows.
-const HOPS: u8 = 3;
+const HOPS: crate::Limits = crate::Limits {
+    max_redirects: 3,
+    ..crate::Limits::DEFAULT
+};
 
 const FIRST: &str = "https://api.github.com/start";
 
@@ -34,7 +37,14 @@ fn should_bound_total_redirect_work() {
 #[test]
 fn a_chosen_redirect_count_stops_the_chain_sooner() {
     let first = Url::parse(FIRST).expect("fixture URL");
-    let mut chain = Chain::new(&first, Vec::new(), 1);
+    let mut chain = Chain::new(
+        &first,
+        Vec::new(),
+        crate::Limits {
+            max_redirects: 1,
+            ..crate::Limits::DEFAULT
+        },
+    );
     let mut reply = redirected(302, &first, "/hop/1");
     let draft = chain
         .next(&mut reply)

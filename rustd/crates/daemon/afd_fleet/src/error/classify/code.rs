@@ -45,8 +45,7 @@ impl Error {
             ErrorKind::TaskStorage { .. }
             | ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorageDeadline { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
+            | ErrorKind::TaskStorageRequest { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
             ErrorKind::TaskRemote { .. }
             | ErrorKind::TaskRemoteStatus { .. }
             | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,

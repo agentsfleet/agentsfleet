@@ -87,7 +87,6 @@ pub(crate) async fn receive<D: IngressPlane>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    webhook::within_cap(&body)?;
     // The claim key is the BODY's digest, and never the delivery header.
     //
     // GitHub signs the body alone, so `x-github-delivery` is unauthenticated:

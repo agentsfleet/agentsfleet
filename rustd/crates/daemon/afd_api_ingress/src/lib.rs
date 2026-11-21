@@ -27,7 +27,6 @@ pub mod test_util;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 
-pub use handler::webhook::BUFFER_CEILING;
 pub use handler::webhook::verify_platform::{HEADER_APPROVAL_SIGNATURE, HEADER_APPROVAL_TIMESTAMP};
 
 use std::sync::Arc;

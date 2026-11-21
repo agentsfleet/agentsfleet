@@ -69,28 +69,10 @@ describe("fleet-stream-registry — server-rendered seed", () => {
     a();
   });
 
-  it("caps the live view by shedding the oldest SETTLED rows, never a pending send", () => {
-    // A tab left open on a busy fleet must not grow the array without bound,
-    // but the cap sheds only settled rows — a pending send is live state.
-    const seed = Array.from({ length: 260 }, (_, i) =>
-      row({ turn_id: `evt_${i}`, status: "processed", created_at: new Date(Date.UTC(2026, 4, 15, 12, 0, i)).toISOString() }),
-    );
-    const release = subscribe(WS, Z_A, seed, () => {});
-    const tempId = appendOptimistic(Z_A, "one more", "steer:pending");
-
-    const turns = getSnapshot(Z_A).turns;
-    expect(turns.length).toBe(200);
-    // Oldest settled dropped, newest settled kept, pending survives.
-    expect(turns.some((e) => e.id === tempId)).toBe(true);
-    expect(turns.some((e) => e.id === "evt_259")).toBe(true);
-    expect(turns.some((e) => e.id === "evt_0")).toBe(false);
-    release();
-  });
-
   it("keeps a clock-skewed pending row visible after newer settled backfill rows", () => {
     // A pending row carries the client clock. A server backfill can be newer
     // even though the operator just submitted, so the visual tail must retain
-    // the pending message and its Working cue after the merge and cap.
+    // the pending message and its Working cue after the merge.
     const release = subscribe(WS, Z_A, [], () => {});
     // Pending row stamped in the past (client clock behind the server).
     const tempId = appendOptimistic(Z_A, "buried steer", "steer:pending");
@@ -102,7 +84,6 @@ describe("fleet-stream-registry — server-rendered seed", () => {
 
     const turns = getSnapshot(Z_A).turns;
     expect(turns.at(-1)?.id).toBe(tempId);
-    expect(turns.length).toBeLessThanOrEqual(200 + 1);
     release();
   });
 

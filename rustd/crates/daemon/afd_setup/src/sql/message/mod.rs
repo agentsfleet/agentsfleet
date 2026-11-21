@@ -22,15 +22,15 @@ pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 /// live while its lease holds.
 pub(crate) const PAGE: &str = include_str!("page.sql");
 
-/// The newest messages' states for a stream poll, with reported usage: its
-/// draft runs' usage lines.
+/// Every message's state for a stream poll, newest first, with reported usage:
+/// its draft runs' usage lines.
 ///
-/// `$1` draft, `$2` limit, `$3` the work type a draft run's lines carry, `$4`
-/// the runtime line kind, `$5` and `$6` the settled run statuses, `$7` the
-/// active run status, live while its lease holds.
+/// `$1` draft, `$2` the work type a draft run's lines carry, `$3` the runtime
+/// line kind, `$4` and `$5` the settled run statuses, `$6` the active run
+/// status, live while its lease holds.
 pub(crate) const NOTICES: &str = include_str!("notices.sql");
 
-/// The running message, independently of the bounded notice tail.
+/// The running message.
 ///
 /// `$1` draft, `$2` running status.
 pub(crate) const RUNNING: &str = include_str!("running.sql");

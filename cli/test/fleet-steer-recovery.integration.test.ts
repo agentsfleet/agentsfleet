@@ -1,5 +1,5 @@
-// Recovery polling and bounded timeout behavior for a submitted fleet event.
-import { describe, expect, test, setSystemTime } from "bun:test";
+// Recovery polling behavior for a submitted fleet event.
+import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Redacted } from "effect";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import { pollTurnTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-turns.ts";
@@ -62,7 +62,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     expect(pollCount).toBe(1);
   });
 
-  test("poll treats transient request failures as empty results", async () => {
+  test("poll stops once the caller's signal ends the wait", async () => {
     const ctrl = new AbortController();
     let requestCount = 0;
     const failingHttp = Layer.succeed(HttpClient, {
@@ -97,38 +97,5 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     expect(outcome.kind).toBe(STATUS_TIMEOUT);
     expect(requestCount).toBe(1);
   });
-});
-
-describe("steer — renderOutcome timeout path", () => {
-  test("poll timeout fails once, carrying 'still in flight' on the failure", async () => {
-    const rec = makeRecorder();
-    let firstPoll = true;
-    const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { turn_id: TURN_ID } as T;
-      if (firstPoll) {
-        firstPoll = false;
-        setSystemTime(Date.now() + 120_000); // push past the 60s deadline
-      }
-      return { items: [] } as T;
-    };
-    try {
-      const exit = await Effect.runPromiseExit(
-        steerEffectFromArgs(FLEET_ID, "go", {}, {
-          stdin: streamFrom([], false),
-          stdout: nullOutput(),
-          streamGet: silentStream,
-        }).pipe(Effect.provide(makeLayer(rec, httpReply))),
-      );
-      expect(Exit.isFailure(exit)).toBe(true);
-      // One report of the stall, not two: the message rides the failure, and
-      // nothing is written to standard error ahead of it.
-      expect(JSON.stringify(exit)).toContain("still in flight");
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
-      // No pending gate in this scenario, so the ordinary suggestion stands.
-      expect(JSON.stringify(exit)).toContain("agentsfleet fleet turns");
-    } finally {
-      setSystemTime(); // restore real clock
-    }
-  }, 10_000);
 });
 

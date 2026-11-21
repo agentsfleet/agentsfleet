@@ -16,6 +16,9 @@ const MIB: u64 = 1024 * 1024;
 /// One kibibyte.
 const KIB: usize = 1024;
 
+/// One mebibyte, as a size in memory.
+const MIB_USIZE: usize = KIB * KIB;
+
 /// The longest timeout a command may run under: tokio's timer holds no longer
 /// a sleep than `2^31 - 1` milliseconds. The run's lease does not bound it,
 /// because the supervisor renews the lease while a tool call runs.
@@ -233,6 +236,10 @@ pub(super) struct EgressTuning {
     /// Redirects followed before giving up.
     #[garde(range(min = 1))]
     pub max_redirects: u8,
+    /// Memory the matcher that masks a redirect's secrets in its response may
+    /// build; past it the response is refused.
+    #[garde(range(min = 1))]
+    pub max_secret_mask_mib: usize,
 }
 
 impl Default for EgressTuning {
@@ -242,6 +249,7 @@ impl Default for EgressTuning {
             connect_timeout_seconds: limits.connect_timeout.as_secs(),
             request_timeout_seconds: limits.request_timeout.as_secs(),
             max_redirects: limits.max_redirects,
+            max_secret_mask_mib: limits.mask_matcher_bytes / MIB_USIZE,
         }
     }
 }
@@ -253,6 +261,7 @@ impl EgressTuning {
             connect_timeout: Duration::from_secs(self.connect_timeout_seconds),
             request_timeout: Duration::from_secs(self.request_timeout_seconds),
             max_redirects: self.max_redirects,
+            mask_matcher_bytes: self.max_secret_mask_mib.saturating_mul(MIB_USIZE),
         }
     }
 }

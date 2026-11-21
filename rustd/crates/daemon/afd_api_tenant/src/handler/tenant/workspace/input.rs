@@ -41,8 +41,7 @@ struct NameFilter<'q> {
 /// The page size the caller asked for, or the one refusal any wrong spelling
 /// earns ("Limit must be between 1 and {max}") — the directory does not say which way a limit was wrong.
 ///
-/// The bound is the deployment's list page (`[api]`); the charges walk allows
-/// two hundred, `afd_billing::tenant::CHARGES_LIMIT_MAX`.
+/// The bound is the deployment's list page (`[api]`).
 pub(super) fn requested_limit(raw: Option<&str>, ceiling: Ceiling) -> Result<u32, Refusal> {
     Limit::parse(raw, ceiling).map_err(|_break| {
         Refusal::malformed_sentence(afd_http::paging::limit_sentence("Limit must be", ceiling))

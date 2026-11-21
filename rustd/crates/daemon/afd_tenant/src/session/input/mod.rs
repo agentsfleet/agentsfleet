@@ -19,8 +19,9 @@
 //! elliptic-curve work is `cli/src/lib/cli-flow.ts`'s, and this daemon stores
 //! and hands back opaque strings. So nothing below asks whether a public key is
 //! a point on P-256 or whether a ciphertext authenticates — the questions are
-//! "is it there" and "is it small enough to keep for five minutes", which are
-//! the only two a relay is entitled to ask.
+//! "is it there" and, for the nonce and label, "is it small enough to keep for
+//! five minutes". The public key and the ciphertext are bounded by the request
+//! body alone (`[server] max_request_body_mib`).
 
 use af_validate::{PathTable, ascii_digits, charset};
 use garde::{Unvalidated, Valid, Validate};
@@ -28,22 +29,8 @@ use garde::{Unvalidated, Valid, Validate};
 use crate::Result;
 use crate::error::{self, SessionField};
 
-/// The longest command-line public key this daemon will hold.
-///
-/// A base64url P-256 `SubjectPublicKeyInfo` is 124 characters; the ceiling is
-/// generous rather than exact because the encoding is the client's business,
-/// and it exists to stop an unauthenticated caller parking a blob in a session row for
-/// the full time-to-live rather than to check a curve.
-const PUBLIC_KEY_MAX: usize = 200;
-
 /// The longest label a minted credential may carry.
 const TOKEN_NAME_MAX: usize = 64;
-
-/// The longest relayed envelope this daemon will hold.
-///
-/// Tracks an identity-provider token at roughly two kilobytes plus the
-/// authentication tag, with room to spare.
-const CIPHERTEXT_MAX: usize = 4096;
 
 /// The longest nonce this daemon will hold.
 ///
@@ -104,7 +91,7 @@ impl<'a> Bounded<'a> {
 /// An open request as the caller sent it, each bound beside its field.
 #[derive(Debug, Validate)]
 struct OpenSent<'a> {
-    #[garde(length(bytes, min = 1, max = PUBLIC_KEY_MAX))]
+    #[garde(length(bytes, min = 1))]
     public_key: &'a str,
     /// Printable ASCII is the DOCUMENTED rule — `UZ-AUTH-017`'s registry entry
     /// says "1 to 64 characters from space through tilde", and the public
@@ -117,9 +104,9 @@ struct OpenSent<'a> {
 /// An approve request as the caller sent it, each bound beside its field.
 #[derive(Debug, Validate)]
 struct ApprovalSent<'a> {
-    #[garde(length(bytes, min = 1, max = PUBLIC_KEY_MAX))]
+    #[garde(length(bytes, min = 1))]
     public_key: &'a str,
-    #[garde(length(bytes, min = 1, max = CIPHERTEXT_MAX))]
+    #[garde(length(bytes, min = 1))]
     ciphertext: &'a str,
     #[garde(length(bytes, min = 1, max = NONCE_MAX))]
     nonce: &'a str,

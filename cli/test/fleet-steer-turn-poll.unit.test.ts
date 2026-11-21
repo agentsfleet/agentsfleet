@@ -7,7 +7,6 @@ import { Effect, Layer, Redacted } from "effect";
 import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { pollTurnTerminal, STATUS_COMPLETE, STATUS_TIMEOUT } from "../src/commands/fleet/steer-turns.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
-import { ServerError } from "../src/errors/index.ts";
 
 const WORKSPACE = "01910000-0000-7000-8000-000000000001";
 const FLEET = "01910000-0000-7000-8000-000000000002";
@@ -68,9 +67,8 @@ describe("steer recovery reads the admitted event directly", () => {
     );
     expect(outcome).toEqual({ kind: STATUS_COMPLETE, status: TURN_STATUS.PROCESSED });
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toMatchObject({path: TURN_PATH, token: TOKEN, signal: abort.signal, retry: {maxAttempts: 1}});
-    expect(requests[0]?.timeoutMs).toBeGreaterThan(0);
-    expect(requests[0]?.timeoutMs).toBeLessThanOrEqual(60_000);
+    expect(requests[0]).toMatchObject({path: TURN_PATH, token: TOKEN, signal: abort.signal});
+    expect(requests[0]?.timeoutMs).toBeUndefined();
   });
 
   test("encodes opaque event IDs as one path segment", async () => {
@@ -89,26 +87,6 @@ describe("steer recovery reads the admitted event directly", () => {
     );
     expect(outcome.kind).toBe(STATUS_COMPLETE);
     expect(requests[0]?.path).toBe(`/v1/workspaces/${WORKSPACE}/fleets/${FLEET}/turns/provider%2Fretry%3Fattempt%3D2`);
-  });
-
-  test("a transient read failure recovers on the next read of the same event", async () => {
-    const paths: string[] = [];
-    const abort = new AbortController();
-    const http = Layer.succeed(HttpClient, {
-      request: <T>(input: HttpRequestInput) => {
-        paths.push(input.path);
-        if (paths.length === 1) return Effect.fail(new ServerError({
-          code: "TEMPORARY_OUTAGE", detail: "Unavailable", status: 503, requestId: null, suggestion: "Retry", transient: true,
-        }));
-        abort.abort();
-        return Effect.succeed({ turn_id: TURN, status: TURN_STATUS.PROCESSED } as T);
-      },
-    });
-    const outcome = await Effect.runPromise(
-      pollTurnTerminal(WORKSPACE, FLEET, TURN, TOKEN, abort.signal).pipe(Effect.provide(Layer.merge(http, Layer.succeed(Output, outputDouble())))),
-    );
-    expect(outcome.kind).toBe(STATUS_COMPLETE);
-    expect(paths).toEqual([TURN_PATH, TURN_PATH]);
   });
 
   test.each([

@@ -446,7 +446,7 @@ The following proposed endpoints extend those existing resource families:
 New dispatch and task-transition bodies include the fence, current running task when bound, expected generation and operation identity.
 Late decision receipts carry their original call/fence; current task ownership is not a prerequisite for accounting.
 
-Bound control requests to 128 KiB and checkpoint manifest pages to 1 MiB.
+A control request is bounded by `[server] max_request_body_mib`, and a checkpoint manifest page by 1 MiB.
 Publication permits at most 32 changed regular-file paths, 1 MiB total decoded content and a 2-MiB encoded request.
 
 Only supported changed-path modes are restricted; unchanged base symlinks or modes do not themselves prohibit a source repair.

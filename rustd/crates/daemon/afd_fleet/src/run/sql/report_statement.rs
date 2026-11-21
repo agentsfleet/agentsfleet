@@ -114,7 +114,7 @@ impl<'a> ReportStatement<'a> {
             .bind(sqlx::types::Json(&self.audit_metadata))
             .bind(self.fleet_id)
             .bind(self.workspace_id)
-            .bind(i64::from(af_wire::usage::RUNTIME_MS_MAX))
+            .bind(i64::from(u32::MAX))
             .bind(af_wire::usage::LineKind::Runtime.as_str())
             .bind(i64::MAX)
             .bind(self.unanswered_notice)

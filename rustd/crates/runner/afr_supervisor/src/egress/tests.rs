@@ -14,7 +14,7 @@ use af_core::error_code::INTERNAL_OPERATION_FAILED;
 use af_egress::SystemResolver;
 use af_wire::policy::{HttpEgress, NetworkPolicy as FleetNetwork, PACKAGE_MANAGER_DOMAINS};
 use af_wire::runner::NetworkPolicy;
-use afr_sandbox::{ALLOWLIST_ADDRESSES_MAX, Allowlist, Network};
+use afr_sandbox::{Allowlist, Network};
 
 use super::{Bound, Egress, Named};
 use crate::test_support::{FakeResolver, assigned};
@@ -26,7 +26,6 @@ const C: &str = "c.example";
 /// A host the resolver answers with IPv6 alone.
 const V6_ONLY: &str = "v6.example";
 /// A host the resolver answers with more addresses than a run may reach.
-const CROWDED: &str = "crowded.example";
 /// A host the resolver has never heard of.
 const UNKNOWN: &str = "unknown.example";
 /// The address every named host answers with, and a second one.
@@ -60,16 +59,6 @@ fn allow_list(registry: &[&'static str]) -> Egress {
     assigned(NetworkPolicy::AllowListEgress, registry)
 }
 
-/// More distinct addresses than an allowlist may hold.
-fn crowd() -> Vec<IpAddr> {
-    (0..=ALLOWLIST_ADDRESSES_MAX)
-        .map(|index| {
-            let [_, _, high, low] = u32::try_from(index).unwrap().to_be_bytes();
-            IpAddr::V4(Ipv4Addr::new(10, 0, high, low))
-        })
-        .collect()
-}
-
 fn resolver() -> FakeResolver {
     let v4 = [IpAddr::V4(FIRST)];
     FakeResolver::answering(&[
@@ -77,7 +66,6 @@ fn resolver() -> FakeResolver {
         (B, &[IpAddr::V4(SECOND), IpAddr::V6(Ipv6Addr::LOCALHOST)]),
         (C, &v4),
         (V6_ONLY, &[IpAddr::V6(Ipv6Addr::LOCALHOST)]),
-        (CROWDED, &crowd()),
     ])
 }
 
@@ -175,10 +163,9 @@ async fn a_closed_egress_reaches_nothing() {
     assert_eq!(bound, Bound::Isolated);
 }
 
-/// An unknown host, a host with no IPv4 address and an allowlist past its cap
-/// each refuse with a reason of their own, the first two naming the host and
-/// the third carrying the engine's reason; each is logged under the internal
-/// code a runner failure is read by.
+/// An unknown host and a host with no IPv4 address each refuse with a reason
+/// naming the host; each is logged under the internal code a runner failure
+/// is read by.
 #[tokio::test]
 async fn test_egress_setup_failures_refuse_the_run() {
     let resolver = resolver();
@@ -194,7 +181,6 @@ async fn test_egress_setup_failures_refuse_the_run() {
 
     let unknown = refused(UNKNOWN).await;
     let v6_only = refused(V6_ONLY).await;
-    let crowded = refused(CROWDED).await;
 
     let expected = [
         (
@@ -205,34 +191,12 @@ async fn test_egress_setup_failures_refuse_the_run() {
             &v6_only,
             format!("egress host {V6_ONLY} resolves to no IPv4 address"),
         ),
-        (
-            &crowded,
-            "the run's egress allowlist was refused".to_owned(),
-        ),
     ];
     for (failure, reason) in expected {
         assert!(failure.to_string().contains(&reason), "{failure}");
         assert_eq!(failure.code(), INTERNAL_OPERATION_FAILED, "{failure}");
         assert!(!failure.is_egress_blocked(), "{failure}");
     }
-    let crowded_cause = std::error::Error::source(&crowded).map_or_default(ToString::to_string);
-    assert!(crowded_cause.contains("past the"), "{crowded_cause}");
-}
-
-/// A refused allowlist is told the way every failure is: the engine's reason
-/// beneath the supervisor's sentence, and the code nowhere in it, since the
-/// log line's `error_code` field carries it.
-#[tokio::test]
-async fn test_a_refused_allowlist_is_told_without_its_code() {
-    let crowded = allow_list(&[CROWDED])
-        .bind(&fleet(&[], false), &resolver())
-        .await
-        .unwrap_err();
-
-    let told = crowded.told();
-
-    assert!(told.contains("past the"), "{told}");
-    assert!(!told.contains(crowded.code().as_str()), "{told}");
 }
 
 /// A host the fleet names is refused when any address it resolves to is one

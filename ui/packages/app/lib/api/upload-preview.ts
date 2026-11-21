@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-export const PREVIEW_FILE_LIMIT = 5 * 1024 * 1024;
 export const PREVIEW_FILE_COUNT = 5;
-export const PREVIEW_UPLOAD_TIMEOUT_MS = 15_000;
 export const UPLOAD_PREVIEW_LABEL = "Upload preview · Not saved to fleet history";
 export const UPLOAD_PREVIEW_REPLY = "Upload preview accepted. The file was not read, stored, or analyzed.";
 

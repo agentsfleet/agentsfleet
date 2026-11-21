@@ -46,8 +46,8 @@ describe("turns — happy path (human output)", () => {
         expect(text).toContain("Boom.");
         // ISO-8601 timestamp rendered from epoch ms
         expect(text).toMatch(/\d{4}-\d{2}-\d{2}T/);
-        // default limit on the wire
-        expect(calls[0]?.search).toContain("limit=50");
+        // no --limit: the server's default page size applies
+        expect(calls[0]?.search ?? "").not.toContain("limit=");
       });
     });
   });
@@ -184,12 +184,11 @@ describe("turns — query parameter forwarding", () => {
         expect(search).toContain("since=2h");
         expect(search).toContain("cursor=tok_xyz");
         expect(search).toContain("limit=10");
-        expect(search).not.toContain("limit=50");
       });
     });
   });
 
-  test("omitting optional flags keeps default limit=50 and no extra params", async () => {
+  test("omitting optional flags sends no limit and no extra params", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]:
@@ -203,7 +202,7 @@ describe("turns — query parameter forwarding", () => {
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const search = calls[0]?.search ?? "";
-        expect(search).toContain("limit=50");
+        expect(search).not.toContain("limit=");
         expect(search).not.toContain("actor=");
         expect(search).not.toContain("since=");
         expect(search).not.toContain("cursor=");

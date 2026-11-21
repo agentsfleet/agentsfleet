@@ -21,7 +21,7 @@
 use af_core::id::Uuid7;
 use afd_vault::Vault;
 
-pub use self::destination::{INGRESS_PATH, MAX_DESTINATION_BYTES, destination_url};
+pub use self::destination::{INGRESS_PATH, destination_url};
 pub use self::retry::{ATTEMPT_TIMEOUT, ATTEMPTS, Attempts, CALL_BUDGET, MAX_DELAY, RetryPolicy};
 use self::source::Source;
 

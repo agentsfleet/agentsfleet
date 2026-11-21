@@ -38,24 +38,6 @@ use crate::semconv;
 #[cfg(test)]
 mod tests;
 
-/// The longest run this daemon will describe as one span: one week.
-///
-/// The duration arrives from a runner and is therefore not trusted. Without a
-/// cap, a wrong reading does not produce a wrong span — it produces a span
-/// whose start is years in the past, which drags a whole trace's timeline with
-/// it and cannot be filtered out by anyone reading the backend afterwards.
-/// Beyond this, the run is described as this long and the report is still
-/// recorded; the alternative, discarding it, loses the delivery entirely over
-/// one bad field.
-pub const MAX_RUN: Duration = Duration::from_hours(HOURS_IN_A_WEEK);
-
-/// One week, in the unit the constructor takes.
-///
-/// Hours rather than seconds because `604_800` is a number a reader has to
-/// divide twice before it means anything, and `Duration::from_weeks` is not
-/// stable on the pinned toolchain.
-const HOURS_IN_A_WEEK: u64 = 24 * 7;
-
 /// A settled run, as the span it becomes.
 ///
 /// Borrowed rather than owned throughout: every field is read out of the run
@@ -197,14 +179,12 @@ impl Delivery<'_> {
     /// other time entirely, so it is refused here instead.
     fn started_at(&self, completed_at: SystemTime) -> Option<SystemTime> {
         if let Some(opened) = self.opened_at.filter(|opened| {
-            completed_at
-                .duration_since(*opened)
-                .is_ok_and(|span| span <= MAX_RUN)
+            completed_at.duration_since(*opened).is_ok()
                 && opened.duration_since(SystemTime::UNIX_EPOCH).is_ok()
         }) {
             return Some(opened);
         }
-        let started_at = completed_at.checked_sub(self.wall.min(MAX_RUN))?;
+        let started_at = completed_at.checked_sub(self.wall)?;
         started_at.duration_since(SystemTime::UNIX_EPOCH).ok()?;
         Some(started_at)
     }
@@ -261,11 +241,8 @@ impl Delivery<'_> {
             semconv::ATTR_TURN_ID,
             self.turn_id.to_owned(),
         ));
-        // Capped like `wall`: most of these arrive from a runner, and an
-        // absurd one must not read as a run longer than any this daemon
-        // describes.
         attributes.extend(self.segments.keyed().into_iter().filter_map(|(key, span)| {
-            let millis = af_core::clock::saturating_millis(span?.min(MAX_RUN));
+            let millis = af_core::clock::saturating_millis(span?);
             Some(KeyValue::new(key, saturating_signed(millis)))
         }));
         attributes

@@ -43,21 +43,6 @@ test("a host registered before answers 409 and suggests rotate-token", async () 
   expect(fixture.calls).toHaveLength(1);
 });
 
-test("a dropped reply retries and saves the token once", async () => {
-  let attempt = 0;
-  fixture.respond = () => {
-    attempt += 1;
-    // The shape fetch gives a dropped socket under Bun: a TypeError carrying the code.
-    if (attempt === 1) throw Object.assign(new TypeError("socket hang up"), {code: "ECONNRESET"});
-    return created();
-  };
-  const file = join(fixture.state, "runner-token");
-  const result = await register(file);
-  expect(result.code).toBe(0);
-  expect(fixture.calls).toHaveLength(2);
-  expect(readFileSync(file, "utf8")).toBe(`${TOKEN}\n`);
-});
-
 test("the tenant group never calls the admin path", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
   const result = await fixture.run(["runners", "list", "--json"]);

@@ -1,4 +1,4 @@
-//! One bounded editor read; each private conversation is checked against its creator.
+//! One editor read; each private conversation is checked against its creator.
 
 use super::{access, render};
 use crate::auth::{PersonIdentity, WorkspaceContext};
@@ -62,20 +62,20 @@ pub(crate) async fn read<D: TenantPlane>(
             .await
             .map_err(setup_refusal)
     };
-    let receipts = activity_history(services.as_ref(), &owned.workspace, &fleet);
+    // The deployment's default `[api]` page of setup activity.
+    let rows = usize::try_from(services.pages().list.default_rows()).unwrap_or(usize::MAX);
+    let receipts = activity_history(services.as_ref(), &owned.workspace, &fleet, rows);
     let ((saved, schedules), conversations, receipts) = tokio::try_join!(
         current(services.as_ref(), identity, &fleet),
         conversations,
         receipts
     )?;
-    let boundaries = super::context_budget::capture(&conversations.items);
-    let mut payload = SetupContext {
+    let payload = SetupContext {
         fleet: render::payload(services.as_ref(), saved, &schedules),
         conversations: conversations.items.into_iter().map(conversation).collect(),
-        activities: activity_page(receipts),
+        activities: activity_page(receipts, rows),
         next_cursor: conversations.next_cursor,
     };
-    super::context_budget::fit(&mut payload, boundaries)?;
     Ok(Json(payload).into_response())
 }
 
@@ -83,6 +83,7 @@ async fn activity_history<D: TenantPlane>(
     services: &D,
     workspace: &af_core::id::Uuid7,
     fleet: &af_core::id::Uuid7,
+    rows: usize,
 ) -> Result<Vec<afd_turns::view::TurnDetailRow>, Refusal> {
     services
         .events()
@@ -90,7 +91,8 @@ async fn activity_history<D: TenantPlane>(
             workspace,
             fleet,
             None,
-            26,
+            // One row past the page, so has-more is a fact.
+            i64::try_from(rows.saturating_add(1)).unwrap_or(i64::MAX),
             Some(afd_turns::view::activity::EVENT_TYPE_ACTIVITY),
         )
         .await
@@ -115,13 +117,19 @@ async fn current<D: TenantPlane>(
     Ok((saved, schedules))
 }
 
-fn activity_page(receipts: Vec<afd_turns::view::TurnDetailRow>) -> CursorPage<SetupActivity> {
-    let next = receipts.get(25).and_then(|_| receipts.get(24)).map(|last| {
-        afd_turns::view::Cursor::after(last.row.created_at, &last.row.turn_id).encode()
-    });
+fn activity_page(
+    receipts: Vec<afd_turns::view::TurnDetailRow>,
+    rows: usize,
+) -> CursorPage<SetupActivity> {
+    let next = receipts
+        .get(rows)
+        .and_then(|_| receipts.get(rows.checked_sub(1)?))
+        .map(|last| {
+            afd_turns::view::Cursor::after(last.row.created_at, &last.row.turn_id).encode()
+        });
     let activities = receipts
         .into_iter()
-        .take(25)
+        .take(rows)
         .map(|event| SetupActivity {
             turn_id: event.row.turn_id.into(),
             event_type: event.row.event_type,

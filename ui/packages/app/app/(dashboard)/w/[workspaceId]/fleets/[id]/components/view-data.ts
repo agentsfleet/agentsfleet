@@ -4,7 +4,7 @@ import {
 } from "@/lib/api/turns";
 import { listWorkspaceMembers, type WorkspaceMember } from "@/lib/api/tenant-members";
 import { request } from "@/lib/api/client";
-import { ModelsSchema, LIST_PAGE_MAX, type WorkspaceModel } from "@/lib/api/draft-types";
+import { ModelsSchema, type WorkspaceModel } from "@/lib/api/draft-types";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
 export const CHAT_TURNS = 20;
@@ -24,9 +24,25 @@ export function startChatData(args: {workspaceId: string; fleetId: string; token
   return {
     thread: listFleetMessages(args.workspaceId, args.fleetId, args.token, {limit: CHAT_TURNS}).catch(() => null),
     members: listWorkspaceMembers(args.workspaceId, args.token).catch(() => null),
-    models: request<unknown>(`/v1/workspaces/${encodeURIComponent(args.workspaceId)}/models?limit=${LIST_PAGE_MAX}`, {method: "GET"}, args.token)
-      .then(body => ModelsSchema.parse(body).items).catch(() => null),
+    models: readModels(args.workspaceId, args.token).catch(() => null),
   };
+}
+
+/** Every page of the workspace's models, at the deployment's page size. */
+async function readModels(workspaceId: string, token: string): Promise<WorkspaceModel[]> {
+  const path = `/v1/workspaces/${encodeURIComponent(workspaceId)}/models`;
+  const models: WorkspaceModel[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const query: string = cursor === null ? "" : `?${new URLSearchParams({starting_after: cursor})}`;
+    const page = ModelsSchema.parse(await request<unknown>(`${path}${query}`, {method: "GET"}, token));
+    models.push(...page.items);
+    cursor = page.next_cursor;
+    if (cursor !== null && seen.has(cursor)) throw new Error("model pagination repeated a cursor");
+    if (cursor !== null) seen.add(cursor);
+  } while (cursor !== null);
+  return models;
 }
 
 /** A missing catalogue must not pretend that a different model was selected. */

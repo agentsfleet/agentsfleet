@@ -1,5 +1,5 @@
 // Every fleet status the API can return. Dependency-free on purpose: client components read these
-// without pulling the transport, whose retry policy is server-only.
+// without pulling the transport.
 
 // Every fleet status the API can return. Source of truth — every consumer
 // that switches/compares against a status value reads from this const. Mirrors

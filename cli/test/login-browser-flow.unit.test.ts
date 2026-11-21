@@ -235,7 +235,7 @@ class TerminalDouble extends EventEmitter {
 }
 
 test.each([
-  ["canceled", "InterruptedError"], ["expired", "ExpiredSessionError"],
+  ["canceled", "InterruptedError"],
   ["listener refused", "SessionAbortedError"], ["terminal refused", "SessionAbortedError"],
 ] as const)("%s browser startup refuses credential exchange and releases terminal resources", async (failure, tag) => {
   const keypair = await generateCliKeypair();
@@ -251,7 +251,7 @@ test.each([
       ? spyOn(process.stdin, "isPaused").mockImplementation(() => { throw new Error("terminal refused"); }) : null;
   try {
     const effect = browserLogin({ sessionId: SESSION_ID, keypair, dashboardUrl: DASHBOARD_ORIGIN,
-      loginUrl: LOGIN_URL, deadlineMs: failure === "expired" ? Date.now() - 1 : Date.now() + 2_000 },
+      loginUrl: LOGIN_URL },
     () => Effect.sync(() => { completed += 1; })).pipe(
       Effect.provide(outputLayer(rec)),
       Effect.provide(Layer.succeed(HttpClient, { request: () => Effect.die("refused login reached credential verification") })),
@@ -268,7 +268,7 @@ test.each([
       : failure === "terminal refused" ? "terminal cancellation keys" : failure);
     expect(error.suggestion).toContain("retry");
     expect(completed).toBe(0);
-    expect(opened).toBe(failure === "canceled" || failure === "expired" ? 1 : 0);
+    expect(opened).toBe(failure === "canceled" ? 1 : 0);
     expect(rec.stdout.some((line) => line.includes("Finalizing sign-in"))).toBe(false);
     if (callbackUrl) await expect(fetch(callbackUrl)).rejects.toThrow();
     if (observedListener) {

@@ -46,8 +46,8 @@
 //! reason logged. An error status would make Slack retry-loop the same
 //! delivery.
 //!
-//! The exceptions are the three things a sender or an operator genuinely
-//! controls: a path naming no connector, a body past the cap, and a signature
+//! The exceptions are the two things a sender or an operator genuinely
+//! controls: a path naming no connector and a signature
 //! that did not verify.
 
 use std::sync::Arc;
@@ -141,7 +141,7 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
 ///
 /// # Errors
 /// `UZ-CONN-004` for a path naming no shipped connector, or one that delivers
-/// no events; `UZ-WH-030` for a body past the cap; and the wall's own
+/// no events; and the wall's own
 /// refusals — `UZ-WH-020` for a deployment holding no signing secret for this
 /// connector, `UZ-WH-010` for a signature that did not match, `UZ-WH-011` for
 /// one outside its window.
@@ -195,8 +195,6 @@ pub(crate) async fn receive<D: IngressPlane>(
             DETAIL_NO_EVENT_INGRESS,
         ));
     };
-
-    webhook::within_cap(&body)?;
 
     // Nothing above this line has read the body as anything but bytes.
     let proven =

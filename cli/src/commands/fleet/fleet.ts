@@ -132,7 +132,6 @@ const setStatusEffect = (
       body: { status },
       headers: {[IF_MATCH]: observed.etag},
       token,
-      retry: null,
     }).pipe(Effect.flatMap((body) => decode(FleetSchema, body)));
     const line = res.status === AGENTSFLEET_STATUS.INSTALLING
       ? `${id} ${res.status}; setup is still waiting. See what it needs with: agentsfleet fleet show ${id}`
@@ -174,7 +173,6 @@ export const deleteEffectFromId = (
       method: "DELETE",
       headers: {[IF_MATCH]: observed.etag},
       token,
-      retry: null,
     });
 
     yield* output.success(`${id} deleted.`, { fleet_id: id, deleted: true });
