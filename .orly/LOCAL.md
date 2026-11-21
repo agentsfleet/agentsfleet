@@ -71,6 +71,10 @@ facts.
   otherwise match Codex and Pi, and where neither caps something, cap nothing (Indy, Nov 21,
   2026). Name the forcing limit beside the constant. A bound on untrusted input is the text
   ceiling or the frame, never a smaller invented number.
+- **No hand-rolled code where a battle-tested crate does it.** Before writing a limiter,
+  retry, cache, parser, pool or protocol piece, use the workspace's existing crates or a
+  well-maintained one (tower layers, backon, moka, …); delete our version when a crate covers
+  it (Indy, Nov 21, 2026: "donot handroll code").
 - **Code names no other harness.** No comment, identifier, test name or log text cites
   Codex, Pi or any other agent harness as a source or reason; it states the fact and the
   force behind a number (Indy, Nov 21, 2026). Only a vendored file's licence notice names
