@@ -15,17 +15,14 @@
 //! A run whose load failed compacts in memory and saves nothing: it knows no
 //! version to save over.
 //!
-//! A watermark covers every turn up to it, so a compaction claims only what
-//! the run read: its history must reach back to the saved summary's
-//! watermark, or, with none, hold the draft's turns whole. The daemon sends
-//! the newest answered turns under its bounds, so a turn older than the run's
-//! oldest is one the run never read, and no compaction claims it.
+//! The daemon sends the newest answered turns under its bounds, whatever the
+//! watermark, so a turn older than a run's oldest reaches no later run
+//! either: a compaction whose watermark passes it loses nothing the window
+//! still held.
 
 use af_context::{Checkpoint, Compaction, Group, Identity};
 use af_secrets::Scrub;
-use af_wire::run::{
-    HISTORY_BYTES_MAX, HISTORY_TURNS_MAX, RunPayload, SetupCandidate, TURN_TEXT_BYTES_MAX,
-};
+use af_wire::run::{RunPayload, SetupCandidate};
 use guffbolt::{Message, Replay};
 use sha2::{Digest as _, Sha256};
 use tokio_util::sync::CancellationToken;
@@ -69,9 +66,6 @@ pub(super) struct Saved<'a> {
     earlier: Vec<Earlier>,
     /// Whether every earlier turn carries its sequence.
     named: bool,
-    /// Whether the run read every answered turn after the watermark, so a
-    /// compaction of its earlier turns claims none it never read.
-    whole: bool,
 }
 
 impl<'a> Saved<'a> {
@@ -112,7 +106,6 @@ impl<'a> Saved<'a> {
             checkpoint,
             earlier: earlier(run, scrub, named, covered),
             named,
-            whole: reaches_back(run, covered),
         }
     }
 
@@ -135,9 +128,7 @@ impl<'a> Saved<'a> {
 
     /// The compaction of the oldest earlier turns, all but the newest
     /// [`KEEP_RECENT_TURNS`], halved until `fits` admits its summary request;
-    /// none when no turn can be compacted, or when the run's history does not
-    /// reach back to the watermark, so the summary would claim turns the run
-    /// never read.
+    /// none when no turn can be compacted.
     ///
     /// # Errors
     /// A turn cannot be quoted, or `fits` cannot measure.
@@ -147,7 +138,7 @@ impl<'a> Saved<'a> {
         mut fits: impl FnMut(&Compaction) -> af_context::Result<bool>,
     ) -> af_context::Result<Option<Compaction>> {
         let take = self.earlier.len().saturating_sub(KEEP_RECENT_TURNS);
-        if !self.named || !self.whole || take == 0 {
+        if !self.named || take == 0 {
             return Ok(None);
         }
         let groups = self
@@ -207,8 +198,6 @@ impl<'a> Saved<'a> {
             |value| progress.observe(value),
         )
         .await?;
-        // The compaction took the oldest turns in order, so the rest still
-        // follow its watermark whole.
         let covered = checkpoint.covered_through;
         self.earlier
             .retain(|turn| turn.sequence.is_some_and(|sequence| sequence > covered));
@@ -278,29 +267,6 @@ pub(super) fn identity(scope: String, run: &RunPayload<'_>) -> Identity {
         model: hex::encode(Sha256::digest(encoded)),
         pinned: hex::encode(Sha256::digest(run.instructions.as_bytes())),
     }
-}
-
-/// Whether `run`'s history holds every answered turn after the watermark
-/// `covered`. The daemon sends the newest answered turns, so a history that
-/// reaches a turn the saved summary covers holds every one after it; with no
-/// summary, it holds the draft whole when neither of the daemon's bounds cut
-/// it: fewer turns than [`HISTORY_TURNS_MAX`], and room under
-/// [`HISTORY_BYTES_MAX`] for one more whole turn.
-fn reaches_back(run: &RunPayload<'_>, covered: Option<u64>) -> bool {
-    let sequences = run
-        .owner
-        .setup()
-        .map_or(&[][..], |work| work.history_sequences.as_slice());
-    if let Some(through) = covered {
-        return sequences.first().is_some_and(|oldest| *oldest <= through);
-    }
-    let bytes: usize = run
-        .history
-        .iter()
-        .map(|turn| turn.message.len() + turn.answer.len())
-        .sum();
-    run.history.len() < HISTORY_TURNS_MAX
-        && bytes.saturating_add(2 * TURN_TEXT_BYTES_MAX) <= HISTORY_BYTES_MAX
 }
 
 /// `run`'s earlier turns, oldest first and scrubbed, without those a saved

@@ -147,6 +147,23 @@ impl Seat {
     }
 
     /// Drafts over `database`: the primary's pool, or a replica's.
+    /// Makes the owner's registered model the tenant's selection, so a fleet
+    /// saved with no model of its own resolves to it and can activate: the
+    /// platform default it would otherwise wait on is not seeded here.
+    pub(super) async fn select_own_model(&self, database: &Db) {
+        sqlx::query(
+            "INSERT INTO model.tenant_selections \
+             (tenant_id, tenant_model_id, created_at, updated_at) \
+             VALUES ($1, $2, now(), now()) \
+             ON CONFLICT (tenant_id) DO UPDATE SET tenant_model_id = EXCLUDED.tenant_model_id",
+        )
+        .bind(&self.tenant)
+        .bind(&self.entry)
+        .execute(&mut *database.acquire().await.expect("selection"))
+        .await
+        .expect("the owner's model is the tenant's selection");
+    }
+
     pub(super) fn drafts(database: &Db) -> Drafts {
         Drafts::new(database.clone(), Entropy::new())
     }

@@ -146,6 +146,9 @@ async fn fleet_status(case: &Case, fleet: &Uuid7) -> String {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_resent_save_report_activates_the_fleet_its_first_copy_could_not() {
     let case = Case::queued().await;
+    case.seat
+        .select_own_model(&case.running.fixtures.database)
+        .await;
     let proposing = case.take_on_host().await;
     let text = definition(SCHEDULE);
     case.report(&processed(&proposing, Some(proposal(&proposing, &text))))

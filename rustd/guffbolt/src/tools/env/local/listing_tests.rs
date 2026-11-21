@@ -20,25 +20,26 @@ const PATH_MAX: usize = 4096;
 /// How long each directory's name is: well under a name's limit.
 const NAME: usize = 200;
 
-/// An entry whose own path runs past [`PATH_MAX`] while its directory's
-/// path stays under it is listed, but cannot be looked at: the listing
-/// fails, naming why.
+/// The longest name one path component takes.
+const NAME_MAX: usize = 255;
+
+/// An entry whose own path reaches [`PATH_MAX`] while its directory's path
+/// stays under it is listed, but cannot be looked at: the listing fails,
+/// naming why.
 #[tokio::test]
 async fn a_listing_fails_on_an_entry_it_cannot_look_at() {
     let root = tempfile::tempdir().expect("a scratch directory");
     let env = LocalEnv::new(root.path()).expect("the directory exists");
     let base = std::path::PathBuf::from(env.root());
     let mut relative = Vec::new();
-    while base
-        .join(relative.join("/"))
-        .join("d".repeat(NAME))
-        .as_os_str()
-        .len()
-        < PATH_MAX - NAME / 2
-    {
+    // Deep enough that one name of at most NAME_MAX bytes takes the entry's
+    // path to PATH_MAX, which counts the terminating zero.
+    while base.join(relative.join("/")).as_os_str().len() + 1 + NAME_MAX < PATH_MAX {
         relative.push("d".repeat(NAME));
     }
     let deep = relative.join("/");
+    let directory_length = base.join(&deep).as_os_str().len();
+    let name = "e".repeat(PATH_MAX - directory_length - 1);
     std::fs::create_dir_all(base.join(&deep)).expect("the deep directory is made");
     let directory = rustix::fs::open(
         base.join(&deep).as_path(),
@@ -49,7 +50,7 @@ async fn a_listing_fails_on_an_entry_it_cannot_look_at() {
     // Made beside the directory, so its own path never has to be spelled.
     let _entry = rustix::fs::openat(
         &directory,
-        "e".repeat(NAME).as_str(),
+        name.as_str(),
         OFlags::CREATE | OFlags::WRONLY,
         Mode::from_raw_mode(0o644),
     )
