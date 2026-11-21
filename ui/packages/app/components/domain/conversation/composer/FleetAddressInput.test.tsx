@@ -86,6 +86,16 @@ it("opens suggestions only for a caret and leaves a selected range intact", asyn
   expect(input.value).toBe("Ask @bo");
 });
 
+it("inserts the toolbar mention before an existing word without consuming it", async () => {
+  render(<Harness />);
+  const input = enter("Please check deployment");
+  input.setSelectionRange(7, 7);
+  fireEvent.select(input);
+  await userEvent.click(screen.getByRole("button", {name: "Address a workspace fleet"}));
+  await userEvent.click(await screen.findByRole("option", {name: "@bob"}));
+  expect(input.value).toBe("@bob Please check deployment");
+});
+
 it("holds the draft when Enter has no recipient to select", async () => {
   const send = vi.fn<(message: AppendMessage) => Promise<void>>(async () => {});
   render(<Harness onNew={send} />);

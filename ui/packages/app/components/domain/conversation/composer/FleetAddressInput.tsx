@@ -75,7 +75,7 @@ function useFleetAddress({inputRef, disabled}: Props, inSetup: boolean, workspac
   function choose(name: string) {
     // Keep the author's words when inserting an address in the middle of a draft.
     const before = text.slice(0, caret - query.length - 1).trimStart();
-    const after = text.slice(caret);
+    const after = text.slice(caret).replace(/^[a-z\d-]+/i, "");
     const words = [before.trimEnd(), after.trimStart()].filter(Boolean).join(" ");
     const addressed = inSetup ? text.slice(0, caret - query.length - 1) + "@" + name + " " + after.trimStart() : `@${name} ${words}`;
     // Native selection events may still describe the old cursor after the text changes.

@@ -2,7 +2,7 @@
 
 import { TerminalWindowIcon, CircleNotchIcon as Loader2Icon } from "@phosphor-icons/react/ssr";
 import { CopyButton, DashboardPanel, cn } from "@agentsfleet/design-system";
-import { mono } from "./surfaces";
+import { mono, outputHeader, outputPanel } from "./surfaces";
 import { parseAnsi, ansiColor } from "./terminal-ansi";
 
 // Adapted from the official assistant-ui terminal element. See UPSTREAM.md.
@@ -34,11 +34,11 @@ export function TerminalBlock({
 
   return (
     <DashboardPanel padding="none"
-      className="w-full min-w-0 overflow-hidden rounded-sm bg-surface-deep font-mono text-label"
+      className={outputPanel}
       data-slot="terminal-block"
       data-state={state}
     >
-      <div className="flex flex-wrap items-center gap-sm border-b border-border px-lg py-sm font-sans text-label text-muted-foreground">
+      <div className={cn(outputHeader, "flex-wrap")}>
         <TerminalWindowIcon aria-hidden="true" className="size-4 shrink-0" /><span>Command</span>
         {done ? <>
           <span aria-hidden="true">·</span>

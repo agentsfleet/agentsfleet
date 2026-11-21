@@ -3,7 +3,7 @@
 
 import { FileTextIcon } from "@phosphor-icons/react/ssr";
 import { DashboardPanel, cn } from "@agentsfleet/design-system";
-import { codeScroll, codeSurface, mono } from "./surfaces";
+import { codeScroll, codeSurface, mono, outputHeader, outputPanel } from "./surfaces";
 
 export type DiffKind = "context" | "added" | "removed";
 
@@ -34,9 +34,9 @@ export function CodeDiff({
   return (
     <DashboardPanel padding="none"
       data-slot="code-diff"
-      className="w-full min-w-0 overflow-hidden rounded-sm bg-surface-deep font-mono text-label"
+      className={outputPanel}
     >
-      <div className="flex min-w-0 items-center gap-sm border-b border-border px-lg py-sm font-sans text-label text-muted-foreground">
+      <div className={cn(outputHeader, "min-w-0")}>
         <FileTextIcon aria-hidden="true" className="size-4 shrink-0" /><span className="min-w-0 [overflow-wrap:anywhere]">{filename}</span>
         {showCounts ? <span className={cn(mono, "ml-auto shrink-0 tabular-nums")}>
           <span className="text-success">
@@ -54,10 +54,8 @@ export function CodeDiff({
               className={cn(
                 "flex px-lg py-xs leading-mono whitespace-pre motion-reduce:animate-none",
                 line.kind === "context" && "text-muted-foreground",
-                line.kind === "added" &&
-                  "text-success",
-                line.kind === "removed" &&
-                  "text-destructive",
+                line.kind === "added" && "text-success",
+                line.kind === "removed" && "text-destructive",
               )}
             >
               <span aria-hidden="true" className="w-4 shrink-0 select-none">

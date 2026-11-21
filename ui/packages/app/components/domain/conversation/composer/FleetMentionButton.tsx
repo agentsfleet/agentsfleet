@@ -25,7 +25,9 @@ export function FleetMentionButton({input, disabled, inSetup = false}: {
     const prefix = value.slice(0, selectionStart);
     if (selectionStart !== selectionEnd || activeFleetMention(prefix) === undefined) {
       const mentionText = prefix && !/\s$/.test(prefix) ? " @" : "@";
-      field.setRangeText(mentionText, selectionStart, selectionEnd, "end");
+      // Keep the next word outside the new mention when inserting before existing text.
+      const separator = /^[a-z\d-]/i.test(value.slice(selectionEnd)) ? " " : "";
+      field.setRangeText(mentionText + separator, selectionStart, selectionEnd, "end");
       const caret = selectionStart + mentionText.length;
       flushSync(() => aui.composer().setText(field.value));
       field.setSelectionRange(caret, caret);

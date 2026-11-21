@@ -83,6 +83,11 @@ test("the @ toolbar opens the workspace picker and can replace the current recip
   await input.fill("@bob Please check the deployment");
   await button.click();
   await expect(page.getByRole("option", {name: "@bob", exact: true})).toBeVisible();
+  await input.press("ArrowLeft");
+  await input.press("ArrowLeft");
+  await input.press("Enter");
+  await expect(input).toHaveValue("@bob Please check the deployment");
+  await button.click();
   await input.press("Backspace");
   await input.press("Backspace");
   await input.press("Backspace");

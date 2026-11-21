@@ -26,7 +26,7 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   const Icon = status.icon;
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
-      className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
+      className="fleet-setup-receipt">
       {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span>{status.label}</span></>}
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Button>
