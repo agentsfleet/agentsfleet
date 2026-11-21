@@ -109,7 +109,8 @@ describe("FleetThreadViewport scroll", () => {
       expect(frame.viewport.scrollTop).toBe(600);
       // A settled reply laid out taller than its placeholder.
       frame.size.log = 1_300;
-      // The first scroll event may arrive after history expands and before resize is delivered.
+      // Shrinking placeholders can lower scrollTop before the taller reply changes the log size.
+      frame.viewport.scrollTop = 550;
       fireEvent.scroll(frame.viewport);
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: 1_300, behavior: "instant" });

@@ -22,6 +22,7 @@ export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log:
     const latestAtJump = mounted.at(-1)?.id;
     let opened = mounted.length > 0 ? mounted : undefined;
     let landedTop = frame.scrollTop;
+    let landedHeight = frame.scrollHeight;
     const land = new ResizeObserver(() => {
       const {messages} = aui.thread().getState();
       const latest = messages.at(-1);
@@ -29,13 +30,15 @@ export function useOpenAtLatest(viewport: RefObject<HTMLDivElement | null>, log:
       if (opened === undefined && latest.status?.type === "running") return stop();
       opened ??= messages;
       if (messages !== opened && (!jumps || latest.id !== latestAtJump)) return stop();
-      frame.scrollTo({top: frame.scrollHeight, behavior: "instant"});
+      landedHeight = frame.scrollHeight;
+      frame.scrollTo({top: landedHeight, behavior: "instant"});
       landedTop = frame.scrollTop;
     });
     const leave = () => {
-      // History can grow before the scroll event from our last landing arrives.
-      const scrolledUp = frame.scrollTop < landedTop - AT_BOTTOM_PX;
-      if (scrolledUp && frame.scrollHeight - frame.clientHeight - frame.scrollTop > AT_BOTTOM_PX) stop();
+      // Laying out history can clamp the scroll position before resize is delivered.
+      const {scrollHeight, scrollTop, clientHeight} = frame;
+      const scrolledUp = scrollHeight === landedHeight && scrollTop < landedTop - AT_BOTTOM_PX;
+      if (scrolledUp && scrollHeight - clientHeight - scrollTop > AT_BOTTOM_PX) stop();
     };
     const stop = () => {
       land.disconnect();
