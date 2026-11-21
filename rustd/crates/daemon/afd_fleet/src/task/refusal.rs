@@ -24,6 +24,9 @@ pub enum TaskRefusal {
     LimitExhausted,
     /// The saved profile, confirmed credit or platform credential is unavailable.
     DecisionUnavailable,
+    /// The complete request does not fit what the decision model reads whole;
+    /// a shorter description of the same evidence may.
+    DecisionInputTooLarge,
     /// A physical cost exceeded its reservation; related paid work is blocked.
     DecisionOverage,
     /// Remote acknowledgement does not prove whether the saved publication occurred.
@@ -47,6 +50,9 @@ impl TaskRefusal {
             Self::InvalidTarget => error_code::TASK_INVALID_TARGET,
             Self::LimitExhausted | Self::DecisionOverage => error_code::TASK_LIMIT_EXHAUSTED,
             Self::DecisionUnavailable => error_code::TASK_DECISION_UNAVAILABLE,
+            // The shared byte-bound code, apart from an unavailable decision,
+            // so a runner tells "send less" from "cannot decide now".
+            Self::DecisionInputTooLarge => error_code::PAYLOAD_TOO_LARGE,
             Self::InputAmbiguous => error_code::TASK_INPUT_AMBIGUOUS,
             Self::EffectUncertain => error_code::TASK_EFFECT_UNCERTAIN,
             Self::CheckpointIncompatible => error_code::TASK_CHECKPOINT_INCOMPATIBLE,
@@ -73,6 +79,9 @@ impl TaskRefusal {
             Self::LimitExhausted => "the task allowance or unfinished-task capacity is exhausted",
             Self::DecisionUnavailable => {
                 "the fleet cannot currently obtain a funded reviewed decision"
+            }
+            Self::DecisionInputTooLarge => {
+                "the decision request exceeds the decision model's reviewed input limit"
             }
             Self::DecisionOverage => {
                 "a decision cost exceeded its reservation; related paid work is blocked"

@@ -42,6 +42,11 @@ fn every_refusal_answers_its_fixed_code_and_sentence() {
             "the fleet cannot currently obtain a funded reviewed decision",
         ),
         (
+            TaskRefusal::DecisionInputTooLarge,
+            "UZ-REQ-002",
+            "the decision request exceeds the decision model's reviewed input limit",
+        ),
+        (
             TaskRefusal::InputAmbiguous,
             "UZ-DT-007",
             "the input needs clarification before it can change work",

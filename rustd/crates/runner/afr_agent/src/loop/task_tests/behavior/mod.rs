@@ -29,6 +29,9 @@ struct Goals {
     inputs: TaskInputsResponse<'static>,
     replies: Mutex<VecDeque<DecisionEvaluation>>,
     requests: Mutex<Vec<DecisionReservationInput>>,
+    /// What the decision model reads whole; past it the daemon refuses the
+    /// request as too large before reserving a call.
+    input_max_bytes: usize,
 }
 
 #[async_trait::async_trait]
@@ -65,10 +68,16 @@ impl RunVerbs for Goals {
             })
         );
         let call_id = input.operation_id.clone();
+        let fits = af_validate::serialized_within(&input.evidence, self.input_max_bytes);
         self.requests
             .lock()
             .expect("fixture mutex is unpoisoned")
             .push(input);
+        if !fits {
+            return Err(Unanswered::Refused(Some(
+                af_core::error_code::PAYLOAD_TOO_LARGE,
+            )));
+        }
         let mut evaluation = self
             .replies
             .lock()
@@ -89,44 +98,6 @@ fn assigned_run(tools: &[&str], context: u32) -> af_wire::run::RunPayload<'stati
     this_run.policy.model_context_tokens = context;
     this_run.decision = Some(Box::new(assignment()));
     this_run
-}
-
-fn assignment() -> DecisionAssignment {
-    let threshold = DecisionThreshold {
-        probability_bps: 9000,
-        confidence_bps: 9000,
-    };
-    DecisionAssignment {
-        revision_id: SOURCE.to_owned(),
-        profile: DecisionProfile {
-            model_id: SOURCE.to_owned(),
-            revision: "reviewed".to_owned(),
-            api: DecisionApi::Typesafe,
-            endpoint: "https://decision.example.test/v1".to_owned(),
-            model: "decision-model".to_owned(),
-            accepted_models: vec!["decision-model".to_owned()],
-            capabilities: DecisionCapabilities {
-                noul: true,
-                choice: true,
-                score: false,
-            },
-            input_max_bytes: 24576,
-        },
-        intent: IntentDecisionPolicy {
-            questions_revision: "dt-routing-v1".to_owned(),
-            intent: threshold,
-            association: threshold,
-            single_request_max_bps: 1000,
-            multiple_request_min_bps: 9000,
-        },
-        goal: GoalDecisionPolicy {
-            questions_revision: "dt-goal-v1".to_owned(),
-            statement_min_bps: 9000,
-            continue_action: threshold,
-            wait: threshold,
-            done: threshold,
-        },
-    }
 }
 
 fn evaluation(choice: &str, confidence: Option<f64>, statement: f64) -> DecisionEvaluation {
@@ -190,6 +161,8 @@ fn goals(replies: impl IntoIterator<Item = DecisionEvaluation>) -> Goals {
         inputs,
         replies: Mutex::new(replies.into_iter().collect()),
         requests: Mutex::new(vec![]),
+        input_max_bytes: usize::try_from(assignment().profile.input_max_bytes)
+            .unwrap_or(usize::MAX),
     }
 }
 
@@ -347,4 +320,4 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
 }
 
 mod decision_fixture;
-use decision_fixture::{choice_answer, choice_question};
+use decision_fixture::{assignment, choice_answer, choice_question};

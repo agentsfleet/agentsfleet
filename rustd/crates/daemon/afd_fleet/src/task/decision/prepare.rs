@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::{
-    decision::{DecisionAssignment, DecisionPurpose, DecisionRequest},
+    decision::{DecisionAssignment, DecisionPurpose, DecisionRequest, STATE_MAX_BYTES},
     task::{DecisionAssessment, DecisionReservationInput, TaskState, UNFINISHED_MAX},
 };
 use afd_billing::price::PriceBook;
@@ -104,8 +104,10 @@ impl super::ownership::NativeContext {
             &candidates,
             questions,
         )?;
-        garde::Validate::validate(&request)?;
+        // Judged before the request's own validation, so an oversize state
+        // reads as too large rather than as a native fault.
         supported(&assignment, &request)?;
+        garde::Validate::validate(&request)?;
         let quote = quote(connection, &assignment, self.current.checked_at).await?;
         Ok((
             Prepared {
@@ -199,17 +201,30 @@ fn questions(
     Ok(questions)
 }
 
+/// A question the profile cannot answer is unavailable whatever the evidence.
+/// A request the model cannot read whole (its state past the wire's state
+/// bound, or state and questions past the profile's reviewed input ceiling)
+/// is refused as too large, before any reservation, so the caller may send a
+/// shorter description of the same evidence.
 fn supported(assignment: &DecisionAssignment, request: &DecisionRequest) -> Result<()> {
     if !request
         .questions
         .iter()
         .all(|named| assignment.profile.capabilities.supports(&named.question))
+    {
+        return Err(TaskRefusal::DecisionUnavailable.into());
+    }
+    if !af_validate::serialized_within(&request.state, STATE_MAX_BYTES)
         || !af_validate::serialized_within(
             &(&request.state, &request.questions),
             usize::try_from(assignment.profile.input_max_bytes).unwrap_or(usize::MAX),
         )
     {
-        return Err(TaskRefusal::DecisionUnavailable.into());
+        return Err(TaskRefusal::DecisionInputTooLarge.into());
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "prepare_tests.rs"]
+mod tests;

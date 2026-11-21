@@ -48,6 +48,16 @@ pub(crate) fn native(reason: afr_tools::verbs::Unanswered) -> crate::Error {
     crate::error::ErrorKind::TaskNative { reason }.into()
 }
 
+/// Whether `agentsfleetd` refused a decision only because the request does
+/// not fit what the decision model reads whole. It answers that refusal under
+/// the shared byte-bound code before reserving, funding or sending any call,
+/// so a shorter description of the same evidence may still be assessed.
+pub(crate) fn exceeds_input(failure: &crate::Error) -> bool {
+    matches!(failure.kind(), crate::error::ErrorKind::TaskNative {
+        reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
+    } if *code == af_core::error_code::PAYLOAD_TOO_LARGE)
+}
+
 pub(crate) fn identity() -> Result<String> {
     Ok(af_crypto::entropy::Entropy::new()
         .uuid7(af_core::clock::now())?

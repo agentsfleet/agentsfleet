@@ -65,7 +65,8 @@ fn failure(error: &Error) -> TaskOutcome {
         | error_code::RUN_LOST => TaskOutcome::Stale,
         error_code::TASK_INVALID_TARGET
         | error_code::TASK_INPUT_AMBIGUOUS
-        | error_code::TASK_CHECKPOINT_INCOMPATIBLE => TaskOutcome::Invalid,
+        | error_code::TASK_CHECKPOINT_INCOMPATIBLE
+        | error_code::PAYLOAD_TOO_LARGE => TaskOutcome::Invalid,
         error_code::TASK_LIMIT_EXHAUSTED => TaskOutcome::Limit,
         error_code::TASK_DECISION_UNAVAILABLE | error_code::TASK_STORAGE_UNAVAILABLE => {
             TaskOutcome::Unavailable
