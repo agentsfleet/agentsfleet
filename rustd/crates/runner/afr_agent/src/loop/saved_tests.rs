@@ -137,7 +137,7 @@ impl RunVerbs for Thread {
         Err(Unanswered::Unreachable)
     }
 
-    async fn message(&self, _text: &str) -> Result<bool, Unanswered> {
+    async fn message(&self, _: u64, _text: &str) -> Result<bool, Unanswered> {
         Err(Unanswered::Unreachable)
     }
 

@@ -324,3 +324,6 @@ mod quiet_tests;
 
 #[cfg(test)]
 mod saved_tests;
+
+#[cfg(test)]
+mod finished_tests;

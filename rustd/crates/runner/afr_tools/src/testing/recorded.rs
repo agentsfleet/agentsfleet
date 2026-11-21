@@ -97,6 +97,7 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
                 timezone,
                 message,
                 once,
+                ..
             } => Self::Create {
                 cron: cron.to_owned(),
                 timezone: owned(timezone),
@@ -110,6 +111,7 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
                 timezone,
                 message,
                 paused,
+                ..
             } => Self::Update {
                 schedule: schedule.as_str().to_owned(),
                 cron: owned(cron),
@@ -118,7 +120,7 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
                 paused,
             },
             ScheduleCall::Delete { schedule } => Self::Delete(schedule.as_str().to_owned()),
-            ScheduleCall::Run { schedule } => Self::Run(schedule.as_str().to_owned()),
+            ScheduleCall::Run { schedule, .. } => Self::Run(schedule.as_str().to_owned()),
             ScheduleCall::Runs {
                 schedule,
                 limit,
@@ -193,7 +195,11 @@ impl crate::verbs::RunVerbs for RecordingVerbs {
         self.answer.clone()
     }
 
-    async fn message(&self, text: &str) -> Result<bool, crate::verbs::Unanswered> {
+    async fn message(
+        &self,
+        _call_number: u64,
+        text: &str,
+    ) -> Result<bool, crate::verbs::Unanswered> {
         self.record(Asked::Message(text.to_owned()));
         self.delivered
     }

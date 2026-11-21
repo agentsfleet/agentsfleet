@@ -9,6 +9,9 @@
 //!
 //! [`ToolContext`]: crate::ToolContext
 
+use std::collections::HashMap;
+use std::sync::{Mutex as StdMutex, PoisonError};
+
 use af_egress::Egress;
 use afr_memory::Loaded;
 use tokio::sync::Mutex;
@@ -41,6 +44,39 @@ pub struct Run<'run> {
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
     /// by this run.
     pub verbs: &'run dyn RunVerbs,
+    /// Each open call's number in the run, which an effect names its item by.
+    pub calls: CallNumbers,
+}
+
+/// Each open call's number in its run, by the provider's id for the call.
+///
+/// The run's ledger numbers a call when it opens and forgets it when it
+/// ends; a message, schedule or cron call sends its number so `agentsfleetd`
+/// keys the effect by the call's item, and a retry lands once.
+#[derive(Debug, Default)]
+pub struct CallNumbers(StdMutex<HashMap<String, u64>>);
+
+impl CallNumbers {
+    /// Call `call_id` opened as the run's `number`th.
+    pub fn open(&self, call_id: &str, number: u64) {
+        self.held().insert(call_id.to_owned(), number);
+    }
+
+    /// Call `call_id` ended.
+    pub fn close(&self, call_id: &str) {
+        self.held().remove(call_id);
+    }
+
+    /// The number of open call `call_id`, if one is open under it.
+    #[must_use]
+    pub fn of(&self, call_id: &str) -> Option<u64> {
+        self.held().get(call_id).copied()
+    }
+
+    /// The map, whatever a panicking holder left: each entry is written whole.
+    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<String, u64>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 impl<'run> Run<'run> {
@@ -57,6 +93,7 @@ impl<'run> Run<'run> {
             checkouts: Vec::new(),
             image_input: false,
             verbs,
+            calls: CallNumbers::default(),
         }
     }
 

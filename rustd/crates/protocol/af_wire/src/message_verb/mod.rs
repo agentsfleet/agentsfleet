@@ -4,6 +4,7 @@
 //! The daemon holds the channel credential and posts; the runner sends text.
 //! Neither end bounds its length or how many a run sends: the channel's own
 //! limit refuses what it cannot take, and the post answers `delivered: false`.
+//! Each request names its call's item, so a retried request posts nothing new.
 
 use std::borrow::Cow;
 use std::time::Duration;
@@ -29,6 +30,14 @@ pub struct MessageRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     #[garde(skip)]
     pub fencing_token: u64,
+    /// The item this call is: a `UUIDv7` the runner mints once per call and
+    /// sends again on a retry, which then answers the first post's result.
+    #[serde(borrow)]
+    #[garde(skip)]
+    pub item_id: Cow<'a, str>,
+    /// The call's number within its run, from 1, as its record names it.
+    #[garde(skip)]
+    pub call_number: u64,
     /// What to say in the thread: nonempty, with no NUL character.
     #[serde(borrow)]
     #[cfg_attr(feature = "openapi", schema(min_length = 1))]

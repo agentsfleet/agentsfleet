@@ -22,7 +22,7 @@ impl RunVerbs for Uncertain {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
-    async fn message(&self, _: &str) -> Result<bool, Unanswered> {
+    async fn message(&self, _: u64, _: &str) -> Result<bool, Unanswered> {
         Err(Unanswered::Unreachable)
     }
     async fn task_inputs(

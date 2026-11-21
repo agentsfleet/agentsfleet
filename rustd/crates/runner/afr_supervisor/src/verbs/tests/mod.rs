@@ -93,7 +93,7 @@ async fn a_refusal_keeps_its_code() {
         &host.decisions,
     );
     assert_eq!(
-        verbs.message("hello").await,
+        verbs.message(1, "hello").await,
         Err(Unanswered::Refused(Some(error_code::MESSAGE_NO_CHANNEL)))
     );
 }
@@ -136,7 +136,7 @@ async fn a_message_answers_whether_the_thread_has_it() {
         &host.stop,
         &host.decisions,
     );
-    assert_eq!(verbs.message("status").await, Ok(false));
+    assert_eq!(verbs.message(1, "status").await, Ok(false));
 }
 
 /// A reply that is not the shape `agentsfleetd` documents is no answer.
@@ -153,7 +153,10 @@ async fn an_unreadable_message_reply_is_unreachable() {
         &host.stop,
         &host.decisions,
     );
-    assert_eq!(verbs.message("status").await, Err(Unanswered::Unreachable));
+    assert_eq!(
+        verbs.message(1, "status").await,
+        Err(Unanswered::Unreachable)
+    );
 }
 
 struct Host {

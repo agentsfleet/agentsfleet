@@ -68,6 +68,8 @@ const DONE: &str = "done";
 pub enum ScheduleCall<'a> {
     /// Create a schedule for the fleet.
     Create {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// A five-field cron expression.
         cron: &'a str,
         /// The zone it is read in; UTC when absent.
@@ -81,6 +83,8 @@ pub enum ScheduleCall<'a> {
     List,
     /// Change the named fields of a schedule the fleet made.
     Update {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// The schedule.
         schedule: &'a Uuid7,
         /// A new expression.
@@ -99,6 +103,8 @@ pub enum ScheduleCall<'a> {
     },
     /// Fire a schedule now.
     Run {
+        /// The call's number in its run, which names its item.
+        call_number: u64,
         /// The schedule.
         schedule: &'a Uuid7,
     },
@@ -214,8 +220,9 @@ pub trait RunVerbs: Send + Sync + fmt::Debug {
     /// Sends one schedules call and answers the reply body of a success.
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered>;
 
-    /// Posts one line to the event's thread and answers whether it landed.
-    async fn message(&self, text: &str) -> Result<bool, Unanswered>;
+    /// Posts one line to the event's thread for the run's call
+    /// `call_number`, and answers whether it landed.
+    async fn message(&self, call_number: u64, text: &str) -> Result<bool, Unanswered>;
 
     /// Reads the workspace's fleets, or one fleet's events, and answers the
     /// reply body as it came.
@@ -324,7 +331,7 @@ impl RunVerbs for Closed {
         Err(Unanswered::Unreachable)
     }
 
-    async fn message(&self, _text: &str) -> Result<bool, Unanswered> {
+    async fn message(&self, _call_number: u64, _text: &str) -> Result<bool, Unanswered> {
         Err(Unanswered::Unreachable)
     }
 }

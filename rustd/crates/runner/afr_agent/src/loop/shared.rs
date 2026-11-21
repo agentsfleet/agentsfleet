@@ -143,7 +143,8 @@ impl<'run> Shared<'run> {
             scrub,
             events: run.events,
             run: state,
-            ledger: Ledger::new(&run.run.run_id, &run.run.event.turn_id, run.events, scrub),
+            ledger: Ledger::new(&run.run.run_id, &run.run.event.turn_id, run.events, scrub)
+                .numbering(&state.calls),
             meter: run.meter,
             registry,
             instructions,

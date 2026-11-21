@@ -66,7 +66,7 @@ impl Speaking {
 
     pub(crate) async fn say(&self, (run_id, fence): (&str, u64), text: &str) -> (u16, Value) {
         let path = format!("/v1/runners/me/runs/{run_id}/messages");
-        let body = json!({"fencing_token": fence, "text": text});
+        let body = crate::schedules::itemized(json!({"fencing_token": fence, "text": text}));
         let response = post(&self.http, &self.scene, &path, &body).await;
         let status = response.status().as_u16();
         (status, body_of(response).await)

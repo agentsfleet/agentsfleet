@@ -6,6 +6,7 @@ use super::{
     SteerSender, Timestamp, ToolCallRecordsRequest, ToolCallRecordsStored, Uuid7,
 };
 use afd_fleet::run::RunService;
+use afd_fleet::run::effect::{Claim, Effect};
 
 /// The production plane answers it directly.
 ///
@@ -75,6 +76,14 @@ impl RunPlane for RunService {
         request: &MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send {
         Self::message(self, runner_id, run_id, request)
+    }
+
+    fn claim_effect(
+        &self,
+        standing: &Standing,
+        effect: Effect<'_>,
+    ) -> impl Future<Output = afd_fleet::Result<Claim>> + Send {
+        Self::claim_effect(self, standing, effect)
     }
 
     fn masked(

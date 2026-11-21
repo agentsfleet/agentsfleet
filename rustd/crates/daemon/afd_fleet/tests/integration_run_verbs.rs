@@ -84,6 +84,8 @@ async fn test_messages_count_against_the_live_holder() {
     let plane = stage.fixtures.plane();
     let say = |text: &'static str| MessageRequest {
         fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 1,
         text: Cow::Borrowed(text),
     };
 
@@ -111,6 +113,8 @@ async fn test_messages_count_against_the_live_holder() {
             silent.issued.run_id.clone(),
             &MessageRequest {
                 fencing_token: silent.fence.as_u64(),
+                item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+                call_number: 1,
                 text: Cow::Borrowed("hello?"),
             },
         )
@@ -138,6 +142,8 @@ async fn test_a_run_speaks_past_eight_lines_each_numbered() {
     let long = "w".repeat(10_000);
     let request = MessageRequest {
         fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 1,
         text: Cow::Borrowed(long.as_str()),
     };
 

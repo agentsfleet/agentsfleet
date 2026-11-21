@@ -11,6 +11,8 @@
 //! `agentsfleetd`'s answer back as it came: the schedule's view, the list, the
 //! run, or the refusal with its code. `agentsfleetd` masks the fleet's stored
 //! secrets, holds the channel's credential, and fences every call by the run.
+//! A create, an edit, a run-now and a message carry the number the run's
+//! ledger gave the call, so `agentsfleetd` lands each once per call.
 
 use af_core::id::Uuid7;
 use guffbolt::CallRef;
@@ -22,6 +24,10 @@ use super::{ScheduleCall, Unanswered};
 use crate::egress;
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
+
+/// What a call the run's ledger never numbered reads back: its effect has no
+/// item to land once under.
+const DETAIL_UNNUMBERED: &str = "the call has no number in its run, so its effect cannot be keyed";
 
 /// What a schedule id that is not one reads back.
 const DETAIL_SCHEDULE_ID: &str = "schedule_id must be a schedule's id, as cron_list names it";
@@ -44,6 +50,13 @@ impl<'b, 'run> Fenced<'b, 'run> {
         egress::masked(self.run, text.to_owned()).await
     }
 
+    /// The number the run's ledger gave `call`, which names its item.
+    fn number(self, call: &CallRef) -> Result<u64, Refusal> {
+        self.run.calls.of(&call.call_id).ok_or_else(|| {
+            Refusal::new(ToolErrorCode::AgentsfleetdRefused.into(), DETAIL_UNNUMBERED)
+        })
+    }
+
     /// Sends `call` and answers the reply body, or the refusal with its code.
     async fn schedules(self, call: ScheduleCall<'_>) -> Result<String, Refusal> {
         self.run.verbs.schedules(call).await.map_err(refusal)
@@ -62,10 +75,12 @@ fn schedule_id(raw: &str) -> Result<Uuid7, Refusal> {
 }
 
 impl Scheduler for Fenced<'_, '_> {
-    fn add<'a>(&'a self, _call: &'a CallRef, job: Job<'a>) -> ScheduleFuture<'a> {
+    fn add<'a>(&'a self, call: &'a CallRef, job: Job<'a>) -> ScheduleFuture<'a> {
         Box::pin(async move {
+            let call_number = self.number(call)?;
             let message = self.masked(job.message).await;
             let call = ScheduleCall::Create {
+                call_number,
                 cron: job.cron,
                 timezone: job.timezone,
                 message: &message,
@@ -81,17 +96,19 @@ impl Scheduler for Fenced<'_, '_> {
 
     fn update<'a>(
         &'a self,
-        _call: &'a CallRef,
+        call: &'a CallRef,
         id: &'a str,
         change: Change<'a>,
     ) -> ScheduleFuture<'a> {
         Box::pin(async move {
+            let call_number = self.number(call)?;
             let schedule = schedule_id(id)?;
             let message = match change.message {
                 Some(text) => Some(self.masked(text).await),
                 None => None,
             };
             let call = ScheduleCall::Update {
+                call_number,
                 schedule: &schedule,
                 cron: change.cron,
                 timezone: change.timezone,
@@ -112,10 +129,12 @@ impl Scheduler for Fenced<'_, '_> {
         })
     }
 
-    fn run_now<'a>(&'a self, _call: &'a CallRef, id: &'a str) -> ScheduleFuture<'a> {
+    fn run_now<'a>(&'a self, call: &'a CallRef, id: &'a str) -> ScheduleFuture<'a> {
         Box::pin(async move {
+            let call_number = self.number(call)?;
             let schedule = schedule_id(id)?;
             self.schedules(ScheduleCall::Run {
+                call_number,
                 schedule: &schedule,
             })
             .await
@@ -136,10 +155,11 @@ impl Scheduler for Fenced<'_, '_> {
 }
 
 impl Channel for Fenced<'_, '_> {
-    fn post<'a>(&'a self, _call: &'a CallRef, text: &'a str) -> ChannelFuture<'a> {
+    fn post<'a>(&'a self, call: &'a CallRef, text: &'a str) -> ChannelFuture<'a> {
         Box::pin(async move {
+            let call_number = self.number(call)?;
             let text = self.masked(text).await;
-            match self.run.verbs.message(&text).await {
+            match self.run.verbs.message(call_number, &text).await {
                 Ok(true) => Ok(Posted::Delivered),
                 Ok(false) => Ok(Posted::NotTaken),
                 Err(unanswered) => Err(refusal(unanswered)),

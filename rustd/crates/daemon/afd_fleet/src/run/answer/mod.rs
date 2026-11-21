@@ -45,6 +45,7 @@ pub(super) struct Context<'a> {
     pub(super) decision: Option<Box<DecisionAssignment>>,
     pub(super) task: Option<af_wire::task::TaskContext<'static>>,
     pub(super) turn_resume: Option<af_wire::run::TurnResume>,
+    pub(super) finished_calls: Vec<af_wire::run::EarlierCall<'static>>,
     pub(super) expires_at: jiff::Timestamp,
 }
 
@@ -78,6 +79,7 @@ pub(super) fn payload<'a>(
         policy,
         instructions: installed.instructions.as_str().into(),
         history: context.history,
+        finished_calls: context.finished_calls,
         resume_hold: acquired.resume_hold,
         decision: context.decision,
         task: context.task,

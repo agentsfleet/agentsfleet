@@ -91,7 +91,10 @@ async fn closed_verbs_answer_nothing() {
         CLOSED.schedules(ScheduleCall::List).await,
         Err(Unanswered::Unreachable)
     );
-    assert_eq!(CLOSED.message("hello").await, Err(Unanswered::Unreachable));
+    assert_eq!(
+        CLOSED.message(1, "hello").await,
+        Err(Unanswered::Unreachable)
+    );
 }
 
 const ID: &str = "019f0000-0000-7000-8000-000000000001";

@@ -7,19 +7,26 @@
 //! (`afd_outbound::interim`). The runner never holds the channel's credential:
 //! it sends text, and the daemon speaks. Neither the line's length nor how
 //! many a run sends is capped here: the channel refuses what it cannot take,
-//! and the runner reads `delivered: false`.
+//! and the runner reads `delivered: false`. Each request names its call's
+//! item, so a retry answers the first post's result and posts nothing
+//! (`super::effect`).
 
 use std::sync::Arc;
 
 use af_core::error_code;
 use af_wire::message_verb::{MESSAGE_DELIVERY_DEADLINE, MessagePosted, MessageRequest};
+use afd_fleet::run::effect::Effect;
 use afd_http::handler::{Refusal, read_strict_body};
+use afd_outbound::Interim;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use garde::Validate as _;
+use http::StatusCode;
+use serde::Serialize;
 
+use super::effect;
 use super::schedule::run;
 use crate::auth::RunnerIdentity;
 use crate::services::{RunPlane as _, RunnerPlane};
@@ -47,7 +54,8 @@ const DESCRIPTION: &str = const_format::concatcp!(
     "`current_state`. `delivered` is false when the channel refuses the message or ",
     "retries fail within ",
     MESSAGE_DELIVERY_DEADLINE.as_secs(),
-    " seconds. Each request posts a new message; `Idempotency-Key` is unsupported.",
+    " seconds. Each call posts once: a request repeating its `item_id` and ",
+    "`call_number` returns the first request's answer and posts nothing.",
 );
 
 /// Posts one line to the event's thread.
@@ -80,23 +88,56 @@ pub(crate) async fn handle<D: RunnerPlane>(
     request
         .validate()
         .map_err(|_report| Refusal::malformed(DETAIL_TEXT))?;
-    let interim = services
+    let item_id = effect::item_id(&request.item_id)?;
+    let standing = services
         .runs()
-        .message(runner.id(), run(&run_id)?, &request)
+        .standing(runner.id(), run(&run_id)?, request.fencing_token)
         .await
         .map_err(refused)?;
+    let item = Effect {
+        item_id: &item_id,
+        call_number: request.call_number,
+        fencing_token: request.fencing_token,
+        tool: effect::MESSAGE,
+    };
+    let claimed = match effect::claimed(&*services, &standing, item, StatusCode::OK).await? {
+        Ok(claimed) => claimed,
+        Err(replayed) => return Ok(replayed),
+    };
+    // A refusal drops the hold before anything posts, so the call's retry
+    // runs it again.
+    let interim = services
+        .runs()
+        .message(runner.id(), standing.run_id.clone(), &request)
+        .await
+        .map_err(refused)?;
+    let said = Said {
+        text: interim.text.clone(),
+    };
+    let posted = post(&*services, &run_id, interim).await;
+    effect::landed(claimed, &said, Ok(posted)).await
+}
+
+/// What a message's item keeps of it: the line as posted, secrets masked.
+#[derive(Debug, Serialize)]
+struct Said {
+    text: String,
+}
+
+/// Posts `interim`, answering undelivered once [`MESSAGE_DELIVERY_DEADLINE`]
+/// passes.
+async fn post<D: RunnerPlane>(services: &D, run_id: &str, interim: Interim) -> Response {
     let part = interim.part;
     let posting = services.interjector().interject(interim);
     let delivered = tokio::time::timeout(MESSAGE_DELIVERY_DEADLINE, posting)
         .await
         .unwrap_or_else(|_elapsed| {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let run_id = run_id.as_str();
             let error_code = error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
             tracing::warn!(error_code, run_id, part, event = EVENT_DEADLINE);
             false
         });
-    Ok(Json(MessagePosted { delivered }).into_response())
+    Json(MessagePosted { delivered }).into_response()
 }
 
 /// A message the run plane refused, as the runner reads it: the 409 for an

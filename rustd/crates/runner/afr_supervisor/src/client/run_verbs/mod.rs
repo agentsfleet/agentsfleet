@@ -9,6 +9,7 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
+use af_crypto::entropy::Entropy;
 use af_wire::message_verb::MessageRequest;
 use af_wire::paths;
 use af_wire::schedule_verb::{
@@ -17,6 +18,7 @@ use af_wire::schedule_verb::{
 use af_wire::steer_verb::FleetSteerRequest;
 use afr_tools::FleetsCall;
 use afr_tools::ScheduleCall;
+use serde::Serialize;
 use url::form_urlencoded::Serializer;
 
 use super::{Body, ControlPlane, Verb, run_path};
@@ -27,8 +29,9 @@ impl ControlPlane {
     /// `fencing_token`.
     ///
     /// # Errors
-    /// A refusal, or a transport failure; never retried, because a create is
-    /// not idempotent and the model decides whether to try again.
+    /// A refusal, or a transport failure. A create, an edit and a run-now
+    /// name their call's item and are retried as a blip allows; a read or a
+    /// delete is one attempt, and the model decides whether to try again.
     pub(crate) async fn schedules(
         &self,
         run_id: &Uuid7,
@@ -38,20 +41,27 @@ impl ControlPlane {
         let collection = run_path(run_id, paths::RUN_SCHEDULES_SUFFIX);
         match call {
             ScheduleCall::Create {
+                call_number,
                 cron,
                 timezone,
                 message,
                 once,
             } => {
-                let body = created(fencing_token, cron, timezone, message, once);
-                self.send_json(Verb::ScheduleCreate, collection, &body)
-                    .await
+                let item_id = minted()?;
+                let item = Item {
+                    fencing_token,
+                    id: &item_id,
+                    call_number,
+                };
+                let body = created(item, cron, timezone, message, once);
+                self.once(Verb::ScheduleCreate, collection, &body).await
             }
             ScheduleCall::List => {
                 let path = fenced(&collection, fencing_token, Page::default());
                 self.send(Verb::ScheduleList, path, None).await
             }
             ScheduleCall::Update {
+                call_number,
                 schedule,
                 cron,
                 timezone,
@@ -59,18 +69,32 @@ impl ControlPlane {
                 paused,
             } => {
                 let path = member(&collection, schedule, None);
-                let body = patched(fencing_token, cron, timezone, message, paused);
-                self.send_json(Verb::ScheduleUpdate, path, &body).await
+                let item_id = minted()?;
+                let item = Item {
+                    fencing_token,
+                    id: &item_id,
+                    call_number,
+                };
+                let body = patched(item, cron, timezone, message, paused);
+                self.once(Verb::ScheduleUpdate, path, &body).await
             }
             ScheduleCall::Delete { schedule } => {
                 let path = member(&collection, schedule, None);
                 let path = fenced(&path, fencing_token, Page::default());
                 self.send(Verb::ScheduleDelete, path, None).await
             }
-            ScheduleCall::Run { schedule } => {
+            ScheduleCall::Run {
+                call_number,
+                schedule,
+            } => {
                 let path = member(&collection, schedule, Some(paths::SCHEDULE_RUNS_SUFFIX));
-                let body = ScheduleRunRequest { fencing_token };
-                self.send_json(Verb::ScheduleRun, path, &body).await
+                let item_id = minted()?;
+                let body = ScheduleRunRequest {
+                    fencing_token,
+                    item_id: Cow::Borrowed(item_id.as_str()),
+                    call_number,
+                };
+                self.once(Verb::ScheduleRun, path, &body).await
             }
             ScheduleCall::Runs {
                 schedule,
@@ -88,23 +112,42 @@ impl ControlPlane {
         }
     }
 
-    /// Posts one line to the thread of the event `run_id` runs.
+    /// Posts one line to the thread of the event `run_id` runs, for the
+    /// run's call `call_number`.
     ///
     /// # Errors
-    /// A refusal, or a transport failure; never retried, because a line that
-    /// landed and lost its answer would be posted twice.
+    /// A refusal, or a transport failure once retries are spent. A retry
+    /// names the same item, so a line that landed and lost its answer is
+    /// answered again, not posted twice.
     pub(crate) async fn message(
         &self,
         run_id: &Uuid7,
         fencing_token: u64,
+        call_number: u64,
         text: &str,
     ) -> Result<Body> {
+        let item_id = minted()?;
         let body = MessageRequest {
             fencing_token,
+            item_id: Cow::Borrowed(item_id.as_str()),
+            call_number,
             text: Cow::Borrowed(text),
         };
         let path = run_path(run_id, paths::RUN_MESSAGES_SUFFIX);
-        self.send_json(Verb::Message, path, &body).await
+        self.once(Verb::Message, path, &body).await
+    }
+
+    /// Sends one effect's `body`, retried as a blip allows: the body names
+    /// the call's item, so `agentsfleetd` answers a retry with the first
+    /// result and acts once.
+    async fn once<T: Serialize + Sync>(
+        &self,
+        verb: Verb,
+        path: Cow<'static, str>,
+        body: &T,
+    ) -> Result<Body> {
+        self.retrying(|| self.send_json(verb, path.clone(), body))
+            .await
     }
 
     /// Reads the workspace's fleets, or one fleet's events, for the fleet
@@ -201,16 +244,32 @@ fn fenced(path: &str, fencing_token: u64, page: Page<'_>) -> Cow<'static, str> {
     Cow::Owned(format!("{path}?{}", query.finish()))
 }
 
-/// A create's body, fenced.
-fn created<'a>(
+/// The item one effect names: the run's fence, the item minted for the call,
+/// and the call's number in its run.
+#[derive(Debug, Clone, Copy)]
+struct Item<'a> {
     fencing_token: u64,
+    id: &'a Uuid7,
+    call_number: u64,
+}
+
+/// A fresh item id for one call, sent again on each of its retries.
+fn minted() -> Result<Uuid7> {
+    Ok(Entropy::new().uuid7(af_core::clock::now())?)
+}
+
+/// A create's body, fenced and naming its item.
+fn created<'a>(
+    item: Item<'a>,
     cron: &'a str,
     timezone: Option<&'a str>,
     message: &'a str,
     once: bool,
 ) -> ScheduleCreateRequest<'a> {
     ScheduleCreateRequest {
-        fencing_token,
+        fencing_token: item.fencing_token,
+        item_id: Cow::Borrowed(item.id.as_str()),
+        call_number: item.call_number,
         cron: Cow::Borrowed(cron),
         timezone: timezone.map(Cow::Borrowed),
         message: Cow::Borrowed(message),
@@ -218,16 +277,19 @@ fn created<'a>(
     }
 }
 
-/// A patch's body, fenced: each field it names, and nothing else.
+/// A patch's body, fenced and naming its item: each field it names, and
+/// nothing else.
 fn patched<'a>(
-    fencing_token: u64,
+    item: Item<'a>,
     cron: Option<&'a str>,
     timezone: Option<&'a str>,
     message: Option<&'a str>,
     paused: Option<bool>,
 ) -> SchedulePatchRequest<'a> {
     SchedulePatchRequest {
-        fencing_token,
+        fencing_token: item.fencing_token,
+        item_id: Cow::Borrowed(item.id.as_str()),
+        call_number: item.call_number,
         cron: cron.map(Cow::Borrowed),
         timezone: timezone.map(Cow::Borrowed),
         message: message.map(Cow::Borrowed),

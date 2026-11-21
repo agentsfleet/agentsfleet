@@ -11,10 +11,15 @@ use garde::Validate as _;
 
 use super::{MessagePosted, MessageRequest};
 
+/// The item every request here names.
+const ITEM: &str = "0199a0b0-0000-7000-8000-0000000000aa";
+
 /// A request carrying `text`.
 fn request(text: String) -> MessageRequest<'static> {
     MessageRequest {
         fencing_token: 1,
+        item_id: Cow::Borrowed(ITEM),
+        call_number: 1,
         text: Cow::Owned(text),
     }
 }
@@ -45,7 +50,7 @@ fn a_message_holding_a_nul_is_refused() {
 
 #[test]
 fn a_message_naming_anything_else_is_refused() {
-    let body = r#"{"fencing_token":1,"text":"hi","channel":"C1"}"#;
+    let body = r#"{"fencing_token":1,"item_id":"0199a0b0-0000-7000-8000-0000000000aa","call_number":1,"text":"hi","channel":"C1"}"#;
     let _refused =
         serde_json::from_str::<MessageRequest<'_>>(body).expect_err("the body is refused");
 }

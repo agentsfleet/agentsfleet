@@ -342,3 +342,24 @@ async fn the_message_tool_posts_long_and_often() {
         said.into_iter().map(Asked::Message).collect::<Vec<_>>()
     );
 }
+
+/// A call the run's ledger never numbered has no item to land once under,
+/// so its message is refused and nothing reaches `agentsfleetd`.
+#[tokio::test]
+async fn an_unnumbered_call_sends_nothing() {
+    use guffbolt::CallRef;
+    use guffbolt::tools::message::Channel as _;
+
+    let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
+    let run = run_with(&verbs);
+    let unnumbered = CallRef {
+        step: 1,
+        index: 0,
+        call_id: "never-opened".to_owned(),
+    };
+
+    let posted = super::Fenced::new(&run).post(&unnumbered, "hello").await;
+
+    assert!(posted.is_err(), "an unnumbered call is refused");
+    assert!(verbs.asked().is_empty(), "{:?}", verbs.asked());
+}

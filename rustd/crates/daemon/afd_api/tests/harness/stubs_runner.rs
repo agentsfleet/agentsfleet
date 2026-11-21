@@ -161,6 +161,15 @@ impl RunPlane for NoWork {
     }
 
     /// Refused for the reason [`NoWork::standing`] is.
+    fn claim_effect(
+        &self,
+        _standing: &afd_fleet::run::Standing,
+        _effect: afd_fleet::run::effect::Effect<'_>,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::run::effect::Claim>> + Send {
+        std::future::ready(Err(afd_fleet::Error::run_not_found()))
+    }
+
+    /// Refused for the reason [`NoWork::standing`] is.
     fn masked(
         &self,
         _standing: &afd_fleet::run::Standing,

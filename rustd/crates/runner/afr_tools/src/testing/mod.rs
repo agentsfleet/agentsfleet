@@ -137,6 +137,8 @@ impl Callable for RunTool<'_> {
         arguments: serde_json::Value,
     ) -> ToolOutput {
         let call_ref = first_call();
+        // Numbered as the run's ledger numbers an opened call.
+        run.calls.open(&call_ref.call_id, 1);
         let context = ToolContext {
             executor,
             run,

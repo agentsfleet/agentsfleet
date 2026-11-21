@@ -98,6 +98,7 @@ fn rendered(resume_hold: bool) -> Value {
         Context {
             turn_resume: None,
             history: Vec::new(),
+            finished_calls: Vec::new(),
             memory: None,
             decision: None,
             task: None,

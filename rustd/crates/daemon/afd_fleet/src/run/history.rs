@@ -305,7 +305,7 @@ pub(super) fn turn(row: FinishedTurn, calls: Vec<CallRow>) -> Option<Turn<'stati
 
 /// One stored call as the model reads it again; a status this build does
 /// not spell is no call, as the item detail refuses it.
-fn call(row: CallRow) -> Option<EarlierCall<'static>> {
+pub(super) fn call(row: CallRow) -> Option<EarlierCall<'static>> {
     let status = ItemStatus::parse(&row.status)?;
     // The record verb stores an object; anything else reads as no arguments.
     let arguments = serde_json::from_str(&row.arguments).unwrap_or_default();

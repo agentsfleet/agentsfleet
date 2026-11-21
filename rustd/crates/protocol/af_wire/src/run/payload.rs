@@ -89,6 +89,11 @@ pub struct RunPayload<'a> {
     /// oldest turns.
     #[serde(borrow)]
     pub history: Vec<Turn<'a>>,
+    /// The calls earlier runs of this turn finished before they died, oldest
+    /// first, as `thread.items` keeps them: what a resumed run reconciles
+    /// before it acts again. Empty for a turn's first run.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    pub finished_calls: Vec<EarlierCall<'a>>,
     /// True when the runner can reuse its latest held sandbox for a new turn. Reassigned
     /// turns and expired or outdated sandboxes require a fresh sandbox.
     pub resume_hold: bool,

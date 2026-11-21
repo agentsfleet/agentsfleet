@@ -18,7 +18,7 @@ use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
 use serde_json::{Value, json};
 
-use crate::schedules::{Assigned, Seeded, WEEKLY};
+use crate::schedules::{Assigned, Seeded, WEEKLY, itemized};
 use crate::verbs::{FakeQStash, Told};
 
 /// A person's schedule is the fleet's to read, not to change or
@@ -34,7 +34,7 @@ async fn test_fleet_cannot_touch_human_schedules() {
             .seed(source, &format!("person-{}", source.as_str()))
             .await;
         let member = format!("/{schedule}");
-        let patch = json!({"fencing_token": held.fence, "message": "taken over"});
+        let patch = itemized(json!({"fencing_token": held.fence, "message": "taken over"}));
         let (status, refused) = held
             .call(Method::PATCH, &held.path(&member), Some(&patch))
             .await;
@@ -80,7 +80,7 @@ async fn test_fleet_cannot_reach_another_fleets_schedule() {
         .seed_row(&other, Seeded::active(Source::Fleet, "foreign"))
         .await;
     let member = format!("/{foreign}");
-    let patch = json!({"fencing_token": held.fence, "message": "taken over"});
+    let patch = itemized(json!({"fencing_token": held.fence, "message": "taken over"}));
 
     let cases = [
         (
@@ -139,7 +139,8 @@ async fn test_fleet_schedule_patch_is_idempotent() {
     let held = Assigned::boot(&mut supervisor, &qstash).await;
     let (_status, created) = held.create(false).await;
     let member = format!("/{}", created["schedule_id"].as_str().expect("an id"));
-    let patch = json!({"fencing_token": held.fence, "message": "daily check", "paused": true});
+    let patch =
+        itemized(json!({"fencing_token": held.fence, "message": "daily check", "paused": true}));
 
     let (first_status, mut first) = held
         .call(Method::PATCH, &held.path(&member), Some(&patch))
@@ -165,7 +166,7 @@ async fn test_fleet_schedule_patch_is_idempotent() {
     assert_eq!(first, second);
 
     // A patch that names no message keeps the stored one.
-    let resume = json!({"fencing_token": held.fence, "paused": false});
+    let resume = itemized(json!({"fencing_token": held.fence, "paused": false}));
     let (resumed_status, resumed) = held
         .call(Method::PATCH, &held.path(&member), Some(&resume))
         .await;

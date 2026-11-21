@@ -109,6 +109,7 @@ impl DraftAssignment {
             policy: self.policy(context_tokens),
             instructions: Cow::Borrowed(instructions),
             history: history(turn),
+            finished_calls: Vec::new(),
             resume_hold: false,
             decision: None,
             task: None,

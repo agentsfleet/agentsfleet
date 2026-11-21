@@ -164,10 +164,10 @@ A retried request for the same item returns the stored result, and no second eff
 
 A resumed run is a new run, and its model makes new calls. Its recovery note already says "Reconcile … before taking another action" (`recovery_boundary.rs:58`). It will also list the dead run's finished effects from that run's items, which stay until the turn settles.
 
-- **Dimension 3.1** — a retried post lands once → Test `a_retried_message_for_one_item_posts_once` (integration): the same `item_id` sent twice. Expected: one Slack post, and both responses identical.
-- **Dimension 3.2** — two calls are two effects → Test `two_calls_in_one_run_post_two_messages` (integration): two items. Expected: two posts.
-- **Dimension 3.3** — a superseded run posts nothing → Test `an_effect_from_a_superseded_fence_is_refused` (integration): a send at fence 1 after fence 2 was assigned. Expected: `UZ-RUN-005`, and no post.
-- **Dimension 3.4** — a resumed run sees what was done → Test `a_resumed_run_note_lists_the_dead_runs_posts` (integration): run 1 posts and dies. Expected: run 2's recovery note names that post.
+- **Dimension 3.1** — DONE (integration test runs with the lane at the end) — a retried post lands once → Test `a_retried_message_for_one_item_posts_once` (integration): the same `item_id` sent twice. Expected: one Slack post, and both responses identical.
+- **Dimension 3.2** — DONE (integration test runs with the lane at the end) — two calls are two effects → Test `two_calls_in_one_run_post_two_messages` (integration): two items. Expected: two posts.
+- **Dimension 3.3** — DONE (integration test runs with the lane at the end) — a superseded run posts nothing → Test `an_effect_from_a_superseded_fence_is_refused` (integration): a send at fence 1 after fence 2 was assigned. Expected: `UZ-RUN-005`, and no post.
+- **Dimension 3.4** — DONE (integration test runs with the lane at the end) — a resumed run sees what was done → Test `a_resumed_run_note_lists_the_dead_runs_posts` (integration): run 1 posts and dies. Expected: run 2's recovery note names that post.
 
 ### §4 — A durable task reserves nothing
 

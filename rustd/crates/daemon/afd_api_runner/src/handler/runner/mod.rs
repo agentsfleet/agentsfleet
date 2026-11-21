@@ -12,6 +12,7 @@
 
 pub(crate) mod credential;
 pub(crate) mod decisions;
+mod effect;
 pub(crate) mod fleet_steer;
 pub(crate) mod fleets;
 pub(crate) mod memory;

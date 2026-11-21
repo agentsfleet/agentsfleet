@@ -1,11 +1,11 @@
 //! The `agentsfleetd` verbs one run's tools reach, fenced by that run.
 //!
 //! The supervisor holds the run's id and fencing token; a tool holds
-//! neither. Every call is one attempt: a schedule create is not idempotent and
-//! a line that landed and lost its answer would post twice, so the model, not
-//! a retry loop, decides whether to try again. The context verbs are the
-//! exception: a read changes nothing and a save is a compare-and-swap on the
-//! version it names, so `client::context` retries both.
+//! neither. A message, a schedule create, an edit and a run-now name their
+//! call's item, so `agentsfleetd` lands each once and the client retries a
+//! blip. Every other tool call is one attempt, and the model decides whether
+//! to try again. The context verbs retry too: a read changes nothing and a
+//! save is a compare-and-swap on the version it names.
 
 use std::borrow::Cow;
 
@@ -98,10 +98,10 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn message(&self, text: &str) -> Result<bool, Unanswered> {
+    async fn message(&self, call_number: u64, text: &str) -> Result<bool, Unanswered> {
         let body = self
             .plane
-            .message(self.run_id, self.fencing_token, text)
+            .message(self.run_id, self.fencing_token, call_number, text)
             .await
             .map_err(|failure| unanswered(&failure))?;
         body.decode::<MessagePosted>()

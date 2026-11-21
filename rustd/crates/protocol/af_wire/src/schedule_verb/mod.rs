@@ -6,6 +6,8 @@
 //! read and a delete carry the fence in the query; a create, an edit and a run
 //! carry it in the body. The views a reply carries are the tenant surface's
 //! own `afd_api_wire::schedule::View`, so a person and a fleet read one shape.
+//! A create, an edit and a run name their call's item, so a retried request
+//! answers the first result and changes nothing again.
 
 use std::borrow::Cow;
 
@@ -22,6 +24,12 @@ use serde::{Deserialize, Serialize};
 pub struct ScheduleCreateRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
+    /// The item this call is: a `UUIDv7` the runner mints once per call and
+    /// sends again on a retry, which then answers the first result.
+    #[serde(borrow)]
+    pub item_id: Cow<'a, str>,
+    /// The call's number within its run, from 1, as its record names it.
+    pub call_number: u64,
     /// A five-field cron expression.
     #[serde(borrow)]
     pub cron: Cow<'a, str>,
@@ -44,6 +52,12 @@ pub struct ScheduleCreateRequest<'a> {
 pub struct SchedulePatchRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
+    /// The item this call is: a `UUIDv7` the runner mints once per call and
+    /// sends again on a retry, which then answers the first result.
+    #[serde(borrow)]
+    pub item_id: Cow<'a, str>,
+    /// The call's number within its run, from 1, as its record names it.
+    pub call_number: u64,
     /// A new expression.
     #[serde(borrow, default)]
     pub cron: Option<Cow<'a, str>>,
@@ -61,11 +75,17 @@ pub struct SchedulePatchRequest<'a> {
 /// `POST /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs`
 /// request: run the schedule now.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ScheduleRunRequest {
+pub struct ScheduleRunRequest<'a> {
     /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
+    /// The item this call is: a `UUIDv7` the runner mints once per call and
+    /// sends again on a retry, which then answers the first result.
+    #[serde(borrow)]
+    pub item_id: Cow<'a, str>,
+    /// The call's number within its run, from 1, as its record names it.
+    pub call_number: u64,
 }
 
 /// What running a schedule now admitted.

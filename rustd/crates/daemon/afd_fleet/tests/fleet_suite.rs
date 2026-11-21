@@ -51,6 +51,8 @@ mod integration_activity_publish;
 #[path = "integration_assignment_delivery.rs"]
 mod integration_assignment_delivery;
 mod integration_credential_mint;
+#[path = "integration_effect_items.rs"]
+mod integration_effect_items;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
 mod integration_held_sandbox;

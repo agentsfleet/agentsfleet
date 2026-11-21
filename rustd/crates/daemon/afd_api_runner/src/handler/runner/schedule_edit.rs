@@ -6,10 +6,15 @@
 //! surface does. A delete does not delete: it sets `deleting` and pushes, and
 //! the row goes once `QStash` agrees — see `afd_cron::DesiredStatus::Deleting`.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
+use af_core::id::Uuid7;
 use af_wire::schedule_verb::SchedulePatchRequest;
 use afd_cron::{Change, DesiredStatus, Reconciled, validate};
+use afd_fleet::run::Standing;
+use afd_fleet::run::effect::Effect;
+use afd_fleet::run::write_fence::WriteFence;
 use afd_http::handler::schedule::held_or;
 use afd_http::handler::{Refusal, read_strict_body};
 use axum::body::Bytes;
@@ -17,6 +22,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::response::Response;
 use http::StatusCode;
 
+use super::effect;
 use super::schedule::{
     DETAIL_MALFORMED, EVENT_FAILED, checked_for, fence, fleet_owned, log_written, masked,
     refused_for, schedule_id, standing, write_fence,
@@ -37,7 +43,8 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
     description = concat!(
         "Updates supplied fields on a fleet-created schedule and synchronizes it with the ",
         "scheduler. Secret values are masked in the message. User-created schedules return ",
-        "`UZ-SCHED-010`. Repeating the same body is safe.",
+        "`UZ-SCHED-010`. A request repeating its `item_id` and `call_number` returns the ",
+        "first request's answer and changes nothing again.",
     ),
     request_body = SchedulePatchRequest<'_>,
     params(afd_http::openapi::path::RunSchedule),
@@ -75,23 +82,46 @@ pub(crate) async fn update<D: RunnerPlane>(
         None => None,
     };
     let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
+    let item_id = effect::item_id(&request.item_id)?;
+    let item = Effect {
+        item_id: &item_id,
+        call_number: request.call_number,
+        fencing_token: request.fencing_token,
+        tool: effect::SCHEDULE_UPDATE,
+    };
+    let claimed = match effect::claimed(&*services, &run, item, StatusCode::OK).await? {
+        Ok(claimed) => claimed,
+        Err(replayed) => return Ok(replayed),
+    };
+    let change = Change {
+        cron: request.cron.as_deref(),
+        timezone: request.timezone.as_deref(),
+        message: message.as_deref(),
+        desired_status: request.paused.map(DesiredStatus::of_paused),
+    };
+    let answered = changed(&*services, &run, (&schedule, change), now, &guard).await;
+    let kept = SchedulePatchRequest {
+        message: message.map(Cow::Owned),
+        ..request
+    };
+    effect::landed(claimed, &kept, answered).await
+}
+
+/// `change` made at `now` to the fleet's `schedule` under `guard`, answered
+/// as the schedule now reads.
+async fn changed<D: RunnerPlane>(
+    services: &D,
+    run: &Standing,
+    (schedule, change): (&Uuid7, Change<'_>),
+    now: jiff::Timestamp,
+    guard: &WriteFence,
+) -> Result<Response, Refusal> {
     let changed = services
         .schedules()
-        .change_guarded(
-            &run.fleet_id,
-            &schedule,
-            Change {
-                cron: request.cron.as_deref(),
-                timezone: request.timezone.as_deref(),
-                message: message.as_deref(),
-                desired_status: request.paused.map(DesiredStatus::of_paused),
-            },
-            now,
-            &guard,
-        )
+        .change_guarded(&run.fleet_id, schedule, change, now, guard)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
-        .map_err(refused_for(&run))?;
+        .map_err(refused_for(run))?;
     held_or(changed, StatusCode::OK, services.now())
 }
 

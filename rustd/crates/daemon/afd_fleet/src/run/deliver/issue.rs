@@ -100,6 +100,14 @@ impl RunService {
         } else {
             None
         };
+        let finished_calls = self
+            .runs
+            .finished_calls(
+                &admitted.acquired.fleet_id,
+                &admitted.acquired.turn_id,
+                &issued.run_id,
+            )
+            .await?;
         let (history, memory) = future::join(
             history::turns(
                 self.thread.as_ref(),
@@ -122,6 +130,7 @@ impl RunService {
                 decision: issued.decision,
                 task: issued.task,
                 turn_resume,
+                finished_calls,
                 expires_at: issued.expires_at,
             },
         ));

@@ -18,6 +18,7 @@
 //! what it read could fan its own queue out without end.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use af_core::error_code;
@@ -27,6 +28,7 @@ use af_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
 use af_wire::turn::TurnsResponse;
 use afd_cron::{ACTOR_PREFIX, FireTarget, schedule_actor};
 use afd_fleet::run::Standing;
+use afd_fleet::run::effect::Effect;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_http::handler::schedule::not_found;
 use afd_http::handler::{Refusal, parameter, read_strict_body};
@@ -37,6 +39,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+use super::effect;
 use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, RunnerPlane, WorkspaceTurns as _};
@@ -66,6 +69,9 @@ const STATE_FLEET_UNREADABLE: &str = "unknown";
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "starting_after must be a next_cursor this daemon returned";
 
+/// The argument a run-now's item names its schedule under.
+const SCHEDULE_ID: &str = "schedule_id";
+
 /// What a run-now's turn key names after the schedule: the event the
 /// asking run runs, so every retry of one run is one run, across a reassignment.
 const RUN_KEY_PREFIX: &str = "run:";
@@ -86,7 +92,7 @@ const RUN_KEY_PREFIX: &str = "run:";
         "A one-time schedule can start only once. Concurrent scheduled and manual starts ",
         "return the same run; later requests after retirement return 404.",
     ),
-    request_body = ScheduleRunRequest,
+    request_body = ScheduleRunRequest<'_>,
     params(afd_http::openapi::path::RunSchedule),
     responses(
         (status = 201, description = "The run that was created", body = ScheduleRun<'_>),
@@ -103,7 +109,7 @@ pub(crate) async fn run<D: RunnerPlane>(
     Path((run_id, schedule_id_raw)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let request: ScheduleRunRequest =
+    let request: ScheduleRunRequest<'_> =
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
@@ -118,19 +124,31 @@ pub(crate) async fn run<D: RunnerPlane>(
         .filter(|target| target.fleet == run.fleet_id)
         .ok_or_else(not_found)?;
     runnable(&run, &target)?;
+    let item_id = effect::item_id(&request.item_id)?;
+    let item = Effect {
+        item_id: &item_id,
+        call_number: request.call_number,
+        fencing_token: request.fencing_token,
+        tool: effect::SCHEDULE_RUN,
+    };
+    let claimed = match effect::claimed(&*services, &run, item, StatusCode::CREATED).await? {
+        Ok(claimed) => claimed,
+        Err(replayed) => return Ok(replayed),
+    };
     let key = format!("{RUN_KEY_PREFIX}{}", run.turn_id);
-    let fired = services
+    let answered = services
         .schedules()
         .fire(&schedule, &target, &key, now)
         .await
-        .map_err(Refusal::at(EVENT_FAILED))?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ScheduleRun {
-            turn_id: Cow::Owned(fired.turn_id),
-        }),
-    )
-        .into_response())
+        .map(|fired| {
+            let started = ScheduleRun {
+                turn_id: Cow::Owned(fired.turn_id),
+            };
+            (StatusCode::CREATED, Json(started)).into_response()
+        })
+        .map_err(Refusal::at(EVENT_FAILED));
+    let fired = BTreeMap::from([(SCHEDULE_ID, schedule.as_str())]);
+    effect::landed(claimed, &fired, answered).await
 }
 
 /// Lists one schedule's runs, newest first.

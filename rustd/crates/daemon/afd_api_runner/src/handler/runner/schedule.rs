@@ -25,6 +25,7 @@
 //! [`create`] and [`list`] are here, with the helpers the sibling verbs share;
 //! the edit and the delete are in `schedule_edit`, the runs in `schedule_run`.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::error_code::{self, ErrorCode};
@@ -34,6 +35,7 @@ use afd_api_wire::schedule::Page;
 use afd_cron::model::DEFAULT_TIMEZONE;
 use afd_cron::{NewSchedule, Reconciled, Refused, Source, validate};
 use afd_fleet::run::Standing;
+use afd_fleet::run::effect::Effect;
 use afd_fleet::run::write_fence::WriteFence;
 use afd_http::handler::schedule::{checked, not_fleet_owned, not_found, refused, rendered};
 use afd_http::handler::{Refusal, parameter, parse_id, read_strict_body};
@@ -43,6 +45,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
+use super::effect;
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, RunPlane as _, RunnerPlane};
 
@@ -80,7 +83,8 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
     afd_cron::FLEET_SCHEDULES_MAX,
     " schedules; excess returns `UZ-SCHED-009`. `once` retires the schedule after its ",
     "first delivery. Registration failures still return 201 with `sync` state. Each ",
-    "request creates another schedule; `Idempotency-Key` is unsupported.",
+    "call creates one schedule: a request repeating its `item_id` and `call_number` ",
+    "returns the first request's schedule and creates nothing.",
 );
 
 /// Creates a schedule for the fleet the run runs.
@@ -123,6 +127,35 @@ pub(crate) async fn create<D: RunnerPlane>(
     )?;
     let message = masked(&*services, &run, &request.message).await?;
     let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
+    let item_id = effect::item_id(&request.item_id)?;
+    let item = Effect {
+        item_id: &item_id,
+        call_number: request.call_number,
+        fencing_token: request.fencing_token,
+        tool: effect::SCHEDULE_CREATE,
+    };
+    let claimed = match effect::claimed(&*services, &run, item, StatusCode::CREATED).await? {
+        Ok(claimed) => claimed,
+        Err(replayed) => return Ok(replayed),
+    };
+    let answered = create_once(&*services, &run, &request, &message, now, &guard).await;
+    let kept = ScheduleCreateRequest {
+        message: Cow::Borrowed(&message),
+        ..request
+    };
+    effect::landed(claimed, &kept, answered).await
+}
+
+/// Creates the schedule `request` asks for, its message `message`, masked.
+async fn create_once<D: RunnerPlane>(
+    services: &D,
+    run: &Standing,
+    request: &ScheduleCreateRequest<'_>,
+    message: &str,
+    now: jiff::Timestamp,
+    guard: &WriteFence,
+) -> Result<Response, Refusal> {
+    let timezone = request.timezone.as_deref().unwrap_or(DEFAULT_TIMEZONE);
     let created = services
         .schedules()
         .create_guarded(
@@ -133,17 +166,17 @@ pub(crate) async fn create<D: RunnerPlane>(
                 provider_schedule_id: None,
                 cron: &request.cron,
                 timezone,
-                message: &message,
+                message,
                 once: request.once,
             },
             now,
-            &guard,
+            guard,
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
-    let reconciled = created.map_err(refused_for(&run))?;
+    let reconciled = created.map_err(refused_for(run))?;
     if let Reconciled::Synced(schedule) | Reconciled::Failed(schedule) = &reconciled {
-        log_written(&run, &schedule.schedule_id, EVENT_CREATED);
+        log_written(run, &schedule.schedule_id, EVENT_CREATED);
     }
     rendered(reconciled, StatusCode::CREATED, now)
 }

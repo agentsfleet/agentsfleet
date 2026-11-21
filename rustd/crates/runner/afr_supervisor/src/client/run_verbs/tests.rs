@@ -26,6 +26,7 @@ async fn sent() -> Vec<Sent> {
     let schedule = Uuid7::parse(SCHEDULE).unwrap();
     let schedule_calls = [
         ScheduleCall::Create {
+            call_number: 1,
             cron: "0 9 * * 1",
             timezone: Some("Asia/Kolkata"),
             message: "weekly check",
@@ -33,6 +34,7 @@ async fn sent() -> Vec<Sent> {
         },
         ScheduleCall::List,
         ScheduleCall::Update {
+            call_number: 2,
             schedule: &schedule,
             cron: None,
             timezone: None,
@@ -43,6 +45,7 @@ async fn sent() -> Vec<Sent> {
             schedule: &schedule,
         },
         ScheduleCall::Run {
+            call_number: 3,
             schedule: &schedule,
         },
         ScheduleCall::Runs {
@@ -54,7 +57,7 @@ async fn sent() -> Vec<Sent> {
     for call in schedule_calls {
         plane.schedules(&run, FENCING, call).await.unwrap();
     }
-    plane.message(&run, FENCING, "fix pushed").await.unwrap();
+    plane.message(&run, FENCING, 4, "fix pushed").await.unwrap();
     drain(&mut calls)
         .into_iter()
         .map(|call| {
@@ -134,6 +137,48 @@ async fn every_run_verb_body_carries_its_fence_and_fields() {
     assert_eq!(update["paused"], false);
     assert_eq!(update["message"], "daily check");
     assert_eq!(calls[6].3.as_ref().unwrap()["text"], "fix pushed");
+}
+
+/// A create, an edit, a run-now and a message each name their call's item:
+/// a minted id and the call's number in its run.
+#[tokio::test]
+async fn every_effect_body_names_its_item() {
+    let calls = sent().await;
+    for (index, call_number) in [(0, 1), (2, 2), (4, 3), (6, 4)] {
+        let body = calls[index].3.as_ref().unwrap();
+        assert_eq!(body["call_number"], call_number, "{:?}", calls[index].0);
+        let item_id = body["item_id"].as_str().unwrap();
+        assert!(Uuid7::parse(item_id).is_ok(), "{item_id}");
+    }
+}
+
+/// A message that met a blip is sent again under the same item, so the
+/// daemon answers the retry with the first post's result.
+#[tokio::test(start_paused = true)]
+async fn a_retried_message_names_the_same_item() {
+    let attempts = std::sync::atomic::AtomicUsize::new(0);
+    let (plane, mut calls) = plane(move |call| {
+        if attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 {
+            crate::test_support::Answer::Fail(crate::error::unavailable(call.verb, 503))
+        } else {
+            json(&serde_json::json!({"delivered": true}))
+        }
+    });
+    let run = Uuid7::parse(RUN_ID).unwrap();
+
+    plane.message(&run, FENCING, 7, "fix pushed").await.unwrap();
+
+    let sent = drain(&mut calls);
+    let items: Vec<serde_json::Value> = sent
+        .iter()
+        .map(|call| {
+            let body: serde_json::Value =
+                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            body["item_id"].clone()
+        })
+        .collect();
+    assert_eq!(items.len(), 2, "one blip, one retry");
+    assert_eq!(items[0], items[1]);
 }
 
 /// Each method reaches the HTTP client as the method it names; a PATCH sent

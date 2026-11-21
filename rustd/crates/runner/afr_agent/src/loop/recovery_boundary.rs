@@ -2,7 +2,7 @@
 //! together: the children ride the root's drive state.
 
 use af_secrets::Scrub;
-use af_wire::run::TurnWorkspace;
+use af_wire::run::{EarlierCall, TurnWorkspace};
 use af_wire::task::TaskContext;
 use afr_memory::Loaded;
 use guffbolt::Message;
@@ -54,15 +54,19 @@ pub(super) fn prepare_root<'run>(
     } else {
         None
     };
+    // What a dead run of this turn already did, so this run does not do it again.
+    let finished = scrub
+        .text(&finished_note(&run.run.finished_calls))
+        .into_owned();
     let memory = if let Some(saved) = &mut state {
         opening = std::mem::take(&mut saved.messages);
         // An answer resumes at the asking call: its result is the next message.
         if run.run.event.question_answer().is_none() {
-            opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
+            opening.push(Message::User(format!("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.{finished}")));
         }
         Loaded::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
     } else {
-        opening.push(Message::User(scrub.text(message).into_owned()));
+        opening.push(Message::User(format!("{}{finished}", scrub.text(message))));
         Loaded::new(run.memory)
     };
     Ok(RootSetup {
@@ -70,6 +74,25 @@ pub(super) fn prepare_root<'run>(
         state,
         memory,
     })
+}
+
+/// Each call an earlier run of the turn finished, one line apiece: its tool,
+/// what it was called with and what it answered. Empty when there were none.
+pub(super) fn finished_note(calls: &[EarlierCall<'_>]) -> String {
+    if calls.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<String> = calls
+        .iter()
+        .map(|call| {
+            let arguments = serde_json::Value::Object(call.arguments.clone());
+            format!("\n- {} {arguments} -> {}", call.tool, call.output)
+        })
+        .collect();
+    let lines = lines.concat();
+    format!(
+        "\n\nAn earlier run of this turn died after finishing these calls; their effects stand, so do not repeat them:{lines}"
+    )
 }
 
 impl<'run> Harness<'_, 'run> {

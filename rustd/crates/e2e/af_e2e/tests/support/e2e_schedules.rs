@@ -12,6 +12,8 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{ACTOR_PREFIX, Source};
@@ -164,9 +166,9 @@ impl Assigned {
         format!("{}?fencing_token={}", self.path(tail), self.fence)
     }
 
-    /// The fence as a write's body.
+    /// The fence as a write's body, naming a fresh call's item.
     pub(crate) fn fence_body(&self) -> Value {
-        json!({"fencing_token": self.fence})
+        itemized(json!({"fencing_token": self.fence}))
     }
 
     pub(crate) async fn call(
@@ -185,8 +187,8 @@ impl Assigned {
     /// Creates a schedule under this run's fence, answering the status and
     /// the body.
     pub(crate) async fn create(&self, once: bool) -> (u16, Value) {
-        let body = json!({"fencing_token": self.fence, "cron": WEEKLY, "timezone": KOLKATA,
-                          "message": "weekly check", "once": once});
+        let body = itemized(json!({"fencing_token": self.fence, "cron": WEEKLY,
+                                   "timezone": KOLKATA, "message": "weekly check", "once": once}));
         self.call(Method::POST, &self.path(""), Some(&body)).await
     }
 
@@ -347,4 +349,24 @@ impl Assigned {
         crate::e2e_retire::retire_fleet(&self.scene.booted, other).await;
         self.finish(supervisor).await;
     }
+}
+
+/// The next call number a request of this suite names: each call is its own
+/// item, so no two requests share one and a retry is never assumed.
+static CALLS: AtomicU64 = AtomicU64::new(1);
+
+/// `body`, naming a fresh call's item: a minted id and a call number no
+/// other request of the suite takes.
+pub(crate) fn itemized(mut body: Value) -> Value {
+    let item_id = Entropy::new()
+        .uuid7(af_core::clock::now())
+        .expect("an identifier");
+    if let Some(fields) = body.as_object_mut() {
+        fields.insert("item_id".to_owned(), json!(item_id));
+        fields.insert(
+            "call_number".to_owned(),
+            json!(CALLS.fetch_add(1, Ordering::Relaxed)),
+        );
+    }
+    body
 }

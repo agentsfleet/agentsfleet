@@ -149,8 +149,8 @@ async fn runner_schedule_and_message_verbs_refuse_a_run_not_held() {
     let schedules = format!("/v1/runners/me/runs/{RUN_ID}/schedules");
     let messages = format!("/v1/runners/me/runs/{RUN_ID}/messages");
     let listed = format!("{schedules}?fencing_token=1");
-    let created = r#"{"fencing_token":1,"cron":"0 9 * * 1","message":"weekly check"}"#;
-    let posted = r#"{"fencing_token":1,"text":"halfway there"}"#;
+    let created = r#"{"fencing_token":1,"item_id":"0199a0b0-0000-7000-8000-0000000000aa","call_number":1,"cron":"0 9 * * 1","message":"weekly check"}"#;
+    let posted = r#"{"fencing_token":1,"item_id":"0199a0b0-0000-7000-8000-0000000000aa","call_number":1,"text":"halfway there"}"#;
 
     for (method, path, body) in [
         (Method::GET, &listed, ""),

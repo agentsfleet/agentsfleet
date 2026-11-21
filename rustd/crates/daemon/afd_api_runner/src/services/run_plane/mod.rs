@@ -9,6 +9,7 @@ use af_wire::message_verb::MessageRequest;
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use afd_credential::credential::Minted;
 use afd_fleet::run::Standing;
+use afd_fleet::run::effect::{Claim, Effect};
 use afd_fleet::run::message::SteerSender;
 use afd_memory::Captured;
 use afd_outbound::Interim;
@@ -113,6 +114,17 @@ pub trait RunPlane: Send + Sync + std::fmt::Debug + 'static {
         run_id: Uuid7,
         request: &MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
+
+    /// Claims the item a message, schedule or cron call names: the answer a
+    /// first request stored, or the hold under which this one runs the effect.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    fn claim_effect(
+        &self,
+        standing: &Standing,
+        effect: Effect<'_>,
+    ) -> impl Future<Output = afd_fleet::Result<Claim>> + Send;
 
     /// `text` with the run's fleet's declared static secrets masked: what a
     /// schedule the fleet writes stores and hands the scheduler.

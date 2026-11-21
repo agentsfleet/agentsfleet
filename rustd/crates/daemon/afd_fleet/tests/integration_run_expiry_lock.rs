@@ -217,6 +217,8 @@ async fn test_message_count_refuses_a_run_lapsed_in_the_wait() {
     let (run, issued) = stage.assign_next(stage.fixtures.enrolled_at()).await;
     let request = MessageRequest {
         fencing_token: issued.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 1,
         text: Cow::Borrowed("still here?"),
     };
     let plane = stage.fixtures.plane();

@@ -26,7 +26,7 @@ use af_wire::tool_detail::ToolCallRecord;
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
-use afr_tools::ToolErrorCode;
+use afr_tools::{CallNumbers, ToolErrorCode};
 use guffbolt::{Call, CallEnd, CallOutcome, Mark};
 use serde_json::{Map, Value};
 use tracing::Span;
@@ -53,6 +53,9 @@ pub(crate) struct Ledger<'run> {
     turn_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
+    /// Where an open call's number is told to the run's effects, which key
+    /// their items by it; none in a suite that drives no effect.
+    numbers: Option<&'run CallNumbers>,
     book: Mutex<Book>,
 }
 
@@ -80,8 +83,15 @@ impl<'run> Ledger<'run> {
             turn_id,
             sink,
             scrub,
+            numbers: None,
             book: Mutex::default(),
         }
+    }
+
+    /// The same ledger, telling `numbers` each open call's number.
+    pub(crate) const fn numbering(mut self, numbers: &'run CallNumbers) -> Self {
+        self.numbers = Some(numbers);
+        self
     }
 
     /// Opens `call` as the run's next: numbers it, scrubs and bounds its
@@ -93,6 +103,9 @@ impl<'run> Ledger<'run> {
         let mut book = self.book();
         book.calls += 1;
         let number = book.calls;
+        if let Some(numbers) = self.numbers {
+            numbers.open(&call.id, number);
+        }
         let id = number.to_string();
         let shown = self.scrub.clean_json(call.arguments.clone());
         let bounded = bounded_arguments(&shown);
@@ -126,6 +139,9 @@ impl<'run> Ledger<'run> {
     /// its error code typed on its span and its output masked in place, so
     /// the model reads what the frames and the trace show.
     pub(crate) fn close(&self, opened: Opened, end: CallEnd<'_>) {
+        if let Some(numbers) = self.numbers {
+            numbers.close(&end.call.id);
+        }
         let status = status(end.outcome());
         let Opened {
             number,

@@ -15,7 +15,7 @@ use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
 use serde_json::{Value, json};
 
-use crate::schedules::{Assigned, WEEKLY};
+use crate::schedules::{Assigned, WEEKLY, itemized};
 use crate::verbs::FakeQStash;
 
 /// A schedule id no fleet holds.
@@ -78,38 +78,44 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
             (
                 Method::POST,
                 held.path(""),
-                Some(json!({"fencing_token": fence, "cron": "* * * * * *", "message": "m"})),
+                Some(itemized(
+                    json!({"fencing_token": fence, "cron": "* * * * * *", "message": "m"}),
+                )),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::POST,
                 held.path(""),
-                Some(
+                Some(itemized(
                     json!({"fencing_token": fence, "cron": WEEKLY, "message": "m",
                             "fleet_id": "x"}),
-                ),
+                )),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::PATCH,
                 held.path(&format!("/{UNKNOWN}")),
-                Some(json!({"fencing_token": fence, "timezone": "Mars/Olympus"})),
+                Some(itemized(
+                    json!({"fencing_token": fence, "timezone": "Mars/Olympus"}),
+                )),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::PATCH,
                 held.path(&format!("/{UNKNOWN}")),
-                Some(json!({"fencing_token": fence, "desired_status": "deleting"})),
+                Some(itemized(
+                    json!({"fencing_token": fence, "desired_status": "deleting"}),
+                )),
                 400,
                 "UZ-REQ-001",
             ),
             (
                 Method::POST,
                 held.path(&format!("/{UNKNOWN}/runs")),
-                Some(json!({"fencing_token": fence, "now": true})),
+                Some(itemized(json!({"fencing_token": fence, "now": true}))),
                 400,
                 "UZ-REQ-001",
             ),
@@ -124,7 +130,7 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_schedule_that_is_not_held() {
     Box::pin(refuses(|held| {
-        let fence = json!({"fencing_token": held.fence});
+        let fence = itemized(json!({"fencing_token": held.fence}));
         vec![
             (
                 Method::PATCH,
