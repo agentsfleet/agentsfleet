@@ -1,14 +1,5 @@
 <!--
 
-> **Before any build (Indy, Nov 22, 2026): a tools brainstorm and sign-off comes first.**
-> "also add the 253_004 when it works on to brainstorm and arrive at the scope of the tools (write that as the preamble before starting the session) to iron out the tools and their experience like pi or codex with Indy and get a signoff prior to starting the guffbolt-api crate."
->
-> The session that opens M253_004 starts with a brainstorm with Indy, not with code:
-> 1. List every guffbolt tool today (shell and exec sessions, files, patch, grep/glob/list, image, web fetch/search, MCP, memory, schedule, message, notify, propose, subagents, sleep/clock, ask_user, deferred tools) with what the model sees: name, description, arguments, limits, output shape.
-> 2. Compare each with the pi and Codex equivalent (read their source under ~/Projects/oss), and the experience they give the model: naming, argument shape, output trimming, errors.
-> 3. Decide per tool with Indy: keep, change (to match pi or Codex, or better), merge, or drop; and which tools guffbolt ships by default vs behind a feature.
-> 4. Record Indy's verbatim sign-off in Discovery. Only then start the guffbolt-ai crate (§1 onward), §9 search, and the rest.
-
 SPEC AUTHORING RULES (the one comment that survives):
 - The spec standard (spec.md) holds every rule. Each tpl: comment names the
   rules that govern its section; delete it once the section is filled.
@@ -433,7 +424,8 @@ N/A: no product or operator signal changes. The provider metric families and the
   - The crates.io name `guffbolt-ai` is free.
   - M253_004 was not checked against a freshly fetched `origin/main` (SPEC-NUM); this draft ran no `git fetch`.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
-- **Open blockers** — Q1 to Q7 and the `[?]` items above.
+- **Open blockers** — the `[?]` items above; Q1 to Q7 are answered ("Take all seven").
+- > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
 
 ### §8 — Carried from M253_003 (Indy, Nov 21, 2026)
@@ -450,3 +442,14 @@ guffbolt's grep, glob and tree listing walk the sandbox through `Env` today: one
 - Dimension 9.2 — ignored files are skipped → Test `a_search_skips_gitignored_paths` (unit): `target/` listed in `.gitignore`. Expected: no match under it.
 
 Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` only and frames messages itself; use `jsonrpsee`'s own client and server if they fit the Unix socket, else record why not.
+
+### §10 — Tools brainstorm with Indy, last (Indy, Nov 22, 2026)
+
+Moved here from the spec's opening on Indy's word (Discovery). The agent prepares it while §1–§9 are built; Indy reviews it when he is back.
+
+1. List every guffbolt tool as the model sees it: name, description, arguments, limits, output shape.
+2. Compare each with the pi and Codex equivalent, read from their source under `~/Projects/oss`, and the experience each gives the model: naming, argument shape, output trimming, errors.
+3. Propose per tool: keep, change (to match pi or Codex, or better), merge, or drop; and which tools ship by default or behind a feature.
+4. Indy decides per tool and his verbatim sign-off goes in Discovery. Tool changes he signs off land after that, in this milestone's follow-up.
+
+- Dimension 10.1 — the comparison exists → Test: `docs/v2/active/M253_004_TOOLS_BRAINSTORM.md` lists every tool registered in `guffbolt::tools` (a unit test reads the registry's names and the page's table and finds no tool missing).
