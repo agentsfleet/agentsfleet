@@ -14,15 +14,13 @@ pub(super) async fn parents(connection: &mut PgConnection, call: &Call) -> Resul
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("protect any remaining decision parent"))?;
-    sqlx::query_scalar::<_, Uuid7>(
-        crate::task::sql::LOCK_SCOPE_THREAD,
-    )
-    .bind(&call.fleet_id)
-    .fetch_optional(&mut *connection)
-    .await
-    .map_err(query(
-        "serialize decision accounting with physical issuance",
-    ))?;
+    sqlx::query_scalar::<_, Uuid7>(crate::task::sql::LOCK_SCOPE_THREAD)
+        .bind(&call.fleet_id)
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(
+            "serialize decision accounting with physical issuance",
+        ))?;
     if let Some(task) = &call.task_id {
         sqlx::query_scalar::<_, i64>(sql::LOCK_TASK)
             .bind(task)

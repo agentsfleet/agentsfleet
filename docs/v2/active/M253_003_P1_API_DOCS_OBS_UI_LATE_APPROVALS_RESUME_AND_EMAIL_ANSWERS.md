@@ -175,8 +175,8 @@ A resumed run is a new run, and its model makes new calls. Its recovery note alr
 
 The `used_decision_calls` increment moves into `account_task.sql`. The budget check becomes `used_model_nanos < max_model_nanos`.
 
-- **Dimension 4.1** — no reservation is written → Test `a_task_decision_call_reserves_nothing` (integration): one decision call. Expected: `used_decision_calls` rises by one at report, and no reserved amount exists.
-- **Dimension 4.2** — an exhausted task still stops → Test `a_task_over_its_model_budget_is_not_assigned` (integration): `used_model_nanos` at the limit. Expected: no assignment, and the task is `exhausted` with `TASK_LIMIT_EXHAUSTED`.
+- **Dimension 4.1** — DONE (integration test runs with the lane at the end) — no reservation is written → Test `a_task_decision_call_reserves_nothing` (integration): one decision call. Expected: `used_decision_calls` rises by one at report, and no reserved amount exists.
+- **Dimension 4.2** — DONE (integration test runs with the lane at the end) — an exhausted task still stops → Test `a_task_over_its_model_budget_is_not_assigned` (integration): `used_model_nanos` at the limit. Expected: no assignment, and the task is `exhausted` with `TASK_LIMIT_EXHAUSTED`.
 
 ### §5 — Parked
 

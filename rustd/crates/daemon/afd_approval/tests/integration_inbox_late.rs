@@ -74,7 +74,10 @@ async fn a_question_answered_after_the_deadline_resumes_the_run() {
         .continuation_turn_id
         .expect("an answer continues the run");
     let asked = resolved.turn_id.expect("a question names its turn");
-    assert_eq!(lane.continuations(Producer::QuestionAnswer, &action).await, 1);
+    assert_eq!(
+        lane.continuations(Producer::QuestionAnswer, &action).await,
+        1
+    );
     let body = lane
         .event_column(continuation.as_str(), "request_json")
         .await

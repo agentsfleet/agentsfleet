@@ -141,16 +141,22 @@ impl Recording<'_> {
         connection: &mut PgConnection,
         charged: Option<i64>,
     ) -> Result<Option<i64>> {
-        let Some((task, charged)) = self.call.task_id.as_ref().zip(charged) else {
+        let Some(task) = self.call.task_id.as_ref() else {
             return Ok(None);
         };
+        // A physical call counts once, at its first report; its charge lands when known.
+        let first = self.call.canonical_receipt_digest.is_none()
+            && self.call.failure_receipt_digest.is_none();
+        if !first && charged.is_none() {
+            return Ok(None);
+        }
         sqlx::query_scalar(sql::ACCOUNT_TASK)
             .bind(crate::task::guard::wire(task.as_str())?)
             .bind(&self.call.fleet_id)
             .bind(&self.call.workspace_id)
-            .bind(self.call.reserved_nanos)
-            .bind(charged)
+            .bind(charged.unwrap_or(0))
             .bind(i64::MAX)
+            .bind(first)
             .fetch_optional(connection)
             .await
             .map_err(query(

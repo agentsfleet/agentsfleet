@@ -24,7 +24,7 @@ export function detail(task: TaskSummary = summary(), checkpoint: string | null 
     checkpoint_id: checkpoint, expires_at: INSTANT,
     limits: {model_nanos: "100000000", wall_seconds: 86400, running_seconds: 3600, runs: 12,
       publications: 4, decision_calls: 64, fallback_reads: 24},
-    usage: {model_nanos: "12000000", reserved_model_nanos: "20000000", running_nanos: 42000000000,
+    usage: {model_nanos: "12000000", running_nanos: 42000000000,
       runs: 2, publications: 0, decision_calls: 3, fallback_reads: 0},
   }};
 }

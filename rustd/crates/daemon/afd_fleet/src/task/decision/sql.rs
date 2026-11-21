@@ -24,7 +24,6 @@ pub(super) const BLOCK_PROFILE_SWITCH: &str = include_str!("sql/block_profile_sw
 pub(super) const SEQUENCE: &str = include_str!("sql/sequence.sql");
 pub(super) const INSERT_CALL: &str = include_str!("sql/insert_call.sql");
 pub(super) const INSERT_PAYLOAD: &str = include_str!("sql/insert_payload.sql");
-pub(super) const RESERVE_TASK: &str = include_str!("sql/reserve_task.sql");
 pub(super) const ISSUE: &str = include_str!("sql/issue.sql");
 pub(super) const RECORD: &str = include_str!("sql/record.sql");
 pub(super) const RECORD_PAYLOAD: &str = include_str!("sql/record_payload.sql");

@@ -20,7 +20,6 @@ CREATE TABLE fleet.tasks (
     confirmed_effect_watermark BIGINT NOT NULL CHECK (confirmed_effect_watermark >= 0),
     max_model_nanos         BIGINT NOT NULL CHECK (max_model_nanos >= 0),
     used_model_nanos        BIGINT NOT NULL CHECK (used_model_nanos >= 0),
-    reserved_model_nanos    BIGINT NOT NULL CHECK (reserved_model_nanos >= 0),
     max_running_nanos       BIGINT NOT NULL CHECK (max_running_nanos >= 0),
     used_running_nanos      BIGINT NOT NULL CHECK (used_running_nanos >= 0),
     max_runs              INTEGER NOT NULL CHECK (max_runs > 0),

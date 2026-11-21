@@ -241,7 +241,11 @@ impl Harness<'_, '_> {
     /// answer as the person's next message instead.
     fn answered(&mut self, answer: &str) {
         let answer = self.shared.scrub.text(answer).into_owned();
-        if self.driver.resume(&mut self.transcript, answer.clone()).is_none() {
+        if self
+            .driver
+            .resume(&mut self.transcript, answer.clone())
+            .is_none()
+        {
             self.transcript.push(guffbolt::Message::User(answer));
         }
     }

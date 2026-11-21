@@ -121,7 +121,11 @@ async fn a_thread_page_of_100_is_served() {
         .expect("a page reads");
 
     let read = i64::try_from(page.len()).expect("a page length fits an i64");
-    assert_eq!(read, THREAD_MAX_LIMIT + 1, "a full page and the row past it");
+    assert_eq!(
+        read,
+        THREAD_MAX_LIMIT + 1,
+        "a full page and the row past it"
+    );
 
     lane.cleanup().await;
 }

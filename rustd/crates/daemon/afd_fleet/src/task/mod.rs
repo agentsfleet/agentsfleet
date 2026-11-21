@@ -48,9 +48,7 @@ pub const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision
 
 pub use decision::ReservedDecision;
 #[cfg(feature = "test-util")]
-pub use decision::{
-    DECISION_BUDGET_STATEMENT, LOCKED_DECISION_CALL_STATEMENT,
-};
+pub use decision::{DECISION_BUDGET_STATEMENT, LOCKED_DECISION_CALL_STATEMENT};
 pub use dependencies::TaskDependencies;
 pub use github::Github;
 use prepared::PreparedItem;

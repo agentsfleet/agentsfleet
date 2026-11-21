@@ -231,7 +231,11 @@ async fn a_gate_past_its_deadline_reads_timed_out_and_stays_answerable() {
     };
     assert_eq!(status(&lapsed).as_deref(), Some("timed_out"));
     assert_eq!(status(&waiting).as_deref(), Some("pending"));
-    assert_eq!(lane.status_of(&lapsed).await, "pending", "no sweep moved the row");
+    assert_eq!(
+        lane.status_of(&lapsed).await,
+        "pending",
+        "no sweep moved the row"
+    );
 
     let queued = lane
         .inbox

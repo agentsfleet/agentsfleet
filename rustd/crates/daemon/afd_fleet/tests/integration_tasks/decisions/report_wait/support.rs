@@ -96,7 +96,6 @@ pub(super) fn assert_state(snapshot: &TaskSnapshot, state: TaskState, checkpoint
     assert_eq!(snapshot.context.stop_generation, 1);
     assert_eq!(snapshot.context.checkpoint_id.as_deref(), Some(checkpoint));
     assert_eq!(snapshot.context.usage.model_nanos, 3);
-    assert_eq!(snapshot.context.usage.reserved_model_nanos, 0);
     assert!(snapshot.context.usage.running_nanos > 0);
 }
 

@@ -10,7 +10,7 @@ WITH measured AS MATERIALIZED (
     RETURNING l.id
 ), totals AS MATERIALIZED (
     SELECT t.id, t.used_model_nanos + $2 AS model_nanos, t.used_running_nanos + m.running_nanos AS running_nanos,
-        t.terminal_at IS NULL AND (t.used_model_nanos + $2 >= t.max_model_nanos - t.reserved_model_nanos
+        t.terminal_at IS NULL AND (t.used_model_nanos + $2 >= t.max_model_nanos
             OR t.used_running_nanos + m.running_nanos >= t.max_running_nanos OR t.expires_at <= clock_timestamp()) AS stop
     FROM measured m JOIN fleet.tasks t ON t.id = m.task_id AND t.fleet_id = m.fleet_id AND t.workspace_id = m.workspace_id
     WHERE EXISTS (SELECT 1 FROM cursor)

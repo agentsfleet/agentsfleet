@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { chatRecovery, UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
-import { MESSAGE_STATE } from "@/lib/api/draft-types";
+import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
 import { ACCEPTED, DRAFT_ID, MESSAGE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
@@ -81,4 +81,15 @@ it("should follow concurrent work Stop did not see", async () => {
   expect(FakeEventSource.instances).toHaveLength(2);
   expect(FakeEventSource.instances[1]?.closed).toBe(false);
   expect(chatRecovery(client.getSnapshot())).toEqual({pending: true, canStop: true});
+});
+
+it("should end the watch with a waiting notice when the draft leaves editing while its turn still runs", async () => {
+  fixture.override = ({path, method}) => path.endsWith("/messages") && method === "GET" ? queuedWork() : undefined;
+  const client = await fixture.ready(true);
+  expect(chatRecovery(client.getSnapshot())).toEqual({pending: true, canStop: true});
+  fixture.current = {...fixture.current, state: DRAFT_STATE.closed};
+  FakeEventSource.instances[0]?.open(); await vi.advanceTimersByTimeAsync(0);
+  expect(chatRecovery(client.getSnapshot())).toEqual({pending: true, canStop: false});
+  expect(FakeEventSource.instances[0]?.closed).toBe(true);
+  expect(client.getSnapshot().notice).toBe("Still waiting for a result.");
 });

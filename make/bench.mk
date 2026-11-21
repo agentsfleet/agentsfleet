@@ -91,10 +91,10 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 BENCH_SHAPE ?= default
 
 bench-runs:  ## Runs per second, p95, statements and commits per run (BENCH_SHAPE=default|saturation|burst). Run when you change assign, renew or report SQL; thread, turn or run tables; the gateway
-bench-recovery:  ## Recovery burst through the full daemon and runner processes (BENCH_FLEETS=1|10|100|500). Run when you change checkpoints, respawn, run expiry
+bench-recovery:  ## Recovery burst through the full daemon and runner processes: source runners die, replacements connect after their runs expire (BENCH_FLEETS=1|10|100|500). Run when you change checkpoints, respawn, run expiry, assignment
 bench-intake:  ## Accepted rate, p95 and readiness depth of intake. Run when you change message and webhook intake, the turn insert, wake publish
-bench-delivery:  ## Delivery rate, p95, head-of-line and retry cost. Run when you change deliveries to Slack or webhooks
-bench-idle:  ## Cost per idle fleet up a ladder. Run when you change anything that runs per fleet on a timer: sweeps, heartbeats, indexes
+bench-delivery:  ## Delivery rate, p95, head-of-line and inline-retry cost. Run when you change deliveries to Slack or webhooks
+bench-idle:  ## Storage and candidate-query cost per idle fleet up a ladder. Run when you change the candidate query, heartbeats, fleet tables or their indexes
 bench-stream:  ## Allocations and p95 per frame, heap per stream; refuses an unbacked SSE_MAX_STREAMS_DEFAULT. Run when you change the live stream (SSE) and the NATS items path
 
 bench-runs: BENCH_LANE_SHAPE = BENCH_SHAPE="$(BENCH_SHAPE)"

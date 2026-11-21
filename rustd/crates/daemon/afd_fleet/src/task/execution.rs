@@ -65,12 +65,7 @@ pub(super) async fn attached(
     {
         return Err(TaskRefusal::StaleState.into());
     }
-    if snapshot.context.usage.model_nanos
-        >= snapshot
-            .context
-            .limits
-            .model_nanos
-            .saturating_sub(snapshot.context.usage.reserved_model_nanos)
+    if snapshot.context.usage.model_nanos >= snapshot.context.limits.model_nanos
         || snapshot.context.usage.running_nanos
             >= u64::from(snapshot.context.limits.running_seconds) * 1_000_000_000
     {

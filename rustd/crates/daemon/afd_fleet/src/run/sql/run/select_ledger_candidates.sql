@@ -44,7 +44,7 @@ JOIN LATERAL (
       SELECT 1 FROM fleet.tasks t WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.thread_id
         AND t.workspace_id = a.workspace_id AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > z.read_at AND t.used_runs < t.max_runs
-        AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
+        AND t.used_model_nanos < t.max_model_nanos
         AND t.used_running_nanos < t.max_running_nanos)))
   ORDER BY a.sequence LIMIT 1
 

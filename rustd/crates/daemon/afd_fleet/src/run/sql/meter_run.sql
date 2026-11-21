@@ -18,7 +18,7 @@ WITH locked_thread AS MATERIALIZED (
     FOR UPDATE OF l
 ), held_task AS MATERIALIZED (
     SELECT t.id, t.status, t.generation, t.stop_generation, t.expires_at,
-           t.max_model_nanos, t.used_model_nanos, t.reserved_model_nanos,
+           t.max_model_nanos, t.used_model_nanos,
            t.max_running_nanos, t.used_running_nanos
     FROM fleet.tasks t JOIN probe p ON p.task_id = t.id
       AND t.fleet_id = p.fleet_id AND t.workspace_id = p.workspace_id
@@ -30,7 +30,7 @@ WITH locked_thread AS MATERIALIZED (
     -- granted: a report that lands after its run lapsed bills no time beyond it.
     SELECT p.*, i.checked_at, t.status AS task_status, t.generation AS live_task_generation,
            t.stop_generation AS live_stop_generation, t.expires_at AS task_expires_at,
-           t.used_model_nanos, t.max_model_nanos, t.reserved_model_nanos,
+           t.used_model_nanos, t.max_model_nanos,
            t.max_running_nanos - t.used_running_nanos AS remaining_running_nanos,
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until
     FROM probe p CROSS JOIN instant i LEFT JOIN held_task t ON t.id = p.task_id
@@ -47,7 +47,7 @@ WITH locked_thread AS MATERIALIZED (
       AND (task_id IS NULL OR (
           task_status = $6 AND task_generation = live_task_generation
           AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
-          AND used_model_nanos < max_model_nanos - reserved_model_nanos
+          AND used_model_nanos < max_model_nanos
           AND task_execution_deadline_at > checked_at
           AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
       AND EXISTS (

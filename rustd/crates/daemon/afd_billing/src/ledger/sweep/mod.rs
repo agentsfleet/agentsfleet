@@ -8,10 +8,10 @@
 use af_wire::usage::LineKind;
 use sqlx::PgExecutor;
 
+use crate::Result;
 use crate::biller::{Settlement, WorkKey};
 use crate::error::query;
 use crate::rates::Posture;
-use crate::Result;
 
 mod row;
 

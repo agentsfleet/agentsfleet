@@ -1,4 +1,4 @@
-//! One reservation transaction stores native identity, request and task credit.
+//! One reservation transaction stores native identity and request.
 
 use af_core::id::Uuid7;
 use af_wire::{
@@ -33,18 +33,6 @@ impl Intent<'_> {
         let sequence = self.sequence(connection).await?;
         self.header(connection, sequence).await?;
         self.payload(connection).await?;
-        if let Some(goal) = self.goal() {
-            sqlx::query(sql::RESERVE_TASK)
-                .bind(crate::task::guard::wire(
-                    goal.snapshot.context.task_id.as_ref(),
-                )?)
-                .bind(&self.prepared.current.fleet_id)
-                .bind(&self.prepared.current.workspace_id)
-                .bind(budget::CALL_NANOS)
-                .execute(connection)
-                .await
-                .map_err(query("reserve cumulative task decision credit"))?;
-        }
         Ok(())
     }
 

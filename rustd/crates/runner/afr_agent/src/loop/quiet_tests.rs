@@ -74,7 +74,10 @@ async fn test_a_question_waits_for_a_running_child_to_answer() {
         ResultOutcome::Waiting,
         "a run waiting on a question reports waiting, not a failure"
     );
-    assert_eq!(output.result.content, "Ship it?", "the report carries the question");
+    assert_eq!(
+        output.result.content, "Ship it?",
+        "the report carries the question"
+    );
     let sent = script.sent();
     let child = sent.iter().filter(|request| {
         matches!(request.messages.first(), Some(Message::User(text)) if text.starts_with(DELEGATED))

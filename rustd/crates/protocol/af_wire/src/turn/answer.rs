@@ -88,7 +88,10 @@ mod tests {
     fn any_other_turn_keeps_its_own_checkpoint() {
         for (kind, body) in [
             (TurnKind::Continuation, "{}"),
-            (TurnKind::Chat, r#"{"message":"yes","asked_turn_id":"asking"}"#),
+            (
+                TurnKind::Chat,
+                r#"{"message":"yes","asked_turn_id":"asking"}"#,
+            ),
         ] {
             let turn = envelope(kind, body);
             assert_eq!(turn.question_answer(), None, "{kind:?}");

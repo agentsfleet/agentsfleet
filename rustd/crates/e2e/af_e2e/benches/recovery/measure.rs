@@ -22,8 +22,6 @@ use std::{collections::BTreeMap, time::Duration};
 const ACCEPTED: &str = "The source accepted this recovery checkpoint.";
 const MARKER: &str = "burst-fleet/";
 const WINDOW_MS: i64 = 60_000;
-/// How long replacement runners settle before the source runners are killed.
-const REPLACEMENTS_SETTLE: Duration = Duration::from_secs(5);
 
 pub(super) async fn run(n: usize) -> Checked {
     let mut daemon = Supervisor::new();
@@ -35,12 +33,14 @@ pub(super) async fn run(n: usize) -> Checked {
     stage("source runners connected")?;
     let interrupted = checkpoint(&run, &fleets, &mut model).await?;
     stage("all source checkpoints committed")?;
-    let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
-    stage("replacement runners connected")?;
-    tokio::time::sleep(REPLACEMENTS_SETTLE).await;
     let _logs = try_join_all(source.into_iter().map(Worker::kill)).await?;
     let eligible = eligibility(&run, &fleets, &source_ids).await?;
-    stage("runners stopped; waiting for expiry")?;
+    stage("source runners stopped; waiting for expiry")?;
+    expired(&eligible).await?;
+    // No daemon timer re-offers an expired run: the replacements' own
+    // connection is the assignment pass that recovers it.
+    let (survivors, survivor_ids) = cohort::hosts(&run, &model, n).await?;
+    stage("replacement runners connected")?;
     drop(interrupted);
     let resumed = observe(&mut model, &eligible).await?;
     let mut raw = Vec::new();
@@ -122,6 +122,15 @@ async fn eligibility(
         return Err("cohort changed ownership before expiry snapshot".into());
     }
     Ok(eligible)
+}
+
+/// Waits until every source run's expiry has passed, so the replacements'
+/// first assignment pass can take each turn.
+async fn expired(eligible: &BTreeMap<Uuid7, i64>) -> Checked {
+    let last = eligible.values().max().ok_or("empty cohort")? + 1;
+    let wait = u64::try_from(last - clock::now().as_millisecond()).unwrap_or(0);
+    tokio::time::sleep(Duration::from_millis(wait)).await;
+    Ok(())
 }
 
 async fn observe(

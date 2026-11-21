@@ -335,7 +335,7 @@ Operators can use `agentsfleet platform runners list`, `agentsfleet platform run
 
 [Public recovery guide](https://docs.agentsfleet.net/runners/recovery)
 
-The one-fleet rig check uses registered runner processes and a controlled model. It waits for a complete source checkpoint, kills the source, verifies the replacement's higher fence and restored inputs, and waits for settlement.
+The one-fleet rig check uses registered runner processes and a controlled model. It waits for a complete source checkpoint, kills the source, connects the replacement after the source run expires, verifies the replacement's higher fence and restored inputs, and waits for settlement. No daemon timer re-offers an expired run, so the replacement's connection is the assignment pass that recovers it.
 
 Use an owned local rig whose database the target can reset.
 
@@ -349,9 +349,9 @@ make bench-recovery PROFILE=rig BENCH_FLEETS=1 BENCH_WORKSPACES=shared
 {"shape":"recovery","workload":"api_only","fleets":1,...}
 ```
 
-The reported latency starts at the later of the old run and thread expiries and ends at the first restored model request. It also records issue and settlement timestamps.
+The reported latency starts at the later of the old run and thread expiries and ends at the first restored model request, so it includes the replacement's connection. It also records issue and settlement timestamps.
 
-[Raw baseline](../../bench/baselines/lease-recovery-api.rig.json) · [Test and commands](../../rustd/crates/e2e/af_e2e/benches/recovery/measure.rs)
+[Test and commands](../../rustd/crates/e2e/af_e2e/benches/recovery/measure.rs)
 
 ## Implementation paths and symbols
 

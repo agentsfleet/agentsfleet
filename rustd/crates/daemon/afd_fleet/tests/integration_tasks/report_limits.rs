@@ -3,7 +3,7 @@ use super::{
     fixture::{Case, exercise, id},
     report_settlement::request,
 };
-use af_core::id::Uuid7;
+use af_core::{error_code, id::Uuid7};
 use af_wire::task::{DecisionTaskVersion, TaskDisposition, TaskLimits, TaskReport, TaskState};
 use afd_fleet::task::{TaskLifecycle as _, TaskReportOwner as _};
 use serde_json::Value;
@@ -39,6 +39,62 @@ async fn final_run_limit_refuses_continuation_before_missing_checkpoint_without_
         )
         .await;
         Box::pin(settle(case, task, Some("run_limit_reached"))).await;
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_task_over_its_model_budget_is_not_assigned() {
+    exercise(async |case| {
+        let task = bind(case, TaskLimits::default()).await;
+        sqlx::query("UPDATE fleet.tasks SET used_model_nanos=max_model_nanos WHERE id=$1")
+            .bind(id(&task.task_id))
+            .execute(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("usage connection"),
+            )
+            .await
+            .expect("model usage at the limit");
+        let semantic = TaskReport {
+            task: task.clone(),
+            disposition: TaskDisposition::Continue,
+            decision_call_id: None,
+            checkpoint_id: None,
+            covered_input_sequence: 0,
+            effect_watermark: 0,
+        };
+        let refused = case
+            .tasks
+            .prepare_report(case.run(), &request(case, Some(semantic)))
+            .await
+            .expect_err("a task at its model limit owns no further work");
+        assert_eq!(refused.code(), error_code::TASK_LIMIT_EXHAUSTED);
+        let counts = case.counts().await;
+        let mut plane = case.held.fixtures.plane();
+        plane.task_reports = Some(Arc::new(case.tasks.clone()));
+        plane
+            .report_with(
+                &case.held.runner,
+                &request(case, None),
+                af_core::clock::after(case.held.now, crate::report_seed::SLICE),
+                None,
+                &mut af_observability::verb_span::VerbClock::untimed(),
+            )
+            .await
+            .expect("financial settlement at the limit");
+        let saved = case
+            .tasks
+            .read(&case.scope, &id(&task.task_id))
+            .await
+            .expect("exhausted owner");
+        assert_eq!(saved.context.state, TaskState::Exhausted);
+        assert_eq!(case.counts().await, counts, "no continuation is assigned");
     })
     .await;
 }

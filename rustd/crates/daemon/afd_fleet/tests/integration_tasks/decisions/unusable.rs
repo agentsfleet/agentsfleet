@@ -57,7 +57,7 @@ async fn unusable(case: &Case) {
     let mut expected = initial;
     expected.context.usage.model_nanos = 15;
     expected.context.usage.decision_calls = 5;
-    expected.resource_version += 10;
+    expected.resource_version += 7;
     assert_eq!(
         fixture
             .tasks

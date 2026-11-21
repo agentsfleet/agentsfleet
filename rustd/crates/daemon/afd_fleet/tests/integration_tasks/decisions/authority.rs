@@ -81,7 +81,7 @@ async fn late(fixture: &Decisions<'_>, task: &DecisionTaskVersion, balance: i64)
     );
     let mut expected = paused;
     expected.context.usage.model_nanos = 3;
-    expected.context.usage.reserved_model_nanos = 0;
+    expected.context.usage.decision_calls += 1;
     expected.resource_version += 1;
     assert_eq!(fixture.goal_snapshot(task).await, expected);
     assert!(fixture.record(&request.call_id, receipt).await.replayed);

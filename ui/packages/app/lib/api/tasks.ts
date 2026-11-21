@@ -48,7 +48,7 @@ const Detail = z.object({
     checkpoint_id: Identity.nullable(), expires_at: Instant,
     limits: z.object({model_nanos: nanosSchema, wall_seconds: Count, running_seconds: Count,
       runs: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
-    usage: z.object({model_nanos: nanosSchema, reserved_model_nanos: nanosSchema,
+    usage: z.object({model_nanos: nanosSchema,
       running_nanos: Count, runs: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
   }),
 });

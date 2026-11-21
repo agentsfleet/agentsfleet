@@ -91,13 +91,13 @@ mod integration_report_commit;
 mod integration_report_fence;
 #[path = "integration_report_items.rs"]
 mod integration_report_items;
-#[path = "integration_report_question.rs"]
-mod integration_report_question;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;
 #[path = "integration_report_pricing.rs"]
 mod integration_report_pricing;
+#[path = "integration_report_question.rs"]
+mod integration_report_question;
 #[path = "integration_report_renewal_lock.rs"]
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]

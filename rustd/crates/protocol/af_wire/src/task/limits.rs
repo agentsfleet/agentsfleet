@@ -48,10 +48,6 @@ pub struct TaskUsage {
     #[serde(with = "crate::nanos")]
     #[cfg_attr(feature = "openapi", schema(value_type = crate::nanos::Decimal))]
     pub model_nanos: i64,
-    /// Outstanding native model-call reservations.
-    #[serde(with = "crate::nanos")]
-    #[cfg_attr(feature = "openapi", schema(value_type = crate::nanos::Decimal))]
-    pub reserved_model_nanos: i64,
     /// Cumulative measured running time, in nanoseconds.
     pub running_nanos: u64,
     /// Distinct issued runs.

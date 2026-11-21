@@ -6,8 +6,8 @@ use std::time::Duration;
 use afd_bus::Subject;
 use tokio_util::sync::CancellationToken;
 
-use crate::poster::Recorder;
 use crate::Ledger;
+use crate::poster::Recorder;
 
 /// Lanes enough that one claim cannot take them all.
 const LANES: i64 = 12;
@@ -102,4 +102,3 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
     assert!(took_one, "the claim that took the row logs its count");
     ledger.cleanup().await;
 }
-

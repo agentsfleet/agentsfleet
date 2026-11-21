@@ -2,8 +2,8 @@
 use super::*;
 use rig_core::completion::{ToolAnnotations, ToolDefinition};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, DocumentContent, DocumentMediaType, DocumentSourceKind,
-    Image, ImageMediaType, ToolName, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, CallId, DocumentContent, DocumentMediaType,
+    DocumentSourceKind, Image, ImageMediaType, ToolName, ToolResultContent, UserContent,
 };
 use serde_json::json;
 

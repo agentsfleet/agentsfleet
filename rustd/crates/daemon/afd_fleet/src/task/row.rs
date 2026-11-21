@@ -35,7 +35,6 @@ pub(super) struct TaskRow {
     pub confirmed_effect_watermark: i64,
     pub max_model_nanos: i64,
     pub used_model_nanos: i64,
-    pub reserved_model_nanos: i64,
     pub max_running_nanos: i64,
     pub used_running_nanos: i64,
     pub max_runs: i32,
@@ -121,7 +120,6 @@ impl TaskRow {
                 },
                 usage: TaskUsage {
                     model_nanos: self.used_model_nanos,
-                    reserved_model_nanos: self.reserved_model_nanos,
                     running_nanos: counter(self.used_running_nanos, "used_running_nanos")?,
                     runs: small_counter(self.used_runs, "used_runs")?,
                     publications: small_counter(self.used_publications, "used_publications")?,

@@ -36,7 +36,7 @@ pub(super) async fn check_on(
     let extra = if allocating { CALL_NANOS } else { 0 };
     if context.assessment.purpose() == DecisionPurpose::Goal {
         let task = &task.ok_or(TaskRefusal::InvalidTarget)?.context;
-        goal(task, extra, allocating)?;
+        goal(task, allocating)?;
     } else if allocating {
         let calls: i64 = sqlx::query_scalar(sql::SOURCE_CALLS)
             .bind(&context.source_turn_id)
@@ -73,13 +73,8 @@ pub(super) async fn check_on(
     Ok(())
 }
 
-fn goal(task: &TaskContext<'_>, extra: i64, allocating: bool) -> Result<()> {
-    let model = task
-        .usage
-        .model_nanos
-        .saturating_add(task.usage.reserved_model_nanos)
-        .saturating_add(extra);
-    if model > task.limits.model_nanos
+fn goal(task: &TaskContext<'_>, allocating: bool) -> Result<()> {
+    if task.usage.model_nanos >= task.limits.model_nanos
         || task.usage.running_nanos >= u64::from(task.limits.running_seconds) * 1_000_000_000
         || (allocating && task.usage.decision_calls >= task.limits.decision_calls)
     {

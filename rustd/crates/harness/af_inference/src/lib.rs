@@ -170,9 +170,7 @@ impl<'a> Configured<'a> {
             Dialect::Messages(dialect) => {
                 rig_core::Model::new(self.messages(dialect, model, key), transport).erase()
             }
-            Dialect::Gemini => {
-                rig_core::Model::new(self.gemini(model, key), transport).erase()
-            }
+            Dialect::Gemini => rig_core::Model::new(self.gemini(model, key), transport).erase(),
             Dialect::Ollama => rig_core::Model::new(self.ollama(model, key), transport).erase(),
         }
     }

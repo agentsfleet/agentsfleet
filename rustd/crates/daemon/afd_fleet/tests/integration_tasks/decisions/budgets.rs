@@ -57,10 +57,9 @@ async fn source_routing(fixture: &Decisions<'_>, task: &DecisionTaskVersion) {
     assert_eq!(
         (
             task_before.context.usage.model_nanos,
-            task_before.context.usage.reserved_model_nanos,
             task_before.context.usage.decision_calls
         ),
-        (0, 0, 0)
+        (0, 0)
     );
     let owner: (Option<Uuid7>, Uuid7, String) = sqlx::query_as(
         "SELECT task_id,source_turn_id,context_snapshot #>> '{execution,task_id}' FROM runner.decision_calls WHERE id=$1")
@@ -135,10 +134,9 @@ async fn goal_overage(fixture: &Decisions<'_>, task: DecisionTaskVersion) {
     assert_eq!(
         (
             saved.context.usage.model_nanos,
-            saved.context.usage.reserved_model_nanos,
             saved.context.usage.decision_calls
         ),
-        (40_000_002, 0, 1)
+        (40_000_002, 1)
     );
     further_work_is_blocked(fixture, task).await;
     assert_eq!(

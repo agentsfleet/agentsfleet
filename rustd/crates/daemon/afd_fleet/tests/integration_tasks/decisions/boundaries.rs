@@ -16,8 +16,13 @@ use super::{
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn fleet_and_task_boundaries_refund_unsent_credit_without_resetting_call_history() {
     exercise(fleet).await;
-    exercise(task_money).await;
     exercise(task_calls).await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_task_decision_call_reserves_nothing() {
+    exercise(reserves_nothing).await;
 }
 
 async fn fleet(case: &Case) {
@@ -55,31 +60,25 @@ async fn fleet(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
-async fn task_money(case: &Case) {
+async fn reserves_nothing(case: &Case) {
     let fixture = Decisions::create(case).await;
-    let task = fixture
-        .bind_goal_with_limits(TaskLimits {
-            model_nanos: 20_000_000,
-            ..TaskLimits::default()
-        })
-        .await;
+    let task = fixture.bind_goal().await;
     let initial = fixture.goal_snapshot(&task).await;
-    let balance = fixture.wallet().await;
     let (_, body) = fixture.reserve(&fixture.goal_reservation(&task)).await;
-    let first = request(&body);
-    let next = fixture.goal_reservation(&task);
-    let reserved = fixture.goal_snapshot(&task).await;
-    denied(&fixture, &next).await;
-    assert_eq!(fixture.goal_snapshot(&task).await, reserved);
-    unsent(&fixture, &first.call_id).await;
-    let (_, body) = fixture.reserve(&next).await;
+    assert_eq!(
+        fixture.goal_snapshot(&task).await,
+        initial,
+        "an issued call writes nothing to its task"
+    );
     unsent(&fixture, &request(&body).call_id).await;
     let mut expected = initial;
-    expected.context.usage.decision_calls = 2;
-    expected.resource_version += 4;
+    expected.context.usage.decision_calls = 1;
+    expected.resource_version += 1;
     assert_eq!(fixture.goal_snapshot(&task).await, expected);
-    assert_eq!(fixture.wallet().await, balance);
-    assert_eq!(fixture.counts().await, (2, 2, 0));
+    let reserved: i64 = sqlx::query_scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema='fleet' AND table_name='tasks' AND column_name LIKE 'reserved%'")
+        .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("schema observer"))
+        .await.expect("task columns");
+    assert_eq!(reserved, 0, "a task holds no reserved amount");
     fixture
         .model
         .finish()
@@ -101,7 +100,7 @@ async fn task_calls(case: &Case) {
     unsent(&fixture, &request(&body).call_id).await;
     let mut expected = initial;
     expected.context.usage.decision_calls = 1;
-    expected.resource_version += 2;
+    expected.resource_version += 1;
     assert_eq!(fixture.goal_snapshot(&task).await, expected);
     denied(&fixture, &fixture.goal_reservation(&task)).await;
     assert_eq!(fixture.goal_snapshot(&task).await, expected);

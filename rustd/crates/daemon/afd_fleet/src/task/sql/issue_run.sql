@@ -5,7 +5,7 @@ WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at), started AS (
     WHERE t.id = $2 AND l.id = $1 AND l.fleet_id = t.fleet_id AND l.workspace_id = t.workspace_id
       AND t.generation = $5 AND t.status IN ($3, $4) AND t.terminal_at IS NULL
       AND t.expires_at > instant.at AND t.used_runs < t.max_runs
-      AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
+      AND t.used_model_nanos < t.max_model_nanos
       AND t.used_running_nanos < t.max_running_nanos
     RETURNING t.id, t.generation, t.stop_generation,
         LEAST(t.expires_at, instant.at + make_interval(secs => LEAST($6::double precision,

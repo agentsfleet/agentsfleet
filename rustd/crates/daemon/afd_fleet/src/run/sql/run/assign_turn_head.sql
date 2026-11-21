@@ -60,7 +60,7 @@ WITH fleet AS MATERIALIZED (
         AND r.durable_tasks_enabled AND r.capability_report @> jsonb_build_object($8::text, true)
         AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > (SELECT checked_at FROM instant) AND t.used_runs < t.max_runs
-        AND t.used_model_nanos < t.max_model_nanos - t.reserved_model_nanos
+        AND t.used_model_nanos < t.max_model_nanos
         AND t.used_running_nanos < t.max_running_nanos))
   ORDER BY a.sequence
   LIMIT 1

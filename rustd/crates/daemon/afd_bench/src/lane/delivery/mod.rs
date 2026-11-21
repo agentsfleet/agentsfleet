@@ -24,9 +24,9 @@
 //!
 //! # A drain that did not finish says so
 //!
-//! The worker turns a dead datastore into pause-and-retry and never returns
-//! an error, so a window that reached its deadline with jobs unsettled is the
-//! only signal there is. It is recorded as an abort, and the rate is over the
+//! The worker logs a claim a dead datastore refused, waits for the next ping
+//! or finished delivery, and never returns an error, so a window that reached
+//! its deadline with jobs unsettled is the only signal there is. It is recorded as an abort, and the rate is over the
 //! jobs that did settle.
 
 pub mod poster;

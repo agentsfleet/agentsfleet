@@ -81,7 +81,10 @@ async fn a_failing_head_is_marked_failed_and_its_lane_moves_on() {
     worker.await.expect("the worker stops");
 
     assert_eq!(poster.delivered_to(&b.workspace).len(), 5, "lane B drained");
-    assert!(ledger.row(&head).await.abandoned, "A's head is marked failed");
+    assert!(
+        ledger.row(&head).await.abandoned,
+        "A's head is marked failed"
+    );
     assert_eq!(
         poster.delivered_to(&a.workspace),
         vec![behind],

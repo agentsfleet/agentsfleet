@@ -153,7 +153,6 @@ impl RunService {
         self.mint_scoped(&scope, &request.integration, now, None)
             .await
     }
-
 }
 
 mod admission;

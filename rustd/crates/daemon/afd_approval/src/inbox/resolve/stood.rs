@@ -9,8 +9,8 @@
 use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 
-use super::Continues;
 use super::super::{Inbox, Resolved};
+use super::Continues;
 use crate::Result;
 
 impl Inbox {

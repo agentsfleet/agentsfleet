@@ -12,7 +12,7 @@ fn context() -> Value {
         "checkpoint_generation":6, "expires_at":"2026-11-01T00:00:00Z",
         "limits":{"model_nanos":"1000","wall_seconds":40,"running_seconds":30,
             "runs":10,"publications":4,"decision_calls":20,"fallback_reads":6},
-        "usage":{"model_nanos":"100","reserved_model_nanos":"20","running_nanos":300,
+        "usage":{"model_nanos":"100","running_nanos":300,
             "runs":2,"publications":1,"decision_calls":3,"fallback_reads":4}
     })
 }
