@@ -76,6 +76,7 @@ test("the @ toolbar opens the workspace picker and can replace the current recip
   await page.goto(chatProbe + "?address=1");
   const input = page.getByRole("textbox", {name: "Message your fleet…"});
   const button = page.getByRole("button", {name: "Address a workspace fleet"});
+  await expect(button.locator("svg")).toHaveCSS("width", "18px");
   await button.click();
   await expect(input).toHaveValue("@");
   await page.getByRole("option", {name: "@bob", exact: true}).click();

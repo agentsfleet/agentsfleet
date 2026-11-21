@@ -32,7 +32,7 @@ export function FleetMentionButton({input, disabled, inSetup = false}: {
     }
     field.focus();
   }
-  return <Button type="button" variant="ghost" size="icon" disabled={disabled}
-    className="size-9 shrink-0 text-muted-foreground pointer-coarse:size-11"
-    aria-label={label} title={label} onClick={mention}><AtIcon aria-hidden="true" className="size-4.5" size={18} /></Button>;
+  return <Button type="button" variant="ghost" size="icon-row" disabled={disabled}
+    className="fleet-composer-tool"
+    aria-label={label} title={label} onClick={mention}><AtIcon aria-hidden="true" size={18} /></Button>;
 }

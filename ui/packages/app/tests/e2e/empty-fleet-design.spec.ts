@@ -37,6 +37,11 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
       expect(Math.abs(actual.lineHeight-expected.lineHeight)).toBeLessThan(0.5);
     }
     await expect(form).toHaveCSS("background-color",theme==="dark" ? "rgb(32, 35, 40)" : "rgb(240, 242, 245)");
+    for (const [buttonName, action] of [["Mention a fleet in setup","mention"], ["Insert a text document into setup","attach"]]) {
+      const actual = await geometry(form.getByRole("button",{name:buttonName}).locator("svg"));
+      const expected = await geometry(design.locator(`.composer [data-action="${action}"] i`));
+      expect([actual.width,actual.height]).toEqual([expected.width,expected.height]);
+    }
     const actualForm=await geometry(form), expectedForm=await geometry(design.locator(".empty-workspace .composer"));
     expect([actualForm.width,actualForm.radius]).toEqual([expectedForm.width,expectedForm.radius]);
     const logoBox=await geometry(logo), refMark=await geometry(referenceLogo);

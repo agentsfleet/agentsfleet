@@ -8,7 +8,6 @@ import {MESSAGE_MAX_BYTES, MessageInputSchema} from "@/lib/api/draft-types";
 
 import {FleetMentionButton} from "../../conversation/composer/FleetMentionButton";
 
-const CONTROL = "size-9 shrink-0 text-muted-foreground pointer-coarse:size-11";
 const TOO_LARGE = "The setup message can hold 32 KiB. Choose a shorter note or shorten your draft.";
 
 export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTextAreaElement | null>; disabled: boolean}) {
@@ -39,9 +38,9 @@ export function SetupContextControls({input, disabled}: {input: RefObject<HTMLTe
         event.currentTarget.value = "";
         if (file) void insertFile(file);
       }} />
-    <Button type="button" variant="ghost" size="icon" disabled={disabled} className={CONTROL}
+    <Button type="button" variant="ghost" size="icon-row" disabled={disabled} className="fleet-composer-tool"
       aria-label="Insert a text document into setup" title="Insert an editable text document" onClick={() => filePicker.current?.click()}>
-      <PaperclipIcon aria-hidden="true" className="size-4.5" size={18} />
+      <PaperclipIcon aria-hidden="true" size={18} />
     </Button>
     <FleetMentionButton input={input} disabled={disabled} inSetup />
     {notice && <output className="text-eyebrow text-warning">{notice}</output>}

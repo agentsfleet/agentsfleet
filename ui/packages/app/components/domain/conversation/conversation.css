@@ -57,6 +57,11 @@
   @media (prefers-reduced-motion: reduce) { transition: none; }
 }
 
+.fleet-composer-tool {
+  @apply text-muted-foreground pointer-coarse:size-11;
+  svg { @apply size-4.5; }
+}
+
 .fleet-composer-input {
   @apply field-sizing-content min-h-chat-input flex-1 resize-none overflow-y-auto px-sm py-0;
   max-height: min(12rem, 30dvh);
