@@ -2,7 +2,7 @@
 
 use af_core::test_util::trace::Capture;
 use af_wire::tool_detail::{ItemKind, ItemStatus};
-use af_wire::tool_trace::{CHANGES_MAX, FileChange, ToolCallStatus};
+use af_wire::tool_trace::{FileChange, ToolCallStatus};
 use guffbolt::tools::files::changes::{Change, report};
 
 use super::{EVENT_CHANGES_DROPPED, changed, item_status, kind};
@@ -87,9 +87,8 @@ fn an_edit_without_a_report_carries_no_changes() {
 }
 
 #[test]
-fn a_report_past_the_change_bound_is_dropped_and_logged() {
-    let capture = Capture::install();
-    let many: Vec<Change> = (0..=CHANGES_MAX)
+fn a_report_of_a_hundred_changes_is_carried_whole() {
+    let many: Vec<Change> = (0..100)
         .map(|file| change(&format!("f{file}.txt"), 1, 0))
         .collect();
 
@@ -98,6 +97,21 @@ fn a_report_past_the_change_bound_is_dropped_and_logged() {
         ItemKind::Edit,
         ToolCallStatus::Succeeded,
         &answered(&many),
+    );
+
+    assert_eq!(carried.len(), 100);
+}
+
+#[test]
+fn a_report_naming_no_path_is_dropped_and_logged() {
+    let capture = Capture::install();
+    let bad = [change("", 1, 0)];
+
+    let carried = changed(
+        RUN_ID,
+        ItemKind::Edit,
+        ToolCallStatus::Succeeded,
+        &answered(&bad),
     );
 
     assert_eq!(carried, Vec::new());
@@ -109,7 +123,7 @@ fn a_report_past_the_change_bound_is_dropped_and_logged() {
     assert_eq!(dropped.len(), 1);
     assert_eq!(
         dropped.first().and_then(|event| event.field("files")),
-        Some("65")
+        Some("1")
     );
     assert_eq!(
         dropped.first().and_then(|event| event.field("run_id")),

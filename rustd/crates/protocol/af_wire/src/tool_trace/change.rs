@@ -10,21 +10,15 @@ use serde::{Deserialize, Serialize};
 
 use super::free_of_nul;
 
-/// The most files one call's changes may list.
-pub const CHANGES_MAX: usize = 64;
-
-/// The longest path one change may name.
-pub const CHANGE_PATH_MAX_BYTES: usize = 1024;
-
 /// One file an edit changed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct FileChange<'a> {
-    /// The file, as the call named it relative to its working directory: 1
-    /// to 1024 bytes, secret values masked.
+    /// The file, as the call named it relative to its working directory,
+    /// secret values masked; never empty.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = CHANGE_PATH_MAX_BYTES))]
+    #[garde(length(bytes, min = 1))]
     pub path: Cow<'a, str>,
     /// Lines the call added to the file.
     #[garde(skip)]
@@ -53,14 +47,12 @@ pub fn changes_free_of_nul(changes: &[FileChange<'_>]) -> bool {
     changes.iter().all(|change| free_of_nul(&change.path))
 }
 
-/// Whether `changes` fit every bound a trace, a frame and a record hold them
-/// to: at most [`CHANGES_MAX`] files, each path within its bound and free of
-/// NUL. The runner keeps a call's changes only when they do.
+/// Whether `changes` are what a trace, a frame and a record hold: each path
+/// named and free of NUL. The runner keeps a call's changes only when they
+/// are; the frame bounds how many.
 #[must_use]
 pub fn changes_fit(changes: &[FileChange<'_>]) -> bool {
-    changes.len() <= CHANGES_MAX
-        && changes_free_of_nul(changes)
-        && changes.iter().all(|change| change.validate().is_ok())
+    changes_free_of_nul(changes) && changes.iter().all(|change| change.validate().is_ok())
 }
 
 #[cfg(test)]

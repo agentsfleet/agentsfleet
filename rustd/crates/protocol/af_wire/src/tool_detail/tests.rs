@@ -8,11 +8,11 @@ use garde::Validate as _;
 use serde_json::{Value, json};
 
 use super::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_RECORD_MIN_BYTES, DetailRejection, ITEM_TOOL_MAX_BYTES,
-    ItemKind, ItemStatus, RawToolCallRecord, ToolCallDetail, ToolCallRecord,
-    ToolCallRecordsRequest, ToolCallRecordsStored,
+    DETAIL_FIELD_MAX_BYTES, DETAIL_RECORD_MIN_BYTES, DetailRejection, ItemKind, ItemStatus,
+    RawToolCallRecord, ToolCallDetail, ToolCallRecord, ToolCallRecordsRequest,
+    ToolCallRecordsStored,
 };
-use crate::tool_trace::{CHANGE_PATH_MAX_BYTES, CHANGES_MAX, FileChange};
+use crate::tool_trace::FileChange;
 
 /// A turn id as a runner names one.
 const TURN: &str = "019f0000-0000-7000-8000-000000000001";
@@ -295,7 +295,6 @@ fn a_record_without_its_kind_tool_or_status_is_malformed() {
         with("kind", json!("approval")),
         without("tool"),
         with("tool", json!("")),
-        with("tool", json!("t".repeat(ITEM_TOOL_MAX_BYTES + 1))),
         without("status"),
         with("status", json!("interrupted")),
         with("status", json!("running")),
@@ -303,22 +302,16 @@ fn a_record_without_its_kind_tool_or_status_is_malformed() {
         assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
     }
     assert!(
-        narrowed(&with("tool", json!("t".repeat(ITEM_TOOL_MAX_BYTES))))
-            .is_ok_and(|bytes| bytes > 0),
-        "a tool name at its bound is kept"
+        narrowed(&with("tool", json!("t".repeat(4096)))).is_ok_and(|bytes| bytes > 0),
+        "no length caps a tool name"
     );
 }
 
 #[test]
-fn an_edit_past_its_change_bounds_is_malformed() {
+fn a_malformed_change_is_malformed_and_no_count_caps_them() {
     let one = |path: String| json!({"path": path, "added": 1, "removed": 1});
-    let many: Vec<Value> = (0..=CHANGES_MAX)
-        .map(|file| one(format!("f{file}")))
-        .collect();
     for changes in [
-        json!(many),
         json!([one(String::new())]),
-        json!([one("p".repeat(CHANGE_PATH_MAX_BYTES + 1))]),
         json!([{"path": "a.rs", "added": -1, "removed": 0}]),
         json!([{"path": "a.rs", "added": 1}]),
         json!([{"path": "a.rs", "added": 1, "removed": 0, "renamed": true}]),
@@ -327,11 +320,13 @@ fn an_edit_past_its_change_bounds_is_malformed() {
         let sent = edit(changes);
         assert_eq!(narrowed(&sent), Err(DetailRejection::Malformed), "{sent}");
     }
-    let at_bound: Vec<Value> = (1..=CHANGES_MAX)
-        .map(|file| one(format!("f{file}")))
-        .collect();
+    let many: Vec<Value> = (1..=100).map(|file| one(format!("f{file}"))).collect();
     assert!(
-        narrowed(&edit(json!(at_bound))).is_ok_and(|bytes| bytes > 0),
-        "64 files are kept"
+        narrowed(&edit(json!(many))).is_ok_and(|bytes| bytes > 0),
+        "100 files are kept"
+    );
+    assert!(
+        narrowed(&edit(json!([one("p".repeat(4096))]))).is_ok_and(|bytes| bytes > 0),
+        "no length caps a path"
     );
 }

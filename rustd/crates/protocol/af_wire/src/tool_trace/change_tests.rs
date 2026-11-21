@@ -1,5 +1,5 @@
-//! An edit's changes on a trace row: carried within their bounds, and a row
-//! past them refuses the trace.
+//! An edit's changes on a trace row: every one carried, however many, and a
+//! change naming no file refuses the trace.
 #![expect(
     clippy::expect_used,
     reason = "a test asserts by panicking, and encodes the trace it built"
@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use serde_json::Map;
 
-use super::{CHANGE_PATH_MAX_BYTES, CHANGES_MAX, FileChange, changes_fit};
+use super::{FileChange, changes_fit};
 use crate::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall, TraceRejection};
 
 /// A change to `path` of one line each way.
@@ -45,11 +45,9 @@ fn trace(calls: Vec<ToolTraceCall<'static>>) -> ToolTrace<'static> {
 }
 
 #[test]
-fn an_edit_carries_its_changes_within_their_bounds() {
+fn an_edit_carries_every_change_it_made() {
     let mut edited = call("1");
-    edited.changes = (1..=CHANGES_MAX)
-        .map(|file| change(&format!("f{file}")))
-        .collect();
+    edited.changes = (1..=300).map(|file| change(&format!("f{file}"))).collect();
     assert_eq!(trace(vec![edited.clone()]).validate(), Ok(()));
     assert!(changes_fit(&edited.changes));
     let text = serde_json::to_string(&trace(vec![edited])).expect("encodes");
@@ -62,27 +60,18 @@ fn an_edit_carries_its_changes_within_their_bounds() {
 }
 
 #[test]
-fn changes_past_their_bounds_refuse_the_trace() {
-    let mut cases = Vec::new();
-    let mut many = call("1");
-    many.changes = (0..=CHANGES_MAX)
-        .map(|file| change(&format!("f{file}")))
-        .collect();
-    cases.push(many);
+fn a_change_naming_no_file_refuses_the_trace() {
     let mut empty = call("1");
     empty.changes = vec![change("")];
-    cases.push(empty);
+    assert!(!changes_fit(&empty.changes));
+    assert_eq!(
+        trace(vec![empty]).validate(),
+        Err(TraceRejection::Malformed)
+    );
     let mut long = call("1");
-    long.changes = vec![change(&"p".repeat(CHANGE_PATH_MAX_BYTES + 1))];
-    cases.push(long);
-    for case in cases {
-        assert!(!changes_fit(&case.changes), "{case:?}");
-        assert_eq!(
-            trace(vec![case.clone()]).validate(),
-            Err(TraceRejection::Malformed),
-            "{case:?}"
-        );
-    }
+    long.changes = vec![change(&"p".repeat(4096))];
+    assert!(changes_fit(&long.changes), "no length caps a path");
+    assert_eq!(trace(vec![long]).validate(), Ok(()));
     assert!(!changes_fit(&[change("a\u{0}")]), "a NUL never fits");
 }
 

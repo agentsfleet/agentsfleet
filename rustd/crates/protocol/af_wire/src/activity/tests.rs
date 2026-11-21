@@ -186,8 +186,8 @@ fn a_completion_edge_past_its_bound_is_unusable() {
 }
 
 #[test]
-fn a_completed_edit_carries_its_changes_and_past_their_bound_is_unusable() {
-    use crate::tool_trace::{CHANGES_MAX, FileChange};
+fn a_completed_edit_carries_every_change_and_a_malformed_one_is_unusable() {
+    use crate::tool_trace::FileChange;
     let change = |path: String| FileChange {
         path: Cow::Owned(path),
         added: 24,
@@ -209,10 +209,8 @@ fn a_completed_edit_carries_its_changes_and_past_their_bound_is_unusable() {
     );
     let back: ActivityFrame<'_> = serde_json::from_str(&text).expect("decodes");
     assert_eq!(back, one);
-    let many = (0..=CHANGES_MAX)
-        .map(|file| change(format!("f{file}")))
-        .collect();
-    assert!(!edited(many).outcome_usable(), "65 files");
+    let many = (0..100).map(|file| change(format!("f{file}"))).collect();
+    assert!(edited(many).outcome_usable(), "100 files");
     assert!(
         !edited(vec![change(String::new())]).outcome_usable(),
         "no path"

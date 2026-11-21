@@ -15,7 +15,7 @@ use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
 use crate::tool_trace::{
-    CHANGES_MAX, FileChange, changes_free_of_nul, encoded_len, fields_free_of_nul, free_of_nul,
+    FileChange, changes_free_of_nul, encoded_len, fields_free_of_nul, free_of_nul,
 };
 
 mod item;
@@ -26,9 +26,6 @@ const CALL_NUMBER_MIN: u64 = 1;
 
 /// The largest call number the stored column, a `bigint`, can hold.
 const CALL_NUMBER_MAX: u64 = i64::MAX.unsigned_abs();
-
-/// The longest tool name a record may carry.
-pub const ITEM_TOOL_MAX_BYTES: usize = 256;
 
 /// A turn id's length in bytes: a version 7 UUID in its canonical text form.
 const TURN_ID_BYTES: usize = 36;
@@ -120,17 +117,17 @@ pub struct ToolCallRecord<'a> {
     /// What kind of thing the call was.
     #[garde(skip)]
     pub kind: ItemKind,
-    /// The tool it called, 1 to 256 bytes.
+    /// The tool it called; never empty.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = ITEM_TOOL_MAX_BYTES))]
+    #[garde(length(bytes, min = 1))]
     pub tool: Cow<'a, str>,
     /// How it ended.
     #[garde(skip)]
     pub status: ItemStatus,
-    /// For an edit: each file it changed and the lines it added and removed,
-    /// at most 64. Absent for any other call.
+    /// For an edit: each file it changed and the lines it added and removed.
+    /// Absent for any other call.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
-    #[garde(length(max = CHANGES_MAX), dive)]
+    #[garde(dive)]
     pub changes: Vec<FileChange<'a>>,
 }
 

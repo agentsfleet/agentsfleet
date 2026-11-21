@@ -5,7 +5,7 @@
 use std::borrow::Cow;
 
 use af_wire::tool_detail::{ItemKind, ItemStatus};
-use af_wire::tool_trace::{CHANGES_MAX, FileChange, ToolCallStatus, changes_fit};
+use af_wire::tool_trace::{FileChange, ToolCallStatus, changes_fit};
 use guffbolt::tools::files::changes::{EDITS, reported};
 
 /// An edit's report broke a bound its changes are carried under, so the call
@@ -56,9 +56,8 @@ pub(super) fn changed(
         return changes;
     }
     let files = changes.len();
-    let limit = CHANGES_MAX;
     let event = EVENT_CHANGES_DROPPED;
-    tracing::warn!(run_id, files, limit, event);
+    tracing::warn!(run_id, files, event);
     Vec::new()
 }
 

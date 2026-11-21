@@ -105,10 +105,10 @@ pub struct ToolTraceCall<'a> {
     /// How long the call took, in milliseconds.
     #[garde(skip)]
     pub duration_ms: u64,
-    /// For an edit: each file it changed and the lines it added and removed,
-    /// at most 64. Absent for any other call, and for an edit that failed.
+    /// For an edit: each file it changed and the lines it added and removed.
+    /// Absent for any other call, and for an edit that failed.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
-    #[garde(length(max = CHANGES_MAX), dive)]
+    #[garde(dive)]
     pub changes: Vec<FileChange<'a>>,
 }
 
@@ -290,9 +290,7 @@ mod nul;
 mod rules;
 
 pub use self::call_id::{CALL_ID_SEPARATOR, fenced_call_id, parse_fenced_call_id};
-pub use self::change::{
-    CHANGE_PATH_MAX_BYTES, CHANGES_MAX, FileChange, changes_fit, changes_free_of_nul,
-};
+pub use self::change::{FileChange, changes_fit, changes_free_of_nul};
 pub use self::nul::{fields_free_of_nul, free_of_nul};
 
 #[cfg(test)]
