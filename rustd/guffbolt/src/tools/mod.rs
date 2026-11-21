@@ -80,8 +80,9 @@ use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
+use crate::tool::{Describe, Tool, ToolFuture, ToolOutput};
 use crate::transcript::CallRef;
+use guffbolt_ai::ToolSpec;
 
 pub use self::builder::{
     Backend, InvalidPattern, MissingBackend, ToolsBuilder, ToolsConfig, built_in,

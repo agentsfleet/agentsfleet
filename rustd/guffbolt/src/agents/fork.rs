@@ -2,7 +2,7 @@
 //! starts from before its own task.
 
 use super::Fork;
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 /// What `fork` keeps of `history`, turn by turn, each turn from a user
 /// message to the next: nothing for [`Fork::None`]; everything from the
@@ -37,7 +37,7 @@ mod tests {
 
     use super::forked;
     use crate::agents::Fork;
-    use crate::transcript::{Message, Replay};
+    use guffbolt_ai::{Message, Replay};
 
     fn user(text: &str) -> Message {
         Message::User(text.to_owned())

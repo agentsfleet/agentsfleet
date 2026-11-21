@@ -6,7 +6,9 @@ use std::future::ready;
 
 use serde_json::{Value, json};
 
-use super::{Describe, ErrorCode, Image, ImageKind, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
+use guffbolt_ai::{Image, ImageKind, ToolSpec};
+
+use super::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput, Tools};
 
 /// What a test loop lends each call: who asked.
 type Lent<'cx> = &'cx str;
@@ -143,12 +145,10 @@ fn every_code_the_harness_answers_is_spelled_as_the_model_reads_it() {
 fn an_image_rides_the_output_it_was_attached_to() {
     let image = Image {
         kind: ImageKind::Webp,
-        data: bytes::Bytes::from_static(b"RIFF"),
+        data: b"RIFF".as_slice().into(),
     };
 
     let output = ToolOutput::succeeded("attached").with_image(image.clone());
 
     assert_eq!(output.image, Some(image));
-    assert_eq!(ImageKind::Png.media_type(), "image/png");
-    assert_eq!(ImageKind::Webp.media_type(), "image/webp");
 }

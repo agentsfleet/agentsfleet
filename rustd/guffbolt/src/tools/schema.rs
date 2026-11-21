@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
 use serde::{Deserialize, Deserializer};
 
-use crate::tool::ToolSpec;
+use guffbolt_ai::ToolSpec;
 
 /// The key a generated schema names its type under, which no provider reads.
 const TITLE: &str = "title";

@@ -7,7 +7,7 @@ use std::time::Duration;
 use crate::DriveState;
 use crate::extension::{Budget, Extension, Plain};
 use crate::step::Ending;
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 use super::drive;
 use super::fixture::Scripted;

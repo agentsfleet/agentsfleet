@@ -39,10 +39,11 @@ use rmcp::{RoleClient, ServiceExt as _};
 use serde_json::Value;
 use tokio::time::error::Elapsed;
 
-use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
+use crate::tool::{Describe, Tool, ToolFuture, ToolOutput};
 use crate::tools::env::{Env, EnvError, Spawn};
 use crate::tools::outbound::{Outbound, Refused, client, reachable};
 use crate::tools::{Context, code};
+use guffbolt_ai::ToolSpec;
 
 pub use self::resources::{ListMcpResourceTemplates, ListMcpResources, ReadMcpResource};
 use self::stdio::EnvStdio;

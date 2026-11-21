@@ -21,8 +21,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use serde_json::Value;
 
-use crate::tool::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput, ToolSpec};
+use crate::tool::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput};
 use crate::tools::code;
+use guffbolt_ai::ToolSpec;
 
 /// What the model reads when a proposal is accepted.
 const ACCEPTED: &str = "Accepted. It is kept as this run's proposal; a later proposal applies on \

@@ -4,7 +4,7 @@
 use super::{Agents, Child, Turn};
 use crate::agents::Status;
 use crate::drive::DriveState;
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 impl Agents {
     /// The turn child `id` was queued for, as it starts: its stop, and a

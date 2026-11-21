@@ -156,8 +156,8 @@ SPEC AUTHORING RULES (the one comment that survives):
 2. **`[server] read_timeout_seconds = 300`.** The time a client gets to send a request's headers and body; a slow client past it is dropped. It never cuts a response, so an open live stream (SSE) is unaffected. Built on hyper's/tower-http's own timeout, not hand-rolled.
 3. **The runner tells the executor its sizes.** The file read size, the command output kept per end and the frame size become runner TOML keys (`[tools] max_file_read_mib`, `[tools] output_edge_kib`, `[executor] max_frame_mib`); the runner passes them to the in-sandbox executor when it starts it, and the executor uses what it was given. The compiled constants survive only as defaults.
 
-- Dimension 0.1 → Test `a_fleet_budget_has_no_ceiling_but_its_own` (unit): a definition with a $50,000 daily budget parses and is read back. Expected: accepted.
-- Dimension 0.2 → Test `a_request_slower_than_the_read_timeout_is_dropped` and `a_live_stream_outlives_the_read_timeout` (integration). Expected: the slow request's connection closes; the stream keeps sending.
+- Dimension 0.1 — DONE → Test `a_fleet_budget_has_no_ceiling_but_its_own` (unit): a definition with a $50,000 daily budget parses and is read back. Expected: accepted.
+- Dimension 0.2 — DONE → Test `a_request_slower_than_the_read_timeout_is_dropped` and `a_live_stream_outlives_the_read_timeout` (integration). Expected: the slow request's connection closes; the stream keeps sending.
 - Dimension 0.3 → Test `the_executor_uses_the_sizes_the_runner_sent` (unit): a runner config with a 1 MiB read size; the executor refuses a 2 MiB read. Expected: refused at 1 MiB.
 
 ### §1 — guffbolt-ai owns the provider-facing types, and guffbolt re-exports them
@@ -173,10 +173,10 @@ These move unchanged in shape, serde form and docs:
 
 **Implementation default:** the `Model` trait moves too. A third-party provider crate then implements it with guffbolt-ai alone, as a pi provider needs only pi-ai.
 
-- **Dimension 1.1** — guffbolt's paths still resolve → Test `guffbolt_reexports_every_seam_type` (unit, guffbolt): the README doctests and a test naming each of the 13 moved types by its `guffbolt::` path. Expected: compiles and passes.
-- **Dimension 1.2** — a saved conversation still reads → Test `a_drive_state_saved_before_the_move_resumes` (unit, guffbolt): a `DriveState` JSON fixture written before the move, with an assistant replay and an image result. Expected: deserializes and round-trips byte-equal.
-- **Dimension 1.3** — the types build without a wire → Test `the_default_build_links_no_wire` (unit, guffbolt-ai): its own `Cargo.toml`, read with `include_str!`. Expected: `rig-core`, `reqwest` and `tiktoken-rs` are optional, and only `wire` or `reqwest` turns them on.
-- **Dimension 1.4** — the crate stands alone → Test the `guffbolt standalone` step of `make lint-rustd` (unit): the publish dry run of guffbolt-ai, then guffbolt. Expected: both build from crates.io only `[?]`.
+- **Dimension 1.1** — guffbolt's paths still resolve → Test `guffbolt_reexports_every_seam_type` (unit, guffbolt): the README doctests and a test naming each of the 13 moved types by its `guffbolt::` path. Expected: compiles and passes. — DONE
+- **Dimension 1.2** — a saved conversation still reads → Test `a_drive_state_saved_before_the_move_resumes` (unit, guffbolt): a `DriveState` JSON fixture written before the move, with an assistant replay and an image result. Expected: deserializes and round-trips byte-equal. — DONE
+- **Dimension 1.3** — the types build without a wire → the `guffbolt-ai default build` step of `make lint-rustd` (lint; a test may not read a repository file): `cargo tree` over guffbolt-ai with no default features. Expected: only `bytes`, `futures-util`, `serde` and `serde_json`. — DONE
+- **Dimension 1.4** — the crate stands alone → Test the `guffbolt standalone` step of `make lint-rustd` (unit): the publish dry run of guffbolt-ai, then guffbolt. Expected: both build from crates.io only. — DONE
 
 ### §2 — The wires move into guffbolt-ai behind the `wire` feature
 
@@ -341,7 +341,7 @@ Moved here from M253_003 (Indy, Nov 21, 2026) so the end-to-end run covers guffb
 ## Invariants
 
 1. guffbolt-ai depends on no workspace crate — `cargo publish --dry-run` in `make lint-rustd` builds it from crates.io alone, and fails on any path dependency.
-2. guffbolt's default build links no wire — guffbolt depends on guffbolt-ai with `default-features = false`, the wire crates are optional, and Dimension 1.3 reads the manifest.
+2. guffbolt's default build links no wire — guffbolt depends on guffbolt-ai with `default-features = false`, the wire crates are optional, and Dimension 1.3's lint step checks what the default build links.
 3. The key reaches only the route's host — the default transport's client is built with `redirect::Policy::none()`, and Dimension 2.4 proves it.
 4. No daemon crate drives a model — `af_e2e/tests/layers.rs` fails on a daemon source naming `Connect`, `Connector` or `Turns`.
 
@@ -430,9 +430,10 @@ N/A: no product or operator signal changes. The provider metric families and the
   - Fireworks' Chat base is `https://api.fireworks.ai/inference/v1`; the Anthropic-style base drops `/v1` (docs.fireworks.ai/tools-sdks/openai-compatibility).
   - MiniMax's model id is `MiniMax-M3.1-Flash`; there is no plain `MiniMax-M3.1` (platform.minimax.io/docs/guides/text-generation).
   - `guffbolt-ai` and `guffbolt` are free on crates.io (`GET /api/v1/crates/<name>` → 404 for both).
+  - `cargo publish -p guffbolt-ai -p guffbolt --dry-run --allow-dirty --locked` exits 0 with guffbolt-ai unpublished. Cargo packages guffbolt-ai, verifies it, then unpacks it into a local registry (`target/package/tmp-registry`) and verifies guffbolt against that copy. guffbolt's dependency is a path plus `version = "0.78.0"`, declared as `[workspace.dependencies.guffbolt-ai]` so `make sync-version` moves the version with the workspace's. The `guffbolt standalone` step of `make lint-rustd` runs this two-crate dry run.
+  - §1 adds no `guffbolt_ai::Error`: the moved types have no fallible function. The hand-written `Error` and its `Result` land with §2's first fallible one.
   - M253_004 is free on a fetched `origin/main` (`git ls-tree` → 0 hits).
 - **Unverified (`[?]`):**
-  - `cargo publish -p guffbolt-ai -p guffbolt --dry-run` verifies guffbolt against an unpublished guffbolt-ai. §1's Dimension 1.4 runs it.
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
 - > Owner (Indy, Nov 22, 2026), on §7's Linux-only acceptance run: "Yes, one E2E run at the end (Recommended)" — context: one `orly burst acceptance --provider e2e` after §1–§9 and `make test-integration-rustd` are green, the machine deleted when the run ends.
@@ -440,7 +441,7 @@ N/A: no product or operator signal changes. The provider metric families and the
 - > Owner (Indy, Nov 22, 2026): "1. I think when you set the fleet you give a budget so this flag is pointless 2. Yes add the read_timout_seconds 3. Yes signed on the fix to pass the runner to pass the values to the executor." — context: §0 below; (1) the fleet budget maxima, (2) the HTTP API request read timeout, (3) the sizes the runner and the in-sandbox executor share.
 - > Owner (Indy, Nov 22, 2026), on CI workflow edits overnight: "Yes, coverage/test lines only (Recommended)" — context: `.github/workflows/**` lines that pass the coverage floors or select tests (keeping the manual live tests out of CI) may change; deploy jobs, secrets, permissions and triggers may not; every edit is listed in the morning summary.
 - > Owner (Indy, Nov 22, 2026): "donot send any keys or spill any keys in the PR" and "run gitleaks prior to push the PR" — context: before every push, `gitleaks detect` runs over the commits being pushed and must report no leaks; no key, token, vault path or key-derived value goes into a commit, a PR body, a PR comment, a log pasted in the PR or a test fixture.
-- **Open blockers** — none; the two `[?]` left are settled by running §1 and block nothing. Q1 to Q7 are answered ("Take all seven").
+- **Open blockers** — none; the one `[?]` left blocks nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
 

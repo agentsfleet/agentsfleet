@@ -27,7 +27,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use serde_json::Value;
 
-use crate::tool::Image;
+use guffbolt_ai::Image;
 
 pub use self::error::{EnvError, EnvErrorKind};
 pub use self::local::LocalEnv;

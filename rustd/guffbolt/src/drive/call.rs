@@ -17,7 +17,8 @@ use crate::conversation::Conversation;
 use crate::observe::{CallEnd, Observe};
 use crate::step::{Step, Waiting};
 use crate::tool::{ErrorCode, ToolFuture, ToolOutput};
-use crate::transcript::{Call, CallRef, Message};
+use crate::transcript::CallRef;
+use guffbolt_ai::{Call, Message};
 
 /// What a second question in one step reads back: one is asked at a time.
 const ONE_QUESTION: &str = "another call of this step already asked the person a question; \

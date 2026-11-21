@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::pause::Ask;
 use super::{Caps, Kind, Me, Status};
 use crate::drive::DriveState;
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 mod saved;
 mod tools;

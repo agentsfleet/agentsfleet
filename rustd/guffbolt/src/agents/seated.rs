@@ -13,10 +13,12 @@ use tokio_util::sync::CancellationToken;
 use super::{Agents, Me};
 use crate::conversation::Conversation;
 use crate::drive::Input;
-use crate::model::Request;
-use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
-use crate::transcript::{Call, CallRef, Transcript};
+use crate::tool::{ToolFuture, ToolOutput};
+use crate::transcript::{CallRef, Transcript};
 use crate::window::{Fitted, Window};
+use guffbolt_ai::Call;
+use guffbolt_ai::Request;
+use guffbolt_ai::ToolSpec;
 
 /// Child `me`'s conversation `inner`, holding `tools` and stopped by `stop`.
 pub(super) struct Seated<'s, C> {

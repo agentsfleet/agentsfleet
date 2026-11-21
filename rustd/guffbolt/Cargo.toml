@@ -23,6 +23,7 @@ workspace = true
 # backend it calls when `tools::ToolsBuilder` builds it, with host-process
 # defaults for a standalone harness.
 tools = [
+    "dep:bytes",
     "dep:globset",
     "dep:html2text",
     "dep:image",
@@ -42,9 +43,12 @@ tools = [
 ]
 
 [dependencies]
-# An image a call read, shared by the output and the result that carries it,
-# and serialized with the conversation.
-bytes = { workspace = true, features = ["serde"] }
+# The provider side: the types one model call reads and writes, and the
+# `Model` trait, re-exported under guffbolt's own paths. Its default build is
+# the types alone, so the loop links no wire.
+guffbolt-ai.workspace = true
+# The bytes a tool's process, file or server answers with.
+bytes = { workspace = true, optional = true }
 # A model step streams as a `futures` stream of chunks.
 futures-util.workspace = true
 # An embedder saves the transcript and the loop's progress through these.

@@ -21,12 +21,14 @@ use crate::agents::{Action, Agents, Caps, Children, Fork, Order, Raise, Seat, Sp
 use crate::conversation::Conversation;
 use crate::drive::Input;
 use crate::extension::{Budget, Extension, Plain};
-use crate::model::{Chunk, End, Model, Request, TextKind};
 use crate::observe::{CallEnd, Observe};
 use crate::step::{Ending, Listen, Waiting};
-use crate::tool::{ToolFuture, ToolOutput, ToolSpec};
-use crate::transcript::{Call, CallRef, Message, Transcript};
+use crate::tool::{ToolFuture, ToolOutput};
+use crate::transcript::{CallRef, Transcript};
 use crate::window::Window;
+use guffbolt_ai::ToolSpec;
+use guffbolt_ai::{Call, Message};
+use guffbolt_ai::{Chunk, End, Model, Request, TextKind};
 
 mod waits;
 

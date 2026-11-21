@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use super::fork::forked;
 use super::{Agents, Kind, Me, Status, TOOLS};
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 /// What a child asking for a tool its parent lacks reads, after its name.
 const NOT_HELD: &str = "is not one of this run's tools";

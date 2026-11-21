@@ -16,7 +16,7 @@ use tokio::sync::oneshot;
 
 use super::{Agents, Status};
 use crate::drive::DriveState;
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 /// Proof that a run's children were quiet when it was granted, and a hold on
 /// them: no turn starts while it is kept, and dropping it lets them start

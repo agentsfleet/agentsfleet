@@ -13,8 +13,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::tool::{ToolOutput, ToolSpec};
+use crate::tool::ToolOutput;
 use crate::tools::{Context, Handler};
+use guffbolt_ai::ToolSpec;
 
 /// What a search that found nothing reads back.
 const FOUND_NOTHING: &str = "no deferred tool matches";

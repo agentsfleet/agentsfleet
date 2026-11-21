@@ -8,8 +8,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{ACCEPTED, Document, Kept, NOT_AN_OBJECT, Propose, Refusal};
-use crate::tool::{Describe as _, ErrorCode, Tool, ToolOutput, ToolSpec, Tools};
+use crate::tool::{Describe as _, ErrorCode, Tool, ToolOutput, Tools};
 use crate::tools::code;
+use guffbolt_ai::ToolSpec;
 
 /// What the ledger refuses a line with no text with.
 const LINE_REFUSED: ErrorCode = ErrorCode::new("line_refused");

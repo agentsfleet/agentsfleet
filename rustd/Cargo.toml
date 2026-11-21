@@ -16,9 +16,10 @@
 # A crate depends on its own layer or a lower one, `runner/` and `daemon/`
 # never on each other, and nothing on `e2e/`, in every dependency table: normal,
 # build and dev. `af_e2e`'s `tests/layers.rs` enforces it. The agent harness,
-# `guffbolt/`, sits beside `crates/` rather than in a layer: it is a standalone
-# harness, publishable on its own, that depends on no crate of this workspace,
-# so any layer may depend on it.
+# `guffbolt/`, and its provider side, `guffbolt-ai/`, sit beside `crates/`
+# rather than in a layer: each is publishable on its own and depends on no
+# `crates/` crate, so any layer may depend on either. guffbolt depends on
+# guffbolt-ai, never the reverse.
 # This root is a VIRTUAL manifest: no `[package]`, so it builds no library or
 # binary of its own. The workspace mechanics (virtual root, explicit member
 # list, the lint rationale below) come from ~/Projects/oss/bun.
@@ -100,8 +101,9 @@ members = [
     # `af_e2e`: the daemon-and-runner suites, the recovery bench and the layer
     # test; nothing depends on it.
     "crates/e2e/af_e2e",
-    # standalone: the agent harness, beside `crates/`
+    # standalone: the agent harness and its provider side, beside `crates/`
     "guffbolt",
+    "guffbolt-ai",
 ]
 # Vendored upstream crates patched below: not ours to lint, test or grade.
 exclude = ["patches/datagram-socket"]
@@ -315,6 +317,10 @@ agentsfleetd = { path = "crates/daemon/main" }
 # conversation, what a run of one kind adds as an extension, and the tools a
 # loop is offered. Outside the layer folders: it depends on no crate here.
 guffbolt = { path = "guffbolt" }
+# guffbolt-ai, the provider side guffbolt depends on, is declared as its own
+# table at the end of this section: guffbolt is published, so the dependency
+# carries a version, and on its own line `make sync-version` moves it with the
+# workspace's.
 
 # Input token counts that bound each model call against its context window
 # (`af_inference`): exact for a model `tiktoken-rs` knows, estimated otherwise.
@@ -1026,6 +1032,14 @@ procfs-core = { version = "0.18.0", default-features = false }
 # it, through `..` or a symbolic link, on every platform — capability-based
 # confinement from the Bytecode Alliance rather than a hand-written resolver.
 cap-std = { version = "4.0.3", default-features = false }
+
+# The provider side of the agent harness: the types one model call reads and
+# writes, and the `Model` trait a provider implements. Its default build is
+# those types alone.
+[workspace.dependencies.guffbolt-ai]
+path = "guffbolt-ai"
+version = "0.78.0"
+default-features = false
 
 [workspace.lints.rust]
 # Every rustc warning is an error; individual lints below raise their own level

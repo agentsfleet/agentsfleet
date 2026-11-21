@@ -20,7 +20,8 @@ use tracing::Span;
 use crate::drive::Mark;
 use crate::step::{Ending, Listen, Step};
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::{Call, CallRef};
+use crate::transcript::CallRef;
+use guffbolt_ai::Call;
 
 /// How one model call ended, `F` being the embedder's failure.
 #[derive(Debug)]

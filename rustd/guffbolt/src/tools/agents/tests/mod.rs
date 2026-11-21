@@ -21,7 +21,7 @@ use crate::extension::Plain;
 use crate::step::Ending;
 use crate::tool::Tools;
 use crate::tools::{Backend, ContextTool, ToolsConfig};
-use crate::transcript::{Message, Replay};
+use guffbolt_ai::{Message, Replay};
 
 mod call_refs;
 mod fork;

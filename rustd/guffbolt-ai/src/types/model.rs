@@ -11,8 +11,7 @@ use std::ops::AddAssign;
 
 use futures_util::stream::BoxStream;
 
-use crate::tool::ToolSpec;
-use crate::transcript::{Call, Message, Replay};
+use super::{Call, Message, Replay, ToolSpec};
 
 /// The name the provider's own web search is called by.
 const WEB_SEARCH: &str = "web_search";

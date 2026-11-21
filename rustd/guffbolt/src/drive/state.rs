@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use super::Mark;
 use crate::agents::Census;
 use crate::step::Waiting;
-use crate::transcript::{Message, Transcript};
+use crate::transcript::Transcript;
+use guffbolt_ai::Message;
 
 /// The answers a loop accepted and the steps it completed, carried from one
 /// run of a conversation to the run that resumes it.

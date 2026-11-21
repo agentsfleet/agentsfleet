@@ -23,7 +23,8 @@ use crate::drive::{DriveState, drive_in};
 use crate::extension::Plain;
 use crate::step::Ending;
 use crate::tool::{ErrorCode, ToolOutput};
-use crate::transcript::{Message, Transcript};
+use crate::transcript::Transcript;
+use guffbolt_ai::Message;
 
 /// One child's turn, from its first step to its end.
 type Running<'s> = Pin<Box<dyn Future<Output = ()> + Send + 's>>;

@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 
 use super::{Agents, Caps, Census, Counted, Kind, Me, Refused, Status};
 use crate::drive::DriveState;
-use crate::transcript::{Message, Replay};
+use guffbolt_ai::{Message, Replay};
 
 /// The caps the cases run under: depth 2, two open.
 const CAPS: Caps = Caps { depth: 2, open: 2 };

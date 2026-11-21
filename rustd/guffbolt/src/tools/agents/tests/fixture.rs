@@ -16,13 +16,15 @@ use crate::agents::{Agents, Raise, Seat, TOOLS};
 use crate::conversation::Conversation;
 use crate::drive::{DriveState, Input};
 use crate::extension::Extension;
-use crate::model::{Chunk, End, Model, Request, TextKind};
 use crate::observe::Unobserved;
 use crate::step::Ending;
-use crate::tool::{ToolFuture, ToolSpec, Tools};
+use crate::tool::{ToolFuture, Tools};
 use crate::tools::{Context, ContextTool, ToolsConfig};
-use crate::transcript::{Call, CallRef, Message, Transcript};
+use crate::transcript::{CallRef, Transcript};
 use crate::window::Window;
+use guffbolt_ai::ToolSpec;
+use guffbolt_ai::{Call, Message};
+use guffbolt_ai::{Chunk, End, Model, Request, TextKind};
 
 /// The key the root's requests carry.
 pub(super) const ROOT: &str = "root";

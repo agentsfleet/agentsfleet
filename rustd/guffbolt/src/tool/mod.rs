@@ -13,24 +13,13 @@ use std::fmt;
 use std::future::ready;
 use std::pin::Pin;
 
+use guffbolt_ai::ToolSpec;
 use serde_json::Value;
 
-pub use self::output::{ErrorCode, Image, ImageKind, ToolOutput};
+pub use self::output::{ErrorCode, ToolOutput};
 
 /// One call's work, as a tool hands it to the loop.
 pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = ToolOutput> + Send + 'a>>;
-
-/// One tool as the model is offered it: provider-neutral, so each wire maps
-/// it onto its own function-calling shape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ToolSpec<'a> {
-    /// The name the model calls it by.
-    pub name: &'a str,
-    /// What the tool does, as the model reads it.
-    pub description: &'a str,
-    /// The arguments' JSON Schema.
-    pub parameters: &'a Value,
-}
 
 /// What the model is told about a tool, which needs no call's context.
 pub trait Describe: Send + Sync + fmt::Debug {

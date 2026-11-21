@@ -33,9 +33,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{Answer, failed, inside, settled};
-use crate::tool::{Image, ImageKind, ToolOutput};
+use crate::tool::ToolOutput;
 use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::{Context, Handler, Limits, Schema, code};
+use guffbolt_ai::{Image, ImageKind};
 
 /// How a PNG begins.
 pub const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";

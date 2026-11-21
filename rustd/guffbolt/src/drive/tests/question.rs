@@ -3,8 +3,8 @@
 //! question waiting changes nothing, and one step asks one question.
 
 use crate::step::{Ending, Waiting};
-use crate::transcript::{Message, Replay};
 use crate::{DriveState, Plain};
+use guffbolt_ai::{Message, Replay};
 
 use super::drive;
 use super::fixture::{Scripted, answered};

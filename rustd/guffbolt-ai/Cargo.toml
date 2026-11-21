@@ -1,0 +1,30 @@
+[package]
+name = "guffbolt-ai"
+description = "The provider side of the guffbolt agent harness: what a model call is asked, the chunks it streams back, and the Model trait a provider implements."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+# What crates.io lists it under; the workspace's keywords name agentsfleet.
+keywords = ["agent", "llm", "ai", "provider", "streaming"]
+categories = ["asynchronous"]
+
+[lints]
+workspace = true
+
+# The default build is the types alone: a provider crate or a loop links
+# nothing else from here.
+[dependencies]
+# An image a call read, serialized with the conversation that carries it.
+bytes = { workspace = true, features = ["serde"] }
+# A model step streams as a `futures` stream of chunks.
+futures-util.workspace = true
+# A conversation is saved and resumed through these.
+serde = { workspace = true, features = ["derive"] }
+# A call's arguments, a tool's parameters and a provider's replay record are
+# JSON.
+serde_json.workspace = true
+

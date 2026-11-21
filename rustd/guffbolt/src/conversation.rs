@@ -5,11 +5,13 @@ use std::future::ready;
 use tokio_util::sync::CancellationToken;
 
 use crate::drive::Input;
-use crate::model::{Model, Request};
 use crate::observe::Observe;
-use crate::tool::{ToolFuture, ToolSpec};
-use crate::transcript::{Call, CallRef, Transcript};
+use crate::tool::ToolFuture;
+use crate::transcript::{CallRef, Transcript};
 use crate::window::{Fitted, Window};
+use guffbolt_ai::Call;
+use guffbolt_ai::ToolSpec;
+use guffbolt_ai::{Model, Request};
 
 /// One loop's conversation, as the embedder keeps it: where its input comes
 /// from, how it fits the model's window, what each call is lent, and what it

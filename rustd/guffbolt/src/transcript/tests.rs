@@ -1,10 +1,9 @@
 //! The transcript joins input so no provider sees two user messages in a
-//! row, knows where the current group began, and saves a provider's record
-//! exactly as the provider wrote it.
+//! row, and knows where the current group began.
 
-use serde_json::json;
+use guffbolt_ai::{Message, Replay};
 
-use super::{Call, Message, Replay, Transcript};
+use super::Transcript;
 
 fn said(text: &str) -> Message {
     Message::Assistant {
@@ -44,32 +43,4 @@ fn a_group_spans_what_arrived_since_it_began() {
         2,
         "a resumed history is all one group"
     );
-}
-
-#[test]
-fn a_provider_record_is_saved_as_the_provider_wrote_it() {
-    let record =
-        json!({"content": [{"type": "reasoning", "text": "kept"}], "origin": {"id": "msg_1"}});
-    let message = Message::Assistant {
-        text: "Done.".to_owned(),
-        calls: vec![Call {
-            id: "call-1".to_owned(),
-            name: "read".to_owned(),
-            arguments: json!({"path": "README.md"}),
-        }],
-        replay: Replay::new(record.clone()),
-    };
-    let saved = serde_json::to_value(&message).unwrap_or_default();
-    assert_eq!(saved.pointer("/Assistant/replay"), Some(&record));
-    assert_eq!(
-        serde_json::from_value::<Message>(saved).ok(),
-        Some(message),
-        "it reads back whole"
-    );
-}
-
-#[test]
-fn a_step_no_provider_recorded_holds_no_record() {
-    assert!(Replay::default().is_empty());
-    assert!(!Replay::new(json!({"content": []})).is_empty());
 }

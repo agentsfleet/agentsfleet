@@ -6,7 +6,7 @@
 //! that fits, with what no longer fits summarized or dropped. A window lives for one call, so
 //! fitting it never edits what the loop keeps.
 
-use crate::transcript::Message;
+use guffbolt_ai::Message;
 
 /// What one model call sends of the transcript.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

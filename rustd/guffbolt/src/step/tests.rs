@@ -8,8 +8,8 @@ use futures_util::stream;
 use serde_json::json;
 
 use super::{Listen, Step};
-use crate::model::{Chunk, End, TextKind, Usage};
-use crate::transcript::{Call, Replay};
+use guffbolt_ai::{Call, Replay};
+use guffbolt_ai::{Chunk, End, TextKind, Usage};
 
 /// Why the test stream failed.
 #[derive(Debug, PartialEq, Eq)]

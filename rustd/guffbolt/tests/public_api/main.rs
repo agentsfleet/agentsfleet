@@ -13,6 +13,7 @@
 
 mod plain;
 mod script;
+mod seam;
 
 #[cfg(feature = "tools")]
 mod children;

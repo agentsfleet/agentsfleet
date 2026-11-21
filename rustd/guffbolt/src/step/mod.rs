@@ -4,8 +4,8 @@ use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Chunk, TextKind, Usage};
-use crate::transcript::{Call, Replay};
+use guffbolt_ai::{Call, Replay};
+use guffbolt_ai::{Chunk, TextKind, Usage};
 
 /// What one model step produced.
 #[derive(Debug, Default)]

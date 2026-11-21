@@ -8,9 +8,11 @@ use std::sync::{Arc, Mutex};
 use serde_json::{Value, json};
 
 use crate::step::Ending;
-use crate::tool::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput, ToolSpec};
-use crate::transcript::{CallRef, Message};
+use crate::tool::{Describe, ErrorCode, Tool, ToolFuture, ToolOutput};
+use crate::transcript::CallRef;
 use crate::{DriveState, Plain};
+use guffbolt_ai::Message;
+use guffbolt_ai::ToolSpec;
 
 use super::drive;
 use super::fixture::{Lent, Scripted, answered};

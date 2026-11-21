@@ -9,8 +9,8 @@ use futures_util::stream::{self, BoxStream};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
-use crate::model::{Chunk, End, Model, Request, TextKind};
-use crate::transcript::{Call, Message, Replay};
+use guffbolt_ai::{Call, Message, Replay};
+use guffbolt_ai::{Chunk, End, Model, Request, TextKind};
 
 /// The tool every scripted call names, unless its cue names others.
 pub(super) const TOOL: &str = "deploy";

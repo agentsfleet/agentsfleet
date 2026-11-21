@@ -13,11 +13,13 @@ use tokio_util::sync::CancellationToken;
 use super::script::{ASK_USER, Cue, Failure, Script, TOOL, lock, user};
 use crate::conversation::Conversation;
 use crate::drive::{Input, Mark};
-use crate::model::Request;
 use crate::step::Ending;
-use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec, Tools};
-use crate::transcript::{Call, CallRef, Message, Transcript};
+use crate::tool::{Describe, Tool, ToolFuture, ToolOutput, Tools};
+use crate::transcript::{CallRef, Transcript};
 use crate::window::{Fitted, Window};
+use guffbolt_ai::Request;
+use guffbolt_ai::ToolSpec;
+use guffbolt_ai::{Call, Message};
 
 /// The output limit a fitted window sets.
 pub(super) const FITTED_LIMIT: u32 = 64;

@@ -14,11 +14,11 @@ use tracing::Instrument as _;
 use crate::agents::Me;
 use crate::conversation::Conversation;
 use crate::extension::{Answer, Budget, Extension};
-use crate::model::Model as _;
 use crate::observe::{Observe as _, StepEnd, StepOutcome};
 use crate::step::{Ending, Step, Waiting};
-use crate::transcript::Message;
 use crate::window::{Fitted, Window};
+use guffbolt_ai::Message;
+use guffbolt_ai::Model as _;
 
 use self::mark::take_input;
 

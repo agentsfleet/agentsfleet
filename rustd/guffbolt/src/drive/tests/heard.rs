@@ -8,7 +8,7 @@ use tracing::Span;
 
 use crate::observe::{CallEnd, Observe, StepEnd, StepOutcome};
 use crate::step::{Ending, Listen};
-use crate::transcript::Call;
+use guffbolt_ai::Call;
 
 use super::fixture::Scripted;
 use super::script::{Failure, lock};

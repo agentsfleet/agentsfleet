@@ -1702,6 +1702,7 @@ dependencies = [
  "afd_vault",
  "axum",
  "clap",
+ "futures-util",
  "garde",
  "hyper",
  "hyper-util",
@@ -4885,6 +4886,7 @@ dependencies = [
  "bytes",
  "futures-util",
  "globset",
+ "guffbolt-ai",
  "html2text",
  "image",
  "jiff 1.0.1",
@@ -4904,6 +4906,16 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "guffbolt-ai"
+version = "0.78.0"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -8913,8 +8925,10 @@ dependencies = [
  "bitflags 2.13.2",
  "bytes",
  "http",
+ "http-body",
  "percent-encoding",
  "pin-project-lite",
+ "tokio",
  "tower-layer",
  "tower-service",
  "uuid",
