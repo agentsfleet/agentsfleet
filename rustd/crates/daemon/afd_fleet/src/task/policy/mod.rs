@@ -102,10 +102,12 @@ pub struct TaskTimes {
     pub terminal_retention: Duration,
     /// Newest checkpoints kept per task.
     pub keep_generations: u32,
-    /// How long a runner's upload link stays valid.
-    pub upload_url_ttl: Duration,
-    /// How long a runner's download link stays valid.
-    pub download_url_ttl: Duration,
+    /// How long a runner's presigned upload link stays valid.
+    pub upload_link_ttl: Duration,
+    /// How long a runner's presigned download link stays valid.
+    pub download_link_ttl: Duration,
+    /// How long a checkpoint's uploads or restore may run in total.
+    pub transfer_window: Duration,
     /// A checkpoint being restored cannot be deleted during this window.
     pub restore_pin: Duration,
     /// An upload never committed is deletable after this.
@@ -121,8 +123,9 @@ impl Default for TaskTimes {
             operation_timeout: super::decision::OPERATION_TIMEOUT,
             terminal_retention: super::checkpoint::TERMINAL,
             keep_generations: super::checkpoint::LIVE_GENERATIONS,
-            upload_url_ttl: super::checkpoint::TRANSFER,
-            download_url_ttl: super::checkpoint::URL,
+            upload_link_ttl: super::checkpoint::LINK,
+            download_link_ttl: super::checkpoint::LINK,
+            transfer_window: super::checkpoint::TRANSFER,
             restore_pin: super::checkpoint::PIN,
             orphan_after: super::checkpoint::ORPHAN,
             delete_batch_size: super::checkpoint::GC_BATCH,
@@ -140,7 +143,7 @@ impl TaskTimes {
     }
 
     pub(crate) fn transfer_seconds(&self) -> i32 {
-        crate::run::limits::seconds(self.upload_url_ttl)
+        crate::run::limits::seconds(self.transfer_window)
     }
 
     pub(crate) fn pin_seconds(&self) -> i32 {
@@ -173,7 +176,8 @@ mod times_tests {
         assert_eq!(times.terminal_seconds(), 7 * 24 * 60 * 60);
         assert_eq!(times.live_generations(), 3);
         assert_eq!(times.transfer_seconds(), 15 * 60);
-        assert_eq!(times.download_url_ttl, Duration::from_mins(5));
+        assert_eq!(times.upload_link_ttl, Duration::from_mins(5));
+        assert_eq!(times.download_link_ttl, Duration::from_mins(5));
         assert_eq!(times.pin_seconds(), 30 * 60);
         assert_eq!(times.orphan_seconds(), 60 * 60);
         assert_eq!(times.gc_batch(), 256);

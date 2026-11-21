@@ -37,7 +37,7 @@ pub struct TurnRun<'a> {
     pub fencing_token: u64,
 }
 
-/// How long a runner's upload link stays valid, by default.
+/// How long a checkpoint's uploads or restore may run in total, by default.
 pub(crate) const TRANSFER: std::time::Duration = std::time::Duration::from_mins(15);
 /// How long a restoring checkpoint is pinned, by default.
 pub(crate) const PIN: std::time::Duration = std::time::Duration::from_mins(2);

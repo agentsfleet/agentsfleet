@@ -33,12 +33,12 @@ pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
 
 use std::time::Duration;
 
-/// How long a runner's upload link stays valid, by default.
+/// How long a checkpoint's uploads or restore may run in total, by default.
 pub(crate) const TRANSFER: Duration = Duration::from_mins(15);
 /// How long a restoring checkpoint is pinned, by default.
 pub(crate) const PIN: Duration = Duration::from_mins(30);
-/// How long a runner's download link stays valid, by default.
-pub(crate) const URL: Duration = Duration::from_mins(5);
+/// How long a runner's presigned upload or download link stays valid, by default.
+pub(crate) const LINK: Duration = Duration::from_mins(5);
 /// How long an uncommitted upload is kept, by default.
 pub(crate) const ORPHAN: Duration = Duration::from_hours(1);
 /// Objects deleted per storage call, by default.

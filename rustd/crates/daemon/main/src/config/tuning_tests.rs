@@ -137,7 +137,7 @@ fn runners_values_reach_the_runtime() -> Checked {
 fn turns_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[turns]\nmax_runs_per_turn=5\nmax_queued_turns=10\nhistory_page_size=7\n\
-         [turns.checkpoints]\nretention_days=2\nupload_url_ttl_minutes=3\n\
+         [turns.checkpoints]\nretention_days=2\ntransfer_window_minutes=3\n\
          restore_pin_minutes=4\norphan_after_minutes=5",
     )?;
     let turns = tuning.turns;
@@ -153,7 +153,7 @@ fn turns_values_reach_the_runtime() -> Checked {
     assert_eq!(
         (
             checkpoints.retention_days,
-            checkpoints.upload_url_ttl_minutes,
+            checkpoints.transfer_window_minutes,
             checkpoints.restore_pin_minutes,
             checkpoints.orphan_after_minutes
         ),
@@ -208,9 +208,9 @@ fn fleets_and_billing_values_reach_the_runtime() -> Checked {
 fn tasks_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[tasks]\nslice_seconds=60\noperation_timeout_seconds=6\nterminal_retention_days=1\n\
-         [tasks.checkpoints]\nkeep_generations=2\nupload_url_ttl_minutes=3\n\
-         download_url_ttl_minutes=4\nrestore_pin_minutes=5\norphan_after_minutes=6\n\
-         delete_batch_size=7",
+         [tasks.checkpoints]\nkeep_generations=2\nupload_link_ttl_minutes=3\n\
+         download_link_ttl_minutes=4\ntransfer_window_minutes=8\nrestore_pin_minutes=5\n\
+         orphan_after_minutes=6\ndelete_batch_size=7",
     )?;
     let tasks = tuning.tasks;
     assert_eq!(
@@ -225,13 +225,19 @@ fn tasks_values_reach_the_runtime() -> Checked {
     assert_eq!(
         (
             checkpoints.keep_generations,
-            checkpoints.upload_url_ttl_minutes,
-            checkpoints.download_url_ttl_minutes,
+            checkpoints.upload_link_ttl_minutes,
+            checkpoints.download_link_ttl_minutes,
+            checkpoints.transfer_window_minutes,
+        ),
+        (2, 3, 4, 8)
+    );
+    assert_eq!(
+        (
             checkpoints.restore_pin_minutes,
             checkpoints.orphan_after_minutes,
             checkpoints.delete_batch_size
         ),
-        (2, 3, 4, 5, 6, 7)
+        (5, 6, 7)
     );
     Ok(())
 }
@@ -254,8 +260,7 @@ fn setup_values_reach_the_runtime() -> Checked {
 fn auth_values_reach_the_runtime() -> Checked {
     let auth = tuned(
         "[auth]\nsession_ttl_seconds=120\nsession_replay_seconds=30\n\
-         max_session_verify_attempts=3\naccess_token_ttl_minutes=2\n\
-         oauth_state_ttl_minutes=4\nidentity_timeout_seconds=6\n\
+         max_session_verify_attempts=3\noauth_state_ttl_minutes=4\nidentity_timeout_seconds=6\n\
          jwks_fetch_timeout_seconds=7\njwks_cache_hours=2\n\
          jwks_stale_grace_minutes=9\njwks_min_refresh_seconds=11",
     )?
@@ -268,10 +273,7 @@ fn auth_values_reach_the_runtime() -> Checked {
         ),
         (120, 30, 3)
     );
-    assert_eq!(
-        (auth.access_token_ttl_minutes, auth.oauth_state_ttl_minutes),
-        (2, 4)
-    );
+    assert_eq!(auth.oauth_state_ttl_minutes, 4);
     assert_eq!(
         (
             auth.identity_timeout_seconds,
@@ -294,6 +296,7 @@ fn auth_values_reach_the_runtime() -> Checked {
 fn credentials_and_connector_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
         "[credentials]\ntoken_cache_count=10\nplatform_key_cache_minutes=2\n\
+         assumed_token_ttl_minutes=3\n\
          [connectors.github]\ninstallation_token_ttl_minutes=30\n\
          [connectors.slack]\npost_timeout_seconds=2\nanswer_check_timeout_seconds=1\n\
          read_timeout_ms=700\n\
@@ -302,9 +305,14 @@ fn credentials_and_connector_values_reach_the_runtime() -> Checked {
     assert_eq!(
         (
             tuning.credentials.token_cache_count,
-            tuning.credentials.platform_key_cache_minutes
+            tuning.credentials.platform_key_cache_minutes,
+            tuning.credentials.assumed_token_ttl_minutes
         ),
-        (10, 2)
+        (10, 2, 3)
+    );
+    assert_eq!(
+        tuning.minting().lifetimes.assumed_access,
+        Duration::from_mins(3)
     );
     assert_eq!(tuning.github.installation_token_ttl_minutes, 30);
     let slack = tuning.slack;
@@ -411,8 +419,8 @@ const REFUSED: &[(&str, &str)] = &[
     ("[turns]\nhistory_page_size=0", "history_page_size"),
     ("[turns.checkpoints]\nretention_days=0", "retention_days"),
     (
-        "[turns.checkpoints]\nupload_url_ttl_minutes=0",
-        "upload_url_ttl_minutes",
+        "[turns.checkpoints]\ntransfer_window_minutes=0",
+        "transfer_window_minutes",
     ),
     (
         "[turns.checkpoints]\nrestore_pin_minutes=0",
@@ -462,8 +470,16 @@ const REFUSED: &[(&str, &str)] = &[
         "keep_generations",
     ),
     (
-        "[tasks.checkpoints]\ndownload_url_ttl_minutes=0",
-        "download_url_ttl_minutes",
+        "[tasks.checkpoints]\nupload_link_ttl_minutes=0",
+        "upload_link_ttl_minutes",
+    ),
+    (
+        "[tasks.checkpoints]\ndownload_link_ttl_minutes=0",
+        "download_link_ttl_minutes",
+    ),
+    (
+        "[tasks.checkpoints]\ntransfer_window_minutes=0",
+        "transfer_window_minutes",
     ),
     (
         "[tasks.checkpoints]\ndelete_batch_size=0",
@@ -485,10 +501,6 @@ const REFUSED: &[(&str, &str)] = &[
     (
         "[auth]\nmax_session_verify_attempts=11",
         "max_session_verify_attempts",
-    ),
-    (
-        "[auth]\naccess_token_ttl_minutes=1441",
-        "access_token_ttl_minutes",
     ),
     (
         "[auth]\noauth_state_ttl_minutes=1441",
@@ -515,6 +527,14 @@ const REFUSED: &[(&str, &str)] = &[
     (
         "[credentials]\nplatform_key_cache_minutes=0",
         "platform_key_cache_minutes",
+    ),
+    (
+        "[credentials]\nassumed_token_ttl_minutes=0",
+        "assumed_token_ttl_minutes",
+    ),
+    (
+        "[credentials]\nassumed_token_ttl_minutes=1441",
+        "assumed_token_ttl_minutes",
     ),
     (
         "[connectors.github]\ninstallation_token_ttl_minutes=61",

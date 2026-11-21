@@ -82,7 +82,7 @@ history_page_size          = 100            # earlier turns read per page when a
 
 [turns.checkpoints]                         # turn checkpoints stored in R2
 retention_days             = 7              # a settled turn's checkpoint is deleted after this
-upload_url_ttl_minutes     = 15             # how long a runner's upload link stays valid
+transfer_window_minutes    = 15             # how long a checkpoint's uploads or restore may run in total
 restore_pin_minutes        = 2              # a checkpoint being restored cannot be deleted during this window
 orphan_after_minutes       = 60             # an upload never committed is deletable after this
 
@@ -110,8 +110,9 @@ terminal_retention_days    = 7              # a finished task's records are kept
 
 [tasks.checkpoints]                         # task checkpoints stored in R2
 keep_generations           = 3              # newest checkpoints kept per task; older ones are deleted at commit
-upload_url_ttl_minutes     = 15             # how long a runner's upload link stays valid
-download_url_ttl_minutes   = 5              # how long a runner's download link stays valid
+upload_link_ttl_minutes    = 5              # how long a runner's presigned upload link stays valid
+download_link_ttl_minutes  = 5              # how long a runner's presigned download link stays valid
+transfer_window_minutes    = 15             # how long a checkpoint's uploads or restore may run in total
 restore_pin_minutes        = 30             # a checkpoint being restored cannot be deleted during this window
 orphan_after_minutes       = 60             # an upload never committed is deletable after this
 delete_batch_size          = 256            # objects deleted per storage call
@@ -125,7 +126,6 @@ scan_batch_size            = 64             # drafts read per page by setup main
 session_ttl_seconds        = 300            # how long a CLI login session waits to be approved
 session_replay_seconds     = 60             # a login code reused within this is refused
 max_session_verify_attempts = 5             # wrong codes allowed before a login session is closed
-access_token_ttl_minutes   = 5              # how long a minted access token lives
 oauth_state_ttl_minutes    = 10             # how long a connector sign-in link stays valid
 identity_timeout_seconds   = 5              # how long a call to the identity provider may take
 jwks_fetch_timeout_seconds = 5              # how long fetching the identity provider's signing keys may take
@@ -137,6 +137,7 @@ jwks_min_refresh_seconds   = 30             # signing keys are refetched no more
 token_cache_count          = 8_192          # minted tokens kept in memory
 # token_cache_minutes        = 5              # how long a cached token is reused  (not read yet; see below)
 platform_key_cache_minutes = 5              # how long a platform model key is reused before re-reading the vault
+assumed_token_ttl_minutes  = 5              # used when a provider's token states no expiry
 
 [connectors.github]
 installation_token_ttl_minutes = 60         # how long a GitHub app token is used; GitHub's own maximum is 60

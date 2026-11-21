@@ -29,7 +29,10 @@ pub(super) async fn issue(
         session: &session,
         plan: &batch.plan,
         deadline: batch.pin.expires_at.min(batch.pin.operation_deadline),
-        url_lifetime: tasks.times().download_url_ttl,
+        url_lifetime: match purpose {
+            CheckpointTransferPurpose::Upload => tasks.times().upload_link_ttl,
+            CheckpointTransferPurpose::Restore => tasks.times().download_link_ttl,
+        },
         purpose,
         verifying,
     };

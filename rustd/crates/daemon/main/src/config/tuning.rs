@@ -137,9 +137,9 @@ pub(crate) struct TurnCheckpointTuning {
     /// A settled turn's checkpoint is deleted after this.
     #[garde(range(min = 1))]
     pub retention_days: u32,
-    /// How long a runner's upload link stays valid.
+    /// How long a checkpoint's uploads or restore may run in total.
     #[garde(range(min = 1))]
-    pub upload_url_ttl_minutes: u32,
+    pub transfer_window_minutes: u32,
     /// A checkpoint being restored cannot be deleted during this window.
     #[garde(range(min = 1))]
     pub restore_pin_minutes: u32,
@@ -152,7 +152,7 @@ impl Default for TurnCheckpointTuning {
     fn default() -> Self {
         Self {
             retention_days: 7,
-            upload_url_ttl_minutes: 15,
+            transfer_window_minutes: 15,
             restore_pin_minutes: 2,
             orphan_after_minutes: 60,
         }
@@ -266,12 +266,15 @@ pub(crate) struct TaskCheckpointTuning {
     /// Newest checkpoints kept per task.
     #[garde(range(min = 1))]
     pub keep_generations: u32,
-    /// How long a runner's upload link stays valid.
+    /// How long a runner's presigned upload link stays valid.
     #[garde(range(min = 1))]
-    pub upload_url_ttl_minutes: u32,
-    /// How long a runner's download link stays valid.
+    pub upload_link_ttl_minutes: u32,
+    /// How long a runner's presigned download link stays valid.
     #[garde(range(min = 1))]
-    pub download_url_ttl_minutes: u32,
+    pub download_link_ttl_minutes: u32,
+    /// How long a checkpoint's uploads or restore may run in total.
+    #[garde(range(min = 1))]
+    pub transfer_window_minutes: u32,
     /// A checkpoint being restored cannot be deleted during this window.
     #[garde(range(min = 1))]
     pub restore_pin_minutes: u32,
@@ -287,8 +290,9 @@ impl Default for TaskCheckpointTuning {
     fn default() -> Self {
         Self {
             keep_generations: 3,
-            upload_url_ttl_minutes: 15,
-            download_url_ttl_minutes: 5,
+            upload_link_ttl_minutes: 5,
+            download_link_ttl_minutes: 5,
+            transfer_window_minutes: 15,
             restore_pin_minutes: 30,
             orphan_after_minutes: 60,
             delete_batch_size: 256,
@@ -334,9 +338,6 @@ pub(crate) struct AuthTuning {
     /// Wrong codes allowed before a login session is closed.
     #[garde(range(min = 1, max = VERIFY_ATTEMPTS_MAX))]
     pub max_session_verify_attempts: u32,
-    /// How long a minted access token lives.
-    #[garde(range(min = 1, max = DAY_MINUTES))]
-    pub access_token_ttl_minutes: u32,
     /// How long a connector sign-in link stays valid.
     #[garde(range(min = 1, max = DAY_MINUTES))]
     pub oauth_state_ttl_minutes: u32,
@@ -363,7 +364,6 @@ impl Default for AuthTuning {
             session_ttl_seconds: 300,
             session_replay_seconds: 60,
             max_session_verify_attempts: 5,
-            access_token_ttl_minutes: 5,
             oauth_state_ttl_minutes: 10,
             identity_timeout_seconds: 5,
             jwks_fetch_timeout_seconds: 5,
@@ -384,6 +384,9 @@ pub(crate) struct CredentialsTuning {
     /// How long a platform model key is reused before re-reading the vault.
     #[garde(range(min = 1))]
     pub platform_key_cache_minutes: u32,
+    /// Used when a provider's token states no expiry.
+    #[garde(range(min = 1, max = DAY_MINUTES))]
+    pub assumed_token_ttl_minutes: u32,
 }
 
 impl Default for CredentialsTuning {
@@ -391,6 +394,7 @@ impl Default for CredentialsTuning {
         Self {
             token_cache_count: 8_192,
             platform_key_cache_minutes: 5,
+            assumed_token_ttl_minutes: 5,
         }
     }
 }
@@ -594,7 +598,7 @@ impl Tuning {
     pub(crate) fn minting(&self) -> crate::credentials::Minting {
         crate::credentials::Minting {
             lifetimes: afd_credential::credential::Lifetimes {
-                assumed_access: super::settings::mins(self.auth.access_token_ttl_minutes),
+                assumed_access: super::settings::mins(self.credentials.assumed_token_ttl_minutes),
                 installation_token: super::settings::mins(
                     self.github.installation_token_ttl_minutes,
                 ),

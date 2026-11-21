@@ -53,8 +53,8 @@ impl RunLimits {
 pub struct TurnCheckpointLimits {
     /// A settled turn's checkpoint is deleted after this.
     pub retention: Duration,
-    /// How long a runner's upload link stays valid.
-    pub upload_url_ttl: Duration,
+    /// How long a checkpoint's uploads or restore may run in total.
+    pub transfer_window: Duration,
     /// A checkpoint being restored cannot be deleted during this window.
     pub restore_pin: Duration,
     /// An upload never committed is deletable after this.
@@ -65,7 +65,7 @@ impl Default for TurnCheckpointLimits {
     fn default() -> Self {
         Self {
             retention: super::turn_checkpoint::RETENTION,
-            upload_url_ttl: super::turn_checkpoint::TRANSFER,
+            transfer_window: super::turn_checkpoint::TRANSFER,
             restore_pin: super::turn_checkpoint::PIN,
             orphan_after: super::turn_checkpoint::ORPHAN,
         }
@@ -78,7 +78,7 @@ impl TurnCheckpointLimits {
     }
 
     pub(crate) fn transfer_seconds(&self) -> i32 {
-        seconds(self.upload_url_ttl)
+        seconds(self.transfer_window)
     }
 
     pub(crate) fn pin_seconds(&self) -> i32 {
@@ -119,7 +119,7 @@ mod tests {
     fn a_configured_lifetime_is_what_a_statement_binds() {
         let checkpoints = TurnCheckpointLimits {
             retention: Duration::from_hours(24),
-            upload_url_ttl: Duration::from_mins(5),
+            transfer_window: Duration::from_mins(5),
             restore_pin: Duration::from_mins(1),
             orphan_after: Duration::from_secs(u64::MAX),
         };

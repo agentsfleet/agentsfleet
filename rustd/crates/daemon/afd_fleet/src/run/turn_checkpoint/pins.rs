@@ -165,7 +165,7 @@ pub(super) async fn reader(
         return Err(TurnCheckpointRefusal::Limit.into());
     }
     let id = runs.entropy().uuid7(owner.fresh().await?)?;
-    let duration = owner.limits.upload_url_ttl;
+    let duration = owner.limits.transfer_window;
     let deadline = af_core::clock::after(now, duration);
     insert_on(owner, &id, checkpoint, deadline, super::READER, operation).await
 }
