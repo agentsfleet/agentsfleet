@@ -1,4 +1,14 @@
 <!--
+
+> **Before any build (Indy, Nov 22, 2026): a tools brainstorm and sign-off comes first.**
+> "also add the 253_004 when it works on to brainstorm and arrive at the scope of the tools (write that as the preamble before starting the session) to iron out the tools and their experience like pi or codex with Indy and get a signoff prior to starting the guffbolt-api crate."
+>
+> The session that opens M253_004 starts with a brainstorm with Indy, not with code:
+> 1. List every guffbolt tool today (shell and exec sessions, files, patch, grep/glob/list, image, web fetch/search, MCP, memory, schedule, message, notify, propose, subagents, sleep/clock, ask_user, deferred tools) with what the model sees: name, description, arguments, limits, output shape.
+> 2. Compare each with the pi and Codex equivalent (read their source under ~/Projects/oss), and the experience they give the model: naming, argument shape, output trimming, errors.
+> 3. Decide per tool with Indy: keep, change (to match pi or Codex, or better), merge, or drop; and which tools guffbolt ships by default vs behind a feature.
+> 4. Record Indy's verbatim sign-off in Discovery. Only then start the guffbolt-ai crate (§1 onward), §9 search, and the rest.
+
 SPEC AUTHORING RULES (the one comment that survives):
 - The spec standard (spec.md) holds every rule. Each tpl: comment names the
   rules that govern its section; delete it once the section is filled.
