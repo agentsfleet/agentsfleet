@@ -61,9 +61,19 @@ pub(crate) fn raw_fixture(relative: &str) -> String {
 /// the context ceiling's number belongs. A harness that forgot the substitution
 /// would report a corpus regression that is really its own bug.
 pub(crate) fn fixture(relative: &str) -> String {
-    raw_fixture(relative)
-        .replace(MODEL_PLACEHOLDER, MODEL_VALUE)
+    filled(&raw_fixture(relative))
+}
+
+/// `text` with its placeholders filled.
+pub(crate) fn filled(text: &str) -> String {
+    text.replace(MODEL_PLACEHOLDER, MODEL_VALUE)
         .replace(CONTEXT_CAP_PLACEHOLDER, &CONTEXT_CAP_VALUE.to_string())
+}
+
+/// A parser case that must parse, with its placeholders filled.
+pub(crate) fn parsed(text: &str) -> Definition {
+    Definition::parse(&filled(text))
+        .unwrap_or_else(|failure| panic!("the case should parse: {failure}"))
 }
 
 /// The relative path of a first-party fleet's native setup.
