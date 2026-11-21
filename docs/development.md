@@ -56,21 +56,22 @@ Compile `agentsfleet-runner`, the host process that runs work and runs it in a s
 Register that runner against this worktree's daemon using the existing runner registration workflow.
 Keep its returned `AGENTSFLEET_RUNNER_TOKEN` private and separate from tokens for other worktrees.
 
-Set `<RUNNER_REACHABLE_URL>` to this development machine's reachable address and the port printed by `make up`.
 Use the existing `RUNNER_STORAGE_HOME` setting to choose the Linux host's storage base.
 
 ```bash
-AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL> bash scripts/local-dev.sh runner-env
+bash scripts/local-dev.sh runner-env
 ```
 
 ```text
-AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL>
+AGENTSFLEET_API_URL=http://<LAN_IPV4>:<WORKTREE_PORT>
 RUNNER_STORAGE_HOME=/var/lib/agentsfleet-runner/worktrees/<REPOSITORY_CHECKSUM>/wt_<WORKTREE_CHECKSUM>
 ```
 
+The URL is this machine's default-interface IPv4 and this worktree's daemon port, the same origin as `API_URL`, because the Linux runner cannot reach this machine's loopback address.
+When the runner reaches this machine through another interface, pass that origin for one invocation: `AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL> bash scripts/local-dev.sh runner-env` prints it unchanged.
+Never export `AGENTSFLEET_API_URL` globally: the `agentsfleet` CLI reads the same name, and a global value retargets every command away from the deployment in its stored credentials.
 Apply those settings with the registered token when starting that checkout's runner on Linux.
 The settings helper prints no token and performs no remote host changes.
-On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
 
 ### Acceptance
 
