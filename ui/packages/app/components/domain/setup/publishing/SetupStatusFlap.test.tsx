@@ -1,6 +1,6 @@
 import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { DRAFT, FLEET, MESSAGE, MODEL, PUBLICATION, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -56,6 +56,16 @@ it("marks a proposal for an existing fleet as unsaved", () => {
   expect(screen.getByRole("status").textContent).toBe("Unsaved setup changes");
   expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("keeps the error and its retry on the same flap after a second failure", async () => {
+  const retry = vi.fn().mockRejectedValue(new Error("Still unavailable"));
+  render(<SetupStatusFlap view={{...SAVED, error: "A request failed"}} workspace={WORKSPACE} onRetry={retry} />);
+  const status = screen.getByRole("status", {name: "Setup status"});
+  expect(status.textContent).toContain("Setup needs attention");
+  await act(async () => {fireEvent.click(within(status).getByRole("button", {name: "Retry"}));});
+  expect(retry).toHaveBeenCalledOnce();
+  expect(status.textContent).toContain("Setup needs attention");
 });
 
 it("makes an unsaved proposal available for saving without a success tick", () => {

@@ -67,3 +67,9 @@ it("publishes an already materialized source without creating another draft", as
   expect(fixture.writes()).toHaveLength(creations + 1);
   expect(fixture.writes().at(-1)?.path).toMatch(/\/plugins$/);
 });
+
+it("keeps a ready publication action beside the setup status", () => {
+  render(<SetupPublication client={client} view={client.getSnapshot()} workspace={CHAT_PROPS.workspace} onRetry={vi.fn()} />);
+  expect(screen.getByRole("button", {name: "Save and publish"})).toBeTruthy();
+  expect(screen.getByRole("status", {name: "Setup status"}).textContent).toContain("Setup needs attention");
+});

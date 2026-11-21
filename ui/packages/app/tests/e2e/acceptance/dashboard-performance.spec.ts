@@ -100,6 +100,14 @@ test.describe("authenticated dashboard fluidity", () => {
   test("New fleet opens its composer while unfinished setups are loading", async ({page}, info) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     await signInAs(page, FIXTURE_KEY.regular);
+    await page.addInitScript(() => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('textarea[aria-label="What would you like your fleet to do?"]:enabled')) return;
+        performance.mark("setup-composer-ready");
+        observer.disconnect();
+      });
+      observer.observe(document, {subtree: true, childList: true, attributes: true, attributeFilter: ["disabled"]});
+    });
     const path = `**/live/v1/workspaces/${workspaceId}/drafts?*`;
     const release = Promise.withResolvers<void>();
     let sidebarRequested = false;
@@ -116,8 +124,17 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(loadingSetups).toBeVisible();
       await expect(composer).toBeEnabled({timeout: ROUTE_TIMEOUT_MS});
       await composer.fill("Review the release checklist.");
+      const timing = await page.evaluate(() => {
+        const ready = performance.getEntriesByName("setup-composer-ready")[0]?.startTime;
+        const models = performance.getEntriesByType("resource").find((entry): entry is PerformanceResourceTiming => {
+          const path = new URL(entry.name).pathname;
+          return entry instanceof PerformanceResourceTiming && path.startsWith("/live/v1/workspaces/") && path.endsWith("/models");
+        });
+        return {composerReadyMs: ready, afterModelResponseMs: ready !== undefined && models ? ready - models.responseEnd : undefined};
+      });
+      expect(timing.composerReadyMs).toEqual(expect.any(Number));
       await info.attach("setup-composer-performance", {contentType: "application/json", body: JSON.stringify({
-        composerReadyMs: await page.evaluate(() => Math.round(performance.now())),
+        ...timing,
         sidebarRequested,
         sidebarResponseHeld: true,
       })});

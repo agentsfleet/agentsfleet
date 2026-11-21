@@ -63,6 +63,10 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByRole("textbox", {name: "Search all chats"})).toBeNull();
     expect(screen.queryByText("Recents")).toBeNull();
   });
+  it("marks the current resource destination in the sidebar", () => {
+    render(<SidebarNavigation pathname="/w/ws_1/secrets" workspaceId={WORKSPACE.id} collapsed={false} onNavigate={vi.fn()} />);
+    expect(screen.getAllByRole("link", {name: "Secrets"})[0]?.getAttribute("data-active")).toBe("true");
+  });
   it("opens New fleet and records account destinations", async () => {
     mount(); const user = userEvent.setup();
     await user.click(screen.getAllByRole("link", {name: "New fleet"})[0]!);

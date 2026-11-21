@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { drawerMatches, drawerPatch } from "@/lib/api/draft-edits";
-import { REVIEW } from "./helpers/draft-fixtures";
+import { dashboardToolPatch, drawerMatches, drawerPatch } from "@/lib/api/draft-edits";
+import { DRAFT, FLEET_ID, REVIEW } from "./helpers/draft-fixtures";
 
 it("recognizes a completed native edit while retaining all other setup content", () => {
   const definition = REVIEW.effective.definition;
@@ -19,4 +19,21 @@ it("patches removed, added and changed keys while escaping pointers and preservi
     instruction_edits: [{start_byte: 0, end_byte: 6, text: "New"}],
   });
   expect(drawerPatch(prior, {definition: prior, instanceName: "one"})).toMatchObject({config_ops: []});
+});
+
+it("leaves an unchanged definition alone and replaces an older scalar runtime config as a whole", () => {
+  const definition = REVIEW.effective.definition;
+  expect(drawerPatch(definition, {definition})).toBeUndefined();
+  const legacy = {...definition, config: {...definition.config, "x-agentsfleet": null}};
+  expect(drawerPatch(legacy, {definition})).toMatchObject({
+    config_ops: [{op: "replace", path: "/config/x-agentsfleet", value: definition.config["x-agentsfleet"]}],
+  });
+});
+
+it.each([
+  {linked_fleet_id: FLEET_ID},
+  {review: undefined},
+  {review: {...REVIEW, effective: {...REVIEW.effective, source_revision: "existing"}}},
+])("keeps tools owned by another setup or left unreviewed", patch => {
+  expect(dashboardToolPatch({...DRAFT, ...patch})).toBeUndefined();
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { saveInChat, ChatFixture, CHAT_PROPS, chatRouter } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
@@ -98,7 +98,8 @@ describe("private chat Save", () => {
     expect(screen.getByLabelText("Setup status").textContent).toContain("Update not confirmed");
     expect(screen.getAllByRole("button", {name: /^Retry$/})).toHaveLength(1);
     expect(fixture.writes()).toHaveLength(writes);
-    fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+    const retry = screen.getByRole("button", {name: "Retry"});
+    act(() => {fireEvent.click(retry); fireEvent.click(retry);});
     await screen.findByRole("heading", {name: "Saved setup"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/messages"));
     expect(attempts).toHaveLength(2);

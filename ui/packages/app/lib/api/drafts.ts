@@ -62,7 +62,6 @@ export class DraftClient {
         this.#update({models, moreModels, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(models, this.#snapshot.model)});
       },
       failed: cause => {
-        if (this.#owner.signal.aborted) return;
         if (losesAccess(cause)) {
           this.#failed(cause, true);
           return;
@@ -354,7 +353,7 @@ export class DraftClient {
       progress: {gap: () => this.#replies.gap(), delta: data => this.#snapshot.draft?.id === id
         && this.#replies.accept(data, id, this.#snapshot.draft.cancelled_through, this.#snapshot.messages),
         started: sequence => {
-          if (this.#snapshot.draft?.id !== id || this.#snapshot.startedTurn?.draftId === id && this.#snapshot.startedTurn.sequence === sequence) return;
+          if (this.#snapshot.startedTurn?.draftId === id && this.#snapshot.startedTurn.sequence === sequence) return;
           if (this.#snapshot.messages.some(message => message.sequence === sequence && message.state === MESSAGE_STATE.queued)) {
             this.#publish({...this.#snapshot, startedTurn: {draftId: id, sequence}}, true);
           }

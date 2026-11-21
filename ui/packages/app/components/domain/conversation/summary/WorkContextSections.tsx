@@ -90,7 +90,7 @@ export function WorkSources({sources, files}: {sources?: FleetSources; files?: r
 
 function RepositorySources({sources}: {sources: FleetSources}) {
   const {repositories, access, publication} = sources;
-  const label = repositories.length === 1 ? repositories[0] ?? "" : `${repositories.length} repositories`;
+  const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
   const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
   if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
   return <details className="group">

@@ -47,6 +47,23 @@ it("keeps the composer open after a failure whose usage is unaccounted, and offe
   expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
 });
 
+it("retries a direct conversation request error through the draft client", () => {
+  const retry = vi.spyOn(client, "retry").mockResolvedValue(undefined);
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), error: "Network failed"}} />);
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+  expect(retry).toHaveBeenCalledOnce();
+});
+
+it("ignores the old failed turn's Retry when a different draft owns the conversation", async () => {
+  await client.resume(DRAFT.id);
+  const send = vi.spyOn(client, "send").mockResolvedValue(undefined);
+  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"} as const;
+  render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(),
+    draft: {...DRAFT, id: "another-draft"}, messages: [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", failure}]}} />);
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+  expect(send).not.toHaveBeenCalled();
+});
+
 it.each([false, true])("stops queued work from the composer's Stop button (cancellation fails: %s)", async (fails) => {
   fixture.messages = [{...MESSAGE, state: "queued"}];
   const base = fixture.fetch.getMockImplementation()!;

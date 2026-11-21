@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SetupReview } from "@/components/domain/setup/summary/SetupReview";
@@ -113,6 +114,43 @@ it("selects stored secret names through the existing scoped catalog and native e
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(patch()?.body).toMatchObject({config_ops: [{path: "/config/x-agentsfleet/credentials", value: ["github-token"]}], instruction_edits: []});
   expect(secretList).toHaveBeenCalledWith(CHAT_PROPS.workspace);
+});
+
+it("collapses the inline secret selection through the same Manage button", async () => {
+  secretList.mockResolvedValue({ok: true, data: {secrets: []}});
+  await open();
+  const manage = screen.getByRole("button", {name: "Manage secrets"});
+  fireEvent.click(manage);
+  await screen.findByRole("button", {name: "Apply selection"});
+  fireEvent.click(manage);
+  expect(manage.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", {name: "Apply selection"})).toBeNull();
+  expect(fixture.writes()).toEqual([]);
+});
+
+it.each([["#repositories", "Manage repositories"], ["#secrets", "Manage secrets"]] as const)(
+  "opens the requested summary editor directly at %s",
+  async (hash, manager) => {
+    window.history.replaceState(null, "", hash);
+    secretList.mockResolvedValue({ok: true, data: {secrets: []}});
+    try {
+      await open();
+      await screen.findByRole("button", {name: "Apply selection"});
+      if (hash === "#secrets") expect(screen.getByRole("button", {name: manager}).getAttribute("aria-expanded")).toBe("true");
+      else expect(screen.getByRole("dialog", {name: "Repositories"})).toBeTruthy();
+    } finally {window.history.replaceState(null, "", window.location.pathname);}
+  },
+);
+
+it("keeps editors closed when rendering a summary on the server", async () => {
+  await client.initialize();
+  await client.resume(DRAFT.id);
+  vi.stubGlobal("window", undefined);
+  try {
+    const text = renderToStaticMarkup(<SetupReview client={client} view={client.getSnapshot()} workspace={CHAT_PROPS.workspace} />);
+    expect(text).toContain("Manage secrets");
+    expect(text).not.toContain("Apply selection");
+  } finally {vi.unstubAllGlobals();}
 });
 
 it("closes selection with Escape and keeps the draft unchanged", async () => {

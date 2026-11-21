@@ -2,7 +2,7 @@
 vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS, chatRouter } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
 import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
@@ -46,6 +46,18 @@ it("uses the draft title and keeps save and instruction editing out of the headi
   expect(screen.queryByRole("button", {name: MENU})).toBeNull();
   expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
+});
+
+it("rejects a rename submitted just as setup becomes busy", async () => {
+  const current = client.getSnapshot();
+  const view = render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={current} />);
+  await chooseSetupAction("Rename chat");
+  const input = screen.getByRole("textbox", {name: "Chat name"});
+  fireEvent.change(input, {target: {value: "My fleet"}});
+  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={{...current, busy: true}} />);
+  fireEvent.submit(input.closest("form")!);
+  expect(input).toHaveProperty("value", "My fleet");
+  expect(fixture.writes()).toEqual([]);
 });
 
 it("removes the save action when the current viewer loses access", () => {

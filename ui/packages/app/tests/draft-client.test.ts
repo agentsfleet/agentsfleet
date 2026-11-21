@@ -60,6 +60,46 @@ describe("private setup editing and recovery boundaries", () => {
     expect(instance.getSnapshot().messages).toEqual([MESSAGE]);
   });
 
+  it("keeps an unfinished list read from repopulating an inaccessible setup", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise
+      : path.endsWith(`/drafts/${DRAFT_ID}`) ? response({}, 403) : undefined;
+    const instance = fixture.create();
+    const initialized = instance.initialize();
+    await expect(instance.resume(DRAFT_ID)).rejects.toMatchObject({status: 403});
+    sidebar.resolve(response({items: [], next_cursor: null}));
+    await initialized;
+    expect(instance.getSnapshot()).toMatchObject({inaccessible: true, model: "", listStatus: "unavailable"});
+  });
+
+  it("updates a queued turn on its start signal and ignores repeats and unrelated sequences", async () => {
+    const pending = Promise.withResolvers<Response>();
+    const queued = {...MESSAGE, state: MESSAGE_STATE.queued};
+    fixture.override = ({path}) => path.endsWith("/messages") ? response({items: [queued], next_cursor: null}) : undefined;
+    const instance = await ready(true);
+    fixture.override = ({path}) => path.endsWith("/messages") ? pending.promise : undefined;
+    const source = FakeEventSource.instances[0]!;
+    const started = (sequence: string) => source.emitNamed(DRAFT_EVENT.running, JSON.stringify({draft_id: DRAFT_ID, sequence}));
+    const layout = instance.getLayoutSnapshot();
+    started("2");
+    expect(instance.getSnapshot().startedTurn).toBeFalsy();
+    started(queued.sequence);
+    const progress = instance.getSnapshot();
+    expect(progress.startedTurn).toEqual({draftId: DRAFT_ID, sequence: queued.sequence});
+    expect(instance.getLayoutSnapshot()).toBe(layout);
+    started("2");
+    started(queued.sequence);
+    expect(instance.getSnapshot()).toBe(progress);
+    pending.resolve(response({items: [queued], next_cursor: null}));
+  });
+
+  it("materializes a definition without a patch when the server returns the same content", async () => {
+    const instance = await ready();
+    await instance.edit({definition: REVIEW.effective.definition});
+    await instance.edit({definition: REVIEW.effective.definition});
+    expect(mutations().map(call => call.method)).toEqual(["POST"]);
+  });
+
   it("changes the authoring model locally before creation and conditionally after creation", async () => {
     const instance = await ready(); await instance.selectModel("model:second");
     expect(instance.getSnapshot().model).toBe("model:second"); expect(mutations()).toEqual([]);

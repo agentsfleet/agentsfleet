@@ -89,6 +89,22 @@ describe("useFleetEventStream — conversion and frame edges", () => {
     expect(work[0]?.id).toBe("evt_live");
   });
 
+  it.each([["file_read", false], ["exec_command", true]] as const)("preserves reply links for %s work", (name, updatesWork) => {
+    const {result} = mount();
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit({kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*"});
+      source.emit({kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "evt_live", call_id: "1:1", name, args_redacted: {cmd: "bun run preview"}});
+    });
+    const work = result.current.workEvents;
+    expect(work[0]?.tools?.[0]?.name).toBe(name);
+    act(() => source.emit({
+      kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "Preview https://preview.example.test", text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }));
+    expect(result.current.workEvents === work).toBe(!updatesWork);
+  });
+
   // ── Robustness: invalid/error paths ─────────────────────────────────────
 
   it("creates a fresh event row when CHUNK arrives before EVENT_RECEIVED", async () => {
