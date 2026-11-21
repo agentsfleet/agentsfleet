@@ -60,6 +60,19 @@ it("keeps a one-file receipt compact when line totals are unavailable", () => {
   expect(within(screen.getByRole("dialog")).getAllByText("Line totals unavailable")).toHaveLength(2);
 });
 
+it("opens the native apply_patch destination and actual totals through the production flap", () => {
+  state.view = {subject: "operator", events: [evt({tools: [{name: "apply_patch", done: true, status: "succeeded", startedAtMs: 0, ms: 1,
+    args: {patch: ("*** Begin Patch\n*** Update File: src/old.ts\n" + "x".repeat(256)).slice(0, 256)},
+    outputHead: "Success. Updated the following files:\nM src/moved.ts\n+248 −3", outputLineCount: 3,
+  }]})]};
+  render(<ChangesStrip />);
+  const flap = screen.getByRole("button", {name: "1 file changed +248 −3"});
+  fireEvent.click(flap);
+  expect(within(screen.getByRole("dialog")).getByText("src/moved.ts")).toBeTruthy();
+  expect(screen.queryByText("src/old.ts")).toBeNull();
+  expect(screen.queryByText("Line totals unavailable")).toBeNull();
+});
+
 it("preserves partial counts and distinguishes a known zero from unknown totals", () => {
   render(<><RecordedChangeCounts lines={{kind: "partial", added: 2, removed: 0}} />
     <RecordedChangeCounts lines={{kind: "complete", added: 0, removed: 3}} />

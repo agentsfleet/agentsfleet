@@ -77,3 +77,15 @@ it("recognizes the leading native status when a child's long answer is clipped a
     }
   }
 });
+
+it("records explicit process endings without an exit code and keeps an unknown poll failure inconclusive", () => {
+  const run = ev({actor: "operator", role: "user", status: "received"});
+  for (const [ending, state] of [
+    ["Process timed out", "Failed"], ["Process interrupted before its ending arrived", "Interrupted"], ["Session is busy", "Running"], [undefined, "Running"],
+  ] as const) {
+    const close = call("write_stdin", {session_id: 12}, ending, {status: "failed"});
+    expect(recordedRunResources({...run, tools: [preview("Starting"), close]}).rows[0]?.state).toBe(state);
+  }
+  const tail = call("write_stdin", {session_id: 12}, "Earlier output", {status: "failed", outputTail: "Output\nProcess timed out"});
+  expect(recordedRunResources({...run, tools: [preview("Starting"), tail]}).rows[0]?.detail).toContain("Process timed out");
+});

@@ -35,8 +35,15 @@ export function observeRunTool(tool: FleetToolCall, eventId: string, running: "R
   if (name === TOOL_NAME.WRITE_STDIN && (tool.status === TOOL_CALL_STATUS.SUCCEEDED || tool.status === TOOL_CALL_STATUS.FAILED)) {
     if (typeof args?.session_id !== "number") return;
     const row = rows.get(eventId + ":process:" + args.session_id);
-    if (!row || tool.exitCode === undefined) return row;
-    return record(rows, {...row, state: tool.exitCode === 0 ? "Done" : "Failed"});
+    if (!row) return;
+    if (tool.exitCode !== undefined) return record(rows, {...row, state: tool.exitCode === 0 ? "Done" : "Failed"});
+    if (tool.status === TOOL_CALL_STATUS.FAILED) {
+      const ending = (tool.outputTail ?? tool.outputHead)?.trimEnd().split("\n").at(-1);
+      if (ending === "Process timed out" || ending === "Process interrupted before its ending arrived") {
+        return record(rows, {...row, detail: row.detail + "\n" + ending, state: ending === "Process timed out" ? "Failed" : "Interrupted"});
+      }
+    }
+    return row;
   }
   if (tool.status !== TOOL_CALL_STATUS.SUCCEEDED) return;
   if (name === TOOL_NAME.SPAWN || name === "wait_agent" || name === "interrupt_agent") {

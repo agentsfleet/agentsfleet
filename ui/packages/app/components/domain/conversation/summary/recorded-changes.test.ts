@@ -82,3 +82,35 @@ it("keeps same-named repositories and same-named files distinct using full sourc
   expect(groupRecordedChanges(changes).map(group => group.label)).toEqual(["another-company/web", "company/web"]);
   expect(recordedChangeTotals(changes)).toEqual({kind: "partial", added: 1, removed: 0});
 });
+
+it("normalizes immutable historical writes only once as events stream, without caching repository context", () => {
+  let reads = 0;
+  const args = Object.defineProperties({}, {
+    path: {get() {reads += 1; return "web/page.ts";}},
+    old_text: {get() {reads += 1; return "old";}},
+    new_text: {get() {reads += 1; return "new";}},
+  });
+  const past = evt({tools: [write({args})]});
+  expect(recordedChanges([past])[0]?.lines).toEqual({kind: "complete", added: 1, removed: 1});
+  expect(reads).toBe(3);
+  const next = evt({id: "next", tools: [write({args: {path: "new.ts", old_text: "a", new_text: "b"}})]});
+  const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
+  expect(recordedChanges([past, next], {repositories}).find(change => change.path === "web/page.ts"))
+    .toMatchObject({repository: WEB, lines: {kind: "complete", added: 8, removed: 2}});
+  expect(recordedChanges([past, next]).find(change => change.path === "web/page.ts"))
+    .toEqual({path: "web/page.ts", running: false, lines: {kind: "complete", added: 1, removed: 1}});
+  expect(reads).toBe(3);
+});
+
+it("never rereads a historical native patch receipt or argument when another event arrives", () => {
+  let reads = 0;
+  const native = Object.defineProperties(write({name: "apply_patch"}), {
+    args: {get() {reads += 1; return {patch: "*** Begin Patch\n*** Add File: a\n+x\n*** Add File: b\n+y\n*** End Patch"};}},
+    outputHead: {get() {reads += 1; return "Success. Updated the following files:\nA a\nA b\n+2 −0";}},
+  });
+  const past = evt({tools: [native]});
+  expect(recordedChanges([past]).map(change => change.path)).toEqual(["b", "a"]);
+  expect(reads).toBe(2);
+  expect(recordedChanges([past, evt({id: "next"})]).map(change => change.path)).toEqual(["b", "a"]);
+  expect(reads).toBe(2);
+});

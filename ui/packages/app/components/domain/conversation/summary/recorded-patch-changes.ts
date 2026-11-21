@@ -7,7 +7,7 @@ type Receipt = {paths: string[]; complete: boolean; lines: Lines | undefined};
 type Hunk = {path: string; kind: string; lines: Lines; certain: boolean};
 const SUCCESS = "Success. Updated the following files:";
 const FILE = /^([AMD]) (.+)$/;
-const HUNK = /^\*\*\* (Add|Update|Delete) File: (.+)$/;
+const HUNK = /^\*\*\* (?:Add|Update|Delete) File: /;
 const MOVE = "*** Move to: ";
 const TOTAL = /^\+(\d+) −(\d+)$/;
 /** `af_wire::tool_trace::OUTPUT_EDGE_MAX_BYTES`; a byte cut can lose one UTF-8 character. */
@@ -18,8 +18,8 @@ const normalizedPath = (path: string) => workspacePath(path).split("/").filter(p
 /** Native receipts retain paths and aggregate counts even when the argument leaf was cut. */
 export function recordedPatchChanges(tool: FleetToolCall, running: boolean): PatchChange[] {
   const receipt = nativeReceipt(tool);
-  const [only] = receipt.paths;
-  if (!running && receipt.complete && receipt.paths.length === 1 && only !== undefined && receipt.lines) return [{path: only, lines: receipt.lines}];
+  const only = receipt.paths.length === 1 ? receipt.paths[0] : undefined;
+  if (!running && receipt.complete && only !== undefined) return [{path: only, lines: receipt.lines}];
   const parsed = patchHunks(stringArg(tool.args, "patch"));
   const paths = [...new Set([...receipt.paths, ...parsed.keys()])];
   if (running) return paths.map(path => ({path, lines: undefined}));
@@ -33,17 +33,18 @@ function nativeReceipt(tool: FleetToolCall): Receipt {
   const headText = tool.outputHead ?? "", tailText = tool.outputTail ?? "";
   const head = linesOf(headText), tail = linesOf(tailText);
   if (head[0] !== SUCCESS) return {paths: [], complete: false, lines: undefined};
-  if (tailText && !headText.endsWith("\n")) head.pop();
-  const tailCut = tailText.length >= EDGE_BYTES - UTF8_MAX_BYTES && UTF8.encode(tailText).length >= EDGE_BYTES - UTF8_MAX_BYTES;
+  if (!headText.endsWith("\n") && !head.at(-1)?.match(TOTAL)) head.pop();
+  const tailCut = UTF8.encode(tailText).length >= EDGE_BYTES - UTF8_MAX_BYTES;
   const kept = new Map(head.map((line, index) => [index, line]));
-  if (tool.outputLineCount !== undefined) for (const [index, line] of tail.entries()) {
-    if (index !== 0 || !tailCut) kept.set(tool.outputLineCount - tail.length + index, line);
+  const firstTail = tool.outputLineCount === undefined ? head.length : tool.outputLineCount - tail.length;
+  for (const [index, line] of tail.entries()) {
+    if (index !== 0 || !tailCut) kept.set(firstTail + index, line);
   }
   const last = tail.at(-1) ?? head.at(-1);
   const match = last?.match(TOTAL);
   const lines = match ? {added: Number(match[1]), removed: Number(match[2])} : undefined;
   const rows = [...kept.values()];
-  const complete = Boolean(lines) && (tail.length === 0 || kept.size === tool.outputLineCount);
+  const complete = Boolean(lines) && (tail.length === 0 || kept.size === tool.outputLineCount) && rows.every(line => line === SUCCESS || TOTAL.test(line) || FILE.test(line));
   const paths = [...new Set(rows.flatMap(line => {
     const path = line.match(FILE)?.[2];
     return path ? [normalizedPath(path)] : [];
@@ -59,12 +60,13 @@ function patchHunks(patch: string | undefined): Map<string, Lines | undefined> {
   if (rows[0]?.trim() !== "*** Begin Patch" || rows.at(-1)?.trim() !== "*** End Patch") return files;
   let hunk: Hunk | undefined;
   for (const line of rows.slice(1, -1)) {
-    const header = line.match(HUNK);
-    if (header?.[1] && header[2]) {
+    const frame = line.trim(), header = frame.match(HUNK)?.[0];
+    if (header) {
       if (hunk) retain(files, hunk);
-      hunk = {path: normalizedPath(header[2]), kind: header[1], lines: {added: 0, removed: 0}, certain: header[1] !== "Delete"};
+      const kind = header.slice(4, -7);
+      hunk = {path: normalizedPath(frame.slice(header.length)), kind, lines: {added: 0, removed: 0}, certain: kind !== "Delete"};
     } else if (hunk) {
-      if (line.startsWith(MOVE)) hunk.path = normalizedPath(line.slice(MOVE.length));
+      if (frame.startsWith(MOVE)) hunk.path = normalizedPath(frame.slice(MOVE.length));
       else if (line.startsWith("+")) hunk.lines.added += 1;
       else if (line.startsWith("-")) hunk.lines.removed += 1;
       // An empty changed line in an update may be an EOF sentinel the runner removes.
