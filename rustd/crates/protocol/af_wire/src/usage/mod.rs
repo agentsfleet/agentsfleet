@@ -22,13 +22,6 @@ use garde::Validate;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-/// The most request lines one renewal or report may carry.
-///
-/// A renewal is sent every few minutes and a run makes far fewer provider
-/// requests than this in that time; the cap bounds what one request body can
-/// make the daemon price.
-pub const LINES_MAX: usize = 512;
-
 /// The longest runtime one line may claim: one hour.
 ///
 /// The daemon cuts a runtime line at every renewal, so a longer claim is a
@@ -156,13 +149,13 @@ impl RequestUsage {
     }
 }
 
-/// Usage records for this renewal or final report, up to 512. An empty list still records
-/// server-measured runtime.
+/// Usage records for this renewal or final report, every one not yet recorded; the frame bounds
+/// how many. An empty list still records server-measured runtime.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
-pub struct RequestLines(#[garde(length(max = LINES_MAX), dive)] pub Vec<RequestUsage>);
+pub struct RequestLines(#[garde(dive)] pub Vec<RequestUsage>);
 
 /// One priced unit of work: a provider request, or a runtime-only slice.
 ///

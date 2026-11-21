@@ -78,26 +78,18 @@ fn a_meter_numbers_its_requests_and_forgets_only_what_was_recorded() {
     );
 }
 
-/// A request body never carries more than the wire allows; the rest waits
-/// for the next renewal, and the backlog still counts it.
+/// A request body carries every line the daemon has not recorded, and a
+/// recorded line leaves it.
 #[test]
-fn a_meter_sends_at_most_one_bodys_worth() {
+fn a_meter_sends_every_unrecorded_line() {
     let meter = Meter::default();
-    for _ in 0..=af_wire::usage::LINES_MAX {
+    for _ in 0..1_100 {
         meter.add(TURN);
     }
-    assert_eq!(meter.unrecorded().0.len(), af_wire::usage::LINES_MAX);
-    assert_eq!(
-        meter.backlog(),
-        af_wire::usage::LINES_MAX + 1,
-        "the backlog counts past one body"
-    );
-    meter.recorded_through(u32::try_from(af_wire::usage::LINES_MAX).unwrap_or(u32::MAX) - 1);
-    assert_eq!(
-        meter.unrecorded().0.len(),
-        1,
-        "the one past the cap goes next"
-    );
+    assert_eq!(meter.unrecorded().0.len(), 1_100);
+    assert_eq!(meter.backlog(), 1_100);
+    meter.recorded_through(1_098);
+    assert_eq!(meter.unrecorded().0.len(), 1, "only the newest is left");
     assert_eq!(meter.backlog(), 1);
 }
 

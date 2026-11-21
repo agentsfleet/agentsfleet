@@ -38,7 +38,7 @@ use crate::activity::{self, ActivitySink};
 use crate::error::{self, Result};
 use crate::holds::Occupant;
 use crate::identity::run_span;
-use crate::renew::{self, Renewal};
+use crate::renew::Renewal;
 use crate::report::{Ending, delivery::until_acknowledged, report};
 use crate::run_loop::{ACTIVITY_DRAIN_WAIT, Lessee};
 
@@ -218,7 +218,6 @@ impl Lessee {
         meter: &Meter,
         wall: Duration,
     ) -> Result<()> {
-        renew::flush(&self.plane, id, meter).await;
         let mut request = report(run, &worked.ending, meter, wall, None, None);
         request.setup = Some(SetupReport {
             proposal: worked.proposal.clone(),

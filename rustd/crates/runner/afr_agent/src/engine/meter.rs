@@ -1,7 +1,7 @@
 //! Usage belongs to the current run and never enters recovered private state.
 
 use af_core::clock::{Clock, SystemClock};
-use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
+use af_wire::usage::{RequestLines, RequestUsage};
 use guffbolt::Usage;
 use std::sync::{
     Arc, Mutex, MutexGuard, PoisonError,
@@ -114,16 +114,14 @@ impl Meter {
         self.totals.read()
     }
 
-    /// The oldest request lines the daemon has not recorded, at most one
-    /// request body's worth.
+    /// Every request line the daemon has not recorded, oldest first.
     #[must_use]
     pub fn unrecorded(&self) -> RequestLines {
         let lines = self.lines();
-        RequestLines(lines.unrecorded.iter().take(LINES_MAX).copied().collect())
+        RequestLines(lines.unrecorded.clone())
     }
 
-    /// How many request lines the daemon has not recorded, which may be more
-    /// than one body carries.
+    /// How many request lines the daemon has not recorded.
     #[must_use]
     pub fn backlog(&self) -> usize {
         self.lines().unrecorded.len()

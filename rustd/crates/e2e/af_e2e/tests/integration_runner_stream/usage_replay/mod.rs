@@ -10,15 +10,16 @@ use super::recovery::proxy::FaultProxy;
 use crate::{e2e::scenario, wire};
 use af_core::timing::{RENEWAL_TICK, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
-use af_wire::usage::{LINES_MAX, RequestLines};
+use af_wire::usage::RequestLines;
 use afr_agent::Meter;
 use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-const FIRST: usize = LINES_MAX + 13;
-const SECOND: usize = LINES_MAX + 8 + 29;
+/// Each run's lines; a renewal carries every one the daemon has not recorded.
+const FIRST: usize = 525;
+const SECOND: usize = 549;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -79,7 +80,7 @@ async fn replay(
     let stop = CancellationToken::new();
     let _stop_on_exit = stop.clone().drop_guard();
     let jobs = fixture::keep(session, held, &meters, &stop);
-    reads::wait_lines(scene, held, [LINES_MAX, LINES_MAX + 8]).await;
+    reads::wait_lines(scene, held, [FIRST, SECOND]).await;
     assert_eq!(
         [meters[0].backlog(), meters[1].backlog()],
         [FIRST, SECOND - 8],
@@ -127,7 +128,7 @@ async fn acknowledged(meters: &[Arc<Meter>; 2]) {
         STREAM_ANSWER_TIMEOUT + STREAM_RECOVERY_BUDGET + RENEWAL_TICK,
         async {
             loop {
-                if [meters[0].backlog(), meters[1].backlog()] == [13, 29] {
+                if [meters[0].backlog(), meters[1].backlog()] == [0, 0] {
                     return;
                 }
                 tokio::task::yield_now().await;

@@ -4,11 +4,10 @@
 use std::{sync::Arc, time::Duration};
 
 use af_core::clock::Clock;
-use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_CANCELLED, RUN_RENEW_BODY_MALFORMED};
+use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_CANCELLED};
 use af_core::id::Uuid7;
 use af_core::timing::MAX_RUNTIME;
-use af_wire::report::{FailureClass, RenewRequest};
-use af_wire::usage::LINES_MAX;
+use af_wire::report::FailureClass;
 use afr_agent::Meter;
 use jiff::Timestamp;
 use tokio::time::Instant;
@@ -33,7 +32,6 @@ const LONGEST_GRANT: Duration = MAX_RUNTIME;
 const EVENT_RENEWED: &str = "run_renewed";
 const EVENT_TERMINATED: &str = "run_terminated_by_renewal";
 const EVENT_EXPIRED: &str = "run_timed_out";
-const EVENT_UNFLUSHED: &str = "usage_lines_unflushed";
 
 /// Renews one run.
 #[derive(Debug, Clone, Copy)]
@@ -153,55 +151,6 @@ impl<'a> Renewal<'a> {
             tracing::warn!(message, error_code, run_id, event);
         };
         FailureClass::RenewalTerminate
-    }
-}
-
-/// Renews until the meter's unrecorded lines fit one report body.
-///
-/// The daemon refuses a report past [`LINES_MAX`] lines, so a run that ends
-/// with more sends its oldest through renewals first. Each answer's
-/// `recorded_through` forgets what that renewal recorded.
-///
-/// A renewal that fails after its retries, or records nothing, stops the
-/// flush. The report then carries the oldest lines left, and the lines past
-/// them are logged unbilled. A line sent twice is still billed once, since the
-/// daemon keys lines on `(work, kind, seq)`.
-pub(crate) async fn flush(plane: &ControlPlane, run_id: &Uuid7, meter: &Meter) {
-    loop {
-        let backlog = meter.backlog();
-        if backlog <= LINES_MAX {
-            return;
-        }
-        let spent = RenewRequest {
-            requests: meter.unrecorded(),
-        };
-        let renewed = plane.retrying(|| plane.renew(run_id, &spent)).await;
-        if let Some(seq) = renewed
-            .as_ref()
-            .ok()
-            .and_then(|renewed| renewed.recorded_through)
-        {
-            meter.recorded_through(seq);
-        }
-        if meter.backlog() < backlog {
-            continue;
-        }
-        // A renewal that answered yet recorded nothing read a body it could
-        // not use, which the daemon logs under the same code.
-        let code = renewed
-            .err()
-            .map_or(RUN_RENEW_BODY_MALFORMED, |failure| failure.code());
-        let error_code = code.as_str();
-        let run_id = run_id.as_str();
-        let unbilled = meter.backlog().saturating_sub(LINES_MAX);
-        let event = EVENT_UNFLUSHED;
-        {
-            let (message,) = (format_args!(
-                "a renewal did not take the run's usage lines; the report carries the oldest"
-            ),);
-            tracing::error!(message, error_code, run_id, unbilled, event);
-        };
-        return;
     }
 }
 

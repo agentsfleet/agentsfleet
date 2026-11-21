@@ -3,6 +3,10 @@ use af_core::id::Uuid7;
 use std::{sync::Arc, time::Duration};
 use tokio::time::Instant;
 
+/// Each run's unrecorded lines, at the widest values: the batch must split
+/// across frames, and each run's renewal carries all of them.
+const LINES_PER_RUN: usize = 513;
+
 mod recovery;
 
 #[tokio::test(start_paused = true)]
@@ -144,7 +148,7 @@ impl FullHost {
             let meter = Arc::new(afr_agent::Meter::new(Arc::new(
                 af_core::clock::FixedClock::at(jiff::Timestamp::UNIX_EPOCH),
             )));
-            for _ in 0..=af_wire::usage::LINES_MAX {
+            for _ in 0..LINES_PER_RUN {
                 meter.add(guffbolt::Usage {
                     input: u64::from(u32::MAX),
                     cached_input: u64::from(u32::MAX),
@@ -229,7 +233,7 @@ impl RenewalPeer {
             for renewal in runs.into_iter().rev() {
                 let id = Uuid7::parse(&renewal.run_id)?;
                 assert!(seen.insert(id));
-                assert_eq!(renewal.request.requests.0.len(), af_wire::usage::LINES_MAX);
+                assert_eq!(renewal.request.requests.0.len(), LINES_PER_RUN);
                 let index = u32::from_str_radix(
                     renewal
                         .run_id

@@ -5,7 +5,7 @@
 
 use garde::Validate as _;
 
-use super::{LINES_MAX, LineKind, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine};
+use super::{LineKind, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine};
 
 const AT: &str = "2026-10-19T10:00:00.123Z";
 const PROMPT: u32 = 1_000;
@@ -76,13 +76,8 @@ fn request(seq: u32) -> RequestUsage {
 }
 
 #[test]
-fn a_batch_carries_none_to_the_most_requests() {
-    for (count, valid) in [
-        (0, true),
-        (1, true),
-        (LINES_MAX, true),
-        (LINES_MAX + 1, false),
-    ] {
+fn a_batch_carries_any_number_of_requests() {
+    for (count, valid) in [(0, true), (1, true), (2_000, true)] {
         let batch = RequestLines(
             (0..count)
                 .map(|seq| request(u32::try_from(seq).expect("fits")))

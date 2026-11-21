@@ -7,7 +7,7 @@ use zeroize::Zeroizing;
 
 use super::{Run, hold::Fate, segments::Stopwatch};
 use crate::report::{Ending, delivery::until_acknowledged, report};
-use crate::{Result, error, memory::CapturedMemory, records, renew};
+use crate::{Result, error, memory::CapturedMemory, records};
 
 const EVENT_RECORDS_FAILED: &str = "tool_records_post_failed";
 
@@ -40,7 +40,6 @@ impl Run<'_> {
             }
             None => (CapturedMemory::default(), None),
         };
-        renew::flush(&self.lessee.plane, &self.ids.run, &self.meter).await;
         let mut request = report(
             self.payload,
             ending,

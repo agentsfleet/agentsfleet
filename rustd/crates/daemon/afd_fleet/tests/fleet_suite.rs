@@ -144,8 +144,6 @@ mod integration_run_plan;
 mod integration_run_release;
 #[path = "integration_run_started.rs"]
 mod integration_run_started;
-#[path = "integration_run_usage_flush.rs"]
-mod integration_run_usage_flush;
 #[path = "integration_run_verbs.rs"]
 mod integration_run_verbs;
 #[path = "integration_runner_admin.rs"]
