@@ -64,7 +64,7 @@ jobs:
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Install Playwright browsers
-        run: bunx --no-install playwright install --with-deps chromium
+        run: bunx --bun --no-install playwright install --with-deps chromium
         working-directory: ${{ steps.detect.outputs.workdir }}
 
       - name: Load Vercel bypass secret from 1Password
@@ -170,7 +170,7 @@ jobs:
       - name: Resolve Playwright version
         id: playwright-version
         run: |
-          PLAYWRIGHT_VERSION="$(bunx --no-install playwright --version | awk '{print $2}')"
+          PLAYWRIGHT_VERSION="$(bunx --bun --no-install playwright --version | awk '{print $2}')"
           test -n "$PLAYWRIGHT_VERSION"
           echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
         working-directory: ui/packages/app
@@ -188,9 +188,9 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
-            bunx --no-install playwright install chromium
+            bunx --bun --no-install playwright install chromium
           else
-            bunx --no-install playwright install --with-deps chromium
+            bunx --bun --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
 

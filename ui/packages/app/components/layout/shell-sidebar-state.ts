@@ -5,11 +5,11 @@ import { useSyncExternalStore } from "react";
 type SidebarListener = () => void;
 
 export class ShellSidebarState {
-  #collapsed = true;
+  #collapsed = false;
   #listeners = new Set<SidebarListener>();
 
   readonly getSnapshot = (): boolean => this.#collapsed;
-  readonly getServerSnapshot = (): boolean => true;
+  readonly getServerSnapshot = (): boolean => false;
 
   readonly subscribe = (listener: SidebarListener): (() => void) => {
     this.#listeners.add(listener);
@@ -27,7 +27,7 @@ export class ShellSidebarState {
   };
 
   reset(): void {
-    this.setCollapsed(true);
+    this.setCollapsed(false);
   }
 }
 
@@ -44,4 +44,18 @@ export function useShellSidebarCollapsed(): boolean {
     shellSidebarState.getSnapshot,
     shellSidebarState.getServerSnapshot,
   );
+}
+
+// Only the visible navigation owns private history requests. On a phone the
+// dialog mounts its own history when opened.
+const COMPACT_NAV = "(width < 48rem)";
+function subscribeViewport(changed: () => void) {
+  const query = window.matchMedia(COMPACT_NAV);
+  query.addEventListener("change", changed);
+  return () => query.removeEventListener("change", changed);
+}
+const desktopViewport = () => !window.matchMedia(COMPACT_NAV).matches;
+const viewportUnknown = () => false;
+export function useDesktopNavigationViewport(): boolean {
+  return useSyncExternalStore(subscribeViewport, desktopViewport, viewportUnknown);
 }

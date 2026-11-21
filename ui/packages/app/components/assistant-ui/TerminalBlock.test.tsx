@@ -63,3 +63,10 @@ it("keeps explicit interruption and failure visible when no exit code was record
   view.rerender(<TerminalBlock command="check" lines={[]} done outcome="failed" />);
   expect(screen.getByText("Failed")).toBeTruthy();
 });
+
+it("indicates how many additional command lines are in the full input", () => {
+  const view = render(<TerminalBlock command="git status" commandLinesHidden={2} lines={[]} done={false} />);
+  expect(screen.getByText("2 more command lines")).toBeTruthy();
+  view.rerender(<TerminalBlock command="git status" commandLinesHidden={1} lines={[]} done={false} />);
+  expect(screen.getByText("1 more command line")).toBeTruthy();
+});

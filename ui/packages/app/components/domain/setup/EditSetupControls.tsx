@@ -1,5 +1,6 @@
 "use client";
 
+import { fleetSetupPath } from "@/lib/workspace-routes";
 import Link from "next/link";
 import { NotePencilIcon } from "@phosphor-icons/react/ssr";
 import { Button, DropdownMenuItem } from "@agentsfleet/design-system";
@@ -26,6 +27,5 @@ export function EditSetupMenuItem(location: SetupLocation) {
 }
 
 function editSetupHref(location: SetupLocation): string {
-  const query = new URLSearchParams({fleet: location.fleet, setup_revision: location.revision});
-  return `/w/${location.workspace}/fleets/new?${query}`;
+  return fleetSetupPath(location.workspace, location.fleet, location.revision);
 }

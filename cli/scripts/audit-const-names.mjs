@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 // Trap codemod-generated cryptic const names that oxlint can't see.
 //

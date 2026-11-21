@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
 import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {TooltipProvider} from "@agentsfleet/design-system";
 import {ChatFixture, CHAT_PROPS, chooseSetupAction} from "./fixture";
 import {WorkspaceChat} from "@/components/domain/setup/conversation/WorkspaceChat";
 import {DRAFT, FAILED_SCHEDULE, FLEET, FLEET_ID, REVIEW, SCHEDULE, response} from "@/tests/helpers/draft-fixtures";
@@ -10,7 +11,7 @@ afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 it("reads no private state until identity is loaded and authenticated", () => {
   fixture.auth.isLoaded = false;
-  const view = render(<WorkspaceChat {...CHAT_PROPS} />);
+  const view = render(<WorkspaceChat {...CHAT_PROPS} />, {wrapper: TooltipProvider});
   expect(screen.getByLabelText("Loading your setup chat")).toBeTruthy();
   fixture.auth.isLoaded = true; fixture.auth.isSignedIn = false;
   view.rerender(<WorkspaceChat {...CHAT_PROPS} />);
@@ -37,7 +38,7 @@ it("recovers a failed setup continuation from the conversation without reopening
     }
     return base(input, init);
   });
-  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />, {wrapper: TooltipProvider});
   fireEvent.click(await screen.findByRole("button", {name: "Finish setup"}));
   await screen.findByText("Setup retry unavailable");
   const retry = screen.getByRole("button", {name: "Finish setup"});
@@ -69,7 +70,7 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
     }
     return base(input, init);
   });
-  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />, {wrapper: TooltipProvider});
   if (source === "updated") {
     await chooseSetupAction("Instructions");
     fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Review releases and preserve the schedule"}});

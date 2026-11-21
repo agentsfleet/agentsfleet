@@ -128,3 +128,19 @@ export function SelectItem({ className, children, ref, ...props }: SelectItemPro
     </SelectPrimitive.Item>
   );
 }
+
+/** A textarea can point at these options with aria-activedescendant while it owns the keyboard. */
+export function SuggestionList({id, label, options, active, onChoose}: {
+  id: string; label: string; options: readonly {key: string; value: string; label: string}[];
+  active: number; onChoose: (value: string) => void;
+}) {
+  return <select id={id} aria-label={label} size={Math.max(2, Math.min(6, options.length))}
+    hidden={!options.length} tabIndex={-1} value={options[active]?.value ?? ""}
+    className={cn("w-full appearance-none rounded-control border-0 bg-popover font-sans text-label text-foreground", options.length === 1 && "h-11")}
+    onMouseDown={event => event.preventDefault()}
+    onChange={event => onChoose(event.currentTarget.value)}
+    onClick={event => {if (event.target instanceof HTMLOptionElement) onChoose(event.target.value);}}>
+    {options.map((option, index) => <option key={option.key} id={`${id}-${index}`} value={option.value}
+      className="rounded-control px-md py-md checked:bg-muted checked:text-foreground pointer-coarse:min-h-11">{option.label}</option>)}
+  </select>;
+}

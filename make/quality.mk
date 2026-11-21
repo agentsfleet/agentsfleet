@@ -15,7 +15,7 @@ ACTIONLINT ?= actionlint
 # `--no-ignore hidden`: ast-grep skips dot-directories by default, and the
 # workflow rules live in .github/. Ignored files stay ignored, and `.git/` is
 # excluded by glob because hidden scanning would otherwise walk it.
-AST_GREP := bunx --no-install ast-grep
+AST_GREP := bunx --bun --no-install ast-grep
 
 lint-source:  ## Source rules over code, docs, tests, workflows and infra (ast-grep test + scan)
 	@echo "→ [source] ast-grep rule tests, then the scan..."

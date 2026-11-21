@@ -6,10 +6,10 @@ import { signInAs } from "./fixtures/auth";
 import { clientFor } from "./fixtures/api-client";
 import { ensureSecondWorkspace, getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { expectDetailArchived, expectRowState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
+import { expectDetailArchived, expectSidebarFleetState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
-import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { gotoWorkspace, workspaceEntryPattern, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
@@ -47,7 +47,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleetId}`));
 
     await page.goto(workspaceHref(secondary.id, "fleets"));
-    await expectRowState(page, fleetId, "live");
+    await expectSidebarFleetState(page, fleetId, "active");
 
     await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
     await archiveFleet(page);
@@ -56,7 +56,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
 
     // Archive retains the history row in the same workspace.
     await page.goto(workspaceHref(secondary.id, "fleets"));
-    await expectRowState(page, fleetId, "archived");
+    await expectSidebarFleetState(page, fleetId, "archived");
   });
 
   test("an active fleet can be permanently deleted with one confirmation", async ({page}, info) => {
@@ -81,7 +81,7 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await captureLifecycleReview(page, info, "deleted");
     await page.getByRole("navigation", {name: "Primary", exact: true})
       .getByRole("link", {name: "Your fleets", exact: true}).click();
-    await expect(page).toHaveURL(workspaceHref(secondary.id, "fleets"));
+    await expect(page).toHaveURL(workspaceEntryPattern(secondary.id));
     await expect(page.locator(`a[href$="/fleets/${fleetId}"]`)).toHaveCount(0);
   });
 

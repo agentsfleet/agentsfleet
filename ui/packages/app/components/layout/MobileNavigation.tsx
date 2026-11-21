@@ -14,7 +14,7 @@ export function MobileNavigation({pathname, workspaceId, account}: {pathname: st
   const activeHref = resolveActiveHref(entries.map(entry => resolveHref(entry, workspaceId)), pathname);
   return <Dialog open={open} onOpenChange={setOpen}>
     <DialogTrigger asChild><Button variant="ghost" className="min-h-11 w-full px-0 hover:bg-muted hover:text-foreground md:hidden [&_svg]:size-5" aria-label="Open navigation"><SidebarSimpleIcon size={20} aria-hidden="true" /></Button></DialogTrigger>
-    <DialogContent aria-describedby={undefined} className="max-w-sm p-xl">
+    <DialogContent aria-describedby={undefined} className="max-h-[85dvh] max-w-sm overflow-y-auto p-xl">
       <DialogTitle className="mb-xl">Navigation</DialogTitle>
       <Nav aria-label="Expanded navigation" className="space-y-xl">
         <NavSection items={entries} activeHref={activeHref} workspaceId={workspaceId} collapsed={false} overlay onNavigate={close} />

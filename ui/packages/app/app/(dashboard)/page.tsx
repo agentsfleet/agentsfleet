@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ApiError } from "@/lib/api/errors";
 import { firstTenantWorkspace } from "@/lib/api/workspaces";
 import { ERROR_CODE } from "@/lib/errors";
-import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
+import { workspacePath } from "@/lib/workspace-routes";
 import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
 import { AccountSetup } from "./AccountSetup";
 
@@ -20,7 +20,7 @@ const OPENING_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 
 // Dashboard entry (`/`). Resolves the caller's own workspace — or, owning none,
-// the first one they joined — and redirects once to New fleet; a caller
+// the first one they joined — and opens that workspace’s current fleet conversation; a caller
 // with no workspace at all lands on the create-workspace empty state instead
 // of a broken page. This is the ONLY place the "default workspace" is chosen —
 // every deeper page reads the workspace from its route param.
@@ -44,7 +44,7 @@ export default async function DashboardIndexPage() {
     if (await accountStillOpening(failure)) return <AccountSetup />;
     throw failure;
   }
-  if (first) redirect(workspacePath(first.id, DEFAULT_WORKSPACE_SUBPATH));
+  if (first) redirect(workspacePath(first.id, "fleets"));
 
   return <NoWorkspaceEmptyState />;
 }

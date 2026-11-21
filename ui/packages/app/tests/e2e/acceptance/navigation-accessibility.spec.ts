@@ -3,6 +3,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
 import {pluginsUiEnabled} from "@/lib/plugin-ui";
+import {expectWorkspaceEntry, workspaceEntryPattern} from "./fixtures/nav";
 
 const WIDTHS = [1440, 390, 320];
 const CREATE_WORKSPACE = "Create workspace";
@@ -15,7 +16,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
-    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
+    await expectWorkspaceEntry(page, workspaceId);
     const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();
@@ -53,7 +54,7 @@ for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
-    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
+    await expectWorkspaceEntry(page, workspaceId);
     const rail = page.getByRole("navigation", {name: "Primary", exact: true});
     await expect(rail).toBeVisible();
     for (const name of ["New fleet", "Your fleets", "Plugins", "Secrets", "Connected apps"].filter(name => name !== "Plugins" || pluginsUiEnabled())) {
@@ -63,7 +64,7 @@ for (const width of [390, 320]) {
     const fleets = rail.getByRole("link", {name: "Your fleets", exact: true});
     await fleets.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets$`));
+    await expect(page).toHaveURL(workspaceEntryPattern(workspaceId));
     await expect(fleets).toHaveAttribute("aria-current", "page");
     await expectAccessible(page, "Mobile navigation");
     await expectNoPageOverflow(page);

@@ -78,3 +78,8 @@ export function workspaceSwitchSubpath(subpath: string): string {
   }
   return subpath;
 }
+
+/** Opens the editor on the exact setup revision the reader saw. */
+export function fleetSetupPath(workspace: string, fleet: string, revision: string): string {
+  return workspacePath(workspace, `fleets/new?${new URLSearchParams({fleet, setup_revision: revision})}`);
+}

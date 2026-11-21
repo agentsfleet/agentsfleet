@@ -26,9 +26,9 @@ it("expands and collapses navigation without replacing the draft", async () => {
   render(<NavigationControls />);
   const draft = screen.getByRole("textbox", {name: "Unsent message"});
   const user = userEvent.setup();
-  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
-  expect(screen.getByRole("button", {name: "Collapse navigation"}).getAttribute("aria-expanded")).toBe("true");
   await user.click(screen.getByRole("button", {name: "Collapse navigation"}));
+  expect(screen.getByRole("button", {name: "Expand navigation"}).getAttribute("aria-expanded")).toBe("false");
+  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
   expect(screen.getByRole("textbox", {name: "Unsent message"})).toBe(draft);
   expect((draft as HTMLInputElement).value).toBe("Keep my draft");
 });

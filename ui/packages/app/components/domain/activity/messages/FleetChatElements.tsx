@@ -35,7 +35,7 @@ function ReplyElement({data}: {data: FleetChatElementData["reply-turn"]}) {
 
 function OperatorElement({data}: {data: FleetChatElementData["operator-turn"]}) {
   const sender = useNameSender()(data.actor);
-  return <FleetMessageRow sender={sender.label} tone={ROW_TONE.OPERATOR} messageRole="user"
+  return <FleetMessageRow sender={data.fleetSender ? `@${data.fleetSender}` : sender.label} tone={ROW_TONE.OPERATOR} messageRole="user"
     dimmed={data.optimistic} showSender={sender.shown} createdAt={data.createdAt}>
     <MessageUploadAttachments />
     {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p className="text-muted-foreground">Content preview unavailable.</p>}

@@ -99,10 +99,3 @@ export function formatTileSpend(budgetUsedNanos: bigint): string {
 export function formatTileEvents(eventsProcessed: bigint): string {
   return String(eventsProcessed);
 }
-
-// Lifetime counters only increase; a retained stream snapshot cannot replace
-// a newer REST read. Stream amounts have already passed the decimal guard.
-export function latestTileCounter(snapshot: bigint, live: number | string | undefined): bigint {
-  const current = live === undefined ? snapshot : BigInt(live);
-  return current > snapshot ? current : snapshot;
-}

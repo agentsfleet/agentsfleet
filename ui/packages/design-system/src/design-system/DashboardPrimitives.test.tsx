@@ -46,6 +46,14 @@ describe("dashboard primitives", () => {
     expect(pill.className).toContain("text-warning");
   });
 
+  it("uses a neutral status without a dot when no variant is selected", () => {
+    render(<StatusPill>Not started</StatusPill>);
+    const pill = screen.getByText("Not started");
+    expect(pill).toHaveAttribute("data-variant", "neutral");
+    expect(pill).toHaveClass("bg-secondary", "text-muted-foreground");
+    expect(pill.querySelector("span.rounded-full")).toBeNull();
+  });
+
   it("renders a status pill with a status dot", () => {
     render(
       <StatusPill variant="success" dot>

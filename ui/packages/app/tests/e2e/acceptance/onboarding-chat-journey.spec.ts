@@ -3,7 +3,7 @@
  *
  * The path a new user actually takes, typed rather than seeded: open New
  * fleet, see which model is drafting, describe the work, review the proposal
- * the setup chat returns, save it, and find the fleet live on the wall. The
+ * the setup chat returns, save it, and find the active fleet in sidebar history. The
  * description is complete and asks for no questions, so a live authoring
  * model has what it needs to propose in one turn.
  */
@@ -14,7 +14,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { workspaceHref } from "./fixtures/nav";
 import { CHAT_COPY, openSavedFleet, privateSaveButton, setupSummary } from "./fixtures/private-chat";
-import { expectRowState } from "./fixtures/lifecycle";
+import { expectSidebarFleetState } from "./fixtures/lifecycle";
 import { purgeFixtureFleet } from "./fixtures/teardown";
 
 const FLEET_NAME = "message-acknowledger";
@@ -61,6 +61,6 @@ test.describe("onboarding chat", () => {
     const saved = await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId });
     fleetId = saved;
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, saved, "live");
+    await expectSidebarFleetState(page, saved, "active");
   });
 });

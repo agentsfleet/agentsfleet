@@ -31,7 +31,7 @@ export type ActivityElementData = {
 
 /** Payloads are selected by adapters; rows never interpret event metadata. */
 export type FleetChatElementData = {
-  "operator-turn": {actor: string; text: string; createdAt: Date; optimistic: boolean};
+  "operator-turn": {actor: string; fleetSender?: string; text: string; createdAt: Date; optimistic: boolean};
   "upload-submission": {text: string; createdAt: Date};
   "reply-turn": {message: MessageState; status: string};
   "integration-event": ActivityElementData;

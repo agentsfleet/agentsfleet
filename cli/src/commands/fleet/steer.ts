@@ -7,6 +7,7 @@ import { HttpClient } from "../../services/http-client.ts";
 import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
 import { Workspaces } from "../../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
+import { readFleetAddress } from "../../lib/fleet-address.ts";
 import { isRecord } from "../../lib/guards.ts";
 import { wsFleetMessagesPath } from "../../lib/api-paths.ts";
 import { streamGet as defaultStreamGet } from "../../lib/sse.ts";
@@ -273,7 +274,7 @@ export const steerEffectFromArgs = (
 
     if (!fleetId) {
       return yield* Effect.fail(
-        new ValidationError({ detail: "fleet_id is required", suggestion: `usage: agentsfleet fleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}` }),
+        new ValidationError({ detail: "fleet_id is required", suggestion: `usage: agentsfleet fleet steer <@name|fleet_id> ${MESSAGE_PLACEHOLDER}` }),
       );
     }
 
@@ -292,6 +293,7 @@ export const steerEffectFromArgs = (
       const exitCode = yield* Effect.tryPromise({
         try: () =>
           runRepl({
+            fleetName: readFleetAddress(fleetId)?.name,
             input: stdin,
             output: stdout,
             ...(deps.signalSource ? { signalSource: deps.signalSource } : {}),
@@ -334,7 +336,7 @@ export const steerEffectFromArgs = (
       return yield* Effect.fail(
         new ValidationError({
           detail: "message is required",
-          suggestion: `usage: agentsfleet fleet steer <fleet_id> ${MESSAGE_PLACEHOLDER}`,
+          suggestion: `usage: agentsfleet fleet steer <@name|fleet_id> ${MESSAGE_PLACEHOLDER}`,
         }),
       );
     }

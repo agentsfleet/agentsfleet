@@ -1,6 +1,6 @@
 import { PENDING_SEND_STATE, type PendingSendOutcome } from "./useFleetPendingSends";
 import { parseChatAddress } from "@/lib/chat-address";
-import { HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
+import { HTTP_STATUS_NOT_FOUND, HTTP_STATUS_UNAUTHORIZED, isDefiniteRefusal } from "@/lib/api/errors";
 import { findFleetByName } from "@/lib/api/fleet-by-name";
 import type { SteerResult } from "@/lib/api/fleet-steer";
 import { ERROR_CODE } from "@/lib/errors";
@@ -17,6 +17,7 @@ export type Route = { ok: true; fleetId: string; words: string } | { ok: false; 
 // fleet. So every retry of an operation goes where its first attempt resolved,
 // until the daemon accepts it.
 const RESOLVED = new Map<string, string>();
+const HTTP_STATUS_CONFLICT = 409;
 const pinKey = (workspaceId: string, operationId: string): string => `${workspaceId}:${operationId}`;
 
 /** Ends an operation's pin: the daemon holds the send, so nothing retries it. */
@@ -41,7 +42,7 @@ export async function routeOf(text: string, here: Here, operationId: string, sig
   }
   const lookup = await findFleetByName(here.workspaceId, address.name, signal);
   if (!lookup.ok) return { ok: false, outcome: outcomeOf(lookup) };
-  if (lookup.fleetId === null) return { ok: false, outcome: PENDING_SEND_STATE.REFUSED };
+  if (lookup.fleetId === null) return { ok: false, outcome: PENDING_SEND_STATE.TARGET_MISSING };
   RESOLVED.set(key, lookup.fleetId);
   return { ok: true, fleetId: lookup.fleetId, words: address.rest };
 }
@@ -54,5 +55,7 @@ export async function routeOf(text: string, here: Here, operationId: string, sig
 export function outcomeOf({ status, errorCode }: Pick<Extract<SteerResult, { ok: false }>, "status" | "errorCode">): PendingSendOutcome {
   if (status === HTTP_STATUS_UNAUTHORIZED) return PENDING_SEND_STATE.SESSION;
   if (errorCode === ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT) return PENDING_SEND_STATE.CONFLICT;
+  if (status === HTTP_STATUS_NOT_FOUND && errorCode === ERROR_CODE.AGENTSFLEET_NOT_FOUND) return PENDING_SEND_STATE.TARGET_MISSING;
+  if (status === HTTP_STATUS_CONFLICT && errorCode === ERROR_CODE.AGENTSFLEET_NOT_ACTIVE) return PENDING_SEND_STATE.TARGET_INACTIVE;
   return isDefiniteRefusal(status) ? PENDING_SEND_STATE.REFUSED : PENDING_SEND_STATE.UNKNOWN;
 }

@@ -42,14 +42,23 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await page.setViewportSize(mobile ? {width: 390, height: 844} : {width: 1480, height: 1000});
   const first = {...FLEET_DETAIL, name: "Pull request review", description: "Reviews incoming pull requests", status: "active"};
   const next = {...first, id: "0199a801-1000-7000-8000-000000000008", name: "Support triage"};
-  await page.route("**/live/v1/workspaces/*/fleets?*", route => route.fulfill({json: {
-    items: new URL(route.request().url()).searchParams.has("starting_after") ? [next] : [first],
-    total: null, next_cursor: new URL(route.request().url()).searchParams.has("starting_after") ? null : "next-fleet",
-  }}));
+  let fleetReads = 0;
+  await page.route("**/live/v1/workspaces/*/fleets?*", route => {
+    fleetReads++;
+    const more = new URL(route.request().url()).searchParams.has("starting_after");
+    return route.fulfill({json: {items: more ? [next] : [first], total: null, next_cursor: more ? null : "next-fleet"}});
+  });
+  await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({json: {items: [], next_cursor: null}}));
   await page.goto(`${chatProbe}?setupAlignment=1`);
-  await page.getByRole("button", {name: mobile ? "Open navigation" : "Expand navigation", exact: true}).click();
+  if (mobile) {
+    const open = page.getByRole("button", {name: "Open navigation", exact: true});
+    await expect(open).toBeVisible();
+    expect(fleetReads).toBe(0);
+    await open.click();
+  }
   const nav = page.getByRole("navigation", {name: mobile ? "Expanded navigation" : "Primary"});
   await expect(nav.getByRole("link", {name: "Pull request review", exact: true})).toBeVisible();
+  expect(fleetReads).toBe(1);
   await nav.getByRole("button", {name: "Load more fleets"}).click();
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeVisible();
   const disclosure = nav.locator("summary").filter({hasText: "Fleets"});
@@ -58,7 +67,12 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeHidden();
   await page.keyboard.press("Enter");
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeVisible();
+  await expect(nav.getByRole("link", {name: "Edit Support triage", exact: true})).toBeVisible();
   await expect(nav.getByRole("button", {name: "Load more fleets"})).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+    await page.screenshot({path: info.outputPath(`fleet-history-${theme}.png`), animations: "disabled"});
+  }
   await page.screenshot({path: info.outputPath("fleet-disclosure.png"), scale: "css", animations: "disabled"});
 });
 

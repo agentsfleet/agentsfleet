@@ -39,6 +39,8 @@ export const TOOL_NAME = {
   CRON_UPDATE: "cron_update",
   CRON_RUN: "cron_run",
   CRON_RUNS: "cron_runs",
+  FLEET_ACTIVITY: "fleet_activity",
+  FLEET_STEER: "fleet_steer",
   DELEGATE: "delegate",
   SPAWN: "spawn",
 } as const;

@@ -156,10 +156,10 @@ describe("dashboard entry page", () => {
     return (await import("../app/(dashboard)/page")).default;
   }
 
-  it("redirects to the first owned workspace fleet wall without an intermediate route", async () => {
+  it("resolves fleet conversations in the first owned workspace", async () => {
     firstTenantWorkspace.mockResolvedValue(OWNED.items[0]);
     const Page = await importEntry();
-    await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets/new");
+    await expect(Page()).rejects.toThrow("redirect:/w/ws_first/fleets");
     // The redirect fires before the layout tree renders, so it cannot share the
     // switcher's cached walk — reading one page is the whole ask.
     expect(listTenantWorkspacesCached).not.toHaveBeenCalled();

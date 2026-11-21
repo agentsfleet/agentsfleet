@@ -106,8 +106,9 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("button", {name: MENU}));
   });
-  it("keeps collapsed destinations and the account menu reachable without a drawer", () => {
+  it("keeps collapsed destinations and the account menu reachable without a drawer", async () => {
     mount();
+    await userEvent.setup().click(screen.getByRole("button", {name: "Collapse navigation"}));
     expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
     expect(screen.getByRole("link", {name: "Your fleets"}).textContent).toBe("");
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
@@ -115,6 +116,7 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByRole("link", {name: "Plugins"})).toBeNull();
     expect(screen.getByRole("button", {name: "Open navigation"}).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", {name: "Expand navigation"}));
   });
 });
 
@@ -167,9 +169,9 @@ it("shows account initials, an email fallback and loading or retry status withou
 it("expands and collapses the actual desktop navigation without changing its destinations", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => Response.json({items: [], next_cursor: null, total: null})));
   mount(); const user = userEvent.setup();
-  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
-  expect(screen.getByRole("button", {name: "Collapse navigation"})).toBeTruthy();
-  expect(screen.getAllByRole("link", {name: "New fleet"})[0]!.getAttribute("href")).toBe("/w/ws_1/fleets/new");
   await user.click(screen.getByRole("button", {name: "Collapse navigation"}));
   expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
+  expect(screen.getAllByRole("link", {name: "New fleet"})[0]!.getAttribute("href")).toBe("/w/ws_1/fleets/new");
+  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
+  expect(screen.getByRole("button", {name: "Collapse navigation"})).toBeTruthy();
 });

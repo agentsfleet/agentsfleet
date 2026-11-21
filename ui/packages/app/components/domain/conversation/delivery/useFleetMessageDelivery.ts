@@ -1,7 +1,7 @@
 "use client";
 
-import { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
-export { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
+import { fleetMessageText as extractMessageText } from "@/lib/chat-message-text";
+export { fleetMessageText as extractMessageText } from "@/lib/chat-message-text";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
@@ -138,16 +138,21 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
 }
 
 /** Opens a fleet's chat in this workspace: the `openFleet` a thread hands its delivery. */
-export function useOpenFleet(workspaceId: string): (fleetId: string) => void {
+export function useOpenFleet(workspaceId: string, originFleetId?: string): (fleetId: string) => void {
   const router = useRouter();
   // Read when a send lands: the send callbacks close over this, and keep one
   // identity for the thread whatever identity the router object has.
   const latest = useRef(router);
   useEffect(() => { latest.current = router; }, [router]);
-  return useCallback(
-    (fleetId: string) => latest.current.push(workspacePath(workspaceId, `fleets/${encodeURIComponent(fleetId)}`)),
-    [workspaceId],
-  );
+  const origin = `${workspaceId}/${originFleetId ?? ""}`;
+  const current = useRef<string | null>(origin);
+  useEffect(() => {
+    current.current = origin;
+    return () => {current.current = null;};
+  }, [origin]);
+  return useCallback((fleetId: string) => {
+    if (current.current === origin) latest.current.push(workspacePath(workspaceId, `fleets/${encodeURIComponent(fleetId)}`));
+  }, [origin, workspaceId]);
 }
 
 // The draft a failure put back, and the id it was sent under. Only that draft,

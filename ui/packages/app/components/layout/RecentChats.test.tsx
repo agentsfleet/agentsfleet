@@ -4,8 +4,8 @@ import { RecentFleetList } from "./RecentChats";
 import { deleteFleetAction } from "@/app/(dashboard)/w/[workspaceId]/fleets/actions";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
-const navigation = vi.hoisted(() => ({path: "", replace: vi.fn(), refresh: vi.fn()}));
-vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.path, useSearchParams: () => new URLSearchParams()}));
+const navigation = vi.hoisted(() => ({path: "", query: "", replace: vi.fn(), refresh: vi.fn()}));
+vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.path, useSearchParams: () => new URLSearchParams(navigation.query)}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "owner", isLoaded: true, isSignedIn: true})}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({deleteFleetAction: vi.fn(), setFleetStatusAction: vi.fn()}));
 const SECOND_ID = "0199a801-1000-7000-8000-000000000008";
@@ -30,7 +30,7 @@ const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) 
 });
 
 beforeEach(() => {
-  calls = []; freshStatus = "active"; readStatus = 200;
+  navigation.query = ""; calls = []; freshStatus = "active"; readStatus = 200;
   fetcher.mockClear(); navigation.replace.mockClear(); navigation.refresh.mockClear();
   navigation.path = `/w/${WORKSPACE}/fleets/${FLEET_ID}`;
   vi.mocked(deleteFleetAction).mockReset().mockResolvedValue({ok: true, data: undefined});
@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
-it("shows saved fleets only without fetching private drafts or model choices", async () => {
+it("shows each fleet next to its private setup conversation and includes unfinished setups", async () => {
   const navigate = vi.fn();
   render(<RecentFleetList workspace={WORKSPACE} onNavigate={navigate} />);
   const fleet = await screen.findByRole("link", {name: active.name});
@@ -48,10 +48,10 @@ it("shows saved fleets only without fetching private drafts or model choices", a
   expect(within(fleet).getByText(active.name).classList.contains("text-pulse")).toBe(false);
   const neutral = screen.getByRole("link", {name: `${archived.name} Archived`});
   expect(within(neutral).getByText(archived.name).classList.contains("text-pulse")).toBe(false);
-  expect(screen.queryByRole("link", {name: DRAFT.title})).toBeNull();
+  expect(screen.getByRole("link", {name: DRAFT.title}).getAttribute("href")).toContain(DRAFT.id);
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
   expect(screen.queryByRole("link", {name: "Unfinished fleet edit"})).toBeNull();
-  expect(calls.some(call => call.path.includes("/drafts"))).toBe(false);
+  expect(screen.getByRole("link", {name: `Edit ${active.name}`}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
   const trash = screen.getByRole("button", {name: `Permanently delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
   expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");
@@ -132,6 +132,7 @@ it("recovers an unavailable fleet list through Refresh", async () => {
 
 it("loads another fleet page and refreshes when navigation changes", async () => {
   fetcher.mockImplementationOnce(async () => response({items: [active], total: null, next_cursor: "next"}))
+    .mockImplementationOnce(async () => response({items: [], next_cursor: null}))
     .mockImplementationOnce(async () => response({items: [archived], total: null, next_cursor: null}));
   const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
   fireEvent.click(await screen.findByRole("button", {name: "Load more fleets"}));
@@ -164,4 +165,68 @@ it("coalesces two confirmation events before React commits the pending button st
   expect(fetcher.mock.calls.length - before).toBe(1);
   await act(async () => pending.resolve(response({...active, status: "archived", etag: '"fresh"'})));
   await waitFor(() => expect(deleteFleetAction).toHaveBeenCalledOnce());
+});
+
+it("retries private setup history and loads subsequent setup pages", async () => {
+  const base = fetcher.getMockImplementation()!;
+  fetcher.mockImplementationOnce(base).mockImplementationOnce(async () => response({}, 503));
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  const retry = await screen.findByRole("button", {name: "Retry loading setups"});
+  fetcher.mockImplementationOnce(async () => response({items: [], next_cursor: "older"}));
+  fireEvent.click(retry);
+  fireEvent.click(await screen.findByRole("button", {name: "Load more setups"}));
+  await screen.findByRole("link", {name: DRAFT.title});
+  expect(calls.some(call => call.path.endsWith("starting_after=older"))).toBe(true);
+});
+
+it("shows the live private setup, highlights selection and reuses its pagination", async () => {
+  const more = vi.fn(async () => {});
+  const history = {workspace: WORKSPACE, subject: "owner", cards: [
+    {id: EDIT_ID, title: "Editing current instructions", detail: "", linkedFleet: FLEET_ID, activity: "draft" as const},
+    {id: DRAFT.id, title: "Already saved", detail: "", activity: "saved" as const},
+  ], fresh: null, remove: null, owner: null, locked: false, current: EDIT_ID, more, status: "ready" as const};
+  navigation.path = `/w/${WORKSPACE}/fleets/new`;
+  const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} history={history} />);
+  const link = await screen.findByRole("link", {name: `Edit ${active.name}`});
+  expect(link.getAttribute("data-active")).toBe("true");
+  expect(screen.queryByText("Already saved")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Load more setups"}));
+  expect(more).toHaveBeenCalledOnce();
+  navigation.query = `fleet=${FLEET_ID}`;
+  navigation.path = `/w/${WORKSPACE}/other`;
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} history={{...history, cards: []}} />);
+  navigation.path = `/w/${WORKSPACE}/fleets/new`;
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} history={{...history, cards: []}} />);
+  const edit = screen.getByRole("link", {name: `Edit ${active.name}`});
+  expect(edit.getAttribute("data-active")).toBe("true");
+  expect(edit.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}/setup`);
+  expect(calls.every(call => !call.path.includes("/drafts"))).toBe(true);
+});
+
+it("waits for private setups before showing the empty workspace message", async () => {
+  const pending = Promise.withResolvers<Response>();
+  fetcher.mockImplementationOnce(async () => response({items: [], total: null, next_cursor: null}))
+    .mockImplementationOnce(() => pending.promise);
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText("Saved fleets will appear here.")).toBeNull();
+  await act(async () => pending.resolve(response({items: [], next_cursor: null})));
+  expect(await screen.findByText("Saved fleets will appear here.")).toBeTruthy();
+});
+
+it("keeps unfinished setup links when their saved fleet is not in the loaded page", async () => {
+  fetcher.mockImplementationOnce(async () => response({items: [], total: null, next_cursor: null}));
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  const setup = await screen.findByRole("link", {name: "Unfinished fleet edit"});
+  expect(setup.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
+  expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
+  expect(screen.queryByText("Saved fleets will appear here.")).toBeNull();
+});
+
+it("offers setup for an installing fleet and retains archived conversations as read-only", async () => {
+  fetcher.mockImplementationOnce(async () => response({items: [{...archived, id: FLEET_ID}, {...active, id: SECOND_ID, status: "installing"}], total: null, next_cursor: null}));
+  render(<RecentFleetList workspace={WORKSPACE} onNavigate={vi.fn()} />);
+  await screen.findByRole("link", {name: DRAFT.title});
+  expect(screen.queryByRole("link", {name: `Edit ${archived.name}`})).toBeNull();
+  expect(screen.getByRole("link", {name: `Edit ${active.name}`}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${SECOND_ID}/setup`);
 });

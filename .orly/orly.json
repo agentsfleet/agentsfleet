@@ -106,7 +106,7 @@
       [
         "bash",
         "-c",
-        "cd ui/packages/app && bunx --no-install playwright install --with-deps chromium"
+        "cd ui/packages/app && bunx --bun --no-install playwright install --with-deps chromium"
       ],
       [
         "bash",

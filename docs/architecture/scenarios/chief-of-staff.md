@@ -26,6 +26,8 @@ Slack          @agentsfleet-dev runner-link-watch: Hourly runner link check
 
 The name is the fleet's saved name, the one the sidebar shows. The command line and the dashboard look it up with `GET …/fleets?name=`, then send an ordinary message. Slack has one bot for every fleet, so there the first word after the bot names the fleet.
 
+In the dashboard, type `@` to see active fleets in the current workspace. Use the arrow keys and Enter, or tap a fleet. The composer keeps the rest of the draft. Fleet conversations are stacked in the sidebar, with an **Edit** link beneath each editable fleet. In an interactive named CLI conversation, the prompt shows the recipient, for example `@runner-link-watch> `.
+
 ## 2. A fleet hands work to a fleet, and hears back
 
 ```text
@@ -43,6 +45,8 @@ runner-link-watch   runs under its own grants and budget
 chief-of-staff      wakes for a second run:  "runner-link-watch: no action needed"
 ```
 
+On the receiving fleet, the incoming message shows `@chief-of-staff`. Back in Chief’s conversation, the report shows the specialist’s name and Chief’s summary. Expand the **Worked** row to see **Sent fleet message** or **Read fleet activity**, then the tool’s recorded input and output. The [interactive design reference](../../ux.html#chief) illustrates the exchange with Bob.
+
 A digest is the same fleet reading without steering. `fleet_activity()` lists every fleet with its status, and one more read per fleet gives its latest result.
 
 ## 3. The rules that bound it
@@ -58,5 +62,5 @@ A digest is the same fleet reading without steering. `fleet_activity()` lists ev
 ## 4. Not this feature
 
 - A wait primitive. The receiver steers back, or the sender reads with `fleet_activity`.
-- A picker for `@` in the composer, and a Slack mention per fleet.
+- A Slack mention per fleet.
 - Reaching a fleet in another workspace.

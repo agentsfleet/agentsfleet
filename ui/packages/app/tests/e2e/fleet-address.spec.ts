@@ -32,3 +32,39 @@ test("chat_sends_an_addressed_message_and_opens_the_named_fleet", async ({page, 
   await expect(page.getByRole("list", {name: "Unsent messages"})).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("the workspace picker inserts only active fleets and keeps the unsent words", async ({page, chatProbe}, info) => {
+  const fleets = ["bob", "bob-archive", "chief-of-staff"].map((name, index) => ({
+    id: BOB.slice(0, -1) + index, name, status: name.endsWith("archive") ? "archived" : "active",
+    description: null, created_at: AT, updated_at: AT, events_processed: "0", budget_used_nanos: "0",
+  }));
+  let reads = 0;
+  await page.route(`**/live/v1/workspaces/${WORKSPACE}/fleets?limit=*`, route => {
+    reads++;
+    return route.fulfill({json: {items: fleets, next_cursor: null, total: null}});
+  });
+  await page.goto(`${chatProbe}?address=1`);
+  const input = page.getByRole("textbox", {name: "Message your fleet…"});
+  await input.fill("Please check @");
+  await input.pressSequentially("bo");
+  const picker = page.getByRole("listbox", {name: "Workspace fleets"});
+  await expect(picker.getByRole("option")).toHaveCount(1);
+  await expect(picker.getByRole("option", {name: "@bob", exact: true})).toBeVisible();
+  await page.screenshot({path: info.outputPath("workspace-fleet-picker.png"), animations: "disabled"});
+  await input.press("Enter");
+  await expect(input).toHaveValue("@bob Please check");
+  expect(reads).toBe(1);
+  await expect(picker).toHaveCount(0);
+  await input.fill("@unknown");
+  await expect(page.getByRole("status").filter({hasText: "No matching fleets."})).toBeVisible();
+  await input.press("Escape");
+  await expect(input).toHaveValue("@unknown");
+  await expect(picker).toHaveCount(0);
+  await input.fill("email bob@example");
+  await expect(picker).toHaveCount(0);
+  await input.fill("@");
+  await expect(picker.getByRole("option")).toHaveCount(2);
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  await expect(input).toHaveValue("@chief-of-staff ");
+});

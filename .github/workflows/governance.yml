@@ -30,7 +30,7 @@ jobs:
       # .orly/orly.json current with it.
       - name: Install the latest orly
         run: |
-          npm install --global @agentsfleet/orly@latest
+          bun add --global @agentsfleet/orly@latest
           orly --version
 
       # scripts/checks/gitleaks-config.sh refuses to guess and exits on a

@@ -1,8 +1,8 @@
 "use client";
 
-import { CheckIcon, XIcon, CircleNotchIcon as Loader2Icon } from "@phosphor-icons/react/ssr";
-import { CopyButton, cn } from "@agentsfleet/design-system";
-import { mono, paper } from "./surfaces";
+import { TerminalWindowIcon, CircleNotchIcon as Loader2Icon } from "@phosphor-icons/react/ssr";
+import { CopyButton, DashboardPanel, cn } from "@agentsfleet/design-system";
+import { mono } from "./surfaces";
 import { parseAnsi, ansiColor } from "./terminal-ansi";
 
 // Adapted from the official assistant-ui terminal element. See UPSTREAM.md.
@@ -13,6 +13,7 @@ const plainText = (line: string) =>
 
 export function TerminalBlock({
   command,
+  commandLinesHidden = 0,
   lines,
   done,
   exitCode,
@@ -20,6 +21,7 @@ export function TerminalBlock({
   truncated,
 }: {
   command: string;
+  commandLinesHidden?: number;
   lines: readonly string[];
   done: boolean;
   exitCode?: number | undefined;
@@ -31,40 +33,30 @@ export function TerminalBlock({
   const state = !done ? "running" : failed ? "failed" : outcome === "interrupted" ? "interrupted" : confirmed ? "done" : "unconfirmed";
 
   return (
-    <div
-      className={cn(paper, "w-full min-w-0 overflow-hidden rounded-md font-mono text-label")}
+    <DashboardPanel padding="none"
+      className="w-full min-w-0 overflow-hidden rounded-sm bg-surface-deep font-mono text-label"
       data-slot="terminal-block"
       data-state={state}
     >
-      <div className="flex flex-col items-start justify-between gap-2 px-4 pt-3 pb-1.5 sm:flex-row sm:items-center sm:gap-3">
-        <span className="min-w-0 break-words text-foreground/90">
-          <code>{command}</code>
-        </span>
-        {done ? (
-          <div className="flex shrink-0 items-center gap-1">
-            {failed ? (
-              <XIcon className="size-3 text-red-600 dark:text-red-400" />
-            ) : confirmed ? (
-              <CheckIcon className="size-4 text-success" />
-            ) : null}
-            <span className={cn(mono, failed ? "text-red-600 dark:text-red-400" : "text-muted-foreground")}>
-              {exitCode !== undefined ? `exit ${exitCode}` : state === "unconfirmed" ? "Outcome unconfirmed" : state === "interrupted" ? "Interrupted" : failed ? "Failed" : "Completed"}
-            </span>
-            {lines.length > 0 ? (
-              <CopyButton value={lines.map(plainText).join("\n")} label="Copy output" />
-            ) : null}
-          </div>
-        ) : (
-          <Loader2Icon className="size-4 text-muted-foreground" />
-        )}
+      <div className="flex flex-wrap items-center gap-sm border-b border-border px-lg py-sm font-sans text-label text-muted-foreground">
+        <TerminalWindowIcon aria-hidden="true" className="size-4 shrink-0" /><span>Command</span>
+        {done ? <>
+          <span aria-hidden="true">·</span>
+          <span className={failed ? "text-destructive" : undefined}>
+            {exitCode !== undefined ? `exit ${exitCode}` : state === "unconfirmed" ? "Outcome unconfirmed" : state === "interrupted" ? "Interrupted" : failed ? "Failed" : "Completed"}
+          </span>
+          {lines.length > 0 ? <CopyButton className="ml-auto" value={lines.map(plainText).join("\n")} label="Copy output" /> : null}
+        </> : <><Loader2Icon className="size-4 text-muted-foreground" aria-hidden="true" /><span>Running</span></>}
       </div>
-      <div className="flex min-h-0 flex-col gap-xs px-4 pt-1 pb-3.5 text-muted-foreground">
+      <div className="flex min-h-0 flex-col gap-xs bg-surface-deep px-lg py-md text-muted-foreground">
+        {command ? <code className="whitespace-pre-wrap [overflow-wrap:anywhere] text-foreground">{command}</code> : null}
+        {commandLinesHidden > 0 ? <span className="text-muted-foreground">{commandLinesHidden} more command {commandLinesHidden === 1 ? "line" : "lines"}</span> : null}
         <div className="flex flex-col gap-1">
           {lines.map((line, index) => (
             <div
               key={`${index}-${line}`}
               className={cn(
-                "fade-in animate-in fill-mode-both break-words whitespace-pre-wrap duration-300 motion-reduce:animate-none",
+                "fade-in animate-in fill-mode-both [overflow-wrap:anywhere] whitespace-pre-wrap duration-300 motion-reduce:animate-none",
                 index === lines.length - 1 && "text-foreground/90",
               )}
             >
@@ -86,6 +78,6 @@ export function TerminalBlock({
         {truncated ? <span className={cn(mono, "text-muted-foreground")}>output truncated</span> : null}
         {!done && <span aria-hidden className="inline-block h-3 w-1.5 bg-blue-500/70" />}
       </div>
-    </div>
+    </DashboardPanel>
   );
 }

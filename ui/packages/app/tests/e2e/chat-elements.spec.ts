@@ -31,21 +31,27 @@ test("typed chat outcomes remain readable in dark and light appearance", async (
   await page.goto(`${chatProbe}?visual=1&code=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   await page.getByRole("button", {name: /^Tool activity:/}).click();
-  for (const cell of await page.locator("li[data-tool]").all()) {
-    await cell.getByRole("button", {expanded: false}).first().click();
-  }
+  await expect(page.getByRole("heading", {name: "Input", exact: true})).toHaveCount(0);
+  const edit = page.locator('[data-tool="file_edit"]');
+  await expect(edit.getByText("release.yaml · Changes", {exact: true})).toBeVisible();
+  const counts = edit.getByLabel("1 addition, 1 deletion");
+  await expect(counts).toBeVisible();
+  const countsBox = (await counts.boundingBox())!, rowBox = (await edit.boundingBox())!;
+  expect(rowBox.x + rowBox.width - countsBox.x - countsBox.width).toBeLessThan(56);
   const command = page.getByLabel("Command result");
   await expect(command.locator("code")).toHaveText("trivy image --severity CRITICAL release:latest");
   await expect(page.locator('[data-tool="file_edit"] [data-diff="removed"]')).toContainText("ready: false");
   await expect(page.locator('[data-tool="file_edit"] [data-diff="added"]')).toContainText("ready: true");
-  await expect(page.locator('[data-tool="custom_release_report"]')).toContainText("Recorded example result");
+  await expect(command.locator('[data-slot="terminal-block"]')).toContainText("Recorded example result");
+  await expect(command).not.toContainText("exit 0");
   const report = page.getByRole("link", {name: "the build report"});
   await expect(report).toHaveAttribute("href", "https://example.test/release");
   await expect(report).toHaveAttribute("rel", /noopener/);
   await expect(page.locator('pre code').filter({hasText: "ready: true"})).toBeAttached();
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
-    await command.scrollIntoViewIfNeeded();
+    await command.evaluate(element => element.scrollIntoView({block: "start", behavior: "instant"}));
+    await expect(command).toBeInViewport({ratio: 0.95});
     const viewport = page.getByRole("log", {name: "Chat"});
     expect(await viewport.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -53,6 +59,9 @@ test("typed chat outcomes remain readable in dark and light appearance", async (
     await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
     await info.attach(`typed-chat-${theme}`, {path: screenshot, contentType: "image/png"});
   }
+  const generic = page.locator('[data-tool="custom_release_report"]');
+  await generic.getByRole("button", {expanded: false}).click();
+  await expect(generic).toContainText("Recorded example result");
   expect(errors).toEqual([]);
 });
 

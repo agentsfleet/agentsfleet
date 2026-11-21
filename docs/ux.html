@@ -137,11 +137,23 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
 @media(max-width:1100px){.review-caption{display:none}.setup-review-picker{margin-left:8px;padding-left:8px}.review-bar{padding-left:12px;padding-right:12px}}
 @media(max-width:680px){.review-bar{height:auto;min-height:82px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.review-bar>span{width:100%;justify-content:space-between}.review-links{width:100%}.app{height:calc(100dvh - 82px)}.setup-review-picker{border:0;padding:0;margin:0}.setup-summary .setup-meta{gap:8px}.setup-summary .summary-section{padding:12px 0}.setup-summary .setup-resource{min-height:36px}.setup-summary .setup-manage{min-height:44px;padding:8px}.setup-policy-info{width:36px;height:44px}.setup-policy-row{min-height:48px}.setup-summary .setup-section-heading{margin-bottom:0}.setup-editor textarea{font-size:16px;line-height:24px}.setup-publish{min-height:44px}.setup-summary .setup-origin{margin-bottom:12px}}
 @media(prefers-reduced-motion:reduce){.setup-summary input.setup-switch::before{transition:none}}
+
+.fleet-history{display:none;min-height:0;overflow:auto;width:100%;padding:var(--s2);font-size:13px}.expanded .fleet-history{display:block}.fleet-history>strong{display:block;padding:var(--s2);color:var(--muted);font-size:12px}.fleet-history button{display:flex;align-items:center;gap:var(--s2);min-height:40px;width:100%;text-align:left;padding:var(--s2);border-radius:var(--radius-sm)}.fleet-history button[aria-current=page]{background:var(--raised)}
+.composer{position:relative}.address-options{position:absolute;bottom:100%;left:0;right:0;z-index:3;max-height:32vh;overflow:auto;padding:var(--s2);background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}.address-options button{display:block;width:100%;min-height:40px;padding:var(--s2);text-align:left}
+@media(max-width:680px){.expanded .fleet-history{position:fixed;z-index:20;top:100px;left:var(--rail);width:min(250px,calc(100vw - var(--rail) - 8px));max-height:60vh;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}}
+.fleet-history .fleet-row{justify-content:flex-start}.fleet-history .setup-row{padding-left:var(--s6);color:var(--secondary)}
+.fleet-history .fleet-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fleet-history .fleet-row i{width:16px;height:16px;flex:none}
+.address-options{box-shadow:0 4px 16px #0002}.address-options .eyebrow,.address-options p{margin:0;padding:var(--s2)}
+.address-options button[aria-selected=true]{background:var(--raised);color:var(--text);border-radius:var(--radius-sm)}
+.work-group .trace>summary{min-height:36px}.work-group .trace pre{white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:680px){.fleet-history button,.address-options button,.work-group .trace>summary{min-height:44px}}
+@media(max-width:400px){.composer-footer{flex-wrap:wrap;row-gap:var(--s2)}.composer-footer .send{margin-left:auto}}
+.saved-setup-receipt{margin:var(--s3) 0;font-size:12px;line-height:16px;font-weight:500;color:var(--secondary)}
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review 03</strong><span class="review-caption">Sample data · Approved Summary</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-queued">Queued</option><option value="setup-thinking">Thinking</option></select></label></span><div class="review-links"><button data-view="draft">Fleet setup</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="empty">Empty</button><button data-view="models">Models</button><button data-view="usage">Usage</button><button data-view="security">Security</button><button data-view="team">Team</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
+<div class="review-bar" aria-label="Prototype controls"><span><strong>Visual review 03</strong><span class="review-caption">Sample data · Approved Summary</span><label class="setup-review-picker" id="setup-review-picker" hidden>Example<select aria-label="Fleet setup example"><option value="draft">Draft setup</option><option value="scheduled">Scheduled fleet</option><option value="setup-empty">Nothing selected</option><option value="setup-before">Before setup</option><option value="setup-queued">Queued</option><option value="setup-thinking">Thinking</option></select></label></span><div class="review-links"><button data-view="chief">Fleet handoff</button><button data-view="draft">Fleet setup</button><button data-view="conversation">Conversation</button><button data-view="activity">Activity</button><button data-view="failure">Error</button><button data-view="scheduled">Wake-up</button><button data-view="empty">Empty</button><button data-view="models">Models</button><button data-view="usage">Usage</button><button data-view="security">Security</button><button data-view="team">Team</button><button data-view="review">Sign-off</button><button class="icon-button" id="theme-toggle" aria-label="Switch color theme" title="Switch color theme"><i data-icon="sun"></i></button></div></div>
 <div class="app">
   <nav class="rail" aria-label="Main navigation">
     <button class="brand" data-view="empty" aria-label="agentsfleet home"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" width="24" height="24" alt=""><span class="nav-label">agentsfleet</span></button>
@@ -152,6 +164,12 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
       <button class="rail-button" data-view="secrets" aria-label="Secrets" title="Secrets"><i data-icon="key"></i><span class="nav-label">Secrets</span></button>
       <button class="rail-button" data-view="connections" aria-label="Connected apps" title="Connected apps"><i data-icon="plugs-connected"></i><span class="nav-label">Connected apps</span></button>
     </div>
+    <section class="fleet-history" id="fleet-list" aria-label="Fleet conversations">
+      <strong>Fleets</strong>
+      <div id="workspace-fleets"></div>
+      <button class="fleet-row setup-row" data-view="draft"><i data-icon="note-pencil"></i>Deployment checks</button>
+      <div id="archived-fleets"></div><p id="no-fleets" hidden>No fleets yet.</p>
+    </section>
     <div class="rail-bottom"><button class="rail-button" id="expand-nav" aria-label="Expand navigation" title="Expand navigation" aria-expanded="false"><i data-icon="sidebar-simple"></i><span class="nav-label">Collapse navigation</span></button><button class="avatar-button" id="account-toggle" aria-label="Kishore, account menu" title="Account" aria-expanded="false" aria-controls="account-menu"><span class="avatar">K</span><span class="nav-label">Kishore</span></button></div>
   </nav>
   <div class="surface">
@@ -159,7 +177,6 @@ button{font-weight:500}h1,h2,h3{font-weight:650}strong{font-weight:600}
     <main id="main" tabindex="0"></main>
   </div>
 </div>
-<section class="popover fleet-list" id="fleet-list" aria-label="Your fleets" hidden><div class="popover-heading"><strong>Your fleets</strong><button class="icon-button" data-view="empty" aria-label="Create a new fleet" title="New fleet"><i data-icon="note-pencil"></i></button></div><label class="search"><i data-icon="magnifying-glass"></i><input type="search" id="fleet-search" aria-label="Find a fleet" placeholder="Find a fleet"></label><p class="eyebrow">Needs you</p><button class="fleet-row" data-view="conversation" data-fleet-name="Release watch"><span><strong>Release watch</strong><small>Publish image · Approval needed</small></span><span class="badge">1</span></button><p class="eyebrow">Recent</p><button class="fleet-row" data-view="failure" data-fleet-name="Deploy monitor"><span><strong>Deploy monitor</strong><small>Connection needs attention</small></span><i data-icon="warning-circle"></i></button><button class="fleet-row" data-view="scheduled" data-fleet-name="Merge watch"><span><strong>Merge watch</strong><small>Scheduled for 12:30 UTC</small></span><i data-icon="clock"></i></button><div id="archived-fleets"></div><p id="no-fleets" hidden>No matching fleets.</p><button class="secondary wide" data-view="empty"><i data-icon="note-pencil"></i>New fleet</button></section>
 <div class="popover account-menu" id="account-menu" hidden><div class="account-heading"><span class="avatar">K</span><span><strong>Kishore</strong><small>Your account</small></span></div><button data-view="team"><i data-icon="users"></i>Team</button><button data-view="security"><i data-icon="shield"></i>Security</button><button data-view="usage"><i data-icon="chart-bar"></i>Usage</button><button data-view="models"><i data-icon="cpu"></i>Models</button><button data-action="appearance"><i data-icon="sun"></i>Appearance</button><div class="rule"></div><button data-action="sign-out"><i data-icon="sign-out"></i>Sign out</button></div>
 <div class="popover fleet-menu" id="fleet-menu" hidden><button data-action="rename"><i data-icon="pencil-simple"></i>Rename</button><button data-view="usage"><i data-icon="chart-bar"></i>Cost & usage</button><button data-action="schedule"><i data-icon="clock"></i>Schedule wake-up</button><div class="rule"></div><button data-action="archive"><i data-icon="archive"></i>Archive</button><button class="danger-text" data-action="delete"><i data-icon="trash"></i>Permanently Delete</button></div>
 <div id="action-announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
@@ -417,6 +434,14 @@ const appState = { view: 'conversation', decision: null, retried: false, schedul
 function scheduleFor(view=appState.view) { return appState.schedules[view] ||= {state:'none',wake:'12:30'}; }
 let lastFocus;
 const fleetNames = { conversation: 'Release watch', activity: 'Launch review', failure: 'Deploy monitor', scheduled: 'Merge watch', draft: 'Deployment checks', 'setup-empty': 'Deployment checks', 'setup-before': 'New fleet', 'setup-queued': 'Deployment checks', 'setup-thinking': 'Deployment checks' };
+const workspaceFleets = [
+  {view:'chief', name:'Chief of Staff', address:'chief-of-staff', instructions:'Read workspace activity, delegate requests to the named fleet, and summarize its report.'},
+  {view:'bob', name:'Bob', address:'bob', instructions:'Confirm the receipt requested by the sending fleet and report it back.'},
+  {view:'conversation', name:'Release watch', address:'release-watch', instructions:'Prepare the runner update and ask before publishing.'},
+  {view:'activity', name:'Launch review', address:'launch-review', instructions:'Review the launch page on desktop and mobile.'},
+  {view:'failure', name:'Deploy monitor', address:'deploy-monitor', instructions:'Check the latest deployment and report any failure.'},
+  {view:'scheduled', name:'Merge watch', address:'merge-watch', instructions:'Check the pull request and report the build after merge.'},
+];
 const pageTitles = { empty: 'New fleet', plugins: 'Plugins', secrets: 'Secrets', usage: 'Usage', security: 'Security', review: 'Visual sign-off', connections: 'Connected apps', models: 'Models', team: 'Team' };
 window.FLEET_ICONS.info = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40A8,8,0,0,1,144,176ZM112,84a12,12,0,1,1,12,12A12,12,0,0,1,112,84Z\"></path></svg>";
 window.FLEET_ICONS["circle-notch"] = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 256 256\"><path d=\"M232,128a104,104,0,0,1-208,0c0-41,23.81-78.36,60.66-95.27a8,8,0,0,1,6.68,14.54C60.15,61.59,40,93.27,40,128a88,88,0,0,0,176,0c0-34.73-20.15-66.41-51.34-80.73a8,8,0,0,1,6.68-14.54C208.19,49.64,232,87,232,128Z\"></path></svg>";
@@ -428,6 +453,12 @@ const setupPreview = {
   'setup-queued': null,
   'setup-thinking': null,
 };
+for (const fleet of workspaceFleets) {
+  fleetNames[fleet.view] = fleet.name;
+  fleetNames['edit-'+fleet.view] = 'Edit '+fleet.address;
+  setupPreview['edit-'+fleet.view] = {...(setupPreview[fleet.view] || setupPreview['setup-empty']),
+    instructions:fleet.instructions, tools:fleet.view==='chief'?['fleet_activity','fleet_steer']:fleet.view==='bob'?['fleet_steer']:(setupPreview[fleet.view]?.tools || [])};
+}
 const setupRepositoryChoices=['agentsfleet/agentsfleet','agentsfleet/docs','agentsfleet/orly'];
 const setupSecretChoices=['DEPLOY_TOKEN','github'];
 let setupClock;
@@ -472,17 +503,64 @@ function setupSummary(view){
   </aside>`;
 }
 function icons() { $$('[data-icon]').forEach(el => { const key = el.dataset.icon + (el.closest('.rail-button.selected') ? '_bold' : ''); el.innerHTML = window.FLEET_ICONS[key] || window.FLEET_ICONS[el.dataset.icon] || ''; el.setAttribute('aria-hidden','true'); }); }
-function closeMenus() { ['fleet-list','account-menu','fleet-menu'].forEach(id => $('#'+id).hidden = true); ['fleet-toggle','account-toggle','fleet-more'].forEach(id => $('#'+id).setAttribute('aria-expanded','false')); }
+function setSidebarExpanded(expanded) {
+  document.body.classList.toggle('expanded',expanded);
+  for(const id of ['fleet-toggle','expand-nav'])$('#'+id).setAttribute('aria-expanded',String(expanded));
+  const label=expanded?'Collapse navigation':'Expand navigation';
+  $('#expand-nav').setAttribute('aria-label',label);$('#expand-nav').title=label;$('#expand-nav .nav-label').textContent=label;
+}
+function eligibleFleets() {
+  return workspaceFleets.filter(fleet => !appState.lifecycle[fleet.view]);
+}
+let addressIndex=0;
+let dismissedAddress=null;
+function addressToken(input) {
+  const before=input.value.slice(0,input.selectionStart);
+  if (/^\s*@[a-z0-9-]+[\s,:]/i.test(before) || input.selectionStart!==input.selectionEnd) return null;
+  const match=/(?:^|\s)@([a-z0-9-]{0,64})$/i.exec(before);
+  return match && {query:match[1].toLowerCase(),start:before.length-1-match[1].length,end:before.length};
+}
+function closeAddresses(){
+  const menu=$('#address-options');
+  if(!menu)return;
+  menu.hidden=true;
+  const input=$('#message');
+  input.removeAttribute('aria-activedescendant');
+  input.removeAttribute('aria-controls');
+}
+function selectAddress(address) {
+  const input=$('#message'), token=addressToken(input);
+  if(!token || !eligibleFleets().some(fleet=>fleet.address===address))return;
+  const before=input.value.slice(0,token.start).trimEnd(), after=input.value.slice(token.end).trimStart();
+  input.value='@'+address+' '+[before,after].filter(Boolean).join(' ');
+  appState.drafts[appState.view]=input.value;
+  closeAddresses();input.focus();input.setSelectionRange(input.value.length,input.value.length);
+}
+function showAddresses(input, reset=false) {
+  const menu=$('#address-options');
+  if(!menu)return;
+  const token=addressToken(input);
+  if(!token || dismissedAddress===input.value || document.activeElement!==input){closeAddresses();return;}
+  const options=eligibleFleets().filter(fleet=>fleet.address.startsWith(token.query));
+  if(reset || addressIndex>=options.length)addressIndex=0;
+  menu.innerHTML='<div class="eyebrow">Workspace fleets</div><div id="fleet-options" role="listbox" aria-label="Workspace fleets">'+
+    options.map((fleet,i)=>`<button type="button" id="address-${i}" role="option" aria-selected="${i===addressIndex}" tabindex="-1" data-address="${esc(fleet.address)}">@${esc(fleet.address)}</button>`).join('')+
+    '</div>'+(options.length?'':'<p role="status">No matching fleets.</p>');
+  menu.hidden=false;input.setAttribute('aria-controls','fleet-options');
+  if(options.length) input.setAttribute('aria-activedescendant','address-'+addressIndex);
+  else input.removeAttribute('aria-activedescendant');
+}
+function closeMenus() { ['account-menu','fleet-menu'].forEach(id => $('#'+id).hidden = true); ['account-toggle','fleet-more'].forEach(id => $('#'+id).setAttribute('aria-expanded','false')); }
 function toggleMenu(id, trigger) { const show = $('#'+id).hidden; closeMenus(); $('#'+id).hidden = !show; trigger.setAttribute('aria-expanded',String(show)); if(show) ($('#'+id+' input') || $('#'+id+' button'))?.focus(); }
 function dialog(title, body) { lastFocus = document.activeElement; closeMenus(); $('#modal-title').textContent=title; $('#modal-content').innerHTML=body; icons(); if(!$('#modal').open) $('#modal').showModal(); }
 function previewNote(text='Preview only. These actions change sample data in this page.') { return `<p class="preview-note">${text}</p>`; }
 function modalActions(html) { return `<div class="modal-actions"><button class="secondary" type="button" data-action="close">Cancel</button>${html}</div>`; }
 function saveDraft() { const input=$('#message'); if(input) appState.drafts[appState.view]=input.value; }
 function showView(view, focus=false) {
-  saveDraft(); if(appState.lifecycle[view]==='deleted') view='empty'; appState.view = view; closeMenus();
+  dismissedAddress=null;addressIndex=0;saveDraft(); if(appState.lifecycle[view]==='deleted') view='empty'; appState.view = view; closeMenus();
   const isChat = !!fleetNames[view];
-  const setupExample=isSetupExample(view);
-  $('#setup-review-picker').hidden=!setupExample;
+  const setupExample=isSetupExample(view), editing=view.startsWith('edit-');
+  $('#setup-review-picker').hidden=!setupExample || editing;
   if(setupExample)$('#setup-review-picker select').value=view;
   $('#setup-instructions').hidden=!setupPreview[view];$('#heading-new-fleet').hidden=!!setupPreview[view];
   $('#page-title').textContent=fleetNames[view] || pageTitles[view] || 'agentsfleet';
@@ -492,6 +570,11 @@ function showView(view, focus=false) {
   $('#header-state').classList.toggle('neutral',view==='scheduled'||view==='activity'||view==='draft'||!!appState.decision);
   if(setupExample && view!=='scheduled'){$('#header-state').textContent='Draft';$('#header-state').classList.add('neutral');}
   $('#run-cost').textContent=view==='failure'?'$0.08 this run':view==='scheduled'?'$0.12 this run':'$0.34 this run';
+  if(view==='chief'||view==='bob'){
+    $('#header-state').textContent='Completed';
+    $('#header-state').classList.add('neutral');$('#run-cost').hidden=true;
+  }
+  if(editing)$('#header-state').textContent='Setup';
   $('#main').innerHTML = isChat ? workspace(view) : view==='empty' ? emptyView() : pageView(view);
   if($('#message')) $('#message').value=appState.drafts[view] || '';
   const archived=appState.lifecycle[view]==='archived';
@@ -506,19 +589,62 @@ function showView(view, focus=false) {
 }
 function userTurn(text, meta='You · 11:42', file='') { return `<article class="user-turn"><div class="user-bubble">${file ? `<div class="file-chip">${icon('file-text')}${file}</div>`:''}<p>${text}</p></div><div class="message-meta">${meta}</div></article>`; }
 function assistantMeta(name,time) { return `<div class="message-meta"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ij4KICA8dGl0bGU+YWdlbnRzZmxlZXQ8L3RpdGxlPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjEyIiBmaWxsPSIjMTUxNzE2Ii8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOCA4KSBzY2FsZSgyKSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmMGNlIiBzdHJva2Utd2lkdGg9IjEuNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj4KICAgIDxwYXRoIGQ9Ik0xMiAydjZtMCA4djZNMiAxMmg2bTggMGg2TTQuOTMgNC45M2w0LjI0IDQuMjRtNS42NiA1LjY2IDQuMjQgNC4yNE00LjkzIDE5LjA3bDQuMjQtNC4yNG01LjY2LTUuNjYgNC4yNC00LjI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMiIgY3k9IjEyIiByPSIxLjUiIGZpbGw9IiNiOGYwY2UiIHN0cm9rZT0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==" alt=""><strong>${name}</strong><span>· ${time}</span></div>`; }
-function workGroup() { return `<details class="work-group"><summary>${icon('check-circle')}<span>Worked for 2m 18s · 3 tools, 1 command</span>${icon('caret-down')}</summary><div class="work-content"><div class="tool-row">${icon('git-diff')}Edited 3 files<span class="result">+24 −8</span></div><div class="tool-output"><header>${icon('file-text')}Dockerfile · Changes</header><pre><span class="diff-remove">− FROM rust:1.97</span>\n<span class="diff-add">+ FROM rust:1.98</span>\n  WORKDIR /runner</pre></div><div class="tool-row">${icon('terminal-window')}Build and security scans<span class="result">Succeeded</span></div><div class="tool-output"><header>${icon('terminal-window')}Command · Exit 0</header><pre>docker buildx build --platform linux/amd64,linux/arm64 .\n✓ Build completed\n✓ Trivy: no critical findings\n✓ Gitleaks: no secrets detected</pre></div></div></details>`; }
+const releaseWork = {
+  duration:'2m 18s', counts:'3 tools, 1 command', edits:'Edited 3 files', added:24, removed:8, file:'Dockerfile',
+  before:'FROM rust:1.97', after:'FROM rust:1.98', context:'WORKDIR /runner', commandName:'Build and security scans',
+  command:'docker buildx build --platform linux/amd64,linux/arm64 .', output:'✓ Build completed\n✓ Trivy: no critical findings\n✓ Gitleaks: no secrets detected'
+};
+const launchWork = {
+  duration:'46s', counts:'1 tool, 3 commands', edits:'Edited file', added:1, removed:1, file:'theme.css',
+  before:'  min-height: 32px;', after:'  min-height: 44px;', context:'}', commandName:'Checked mobile layout',
+  command:'bun run test:layout', output:'Desktop and mobile layout checks passed.'
+};
+function workGroup(work = releaseWork) {
+  return `<details class="work-group"><summary>${icon('check-circle')}<span>Worked for ${work.duration} · ${work.counts}</span>${icon('caret-down')}</summary><div class="work-content"><div class="tool-row">${icon('git-diff')}${work.edits}<span class="result">+${work.added} −${work.removed}</span></div><div class="tool-output"><header>${icon('file-text')}${work.file} · Changes</header><pre><span class="diff-remove">− ${work.before}</span>\n<span class="diff-add">+ ${work.after}</span>\n  ${work.context}</pre></div><div class="tool-row">${icon('terminal-window')}${work.commandName}<span class="result">Succeeded</span></div><div class="tool-output"><header>${icon('terminal-window')}Command · Exit 0</header><pre>${work.command}\n${work.output}</pre></div></div></details>`;
+}
+function savedSetupReceipt(revision) { return `<h2 class="saved-setup-receipt">Setup saved · v${revision}</h2>`; }
 function actions() { return `<div class="message-actions"><button class="icon-button" data-action="copy-reply" aria-label="Copy response" title="Copy response">${icon('copy')}</button><button class="icon-button" data-action="quote" aria-label="Quote response" title="Quote response">${icon('quotes')}</button></div>`; }
 function traceRow(symbol,label,detail,classes='') { return `<details class="trace ${classes}"><summary>${icon(symbol)}<span>${label}</span>${icon('caret-down')}</summary><div class="trace-detail">${detail}</div></details>`; }
 function activityConversation() {
-  return `<div class="day-marker">Today · Sample conversation</div>${userTurn('Review the launch page, check mobile, and prepare the changes. Include a UI review.','You · 11:40','launch-brief.md')}<article class="assistant-turn">${assistantMeta('Launch review','11:40')}<p>I’ll check the layout and mobile behavior, then bring back the changes for your review.</p><div class="activity-stream" aria-label="Work activity">${traceRow('file-text','Read 3 files','LaunchPage.tsx, theme.css, and launch-brief.md.')} ${traceRow('images','Viewed 2 images','Desktop and mobile reference images.')} ${traceRow('users','UI reviewer started','Checking text clarity, spacing, and responsive behavior.','agent-trace')} ${traceRow('pencil-simple','Edited files, ran 3 commands','Updated layout styles. Build and layout checks passed.')} ${traceRow('users','UI reviewer finished','Review complete. Two spacing issues found and corrected.','agent-trace')}</div><p>The mobile layout had cramped labels. I widened the reading area and made the action buttons easier to find.</p><div class="activity-stream">${traceRow('plugs-connected','Used GitHub integration','Read the current pull request checks. No changes were pushed.')} ${traceRow('terminal-window','Started preview server','The preview process is running. Open its output from Summary.')} ${traceRow('check-circle','Checked desktop and mobile layouts','Text, focus, and overflow checks passed at the sample widths.')}</div><p><strong>The changes are ready.</strong> Review the files from the flap below, or open the preview in Summary.</p>${actions()}</article>${localMessages('activity')}`;
+  return `<div class="day-marker">Today · Sample conversation</div>${savedSetupReceipt(1)}${userTurn('Review the launch page, check mobile, and prepare the changes. Include a UI review.','You · 11:40','launch-brief.md')}<article class="assistant-turn">${assistantMeta('Launch review','11:40')}<p>I’ll check the layout and mobile behavior, then bring back the changes for your review.</p><div class="activity-stream" aria-label="Work activity">${traceRow('file-text','Read 3 files','LaunchPage.tsx, theme.css, and launch-brief.md.')} ${traceRow('images','Viewed 2 images','Desktop and mobile reference images.')} ${traceRow('users','UI reviewer started','Checking text clarity, spacing, and responsive behavior.','agent-trace')} ${workGroup(launchWork)} ${traceRow('users','UI reviewer finished','Review complete. Two spacing issues found and corrected.','agent-trace')}</div><p>The mobile layout had cramped labels. I widened the reading area and made the action buttons easier to find.</p><div class="activity-stream">${traceRow('plugs-connected','Used GitHub integration','Read the current pull request checks. No changes were pushed.')} ${traceRow('terminal-window','Started preview server','The preview process is running. Open its output from Summary.')} ${traceRow('check-circle','Checked desktop and mobile layouts','Text, focus, and overflow checks passed at the sample widths.')}</div><p><strong>The changes are ready.</strong> Review the files from the flap below, or open the preview in Summary.</p>${actions()}</article>${localMessages('activity')}`;
 }
 function activitySummary() {
   return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2><section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="activity-changes">${icon('git-diff')}<span>web<small>4 files</small></span><span class="diff-stat">+248 <b>−3</b></span></button><button class="summary-row" data-action="activity-changes">${icon('git-diff')}<span>docs<small>2 files</small></span><span class="diff-stat">+23</span></button></section><section class="summary-section"><div class="summary-label">Output</div><button class="summary-row" data-action="activity-output">${icon('browser')}<span>Launch preview</span>${icon('arrow-up-right')}</button></section><section class="summary-section"><div class="summary-label">Agents & processes</div><div class="summary-row">${icon('users')}<span>UI reviewer</span><small>Done</small></div><button class="summary-row" data-action="background-output">${icon('terminal-window')}<span>Preview server</span><small class="running-label">Running</small></button></section><section class="summary-section"><div class="summary-label">Sources</div><button class="summary-row" data-action="activity-sources">${icon('paperclip')}<span>2 attached files</span>${icon('caret-right')}</button></section></aside>`;
 }
+function handoffWork(seconds,steps) {
+  const rows=steps.map(([label,tool,input,result])=>
+    `<details class="trace"><summary>${icon('check-circle')}<span>${esc(label)}</span>${icon('caret-down')}</summary><div class="tool-output"><header><code>${esc(tool)}</code></header><pre>${esc(input)}
+${esc(result)}</pre></div></details>`).join('');
+  return `<details class="work-group"><summary>${icon('check-circle')}<span>Worked for ${seconds}s · ${steps.length} ${steps.length===1?'tool':'tools'}</span>${icon('caret-down')}</summary><div class="work-content">${rows}</div></details>`;
+}
+function handoffConversation(view){
+  const turn=(who,time,body)=>`<article class="assistant-turn">${assistantMeta(who,time)}${body}</article>`;
+  const asked='Confirm you received the morning handoff and report back.';
+  const receipt='I received the morning handoff.';
+  const reported=['Sent fleet message','fleet_steer','To @chief-of-staff · '+receipt,'Message accepted'];
+  let turns;
+  if(view==='chief'){
+    turns=userTurn('Ask Bob to confirm receipt of the morning handoff.','You · 09:00')+
+      turn('Chief of Staff','09:00',handoffWork(4,[
+        ['Read fleet activity','fleet_activity','List this workspace’s fleets','Found @bob'],
+        ['Sent fleet message','fleet_steer','To @bob · '+asked,'Message accepted']])+'<p>I asked @bob to confirm. He’ll report back here.</p>')+
+      userTurn(receipt,'@bob · 09:01')+
+      turn('Chief of Staff','09:01',handoffWork(2,[['Read fleet activity','fleet_activity','Read @bob’s latest activity','Found the receipt for the morning handoff']])+'<p><strong>Bob confirmed receipt of the morning handoff.</strong></p>'+actions());
+  }else{
+    turns=userTurn(asked,'@chief-of-staff · 09:00')+
+      turn('Bob','09:01',handoffWork(3,[reported])+'<p>I sent the receipt to @chief-of-staff.</p>'+actions());
+  }
+  return '<div class="day-marker">Today · Sample conversation</div>'+turns+localMessages(view);
+}
 function conversation(view) {
+  if(view==='chief'||view==='bob')return handoffConversation(view);
+  if(view.startsWith('edit-')){
+    const fleet=workspaceFleets.find(fleet=>'edit-'+fleet.view===view);
+    return `<div class="day-marker">Sample setup conversation</div>${savedSetupReceipt(1)}${userTurn(esc(fleet.instructions),'You · Setup')}<article class="assistant-turn">${assistantMeta('Fleet setup','Setup')}<p>The instructions for ${esc(fleet.name)} are ready to review.</p></article>${localMessages(view)}`;
+  }
   if(['setup-queued','setup-thinking'].includes(view)){const label=view==='setup-queued'?'Queued':'Thinking';return `${userTurn('Check the latest deployment and report any failures.','You · Preview')}<article class="assistant-turn">${assistantMeta('Deployment checks','Preview')}<output aria-label="${label}" aria-live="off">${setupProgressLabel(label)}</output></article>${localMessages(view)}`;}
   if(view==='activity') return activityConversation();
-  if(view==='draft') return `${appState.messages[view]?.length?localMessages(view):userTurn('Check deployments for agentsfleet/agentsfleet. Use the deployment reviewer setup and limit spending to $1 a day.','You · Preview')}<article class="assistant-turn">${assistantMeta('Deployment checks','Preview')}<p>The setup is ready to review. It can check the selected repositories, use Shell, and read only the secrets listed in Summary.</p><p>Public internet access is restricted. Package manager domains are enabled.</p><p>Tell me what to change, or choose Save and publish to keep a reusable version.</p>${setupPreview.draft.publication?`<p class="setup-published" role="status">${esc(setupPreview.draft.publication)} · Published in this preview</p>`:''}</article>`;
+  if(view==='draft') return `${appState.messages[view]?.length?localMessages(view):userTurn('Check deployments for agentsfleet/agentsfleet. Use the deployment reviewer setup and limit spending to $1 a day.','You · Preview')}<article class="assistant-turn">${assistantMeta('Deployment checks','Preview')}<p>The setup is ready to review. It can check the selected repositories, use Shell, and read only the secrets listed in Summary.</p><p>Public internet access is restricted. Package manager domains are enabled.</p><p>Tell me what to change, or choose Save and publish to keep a reusable version.</p>${setupPreview.draft.publication?savedSetupReceipt(1):''}</article>`;
   if(view==='setup-empty') return `${userTurn('Help me set up a fleet. I haven’t chosen its repositories or secrets yet.','You · Preview')}<article class="assistant-turn">${assistantMeta('Deployment checks','Preview')}<p>What should this fleet work on? We can add its repositories and secrets as you decide what it needs.</p></article>${localMessages(view)}`;
   if(view==='setup-before') return `${userTurn("Help me put together a fleet.","You · Preview")}<article class="assistant-turn">${assistantMeta("Fleet setup","Preview")}<p>What should it work on? Your setup will take shape in Summary as we work through it.</p></article>${localMessages(view)}`;
   if(view==='failure') return `<div class="day-marker">Today · Sample conversation</div>${userTurn('Check the latest deploy and tell me whether the service is healthy.','You · 11:48')}<article class="assistant-turn">${assistantMeta('Deploy monitor','11:48')}<p>I checked the release record. I couldn’t finish the health check because the deployment connection expired.</p><div class="event-line">${icon('check-circle')}<span>Read the latest release · v2.8.1</span></div><section class="error-card" aria-label="Deployment connection error"><h2>${icon('warning-circle')}Deployment connection expired</h2><p>The health check hasn’t run. Reconnect your deploy account, then retry this step. Your draft and completed work are kept.</p><div class="error-actions"><button class="primary" data-action="reconnect" ${appState.retried?'disabled':''}>${appState.retried?'Reconnected':'Reconnect & retry'}</button><button class="secondary" data-view="connections">Manage connection</button></div><details><summary>Technical details</summary><pre>Health check · Authentication required\nAttempt 1 · Failed at 11:48 UTC\nNo deployment changes were made.</pre></details>${appState.retried?'<p class="inline-status" role="status">Preview recovery: connection restored. Health check passed.</p>':''}</section><p class="subtle">${appState.retried?'The original failure stays in the conversation so the recovery is easy to follow.':'I’ll continue from the health check once the connection is restored.'}</p>${actions()}</article>${localMessages(view)}`;
@@ -528,13 +654,17 @@ function conversation(view) {
 function localMessages(view) { return (appState.messages[view]||[]).map(m=>userTurn(esc(m.text),'You · Preview',(m.files||[]).map(esc).join(', '))).join(''); }
 function summary(view) {
   if(isSetupExample(view))return setupSummary(view);
+  if(view==='chief'||view==='bob'){
+    const chief=view==='chief';
+    return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2><section class="summary-section"><div class="summary-label">Outcome</div><strong>Receipt confirmed</strong><p>Bob acknowledged the morning handoff.</p></section><section class="summary-section"><div class="summary-label">Related conversation</div><button class="summary-row" data-view="${chief?'bob':'chief'}">${icon('stack')}<span>${chief?'Bob':'Chief of Staff'}</span>${icon('arrow-up-right')}</button></section></aside>`;
+  }
   if(view==='activity') return activitySummary();
   const decision=view==='conversation'&&!appState.decision ? `<section class="summary-section"><div class="summary-label attention">Needs your approval <span class="badge">1</span></div><strong>Publish runner image</strong><p>Production registry · Release tag</p><button class="text-button" data-action="review-approval">Review exact action ${icon('arrow-up-right')}</button><div class="approval-actions"><button class="primary" data-action="review-approval">Review</button><button class="secondary" data-action="deny">Deny</button></div></section>` : view==='failure' ? `<section class="summary-section"><div class="summary-label ${appState.retried?'':'attention'}">${appState.retried?'Recovered':'Needs attention'}</div><strong>${appState.retried?'Health check passed':'Deploy connection expired'}</strong><p>${appState.retried?'Recovery recorded in the conversation.':'Reconnect in the conversation to continue.'}</p></section>` : view==='draft' ? `<section class="summary-section"><p>Your decisions and outputs will appear here as the fleet works.</p></section>` : `<section class="summary-section"><div class="summary-label">Status</div><strong>${view==='scheduled'?(scheduleFor().state==='active'?'Watching pull request #58':'Schedule '+scheduleFor().state):'Request '+appState.decision}</strong></section>`;
   return `<aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2>${decision}${view==='conversation'?`<section class="summary-section"><div class="summary-label">Changes</div><button class="summary-row" data-action="changes">${icon('git-diff')}<span>3 files <small>platform-images</small></span><span class="diff-stat">+24 <b>−8</b></span></button></section><section class="summary-section"><div class="summary-label">Output</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Ready for review</small></span>${icon('arrow-up-right')}</button></section>`:''}${view==='scheduled'||['active','paused'].includes(scheduleFor().state)?`<section class="summary-section"><div class="summary-label">Next wake-up</div><button class="summary-row" data-action="schedule">${icon('clock')}<span>${scheduleFor().state==='active'?`${esc(scheduleFor().wake)} UTC`:'Not scheduled'}<small>${scheduleFor().state==='active'?'Every 30 minutes':scheduleFor().state==='paused'?'Paused by you':'Cancelled by you'}</small></span></button></section>${view==='scheduled'?`<section class="summary-section"><div class="summary-label">Watching</div><button class="summary-row" data-action="output">${icon('git-pull-request')}<span>Pull request #58<small>Open · Checks passed</small></span></button></section>`:''}`:''}</aside>`;
 }
 function composer(empty=false) {
   const view=appState.view;
-  return `<div class="composer-wrap">${["draft","setup-empty"].includes(view)?`<div class="setup-publish-wrap">${setupPreview[view].publicationStarted?`<output class="setup-publish" aria-label="Publishing setup" aria-busy="true">${setupProgressLabel("Saving and publishing")}</output>`:setupPreview[view].publication?`<output class="setup-publish setup-published" aria-label="Setup published">${icon("check-circle")}Setup published</output>`:`<button class="setup-publish" data-action="setup-publish">Save and publish ${icon("caret-right")}</button>`}</div>`:""}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(scheduleFor().state)?`<div class="wake-strip">${icon('clock')}<span>${scheduleFor().state==='paused'?'Wake-up paused':`Next wake-up · ${esc(scheduleFor().wake)} UTC`}</span><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${scheduleFor().state==='paused'?'Resume':'Pause'} scheduled wake-up" title="${scheduleFor().state==='paused'?'Resume':'Pause'} wake-up">${icon(scheduleFor().state==='paused'?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label><textarea id="message" rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer"><button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button><button class="icon-button" data-action="mention" aria-label="Mention a plugin or source" title="Mention plugin or source">${icon('at')}</button><button class="model-control" data-action="models">${icon('cpu')}<span>${esc(appState.models[view] || setupPreview[view]?.model || 'Default model')}</span>${icon('caret-down')}</button>${empty?`<button class="primary" id="send-message" style="margin-left:auto">${icon('note-pencil')}New fleet</button>`:`<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button>`}</div></div><div class="composer-caption"><span>${empty?'Start with a goal. Add files or plugins when you need them.':'Enter to send · Shift + Enter for a new line'}</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="draft-status" id="draft-status" hidden></p></div>`;
+  return `<div class="composer-wrap">${["draft","setup-empty"].includes(view)?`<div class="setup-publish-wrap">${setupPreview[view].publicationStarted?`<output class="setup-publish" aria-label="Publishing setup" aria-busy="true">${setupProgressLabel("Saving and publishing")}</output>`:setupPreview[view].publication?`<output class="setup-publish setup-published" aria-label="Setup published">${icon("check-circle")}Setup published</output>`:`<button class="setup-publish" data-action="setup-publish">Save and publish ${icon("caret-right")}</button>`}</div>`:""}${view==='activity'?`<div class="flap-wrap"><button class="work-flap" data-action="activity-changes">${icon('git-diff')}<strong>6 files changed</strong><span class="diff-stat">+271 <b>−3</b></span>${icon('caret-up')}</button></div>`:''}${['active','paused'].includes(scheduleFor().state)?`<div class="wake-strip">${icon('clock')}<span>${scheduleFor().state==='paused'?'Wake-up paused':`Next wake-up · ${esc(scheduleFor().wake)} UTC`}</span><button class="icon-button" data-action="schedule" aria-label="Edit scheduled wake-up" title="Edit wake-up">${icon('pencil-simple')}</button><button class="icon-button" data-action="pause-schedule" aria-label="${scheduleFor().state==='paused'?'Resume':'Pause'} scheduled wake-up" title="${scheduleFor().state==='paused'?'Resume':'Pause'} wake-up">${icon(scheduleFor().state==='paused'?'play':'pause')}</button><button class="icon-button" data-action="cancel-schedule" aria-label="Cancel scheduled wake-up" title="Cancel wake-up">${icon('trash')}</button></div>`:''}<div class="composer"><div class="attached-files">${(appState.files[view]||[]).map((f,i)=>`<span class="file-chip">${icon('file-text')}${esc(f)}<button class="attachment-remove" data-remove-file="${i}" aria-label="Remove ${esc(f)}">×</button></span>`).join('')}</div><label class="sr-only" for="message">${empty?'Describe your new fleet':'Message '+fleetNames[view]}</label>${workspaceFleets.some(fleet=>fleet.view===view)?'<div id="address-options" class="address-options" hidden></div>':''}<textarea id="message" ${workspaceFleets.some(fleet=>fleet.view===view)?'aria-autocomplete="list"':''} rows="2" placeholder="${empty?'What would you like your fleet to do?':'Message your fleet…'}"></textarea><div class="composer-footer"><button class="icon-button" data-action="attach" aria-label="Attach a document" title="Attach document">${icon('paperclip')}</button><button class="icon-button" data-action="mention" aria-label="${workspaceFleets.some(fleet=>fleet.view===view)?'Mention a fleet':'Mention a plugin or source'}" title="${workspaceFleets.some(fleet=>fleet.view===view)?'Mention a fleet':'Mention a plugin or source'}">${icon('at')}</button><button class="model-control" data-action="models">${icon('cpu')}<span>${esc(appState.models[view] || setupPreview[view]?.model || 'Default model')}</span>${icon('caret-down')}</button>${empty?`<button class="primary" id="send-message" style="margin-left:auto">${icon('note-pencil')}New fleet</button>`:`<button class="send" id="send-message" aria-label="Send message">${icon('arrow-up')}</button>`}</div></div><div class="composer-caption"><span>${empty?'Start with a goal. Add files or plugins when you need them.':'Enter to send · Shift + Enter for a new line'}</span>${empty?'':'<span>Token budget: 18%</span>'}</div><p class="draft-status" id="draft-status" hidden></p></div>`;
 }
 function archivedWorkspace(view) {
   return `<div class="workspace"><section class="chat" aria-label="Archived fleet history"><div class="transcript" id="transcript"><div class="conversation">${conversation(view)}</div></div><p class="archive-receipt">${icon('archive')}Archived · Permanently stopped. History is read-only.</p></section><aside class="summary" aria-label="Fleet summary"><h2>Summary ${icon('list-bullets')}</h2><section class="summary-section"><div class="summary-label">Status</div><strong>Archived</strong><p>Setup and conversation history are retained. This fleet cannot resume.</p></section></aside></div>`;
@@ -579,10 +709,19 @@ function scheduleDialog() { dialog('Scheduled wake-up',`<p>${esc(fleetNames[appS
 function sendMessage() {
   const input=$('#message'),text=input?.value.trim();
   if(!text){if(input){input.focus();$('#draft-status').hidden=false;$('#draft-status').textContent='Describe a goal to start your fleet.';}return;}
-  const view=appState.view,entry={text,files:[...(appState.files[view]||[])]};
+  const view=appState.view;
+  const address=$('#address-options') && /^\s*@([a-z0-9-]+)(?:$|[\s:,]\s*)/i.exec(text);
+  const target=address && eligibleFleets().find(fleet=>fleet.address===address[1].toLowerCase());
+  const words=address?text.slice(address[0].length):text;
+  if(address && (!target || !words || appState.files[view]?.length)){
+    const status=$('#draft-status');status.hidden=false;
+    status.textContent=!target?'No matching fleet in this workspace.':!words?'Add a message for this fleet.':'Remove attachments before addressing another fleet.';
+    input.focus();return;
+  }
+  const entry={text:words,files:[...(appState.files[view]||[])]};
   appState.drafts[view]='';appState.files[view]=[];input.value='';
   if(view==='empty'){appState.messages.draft=[entry];appState.drafts.draft='';appState.models.draft=appState.models.empty||'Default model';showView('draft');}
-  else{(appState.messages[view]||=[]).push(entry);showView(view);}
+  else{const destination=target?.view||view;(appState.messages[destination]||=[]).push(entry);showView(destination);}
   const transcript=$('#transcript');if(transcript)transcript.scrollTop=transcript.scrollHeight;
   $('#message')?.focus();$('#draft-status').hidden=false;$('#draft-status').textContent='Added to this preview. No request was sent.';
 }
@@ -590,7 +729,8 @@ function insertText(text) {const input=$('#message');if(!input)return;input.valu
 function confirmLocal(title,copy,action,label='Confirm') {dialog(title,`<p>${copy}</p>${previewNote()}${modalActions(`<button class="danger-button" data-action="${action}">${label}</button>`)}`);}
 document.addEventListener('click', e=>{
   const b=e.target.closest('button');if(!b)return;
-  if(b.dataset.view){showView(b.dataset.view,true);return;}
+  if(b.dataset.address){selectAddress(b.dataset.address);return;}
+  if(b.dataset.view){if(matchMedia('(max-width:680px)').matches)setSidebarExpanded(false);showView(b.dataset.view,true);return;}
   if(b.dataset.prompt){insertText(b.dataset.prompt);return;}
   if(b.dataset.removeFile!==undefined){saveDraft();appState.files[appState.view].splice(Number(b.dataset.removeFile),1);showView(appState.view);return;}
   if(b.dataset.plugin){appState.pendingPlugin=b.dataset.plugin;dialog(b.dataset.plugin,`<p>A complete fleet setup with saved versions. Use a version to start a new fleet, then adapt it before saving.</p><div class="modal-options"><button class="secondary" data-action="edit-plugin">${icon('pencil-simple')}Edit setup</button><button class="secondary" data-action="use-plugin">${icon('note-pencil')}Use for new fleet</button></div>${previewNote()}`);return;}
@@ -605,10 +745,9 @@ document.addEventListener('click', e=>{
     case 'setup-budget':dialog('Spending limit',`<form id="setup-budget-form"><label class="field">Daily limit (USD)<input id="setup-budget" type="number" min="0.01" max="10000" step="0.01" value="${setupPreview[appState.view].dailyLimit}" required></label><p class="subtle">A limit, not a fixed charge. No monthly limit is set.</p>${previewNote()}${modalActions('<button class="primary" type="submit">Apply limit</button>')}</form>`);break;
     case 'setup-instructions':dialog('Instructions',`<form id="setup-instructions-form" class="setup-editor"><label class="field">Instructions<textarea id="setup-instructions-text" required>${esc(setupPreview[appState.view].instructions)}</textarea></label>${previewNote()}${modalActions('<button class="primary" type="submit">Apply instructions</button>')}</form>`);break;
     case 'setup-publish':startSetupPublication();break;
-    case 'fleet-toggle':toggleMenu('fleet-list',b);break;
+    case 'fleet-toggle':case 'expand-nav':setSidebarExpanded(!document.body.classList.contains('expanded'));break;
     case 'account-toggle':toggleMenu('account-menu',b);break;
     case 'fleet-more':toggleMenu('fleet-menu',b);break;
-    case 'expand-nav':{const expanded=document.body.classList.toggle('expanded');b.setAttribute('aria-expanded',String(expanded));b.setAttribute('aria-label',expanded?'Collapse navigation':'Expand navigation');b.title=b.getAttribute('aria-label');break;}
     case 'theme-toggle':case 'appearance':document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';closeMenus();break;
     case 'close':case 'close-modal':$('#modal').close();break;
     case 'send-message':sendMessage();break;
@@ -643,11 +782,19 @@ Waiting for requests…</pre></div>`+previewNote('This is a sample process, not 
     case 'confirm-revoke-key':appState.keys=appState.keys.filter(x=>x!==appState.pendingKey);$('#modal').close();showView('security');break;
     case 'create-key':dialog('Create API key',`<form id="key-form"><label class="field">Name<input id="key-name" placeholder="e.g. Release automation" required maxlength="60"></label><p class="preview-note">Sample key only. This preview does not create credentials.</p>${modalActions('<button class="primary" type="submit">Create sample key</button>')}</form>`);break;
     case 'attach':dialog('Attach a document',`<p>Add a file to your next message.</p><label class="field">Choose a sample file<input id="file-input" type="file" multiple></label>${previewNote('File names are shown locally. No file content is read or uploaded.')}`);break;
-    case 'mention':dialog('Mention in your message',`<p>Choose a source for this fleet.</p><div class="modal-options"><button class="secondary" data-action="insert-source">${icon('folder-simple')}platform-images</button></div>`);break;
+    case 'mention':if($('#address-options')){
+      const input=$('#message');input.focus();
+      if(!addressToken(input)){
+        const space=input.selectionStart && !/\s/.test(input.value[input.selectionStart-1])?' ':'';
+        input.setRangeText(space+'@',input.selectionStart,input.selectionEnd,'end');
+        appState.drafts[appState.view]=input.value;
+      }
+      dismissedAddress=null;showAddresses(input,true);break;
+    }dialog('Mention in your message',`<p>Choose a source for this fleet.</p><div class="modal-options"><button class="secondary" data-action="insert-source">${icon('folder-simple')}platform-images</button></div>`);break;
     case 'insert-source':$('#modal').close();insertText('@platform-images');break;
     case 'models':modelPicker();break;
     case 'model-default':case 'model-economy':appState.models[appState.view]=action==='model-default'?'Default model':'Economy model';$('#modal').close();showView(appState.view);break;
-    case 'quote':insertText('> '+(appState.view==='activity'?'The changes are ready.':appState.view==='failure'?'The health check hasn’t run.':appState.view==='scheduled'?'Next check at '+scheduleFor().wake+' UTC.':'The runner update is ready.')+'\n\n');break;
+    case 'quote':insertText('> '+(appState.view==='chief'?'Bob confirmed receipt of the morning handoff.':appState.view==='bob'?'I sent the receipt to @chief-of-staff.':appState.view==='activity'?'The changes are ready.':appState.view==='failure'?'The health check hasn’t run.':appState.view==='scheduled'?'Next check at '+scheduleFor().wake+' UTC.':'The runner update is ready.')+'\n\n');break;
     case 'copy-reply':{const text=b.closest('.assistant-turn')?.innerText||'';navigator.clipboard?.writeText(text).then(()=>{b.setAttribute('aria-label','Response copied');b.title='Copied';}).catch(()=>dialog('Copy response',`<p>Select and copy this text.</p><pre>${esc(text)}</pre>`));break;}
     case 'create-plugin':case 'edit-plugin':$('#modal').close();showView('empty');insertText(action==='create-plugin'?'Create a deployment-check fleet setup that I can save as a Plugin.':'Update my '+(appState.pendingPlugin||'Release checklist')+' plugin.');break;
     case 'use-plugin':{const name=appState.pendingPlugin||'Release checklist';$('#modal').close();showView('empty');insertText('Start a new fleet from '+name+'. I want to review and adapt its setup.');$('#draft-status').hidden=false;$('#draft-status').textContent='Preview only. The app will load the selected saved version into a new setup.';break;}
@@ -661,7 +808,15 @@ document.addEventListener('submit',e=>{
   if(e.target.id==='setup-budget-form'){setupPreview[appState.view].dailyLimit=Number($('#setup-budget').value);$('#modal').close();showView(appState.view);}
   if(e.target.id==='setup-instructions-form'){setupPreview[appState.view].instructions=$('#setup-instructions-text').value;$('#modal').close();}
   if(e.target.id==='schedule-form'){scheduleFor().wake=$('#wake-time').value;scheduleFor().state='active';$('#modal').close();showView(appState.view);}
-  if(e.target.id==='rename-form'){fleetNames[appState.view]=$('#fleet-name').value.trim()||fleetNames[appState.view];$('#modal').close();showView(appState.view);}
+  if(e.target.id==='rename-form'){
+    const fleet=workspaceFleets.find(item=>item.view===appState.view);
+    const input=$('#fleet-name'), name=input.value.trim(), address=name.toLowerCase().replace(/\s+/g,'-');
+    if(fleet && (!/^[a-z0-9-]{1,64}$/.test(address)||eligibleFleets().some(item=>item!==fleet&&item.address===address))){
+      input.setCustomValidity('Use a unique fleet name with letters, numbers, spaces, or hyphens.');input.reportValidity();return;
+    }
+    if(fleet){fleet.name=name;fleet.address=address;fleetNames['edit-'+fleet.view]='Edit '+address;}
+    fleetNames[appState.view]=name||fleetNames[appState.view];$('#modal').close();showView(appState.view);
+  }
   if(e.target.id==='key-form'){const name=$('#key-name').value.trim();if(!name)return;appState.keys.push(name);$('#modal').close();showView('security');dialog('API key created · Preview',`<p>Copy your key now. It won’t be shown again.</p><div class="tool-output"><pre>af_sample_not_a_real_key_7f2a</pre></div>${previewNote('This is a deliberately invalid sample credential.')}<div class="modal-actions"><button class="primary" data-action="close">Done</button></div>`);}
   if(e.target.id==='secret-form'){const name=$('#variable-name').value;if(['REGISTRY_TOKEN','SUPPORT_API_KEY',...appState.variables.map(v=>v.name)].includes(name)){$('#variable-name').setCustomValidity('This name already exists.');$('#variable-name').reportValidity();return;}appState.variables.push({name,secret:true,value:''});$('#modal').close();showView('secrets');}
 });
@@ -674,11 +829,38 @@ document.addEventListener('change',e=>{
 });
 document.addEventListener('input',e=>{
   if(e.target.id==='message')appState.drafts[appState.view]=e.target.value;
-  if(e.target.id==='variable-name')e.target.setCustomValidity('');
-  if(e.target.id==='fleet-search')syncFleetList();
+  if(e.target.id==='variable-name'||e.target.id==='fleet-name')e.target.setCustomValidity('');
+  if(e.target.id==='message'){dismissedAddress=null;showAddresses(e.target,true);}
 });
-document.addEventListener('keydown',e=>{if(e.target.id==='message'&&e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendMessage();}if(e.key==='Escape'&&!$('#modal').open){const open=$$('.popover:not([hidden])')[0];const trigger=open?({ 'fleet-list':'fleet-toggle','account-menu':'account-toggle','fleet-menu':'fleet-more'}[open.id]):null;closeMenus();if(trigger)$('#'+trigger).focus();}});
-document.addEventListener('click',e=>{if(!e.target.closest('.popover,#fleet-toggle,#account-toggle,#fleet-more'))closeMenus();});
+document.addEventListener('mousedown',e=>{if(e.target.closest('[data-address]'))e.preventDefault();});
+document.addEventListener('focusout',e=>{if(e.target.id==='message')closeAddresses();});
+document.addEventListener('selectionchange',()=>{if(document.activeElement?.id==='message')showAddresses(document.activeElement);});
+document.addEventListener('keydown',e=>{
+  if(e.isComposing)return;
+  if(e.target.id==='message'){
+    const menu=$('#address-options:not([hidden])');
+    if(menu){
+      const options=$$('[role="option"]',menu);
+      if(e.key==='Escape'){e.preventDefault();dismissedAddress=e.target.value;closeAddresses();return;}
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+        e.preventDefault();
+        if(options.length){addressIndex=(addressIndex+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;showAddresses(e.target);$('#address-'+addressIndex)?.scrollIntoView({block:'nearest'});}
+        return;
+      }
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(options[addressIndex])selectAddress(options[addressIndex].dataset.address);return;}
+    }
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();return;}
+  }
+  if(e.key==='Escape'&&!$('#modal').open){
+    const open=$$('.popover:not([hidden])')[0];
+    if(open){closeMenus();$('#'+({'account-menu':'account-toggle','fleet-menu':'fleet-more'}[open.id])).focus();}
+    else if(matchMedia('(max-width:680px)').matches&&document.body.classList.contains('expanded')){setSidebarExpanded(false);$('#fleet-toggle').focus();}
+  }
+});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.popover,#fleet-toggle,#account-toggle,#fleet-more'))closeMenus();
+  if(matchMedia('(max-width:680px)').matches && !e.target.closest('.rail'))setSidebarExpanded(false);
+});
 $('#modal').addEventListener('close',()=>{if(lastFocus?.isConnected)lastFocus.focus();});
 let noticeTimer, noticeFleet;
 function pauseActionNotice(){clearTimeout(noticeTimer);}
@@ -703,17 +885,23 @@ function showActionNotice(message,view,deleted){
   icons();scheduleNoticeDismiss();
 }
 function syncFleetList(){
-  const query=$('#fleet-search').value.toLowerCase();let visible=0;
-  $$('#fleet-list > [data-fleet-name]').forEach(row=>{row.hidden=!!appState.lifecycle[row.dataset.view]||!row.dataset.fleetName.toLowerCase().includes(query);if(!row.hidden)visible++;});
-  const archived=Object.keys(appState.lifecycle).filter(view=>appState.lifecycle[view]==='archived'&&fleetNames[view].toLowerCase().includes(query));
-  $('#archived-fleets').innerHTML=archived.length?'<p class="eyebrow">Archived</p>'+archived.map(view=>`<button class="fleet-row" data-view="${view}"><span><strong>${esc(fleetNames[view])}</strong><small>History · Permanently stopped</small></span>${icon('archive')}</button>`).join(''):'';
-  $('#no-fleets').hidden=visible+archived.length>0;
+  const active=eligibleFleets();
+  const row=(view,label,setup=false)=>`<button class="fleet-row${setup?' setup-row':''}" data-view="${esc(view)}" ${appState.view===view?'aria-current="page"':''}>${icon(setup?'note-pencil':'stack')}<span>${esc(label)}</span></button>`;
+  $('#workspace-fleets').innerHTML=active.map(fleet=>row(fleet.view,fleetNames[fleet.view])+row('edit-'+fleet.view,'Edit '+fleet.address,true)).join('');
+  const archived=workspaceFleets.filter(fleet=>appState.lifecycle[fleet.view]==='archived');
+  $('#archived-fleets').innerHTML=archived.length?'<p class="eyebrow">Archived</p>'+archived.map(fleet=>row(fleet.view,fleetNames[fleet.view])).join(''):'';
+  $('#no-fleets').hidden=Boolean(active.length || archived.length);
+  const draftRow=$('#fleet-list > [data-view=draft]');
+  if(appState.view==='draft')draftRow.setAttribute('aria-current','page');else draftRow.removeAttribute('aria-current');
   icons();
 }
 $('#action-notice').addEventListener('mouseenter',pauseActionNotice);
 $('#action-notice').addEventListener('mouseleave',scheduleNoticeDismiss);
 $('#action-notice').addEventListener('focusin',pauseActionNotice);
 $('#action-notice').addEventListener('focusout',()=>setTimeout(scheduleNoticeDismiss,0));
-showView([...Object.keys(pageTitles),...Object.keys(fleetNames)].includes(location.hash.slice(1))?location.hash.slice(1):'draft');
+setSidebarExpanded(!matchMedia('(max-width:680px)').matches);
+const phoneLayout=matchMedia('(max-width:680px)');
+phoneLayout.addEventListener('change',event=>setSidebarExpanded(!event.matches));
+showView([...Object.keys(pageTitles),...Object.keys(fleetNames)].includes(location.hash.slice(1))?location.hash.slice(1):'chief');
 </script>
 </body></html>

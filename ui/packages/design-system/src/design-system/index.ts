@@ -182,6 +182,7 @@ export {
 export {
   Select,
   SelectValue,
+  SuggestionList,
   SelectTrigger,
   SelectContent,
   SelectItem,

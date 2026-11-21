@@ -24,7 +24,7 @@ import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   archiveFleet,
   expectDetailArchived,
-  expectRowState,
+  expectSidebarFleetState,
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -85,7 +85,7 @@ test.describe("signup → install → lifecycle", () => {
     const workspaceId = signup.workspaceId;
     cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId };
 
-    // Dashboard /w/<id>/fleets renders the auto-provisioned workspace's fleet wall.
+    // A fresh workspace opens setup through its fleet entry route.
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto(workspaceHref(workspaceId, "fleets"));
@@ -109,9 +109,9 @@ test.describe("signup → install → lifecycle", () => {
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    // Listing shows the new row live.
+    // Saved history exposes the new fleet and its active status.
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "live");
+    await expectSidebarFleetState(page, fleetId, "active");
 
     // Billing page loads the report's period totals.
     await page.goto("/settings/billing");
@@ -122,6 +122,6 @@ test.describe("signup → install → lifecycle", () => {
     await archiveFleet(page);
     await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "archived");
+    await expectSidebarFleetState(page, fleetId, "archived");
   });
 });

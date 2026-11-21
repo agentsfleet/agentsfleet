@@ -18,7 +18,7 @@
     "README.md"
   ],
   "engines": {
-    "bun": ">=1.4.4"
+    "bun": ">=1.4.5"
   },
   "scripts": {
     "test": "bun run build && bun ./scripts/enforce-coverage.mjs",
@@ -28,8 +28,8 @@
     "test:acceptance:live": "bun run build && bun run test:acceptance:live:run",
     "test:acceptance:live:run": "bun test/acceptance/run-lane.ts live",
     "typecheck": "bun run --bun tsrs --noEmit",
-    "lint": "oxlint src test scripts && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
-    "lint:fix": "oxlint src test scripts --fix && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "lint": "bun run --bun oxlint src test scripts && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "lint:fix": "bun run --bun oxlint src test scripts --fix && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
     "build": "bun run --bun tsrs -p tsconfig.build.json && bun scripts/stamp-build.ts",
     "prepublishOnly": "bun run build"
   },
@@ -47,7 +47,7 @@
     "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
     "@types/uuid": "^11.0.0",
-    "bun-types": "^1.4.4",
+    "bun-types": "^1.4.5",
     "oxlint": "^1.94.0",
     "playwright": "^1.65.1",
     "tsrs": "0.25.0-ts7.1.0-beta"

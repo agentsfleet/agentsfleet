@@ -5,9 +5,9 @@ import { createRoot } from "react-dom/client";
 import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { DRAFT, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { ActivityFixture } from "./chat-activity-probe";
-import { SetupChecks } from "@/components/domain/setup/summary/SetupChecks";
+import { SetupProgress } from "@/components/domain/setup/summary/SetupProgress";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { ChatFailure } from "@/components/domain/shared/chat/ChatFailure";
 import { TaskFixture } from "./task-browser-probe";
@@ -35,7 +35,7 @@ if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
 const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture /> : query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
+createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture report={query.get("fleetSteer") === "report"} /> : query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>
@@ -59,7 +59,7 @@ function SetupFixture() {
     {kind: "grants", subject: "github", state: "ready"}, {kind: "credentials", subject: "slack", state: "ready"},
     {kind: "connections", subject: "slack", state: "ready"}];
   return <SenderLabelProvider senderLabel="ci-responder"><main className="min-h-dvh space-y-md bg-background p-lg text-foreground">
-    <h1>Setup saved · v2</h1><SetupChecks checks={checks} label="Setup checks" />
+    <SetupProgress fleet={{...FLEET, setup_revision: "2", status: "active", setup: {state: "ready", checks}}} workspace={WORKSPACE} onContinue={() => {}} onRetrySchedule={() => {}} busy={false} />
     <FleetActivityRow sender="Slack" headline="Message received" createdAt={SETUP_CREATED_AT} messageRole="system" detailsLabel="View message">
       <p>Diagnose the failed title regression using the current source.</p>
     </FleetActivityRow>

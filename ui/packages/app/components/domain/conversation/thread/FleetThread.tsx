@@ -128,7 +128,7 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
   const subject = identity.isLoaded ? identity.userId : identity.userId ?? viewer;
   const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
-  const openFleet = useOpenFleet(workspaceId);
+  const openFleet = useOpenFleet(workspaceId, fleetId);
   // Stable registry methods keep delivery independent of streamed frames.
   const delivery = useMessageDelivery({
     workspaceId,

@@ -55,6 +55,12 @@ describe("steer REPL loop", () => {
     expect(seen).toEqual(["first", "second"]);
   });
 
+  test("the interactive prompt identifies a named fleet", async () => {
+    const output = new PassThrough();
+    await runSteerRepl({input: streamFrom(["retry\n"]), output, fleetName: "chief-of-staff", runTurn: async () => {}});
+    expect(output.read().toString()).toContain("@chief-of-staff> ");
+  });
+
   test("SIGINT aborts the in-flight turn and returns 130", async () => {
     const signalSource = new ReplSignalEmitter();
     let aborted = false;

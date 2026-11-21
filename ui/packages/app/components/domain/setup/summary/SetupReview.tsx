@@ -8,6 +8,7 @@ import nextDynamic from "next/dynamic";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
+import { runtimeModelLabel } from "@/lib/api/draft-list-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 import { setupRequirements } from "@/lib/setup-requirements";
@@ -31,7 +32,8 @@ export function SetupReview({view, client, workspace}: {view: DraftView; client:
   const extension = ExtensionSchema.safeParse(definition?.config["x-agentsfleet"]);
   const network = ExtensionSchema.safeParse(extension.success ? extension.data.network ?? {} : undefined);
   const runtime = review ? review.effective.runtime_model_ref : extension.success && typeof extension.data.model === "string" ? extension.data.model : null;
-  const modelLabel = runtime ? view.models.find(model => model.ref === runtime)?.label ?? runtime : view.fleet && !proposed ? "Unavailable" : "Not resolved";
+  const modelLabel = runtime || (view.fleet && !proposed && definition)
+    ? runtimeModelLabel(view.models, runtime) : view.fleet && !proposed ? "Unavailable" : "Not resolved";
   const requirements = setupRequirements(definition, review?.requirements);
   const locked = view.busy || view.pending || view.inaccessible || chatRecovery(view).pending;
   const schedules = view.fleet?.schedules ?? view.schedules;

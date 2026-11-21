@@ -217,15 +217,13 @@ test("the pull request starter remains editable and readable before any setup re
   await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
 });
 
-test("setup checks use enclosed icons and incoming messages have readable details", async ({page, chatProbe}, info) => {
+test("a saved setup has one quiet receipt and incoming messages have readable details", async ({page, chatProbe}, info) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(`${chatProbe}?setup=1`);
-  const checks = page.getByRole("list", {name: "Setup checks"});
-  await expect(checks.getByText("GitHub credential", {exact: true})).toBeVisible();
-  await expect(checks.getByText("GitHub connection", {exact: true})).toBeVisible();
-  await expect(checks.getByText("GitHub approval", {exact: true})).toBeVisible();
-  await expect(checks.locator("svg.text-success")).toHaveCount(6);
-  await expect(checks.locator("svg").first()).toHaveCSS("width", "16px");
+  const receipt = page.getByRole("region", {name: "Saved fleet setup"});
+  await expect(receipt.getByRole("heading")).toHaveText("Setup saved · v2");
+  await expect(receipt.getByRole("list")).toHaveCount(0);
+  await expect(receipt.locator("svg")).toHaveCount(0);
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
   const disclosure = page.getByRole("button", {name: "View message"});
   await disclosure.focus(); await page.keyboard.press("Enter");

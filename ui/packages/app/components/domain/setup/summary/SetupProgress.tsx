@@ -12,11 +12,9 @@ export function SetupProgress({fleet, definition = fleet.definition, workspace, 
 }) {
   const {retryStart, canFinish} = setupRecovery(fleet);
   return <Section className="my-md gap-sm py-xs" aria-label="Saved fleet setup">
-    <h2 className="text-body-sm font-semibold text-foreground">{saveDoneText(fleet.setup_revision)}</h2>
-    <SetupChecks checks={fleet.setup.checks} label="Saved fleet readiness" workspace={workspace} definition={definition} onRefresh={onRefresh} />
-    <div className="flex flex-wrap items-center gap-sm">
-      {canFinish || retryStart ? <Button size="sm" variant="ghost" onClick={onContinue} disabled={busy}>{retryStart ? "Retry first run" : "Finish setup"}</Button> : null}
-    </div>
+    <h2 className="text-label font-medium text-muted-foreground">{saveDoneText(fleet.setup_revision)}</h2>
+    <SetupChecks issuesOnly checks={fleet.setup.checks} label="Saved fleet readiness" workspace={workspace} definition={definition} onRefresh={onRefresh} />
+    {canFinish || retryStart ? <Button className="w-fit" size="sm" variant="ghost" onClick={onContinue} disabled={busy}>{retryStart ? "Retry first run" : "Finish setup"}</Button> : null}
     <ScheduleSync schedules={fleet.schedules} busy={busy} onRetry={onRetrySchedule} />
   </Section>;
 }

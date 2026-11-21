@@ -179,7 +179,8 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
         streamGet: eventStream([
           { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
         ]),
-        runRepl: async ({ runTurn }) => {
+        runRepl: async ({ runTurn, fleetName }) => {
+          expect(fleetName).toBe(NAME);
           await runTurn("retry", new AbortController().signal);
           await runTurn("report back when it passes", new AbortController().signal);
           return 0;

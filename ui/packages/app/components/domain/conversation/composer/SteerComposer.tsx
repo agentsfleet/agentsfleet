@@ -1,5 +1,6 @@
 "use client";
 
+import { FleetAddressInput } from "./FleetAddressInput";
 import { useEffect, useId, useMemo, useRef, type RefObject } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -9,7 +10,8 @@ import { ArrowUpIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "../delivery/useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
-import { chatComposerText } from "@/lib/chat-message-text";
+import { fleetComposerText } from "@/lib/chat-message-text";
+import { parseChatAddress } from "@/lib/chat-address";
 import { ChatComposerFrame, ChatComposerHint } from "../../shared/chat/ChatComposerFrame";
 import { useFleetSetup } from "../../setup/FleetSetupContext";
 import { FleetModelSelect } from "../../models/FleetModelSelect";
@@ -66,6 +68,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   return (
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
+      input={<FleetAddressInput inputRef={draftRef} disabled={modelChanging} placeholder={PLACEHOLDER} />}
       toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
@@ -165,7 +168,7 @@ function DraftSize({ draftBytes }: { draftBytes: DraftBytes }) {
 function useComposerPayload(): string {
   const text = useAuiState(state => state.composer.text);
   const quote = useAuiState(state => state.composer.quote);
-  return useMemo(() => chatComposerText({text, quote}), [text, quote]);
+  return useMemo(() => fleetComposerText({text, quote}), [text, quote]);
 }
 
 // One draft's count, kept until the draft changes: a store notification that
@@ -216,7 +219,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
   const pathname = usePathname();
   const resend = () => {
     const composer = aui.composer();
-    if (chatComposerText(composer.getState()) === entry.text) {
+    if (fleetComposerText(composer.getState()) === entry.text) {
       composer.setQuote(undefined);
       composer.setText("");
     }
@@ -237,7 +240,7 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
       {/* The reason keeps its own line on a narrow screen; only the quoted
           message truncates. */}
       <span className="min-w-0 flex-1">
-        <span className="block">{sentenceFor(entry.state)}</span>
+        <span className="block">{sentenceFor(entry)}</span>
         <span id={textId} className="block truncate text-foreground">{entry.text}</span>
       </span>
       {entry.state === PENDING_SEND_STATE.SESSION ? (
@@ -254,15 +257,24 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
   );
 }
 
-function sentenceFor(state: PendingSend["state"]): string {
-  switch (state) {
+function sentenceFor(entry: PendingSend): string {
+  switch (entry.state) {
     case PENDING_SEND_STATE.SESSION:
       return SESSION_EXPIRED;
     case PENDING_SEND_STATE.UNKNOWN:
       return SEND_UNCONFIRMED;
     case PENDING_SEND_STATE.CONFLICT:
       return SEND_CONFLICT;
+    case PENDING_SEND_STATE.TARGET_MISSING:
+      return `${recipientLabel(entry.text)} was not found in this workspace. Check the name or choose a fleet with @, then send again.`;
+    case PENDING_SEND_STATE.TARGET_INACTIVE:
+      return `${recipientLabel(entry.text)} is not active. Choose an active fleet with @, then send again.`;
     default:
       return SEND_FAILED;
   }
+}
+
+function recipientLabel(text: string): string {
+  const address = parseChatAddress(text);
+  return address ? `Fleet @${address.name}` : "This fleet";
 }

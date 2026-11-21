@@ -57,6 +57,19 @@ it("hides infrastructure subjects while retaining resource names and unknown che
   expect(screen.getByText("Activation needed")).toBeTruthy();
 });
 
+it("shows only outstanding actions under the saved revision and clears them when resolved", () => {
+  const checks = [{kind: "model", subject: "", state: "ready"}, {kind: "policy", subject: "", state: "blocked",
+    next_action: {kind: "workspace_connections", href: "/settings/access", label: "Review access rules"}}];
+  const props = {workspace: WORKSPACE, onContinue: vi.fn(), onRetrySchedule: vi.fn(), busy: false};
+  const fleet = {...FLEET, status: "active", setup: {state: "ready", checks}};
+  const view = render(<SetupProgress {...props} fleet={fleet} />);
+  expect(screen.queryByText("Model")).toBeNull();
+  expect(screen.getByRole("link", {name: "Review access rules"}).getAttribute("href")).toBe("/settings/access");
+  view.rerender(<SetupProgress {...props} fleet={{...fleet, setup: {state: "ready", checks: checks.map(check => ({...check, state: "ready"}))}}} />);
+  expect(screen.getByRole("region", {name: "Saved fleet setup"}).textContent).toBe("Setup saved · v1");
+  expect(screen.queryByRole("list")).toBeNull();
+});
+
 it("keeps Continue available until a requested first run is durably accepted", () => {
   const proceed = vi.fn();
   const fleet = {...FLEET, status: "active", start: {kind: "run_now" as const, state: "pending" as const}};

@@ -4,6 +4,7 @@ import {
   PENDING_SEND_TTL_MS,
   __resetPendingSendsForTests,
   beginPendingSend,
+  failPendingSend,
   getPendingSends,
   settlePendingSend,
 } from "./pending-sends";
@@ -37,6 +38,19 @@ describe("purgeOtherUsers", () => {
     purgeOtherUsers(SUBJECT);
     expect(Object.keys(window.localStorage).sort()).toEqual([...OWN_KEYS, UNRELATED_KEY].sort());
   });
+});
+
+it.each([PENDING_SEND_STATE.TARGET_MISSING, PENDING_SEND_STATE.TARGET_INACTIVE])("restores a %s refusal only for its original owner and fleet", (state) => {
+  __resetPendingSendsForTests();
+  const text = "@missing-audit-recipient Check status";
+  const pending = {...send("op-target", text), submittedAtMs: Date.now()};
+  beginPendingSend(SCOPE, pending);
+  failPendingSend(SCOPE, pending.operationId, state);
+  __resetPendingSendsForTests({keepStorage: true});
+  expect(getPendingSends({...SCOPE, subject: "another-user"})).toEqual([]);
+  expect(getPendingSends({...SCOPE, fleetId: "another-fleet"})).toEqual([]);
+  expect(getPendingSends(SCOPE)).toEqual([{...pending, state}]);
+  __resetPendingSendsForTests();
 });
 
 describe("test_tombstones_outlast_the_cap: an entry a newer build wrote", () => {

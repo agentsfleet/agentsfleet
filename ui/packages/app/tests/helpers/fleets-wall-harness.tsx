@@ -6,6 +6,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import {
   WorkspaceStreamProvider,
   useWorkspaceFleetStream,
+  useWorkspaceStream,
 } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
@@ -184,4 +185,10 @@ export function flushAnimationFrame() {
 
 export async function settlePromises() {
   for (let index = 0; index < PROMISE_SETTLE_TURNS; index += 1) await Promise.resolve();
+}
+
+
+export function WorkspaceConnectionProbe() {
+  const {connectionStatus, helloReceived} = useWorkspaceStream();
+  return <output data-testid="workspace-connection">{connectionStatus} {String(helloReceived)}</output>;
 }

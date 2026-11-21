@@ -3,10 +3,11 @@ import { expect, type Page, type TestInfo } from "@playwright/test";
 import {writeFile} from "node:fs/promises";
 import {measureVisualState} from "../../fixtures/visual-measurement";
 import {visualProvenance} from "../../fixtures/visual-provenance";
+import {fleetNavigation} from "./nav";
 
 const ROW_STATE_TIMEOUT_MS = 15_000;
 
-type RowState = "live" | "installing" | "archived";
+type RowState = "active" | "installing" | "archived";
 
 async function confirmAction(page: Page, label: "Archive"): Promise<void> {
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
@@ -37,31 +38,19 @@ export async function archiveFleet(page: Page): Promise<void> {
   await expect(notice).toHaveAttribute("aria-hidden", "true");
 }
 
-export async function expectRowState(
+export async function expectSidebarFleetState(
   page: Page,
   fleetId: string,
   state: RowState,
 ): Promise<void> {
-  // The wall tile anchor (FleetTile) is workspace-scoped
-  // (`/w/<workspaceId>/fleets/<id>`); match on the stable suffix so this shared
-  // helper needn't thread the workspace id through every caller.
-  //
-  // `visible: true` is load-bearing, not defensive. During a router transition
-  // React keeps the OUTGOING tree mounted and hidden while the incoming one
-  // renders, so for a moment the document holds two walls and two anchors for
-  // the same fleet. Playwright throws a strict-mode violation the instant a
-  // locator resolves to more than one element — it does not retry past it — so
-  // an assertion landing inside that window failed on a bare count mismatch
-  // that named nothing, and passed on every run that landed outside it. That
-  // is the whole of `login-install-lifecycle.spec.ts:45`'s intermittence: the
-  // page was correct each time, and the locator was reading the tree React was
-  // in the middle of retiring. Filtering to the visible one reads the wall the
-  // person is actually looking at.
-  const row = page.locator(`a[data-state][href$="/fleets/${fleetId}"]`).filter({ visible: true });
+  const navigation = await fleetNavigation(page);
+  const row = navigation.locator(`a[href$="/fleets/${fleetId}"]`).filter({visible: true});
   await expect(row).toBeVisible();
-  await expect(row).toHaveAttribute("data-state", state, {
+  await expect(row).toHaveAttribute("title", new RegExp(` · ${state}$`), {
     timeout: ROW_STATE_TIMEOUT_MS,
   });
+  if (state === "archived") await expect(row).toContainText("Archived");
+  if (await page.getByRole("dialog", {name: "Navigation", exact: true}).isVisible()) await page.keyboard.press("Escape");
 }
 
 // Archived history permits permanent deletion without restoring execution.

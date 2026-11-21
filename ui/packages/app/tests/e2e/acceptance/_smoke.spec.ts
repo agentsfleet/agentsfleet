@@ -15,7 +15,7 @@ import { expect, test } from "@playwright/test";
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
-import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
+import { expectWorkspaceEntry, gotoWorkspace } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
@@ -78,8 +78,8 @@ test.describe("auth e2e wire", () => {
     "post-bootstrap dashboard renders authenticated content for fixture user",
     async ({ page }) => {
       await signInAs(page, FIXTURE_KEY.regular);
-      await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+      const workspaceId = await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
+      await expectWorkspaceEntry(page, workspaceId);
       await expect(page.getByTestId("workspace-switcher")).toBeVisible();
     },
   );

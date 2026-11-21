@@ -36,7 +36,7 @@ runs:
       id: playwright-version
       shell: bash
       run: |
-        PLAYWRIGHT_VERSION="$(bunx --no-install playwright --version | awk '{print $2}')"
+        PLAYWRIGHT_VERSION="$(bunx --bun --no-install playwright --version | awk '{print $2}')"
         test -n "$PLAYWRIGHT_VERSION"
         echo "version=$PLAYWRIGHT_VERSION" >> "$GITHUB_OUTPUT"
       working-directory: ${{ inputs.working-directory }}
@@ -55,8 +55,8 @@ runs:
       shell: bash
       run: |
         if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
-          bunx --no-install playwright install chromium
+          bunx --bun --no-install playwright install chromium
         else
-          bunx --no-install playwright install --with-deps chromium
+          bunx --bun --no-install playwright install --with-deps chromium
         fi
       working-directory: ${{ inputs.working-directory }}

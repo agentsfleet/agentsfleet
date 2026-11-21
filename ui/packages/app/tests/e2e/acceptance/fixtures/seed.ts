@@ -106,9 +106,7 @@ export async function readFleetName(
   return fleet.name;
 }
 
-/** The fleet's own lifetime counters, in the units the daemon stores them in.
- * The wall tile renders these two, spend rounded to cents — so a walk grading
- * the tile reads them here, in nanos, and lets the tile do its own rounding. */
+/** The fleet's durable lifetime totals, read independently of rounded UI figures. */
 export interface FleetCounters {
   budget_used_nanos: string;
   events_processed: string;

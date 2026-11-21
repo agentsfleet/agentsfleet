@@ -21,6 +21,9 @@ facts.
   no cluster, no headers or a `max_payload` under the largest frame
   (`afd_bus/src/nats/preflight.rs`). The local lane is a real three-node
   cluster: compose `ant`, `bee` and `elk`.
+- Use the root `packageManager` pin for Bun installation and JavaScript tooling.
+  Run package binaries with `bun run --bun` or `bunx --bun`. Node.js and npm
+  stay in CLI release workflows.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.orly/orly.json` declares `verify.lint`, `verify.unit`,

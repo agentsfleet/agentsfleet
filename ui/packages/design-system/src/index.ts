@@ -184,6 +184,7 @@ export {
   type AlertVariant,
   Select,
   SelectValue,
+  SuggestionList,
   SelectTrigger,
   SelectContent,
   SelectItem,
