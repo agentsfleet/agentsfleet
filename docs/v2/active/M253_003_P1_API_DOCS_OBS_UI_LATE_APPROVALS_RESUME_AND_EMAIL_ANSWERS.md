@@ -228,6 +228,34 @@ Every background sweeper goes. A fact that changed only because time passed is c
 - **Dimension 7.8** — a CI completion wakes its wait → Test `a_ci_completion_webhook_wakes_its_wait` (integration): one GitHub completion. Expected: the matching wait is signalled in the webhook's request. Negative test `a_missed_webhook_is_read_when_the_task_is_claimed`.
 - **Dimension 7.9** — checkpoint storage is freed on its event → Test `a_fourth_generation_deletes_the_oldest` (integration): four captures. Expected: three remain, and the quota drops by the deleted bytes. Test `an_ended_tasks_checkpoints_are_deleted` (integration).
 
+### §8 — Our limits match Codex and Pi
+
+An agent-invented cap goes. Where Codex or Pi has a number, ours matches it; where neither caps something, ours is deleted; nothing is tightened. A bound on untrusted input stays a garde rule at the 1M text ceiling or the 32 MiB frame. Sources: `/tmp/m247-review/limits-codex-pi-guffbolt.md` (Codex `0e8c7683`, Pi `ee6f36496`).
+
+| Area | Change |
+|---|---|
+| History | delete `HISTORY_TURNS_MAX`, `HISTORY_BYTES_MAX`, `TURN_TEXT_BYTES_MAX` and the trim; a fleet run saves its compacted summary as setup does; a run carries the earlier turns' tool calls and output from `thread.items` |
+| Message | `Delta.text` bound rises to the text ceiling; the proposal's 64 / 32 caps and `MAX_CRON_LEN` go |
+| Tools | an image over the bound is resized to 2,048 px on its longest side, as Codex does, not refused |
+| Time | the shell's 10 min max goes; sleep 12 h; MCP call 300 s; `SETUP_RUNTIME` and `MODEL_CALLS_MAX` go and setup checks a positive balance as fleets do; `MAX_RUNTIME` goes and the budget at renewal ends a looping run |
+| Subagents | 6 open; the per-run cap goes; depth 2 and the waits stay |
+| Wire and reads | executor frame 64 MiB; thread page 25 by default, 100 at most |
+| Reports | the tool-trace, file-change, item tool-name, fold, recovery-text and usage caps go; the frame bounds a report |
+
+Unchanged: the 1M message, the body sizes, shell output and listing budgets, the 2,000-line and 8 MiB reads, the MCP name, the 32 MiB runner frame, the 2 MiB control frame, NATS, `HOLDS_MAX`, and every limit the survey did not cover.
+
+- **Dimension 8.1** — a run carries the whole chat → Test `a_long_chat_run_carries_every_finished_turn` (unit, `afd_fleet` history): 20 finished turns of 20 KiB each. Expected: 20 turns, none cut.
+- **Dimension 8.2** — a fleet keeps its summary across runs → Test `the_next_fleet_turn_loads_the_saved_summary` (integration, `af_e2e`): a fleet chat that compacts. Expected: the next run's first request holds the saved summary and none of the turns it replaced. Negative test `a_fleet_summary_at_a_superseded_fence_is_refused`.
+- **Dimension 8.3** — a follow-up sees the earlier tool calls → Test `a_follow_up_run_carries_the_earlier_turns_tool_calls` (unit, `afd_fleet` history): a finished turn with two items. Expected: the next run's history holds both calls with their output.
+- **Dimension 8.4** — a large image is resized → Test `an_image_over_the_bound_is_resized_to_2048` (unit, guffbolt): a 4,096 px PNG. Expected: the model gets a 2,048 px image. Negative test `an_image_that_does_not_decode_is_refused`.
+- **Dimension 8.5** — waits match Codex → Test `the_waits_match_codex` (unit, guffbolt): a 1 h sleep, a 1 h shell timeout and an MCP call's deadline. Expected: the sleep and the shell run as asked, and the MCP deadline is 300 s.
+- **Dimension 8.6** — setup has no runtime ceiling → Test `a_setup_run_renews_past_five_minutes` (integration, `afd_fleet`): a setup run renewed past 300 s. Expected: renewed. Negative test `a_setup_run_on_an_empty_wallet_is_refused`.
+- **Dimension 8.7** — the budget, not a clock, ends a looping run → Test `a_run_past_twelve_hours_renews` (unit, `afd_fleet` renew). Expected: renewed. Negative test `a_run_over_its_budget_is_not_renewed`.
+- **Dimension 8.8** — subagents match Codex → Test `a_seventh_subagent_waits_for_one_of_six` (unit, guffbolt) and `a_run_starts_more_than_sixteen_subagents` (unit).
+- **Dimension 8.9** — frames and pages match Codex → Test `the_executor_carries_a_frame_over_16_mib` (unit, `afr_executor`) and `a_thread_page_of_100_is_served` (integration, `afd_turns`). Negative test `a_thread_page_of_101_is_refused`.
+- **Dimension 8.10** — a report is bounded only by its frame → Test `a_report_with_300_calls_and_100_changes_is_accepted` (unit, `af_wire`). Negative test `a_report_past_the_frame_is_refused`.
+- **Dimension 8.11** — a long cron expression reaches the parser → Test `a_long_cron_expression_is_judged_by_the_parser` (unit, `af_fleet_runtime`): a 200-character expression. Expected: the parser's refusal, never a length refusal.
+
 ## Interfaces
 
 - **Approval routes:** unchanged. `POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}` and the Slack callback resolve a gate; a `question` gate takes `{"answer":"…"}` with the `answered` decision.
@@ -342,5 +370,6 @@ Every background sweeper goes. A fact that changed only because time passed is c
   - > Owner (Indy, Nov 21, 2026): "Delete all three caps, but what is a frame limit"
   - > Owner (Indy, Nov 21, 2026): "first let indy signoff" — context: no cap changes until he has read the inventory of every limit (`/tmp/m247-review/limits-inventory.md`) and the Codex/Pi comparison (`/tmp/m247-review/limits-codex-pi-guffbolt.md`).
   - > Owner (Indy, Nov 21, 2026): "Change the limits of us, i am leaning towards a combination of Codex and Pi" and then "I am approving the above + the earlier" — context: the caps proposal (`/tmp/m247-review/caps-removal-proposal.md`) and the ranked knockoff list: delete the history caps and save the fleet summary; carry earlier tool calls; resize images; delete setup 300 s, `MODEL_CALLS_MAX`, the 12 h ceiling, `MAX_CRON_LEN`, the shell max, the per-run subagent cap and the report-only caps; sleep 12 h, MCP 300 s, 6 open subagents, executor frame 64 MiB, thread page 25/100. Unchanged: the control frame, the 8 MiB read, NATS, `HOLDS_MAX`, and every row the Codex/Pi survey did not cover. To be built as §8.
+  - > Owner (Indy, Nov 21, 2026): "yes signedoff approved" — context: the final per-section table of removed caps; §8 is approved. §7 is a separate sign-off.
 - **Open blockers** — §7 waits for Indy's sign-off on its design before any code.
 - **Deferrals and transfers** — none.
