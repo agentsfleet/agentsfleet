@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** PENDING
+**Status:** IN_PROGRESS
 
 **Priority:** P1, a person who approves late or waits for an email is the customer this fleet serves
 
@@ -338,5 +338,8 @@ Every background sweeper goes. A fact that changed only because time passed is c
   - **Budget without reservation.** Concurrent decision calls on one task can overshoot `max_model_nanos` by one call's cost.
   - **Recipients.** `owner` means every tenant owner.
 - **Model reviews** — EGM Stage 9 (implementation readiness), three reviewers, Claude Opus 5.5, Nov 19, 2026: 16 Blockers, 32 Majors, 26 Nits. Every Blocker is resolved above, wording findings are applied, and none is declined.
-- **Open blockers** — §7 waits for Indy's sign-off on its design before any code.
+- **History caps** — An agent added `HISTORY_TURNS_MAX` (8), `HISTORY_BYTES_MAX` (64 KiB) and `TURN_TEXT_BYTES_MAX` (16 KiB) (`af_wire/src/run/payload.rs:8-12`) in M211_005 without the owner's OK.
+  - > Owner (Indy, Nov 21, 2026): "Delete all three caps, but what is a frame limit"
+  - > Owner (Indy, Nov 21, 2026): "first let indy signoff" — context: no cap changes until he has read the inventory of every limit (`/tmp/m247-review/limits-inventory.md`) and the Codex/Pi comparison (`/tmp/m247-review/limits-codex-pi-guffbolt.md`).
+- **Open blockers** — §7 waits for Indy's sign-off on its design before any code. Removing the history caps, and any other cap, waits for his sign-off on the limits inventory.
 - **Deferrals and transfers** — none.
