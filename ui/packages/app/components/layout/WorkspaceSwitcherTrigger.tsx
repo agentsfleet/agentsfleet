@@ -29,7 +29,7 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
     <AccountAvatar userId={userId} name={name} imageUrl={imageUrl} busy={busy} />{" "}
     {!collapsed ? <>
       <span className="hidden min-w-0 flex-1 flex-col items-start md:flex">
-        <span className="w-full truncate text-left text-body-sm font-semibold leading-body-sm text-foreground" title={name}>{displayLabel}</span>{" "}
+        <span className="w-full truncate text-left text-body-sm font-medium leading-body-sm text-foreground" title={name}>{displayLabel}</span>{" "}
         <span className="w-full truncate text-left text-label font-normal leading-label text-muted-foreground" title={activeLabel}>{subtitle}</span>
       </span>
       <CaretDownIcon size={14} className="hidden shrink-0 text-muted-foreground md:block" aria-hidden="true" />

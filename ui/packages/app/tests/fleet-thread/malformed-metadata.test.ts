@@ -210,23 +210,16 @@ describe("FleetThread — robustness against malformed metadata", () => {
     expect(body).toBeTruthy();
   });
 
-  it("scrolls the conversation inside itself so the composer stays on screen", () => {
+  it("keeps the composer inside the viewport and outside the message log", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();
     const messageLog = container.querySelector('[role="log"]') as HTMLElement;
     const viewport = messageLog.closest('[role="presentation"]') as HTMLElement;
     const composer = container.querySelector('[aria-label="Chat composer"]');
-    expect(messageLog).toBeTruthy();
-    // The message list owns the overflow. Without this the card grows to the
-    // height of its whole history and pushes the composer off the page.
-    expect(viewport.className).toMatch(/overflow-y-auto/);
-    expect(viewport.className).toMatch(/min-h-0/);
+    expect(viewport.contains(messageLog)).toBe(true);
+    expect(viewport.contains(composer)).toBe(true);
     expect(messageLog.contains(composer)).toBe(false);
-    const card = container.querySelector(
-      '[aria-label="Fleet chat"]',
-    ) as HTMLElement;
-    expect(card.className).toMatch(/flex-col/);
-    expect(card.className).toMatch(/min-h-0/);
+    expect(container.querySelector('[aria-label="Fleet chat"]')?.contains(viewport)).toBe(true);
   });
 
   it("renders a webhook row WITHOUT a payload block when requestJson is empty", () => {

@@ -25,6 +25,7 @@ export type ReplTurn = (
 export interface ReplOptions {
   readonly input: ReplInputStream;
   readonly output: ReplOutputStream;
+  readonly fleetName?: string | undefined;
   readonly runTurn: ReplTurn;
   readonly onTurnError?: (err: unknown) => Promise<void> | void;
   readonly signalSource?: ReplSignalSource;
@@ -77,7 +78,7 @@ export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK
     closed = true;
   });
   try {
-    rl.setPrompt(STEER_REPL_PROMPT);
+    rl.setPrompt(options.fleetName ? `@${options.fleetName}${STEER_REPL_PROMPT}` : STEER_REPL_PROMPT);
     rl.prompt();
     for await (const raw of rl) {
       const line = raw.trim();

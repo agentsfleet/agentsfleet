@@ -23,7 +23,7 @@ After the package is published, install it with:
 npm install -g @agentsfleet/cli
 ```
 
-Requires [Bun](https://bun.sh) ≥ 1.4.4. The CLI runs on Bun.
+Requires [Bun](https://bun.sh) ≥ 1.4.5. The CLI runs on Bun.
 
 ## Quick start
 

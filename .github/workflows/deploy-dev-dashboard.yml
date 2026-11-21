@@ -38,7 +38,7 @@ jobs:
             https://api.vercel.com/v9/projects/agentsfleet-app \
             | jq -e 'select(.rootDirectory == "ui/packages/app") | {projectId: .id, orgId: .accountId} | select((.projectId | type == "string" and length > 0) and (.orgId | type == "string" and length > 0))' \
             > .vercel/project.json
-          node_modules/.bin/vercel pull --yes --environment=development-agentsfleet
+          bun run --bun vercel pull --yes --environment=development-agentsfleet
           # Dependencies were installed before credentials were loaded.
           jq '.settings.installCommand = "true"' .vercel/project.json > .vercel/project.tmp
           mv .vercel/project.tmp .vercel/project.json
@@ -48,11 +48,11 @@ jobs:
         working-directory: cli
 
       - name: Build the candidate dashboard
-        run: node_modules/.bin/vercel build --target=development-agentsfleet
+        run: bun run --bun vercel build --target=development-agentsfleet
 
       - name: Deploy the prebuilt candidate dashboard
         run: |
-          deployment_url="$(node_modules/.bin/vercel deploy --prebuilt --yes --target=development-agentsfleet \
+          deployment_url="$(bun run --bun vercel deploy --prebuilt --yes --target=development-agentsfleet \
             --meta "githubCommitSha=$GITHUB_SHA" --meta githubCommitRef=main)"
           printf '%s' "$deployment_url" | jq -Rer 'select(test("^https://[a-zA-Z0-9-]+[.]vercel[.]app/?$"))'
-          node_modules/.bin/vercel alias set "$deployment_url" app-dev.agentsfleet.net
+          bun run --bun vercel alias set "$deployment_url" app-dev.agentsfleet.net

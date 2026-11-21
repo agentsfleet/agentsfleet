@@ -15,10 +15,10 @@ beforeEach(() => {fixture.mount(); fixture.fleet = FLEET_DETAIL;});
 afterEach(() => fixture.dispose());
 
 it.each([
-  {origin: "cli", expected: "Setup saved via CLI · v1"},
-  {origin: "dashboard", expected: "Setup saved · v1"},
-  {origin: "chat", expected: "Setup saved · v1"},
-  {origin: undefined, expected: "Setup saved · v1"},
+  {origin: "cli", expected: "Saved setup"},
+  {origin: "dashboard", expected: "Saved setup"},
+  {origin: "chat", expected: "Saved setup"},
+  {origin: undefined, expected: "Saved setup"},
   {origin: "unrecognized", expected: "Activity recorded"},
 ])("uses only recorded save provenance ($origin)", ({origin, expected}) => {
   expect(fleetActivityText(JSON.stringify({kind: "setup_saved", revision: "1", origin}))).toBe(expected);
@@ -89,7 +89,7 @@ it("does not expose extra fields carried by an otherwise valid access event", ()
 // why_new=existing valid-event assertions covered access only; seam=none; no_claim=database receipt storage.
 it("renders saved readiness and each memory-sharing state from permitted activity fields only", () => {
   const hidden = "unapproved event payload";
-  expect(fleetActivityText(JSON.stringify({kind: "setup_ready", revision: "3", body: hidden}))).toBe("Setup done · v3");
+  expect(fleetActivityText(JSON.stringify({kind: "setup_ready", revision: "3", body: hidden}))).toBe("Setup ready");
   for (const [read, publish, expected] of [
     [false, false, "Workspace memories: learning off, sharing off"],
     [false, true, "Workspace memories: learning off, sharing on"],

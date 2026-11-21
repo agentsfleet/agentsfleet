@@ -198,8 +198,7 @@ export default async function globalSetup(): Promise<void> {
   // running yet. Per-spec cleanups are scoped to their own seed prefix (a
   // parallel worker must never delete a sibling's fleet mid-test), so this
   // is the only place leftovers from interrupted runs get cleared — without
-  // it they accumulate past the wall's first page and exact-count specs
-  // starve.
+  // it they accumulate ahead of the current run's saved history.
   // API failures here are environment problems, not product drift — surface
   // them as the typed redacted diagnosis (error code + recovery playbook)
   // instead of a raw wire error, and never echo response bodies.

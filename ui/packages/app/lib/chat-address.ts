@@ -18,10 +18,26 @@ const ADDRESS = /^\s*@([A-Za-z0-9-]+)(?:$|[\s:,]\s*)/;
 // bytes are its characters.
 const NAME_MAX_BYTES = 64;
 
+/** The editable mention immediately before the caret, including an empty @ query. */
+export function activeFleetMention(prefix: string): string | undefined {
+  const query = /(?:^|\s)@([a-z\d-]*)$/i.exec(prefix)?.[1];
+  return query !== undefined && query.length <= NAME_MAX_BYTES ? query : undefined;
+}
+
 /** The address a message opens with, or null when it is ordinary words. */
 export function parseChatAddress(text: string): ChatAddress | null {
   const match = ADDRESS.exec(text);
   const name = match?.[1];
   if (match === null || name === undefined || name.length > NAME_MAX_BYTES) return null;
   return { name: name.toLowerCase(), rest: text.slice(match[0].length) };
+}
+
+// A live admission and a reloaded message carry the same daemon-authored
+// envelope. Only unwrap it when its identity matches the recorded actor.
+const HANDOFF_HEADER = /^\[from fleet ([a-z0-9-]{1,64}), fleet_id ([0-9a-f-]+); answer with fleet_steer to that id\]\n/;
+
+export function readFleetHandoff(actor: string, text: string): { name: string; words: string } | null {
+  const header = HANDOFF_HEADER.exec(text);
+  if (!header?.[1] || actor !== `fleet:${header[2]}`) return null;
+  return { name: header[1], words: text.slice(header[0].length) };
 }

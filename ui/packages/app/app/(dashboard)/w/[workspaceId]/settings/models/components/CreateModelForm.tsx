@@ -64,9 +64,9 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   }
 
   return (
-    <form action={submit} aria-busy={creation.pending}>
+    <form action={submit} aria-busy={creation.pending} className="[&_input]:font-control [&_[role=combobox]]:font-control [&_[data-slot=select-caret]]:text-muted-foreground [&_[data-slot=select-caret]]:opacity-100">
       <fieldset disabled={locked} className="min-w-0 space-y-xl border-0 p-0">
-        <div className="grid min-w-0 grid-cols-1 gap-xl sm:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-xl summary:grid-cols-2">
           <div className="space-y-md">
             <Label htmlFor={`${id}-provider`}>Provider</Label>
             {catalogueLoading || providers.length ? <Select value={values.provider} disabled={catalogueLoading} onValueChange={provider => change({provider, model: "", savedRef: "", apiKey: ""})}>

@@ -11,8 +11,12 @@ jobs:
       HEY_VERSION: 0.1.5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # `make bench` is the hey loadgen gate; the runner image carries node for
-      # the fixture below and Go for this install. hey publishes no release
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+
+      # `make bench` is the hey loadgen gate; the runner image carries Go
+      # for this install. hey publishes no release
       # binaries, so it is built from its module, which the Go checksum
       # database verifies at this exact version.
       - name: Install hey
@@ -21,7 +25,7 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Run bench gate against local health fixture
         run: |
-          node -e '
+          bun -e '
           const http = require("http");
           const server = http.createServer((req, res) => {
             if (req.url === "/healthz") {

@@ -1,11 +1,11 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 //
 // Pre-build website asset prep — places `public/openapi.json` (the canonical
 // OpenAPI bundle at repo root) into the website package's `public/` and writes
 // the llms.txt / llms-full.txt text surfaces so Vite picks them up at
 // static-asset bundling time.
 //
-// Why a script file rather than an inline `node -e` in package.json?
+// Why a script file rather than an inline `bun -e` in package.json?
 // `bun run <script>` in a workspace package runs the script with
 // cwd = workspace root, not the package dir. An inline `../../../public/...`
 // resolved from the package dir, but from the workspace root that path

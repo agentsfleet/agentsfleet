@@ -18,7 +18,7 @@ export default clerkMiddleware(async (auth, request) => {
     // otherwise use the hosted Account Portal, since NEXT_PUBLIC_CLERK_SIGN_IN_URL
     // isn't set outside tests). Carry the intended destination on `redirect_url`
     // so a completed sign-in returns to the deep-linked page instead of the
-    // fleet-wall fallback. A relative path keeps the target same-origin.
+    // default workspace conversation. A relative path keeps the target same-origin.
     const destination = request.nextUrl.pathname + request.nextUrl.search;
     await auth.protect({ unauthenticatedUrl: buildSignInUrl(request.url, destination) });
   }

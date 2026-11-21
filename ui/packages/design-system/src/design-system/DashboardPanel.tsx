@@ -1,6 +1,6 @@
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { type ComponentProps } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../utils";
 
@@ -97,6 +97,18 @@ export function DashboardPanelContent({
   ...props
 }: ComponentProps<"div">) {
   return <div ref={ref} className={cn("mt-lg", className)} {...props} />;
+}
+
+/** A recorded output pairs a compact header with code or terminal lines. */
+export function OutputPanel({header, children, className, ...props}: ComponentProps<"div"> & {header: ReactNode}) {
+  return (
+    <DashboardPanel {...props} padding="none" className={cn("w-full min-w-0 overflow-hidden rounded-sm bg-surface-deep font-mono text-label", className)}>
+      <div className="flex min-w-0 flex-wrap items-center gap-sm border-b border-border px-lg py-sm font-sans text-label text-muted-foreground">
+        {header}
+      </div>
+      {children}
+    </DashboardPanel>
+  );
 }
 
 export { dashboardPanelVariants };

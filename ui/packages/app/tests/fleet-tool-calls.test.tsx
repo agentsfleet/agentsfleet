@@ -96,7 +96,7 @@ describe("FleetThread — tool cells", () => {
     mockStream([{ ...working, status: PROCESSED, reply: "Found it." }]);
     view.rerender(threadElement());
     const stranded = cells()[1]!;
-    expect(headerOf(stranded)).toContain("Interrupted: using tool Interrupted");
+    expect(headerOf(stranded)).toContain("Interrupted: using search_repo Interrupted");
   });
 
   it("test_tool_cell_names_verb_and_target", () => {
@@ -109,12 +109,12 @@ describe("FleetThread — tool cells", () => {
 
   it("test_unknown_tool_cell_calls_by_name", () => {
     renderCalls([running({ name: "fly_status", args: { app: "x" } })], RECEIVED);
-    expect(headerOf(cells()[0]!)).toContain("Using tool Running");
+    expect(headerOf(cells()[0]!)).toContain("Using fly_status Running");
     cleanup();
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
-    expect(headerOf(cells()[0]!)).toContain("Used tool Success");
+    expect(headerOf(cells()[0]!)).toContain("Used fly_status Success");
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^Used tool Success$/);
+    expect(headerOf(cells()[1]!)).toMatch(/^Used fly_apps Success$/);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Input")).toBeTruthy();
   });
@@ -202,8 +202,9 @@ describe("FleetThread — tool cells", () => {
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
       ["context", "a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
     ]);
-    expect(rows[1]!.className).toContain("bg-destructive/10");
-    expect(rows[2]!.className).toContain("bg-success/10");
+    expect(rows[1]!.className).toContain("text-destructive");
+    expect(rows[2]!.className).toContain("text-success");
+    expect(rows.every(row => ![...row.classList].some(name => name.startsWith("bg-")))).toBe(true);
     // The diff is input; the returned output has its own empty state.
     expect(edit!.textContent).toContain(EMPTY_OUTPUT);
     // Arguments the runner may have cut short draw no diff and no counts.

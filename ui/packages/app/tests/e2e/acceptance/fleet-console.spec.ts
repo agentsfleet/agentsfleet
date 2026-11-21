@@ -17,7 +17,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { fleetNavigation, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const RENDER_TIMEOUT_MS = 15_000;
@@ -93,11 +93,10 @@ test.describe("fleet console", () => {
     await expect(page.getByRole("button", {name: "Fleet actions", exact: true})).toHaveAttribute("aria-expanded", "false");
     await expect(textarea).toHaveValue(FOLLOW_UP);
 
-    // The shared sidebar returns to all saved fleets.
-    await page.getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: "Your fleets", exact: true })
-      .click();
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+    // Saved conversations remain selectable without leaving the current draft.
+    const history = await fleetNavigation(page);
+    await expect(history.locator(`a[href="${workspaceHref(ws, `fleets/${fleet.id}`)}"]`)).toBeVisible();
+    await expect(textarea).toHaveValue(FOLLOW_UP);
   });
 
   test.afterEach(async () => {

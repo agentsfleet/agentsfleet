@@ -172,6 +172,25 @@ describe("SteerComposer", () => {
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
+  it.each([
+    [PENDING_SEND_STATE.TARGET_MISSING, "Fleet @missing-audit-recipient was not found in this workspace. Check the name or choose a fleet with @, then send again."],
+    [PENDING_SEND_STATE.TARGET_INACTIVE, "Fleet @missing-audit-recipient is not active. Choose an active fleet with @, then send again."],
+  ] as const)("keeps the addressed draft and actionable guidance for %s", (state, guidance) => {
+    const text = "@missing-audit-recipient Check status";
+    render(view([entry({operationId: "target-refusal", text, state})]));
+    expect(screen.getByText(guidance)).toBeTruthy();
+    expect(composer.setText).toHaveBeenCalledExactlyOnceWith(text);
+    expect(screen.getByRole("button", {name: RESEND})).toBeTruthy();
+    expect(screen.queryByText(SEND_FAILED)).toBeNull();
+    expect(screen.queryByText(SEND_UNCONFIRMED)).toBeNull();
+  });
+
+  it("does not call a recipient missing when its lookup or send was unconfirmed", () => {
+    render(view([entry({operationId: "target-unconfirmed", text: "@missing-audit-recipient Check status", state: PENDING_SEND_STATE.UNKNOWN})]));
+    expect(screen.getByText(SEND_UNCONFIRMED)).toBeTruthy();
+    expect(screen.queryByText(/was not found in this workspace|is not active/)).toBeNull();
+  });
+
   it("test_sign_in_returns_to_the_fleet: an expired session signs in back to this fleet, restores the text, and offers Resend", () => {
     render(view([entry({ operationId: "op-session", state: PENDING_SEND_STATE.SESSION })]));
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(`/sign-in?redirect_url=${encodeURIComponent(FLEET_PATH)}`);

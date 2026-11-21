@@ -71,7 +71,7 @@ it("does not keep refining after the durable stop watermark", () => {
 
 it("offers Open fleet for an accepted version without claiming activation", () => {
   render(<SetupStatusFlap showPublication view={SAVED} workspace={WORKSPACE} />);
-  expect(screen.getByRole("status").textContent).toContain("Setup saved · v1");
+  expect(screen.getByRole("status").textContent).toContain("Saved setup");
   expect(screen.getByRole("status").textContent).not.toContain("ready");
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET.id}`);
 });
@@ -84,17 +84,13 @@ it("opens the refreshed fleet view when setup is already on that page", () => {
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
 });
 
-it.each([
-  {kind: "setup_ready", revision: "1"},
-  {kind: "setup_saved", revision: "2", origin: "cli"},
-  {kind: "unsupported", revision: "1"},
-  {kind: "setup_saved", revision: "1"},
-  {kind: "setup_saved", revision: "1", origin: "cli"},
-])("uses only a matching saved receipt for provenance %#", payload => {
-  const activities = [{event_id: "receipt", event_type: "activity", status: "recorded", request_json: JSON.stringify(payload), created_at: MESSAGE.created_at}];
+it("keeps version and origin out of the visible save receipt", () => {
+  const activities = [{event_id: "receipt", event_type: "activity", status: "recorded",
+    request_json: JSON.stringify({kind: "setup_saved", revision: "1", origin: "cli"}), created_at: MESSAGE.created_at}];
   render(<SetupStatusFlap showPublication view={{...SAVED, activities}} workspace={WORKSPACE} />);
-  const cli = payload.kind === "setup_saved" && payload.revision === "1" && payload.origin === "cli";
-  expect(screen.getByRole("status").textContent).toContain(cli ? "Setup saved via CLI · v1" : "Setup saved · v1");
+  const receipt = screen.getByRole("status");
+  expect(receipt.textContent).toContain("Saved setup");
+  expect(receipt.textContent).not.toMatch(/v1|CLI/);
 });
 
 it("offers a New fleet pinned to the confirmed publication", () => {
@@ -123,7 +119,7 @@ it("does not call a changed candidate published", () => {
 it("retains both actions after saving the same published setup", () => {
   const view: DraftView = {...SAVED, savedSetupRevision: "1", draft: {...PUBLISHED, state: "closed", linked_fleet_id: FLEET.id}};
   render(<SetupStatusFlap showPublication view={view} workspace={WORKSPACE} />);
-  expect(screen.getByRole("status").textContent).toContain("Setup saved · v1");
+  expect(screen.getByRole("status").textContent).toContain("Saved setup");
   expect(screen.getAllByRole("link")).toHaveLength(2);
 });
 

@@ -4,12 +4,11 @@ import { executionInstructions } from "./fixtures/definition";
  * against the Rust daemon serving this environment.
  *
  * Wire: save a fleet from the private chat's inline setup, with instructions
- * that carry a real request → open the workspace wall in a
+ * that carry a real request → open the same conversation in a
  * second tab and leave it watching → message the fleet from its own composer →
  * an online runner leases the delivery → the lease reaches the provider and
- * comes back → the thread shows the reply → the wall's tile for THIS fleet
- * carried the activity, over one workspace stream, and a control fleet's tile
- * did not.
+ * comes back → both conversations show the persisted reply over their fleet
+ * stream, and the untouched control fleet has no chat delivery or lease.
  *
  * What a failure prints is part of the contract. `fixtures/execution.ts`
  * classifies every terminal row and every API refusal, and the walk throws its
@@ -44,6 +43,7 @@ import { saveFleetViaUI } from "./fixtures/install-ui";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
+import {documentIsMarked, markDocument} from "./fixtures/soft-navigation";
 
 // One stable template for the fleet that executes — the server suffixes a
 // repeat — and one prefix for the control fleet that must NOT see its
@@ -61,7 +61,7 @@ const LEASE_TIMEOUT_MS = 120_000;
 // model minute, not a stalled one: past this the lease itself is what expired.
 const EXECUTION_TIMEOUT_MS = 150_000;
 const POLL_INTERVAL_MS = 2_000;
-// Install (60s inside saveFleetViaUI) + the two budgets above + the wall and
+// Install (60s inside saveFleetViaUI) + the two budgets above + the conversation and
 // thread renders, with headroom that is deliberately NOT another retry.
 const JOURNEY_TIMEOUT_MS = 420_000;
 
@@ -69,17 +69,9 @@ const JOURNEY_TIMEOUT_MS = 420_000;
 // reply, if it echoes, can be tied to this walk in a trace.
 const MESSAGE_PREFIX = "acceptance-probe-";
 
-// Mirrors of tile copy in `fleets/components/FleetTile.tsx`. Importing the
-// constants would pull a "use client" module — React and next/navigation with
-// it — into the Playwright process; the wall's own unit suite pins the copy.
-const TILE_IDLE_COPY = /Waiting for the next event\.|No live activity\.|Activity recorded/;
 const ACTIVITY_EVENT = "activity";
-const MANAGE_FLEET_LABEL = "Manage fleet";
-// Every tile card carries its kind — live, snapshot or drained — as data.
-const TILE_CARD = "[data-kind]";
 
-// The two SSE surfaces the dashboard can open. The wall must open the
-// workspace one, exactly once, and no per-fleet one at all.
+// A conversation opens its own fleet stream; sidebar history opens no workspace stream.
 const WORKSPACE_STREAM_SUFFIX = "/events/stream";
 const FLEET_STREAM_SEGMENT = "/fleets/";
 
@@ -92,10 +84,7 @@ function uniqueTag(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-// The wall opens one workspace stream and no per-fleet streams. Counted from
-// the request log rather than inferred from what rendered, because a tile
-// that renders live from its own fleet stream looks identical to one fed by
-// the workspace stream — and the difference is the whole point of the wall.
+// Count actual stream requests rather than inferring transport from rendered text.
 interface StreamCounts {
   workspace: number;
   fleet: number;
@@ -111,16 +100,6 @@ function countStreams(page: Page, workspaceId: string): StreamCounts {
     else if (url.pathname.includes(FLEET_STREAM_SEGMENT)) counts.fleet += 1;
   });
   return counts;
-}
-
-// A tile is the card that holds the fleet's overlay link. The link itself is
-// an aria-labelled `absolute inset-0` sheet with no text of its own — the feed
-// line and the counters are its siblings — so the card is what carries the
-// words a person reads, and the link is only how the card is found.
-function tileFor(page: Page, fleetId: string) {
-  const overlay = page.getByRole("link", {name: new RegExp(`^${MANAGE_FLEET_LABEL}: `)})
-    .and(page.locator(`a[href$="/fleets/${fleetId}"]`));
-  return page.locator(TILE_CARD).filter({ has: overlay });
 }
 
 // Every API read inside the walk goes through here, so a daemon that stops
@@ -175,7 +154,7 @@ test.describe("fleet execution", () => {
       waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
     );
     // The control fleet: installed the same way a sibling would be, never
-    // messaged. Its tile is the negative half of 1.4.
+    // messaged. Its durable history is the negative routing check.
     const control = await observed(JOURNEY_LEG.install, () =>
       seedFleet(FIXTURE_KEY.regular, workspaceId, { name: controlName }),
     );
@@ -183,18 +162,12 @@ test.describe("fleet execution", () => {
       waitForFleetActive(FIXTURE_KEY.regular, workspaceId, control.id),
     );
 
-    // ── 1.4, first half: the wall is watching BEFORE anything happens ──
-    // A second tab, same signed-in context. The wall has to be open while the
-    // delivery runs: its tiles are fed live, and activity that happened before
-    // the stream connected is history, not routing.
-    const wall = await context.newPage();
-    const streams = countStreams(wall, workspaceId);
-    await wall.goto(workspaceHref(workspaceId, "fleets"));
-    await expect(tileFor(wall, fleetId)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, control.id)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expect(tileFor(wall, fleetId)).toContainText(TILE_IDLE_COPY, {
-      timeout: RENDER_TIMEOUT_MS,
-    });
+    // A second page watches the same conversation before the delivery arrives.
+    const watching = await context.newPage();
+    const streams = countStreams(watching, workspaceId);
+    await watching.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
+    await expect(watching.getByLabel(CHAT_LABEL)).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+    await markDocument(watching);
 
     // ── Trigger: the operator messages the fleet from its own composer ──
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
@@ -265,20 +238,21 @@ test.describe("fleet execution", () => {
       contentType: "application/json",
     });
 
-    // ── 1.4, second half: the activity reached one tile over one stream ──
-    await expect(tileFor(wall, fleetId)).not.toContainText(TILE_IDLE_COPY, {
-      timeout: RENDER_TIMEOUT_MS,
-    });
-    await expect(tileFor(wall, control.id)).toContainText(TILE_IDLE_COPY);
+    // The persisted turn also appears in the untouched watching conversation.
+    const observedReply = watching.getByLabel(CHAT_LABEL).locator(`[data-message-id="${terminal.event_id}:reply"]`);
+    await expect(observedReply).toBeVisible({timeout: RENDER_TIMEOUT_MS});
+    await expect(observedReply).toHaveAttribute("data-settled", "true", {timeout: RENDER_TIMEOUT_MS});
+    await expect(observedReply.locator(ASSISTANT_TURN)).not.toHaveText(/^\s*$/, {timeout: RENDER_TIMEOUT_MS});
+    expect(await documentIsMarked(watching)).toBe(true);
     // A setup receipt may appear on an untouched fleet; execution must not.
     const controlHistory = await clientFor(FIXTURE_KEY.regular).get<{items: EventDetail[]}>(
       `/v1/workspaces/${workspaceId}/fleets/${control.id}/messages`,
     );
     expect(controlHistory.items.every(row => row.event_type === ACTIVITY_EVENT)).toBe(true);
     expect(await findLeaseFor(control.id)).toBeNull();
-    expect(streams.workspace, "the wall opens the workspace stream once").toBe(1);
-    expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
-    await wall.close();
+    expect(streams.workspace, "sidebar history opens no workspace stream").toBe(0);
+    expect(streams.fleet, "the watching conversation opens one fleet stream").toBe(1);
+    await watching.close();
 
   });
 });

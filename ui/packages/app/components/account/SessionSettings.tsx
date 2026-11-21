@@ -6,6 +6,7 @@ import { Alert, Badge, Button, ConfirmDialog, DashboardPanel, EmptyState, Sectio
 import { DesktopIcon, DeviceMobileIcon } from "@phosphor-icons/react/ssr";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { useAccountSettings } from "@/lib/auth/account-client";
+import { SecurityResourceRow } from "./SecurityResourceRow";
 import { AccountAccess } from "./AccountAccess";
 import { useAccountSessions } from "./use-account-sessions";
 
@@ -45,14 +46,12 @@ export function SessionSettingsView({client}: {client: AccountSettingsClient}) {
 
 function SessionRow({session, disabled, onRevoke}: {session: AccountSession; disabled: boolean; onRevoke: () => void}) {
   const Icon = session.mobile ? DeviceMobileIcon : DesktopIcon;
-  return <div className="flex min-h-21 min-w-0 flex-col items-start gap-xl p-xl sm:px-5 sm:py-xl sm:flex-row sm:items-center">
-    <div className="flex min-w-0 flex-1 items-center gap-xl">
-      <span className="hidden size-10 shrink-0 sm:flex items-center justify-center rounded-control border border-border" aria-hidden="true"><Icon size={16} /></span>
-      <div className="min-w-0 space-y-1.5"><div className="flex flex-wrap items-center gap-sm">
-        <span className="break-words text-body font-medium">{session.browser} on {session.device}</span>{session.current ? <Badge>This device</Badge> : null}
-      </div><p className="break-words text-label text-muted-foreground">{session.location ? `${session.location} · ` : ""}Last active {session.lastActiveAt ? <Time value={session.lastActiveAt} format="relative" /> : "unavailable"}</p></div>
-    </div>
-    {session.current ? <AuthSignOutButton redirectUrl="/sign-in"><Button variant="outline" disabled={disabled}>Sign out</Button></AuthSignOutButton>
-      : <Button variant="outline" disabled={disabled} onClick={onRevoke} aria-label={`Sign out ${session.browser} on ${session.device}`}>Sign out</Button>}
-  </div>;
+  const title = `${session.browser} on ${session.device}`;
+  const detail = <>{session.location && `${session.location} · `}Last active {session.lastActiveAt
+    ? <Time value={session.lastActiveAt} format="relative" /> : "unavailable"}</>;
+  const action = session.current
+    ? <AuthSignOutButton redirectUrl="/sign-in"><Button variant="outline" disabled={disabled}>Sign out</Button></AuthSignOutButton>
+    : <Button variant="outline" disabled={disabled} onClick={onRevoke} aria-label={`Sign out ${title}`}>Sign out</Button>;
+  return <SecurityResourceRow kind="session" title={title} icon={<Icon size={16} />} detail={detail}
+    badge={session.current && <Badge>This device</Badge>} action={action} />;
 }

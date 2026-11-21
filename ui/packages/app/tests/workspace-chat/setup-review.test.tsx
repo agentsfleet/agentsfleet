@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { SetupReview } from "@/components/domain/setup/summary/SetupReview";
 import { DraftClient } from "@/lib/api/drafts";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { DRAFT, FLEET, REVIEW, SCHEDULE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, MODEL, REVIEW, SCHEDULE, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE, SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
 
 vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
@@ -71,4 +71,12 @@ it("keeps an incomplete first proposal empty without granting permissions", () =
   expect(screen.getByText("Your setup will appear here as you chat.")).toBeTruthy();
   expect(screen.queryByRole("switch")).toBeNull();
   expect(screen.queryByRole("button", {name: /Manage/})).toBeNull();
+});
+
+it("names the platform default in a saved setup that omitted an explicit runtime model", () => {
+  render(<SetupReview workspace={WORKSPACE} client={client} view={{...EMPTY_DRAFT_VIEW,
+    fleet: {...FLEET, definition: REVIEW.effective.definition},
+    models: [{...MODEL, ref: "platform-default", label: "MiniMax M3.1 Flash"}],
+  }} />);
+  expect(screen.getByText("MiniMax M3.1 Flash")).toBeTruthy();
 });

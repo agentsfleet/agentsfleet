@@ -1,3 +1,4 @@
+import { readFleetHandoff } from "@/lib/chat-address";
 import type { AssistantState } from "@assistant-ui/react";
 import { ACTOR, baseActorOf, eventLinkFrom, eventReferenceFrom, parsePayload, senderLabelFor, SENDER, steerMessageFrom } from "@/lib/events/event-summary";
 import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
@@ -41,10 +42,15 @@ function defaultElement(message: MessageState, notice: string | null): FleetChat
 
 function operatorElements(message: MessageState, status: string): FleetChatElement[] {
   const elements: FleetChatElement[] = [];
-  if (hasOwnContent(message)) elements.push({kind: CHAT_ELEMENT.OPERATOR, data: {
-    actor: readActor(message), text: readText(message), createdAt: message.createdAt,
-    optimistic: status === STATUS_OPTIMISTIC,
-  }});
+  if (hasOwnContent(message)) {
+    const actor = readActor(message);
+    const text = readText(message);
+    const handoff = readFleetHandoff(baseActorOf(actor), text);
+    elements.push({kind: CHAT_ELEMENT.OPERATOR, data: {
+      actor, text: handoff?.words ?? text, fleetSender: handoff?.name,
+      createdAt: message.createdAt, optimistic: status === STATUS_OPTIMISTIC,
+    }});
+  }
   if (readRenderKind(message) !== RENDER_KIND.TRIGGER) elements.push({kind: CHAT_ELEMENT.REPLY, data: {message, status}});
   return elements;
 }

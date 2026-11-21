@@ -16,3 +16,12 @@ export function defaultChatModel(models: readonly WorkspaceModel[], current: str
   return models.find(model => model.ref === current && model.eligibility.authoring)?.ref
     ?? models.find(model => model.eligibility.authoring)?.ref ?? "";
 }
+
+const PLATFORM_DEFAULT = "platform-default";
+
+/** A saved fleet may omit its model when it uses the workspace platform default. */
+export function runtimeModelLabel(models: readonly WorkspaceModel[] | null, selected: unknown): string {
+  const ref = typeof selected === "string" ? selected : PLATFORM_DEFAULT;
+  return models?.find(model => model.ref === ref)?.label
+    ?? (ref === PLATFORM_DEFAULT ? "Platform default model" : ref);
+}

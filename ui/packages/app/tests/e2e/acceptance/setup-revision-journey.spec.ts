@@ -13,7 +13,7 @@
 import { expect, test } from "@playwright/test";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftSchema } from "@/lib/api/draft-types";
-import { saveDoneText } from "@/lib/events/fleet-activity";
+import { SAVED_SETUP_LABEL } from "@/lib/events/fleet-activity";
 import { clientFor } from "./fixtures/api-client";
 import { signedInContext, signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -73,7 +73,7 @@ test.describe("setup revisions", () => {
     expect(first.definition?.instructions_md).toContain(FIRST_WORD);
     expect(first.definition?.instructions_md).not.toContain(SECOND_WORD);
     const chat = page.getByLabel("Fleet chat");
-    await expect(chat.getByText(saveDoneText("1")).first()).toBeVisible();
+    await expect(chat.getByText(SAVED_SETUP_LABEL, {exact: true})).toHaveCount(1);
 
     // A second session opens Edit setup while revision 1 is still current.
     const other = await signedInContext(browser, FIXTURE_KEY.regular);
@@ -102,8 +102,7 @@ test.describe("setup revisions", () => {
       expect(await openSavedFleet(page, { handle: FIXTURE_KEY.regular, workspaceId, revision: "2" })).toBe(saved);
 
       // The fleet chat shows the second save and still holds the first.
-      await expect(chat.getByText(saveDoneText("2")).first()).toBeVisible();
-      await expect(chat.getByText(saveDoneText("1")).first()).toBeVisible();
+      await expect(chat.getByText(SAVED_SETUP_LABEL, {exact: true})).toHaveCount(2);
       const second = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, saved);
       expect(second.definition?.instructions_md).toContain(SECOND_WORD);
 

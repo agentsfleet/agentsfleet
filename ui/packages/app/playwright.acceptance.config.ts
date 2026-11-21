@@ -55,16 +55,15 @@ const REMOTE_ENV_EXPECT_TIMEOUT_MS = 10_000;
 //              depends on it: a dead prerequisite stops the run in seconds.
 // journeys   — fixture-isolated user journeys; files run across all workers.
 // operator journey — workspace administration exercised by an operator.
-// live-counter → pulse-wall — whole-wall count assertions in the shared
-//              regular workspace; they run after the journey group is done
-//              seeding and never concurrently with each other.
+// fleet-history → multi-fleet — workspace-entry and saved-sidebar journeys
+//              run after other regular-workspace seeds have settled.
 // frame-budget — tests that time the page's own frames (FRAME_BUDGET_TAG);
 //              they wait for both chains, so no other test shares the CPU.
 // fetch-audit — resets a global app-side fetch counter; runs strictly last.
 const PREFLIGHT_SPEC = "**/_smoke.spec.ts";
 const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
-const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
-const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
+const FLEET_HISTORY_SPEC = "**/fleet-sidebar.spec.ts";
+const MULTI_FLEET_SPEC = "**/multi-fleet.spec.ts";
 const FETCH_AUDIT_SPEC = "**/workspace-fetch-dedupe.spec.ts";
 const SOAK_SPEC = "**/fleet-soak.spec.ts";
 // Local-only soak helpers: run from playwright.soak-local.config.ts, never in the ladder.
@@ -73,8 +72,8 @@ const SOAK_LOCAL_SPECS = ["**/soak-cli-smoke.spec.ts", "**/soak-hold.spec.ts"];
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
 const PROJECT_OPERATOR_JOURNEY = "operator-journey";
-const PROJECT_LIVE_COUNTER = "live-counter";
-const PROJECT_PULSE_WALL = "pulse-wall";
+const PROJECT_FLEET_HISTORY = "fleet-history";
+const PROJECT_MULTI_FLEET = "multi-fleet";
 const PROJECT_FRAME_BUDGET = "frame-budget";
 const PROJECT_FETCH_AUDIT = "fetch-audit";
 const PROJECT_SOAK = "soak";
@@ -126,8 +125,8 @@ export default defineConfig({
       testIgnore: [
         PREFLIGHT_SPEC,
         OPERATOR_JOURNEY_SPEC,
-        LIVE_COUNTER_SPEC,
-        PULSE_WALL_SPEC,
+        FLEET_HISTORY_SPEC,
+        MULTI_FLEET_SPEC,
         FETCH_AUDIT_SPEC,
         SOAK_SPEC,
         ...SOAK_LOCAL_SPECS,
@@ -143,29 +142,29 @@ export default defineConfig({
       use: CHROMIUM,
     },
     {
-      name: PROJECT_LIVE_COUNTER,
-      testMatch: LIVE_COUNTER_SPEC,
+      name: PROJECT_FLEET_HISTORY,
+      testMatch: FLEET_HISTORY_SPEC,
       dependencies: [PROJECT_JOURNEYS],
       use: CHROMIUM,
     },
     {
-      name: PROJECT_PULSE_WALL,
-      testMatch: PULSE_WALL_SPEC,
-      dependencies: [PROJECT_LIVE_COUNTER],
+      name: PROJECT_MULTI_FLEET,
+      testMatch: MULTI_FLEET_SPEC,
+      dependencies: [PROJECT_FLEET_HISTORY],
       use: CHROMIUM,
     },
     {
       name: PROJECT_FRAME_BUDGET,
       grep: FRAME_BUDGET,
       // After both chains, so every other worker is idle while it measures.
-      dependencies: [PROJECT_PULSE_WALL, PROJECT_OPERATOR_JOURNEY],
+      dependencies: [PROJECT_MULTI_FLEET, PROJECT_OPERATOR_JOURNEY],
       use: CHROMIUM,
     },
     {
       name: PROJECT_FETCH_AUDIT,
       testMatch: FETCH_AUDIT_SPEC,
       // Strictly last: the audit reset touches an app-global counter, so it
-      // must outlast BOTH the wall chain and the operator chain.
+      // must outlast BOTH the fleet-history chain and the operator chain.
       dependencies: [PROJECT_FRAME_BUDGET],
       use: CHROMIUM,
     },

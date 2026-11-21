@@ -11,6 +11,8 @@ const RUNNING = CELL_STATE.RUNNING;
 
 describe("recorded tool activity", () => {
   it.each([
+    [TOOL_NAME.FLEET_ACTIVITY, {}, "Reading fleet activity", "Read fleet activity", ""],
+    [TOOL_NAME.FLEET_STEER, {fleet_id: "bob-id"}, "Sending fleet message", "Sent fleet message", ""],
     [TOOL_NAME.FILE_READ, {path: "/workspace/a.ts"}, "Reading file", "Read file", "a.ts"],
     [TOOL_NAME.FILE_READ_HASHED, {path: "a.ts"}, "Reading file", "Read file", "a.ts"],
     [TOOL_NAME.FILE_WRITE, {path: "a.ts"}, "Writing", "Wrote", "a.ts"],
@@ -90,6 +92,19 @@ describe("recorded tool activity", () => {
     expect(toolGroupActivity(content, [1, 99], false)).toMatchObject({label: "Tool activity", state: CELL_STATE.SETTLED});
   });
 
+  it.each([TOOL_NAME.FLEET_ACTIVITY, TOOL_NAME.FLEET_STEER, "unregistered_action"])("summarizes the completed call %s with its recorded run duration", name => {
+    expect(toolGroupActivity([part(name, SUCCESS)], [0], false, 2000).label).toBe("Worked for 2s · 1 tool");
+    expect(toolGroupActivity([part(name, SUCCESS)], [0], false).label).toBe("Worked · 1 tool");
+  });
+
+  it("summarizes completed work without reading the tools' arguments", () => {
+    const recorded = Object.defineProperty(part(TOOL_NAME.FLEET_STEER, SUCCESS), "args", {
+      get() {throw new Error("A collapsed work summary read a tool payload");},
+    });
+    expect(toolGroupActivity([recorded], [0], false, 3030).label).toBe("Worked for 3s · 1 tool");
+    expect(toolGroupActivity([recorded, recorded], [0, 1], false).label).toBe("Worked · 2 tools");
+  });
+
   it("shows current work and the number of concurrently active calls", () => {
     expect(toolGroupActivity([part("file_read")], [0], true)).toMatchObject({label: "Reading file", target: "a.ts", state: RUNNING});
     const group = toolGroupActivity([part("file_read"), part("file_write")], [0, 1], true);
@@ -107,5 +122,10 @@ describe("recorded tool activity", () => {
 
 function part(toolName: string, state?: Exclude<(typeof CELL_STATE)[keyof typeof CELL_STATE], "running" | "settled">): Extract<MessageState["content"][number], {type: "tool-call"}> {
   return {type: "tool-call", toolCallId: toolName, toolName, args: {path: "a.ts"}, argsText: '{"path":"a.ts"}',
-    ...(state === undefined ? {} : {result: {status: state}})};
+    ...(state === undefined ? {} : {result: {status: state, exitCode: toolName === "exec_command" && state === CELL_STATE.SUCCEEDED ? 0 : undefined}})};
 }
+
+it("retains an unknown command outcome in the collapsed work group", () => {
+  const call = {...part("exec_command"), result: {status: "succeeded", outputHead: "Process running with session ID 231"}};
+  expect(toolGroupActivity([call], [0], false).state).toBe(CELL_STATE.SETTLED);
+});

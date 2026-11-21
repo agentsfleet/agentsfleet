@@ -13,11 +13,11 @@
     "./app-tokens.css": "./src/app-tokens.css"
   },
   "scripts": {
-    "lint": "oxlint src && bun run --bun tsrs --noEmit",
+    "lint": "bun run --bun oxlint src && bun run --bun tsrs --noEmit",
     "typecheck": "bun run --bun tsrs --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage --testTimeout=20000"
+    "test": "bun run --bun vitest run",
+    "test:watch": "bun run --bun vitest",
+    "test:coverage": "bun run --bun vitest run --coverage --testTimeout=20000"
   },
   "peerDependencies": {
     "react": "^19.3.1",

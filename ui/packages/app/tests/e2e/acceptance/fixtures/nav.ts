@@ -40,6 +40,46 @@ export function workspaceHref(workspaceId: string, subpath = ""): string {
   return clean ? `/w/${workspaceId}/${clean}` : `/w/${workspaceId}`;
 }
 
+/** The workspace entry opens a saved conversation, or setup when none exists. */
+export function workspaceEntryPattern(workspaceId: string): RegExp {
+  const escaped = workspaceId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`/w/${escaped}/fleets/(?:new|[0-9a-f-]{36})(?:\\?|$)`);
+}
+
+export async function expectWorkspaceEntry(page: Page, workspaceId: string): Promise<void> {
+  await expect(page).toHaveURL(workspaceEntryPattern(workspaceId));
+  await expect(page.getByLabel("Fleet chat", {exact: true}).or(
+    page.getByLabel("Fleet setup conversation", {exact: true}),
+  ).filter({visible: true})).toBeVisible();
+}
+
+/** Fleet history lives in the desktop sidebar or the mobile navigation dialog. */
+export async function fleetNavigation(page: Page): Promise<Locator> {
+  const expanded = page.getByRole("navigation", {name: "Expanded navigation", exact: true});
+  if (await expanded.isVisible()) return expanded;
+  const primary = page.getByRole("navigation", {name: "Primary", exact: true});
+  const mobile = primary.getByRole("button", {name: "Open navigation", exact: true});
+  if (await mobile.isVisible()) {
+    await mobile.click();
+    await expect(expanded).toBeVisible();
+    return expanded;
+  }
+  const expand = primary.getByRole("button", {name: "Expand navigation", exact: true});
+  if (await expand.isVisible()) await expand.click();
+  await expect(primary.getByText("Fleets", {exact: true})).toBeVisible();
+  return primary;
+}
+
+/** Select by the saved identifier so duplicate or archived names cannot misroute. */
+export async function openFleetFromSidebar(page: Page, workspaceId: string, fleetId: string): Promise<void> {
+  const navigation = await fleetNavigation(page);
+  const href = workspaceHref(workspaceId, `fleets/${fleetId}`);
+  const fleet = navigation.locator(`a[href="${href}"]`);
+  await expect(fleet).toBeVisible();
+  await fleet.click();
+  await expect(page).toHaveURL(href);
+}
+
 /** Follow the visible account-menu path without replacing the document. */
 export async function openSettingsDestination(page: Page, label: string): Promise<void> {
   await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();

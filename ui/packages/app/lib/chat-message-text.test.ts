@@ -1,6 +1,6 @@
 import type { AppendMessage } from "@assistant-ui/react";
 import { expect, it } from "vitest";
-import { chatMessageText } from "./chat-message-text";
+import { chatMessageText, fleetMessageText } from "./chat-message-text";
 
 function message(quote?: unknown): AppendMessage {
   return {createdAt: new Date("2026-11-12T12:00:00Z"), role: "user", parentId: null, sourceId: null, content: [{type: "text", text: "Explain this."}],
@@ -20,4 +20,12 @@ it("keeps all text parts without stringifying attachments or data", () => {
   const input = message();
   expect(chatMessageText({...input, content: [{type: "text", text: "One"}, {type: "image", image: "https://example.test/sample.png"}, {type: "text", text: "Two"}]})).toBe("One\nTwo");
   expect(chatMessageText({...input, content: []})).toBe("");
+});
+
+it("addresses the fleet before a multiline quote, including a restored quote without an ID", () => {
+  for (const quote of [{messageId: "reply", text: "line one\nline two"}, {text: "line one\nline two"}]) {
+    const draft = message(quote);
+    expect(fleetMessageText({...draft, content: [{type: "text", text: "@bob please check"}]}))
+      .toBe("@bob > line one\n> line two\n\nplease check");
+  }
 });

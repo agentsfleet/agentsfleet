@@ -1,76 +1,60 @@
-/**
- * multi-fleet.spec.ts — many live tiles on one workspace stream.
- *
- * Seeds 6 fleets and asserts the wall renders every one of them live and
- * pulsing. The per-tile stream cap this spec once pinned is gone: the wall
- * consumes ONE multiplexed workspace stream, so tile liveness no longer
- * spends per-tile connections and every live tile animates. The header
- * carries the canonical "{N} live" status text.
- *
- * Locators scope to returned fleet identifiers — parallel specs share the
- * fixture workspace, and card labels show agent identity and purpose.
- */
-import { expect, test } from "@playwright/test";
-import { signInAs } from "./fixtures/auth";
-import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
-import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { FIXTURE_KEY } from "./fixtures/constants";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import {expect, test} from "@playwright/test";
+import type {Fleet} from "./fixtures/seed";
+import {signInAs} from "./fixtures/auth";
+import {FIXTURE_KEY} from "./fixtures/constants";
+import {fleetNavigation, openFleetFromSidebar, workspaceHref} from "./fixtures/nav";
+import {getDefaultWorkspaceId, seedFleet, waitForFleetActive} from "./fixtures/seed";
+import {assertDestructiveTargetIsSafe, purgeFixtureFleet} from "./fixtures/teardown";
 
-const SEED_COUNT = 6;
-const RENDER_TIMEOUT_MS = 15_000;
+const PURPOSES = ["release-review", "deployment-watch", "issue-triage", "incident-summary", "change-review", "maintenance-watch"];
+const VIEWPORTS = [{width: 1440, height: 900}, {width: 390, height: 844}];
 
-test.describe("multi-fleet wall", () => {
-  test(
-    `${SEED_COUNT} active fleets all render live and pulsing on one workspace stream`,
-    async ({ page }) => {
-      const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-      const tag = Math.random().toString(36).slice(2, 8);
-      const fleetIds: string[] = [];
-
-      // Seed in series — agentsfleetd's per-tenant unique-name index can race
-      // under parallel POSTs.
-      for (let i = 0; i < SEED_COUNT; i++) {
-        const fleet = await seedFleet(FIXTURE_KEY.regular, ws, {
-          name: `pulse-${tag}-${i}`,
-        });
-        fleetIds.push(fleet.id);
-        // data-state="live" requires ACTIVE; an installing fleet is not live.
-        await waitForFleetActive(FIXTURE_KEY.regular, ws, fleet.id);
-      }
-
-      await signInAs(page, FIXTURE_KEY.regular);
-      await page.goto(workspaceHref(ws, "fleets"));
-      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
-
-      const ownedTiles = fleetIds.map((id) =>
-        `a[href="${workspaceHref(ws, `fleets/${id}`)}"][data-state]`).join(", ");
-      const rows = page.locator(ownedTiles);
-      await expect(rows).toHaveCount(SEED_COUNT, { timeout: RENDER_TIMEOUT_MS });
-
-      // Every seeded row's data-state is "live" (active status).
-      const liveRows = rows.and(page.locator('[data-state="live"]'));
-      await expect(liveRows).toHaveCount(SEED_COUNT);
-
-      // Every seeded tile renders live. The dot's ANIMATION (`data-live`) needs
-      // the workspace stream connected, which this environment cannot reach
-      // until the request-header fix in THIS change deploys — so the animation
-      // contract is pinned by the wall's unit suite, and this walk asserts only
-      // what it can honestly observe: the tiles exist and read live.
-      // (Assertion already made by `liveRows` above; no second dot selector.)
-
-      // The header carries the canonical live-count status. The exact figure is
-      // workspace-wide (parallel specs may hold live fleets of their own), so
-      // the tiles above carry the exact-count assertions and the header is
-      // asserted by shape.
-      const header = page.getByRole("status").filter({ hasText: /^\d+ live$/ });
-      await expect(header).toBeVisible();
-      await expect(header).toContainText(/\d+ live/);
-    },
-  );
-
-  test.afterEach(async () => {
-    const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await cleanWorkspaceFleets(FIXTURE_KEY.regular, ws, "pulse-");
+test("saved fleets remain selectable on desktop and mobile without opening background conversations", async ({page}) => {
+  const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+  const fleets: Fleet[] = [];
+  const streams = new Set<string>();
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith("/events/stream")) streams.add(path);
   });
+  try {
+    for (const purpose of PURPOSES) {
+      const fleet = await seedFleet(FIXTURE_KEY.regular, workspace, {name: `conversation-${purpose}`});
+      fleets.push(fleet);
+      await waitForFleetActive(FIXTURE_KEY.regular, workspace, fleet.id);
+    }
+    const newest = fleets.at(-1);
+    if (!newest) throw new Error("Conversation fixtures were not created");
+    await signInAs(page, FIXTURE_KEY.regular);
+    await page.goto(workspaceHref(workspace, "fleets"));
+    await expect(page).toHaveURL(workspaceHref(workspace, `fleets/${newest.id}`));
+    await expect(page.getByLabel("Fleet chat", {exact: true})).toBeVisible();
+    await expect.poll(() => [...streams]).toEqual([
+      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/events/stream`,
+    ]);
+    for (const viewport of VIEWPORTS) {
+      await page.setViewportSize(viewport);
+      const navigation = await fleetNavigation(page);
+      for (const fleet of fleets) {
+        const link = navigation.locator(`a[href="${workspaceHref(workspace, `fleets/${fleet.id}`)}"]`);
+        await expect(link).toHaveCount(1);
+        await expect(link).toContainText(fleet.name);
+        await expect(link).toHaveAttribute("title", `${fleet.name} · active`);
+      }
+      const target = viewport.width === 390 ? newest : fleets[0];
+      if (!target) throw new Error("Conversation target was not created");
+      await openFleetFromSidebar(page, workspace, target.id);
+      await expect(page.getByLabel("Fleet chat", {exact: true})).toBeVisible();
+    }
+    const first = fleets[0];
+    if (!first) throw new Error("First conversation fixture was not created");
+    await expect.poll(() => [...streams].sort()).toEqual([
+      `/live/v1/workspaces/${workspace}/fleets/${newest.id}/events/stream`,
+      `/live/v1/workspaces/${workspace}/fleets/${first.id}/events/stream`,
+    ].sort());
+  } finally {
+    await page.goto("about:blank");
+    assertDestructiveTargetIsSafe();
+    for (const fleet of fleets) await purgeFixtureFleet(FIXTURE_KEY.regular, workspace, fleet.id);
+  }
 });

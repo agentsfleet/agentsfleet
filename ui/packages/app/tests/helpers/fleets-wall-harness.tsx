@@ -6,11 +6,10 @@ import { afterEach, beforeEach, vi } from "vitest";
 import {
   WorkspaceStreamProvider,
   useWorkspaceFleetStream,
+  useWorkspaceStream,
 } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";
-import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
 
 // The wall provider driven through its real workspace stream: a fake
 // EventSource, a manual animation frame, and a probe that prints what a tile
@@ -114,12 +113,11 @@ export function FleetProbe({ fleetId }: { fleetId: string }) {
   const state = useWorkspaceFleetStream(fleetId);
   const live = state.isLive ? LIVE_LABEL : LAST_KNOWN_LABEL;
   const recovery = state.catchingUp ? CATCHING_UP_LABEL : CURRENT_LABEL;
-  const kind = deriveTileLiveness(AGENTSFLEET_STATUS.ACTIVE, state.connectionStatus).kind;
   const processed = state.counters?.eventsProcessed ?? ABSENT;
   return React.createElement(
     "output",
     { "data-testid": fleetId },
-    `feed:${state.feed === undefined ? ABSENT : FEED_SHOWN} ${live} ${recovery} kind:${kind} processed:${processed}`,
+    `feed:${state.feed === undefined ? ABSENT : FEED_SHOWN} ${live} ${recovery} connection:${state.connectionStatus} processed:${processed}`,
   );
 }
 
@@ -184,4 +182,10 @@ export function flushAnimationFrame() {
 
 export async function settlePromises() {
   for (let index = 0; index < PROMISE_SETTLE_TURNS; index += 1) await Promise.resolve();
+}
+
+
+export function WorkspaceConnectionProbe() {
+  const {connectionStatus, helloReceived} = useWorkspaceStream();
+  return <output data-testid="workspace-connection">{connectionStatus} {String(helloReceived)}</output>;
 }

@@ -31,13 +31,13 @@ async function setup() {
 }
 
 describe("private chat Save", () => {
-  it("restores the editable Plugin starter only when the preserved UI tree is enabled", async () => {
+  it("offers the editable Chief of Staff starter even when the legacy plugin UI is enabled", async () => {
     plugins.enabled = true;
     render(<WorkspaceChat {...CHAT_PROPS} />);
-    const starter = await screen.findByRole("button", {name: "Create a plugin"});
+    const starter = await screen.findByRole("button", {name: "Set up a Chief of Staff"});
     await waitFor(() => expect(starter).toHaveProperty("disabled", false));
     fireEvent.click(starter);
-    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("reusable fleet setup"));
+    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("bring his report back to me"));
     expect(fixture.writes()).toEqual([]);
     expect(fixture.calls.some(call => call.path.includes("/plugins"))).toBe(false);
   });
@@ -76,7 +76,7 @@ describe("private chat Save", () => {
     expect(fixture.saveAttempts).toBe(0);
     await setup();
     await saveInChat();
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     expect(fixture.saveAttempts).toBe(1);
     expect(chatRouter.push).not.toHaveBeenCalled();
     await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
@@ -98,7 +98,7 @@ describe("private chat Save", () => {
     expect(screen.getByRole("alert", {name: "Chat recovery"}).textContent).toContain("The request could not be confirmed. Retry the same operation.");
     expect(fixture.writes()).toHaveLength(writes);
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/messages"));
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.body).toEqual(attempts[0]?.body);
@@ -110,7 +110,7 @@ describe("private chat Save", () => {
     await setup();
     fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
     expect(screen.queryByRole("dialog")).toBeNull();
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
     expect(fixture.saveAttempts).toBe(1);
     expect(fixture.writes().find(call => call.path.endsWith("/fleets"))?.body).toMatchObject({name: "repairer", start: {kind: "none"}});

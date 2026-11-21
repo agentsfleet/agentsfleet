@@ -723,19 +723,21 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                  that differs from the server-rendered one re-runs the
                  server tree, once, for the header's lifecycle controls.
 
-   UI        Fleets Wall /fleets
-               → opens ONE same-origin
-                 /live/v1/workspaces/{id}/events/stream SSE connection
-                 shared by the workspace's fleet tiles.
+   UI        Fleet navigation /w/{workspace}/fleets
+               → the server requests one fleet and redirects to its conversation,
+                 or to setup when the list is empty.
+               → the open sidebar pages through the workspace’s fleets and the
+                 viewer’s private setup drafts. Selecting a fleet opens its
+                 conversation stream. Other sidebar entries stay unsubscribed.
+
+   API       Workspace activity stream
                → agentsfleetd authorizes the workspace and fans in only its
                  readable af.fleet.<fleet_id>.tail subjects through bounded
                  per-subject broadcast receivers.
                → frame kinds and control frames: API reference › Workspaces
                  (Stream live activity for a whole workspace).
-               → if the NATS client reconnected, reported a slow consumer,
-                 or a publisher's Af-Gap marker arrived, agentsfleetd sends
-                 catching_up { dropped:0 }, on this stream and on the
-                 per-fleet one.
+               → a NATS reconnect, slow consumer, or publisher Af-Gap marker
+                 produces catching_up { dropped:0 } on workspace and fleet streams.
 
    Browser authentication
      EventSource + session cookie --> Next.js /live/* Route Handler

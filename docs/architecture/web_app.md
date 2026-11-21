@@ -76,8 +76,7 @@ browser whether it needs to or not.
 The header, navigation and frame render immediately.
 `force-dynamic` with no `Suspense` makes the whole page wait on the slowest call.
 
-Exception on record: the fleet wall (`fleets/page.tsx`) keeps its whole page frame inside the data region. The page waits for its first read behind the shared `RouteLoading` fallback.
-That choice does not set a precedent.
+The workspace fleet entry reads one fleet and redirects to its conversation. An empty workspace opens the new-fleet composer. The shared route fallback covers that lookup.
 
 **4 · Mutations feel instant.**
 
@@ -137,7 +136,7 @@ The bar between the worlds:
   └────────────────────┬───────────────────────────┘
                        │  props: plain data only
   ┌────────────────────▼─── CLIENT (leaves) ───────┐
-  │  <FleetTile onRename>  <SecretForm>  <Menu>    │  ← useTransition, useOptimistic,
+  │  <RecentChats>         <SecretForm>  <Menu>    │  ← useTransition, useOptimistic,
   │  cookie-only setup transport; no bearer/key    │     useActionState live here
   └────────────────────────────────────────────────┘
 ```

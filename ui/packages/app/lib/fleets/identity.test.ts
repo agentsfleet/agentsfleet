@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { deriveFleetIdentity } from "./identity";
 
-// The fixture id `FleetTile.test.tsx` pins, and the outputs it pins for it.
+// The fixture id `RecentChats.test.tsx` pins, and the outputs it pins for it.
 // Identity data: operators know their agents by these, so a move of the
 // derivation that changed either would rename every agent in their heads.
 const PINNED_FLEET_ID = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee";

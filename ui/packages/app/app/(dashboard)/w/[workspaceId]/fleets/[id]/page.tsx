@@ -1,3 +1,4 @@
+import { runtimeModelLabel } from "@/lib/api/draft-list-types";
 import { fleetSources } from "@/lib/fleet-sources";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
@@ -9,7 +10,7 @@ import { getFleet } from "@/lib/api/fleets";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { startChatData, runtimeModelLabel, type ChatViewData } from "./components/view-data";
+import { startChatData, type ChatViewData } from "./components/view-data";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/events/run-summary";

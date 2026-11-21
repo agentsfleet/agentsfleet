@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { renderFleetMessage } from "@/components/domain/activity/messages/fleetMessageRenderers";
+import {ACTIVITY_TRACE_PART} from "@/components/domain/activity/replies/fleet-activity-trace";
 import {readDefaultReplyContent} from "@/components/domain/activity/replies/fleet-reply-content";
 
 afterEach(cleanup);
@@ -46,6 +47,24 @@ it("keeps an opaque data part visible without rendering arbitrary fields or comp
   expect(screen.getByText("Activity details · Preview unavailable.")).toBeTruthy();
   expect(container.textContent).not.toMatch(/do-not-execute|do-not-disclose|unsafe/);
   expect(container.querySelector("script, iframe, button[data-execute]")).toBeNull();
+});
+
+it("keeps malformed activity payloads opaque and renders valid details as text", () => {
+  const {container} = render(<Reply content={[
+    {type: "data", name: ACTIVITY_TRACE_PART, data: [{kind: "unknown", label: "private", detail: "private"}]},
+    {type: "data", name: ACTIVITY_TRACE_PART, data: [{kind: "agent", label: "Reviewer started", detail: "<img src=private>"}]},
+  ]} />);
+  expect(screen.getByText("Activity details · Preview unavailable.")).toBeTruthy();
+  expect(screen.queryByText("private")).toBeNull();
+  expect(container.querySelector("details p")?.textContent).toBe("<img src=private>");
+  expect(container.querySelector("img")).toBeNull();
+});
+
+it.each([["failed", "text-error"], ["interrupted", "text-warning"]])("shows the recorded %s activity outcome", (outcome, color) => {
+  const {container} = render(<Reply content={[{type: "data", name: ACTIVITY_TRACE_PART,
+    data: [{kind: "agent", label: "UI reviewer " + outcome, detail: "Worker stopped", outcome}]}]} />);
+  expect(container.querySelector("summary svg")?.classList.contains(color)).toBe(true);
+  expect(screen.getByText("UI reviewer " + outcome)).toBeTruthy();
 });
 
 it("keeps an image label readable without fetching its body automatically", () => {

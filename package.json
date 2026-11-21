@@ -1,7 +1,7 @@
 {
   "name": "agentsfleet",
   "private": true,
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "workspaces": [
     "ui/packages/app",
     "ui/packages/website",
@@ -9,7 +9,7 @@
   ],
   "devDependencies": {
     "@ast-grep/cli": "0.51.3",
-    "@types/bun": "^1.4.4",
+    "@types/bun": "^1.4.5",
     "tsrs": "0.25.0-ts7.1.0-beta",
     "vercel": "65.16.0",
     "zod": "^4.6.7"

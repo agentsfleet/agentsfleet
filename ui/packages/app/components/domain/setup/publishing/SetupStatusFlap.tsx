@@ -8,8 +8,7 @@ import { Button } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
-import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { SAVED_SETUP_LABEL } from "@/lib/events/fleet-activity";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
 
@@ -27,7 +26,7 @@ export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, mo
   const Icon = status.icon;
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
-      className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
+      className="fleet-setup-receipt">
       {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span>{status.label}</span></>}
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Button>
@@ -52,8 +51,7 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undef
   if (dirty) return {label: "Unsaved setup changes", icon: PencilSimpleIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
-    const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
-    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckCircleIcon, confirmed: true};
+    return {label: SAVED_SETUP_LABEL, icon: CheckCircleIcon, confirmed: true};
   }
   if (showPublication && view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};

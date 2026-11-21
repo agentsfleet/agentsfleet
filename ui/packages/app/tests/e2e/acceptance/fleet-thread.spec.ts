@@ -14,7 +14,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { openFleetFromSidebar, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
 import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
 import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
@@ -235,10 +235,10 @@ test.describe("fleet thread surface", () => {
     await expect.poll(() => streamCount(page), { timeout: ROUND_TRIP_TIMEOUT_MS }).toEqual(ONE_OPEN_STREAM);
     await markDocument(page);
 
-    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Your fleets" }).click();
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Secrets", exact: true }).click();
+    await expect(page).toHaveURL(workspaceHref(workspaceId, "secrets"));
     await expect.poll(() => streamCount(page)).toEqual({created: 1, open: 0});
-    await page.getByRole("main").locator(`a[href="${workspaceHref(workspaceId, `fleets/${fleet.id}`)}"]`).click();
+    await openFleetFromSidebar(page, workspaceId, fleet.id);
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
     await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });

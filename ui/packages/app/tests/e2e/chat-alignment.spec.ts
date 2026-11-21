@@ -4,6 +4,14 @@ import { FLEET_DETAIL, MODEL } from "@/tests/helpers/draft-fixtures";
 
 test("fleet Summary is inline and the composer keeps the approved horizontal alignment", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
+  const thread = page.getByRole("region", {name: "Fleet chat", exact: true});
+  const viewport = thread.getByRole("presentation").filter({has: page.getByRole("log")});
+  await expect(viewport).toHaveCSS("overflow-y", "auto");
+  await expect(viewport).toHaveCSS("min-height", "0px");
+  await expect(thread.getByRole("button", {name: "Jump to latest", includeHidden: true})).toHaveCSS("position", "absolute");
+  await expect(thread).toHaveCSS("flex-direction", "column");
+  await expect(thread).toHaveCSS("min-height", "0px");
+
   await expect(page.getByRole("link", {name: "Back to your fleets", exact: true})).toHaveCount(0);
   if (info.project.name !== "mobile-chromium") {
     await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
@@ -42,14 +50,23 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await page.setViewportSize(mobile ? {width: 390, height: 844} : {width: 1480, height: 1000});
   const first = {...FLEET_DETAIL, name: "Pull request review", description: "Reviews incoming pull requests", status: "active"};
   const next = {...first, id: "0199a801-1000-7000-8000-000000000008", name: "Support triage"};
-  await page.route("**/live/v1/workspaces/*/fleets?*", route => route.fulfill({json: {
-    items: new URL(route.request().url()).searchParams.has("starting_after") ? [next] : [first],
-    total: null, next_cursor: new URL(route.request().url()).searchParams.has("starting_after") ? null : "next-fleet",
-  }}));
+  let fleetReads = 0;
+  await page.route("**/live/v1/workspaces/*/fleets?*", route => {
+    fleetReads++;
+    const more = new URL(route.request().url()).searchParams.has("starting_after");
+    return route.fulfill({json: {items: more ? [next] : [first], total: null, next_cursor: more ? null : "next-fleet"}});
+  });
+  await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({json: {items: [], next_cursor: null}}));
   await page.goto(`${chatProbe}?setupAlignment=1`);
-  await page.getByRole("button", {name: mobile ? "Open navigation" : "Expand navigation", exact: true}).click();
+  if (mobile) {
+    const open = page.getByRole("button", {name: "Open navigation", exact: true});
+    await expect(open).toBeVisible();
+    expect(fleetReads).toBe(0);
+    await open.click();
+  }
   const nav = page.getByRole("navigation", {name: mobile ? "Expanded navigation" : "Primary"});
   await expect(nav.getByRole("link", {name: "Pull request review", exact: true})).toBeVisible();
+  expect(fleetReads).toBe(1);
   await nav.getByRole("button", {name: "Load more fleets"}).click();
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeVisible();
   const disclosure = nav.locator("summary").filter({hasText: "Fleets"});
@@ -58,7 +75,12 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeHidden();
   await page.keyboard.press("Enter");
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeVisible();
+  await expect(nav.getByRole("link", {name: "Edit Support triage", exact: true})).toBeVisible();
   await expect(nav.getByRole("button", {name: "Load more fleets"})).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+    await page.screenshot({path: info.outputPath(`fleet-history-${theme}.png`), animations: "disabled"});
+  }
   await page.screenshot({path: info.outputPath("fleet-disclosure.png"), scale: "css", animations: "disabled"});
 });
 
@@ -136,7 +158,7 @@ test("chat load failures flash without displacing the page and retain scoped rec
     await recovery.getByRole("button", {name: "Retry", exact: true}).click();
     await expect(recovery).toHaveCount(0);
     await expect(page.getByRole("combobox", {name: "Authoring model"})).toBeEnabled();
-    await page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}).fill("Review the callback regression");
+    await page.getByRole("textbox", {name: "What would you like your fleet to do?"}).fill("Review the callback regression");
     await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
   }
   expect(errors).toEqual([]);

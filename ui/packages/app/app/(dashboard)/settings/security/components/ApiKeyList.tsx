@@ -2,6 +2,7 @@
 
 import { type Ref, useImperativeHandle, useState, useTransition } from "react";
 import { Button, DashboardPanel, EmptyState, Time } from "@agentsfleet/design-system";
+import { SecurityResourceRow } from "@/components/account/SecurityResourceRow";
 import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
 import { DEFAULT_SORT, KEY_PREFIX, KEY_SUFFIX_REGEX } from "@/lib/api/api-keys-types";
@@ -77,14 +78,9 @@ export default function ApiKeyList({
   return (
     <div className="space-y-xl" aria-busy={pending || mutating}>
       {items.length ? <DashboardPanel padding="none"><ul className="divide-y divide-border">
-        {items.map(key => <li key={key.id} className="flex min-w-0 flex-wrap items-center gap-xl p-xl sm:p-5">
-          <span aria-hidden="true" className="hidden size-10 items-center sm:flex justify-center rounded-control border border-border"><KeyIcon size={16} /></span>
-          <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p className="break-words text-label font-medium">{key.key_name}</p>
-            <p className="mt-sm text-label text-muted-foreground"><KeyIdentifier suffix={key.display_suffix} /> · Created <Time value={key.created_at} format="date" tooltip />{key.active ? null : <> · Revoked{key.revoked_at ? <> <Time value={key.revoked_at} format="date" tooltip /></> : null}</>}</p></div>
-          <span className="text-eyebrow text-text-dim">Last used: unavailable</span>
-          <Button variant="outline" disabled={pending || mutating} onClick={() => setTarget({...key, mode: key.active ? "revoke" : "delete"})}
-            aria-label={`${key.active ? "Revoke" : "Delete"} API key ${key.key_name}`}>{key.active ? "Revoke" : "Delete"}</Button>
-        </li>)}
+        {items.map(key => (
+          <KeyRow key={key.id} row={key} disabled={pending || mutating} onAction={setTarget} />
+        ))}
       </ul></DashboardPanel> : <EmptyState title="No API keys" description="Create one when you need to connect a tool." />}
 
       {error && target === null ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -92,6 +88,23 @@ export default function ApiKeyList({
       {/* Open is controlled by `target`; ConfirmDialog only signals dismissal, so clear unconditionally. */}
       <RevokeConfirm target={target} error={error} onOpenChange={() => { setTarget(null); setError(null); }} onConfirm={onConfirm} />
     </div>
+  );
+}
+
+function KeyRow({row, disabled, onAction}: {row: ApiKeyRow; disabled: boolean; onAction: (target: ConfirmTargetActive) => void}) {
+  const mode = row.active ? "revoke" : "delete";
+  const action = row.active ? "Revoke" : "Delete";
+  const detail = (
+    <>
+      <KeyIdentifier suffix={row.display_suffix} /> · <span className="inline-block">Created <Time value={row.created_at} format="date" tooltip /></span>
+      {!row.active && <> · <span className="inline-block">Revoked{row.revoked_at && <> <Time value={row.revoked_at} format="date" tooltip /></>}</span></>}
+    </>
+  );
+  return (
+    <SecurityResourceRow kind="key" title={row.key_name} icon={<KeyIcon size={16} />} detail={detail}
+      lastUsed="Last used: unavailable"
+      action={<Button variant="outline" disabled={disabled} aria-label={`${action} API key ${row.key_name}`}
+        onClick={() => onAction({...row, mode})}>{action}</Button>} />
   );
 }
 

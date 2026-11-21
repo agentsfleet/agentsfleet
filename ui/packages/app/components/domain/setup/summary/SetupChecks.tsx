@@ -21,8 +21,9 @@ const SERVICE_LABELS: Readonly<Record<string, string>> = {github: "GitHub", slac
 const GRANT_KINDS = new Set(["grants", "grant"]);
 const DEPENDENT_KINDS = new Set(["stream", "activation"]);
 
-export function SetupChecks({checks, label, workspace, definition, onRefresh}: {checks: Review["readiness"]; label: string; workspace?: string; definition?: Definition; onRefresh?: () => Promise<void>}) {
-  const visible = checks.filter(check => !DEPENDENT_KINDS.has(check.kind) || check.state === BLOCKED);
+export function SetupChecks({checks, label, workspace, definition, onRefresh, issuesOnly = false}: {issuesOnly?: boolean; checks: Review["readiness"]; label: string; workspace?: string; definition?: Definition; onRefresh?: () => Promise<void>}) {
+  const visible = checks.filter(check => (!issuesOnly || check.state !== READY) && (!DEPENDENT_KINDS.has(check.kind) || check.state === BLOCKED));
+  if (!visible.length) return null;
   return <div className="space-y-xs">
     <List variant="plain" className="flex flex-wrap gap-x-md gap-y-xs" aria-label={label}>{visible.map(check => {
       const ready = check.state === READY;

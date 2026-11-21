@@ -179,7 +179,7 @@ test("the pull request starter remains editable and readable before any setup re
   await page.goto(`${chatProbe}?starters=1`);
   await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
   const suggestion = page.getByRole("button", {name: "Watch a pull request", exact: true});
-  const input = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
   await expect(input).toHaveValue("");
   const unfinished = page.getByRole("region", {name: "Unfinished setups"});
   const resume = unfinished.getByRole("link", {name: DRAFT.title});
@@ -217,15 +217,13 @@ test("the pull request starter remains editable and readable before any setup re
   await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
 });
 
-test("setup checks use enclosed icons and incoming messages have readable details", async ({page, chatProbe}, info) => {
+test("a saved setup has one quiet receipt and incoming messages have readable details", async ({page, chatProbe}, info) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(`${chatProbe}?setup=1`);
-  const checks = page.getByRole("list", {name: "Setup checks"});
-  await expect(checks.getByText("GitHub credential", {exact: true})).toBeVisible();
-  await expect(checks.getByText("GitHub connection", {exact: true})).toBeVisible();
-  await expect(checks.getByText("GitHub approval", {exact: true})).toBeVisible();
-  await expect(checks.locator("svg.text-success")).toHaveCount(6);
-  await expect(checks.locator("svg").first()).toHaveCSS("width", "16px");
+  const receipt = page.getByRole("region", {name: "Saved fleet setup"});
+  await expect(receipt.getByRole("heading")).toHaveText("Saved setup");
+  await expect(receipt.getByRole("list")).toHaveCount(0);
+  await expect(receipt.locator("svg")).toHaveCount(0);
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
   const disclosure = page.getByRole("button", {name: "View message"});
   await disclosure.focus(); await page.keyboard.press("Enter");
@@ -306,7 +304,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await expect(taskList).toBeVisible();
     if (await taskList.getAttribute("aria-expanded") !== "true") await taskList.click();
     for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
-    await expect(panel.getByRole("heading", {name: "Outputs", exact: true})).toHaveCount(0);
+    await expect(panel.getByRole("heading", {name: "Output", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("region", {name: "Pull requests", exact: true})).toBeAttached();
     await expectSourceHierarchy(panel);

@@ -39,8 +39,9 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   expect(command(shell!).textContent).toContain("Ran command Success");
   expect(command(request!).textContent).toContain("Failed: making request");
   expect(within(command(request!)).getByText("Failed: making request").className).not.toContain("sr-only");
-  expect(command(custom!).textContent).toContain("Used tool Success");
-  expect(screen.queryByText(/0.08/)).toBeNull();
+  expect(command(custom!).textContent).toContain("Used custom_check Success");
+  expect(within(shell!).getByText("0.08 0.04 0.00 1/199 6")).toBeTruthy();
+  expect(within(shell!).queryByRole("heading", {name: "Input"})).toBeNull();
   const first = command(shell!);
   first.focus(); await user.keyboard("{Enter}");
   expect(first.getAttribute("aria-expanded")).toBe("true");
@@ -49,7 +50,8 @@ it("groups calls behind one disclosure with keyboard-accessible individual comma
   expect(shell!.querySelector('[data-command-outcome]')?.textContent).toBe("Success");
   expect(command(request!).getAttribute("aria-expanded")).toBe("false");
   await user.click(first);
-  expect(shell!.textContent).not.toContain("0.08 0.04 0.00 1/199 6");
+  expect(shell!.textContent).toContain("0.08 0.04 0.00 1/199 6");
+  expect(within(shell!).queryByRole("heading", {name: "Input"})).toBeNull();
   await user.click(group);
   expect(screen.queryByRole("list", {name: TOOL_CALLS_LABEL})).toBeNull();
 });
@@ -117,7 +119,7 @@ it.each([
 it("names unknown tools without inspecting arguments and shows recorded output literally", async () => {
   show([call({name: "custom_check", args: {internal_path: "/tmp/check.py"}, outputHead: "1309 tests passed; suite still running"})]);
   renderThread(); openGroup();
-  expect(command(rows()[0]!).textContent).toContain("Used tool");
+  expect(command(rows()[0]!).textContent).toContain("Used custom_check");
   expect(within(rows()[0]!).queryByText("Action · custom_check")).toBeNull();
   expect(screen.queryByText(/1309|\/tmp\/check/)).toBeNull();
   await userEvent.setup().click(command(rows()[0]!));

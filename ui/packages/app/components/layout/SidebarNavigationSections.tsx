@@ -83,7 +83,7 @@ function NavItem({
   );
   const common = {
     "aria-label": label,
-    className: cn("h-11 min-h-11 w-11 gap-lg justify-center px-0 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground md:h-12 md:min-h-12 md:w-full", !collapsed && "md:justify-start md:px-lg", overlay && "w-full justify-start px-lg", label === "New fleet" && "mb-md bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
+    className: cn("h-11 min-h-11 w-11 gap-lg justify-center font-medium px-0 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground md:h-12 md:min-h-12 md:w-full", !collapsed && "md:justify-start md:px-lg", overlay && "w-full justify-start px-lg", label === "New fleet" && "mb-md bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
     onClick,
   };
   const item = external

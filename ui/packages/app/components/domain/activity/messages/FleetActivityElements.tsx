@@ -20,7 +20,7 @@ export function IntegrationActivityElement({data}: {data: ActivityElementData}) 
 }
 
 export function WakeupActivityElement({data}: {data: ActivityElementData}) {
-  return <ActivityRow data={data} annotation={<FleetRunDetails eventId={data.eventId} status={data.status} />} />;
+  return <ActivityRow data={data} wokeOnSchedule annotation={<FleetRunDetails eventId={data.eventId} status={data.status} />} />;
 }
 
 /** Keep decisions in the fleet Summary, backed by its authenticated gate reader. */
@@ -38,10 +38,10 @@ export function DefaultActivityElement({data}: {data: FleetChatElementData["defa
   </div>;
 }
 
-function ActivityRow({data, annotation}: {data: ActivityElementData; annotation: ReactNode}) {
+function ActivityRow({data, annotation, wokeOnSchedule}: {data: ActivityElementData; annotation: ReactNode; wokeOnSchedule?: boolean}) {
   const senderLabel = useSenderLabel();
   return <FleetActivityRow sender={senderLabelFor(data.actor, senderLabel)} createdAt={data.createdAt}
-    title={data.title} headline={data.headline} outcome={data.outcome} failed={data.failed} messageRole="system"
+    title={data.title} wokeOnSchedule={wokeOnSchedule} headline={data.headline} outcome={data.outcome} failed={data.failed} messageRole="system"
     detailsLabel={data.details.kind === "message" ? "View message" : "View event"} annotation={annotation}>
     {data.details.kind === "none" ? null : <ActivityContent details={data.details} />}
   </FleetActivityRow>;

@@ -16,36 +16,41 @@ export function ChatComposerModel({ children, select, ...trigger }: ModelProps) 
     : <span data-composer-part="model" className="min-w-0 font-sans text-eyebrow leading-label text-muted-foreground">{content}</span>;
 }
 
-export function ChatComposerHint({ children }: { children?: ReactNode }) {
-  return <div data-composer-part="hint" className="mt-md flex items-center justify-between gap-lg px-sm font-sans text-eyebrow leading-eyebrow text-text-dim">
-    <span className="min-w-0">Enter to send · Shift + Enter for a new line</span>
+export function ChatComposerHint({ children, hint = "Enter to send · Shift + Enter for a new line" }: { children?: ReactNode; hint?: string }) {
+  return <div data-composer-part="hint" className="fleet-composer-hint">
+    <span className="min-w-0">{hint}</span>
     {children ? <span className="min-w-0">{children}</span> : null}
   </div>;
 }
 
 type Props = {
-  id?: string; label: string; placeholder: string;
+  id?: string; label: string;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   disabled: boolean; focusKey?: number; stackActions?: boolean;
-  children?: ReactNode; toolbar: ReactNode; actions: ReactNode;
+  children?: ReactNode; toolbar: ReactNode; actions: ReactNode; input: ReactNode;
 };
 
 /** Both chat purposes use the same input, focus lifecycle and height limits. */
-export function ChatComposerFrame({id, label, placeholder, inputRef, disabled, focusKey, stackActions = false, children, toolbar, actions}: Props) {
+export function ChatComposerFrame({id, label, inputRef, disabled, focusKey, stackActions = false, children, toolbar, actions, input}: Props) {
   useComposerFocus(inputRef, disabled, focusKey);
-  return <DashboardPanel asChild padding="none" className="min-h-0 shrink-0 rounded-lg bg-card px-xl pb-[calc(var(--sp-lg)+1px)] pt-xl transition-colors duration-150 focus-within:border-muted-foreground motion-reduce:transition-none">
+  return <DashboardPanel asChild padding="none" className="fleet-composer-surface">
     <ComposerPrimitive.Root id={id} className="flex min-h-0 flex-col gap-sm" aria-label={label}>
       <ComposerQuote />
       {children}
       <div className="flex min-h-chat-input flex-row items-stretch">
-        <ComposerPrimitive.Input asChild placeholder={placeholder} submitMode="enter" disabled={disabled}>
-          <Textarea appearance="composer" ref={inputRef} aria-label={placeholder} rows={2}
-            className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto px-sm py-0" />
-        </ComposerPrimitive.Input>
+        {input}
       </div>
       <div className={cn("mt-md flex min-w-0 flex-wrap items-center justify-between gap-lg", stackActions && "max-[42.5rem]:gap-y-sm")}><div className={cn("flex min-w-0 flex-1 basis-36 items-center gap-sm", stackActions && "max-[42.5rem]:basis-full")}>{toolbar}</div><div className="ml-auto flex shrink-0 items-center gap-sm">{actions}</div></div>
     </ComposerPrimitive.Root>
   </DashboardPanel>;
+}
+
+export function ChatComposerInput({inputRef, placeholder, disabled, ...fieldProps}:
+  Pick<Props, "inputRef" | "disabled"> & {placeholder: string} & ComponentProps<typeof Textarea>) {
+  return (<ComposerPrimitive.Input asChild placeholder={placeholder} submitMode="enter" disabled={disabled}>
+          <Textarea appearance="composer" {...fieldProps} ref={inputRef} aria-label={placeholder} rows={2}
+            className="fleet-composer-input" />
+        </ComposerPrimitive.Input>);
 }
 
 function useComposerFocus(input: RefObject<HTMLTextAreaElement | null>, disabled: boolean, focusKey?: number): void {

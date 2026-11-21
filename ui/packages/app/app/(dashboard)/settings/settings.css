@@ -1,0 +1,74 @@
+@layer components {
+  .billing-filters { @apply flex flex-wrap items-center gap-md; }
+  .billing-filter { @apply flex w-full min-w-0 items-center justify-between gap-md; }
+  .billing-filter [role="combobox"] { max-width: 65%; }
+  .billing-filter-note { @apply text-eyebrow leading-label text-text-dim; }
+
+  .billing-totals { @apply grid divide-y divide-border; }
+  .billing-metric {
+    @apply grid min-w-0 items-start gap-x-xl p-xl leading-label;
+    grid-template-columns: 1fr auto;
+  }
+  .billing-metric > dt { @apply text-eyebrow leading-label font-semibold text-muted-foreground; }
+  .billing-metric-value {
+    @apply col-start-2 row-span-2 row-start-1 text-foreground;
+    overflow-wrap: anywhere;
+  }
+  .billing-metric-value[data-primary] { @apply text-success; }
+  .billing-metric-value strong {
+    @apply block text-usage-total leading-label tracking-usage-total;
+    font-weight: 750;
+  }
+  .billing-metric-note { @apply col-start-1 text-eyebrow leading-label text-text-dim; }
+
+  .security-resource-title { @apply flex flex-wrap items-center gap-sm text-label font-medium; }
+  .security-resource-title > span { overflow-wrap: anywhere; }
+
+  .team-row {
+    @apply grid min-w-0 items-center gap-md p-xl;
+    grid-template: "identity action" auto "role ." auto "date ." auto / minmax(0, 1fr) 44px;
+  }
+  .team-avatar { grid-area: avatar; @apply hidden size-9 shrink-0 items-center justify-center rounded-full text-eyebrow font-bold; }
+  .team-role { grid-area: role; @apply text-label text-muted-foreground; }
+  .team-date { grid-area: date; @apply text-eyebrow leading-eyebrow text-text-dim; }
+  .team-row-action { grid-area: action; }
+
+  .model-default { @apply flex flex-wrap items-center gap-xl; }
+  .model-default-identity { @apply flex min-w-0 basis-full flex-col gap-xl; }
+  .models-heading { @apply min-h-5; }
+  .models-heading h2 { @apply flex h-5 items-center; }
+  .model-credential { @apply mt-md flex items-center gap-md text-eyebrow text-text-dim; }
+  .model-active { @apply inline-flex items-center gap-md text-label font-title text-success; }
+  .model-active > span { @apply size-1.5 rounded-full bg-success; }
+  .models-provider-footer { @apply flex flex-col flex-wrap items-start justify-between gap-5 border-t border-border py-5; }
+
+  @variant summary {
+    .team-row {
+      @apply gap-x-lg gap-y-1.5 px-5 py-4.5;
+      grid-template: "avatar identity role action" auto ". date . ." auto / 36px minmax(0, 1fr) 72px 36px;
+    }
+    .team-avatar { display: flex; }
+    .model-default-identity { @apply flex-1 basis-auto flex-row items-center; }
+    .models-provider-footer { @apply flex-row items-center; }
+    .billing-filters { @apply gap-lg; }
+    .billing-filter { @apply w-auto; }
+    .billing-filter [role="combobox"] { @apply max-w-64; }
+    .billing-filter-note { @apply ml-auto; }
+    .billing-totals { @apply divide-x divide-y-0; grid-template-columns: 2fr 1fr 1fr; }
+    .billing-metric { display: block; }
+    .billing-metric > dt { @apply mb-md; }
+    .billing-metric-value strong { display: inline; }
+    .billing-metric-note { @apply mt-md; }
+  }
+
+  @media (min-width: 901px) {
+    .team-row {
+      @apply gap-x-xl gap-y-sm;
+      grid-template: "avatar identity role date action" auto / 36px minmax(0, 1fr) 76px 148px 36px;
+    }
+  }
+
+  @variant summary-medium {
+    .billing-metric { @apply p-2xl; }
+  }
+}

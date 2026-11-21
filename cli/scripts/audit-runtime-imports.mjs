@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 // Belt-and-suspenders dev-dep purity audit. oxlint catches missing-extension
 // errors via `import/extensions`, but doesn't currently flag devDependency

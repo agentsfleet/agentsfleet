@@ -1,5 +1,5 @@
 import {mockStream, renderThread, postSteerMock} from "./fleet-thread/harness";
-import {act, fireEvent, screen, waitFor} from "@testing-library/react";
+import {act, fireEvent, screen, waitFor, within} from "@testing-library/react";
 import {afterEach, expect, it, vi} from "vitest";
 import {PREVIEW_FILE_LIMIT} from "@/lib/api/upload-preview";
 
@@ -65,7 +65,10 @@ it("sends through native preparation and renders the returned receipt as a tempo
   await choose(new File(["sample"], "notes.txt"));
   fireEvent.click(screen.getByRole("button", {name: "Send"}));
   expect(await screen.findByText(/Upload preview · Not saved to fleet history/)).toBeTruthy();
-  expect(screen.getByText("notes.txt")).toBeTruthy();
+  expect(within(screen.getByRole("log")).getByText("notes.txt")).toBeTruthy();
+  const sources = within(screen.getByRole("region", {name: "Sources"}));
+  fireEvent.click(sources.getByText("1 attached file"));
+  expect(sources.getByText("notes.txt")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Remove attachment"})).toBeNull();
   expect(network).toHaveBeenCalledOnce(); expect(postSteerMock).not.toHaveBeenCalled();
 });

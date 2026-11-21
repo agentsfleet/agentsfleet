@@ -72,6 +72,20 @@ describe("the approved team list", () => {
     expect(screen.getByText("Your account")).toBeTruthy();
     expect(screen.getByText("You’re the owner")).toBeTruthy();
   });
+  it("keeps both empty account sections visible and shows their recorded totals", () => {
+    renderView([], []);
+    expect(screen.getByRole("heading", {name: "Members 0"})).toBeTruthy();
+    expect(screen.getByText("No members.")).toBeTruthy();
+    expect(screen.getByRole("heading", {name: "Pending invitations 0"})).toBeTruthy();
+    expect(screen.getByText("No pending invitations.")).toBeTruthy();
+  });
+  it("names the signed-in owner’s account in the invite and describes the scope on the email field", async () => {
+    renderView([{...JOHN, user_id: "other", display_name: "Another owner"}, JOHN]);
+    await userEvent.setup().click(screen.getByRole("button", {name: "Invite member"}));
+    const dialog = within(screen.getByRole("dialog", {name: "Invite a teammate"}));
+    expect(dialog.getByText(`${JOHN_NAME}’s account`)).toBeTruthy();
+    expect(dialog.getByRole("textbox", {name: "Email address", description: /every workspace in this account/})).toBeTruthy();
+  });
   it("copies an invitation link without dismissing its menu or changing membership", async () => {
     const user = userEvent.setup();
     const copied = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
@@ -245,14 +259,17 @@ it("searches members and pending invitations without changing account access or 
   await user.type(search, BOB_NAME);
   await waitFor(() => expect(screen.queryByRole("listitem", {name: JOHN_NAME})).toBeNull());
   expect(rowOf(BOB_NAME)).toBeTruthy();
-  expect(screen.queryByRole("region", {name: "Pending invitations"})).toBeNull();
+  expect(screen.getByRole("heading", {name: "Pending invitations 1"})).toBeTruthy();
+  expect(screen.getByText("No invitations match your search.")).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Members 2"})).toBeTruthy();
   await user.click(screen.getByRole("button", {name: "Clear search"}));
   await user.type(search, INVITE.email.toUpperCase());
   await waitFor(() => expect(screen.queryByRole("listitem", {name: BOB_NAME})).toBeNull());
   expect(rowOf(INVITE.email)).toBeTruthy();
   await user.clear(search);
   await user.type(search, "no-person-matches");
-  await screen.findByText("No matching people");
+  await screen.findByText("No members match your search.");
+  expect(screen.getByText("No invitations match your search.")).toBeTruthy();
   expect(actions.removeMemberAction).not.toHaveBeenCalled();
   expect(actions.revokeInviteAction).not.toHaveBeenCalled();
   expect(actions.loadTeamAction).not.toHaveBeenCalled();

@@ -1,65 +1,43 @@
 "use client";
 
-import type { BillingReport } from "@/lib/api/billing_report";
-import { useState, useTransition, type ReactNode } from "react";
+import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Time } from "@agentsfleet/design-system";
-import { BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY, BILLING_PERIOD_WEEK } from "@/lib/api/billing-report-values";
+import { Spinner } from "@agentsfleet/design-system";
+import type { BillingReport } from "@/lib/api/billing_report";
+import { BILLING_PERIOD_MONTH } from "@/lib/api/billing-report-values";
 import { ALL_FLEETS_LABEL, SETUP_LABEL } from "../lib/report-format";
 import { BILLING_ALL, BILLING_QUERY, BILLING_SETUP, changedFilter, selectedBillingMonth } from "../lib/report-query";
-import { reportingMonths } from "../lib/report-months";
+import { BillingFilter } from "./BillingFilter";
+import { BillingPeriodFilter } from "./BillingPeriodFilter";
 
-type Props = { report: BillingReport };
-type Choice = { value: string; label: ReactNode };
-
-export function BillingFilters({ report }: Props) {
+export function BillingFilters({report}: {report: BillingReport}) {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
-  const fleets = report.filters.fleets.flatMap(fleet => fleet.id === null ? []
-    : [{ value: fleet.id, label: fleet.name ?? fleet.id }]);
-  const [calendarNow, setCalendarNow] = useState(() => new Date());
-  const months = reportingMonths(calendarNow, report.from_at);
-  const change = (key: string, value: string, through?: string) => {
+  const fleet = params.get(BILLING_QUERY.fleet) || BILLING_ALL;
+  const fleets = [{value: BILLING_ALL, label: ALL_FLEETS_LABEL}, ...report.filters.fleets.flatMap(
+    item => item.id === null ? [] : [{value: item.id, label: item.name ?? item.id}],
+  )];
+  if (!fleets.some(choice => choice.value === fleet)) {
+    fleets.push({value: fleet, label: fleet === BILLING_SETUP ? SETUP_LABEL : fleet});
+  }
+
+  function change(key: string, value: string, through?: string) {
     const current = new URLSearchParams(params.toString());
     const next = key === BILLING_QUERY.period && value === BILLING_PERIOD_MONTH
       ? selectedBillingMonth(current, through) : changedFilter(current, key, value);
-    startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
-  };
-  const fleet = params.get(BILLING_QUERY.fleet) || BILLING_ALL;
-  if (fleet !== BILLING_ALL && !fleets.some(choice => choice.value === fleet)) {
-    fleets.push({value: fleet, label: fleet === BILLING_SETUP ? SETUP_LABEL : fleet});
+    startTransition(() => router.push(`${pathname}?${next}`, {scroll: false}));
   }
-  const periodChoices = months.map(month => ({value: month.value, label: <Time value={month.instant} format="month" />}));
-  const month = months.find(choice => choice.value === report.from_at.slice(0, 7));
-  const captured = report.period === BILLING_PERIOD_MONTH && params.has(BILLING_QUERY.through)
-    && (!month?.through || Date.parse(month.through) !== Date.parse(report.through_at));
-  if (captured) periodChoices.unshift({value: "partial-month", label: <><Time value={report.from_at} format="month" /> · through <Time value={report.through_at} format="date" /></>});
-  const period = captured ? "partial-month" : report.period === BILLING_PERIOD_MONTH ? report.from_at.slice(0, 7) : report.period;
-  return <div className="space-y-md"><div className="relative flex flex-wrap items-center gap-lg max-summary:gap-md [&>div:has([role=combobox])]:w-full summary:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
-    <Filter label="Period" value={period} disabled={pending}
-      onOpenChange={open => {if (open) setCalendarNow(new Date());}}
-      choices={[...periodChoices, {value: BILLING_PERIOD_WEEK, label: "Last 7 days"}, ...(report.period === BILLING_PERIOD_TODAY ? [{value: BILLING_PERIOD_TODAY, label: "Today"}] : [])]}
-      onChange={value => {const month = months.find(choice => choice.value === value); change(BILLING_QUERY.period, month ? BILLING_PERIOD_MONTH : value, month?.through);}} />
-    <Filter label="Fleet" value={fleet} disabled={pending}
-      choices={[{ value: BILLING_ALL, label: ALL_FLEETS_LABEL }, ...fleets]}
-      onChange={value => change(BILLING_QUERY.fleet, value)} />
-    {pending ? <span className="absolute right-0 top-0"><Spinner size="sm" label="Updating report…" /></span> : null}
-  </div>
 
-  </div>;
-}
-
-function Filter({ label, value, choices, onChange, disabled, onOpenChange }: {
-  label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean;
-  onOpenChange?: (open: boolean) => void;
-}) {
-  return <div className="flex min-w-0 items-center gap-md">
-    <Label className="mb-0 block font-sans text-eyebrow font-normal leading-label text-muted-foreground">{label}</Label>
-    <Select value={value} onValueChange={onChange} disabled={disabled} onOpenChange={onOpenChange}>
-      <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-auto min-w-36 max-w-[65%] pr-xl font-sans text-label font-normal text-muted-foreground summary:ml-0 summary:max-w-64 pointer-coarse:min-w-36 [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
-      <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
-    </Select>
-  </div>;
+  return (
+    <div className="billing-filters" aria-busy={pending}>
+      <BillingPeriodFilter report={report} hasCutoff={params.has(BILLING_QUERY.through)} disabled={pending}
+        onChange={(value, through) => change(BILLING_QUERY.period, value, through)} />
+      <BillingFilter label="Fleet" value={fleet} choices={fleets} disabled={pending}
+        onChange={value => change(BILLING_QUERY.fleet, value)} />
+      <span className="billing-filter-note">Periods in UTC · Date ranges in local time</span>
+      {pending && <Spinner size="sm" label="Updating report…" />}
+    </div>
+  );
 }

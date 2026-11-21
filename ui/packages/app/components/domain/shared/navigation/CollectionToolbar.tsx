@@ -18,7 +18,7 @@ export function CollectionToolbar({ label, value, onChange, summary }: Props) {
         onChange={(event) => onChange(event.target.value)} className="min-h-11 border-0 bg-transparent pl-9 focus-visible:ring-0 focus-visible:ring-offset-0" />
     </div>
     <div className="flex items-center gap-md">
-      <output className="text-eyebrow text-text-dim">{summary}</output>
+      <output className="text-eyebrow text-muted-foreground">{summary}</output>
       {value ? <Button size="sm" variant="ghost" onClick={() => onChange("")}>Clear search</Button> : null}
     </div>
   </div>;
