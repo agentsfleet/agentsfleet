@@ -1,7 +1,7 @@
 //! A setup run whose frame never left the daemon is released: its draft turn
 //! is assigned again at once, at the next fence, without waiting for a lapse.
 
-use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED};
+use afd_state::sql::RUN_STATUS_ACTIVE;
 
 use super::Case;
 
@@ -28,11 +28,8 @@ async fn an_unsent_setup_run_is_released_and_its_turn_assigned_again() {
     assert_eq!(again.fence, first.fence + 1, "at the next fence");
     assert_eq!(
         case.runs().await,
-        [
-            (1, RUN_STATUS_EXPIRED.to_owned()),
-            (2, RUN_STATUS_ACTIVE.to_owned())
-        ],
-        "the released run expired, and its rerun holds the turn"
+        [(2, RUN_STATUS_ACTIVE.to_owned())],
+        "the never-sent run is gone, and its rerun holds the turn"
     );
     case.cleanup().await;
 }

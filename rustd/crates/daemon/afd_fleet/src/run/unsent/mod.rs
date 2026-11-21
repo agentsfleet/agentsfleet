@@ -49,7 +49,6 @@ impl Runs {
             .bind(runner_id)
             .bind(fence)
             .bind(sql::RUN_STATUS_ACTIVE)
-            .bind(sql::RUN_STATUS_EXPIRED)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE_UNSENT))?;

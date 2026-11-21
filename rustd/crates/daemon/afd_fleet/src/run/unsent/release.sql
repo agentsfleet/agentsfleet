@@ -6,13 +6,14 @@
 -- settled, or a thread a later assignment has taken, is left untouched and nothing is
 -- answered. The lock order is thread, then run, as in every assignment.
 --
--- The run ends expired, as a lapsed run does, but with its lease cut to its metering cursor:
--- it never ran, so the billing sweep finds no runtime to charge. The thread is freed the way
+-- The run is deleted: no runner ever heard of it, so it holds no items, usage or folds, and a
+-- run that never left the daemon must not count toward its turn's EVENT_RUNS_MAX (every row
+-- of the turn counts, `assign_turn_head.sql` earlier_runs). The thread is freed the way
 -- an assignment that issued no run frees it (`release_runless_thread.sql`), so the next
 -- assignment takes the same work at the next fence. A fleet's thread is keyed by the fleet,
 -- a draft's by the draft, so one statement serves both.
 --
--- $1 run · $2 runner · $3 fence · $4 active status · $5 expired status
+-- $1 run · $2 runner · $3 fence · $4 active status
 WITH held AS MATERIALIZED (
     SELECT COALESCE(l.fleet_id, l.draft_id) AS thread_id
     FROM thread.runs l
@@ -24,9 +25,8 @@ WITH held AS MATERIALIZED (
     WHERE s.fencing_token = $3
     FOR UPDATE OF s
 ), released AS (
-    UPDATE thread.runs l
-    SET status = $5, run_expires_at = l.last_metered_at, updated_at = now()
-    FROM thread t
+    DELETE FROM thread.runs l
+    USING thread t
     WHERE l.id = $1 AND l.runner_id = $2 AND l.fencing_token = $3 AND l.status = $4
       AND COALESCE(l.fleet_id, l.draft_id) = t.id
     RETURNING t.id AS thread_id

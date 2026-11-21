@@ -10,20 +10,20 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_EXPIRED, RUN_STATUS_REPORTED};
+use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_REPORTED};
 
 use crate::report_seed::{Held, held};
 
-/// The run's status, whether its lease is cut to its metering cursor, and
-/// whether its thread is still held.
-async fn state(held: &Held) -> (String, bool, bool) {
+/// The run's status, `None` once its row is gone, and whether its fleet's
+/// thread is still held.
+async fn state(held: &Held) -> (Option<String>, bool) {
     sqlx::query_as(
-        "SELECT l.status, l.run_expires_at = l.last_metered_at, \
+        "SELECT (SELECT status FROM thread.runs WHERE id = $1), \
                 s.run_expires_at > clock_timestamp() \
-         FROM thread.runs l JOIN thread.threads s ON s.id = l.fleet_id \
-         WHERE l.id = $1",
+         FROM thread.threads s WHERE s.id = $2",
     )
     .bind(&held.issued.run_id)
+    .bind(&held.fleet)
     .fetch_one(
         &mut *held
             .fixtures
@@ -37,9 +37,9 @@ async fn state(held: &Held) -> (String, bool, bool) {
 }
 
 // Value: protects=a run whose frame never reached its runner is put back on the queue at
-// once, not left to lapse and be billed its lease; fails_when=the release skips the run's
-// expiry, the thread's, or the billing cut; why_new=the gateway released nothing before;
-// seam=the release statement over live Postgres, then the production selection.
+// once and never counts against its turn's EVENT_RUNS_MAX; fails_when=the release keeps the
+// run's row, so the reassignment counts it, or leaves the thread held; why_new=Greptile P1
+// on PR #855; seam=the release statement over live Postgres, then the production selection.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unsent_run_is_released_and_its_turn_assigned_again() {
@@ -52,14 +52,18 @@ async fn an_unsent_run_is_released_and_its_turn_assigned_again() {
     assert!(released, "the held run is released");
     assert_eq!(
         state(&held).await,
-        (RUN_STATUS_EXPIRED.to_owned(), true, false),
-        "the run expired with nothing to bill, and its thread is free"
+        (None, false),
+        "the never-sent run is gone, and its thread is free"
     );
 
     let again = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
         .expect("the released turn is assignable at once");
     assert_eq!(again.turn_id, held.turn_id, "the same turn, assigned again");
+    assert_eq!(
+        again.earlier_runs, 0,
+        "a run that never left the daemon counts against nothing"
+    );
     assert!(again.fence > held.fence, "at the next fence");
 }
 
@@ -80,7 +84,7 @@ async fn a_release_off_its_fence_or_runner_or_after_settlement_changes_nothing()
         assert!(!released, "{runner} at {token} holds no such run");
         assert_eq!(
             state(&held).await,
-            (RUN_STATUS_ACTIVE.to_owned(), false, true),
+            (Some(RUN_STATUS_ACTIVE.to_owned()), true),
             "the run and its thread are untouched"
         );
     }
@@ -106,7 +110,7 @@ async fn a_release_off_its_fence_or_runner_or_after_settlement_changes_nothing()
     assert!(!released, "a settled run is not released");
     assert_eq!(
         state(&held).await,
-        (RUN_STATUS_REPORTED.to_owned(), false, true),
+        (Some(RUN_STATUS_REPORTED.to_owned()), true),
         "a run settled meanwhile keeps its row and its thread"
     );
 }
