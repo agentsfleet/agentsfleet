@@ -2,9 +2,9 @@
 //! trace under the bounds `af_wire::tool_trace` declares.
 //!
 //! The daemon re-checks every bound and drops a trace that breaks one, so the
-//! runner builds one that cannot: past `TRACE_MAX_CALLS` a call is counted as
-//! omitted, and past `TRACE_MAX_BYTES` optional output edges are reclaimed
-//! before a call is counted as omitted when its essential row does not fit.
+//! runner builds rows that cannot: each row's arguments and edges are cut to
+//! their own bounds. No count or size caps the trace itself; every call is
+//! listed, and the report's frame bounds the whole.
 //!
 //! Everything here takes [`Clean`] text, so the scrub has already masked every
 //! secret and NUL before a bound is applied.
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use af_wire::tool_trace::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, FileChange, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
-    TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
+    ToolCallStatus, ToolTrace, ToolTraceCall, encoded_len,
 };
 use serde_json::{Map, Value};
 
@@ -120,25 +120,9 @@ fn leaf(text: &str) -> Option<String> {
 }
 
 /// The run's trace as it grows.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Trace {
     calls: Vec<ToolTraceCall<'static>>,
-    omitted: u64,
-    room: usize,
-}
-
-impl Default for Trace {
-    fn default() -> Self {
-        let frame = ToolTrace {
-            calls: Vec::new(),
-            omitted_call_count: u64::MAX,
-        };
-        Self {
-            calls: Vec::new(),
-            omitted: 0,
-            room: TRACE_MAX_BYTES.saturating_sub(encoded_len(&frame)),
-        }
-    }
 }
 
 impl Trace {
@@ -150,11 +134,7 @@ impl Trace {
         arguments: Map<String, Value>,
         outcome: Outcome,
     ) {
-        if self.calls.len() >= TRACE_MAX_CALLS {
-            self.omitted += 1;
-            return;
-        }
-        let mut row = ToolTraceCall {
+        self.calls.push(ToolTraceCall {
             call_id: Cow::Owned(number.to_string()),
             name: Cow::Owned(name.to_owned()),
             arguments,
@@ -165,40 +145,12 @@ impl Trace {
             exit_code: outcome.exit_code,
             duration_ms: af_core::clock::saturating_millis(outcome.elapsed),
             changes: outcome.changes,
-        };
-        // A comma joins every row after the first.
-        let joint = usize::from(!self.calls.is_empty());
-        let mut cost = encoded_len(&row) + joint;
-        if cost > self.room {
-            row.output_head = None;
-            row.output_tail = None;
-            cost = encoded_len(&row) + joint;
-        }
-        // Keep the call inventory before previews. Earlier output edges must
-        // not make a later call disappear; full outputs have their own records.
-        for previous in &mut self.calls {
-            if cost <= self.room {
-                break;
-            }
-            let before = encoded_len(previous);
-            previous.output_head = None;
-            previous.output_tail = None;
-            self.room += before - encoded_len(previous);
-        }
-        if cost > self.room {
-            self.omitted += 1;
-            return;
-        }
-        self.room -= cost;
-        self.calls.push(row);
+        });
     }
 
     /// The finished trace, including a known empty set when no tool ran.
     pub(crate) fn finish(self) -> ToolTrace<'static> {
-        ToolTrace {
-            calls: self.calls,
-            omitted_call_count: self.omitted,
-        }
+        ToolTrace { calls: self.calls }
     }
 }
 

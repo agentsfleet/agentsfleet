@@ -1,12 +1,12 @@
 //! A run's full tool-call records, packed into the posts the daemon takes.
 //!
-//! Each body carries the run's fencing token and as many records as fit in
-//! `DETAIL_POST_MAX_BYTES`; the agent already cut every record to fit a post
-//! on its own. Records are encoded once and carried as raw JSON.
+//! Each body carries the run's fencing token and as many records as fit one
+//! runner frame (`MESSAGE_BYTES_MAX`), the only bound a post has; the agent
+//! already cut every record to fit a post on its own. Records are encoded
+//! once and carried as raw JSON.
 
-use af_wire::tool_detail::{
-    DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest,
-};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
+use af_wire::tool_detail::{RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest};
 use bytes::Bytes;
 
 use crate::error::{self, Result};
@@ -27,7 +27,7 @@ pub(crate) fn bodies(fencing_token: u64, records: &[ToolCallRecord<'_>]) -> Resu
     let mut size = envelope;
     for text in &encoded {
         // A comma joins each record after a body's first.
-        if !batch.is_empty() && size + 1 + text.len() > DETAIL_POST_MAX_BYTES {
+        if !batch.is_empty() && size + 1 + text.len() > MESSAGE_BYTES_MAX {
             bodies.push(seal(fencing_token, std::mem::take(&mut batch))?);
             size = envelope;
         }

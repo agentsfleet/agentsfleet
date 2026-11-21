@@ -24,7 +24,6 @@ CREATE TABLE thread.items (
     output               TEXT    NOT NULL,
     output_line_count    BIGINT  NOT NULL,
     truncated            BOOLEAN NOT NULL,
-    byte_count           BIGINT  NOT NULL,
     changes              JSONB,
     created_at           TIMESTAMPTZ(3)  NOT NULL,
     updated_at           TIMESTAMPTZ(3)  NOT NULL,

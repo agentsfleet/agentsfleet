@@ -53,7 +53,6 @@ fn assert_every_named_code_is_registered() {
         error_code::RUN_STALE_FENCING_TOKEN,
         error_code::RUN_NOT_FOUND,
         error_code::RUN_ADMIN_STATE_BLOCKED,
-        error_code::RUN_EXCEEDED_MAX_RUNTIME,
         error_code::RUN_LOST,
         error_code::RUN_CHECKPOINT_INCOMPATIBLE,
         error_code::RUN_CHECKPOINT_CONFLICT,

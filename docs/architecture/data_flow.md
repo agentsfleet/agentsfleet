@@ -250,7 +250,7 @@ A row that failed says why; a row that succeeded records that it did, without re
 
 The turns table and fleet header use summaries. The chat transcript reads bodies through `GET /messages`; one turn's detail stays a separate read. See [watch recovery](#d-watch--user-side-how-the-live-tail-surfaces) for reconnect behavior.
 
-`tool_calls` is a third body column under the same rule. It is the run's bounded tool trace, at most 200 calls and 64 KiB ([Runner Fleet, Live activity](./runner_fleet.md#live-activity-the-sse-tail)). The transcript and the single-turn read select it, and the list never does.
+`tool_calls` is a third body column under the same rule. It is the run's tool trace: every call, each with a short preview, bounded only by the report frame ([Runner Fleet, Live activity](./runner_fleet.md#live-activity-the-sse-tail)). The transcript and the single-turn read select it, and the list never does.
 
 A row from before the column existed holds `NULL`, which reads as "not recorded", never as "no tools ran".
 

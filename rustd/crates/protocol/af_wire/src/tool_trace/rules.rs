@@ -1,16 +1,15 @@
 //! The `custom` rules a trace is declared with.
 //!
 //! Each rule reports the spelling of the [`TraceRejection`] it is, so a garde
-//! report maps back to the reason a drop logs (`TraceRejection::of`). The one
-//! bound garde writes itself, the call count, is named by its path instead.
+//! report maps back to the reason a drop logs (`TraceRejection::of`).
 
 use serde_json::{Map, Value};
 
 use crate::activity::CALL_ID_MAX_BYTES;
 
 use super::{
-    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, TRACE_MAX_BYTES, ToolTrace, ToolTraceCall, TraceRejection,
-    changes_free_of_nul, edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
+    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, ToolTraceCall, TraceRejection, changes_free_of_nul,
+    edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
 };
 
 /// The smallest call number: calls count from 1.
@@ -23,14 +22,6 @@ fn refuse_unless(holds: bool, rejection: TraceRejection) -> garde::Result {
     } else {
         Err(garde::Error::new(rejection.as_str()))
     }
-}
-
-/// The whole trace, encoded, within [`TRACE_MAX_BYTES`].
-pub(super) fn trace_fits<C: ?Sized>(trace: &ToolTrace<'_>, _context: &C) -> garde::Result {
-    refuse_unless(
-        encoded_len(trace) <= TRACE_MAX_BYTES,
-        TraceRejection::TooLarge,
-    )
 }
 
 /// Every string one call carries, arguments included, free of NUL.

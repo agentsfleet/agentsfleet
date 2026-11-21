@@ -8,7 +8,7 @@ WITH locked_thread AS MATERIALIZED (
     FOR NO KEY UPDATE OF s
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id,
-           l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at, l.max_runtime_seconds,
+           l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at,
            a.fencing_token AS live_fence, a.run_expires_at AS thread_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
@@ -35,17 +35,17 @@ WITH locked_thread AS MATERIALIZED (
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until
     FROM probe p CROSS JOIN instant i LEFT JOIN held_task t ON t.id = p.task_id
 ), guard AS (
-    -- A renewal must still be the live holder, before either deadline and
-    -- below the hard cap.
-    SELECT *, LEAST(checked_at + $5::interval, created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds)), task_execution_deadline_at,
+    -- A renewal must still be the live holder, before either deadline. A run
+    -- grants one more lifetime at any age; only a durable task's own limits
+    -- shorten it.
+    SELECT *, LEAST(checked_at + $5::interval, task_execution_deadline_at,
                     task_expires_at, task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
            (EXTRACT(EPOCH FROM metered_until - last_metered_at) * $3::bigint)::bigint AS d_ms
     FROM metered
     WHERE fencing_token = live_fence
-      AND LEAST(checked_at + $5::interval, created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds))) > checked_at
       AND run_expires_at > checked_at AND thread_expires_at > checked_at
       AND (task_id IS NULL OR (
-          task_status = $7 AND task_generation = live_task_generation
+          task_status = $6 AND task_generation = live_task_generation
           AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
           AND used_model_nanos < max_model_nanos - reserved_model_nanos
           AND task_execution_deadline_at > checked_at
@@ -70,10 +70,8 @@ WITH locked_thread AS MATERIALIZED (
     RETURNING a.fleet_id
 )
 SELECT
-    (SELECT count(*) FROM probe)::bigint          AS probe_found,
     (SELECT count(*) FROM moved)::bigint          AS moved_runs,
     (SELECT capped FROM moved)                    AS new_until,
-    (SELECT LEAST(created_at + LEAST($6::interval, make_interval(secs => max_runtime_seconds)), task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
     g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
     g.fleet_id AS fleet_id, g.turn_id AS turn_id,

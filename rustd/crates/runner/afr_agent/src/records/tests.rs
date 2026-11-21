@@ -4,9 +4,9 @@
 )]
 
 use af_secrets::Clean;
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::tool_detail::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, ItemKind, ItemStatus, RawToolCallRecord,
-    ToolCallRecord, ToolCallRecordsRequest,
+    ItemKind, ItemStatus, RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest,
 };
 use af_wire::tool_trace::FileChange;
 use serde_json::{Value, json};
@@ -58,73 +58,76 @@ fn should_keep_a_small_call_whole() {
     assert!(accepted(&kept));
 }
 
+/// Past the 64 KiB a record was once cut to: output and arguments are kept
+/// whole, and every line is counted.
 #[test]
-fn should_cut_an_output_past_its_field_bound_and_count_every_line() {
-    let output = "line\n".repeat(DETAIL_FIELD_MAX_BYTES / 4);
+fn should_keep_a_large_output_and_its_arguments_whole() {
+    let output = "line\n".repeat(200 * 1024 / 5);
+    let arguments = json!({"body": "x".repeat(200 * 1024)});
 
-    let cut = record(1, clean_json(json!({})), &clean(&output));
+    let kept = record(1, clean_json(arguments), &clean(&output));
 
-    assert!(cut.truncated && cut.output.len() <= DETAIL_FIELD_MAX_BYTES);
-    assert_eq!(cut.output_line_count, (DETAIL_FIELD_MAX_BYTES / 4) as u64);
-    assert!(accepted(&cut));
+    assert!(!kept.truncated && !kept.truncated_arguments);
+    assert_eq!(kept.output, output);
+    assert_eq!(kept.output_line_count, (200 * 1024 / 5) as u64);
+    assert!(accepted(&kept));
 }
 
 #[test]
-fn should_empty_arguments_past_their_field_bound() {
-    let arguments = json!({"body": "x".repeat(DETAIL_FIELD_MAX_BYTES)});
+fn should_empty_arguments_that_alone_would_not_fit_one_post() {
+    let arguments = json!({"body": "x".repeat(MESSAGE_BYTES_MAX)});
 
     let cut = record(1, clean_json(arguments), &clean("ok"));
 
     assert!(cut.truncated_arguments && cut.arguments.is_empty());
+    assert_eq!(cut.output, "ok");
     assert!(accepted(&cut));
 }
 
 #[test]
 fn should_cut_an_output_that_escapes_past_one_post() {
-    let output = "\u{1}".repeat(DETAIL_FIELD_MAX_BYTES);
+    // Each control character escapes to six bytes: 48 MiB of JSON.
+    let output = "\u{1}".repeat(MESSAGE_BYTES_MAX / 4);
 
     let cut = record(1, clean_json(json!({})), &clean(&output));
 
     let encoded = serde_json::to_vec(&cut).unwrap().len();
-    assert!(cut.truncated && encoded + post_envelope_bytes() <= DETAIL_POST_MAX_BYTES);
+    assert!(cut.truncated && encoded + post_envelope_bytes() <= MESSAGE_BYTES_MAX);
     assert_eq!(
         cut.output.len(),
-        DETAIL_FIELD_MAX_BYTES / 2,
+        MESSAGE_BYTES_MAX / 8,
         "halved once, not emptied"
     );
     assert!(accepted(&cut));
 }
 
-/// An output whose uncut record encodes to exactly `target` bytes: control
-/// characters escape to six bytes each, letters to one.
+/// An output whose uncut record encodes to exactly `target` bytes.
 fn encoding_to(target: usize) -> String {
     let base = encoded_len(&record(1, clean_json(json!({})), &clean("")));
-    let escaped = (target - base - DETAIL_FIELD_MAX_BYTES).div_ceil(5);
-    let plain = target - base - 6 * escaped;
-    format!("{}{}", "\u{1}".repeat(escaped), "a".repeat(plain))
+    "a".repeat(target - base)
 }
 
 #[test]
 fn should_keep_a_record_that_exactly_fits_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes());
+    let output = encoding_to(MESSAGE_BYTES_MAX - post_envelope_bytes());
 
     let kept = record(1, clean_json(json!({})), &clean(&output));
 
     assert!(!kept.truncated, "{} output bytes", output.len());
     assert_eq!(kept.output, output);
     // The envelope is measured, not guessed: sealed alone at the largest
-    // fencing token, the kept record is a post of exactly the daemon's cap.
+    // fencing token, the kept record is a post of exactly one frame.
     let text = serde_json::to_string(&kept).unwrap();
     let post = ToolCallRecordsRequest {
         fencing_token: u64::MAX,
         calls: vec![serde_json::from_str::<RawToolCallRecord<'_>>(&text).unwrap()],
     };
-    assert_eq!(encoded_len(&post), DETAIL_POST_MAX_BYTES);
+    assert_eq!(encoded_len(&post), MESSAGE_BYTES_MAX);
 }
 
 #[test]
 fn should_cut_a_record_one_byte_past_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes() + 1);
+    let output = encoding_to(MESSAGE_BYTES_MAX - post_envelope_bytes() + 1);
 
     let cut = record(1, clean_json(json!({})), &clean(&output));
 

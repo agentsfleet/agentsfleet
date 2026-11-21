@@ -4,19 +4,21 @@
 )]
 
 use af_wire::activity::ActivityFrame;
-use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, ToolCallRecord};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::UPDATE_PLAN;
 use guffbolt::{Call, ToolOutput};
 
-use af_core::test_util::trace::{Capture, CapturedEvent};
+use af_core::test_util::trace::Capture;
 
+use super::Ledger;
 use super::test_calls::{RUN_ID, TURN, call, close, planned, ran};
-use super::{EVENT_RECORD_DROPPED, Ledger};
 use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
 
-/// Calls whose records, at the field cap each, pass the event's budget.
+/// Past the 1 MiB an event's records were once held to: 20 calls of 200 KiB.
 const LARGE_CALLS: usize = 20;
+
+/// The output each large call returns.
+const LARGE_OUTPUT_BYTES: usize = 200 * 1024;
 
 #[test]
 fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
@@ -27,57 +29,44 @@ fn a_run_without_calls_keeps_a_known_trace_and_no_records() {
 
     assert_eq!(
         serde_json::json!(ledger.finish()),
-        serde_json::json!([{"calls": [], "omitted_call_count": 0}, []])
+        serde_json::json!([{"calls": []}, []])
     );
 }
 
-/// What `records` spend of their event's budget.
-fn spent(records: &[ToolCallRecord<'_>]) -> usize {
-    records.iter().map(ToolCallRecord::byte_count).sum()
-}
-
+/// No field cap and no event budget: each call's whole output is held for
+/// its record, and none is dropped however many large ones the run made.
 #[test]
-fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is() {
+fn a_200_kib_output_is_kept_whole_in_its_item_record() {
     let capture = Capture::install();
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
     let ledger = Ledger::new(RUN_ID, TURN, &sink, &scrub);
+    let large = "x".repeat(LARGE_OUTPUT_BYTES);
 
     for _ in 0..LARGE_CALLS {
-        call(&ledger, "x".repeat(DETAIL_FIELD_MAX_BYTES));
+        call(&ledger, large.clone());
     }
     call(&ledger, "small".to_owned());
-    let (_trace, records) = ledger.finish();
+    let (trace, records) = ledger.finish();
     frames.taken();
 
-    let large = records[0].byte_count();
-    let fit = DETAIL_EVENT_MAX_BYTES / large;
-    assert!(fit < LARGE_CALLS, "the large calls pass the budget");
-    assert_eq!(
-        records.len(),
-        fit + 1,
-        "every large one that fits, then the small one"
+    assert_eq!(trace.calls.len(), LARGE_CALLS + 1);
+    assert_eq!(records.len(), LARGE_CALLS + 1, "every record is held");
+    assert!(
+        records
+            .iter()
+            .take(LARGE_CALLS)
+            .all(|record| record.output == large && !record.truncated),
+        "each large output is whole"
     );
-    let numbers: Vec<u64> = records.iter().map(|record| record.call_number).collect();
-    let last = u64::try_from(LARGE_CALLS + 1).unwrap_or(u64::MAX);
-    assert_eq!(
-        numbers[fit], last,
-        "the small call came after the dropped ones"
-    );
-    assert!(spent(&records) <= DETAIL_EVENT_MAX_BYTES);
-    let dropped: Vec<_> = (capture.events().into_iter())
-        .filter(|event| event.field("event") == Some(EVENT_RECORD_DROPPED))
-        .collect();
-    assert_eq!(dropped.len(), LARGE_CALLS - fit, "one per record kept out");
-    let warned = |event: &CapturedEvent| {
-        event.level == tracing::Level::WARN && event.field("run_id") == Some(RUN_ID)
-    };
-    assert!(dropped.iter().all(warned), "each drop warns under its run");
-    assert_eq!(
-        dropped.first().and_then(|event| event.field("call_number")),
-        Some((fit + 1).to_string().as_str()),
-        "the first drop is the first call past the budget"
+    assert_eq!(records[LARGE_CALLS].output, "small");
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.level != tracing::Level::WARN),
+        "nothing is dropped"
     );
 }
 

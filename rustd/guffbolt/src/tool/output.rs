@@ -93,7 +93,8 @@ impl ImageKind {
 pub struct Image {
     /// What kind of image it is.
     pub kind: ImageKind,
-    /// The bytes, as the file holds them.
+    /// The bytes: the file's own, or the picture written again once a tool
+    /// scaled it down.
     pub data: Bytes,
 }
 

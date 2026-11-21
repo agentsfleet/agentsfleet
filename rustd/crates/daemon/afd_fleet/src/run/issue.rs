@@ -127,7 +127,6 @@ impl Runs {
         let decision =
             super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
         let Some(created_at) = (sql::run::RunRow {
-            max_runtime: self.clock().max_runtime(),
             run_id: &run_id,
             runner_id,
             fleet_id: &acquired.fleet_id,

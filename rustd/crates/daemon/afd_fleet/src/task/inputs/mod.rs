@@ -89,7 +89,7 @@ pub(super) async fn read(
         inputs,
         accepted_inputs,
         current_task,
-        execution_deadline: Some(execution_deadline),
+        execution_deadline,
         current_interpretation,
         tasks: candidates,
         next_cursor,

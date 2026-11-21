@@ -93,7 +93,7 @@ async fn runner_conflicts_name_the_state_that_refuses_them() {
 
 #[tokio::test]
 async fn runner_tool_call_records_validate_and_render() {
-    use af_wire::tool_detail::DETAIL_POST_MAX_BYTES;
+    use af_wire::protocol::MESSAGE_BYTES_MAX;
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
@@ -103,13 +103,26 @@ async fn runner_tool_call_records_validate_and_render() {
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
     assert_eq!(code_of(malformed).await, "UZ-REQ-001");
 
+    // Past the runner frame, the one bound a post has, the route refuses
+    // the body before the handler reads it.
     let oversized = format!(
         r#"{{"fencing_token":7,"calls":[],"pad":"{}"}}"#,
-        "a".repeat(DETAIL_POST_MAX_BYTES)
+        "a".repeat(MESSAGE_BYTES_MAX)
     );
     let refused = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), &oversized).await;
     assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
-    assert_eq!(code_of(refused).await, "UZ-REQ-002");
+
+    // Well past the 2 MiB a route takes by default, a post is read.
+    let large = format!(
+        r#"{{"fencing_token":7,"calls":[1],"pad":"{}"}}"#,
+        "a".repeat(4 * 1024 * 1024)
+    );
+    let read = send(&router, Method::POST, &path, Some(RUNNER_TOKEN), &large).await;
+    assert_eq!(
+        read.status(),
+        StatusCode::BAD_REQUEST,
+        "read, then refused for its shape"
+    );
 
     let kept = send(
         &router,

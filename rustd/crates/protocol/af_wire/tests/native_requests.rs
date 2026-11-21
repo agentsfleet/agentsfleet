@@ -112,11 +112,7 @@ fn native_renewals_keep_request_line_count_and_sequence_bounds() -> TestResult {
 
 #[test]
 fn native_report_tool_traces_borrow_the_frame_and_preserve_its_answer() -> TestResult {
-    for trace in [
-        json!({"calls":[],"omitted_call_count":0}),
-        json!(7),
-        json!({"extra":1}),
-    ] {
+    for trace in [json!({"calls":[]}), json!(7), json!({"extra":1})] {
         let bytes = report(&trace).to_string();
         let command: Up<'_> = serde_json::from_str(&bytes)?;
         let Up::Report {
@@ -174,7 +170,7 @@ fn a_malformed_native_tool_trace_preserves_the_report_and_is_rejected_on_its_own
 #[test]
 fn native_reports_refuse_extra_frame_and_payload_fields() -> TestResult {
     for nested in [false, true] {
-        let mut value = report(&json!({"calls":[],"omitted_call_count":0}));
+        let mut value = report(&json!({"calls":[]}));
         let target = if nested {
             value
                 .get_mut("request")

@@ -35,7 +35,6 @@ const RUN_SHAPE: &[&str] = &[
     "last_metered_at",
     "fencing_token",
     "run_expires_at",
-    "max_runtime_seconds",
     "status",
     "posted_message_count",
     "created_at",

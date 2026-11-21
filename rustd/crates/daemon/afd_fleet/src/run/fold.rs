@@ -10,7 +10,7 @@
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::FoldOutcome;
 use af_observability::producers;
-use af_wire::fold::{FOLDS_PER_ASSIGNMENT_MAX, FoldRequest, FoldResponse, FoldedInput};
+use af_wire::fold::{FoldRequest, FoldResponse, FoldedInput};
 use sqlx::PgConnection;
 
 use afd_turns::view::Closed;
@@ -122,7 +122,6 @@ impl Runs {
             .bind(fence)
             .bind(sql::RUN_STATUS_ACTIVE)
             .bind(after_sequence)
-            .bind(i64::from(FOLDS_PER_ASSIGNMENT_MAX))
             .bind(afd_turns::Producer::Steer.as_str())
             .bind(afd_turns::view::ACTOR_MACHINE)
             .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))

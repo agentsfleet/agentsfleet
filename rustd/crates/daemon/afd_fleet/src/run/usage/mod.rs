@@ -347,8 +347,8 @@ pub(crate) fn charged(settlement: Option<&Settlement>) -> Nanos {
 }
 
 /// A non-negative count as the line type holds it, saturating rather than
-/// wrapping: an elapsed span the run's hard cap bounds, or a line count, so
-/// the saturation never fires.
+/// wrapping: one slice's elapsed span, which a run lifetime bounds, or a line
+/// count, so the saturation never fires.
 fn count(value: i64) -> u32 {
     u32::try_from(value.max(0)).unwrap_or(u32::MAX)
 }

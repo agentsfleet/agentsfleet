@@ -1,5 +1,9 @@
 # guffbolt
 
+<p align="center"><img src="assets/guffy.svg" alt="Guffy, the guffbolt mascot: a grinning lightning bolt with googly eyes, holding a wrench" width="240"></p>
+
+<p align="center"><em>Meet Guffy. Guffy talks a lot of guff and fixes what it just broke.</em></p>
+
 `guffbolt` is an agent harness for Rust. It is used by [agentsfleet](https://github.com/agentsfleet/agentsfleet), whose runner drives every agent run through it.
 
 `guffbolt` runs an agent loop's steps in a fixed order. You supply the model, the conversation's input and window, and the tools.
@@ -721,7 +725,7 @@ A run with many tools, such as every tool of several MCP servers, can hold most 
 
 `bytes` carries an image a call read. Without `tools`, `guffbolt` links no model client, HTTP stack or secret store.
 
-The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, and `url` to tell an address literal from a name. It adds `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `jiff` for `current_time`, `schedule` and a job's zone, `philiprehberger-cron-parser` for `LocalScheduler`'s next moment, and `thiserror` for the vendored `apply_patch` parser. Tokio's process, file, network and runtime features serve `LocalEnv` and the host's lookup. On Unix, `rustix` kills a process's group and opens its pseudo-terminal.
+The `tools` feature adds `reqwest` for `LocalOutbound` and MCP over HTTP, and `url` to tell an address literal from a name. It adds `rmcp` for the MCP client, `schemars` for each tool's schema, `regex` for `grep` and `find`, `html2text` for `web_fetch`, `image` to decode a picture `image` reads and scale one longer than 2,048 px on a side down to fit, `jiff` for `current_time`, `schedule` and a job's zone, `philiprehberger-cron-parser` for `LocalScheduler`'s next moment, and `thiserror` for the vendored `apply_patch` parser. Tokio's process, file, network and runtime features serve `LocalEnv` and the host's lookup. On Unix, `rustix` kills a process's group and opens its pseudo-terminal.
 
 A provider's record of a step rides it as an opaque `Replay`. `guffbolt` saves it and hands it back unopened to the provider that wrote it.
 

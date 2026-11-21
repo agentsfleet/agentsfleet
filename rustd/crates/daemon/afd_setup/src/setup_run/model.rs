@@ -1,17 +1,15 @@
 //! A setup turn's model: which one it pinned, whether it may take setup's
-//! tool call, and whether the payer's balance covers one run on it.
+//! tool call, and whether the payer's balance funds the run's first slice.
 //!
 //! Eligibility is read on the workspace billing owner, never the chat
 //! creator's account. Nothing here calls a model: the runner does.
 
-use af_core::id::Uuid7;
+use af_core::{id::Uuid7, timing::RunClock};
 use afd_billing::RUN_NANOS_PER_SEC;
 use afd_credential::provider::{PLATFORM_MODEL_REF, RegisteredModel};
 use sqlx::PgConnection;
 
-use crate::{Result, error::ErrorKind, limits};
-
-const MILLION: i128 = 1_000_000;
+use crate::{Result, error::ErrorKind};
 
 /// The `tenant_model_id` a model reference is stored as: NULL names the
 /// platform default, any other reference is the tenant model's own id.
@@ -43,34 +41,15 @@ pub(crate) async fn selected(
     Ok(selected)
 }
 
-/// The most one setup run on `model` may cost: its runtime for the whole
-/// [`limits::SETUP_RUNTIME`], and on the platform's key its output for
-/// [`limits::MODEL_CALLS_MAX`] calls, each rounded up.
-pub(crate) fn bound(model: &RegisteredModel) -> Result<i64> {
-    let seconds =
-        i64::try_from(limits::SETUP_RUNTIME.as_secs()).map_err(|_overflow| ErrorKind::Balance)?;
-    let runtime = RUN_NANOS_PER_SEC
+/// What a setup run must be able to fund before it starts: one run lifetime
+/// of runtime, the slice its first renewal asks for again. A fleet's run is
+/// gated the same way, and neither prices the whole run: the balance is
+/// checked again at every renewal, which is what ends a runaway.
+pub(crate) fn first_slice(clock: RunClock) -> Result<i64> {
+    let seconds = i64::try_from(clock.ttl().as_secs()).map_err(|_overflow| ErrorKind::Balance)?;
+    RUN_NANOS_PER_SEC
         .checked_mul(seconds)
-        .ok_or(ErrorKind::Balance)?;
-    if !model.platform_managed {
-        return Ok(runtime);
-    }
-    let output_limit = model
-        .inference
-        .as_ref()
-        .map_or(0, |settings| i64::from(settings.max_output_tokens));
-    let output = ceil(output_limit, model.output_nanos_per_million)?
-        .checked_add(i64::from(limits::MODEL_CALLS_MAX) - 1)
-        .ok_or(ErrorKind::Balance)?;
-    runtime
-        .checked_add(output)
         .ok_or_else(|| ErrorKind::Balance.into())
-}
-
-fn ceil(tokens: i64, rate: i64) -> Result<i64> {
-    let numerator = i128::from(tokens) * i128::from(rate);
-    i64::try_from((numerator + MILLION - 1) / MILLION)
-        .map_err(|_overflow| ErrorKind::Balance.into())
 }
 
 /// The assignment gate: whether `tenant`'s balance, less every line it logged
@@ -99,10 +78,27 @@ pub(crate) async fn gate(
 
 #[cfg(test)]
 mod tests {
-    use af_core::id::Uuid7;
+    use af_core::{id::Uuid7, timing::RunClock};
 
-    use super::{reference, tenant_model};
+    use super::{first_slice, reference, tenant_model};
     use afd_credential::provider::PLATFORM_MODEL_REF;
+
+    // Value: protects=an empty wallet cannot start a setup run once the
+    // whole-run estimate is gone; fails_when=the first slice prices to zero,
+    // so a zero balance covers it; why_new=the 300-second estimate was what
+    // priced the gate; seam=the live gate's balance read, covered by
+    // `a_setup_run_on_an_empty_wallet_is_refused`; no_claim=the renewal gate.
+    #[test]
+    fn a_setup_run_must_fund_one_run_lifetime_to_start() -> crate::Result<()> {
+        let required = first_slice(RunClock::DEFAULT)?;
+        let seconds = i64::try_from(RunClock::DEFAULT.ttl().as_secs()).ok();
+        assert_eq!(
+            Some(required),
+            seconds.and_then(|seconds| afd_billing::RUN_NANOS_PER_SEC.checked_mul(seconds))
+        );
+        assert!(required > 0, "an empty wallet must not cover it");
+        Ok(())
+    }
 
     /// The platform default is stored as NULL and read back as its reference;
     /// any other reference is the tenant model's own id.

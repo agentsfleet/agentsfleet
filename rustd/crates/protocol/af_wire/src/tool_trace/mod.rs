@@ -12,15 +12,12 @@
 
 use std::borrow::Cow;
 
-use af_validate::PathTable;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use self::rules::{
-    argument_leaves_fit, arguments_fit, call_free_of_nul, call_number, edge, trace_fits,
-};
+use self::rules::{argument_leaves_fit, arguments_fit, call_free_of_nul, call_number, edge};
 
 /// The largest arguments object one call may carry, encoded.
 pub const ARGS_MAX_BYTES: usize = 2048;
@@ -33,13 +30,6 @@ pub const OUTPUT_EDGE_MAX_LINES: usize = 5;
 
 /// The most bytes an output edge may hold.
 pub const OUTPUT_EDGE_MAX_BYTES: usize = 1024;
-
-/// The most calls one trace may list. Calls past it are counted in
-/// `omitted_call_count` instead.
-pub const TRACE_MAX_CALLS: usize = 200;
-
-/// The largest trace, encoded as the runner sends it.
-pub const TRACE_MAX_BYTES: usize = 64 * 1024;
 
 /// How one tool call ended.
 ///
@@ -85,7 +75,7 @@ pub struct ToolTraceCall<'a> {
     #[garde(skip)]
     pub status: ToolCallStatus,
     /// The output's first lines, at most 5 lines and 1024 bytes. Absent when
-    /// the call returned nothing or the trace ran out of room for it.
+    /// the call returned nothing.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(custom(edge)))]
     pub output_head: Option<Cow<'a, str>>,
@@ -113,18 +103,18 @@ pub struct ToolTraceCall<'a> {
 }
 
 /// Every call one run made, oldest first.
+///
+/// No count or size caps the list: the report's frame
+/// (`crate::protocol::MESSAGE_BYTES_MAX`) bounds it, and each row keeps only
+/// its short preview.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
-#[garde(custom(trace_fits))]
 pub struct ToolTrace<'a> {
-    /// The calls, at most 200.
+    /// Every call the run made.
     #[serde(borrow)]
-    #[garde(length(max = TRACE_MAX_CALLS), dive)]
+    #[garde(dive)]
     pub calls: Vec<ToolTraceCall<'a>>,
-    /// Calls the run made past the 200 listed.
-    #[garde(skip)]
-    pub omitted_call_count: u64,
 }
 
 /// Which bound a trace broke.
@@ -133,10 +123,6 @@ pub struct ToolTrace<'a> {
 /// reading the drop knows which bound to look at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TraceRejection {
-    /// More than [`TRACE_MAX_CALLS`] calls.
-    TooManyCalls,
-    /// More than [`TRACE_MAX_BYTES`] encoded.
-    TooLarge,
     /// A call id that is not a decimal call number from 1 to `i64::MAX`, the
     /// number the call's full record is posted and read under.
     CallIdUnusable,
@@ -160,8 +146,6 @@ impl TraceRejection {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
-            Self::TooManyCalls => "too_many_calls",
-            Self::TooLarge => "too_large",
             Self::CallIdUnusable => "call_id_unusable",
             Self::ArgumentsTooLarge => "arguments_too_large",
             Self::ArgumentTooLong => "argument_too_long",
@@ -172,41 +156,28 @@ impl TraceRejection {
     }
 
     /// The rejections a rule of this module reports, in the order one wins
-    /// when a trace breaks several: the call count is garde's own `length`
-    /// and is named by its path in [`BY_PATH`] instead.
-    const BY_PRECEDENCE: [Self; 6] = [
+    /// when a trace breaks several.
+    const BY_PRECEDENCE: [Self; 5] = [
         Self::HoldsNul,
         Self::CallIdUnusable,
         Self::ArgumentsTooLarge,
         Self::ArgumentTooLong,
         Self::EdgeTooLarge,
-        Self::TooLarge,
     ];
 
-    /// The rejection a garde report names.
-    ///
-    /// A rule this module wrote reports its own spelling, so it is matched by
-    /// message; the call count is matched by the path garde reports it under.
+    /// The rejection a garde report names: each rule this module wrote
+    /// reports its own spelling, so it is matched by message.
     fn of(report: &garde::Report) -> Self {
-        BY_PATH.pick(report).unwrap_or_else(|| {
-            Self::BY_PRECEDENCE
-                .into_iter()
-                .find(|rejection| {
-                    report
-                        .iter()
-                        .any(|(_path, error)| error.message() == rejection.as_str())
-                })
-                .unwrap_or(Self::Malformed)
-        })
+        Self::BY_PRECEDENCE
+            .into_iter()
+            .find(|rejection| {
+                report
+                    .iter()
+                    .any(|(_path, error)| error.message() == rejection.as_str())
+            })
+            .unwrap_or(Self::Malformed)
     }
 }
-
-/// The path garde reports the call count's `length` break under.
-const PATH_CALLS: &str = "calls";
-
-/// The one rejection a garde built-in reports: by path, ahead of every other.
-const BY_PATH: PathTable<Option<TraceRejection>> =
-    PathTable::new(&[(PATH_CALLS, Some(TraceRejection::TooManyCalls))], None);
 
 impl ToolTrace<'_> {
     /// Check every bound the type declares, the highest-precedence break
@@ -244,20 +215,14 @@ impl<'a> RawToolTrace<'a> {
         self.0.get().len()
     }
 
-    /// The trace these bytes hold, if it is one and fits every bound.
-    ///
-    /// The byte bound is checked before parsing, so an oversized trace costs
-    /// no parse.
+    /// The trace these bytes hold, if it is one and every row fits its
+    /// bounds.
     ///
     /// # Errors
     /// The [`TraceRejection`] naming why the trace cannot be kept.
     pub fn narrow(self) -> Result<ToolTrace<'a>, TraceRejection> {
-        let text = self.0.get();
-        if text.len() > TRACE_MAX_BYTES {
-            return Err(TraceRejection::TooLarge);
-        }
         let trace: ToolTrace<'a> =
-            serde_json::from_str(text).map_err(|_shape| TraceRejection::Malformed)?;
+            serde_json::from_str(self.0.get()).map_err(|_shape| TraceRejection::Malformed)?;
         trace.validate()?;
         Ok(trace)
     }

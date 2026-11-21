@@ -95,9 +95,6 @@ pub const DETAIL_RUN_LOST: &str = "Run was reassigned before this renewal; termi
 pub const DETAIL_RUN_CANCELLED: &str =
     "Fleet was archived; stop this run and report its final result";
 
-/// The renewal refusal at the hard runtime ceiling.
-pub const DETAIL_RUN_MAX_RUNTIME: &str = "Run reached the hard max runtime; not renewed";
-
 /// The renewal refusal when the TENANT's credit pool is spent.
 ///
 /// Distinct from [`DETAIL_BUDGET_EXHAUSTED`] beside it, and the two sentences

@@ -604,6 +604,10 @@ regex-automata = { version = "0.4.19", default-features = false, features = ["st
 # go, links keep their target. A real HTML parser rather than a hand-written
 # tag scanner.
 html2text = { version = "0.17.4", default-features = false }
+# `guffbolt`'s `image` tool decodes a picture and scales one longer than
+# 2,048 px on a side down to fit, as Codex's `codex-utils-image` does. Only the
+# four codecs the provider wires take.
+image = { version = "=0.25.10", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 # The Model Context Protocol client `guffbolt`'s tools reach a server through:
 # the official SDK, Codex's and pi's choice. Client side only; a stdio server
 # runs through the harness's own `Env`, so the SDK's child-process transport is

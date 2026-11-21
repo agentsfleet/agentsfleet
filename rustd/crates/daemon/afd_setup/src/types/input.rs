@@ -2,9 +2,7 @@
 
 use super::{MAX_MODEL_REF_BYTES, MAX_TITLE_CHARS};
 use af_core::id::Uuid7;
-use af_fleet_runtime::definition::{
-    ConfigOp, Definition, InstructionEdit,
-};
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
 use serde::{Deserialize, Serialize};
 
 /// Native setup captured before allocating a private draft.

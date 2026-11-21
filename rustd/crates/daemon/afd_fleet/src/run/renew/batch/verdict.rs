@@ -4,11 +4,11 @@
 use jiff::Timestamp;
 
 use super::rows::Found;
-use crate::error::{Result, budget_exhausted, run_cancelled, run_lost, run_max_runtime};
+use crate::error::{Result, budget_exhausted, run_cancelled, run_lost};
 use crate::run::coverage::EVENT_BUDGET_BREACH;
 
 /// Logged when the batch refuses a run the per-run path would also refuse
-/// without a record: the run is lost, cancelled or at its runtime ceiling.
+/// without a record: the run is lost or cancelled.
 const EVENT_REFUSED: &str = "renew_batch_refused";
 
 /// A run's answer, or the per-run path's to give.
@@ -24,7 +24,6 @@ pub(super) struct Judged {
     pub(super) found: bool,
     pub(super) cancelled: Option<bool>,
     pub(super) fence_holds: Option<bool>,
-    pub(super) below_cap: Option<bool>,
     pub(super) priced_as_held: Option<bool>,
     pub(super) ceilings_current: Option<bool>,
     pub(super) over_budget: Option<bool>,
@@ -41,7 +40,6 @@ pub(super) enum Verdict {
     Extended(Timestamp),
     Lost,
     Cancelled,
-    MaxRuntime,
     OverBudget,
     /// Its prices or ceilings moved under the statement: it takes the
     /// per-run path, and the replica reads the fleet's versions again.
@@ -59,7 +57,6 @@ impl Verdict {
         match self {
             Self::Lost => "lost",
             Self::Cancelled => "cancelled",
-            Self::MaxRuntime => "max_runtime",
             Self::OverBudget => "over_budget",
             Self::Extended(_) => "extended",
             Self::Moved => "moved",
@@ -91,9 +88,6 @@ impl Judged {
         if !held(self.fence_holds) {
             return Verdict::Lost;
         }
-        if !held(self.below_cap) {
-            return Verdict::MaxRuntime;
-        }
         if !held(self.priced_as_held) || !held(self.ceilings_current) {
             return Verdict::Moved;
         }
@@ -113,7 +107,6 @@ impl Judged {
 pub(super) fn refusal_of(verdict: &Verdict) -> crate::Error {
     match verdict {
         Verdict::Cancelled => run_cancelled(),
-        Verdict::MaxRuntime => run_max_runtime(),
         Verdict::OverBudget => budget_exhausted(),
         Verdict::Lost | Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => run_lost(),
     }
@@ -140,7 +133,7 @@ pub(super) fn log_refused(row: &Found, verdict: &Verdict, refusal: &crate::Error
             );
             tracing::warn!(message, fleet_id, run_id, error_code, event);
         }
-        Verdict::Lost | Verdict::Cancelled | Verdict::MaxRuntime => {
+        Verdict::Lost | Verdict::Cancelled => {
             let which = verdict.label();
             {
                 let (fleet_id, run_id, error_code, verdict, event, message) = (

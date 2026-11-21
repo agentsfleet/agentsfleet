@@ -12,7 +12,7 @@ const BACKLOG: &str = "INSERT INTO thread.turns \
     'chat','queued','{}',now(),now() FROM fleet.fleets f,generate_series(1,$2::integer) n \
     WHERE f.id=$1";
 const PREPARE: &str = "PREPARE ledger_meter \
-    (uuid,uuid,bigint,text,interval,interval,text) AS ";
+    (uuid,uuid,bigint,text,interval,text) AS ";
 
 pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &Held) {
     run(connection, super::FORCE_GENERIC).await;
@@ -64,13 +64,12 @@ fn assert_indexed_turn(plan: &serde_json::Value, size: i32) {
 async fn meter_plan(connection: &mut PgConnection, held: &Held) -> serde_json::Value {
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE ledger_meter \
-        ('{run}','{runner}',{ms},'{active}','{ttl} seconds','{cap} seconds','{running}')",
+        ('{run}','{runner}',{ms},'{active}','{ttl} seconds','{running}')",
         run = held.run_key.as_str(),
         runner = held.runner.as_str(),
         ms = afd_billing::nanos::MS_PER_SEC,
         active = afd_state::sql::RUN_STATUS_ACTIVE,
         ttl = af_core::timing::RUN_TTL.as_secs_f64(),
-        cap = af_core::timing::MAX_RUNTIME.as_secs_f64(),
         running = af_wire::task::TaskState::Running.as_str(),
     )))
     .fetch_one(connection)

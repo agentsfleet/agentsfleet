@@ -52,12 +52,13 @@ pub(super) const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 /// The refusal a fleets page size outside the shared band earns.
 const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
 
-/// The most events one read serves: the thread read's own cap, since each row
-/// is read with its bodies.
-const EVENTS_MAX: u32 = 25;
+/// The most events one read serves: the thread read's own page, Codex's
+/// `THREAD_TURNS_MAX_LIMIT`.
+const EVENTS_MAX: u32 = 100;
 
-/// The events a read serves when it names no `limit`.
-const EVENTS_DEFAULT: u32 = 20;
+/// The events a read serves when it names no `limit`: Codex's
+/// `THREAD_TURNS_DEFAULT_LIMIT`.
+const EVENTS_DEFAULT: u32 = 25;
 
 /// The refusal an events page size outside its band earns.
 const DETAIL_EVENTS_LIMIT: &str =

@@ -130,13 +130,13 @@ async fn test_a_report_that_read_before_its_assignments_settles_none() -> Checke
 }
 
 /// A burst settles in the same three statements as one message: every
-/// message the run read gets its own closed event, past one assignment's cap.
+/// message the run read gets its own closed event, however many there are.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_burst_past_one_assignment_settles_whole() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
-    let burst = usize::from(af_wire::fold::FOLDS_PER_ASSIGNMENT_MAX) + 8;
+    let burst = 40;
     let mut sent = Vec::new();
     for _ in 0..burst {
         sent.push(send(&held, &workspace, Producer::Steer, STEER_JSON).await?);

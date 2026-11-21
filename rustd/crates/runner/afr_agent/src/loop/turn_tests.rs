@@ -129,7 +129,7 @@ async fn test_answer_streams_as_chunks() {
     );
     assert_eq!(
         serde_json::json!(output.trace),
-        serde_json::json!({"calls": [], "omitted_call_count": 0})
+        serde_json::json!({"calls": []})
     );
 }
 

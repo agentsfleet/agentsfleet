@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 use af_core::clock::Clock;
 use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_CANCELLED};
 use af_core::id::Uuid7;
-use af_core::timing::MAX_RUNTIME;
+use af_core::timing::MAX_RUN_SECONDS;
 use af_wire::report::FailureClass;
 use afr_agent::Meter;
 use jiff::Timestamp;
@@ -26,9 +26,10 @@ const _: () = assert!(
         < af_core::timing::RENEWAL_WINDOW.as_nanos(),
     "recovery must leave a complete renewal answer and physical cleanup window"
 );
-/// The longest a run can be granted for, which bounds any deadline a reply
-/// can set, however far ahead it claims.
-const LONGEST_GRANT: Duration = MAX_RUNTIME;
+/// The longest one grant can be: the longest run lifetime a daemon may be
+/// configured with. It bounds any deadline a reply can set, however far ahead
+/// it claims; a run itself renews grant after grant with no ceiling.
+const LONGEST_GRANT: Duration = Duration::from_secs(MAX_RUN_SECONDS);
 const EVENT_RENEWED: &str = "run_renewed";
 const EVENT_TERMINATED: &str = "run_terminated_by_renewal";
 const EVENT_EXPIRED: &str = "run_timed_out";

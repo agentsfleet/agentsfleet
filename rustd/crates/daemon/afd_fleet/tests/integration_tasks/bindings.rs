@@ -239,7 +239,7 @@ async fn stored_deadline(case: &Case, reply: &TaskBindings) {
             )
             .await
             .expect("bound run deadline");
-    assert_eq!(reply.execution_deadline, stored.to_jiff());
+    assert_eq!(reply.execution_deadline, Some(stored.to_jiff()));
     let input = case
         .tasks
         .inputs(
@@ -255,5 +255,5 @@ async fn stored_deadline(case: &Case, reply: &TaskBindings) {
         )
         .await
         .expect("recovery input read");
-    assert_eq!(input.execution_deadline, Some(reply.execution_deadline));
+    assert_eq!(input.execution_deadline, reply.execution_deadline);
 }

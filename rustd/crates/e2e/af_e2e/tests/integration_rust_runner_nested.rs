@@ -174,7 +174,6 @@ async fn test_delegating_definition_roundtrip() {
         rows.iter().all(|(_, _, status)| status == SUCCEEDED),
         "{trace}"
     );
-    assert_eq!(trace["omitted_call_count"], 0, "{trace}");
 
     supervisor.shutdown().await;
     scene.cleanup().await;

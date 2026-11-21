@@ -8,11 +8,11 @@
 //! # Why the money is settled before the event row is closed
 //!
 //! The reverse order looks tidier — end the work, then bill for it — and it
-//! loses money on the cap path. A run that reaches `MAX_RUNTIME` is racing
-//! the reassignment sweep, and the sweep bumps `fencing_token`. Settle first and the
-//! affinity lock inside the statement holds the sweep off until the charge
-//! commits. Settle second and the sweep wins the fence, the settle is refused,
-//! and the last slice of a twelve-hour run is never charged to anyone.
+//! loses money when a run reports as its deadline lapses. That run is racing
+//! the reassignment, and the reassignment bumps `fencing_token`. Settle first and the
+//! affinity lock inside the statement holds the reassignment off until the charge
+//! commits. Settle second and the reassignment wins the fence, the settle is refused,
+//! and the run's last slice is never charged to anyone.
 //!
 //! So the fence — which is what authorizes reporting at all — is spent on the
 //! money first, and the narrative log is closed afterwards from a position

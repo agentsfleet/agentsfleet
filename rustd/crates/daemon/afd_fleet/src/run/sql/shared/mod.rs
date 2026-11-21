@@ -95,12 +95,11 @@ pub const REPORT_HOLD: &str = include_str!("report_hold.sql");
 /// moved; the caller rolls back.
 pub const INSERT_RUN: &str = include_str!("insert_run.sql");
 
-/// Extends one live run and its thread to one clamped deadline and measures
-/// the run time since its cursor.
+/// Extends one live run and its thread by one run lifetime and measures the
+/// run time since its cursor.
 ///
 /// `$1` run, `$2` runner, `$3` milliseconds per second, `$4` active status,
-/// `$5` the run lifetime, `$6` the most a run may run. Answers
-/// `probe_found`, `new_until` (NULL when nothing moved) and `hard_cap`, and the
+/// `$5` the run lifetime. Answers `new_until` (NULL when nothing moved), and the
 /// slice the caller's usage line charges: `checked_at`, `started_at`, `d_ms`,
 /// `runtime_seq`, `tenant_id`, `workspace_id` and `turn_id`. Run after
 /// [`LOCK_CANCELLED`], under the host row.

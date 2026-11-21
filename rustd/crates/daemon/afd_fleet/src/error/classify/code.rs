@@ -95,7 +95,6 @@ impl Error {
             ErrorKind::RunNotFound => error_code::RUN_NOT_FOUND,
             ErrorKind::RunLost => error_code::RUN_LOST,
             ErrorKind::RunCancelled => error_code::RUN_CANCELLED,
-            ErrorKind::RunMaxRuntime => error_code::RUN_EXCEEDED_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => error_code::RUN_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
             ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,

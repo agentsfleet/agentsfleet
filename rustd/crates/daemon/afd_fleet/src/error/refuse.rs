@@ -47,11 +47,6 @@ pub(crate) fn run_cancelled() -> Error {
     Error::new(ErrorKind::RunCancelled)
 }
 
-/// Refuses a renewal past the hard runtime ceiling.
-pub(crate) fn run_max_runtime() -> Error {
-    Error::new(ErrorKind::RunMaxRuntime)
-}
-
 /// Refuses a renewal the tenant's balance cannot fund.
 pub(crate) fn renewal_no_credits() -> Error {
     Error::new(ErrorKind::RenewalNoCredits)

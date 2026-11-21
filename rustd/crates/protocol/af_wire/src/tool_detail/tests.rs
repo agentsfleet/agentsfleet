@@ -8,9 +8,8 @@ use garde::Validate as _;
 use serde_json::{Value, json};
 
 use super::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_RECORD_MIN_BYTES, DetailRejection, ItemKind, ItemStatus,
-    RawToolCallRecord, ToolCallDetail, ToolCallRecord, ToolCallRecordsRequest,
-    ToolCallRecordsStored,
+    DetailRejection, ItemKind, ItemStatus, RawToolCallRecord, ToolCallDetail, ToolCallRecord,
+    ToolCallRecordsRequest, ToolCallRecordsStored,
 };
 use crate::tool_trace::FileChange;
 
@@ -55,9 +54,9 @@ fn edit(changes: Value) -> String {
     sent.to_string()
 }
 
-/// What narrowing `sent` keeps: its byte count, or why it kept nothing.
+/// What narrowing `sent` keeps: its output's length, or why it kept nothing.
 fn narrowed(sent: &str) -> Result<usize, DetailRejection> {
-    carried(sent).narrow().map(|kept| kept.byte_count())
+    carried(sent).narrow().map(|kept| kept.output.len())
 }
 
 /// The raw record `sent` reads as; any JSON is carried.
@@ -66,29 +65,25 @@ fn carried(sent: &str) -> RawToolCallRecord<'_> {
 }
 
 #[test]
-fn a_record_within_its_bounds_is_kept_and_counted() {
-    assert_eq!(
-        narrowed(&record(3, "hello")),
-        Ok(DETAIL_RECORD_MIN_BYTES),
-        "a tiny record still spends the per-row minimum"
-    );
-    // `{}` is two bytes of arguments beside the output.
-    let at_cap = "a".repeat(DETAIL_FIELD_MAX_BYTES);
-    assert_eq!(
-        narrowed(&record(1, &at_cap)),
-        Ok(DETAIL_FIELD_MAX_BYTES + 2)
-    );
+fn a_record_is_kept_with_its_whole_output() {
+    assert_eq!(narrowed(&record(3, "hello")), Ok(5));
 }
 
+/// No field cap: the record holds everything the call returned, and every
+/// argument it was made with, however large.
 #[test]
-fn a_record_past_a_field_bound_is_too_large() {
-    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + 1);
-    assert_eq!(narrowed(&record(1, &over)), Err(DetailRejection::TooLarge));
-    let arguments = json!({"blob": "a".repeat(DETAIL_FIELD_MAX_BYTES)});
+fn a_200_kib_output_is_kept_whole_in_its_item_record() {
+    let output = "line\n".repeat(200 * 1024 / 5);
+    let mut sent = fields(1, &output);
+    sent["arguments"] = json!({"body": "a".repeat(200 * 1024)});
+    let sent = sent.to_string();
+    let kept = carried(&sent)
+        .narrow()
+        .expect("no bound refuses a large record");
+    assert_eq!(kept.output, output);
     assert_eq!(
-        narrowed(&with("arguments", arguments)),
-        Err(DetailRejection::TooLarge),
-        "the arguments are bounded too"
+        kept.arguments["body"].as_str().map(str::len),
+        Some(200 * 1024)
     );
 }
 
@@ -135,19 +130,11 @@ fn a_post_carries_each_record_unread_until_it_is_narrowed() {
 
 #[test]
 fn every_rejection_has_its_own_spelling() {
-    let spelled: Vec<_> = [
-        DetailRejection::Malformed,
-        DetailRejection::TooLarge,
-        DetailRejection::OverBudget,
-        DetailRejection::UnservedTurn,
-    ]
-    .iter()
-    .map(|reason| reason.as_str())
-    .collect();
-    assert_eq!(
-        spelled,
-        ["malformed", "too_large", "over_budget", "unserved_turn"]
-    );
+    let spelled: Vec<_> = [DetailRejection::Malformed, DetailRejection::UnservedTurn]
+        .iter()
+        .map(|reason| reason.as_str())
+        .collect();
+    assert_eq!(spelled, ["malformed", "unserved_turn"]);
 }
 
 #[test]
@@ -190,24 +177,18 @@ fn the_answers_round_trip() {
 /// the bounds moved onto the types, so an operator's query still finds it.
 #[test]
 fn test_trace_and_detail_rejections_keep_their_reasons() {
-    use crate::tool_trace::{RawToolTrace, TRACE_MAX_CALLS, TraceRejection};
+    use crate::tool_trace::{RawToolTrace, TraceRejection};
 
-    let calls: Vec<_> = (1..=TRACE_MAX_CALLS + 1)
-        .map(|number| {
-            json!({"call_id": number.to_string(), "name": "file_read", "arguments": {},
-                   "status": "succeeded", "duration_ms": 1})
-        })
-        .collect();
-    let sent = json!({"calls": calls, "omitted_call_count": 0}).to_string();
+    let calls = [json!({"call_id": "0", "name": "file_read", "arguments": {},
+                        "status": "succeeded", "duration_ms": 1})];
+    let sent = json!({ "calls": calls }).to_string();
     let raw: RawToolTrace<'_> = serde_json::from_str(&sent).expect("any JSON is carried");
     assert_eq!(
         raw.narrow().map(|_kept| ()).map_err(TraceRejection::as_str),
-        Err("too_many_calls")
+        Err("call_id_unusable")
     );
 
     let reason = |sent: &str| narrowed(sent).map_err(DetailRejection::as_str);
-    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + 1);
-    assert_eq!(reason(&record(1, &over)), Err("too_large"));
     assert_eq!(reason(&record(0, "x")), Err("malformed"));
 }
 

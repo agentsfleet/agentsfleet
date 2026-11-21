@@ -71,4 +71,44 @@ mod tests {
         );
         Ok(())
     }
+
+    /// No count or size caps a report's tool trace, so the frame is what
+    /// bounds it: a report whose calls carry it past the reports stream's
+    /// ceiling is refused before anything is reserved for it.
+    #[test]
+    fn a_report_past_the_frame_is_refused() -> crate::Result<()> {
+        use std::borrow::Cow;
+        use std::num::NonZeroU64;
+
+        use af_wire::protocol::Up;
+        use af_wire::report::ReportRequest;
+
+        let leaf = "a".repeat(256);
+        let call = |number: usize| {
+            format!(
+                r#"{{"call_id":"{number}","name":"shell","arguments":{{"a":"{leaf}","b":"{leaf}","c":"{leaf}","d":"{leaf}","e":"{leaf}","f":"{leaf}","g":"{leaf}"}},"status":"succeeded","output_head":"{leaf}","output_tail":"{leaf}","duration_ms":1}}"#
+            )
+        };
+        let calls: Vec<String> = (1..=MESSAGE_BYTES_MAX / 2048).map(call).collect();
+        let body = format!(
+            r#"{{"run_id":"run","turn_id":"1-0","fencing_token":7,"outcome":"processed",
+                "failure_reason":null,"failure_detail":"","response_text":"done","tokens":0,
+                "requests":[],"telemetry":{{"time_to_first_token_ms":0,"wall_ms":0}},
+                "checkpoint":{{"last_turn_id":"1-0","last_response":""}},
+                "tool_calls":{{"calls":[{}]}}}}"#,
+            calls.join(",")
+        );
+        let request: ReportRequest<'_> =
+            serde_json::from_str(&body).map_err(|_shape| crate::error::ErrorKind::Protocol)?;
+        let report = Up::Report {
+            request_id: NonZeroU64::MIN,
+            request: Box::new(Cow::Owned(request)),
+        };
+        assert_eq!(report.stream_kind(), StreamKind::Reports);
+        let refused = Length::measure(&report, report.stream_kind())
+            .err()
+            .ok_or(crate::error::ErrorKind::Protocol)?;
+        assert_eq!(refused.reason(), crate::Reason::Protocol);
+        Ok(())
+    }
 }

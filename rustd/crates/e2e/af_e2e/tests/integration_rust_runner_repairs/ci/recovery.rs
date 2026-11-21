@@ -58,7 +58,6 @@ async fn recover(loss: Acknowledgement, readback: Readback) {
     let trace = crate::integration_tool_trace::stored_trace(&scene)
         .await
         .expect("the native event retained its trace");
-    assert_eq!(trace["omitted_call_count"], 0);
     assert!(trace.to_string().contains("[upstream_unreachable]"));
     supervisor.shutdown().await;
     scene.cleanup().await;

@@ -1,6 +1,8 @@
 #![expect(
     clippy::panic,
-    reason = "a test asserts by panicking, naming the body that refused"
+    clippy::indexing_slicing,
+    reason = "a test asserts by panicking, naming the body that refused, and indexes the \
+              JSON it built"
 )]
 
 use super::Outcome;
@@ -54,19 +56,54 @@ fn test_report_tool_calls_never_refuse_report() {
         "the wrong shape parses with the report and is dropped on its own"
     );
     assert_eq!(
-        kept(&report_with(
-            r#","tool_calls":{"calls":[],"omitted_call_count":0,"x":1}"#
-        )),
+        kept(&report_with(r#","tool_calls":{"calls":[],"x":1}"#)),
         Some(Err(TraceRejection::Malformed))
     );
     let valid = r#","tool_calls":{"calls":[{"call_id":"3","name":"file_read",
-        "arguments":{"path":"README.md"},"status":"succeeded","duration_ms":12}],
-        "omitted_call_count":0}"#;
+        "arguments":{"path":"README.md"},"status":"succeeded","duration_ms":12}]}"#;
     assert_eq!(
         kept(&report_with(valid)),
         Some(Ok(1)),
         "only a valid trace survives"
     );
+}
+
+/// No count or size caps a trace: 300 calls, one an edit of 100 files, each
+/// with its preview at its own bound, are kept whole, and the report they
+/// ride is well inside the frame that bounds it.
+#[test]
+fn a_report_with_300_calls_and_100_changes_is_accepted() {
+    use crate::protocol::StreamKind;
+
+    let edge = format!("{}\n", "x".repeat(199)).repeat(5);
+    let changes: Vec<serde_json::Value> = (1..=100)
+        .map(
+            |file| serde_json::json!({"path": format!("src/f{file}.rs"), "added": 3, "removed": 1}),
+        )
+        .collect();
+    let calls: Vec<serde_json::Value> = (1..=300)
+        .map(|number| {
+            let mut call = serde_json::json!({"call_id": number.to_string(), "name": "shell",
+                "arguments": {"command": "cargo test"}, "status": "succeeded",
+                "output_head": edge, "output_tail": edge, "output_line_count": 400,
+                "duration_ms": 12});
+            if number == 300 {
+                call["name"] = serde_json::json!("apply_patch");
+                call["changes"] = serde_json::json!(changes);
+            }
+            call
+        })
+        .collect();
+    let trace = serde_json::json!({ "calls": calls }).to_string();
+    let body = report_with(&format!(r#","tool_calls":{trace}"#));
+
+    assert!(
+        trace.len() > 64 * 1024,
+        "past the old 64 KiB: {}",
+        trace.len()
+    );
+    assert!(body.len() <= StreamKind::Reports.message_bytes_max());
+    assert_eq!(kept(&body), Some(Ok(300)), "every call is kept");
 }
 
 /// A runner still sending the cumulative totals the daemon used to diff is

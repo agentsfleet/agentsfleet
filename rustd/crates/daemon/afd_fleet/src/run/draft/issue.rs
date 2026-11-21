@@ -19,7 +19,6 @@ pub(super) struct Issue<'a> {
     pub(super) held_until: Timestamp,
     pub(super) run_version: i64,
     pub(super) reassignment: bool,
-    pub(super) max_runtime: std::time::Duration,
 }
 
 impl RunService {
@@ -73,7 +72,6 @@ impl RunService {
             .bind(issue.held_until.to_sqlx())
             .bind(issue.run_version)
             .bind(issue.owner.kind().as_str())
-            .bind(i64::try_from(issue.max_runtime.as_secs()).unwrap_or(i64::MAX))
             .fetch_optional(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

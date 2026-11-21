@@ -146,7 +146,6 @@ impl<'a> Columns<'a> {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(afd_billing::RUN_NANOS_PER_SEC)
             .bind(clock.ttl())
-            .bind(af_core::timing::MAX_RUNTIME)
             .bind(afd_billing::sql::work::FLEET_RUN)
             .bind(LineKind::Model.as_str())
             .bind(LineKind::Runtime.as_str())

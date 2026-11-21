@@ -4,16 +4,14 @@
     reason = "a test asserts by panicking, and indexes what it built"
 )]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_wire::tool_detail::{
-    DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, DetailRejection, ToolCallRecordsRequest,
-};
+use af_wire::tool_detail::{DetailRejection, ToolCallRecordsRequest};
 use serde_json::json;
 
-use super::{EVENT_SKIPPED, Skip, log_skip, named_turns, narrow_all, serving, within_budget};
+use super::{EVENT_SKIPPED, Skip, log_skip, named_turns, narrow_all, serving};
 use crate::run::standing::LiveRun;
 
 /// A post's body: `records` as given, under fence 7.
@@ -41,6 +39,9 @@ const EVENT: &str = "01924f4e-0000-7000-8000-0000000000e9";
 const FOLDED: &str = "01924f4e-0000-7000-8000-0000000000f0";
 /// A turn of the same fleet the run does not serve.
 const OTHER: &str = "01924f4e-0000-7000-8000-0000000000f1";
+
+/// One KiB, the unit the size cases are written in.
+const KIB: usize = 1024;
 
 /// The turns a fixture run serves.
 fn served(turns: &[&str]) -> BTreeSet<String> {
@@ -75,27 +76,30 @@ fn each_record_is_narrowed_on_its_own() {
     let body = post(&[
         record(1, 4),
         "7".to_owned(),
-        record(2, DETAIL_FIELD_MAX_BYTES + 1),
+        record(2, 200 * KIB),
         record(3, 4),
     ]);
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (kept, skipped) = narrow_all(&request.calls);
-    assert_eq!(kept.keys().copied().collect::<Vec<_>>(), [1, 3]);
+    assert_eq!(kept.keys().copied().collect::<Vec<_>>(), [1, 2, 3]);
+    assert_eq!(
+        kept[&2].record.output.len(),
+        200 * KIB,
+        "no field cap cuts it"
+    );
     assert_eq!(
         skipped
             .iter()
             .map(|skip| (skip.position, skip.reason))
             .collect::<Vec<_>>(),
-        [
-            (1, DetailRejection::Malformed),
-            (2, DetailRejection::TooLarge)
-        ]
+        [(1, DetailRejection::Malformed)]
     );
 }
 
 #[test]
 fn a_call_named_twice_keeps_its_last_record() {
-    let body = post(&[record(4, 1), record(4, 9)]);
+    let records = [record(4, 1), record(4, 9)];
+    let body = post(&records);
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (kept, skipped) = narrow_all(&request.calls);
     assert_eq!(kept[&4].position, 1);
@@ -104,37 +108,23 @@ fn a_call_named_twice_keeps_its_last_record() {
         [Skip {
             position: 0,
             reason: DetailRejection::Malformed,
-            bytes: af_wire::tool_detail::DETAIL_RECORD_MIN_BYTES,
+            bytes: records[0].len(),
         }]
     );
 }
 
+/// No budget per run: 20 records of 200 KiB, four times what a run once
+/// kept, are every one admissible.
 #[test]
-fn the_budget_keeps_the_lowest_calls_that_fit() {
-    // `{}` arguments make each record exactly 64 KiB.
-    let records: Vec<String> = (1..=20)
-        .map(|n| record(n, DETAIL_FIELD_MAX_BYTES - 2))
-        .collect();
+fn a_post_keeps_every_record_however_large_the_run() {
+    let records: Vec<String> = (1..=20).map(|n| record(n, 200 * KIB)).collect();
     let body = post(&records);
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (candidates, skipped) = narrow_all(&request.calls);
     assert!(skipped.is_empty(), "{skipped:?}");
-    let (kept, over) = within_budget(candidates, 0, &BTreeMap::new());
-    assert_eq!(kept.len(), 16, "16 × 64 KiB is the whole 1 MiB");
-    assert_eq!(over.len(), 4);
-    assert!(
-        over.iter()
-            .all(|skip| skip.reason == DetailRejection::OverBudget)
-    );
-    assert_eq!(kept.last().map(|kept| kept.record.call_number), Some(16));
-
-    let (candidates, _) = narrow_all(&request.calls);
-    let (kept, over) = within_budget(candidates, DETAIL_EVENT_MAX_BYTES, &BTreeMap::new());
-    assert!(
-        kept.is_empty(),
-        "an event already at its budget keeps nothing more"
-    );
-    assert_eq!(over.len(), 20);
+    let (kept, unserved) = serving(candidates, &served(&[EVENT]));
+    assert_eq!(kept.len(), 20);
+    assert!(unserved.is_empty(), "{unserved:?}");
 }
 
 #[test]
@@ -144,52 +134,22 @@ fn a_skip_is_logged_by_position_and_size_never_content() {
         &target(7, 7),
         Skip {
             position: 2,
-            reason: DetailRejection::TooLarge,
+            reason: DetailRejection::Malformed,
             bytes: 70_000,
         },
     );
     let line = log.only(EVENT_SKIPPED);
     assert_eq!(line.level, tracing::Level::INFO);
-    assert_eq!(line.field("reason"), Some("too_large"));
+    assert_eq!(line.field("reason"), Some("malformed"));
     assert_eq!(line.field("position"), Some("2"));
     assert_eq!(line.field("bytes"), Some("70000"));
     assert_eq!(line.field("agentsfleet_turn_id"), Some(EVENT));
 }
 
-/// One KiB, the unit the budget cases below are written in.
-const KIB: usize = 1024;
-
-#[test]
-fn a_replacement_spends_only_its_difference_and_never_breaks_the_cap() {
-    // Calls 1 and 2 are kept at 32 KiB each, inside 990 KiB the run keeps.
-    let replaced = BTreeMap::from([(1, 32 * KIB), (2, 32 * KIB)]);
-    let records = [record(1, 64 * KIB - 2), record(2, 64 * KIB - 2)];
-    let body = post(&records);
-    let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
-    let (candidates, _) = narrow_all(&request.calls);
-    let (kept, over) = within_budget(candidates, 990 * KIB, &replaced);
-    assert_eq!(
-        kept.iter()
-            .map(|kept| kept.record.call_number)
-            .collect::<Vec<_>>(),
-        [1],
-        "990 − 32 + 64 fits; the second swap would carry the event to 1054 KiB"
-    );
-    assert_eq!(over.len(), 1);
-
-    // A smaller replacement fits even when the event is full.
-    let shrink = [record(1, 1)];
-    let body = post(&shrink);
-    let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
-    let (candidates, _) = narrow_all(&request.calls);
-    let full = BTreeMap::from([(1, 64 * KIB)]);
-    let (kept, over) = within_budget(candidates, DETAIL_EVENT_MAX_BYTES, &full);
-    assert_eq!((kept.len(), over.len()), (1, 0));
-}
-
 #[test]
 fn a_record_naming_a_turn_the_run_does_not_serve_is_skipped() {
-    let body = post(&[record(1, 4), of_turn(2, 4, OTHER), of_turn(3, 4, FOLDED)]);
+    let records = [record(1, 4), of_turn(2, 4, OTHER), of_turn(3, 4, FOLDED)];
+    let body = post(&records);
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (candidates, skipped) = narrow_all(&request.calls);
     assert!(skipped.is_empty(), "{skipped:?}");
@@ -202,7 +162,7 @@ fn a_record_naming_a_turn_the_run_does_not_serve_is_skipped() {
         [Skip {
             position: 1,
             reason: DetailRejection::UnservedTurn,
-            bytes: af_wire::tool_detail::DETAIL_RECORD_MIN_BYTES,
+            bytes: records[1].len(),
         }]
     );
 }

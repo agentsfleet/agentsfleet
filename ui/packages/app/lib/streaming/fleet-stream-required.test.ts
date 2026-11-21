@@ -23,6 +23,6 @@ describe("required stream fields", () => {
   });
   it.each([undefined, null, "ok", 7])("counts a saved call with invalid status %s as omitted", (status) => {
     const call = {call_id: "1:1", name: "shell", arguments: {}, duration_ms: 12, status};
-    expect(readSavedTrace({calls: [call], omitted_call_count: 0}, FIXTURE_CLOCK_MS)).toEqual({calls: [], omitted: 1});
+    expect(readSavedTrace({calls: [call]}, FIXTURE_CLOCK_MS)).toEqual({calls: [], omitted: 1});
   });
 });

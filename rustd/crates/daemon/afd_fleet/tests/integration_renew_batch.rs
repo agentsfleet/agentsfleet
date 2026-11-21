@@ -8,7 +8,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::error_code::{ErrorCode, RUN_EXCEEDED_MAX_RUNTIME, RUN_LOST};
+use af_core::error_code::{ErrorCode, RUN_LOST};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::report::RenewRequest;
@@ -103,17 +103,19 @@ pub(crate) async fn spend(
         .expect("the spend line writes");
 }
 
-// Value: protects=one statement renews a host's live runs and refuses the
-// rest each on its own; fails_when=a refused run blocks or extends another,
-// or the frame costs more than its pre-read and statement once caches are warm;
-// why_new=renewal was about ten statements a run; seam=none; no_claim=a
-// run with a durable task, which keeps the per-run path.
+// Value: protects=one statement renews a host's live runs, a run hours old
+// among them, and refuses the rest each on its own; fails_when=a refused run
+// blocks or extends another, a run is refused for its age, or the frame costs
+// more than its pre-read and statement once caches are warm; why_new=renewal
+// was about ten statements a run, and the 12-hour ceiling is gone (M253_003
+// §8); seam=none; no_claim=a run with a durable task, which keeps the per-run
+// path.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn host_batch_extends_live_refuses_fenced() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let reassigned = held.hold_another().await;
-    let capped = held.hold_another().await;
+    let old = held.hold_another().await;
     held.fixtures
         .lapse_holder(&reassigned.run, &reassigned.fleet)
         .await;
@@ -122,13 +124,13 @@ async fn host_batch_extends_live_refuses_fenced() {
         .expect("the spare is reassigned the lapsed fleet");
     held.fixtures
         .age(
-            Row::Run(&capped.run),
+            Row::Run(&old.run),
             "created_at",
-            af_core::timing::MAX_RUNTIME,
+            std::time::Duration::from_hours(13),
         )
         .await;
     held.run_a_slice().await;
-    let runs = [&held.issued.run_id, &reassigned.run, &capped.run];
+    let runs = [&held.issued.run_id, &reassigned.run, &old.run];
     // Warms the price and definition caches, so the counted frame is a
     // steady-state tick's.
     let plane = held.fixtures.plane();
@@ -156,21 +158,15 @@ async fn host_batch_extends_live_refuses_fenced() {
 
     assert_eq!(
         codes(&answers),
-        [None, Some(RUN_LOST), Some(RUN_EXCEEDED_MAX_RUNTIME)],
-        "{answers:?}"
+        [None, Some(RUN_LOST), None],
+        "a run thirteen hours old renews: {answers:?}"
     );
     assert_eq!(
         refusals,
-        [
-            (
-                Some(reassigned.run.as_str().to_owned()),
-                Some("lost".to_owned())
-            ),
-            (
-                Some(capped.run.as_str().to_owned()),
-                Some("max_runtime".to_owned())
-            ),
-        ],
+        [(
+            Some(reassigned.run.as_str().to_owned()),
+            Some("lost".to_owned())
+        )],
         "each refusal the per-run path answers silently is named once"
     );
     let heads: Vec<String> = ran
@@ -188,46 +184,6 @@ async fn host_batch_extends_live_refuses_fenced() {
         runtime_lines(&held, &reassigned.run).await.is_empty(),
         "the reassigned run bills nothing"
     );
-    assert!(
-        runtime_lines(&held, &capped.run).await.is_empty(),
-        "the capped run bills nothing"
-    );
     owner.close().await;
     held.fixtures.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
--> Result<(), Box<dyn std::error::Error>> {
-    let held = crate::report_seed::held().await;
-    let run = &held.issued.run_id;
-    sqlx::query("UPDATE thread.runs SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
-        .bind(run).execute(&mut *held.fixtures.database.acquire().await?).await?;
-    let started = held
-        .fixtures
-        .instant(Row::Run(run), "created_at")
-        .await
-        .ok_or("saved run creation time")?;
-    let expected = af_core::clock::after(started, std::time::Duration::from_secs(60));
-    let renewed = crate::integration_renew_clamp::extend(
-        &held.runs,
-        run,
-        &held.runner,
-        (&held.run_key, &held.pricing),
-        held.now,
-    )
-    .await?;
-    assert_eq!(
-        crate::integration_renew_clamp::deadline(&renewed),
-        Some(expected)
-    );
-    let batch = frame(&held, &[run], false)
-        .await
-        .into_iter()
-        .next()
-        .ok_or("one batch answer")??;
-    assert_eq!(batch, expected);
-    held.fixtures.cleanup().await;
-    Ok(())
 }

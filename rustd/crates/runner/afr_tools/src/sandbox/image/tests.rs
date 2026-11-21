@@ -22,15 +22,29 @@ const SHOT: &str = "shot.png";
 const BIG: &str = "big.png";
 const NOTES: &str = "notes.txt";
 
-/// `kind`'s first bytes, padded with zeros to `length`.
+/// A real `kind` image; a PNG is padded to `length`.
 fn bytes_of(kind: ImageKind, length: usize) -> Vec<u8> {
-    let mut bytes = match kind {
-        ImageKind::Png => super::PNG_MAGIC.to_vec(),
-        ImageKind::Jpeg => super::JPEG_MAGIC.to_vec(),
-        ImageKind::Gif => b"GIF89a".to_vec(),
-        ImageKind::Webp => b"RIFF\0\0\0\0WEBPVP8 ".to_vec(),
+    let format = match kind {
+        ImageKind::Png => image::ImageFormat::Png,
+        ImageKind::Jpeg => image::ImageFormat::Jpeg,
+        ImageKind::Gif => image::ImageFormat::Gif,
+        ImageKind::Webp => image::ImageFormat::WebP,
     };
-    bytes.resize(length, 0);
+    real_image(format, length)
+}
+
+/// A real `format` image, 64 by 64, padded with zeros past its end marker to
+/// `length` when that is longer: decoders stop at the marker.
+fn real_image(format: image::ImageFormat, length: usize) -> Vec<u8> {
+    let picture = image::RgbImage::from_pixel(64, 64, image::Rgb([200, 80, 40]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(picture)
+        .write_to(&mut bytes, format)
+        .unwrap();
+    let mut bytes = bytes.into_inner();
+    if format == image::ImageFormat::Png && length > bytes.len() {
+        bytes.resize(length, 0);
+    }
     bytes
 }
 
@@ -79,7 +93,9 @@ async fn test_image_refusals_carry_codes() {
         "{no_input:?}"
     );
     assert!(
-        too_big.text.contains(&IMAGE_MAX_BYTES.to_string()),
+        too_big
+            .text
+            .contains(&guffbolt::tools::env::MAX_READ_BYTES.to_string()),
         "{}",
         too_big.text
     );

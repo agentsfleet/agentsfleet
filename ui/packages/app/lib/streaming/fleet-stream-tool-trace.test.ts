@@ -24,7 +24,6 @@ describe("readSavedTrace", () => {
         { call_id: CALL_TWO, name: REQUEST, arguments: { method: "POST", url: "https://example.test/deploy" },
           status: TOOL_CALL_STATUS.FAILED, output_head: "HTTP 403", output_line_count: 1, exit_code: 1, duration_ms: REQUEST_MS },
       ],
-      omitted_call_count: 0,
     };
     const turn = rowToTurn(row({ tool_calls: trace }));
     // Every call is finished and starts at the turn's own instant: only its
@@ -48,7 +47,7 @@ describe("readSavedTrace", () => {
     }
   });
 
-  it("should count a call too malformed to render with the ones the runner left out", () => {
+  it("should count a call too malformed to render as omitted", () => {
     const good = { call_id: CALL_ONE, name: READ, arguments: {}, status: TOOL_CALL_STATUS.SUCCEEDED, duration_ms: READ_MS };
     const malformed = [
       { ...good, name: "" },
@@ -57,16 +56,16 @@ describe("readSavedTrace", () => {
       { ...good, duration_ms: "12" },
       "not a call",
     ];
-    const trace = readSavedTrace({ calls: [good, ...malformed], omitted_call_count: 3 }, MS_PER_SECOND);
+    const trace = readSavedTrace({ calls: [good, ...malformed] }, MS_PER_SECOND);
     expect(trace?.calls.map((call) => call.callId)).toEqual([CALL_ONE]);
-    expect(trace?.omitted).toBe(3 + malformed.length);
+    expect(trace?.omitted).toBe(malformed.length);
   });
 
   it("should keep a saved call whose own fields are malformed, without them", () => {
     const call = {
       call_id: CALL_ONE, name: READ, arguments: ["path"], status: TOOL_CALL_STATUS.SUCCEEDED, output_head: 7, output_line_count: -2, duration_ms: READ_MS,
     };
-    const trace = readSavedTrace({ calls: [call], omitted_call_count: -1 }, MS_PER_SECOND);
+    const trace = readSavedTrace({ calls: [call] }, MS_PER_SECOND);
     expect(trace).toEqual({ calls: [{ name: READ, callId: CALL_ONE, startedAtMs: MS_PER_SECOND, ms: READ_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED }], omitted: 0 });
   });
 });
@@ -95,7 +94,7 @@ describe("an edit's recorded changes", () => {
   it("should read an edit's files and counts off a completion and a saved call", () => {
     expect(readToolOutcome({ status: TOOL_CALL_STATUS.SUCCEEDED, changes })?.changes).toEqual(changes);
     const saved = { call_id: "3", name: "apply_patch", status: TOOL_CALL_STATUS.SUCCEEDED, duration_ms: 5, changes };
-    expect(readSavedTrace({ calls: [saved], omitted_call_count: 0 }, MS_PER_SECOND)?.calls[0]?.changes).toEqual(changes);
+    expect(readSavedTrace({ calls: [saved] }, MS_PER_SECOND)?.calls[0]?.changes).toEqual(changes);
   });
 
   it("should read no changes when none, or none it can vouch for, were recorded", () => {

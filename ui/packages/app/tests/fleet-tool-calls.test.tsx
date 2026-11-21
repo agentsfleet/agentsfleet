@@ -271,7 +271,7 @@ describe("FleetThread — tool cells", () => {
     }
     live = live.map((turn) => ({ ...turn, status: PROCESSED }));
     // Reloaded: the saved row the server reads, mapped the way the page maps it.
-    const reloaded: FleetTurn = { ...rowToTurn(row({ ...settled, tool_calls: { calls: saved, omitted_call_count: 0 } })), role: "user" };
+    const reloaded: FleetTurn = { ...rowToTurn(row({ ...settled, tool_calls: { calls: saved } })), role: "user" };
 
     const toolRegion = () => [...document.querySelectorAll("li[data-tool]")].map((cell) => cell.textContent);
     mockStream(live);

@@ -119,7 +119,7 @@ impl ConnectionServices {
 
 /// Cuts a fold's reply to what one frame carries beside its envelope.
 ///
-/// A fold takes up to `FOLDS_PER_ASSIGNMENT_MAX` messages, each up to the
+/// A fold takes every message the run has not read, each up to the
 /// text ceiling, so together they can pass the frame, which the encoder would
 /// refuse on every retry. The messages left out stay assigned to the run, and
 /// its next fold, after the last one it read, returns them.

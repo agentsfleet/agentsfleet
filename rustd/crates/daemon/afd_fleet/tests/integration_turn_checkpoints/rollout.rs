@@ -82,61 +82,6 @@ async fn a_configured_clock_changes_new_grants_and_preserves_existing_deadlines(
     Ok(())
 }
 
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn issuing_saves_the_runtime_cap_instead_of_using_a_later_profile() -> Checked {
-    use af_core::timing::{RunClock, RunSettings};
-    let mut case = Case::with_fixtures(Fixtures::create_isolated().await).await?;
-    let settings = garde::Unvalidated::new(RunSettings {
-        max_runtime_seconds: 60,
-        ..RunSettings::default()
-    })
-    .validate()?;
-    case.runs = case.runs.clone().with_clock(RunClock::new(&settings));
-    case.replace().await?;
-    let saved: i32 = sqlx::query_scalar("SELECT max_runtime_seconds FROM thread.runs WHERE id=$1")
-        .bind(&case.issued.run_id)
-        .fetch_one(&mut *case.fixtures.database.acquire().await?)
-        .await?;
-    assert_eq!(saved, 60);
-    let deadline = execution_deadline(&case).await?;
-    assert_eq!(
-        deadline,
-        af_core::clock::after(case.issued.created_at, std::time::Duration::from_secs(60))
-    );
-    case.fixtures.cleanup().await;
-    Ok(())
-}
-
-async fn execution_deadline(case: &Case) -> Checked<jiff::Timestamp> {
-    use afd_fleet::task::TaskLifecycle as _;
-    sqlx::query("UPDATE runner.runners SET capability_report=COALESCE(capability_report,'{}'::jsonb) || jsonb_build_object($2::text,true), updated_at=now() WHERE id=$1")
-        .bind(&case.runner)
-        .bind(af_wire::task::CAPABILITY)
-        .execute(&mut *case.fixtures.database.acquire().await?)
-        .await?;
-    let input = case
-        .tasks()
-        .inputs(
-            afd_fleet::task::TaskRun {
-                runner_id: &case.runner,
-                run_id: &case.issued.run_id,
-                fencing_token: case.acquired.fence.as_u64(),
-            },
-            &garde::Unvalidated::new(af_wire::task::TaskInputsQuery {
-                fencing_token: case.acquired.fence.as_u64(),
-                starting_after: None,
-                after_input_sequence: None,
-                limit: 4,
-            })
-            .validate()?,
-        )
-        .await?;
-    input
-        .execution_deadline
-        .ok_or_else(|| "native input response must carry the saved execution deadline".into())
-}
-
 async fn assert_preserved(case: &Case, saved: &af_wire::run::TurnResume) -> Checked {
     let fence: i64 =
         sqlx::query_scalar("SELECT fencing_token FROM thread.threads WHERE fleet_id=$1")

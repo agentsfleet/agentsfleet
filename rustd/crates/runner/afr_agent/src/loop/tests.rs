@@ -93,7 +93,7 @@ async fn should_report_known_zero_tool_calls() {
     assert_eq!(output.result.content, "Please provide the run URL.");
     assert_eq!(
         serde_json::json!(output.trace),
-        serde_json::json!({"calls": [], "omitted_call_count": 0})
+        serde_json::json!({"calls": []})
     );
     assert_eq!(serde_json::json!(output.records), serde_json::json!([]));
 }

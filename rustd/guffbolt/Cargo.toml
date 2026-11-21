@@ -24,6 +24,7 @@ workspace = true
 # defaults for a standalone harness.
 tools = [
     "dep:html2text",
+    "dep:image",
     "dep:jiff",
     "dep:philiprehberger-cron-parser",
     "dep:regex",
@@ -61,6 +62,9 @@ tokio-util.workspace = true
 tracing.workspace = true
 # `web_fetch` reads a page's text, never its markup.
 html2text = { workspace = true, optional = true }
+# `image` decodes a picture and scales one longer than 2,048 px on a side down
+# to fit before the model sees it.
+image = { workspace = true, optional = true }
 # `current_time` writes the instant as RFC 3339, in UTC; `schedule` reads a
 # moment, and `LocalScheduler` reads an expression in its zone and keeps each
 # job's next moment.

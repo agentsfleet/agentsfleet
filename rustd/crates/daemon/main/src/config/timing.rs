@@ -43,10 +43,6 @@ pub(super) fn settings(runner: &super::settings::Runner) -> RunSettings {
     let defaults = RunSettings::default();
     RunSettings {
         ttl_seconds: runner.run.ttl_seconds.unwrap_or(defaults.ttl_seconds),
-        max_runtime_seconds: runner
-            .run
-            .max_runtime_seconds
-            .unwrap_or(defaults.max_runtime_seconds),
         heartbeat_interval_seconds: runner.health.heartbeat_interval,
         offline_after_seconds: runner.health.offline_after,
         healthy_before_uncordon_seconds: runner.health.healthy_before_uncordon,
@@ -67,7 +63,7 @@ mod tests {
         let mut file = tempfile::NamedTempFile::new()?;
         write!(
             file,
-            "[runner.run]\nttl_seconds=40\nmax_runtime_seconds=3600\n\
+            "[runner.run]\nttl_seconds=40\n\
             [runner.health]\nheartbeat_interval_seconds=7\noffline_after_seconds=90\n\
             healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_hold_seconds=45"
         )?;
@@ -77,7 +73,6 @@ mod tests {
             .build()?;
         let clock = config.runtime.clock;
         assert_eq!(clock.ttl(), Duration::from_secs(40));
-        assert_eq!(clock.max_runtime(), Duration::from_secs(3600));
         assert_eq!(clock.heartbeat_interval(), Duration::from_secs(7));
         assert_eq!(clock.offline_after(), Duration::from_secs(90));
         assert_eq!(clock.uncordon_after(), Duration::from_secs(21));
@@ -88,8 +83,8 @@ mod tests {
     #[test]
     fn conflicting_health_runtime_and_hold_settings_refuse_startup() -> Checked {
         for contents in [
-            "[runner.run]\nmax_runtime_seconds=35",
-            "[runner.run]\nmax_runtime_seconds=43201",
+            "[runner.run]\nttl_seconds=3601",
+            "[runner.run]\nmax_runtime_seconds=43200",
             "[runner.health]\nheartbeat_interval_seconds=0",
             "[runner.health]\nheartbeat_interval_seconds=53\nhealthy_before_uncordon_seconds=60",
             "[runner.health]\noffline_after_seconds=34",

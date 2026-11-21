@@ -123,8 +123,9 @@ pub struct TaskBindings {
     pub items: Vec<TaskBinding>,
     /// Native objective attached to this run after the complete binding.
     pub current_task: Option<TaskContext<'static>>,
-    /// Immutable runtime ceiling read under the current run ownership locks.
-    pub execution_deadline: jiff::Timestamp,
+    /// The bound task's immutable execution ceiling, read under the current
+    /// run ownership locks; `None` when the run is bound to no task.
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// True when the complete original interpretation was recovered.
     pub replayed: bool,
 }

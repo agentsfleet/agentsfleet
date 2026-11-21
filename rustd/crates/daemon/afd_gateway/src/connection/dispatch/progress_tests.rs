@@ -4,7 +4,7 @@
 use std::num::NonZeroU64;
 
 use af_validate::TEXT_MAX_CHARS;
-use af_wire::fold::{FOLDS_PER_ASSIGNMENT_MAX, FoldResponse, FoldedInput};
+use af_wire::fold::{FoldResponse, FoldedInput};
 use af_wire::protocol::{Answer, MESSAGE_BYTES_MAX, StreamKind};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -15,14 +15,16 @@ use crate::Result;
 
 const RUN: &str = "0190d5c2-7e1a-7000-8000-00000000e001";
 
+/// A burst of ceiling-size messages.
+const BURST: i64 = 32;
+
 /// What the assignment returns after `cursor`: every message this run was
-/// assigned and has not read, up to the count cap, as its statement does.
+/// assigned and has not read, as its statement does.
 fn fold_after<'a>(assigned: &[FoldedInput<'a>], cursor: i64) -> FoldResponse<'a> {
     FoldResponse {
         inputs: assigned
             .iter()
             .filter(|input| input.sequence > cursor)
-            .take(usize::from(FOLDS_PER_ASSIGNMENT_MAX))
             .cloned()
             .collect(),
     }
@@ -35,7 +37,7 @@ fn fold_after<'a>(assigned: &[FoldedInput<'a>], cursor: i64) -> FoldResponse<'a>
 #[tokio::test]
 async fn ceiling_size_inputs_fold_into_frames_each_within_the_limit() -> Result<()> {
     let ceiling = "\u{1}".repeat(TEXT_MAX_CHARS);
-    let assigned: Vec<FoldedInput<'_>> = (1..=i64::from(FOLDS_PER_ASSIGNMENT_MAX))
+    let assigned: Vec<FoldedInput<'_>> = (1..=BURST)
         .map(|sequence| FoldedInput {
             turn_id: "0190d5c2-7e1a-7000-8000-00000000e002".into(),
             sequence,
@@ -73,7 +75,7 @@ async fn ceiling_size_inputs_fold_into_frames_each_within_the_limit() -> Result<
         frames += 1;
     }
     assert!(frames > 1, "the burst needs more than one frame: {frames}");
-    let every: Vec<i64> = (1..=i64::from(FOLDS_PER_ASSIGNMENT_MAX)).collect();
+    let every: Vec<i64> = (1..=BURST).collect();
     assert_eq!(read, every, "each message is read once, in order");
     Ok(())
 }

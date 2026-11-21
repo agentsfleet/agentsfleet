@@ -18,7 +18,6 @@
     reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
 )]
 
-use af_wire::tool_detail::{DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use sqlx::AssertSqlSafe;
@@ -172,15 +171,17 @@ async fn test_stale_fence_tool_call_details_refused() {
     scene.cleanup().await;
 }
 
-/// One record over a bound is skipped; the rest are kept.
+/// One malformed record is skipped; the rest are kept.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_over_bound_tool_call_detail_skipped() {
+async fn test_malformed_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
     let (scene, http, run_id, fence) = held(&mut supervisor).await;
-    // About 70 KiB: past the 64 KiB field bound.
-    let over = "a".repeat(DETAIL_FIELD_MAX_BYTES + DETAIL_FIELD_MAX_BYTES / 16);
-    let calls = [record(1, "one"), record(2, &over), record(3, "three")];
+    let calls = [
+        record(1, "one"),
+        record(0, "calls count from 1"),
+        record(3, "three"),
+    ];
     let (status, body) = post_records(&http, &scene, (&run_id, fence), &calls).await;
     assert_eq!(status, 200);
     assert_eq!(body, json!({"stored_count": 2, "skipped_count": 1}));
@@ -189,30 +190,19 @@ async fn test_over_bound_tool_call_detail_skipped() {
     scene.cleanup().await;
 }
 
-/// An event keeps at most 1 MiB of records.
+/// No field cap, no budget per run, and no post cap below the runner frame:
+/// 20 records of 200 KiB, a 4 MiB post, are every one kept whole.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_event_detail_budget_caps_records() {
+async fn test_large_tool_call_details_kept_whole() {
     let mut supervisor = Supervisor::new();
     let (scene, http, run_id, fence) = held(&mut supervisor).await;
-    // `{}` arguments make each record exactly 64 KiB; three fit a post.
-    let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
+    let output = "a".repeat(200 * 1024);
     let calls: Vec<Value> = (1..=20).map(|n| record(n, &output)).collect();
-    let (mut stored, mut skipped) = (0, 0);
-    for batch in calls.chunks(3) {
-        let (status, body) = post_records(&http, &scene, (&run_id, fence), batch).await;
-        assert_eq!(status, 200);
-        stored += body["stored_count"].as_u64().expect("a count");
-        skipped += body["skipped_count"].as_u64().expect("a count");
-    }
-    assert_eq!((stored, skipped), (16, 4));
-    assert_eq!(rows(&scene).await, 16);
-    let one_post =
-        serde_json::to_vec(&json!({"fencing_token": fence, "calls": calls[..4]})).expect("encodes");
-    assert!(
-        one_post.len() > DETAIL_POST_MAX_BYTES,
-        "four would not fit a post"
-    );
+    let (status, body) = post_records(&http, &scene, (&run_id, fence), &calls).await;
+    assert_eq!(status, 200);
+    assert_eq!(body, json!({"stored_count": 20, "skipped_count": 0}));
+    assert_eq!(rows(&scene).await, 20);
     supervisor.shutdown().await;
     scene.cleanup().await;
 }

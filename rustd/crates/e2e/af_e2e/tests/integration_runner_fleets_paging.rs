@@ -154,12 +154,12 @@ async fn fleets_reads_refuse_a_bad_bound_cursor_and_missing_fence() {
         (
             events.as_str(),
             "&limit=0",
-            "limit must be between 1 and 25",
+            "limit must be between 1 and 100",
         ),
         (
             events.as_str(),
-            "&limit=26",
-            "limit must be between 1 and 25",
+            "&limit=101",
+            "limit must be between 1 and 100",
         ),
         (
             events.as_str(),

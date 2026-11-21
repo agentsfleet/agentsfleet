@@ -56,11 +56,9 @@ export type TurnDetail = TurnRow & {
   task_activity?: unknown;
 };
 
-/** `af_wire::tool_trace::ToolTrace`: the calls in order, and how many the
- * runner dropped to stay inside the trace's bounds. */
+/** `af_wire::tool_trace::ToolTrace`: every call the run made, in order. */
 export type SavedToolTrace = {
   calls: SavedToolCall[];
-  omitted_call_count: number;
 };
 
 export type SavedToolCall = {

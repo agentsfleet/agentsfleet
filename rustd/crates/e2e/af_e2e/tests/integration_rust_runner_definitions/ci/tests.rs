@@ -42,7 +42,6 @@ async fn test_responder_reads_exact_ci_evidence() {
         .await
         .expect("the report carried a trace");
     assert_eq!(trace["calls"].as_array().map(Vec::len), Some(10));
-    assert_eq!(trace["omitted_call_count"], serde_json::json!(0));
     supervisor.shutdown().await;
     scene.cleanup().await;
 }
@@ -173,7 +172,6 @@ async fn a_completed_definition_turn_reports_known_zero_tool_calls() {
         .await
         .expect("the completed turn has known trace data");
     assert_eq!(trace["calls"], serde_json::json!([]));
-    assert_eq!(trace["omitted_call_count"], serde_json::json!(0));
     assert_eq!(upstream.seen().len(), 0);
     supervisor.shutdown().await;
     scene.cleanup().await;

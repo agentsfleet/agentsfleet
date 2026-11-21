@@ -58,9 +58,9 @@ impl Extension<'_> {
             .store
             .lock_host_capacity(&mut transaction, self.run.runner_id)
             .await?;
-        let Some(capacity) = capacity.filter(|capacity| capacity.can_renew()) else {
+        if !capacity.is_some_and(afd_runner::capacity::Capacity::can_renew) {
             return self.refuse(transaction, Renewed::Lost).await;
-        };
+        }
         let cancelled: Option<bool> = sqlx::query_scalar(sql::shared::LOCK_CANCELLED)
             .bind(self.run.run_id)
             .bind(self.run.runner_id)
@@ -84,10 +84,7 @@ impl Extension<'_> {
                 let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT))?;
                 self.extend(transaction, expires_at, slice).await
             }
-            None => {
-                self.refuse(transaction, answer.verdict(capacity.now()))
-                    .await
-            }
+            None => self.refuse(transaction, Renewed::Lost).await,
         }
     }
 
@@ -107,9 +104,9 @@ impl Extension<'_> {
             .await?;
         self.commit(transaction, settlement.as_ref()).await?;
         // Known usage settled in the commit above whatever the answer is. The
-        // verdict stands as it was reached: a Kill mark and the runtime ceiling
-        // are the answers a runner acts on, so neither is turned into a loss
-        // by the usage that settled beside it.
+        // verdict stands as it was reached: a Kill mark is the answer a runner
+        // acts on, so it is not turned into a loss by the usage that settled
+        // beside it.
         Ok(verdict)
     }
 

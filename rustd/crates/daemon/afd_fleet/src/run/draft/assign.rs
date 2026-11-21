@@ -116,7 +116,6 @@ impl RunService {
             held_until: won.run_expires_at,
             run_version: host.run_version(),
             reassignment,
-            max_runtime: afd_setup::limits::SETUP_RUNTIME,
         };
         let Some(run_id) = self.issue_draft(&mut tx, issue, now).await? else {
             // The host filled, the fence or the choice moved: nothing commits.

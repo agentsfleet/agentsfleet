@@ -2,8 +2,10 @@
 //! than the first and last lines the trace shows.
 //!
 //! The runner posts each finished call under its run's fence; the daemon
-//! narrows each record, holds an event to a byte budget, and keeps one row per
-//! call. Both sides read the bounds below. Arguments and output are scrubbed
+//! narrows each record and keeps one row per call. No field, event or post
+//! cap bounds a record: a post is bounded by the runner frame
+//! (`crate::protocol::MESSAGE_BYTES_MAX`), and the runner cuts only a record
+//! that would not fit one on its own. Arguments and output are scrubbed
 //! runner-side, so resolved secret bytes never cross this boundary.
 
 use std::borrow::Cow;
@@ -14,9 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 
-use crate::tool_trace::{
-    FileChange, changes_free_of_nul, encoded_len, fields_free_of_nul, free_of_nul,
-};
+use crate::tool_trace::{FileChange, changes_free_of_nul, fields_free_of_nul, free_of_nul};
 
 mod item;
 pub use self::item::{ItemKind, ItemStatus};
@@ -33,42 +33,18 @@ const TURN_ID_BYTES: usize = 36;
 /// The path garde reports the record-wide NUL rule under: the record itself.
 const PATH_RECORD: &str = "";
 const PATH_CALL_NUMBER: &str = "call_number";
-const PATH_ARGUMENTS: &str = "arguments";
-const PATH_OUTPUT: &str = "output";
 
-/// The reason each broken bound is skipped under, malformed before too large
-/// as the checks read before they moved onto the type.
+/// The reason each broken bound is skipped under.
 const REASONS: PathTable<DetailRejection> = PathTable::new(
     &[
         (PATH_CALL_NUMBER, DetailRejection::Malformed),
         (PATH_RECORD, DetailRejection::Malformed),
-        (PATH_ARGUMENTS, DetailRejection::TooLarge),
-        (PATH_OUTPUT, DetailRejection::TooLarge),
     ],
     DetailRejection::Malformed,
 );
 
 /// What the record-wide rule reports; the reason comes from [`REASONS`].
 const HOLDS_NUL: &str = "a string holds a NUL character";
-
-/// What the arguments rule reports; the reason comes from [`REASONS`].
-const ARGUMENTS_TOO_LARGE: &str = "the arguments encode past their bound";
-
-/// The most bytes one record's output, or its encoded arguments, may hold.
-pub const DETAIL_FIELD_MAX_BYTES: usize = 64 * 1024;
-
-/// The most record bytes one event may keep, summed over its calls.
-pub const DETAIL_EVENT_MAX_BYTES: usize = 1024 * 1024;
-
-/// The largest body one post may send.
-pub const DETAIL_POST_MAX_BYTES: usize = 256 * 1024;
-
-/// The least a kept record spends of its event's budget, however small it is.
-///
-/// Each row costs storage beyond its payload — an id, its keys, three index
-/// entries — so an event cannot keep hundreds of thousands of tiny records
-/// inside a byte budget that counted only their payload.
-pub const DETAIL_RECORD_MIN_BYTES: usize = 256;
 
 /// One finished call as the runner records it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -86,23 +62,24 @@ pub struct ToolCallRecord<'a> {
     )]
     #[garde(range(min = CALL_NUMBER_MIN, max = CALL_NUMBER_MAX))]
     pub call_number: u64,
-    /// Every argument the call was made with, secret values masked. At most
-    /// 65536 bytes encoded, with no NUL character.
+    /// Every argument the call was made with, secret values masked, with no
+    /// NUL character.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
-    #[garde(custom(arguments_fit))]
+    #[garde(skip)]
     pub arguments: Map<String, Value>,
-    /// Whether the runner cut the arguments to fit.
+    /// Whether the runner dropped the arguments, which alone would not fit
+    /// one post.
     #[garde(skip)]
     pub truncated_arguments: bool,
-    /// Everything the call returned, at most 65536 bytes, with no NUL
-    /// character.
+    /// Everything the call returned, with no NUL character. Cut only when
+    /// the record would not otherwise fit one post.
     #[serde(borrow)]
-    #[garde(length(bytes, max = DETAIL_FIELD_MAX_BYTES))]
+    #[garde(skip)]
     pub output: Cow<'a, str>,
     /// How many lines the whole output had, before any cut.
     #[garde(skip)]
     pub output_line_count: u64,
-    /// Whether the runner cut the output to fit.
+    /// Whether the runner cut the output to fit one post.
     #[garde(skip)]
     pub truncated: bool,
     /// The turn that was newest when the call's step began: the run's own,
@@ -141,27 +118,6 @@ fn record_free_of_nul<C: ?Sized>(record: &ToolCallRecord<'_>, _context: &C) -> g
         Ok(())
     } else {
         Err(garde::Error::new(HOLDS_NUL))
-    }
-}
-
-/// The arguments, encoded, within [`DETAIL_FIELD_MAX_BYTES`].
-fn arguments_fit<C: ?Sized>(arguments: &Map<String, Value>, _context: &C) -> garde::Result {
-    if encoded_len(arguments) <= DETAIL_FIELD_MAX_BYTES {
-        Ok(())
-    } else {
-        Err(garde::Error::new(ARGUMENTS_TOO_LARGE))
-    }
-}
-
-impl ToolCallRecord<'_> {
-    /// The bytes this record spends of its event's budget: its arguments
-    /// encoded, plus its output, and never less than
-    /// [`DETAIL_RECORD_MIN_BYTES`].
-    #[must_use]
-    pub fn byte_count(&self) -> usize {
-        encoded_len(&self.arguments)
-            .saturating_add(self.output.len())
-            .max(DETAIL_RECORD_MIN_BYTES)
     }
 }
 
@@ -208,10 +164,6 @@ pub enum DetailRejection {
     /// Not a record: the wrong shape, a call number outside 1 to `i64::MAX`,
     /// or a NUL character the store cannot hold.
     Malformed,
-    /// Arguments or output over [`DETAIL_FIELD_MAX_BYTES`].
-    TooLarge,
-    /// Keeping it would carry the event past [`DETAIL_EVENT_MAX_BYTES`].
-    OverBudget,
     /// It names a turn the run does not serve: neither the run's own nor one
     /// its conversation read.
     UnservedTurn,
@@ -223,8 +175,6 @@ impl DetailRejection {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Malformed => "malformed",
-            Self::TooLarge => "too_large",
-            Self::OverBudget => "over_budget",
             Self::UnservedTurn => "unserved_turn",
         }
     }
@@ -249,7 +199,8 @@ pub struct ToolCallRecordsRequest<'a> {
 pub struct ToolCallRecordsStored {
     /// Records written or replaced.
     pub stored_count: usize,
-    /// Records refused for their shape, a bound, or the event's budget.
+    /// Records refused for their shape or for naming a turn the run does not
+    /// serve.
     pub skipped_count: usize,
 }
 
@@ -271,14 +222,15 @@ pub struct ToolCallDetail<'a> {
     /// Every argument the call was made with, secret values masked.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub arguments: Map<String, Value>,
-    /// Whether the arguments were cut to fit 65536 bytes.
+    /// Whether the arguments were dropped because they alone would not fit
+    /// one post.
     pub truncated_arguments: bool,
     /// Everything the call returned.
     #[serde(borrow)]
     pub output: Cow<'a, str>,
     /// How many lines the whole output had, before any cut.
     pub output_line_count: u64,
-    /// Whether the output was cut to fit 65536 bytes.
+    /// Whether the output was cut to fit one post.
     pub truncated: bool,
     /// For an edit: each file it changed and the lines it added and
     /// removed. Absent for any other call.

@@ -10,7 +10,7 @@ use jiff::Timestamp;
 use serde_json::{Map, Value};
 use sqlx::{Acquire as _, PgConnection};
 
-use super::{Admissible, Kept, named_turns, serving, within_budget};
+use super::{Admissible, Kept, named_turns, serving};
 use crate::error::{Result, query};
 use crate::run::sql;
 use crate::run::sql::tool_detail as statement;
@@ -26,7 +26,7 @@ const CONTEXT_DROP: &str = "tool detail dead fence drop";
 impl Runs {
     /// One post, in one transaction: lock the run, check its fence, clear
     /// dead runs' records, and write the records that name a turn the run
-    /// serves and fit.
+    /// serves.
     ///
     /// The run row stays locked until the commit, so nothing can supersede
     /// the run between the fence check and the write (`SELECT_LIVE_RUN`).
@@ -49,14 +49,7 @@ impl Runs {
         drop_others(&mut transaction, &target, run_id).await?;
         let named = named_turns(&candidates);
         let served = served_turns(&mut transaction, &target, run_id, &named).await?;
-        let (candidates, unserved) = serving(candidates, &served);
-        let numbers: Vec<i64> = candidates
-            .keys()
-            .map(|&number| i64::try_from(number).unwrap_or(i64::MAX))
-            .collect();
-        let (spent, replaced) = spend(&mut transaction, run_id, &numbers).await?;
-        let (kept, mut over) = within_budget(candidates, spent, &replaced);
-        over.extend(unserved);
+        let (kept, unserved) = serving(candidates, &served);
         let stored = kept.len();
         if stored > 0 {
             self.upsert(&mut transaction, &target, run_id, kept, now)
@@ -66,7 +59,7 @@ impl Runs {
         Ok(Kept::Stored {
             target,
             stored,
-            over,
+            unserved,
         })
     }
 
@@ -77,11 +70,11 @@ impl Runs {
         connection: &mut PgConnection,
         target: &LiveRun,
         run_id: &Uuid7,
-        kept: Vec<Admissible<'_>>,
+        kept: BTreeMap<u64, Admissible<'_>>,
         now: Timestamp,
     ) -> Result<()> {
         let mut columns = Columns::default();
-        for Admissible { record, bytes, .. } in kept {
+        for Admissible { record, .. } in kept.into_values() {
             columns.ids.push(self.entropy().uuid7(now)?);
             columns
                 .numbers
@@ -95,7 +88,6 @@ impl Runs {
                 .line_counts
                 .push(i64::try_from(record.output_line_count).unwrap_or(i64::MAX));
             columns.truncated.push(record.truncated);
-            columns.bytes.push(i64::try_from(bytes).unwrap_or(i64::MAX));
             columns.turns.push(Uuid7::parse(&record.turn_id)?);
             columns.kinds.push(record.kind.as_str());
             columns.tools.push(record.tool.into_owned());
@@ -114,7 +106,6 @@ impl Runs {
             .bind(columns.outputs)
             .bind(columns.line_counts)
             .bind(columns.truncated)
-            .bind(columns.bytes)
             .bind(run_id)
             .bind(columns.turns)
             .bind(columns.kinds)
@@ -163,36 +154,6 @@ async fn served_turns(
     Ok(served.iter().map(|turn| turn.as_str().to_owned()).collect())
 }
 
-/// What the run already keeps, and what each posted call's record spends.
-async fn spend(
-    connection: &mut PgConnection,
-    run_id: &Uuid7,
-    numbers: &[i64],
-) -> Result<(usize, BTreeMap<u64, usize>)> {
-    let spent: i64 = sqlx::query_scalar(statement::SELECT_KEPT_BYTES)
-        .bind(run_id)
-        .fetch_one(&mut *connection)
-        .await
-        .map_err(query(CONTEXT_KEEP))?;
-    let rows: Vec<(i64, i64)> = sqlx::query_as(statement::SELECT_REPLACED_BYTES)
-        .bind(run_id)
-        .bind(numbers)
-        .fetch_all(&mut *connection)
-        .await
-        .map_err(query(CONTEXT_KEEP))?;
-    let replaced = rows
-        .into_iter()
-        .map(|(number, bytes)| (to_usize(number), to_usize(bytes)))
-        .map(|(number, bytes)| (u64::try_from(number).unwrap_or_default(), bytes))
-        .collect();
-    Ok((to_usize(spent), replaced))
-}
-
-/// A stored count as a size; a negative one, which nothing writes, is zero.
-fn to_usize(stored: i64) -> usize {
-    usize::try_from(stored).unwrap_or_default()
-}
-
 /// Delete every record another run of `target`'s turn kept.
 async fn drop_others(
     connection: &mut PgConnection,
@@ -235,7 +196,6 @@ struct Columns {
     outputs: Vec<String>,
     line_counts: Vec<i64>,
     truncated: Vec<bool>,
-    bytes: Vec<i64>,
     turns: Vec<Uuid7>,
     kinds: Vec<&'static str>,
     tools: Vec<String>,

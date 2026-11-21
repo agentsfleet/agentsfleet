@@ -22,15 +22,32 @@ const SHOT_BYTES: usize = 40 * 1024;
 /// How long the suite waits on the executor before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 
+/// A real `format` image, 64 by 64, padded with zeros past its end marker to
+/// `length` when that is longer: decoders stop at the marker.
+pub(crate) fn real_image(format: image::ImageFormat, length: usize) -> Vec<u8> {
+    let picture = image::RgbImage::from_pixel(64, 64, image::Rgb([200, 80, 40]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(picture)
+        .write_to(&mut bytes, format)
+        .unwrap();
+    let mut bytes = bytes.into_inner();
+    if format == image::ImageFormat::Png && length > bytes.len() {
+        bytes.resize(length, 0);
+    }
+    bytes
+}
+
 /// A real executor served over a scratch workspace holding [`SHOT`].
 async fn workspace_with_shot() -> (tempfile::TempDir, afr_executor::Client) {
     let scratch = tempfile::tempdir().unwrap();
     let socket = scratch.path().join("executor.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
-    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-    png.resize(SHOT_BYTES, 0);
-    std::fs::write(root.join(SHOT), png).unwrap();
+    std::fs::write(
+        root.join(SHOT),
+        real_image(image::ImageFormat::Png, SHOT_BYTES),
+    )
+    .unwrap();
     tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
     let client =
         afr_executor::Client::connect_within(&scratch.path().join("executor.sock"), PATIENCE)

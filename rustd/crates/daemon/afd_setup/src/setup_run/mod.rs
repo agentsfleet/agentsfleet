@@ -215,7 +215,8 @@ impl Drafts {
     }
 
     /// The message's model, resolved for the payer, and the payer's balance
-    /// checked against one run's bound. A check only: nothing is set aside.
+    /// checked against the run's first slice. A check only: nothing is set
+    /// aside.
     async fn setup_model(
         &self,
         connection: &mut PgConnection,
@@ -223,7 +224,12 @@ impl Drafts {
         reference: &str,
     ) -> Result<RegisteredModel> {
         let model = model::selected(connection, &draft.tenant_id, reference).await?;
-        model::gate(connection, &draft.tenant_id, model::bound(&model)?).await?;
+        model::gate(
+            connection,
+            &draft.tenant_id,
+            model::first_slice(self.clock)?,
+        )
+        .await?;
         Ok(model)
     }
 

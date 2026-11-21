@@ -4,14 +4,13 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_wire::tool_detail::{
-    DETAIL_POST_MAX_BYTES, ItemKind, ItemStatus, ToolCallRecord, ToolCallRecordsRequest,
-};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
+use af_wire::tool_detail::{ItemKind, ItemStatus, ToolCallRecord, ToolCallRecordsRequest};
 
 use super::bodies;
 
 /// A record's output, sized so four fit one post and a fifth does not.
-const RECORD_OUTPUT_BYTES: usize = 60 * 1024;
+const RECORD_OUTPUT_BYTES: usize = MESSAGE_BYTES_MAX / 4 - 1024;
 
 fn record(number: u64, output_bytes: usize) -> ToolCallRecord<'static> {
     ToolCallRecord {
@@ -34,7 +33,7 @@ fn numbers(bodies: &[bytes::Bytes]) -> Vec<Vec<u64>> {
     bodies
         .iter()
         .map(|body| {
-            assert!(body.len() <= DETAIL_POST_MAX_BYTES, "{} bytes", body.len());
+            assert!(body.len() <= MESSAGE_BYTES_MAX, "{} bytes", body.len());
             let request: ToolCallRecordsRequest<'_> = serde_json::from_slice(body).unwrap();
             assert_eq!(request.fencing_token, 9);
             request
@@ -77,7 +76,7 @@ fn should_fill_a_body_to_exactly_the_post_bound_and_split_one_byte_past_it() {
         .map(|number| record(number, RECORD_OUTPUT_BYTES))
         .collect();
     let taken: usize = full.iter().map(|full| encoded(full) + ",".len()).sum();
-    let filling = DETAIL_POST_MAX_BYTES - envelope - taken - encoded(&record(5, 0));
+    let filling = MESSAGE_BYTES_MAX - envelope - taken - encoded(&record(5, 0));
     let with_last = |output_bytes| {
         let mut records = full.clone();
         records.push(record(5, output_bytes));
@@ -88,7 +87,7 @@ fn should_fill_a_body_to_exactly_the_post_bound_and_split_one_byte_past_it() {
     let over = with_last(filling + 1);
 
     assert_eq!(numbers(&exact), [vec![1, 2, 3, 4, 5]]);
-    assert_eq!(exact[0].len(), DETAIL_POST_MAX_BYTES);
+    assert_eq!(exact[0].len(), MESSAGE_BYTES_MAX);
     assert_eq!(numbers(&over), [vec![1, 2, 3, 4], vec![5]]);
 }
 

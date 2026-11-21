@@ -13,10 +13,11 @@ pub const MIN_RUN_SECONDS: u64 = super::RENEWAL_TICK
     .as_secs()
     + 1;
 
-/// Largest whole-second lifetime below the existing runtime ceiling.
-pub const MAX_RUN_SECONDS: u64 = super::MAX_RUNTIME
-    .saturating_sub(Duration::from_nanos(1))
-    .as_secs();
+/// Longest run lifetime a deployment may configure: one hour per grant.
+///
+/// A bound on one renewal slice, not on a run. A run renews for as long as its
+/// fleet's budget covers it and nobody stops it.
+pub const MAX_RUN_SECONDS: u64 = Duration::from_hours(1).as_secs();
 
 /// Cross-checked run, heartbeat and sandbox timing resolved before startup.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
@@ -25,20 +26,18 @@ pub struct RunSettings {
     /// Every renewal leaves the complete connection-recovery safety budget.
     #[garde(range(min = MIN_RUN_SECONDS, max = MAX_RUN_SECONDS))]
     pub ttl_seconds: u64,
-    /// Saved when a run is issued; later deployment changes cannot extend it.
-    #[garde(range(min = self.ttl_seconds.saturating_add(1), max = super::MAX_RUNTIME.as_secs()))]
-    pub max_runtime_seconds: u64,
     /// The daemon advertises this cadence and uses it for connection silence.
     #[garde(range(min = 1, max = self.offline_seconds().saturating_sub(1) / 2))]
     pub heartbeat_interval_seconds: u64,
-    /// Omission retains three run lifetimes; an explicit threshold allows a full run.
-    #[garde(range(min = self.ttl_seconds, max = super::MAX_RUNTIME.as_secs().saturating_mul(3)))]
+    /// Omission retains three run lifetimes; an explicit threshold is at most
+    /// three of the longest.
+    #[garde(range(min = self.ttl_seconds, max = MAX_RUN_SECONDS.saturating_mul(3)))]
     pub offline_after_seconds: Option<u64>,
     /// Continuous healthy heartbeats required before automatic quarantine lifts.
     #[garde(range(min = self.heartbeat_interval_seconds.saturating_add(1), max = self.offline_seconds().saturating_sub(1)))]
     pub healthy_before_uncordon_seconds: u64,
     /// Maximum idle reservation for a frozen sandbox after a completed run.
-    #[garde(range(min = 1, max = super::MAX_RUNTIME.as_secs()))]
+    #[garde(range(min = 1, max = super::DAY.as_secs()))]
     pub sandbox_idle_hold_seconds: u64,
 }
 
@@ -53,7 +52,6 @@ impl Default for RunSettings {
     fn default() -> Self {
         Self {
             ttl_seconds: super::RUN_TTL.as_secs(),
-            max_runtime_seconds: super::MAX_RUNTIME.as_secs(),
             heartbeat_interval_seconds: super::HEARTBEAT_INTERVAL.as_secs(),
             offline_after_seconds: None,
             healthy_before_uncordon_seconds: super::UNCORDON_AFTER.as_secs(),
@@ -66,7 +64,6 @@ impl Default for RunSettings {
 #[derive(Debug, Clone, Copy)]
 pub struct RunClock {
     ttl: u64,
-    max_runtime: u64,
     heartbeat: u64,
     offline_after: u64,
     uncordon_after: u64,
@@ -83,7 +80,6 @@ impl RunClock {
     /// Default timing also supports stores constructed in constant contexts.
     pub const DEFAULT: Self = Self {
         ttl: super::RUN_TTL.as_secs(),
-        max_runtime: super::MAX_RUNTIME.as_secs(),
         heartbeat: super::HEARTBEAT_INTERVAL.as_secs(),
         offline_after: super::RUNNER_OFFLINE_AFTER.as_secs(),
         uncordon_after: super::UNCORDON_AFTER.as_secs(),
@@ -95,7 +91,6 @@ impl RunClock {
     pub fn new(settings: &garde::Valid<RunSettings>) -> Self {
         Self {
             ttl: settings.ttl_seconds,
-            max_runtime: settings.max_runtime_seconds,
             heartbeat: settings.heartbeat_interval_seconds,
             offline_after: settings.offline_seconds(),
             uncordon_after: settings.healthy_before_uncordon_seconds,
@@ -107,12 +102,6 @@ impl RunClock {
     #[must_use]
     pub const fn ttl(self) -> Duration {
         Duration::from_secs(self.ttl)
-    }
-
-    /// Total runtime saved with each newly issued run.
-    #[must_use]
-    pub const fn max_runtime(self) -> Duration {
-        Duration::from_secs(self.max_runtime)
     }
 
     /// Cadence advertised to the runner on welcome and heartbeat replies.

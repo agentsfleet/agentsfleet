@@ -38,7 +38,7 @@ function openCall(over: Partial<FleetToolCall> = {}): FleetToolCall {
 describe("settling a turn's tool calls", () => {
   it("test_settle_prefers_saved_trace", () => {
     const live = [evt({ id: "e1", status: "received", tools: [openCall()] })];
-    const trace = { calls: [saved(CALL_ONE), saved(CALL_TWO), saved(CALL_THREE)], omitted_call_count: 0 };
+    const trace = { calls: [saved(CALL_ONE), saved(CALL_TWO), saved(CALL_THREE)] };
     const merged = mergeBackfill(live, [row({ turn_id: "e1", tool_calls: trace })]);
     expect(merged[0]?.tools?.map((call) => [call.callId, call.done])).toEqual([[CALL_ONE, true], [CALL_TWO, true], [CALL_THREE, true]]);
     // The call both lists hold takes the saved outcome, not the live guess.

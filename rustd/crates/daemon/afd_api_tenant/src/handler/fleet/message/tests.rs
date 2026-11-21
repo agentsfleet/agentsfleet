@@ -226,7 +226,7 @@ fn heavy_trace(calls: usize) -> String {
                 "output_head": edge, "output_tail": edge, "duration_ms": 1})
         })
         .collect();
-    serde_json::json!({"calls": calls, "omitted_call_count": 0}).to_string()
+    serde_json::json!({ "calls": calls }).to_string()
 }
 
 /// A row's trace is part of what the page spends: heavy traces cut a page

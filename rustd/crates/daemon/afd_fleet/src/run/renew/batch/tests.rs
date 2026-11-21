@@ -25,7 +25,6 @@ fn passing() -> Judged {
         found: true,
         cancelled: Some(false),
         fence_holds: Some(true),
-        below_cap: Some(true),
         priced_as_held: Some(true),
         ceilings_current: Some(true),
         over_budget: Some(false),
@@ -47,17 +46,15 @@ type Case = (fn(&mut Judged), Verdict);
 
 #[test]
 fn each_failed_check_answers_as_the_per_run_path_would() {
-    let cases: [Case; 12] = [
+    let cases: [Case; 10] = [
         (|row| row.found = false, Verdict::Lost),
         (|row| row.has_task = Some(true), Verdict::Tasked),
         (|row| row.host_renews = Some(false), Verdict::Lost),
         (|row| row.admitted = None, Verdict::Lost),
         (|row| row.cancelled = Some(true), Verdict::Cancelled),
         (|row| row.fence_holds = Some(false), Verdict::Lost),
-        (|row| row.below_cap = Some(false), Verdict::MaxRuntime),
         (|row| row.priced_as_held = Some(false), Verdict::Moved),
         (|row| row.ceilings_current = Some(false), Verdict::Moved),
-        (|row| row.over_budget = Some(true), Verdict::OverBudget),
         (|row| row.thread_moved = false, Verdict::Lost),
         (|row| row.extended_until = None, Verdict::Lost),
     ];
@@ -66,6 +63,57 @@ fn each_failed_check_answers_as_the_per_run_path_would() {
         fail(&mut row);
         assert_eq!(row.verdict(), expected, "case {index}");
     }
+}
+
+// Value: protects=a looping run ends on its fleet's budget, not a clock;
+// fails_when=the batch renews a fleet at its ceiling, or answers it as lost;
+// why_new=the 12-hour ceiling was the other thing that ended a looping run;
+// seam=none; no_claim=how spend is summed.
+#[test]
+fn a_run_over_its_budget_is_not_renewed() {
+    let mut row = passing();
+    row.over_budget = Some(true);
+    let verdict = row.verdict();
+    assert_eq!(verdict, Verdict::OverBudget);
+    assert_eq!(
+        refusal_of(&verdict).code(),
+        af_core::error_code::RUN_BUDGET_EXCEEDED,
+        "the runner is told the fleet's ceiling stopped it"
+    );
+}
+
+// Value: protects=a run of any age renews for one more lifetime; fails_when=a
+// renewal statement adds a span to the run's start again, which is how the
+// 12-hour ceiling clamped every grant; why_new=the ceiling is gone (M253_003
+// §8); seam=the statement text, which no unit lane can run; no_claim=the
+// integration lane's clock.
+#[test]
+fn a_run_past_twelve_hours_renews() {
+    // Each statement, and the parameter it binds the run lifetime to.
+    for (name, statement, lifetime) in [
+        ("renew_batch", crate::run::sql::renew::RENEW_BATCH, "$28"),
+        ("meter_run", crate::run::sql::meter::METER_RUN, "$5"),
+        ("extend_run", crate::run::sql::shared::EXTEND_RUN, "$5"),
+    ] {
+        let grant = statement
+            .split("AS capped")
+            .next()
+            .and_then(|head| head.rsplit("SELECT").next())
+            .expect("each renewal statement grants a capped deadline");
+        assert!(
+            grant.contains(&format!("checked_at + {lifetime}::interval")),
+            "{name} grants one run lifetime from now: {grant}"
+        );
+        assert!(
+            !statement.contains("created_at +"),
+            "{name} bounds a run by its age"
+        );
+    }
+    assert_eq!(
+        passing().verdict(),
+        Verdict::Extended(test_dead::AT),
+        "no check a renewal makes reads how long the run has run"
+    );
 }
 
 #[test]
@@ -164,13 +212,9 @@ fn a_fleet_at_its_ceiling_is_logged_as_a_budget_breach() {
 /// The refusals the per-run path answers silently are named, each with the
 /// verdict that stopped the run.
 #[test]
-fn a_lost_cancelled_or_capped_run_is_named_with_its_verdict() {
+fn a_lost_or_cancelled_run_is_named_with_its_verdict() {
     let row = found();
-    for (verdict, label) in [
-        (Verdict::Lost, "lost"),
-        (Verdict::Cancelled, "cancelled"),
-        (Verdict::MaxRuntime, "max_runtime"),
-    ] {
+    for (verdict, label) in [(Verdict::Lost, "lost"), (Verdict::Cancelled, "cancelled")] {
         let log = Capture::install();
         log_refused(&row, &verdict, &refusal_of(&verdict));
 

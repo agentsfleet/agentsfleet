@@ -148,8 +148,6 @@ pub(super) struct DataBuffer {
 pub(super) struct Run {
     #[garde(range(min = af_core::timing::MIN_RUN_SECONDS, max = af_core::timing::MAX_RUN_SECONDS))]
     pub ttl_seconds: Option<u64>,
-    #[garde(range(min = af_core::timing::MIN_RUN_SECONDS + 1, max = af_core::timing::MAX_RUNTIME.as_secs()))]
-    pub max_runtime_seconds: Option<u64>,
 }
 
 #[derive(Default, Deserialize, Validate)]
@@ -162,7 +160,8 @@ pub(super) struct Recovery {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Scheduling {
-    #[garde(range(min = 1, max = 43_198))]
+    /// Strictly shorter than the longest run lifetime, `MAX_RUN_SECONDS`.
+    #[garde(range(min = 1, max = 3_599))]
     pub missed_wake_probe_seconds: Option<u32>,
     #[garde(range(min = 1, max = 64))]
     pub max_concurrent_recovery_assignments: Option<usize>,

@@ -13,9 +13,7 @@ use jiff::Timestamp;
 use sqlx::{Connection as _, FromRow as _, PgConnection};
 
 use super::DraftRun;
-use crate::error::{
-    Result, query, renewal_no_credits, run_cancelled, run_lost, run_max_runtime, run_not_found,
-};
+use crate::error::{Result, query, renewal_no_credits, run_cancelled, run_lost, run_not_found};
 use crate::run::renew::{RenewAnswer, Renewed};
 use crate::run::usage::{DraftSlice, Pricing, SliceColumns};
 use crate::run::{RunService, sql};
@@ -34,8 +32,8 @@ impl RunService {
     /// cursor and the request lines `request` carries.
     ///
     /// # Errors
-    /// Refuses a run that is not this runner's, one cancelled, lost or past
-    /// its runtime cap, and one whose payer cannot fund another slice, each
+    /// Refuses a run that is not this runner's, one cancelled or lost, and one
+    /// whose payer cannot fund another slice, each
     /// with the code a fleet's renewal answers. Known request lines are logged
     /// either way. Reports a datastore that would not answer.
     pub async fn renew_draft(
@@ -84,7 +82,6 @@ impl RunService {
             Renewed::Extended { expires_at, .. } => Ok(expires_at),
             Renewed::Cancelled => Err(run_cancelled()),
             Renewed::Lost => Err(run_lost()),
-            Renewed::MaxRuntime => Err(run_max_runtime()),
         }
     }
 
@@ -128,7 +125,6 @@ impl RunService {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(sql::RUN_STATUS_ACTIVE)
             .bind(self.runs.clock().ttl())
-            .bind(self.runs.clock().max_runtime())
             .fetch_one(&mut **tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -139,7 +135,7 @@ impl RunService {
         let Some(expires_at) = answer.extended() else {
             let known = requested(pricing, run_id, run, requests, host.now())?;
             self.log_draft(tx, known.as_ref(), host.now()).await?;
-            return Ok(answer.verdict(host.now()));
+            return Ok(Renewed::Lost);
         };
         let settlement = match slice {
             Some(slice) => pricing.draft_settlement(run_id, slice, requests)?,

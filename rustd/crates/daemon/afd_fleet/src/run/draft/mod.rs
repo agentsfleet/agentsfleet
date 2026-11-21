@@ -13,8 +13,9 @@
 //!   nothing is reserved.
 //! - Key custody: a tenant's runner is never assigned a draft whose message
 //!   runs on the platform model, whose key the run carries.
-//! - A short `max_runtime_seconds`, [`afd_setup::limits::SETUP_RUNTIME`], so
-//!   one runaway costs minutes.
+//! - No runtime ceiling: a fleet's run has none either. The payer's balance,
+//!   checked at assignment and at every renewal, and a person's Stop end a
+//!   runaway.
 //! - No sandbox and one tool, `propose_setup`; no turn checkpoint. A lapsed
 //!   run is reassigned and reruns its message from the start, at most
 //!   [`af_core::limits::EVENT_RUNS_MAX`] runs, then the message fails.

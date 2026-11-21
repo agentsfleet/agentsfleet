@@ -26,7 +26,7 @@ use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
 use jiff::Timestamp;
 
-use crate::error::{Result, query, run_cancelled, run_lost, run_max_runtime, run_not_found};
+use crate::error::{Result, query, run_cancelled, run_lost, run_not_found};
 use crate::run::pull::RunService;
 use crate::run::sql;
 use crate::run::sql::meter::Metering;
@@ -81,9 +81,8 @@ pub enum Renewed {
         /// The slice's priced line, as its biller charges it.
         settlement: Option<Box<Settlement>>,
     },
-    /// Still the live holder, but the hard runtime ceiling is reached.
-    MaxRuntime,
-    /// The run is no longer this runner's, or only half the extend applied.
+    /// The run is no longer this runner's, only half the extend applied, or
+    /// its durable task's own execution limit passed.
     Lost,
 }
 
@@ -119,43 +118,20 @@ impl Runs {
     }
 }
 
-/// Translate the statement's five columns into the verdict.
+/// The column of [`sql::meter::METER_RUN`]'s answer a renewal reads.
 ///
-/// `mapOutcome`'s logic, and the ordering of its tests is load-bearing:
-///
-/// A run row that advanced while the affinity row did NOT is `Lost`, not
-/// extended. A concurrent reassignment took the thread between the snapshot and the
-/// update's recheck, so the deadline this would report is one the thread will not
-/// honour — the child dies cleanly rather than running past a reassignment.
-///
-/// With no row advanced, an absent probe means the run is not ours or not
-/// active. A probe that IS there means the guard failed, on the cap or on the
-/// fence; only the cap is a deterministic, reportable fact, so a stale fence
-/// falls through to `Lost` alongside it.
-/// The columns of [`sql::meter::METER_RUN`]'s answer a renewal reads.
+/// A run that did not advance is `Lost`, whatever failed: it is not ours, not
+/// active, its fence moved, or a durable task's own limit passed. No run ends
+/// at an age, so no refusal says the runner's result is still wanted.
 #[derive(sqlx::FromRow)]
 pub(crate) struct RenewAnswer {
-    probe_found: i64,
     new_until: Option<jiff_sqlx::Timestamp>,
-    hard_cap: Option<jiff_sqlx::Timestamp>,
 }
 
 impl RenewAnswer {
     /// The new deadline, when both rows advanced.
     pub(crate) fn extended(&self) -> Option<Timestamp> {
         self.new_until.map(jiff_sqlx::Timestamp::to_jiff)
-    }
-
-    /// The outcome of a renewal that did NOT advance, judged against
-    /// `checked_at`, the database's own instant read under the host lock.
-    pub(crate) fn verdict(&self, checked_at: Timestamp) -> Renewed {
-        if self.probe_found == 0 {
-            return Renewed::Lost;
-        }
-        match self.hard_cap {
-            Some(cap) if cap.to_jiff() <= checked_at => Renewed::MaxRuntime,
-            _stale_fence => Renewed::Lost,
-        }
     }
 }
 
@@ -194,8 +170,8 @@ impl RunService {
     ///
     /// # Errors
     /// Refuses a run that is not this runner's, one that is no longer active,
-    /// one past the runtime ceiling, and one whose tenant or fleet has run out
-    /// of money — each with its own registry code, because the runner acts
+    /// and one whose tenant or fleet has run out of money — each with its own
+    /// registry code, because the runner acts
     /// differently on every one. Also reports a datastore that would not
     /// answer, which the runner retries at its next renewal tick rather than
     /// treating as terminal.
@@ -244,7 +220,6 @@ impl RunService {
             } => Ok((expires_at, usage::charged(settlement.as_deref()))),
             Renewed::Cancelled => Err(run_cancelled()),
             Renewed::Lost => Err(run_lost()),
-            Renewed::MaxRuntime => Err(run_max_runtime()),
         }
     }
 }

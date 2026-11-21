@@ -1,12 +1,11 @@
--- The renewal both kinds share: the run and its thread moved to one clamped deadline under
+-- The renewal both kinds share: the run and its thread moved to one more run lifetime under
 -- the run's fence, and the runtime since the run's cursor measured, in one statement.
 -- Both rows move or neither does. The caller holds the host row and has run
 -- `lock_cancelled.sql`, which takes the thread and run locks in this order and refuses a
 -- cancelled run; the owner's own liveness check and the slice's usage line are its own
 -- statements, in the same transaction.
 --
--- $1 run · $2 runner · $3 milliseconds per second · $4 active status · $5 run TTL ·
--- $6 the most a run may run
+-- $1 run · $2 runner · $3 milliseconds per second · $4 active status · $5 run TTL
 WITH locked_thread AS MATERIALIZED (
     SELECT s.id, s.fencing_token, s.run_expires_at
     FROM thread.threads s JOIN thread.runs l ON s.id = COALESCE(l.fleet_id, l.draft_id)
@@ -15,8 +14,6 @@ WITH locked_thread AS MATERIALIZED (
 ), probe AS MATERIALIZED (
     SELECT l.id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token, l.created_at,
            l.run_expires_at, l.last_metered_at,
-           l.created_at + LEAST($6::interval, make_interval(secs => l.max_runtime_seconds))
-               AS hard_cap,
            s.id AS thread_id, s.fencing_token AS live_fence, s.run_expires_at AS thread_expires_at
     FROM thread.runs l
     JOIN locked_thread s ON s.id = COALESCE(l.fleet_id, l.draft_id)
@@ -26,15 +23,14 @@ WITH locked_thread AS MATERIALIZED (
     -- Read once the locks are held, so every deadline is judged after them.
     SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked
 ), guard AS MATERIALIZED (
-    -- Still the live holder, before either deadline, and below the hard cap. The run time
-    -- since the cursor never reaches past the deadline it was granted.
+    -- Still the live holder, before either deadline, at any age. The run time since the
+    -- cursor never reaches past the deadline it was granted.
     SELECT p.*, i.checked_at,
-           LEAST(i.checked_at + $5::interval, p.hard_cap) AS capped,
+           i.checked_at + $5::interval AS capped,
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until
     FROM probe p
     CROSS JOIN instant i
     WHERE p.fencing_token = p.live_fence
-      AND p.hard_cap > i.checked_at
       AND p.run_expires_at > i.checked_at AND p.thread_expires_at > i.checked_at
 ), moved AS (
     UPDATE thread.runs l
@@ -50,9 +46,7 @@ WITH locked_thread AS MATERIALIZED (
     RETURNING s.id
 )
 SELECT
-    (SELECT count(*) FROM probe)::bigint AS probe_found,
     (SELECT run_expires_at FROM moved) AS new_until,
-    (SELECT hard_cap FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at,
     (EXTRACT(EPOCH FROM g.metered_until - g.last_metered_at) * $3::bigint)::bigint AS d_ms,
     -- The runtime line's number: the milliseconds from the run's start to the slice's.

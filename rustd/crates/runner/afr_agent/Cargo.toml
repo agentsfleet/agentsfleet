@@ -69,6 +69,9 @@ tracing.workspace = true
 test-util = []
 
 [dev-dependencies]
+# Real encoded images: the image tool decodes every file it reads.
+image.workspace = true
+base64.workspace = true
 aho-corasick.workspace = true
 memmap2.workspace = true
 # The recorder a suite reads its own measurements back through.

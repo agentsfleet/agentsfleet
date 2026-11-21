@@ -6,12 +6,13 @@
 //! superseded writes nothing. Best-effort for the run — a record that breaks a
 //! bound is skipped and counted, and the run's answer never depends on a post.
 //!
-//! # The budget is per run
+//! # No size caps a record
 //!
-//! Settlement keeps one run's records (the report statement drops the rest,
-//! as `DELETE_OTHER_FENCES` does for a post), so the set an
-//! operator can open is one run's. A reassigned run therefore starts with
-//! the whole budget rather than inheriting a dead run's spend.
+//! A record keeps the call's whole output and arguments: no field cap, no
+//! budget per run, and no post cap beyond the runner frame the route reads a
+//! body up to. Settlement keeps one run's records (the report statement drops
+//! the rest, as `DELETE_OTHER_FENCES` does for a post), so the set an operator
+//! can open is one run's.
 //!
 //! # Each record names a turn the run serves
 //!
@@ -24,8 +25,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use af_core::id::Uuid7;
 use af_wire::tool_detail::{
-    DETAIL_EVENT_MAX_BYTES, DetailRejection, RawToolCallRecord, ToolCallRecord,
-    ToolCallRecordsRequest, ToolCallRecordsStored,
+    DetailRejection, RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest,
+    ToolCallRecordsStored,
 };
 use jiff::Timestamp;
 
@@ -39,7 +40,8 @@ const EVENT_SKIPPED: &str = "tool_detail_skipped";
 /// A superseded holder posted records; nothing was kept.
 const EVENT_FENCED: &str = "tool_detail_fenced";
 
-/// A record that passed its own bounds, and where it sat in the post.
+/// A record that passed its own bounds, where it sat in the post, and how
+/// many bytes the runner sent for it.
 #[derive(Debug)]
 struct Admissible<'a> {
     record: ToolCallRecord<'a>,
@@ -66,11 +68,10 @@ fn narrow_all<'a>(calls: &[RawToolCallRecord<'a>]) -> (BTreeMap<u64, Admissible<
     for (position, raw) in calls.iter().enumerate() {
         match raw.narrow() {
             Ok(record) => {
-                let bytes = record.byte_count();
                 let admissible = Admissible {
                     record,
                     position,
-                    bytes,
+                    bytes: raw.byte_len(),
                 };
                 if let Some(earlier) = kept.insert(admissible.record.call_number, admissible) {
                     skipped.push(Skip {
@@ -125,37 +126,6 @@ fn named_turns(candidates: &BTreeMap<u64, Admissible<'_>>) -> Vec<Uuid7> {
         .collect()
 }
 
-/// The records that fit what the event has left, lowest call number first.
-///
-/// `spent` is everything the run already keeps, and `replaced` what each
-/// posted call's current record spends: keeping a replacement swaps its old
-/// size for its new one, and skipping it leaves the old record — and its
-/// spend — in place.
-fn within_budget<'a>(
-    candidates: BTreeMap<u64, Admissible<'a>>,
-    spent: usize,
-    replaced: &BTreeMap<u64, usize>,
-) -> (Vec<Admissible<'a>>, Vec<Skip>) {
-    let mut total = spent;
-    let mut kept = Vec::new();
-    let mut over = Vec::new();
-    for (number, admissible) in candidates {
-        let old = replaced.get(&number).copied().unwrap_or_default();
-        let after = total.saturating_sub(old).saturating_add(admissible.bytes);
-        if after > DETAIL_EVENT_MAX_BYTES {
-            over.push(Skip {
-                position: admissible.position,
-                reason: DetailRejection::OverBudget,
-                bytes: admissible.bytes,
-            });
-        } else {
-            total = after;
-            kept.push(admissible);
-        }
-    }
-    (kept, over)
-}
-
 /// What one post's transaction decided.
 #[derive(Debug)]
 enum Kept {
@@ -163,12 +133,12 @@ enum Kept {
     NoRun,
     /// The run is not the fleet's current holder, or the post is not its own.
     Fenced(LiveRun),
-    /// Written: how many records, and those refused for the budget or for
-    /// naming a turn the run does not serve.
+    /// Written: how many records, and those refused for naming a turn the
+    /// run does not serve.
     Stored {
         target: LiveRun,
         stored: usize,
-        over: Vec<Skip>,
+        unserved: Vec<Skip>,
     },
 }
 
@@ -178,8 +148,8 @@ impl RunService {
     /// # Errors
     /// Refuses a run that is not this runner's or not live, and a holder the
     /// fleet has superseded; neither writes anything. Reports a datastore that
-    /// would not answer. A record refused for its shape, a bound, the run's
-    /// budget or a turn the run does not serve is counted, not an error.
+    /// would not answer. A record refused for its shape or for a turn the run
+    /// does not serve is counted, not an error.
     pub async fn record_tool_calls(
         &self,
         runner_id: &Uuid7,
@@ -194,7 +164,7 @@ impl RunService {
             .runs
             .keep_records(&run_id, runner_id, presented, candidates, now)
             .await?;
-        let (target, stored_count, over) = match decided {
+        let (target, stored_count, unserved) = match decided {
             Kept::NoRun => return Err(run_not_found()),
             Kept::Fenced(target) => {
                 let fleet_id = target.fleet_id.as_str();
@@ -208,10 +178,10 @@ impl RunService {
             Kept::Stored {
                 target,
                 stored,
-                over,
-            } => (target, stored, over),
+                unserved,
+            } => (target, stored, unserved),
         };
-        skipped.extend(over);
+        skipped.extend(unserved);
         for skip in &skipped {
             log_skip(&target, *skip);
         }

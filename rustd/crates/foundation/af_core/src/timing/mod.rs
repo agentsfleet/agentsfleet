@@ -38,14 +38,6 @@ pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 /// window.
 pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
-/// Hard ceiling on one run's total wall-clock, measured from the run row's
-/// `created_at`.
-///
-/// Renewal clamps to
-/// `min(now + RUN_TTL, created_at + MAX_RUNTIME)`, so a wedged agent
-/// that keeps emitting progress still terminates.
-pub const MAX_RUNTIME: Duration = Duration::from_hours(12);
-
 /// How long a stopped engine may close calls and return measured work.
 pub const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 
@@ -167,6 +159,6 @@ const _: () = assert!(
     "lifting quarantine requires several healthy beats before another offline interval"
 );
 const _: () = assert!(
-    RUN_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),
-    "a run must be renewable at least once before it hits the runtime ceiling"
+    RUN_TTL.as_secs() <= MAX_RUN_SECONDS,
+    "the default run lifetime must be one a deployment may configure"
 );

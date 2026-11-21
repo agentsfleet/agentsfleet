@@ -20,6 +20,7 @@ pub mod openapi;
 
 use std::sync::Arc;
 
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, get, patch, post};
@@ -53,7 +54,10 @@ pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::MemoryLoad => get(handler::runner::memory::load::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
-        RunnerRoute::Items => post(handler::runner::tool_call::handle::<D>),
+        // A post of full tool records is bounded by the runner frame alone,
+        // past axum's 2 MiB default: no field, event or post cap applies.
+        RunnerRoute::Items => post(handler::runner::tool_call::handle::<D>)
+            .layer(DefaultBodyLimit::max(MESSAGE_BYTES_MAX)),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),
         RunnerRoute::Schedules => {
             get(handler::runner::schedule::list::<D>).post(handler::runner::schedule::create::<D>)

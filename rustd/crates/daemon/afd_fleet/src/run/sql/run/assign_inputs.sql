@@ -9,17 +9,17 @@
 -- assigned is returned again, so a retry after a lost answer reads the same
 -- messages.
 --
--- It reads one assignment's worth of the conversation, oldest first, through
--- idx_turns_thread_id_reply_sequence_unsettled, so its cost is the assignment's own however
--- long the fleet's backlog is. The cursor ($5) is the run's own record of what
--- it read: an assignment starts after it.
+-- It reads every unsettled message of the conversation after the cursor, oldest first,
+-- through idx_turns_thread_id_reply_sequence_unsettled, as Codex reads all pending input at
+-- its next step. The cursor ($5) is the run's own record of what it read: an assignment
+-- starts after it, and the reply is cut to one frame, so the next takes the rest.
 --
 -- Only the runner holding the run assigns for it, and an assignment never replaces
 -- a stamp a later fence wrote: fences only rise on a fleet's thread.
 --
--- $1 run · $2 runner · $3 fence · $4 active run status · $5 read after sequence · $6 limit ·
--- $7 steer producer · $8 machine actor · $9 person actor pattern · $10 Slack mention producer ·
--- $11 Slack provider · $12 Slack person actor pattern · $13 Slack person actor separator
+-- $1 run · $2 runner · $3 fence · $4 active run status · $5 read after sequence ·
+-- $6 steer producer · $7 machine actor · $8 person actor pattern · $9 Slack mention producer ·
+-- $10 Slack provider · $11 Slack person actor pattern · $12 Slack person actor separator
 WITH run AS MATERIALIZED (
     SELECT l.fleet_id, head.sequence AS head_sequence,
            head.reply_provider, head.reply_address
@@ -37,8 +37,7 @@ WITH run AS MATERIALIZED (
       AND s.run_expires_at > clock_timestamp()
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
-    -- the unaddressed one by NULL, each in the index's own order. The limit
-    -- sits inside the lateral, where the planner stops the index walk at it.
+    -- the unaddressed one by NULL, each in the index's own order.
     SELECT w.id, w.sequence, w.parked_at, w.task_id, w.task_generation, w.producer, w.actor, w.workspace_id
     FROM run
     CROSS JOIN LATERAL (
@@ -47,16 +46,14 @@ WITH run AS MATERIALIZED (
          WHERE run.reply_provider IS NOT NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
-         ORDER BY a.sequence
-         LIMIT $6)
+         ORDER BY a.sequence)
         UNION ALL
         (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
          WHERE run.reply_provider IS NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
-         ORDER BY a.sequence
-         LIMIT $6)
+         ORDER BY a.sequence)
     ) w
 ), judged AS (
     -- Foldable until the first message that is not: a running AND in order.
@@ -64,9 +61,9 @@ WITH run AS MATERIALIZED (
     FROM (
         SELECT id, sequence,
                parked_at IS NULL AND task_id IS NULL AND task_generation IS NULL AND CASE
-                   WHEN producer = $7 THEN actor <> $8 AND actor LIKE $9
-                   WHEN producer = $10 THEN COALESCE(
-                       connector.slack_person_allowed(workspace_id, actor, $11, $12, $13), false)
+                   WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8
+                   WHEN producer = $9 THEN COALESCE(
+                       connector.slack_person_allowed(workspace_id, actor, $10, $11, $12), false)
                    ELSE false
                END AS foldable
         FROM ahead

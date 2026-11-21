@@ -7,9 +7,9 @@
 //! `tool_call_completed` frame, adds its trace row and, when it answered,
 //! holds its full record. A call whose run was dropped before it answered
 //! (the run stopped, the run future was dropped) ends `interrupted`, live
-//! and in the trace, so no run ending can leave a call open. Records are held
-//! only while they fit what one event may keep, measured as the daemon
-//! measures it: one it would refuse is not held to be posted.
+//! and in the trace, so no run ending can leave a call open. Every record is
+//! held, whole: no event budget caps them (`records` cuts only one that would
+//! not fit a post on its own).
 //!
 //! Each record names the turn newest when its call's step began, the mark
 //! `guffbolt` ends the call with; a call whose step carried none, a child's,
@@ -22,7 +22,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_core::clock::{saturating_millis, saturating_millis_signed};
 use af_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
-use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
+use af_wire::tool_detail::ToolCallRecord;
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
@@ -39,9 +39,6 @@ use af_secrets::{Clean, Scrub};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
 pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";
-/// A full record past the event's budget, kept out of the post. The trace
-/// still lists the call, so an operator's "show all" finds no record for it.
-const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 
 /// Every call one run made, its children's included.
 ///
@@ -64,8 +61,6 @@ pub(crate) struct Ledger<'run> {
 struct Book {
     trace: Trace,
     records: Vec<ToolCallRecord<'static>>,
-    /// What the held records spend of the event's budget.
-    spent: usize,
     calls: u64,
     /// The newest turn a call's step began with, once one did.
     newest: Option<String>,
@@ -168,7 +163,7 @@ impl<'run> Ledger<'run> {
         output.text = text.into_inner();
         let mut book = self.book();
         self.end(&mut book, ended, bounded, outcome);
-        self.hold(&mut book, full);
+        book.records.push(full);
     }
 
     /// The turn a call's item names: `mark`, the newest when its step began,
@@ -214,23 +209,6 @@ impl<'run> Ledger<'run> {
                 changes: outcome.changes.clone(),
             }));
         book.trace.push(ended.number, tool, bounded, outcome);
-    }
-
-    /// Holds `record` when it fits what is left of [`DETAIL_EVENT_MAX_BYTES`].
-    /// A record past it is dropped and a later, smaller one may still fit, as
-    /// the daemon keeps them.
-    fn hold(&self, book: &mut Book, record: ToolCallRecord<'static>) {
-        let after = book.spent.saturating_add(record.byte_count());
-        if after <= DETAIL_EVENT_MAX_BYTES {
-            book.spent = after;
-            book.records.push(record);
-        } else {
-            let run_id = self.run_id;
-            let call_number = record.call_number;
-            let bytes = record.byte_count();
-            let event = EVENT_RECORD_DROPPED;
-            tracing::warn!(run_id, call_number, bytes, event);
-        }
     }
 
     /// The run's known trace, including zero calls, and every record.

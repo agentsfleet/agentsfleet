@@ -2,26 +2,30 @@
 //! in full, for an operator's "show all".
 //!
 //! Its own verb rather than a field of the report. A large record set beside an
-//! uncapped reply could carry one request past the runner routes' body limit,
-//! and a refused report loses the run's answer; a refused post loses only the
-//! records. The runner posts before it reports, and nothing about settlement
-//! waits on a post.
+//! uncapped reply could carry one request past the runner frame, and a refused
+//! report loses the run's answer; a refused post loses only the records. The
+//! runner posts before it reports, and nothing about settlement waits on a
+//! post.
+//!
+//! A body is bounded by the runner frame (`af_wire::protocol::MESSAGE_BYTES_MAX`)
+//! at the route, and by nothing else: no record's arguments or output, and no
+//! event's total, is capped.
 //!
 //! Fenced as the memory push is (`afd_fleet::run::tool_detail`): the run
 //! must be this runner's and live, and a holder a reassignment has superseded is
-//! refused. Each record is read on its own, so one of the wrong shape or over
-//! a bound is counted in the answer and the rest are kept.
+//! refused. Each record is read on its own, so one of the wrong shape is
+//! counted in the answer and the rest are kept.
 
 use std::sync::Arc;
 
-use af_wire::tool_detail::{DETAIL_POST_MAX_BYTES, ToolCallRecordsRequest, ToolCallRecordsStored};
+use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
-use crate::handler::{malformed, refuse, reject};
+use crate::handler::{malformed, refuse};
 use crate::services::{RunPlane as _, RunnerPlane};
 
 /// The scoped event a failed post is logged under.
@@ -29,9 +33,6 @@ const EVENT: &str = "runner_tool_calls_failed";
 
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed tool-call records body";
-
-/// The refusal a body over the post cap earns.
-const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes";
 
 /// Keeps each finished call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -43,9 +44,9 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
     description = concat!(
         "Saves completed tool calls before the final run report. Reposting a call replaces ",
         "its record safely. Replaced work assignments are refused without saving anything.\n\n",
-        "The body limit is 262144 bytes. Each call's arguments and output may each use ",
-        "65536 bytes; an event holds 1 MiB total. Records exceeding these limits count ",
-        "toward `skipped_count`; other records are saved.",
+        "The body limit is 33554432 bytes, the runner frame. No call's arguments or output, ",
+        "and no turn's total, is capped. Malformed records count toward `skipped_count`; ",
+        "other records are saved.",
     ),
     request_body = ToolCallRecordsRequest<'_>,
     params(
@@ -71,9 +72,6 @@ pub(crate) async fn handle<D: RunnerPlane>(
     if let Err(refusal) = super::schedule::run(&run_id) {
         return refusal.into_response();
     }
-    if body.len() > DETAIL_POST_MAX_BYTES {
-        return reject(af_core::error_code::PAYLOAD_TOO_LARGE, DETAIL_TOO_LARGE);
-    }
     // Borrowed out of `body`: every record's output goes straight into a column.
     let Ok(request) = afd_http::handler::read_body::<ToolCallRecordsRequest<'_>>(&body) else {
         return malformed(DETAIL_MALFORMED);
@@ -85,18 +83,5 @@ pub(crate) async fn handle<D: RunnerPlane>(
     {
         Ok(stored) => Json::<ToolCallRecordsStored>(stored).into_response(),
         Err(error) => refuse(&error, EVENT),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use af_wire::tool_detail::DETAIL_POST_MAX_BYTES;
-
-    use super::DETAIL_TOO_LARGE;
-
-    /// The refusal states the cap the handler enforces.
-    #[test]
-    fn the_size_refusal_names_the_cap_it_enforces() {
-        assert!(DETAIL_TOO_LARGE.contains(&DETAIL_POST_MAX_BYTES.to_string()));
     }
 }

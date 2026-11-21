@@ -50,8 +50,6 @@ pub const INSERT_RUN_WITH_TURN: &str = include_str!("insert_run_with_turn.sql");
 /// it: the `$n` order is written ONCE, here, beside the text it orders.
 #[derive(Debug)]
 pub struct RunRow<'a> {
-    /// Immutable total runtime chosen when this run is issued.
-    pub max_runtime: std::time::Duration,
     /// The run's durable identifier.
     pub run_id: &'a Uuid7,
     /// The runner taking the work.
@@ -134,7 +132,6 @@ impl RunRow<'_> {
             .bind(self.setup_revision)
             .bind(af_wire::task::CAPABILITY)
             .bind(crate::task::DECISION_POLICY_PATH)
-            .bind(i64::try_from(self.max_runtime.as_secs()).unwrap_or(i64::MAX))
             .fetch_optional(connection)
             .await
             .map_err(query(

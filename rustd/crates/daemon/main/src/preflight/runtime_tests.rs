@@ -21,10 +21,12 @@ fn deployment_defaults_keep_the_current_recovery_budget() -> TestResult {
 
 #[test]
 fn validated_clock_edges_accept_a_strictly_shorter_fallback() -> TestResult {
-    for (ttl, fallback) in [("33", "32"), ("43199", "43198")] {
+    let longest = af_core::timing::MAX_RUN_SECONDS;
+    for (ttl, fallback) in [(33, 32), (longest, longest - 1)] {
+        let (ttl, fallback) = (ttl.to_string(), fallback.to_string());
         let settings = read(&MapEnv::from_pairs([
-            ("AGENTSFLEET_RUN_TTL_SECONDS", ttl),
-            ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", fallback),
+            ("AGENTSFLEET_RUN_TTL_SECONDS", ttl.as_str()),
+            ("AGENTSFLEET_ASSIGN_FALLBACK_SECONDS", fallback.as_str()),
         ]))?;
         assert!(settings.fallback < settings.clock.ttl());
         assert_eq!(settings.clock.offline_after(), settings.clock.ttl() * 3);

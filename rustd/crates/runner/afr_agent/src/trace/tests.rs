@@ -7,8 +7,7 @@
 use std::time::Duration;
 
 use af_wire::tool_trace::{
-    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, TRACE_MAX_BYTES, TRACE_MAX_CALLS,
-    ToolCallStatus, ToolTrace, ToolTraceCall, edge_fits,
+    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, ToolCallStatus, edge_fits,
 };
 use serde_json::{Map, json};
 
@@ -132,125 +131,16 @@ fn should_keep_arguments_that_encode_to_exactly_their_bound() {
     assert!(emptied.is_empty());
 }
 
-/// The row [`Trace::push`] builds for call `number` ending as `outcome`.
-fn row(number: u64, outcome: &Outcome, edges: bool) -> ToolTraceCall<'static> {
-    ToolTraceCall {
-        call_id: number.to_string().into(),
-        name: "update_plan".into(),
-        arguments: Map::new(),
-        status: outcome.status,
-        output_head: outcome.head.clone().filter(|_| edges).map(Into::into),
-        output_tail: outcome.tail.clone().filter(|_| edges).map(Into::into),
-        output_line_count: outcome.line_count,
-        exit_code: outcome.exit_code,
-        duration_ms: 3,
-        changes: Vec::new(),
-    }
-}
-
+/// No count or size caps the trace: 300 calls, each with about 2 KiB of
+/// edges, are every one listed with its preview, past the 200 calls and
+/// 64 KiB a trace was once held to.
 #[test]
-fn should_take_rows_that_exactly_fill_the_room() {
-    let outcome = ended("four\n");
-    let first = encoded_len(&row(1, &outcome, true));
-    let second = encoded_len(&row(2, &outcome, true)) + ",".len();
-    let mut trace = Trace {
-        room: first + second,
-        ..Trace::default()
-    };
-
-    trace.push(1, "update_plan", Map::new(), outcome.clone());
-    trace.push(2, "update_plan", Map::new(), outcome);
-
-    assert_eq!(trace.room, 0);
-    assert_eq!(trace.calls.len(), 2);
-    assert!(trace.calls.iter().all(|call| call.output_head.is_some()));
-}
-
-#[test]
-fn should_keep_a_later_row_without_edges_that_exactly_fills_the_room() {
-    let outcome = ended("four\n");
-    let first = encoded_len(&row(1, &outcome, true));
-    let second = encoded_len(&row(2, &outcome, false)) + ",".len();
-    let mut trace = Trace {
-        room: first + second,
-        ..Trace::default()
-    };
-
-    trace.push(1, "update_plan", Map::new(), outcome.clone());
-    trace.push(2, "update_plan", Map::new(), outcome);
-
-    assert_eq!((trace.room, trace.calls.len()), (0, 2));
-    assert!(trace.calls[0].output_head.is_some());
-    assert!(
-        trace.calls[1].output_head.is_none(),
-        "the second row fit only without edges"
-    );
-}
-
-#[test]
-fn should_account_every_byte_the_rows_take() {
-    let mut trace = Trace::default();
-    for (number, output) in [(1, ""), (2, "one\n"), (3, "a\nb\nc\n"), (4, "x")] {
-        trace.push(number, "update_plan", Map::new(), ended(output));
-    }
-
-    let listed = ToolTrace {
-        calls: trace.calls.clone(),
-        omitted_call_count: u64::MAX,
-    };
-
-    assert_eq!(encoded_len(&listed) + trace.room, TRACE_MAX_BYTES);
-}
-
-#[test]
-fn test_trace_bounds_come_from_afd_wire() {
-    let mut counted = Trace::default();
-    for number in 1..=(TRACE_MAX_CALLS as u64 + 1) {
-        counted.push(number, "update_plan", Map::new(), ended("4"));
-    }
-    let counted = counted.finish();
-    assert_eq!(counted.calls.len(), TRACE_MAX_CALLS);
-    assert_eq!(counted.omitted_call_count, 1);
-    assert_eq!(counted.validate(), Ok(()));
-
-    // About 1 KiB of edges a call: 70 calls carry 70 KiB, past the 64 KiB cap.
-    let edge = format!("{}\n", "x".repeat(199)).repeat(5);
-    let mut sized = Trace::default();
-    for number in 1..=70 {
-        sized.push(number, "http_request", Map::new(), ended(&edge));
-    }
-    let sized = sized.finish();
-    assert_eq!(sized.validate(), Ok(()));
-    assert!(serde_json::to_vec(&sized).unwrap().len() <= TRACE_MAX_BYTES);
-    assert!(sized.calls.first().unwrap().output_head.is_none());
-    assert!(
-        sized.calls.last().unwrap().output_head.is_none(),
-        "later rows lost their edges"
-    );
-    assert_eq!(
-        sized.calls.len() as u64 + sized.omitted_call_count,
-        70,
-        "every call is listed or counted"
-    );
-    assert_eq!(sized.omitted_call_count, 0);
-}
-
-#[test]
-fn should_finish_with_a_known_empty_trace_when_no_tool_ran() {
-    assert_eq!(
-        json!(Trace::default().finish()),
-        json!({"calls": [], "omitted_call_count": 0})
-    );
-}
-
-#[test]
-fn should_reclaim_old_previews_before_omitting_later_calls() {
+fn every_call_is_listed_with_its_preview() {
     let edge = format!("{}\n", "x".repeat(199)).repeat(10);
     let mut trace = Trace::default();
-    for number in 1..=50 {
+    for number in 1..=300 {
         let arguments = serde_json::from_value(json!({
             "url": format!("https://example.test/jobs/{number}/logs"),
-            "headers": {"Authorization": "Bearer [REDACTED]"},
         }))
         .unwrap();
         trace.push(number, "http_request", arguments, ended(&edge));
@@ -258,34 +148,15 @@ fn should_reclaim_old_previews_before_omitting_later_calls() {
     let trace = trace.finish();
 
     assert_eq!(trace.validate(), Ok(()));
-    assert_eq!(trace.omitted_call_count, 0);
-    assert_eq!(trace.calls.len(), 50);
-    assert!(trace.calls.first().unwrap().output_head.is_none());
+    assert_eq!(trace.calls.len(), 300);
+    assert!(encoded_len(&trace) > 64 * 1024);
     for (index, call) in trace.calls.iter().enumerate() {
-        let number = index + 1;
-        assert_eq!(call.call_id, number.to_string());
-        assert_eq!(call.status, ToolCallStatus::Succeeded);
-        assert_eq!(
-            call.arguments["url"],
-            format!("https://example.test/jobs/{number}/logs")
-        );
+        assert_eq!(call.call_id, (index + 1).to_string());
+        assert!(call.output_head.is_some() && call.output_tail.is_some());
     }
 }
 
 #[test]
-fn should_count_a_call_when_essential_rows_alone_exhaust_the_budget() {
-    let mut trace = Trace::default();
-    let arguments: Map<String, serde_json::Value> =
-        serde_json::from_value(json!({"query": "x".repeat(ARGS_LEAF_MAX_BYTES)})).unwrap();
-    for number in 1..=TRACE_MAX_CALLS as u64 {
-        trace.push(number, "http_request", arguments.clone(), ended(""));
-    }
-    let trace = trace.finish();
-
-    assert_eq!(trace.validate(), Ok(()));
-    assert!(trace.omitted_call_count > 0);
-    assert_eq!(
-        trace.calls.len() as u64 + trace.omitted_call_count,
-        TRACE_MAX_CALLS as u64
-    );
+fn should_finish_with_a_known_empty_trace_when_no_tool_ran() {
+    assert_eq!(json!(Trace::default().finish()), json!({"calls": []}));
 }

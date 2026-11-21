@@ -15,7 +15,8 @@ mod creation;
 mod draft;
 pub mod error;
 mod funnel;
-pub mod limits;
+#[cfg(test)]
+mod limits;
 mod maintenance;
 mod message;
 mod observe;

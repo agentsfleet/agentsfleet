@@ -14,7 +14,6 @@ fn default_and_validated_clocks_share_all_default_durations() -> Checked {
         RunClock::new(&settings),
     ] {
         assert_eq!(clock.ttl(), timing::RUN_TTL);
-        assert_eq!(clock.max_runtime(), timing::MAX_RUNTIME);
         assert_eq!(clock.heartbeat_interval(), timing::HEARTBEAT_INTERVAL);
         assert_eq!(clock.offline_after(), timing::RUNNER_OFFLINE_AFTER);
         assert_eq!(clock.uncordon_after(), timing::UNCORDON_AFTER);
@@ -45,18 +44,17 @@ fn omitted_offline_threshold_follows_ttl_and_an_explicit_threshold_wins() -> Che
 
 #[test]
 fn each_invalid_safety_relationship_is_rejected() -> Checked {
-    let changes: [fn(&mut RunSettings); 11] = [
+    let changes: [fn(&mut RunSettings); 10] = [
         |s| s.ttl_seconds = timing::MIN_RUN_SECONDS - 1,
-        |s| s.max_runtime_seconds = s.ttl_seconds,
-        |s| s.max_runtime_seconds = timing::MAX_RUNTIME.as_secs() + 1,
+        |s| s.ttl_seconds = timing::MAX_RUN_SECONDS + 1,
         |s| s.heartbeat_interval_seconds = 0,
         |s| s.heartbeat_interval_seconds = 53,
         |s| s.offline_after_seconds = Some(s.ttl_seconds - 1),
-        |s| s.offline_after_seconds = Some(timing::MAX_RUNTIME.as_secs() * 3 + 1),
+        |s| s.offline_after_seconds = Some(timing::MAX_RUN_SECONDS * 3 + 1),
         |s| s.healthy_before_uncordon_seconds = s.heartbeat_interval_seconds,
         |s| s.healthy_before_uncordon_seconds = timing::RUNNER_OFFLINE_AFTER.as_secs(),
         |s| s.sandbox_idle_hold_seconds = 0,
-        |s| s.sandbox_idle_hold_seconds = timing::MAX_RUNTIME.as_secs() + 1,
+        |s| s.sandbox_idle_hold_seconds = timing::DAY.as_secs() + 1,
     ];
     for change in changes {
         let mut settings = RunSettings::default();

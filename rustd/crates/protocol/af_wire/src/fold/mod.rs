@@ -14,10 +14,6 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// The most messages one assignment takes: a burst is read in batches, oldest
-/// first. A reply is also cut to one frame ([`FoldResponse::keep_within`]).
-pub const FOLDS_PER_ASSIGNMENT_MAX: u16 = 32;
-
 /// `POST /v1/runners/me/runs/{run_id}/folds` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
@@ -51,7 +47,8 @@ pub struct FoldedInput<'a> {
 }
 
 /// `POST /v1/runners/me/runs/{run_id}/folds` reply: the messages assigned
-/// to the run, oldest first, at most [`FOLDS_PER_ASSIGNMENT_MAX`].
+/// to the run, oldest first: every one it has not read, cut to one frame
+/// ([`FoldResponse::keep_within`]); the next fold returns the rest.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

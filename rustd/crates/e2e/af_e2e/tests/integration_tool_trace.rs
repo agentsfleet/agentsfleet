@@ -18,7 +18,6 @@
     reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
 )]
 
-use af_wire::tool_trace::TRACE_MAX_CALLS;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use sqlx::{AssertSqlSafe, Row as _};
@@ -40,7 +39,7 @@ pub(crate) fn trace(count: usize) -> Value {
                    "output_line_count": 214, "duration_ms": 12})
         })
         .collect();
-    json!({"calls": calls, "omitted_call_count": 0})
+    json!({ "calls": calls })
 }
 
 /// The report a run sends, carrying `tool_calls`.
@@ -113,7 +112,8 @@ async fn test_report_writes_tool_calls_with_result() {
     scene.cleanup().await;
 }
 
-/// A trace past a bound is dropped; the run still settles.
+/// A trace with a row past its bound is dropped; the run still settles. No
+/// count caps the trace itself.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_oversize_tool_trace_dropped_report_settles() {
@@ -121,7 +121,8 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
     let scene = scenario(&mut supervisor).await;
     let (run_id, fence) = run(&scene).await;
 
-    let over = trace(TRACE_MAX_CALLS + 1);
+    let mut over = trace(300);
+    over["calls"][299]["output_head"] = json!("1\n2\n3\n4\n5\n6");
     let settled = crate::wire::report(&scene, &report_with(&run_id, &scene, fence, over)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(stored_trace(&scene).await, None, "the trace is not stored");
@@ -303,7 +304,7 @@ async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
     let assigned = run(&scene).await;
     let before = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(field(&before, "tool_calls"), &Value::Null);
-    let known = json!({"calls": [], "omitted_call_count": 0});
+    let known = json!({"calls": []});
     settle_with(&scene, assigned, known.clone()).await;
     let after = tenant_get(&http, &scene, &token, &detail).await;
     assert_eq!(field(&after, "tool_calls"), &known);

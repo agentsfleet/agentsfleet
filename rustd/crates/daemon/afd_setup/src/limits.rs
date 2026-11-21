@@ -1,34 +1,26 @@
-//! Setup's limits, compiled in. No deployment setting feeds a setup run: the
-//! runtime that bounds it, and with it the proposal loop (decision D4, no
-//! retry cap), is the same in every deployment.
+//! Setup has no limits of its own, and no deployment setting feeds a setup
+//! run. A setup run renews as a fleet's does: the payer's balance, checked at
+//! assignment and at every renewal, and a person's Stop end a runaway, and the
+//! proposal loop inside it needs no cap (decision D4, no retry cap).
+//!
+//! What is left here guards the setting and the limits that went.
 
-use std::time::Duration;
-
-/// The longest a setup run may run, renewals included: one runaway costs
-/// minutes, and the proposal loop inside it needs no cap of its own.
-pub const SETUP_RUNTIME: Duration = Duration::from_secs(300);
-
-/// The model calls a setup run's balance check prices, rounded up once each,
-/// when the run spends the platform's key.
-pub const MODEL_CALLS_MAX: u32 = 8;
-
-#[cfg(test)]
 #[expect(
     clippy::expect_used,
     reason = "a source tree that will not read fails the regression guard"
 )]
 mod tests {
-    use std::{fs, path::Path, time::Duration};
+    use std::{fs, path::Path};
 
-    use super::SETUP_RUNTIME;
-
-    /// The names the deleted setting spelled, built so this file does not
-    /// spell them itself.
-    fn retired() -> [String; 3] {
+    /// The names the deleted setting and limits spelled, built so this file
+    /// does not spell them itself.
+    fn retired() -> [String; 5] {
         [
             ["Turn", "Settings"].concat(),
             ["Turn", "Policy"].concat(),
             ["turn", "_policy"].concat(),
+            ["SETUP", "_RUNTIME"].concat(),
+            ["MODEL", "_CALLS_MAX"].concat(),
         ]
     }
 
@@ -49,18 +41,19 @@ mod tests {
         found
     }
 
-    /// The 300-second runtime is a constant, and the setting
-    /// that fed setup runs (`[authoring.turn]`) is gone from this crate and
-    /// from the daemon's configuration.
+    /// The setting that fed setup runs (`[authoring.turn]`), the 300-second
+    /// runtime and the model-call price estimate are gone from this crate, from
+    /// the fleet's run path and from the daemon's configuration.
     #[test]
-    fn setup_limits_are_constants() {
-        assert_eq!(SETUP_RUNTIME, Duration::from_secs(300));
+    fn setup_has_no_limits_of_its_own() {
         let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
         let daemon = manifest.join("../main/src");
+        let fleet = manifest.join("../afd_fleet/src");
         let mut read = 0_usize;
         for path in sources(&manifest.join("src"))
             .into_iter()
             .chain(sources(&daemon))
+            .chain(sources(&fleet))
         {
             let source = fs::read_to_string(&path).expect("a Rust source");
             read += 1;

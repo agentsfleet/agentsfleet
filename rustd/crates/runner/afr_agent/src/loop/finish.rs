@@ -32,6 +32,14 @@ impl Harness<'_, '_> {
         if !pending {
             return Ok(());
         }
+        // A run bound to no task has no execution ceiling: the fleet's budget
+        // and a person's Stop bound its replies, as they bound the run. A
+        // bound task whose ceiling is missing still answers nothing.
+        if self.task.as_ref().is_some_and(|task| {
+            task.execution_deadline.is_none() && task.inputs.current_task.is_none()
+        }) {
+            return self.answer_task_inputs().await;
+        }
         let budget = self.task_execution_budget();
         super::task_slice::within_budget(budget, self.answer_task_inputs()).await
     }

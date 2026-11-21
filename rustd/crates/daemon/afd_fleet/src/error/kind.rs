@@ -245,9 +245,6 @@ pub(crate) enum ErrorKind {
     #[error("the fleet was archived and this run must stop")]
     RunCancelled,
 
-    #[error("the run reached the hard ceiling on one run's wall time")]
-    RunMaxRuntime,
-
     #[error("the tenant's credit pool cannot fund another slice of this run")]
     RenewalNoCredits,
 

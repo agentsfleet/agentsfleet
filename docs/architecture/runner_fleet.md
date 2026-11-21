@@ -770,15 +770,15 @@ How the runner captures a call is the subject of [`runner_execution.md`](./runne
 
 Every call ends exactly once. When a run ends for any reason, the runner emits `tool_call_completed` with `status: interrupted` for each call still open. A crash, kill or timeout so never leaves a call running in a browser or missing from the record.
 
-The run's trace rides the report, up to 200 calls and 64 KiB. Past the byte cap a call keeps its row without output edges, and past 200 calls it is counted as omitted.
+The run's trace rides the report and lists every call the run made. Each row keeps a short preview: arguments up to 2 KiB and the output's first and last 5 lines, up to 1 KiB each. No count or size caps the list; the 32 MiB report frame bounds it (Indy, Nov 21, 2026: "Match Codex").
 
 `agentsfleetd` parses the trace after the report's own fields and checks its bounds. `agentsfleetd` rewrites each call id to the fenced `{fence}:{n}` the live frames use. It writes the trace to `thread.turns.tool_calls` in the statement that writes the reply, so a fenced-out report writes neither.
 
-A trace that is malformed or over a bound is dropped and logged, and the report still settles. The run's outcome must not be lost over its tool list.
+A trace that is malformed or has a row over its bound is dropped and logged, and the report still settles. The run's outcome must not be lost over its tool list.
 
-Each call's full arguments and output ride neither the live tail nor the report. They are capped at 64 KiB each and 1 MiB per run, under the same scrub.
+Each call's full arguments and output ride neither the live tail nor the report. They are kept whole, under the same scrub: no field, run or post cap applies. The model still reads guffbolt's bounded head and tail; only the record keeps everything.
 
-The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/runs/{run_id}/items` under the run's fencing token, before the report. That keeps the report far below the runner routes' 2 MB request limit. That limit is axum's default, and the router mounts runner routes with no other.
+The runner posts them in batches of up to one runner frame, 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`), to `POST /v1/runners/me/runs/{run_id}/items` under the run's fencing token, before the report. The route reads a body up to that bound, past axum's 2 MiB default. A record that would not fit one post on its own is the one cut: its arguments are dropped (`truncated_arguments`) or its output halved until it fits (`truncated`).
 
 The daemon stores them in `thread.items`, a child table of `thread.turns`, keyed by turn, fence and call number. Settlement deletes the turn's items from every other fence, because a reclaimed run restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
 

@@ -9,8 +9,8 @@ use af_core::error::DETAIL_DATABASE_ERROR;
 use super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
     DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_MAX_RUNTIME, DETAIL_RUN_NOT_FOUND,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
+    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE,
+    DETAIL_VAULT_DATA_INVALID, Error,
 };
 
 struct Expected {
@@ -40,11 +40,6 @@ fn run_and_memory_refusals_have_stable_wire_classification() {
             super::run_cancelled(),
             error_code::RUN_CANCELLED,
             super::DETAIL_RUN_CANCELLED,
-        ),
-        expected(
-            super::run_max_runtime(),
-            error_code::RUN_EXCEEDED_MAX_RUNTIME,
-            DETAIL_RUN_MAX_RUNTIME,
         ),
         expected(
             super::renewal_no_credits(),

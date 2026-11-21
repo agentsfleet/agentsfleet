@@ -67,7 +67,6 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     let trace = crate::integration_tool_trace::stored_trace(&scene)
         .await
         .expect("the native event trace");
-    assert_eq!(trace["omitted_call_count"], 0);
     assert!(trace.to_string().contains("PATCH"));
     if lost {
         assert!(trace.to_string().contains("upstream_unreachable"));

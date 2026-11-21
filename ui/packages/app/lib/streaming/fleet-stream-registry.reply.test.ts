@@ -55,7 +55,7 @@ describe("fleet stream reply delivery", () => {
     let turns: FleetTurn[] = [open];
     const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     const saved = { name: "http_request", call_id: "f1:0", arguments: {}, status: "succeeded", duration_ms: 40 };
-    getFleetTurnActionMock.mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", response_text: "Done.", tool_calls: { calls: [saved], omitted_call_count: 0 } }) });
+    getFleetTurnActionMock.mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", response_text: "Done.", tool_calls: { calls: [saved] } }) });
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_tools", status: "processed", final_reply: "Done." }, apply, () => true);
     // The guess shows until the read lands, then the saved outcome replaces it.
     expect(turns[0]?.tools?.[0]).toMatchObject({ status: "interrupted", closedAtSettle: true });
@@ -74,7 +74,7 @@ describe("fleet stream reply delivery", () => {
     const saved = { name: "http_request", call_id: "f1:0", arguments: {}, status: "succeeded", duration_ms: 40 };
     getFleetTurnActionMock
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", response_text: "Done.", tool_calls: { calls: [saved], omitted_call_count: 0 } }) });
+      .mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", response_text: "Done.", tool_calls: { calls: [saved] } }) });
     dispatchReplyFrame(entry, Z_A, { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "evt_tools", status: "processed", final_reply: "Done." }, apply, () => true);
     expect(getFleetTurnActionMock).toHaveBeenCalledTimes(1);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -165,7 +165,7 @@ describe("fleet stream reply delivery", () => {
     dispatchReplyFrame(createEntry(WS, []), Z_A, complete, (next) => { turns = next(turns); }, () => true);
     expect(turns[0]?.tools?.[0]).toMatchObject({ closedAtSettle: true });
     setTurnDetailReader(fleetActionsMock().getFleetTurnAction as TurnDetailReader);
-    getFleetTurnActionMock.mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", tool_calls: { calls: [], omitted_call_count: 0 } }) });
+    getFleetTurnActionMock.mockResolvedValueOnce({ ok: true, data: row({ turn_id: "evt_tools", status: "processed", tool_calls: { calls: [] } }) });
     let current = true;
     const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
     turns = open();

@@ -306,7 +306,6 @@ pub(crate) fn with_calls(calls: u64) -> RunOutput {
                 changes: Vec::new(),
             })
             .collect(),
-        omitted_call_count: 0,
     });
     output
 }

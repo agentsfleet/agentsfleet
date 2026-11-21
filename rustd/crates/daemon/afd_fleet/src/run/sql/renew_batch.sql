@@ -28,11 +28,11 @@
 -- $16-$21 input, cached, write, 5-minute write, 1-hour write, output ·
 -- $22 price · $23 unpriced tokens · $24 charged ·
 -- $25 active status · $26 milliseconds per second · $27 run nanos per second ·
--- $28 run TTL · $29 the most a run may run · $30 the run work type ·
--- $31 model line kind · $32 runtime line kind · $33 the most milliseconds one
--- line carries · $34 the rolling day · $35 the host states that renew ·
--- $36 the opening's credential digest (NULL: a trusted domain call) ·
--- $37 the opening's connection
+-- $28 run TTL · $29 the run work type ·
+-- $30 model line kind · $31 runtime line kind · $32 the most milliseconds one
+-- line carries · $33 the rolling day · $34 the host states that renew ·
+-- $35 the opening's credential digest (NULL: a trusted domain call) ·
+-- $36 the opening's connection
 WITH asked AS (
   SELECT *
   FROM unnest($2::uuid[], $3::text[], $4::text[], $5::text[], $6::bigint[], $7::uuid[],
@@ -42,11 +42,11 @@ WITH asked AS (
 ), host AS MATERIALIZED (
   SELECT r.id, r.worker_count
   FROM runner.runners r
-  WHERE r.id = $1 AND r.degraded_reason IS NULL AND r.status = ANY($35::text[])
-    -- A stream call ($38) must prove the opening credential and connection; a
+  WHERE r.id = $1 AND r.degraded_reason IS NULL AND r.status = ANY($34::text[])
+    -- A stream call ($37) must prove the opening credential and connection; a
     -- trusted call was proven upstream. A stream call without its proof is refused.
-    AND (NOT $38::boolean
-         OR (r.token_hash = $36::text AND r.connection_id IS NOT DISTINCT FROM $37::uuid))
+    AND (NOT $37::boolean
+         OR (r.token_hash = $35::text AND r.connection_id IS NOT DISTINCT FROM $36::uuid))
   FOR SHARE OF r
 ), census AS MATERIALIZED (
   -- Live runs are counted against a clock read once the host row is held, so
@@ -72,7 +72,7 @@ WITH asked AS (
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,
-         l.model, l.task_id, l.max_runtime_seconds, l.cancel_requested_at IS NOT NULL AS cancelled,
+         l.model, l.task_id, l.cancel_requested_at IS NOT NULL AS cancelled,
          s.fencing_token AS live_fence, s.run_expires_at AS thread_expires_at
   FROM thread.runs l
   JOIN locked_thread s ON s.fleet_id = l.fleet_id
@@ -86,7 +86,7 @@ WITH asked AS (
 ), catalogue AS MATERIALIZED (
   SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
 ), floors AS MATERIALIZED (
-  SELECT date_trunc('milliseconds', now() - $34::interval) AS day_floor,
+  SELECT date_trunc('milliseconds', now() - $33::interval) AS day_floor,
          date_trunc('month', now(), 'UTC') AS month_floor
 ), spend AS MATERIALIZED (
   -- Each fleet with a ceiling, summed as `select_fleet_spend.sql` sums it.
@@ -105,11 +105,10 @@ WITH asked AS (
   GROUP BY c.fleet_id
 ), judged AS MATERIALIZED (
   SELECT p.*, a.runtime_price, a.runtime_line_id, i.checked_at,
-         LEAST(i.checked_at + $28::interval, p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds))) AS capped,
+         i.checked_at + $28::interval AS capped,
          GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until,
          p.fencing_token = p.live_fence AND p.run_expires_at > i.checked_at
              AND p.thread_expires_at > i.checked_at AS fence_holds,
-         p.created_at + LEAST($29::interval, make_interval(secs => p.max_runtime_seconds)) > i.checked_at AS below_cap,
          p.posture = a.posture AND p.provider = a.provider AND p.model = a.model
              AND (a.catalogue_version IS NULL
                   OR a.catalogue_version = (SELECT resource_version FROM catalogue))
@@ -133,13 +132,13 @@ WITH asked AS (
   JOIN fleet.fleets f ON f.id = p.fleet_id
   LEFT JOIN spend sp ON sp.fleet_id = p.fleet_id
 ), guard AS MATERIALIZED (
-  -- Capped at the longest runtime one line may claim ($33), which is where the
+  -- Capped at the longest runtime one line may claim ($32), which is where the
   -- rater caps it too, so the charge here is the one the per-run path makes.
   SELECT j.*,
          LEAST((EXTRACT(EPOCH FROM j.metered_until - j.last_metered_at) * $26::bigint)::bigint,
-               $33::bigint) AS d_ms
+               $32::bigint) AS d_ms
   FROM judged j
-  WHERE j.fence_holds AND j.below_cap AND NOT j.cancelled AND j.task_id IS NULL
+  WHERE j.fence_holds AND NOT j.cancelled AND j.task_id IS NULL
     AND j.priced_as_held AND j.ceilings_current AND NOT j.over_budget
     AND j.host_renews AND j.admitted
 ), runtime AS MATERIALIZED (
@@ -170,12 +169,12 @@ WITH asked AS (
        input_token_count, cached_input_token_count, cache_write_token_count,
        cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms,
        platform_model_price_id, unpriced_token_count, charged_nanos, created_at, updated_at)
-  SELECT line.id, $30, g.id, line.kind, line.seq, g.tenant_id, g.workspace_id, g.fleet_id,
+  SELECT line.id, $29, g.id, line.kind, line.seq, g.tenant_id, g.workspace_id, g.fleet_id,
          f.name, g.turn_id, NULL, g.provider, g.model, g.posture, line.requested_at,
          line.input, line.cached, line.write, line.write_5m, line.write_1h, line.output,
          line.runtime_ms, line.price_id, line.unpriced, line.charged, now(), now()
   FROM (
-      SELECT requested.run_id, requested.id, $31::text AS kind, requested.seq,
+      SELECT requested.run_id, requested.id, $30::text AS kind, requested.seq,
              requested.requested_at, requested.input, requested.cached, requested.write,
              requested.write_5m, requested.write_1h, requested.output, 0::bigint AS runtime_ms,
              requested.price_id, requested.unpriced, requested.charged
@@ -185,7 +184,7 @@ WITH asked AS (
           AS requested(run_id, id, seq, requested_at, input, cached, write, write_5m,
                        write_1h, output, price_id, unpriced, charged)
       UNION ALL
-      SELECT r.run_id, r.id, $32::text, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0,
+      SELECT r.run_id, r.id, $31::text, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0,
              r.runtime_ms, r.runtime_price, 0, r.charged
       FROM runtime r
   ) line
@@ -197,7 +196,7 @@ WITH asked AS (
 -- answers with every check NULL.
 SELECT a.run_id,
        j.id IS NOT NULL AS found,
-       j.cancelled, j.fence_holds, j.below_cap, j.priced_as_held, j.ceilings_current,
+       j.cancelled, j.fence_holds, j.priced_as_held, j.ceilings_current,
        j.over_budget, j.host_renews, j.admitted,
        j.task_id IS NOT NULL AS has_task,
        m.run_expires_at AS extended_until,

@@ -17,9 +17,9 @@ use afd_db::statement::Bound;
 ///
 /// `guard` is the fence, and every write is `FROM guard`, so a superseded
 /// holder writes nothing rather than some prefix of the writes. A renewal must
-/// still be the live holder, before both deadlines, with
-/// `capped = LEAST(now + RUN_TTL, created_at + MAX_RUNTIME)` still ahead; a
-/// run at its hard ceiling writes nothing and is not charged for asking.
+/// still be the live holder, before both deadlines. It grants
+/// `capped = now + RUN_TTL` at any age, shortened only by a durable task's own
+/// limits; the fleet's budget and a person's Stop end a run, not a clock.
 ///
 /// `moved` extends the run to `capped` and advances its cursor; `moved_thread`
 /// extends the thread's deadline the same way. Both deadline rows move together
@@ -27,7 +27,7 @@ use afd_db::statement::Bound;
 /// run: advancing one alone gets a healthy run reassigned.
 ///
 /// The statement moves no money. Its trailing row answers its caller:
-/// `moved_runs`, `new_until` and `hard_cap` for the verdict, and the measured
+/// `moved_runs` and `new_until` for the verdict, and the measured
 /// slice (`d_ms`, the instant it ends, who pays and what the line names) for
 /// the runtime line the caller prices and logs in the same transaction.
 /// `runtime_seq` numbers the runtime line by its slice's start, read from the
@@ -39,8 +39,8 @@ use afd_db::statement::Bound;
 /// measures no run time, so logs no runtime line.
 ///
 /// `$1` run, `$2` runner, `$3` milliseconds per second, `$4` the active
-/// status, `$5` the run lifetime a renewal grants, `$6` the hard cap on a
-/// run, `$7` the running state a task must hold. The metering instant is
+/// status, `$5` the run lifetime a renewal grants, `$6` the running state a
+/// task must hold. The metering instant is
 /// `clock_timestamp()`, read once the rows are locked.
 pub const METER_RUN: &str = include_str!("meter_run.sql");
 
@@ -65,7 +65,6 @@ impl<'a> Metering<'a> {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::RUN_STATUS_ACTIVE)
             .bind(clock.ttl())
-            .bind(af_core::timing::MAX_RUNTIME)
             .bind(af_wire::task::TaskState::Running.as_str())
     }
 }

@@ -86,9 +86,9 @@ fn detail(call: CallAddress, row: &ToolCallRow) -> ToolCallDetail<'_> {
     summary = "Read one tool call in full",
     description = concat!(
         "Returns full tool arguments and output with secrets masked. URL-encode the `item_id`, ",
-        "the trace's `call_id`. Each may contain at most 65536 bytes; `truncated_arguments` and ",
-        "`truncated` indicate shortened content. Missing, unrecorded, or inaccessible calls ",
-        "return 404.",
+        "the trace's `call_id`. Neither is capped; `truncated_arguments` and `truncated` mark ",
+        "content the runner shortened to fit one 33554432-byte post. Missing, unrecorded, or ",
+        "inaccessible calls return 404.",
     ),
     params(
         afd_http::openapi::path::Item,

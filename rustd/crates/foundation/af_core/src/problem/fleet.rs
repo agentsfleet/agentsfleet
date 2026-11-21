@@ -44,16 +44,6 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_EXCEEDED_MAX_RUNTIME,
-        // 409 like the lost verdict beside it, and the pair is the reason both
-        // codes exist: the STATUS cannot tell a runner whether its result is
-        // still wanted, so the code has to.
-        status: 409,
-        title: "Run exceeded max runtime",
-        hint: "The run reached its maximum runtime and cannot renew. The runner stops the child and reports any result.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::RUN_LOST,
         status: 409,
         title: "Run lost",

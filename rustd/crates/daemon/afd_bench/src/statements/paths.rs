@@ -236,7 +236,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),
     ("a.task_generation AS turn_generation", Path::Task),
     (
-        "task_execution_deadline_at) AS execution_deadline",
+        "SELECT task_execution_deadline_at AS execution_deadline",
         Path::Task,
     ),
     // Shared. `set_config(` is the bench's own session-naming statement

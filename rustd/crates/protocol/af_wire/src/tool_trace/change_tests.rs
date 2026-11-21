@@ -38,10 +38,7 @@ fn call(call_id: &str) -> ToolTraceCall<'static> {
 }
 
 fn trace(calls: Vec<ToolTraceCall<'static>>) -> ToolTrace<'static> {
-    ToolTrace {
-        calls,
-        omitted_call_count: 0,
-    }
+    ToolTrace { calls }
 }
 
 #[test]

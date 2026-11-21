@@ -40,15 +40,6 @@ pub const RUN_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
-/// The run reached the hard ceiling on how long one run may take.
-///
-/// Distinct from [`RUN_LOST`] even though both are 409s and both end the
-/// run: this one says the runner did nothing wrong and its result is still
-/// wanted — it stops the child and reports. Lost says the run is somebody
-/// else's now and the result will be refused. Collapsing them would throw away
-/// a completed run's output at the cap.
-pub const RUN_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
-
 /// The run moved to another runner before this renewal.
 ///
 /// Reached when the fence no longer holds or the row is no longer `active`, and

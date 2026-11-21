@@ -315,7 +315,6 @@ mod tests {
             crate::error::stale_fence(),
             crate::error::run_not_found(),
             crate::error::run_lost(),
-            crate::error::run_max_runtime(),
             crate::error::renewal_no_credits(),
             crate::error::budget_exhausted(),
         ] {

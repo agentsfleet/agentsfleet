@@ -1,7 +1,6 @@
 //! What stops an assignment: a run that is over, a durable task, the per-assignment
 //! cap, and a message that is already settled.
 
-use af_wire::fold::FOLDS_PER_ASSIGNMENT_MAX;
 use afd_turns::Producer;
 
 use super::support::{
@@ -69,34 +68,26 @@ async fn test_a_durable_task_run_is_assigned_nothing() -> Checked {
     Ok(())
 }
 
-/// A burst is read in batches: one more than the cap is assigned the cap, oldest
-/// first, and the next assignment from where the run read to takes the rest.
+/// A burst is assigned whole: every message the run has not read, oldest
+/// first, as Codex reads all pending input at its next step; nothing is left
+/// for a second assignment.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_an_assignment_takes_the_cap_and_the_next_takes_the_rest() -> Checked {
+async fn test_an_assignment_takes_every_pending_message() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
-    let cap = usize::from(FOLDS_PER_ASSIGNMENT_MAX);
     let mut sent = Vec::new();
-    for _ in 0..=cap {
+    for _ in 0..40 {
         sent.push(send(&held, &workspace, Producer::Steer, STEER_JSON).await?);
     }
     let first = assign_as_holder(&held, 0).await?;
-    let oldest: Vec<Assigned> = sent
+    let every: Vec<Assigned> = sent
         .iter()
-        .take(cap)
         .map(|message| message.assigned(STEER_TEXT))
         .collect();
-    assert_eq!(first, oldest);
-    let read_through = first
-        .last()
-        .ok_or("the first assignment took messages")?
-        .sequence;
-    let newest = sent.last().ok_or("a burst was sent")?;
-    assert_eq!(
-        assign_as_holder(&held, read_through).await?,
-        [newest.assigned(STEER_TEXT)]
-    );
+    assert_eq!(first, every);
+    let read_through = first.last().ok_or("the assignment took messages")?.sequence;
+    assert_eq!(assign_as_holder(&held, read_through).await?, []);
     held.fixtures.cleanup().await;
     Ok(())
 }

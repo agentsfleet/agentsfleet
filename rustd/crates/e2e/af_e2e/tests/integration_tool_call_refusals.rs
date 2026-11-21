@@ -19,7 +19,6 @@
 )]
 
 use af_crypto::entropy::Entropy;
-use af_wire::tool_detail::DETAIL_FIELD_MAX_BYTES;
 use afd_runner::Runners;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -128,8 +127,8 @@ async fn test_nul_tool_call_detail_skipped() {
     scene.cleanup().await;
 }
 
-/// Posting a call again replaces its record, and at a full budget a
-/// replacement is charged only what it adds.
+/// Posting a call again replaces its record, and no budget refuses a record
+/// once a run keeps more than the 1 MiB it was once held to.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_repost_replaces_its_record() {
@@ -139,23 +138,22 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
     let (run_id, fence) = run(&scene).await;
     let assigned = (run_id.as_str(), fence);
 
-    // `{}` arguments make each record exactly 64 KiB; sixteen fill the event.
-    let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
+    // Sixteen records of 64 KiB: the 1 MiB a run once kept.
+    let output = "a".repeat(64 * 1024);
     let full: Vec<Value> = (1..=16).map(|n| record(n, &output)).collect();
-    for batch in full.chunks(3) {
-        assert_eq!(post_records(&http, &scene, assigned, batch).await.0, 200);
-    }
+    assert_eq!(post_records(&http, &scene, assigned, &full).await.0, 200);
     let (_, body) = post_records(&http, &scene, assigned, &[record(17, "x")]).await;
-    assert_eq!(body["skipped_count"], 1, "the event is full: {body}");
+    assert_eq!(
+        body,
+        json!({"stored_count": 1, "skipped_count": 0}),
+        "no budget refuses it: {body}"
+    );
 
     let replacement = [record(16, "replaced")];
     let (status, body) = post_records(&http, &scene, assigned, &replacement).await;
     assert_eq!(status, 200);
-    assert_eq!(
-        body,
-        json!({"stored_count": 1, "skipped_count": 0}),
-        "a replacement at the cap swaps its old size for its new one"
-    );
+    assert_eq!(body, json!({"stored_count": 1, "skipped_count": 0}));
+    assert_eq!(rows(&scene).await, 17, "a replacement adds no row");
     let path = format!(
         "/v1/workspaces/{}/fleets/{}/turns/{}/items/{fence}:16",
         scene.workspace, scene.fleet, scene.turn_id
@@ -243,15 +241,14 @@ async fn test_nul_tool_trace_dropped_report_settles() {
     scene.cleanup().await;
 }
 
-/// Posts racing for one event serialise on the run row, so together they
-/// keep no more than the budget: 24 posts of one 64 KiB record each, released
-/// together, store exactly 16 and skip exactly 8.
+/// Posts racing for one event serialise on the run row, and none is lost:
+/// 24 posts of one 64 KiB record each, released together, store all 24.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_concurrent_posts_never_pass_the_event_budget() {
+async fn test_concurrent_posts_keep_every_record() {
     let mut supervisor = Supervisor::new();
     let (scene, http, run_id, fence) = held(&mut supervisor).await;
-    let output = "a".repeat(DETAIL_FIELD_MAX_BYTES - 2);
+    let output = "a".repeat(64 * 1024);
     let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(24));
     let url = format!("{}/v1/runners/me/runs/{run_id}/items", scene.base);
     let mut posts = tokio::task::JoinSet::new();
@@ -263,7 +260,7 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
             std::sync::Arc::clone(&barrier),
         );
         // Each record names the run's own turn, as `post_records` fills it:
-        // a record naming none is skipped before the budget is reached.
+        // a record naming none is skipped.
         let mut call = record(n, &output);
         call["turn_id"] = json!(scene.turn_id.as_str());
         let body = serde_json::to_vec(&json!({"fencing_token": fence, "calls": [call]}))
@@ -288,8 +285,8 @@ async fn test_concurrent_posts_never_pass_the_event_budget() {
         stored += body["stored_count"].as_u64().expect("a count");
         skipped += body["skipped_count"].as_u64().expect("a count");
     }
-    assert_eq!((stored, skipped), (16, 8), "exactly the budget, once");
-    assert_eq!(rows(&scene).await, 16);
+    assert_eq!((stored, skipped), (24, 0), "every post kept, once");
+    assert_eq!(rows(&scene).await, 24);
     supervisor.shutdown().await;
     scene.cleanup().await;
 }

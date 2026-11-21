@@ -89,7 +89,6 @@ const SAVED_CALL = v.object({
 
 const SAVED_TRACE = v.object({
   calls: v.array(v.unknown()),
-  omitted_call_count: v.fallback(LINE_COUNT, 0),
 });
 
 export type SavedTrace = { calls: FleetToolCall[]; omitted: number };
@@ -120,15 +119,15 @@ function outcomeOf({ status, output_head, output_tail, output_line_count, exit_c
 /**
  * A turn's saved trace as finished calls, or null when it carries none.
  * Only the difference between a call's start and its end renders, so every
- * call starts at `startedAtMs` — the turn's own instant. A call too
- * malformed to render counts with the ones the runner left out, so the thread
- * still says something is missing.
+ * call starts at `startedAtMs` — the turn's own instant. The runner lists
+ * every call; one too malformed to render is counted as omitted, so the
+ * thread still says something is missing.
  */
 export function readSavedTrace(value: unknown, startedAtMs: number): SavedTrace | null {
   const trace = v.safeParse(SAVED_TRACE, value);
   if (!trace.success) return null;
   const calls: FleetToolCall[] = [];
-  let omitted = trace.output.omitted_call_count;
+  let omitted = 0;
   for (const raw of trace.output.calls) {
     const call = v.safeParse(SAVED_CALL, raw);
     if (!call.success) {

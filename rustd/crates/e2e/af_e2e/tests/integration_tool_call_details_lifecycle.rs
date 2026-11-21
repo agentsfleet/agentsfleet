@@ -68,20 +68,20 @@ async fn plant_dead_record(scene: &Scenario, fence: u64) {
                INSERT INTO thread.runs \
                  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at, \
                   posture, provider, model, last_metered_at, fencing_token, run_expires_at, \
-                  max_runtime_seconds, status, posted_message_count, created_at, updated_at) \
+                  status, posted_message_count, created_at, updated_at) \
                SELECT '{dead}'::uuid, runner_id, fleet_id, workspace_id, tenant_id, turn_id, \
                       turn_created_at, posture, provider, model, last_metered_at, {fence}, \
-                      to_timestamp(0), max_runtime_seconds, 'expired', 0, now(), now() \
+                      to_timestamp(0), 'expired', 0, now(), now() \
                FROM thread.runs WHERE fleet_id = $1 AND turn_id = $2 \
                  AND fencing_token = {fence} + 1 \
                RETURNING id, workspace_id, fleet_id, turn_id) \
              INSERT INTO thread.items \
              (id, workspace_id, fleet_id, run_id, turn_id, fencing_token, sequence, kind, tool, \
               status, arguments, truncated_arguments, output, output_line_count, truncated, \
-              byte_count, created_at, updated_at) \
+              created_at, updated_at) \
              SELECT '{record}'::uuid, workspace_id, fleet_id, id, turn_id, {fence}, 1, \
                     'tool_call', 'shell', 'succeeded', '{{}}'::jsonb, false, 'dead', 1, false, \
-                    256, now(), now() \
+                    now(), now() \
              FROM dead"
         ),
     )

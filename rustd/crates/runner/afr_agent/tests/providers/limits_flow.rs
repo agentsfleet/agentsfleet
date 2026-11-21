@@ -55,7 +55,11 @@ async fn workspace() -> (tempfile::TempDir, afr_executor::Client, String) {
     std::fs::create_dir(&root).unwrap();
     let text = "bounded tool result\n".repeat(LINES);
     std::fs::write(root.join(FILE), &text).unwrap();
-    std::fs::write(root.join(SHOT), b"\x89PNG\r\n\x1a\n").unwrap();
+    std::fs::write(
+        root.join(SHOT),
+        super::images::real_image(image::ImageFormat::Png, 0),
+    )
+    .unwrap();
     tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
     let client = afr_executor::Client::connect_within(
         &scratch.path().join("executor.sock"),
@@ -201,9 +205,10 @@ fn assert_fresh_signed_image_turn(body: &serde_json::Value) {
     let result = messages.last().unwrap();
     assert_eq!(result["content"][0]["type"], "tool_result");
     assert_eq!(result["content"][0]["tool_use_id"], "read-shot");
+    let shot = super::images::real_image(image::ImageFormat::Png, 0);
     assert_eq!(
         result["content"][0]["content"][1]["source"]["data"],
-        "iVBORw0KGgo="
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, shot)
     );
 }
 

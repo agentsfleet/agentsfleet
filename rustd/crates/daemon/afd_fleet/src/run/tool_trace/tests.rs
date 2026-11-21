@@ -8,7 +8,7 @@ use std::sync::LazyLock;
 
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
-use af_wire::tool_trace::{RawToolTrace, TRACE_MAX_CALLS};
+use af_wire::tool_trace::RawToolTrace;
 use serde_json::{Value, json};
 
 use super::{EVENT_TRACE_DROPPED, TraceOwner, stored};
@@ -50,7 +50,7 @@ fn stored_from(sent: &str) -> Option<Value> {
 
 #[test]
 fn a_stored_trace_carries_fenced_call_ids_and_nothing_else_changes() {
-    let sent = json!({"calls": [call(1), call(2)], "omitted_call_count": 3});
+    let sent = json!({"calls": [call(1), call(2)]});
     let kept = stored_from(&sent.to_string()).expect("a valid trace is kept");
     assert_eq!(kept["calls"][0]["call_id"], json!("7:1"));
     assert_eq!(kept["calls"][1]["call_id"], json!("7:2"));
@@ -73,15 +73,27 @@ fn no_trace_sent_stores_none_and_logs_nothing() {
     assert!(log.events().is_empty(), "{:?}", log.events());
 }
 
+/// No count caps a trace: 300 calls, past the 200 it was once held to, are
+/// every one stored.
+#[test]
+fn a_trace_of_300_calls_is_stored_whole() {
+    let calls: Vec<Value> = (1..=300).map(call).collect();
+    let sent = json!({ "calls": calls }).to_string();
+    let kept = stored_from(&sent).expect("no count caps a trace");
+    assert_eq!(kept["calls"].as_array().map(Vec::len), Some(300));
+    assert_eq!(kept["calls"][299]["call_id"], json!("7:300"));
+}
+
 #[test]
 fn a_trace_over_a_bound_is_dropped_with_a_log_line_carrying_no_content() {
     let log = Capture::install();
-    let calls: Vec<Value> = (1..=TRACE_MAX_CALLS + 1).map(call).collect();
-    let sent = json!({"calls": calls, "omitted_call_count": 0}).to_string();
+    let mut over = call(2);
+    over["output_head"] = json!("1\n2\n3\n4\n5\n6");
+    let sent = json!({"calls": [call(1), over]}).to_string();
     assert_eq!(stored_from(&sent), None);
     let line = log.only(EVENT_TRACE_DROPPED);
     assert_eq!(line.level, tracing::Level::WARN);
-    assert_eq!(line.field("reason"), Some("too_many_calls"));
+    assert_eq!(line.field("reason"), Some("edge_too_large"));
     assert_eq!(
         line.field("fleet_id"),
         Some(Uuid7::as_str(owner().fleet_id))

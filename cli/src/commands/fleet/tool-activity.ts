@@ -52,10 +52,9 @@ export class ToolActivityPrinter {
 
   history(value: unknown): void {
     if (!isRecord(value) || !Array.isArray(value["calls"])) return;
-    for (const call of value["calls"].slice(0, 200)) {
+    // The saved trace lists every call the run made; no count caps it.
+    for (const call of value["calls"]) {
       if (isRecord(call)) this.frame(KIND_TOOL_CALL_COMPLETED, {...call, args_redacted: call["arguments"], ms: call["duration_ms"]});
     }
-    const omitted = value["omitted_call_count"];
-    if (typeof omitted === "number" && Number.isSafeInteger(omitted) && omitted > 0) this.#print(`${omitted} earlier tool calls are outside the saved trace.`);
   }
 }
