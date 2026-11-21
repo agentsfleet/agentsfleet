@@ -4,7 +4,7 @@ import { Schema } from "effect";
 import { v7 as uuidv7 } from "uuid";
 import { AppliedSchema, DraftSchema, FleetSchema } from "../../../src/commands/chat/protocol.ts";
 import { nativeRequest, readAuthContext } from "./native-api.ts";
-import { authoringModel, commandValues, inspectDraft } from "./native-setup.ts";
+import { setupModel, commandValues, inspectDraft } from "./native-setup.ts";
 import { runFleetctl } from "./cli.js";
 
 type Env = Readonly<Record<string, string>>;
@@ -15,7 +15,7 @@ export async function applyReviewedImprovement(env: Env, fleetId: string) {
   const current = Schema.decodeUnknownSync(FleetSchema)(await nativeRequest(ctx, `/fleets/${fleetId}`));
   const draft = Schema.decodeUnknownSync(DraftSchema)(await nativeRequest(ctx, "/drafts", "POST", {
     source: {kind: "fleet", fleet_id: fleetId, setup_revision: current.setup_revision},
-    authoring_model_ref: await authoringModel(ctx), operation_id: uuidv7(),
+    setup_model_ref: await setupModel(ctx), operation_id: uuidv7(),
   }));
   if (!draft.candidate) throw new Error("Improve returned no native candidate");
   const instructions = draft.candidate.definition.instructions_md;

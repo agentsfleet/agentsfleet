@@ -2,9 +2,9 @@
 
 use super::{Checked, publication::root, storage::Files};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointPlan, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnWorkspace,
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointPlan,
+        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnWorkspace,
     },
     task::{CheckpointEntry, CheckpointPage},
 };
@@ -27,7 +27,7 @@ impl Pending {
         files: &Files,
         pages: &[Vec<CheckpointEntry>],
         workspace: TurnWorkspace,
-        expected_head: Option<TurnId>,
+        expected_head: Option<CheckpointOperationId>,
     ) -> Checked<Self> {
         let history = root(&files.case, workspace.clone());
         let mut command = files.case.command();
@@ -45,7 +45,7 @@ impl Pending {
         Ok(Self {
             reference: TurnCheckpointRef {
                 checkpoint_id: plan.checkpoint_id.clone(),
-                pin_id: TurnId(plan.pin.id.clone()),
+                pin_id: CheckpointOperationId(plan.pin.id.clone()),
             },
             plan: *plan,
             root: history,
@@ -55,7 +55,7 @@ impl Pending {
     pub(super) async fn write(
         &self,
         files: &Files,
-        id: TurnId,
+        id: CheckpointOperationId,
         number: u32,
         entries: Vec<CheckpointEntry>,
     ) -> Checked<(String, String)> {

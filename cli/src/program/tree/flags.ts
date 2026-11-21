@@ -17,7 +17,6 @@ import {
   OPENAI_COMPATIBLE_PROVIDER,
 } from "../../constants/custom-endpoint.ts";
 import { API_KEY_SORTS } from "../../constants/api-key.ts";
-import { MAX_RECALL_LIMIT } from "../../constants/memory-limits.ts";
 import { eventTime } from "../../lib/event-time.ts";
 import { readFleetAddress } from "../../lib/fleet-address.ts";
 
@@ -28,7 +27,7 @@ const FLEET_ID_ARGUMENT = "fleet_id" as const;
 
 // A flag name is the wire form a person types, so each is written once and
 // shared by every variant that spells it — `--limit` means the same thing on
-// four commands even though each bounds it differently.
+// every command that takes it.
 const FLAG = {
   cron: "cron",
   data: "data",
@@ -47,11 +46,10 @@ const FLEET_ID_DESC = "Fleet ID" as const;
 const NEXT_CURSOR = "next_cursor from a previous page" as const;
 const PAGE_SIZE = "Page size" as const;
 
+// The floor is a shape check: a count of zero or less is not a page size. No
+// ceiling sits beside it; the server bounds its own `limit` and its refusal
+// names the number, so a copy here would only drift from it.
 const LIST_LIMIT_MIN = 1;
-const LIST_LIMIT_MAX = 200;
-const EVENTS_LIMIT_MAX = 500;
-const BILLING_LIMIT_MAX = 100;
-const PLUGIN_LIMIT_MAX = 100;
 
 // The placeholder a flag advertises in help. The library defaults to the
 // parsed TYPE — `--limit integer` — which names what the parser does rather
@@ -80,27 +78,24 @@ export const METAVAR = {
 } as const;
 
 /**
- * A whole number the server will accept, refused here rather than over the wire.
+ * A positive whole number, checked for shape only.
  *
- * The refusal names the bound that was crossed rather than restating the whole
- * range: someone who passed 9999 to a flag capped at 500 is told `must be ≤
- * 500`, which is the number they have to change. "Between 1 and 500" makes
- * them work out which end they are on.
+ * How large a page may be is the server's to say: it bounds its own `limit`,
+ * and its refusal reaches the person unchanged.
  */
 const INTEGER_PATTERN = /^-?\d+$/;
 const NOT_AN_INTEGER = "must be an integer" as const;
 
-export const boundedInt = (name: string, min: number, max: number) =>
+export const positiveInt = (name: string) =>
   // Taken as text and converted here, rather than as `Flag.Int`, because the
   // library's own refusal for a non-numeric value reads "Expected a string
-  // representing a finite number" — a sentence about parsing. The three
+  // representing a finite number" — a sentence about parsing. The two
   // refusals a person can earn from one flag should read as one family:
-  // `must be an integer`, `must be ≥ 1`, `must be ≤ 200`.
+  // `must be an integer`, `must be ≥ 1`.
   Flag.String(name).pipe(
     Flag.filter((value: string) => INTEGER_PATTERN.test(value), () => NOT_AN_INTEGER),
     Flag.map((value: string) => Number.parseInt(value, 10)),
-    Flag.filter((n: number) => n >= min, () => `must be ≥ ${min}`),
-    Flag.filter((n: number) => n <= max, () => `must be ≤ ${max}`),
+    Flag.filter((n: number) => n >= LIST_LIMIT_MIN, () => `must be ≥ ${LIST_LIMIT_MIN}`),
     Flag.withMetavar(METAVAR.count),
   );
 
@@ -125,7 +120,7 @@ export const VERB = Object.freeze({
 export const opt = Option.getOrUndefined;
 
 // The command Effects take a page size as the wire's string; the flag already
-// refused anything outside its bound, so this only converts back.
+// refused anything that is not a positive integer, so this only converts back.
 export const optNum = (value: Option.Option<number>): string | undefined =>
   Option.match(value, { onNone: () => undefined, onSome: (n) => String(n) });
 
@@ -145,23 +140,15 @@ export const fleetFlag = idFlag("fleet", FLEET_ID_DESC);
 export const cursorFlag = textFlag("cursor", NEXT_CURSOR, METAVAR.token);
 export const startingAfterFlag = textFlag("starting-after", NEXT_CURSOR, METAVAR.id);
 
-export const listLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, LIST_LIMIT_MAX).pipe(
+export const listLimitFlag = positiveInt(FLAG.limit).pipe(
   Flag.withDescription(PAGE_SIZE),
   Flag.optional,
 );
-export const pluginLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, PLUGIN_LIMIT_MAX).pipe(
-  Flag.withDescription(PAGE_SIZE),
-  Flag.optional,
-);
-export const eventsLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, EVENTS_LIMIT_MAX).pipe(
-  Flag.withDescription(PAGE_SIZE),
-  Flag.optional,
-);
-export const memoryLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, MAX_RECALL_LIMIT).pipe(
+export const memoryLimitFlag = positiveInt(FLAG.limit).pipe(
   Flag.withDescription("Max entries to return"),
   Flag.optional,
 );
-export const billingLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, BILLING_LIMIT_MAX).pipe(
+export const billingLimitFlag = positiveInt(FLAG.limit).pipe(
   Flag.withDescription("Maximum charge records to read"),
   Flag.optional,
 );
@@ -307,7 +294,6 @@ export const gateIdArgument = idArgument("gate_id", "Approval gate ID");
 export const apiKeyIdArgument = idArgument("api_key_id", "API key ID");
 export const grantIdArgument = idArgument("grant_id", "Grant ID");
 export const scheduleIdArgument = idArgument("schedule_id", "Schedule ID");
-export const pluginIdArgument = idArgument("plugin_id", "Plugin ID");
 
 export const workspaceNameArgument = Argument.String(FLAG.name).pipe(
   Argument.withDescription("Workspace name"),

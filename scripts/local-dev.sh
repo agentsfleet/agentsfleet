@@ -186,11 +186,15 @@ dev_ensure() {
   dev_launch
 }
 
+# The runner is a remote Linux host: this machine's loopback (DEV_URL) is not
+# reachable from it, so the default is the LAN origin dev_api_origin computes,
+# this worktree's port on the default interface's IPv4. AGENTSFLEET_API_URL is
+# a per-invocation override for a machine whose default interface is not the
+# one the runner reaches; it is never a global setting, because the CLI reads
+# the same name and would retarget every command away from its stored deployment.
 dev_runner_environment() {
-  local url="${AGENTSFLEET_API_URL:-$DEV_URL}"
-  if [ "$(uname -s)" != Linux ] && [ -z "${AGENTSFLEET_API_URL:-}" ]; then
-    dev_fail "set AGENTSFLEET_API_URL to this machine's runner-reachable URL on port $DEV_PORT"
-  fi
+  local url="${AGENTSFLEET_API_URL:-}"
+  [ -n "$url" ] || url="$(dev_api_origin)"
   printf 'AGENTSFLEET_API_URL=%q\nRUNNER_STORAGE_HOME=%q\n' "$url" \
     "${RUNNER_STORAGE_HOME:-/var/lib/agentsfleet-runner}/worktrees/$DEV_REPO_ID/$DEV_ID"
 }

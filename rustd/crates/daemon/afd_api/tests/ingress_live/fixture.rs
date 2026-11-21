@@ -9,7 +9,7 @@
 //! This fixture is the other half. The router is the production one over a live
 //! Postgres and the lane's NATS, so a delivery here resolves its binding out
 //! of `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its
-//! claim in the admission ledger exactly as the daemon does it.
+//! claim in the turns ledger exactly as the daemon does it.
 
 use af_core::id::Uuid7;
 use af_core::money::NANOS_PER_USD;

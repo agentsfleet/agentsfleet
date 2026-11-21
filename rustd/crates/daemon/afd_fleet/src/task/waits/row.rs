@@ -55,7 +55,7 @@ pub(super) struct Wait {
     pub max_fallback_reads: i32,
     pub reply_provider: Option<String>,
     pub reply_address: Option<String>,
-    pub source_admission_id: Uuid7,
+    pub source_turn_id: Uuid7,
     pub within_limits: bool,
     pub due: bool,
 }

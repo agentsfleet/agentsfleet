@@ -46,12 +46,12 @@ fn parses_but_dead() -> MapEnv {
         .into_iter()
         // Required at boot, and — like everything else in this fixture —
         // resolved rather than used.
-        .chain(crate::support::SESSION_PEPPER)
-        .chain(crate::support::BUS)
-        .chain(crate::support::runner_stream::environment())
+        .chain(agentsfleetd::test_util::SESSION_PEPPER)
+        .chain(agentsfleetd::test_util::BUS)
+        .chain(agentsfleetd::test_util::runner_stream::environment())
         // The provider is required at boot, and — like the datastores above —
         // resolved rather than dialled, so a well-formed value is enough here.
-        .chain(crate::support::IDENTITY),
+        .chain(agentsfleetd::test_util::IDENTITY),
     )
 }
 
@@ -255,7 +255,7 @@ fn test_only_a_clean_stop_is_success() {
     assert_eq!(
         status_for(&stuck),
         FAILURE,
-        "a task that would not stop is a failed run, not a quiet one"
+        "a task that would not stop is a failed scene, not a quiet one"
     );
 
     let fell_over = Outcome {
@@ -283,7 +283,7 @@ fn test_migrate_refuses_a_database_that_will_not_answer() {
         std::future::ready(()),
     );
 
-    assert_eq!(status, FAILURE, "a migration that could not run exits 1");
+    assert_eq!(status, FAILURE, "a migration that could not scene exits 1");
 }
 
 mod configuration;

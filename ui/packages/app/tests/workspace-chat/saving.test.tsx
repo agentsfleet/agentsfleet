@@ -5,10 +5,8 @@ import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceC
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
-const plugins = vi.hoisted(() => ({enabled: false}));
-vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => plugins.enabled}));
 let fixture: ChatFixture;
-beforeEach(() => { plugins.enabled = false; fixture = new ChatFixture(); fixture.mount(); });
+beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 async function converse(): Promise<void> {
@@ -31,16 +29,6 @@ async function setup() {
 }
 
 describe("private chat Save", () => {
-  it("restores the editable Plugin starter only when the preserved UI tree is enabled", async () => {
-    plugins.enabled = true;
-    render(<WorkspaceChat {...CHAT_PROPS} />);
-    const starter = await screen.findByRole("button", {name: "Create a plugin"});
-    await waitFor(() => expect(starter).toHaveProperty("disabled", false));
-    fireEvent.click(starter);
-    expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", expect.stringContaining("reusable fleet setup"));
-    expect(fixture.writes()).toEqual([]);
-    expect(fixture.calls.some(call => call.path.includes("/plugins"))).toBe(false);
-  });
   it("loads editable starters and sends the reviewed questions only after the user submits", async () => {
     render(<WorkspaceChat {...CHAT_PROPS} />);
     const suggestion = await screen.findByRole("button", {name: /Watch a pull request/});
@@ -51,7 +39,6 @@ describe("private chat Save", () => {
       fireEvent.click(screen.getByRole("button", {name: title}));
       expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", text);
     }
-    expect(screen.queryByRole("button", {name: "Create a plugin"})).toBeNull();
     fireEvent.click(suggestion);
     const input = screen.getByLabelText(CHAT_PLACEHOLDER);
     if (!(input instanceof HTMLTextAreaElement)) throw new Error("The setup composer must expose editable text");
@@ -67,7 +54,7 @@ describe("private chat Save", () => {
     expect(fixture.writes()).toHaveLength(1);
     expect(fixture.writes()[0]?.body).toMatchObject({message: edited, source: {kind: "blank"}});
     expect(fixture.saveAttempts).toBe(0);
-    await waitFor(() => expect(screen.getByRole("button", {name: "Save and publish"})).toHaveProperty("disabled", false));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Save"})).toHaveProperty("disabled", false));
   });
   it("sends ordinary text and opens the confirmed fleet after the native chat Save", async () => {
     await converse();
@@ -81,7 +68,6 @@ describe("private chat Save", () => {
     expect(chatRouter.push).not.toHaveBeenCalled();
     await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
     expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
-    expect(fixture.writes().filter((call) => call.path.endsWith("/plugins"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/messages"));
     expect(save?.body).toMatchObject({message: "Save", save: true, operation_id: expect.any(String)});
   });
@@ -105,13 +91,12 @@ describe("private chat Save", () => {
     expect(attempts[1]?.body).toMatchObject({operation_id: expect.any(String), save: true});
   });
 
-  it("saves a fleet version from the flap without publishing a Plugin or starting a run", async () => {
+  it("saves a fleet version from the flap without starting a run", async () => {
     await converse();
     await setup();
-    fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
+    fireEvent.click(screen.getByRole("button", {name: "Save"}));
     expect(screen.queryByRole("dialog")).toBeNull();
     await screen.findByRole("heading", {name: "Setup saved · v1"});
-    expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
     expect(fixture.saveAttempts).toBe(1);
     expect(fixture.writes().find(call => call.path.endsWith("/fleets"))?.body).toMatchObject({name: "repairer", start: {kind: "none"}});
   });

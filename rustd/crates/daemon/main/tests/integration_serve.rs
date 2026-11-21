@@ -26,7 +26,7 @@ use afd_db::config::PoolConfig;
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -40,7 +40,7 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 
@@ -48,7 +48,7 @@ fn lane(knob: &str) -> String {
 fn lane_environment() -> MapEnv {
     lane_environment_on(
         &afd_bus::test_util::lane_url()
-            .expect("the lane's NATS seeds: run through make test-integration-rustd"),
+            .expect("the lane's NATS seeds: scene through make test-integration-rustd"),
     )
 }
 
@@ -65,9 +65,9 @@ fn lane_environment_on(nats: &str) -> MapEnv {
         // boots for real, so it must supply both — each is resolved rather
         // than used, so well-formed is enough and nothing here reaches the
         // issuer or takes a digest.
-        .chain(crate::support::SESSION_PEPPER)
-        .chain(crate::support::runner_stream::environment())
-        .chain(crate::support::IDENTITY),
+        .chain(agentsfleetd::test_util::SESSION_PEPPER)
+        .chain(agentsfleetd::test_util::runner_stream::environment())
+        .chain(agentsfleetd::test_util::IDENTITY),
     )
 }
 
@@ -154,11 +154,10 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
         supervisor.inventory(),
         vec![
             agentsfleetd::sweepers::LIVENESS,
-            agentsfleetd::sweepers::RETENTION,
             agentsfleetd::sweepers::FLEET_CENSUS,
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,
-            agentsfleetd::sweepers::AUTHORING,
+            agentsfleetd::sweepers::SETUP,
             agentsfleetd::sweepers::BILLING,
             agentsfleetd::sweepers::EXPIRY,
             agentsfleetd::inventory::BUS_SHUTDOWN,

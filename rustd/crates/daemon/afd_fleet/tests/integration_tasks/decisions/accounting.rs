@@ -79,14 +79,14 @@ async fn immutable_uncertainty(
         },
     ] {
         let input = garde::Unvalidated::new(DecisionReceiptInput {
-            fencing_token: fixture.case.lease().fencing_token,
+            fencing_token: fixture.case.run().fencing_token,
             receipt,
         })
         .validate()
         .expect("bounded conflicting evidence");
         let fault = fixture
             .tasks
-            .record_decision(fixture.case.lease(), &id(call), &input)
+            .record_decision(fixture.case.run(), &id(call), &input)
             .await
             .expect_err("first uncertainty is immutable");
         assert_eq!(fault.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -99,7 +99,7 @@ async fn immutable_uncertainty(
         .expect("bounded requested retry");
     let fault = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &retry)
+        .reserve_decision(fixture.case.run(), &retry)
         .await
         .expect_err("timeout is not throttling proof");
     assert_eq!(fault.code(), error_code::TASK_DECISION_UNAVAILABLE);

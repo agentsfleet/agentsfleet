@@ -1,4 +1,4 @@
-//! The bubblewrap command line one lease's sandbox starts with.
+//! The bubblewrap command line one run's sandbox starts with.
 //!
 //! Pure: what is mounted where, which namespaces are new, and what the process
 //! inside may not keep. Codex's `linux-sandbox` launches bubblewrap the same
@@ -41,20 +41,20 @@ const PROC: &str = "/proc";
 const DEV: &str = "/dev";
 /// Where POSIX shared memory lives: a private `tmpfs` per sandbox, which
 /// Python's `multiprocessing` and Chromium need. Its pages are charged to the
-/// lease's cgroup, so the memory limit covers it.
+/// run's cgroup, so the memory limit covers it.
 pub(crate) const DEV_SHM: &str = "/dev/shm";
 /// Shared memory's mode: every user writes, and only an owner removes.
 const SHARED_MEMORY_MODE: &str = "1777";
 /// Where the workspace disk's `tmp/` is bound: scratch space that shares the
 /// disk's limit, so filling it answers `ENOSPC` rather than taking the
-/// lease's memory.
+/// run's memory.
 pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// Where a private runtime directory is mounted.
 const RUN: &str = "/run";
 
 /// A fresh namespace of every kind a tool call could share with the host, the
 /// network aside ([`NetworkLayout`]). The cgroup one hides the host's cgroup
-/// tree, and with it the lease's path.
+/// tree, and with it the run's path.
 const NAMESPACES: [&str; 5] = [
     "--unshare-user",
     "--unshare-pid",

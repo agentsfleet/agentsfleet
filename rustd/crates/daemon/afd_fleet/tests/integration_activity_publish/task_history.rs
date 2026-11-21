@@ -15,7 +15,7 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
     TaskActivity {
         activity_id: id.to_owned(),
         task_id: None,
-        source_admission_id: None,
+        source_turn_id: None,
         operation: TaskActivityOperation::Capture,
         phase: TaskActivityPhase::Uploading,
         provider: None,
@@ -34,10 +34,10 @@ fn progress(id: &str, completed: u32) -> TaskActivity {
 async fn saved(run: &Held) -> TaskActivityHistory {
     let Json(history) = sqlx::query_scalar::<_, Json<TaskActivityHistory>>(
         "SELECT jsonb_build_object('items', task_activity, 'truncated', task_activity_truncated) \
-         FROM fleet.events WHERE fleet_id=$1 AND event_id=$2",
+         FROM thread.turns WHERE thread_id=$1 AND id=$2",
     )
     .bind(&run.fleet)
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .fetch_one(
         &mut *run
             .fixtures
@@ -54,19 +54,19 @@ async fn saved(run: &Held) -> TaskActivityHistory {
 /// Execute the actual write with a previously observed owner, bypassing only
 /// the preflight so the regression exercises the write's ownership defense.
 async fn write(run: &Held, progress: TaskActivity) -> Option<Json<TaskActivityHistory>> {
-    let target = afd_fleet::lease::activity::Target {
+    let target = afd_fleet::run::activity::Target {
         fleet_id: run.fleet.clone(),
-        event_id: run.event_id.clone(),
-        lease_created_at: run.now,
-        event_created_at: run.now,
+        turn_id: run.turn_id.clone(),
+        run_created_at: run.now,
+        turn_created_at: run.now,
         timing_eligible: true,
         fence: run.fence.as_i64(),
     };
-    run.leases
+    run.runs
         .retain_task_activity(
             &target,
             &run.runner,
-            &run.issued.lease_id,
+            &run.issued.run_id,
             &[TaskActivityRecord::TaskTransferProgress(progress)],
         )
         .await
@@ -84,7 +84,7 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
             .plane()
             .activity_for_target(
                 &run.runner,
-                &run.issued.lease_id,
+                &run.issued.run_id,
                 &run.activity_target().await,
                 &[ActivityFrame::TaskTransferProgress(progress(
                     id.as_str(),
@@ -146,7 +146,7 @@ async fn history_write_rejects_owner_that_expired_after_preflight() {
     let target = run.activity_target().await;
     assert!(target.timing_eligible);
     run.fixtures
-        .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)
+        .age(Row::Run(&run.issued.run_id), "run_expires_at", LAPSE)
         .await;
     assert!(
         write(&run, progress(afd_db::test_util::mint_id().as_str(), 1))
@@ -173,9 +173,9 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
     let mut tx = sqlx::Connection::begin(&mut *connection)
         .await
         .expect("lock transaction");
-    sqlx::query("SELECT event_id FROM fleet.events WHERE fleet_id=$1 AND event_id=$2 FOR UPDATE")
+    sqlx::query("SELECT id FROM thread.turns WHERE thread_id=$1 AND id=$2 FOR UPDATE")
         .bind(&run.fleet)
-        .bind(&run.event_id)
+        .bind(&run.turn_id)
         .fetch_one(&mut *tx)
         .await
         .expect("hold event");

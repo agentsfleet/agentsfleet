@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { senderLabelFor } from "@/lib/events/event-summary";
+import { senderLabelFor } from "@/lib/turns/turn-summary";
 import { FleetMessageRow, FleetGroupRow, ROW_TONE, useSenderLabel } from "./FleetMessageRow";
 import { FleetMarkdown } from "../../shared/chat/FleetMarkdown";
 import { FleetReply } from "../replies/FleetReplyBody";
@@ -57,7 +57,7 @@ function ActivityGroupElement({data}: {data: FleetChatElementData["activity-grou
   return <FleetGroupRow sender={senderLabelFor(newest.actor, senderLabel)} headline={newest.headline}
     outcome={newest.outcome} failed={newest.failed} count={data.members.length} last={last}
     expanded={expanded} onToggle={() => setExpanded(value => !value)}>
-    {expanded ? data.members.map(member => <FleetChatElementView key={member.data.eventId} element={member} />) : null}
+    {expanded ? data.members.map(member => <FleetChatElementView key={member.data.turnId} element={member} />) : null}
   </FleetGroupRow>;
 }
 

@@ -35,7 +35,7 @@ use axum::response::Response;
 
 use crate::auth::Owned;
 use crate::envelope::Refused;
-use crate::services::Services;
+use afd_api_tenant::services::TenantPlane;
 
 /// The distinct id an unattributable refusal is reported under.
 ///
@@ -60,7 +60,7 @@ const ENTITLEMENT_FAMILIES: &[&str] = &["BILLING", "GATE", "REPAIR"];
 ///
 /// Runs after the inner service, so it sees what every layer beneath it wrote.
 /// A response with no [`Refused`] extension is a success and reports nothing.
-pub(crate) async fn record<D: Services>(
+pub(crate) async fn record<D: TenantPlane>(
     State(services): State<Arc<D>>,
     request: Request,
     next: Next,

@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("AgentLabel — a fleet that no longer exists", () => {
-  // Historical rows outlive their fleet: a lease or an event keeps pointing at
+  // Historical rows outlive their fleet: a run or an turn keeps pointing at
   // an id nothing resolves. Rendering a callsign derived from a dead id would
   // invent an agent; the row says plainly that it is gone.
   it("names a deleted fleet rather than deriving a callsign for it", () => {

@@ -16,7 +16,7 @@ async fn corrupt_saved_state_cannot_become_success_or_disappear_from_its_owner()
 async fn unreadable(case: &Case) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let accepted = tasks
-        .bind(case.lease(), &case.plan("retained-work", 1))
+        .bind(case.run(), &case.plan("retained-work", 1))
         .await
         .expect("accepted work");
     let task = accepted
@@ -88,7 +88,7 @@ async fn unreadable(case: &Case) {
         before
     );
     let replay = tasks
-        .bind(case.lease(), &case.plan("retained-work", 1))
+        .bind(case.run(), &case.plan("retained-work", 1))
         .await
         .expect("repaired work replays");
     assert_eq!(replay.items, accepted.items);

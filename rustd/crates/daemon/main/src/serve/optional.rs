@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn an_unconfigured_identity_is_announced_as_a_reduced_surface() {
-        afd_db::test_util::install_subscriber();
+        af_core::test_util::trace::install_subscriber();
         announce_identity(&Capabilities::Unconfigured(NoCapabilitySource));
     }
 

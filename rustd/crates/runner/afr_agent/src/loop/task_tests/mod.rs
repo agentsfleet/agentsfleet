@@ -3,10 +3,10 @@
 use crate::{
     PreparedTask,
     engine::{AgentEngine as _, AgentRun, Meter},
-    fixture::{Canned, Script, call, ended, lease, say, unbounded},
+    fixture::{Canned, Script, call, ended, payload, say, unbounded},
 };
 use af_wire::task::*;
-use afr_tools::{LeaseVerbs, ScheduleCall, verbs::Unanswered};
+use afr_tools::{RunVerbs, ScheduleCall, verbs::Unanswered};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod behavior;
@@ -22,7 +22,7 @@ struct Native {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Native {
+impl RunVerbs for Native {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -53,7 +53,7 @@ impl LeaseVerbs for Native {
         &self,
         input: TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult, Unanswered> {
-        assert_eq!(input.source_admission_id, PENDING);
+        assert_eq!(input.source_turn_id, PENDING);
         assert_eq!(input.item_id, ITEM);
         assert_eq!(input.mode, TaskInputMode::Answered);
         assert_eq!(
@@ -79,7 +79,7 @@ fn inputs() -> TaskInputsResponse<'static> {
             af_core::clock::now(),
             std::time::Duration::from_mins(10),
         )),
-        source_admission_id: SOURCE.to_owned(),
+        source_turn_id: SOURCE.to_owned(),
         accepted_revision_id: Some(SOURCE.to_owned()),
         current_message: None,
         current_task: None,
@@ -123,11 +123,11 @@ fn pending_inputs() -> TaskInputsResponse<'static> {
     input.current_task = Some(task());
     input.next_cursor = Some("a later source page".to_owned());
     input.inputs.push(TaskHumanInput {
-        source_admission_id: PENDING.to_owned(),
+        source_turn_id: PENDING.to_owned(),
         sequence: 1,
         message: "hello".to_owned(),
         accepted: Some(TaskAcceptedInterpretation {
-            source_admission_id: PENDING.to_owned(),
+            source_turn_id: PENDING.to_owned(),
             plan_digest: "b".repeat(64),
             message: "hello".to_owned(),
             items: vec![TaskRecoveredItem {
@@ -150,14 +150,14 @@ fn pending_inputs() -> TaskInputsResponse<'static> {
 
 async fn run(
     engine: &super::Loop,
-    lease: &af_wire::lease::LeasePayload<'_>,
-    native: &dyn LeaseVerbs,
+    run: &af_wire::run::RunPayload<'_>,
+    native: &dyn RunVerbs,
     prepared: &PreparedTask,
 ) -> crate::Result<crate::RunOutput> {
     engine
         .run(AgentRun {
             recovery: None,
-            lease,
+            run,
             prepared_task: Some(prepared),
             recovered_task: None,
             recovered_turn: None,
@@ -181,8 +181,8 @@ async fn unavailable_initial_intent_returns_clarification_without_a_tool_or_codi
 -> crate::Result<()> {
     let script = Script::new([]);
     let engine = super::tests::engine(Vec::new(), &script);
-    let mut lease = lease(&[], unbounded());
-    lease.durable_tasks = true;
+    let mut this_run = payload(&[], unbounded());
+    this_run.durable_tasks = true;
     let mut input = inputs();
     input.current_message = Some("Please investigate".to_owned());
     let native = Native {
@@ -191,7 +191,7 @@ async fn unavailable_initial_intent_returns_clarification_without_a_tool_or_codi
     };
     let prepared = engine
         .prepare_task(
-            &lease,
+            &this_run,
             &native,
             &Meter::default(),
             &tokio_util::sync::CancellationToken::new(),
@@ -199,7 +199,7 @@ async fn unavailable_initial_intent_returns_clarification_without_a_tool_or_codi
         .await?
         .ok_or_else(crate::decision::unavailable)?;
     assert!(!prepared.allow_actions);
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert!(output.result.content.contains("Please clarify"));
     assert!(output.task.is_none());
     assert!(output.recovery.is_none());
@@ -219,11 +219,11 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
         ],
     ]);
     let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
-    let mut lease = lease(&[tool.name()], unbounded());
-    lease.durable_tasks = true;
+    let mut this_run = payload(&[tool.name()], unbounded());
+    this_run.durable_tasks = true;
     // A resolved physical model context is required for the original-source reply.
     // The fixture's unlimited operating cap does not resolve this provider bound.
-    lease.policy.model_context_tokens = 16_384;
+    this_run.policy.model_context_tokens = 16_384;
     let input = pending_inputs();
     let native = Native {
         inputs: input.clone(),
@@ -237,7 +237,7 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
         inputs: input,
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert!(native.answered.load(Ordering::Relaxed));
     let sent = script.sent();
     assert_eq!(sent.len(), 2);
@@ -263,9 +263,9 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
     let tool = &afr_tools::catalog::UPDATE_PLAN;
     let script = Script::new([]);
     let engine = super::tests::engine(vec![Canned::boxed(tool, "Plan updated")], &script);
-    let mut lease = lease(&[tool.name()], unbounded());
-    lease.durable_tasks = true;
-    lease.policy.model_context_tokens = 0;
+    let mut this_run = payload(&[tool.name()], unbounded());
+    this_run.durable_tasks = true;
+    this_run.policy.model_context_tokens = 0;
     let input = pending_inputs();
     let native = Native {
         inputs: input.clone(),
@@ -279,7 +279,7 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
             std::time::Duration::from_mins(10),
         )),
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert!(!native.answered.load(Ordering::Relaxed));
     assert!(
         script.sent().is_empty(),
@@ -291,7 +291,7 @@ async fn unresolved_model_context_leaves_source_unanswered_and_blocks_actions() 
     );
     assert!(
         output.recovery.is_some(),
-        "pending obligations remain recoverable"
+        "pending deliveries remain recoverable"
     );
     Ok(())
 }
@@ -302,9 +302,9 @@ async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() 
     for deadline in [None, Some(af_core::clock::now())] {
         let script = Script::new([]);
         let engine = super::tests::engine(Vec::new(), &script);
-        let mut lease = lease(&[], unbounded());
-        lease.durable_tasks = true;
-        lease.policy.model_context_tokens = 16_384;
+        let mut this_run = payload(&[], unbounded());
+        this_run.durable_tasks = true;
+        this_run.policy.model_context_tokens = 16_384;
         let mut input = pending_inputs();
         input.execution_deadline = deadline;
         let native = Native {
@@ -316,7 +316,7 @@ async fn missing_or_spent_native_deadline_blocks_actions_but_retains_recovery() 
             allow_actions: true,
             execution_deadline: deadline,
         };
-        let output = run(&engine, &lease, &native, &prepared).await?;
+        let output = run(&engine, &this_run, &native, &prepared).await?;
         assert!(!native.answered.load(Ordering::Relaxed));
         assert!(
             script.sent().is_empty(),

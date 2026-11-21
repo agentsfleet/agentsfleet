@@ -1,4 +1,4 @@
-import type { LineDiff } from "../diff/tool-call-diff";
+import type { FileChange } from "@/lib/streaming/fleet-stream-tool-trace";
 
 // What a tool cell is made of, shared by every copy map: the tool names, the
 // body kinds a cell can draw, and the copy a call's arguments become.
@@ -29,7 +29,7 @@ export const TOOL_NAME = {
   SCREENSHOT: "screenshot",
   WEB_FETCH: "web_fetch",
   WEB_SEARCH: "web_search",
-  PUSHOVER: "pushover",
+  NOTIFY: "notify",
   UPDATE_PLAN: "update_plan",
   MESSAGE: "message",
   SCHEDULE: "schedule",
@@ -46,8 +46,7 @@ export const TOOL_NAME = {
 export const TOOL_BODY = {
   OUTPUT: "output",
   COMMAND: "command",
-  DIFF: "diff",
-  CLIPPED_EDIT: "clipped-edit",
+  CHANGES: "changes",
   PLAN: "plan",
 } as const;
 
@@ -64,13 +63,13 @@ export type PlanStatus = (typeof PLAN_STATUS)[keyof typeof PLAN_STATUS];
 
 export type PlanStep = { step: string; status: PlanStatus };
 
-/** What sits under a cell's header, besides its arguments. An edit and a
- * patch are one kind: the lines they changed. */
+/** What sits under a cell's header, besides its arguments. Every edit is one
+ * kind: the files it changed and the lines each gained and lost, as the
+ * runner recorded them. */
 export type ToolBody =
   | { kind: typeof TOOL_BODY.OUTPUT }
   | { kind: typeof TOOL_BODY.COMMAND; rail: readonly string[]; hiddenLines: number }
-  | { kind: typeof TOOL_BODY.DIFF; diff: LineDiff }
-  | { kind: typeof TOOL_BODY.CLIPPED_EDIT }
+  | { kind: typeof TOOL_BODY.CHANGES; changes: readonly FileChange[] }
   | { kind: typeof TOOL_BODY.PLAN; explanation: string | null; steps: readonly PlanStep[] };
 
 /** The member of `ToolBody` each kind names, so a table keyed by kind can
@@ -82,8 +81,6 @@ export type Verbs = { readonly running: string; readonly done: string };
 export type ToolCopy = {
   verbs: Verbs;
   target: string;
-  /** Lines a write adds, when its content shows them whole. */
-  addedLines?: number;
   body: ToolBody;
 };
 

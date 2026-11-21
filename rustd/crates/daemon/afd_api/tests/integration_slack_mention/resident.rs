@@ -13,7 +13,7 @@ async fn stored(fixture: &Fixture) -> Value {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn unconfigured_mentions_do_not_create_fleets_or_admissions_or_notices() {
+async fn unconfigured_mentions_do_not_create_fleets_or_turns_or_notices() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture
@@ -36,7 +36,7 @@ async fn unconfigured_mentions_do_not_create_fleets_or_admissions_or_notices() {
             Some("channel_not_configured")
         );
     }
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert!(owed(&fixture).await.is_empty());
     assert_eq!(stored(&fixture).await, before);
     let channel = CHANNEL.parse().expect("channel");
@@ -101,7 +101,7 @@ async fn concurrent_outcome(fixture: &Fixture, first: &str, before: Value) {
     assert_eq!(notices.len(), 2, "one notice per mention: {notices:?}");
     assert!(notices.iter().all(|notice| notice.owner == "responder"));
     assert_eq!(bound(fixture).await.0, first);
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert_eq!(stored(fixture).await, before);
 }
 
@@ -156,7 +156,7 @@ async fn prior_kind_binding_remains_owner_when_subscribers_change() {
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "notice-carrier");
     assert_eq!(bound(&fixture).await.0, carrier.as_str());
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert_eq!(stored(&fixture).await, before);
     fixture.cleanup().await;
 }
@@ -210,6 +210,6 @@ async fn deleting_a_carrier_allows_the_next_notice_to_bind_a_current_subscriber(
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     fixture.cleanup().await;
 }

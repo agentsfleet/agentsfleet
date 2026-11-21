@@ -1,7 +1,7 @@
 //! Registry lifetime and delayed registration follow the durable host owner.
 
 use super::Registry;
-use crate::session::SessionHandle;
+use crate::connection::ConnectionHandle;
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, RegisterRequest, SandboxTier};
@@ -18,11 +18,11 @@ type TestResult = crate::Result<(), Box<dyn std::error::Error + Send + Sync>>;
 fn dropping_an_old_registration_cannot_remove_its_replacement() -> TestResult {
     let registry = Arc::new(Registry::default());
     let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
-    let a = SessionHandle::fixture(
+    let a = ConnectionHandle::fixture(
         runner.clone(),
         Uuid7::parse("019f0000-0000-7000-8000-000000000002")?,
     );
-    let b = SessionHandle::fixture(
+    let b = ConnectionHandle::fixture(
         runner,
         Uuid7::parse("019f0000-0000-7000-8000-000000000003")?,
     );
@@ -70,16 +70,16 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
             .acquire_connection(runner, enrolled.token.digest().clone(), None, clock::now())
             .await?,
     )?;
-    // B commits and registers while A is delayed rebuilding its lease cache.
+    // B commits and registers while A is delayed rebuilding its run cache.
     let b = allowed(
         runners
             .acquire_connection(runner, enrolled.token.digest().clone(), None, clock::now())
             .await?,
     )?;
     let registry = Arc::new(Registry::default());
-    let current = SessionHandle::fixture(runner.clone(), b.connection().clone());
+    let current = ConnectionHandle::fixture(runner.clone(), b.connection().clone());
     let registration = registry.register_current(&current, &b, &database).await?;
-    let delayed = SessionHandle::fixture(runner.clone(), a.connection().clone());
+    let delayed = ConnectionHandle::fixture(runner.clone(), a.connection().clone());
     let refused = registry.register_current(&delayed, &a, &database).await;
     assert!(refused.is_err_and(|error| error.code() == af_core::error_code::RUN_STREAM_SUPERSEDED));
     assert!(!current.is_superseded());
@@ -92,7 +92,7 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
         candidates
             .first()
             .ok_or("the current owner is a candidate")?
-            .connection,
+            .connection_id,
         *b.connection()
     );
     drop(registration);
@@ -108,7 +108,12 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
 
 fn registration() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: "registry-registration.test".into(),
+        // A host of its own: the platform registers each host once.
+        host_id: format!(
+            "registry-registration-{}.test",
+            afd_db::test_util::mint_id()
+        )
+        .into(),
         labels: Vec::new(),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: true,
@@ -135,9 +140,9 @@ fn allowed(
 fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResult {
     let registry = Arc::new(Registry::default());
     let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
-    let session = SessionHandle::fixture(runner.clone(), runner);
-    let _registration = registry.register(&session)?;
-    session.snapshot.lock().credits = 0;
+    let connection = ConnectionHandle::fixture(runner.clone(), runner);
+    let _registration = registry.register(&connection)?;
+    connection.snapshot.lock().credits = 0;
     let wake = afd_bus::wake::Wake::default();
     wake.recheck();
     let recovery = wake
@@ -152,8 +157,8 @@ fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResul
             )
             .is_empty()
     );
-    assert_eq!(session.snapshot.lock().recovery_pending, Some(recovery));
-    session.snapshot.lock().credits = 1;
+    assert_eq!(connection.snapshot.lock().recovery_pending, Some(recovery));
+    connection.snapshot.lock().credits = 1;
     assert_eq!(
         registry
             .candidates(
@@ -163,6 +168,6 @@ fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResul
             .len(),
         1
     );
-    assert_eq!(session.snapshot.lock().recovery_pending, Some(recovery));
+    assert_eq!(connection.snapshot.lock().recovery_pending, Some(recovery));
     Ok(())
 }

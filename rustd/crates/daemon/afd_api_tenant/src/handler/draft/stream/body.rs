@@ -1,7 +1,7 @@
 //! No buffered private frame bypasses a fresh membership and generation check.
 
 use af_core::id::Uuid7;
-use afd_authoring::{Access, Drafts, Observation};
+use afd_setup::{Access, Drafts, Observation};
 use axum::response::sse::Event;
 use futures_util::{Stream, stream};
 use std::{collections::HashMap, convert::Infallible, time::Duration};
@@ -72,7 +72,11 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             return Some((Ok(event), watch));
         }
         let pending = receive(&mut watch).await;
-        match observe(&mut watch).await {
+        let access = Access {
+            workspace: &watch.workspace,
+            subject: &watch.subject,
+        };
+        match observe(&watch.drafts, access, &watch.draft, watch.generation).await {
             Ok(Ok(Observation::Deleted)) => {
                 watch.done = true;
                 return Some((Ok(deleted(&watch.draft)?), watch));
@@ -107,20 +111,15 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
     None
 }
 
-/// The fresh membership and generation read every frame waits on. Takes the
-/// watch mutably because a shared borrow of its link is not `Send`.
+/// The fresh membership and generation read every frame waits on. Borrows
+/// only the fields it reads: a shared borrow of the watch's link is not `Send`.
 async fn observe(
-    watch: &mut Watch,
-) -> Result<afd_authoring::Result<Observation>, tokio::time::error::Elapsed> {
-    let access = Access {
-        workspace: &watch.workspace,
-        subject: &watch.subject,
-    };
-    tokio::time::timeout(
-        CHECK_DEADLINE,
-        watch.drafts.observe(access, &watch.draft, watch.generation),
-    )
-    .await
+    drafts: &Drafts,
+    access: Access<'_>,
+    draft: &Uuid7,
+    generation: i64,
+) -> Result<afd_setup::Result<Observation>, tokio::time::error::Elapsed> {
+    tokio::time::timeout(CHECK_DEADLINE, drafts.observe(access, draft, generation)).await
 }
 
 fn heartbeat() -> Event {
@@ -186,11 +185,7 @@ struct Payload<'a> {
     value: &'a str,
 }
 
-fn preview(
-    draft: &Uuid7,
-    view: &afd_authoring::View,
-    received: afd_bus::Received,
-) -> Option<Event> {
+fn preview(draft: &Uuid7, view: &afd_setup::View, received: afd_bus::Received) -> Option<Event> {
     use afd_bus::Received;
     match received {
         Received::Gap | Received::Lagged(_) => Some(resync()),
@@ -200,39 +195,36 @@ fn preview(
             })
             .validate()
             .ok()?;
-            if let Ok(frame) = serde_json::from_str::<afd_authoring::ContextNotice>(bounded.value) {
+            if let Ok(frame) = serde_json::from_str::<afd_setup::ContextNotice>(bounded.value) {
                 let frame = garde::Unvalidated::new(frame).validate().ok()?;
                 if !permitted(draft, view, &frame.draft_id, &frame.sequence) {
                     return None;
                 }
                 return Event::default()
-                    .event(afd_authoring::CONTEXT_EVENT)
+                    .event(afd_setup::CONTEXT_EVENT)
                     .json_data(&*frame)
                     .ok();
             }
-            let frame: afd_authoring::Delta = serde_json::from_str(bounded.value).ok()?;
+            let frame: afd_setup::Delta = serde_json::from_str(bounded.value).ok()?;
             let frame = garde::Unvalidated::new(frame).validate().ok()?;
             if !permitted(draft, view, &frame.draft_id, &frame.sequence) {
                 return None;
             }
             Event::default()
-                .event(afd_authoring::DELTA_EVENT)
+                .event(afd_setup::DELTA_EVENT)
                 .json_data(&*frame)
                 .ok()
         }
     }
 }
 
-fn permitted(draft: &Uuid7, view: &afd_authoring::View, subject: &Uuid7, sequence: &str) -> bool {
+fn permitted(draft: &Uuid7, view: &afd_setup::View, subject: &Uuid7, sequence: &str) -> bool {
     sequence.parse::<i64>().is_ok_and(|sequence| {
-        subject == draft
-            && !view.closed
-            && sequence > view.cancelled_through_sequence
-            && view.running_sequence == Some(sequence)
+        subject == draft && !view.closed && view.running_sequence == Some(sequence)
     })
 }
 
-fn changed(watch: &mut Watch, notices: Vec<afd_authoring::Notice>) -> Option<Event> {
+fn changed(watch: &mut Watch, notices: Vec<afd_setup::Notice>) -> Option<Event> {
     let live: std::collections::HashSet<_> = notices.iter().map(key).collect();
     watch.seen.retain(|key, _| live.contains(key));
     for notice in notices {
@@ -247,7 +239,7 @@ fn changed(watch: &mut Watch, notices: Vec<afd_authoring::Notice>) -> Option<Eve
     None
 }
 
-fn key(notice: &afd_authoring::Notice) -> String {
+fn key(notice: &afd_setup::Notice) -> String {
     format!(
         "{}:{}",
         notice.event,

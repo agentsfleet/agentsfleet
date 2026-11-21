@@ -120,7 +120,7 @@ impl Chain {
         }
     }
 
-    /// Draft a continuation, which must pass the same lease's admission before send.
+    /// Draft a continuation, which must pass the same run's admission before send.
     ///
     /// # Errors
     /// Returns a safe stopping reason for an invalid target, loop, exhausted

@@ -3,7 +3,7 @@
 import { Argument, Command, Flag } from "effect/cli";
 import { chatEffect } from "../../commands/chat/commands.ts";
 import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
-import { METAVAR, opt, requiredIdFlag, textFlag } from "./flags.ts";
+import { METAVAR, opt, textFlag } from "./flags.ts";
 import { guardedHandler } from "./guarded-handler.ts";
 import { chatHistoryCommands } from "./chat-history.command.ts";
 
@@ -14,14 +14,10 @@ export const chatCommand = () => Command.make("chat", {
   operationId: textFlag("operation-id", "Retry an unconfirmed --no-input message, draft creation or setup action with its original identity", METAVAR.id),
   candidateId: textFlag("candidate-id", "Original candidate identifier from setup recovery metadata", METAVAR.id),
   setupEtag: textFlag("setup-etag", "Original inspected fleet setup tag for uncertain Apply recovery", METAVAR.etag),
-  publishTo: requiredIdFlag("publish-to", "Append a revision to this owned plugin").pipe(Flag.optional),
-  pluginEtag: textFlag("plugin-etag", "Inspected plugin tag required by --publish-to", METAVAR.etag),
-  model: textFlag("model", "Authoring model reference for a new private draft", METAVAR.ref),
+  model: textFlag("model", "Setup model reference for a new private draft", METAVAR.ref),
   message: textFlag("message", "Send ordinary chat text and follow its durable outcome", METAVAR.text),
   fleet: textFlag("fleet", "Improve this existing fleet; no first message is needed", METAVAR.id),
   setupRevision: textFlag("setup-revision", "Exact fleet setup revision to improve", METAVAR.count),
-  plugin: requiredIdFlag("plugin", "Start from a plugin; no first message is needed").pipe(Flag.optional),
-  revision: requiredIdFlag("revision", "Exact immutable plugin revision").pipe(Flag.optional),
   definition: textFlag("definition", "Start from this native Definition JSON file; no first message is needed", METAVAR.path),
   noInput: choiceFlag("no-input", "Run only the supplied actions without a terminal prompt"),
   review: choiceFlag("review", "Inspect the full current setup, access, readiness, and review digest"),
@@ -31,16 +27,15 @@ export const chatCommand = () => Command.make("chat", {
   name: textFlag("name", "Select the instance name before reviewing", METAVAR.name),
   reviewDigest: textFlag("review-digest", "Digest from the setup you inspected", METAVAR.digest),
   runNow: textFlag("run-now", "With --save, admit this initial runtime message once", METAVAR.text),
-  publish: textFlag("publish", "Explicitly publish a plugin with this label", METAVAR.label),
 }).pipe(
   Command.withDescription("Create, resume, and review a private workspace chat"),
   guardedHandler((flags) => withManagedExitCode(chatEffect({
     operationId: opt(flags.operationId), draftId: opt(flags.draftId), model: opt(flags.model), message: opt(flags.message),
-    candidateId: opt(flags.candidateId), setupEtag: opt(flags.setupEtag), publishTo: opt(flags.publishTo), pluginEtag: opt(flags.pluginEtag),
-    fleet: opt(flags.fleet), setupRevision: opt(flags.setupRevision), plugin: opt(flags.plugin), revision: opt(flags.revision),
+    candidateId: opt(flags.candidateId), setupEtag: opt(flags.setupEtag),
+    fleet: opt(flags.fleet), setupRevision: opt(flags.setupRevision),
     definition: opt(flags.definition),
     noInput: flags.noInput, review: flags.review, save: flags.save, apply: flags.apply, stop: flags.stop,
-    name: opt(flags.name), reviewDigest: opt(flags.reviewDigest), runNow: opt(flags.runNow), publish: opt(flags.publish),
+    name: opt(flags.name), reviewDigest: opt(flags.reviewDigest), runNow: opt(flags.runNow),
   }))),
   Command.withSubcommands(chatHistoryCommands()),
 );

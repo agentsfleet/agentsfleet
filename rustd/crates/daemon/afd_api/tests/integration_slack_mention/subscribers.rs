@@ -6,14 +6,14 @@
 
 #![cfg(feature = "test-util")]
 
-use afd_ingress::slack::ChannelId;
+use af_fleet_runtime::config::ChannelId;
 
 use super::*;
 
 /// A channel no fixture fleet is attached to but one.
 const OTHER_CHANNEL: &str = "C0987654321";
 
-/// Dimension 2.2 — the subscriber read returns every fleet in the workspace
+/// The subscriber read returns every fleet in the workspace
 /// whose document attaches it to the channel, with whether it can run and
 /// whether it is addressed-only, and nothing attached elsewhere.
 #[tokio::test]

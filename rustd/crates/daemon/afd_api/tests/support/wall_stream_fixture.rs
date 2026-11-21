@@ -28,7 +28,7 @@ use crate::harness::{self, Fleet, OneWorkspace, send};
 const QUIET: Duration = Duration::from_millis(1_500);
 
 /// A frame of activity, as the runner's chunk publishes it.
-const CHUNK: &str = r#"{"kind":"chunk","event_id":"e","text":"live"}"#;
+const CHUNK: &str = r#"{"kind":"chunk","turn_id":"e","text":"live"}"#;
 
 /// The subject the fixture's workspace and key are created by.
 pub(crate) const SUBJECT: &str = "user_live_workspace_stream";
@@ -37,10 +37,7 @@ pub(crate) async fn open_stream(router: &axum::Router, fixture: &Fixture) -> Bod
     let response = send(
         router,
         Method::GET,
-        &format!(
-            "/v1/workspaces/{}/events/stream",
-            fixture.workspace.as_str()
-        ),
+        &format!("/v1/workspaces/{}/turns/stream", fixture.workspace.as_str()),
         Some(&fixture.token),
         "",
     )
@@ -75,7 +72,7 @@ async fn announces_counters(opening: &str, fixture: &Fixture) {
         .find_map(|line| line.strip_prefix("data:"))
         .expect("the hello carries a data line");
     let hello: serde_json::Value = serde_json::from_str(data.trim()).expect("the hello is JSON");
-    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+    let counters = afd_turns::view::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(
@@ -249,13 +246,17 @@ impl Wall {
         }
     }
 
-    pub(crate) async fn publish(&self, count: usize) {
-        let subject = Subject::FleetTail(self.fixture.fleet.clone());
-        for _ in 0..count {
-            self.bus
-                .publish(&subject, CHUNK)
-                .await
-                .expect("the frame publishes");
+    /// Publishes `count` frames. The future owns its bus handle rather than
+    /// borrowing the wall, whose body stream is not `Sync`, so it stays `Send`.
+    pub(crate) fn publish(&self, count: usize) -> impl Future<Output = ()> + Send + use<> {
+        let bus = self.bus.clone();
+        let subject = Subject::ThreadItems(self.fixture.fleet.clone());
+        async move {
+            for _ in 0..count {
+                bus.publish(&subject, CHUNK)
+                    .await
+                    .expect("the frame publishes");
+            }
         }
     }
 

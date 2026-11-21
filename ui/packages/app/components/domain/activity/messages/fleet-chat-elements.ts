@@ -17,7 +17,7 @@ export type ActivityDetails =
   | {kind: "payload"; json: string};
 
 export type ActivityElementData = {
-  eventId: string;
+  turnId: string;
   actor: string;
   status: string;
   createdAt: Date;
@@ -29,7 +29,7 @@ export type ActivityElementData = {
   source: {href: string; label: string; repositoryReference: boolean} | null;
 };
 
-/** Payloads are selected by adapters; rows never interpret event metadata. */
+/** Payloads are selected by adapters; rows never interpret turn metadata. */
 export type FleetChatElementData = {
   "operator-turn": {actor: string; text: string; createdAt: Date; optimistic: boolean};
   "upload-submission": {text: string; createdAt: Date};

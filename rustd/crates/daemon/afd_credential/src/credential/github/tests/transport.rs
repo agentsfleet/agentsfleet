@@ -35,7 +35,7 @@ async fn a_narrowed_response_is_delivered_with_the_local_expiry_ceiling() {
     );
 }
 
-/// Dimension 1.6 — the App as registered today holds no Checks. The mint asks
+/// The App as registered today holds no Checks. The mint asks
 /// without it and succeeds, where asking for it failed every mint.
 #[tokio::test]
 async fn an_installation_without_checks_mints_without_asking_for_them() {
@@ -80,7 +80,7 @@ async fn a_successful_but_overreaching_response_is_discarded() {
     );
 }
 
-/// Dimension 1.7 — a failed installation read is classified as the token
+/// A failed installation read is classified as the token
 /// request would be, and no token is asked for after it.
 #[tokio::test]
 async fn an_installation_read_failure_keeps_its_retry_posture() {

@@ -94,6 +94,16 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
+    /// The grant's handle would not serialize into the body the vault seals.
+    ///
+    /// A handle built from strings and integers has no failing case today; a
+    /// field added later that can fail is reported here rather than panicking.
+    #[error("the connector handle would not serialize")]
+    HandleUnserializable {
+        #[source]
+        source: serde_json::Error,
+    },
+
     /// The vendor could not be reached at all.
     ///
     /// A transport failure, a timeout, a name that would not resolve. Nothing
@@ -169,6 +179,7 @@ impl Error {
             | ErrorKind::Query { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::IdentifierShape { .. }
+            | ErrorKind::HandleUnserializable { .. }
             | ErrorKind::VendorUnreachable { .. }
             | ErrorKind::ExchangeRefused { .. }
             | ErrorKind::InstallationListingRefused { .. }
@@ -211,7 +222,8 @@ impl Error {
             ),
             ErrorKind::Vault { .. }
             | ErrorKind::Entropy { .. }
-            | ErrorKind::IdentifierShape { .. } => (
+            | ErrorKind::IdentifierShape { .. }
+            | ErrorKind::HandleUnserializable { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),

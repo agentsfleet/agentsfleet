@@ -36,7 +36,7 @@ async fn bindings_use_the_supervisor_fence_without_retrying_failures() {
     one_attempt(Verb::TaskBindings, async |verbs| {
         let mut bindings = TaskBindingsInput {
             fencing_token: 0,
-            source_admission_id: ID.to_owned(),
+            source_turn_id: ID.to_owned(),
             accepted_revision_id: ID.to_owned(),
             plan_digest: "a".repeat(64),
             message_decision_call_id: ID.to_owned(),
@@ -68,7 +68,7 @@ async fn input_receipts_use_the_supervisor_fence_without_retrying_failures() {
         let receipt = TaskInputReceiptInput {
             fencing_token: 0,
             operation_id: ID.to_owned(),
-            source_admission_id: ID.to_owned(),
+            source_turn_id: ID.to_owned(),
             plan_digest: "a".repeat(64),
             item_id: ID.to_owned(),
             task: Some(DecisionTaskVersion {
@@ -145,11 +145,11 @@ async fn one_attempt(
                 error::refused(call.verb, 409, Some(error_code::TASK_STALE_STATE))
             })
         });
-        let lease = Uuid7::parse(LEASE_ID).unwrap();
+        let run = Uuid7::parse(RUN_ID).unwrap();
         let host = Host::new();
         let verbs = FencedVerbs::new(
             &plane,
-            &lease,
+            &run,
             FENCING,
             &host.halt,
             &host.stop,
@@ -165,7 +165,7 @@ async fn one_attempt(
         assert_eq!(requests.len(), 1);
         let call = requests.first().unwrap();
         assert_eq!(call.verb, verb);
-        assert!(call.path.contains(LEASE_ID), "{call:?}");
+        assert!(call.path.contains(RUN_ID), "{call:?}");
         assert_fence(call);
     }
 }
@@ -181,18 +181,21 @@ fn assert_fence(call: &crate::client::Call) {
     } else {
         let url = url::Url::parse(&format!("https://daemon.invalid{}", call.path)).unwrap();
         let query: std::collections::BTreeMap<_, _> = url.query_pairs().collect();
-        assert_eq!(query.get("fencing_token").unwrap(), &FENCING.to_string());
+        assert_eq!(
+            query.get("fencing_token").map(ToString::to_string),
+            Some(FENCING.to_string())
+        );
     }
 }
 
 #[tokio::test]
 async fn an_effect_identifier_that_is_not_a_uuid_is_refused_without_a_call() {
     let (plane, mut calls) = plane(|_call| Answer::Fail(error::config("unexpected effect read")));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,

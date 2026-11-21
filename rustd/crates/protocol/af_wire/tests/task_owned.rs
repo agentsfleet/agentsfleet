@@ -11,9 +11,9 @@ fn context() -> Value {
         "effect_cursor":9, "confirmed_effect_watermark":8, "checkpoint_id":"checkpoint",
         "checkpoint_generation":6, "expires_at":"2026-11-01T00:00:00Z",
         "limits":{"model_nanos":"1000","wall_seconds":40,"running_seconds":30,
-            "leases":10,"publications":4,"decision_calls":20,"fallback_reads":6},
+            "runs":10,"publications":4,"decision_calls":20,"fallback_reads":6},
         "usage":{"model_nanos":"100","reserved_model_nanos":"20","running_nanos":300,
-            "leases":2,"publications":1,"decision_calls":3,"fallback_reads":4}
+            "runs":2,"publications":1,"decision_calls":3,"fallback_reads":4}
     })
 }
 
@@ -51,15 +51,15 @@ fn owned_bindings_preserve_deadline_and_association_after_transport_drop() -> se
 }
 
 fn inputs(current: &Value) -> Value {
-    json!({"source_admission_id":"source","accepted_revision_id":"revision",
-        "current_message":"original message", "inputs":[{"source_admission_id":"next",
+    json!({"source_turn_id":"source","accepted_revision_id":"revision",
+        "current_message":"original message", "inputs":[{"source_turn_id":"next",
             "sequence":4,"message":"next message","accepted":null}],
-        "accepted_inputs":[{"source_admission_id":"source","plan_digest":"plan",
+        "accepted_inputs":[{"source_turn_id":"source","plan_digest":"plan",
             "item_id":"item","task":{"task_id":"task","generation":7},"sequence":5,
             "action":"steer","original_message":"original message","accepted_text":"message",
             "interpretation":"accepted meaning","applied":true,"response_text":"confirmed reply"}],
         "current_task":current,"execution_deadline":"2026-10-31T00:00:00Z",
-        "current_interpretation":{"source_admission_id":"source","plan_digest":"plan",
+        "current_interpretation":{"source_turn_id":"source","plan_digest":"plan",
             "message":"original message","items":[]},
         "tasks":[{"task_id":"task","title":"Repair","state":"running","generation":7}],
         "next_cursor":"opaque-next"})

@@ -79,7 +79,7 @@ impl Gates {
                 let stated = Stated::of(
                     request.event_type,
                     request.actor,
-                    request.event_id.as_str(),
+                    request.turn_id.as_str(),
                     timeout,
                 );
                 let stated = matched.map_or(stated, |rule| stated.under(rule));
@@ -92,15 +92,15 @@ impl Gates {
             Route::EvaluateRecorded => {
                 let fleet = request.fleet_id.as_str();
                 {
-                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                    let (event, fleet_id, agentsfleet_turn_id, message) = (
                         &EVENT_ROUTE_UNREACHABLE,
                         &fleet,
-                        &request.event_id,
+                        &request.turn_id,
                         format_args!(
                             "a recorded gate reached the first-encounter pass; the event waits"
                         ),
                     );
-                    tracing::error!(message, %event, %fleet_id, %agentsfleet_event_id);
+                    tracing::error!(message, %event, %fleet_id, %agentsfleet_turn_id);
                 };
                 Verdict::Await(Waiting::Unreadable)
             }
@@ -121,7 +121,7 @@ impl Gates {
                 Park {
                     fleet_id: request.fleet_id,
                     workspace_id: request.workspace_id,
-                    event_id: request.event_id,
+                    turn_id: request.turn_id,
                     stated,
                     claim: &claim,
                 },
@@ -244,7 +244,7 @@ mod tests {
                     &Check {
                         fleet_id: &fleet,
                         workspace_id: &fleet,
-                        event_id: &event,
+                        turn_id: &event,
                         event_type: "chat",
                         actor: "user:fixture",
                         request_json: "{}",
@@ -262,7 +262,7 @@ mod tests {
             );
             let logged = capture.only("gate_route_unreachable");
             assert_eq!(logged.field("fleet_id"), Some(FLEET));
-            assert_eq!(logged.field("agentsfleet_event_id"), Some(EVENT));
+            assert_eq!(logged.field("agentsfleet_turn_id"), Some(EVENT));
         }
     }
 }

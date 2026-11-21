@@ -1,4 +1,4 @@
-//! Cumulative allowances do not reset when another lease resumes the task.
+//! Cumulative allowances do not reset when another run resumes the task.
 
 use serde::{Deserialize, Serialize};
 
@@ -15,8 +15,8 @@ pub struct TaskLimits {
     pub wall_seconds: u32,
     /// Cumulative running time across all attempts.
     pub running_seconds: u32,
-    /// Maximum distinct issued leases.
-    pub leases: u32,
+    /// Maximum distinct issued runs.
+    pub runs: u32,
     /// Maximum physical repair publication attempts.
     pub publications: u32,
     /// Maximum physical decision calls, including retries.
@@ -31,7 +31,7 @@ impl Default for TaskLimits {
             model_nanos: 5_000_000_000,
             wall_seconds: 7 * 24 * 60 * 60,
             running_seconds: 2 * 60 * 60,
-            leases: 12,
+            runs: 12,
             publications: 8,
             decision_calls: 128,
             fallback_reads: 24,
@@ -54,8 +54,8 @@ pub struct TaskUsage {
     pub reserved_model_nanos: i64,
     /// Cumulative measured running time, in nanoseconds.
     pub running_nanos: u64,
-    /// Distinct issued leases.
-    pub leases: u32,
+    /// Distinct issued runs.
+    pub runs: u32,
     /// Physical publication attempts.
     pub publications: u32,
     /// Physical decision calls, including retries.

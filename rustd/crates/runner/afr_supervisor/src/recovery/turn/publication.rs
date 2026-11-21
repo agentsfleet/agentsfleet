@@ -2,7 +2,7 @@
 
 use super::NativeTurn;
 use crate::{Result, error};
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnResume,
 };
@@ -92,7 +92,7 @@ impl NativeTurn<'_> {
             .ok_or_else(|| error::config("turn publication has no pending commit"))?;
         let Response::Committed(descriptor) = self
             .plane
-            .turn_checkpoint(self.lease, &pending.request)
+            .turn_checkpoint(self.run, &pending.request)
             .await?
         else {
             return Err(error::config(

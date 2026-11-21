@@ -2,7 +2,7 @@
 //! changes what it asked for, before it trusts a pin, an object or a page.
 
 use super::*;
-use af_wire::lease::TurnPrivateRoot;
+use af_wire::run::TurnPrivateRoot;
 use af_wire::task::CheckpointTransferPurpose;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -40,8 +40,8 @@ pub(super) fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
 
 pub(super) fn reference() -> TurnCheckpointRef {
     TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     }
 }
 
@@ -82,9 +82,9 @@ async fn a_registration_that_changes_a_requested_chunk_is_refused() -> Checked {
         }
         change(&mut objects);
         let (plane, _calls) = scripted(move |_action| Ok(Response::Objects(objects.clone())));
-        let lease = Uuid7::parse(ID)?;
+        let run = Uuid7::parse(ID)?;
         let transfers = Transfers::new()?;
-        let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let native = NativeTurn::new(&plane, &run, 1, &transfers);
         let stop = CancellationToken::new();
         let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
@@ -136,9 +136,9 @@ async fn an_authorization_that_changes_the_scoped_object_set_is_refused() -> Che
             .collect();
         change(&mut objects);
         let (plane, _calls) = scripted(move |_action| Ok(Response::Authorized(objects.clone())));
-        let lease = Uuid7::parse(ID)?;
+        let run = Uuid7::parse(ID)?;
         let transfers = Transfers::new()?;
-        let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+        let native = NativeTurn::new(&plane, &run, 1, &transfers);
         let stop = CancellationToken::new();
         let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
@@ -166,11 +166,11 @@ struct Restored {
     root: tempfile::TempDir,
 }
 
-/// Restores `pages`, each read under its own id, against `offered`, or
-/// against the pages' own manifest root when `offered` is `None`.
-async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> Checked<Restored> {
+/// Restores `pages`, each read under its own id, against `assigned`, or
+/// against the pages' own manifest root when `assigned` is `None`.
+async fn restore_pages(pages: Vec<CheckpointPage>, assigned: Option<String>) -> Checked<Restored> {
     let ids: Vec<_> = (0..pages.len())
-        .map(|index| TurnId(format!("019f0000-0000-7000-8000-{:012}", index + 200)))
+        .map(|index| CheckpointOperationId(format!("019f0000-0000-7000-8000-{:012}", index + 200)))
         .collect();
     let mut digests = Vec::with_capacity(pages.len());
     for (id, page) in ids.iter().zip(&pages) {
@@ -179,7 +179,7 @@ async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> C
             af_core::etag::sha256_hex(&serde_json::to_vec(page)?),
         ));
     }
-    let digest = offered.unwrap_or_else(|| {
+    let digest = assigned.unwrap_or_else(|| {
         af_crypto::checkpoint_digest::manifest_root(
             digests
                 .iter()
@@ -192,12 +192,12 @@ async fn restore_pages(pages: Vec<CheckpointPage>, offered: Option<String>) -> C
             .get(&page_id.0)
             .cloned()
             .map(Response::PageRead)
-            .ok_or_else(|| error::config("the restore read a page it was not offered")),
+            .ok_or_else(|| error::config("the restore read a page it was not assigned")),
         _ => Err(error::config("unexpected manifest request")),
     });
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let stop = CancellationToken::new();
     let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
     let root = tempfile::tempdir()?;
@@ -271,13 +271,13 @@ async fn a_page_out_of_position_or_carrying_history_is_refused() -> Checked {
 }
 
 #[tokio::test]
-async fn a_manifest_other_than_the_offered_root_restores_nothing() -> Checked {
+async fn a_manifest_other_than_the_assigned_root_restores_nothing() -> Checked {
     let pages = vec![numbered(0, vec![directory("dir")])];
     let restored = restore_pages(pages.clone(), Some("e".repeat(64))).await?;
 
     assert_eq!(
         test_support::detail(&restored.result),
-        Some("turn manifest differs from the offered root")
+        Some("turn manifest differs from the assigned root")
     );
     assert_eq!(restored.sent.len(), 1);
     assert!(!restored.root.path().join("dir").exists());
@@ -356,15 +356,15 @@ async fn a_manifest_that_reorders_orphans_or_removes_a_path_restores_nothing() -
 #[tokio::test]
 async fn a_command_larger_than_one_native_message_is_never_sent() -> Checked {
     let (plane, mut calls) = scripted(|_action| Ok(Response::Abandoned));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
 
     let committed = native
         .command(Action::Commit {
             checkpoint: reference(),
             root: TurnPrivateRoot {
-                history: "a".repeat(af_wire::lease::TURN_CHECKPOINT_BYTES),
+                history: "a".repeat(af_wire::run::TURN_CHECKPOINT_BYTES),
             },
             manifest_root: af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(
                 &str,

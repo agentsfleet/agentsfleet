@@ -5,14 +5,14 @@ use std::ops::Range;
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 use af_wire::task::TaskLimits;
-use afd_admission::Producer;
 use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLifecycle as _};
+use afd_turns::Producer;
 
 use super::fixture::{Case, GOALS, exercise, items, questions};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn only_current_claimed_human_intent_can_allocate_work() {
+async fn only_current_assigned_human_intent_can_allocate_work() {
     exercise(source_authority).await;
 }
 
@@ -25,31 +25,31 @@ async fn source_authority(case: &Case) {
         TaskLimits::default(),
     );
     refused(case, &missing, error_code::TASK_NOT_FOUND).await;
-    let human = afd_events::steer_actor("native_task_owner");
+    let human = afd_turns::view::steer_actor("native_task_owner");
     let source = case.source(Producer::Steer, &human).await;
-    let unclaimed = case.source_plan(source.clone(), "unclaimed", 2, TaskLimits::default());
-    refused(case, &unclaimed, error_code::TASK_STALE_STATE).await;
+    let unassigned = case.source_plan(source.clone(), "unassigned", 2, TaskLimits::default());
+    refused(case, &unassigned, error_code::TASK_STALE_STATE).await;
     for (producer, actor) in [
         (Producer::Webhook, human.as_str()),
         (Producer::Steer, "service:automation"),
-        (Producer::Steer, afd_events::ACTOR_MACHINE),
+        (Producer::Steer, afd_turns::view::ACTOR_MACHINE),
     ] {
         let source = case.source(producer, actor).await;
-        case.claim(&source).await;
+        case.assign(&source).await;
         let plan = case.source_plan(source, "not-human-intent", 2, TaskLimits::default());
         refused(case, &plan, error_code::TASK_INVALID_TARGET).await;
     }
-    case.claim(&source).await;
+    case.assign(&source).await;
     let bound = tasks
-        .bind(case.lease(), &unclaimed)
+        .bind(case.run(), &unassigned)
         .await
-        .expect("claimed human intent remains usable");
+        .expect("assigned human intent remains usable");
     assert_eq!(
         (bound.items.len(), bound.replayed, case.counts().await),
         (2, false, (2, 2, 6))
     );
     let replay = tasks
-        .bind(case.lease(), &unclaimed)
+        .bind(case.run(), &unassigned)
         .await
         .expect("stable source replay");
     assert_eq!(replay.items, bound.items);
@@ -74,7 +74,7 @@ async fn interpretation_bounds(case: &Case) {
         refused(case, &plan, expected).await;
     }
     let accepted = tasks
-        .bind(case.lease(), &case.plan("corrected-interpretation", 3))
+        .bind(case.run(), &case.plan("corrected-interpretation", 3))
         .await
         .expect("valid retry");
     assert_eq!(
@@ -94,7 +94,7 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
         TaskLimits::default(),
     );
     PreparedPlan::from_parts(
-        case.held.event_id.clone(),
+        case.held.turn_id.clone(),
         case.revision.clone(),
         "invalid-span".to_owned(),
         vec![item],
@@ -143,13 +143,13 @@ async fn revision(case: &Case) {
 async fn accepted_revision(case: &Case, revision: &Uuid7, number: u64) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let plan = PreparedPlan::from_parts(
-        case.held.event_id.clone(),
+        case.held.turn_id.clone(),
         revision.clone(),
         "new-setup".to_owned(),
         items(3, TaskLimits::default()),
     );
     let accepted = tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("current reviewed setup binds");
     assert_eq!(
@@ -180,7 +180,7 @@ async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let before = case.counts().await;
     let refusal = tasks
-        .bind(case.lease(), plan)
+        .bind(case.run(), plan)
         .await
         .expect_err("native qualification rejects this complete plan");
     assert_eq!(refusal.code(), expected);
@@ -203,16 +203,16 @@ async fn refused(case: &Case, plan: &PreparedPlan, expected: ErrorCode) {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_current_lease_without_durable_capability_cannot_allocate_work() {
+async fn a_current_run_without_durable_capability_cannot_allocate_work() {
     exercise(async |case| {
         let plan = case.plan("capability", 1);
         super::fixture::task_capability(&case.held, false).await;
         refused(case, &plan, error_code::RUN_STALE_FENCING_TOKEN).await;
         super::fixture::task_capability(&case.held, true).await;
         case.tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
-            .expect("the same current lease binds after advertising protocol support");
+            .expect("the same current run binds after advertising protocol support");
     })
     .await;
 }

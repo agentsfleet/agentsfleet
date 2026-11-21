@@ -1,8 +1,8 @@
 //! Move validated domain projections into wire payloads without copying setup JSON.
 
 use af_fleet_runtime::Definition;
-use afd_api_wire::authoring as wire;
-use afd_authoring::{Cancellation, types};
+use afd_api_wire::setup as wire;
+use afd_setup::types;
 
 pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Review> {
     wire::Draft {
@@ -10,16 +10,10 @@ pub(crate) fn draft(value: types::Draft) -> wire::Draft<Definition, types::Revie
         state: value.state.as_str().into(),
         title: value.title,
         etag: value.etag,
-        authoring_model_ref: value.authoring_model_ref,
-        cancelled_through: value.cancelled_through,
+        setup_model_ref: value.setup_model_ref,
         candidate: value.candidate.map(candidate),
         review: value.review,
         linked_fleet_id: value.linked_fleet_id.map(|id| id.to_string()),
-        publication: value.publication.map(|receipt| wire::Publication {
-            plugin_id: receipt.plugin_id.to_string(),
-            revision_id: receipt.revision_id.to_string(),
-            canonical_digest: receipt.canonical_digest,
-        }),
         closed_at: value.closed_at,
         expires_at: value.expires_at,
     }
@@ -54,12 +48,12 @@ pub(super) fn card(value: types::DraftCard) -> wire::DraftCard {
         expires_at: value.expires_at,
         candidate_revision: value.candidate_revision,
         setup_revision: value.setup_revision,
-        publication_revision: value.publication_revision,
     }
 }
 
 pub(crate) fn message(value: types::Message) -> wire::Message {
     wire::Message {
+        turn_id: value.turn_id.to_string(),
         save_requested: value.save_requested,
         save_error_code: value.save_error_code,
         sequence: value.sequence,
@@ -73,7 +67,6 @@ pub(crate) fn message(value: types::Message) -> wire::Message {
             reason: failure.reason,
             error_code: failure.error_code.to_string(),
             recovery_action: failure.recovery_action.into(),
-            cause: failure.cause.map(|cause| cause.as_str().to_owned()),
         }),
         created_at: value.created_at,
         finished_at: value.finished_at,
@@ -88,20 +81,6 @@ pub(super) fn page<T, U>(value: types::Page<T>, render: impl FnMut(T) -> U) -> w
     }
 }
 
-pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
-    wire::Cancellation {
-        cancelled_through: value.cancelled_through,
-        stopped: value
-            .stopped
-            .into_iter()
-            .map(|value| wire::Stopped {
-                sequence: value.sequence,
-                state: value.state.into(),
-            })
-            .collect(),
-    }
-}
-
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,
@@ -111,12 +90,12 @@ pub(super) fn cancellation(value: Cancellation) -> wire::Cancellation {
 mod tests {
     use af_core::id::Uuid7;
 
-    use af_wire::authoring::FailureReason;
+    use af_wire::setup::FailureReason;
 
     use super::{card, message, types};
 
-    /// A card at `revisions`: candidate, saved setup and publication.
-    fn listed(revisions: (Option<i64>, Option<i64>, Option<i64>)) -> types::DraftCard {
+    /// A card at `revisions`: candidate and saved setup.
+    fn listed(revisions: (Option<i64>, Option<i64>)) -> types::DraftCard {
         types::DraftCard {
             continuation: String::new(),
             id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
@@ -129,25 +108,17 @@ mod tests {
             expires_at: None,
             candidate_revision: revisions.0,
             setup_revision: revisions.1,
-            publication_revision: revisions.2,
         }
     }
 
     #[test]
     fn a_card_lists_every_revision_summary_and_null_for_one_it_has_not_reached() {
         for (revisions, expected) in [
-            ((Some(3), Some(2), Some(1)), [3.into(), 2.into(), 1.into()]),
+            ((Some(3), Some(2)), [3.into(), 2.into()]),
+            ((Some(1), None), [1.into(), serde_json::Value::Null]),
             (
-                (Some(1), None, None),
-                [1.into(), serde_json::Value::Null, serde_json::Value::Null],
-            ),
-            (
-                (None, None, None),
-                [
-                    serde_json::Value::Null,
-                    serde_json::Value::Null,
-                    serde_json::Value::Null,
-                ],
+                (None, None),
+                [serde_json::Value::Null, serde_json::Value::Null],
             ),
         ] {
             let wire = serde_json::to_value(card(listed(revisions)))
@@ -156,7 +127,6 @@ mod tests {
                 [
                     wire["candidate_revision"].clone(),
                     wire["setup_revision"].clone(),
-                    wire["publication_revision"].clone(),
                 ],
                 expected,
                 "each summary is present on every card, null until the chat reaches it"
@@ -173,6 +143,8 @@ mod tests {
         let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
 
         let rendered = message(types::Message {
+            turn_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012")
+                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
             save_requested: false,
             save_error_code: None,
             sequence: "7".to_owned(),

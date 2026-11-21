@@ -14,7 +14,7 @@
 //! The stage type is a closed enum per verb, so a free-form key cannot be
 //! written, and the only strings a span carries are the event and fleet
 //! identifiers. A verb that reaches no stage records nothing. The gateway's
-//! recovery probe runs an offer pass every 5 s per replica and most find no
+//! recovery probe runs an assignment pass every 5 s per replica and most find no
 //! work, so a span for each would flood the exporter's `SPAN_QUEUE`; and a
 //! span with no stage is an identity with no timing to place.
 //! [`VerbClock::untimed`] is a clock that records nothing at all, for a caller
@@ -70,26 +70,26 @@ stages!(
 );
 
 stages!(
-    /// An offer that selected work, from the claim to the stream write.
-    OfferStage, semconv::SPAN_FLEET_OFFER {
-        /// Selection and the slot claim.
-        Claim => semconv::ATTR_OFFER_CLAIM_MS,
+    /// An assignment that selected work, from the selection to the stream write.
+    AssignStage, semconv::SPAN_FLEET_ASSIGN {
+        /// Selection and the thread assignment.
+        Select => semconv::ATTR_ASSIGN_SELECT_MS,
         /// Delivery, payer, provider and gates.
-        Admit => semconv::ATTR_OFFER_ADMIT_MS,
+        Admit => semconv::ATTR_ASSIGN_ADMIT_MS,
         /// The policy and the issue commit, or the refusal or fault that ends
-        /// the attempt before an offer is built.
-        Issue => semconv::ATTR_OFFER_ISSUE_MS,
-        /// The offer frame.
-        Encode => semconv::ATTR_OFFER_ENCODE_MS,
+        /// the attempt before an assignment is built.
+        Issue => semconv::ATTR_ASSIGN_ISSUE_MS,
+        /// The assignment frame.
+        Encode => semconv::ATTR_ASSIGN_ENCODE_MS,
         /// The stream write.
-        Send => semconv::ATTR_OFFER_SEND_MS,
+        Send => semconv::ATTR_ASSIGN_SEND_MS,
     }
 );
 
 stages!(
-    /// A terminal report, from the lease read to the acknowledgement.
+    /// A terminal report, from the run read to the acknowledgement.
     ReportStage, semconv::SPAN_FLEET_REPORT {
-        /// The lease read.
+        /// The run read.
         Load => semconv::ATTR_REPORT_LOAD_MS,
         /// The task report and pricing.
         Prepare => semconv::ATTR_REPORT_PREPARE_MS,
@@ -105,12 +105,12 @@ stages!(
 );
 
 stages!(
-    /// A fallback memory hydrate.
-    HydrateStage, semconv::SPAN_FLEET_HYDRATE {
+    /// A fallback memory load.
+    LoadStage, semconv::SPAN_FLEET_LOAD {
         /// The fence check.
-        Fence => semconv::ATTR_HYDRATE_FENCE_MS,
+        Fence => semconv::ATTR_LOAD_FENCE_MS,
         /// The memory read.
-        MemoryRead => semconv::ATTR_HYDRATE_MEMORY_READ_MS,
+        MemoryRead => semconv::ATTR_LOAD_MEMORY_READ_MS,
     }
 );
 
@@ -157,7 +157,7 @@ pub struct VerbClock<S: Stage, C: Ticks = HostTicks> {
     started: Instant,
     last: Instant,
     stages: Vec<(S, Duration)>,
-    event_id: Option<String>,
+    turn_id: Option<String>,
     agent_id: Option<String>,
     discarded: bool,
 }
@@ -189,7 +189,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
             last: started,
             ticks,
             stages: Vec::with_capacity(MOST_STAGES),
-            event_id: None,
+            turn_id: None,
             agent_id: None,
             discarded: false,
         }
@@ -208,8 +208,8 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     }
 
     /// The event this verb served and the fleet it belongs to.
-    pub fn identify(&mut self, event_id: &str, agent_id: &str) {
-        self.event_id = Some(event_id.to_owned());
+    pub fn identify(&mut self, turn_id: &str, agent_id: &str) {
+        self.turn_id = Some(turn_id.to_owned());
         self.agent_id = Some(agent_id.to_owned());
     }
 
@@ -227,7 +227,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     }
 
     /// Records the span so far and starts a fresh one in its place, as one pass
-    /// that serves a second offer needs. A clock that reached no stage has no
+    /// that serves a second assignment needs. A clock that reached no stage has no
     /// span to close, so it keeps its start and identity; an untimed clock
     /// starts over without recording.
     pub fn restart_if_staged(&mut self) {
@@ -255,7 +255,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.started = now;
         self.last = now;
         self.stages.clear();
-        self.event_id = None;
+        self.turn_id = None;
         self.agent_id = None;
     }
 
@@ -270,7 +270,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
             return;
         }
         // A span with no stage is an identity with no timing, and the empty
-        // offer passes the recovery probe runs would flood the span queue.
+        // assignment passes the recovery probe runs would flood the span queue.
         if self.stages.is_empty() {
             return;
         }
@@ -295,7 +295,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     /// The identity, then each reached stage in whole milliseconds.
     fn attributes(&self) -> Vec<KeyValue> {
         let identity = [
-            (semconv::ATTR_EVENT_ID, &self.event_id),
+            (semconv::ATTR_TURN_ID, &self.turn_id),
             (semconv::ATTR_AGENT_ID, &self.agent_id),
         ];
         let named = identity

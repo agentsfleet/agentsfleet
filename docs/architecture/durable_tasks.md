@@ -8,10 +8,10 @@ Supported runners advertise `durable_tasks_v1` on every heartbeat.
 
 The saved runner assignment includes **Durable tasks**, On by default, as `durable_tasks_enabled`.
 The runner detail page shows the saved assignment as **Durable tasks: On** or **Durable tasks: Off**.
-The daemon checks both configuration and software capability before issuing a new durable lease.
+The daemon checks both configuration and software capability before issuing a new durable run.
 
-Turning the setting Off preserves the authority and accounting duties of existing leases.
-Older workers cannot claim unsupported task work.
+Turning the setting Off preserves the authority and accounting duties of existing runs.
+The daemon never assigns unsupported task work to an older worker.
 
 Runtime acceptance remains pending. The [continuation record](../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md)
 separates source changes from passing verification evidence.
@@ -22,40 +22,40 @@ The acceptance ledger distinguishes implemented components from pending runtime 
 
 A fleet retains its instructions, grants, conversation, memory and schedules.
 A DT names one accepted objective within that fleet.
-A lease gives one runner worker temporary permission to advance work.
+A run gives one runner worker temporary permission to advance work.
 
 ```text
 Workspace
   Fleet: Linkwarden repair
-    ordinary message -> admission -> lease -> answer
+    ordinary message -> turn -> run -> answer
     DT A: repair PR X
-      lease A1 -> wait for checks -> lease A2 -> done
+      run A1 -> wait for checks -> run A2 -> done
     DT B: investigate incident Y
-      lease B1 -> wait for approval -> lease B2
+      run B1 -> wait for approval -> run B2
 
-Fleet execution slot: [A1][B1][idle][A2]
-Several unfinished DTs; at most one active lease per fleet.
+Fleet thread: [A1][B1][idle][A2]
+Several unfinished DTs; at most one active run per fleet.
 ```
 
-Waiting releases compute and the fleet slot.
-A wait is separate from its settled run admission, so it cannot block the queue head.
+Waiting releases compute and frees the fleet's thread for another run.
+A wait is separate from its settled turn, so it cannot block the queue head.
 Distinct fleets remain the boundary for simultaneous runs.
 
 An ordinary greeting, status question or bounded one-request answer needs no DT.
 A requested objective needing ownership across attempts or external waits uses a DT.
-Earlier manual repair evidence does not prove cross-event ownership or replacement-worker recovery.
+Earlier manual repair evidence does not prove cross-turn ownership or replacement-worker recovery.
 
 ## One runtime and documentation ownership
 
-A DT adds long-lived objective state to the current admission/lease path; it is not another worker or scheduling engine.
-Every attempt still uses existing lease claim, fencing, agent loop, report and settlement.
-Task methods extend existing `LeaseVerbs`; an ordinary message can retain a null task binding.
+A DT adds long-lived objective state to the current turn/run path; it is not another worker or scheduling engine.
+Every attempt still uses existing run assignment, fencing, agent loop, report and settlement.
+Task methods extend existing `RunVerbs`; an ordinary message can retain a null task binding.
 
 ```text
-fleet -> existing admission -> existing lease -> existing agent -> existing report
+fleet -> existing turn -> existing run -> existing agent -> existing report
             |                     |
        optional task_id      optional TaskContext
-            +---------- one DT across several leases --------+
+            +---------- one DT across several runs --------+
 ```
 
 This page owns lifecycle, storage rows, scheduling and native APIs.
@@ -66,7 +66,7 @@ Do not merge the complete example into this page or duplicate its API definition
 
 Keep the DT row, accepted-input history, publication intent and recovery manifest because each protects a named worker-loss or external-write boundary.
 The publication ledger covers supported external writes, not every read, shell command or ephemeral tool call.
-Use database generations and current lease fences rather than a second task lock service.
+Use database generations and current run fences rather than a second task lock service.
 
 Remove separate publication dispatch, another task-message send route and provider-specific agent networking.
 Keep one trait and one guarded client inside the current provider crate; use fixed wire adapters rather than a plugin engine.
@@ -81,24 +81,16 @@ The proposed limits and performance still need workload measurements before any 
 Setup wording is user-authored through chat. Selecting a starter inserts editable text into the composer; daemon-owned Markdown templates do not supply fleet instructions or decision criteria.
 The setup tool schema describes native fields and supported values.
 
-A short system envelope carries current candidate/save state and the distinction between conversation and a requested edit.
-Before returning an edit proposal, the daemon evaluates the newest saved user message with the runner's configured decision model. It asks one question only.
+A setup run's first message carries the head candidate, labelled as untrusted setup data, then the person's newest message.
+The `propose_setup` description is also the run's instructions (`af_fleet_runtime/src/setup/mod.rs`).
+It tells the model to call the tool only when that message asks to create or change the setup.
 
-“Does this message ask to change the fleet's setup (instructions, configuration, name, schedule or access)?”
-A no answer uses `ProposalRejection::EditNotRequested`. Yes permits ordinary validation. Unavailable, stale or malformed decisions record a bounded fallback and retain current chat behavior.
+No separate decision model checks the message. When the person asked to save, the tool refuses every proposal as `edit_not_requested`, and the report saves the reviewed head (`afr_tools/src/setup/mod.rs`).
+No new task scheduler, setup-chat intake SQL or question-drafting decision path is introduced.
 
-The existing `DecisionEvaluator`/`DecisionClient` handles the physical request; the runner catalogue resolver supplies its reviewed profile, and platform-admin Secrets supply fresh credentials.
-A native `authoring.edit_decisions` record binds each check to its dispatch, attempt and candidate version. It contains no message text.
-
-It commits physical intent before sending and preserves frozen decision pricing and usage independently of private chat deletion.
-The per-call reservation is tentative, using reviewed prices and bounded request/response allowances with the approved USD 0.02 minimum. Actual provider usage remains authoritative, and further decision checks stop on unresolved usage or overage.
-
-Decision charges use the existing biller, `AuthoringAttempt` work key and `SetupChat` attribution, with a distinct usage-line sequence. An unresolved physical check retains its reservation without blocking the conversational reply.
-No new task scheduler, setup-chat admission SQL or question-authoring decision path is introduced.
-
-Setup chat or CLI authoring drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
+Setup chat or the CLI's setup flow drafts `instructions_md` and the fleet owner's editable `decision_policy` through the existing private flow.
 Saving setup establishes a fleet revision and capability ceiling; it does not create arbitrary future repair work.
-An explicit initial-work request can enter admission after activation under the existing start rules.
+An explicit initial-work request can become a turn after activation under the existing start rules.
 
 Question and criterion edits create a new immutable revision through Review/Apply; older revisions remain unchanged.
 New tasks use the accepted policy; active tasks require explicit adoption that invalidates earlier assessments without resetting history or budgets.
@@ -108,9 +100,9 @@ Setup chat -> reviewed candidate -> Save/Apply -> fleet revision R7
                                                     |
 Human: "Repair PR X until its required checks pass" --+
                         |
-Daemon authenticates and saves message admission
+Daemon authenticates and saves the message as a turn
                         |
-Existing fleet slot -> runner lease -> decision-provider routing
+Existing fleet thread -> runner run -> decision-provider routing
                         |
 conversation/status   refresh   steer   new work   unclear
        |                 |       |         |          |
@@ -122,7 +114,7 @@ conversation/status   refresh   steer   new work   unclear
                             input receipt  create DT
 ```
 
-The runner calls its assigned decision provider under the current lease and its billing limits.
+The runner calls its assigned decision provider under the current run and its billing limits.
 The conversational model prepares a bounded objective for new work; the decision result does not generate that objective.
 The daemon alone creates a DT after checking current authority and typed target evidence.
 
@@ -141,7 +133,7 @@ Signed completion events match native waits directly and skip intent classificat
 ## State authority and transaction boundaries
 
 Postgres owns DTs, input receipts, waits, effect intents and checkpoint manifests.
-Core NATS carries wake notifications only; `fleet.admissions` remains the work queue.
+Core NATS carries wake notifications only; `thread.turns` remains the work queue.
 R2 holds encrypted immutable checkpoint bytes and does not decide current ownership.
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
@@ -163,23 +155,23 @@ Failed refreshes preserve labelled confirmed progress until access is lost.
 Wait, effect, decision and checkpoint storage below describe the approved design,
 with exact scope and parked acceptance in the [milestone spec](../v2/done/M236_001_P0_API_DOCS_INFRA_OBS_UI_GOAL_DRIVEN_DURABLE_REPAIR.md).
 
-The daemon binds admissions and leases to a nullable task identity; ordinary exchanges retain the existing path.
+The daemon binds turns and runs to a nullable task identity; ordinary exchanges retain the existing path.
 Merge-time schema inventory checks remain required.
 
 Each DT binds its workspace, fleet, accepted instruction revision, objective, approved target and cumulative limits.
-One current generation guards changes; input sequence, checkpoint generation and lease fencing remain distinct counters.
+One current generation guards changes; input sequence, checkpoint generation and run fencing remain distinct counters.
 Each remote effect has an immutable identity, request digest, expected target state and reconciliation outcome.
 
 | Boundary | Guard and committed result |
 |---|---|
-| Create | Lock current admission, fleet and authority; save immutable interpreted work items; deduplicate admission plus item identity; insert DT and bind current run together. |
-| Resume | Lock current DT and fleet slot; reject stopped, stale, foreign or exhausted work before issuing a bound lease. |
-| Accept input | Save interpreted input and association in task history under current generation; claim queued delivery; retries return the same receipt. |
-| Prepare effect | Check live lease, current grants, approved target and stop generation; save immutable effect intent before the remote request. |
+| Create | Lock current turn, fleet and authority; save immutable interpreted work items; deduplicate turn plus item identity; insert DT and bind current run together. |
+| Resume | Lock current DT and the fleet's thread row; reject stopped, stale, foreign or exhausted work before issuing a bound run. |
+| Accept input | Save interpreted input and association in task history under current generation; take the queued turn; retries return the same receipt. |
+| Prepare effect | Check live run, current grants, approved target and stop generation; save immutable effect intent before the remote request. |
 | Save checkpoint | Hold publication pins; verify immutable uploads; publish a compatible manifest and convert live pins to references under current generations. |
-| Enter wait | Commit report, usage, recovery pointer, wait and admission settlement before releasing the fleet slot. |
-| Wake | Atomically consume one current wait and append its continuation admission; competing completions and fallback reads return the same result. |
-| Finish | Recheck current target and mandatory evidence; save terminal outcome and existing outbound obligation in settlement. |
+| Enter wait | Commit report, usage, recovery pointer, wait and turn settlement before releasing the fleet's thread. |
+| Wake | Atomically consume one current wait and append its continuation turn; competing completions and fallback reads return the same result. |
+| Finish | Recheck current target and mandatory evidence; save terminal outcome and existing outbound delivery in settlement. |
 | Stop | Advance stop generation; reject new effect intents and wakes; reconcile remote requests already issued. |
 
 Database, R2 and GitHub writes cannot share one transaction.
@@ -197,11 +189,11 @@ Explicit reviewed adoption invalidates decisions made against the prior goal rev
 ## Human input while work runs
 
 The daemon records incoming messages before acknowledging them.
-At eligible boundaries between complete action groups, the runner reads pending input through the current lease.
-Decision routing and native consumption receipts associate each input without taking a second fleet lease.
+At eligible boundaries between complete action groups, the runner reads pending input through the current run.
+Decision routing and native consumption receipts associate each input without taking a second fleet run.
 
-Input admission and active-loop acceptance share one claim to prevent later queued delivery from repeating the steer.
-Acceptance saves interpreted input in canonical task history before suppressing queued delivery.
+Turn intake and active-loop acceptance share one input claim, so a later queued run cannot repeat the steer.
+Acceptance saves interpreted input in canonical task history before taking the turn off the queue.
 Acceptance, checkpoint inclusion and confirmed resulting effects remain separate facts.
 
 Resume loads accepted inputs beyond the checkpoint's covered-input cursor, even when those inputs already left the queue.
@@ -210,7 +202,7 @@ The proposed receipt protocol and FIFO boundaries below define active-loop accep
 
 New work discovered during a running DT becomes queued work; it does not replace the current objective.
 For mixed requests, save an immutable interpretation plan and stable native item identities before creating any DT.
-Retry deduplicates each admission/item pair; changed interpretations cannot silently add another item.
+Retry deduplicates each turn/item pair; changed interpretations cannot silently add another item.
 
 Status and conversation can be answered at the next safe boundary.
 Neither claims that an in-flight remote action was interrupted.
@@ -221,9 +213,9 @@ Fleet deletion fences access immediately; checkpoint cleanup follows the authori
 
 ## Existing pull request publication
 
-The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains event-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch.
+The initial existing-Pull-Request (PR) mode accepts an exact open same-repository PR and approved base. The reviewed setup explicitly selects `repository_publication: existing_pr`; omission retains turn-owned draft publication. Model-visible GitHub egress remains read-only in existing-PR mode; the native publisher alone may advance its bound branch.
 
-Native target preparation reuses the current lease-plane credential mint, standing grants and repository binding.
+Native target preparation reuses the current run-plane credential mint, standing grants and repository binding.
 It refuses fork heads, default/protected target branches and workflow edits.
 Repository workflow review must establish validation-only push effects for the controlled demonstration.
 
@@ -294,7 +286,7 @@ Browser reconnection reads current work before offering another attempt.
 Waiting and recovery retain confirmed progress without repeating the entire incident report.
 Status answers label saved evidence freshness.
 
-Reuse existing outbound obligations, trusted destinations, Slack answer markers and repeat-delivery checks.
+Reuse existing outbound deliveries, trusted destinations, Slack answer markers and repeat-delivery checks.
 DT-to-notification correlation belongs in task records by default; `afd_outbound` needs no speculative rewrite.
 Any demonstrated transport gap requires a named spec amendment before source edits.
 
@@ -306,7 +298,7 @@ Schedules decide when to observe; a DT owns an accepted objective until its outc
 
 Conditional fleet handoffs are follow-up work after M236.
 The caller steer API accepts authorized target fleets; native message and schedule tools remain scoped to their existing thread or fleet.
-The follow-up needs verified conditions, explicit fleet permissions, durable admission/correlation, retry deduplication and bounded chains through the existing runtime.
+The follow-up needs verified conditions, explicit fleet permissions, durable turn intake/correlation, retry deduplication and bounded chains through the existing runtime.
 
 Product references include [Puffle](https://puffle.ai), [Grok Bot](https://x.ai/bot) and [Turnstone](https://myturnstone.ai/comparisons).
 Their product descriptions suggest use cases; they do not establish internal durability guarantees.
@@ -320,11 +312,11 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | Table or proposed addition in the fleet schema | Required fields and uniqueness |
 |---|---|
 | `fleet.tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
-| `fleet.task_items` | Source admission, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique admission/ordinal; conflicting replay returns 409. |
+| `fleet.task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique turn/ordinal; conflicting replay returns 409. |
 | `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, answer state, applied-effect references. Unique task/item and task/sequence. |
 | `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumption. One current wait per task through a partial unique index. |
 | `fleet.task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
-| Proposed `task_decisions` | Physical call identity, lease/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
+| Proposed `task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
 | `fleet.task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
 | `fleet.task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
 | `fleet.task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
@@ -332,7 +324,7 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `fleet.task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
 | `fleet.task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
 | `fleet.task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
-| Existing admissions and leases | Nullable task/item identities; input claim lease/fence on admissions; capability-selected task context on leases. Existing one-shot rows retain null bindings. |
+| Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
 Target changes require an authorized new objective or explicit reviewed adoption; model prose cannot mutate the binding.
@@ -345,11 +337,11 @@ Workspace deletion records durable storage-purge receipts before deleting owners
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
 `fleet.task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
 
-Task mutations lock workspace and fleet parents against deletion. They then lock the slot, admissions by sequence, lease, tasks by identity and subordinate rows by identity.
+Task mutations lock workspace and fleet parents against deletion. They then lock the thread row, turns by sequence, run, tasks by identity and subordinate rows by identity.
 
 Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
 
-Callers still prove fleet and lease authority.
+Callers still prove fleet and run authority.
 Completion collection uses a similarly restricted helper to lock expired, finished parent receipts before their fanout children, retaining `SKIP LOCKED`. Its intrinsic minimum retention is 72 hours and its maximum batch is 256; no update privilege is granted on immutable completion rows.
 
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
@@ -360,7 +352,7 @@ Object deletion runs only after a committed tombstone and rechecks pins/referenc
 
 ## Proposed input claims and scheduling
 
-At a safe boundary, read at most four pending human admissions for the current conversation, ordered by source admission sequence.
+At a safe boundary, read at most four pending human turns for the current conversation, ordered by source turn sequence.
 Machine work rows do not block this input view; reading a message does not promote another task ahead of the work queue.
 
 Stop at a prior live input claim; classify ambiguous messages into a clarification receipt rather than leaving a permanent input barrier.
@@ -373,31 +365,31 @@ Save the complete immutable interpretation plan before any item changes task sta
 An unbound run can bind its first new work item as current; other new items enter the queue tail.
 An already-bound run keeps its current DT; all unrelated new work enters the queue tail.
 
-Claim an input admission under the current slot fence without marking its effects applied.
-Commit accepted text, typed interpretation and per-item DT association before removing duplicate queued delivery eligibility.
+Claim an input turn under the current thread fence without marking its effects applied.
+Commit accepted text, typed interpretation and per-item DT association before the queued turn stops being eligible for its own run.
 Different text, target or action under an existing plan identity returns a conflict.
 
 An input for the current DT can affect its next action group after acceptance.
-An input for another same-fleet DT is saved as queued input and cannot grant the current lease that other task's write authority.
-Its first steer consumes an old wait or coalesces with an existing ready admission; duplicate completion events cannot add a second continuation.
+An input for another same-fleet DT is saved as queued input and cannot grant the current run that other task's write authority.
+Its first steer consumes an old wait or coalesces with an existing ready turn; duplicate completion events cannot add a second continuation.
 
-Each accepted input gets its own native event/history row and reply obligation through the existing settlement helpers.
+Each accepted input gets its own native turn/history row and reply delivery through the existing settlement helpers.
 Report settlement includes each item's response or queued-work receipt and the current task's new covered-input cursor.
 An accepted but unanswered item remains recoverable through native history after worker loss.
 
-New work gets a fresh continuation admission at the queue tail; it never replaces the current task binding.
+New work gets a fresh continuation turn at the queue tail; it never replaces the current task binding.
 The original message receives a queued-work receipt; its item identity deduplicates the continuation.
 Add `Producer::TaskContinuation`, keyed by task, generation and wake/item identity, to the existing ledger.
 
-Reuse `EventType::Continuation` with a typed task payload, `Producer::TaskContinuation` and machine actor `task:<task_id>` for native continuations.
+Reuse `TurnKind::Continuation` with a typed task payload, `Producer::TaskContinuation` and machine actor `task:<task_id>` for native continuations.
 Preserve the originating person's identity separately; do not label a scheduler or webhook wake as a new human command.
-Native control-plane commits, rather than model tool calls, create continuation admissions.
+Native control-plane commits, rather than model tool calls, create continuation turns.
 
-Claimed source admissions remain excluded from ordinary leasing until their native input outcome settles or recovery reclaims the claim.
+Claimed source turns remain excluded from ordinary running until their native input outcome settles or recovery reclaims the claim.
 After a claim owner expires, accepted items resume from task history; unaccepted items return to FIFO delivery without a fabricated applied receipt.
 
 FIFO order remains authoritative at task yield boundaries.
-The daemon records a slice ceiling of at most ten minutes, further limited by the task and existing lease budgets. Lease delivery, binding acknowledgements and recovery reads expose that same saved ceiling; checkout and restore do not restart it.
+The daemon records a slice ceiling of at most ten minutes, further limited by the task and existing run budgets. Run delivery, binding acknowledgements and recovery reads expose that same saved ceiling; checkout and restore do not restart it.
 
 The runner stops starting action groups with three minutes remaining, allowing one minute for the native assessment and two minutes for checkpoint capture and reporting. The agent drive is bounded by the ceiling minus the two-minute handoff reserve. A missing or exhausted ceiling refuses task actions.
 
@@ -405,17 +397,17 @@ If a group overruns that bound, its earlier completion assessment is cleared. Th
 
 Checkpoint-capable tasks save before yielding; failed capture keeps the prior recoverable generation and reports the blocked handoff.
 Do not silently discard unsaved work to serve another queued task.
-The task runtime/deadline policy cannot override a smaller existing lease, credit or fleet limit.
+The task runtime/deadline policy cannot override a smaller existing run, credit or fleet limit.
 
 ## Proposed native API
 
-New runner dispatch and task transitions require `Guard::RunnerBearer`, the owning runner, a live lease/fence and current task generation.
+New runner dispatch and task transitions require `Guard::RunnerBearer`, the owning runner, a live run/fence and current task generation.
 Accounting receipts instead authenticate the retained original call owner and fence; they can record late usage without advancing work.
 
 Person routes require the existing workspace guard, child ownership lookup and `FleetRead` or `FleetWrite` as shown.
 Return 404 for wrong-workspace children and 409 for stale generations without exposing foreign state.
 
-Use `/v1/runners/me/leases/{lease_id}` as prefix L and `/v1/workspaces/{workspace_id}/fleets/{fleet_id}` as prefix F.
+Use `/v1/runners/me/runs/{run_id}` as prefix L and `/v1/workspaces/{workspace_id}/fleets/{fleet_id}` as prefix F.
 
 Existing caller/configuration endpoints are reused, with additive validated fields:
 
@@ -423,16 +415,16 @@ Existing caller/configuration endpoints are reused, with additive validated fiel
 |---|---|
 | `POST F/messages` | Optional native task association for a selected UI row; ordinary fleet text and `operation_id` behavior stay supported. |
 | `PATCH /v1/admin/runners/{runner_id}` | Optional `assigned_policy.decision_model_id`, restricted by existing operator authorization and catalogue/vault ownership. |
-| Existing runner heartbeat, lease claim, renew and report URLs | Assignment delivery, frozen decision/task context, usage and task settlement; no competing task claim route. |
+| Existing runner heartbeat, run assignment, renew and report URLs | Assignment delivery, frozen decision/task context, usage and task settlement; no competing task claim route. |
 
 The following proposed endpoints extend those existing resource families:
 
 
 | Method and path | Request and successful response |
 |---|---|
-| `POST L/tasks/bindings` | Source admission, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
+| `POST L/tasks/bindings` | Source turn, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
 | `GET L/tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
-| `POST L/tasks/input-receipts` | Source admission/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
+| `POST L/tasks/input-receipts` | Source turn/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
 | `POST L/tasks/decisions` | Reserve a physical call for a message, pinned item or goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
 | `PATCH L/tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
 | `POST L/tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
@@ -440,13 +432,13 @@ The following proposed endpoints extend those existing resource families:
 | `GET L/tasks/effects/{effect_id}` | 200 returns prepared/issued/confirmed/unknown/refused state and attributable remote receipt; unknown results require reconciliation. |
 | `POST L/tasks/checkpoints` | Expected generation, operation identity, retain_base/incremental mode, exact repository/base, declared byte budget/page count (maximum 64) and format; 201 returns the plan, expiry, writer pin, base/checkpoint identity and native UUIDv7 page identities. |
 | `PUT L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | Complete page representation with page number, digest and contents; identical replay succeeds, changed page or number conflicts. Final root requires every declared page in order. |
-| `GET L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live lease; verify its digest and ordered manifest root before using file/chunk mappings. |
+| `GET L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live run; verify its digest and ordered manifest root before using file/chunk mappings. |
 | `POST L/tasks/checkpoints/{checkpoint_id}/objects` | At most 256 plaintext SHA-256/size/kind descriptors; 201 returns missing/reused/busy objects. The native upload owner receives the fixed nonce and temporary data key for new objects. |
 | `POST L/tasks/checkpoints/{checkpoint_id}/uploads` | Registered object identities plus immutable ciphertext digest/length; 201 freezes descriptors and returns exact create-only PUT authorizations. It cannot change a prior descriptor. |
 | `POST L/tasks/checkpoints/{checkpoint_id}/authorizations` | Read purpose without object IDs acquires/adopts one restore pin and returns root plus at most 64 ordered page IDs. Registered object batches then obtain/refresh five-minute read/upload URLs after scope/descriptor/pin checks; no arbitrary keys or paths. |
 | `PATCH L/tasks/checkpoints/{checkpoint_id}/pins/{pin_id}` | Expected pin/task version; 200 renews the native reader/writer pin. One capture/restore pin protects its object set; no per-object renewal request or extension of task/transfer deadlines. |
 | `PATCH L/tasks/checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
-| `GET L/tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current lease. |
+| `GET L/tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current run. |
 | `GET F/tasks?starting_after=<cursor>&limit=20` | `FleetRead`; 200 returns titles, states, version, next dependency and confirmed result links. Maximum limit 100. |
 | `GET F/tasks/{task_id}` | `FleetRead`; 200 returns progress, accepted questions/criteria and setup revision, assessments/evidence and ETag, with local versus published file labels. |
 | `PATCH F/tasks/{task_id}` | `FleetWrite` and `If-Match`; lifecycle control or explicit reviewed `goal_revision_id` adoption with expected generation/operation identity; 200 returns state/version, ETag and any in-flight effect warning. Adoption invalidates old assessments without resetting usage or expanding authority. |
@@ -460,16 +452,16 @@ Publication permits at most 32 changed regular-file paths, 1 MiB total decoded c
 Only supported changed-path modes are restricted; unchanged base symlinks or modes do not themselves prohibit a source repair.
 Validate bounds with `garde`; never deserialize an unproved payload into a publishing operation.
 
-Lease task context adds accepted goal/revision, native target, input/effect cursors, limits, compatible checkpoint reference and permitted decision policy.
+Run task context adds accepted goal/revision, native target, input/effect cursors, limits, compatible checkpoint reference and permitted decision policy.
 Report task settlement adds expected generation, transition, evidence references, checkpoint identity, input responses and confirmed-effect watermark.
 Decision usage carries the native `decision_call_id`; reserve/result/renew/report replay shares one billing line with that call's authorized protocol/profile/rates.
 
-Ordinary leases omit those additions; task-bound leases require a `durable_tasks_v1` runner capability.
+Ordinary runs omit those additions; task-bound runs require a `durable_tasks_v1` runner capability.
 
-Generation changes can refuse a requested task transition without dropping the lease's measured usage or confirmed tool outcomes.
+Generation changes can refuse a requested task transition without dropping the run's measured usage or confirmed tool outcomes.
 Settlement records spent work and stopped/stale disposition, then reconciles current native state instead of asserting DONE from an old report.
 
-Unknown capabilities refuse task work; older runners may still receive ordinary one-shot admissions.
+Unknown capabilities refuse task work; older runners may still receive ordinary one-shot turns.
 Every task API has served-route ownership, stale-fence, replay, malformed-body and stopped-task tests.
 Generate OpenAPI from wire/source definitions after route inventory and route-count tests are updated.
 
@@ -477,7 +469,7 @@ Use new public error family `UZ-DT`: 001 not found, 002 stale state, 003 replay 
 Use 006 decision unavailable, 007 ambiguous input, 008 incompatible checkpoint, 009 storage unavailable and 010 publication uncertain.
 Use 011 busy control boundary and 012 protocol incompatible; register codes and problem types only with their implementation.
 
-Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-AUTHOR-004` precondition code for a missing tag (428).
+Task controls use 013 for a stale resource tag (412) and the existing shared `UZ-SETUP-004` precondition code for a missing tag (428).
 
 Map missing children to 404, stale/replay/target/checkpoint/protocol conflicts to 409, limits to 429 and unavailable decision/storage to 503.
 Ambiguous input is a normal clarification response; code 007 is reserved for malformed explicit association requests with HTTP 409.
@@ -485,7 +477,7 @@ Publication uncertainty returns 409 with code 010 and a recorded unknown effect;
 
 ### What the runner uses each collection for
 
-These APIs connect the trusted runner supervisor to the daemon during an existing lease.
+These APIs connect the trusted runner supervisor to the daemon during an existing run.
 The daemon owns accepted task state; the coding model proposes work through the agent loop.
 The user continues messaging the fleet without typing task identities.
 
@@ -500,8 +492,8 @@ The user continues messaging the fleet without typing task identities.
 
 ### Existing mechanisms to reuse
 
-Reuse current runner authentication, lease fencing and vault/credential resolution for storage requests.
-`afd_fleet`'s lease fence module already proves the live holder; `afd_credential` already scopes credential requests to native workspace identity.
+Reuse current runner authentication, run fencing and vault/credential resolution for storage requests.
+`afd_fleet`'s run fence module already proves the live holder; `afd_credential` already scopes credential requests to native workspace identity.
 Storage authorization applies those checks before issuing exact-object transfer URLs; it is not another permission service.
 
 Local toolbox retention already protects mounted images through `Arc` ownership in `afr_sandbox`'s toolbox holds module.
@@ -519,14 +511,14 @@ Wire records remain validated data rather than gaining a trait for each field.
 
 | Owner | Data structs and behavior |
 |---|---|
-| `afd_fleet`'s task module | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native admission staging and lease fences with real database tests. |
+| `afd_fleet`'s task module | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native turn staging and run fences with real database tests. |
 | `af_providers`' decision module | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
-| `afr_tools`' verbs; `afr_supervisor`'s verbs and task client | Extend the existing `LeaseVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own lease fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
+| `afr_tools`' verbs; `afr_supervisor`'s verbs and task client | Extend the existing `RunVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own run fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
 | `afr_supervisor`'s recovery module | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
 | `afd_fleet`'s task storage module | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
 | `af_wire`'s task and decision modules | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
 
-Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `LeaseVerbs`, `EventSink` and `Clock` dependencies.
+Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `RunVerbs`, `EventSink` and `Clock` dependencies.
 An `Arc<dyn DecisionEvaluator>` can share the configured client; the loop borrows it through the current run context.
 Object-safe async methods use existing boxed-future conventions and each owning crate's `Result`.
 
@@ -544,7 +536,7 @@ Keep native HTTP refusal and wire validation types consistent with their existin
 
 ### Observability aligned to native outcomes
 
-Reuse `af_observability` producers, typed metric families, closed label sets, tracing and `docs/metrics.census.tsv`.
+Reuse `af_observability` producers, typed metric families, closed label sets, tracing and `rustd/crates/protocol/af_observability/src/metrics/census.tsv`.
 Instrument asynchronous futures rather than holding an entered span across an await.
 Task rows and canonical billing lines remain the source of truth; emit signals from validated native outcomes.
 
@@ -553,13 +545,13 @@ Task rows and canonical billing lines remain the source of truth; emit signals f
 | Is work advancing? | `dt_transition`; counts by bounded state/reason and current-state gauges through existing census machinery. |
 | Are steers accepted and waits waking? | `dt_input_accepted`, `dt_wake_claimed`; accepted/replayed/stale outcomes and due-wake delay. |
 | What do decisions cost? | `dt_decision_recorded`; provider/purpose/outcome counts and latency. Existing billing records hold per-model tokens, cache categories and cost exactly once. |
-| Why could a decision not start? | `dt_decision_funding_refused` names the bounded funding reason and lease; `agentsfleet_task_operations_total` and `agentsfleet_task_operation_seconds` measure native outcomes and latency without identity labels. |
+| Why could a decision not start? | `dt_decision_funding_refused` names the bounded funding reason and run; `agentsfleet_task_operations_total` and `agentsfleet_task_operation_seconds` measure native outcomes and latency without identity labels. |
 | Are writes confirmed? | `dt_effect_uncertain` plus native effect outcomes; uncertain/reconciled/refused/confirmed state and reconciliation latency. |
 | How expensive is save/restore? | `dt_checkpoint_published`; capture/upload/verify/restore duration, unique uploaded/reused/readback bytes and quota/integrity failures. |
 | What does the person see? | `task_decision_started`, `task_decision_completed`, `task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |
 | Is work stranded? | Ready backlog/oldest age, overdue wait age and maintenance freshness distinguish queue starvation, expired ownership and delayed dependency reads. |
 
-Logs and traces carry approved task, admission, lease, decision-call, effect and checkpoint identities for correlation.
+Logs and traces carry approved task, turn, run, decision-call, effect and checkpoint identities for correlation.
 Metrics use bounded enums; never label a series with those identities, private paths, URLs, prompts or arbitrary model output.
 Signal tests verify replay accounting, stage ordering, asynchronous context and sensitive-field exclusion alongside each relevant Dimension.
 
@@ -577,8 +569,8 @@ OpenClaw's [test audit](https://github.com/openclaw/openclaw/blob/68f6775adfe02a
 | Checkpoint transfer | Timeout, failed PUT, interrupted upload and missing object prevent manifest commit; retries preserve acknowledged-byte accounting. |
 | Restore | Missing/corrupt bytes, disk-full and memory-limit death leave no attached writable partial workspace; the prior checkpoint remains recoverable. |
 | Worker death | An isolated memory-limited child or existing kernel fixture supplies the real exit signal; recovery retains task identity and cumulative allowances. |
-| Scheduling | Queued work behind another DT, expired leases, duplicate wakes and overdue waits either advance once or show an attributable blocked reason. |
-| Diagnostics | Closed outcome/failure labels, duration/age signals and task/lease correlation identify failure without exposing goals, credentials or private paths. |
+| Scheduling | Queued work behind another DT, expired runs, duplicate wakes and overdue waits either advance once or show an attributable blocked reason. |
+| Diagnostics | Closed outcome/failure labels, duration/age signals and task/run correlation identify failure without exposing goals, credentials or private paths. |
 
 Prefer channels and barriers over shared mutable test state; bound every wait and join, release owned resources on failure and abort owned children.
 Use deterministic failing I/O for routine disk-full handling, plus an existing bounded filesystem fixture when kernel behavior needs proof.
@@ -590,7 +582,7 @@ Kernel-only proof remains explicitly separate when its required host capability 
 
 New task reads pair their actual scope and keyset ordering with indexes. Pending input seeks the existing unsettled fleet/sequence index.
 
-Unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history. Setup edit checks use their existing unique attempt/usage-sequence index; a duplicate attempt-only index is unnecessary.
+Unfinished candidates seek a partial fleet/creation/id index instead of scanning terminal task history.
 
 Account and replay lookups stay point or bounded per-attempt reads. Query-plan measurements, queue-depth cases and hostile-history cases remain part of final verification; adding LIMIT does not prove a bounded scan.
 
@@ -599,7 +591,7 @@ Keep this evidence available while implementing M236; a duration total alone can
 
 | Investigation question | Evidence to retain and compare |
 |---|---|
-| Was admission slow? | Admission-to-lease and first-output latency, ready backlog/oldest age, lease expiry/reclaim and eligible runner capacity. |
+| Was intake slow? | Turn-to-run and first-output latency, ready backlog/oldest age, run expiry/reclaim and eligible runner capacity. |
 | Was useful work slow? | Active work time separately from queued, externally waiting, blocked, paused and restoring time; completed action groups and interruption reasons. |
 | Were models slow or expensive? | Coding versus decision protocol, reviewed model/profile and price revision, physical request count, latency, token/cache categories, refusal, timeout and unknown spend. |
 | Were tools or the database slow? | Existing tool spans and database/pool signals, bounded operation latency, contention/refusal and maintenance lag; no duplicate duration for nested spans. |
@@ -607,9 +599,9 @@ Keep this evidence available while implementing M236; a duration total alone can
 | Did infrastructure differ? | Runner/build revision, sandbox/toolbox format, resource limits and memory/disk/transport failures, carried as bounded native evidence or trace attributes. |
 | Is a comparison valid? | Baseline/candidate revisions, workload/query/window, runner configuration, model/profile, cache state, repetitions, comparable sample counts and missing-data flags. |
 
-Task/admission/lease, physical-call, effect and checkpoint identities join logs/traces to native records; these identities never become metric labels.
-Metrics carry closed operation, stage and outcome labels; add each implemented family to `docs/metrics.census.tsv` with its actual producer and cardinality bound.
-Reuse existing exporters, tool/model instrumentation, lease delivery metrics and Grafana data sources before introducing another measurement.
+Task/turn/run, physical-call, effect and checkpoint identities join logs/traces to native records; these identities never become metric labels.
+Metrics carry closed operation, stage and outcome labels; add each implemented family to `rustd/crates/protocol/af_observability/src/metrics/census.tsv` with its actual producer and cardinality bound.
+Reuse existing exporters, tool/model instrumentation, run delivery metrics and Grafana data sources before introducing another measurement.
 
 Publish queue/wait gauges from native maintenance snapshots; failed sampling withdraws the reading rather than publishing a false zero.
 Record completed stage durations once at their owner, with monotonic elapsed time and correlated failure outcomes.
@@ -639,21 +631,21 @@ Save:           manifest + newly changed encrypted chunks -> R2
 Replacement:    authorize + pin -> read manifest pages
                                  -> reuse/fetch base and chunks
                                  -> verify -> restore private workspace
-                                 -> continue the same DT under a new lease
+                                 -> continue the same DT under a new run
 ```
 
-The lease authorizes the current worker; a storage pin protects the bytes that worker is transferring.
+The run authorizes the current worker; a storage pin protects the bytes that worker is transferring.
 A pin does not permit coding, extend the task budget or grant repository write authority.
 
 ### URL conventions and replay
 
 Follow the repository's [HTTP rules](../../.orly/standards/domains/http.md): versioned plural resources, explicit owning scope and typed identifiers.
-`tasks` is the plural lease-scoped namespace; its `bindings`, `input-receipts` and `decisions` collections name protocol records.
-The namespace does not create another task processor or another lease claim path.
+`tasks` is the plural run-scoped namespace; its `bindings`, `input-receipts` and `decisions` collections name protocol records.
+The namespace does not create another task processor or another run claim path.
 
-Runner URLs are lease-authorized views of the bound DT, including earlier effects needed during recovery.
+Runner URLs are run-authorized views of the bound DT, including earlier effects needed during recovery.
 
-The path supplies `lease_id`, `task_id` or an effect identity only once; do not repeat those path identifiers in request bodies.
+The path supplies `run_id`, `task_id` or an effect identity only once; do not repeat those path identifiers in request bodies.
 Internal runner mutations use their declared operation identity and native replay guards.
 
 List responses use `starting_after` and `{items, total, next_cursor}`; `ordinal_after` is an independent semantic watermark filter.
@@ -661,7 +653,7 @@ Person chat uses existing `F/messages` and its body `operation_id`; do not add a
 
 Use `PATCH F/tasks/{task_id}` for paused, ready or cancelled state under current version checks.
 Detail reads return ETag; PATCH requires `If-Match`, with 428 for absence and 412 for a stale tag.
-Native lifecycle, lease-fence and generation conflicts remain 409.
+Native lifecycle, run-fence and generation conflicts remain 409.
 
 A selected task is an optional native message association in the existing chat path.
 Public side-effecting POSTs honor the existing `Idempotency-Key` rule unless the message-send rule expressly applies.
@@ -680,13 +672,13 @@ Never advance a checkpoint's confirmed-effect watermark past an unresolved effec
 
 The same POST checks authority and stop generation before committing issued state, then performs one bounded physical send outside the transaction.
 The issuance commit is the cancellation cutoff; a previously issued request can still complete.
-Disable automatic mutation retries, keep lease renewal independent and bound the send to ten seconds and remaining task/lease allowance.
+Disable automatic mutation retries, keep run renewal independent and bound the send to ten seconds and remaining task/run allowance.
 
-Save confirmed, refused or unknown outcome even if stop or lease expiry occurs during the request.
+Save confirmed, refused or unknown outcome even if stop or run expiry occurs during the request.
 A repeated confirmed request returns its receipt; an unknown result blocks another send until authoritative reconciliation.
 Reconciliation may read remote evidence through supervised maintenance; it cannot autonomously dispatch a queued write.
 
-This follows the existing synchronous authoring model-call pattern in `afd_authoring`'s model dispatch module.
+This follows the existing synchronous setup model-call pattern in `afd_setup`'s model dispatch module.
 No client `/dispatch` request, background publisher queue or generic operations service is proposed.
 The POST finishes with a confirmed result or named failure; it does not return early and publish later.
 
@@ -710,14 +702,14 @@ GET each page, verify its digest and root, then obtain the registered object rea
 
 Page and object GET requests only check the existing pin; they do not create a restore session or renew its lifetime.
 Renew the logical restore pin through its PATCH while transferring; expiry blocks attachment and preserves the prior recovery pointer.
-An expired owner can be replaced only through a new live lease's atomic adoption after generation, scope and object-state checks.
+An expired owner can be replaced only through a new live run's atomic adoption after generation, scope and object-state checks.
 
 Complete manifests remain readable under authorized handoff; incomplete plans never become recovery pointers.
 
 ## Proposed limits and maintenance
 
 These are proposed resource limits, not measured speed or availability guarantees.
-Smaller fleet budgets, lease limits and host capacity always win.
+Smaller fleet budgets, run limits and host capacity always win.
 Changing these defaults requires reviewed configuration and boundary tests.
 
 | Bound | Proposed value |
@@ -725,15 +717,15 @@ Changing these defaults requires reviewed configuration and boundary tests.
 | Unfinished DTs | 16 per fleet; reject excess new objectives with a clear limit response. |
 | Wall deadline | Seven days including waits; blocked/paused time does not reset it. |
 | Cumulative paid-model budget | USD 5 per DT, capped by current fleet/credit limits; never refreshed on wake. |
-| Running time and attempts | Two hours cumulative running time; 12 execution leases; eight repair publications maximum. |
-| Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source admission. |
+| Running time and attempts | Two hours cumulative running time; 12 execution runs; eight repair publications maximum. |
+| Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source turn. |
 | Human input boundary | Four messages/four action items per message; check after each completed action group. |
 | Fallback wait | First read after 60 seconds, then 120, 240 and 300-second capped spacing; no more than 24 fallback reads per task. |
 | Maintenance | Existing supervised-daemon framework, ten-second scan interval, 64 due rows per pass with `SKIP LOCKED`; no new scheduler service. |
 
-Unchanged fallback reads retain the wait generation without adding an agent admission.
+Unchanged fallback reads retain the wait generation without adding an agent turn.
 Changed eligible evidence consumes the current wait and creates at most one deduplicated continuation.
-Task deadline, cancelled state or exhausted cumulative bounds prevent another fallback admission.
+Task deadline, cancelled state or exhausted cumulative bounds prevent another fallback turn.
 
 The supervised worker also advances abandoned input claims, uncertain effects and checkpoint cleanup in bounded passes.
 
@@ -746,16 +738,16 @@ Workspace authorization and repository grants are checked again on every continu
 ### Event delivery and fallback timing
 
 Sixty seconds is a proposed backup interval, not a provider requirement, measured optimum or delay imposed on signed events.
-A matching signed completion makes the DT eligible immediately; the next run still needs the fleet slot.
+A matching signed completion makes the DT eligible immediately; the next run still needs the fleet's thread.
 After arming a wait, make one authoritative status read to close the event-before-registration race.
 
 Subsequent fallback checks read only the exact recorded PR/head/check status through trusted daemon code.
-They do not acquire an agent lease, restore files or call a decision model when evidence remains unchanged.
+They do not acquire an agent run, restore files or call a decision model when evidence remains unchanged.
 Only changed evidence, a head advance or a named blocker creates a deduplicated continuation or native blocked outcome.
 
 Each native read claims the current wait for 30 seconds and rechecks task generation, deadline, workspace ownership and current GitHub grants.
 Mint only repository-scoped read permissions within those grants; the wait checker admits no arbitrary URL or repository write.
-Keep network requests outside database transactions and reject a stale result before changing state or adding an admission.
+Keep network requests outside database transactions and reject a stale result before changing state or adding a turn.
 
 Allow at most four concurrent native wait checks per daemon and ten seconds per request, with no immediate same-pass retry.
 Honor provider rate-limit cooldowns even when they exceed the normal 300-second spacing.
@@ -777,7 +769,7 @@ Retries preserve native activity identity and do not inflate transfer counters; 
 Keep unchanged waits quiet, surface meaningful state changes and name the next recovery action after failure or uncertainty.
 Credentials and private internal reasoning stay outside this presentation; bounded explanations describe decisions and observable work.
 
-Show activity in browser chat and the attached command-line interface (CLI), with the same native task/admission identities.
+Show activity in browser chat and the attached command-line interface (CLI), with the same native task/turn identities.
 Decision dispatch emits a started state; validated routing, failure or goal assessment emits the corresponding completed state.
 Use labels such as `Checking your request (<provider/model>)` and `Checking goal progress (<provider/model>)` with the selected profile.
 
@@ -821,7 +813,7 @@ Missing setup leaves the fleet's DT capability unavailable with a named prerequi
 
 Each decision profile evaluates its selected model/version on frozen cases before autonomous write decisions are enabled.
 Actual-model and R2 calls belong to bounded development verification after implementation approval; this proposal runs none.
-R2 cannot enable coding recovery until create-only writes, stopped-lease rejection, ciphertext tamper detection and cross-workspace refusal pass.
+R2 cannot enable coding recovery until create-only writes, stopped-run rejection, ciphertext tamper detection and cross-workspace refusal pass.
 
 Use one same-repository Linkwarden PR submitted by Indy with a controlled failing regression and validation-only workflows.
 The fleet independently diagnoses and writes its repair; the test operator supplies no patch or diagnosis.
@@ -840,9 +832,9 @@ Existing deployment authority remains separate even when the proposed DT tracks 
 
 ### Ordered public observations
 
-Task progress uses an event-local daemon sequence, not UUID timestamps from different
-workers. The existing event row retains at most 128 facts within a 120 KB item
-budget. The write rechecks slot and lease ownership under nonblocking locks; stale
+Task progress uses a turn-local daemon sequence, not UUID timestamps from different
+workers. The turn row retains at most 128 facts within a 120 KB
+budget. The write rechecks thread and run ownership under nonblocking locks; stale
 or contended cosmetic frames are dropped rather than publishing unsequenced task
 facts.
 

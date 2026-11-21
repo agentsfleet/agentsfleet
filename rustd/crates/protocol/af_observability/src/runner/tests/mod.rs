@@ -1,4 +1,4 @@
-//! Dimensions 6.4 and 3.2: a caller-supplied label cannot grow this table
+//! A caller-supplied label cannot grow this table
 //! without end, and what it overflows into is spelled deliberately.
 //!
 //! The property is memory, and memory is not directly assertable — so what is

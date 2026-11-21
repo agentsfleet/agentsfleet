@@ -120,20 +120,20 @@ impl<'a> Heartbeat<'a> {
         assignment: &watch::Sender<Assignment>,
         halt: &Halt,
     ) {
-        let mut updates = self.plane.stream.assignments.clone();
+        let mut updates = self.plane.stream.policies.clone();
         let mut retries = self.plane.runtime.endless();
         let mut pause = Duration::ZERO;
         loop {
             tokio::select! {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
-                () = halt.leasing().cancelled(), if !self.closed => { self.close(); }
+                () = halt.taking_runs().cancelled(), if !self.closed => { self.close(); }
                 changed = updates.changed() => {
                     if changed.is_err() { halt.stop(); return; }
                     let frame = updates.borrow_and_update().clone();
                     if let Some(frame) = frame {
                         let result = match frame.decode::<Down<'_>>() {
-                            Ok(Down::Assignment { response }) => self.apply(&response),
+                            Ok(Down::Policy { response }) => self.apply(&response),
                             Ok(_) => Err(ErrorKind::StreamProtocol.into()),
                             Err(error) => Err(error.into()),
                         };

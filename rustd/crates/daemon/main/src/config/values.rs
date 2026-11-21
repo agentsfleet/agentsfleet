@@ -67,8 +67,8 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     );
     insert(
         values,
-        "AGENTSFLEET_LEASE_TTL_SECONDS",
-        runner.lease.ttl_seconds,
+        "AGENTSFLEET_RUN_TTL_SECONDS",
+        runner.run.ttl_seconds,
     );
     insert(
         values,
@@ -77,13 +77,13 @@ fn runner(values: &mut Values, settings: &ConfigToml) {
     );
     insert(
         values,
-        "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
+        "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
         runner.scheduling.missed_wake_probe_seconds,
     );
     insert(
         values,
-        "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
-        runner.scheduling.max_concurrent_recovery_claims,
+        "AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS",
+        runner.scheduling.max_concurrent_recovery_assignments,
     );
 }
 

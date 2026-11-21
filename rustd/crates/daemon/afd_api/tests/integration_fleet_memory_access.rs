@@ -1,4 +1,4 @@
-//! Dimension 4.2: the memory-access route sets both grants under `fleet:write`,
+//! The memory-access route sets both grants under `fleet:write`,
 //! answers the same reply to the same body, and refuses a `fleet:read` token.
 #![cfg(feature = "test-util")]
 

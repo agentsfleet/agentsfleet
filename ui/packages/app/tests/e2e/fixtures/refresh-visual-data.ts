@@ -1,5 +1,5 @@
-import {visualWakeupEvents} from "./refresh-wakeup-data";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import {visualWakeupTurns} from "./refresh-wakeup-data";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { TaskPage } from "@/lib/api/tasks";
 import { detail, summary, TASK_IDS } from "@/tests/helpers/task-reads";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -8,16 +8,17 @@ export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "w
 export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 
 /** Explicit sample records, shared by the transcript and its Summary readers. */
-export function visualEvents(scenario: VisualScenario, started: number, includeCode = false): FleetEvent[] {
+export function visualTurns(scenario: VisualScenario, started: number, includeCode = false): FleetTurn[] {
   if (scenario === "empty") return [];
-  if (scenario === "wake-up") return visualWakeupEvents(started);
+  if (scenario === "wake-up") return visualWakeupTurns(started);
   const completed = scenario === "completed" || scenario === "activity";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
     ...(completed ? [
       tool("file", "file_read", {path: "release.yaml"}, started),
-      tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+      {...tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+        changes: [{path: "release.yaml", added: 1, removed: 1}]},
       tool("report", "custom_release_report", {release: "current"}, started),
       tool("manifest", "file_write", {path: "runner-image.yaml"}, started),
       tool("notes", "file_write", {path: "release-notes.md"}, started),
@@ -32,7 +33,7 @@ export function visualEvents(scenario: VisualScenario, started: number, includeC
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
     ...(completed ? {taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }
 

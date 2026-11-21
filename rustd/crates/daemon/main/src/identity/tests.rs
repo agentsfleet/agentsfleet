@@ -3,7 +3,7 @@
     reason = "validated identity values are test fixture preconditions"
 )]
 
-use afd_api::services::SignupMetadata as _;
+use afd_api_ingress::services::SignupMetadata as _;
 use afd_auth::capability::{CapabilitySource as _, NoCapabilitySource};
 use afd_auth::credential::Presented;
 use afd_auth::principal::Subject;

@@ -18,20 +18,20 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::Ceiling;
+use af_validate::Ceiling;
 use af_validate::Limit;
-use af_wire::event::ThreadResponse;
-use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
+use af_wire::turn::ThreadResponse;
+use afd_turns::view::{Cursor, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT, TurnDetailRow};
 use axum::Json;
 use axum::extract::{Path, Query, RawQuery, State, rejection::QueryRejection};
 use axum::response::{IntoResponse as _, Response};
 use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
-use crate::handler::event::expanded;
 use crate::handler::paging::store_ceiling;
+use crate::handler::turn::expanded;
 use crate::handler::{Refusal, parameter};
-use crate::services::{Services, WorkspaceEvents as _};
+use crate::services::{TenantPlane, WorkspaceTurns as _};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -47,14 +47,12 @@ const QUERY_LIMIT: &str = "limit";
 const DETAIL_EVENT_TYPE: &str = "event_type must contain 1 to 64 bytes without null characters";
 
 #[derive(Deserialize, garde::Validate)]
-pub(crate) struct EventFilter {
+pub(crate) struct TurnFilter {
     #[garde(inner(length(bytes, min = 1, max = 64), custom(af_validate::nul_free)))]
     event_type: Option<String>,
 }
 
-fn event_type(
-    asked: Result<Query<EventFilter>, QueryRejection>,
-) -> Result<Option<String>, Refusal> {
+fn event_type(asked: Result<Query<TurnFilter>, QueryRejection>) -> Result<Option<String>, Refusal> {
     let Query(asked) = asked.map_err(|_invalid| Refusal::malformed(DETAIL_EVENT_TYPE))?;
     let asked = garde::Unvalidated::new(asked)
         .validate()
@@ -63,7 +61,7 @@ fn event_type(
 }
 
 /// The refusal a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 25";
+const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
 
 /// The refusal a continuation this walk did not issue earns.
 const DETAIL_CURSOR: &str = "invalid starting_after cursor";
@@ -112,7 +110,7 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         afd_http::openapi::path::Fleet,
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<String>, Query),
-        ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued admissions. Omit for the mixed thread, including queued messages."),
+        ("event_type" = Option<String>, Query, description = "Exact recorded event type, such as activity. Filtering happens before paging and excludes queued turns. Omit for the mixed thread, including queued messages."),
     ),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = ThreadResponse<'_>),
@@ -120,12 +118,12 @@ fn parse_cursor(raw: Option<&str>) -> Result<Option<Cursor>, Refusal> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn thread<D: Services>(
+pub(crate) async fn thread<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     RawQuery(query): RawQuery,
-    filter: Result<Query<EventFilter>, QueryRejection>,
+    filter: Result<Query<TurnFilter>, QueryRejection>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let query = query.unwrap_or_default();
@@ -150,7 +148,7 @@ pub(crate) async fn thread<D: Services>(
 }
 
 /// One page, cut at the row cap or the byte budget, whichever comes first.
-fn page(fetched: &[EventDetailRow], limit: i64) -> ThreadResponse<'_> {
+fn page(fetched: &[TurnDetailRow], limit: i64) -> ThreadResponse<'_> {
     let included = included_under_budget(fetched, limit);
     // `get` rather than an index: `included_under_budget` cannot return more
     // than `fetched.len()`, but the slice would panic if it ever did, and a
@@ -161,9 +159,10 @@ fn page(fetched: &[EventDetailRow], limit: i64) -> ThreadResponse<'_> {
         items: items.iter().map(expanded).collect(),
         // Never populated — see `ThreadResponse::total` on why the key stays.
         total: None,
-        next_cursor: has_more.then(|| items.last()).flatten().map(|last| {
-            Cow::Owned(Cursor::after(last.row.created_at, &last.row.event_id).encode())
-        }),
+        next_cursor: has_more
+            .then(|| items.last())
+            .flatten()
+            .map(|last| Cow::Owned(Cursor::after(last.row.created_at, &last.row.turn_id).encode())),
     }
 }
 
@@ -171,7 +170,7 @@ fn page(fetched: &[EventDetailRow], limit: i64) -> ThreadResponse<'_> {
 ///
 /// The first row is exempt: a single turn larger than the whole budget would
 /// otherwise make the thread it heads unreadable rather than merely expensive.
-fn included_under_budget(rows: &[EventDetailRow], limit: i64) -> usize {
+fn included_under_budget(rows: &[TurnDetailRow], limit: i64) -> usize {
     let cap = usize::try_from(limit.max(0)).unwrap_or(usize::MAX);
     let mut spent = 0usize;
     for (taken, row) in rows.iter().enumerate() {
@@ -192,7 +191,7 @@ fn included_under_budget(rows: &[EventDetailRow], limit: i64) -> usize {
 /// Measured by encoding the row this response will actually emit, rather than
 /// by summing the columns: the budget is about bytes a client receives, and
 /// the escaping in a JSON string is part of that.
-fn encoded_bytes(row: &EventDetailRow) -> usize {
+fn encoded_bytes(row: &TurnDetailRow) -> usize {
     serde_json::to_string(&expanded(row)).map_or(0, |text| text.len())
 }
 

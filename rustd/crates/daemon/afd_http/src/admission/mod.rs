@@ -80,7 +80,7 @@ impl Admission {
     /// A zero ceiling sheds every request, including the ones an operator would
     /// use to find out why, and from outside it looks like a network fault.
     /// [`NonZeroUsize`] moves that from a silent runtime state to something
-    /// §7's loader has to refuse at boot.
+    /// the daemon's loader has to refuse at boot.
     #[must_use]
     pub fn new(limit: NonZeroUsize) -> Self {
         Self {
@@ -116,7 +116,7 @@ impl Admission {
     ///
     /// `try_acquire_owned` also fails on a CLOSED semaphore, which this one
     /// never is; both failures collapse to `None` because the answer to the
-    /// caller is the same. Should §7 want a drain that refuses new work, closing
+    /// caller is the same. Should the daemon want a drain that refuses new work, closing
     /// the semaphore is how, and it needs no change here.
     fn claim(&self) -> Option<OwnedSemaphorePermit> {
         Arc::clone(&self.permits).try_acquire_owned().ok()

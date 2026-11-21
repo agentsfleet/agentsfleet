@@ -1,29 +1,22 @@
-//! Input answers reuse event completion and the existing outbound obligation owner.
+//! Input answers reuse event completion and the existing outbound delivery owner.
 
 use crate::{
     Result,
     error::query,
-    lease::{
-        Leases,
-        obligation::ReplyDestination,
+    run::{
+        Runs,
+        delivery::ReplyDestination,
         verdict::{Terminal, Verdict},
     },
-    task::{TaskRefusal, Tasks, guard::LeaseRow},
+    task::{TaskRefusal, Tasks, guard::RunRow},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::TaskInputReceiptInput;
-use afd_outbound::obligation::Delivery;
+use afd_outbound::delivery::Delivery;
 use sqlx::PgConnection;
 
-#[derive(sqlx::FromRow)]
-struct Source {
-    actor: String,
-    event_type: String,
-    request_json: String,
-}
-
 pub(super) struct Completion {
-    closed: Option<afd_events::Closed>,
+    closed: Option<afd_turns::view::Closed>,
     owed: Option<Uuid7>,
     answer: String,
 }
@@ -31,27 +24,26 @@ pub(super) struct Completion {
 pub(super) async fn finish(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Option<Completion>> {
     let rows: Vec<Option<String>> = sqlx::query_scalar(include_str!("sql/answers.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_all(&mut *connection)
         .await
-        .map_err(query("read every source-item reply obligation"))?;
+        .map_err(query("read every source-item reply delivery"))?;
     if rows.is_empty() || rows.iter().any(Option::is_none) {
         return Ok(None);
     }
     let answer = rows.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
     let closed = complete_history(tasks, connection, current, input, &answer).await?;
     let reply =
-        Leases::reply_destination(connection, &current.fleet_id, &input.source_admission_id)
-            .await?;
+        Runs::reply_destination(connection, &current.fleet_id, &input.source_turn_id).await?;
     let owed = owe_reply(tasks, connection, current, input, &answer, reply.as_ref()).await?;
     sqlx::query(include_str!("sql/settle_source.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .execute(connection)
@@ -69,39 +61,34 @@ pub(super) async fn finish(
 async fn complete_history(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
     answer: &str,
-) -> Result<Option<afd_events::Closed>> {
-    let source: Source = sqlx::query_as(include_str!("sql/source.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+) -> Result<Option<afd_turns::view::Closed>> {
+    let source: Uuid7 = sqlx::query_scalar(include_str!("sql/source.sql"))
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
-    // Same event owner and received/terminal writers as an ordinary lease report.
-    sqlx::query(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
+    // Same event owner and received/terminal writers as an ordinary run report: the
+    // turn keeps the instant intake gave it, so a thread page lists it in place.
+    sqlx::query(afd_turns::view::sql::OPEN_FOLDED_EVENTS)
         .bind(&current.fleet_id)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(&current.workspace_id)
-        .bind(source.actor)
-        .bind(source.event_type)
-        .bind(source.request_json)
-        .bind(Some(&current.source_admission_id))
-        .bind(af_core::event::status::RECEIVED)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(std::slice::from_ref(&source))
+        .bind(&current.source_turn_id)
+        .bind(af_core::turn::status::RECEIVED)
         .execute(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;
     tasks
-        .leases
+        .runs
         .mark_terminal(
             connection,
             &current.fleet_id,
-            &crate::task::guard::wire(&input.source_admission_id)?,
+            &crate::task::guard::wire(&input.source_turn_id)?,
             Terminal {
                 verdict: Verdict::Succeeded,
                 response_text: answer,
@@ -116,14 +103,14 @@ async fn complete_history(
 async fn owe_reply(
     tasks: &Tasks,
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
     answer: &str,
     reply: Option<&ReplyDestination>,
 ) -> Result<Option<Uuid7>> {
     let owed = if let Some(reply) = reply {
         tasks
-            .leases
+            .runs
             .owe_delivery(
                 connection,
                 Delivery {
@@ -131,7 +118,7 @@ async fn owe_reply(
                     workspace_id: &current.workspace_id,
                     provider: reply.provider,
                     destination: &reply.address,
-                    event_id: &crate::task::guard::wire(&input.source_admission_id)?,
+                    turn_id: &crate::task::guard::wire(&input.source_turn_id)?,
                     answer,
                 },
                 clock::now(),
@@ -147,16 +134,16 @@ impl Completion {
     pub(super) async fn announce(self, tasks: &Tasks) {
         if let Some(closed) = self.closed {
             let publication = tasks
-                .leases
+                .runs
                 .publish_completion(&closed, Some(&self.answer))
                 .await;
             afd_bus::observe_notification(
-                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
                 publication,
             );
         }
         if let Some(owed) = self.owed {
-            tasks.leases.wake_delivery(&owed).await;
+            tasks.runs.wake_delivery(&owed).await;
         }
     }
 }

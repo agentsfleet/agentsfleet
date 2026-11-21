@@ -1,0 +1,129 @@
+//! The run bookkeeping both kinds share: assignment, issue, renew, meter, settle
+//! and reassignment on `thread.threads` and `thread.runs`, keyed by a thread's or a
+//! run's id and blind to whose work it is.
+//!
+//! A thread's id is its owner's ([`crate::run::RunOwner`]), and a run
+//! reaches its thread through `COALESCE(fleet_id, draft_id)`, so nothing here
+//! reads a fleet or setup table. A statement that names an owner takes it
+//! as two parameters, bound from [`crate::run::RunOwner::fleet_id`] and
+//! [`crate::run::RunOwner::draft_id`]; one keyed by a thread takes
+//! [`crate::run::RunOwner::thread_id`]. What an owner adds, a fleet's event
+//! and turn or a draft's message, is that kind's own statement in the
+//! same transaction.
+//!
+//! # Where the fleet keeps a fused statement instead
+//!
+//! The fleet's assignment, issue, renewals and report each run ONE statement that
+//! does this bookkeeping beside the fleet's own rows
+//! (`../run/assign_turn_head.sql`, `../run/insert_run_with_turn.sql`,
+//! `../renew_batch.sql`, `../meter_run.sql`, `../commit_report.sql`).
+//! Splitting them into a shared statement and a fleet one would add a round
+//! trip to every fleet chat, so they stay fused. [`INSERT_RUN`],
+//! [`EXTEND_RUN`], [`SETTLE_RUN`] and [`EXPIRE_PRIOR_RUN`] are the same
+//! bookkeeping without the fleet's rows: the draft kind binds them, with its
+//! own per-kind statements beside them. A change to the fencing, the clock or
+//! the metering in one belongs in its fused fleet twin in the same diff.
+
+/// Assigns a thread to its owner, bumping the monotonic fence.
+///
+/// `$1` the owning fleet, NULL for a draft, `$2` the owning draft, NULL for a
+/// fleet, `$3` runner, `$4` the run lifetime, `$5` how long a silent runner
+/// stays live, `$6` the runner status that may run. The owner's one non-NULL
+/// column is the thread's key, so a bind naming both or neither fails.
+///
+/// Answers no row when a live runner still holds the thread: that absence is
+/// the taken verdict, not an error. While `hold_expires_at` is in the future
+/// and its holder can still run, only the holder wins, and the holder's own
+/// assignment keeps the hold. `prior` reads the thread before the statement changes
+/// it, so the caller can tell an assignment on a held thread from one on an unheld
+/// thread. One `clock_timestamp()` reading decides every deadline.
+///
+/// The fleet's production assignment runs this upsert as the `won_thread` step of
+/// `assign_turn_head.sql`; the test seam `Runs::assign` runs it alone.
+pub const ASSIGN_THREAD: &str = include_str!("assign_thread.sql");
+
+/// Releases a thread, fencing-guarded so only the current holder can free it,
+/// and records whether that holder keeps the owner's sandbox.
+///
+/// `$1` thread, `$2` fence, `$3` when the runner asked its hold to lapse (NULL
+/// for none), `$4` the longest hold. The hold written is the ask capped at one
+/// `$4` window from `clock_timestamp()`, and none when the ask is already past.
+/// The freed deadline is written one millisecond behind the clock: a
+/// `TIMESTAMPTZ(3)` column rounds, and a deadline rounded up past the instant
+/// an assignment reads a moment later would leave a released thread looking held.
+///
+/// The guard is load-bearing: a holder superseded by a reassignment would otherwise
+/// free the current holder's thread and hand one owner's work to two runners.
+/// Idempotent: a no-op once the token has moved on.
+pub const RELEASE_THREAD: &str = include_str!("release_thread.sql");
+
+/// [`RELEASE_THREAD`] for an assignment that held nothing. `$1` thread, `$2` fence.
+///
+/// It drops the sticky hint too, or an owner whose pass keeps stopping sorts
+/// first for that runner on every poll, starving the rest. A thread still held
+/// keeps its hint: the hint names the holder, and the hold steers the owner's
+/// next work there.
+pub const RELEASE_RUNLESS_THREAD: &str = include_str!("release_runless_thread.sql");
+
+/// Locks a run's thread and then the run, and answers whether its Kill mark
+/// is set. `$1` run, `$2` runner.
+///
+/// Thread then run is every renewal's lock order, held until the renewal
+/// commits or is refused; a run that is not this runner's answers no row.
+pub const LOCK_CANCELLED: &str = include_str!("lock_cancelled.sql");
+
+/// The hold a settled run's report recorded, while it is still live.
+///
+/// `$1` run, `$2` runner, `$3` the reported status. A receipt read never
+/// renews or recreates a hold after a later issue consumed it.
+pub const REPORT_HOLD: &str = include_str!("report_hold.sql");
+
+/// Issues a run under its assignment's fence, with the host's placement choice
+/// and an audit row, in one statement.
+///
+/// `$1` run, `$2` runner, `$3` the owning fleet, NULL for a draft, `$4` the
+/// owning draft, NULL for a fleet, `$5` workspace, `$6` tenant, `$7` the event
+/// or draft message, `$8` its producer's instant, `$9` posture, `$10`
+/// provider, `$11` model, `$12` the assignment's fence, `$13` active status, `$14`
+/// audit row, `$15` its event type, `$16` its metadata, `$17` decision
+/// snapshot (NULL for none), `$18` the deadline the assignment answered, `$19` the
+/// host's run version as read, `$20` the run type chosen
+/// ([`crate::run::RunOwner::kind`]), `$21` the most seconds it may run.
+///
+/// The caller holds the host row and has proved the owner's scope in the same
+/// transaction. No row when the host is full, the fence moved or the choice
+/// moved; the caller rolls back.
+pub const INSERT_RUN: &str = include_str!("insert_run.sql");
+
+/// Extends one live run and its thread by one run lifetime and measures the
+/// run time since its cursor.
+///
+/// `$1` run, `$2` runner, `$3` milliseconds per second, `$4` active status,
+/// `$5` the run lifetime. Answers `new_until` (NULL when nothing moved), and the
+/// slice the caller's usage line charges: `checked_at`, `started_at`, `d_ms`,
+/// `runtime_seq`, `tenant_id`, `workspace_id` and `turn_id`. Run after
+/// [`LOCK_CANCELLED`], under the host row.
+pub const EXTEND_RUN: &str = include_str!("extend_run.sql");
+
+/// Settles one run at its report: status, cursor, thread release with any
+/// hold and audit row, fenced on the run's own token.
+///
+/// `$1` run, `$2` runner, `$3` milliseconds per second, `$4` active status,
+/// `$5` reported status, `$6` the hold asked for (NULL for none), `$7` the
+/// hold's idle cap, `$8` audit row, `$9` its event type, `$10` its metadata,
+/// `$11` the longest runtime one line may claim, `$12`-`$13` the opening's
+/// credential proof and connection (NULL for a trusted call), `$14` the host
+/// states that may keep a hold. Answers
+/// `moved_runs`, `accepted_hold`, the run's latest `run_status`, `fence_holds`
+/// and the final slice. The caller has locked the owner's scope first.
+pub const SETTLE_RUN: &str = include_str!("settle_run.sql");
+
+/// Expires the newest earlier run of the work an assignment just took, when its
+/// holder lapsed without reporting.
+///
+/// `$1` the owning fleet, NULL for a draft, `$2` the owning draft, NULL for a
+/// fleet, `$3` the event or draft message, `$4` active status, `$5` expired
+/// status. Answers the predecessor's id, if any, the runner whose run it
+/// expired, if any, and how many runs the work had before this assignment.
+/// Run under the thread the assignment won.
+pub const EXPIRE_PRIOR_RUN: &str = include_str!("expire_prior_run.sql");

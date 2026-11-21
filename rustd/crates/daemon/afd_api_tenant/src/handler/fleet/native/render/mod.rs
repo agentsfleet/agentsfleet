@@ -2,13 +2,13 @@
 
 use crate::{
     handler::Refusal,
-    services::{FleetSchedules as _, Services},
+    services::{FleetSchedules as _, TenantPlane},
 };
 use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::Trigger;
 use afd_api_wire::fleet::{FleetResponse, WebhookUrl};
-use afd_authoring::SavedFleet;
+use afd_setup::SavedFleet;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
@@ -18,7 +18,7 @@ use std::borrow::Cow;
 
 const EVENT_SCHEDULES: &str = "fleet_setup_schedules_read_failed";
 
-pub(super) async fn response<D: Services>(
+pub(super) async fn response<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     saved: SavedFleet,
@@ -42,12 +42,12 @@ pub(super) async fn response<D: Services>(
 
 pub(super) type NativeFleet<'s> = FleetResponse<
     af_fleet_runtime::Definition,
-    afd_authoring::SetupProgress,
-    afd_authoring::types::StartOutcome,
+    afd_setup::SetupProgress,
+    afd_setup::types::StartOutcome,
     afd_api_wire::schedule::View<'s>,
 >;
 
-pub(super) fn payload<'s, D: Services>(
+pub(super) fn payload<'s, D: TenantPlane>(
     services: &D,
     saved: SavedFleet,
     schedules: &'s [afd_cron::Schedule],

@@ -26,7 +26,7 @@ impl FencedVerbs<'_> {
         for attempt in 0..2 {
             let body = self
                 .plane
-                .task_decision_reserve(self.lease_id, &input)
+                .task_decision_reserve(self.run_id, &input)
                 .await?;
             let (evaluated, retry) = match body.decode::<DecisionReservationResult<'_>>()? {
                 DecisionReservationResult::Existing {
@@ -77,7 +77,7 @@ impl FencedVerbs<'_> {
         // Progress cannot lengthen the decision's physical/logical deadline.
         let _sent = tokio::time::timeout(
             std::time::Duration::from_millis(500),
-            self.plane.activity(self.lease_id, &request),
+            self.plane.activity(self.run_id, &request),
         )
         .await;
     }
@@ -123,7 +123,7 @@ impl FencedVerbs<'_> {
         let input = self.decisions.retain(call.clone(), input)?;
         let result = self
             .decisions
-            .record(self.plane, self.halt, self.lease_id, &call, &input)
+            .record(self.plane, self.halt, self.run_id, &call, &input)
             .await?;
         progress.phase = if result.state == DecisionCallState::Known {
             af_wire::activity::TaskActivityPhase::Recorded
@@ -164,9 +164,9 @@ fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activ
             .and_then(|task| task.get("task_id"))
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
-        source_admission_id: request
+        source_turn_id: request
             .state
-            .get("source_admission_id")
+            .get("source_turn_id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned),
         operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {

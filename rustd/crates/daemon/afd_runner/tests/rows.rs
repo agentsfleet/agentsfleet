@@ -1,5 +1,5 @@
-//! The rows these suites seed beyond what `afd_db::test_util` spells: a lease
-//! with the event it executes, a fleet's slot, and an authoring attempt.
+//! The rows these suites seed beyond what `afd_db::test_util` spells: a run
+//! with the event it executes, a fleet's thread, and a setup draft's run.
 //!
 //! One column list each, so a schema change edits this file and not every
 //! suite. Every row is stamped by the database's `now()` unless the suite
@@ -11,7 +11,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_db::test_util::{EventKind, FleetEventSeed, RunnerPolicy, mint_id};
+use afd_db::test_util::{RunnerPolicy, TurnFacts, TurnSeed, mint_id};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgConnection;
@@ -22,47 +22,50 @@ pub(crate) const POLICY: RunnerPolicy<'static> = RunnerPolicy {
     network_policy: "deny_all_egress",
 };
 
-/// The event every seeded lease executes.
-pub(crate) const EVENT: EventKind<'static> = EventKind {
+/// The event every seeded run executes.
+pub(crate) const EVENT: TurnFacts<'static> = TurnFacts {
     actor: "test",
     event_type: "chat",
     status: "received",
 };
 
-const INSERT_LEASE: &str = "\
-INSERT INTO runner.leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
+const INSERT_RUN: &str = "\
+INSERT INTO thread.runs
+  (id, runner_id, fleet_id, workspace_id, tenant_id, turn_id, turn_created_at,
    posture, provider, model, last_metered_at, fencing_token,
-   lease_expires_at, status, posted_message_count, created_at, updated_at)
+   run_expires_at, status, posted_message_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6,
         coalesce($9::timestamptz, now()), 'platform', 'test', 'test', coalesce($9::timestamptz, now()), 1,
         $7::timestamptz, $8, 0, coalesce($9::timestamptz, now()),
         coalesce($9::timestamptz, now()))";
 
-const INSERT_SLOT: &str = "\
-INSERT INTO runner.slots
-  (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
+const INSERT_THREAD: &str = "\
+INSERT INTO thread.threads
+  (id, fleet_id, last_runner_id, fencing_token, run_expires_at, hold_expires_at,
    created_at, updated_at)
 VALUES ($1, $1, $2, 1, $3::timestamptz, $4::timestamptz,
-        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))";
+        coalesce($5::timestamptz, now()), coalesce($5::timestamptz, now()))
+ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, fencing_token = 1,
+    run_expires_at = EXCLUDED.run_expires_at, hold_expires_at = EXCLUDED.hold_expires_at,
+    created_at = EXCLUDED.created_at, updated_at = EXCLUDED.updated_at";
 
-const INSERT_ATTEMPT: &str = "\
-INSERT INTO authoring.attempts
-  (id, lease_id, runner_id, workspace_id, tenant_id, user_id, draft_id,
-   message_sequence, fencing_token, model_token_hash, model_snapshot, status,
-   lease_expires_at, expires_at, reserved_nanos, usage_unknown, call_count,
-   output_token_count, reported_runtime_ms, last_activity_sequence, created_at,
-   updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $6, 1, 1, $1::text,
-        '{}', $7, $8::timestamptz, $8::timestamptz, $9, false, 0, 0, 0, 0, now(), now())";
+/// A setup draft's run: it names its draft and no fleet, and no foreign key
+/// reaches a draft, so the draft and its turn are opaque ids here.
+const INSERT_SETUP_RUN: &str = "\
+INSERT INTO thread.runs
+  (id, runner_id, draft_id, workspace_id, tenant_id, turn_id, turn_created_at,
+   posture, provider, model, last_metered_at, fencing_token,
+   run_expires_at, status, posted_message_count, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, now(), 'platform', 'test', 'test', now(), 1,
+        $7::timestamptz, $8, 0, now(), now())";
 
-/// Where a lease lives and what it owes.
-pub(crate) struct LeaseRow<'a> {
-    /// The lease's own id.
+/// Where a run lives and what it owes.
+pub(crate) struct RunRow<'a> {
+    /// The run's own id.
     pub(crate) id: &'a Uuid7,
     /// The runner holding it.
     pub(crate) runner: &'a Uuid7,
-    /// The fleet it claims.
+    /// The fleet it is assigned.
     pub(crate) fleet: &'a Uuid7,
     /// The fleet's workspace.
     pub(crate) workspace: &'a Uuid7,
@@ -76,18 +79,18 @@ pub(crate) struct LeaseRow<'a> {
     pub(crate) stamped_at: Option<Timestamp>,
 }
 
-/// Seeds the event a lease executes, then the lease, and answers the event's
-/// id, which the lease names.
-pub(crate) async fn lease(connection: &mut PgConnection, row: LeaseRow<'_>) -> Uuid7 {
+/// Seeds the event a run executes, then the run, and answers the event's
+/// id, which the run names.
+pub(crate) async fn payload(connection: &mut PgConnection, row: RunRow<'_>) -> Uuid7 {
     let event = mint_id();
-    let mut seed = FleetEventSeed::new(row.fleet, row.workspace, &event, EVENT);
+    let mut seed = TurnSeed::new(row.fleet, row.workspace, &event, EVENT);
     if let Some(instant) = row.stamped_at {
         seed = seed.at(instant);
     }
     seed.insert(&mut *connection)
         .await
-        .expect("the leased event seeds");
-    sqlx::query(INSERT_LEASE)
+        .expect("the held event seeds");
+    sqlx::query(INSERT_RUN)
         .bind(row.id)
         .bind(row.runner)
         .bind(row.fleet)
@@ -99,58 +102,55 @@ pub(crate) async fn lease(connection: &mut PgConnection, row: LeaseRow<'_>) -> U
         .bind(row.stamped_at.map(Timestamp::to_sqlx))
         .execute(&mut *connection)
         .await
-        .expect("the lease seeds");
+        .expect("the run seeds");
     event
 }
 
-/// Seeds a fleet's slot, last held by `runner`.
-pub(crate) async fn slot(
+/// Seeds a fleet's thread, last held by `runner`.
+pub(crate) async fn thread(
     connection: &mut PgConnection,
     (fleet, runner): (&Uuid7, &Uuid7),
-    lease_expires_at: Timestamp,
+    run_expires_at: Timestamp,
     hold_expires_at: Option<Timestamp>,
     stamped_at: Option<Timestamp>,
 ) {
-    sqlx::query(INSERT_SLOT)
+    sqlx::query(INSERT_THREAD)
         .bind(fleet)
         .bind(runner)
-        .bind(lease_expires_at.to_sqlx())
+        .bind(run_expires_at.to_sqlx())
         .bind(hold_expires_at.map(Timestamp::to_sqlx))
         .bind(stamped_at.map(Timestamp::to_sqlx))
         .execute(&mut *connection)
         .await
-        .expect("the slot seeds");
+        .expect("the thread seeds");
 }
 
-/// What an attempt reserved, and whether it still runs.
-pub(crate) struct AttemptRow<'a> {
+/// What a setup run holds, and whether it still runs.
+pub(crate) struct SetupRunRow<'a> {
     /// Its status, as stored.
     pub(crate) status: &'a str,
-    /// When its lease lapses.
-    pub(crate) lease_expires_at: Timestamp,
-    /// The money it holds against the wallet.
-    pub(crate) reserved_nanos: i64,
+    /// When its run lapses.
+    pub(crate) run_expires_at: Timestamp,
 }
 
-/// Seeds one authoring attempt `runner` ran, and answers its id.
-pub(crate) async fn attempt(
+/// Seeds one setup draft's run `runner` holds, and answers its id.
+pub(crate) async fn setup_run(
     connection: &mut PgConnection,
     (runner, workspace, tenant): (&Uuid7, &Uuid7, &Uuid7),
-    row: AttemptRow<'_>,
+    row: SetupRunRow<'_>,
 ) -> Uuid7 {
     let id = mint_id();
-    sqlx::query(INSERT_ATTEMPT)
+    sqlx::query(INSERT_SETUP_RUN)
         .bind(&id)
-        .bind(mint_id())
         .bind(runner)
+        .bind(mint_id())
         .bind(workspace)
         .bind(tenant)
         .bind(mint_id())
+        .bind(row.run_expires_at.to_sqlx())
         .bind(row.status)
-        .bind(row.lease_expires_at.to_sqlx())
-        .bind(row.reserved_nanos)
         .execute(&mut *connection)
         .await
-        .expect("the authoring attempt seeds");
+        .expect("the setup run seeds");
     id
 }

@@ -3,14 +3,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Alert } from "@agentsfleet/design-system";
 import { DraftClient } from "@/lib/api/drafts";
-import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
-import { SetupPublication } from "@/components/domain/setup/publishing/SetupPublication";
-import { AuthoringIntentContext } from "@/components/domain/setup/AuthoringIntent";
+import { SetupSaveFlap } from "@/components/domain/setup/saving/SetupSaveFlap";
 import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
-import { DRAFT, FLEET, FLEET_ID, PLUGIN_CARD, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, FLEET_ID, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 
 const approvals = vi.hoisted(() => ({list: vi.fn(), approve: vi.fn(), deny: vi.fn()}));
@@ -24,13 +22,13 @@ beforeEach(async () => {
   await client.initialize(); await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
-function LiveSetup({target}: {target?: string}) {
+function LiveSetup() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const [dirty, setDirty] = useState(false);
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
     <DraftChatHeading client={client} view={view} workspace={WORKSPACE} onDirtyChange={setDirty} />
     <FleetSetup client={client} view={view} workspace={WORKSPACE} />
-    <AuthoringIntentContext.Provider value={{publicationTarget: target}}><SetupPublication client={client} view={view} workspace={WORKSPACE} dirty={dirty} /></AuthoringIntentContext.Provider>
+    <SetupSaveFlap client={client} view={view} workspace={WORKSPACE} dirty={dirty} />
     {dirty ? <output>Manual changes pending</output> : null}</>;
 }
 
@@ -179,7 +177,7 @@ it.each(["client", "fleet", "subject", "access"])("discards the queued readiness
   replacement.dispose();
 });
 
-it("keeps native private saving separate from direct publication without starting a run", async () => {
+it("keeps native private saving without starting a run", async () => {
   render(<LiveSetup />);
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
@@ -190,69 +188,11 @@ it("keeps native private saving separate from direct publication without startin
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
 });
 
-it("publishes directly from the flap with the reviewed name", async () => {
-  render(<LiveSetup />);
-  expect(screen.queryByRole("button", {name: "Publish new entry"})).toBeNull();
-  expect(fixture.writes()).toEqual([]);
-  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup published");
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?plugin=${PUBLICATION.plugin_id}&revision=${PUBLICATION.revision_id}`);
-  expect(fixture.writes()[0]?.body).toMatchObject({label: REVIEW.effective.instance_name});
-  expect(fixture.saveAttempts).toBe(0);
-});
-
-it("appends only to an explicitly chosen Plugin with its current ETag", async () => {
-  const normal = fixture.fetch.getMockImplementation()!;
-  const writes: {path: string; init: RequestInit | undefined}[] = [];
-  fixture.fetch.mockImplementation((input, init) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.includes("/plugins?")) return Promise.resolve(response({items: [{...PLUGIN_CARD}], next_cursor: null}));
-    if (path.endsWith(`/plugins/${PLUGIN_CARD.id}`)) return Promise.resolve(response({etag: '"selected-version"'}));
-    if (path.endsWith(`/plugins/${PLUGIN_CARD.id}/revisions`)) {
-      writes.push({path, init});
-      fixture.draft = {...fixture.draft, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: fixture.draft.candidate?.canonical_digest ?? ""}};
-      return Promise.resolve(response(PUBLICATION));
-    }
-    return normal(input, init);
-  });
-  render(<LiveSetup target={PLUGIN_CARD.id} />);
-  expect(writes).toHaveLength(0);
-  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup published");
-  expect(writes).toHaveLength(1);
-  expect(new Headers(writes[0]?.init?.headers).get("If-Match")).toBe('"selected-version"');
-  expect(writes[0]?.init?.body).toBe(JSON.stringify({draft_candidate_id: DRAFT.candidate?.id}));
-  expect(fixture.saveAttempts).toBe(0);
-});
-
-// Value: protects=publication version conflicts; fails_when=a refused next revision reports success or saves the fleet instead;
-// why_new=existing menu publication tests create a new Plugin entry; seam=none; no_claim=backend optimistic concurrency enforcement.
-it("retains a refused next Plugin revision without claiming publication or changing the fleet", async () => {
-  fixture.draft = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id,
-    revision_id: PUBLICATION.revision_id, canonical_digest: "previous-revision"}};
-  await client.resume(DRAFT.id);
-  const normal = fixture.fetch.getMockImplementation()!;
-  fixture.fetch.mockImplementation((input, init) => {
-    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return Promise.resolve(response({etag: PUBLICATION.etag}));
-    if (path.endsWith("/revisions")) return Promise.resolve(response({user_message: "Plugin revision changed"}, 412));
-    return normal(input, init);
-  });
-  render(<LiveSetup />);
-  fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findAllByText("Plugin revision changed");
-  expect(screen.queryByText(/Setup published/)).toBeNull();
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(client.getSnapshot().draft?.publication?.revision_id).toBe(PUBLICATION.revision_id);
-  expect(fixture.saveAttempts).toBe(0);
-});
-
 it("cancels manual editing without saving or exposing advanced run options", async () => {
   render(<LiveSetup />); await chooseSetupAction("Instructions");
   fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Unsaved manual instructions"}});
   expect(await screen.findByText("Manual changes pending")).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Save and publish", hidden: true})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Save", hidden: true})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review and run options"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Cancel"}));

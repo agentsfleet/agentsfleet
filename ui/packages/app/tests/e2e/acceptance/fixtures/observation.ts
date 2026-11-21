@@ -3,7 +3,7 @@
  * failed one prints.
  *
  * A journey against a deployed build spends most of its time WAITING: for a
- * runner to lease, for a provider to answer, for a ledger row to settle. Two
+ * runner to run, for a provider to answer, for a ledger row to settle. Two
  * shapes cover all of it, and both live here rather than in each walk, because
  * an unbounded wait and a bare fetch failure are the two ways an acceptance
  * lane stops being able to say what broke.
@@ -39,7 +39,7 @@ export function uniqueTag(): string {
  * would surface as the suite's own blanket timeout, which says nothing about
  * which leg stalled.
  *
- * It is also how an ABSENCE is proved. A park — "no lease was issued while the
+ * It is also how an ABSENCE is proved. A park — "no run was issued while the
  * grant was pending" — is this same call read the other way round: a non-null
  * answer inside the window is the violation, and `null` is the proof. There is
  * no second helper for that, because it would be this one with its result

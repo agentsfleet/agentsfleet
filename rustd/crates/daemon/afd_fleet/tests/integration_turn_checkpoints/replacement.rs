@@ -1,15 +1,15 @@
-//! A replacement uses the actual reclaim and issue paths under a greater fence.
+//! A replacement uses the actual reassignment and issue paths under a greater fence.
 
 use super::{Case, Checked, required};
 use af_core::id::Uuid7;
-use afd_fleet::lease::{Billed, Kind};
+use afd_fleet::run::{Billed, Kind};
 
 impl Case {
     pub(super) async fn replace(&mut self) -> Checked {
         let mut connection = self.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.leases SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
-            .bind(&self.issued.lease_id).execute(&mut *connection).await?;
-        sqlx::query("UPDATE runner.slots SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
+        sqlx::query("UPDATE thread.runs SET run_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+            .bind(&self.issued.run_id).execute(&mut *connection).await?;
+        sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second' WHERE fleet_id=$1")
             .bind(&self.acquired.fleet_id).execute(&mut *connection).await?;
         let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM fleet.fleets WHERE id=$1")
             .bind(&self.acquired.fleet_id)
@@ -17,14 +17,14 @@ impl Case {
             .await?;
         drop(connection);
         let acquired = required(
-            crate::seed::select_fleet(&self.leases, &self.foreign, &self.acquired.fleet_id).await,
+            crate::seed::select_fleet(&self.runs, &self.foreign, &self.acquired.fleet_id).await,
         )?;
-        assert_eq!(acquired.kind, Kind::Reclaim);
+        assert_eq!(acquired.kind, Kind::Reassigned);
         assert!(acquired.fence > self.acquired.fence);
-        let installed = required(self.leases.installed(&acquired.fleet_id).await?)?;
+        let installed = required(self.runs.installed(&acquired.fleet_id).await?)?;
         let revision = required(installed.issue_revision)?;
         let issued = required(
-            self.leases
+            self.runs
                 .issue_for_revision(
                     &self.foreign,
                     &acquired,

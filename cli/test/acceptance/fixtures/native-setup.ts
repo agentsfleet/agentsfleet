@@ -9,7 +9,7 @@ import { readAuthContext, nativeRequest } from "./native-api.ts";
 import { runFleetctl } from "./cli.js";
 import { NANOS_PER_USD } from "../../../src/constants/billing.ts";
 
-const modelSchema = Schema.Struct({ref: Schema.String, eligibility: Schema.Struct({authoring: Schema.Boolean, runtime: Schema.Boolean})});
+const modelSchema = Schema.Struct({ref: Schema.String, eligibility: Schema.Struct({setup: Schema.Boolean, runtime: Schema.Boolean})});
 const modelPage = Schema.Struct({items: Schema.Array(modelSchema), next_cursor: Schema.NullOr(Schema.String)});
 const PAGE_MAX = 100;
 const COMMAND_TIMEOUT_MS = 120_000;
@@ -22,13 +22,13 @@ export function fixtureDefinition(name: string, credential?: string): typeof Def
       budget: {daily_nanos: String(NANOS_PER_USD)}}}};
 }
 
-export async function authoringModel(ctx: AuthContext): Promise<string> {
+export async function setupModel(ctx: AuthContext): Promise<string> {
   let cursor: string | null = null; const seen = new Set<string>();
   let fallback: string | undefined;
   for (let page = 0; page < PAGE_MAX; page++) {
     const query = new URLSearchParams({limit: "100"}); if (cursor) query.set("starting_after", cursor);
     const models = Schema.decodeUnknownSync(modelPage)(await nativeRequest(ctx, `/models?${query}`));
-    const eligible = models.items.filter((entry) => entry.eligibility.authoring && entry.eligibility.runtime);
+    const eligible = models.items.filter((entry) => entry.eligibility.setup && entry.eligibility.runtime);
     const model = eligible.find((entry) => entry.ref === PLATFORM_DEFAULT_REF);
     if (model) return model.ref;
     fallback ??= eligible[0]?.ref;
@@ -40,9 +40,9 @@ export async function authoringModel(ctx: AuthContext): Promise<string> {
 }
 
 export async function createNativeDraft(ctx: AuthContext, definition: typeof DefinitionSchema.Type, runtime?: string) {
-  const model = await authoringModel(ctx);
+  const model = await setupModel(ctx);
   const draft = Schema.decodeUnknownSync(DraftSchema)(await nativeRequest(ctx, "/drafts", "POST", {
-    source: {kind: "definition", definition}, authoring_model_ref: model, operation_id: uuidv7(),
+    source: {kind: "definition", definition}, setup_model_ref: model, operation_id: uuidv7(),
   }));
   return Schema.decodeUnknownSync(DraftSchema)(await nativeRequest(ctx, `/drafts/${draft.id}`, "PATCH",
     {runtime_model_ref: runtime ?? model}, {"If-Match": draft.etag}));

@@ -12,12 +12,12 @@ use super::{
 use crate::{
     Result,
     error::query,
-    lease::sql::{FLEET_STATUS_ACTIVE, LEASE_STATUS_ACTIVE},
-    task::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, admit::source, guard, read},
+    run::sql::{FLEET_STATUS_ACTIVE, RUN_STATUS_ACTIVE},
+    task::{TaskRefusal, TaskRun, TaskScope, TaskSnapshot, admit::source, guard, read},
 };
 
 pub(super) struct NativeContext {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub scope: TaskScope,
     pub task: Option<Execution>,
     pub source: source::Source,
@@ -32,10 +32,10 @@ pub(super) struct Execution {
 impl NativeContext {
     pub(super) async fn load(
         connection: &mut PgConnection,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         input: &DecisionReservationInput,
     ) -> Result<Self> {
-        let current = guard::lease(connection, lease).await?;
+        let current = guard::run(connection, run).await?;
         if current.fleet_status != FLEET_STATUS_ACTIVE {
             return Err(TaskRefusal::StaleState.into());
         }
@@ -44,18 +44,18 @@ impl NativeContext {
             workspace_id: current.workspace_id.clone(),
         };
         let task = execution(connection, &current, &scope, input).await?;
-        let source_id = guard::id(&input.source_admission_id, "source_admission_id")?;
+        let source_id = guard::id(&input.source_turn_id, "source_turn_id")?;
         let source = source::load(connection, &current, &source_id).await?;
         authorize_source(
             connection,
-            lease,
+            run,
             &current,
             &source,
             &source_id,
             input.assessment.purpose(),
         )
         .await?;
-        let current = guard::lease(connection, lease).await?;
+        let current = guard::run(connection, run).await?;
         Ok(Self {
             current,
             scope,
@@ -83,12 +83,10 @@ impl NativeContext {
         candidates: &[Candidate],
     ) -> Result<AssessedContext> {
         Ok(AssessedContext {
-            source_admission_id: crate::task::guard::wire(&input.source_admission_id)?,
+            source_turn_id: guard::wire(&input.source_turn_id)?,
             assessment: input.assessment.clone(),
-            accepted_revision_id: crate::task::guard::wire(
-                self.revision(input.assessment.purpose())?,
-            )?,
-            profile_revision_id: crate::task::guard::wire(profile_revision)?,
+            accepted_revision_id: guard::wire(self.revision(input.assessment.purpose())?)?,
+            profile_revision_id: guard::wire(profile_revision)?,
             questions_digest,
             execution: self
                 .task
@@ -104,7 +102,7 @@ impl NativeContext {
 
 pub(super) async fn execution(
     connection: &mut PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     scope: &TaskScope,
     input: &DecisionReservationInput,
 ) -> Result<Option<Execution>> {
@@ -138,41 +136,41 @@ pub(super) async fn execution(
 
 pub(super) async fn authorize_source(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
-    current: &guard::LeaseRow,
+    run: TaskRun<'_>,
+    current: &guard::RunRow,
     input: &source::Source,
     source_id: &Uuid7,
     purpose: DecisionPurpose,
 ) -> Result<()> {
     if purpose == DecisionPurpose::Goal {
-        if source_id.as_str() != current.source_admission_id {
+        if source_id.as_str() != current.source_turn_id {
             return Err(TaskRefusal::InvalidTarget.into());
         }
         return Ok(());
     }
     source::check_human(input)?;
-    if source_id.as_str() != current.source_admission_id {
-        sqlx::query_scalar::<_, Uuid7>(sql::CLAIM_SOURCE)
+    if source_id.as_str() != current.source_turn_id {
+        sqlx::query_scalar::<_, Uuid7>(sql::ASSIGN_SOURCE)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
-            .bind(&current.source_admission_id)
-            .bind(afd_admission::Producer::Steer.as_str())
-            .bind(afd_events::ACTOR_MACHINE)
-            .bind(format!("{}%", afd_events::ACTOR_PREFIX))
+            .bind(&current.source_turn_id)
+            .bind(afd_turns::Producer::Steer.as_str())
+            .bind(afd_turns::view::ACTOR_MACHINE)
+            .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
             .bind(0_i64)
             .bind(1_i64)
-            .bind(lease.lease_id)
+            .bind(run.run_id)
             .bind(current.fence)
-            .bind(LEASE_STATUS_ACTIVE)
+            .bind(RUN_STATUS_ACTIVE)
             .bind(source_id)
             .bind(false)
-            .bind(afd_admission::Producer::SlackMention.as_str())
+            .bind(afd_turns::Producer::SlackMention.as_str())
             .bind(afd_connector::Provider::Slack.id())
             .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
             .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
             .fetch_optional(connection)
             .await
-            .map_err(query("claim the next native human decision source"))?
+            .map_err(query("assign the next native human decision source"))?
             .ok_or(TaskRefusal::StaleState)?;
     }
     Ok(())

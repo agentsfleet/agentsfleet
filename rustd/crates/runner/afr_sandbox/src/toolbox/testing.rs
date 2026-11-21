@@ -93,10 +93,14 @@ pub(crate) struct Recorder {
 impl Mounter for Arc<Recorder> {
     fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
         let bytes = fs::read(image)?;
-        manifest.check_length(u64::try_from(bytes.len()).unwrap())?;
+        // No file read into memory is longer than `u64` can count.
+        manifest.check_length(u64::try_from(bytes.len()).unwrap_or(u64::MAX))?;
         manifest.check_digest(&sha256(&bytes))?;
         let digest = manifest.sha256().to_owned();
-        self.mounted.lock().unwrap().push(digest.clone());
+        self.mounted
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(digest.clone());
         Ok(Toolbox::at(image.with_extension("mnt"), digest))
     }
 
@@ -106,7 +110,7 @@ impl Mounter for Arc<Recorder> {
         }
         self.unmounted
             .lock()
-            .unwrap()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push(toolbox.digest().to_owned());
         Ok(())
     }

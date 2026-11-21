@@ -1,4 +1,4 @@
-//! Dimension 5.4 — error responses keep the envelope clients already read.
+//! Error responses keep the envelope clients already read.
 //!
 //! The envelope is a fixed surface for clients that already exist: the
 //! dashboard reads `user_message`, the CLI reads `error_code`, and support reads
@@ -13,7 +13,7 @@
 )]
 
 use af_core::error_code;
-use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
+use afd_http::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 
 /// A detail long enough that a truncating envelope would be caught.
 ///

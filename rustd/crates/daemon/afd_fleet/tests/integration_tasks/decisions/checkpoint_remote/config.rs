@@ -47,9 +47,5 @@ pub(crate) async fn configured(fixture: &Decisions<'_>, server: &Server) -> Task
         Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX).expect("fixture key")),
         server.client.clone(),
     ));
-    Tasks::new(
-        case.held.leases.clone(),
-        case.admissions.clone(),
-        dependencies,
-    )
+    Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)
 }

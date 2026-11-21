@@ -1,4 +1,4 @@
-//! How much context a run gets, resolved per lease from three sources.
+//! How much context a run gets, resolved per run from three sources.
 //!
 //! The saved provider model supplies execution identity. Authored context knobs
 //! may reduce the operating window without changing that identity or the saved
@@ -57,7 +57,7 @@ pub struct Overlay<'a> {
     pub model: &'a str,
 }
 
-/// The budget this lease runs under.
+/// The budget this run runs under.
 ///
 /// `authored` supplies operating overrides. `overlay` carries the resolved
 /// provider model and the defaults for knobs the fleet left unset.
@@ -97,7 +97,7 @@ const fn sentinel(declared: u32, fallback: u32) -> u32 {
 
 /// The window a context cap implies.
 ///
-/// The tiers are `capabilities.md` §4's. An unresolved cap takes the MIDDLE
+/// The tiers are `capabilities.md`'s. An unresolved cap takes the MIDDLE
 /// tier rather than the smallest — the cap is unknown, not known to be small,
 /// and shrinking the window on a model that turns out to be large would waste
 /// most of it.
@@ -136,7 +136,11 @@ mod tests {
             budget.memory_checkpoint_every,
             DEFAULT_MEMORY_CHECKPOINT_EVERY
         );
-        assert_eq!(budget.stage_chunk_threshold, DEFAULT_STAGE_CHUNK_THRESHOLD);
+        // The default is copied through untouched, so the bits match exactly.
+        assert_eq!(
+            budget.stage_chunk_threshold.to_bits(),
+            DEFAULT_STAGE_CHUNK_THRESHOLD.to_bits()
+        );
         assert_eq!(budget.context_cap_tokens, 0);
         assert_eq!(budget.model, "");
     }

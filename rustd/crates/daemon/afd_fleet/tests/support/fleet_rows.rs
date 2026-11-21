@@ -1,4 +1,4 @@
-//! Reading and ageing one row of any table the lease suites touch.
+//! Reading and ageing one row of any table the run suites touch.
 //!
 //! Split from `fleet_fixtures.rs` at the file cap. Every column read and every
 //! ageing write here goes through [`Row`], so a table's name and key are
@@ -15,9 +15,9 @@ use sqlx::AssertSqlSafe;
 
 use crate::support::Fixtures;
 
-/// Far enough to put any deadline a claim, an issue or a renewal wrote behind
-/// the database clock: each lies at most one lease lifetime ahead of it.
-pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturating_mul(2);
+/// Far enough to put any deadline an assignment, an issue or a renewal wrote behind
+/// the database clock: each lies at most one run lifetime ahead of it.
+pub(crate) const LAPSE: std::time::Duration = af_core::timing::RUN_TTL.saturating_mul(2);
 
 /// One row a test reads a column of, or ages: the table it lives in and the
 /// key that names it.
@@ -25,17 +25,14 @@ pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturat
 pub(crate) enum Row<'a> {
     /// A `runner.runners` row, by runner id.
     Runner(&'a Uuid7),
-    /// A `runner.leases` row, by lease id.
-    Lease(&'a Uuid7),
-    /// A fleet's `runner.slots` row, by fleet id.
-    Slot(&'a Uuid7),
-    /// A fleet's `fleet.sessions` row, by fleet id.
-    Session(&'a Uuid7),
-    /// A `fleet.admissions` row, by its id, which is the logical event id.
-    Admission(&'a Uuid7),
-    /// An `authoring.attempts` row, by attempt id.
-    Attempt(&'a Uuid7),
-    /// A `fleet.events` row, by fleet id and event id.
+    /// A `thread.runs` row, by run id.
+    Run(&'a Uuid7),
+    /// A fleet's `thread.threads` row, by fleet id.
+    Thread(&'a Uuid7),
+    /// A `thread.turns` row, by its id, which is the logical event id.
+    Turn(&'a Uuid7),
+    /// A fleet's opened `thread.turns` row, its event, by fleet id and turn
+    /// id. The answer column is `answer_text`.
     Event(&'a Uuid7, &'a Uuid7),
     /// A `model` usage line, by event id and the runner's request number.
     ModelLine(&'a Uuid7, &'a str),
@@ -72,14 +69,12 @@ impl<'a> Row<'a> {
     const fn locate(self) -> (&'static str, &'static str, &'a Uuid7, Option<Second<'a>>) {
         match self {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
-            Self::Lease(id) => ("runner.leases", "id = $1", id, None),
-            Self::Slot(fleet) => ("runner.slots", "fleet_id = $1", fleet, None),
-            Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
-            Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
-            Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),
+            Self::Run(id) => ("thread.runs", "id = $1", id, None),
+            Self::Thread(fleet) => ("thread.threads", "fleet_id = $1", fleet, None),
+            Self::Turn(id) => ("thread.turns", "id = $1", id, None),
             Self::Event(fleet, event) => (
-                "fleet.events",
-                "fleet_id = $1 AND event_id = $2",
+                "thread.turns",
+                "thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
                 fleet,
                 Some(Second::Id(event)),
             ),
@@ -87,19 +82,19 @@ impl<'a> Row<'a> {
             // within its kind.
             Self::ModelLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
+                "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
                 Some(Second::KindSeq(LineKind::Model, seq)),
             ),
             Self::DecisionLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
+                "turn_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
                 Some(Second::KindSeq(LineKind::Decision, seq)),
             ),
             Self::RuntimeLine(event) => (
                 "billing.usage_lines",
-                "event_id = $1 AND kind = $2",
+                "turn_id = $1 AND kind = $2",
                 event,
                 Some(Second::Kind(LineKind::Runtime)),
             ),
@@ -158,7 +153,7 @@ impl Fixtures {
     /// passing would have.
     ///
     /// Every deadline the code under test checks is read on the database's
-    /// clock, so a test reaches a lapsed lease, an expired hold, a silent
+    /// clock, so a test reaches a lapsed run, an expired hold, a silent
     /// runner or a run at its hard cap by ageing the row it reads, never by
     /// handing the code a future instant.
     pub(crate) async fn age(&self, row: Row<'_>, column: &str, by: std::time::Duration) {
@@ -169,10 +164,10 @@ impl Fixtures {
 
 impl Fixtures {
     /// Lapses both deadlines a holder that stopped renewing leaves behind: its
-    /// lease's and its fleet's slot's.
-    pub(crate) async fn lapse_holder(&self, lease: &Uuid7, fleet: &Uuid7) {
-        self.age(Row::Lease(lease), "lease_expires_at", LAPSE).await;
-        self.age(Row::Slot(fleet), "lease_expires_at", LAPSE).await;
+    /// run's and its fleet's thread's.
+    pub(crate) async fn lapse_holder(&self, run: &Uuid7, fleet: &Uuid7) {
+        self.age(Row::Run(run), "run_expires_at", LAPSE).await;
+        self.age(Row::Thread(fleet), "run_expires_at", LAPSE).await;
     }
 }
 

@@ -49,7 +49,7 @@ fn test_each_name_counts_once() {
 
 /// The names a held sandbox is filed under come once each, in the order they
 /// were merged, however many addresses each answered with and whichever
-/// addresses they share: one lease's hosts, resolved twice, file one key.
+/// addresses they share: one run's hosts, resolved twice, file one key.
 #[test]
 fn test_names_are_each_named_once_in_merge_order() {
     const FIRST: &str = "b.example";
@@ -98,7 +98,7 @@ fn test_an_empty_allowlist_admits_nothing() {
     assert_eq!(allowlist.hosts_file().lines().count(), 2, "loopback alone");
 }
 
-/// The cap counts distinct addresses: one past it refuses the lease, and a
+/// The cap counts distinct addresses: one past it refuses the run, and a
 /// list at it, repeats included, does not.
 #[test]
 fn test_an_allowlist_past_the_cap_is_refused() {

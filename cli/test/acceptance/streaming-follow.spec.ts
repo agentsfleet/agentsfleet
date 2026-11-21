@@ -5,8 +5,8 @@ import { makeStubbedStateDir } from "./fixtures/state-dir.ts";
 
 const WORKSPACE_ID = "01910000-0000-7000-8000-000000a6e711";
 const FLEET_ID = "01910000-0000-7000-8000-000000a67e57";
-const EVENT_ID = "01910000-0000-7000-8000-000000e1e711";
-const EVENT_PATH = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`;
+const TURN_ID = "01910000-0000-7000-8000-000000e1e711";
+const TURN_PATH = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/turns/${TURN_ID}`;
 // A well-formed command-line credential: the load check refuses anything
 // else, so a session-token-shaped stub reads as logged out.
 const TEST_TOKEN = `afc_${"f".repeat(64)}`;
@@ -23,10 +23,10 @@ const HTTP_OK = 200;
 const PHASE_TIMEOUT_MS = 10_000;
 const TEST_TIMEOUT_MS = 15_000;
 const LIVE_CHUNK = "incremental reply observed before completion";
-const UNRELATED_EVENT_ID = "unrelated";
+const UNRELATED_TURN_ID = "unrelated";
 const UNRELATED_CHUNK = "another fleets reply must not print";
 const FRAME = {
-  received: "event_received", gate: "gate_opened", chunk: "chunk", complete: "event_complete",
+  received: "turn_received", gate: "gate_opened", chunk: "chunk", complete: "turn_complete",
 } as const;
 const encoder = new TextEncoder();
 const SERVER_MODE = {
@@ -66,8 +66,8 @@ function jsonResponse(body: unknown, status = HTTP_OK): Response {
 }
 
 function sseResponse(status: string): Response {
-  const frame = `event: event_complete\ndata: ${JSON.stringify({
-    event_id: EVENT_ID,
+  const frame = `event: turn_complete\ndata: ${JSON.stringify({
+    turn_id: TURN_ID,
     status,
   })}\n\n`;
   return new Response(frame, {
@@ -78,8 +78,8 @@ function sseResponse(status: string): Response {
 
 function requestKind(pathname: string): "messages" | "stream" | "detail" | "unknown" {
   if (pathname.endsWith("/messages")) return "messages";
-  if (pathname.endsWith("/events/stream")) return "stream";
-  if (pathname === EVENT_PATH) return "detail";
+  if (pathname.endsWith("/turns/stream")) return "stream";
+  if (pathname === TURN_PATH) return "detail";
   return "unknown";
 }
 
@@ -91,7 +91,7 @@ function startSteerStub(mode: ServerMode): StubServer {
       const kind = requestKind(new URL(request.url).pathname);
       if (kind === "messages") {
         counts.messages++;
-        return jsonResponse({ event_id: EVENT_ID }, HTTP_ACCEPTED);
+        return jsonResponse({ turn_id: TURN_ID }, HTTP_ACCEPTED);
       }
       if (kind === "stream") {
         counts.streams++;
@@ -108,7 +108,7 @@ function startSteerStub(mode: ServerMode): StubServer {
         const status = mode === SERVER_MODE.explicitFailure
           ? STATUS_FLEET_ERROR
           : STATUS_PROCESSED;
-        return jsonResponse({ event_id: EVENT_ID, status });
+        return jsonResponse({ turn_id: TURN_ID, status });
       }
       return jsonResponse({ error: "not found" }, 404);
     },
@@ -154,7 +154,7 @@ function startPhasedStub() {
   const send = (kind: string, data: unknown) => {
     if (!controller) throw new Error("stream must open before the message posts");
     if (kind === FRAME.complete && typeof data === "object" && data !== null
-      && "event_id" in data && data.event_id === EVENT_ID) terminalSent = true;
+      && "turn_id" in data && data.turn_id === TURN_ID) terminalSent = true;
     controller.enqueue(encoder.encode(`event: ${kind}\ndata: ${JSON.stringify(data)}\n\n`));
   };
   const server = Bun.serve({ port: 0, fetch(request) {
@@ -168,19 +168,19 @@ function startPhasedStub() {
     }
     if (kind === "messages") {
       counts.messages++;
-      send(FRAME.gate, { event_id: EVENT_ID, pending_approvals: 1 });
-      send(FRAME.received, { event_id: EVENT_ID });
+      send(FRAME.gate, { turn_id: TURN_ID, pending_approvals: 1 });
+      send(FRAME.received, { turn_id: TURN_ID });
       send(FRAME.complete, null);
-      send(FRAME.chunk, { event_id: EVENT_ID, fencing_token: "1", text_kind: "answer", text: null });
-      send(FRAME.chunk, { event_id: UNRELATED_EVENT_ID, fencing_token: "1", text_kind: "answer", text: UNRELATED_CHUNK });
-      send(FRAME.complete, { event_id: UNRELATED_EVENT_ID, status: STATUS_FLEET_ERROR });
-      send(FRAME.chunk, { event_id: EVENT_ID, fencing_token: "1", text_kind: "answer", text: LIVE_CHUNK });
-      return jsonResponse({ event_id: EVENT_ID }, HTTP_ACCEPTED);
+      send(FRAME.chunk, { turn_id: TURN_ID, fencing_token: "1", text_kind: "answer", text: null });
+      send(FRAME.chunk, { turn_id: UNRELATED_TURN_ID, fencing_token: "1", text_kind: "answer", text: UNRELATED_CHUNK });
+      send(FRAME.complete, { turn_id: UNRELATED_TURN_ID, status: STATUS_FLEET_ERROR });
+      send(FRAME.chunk, { turn_id: TURN_ID, fencing_token: "1", text_kind: "answer", text: LIVE_CHUNK });
+      return jsonResponse({ turn_id: TURN_ID }, HTTP_ACCEPTED);
     }
     if (kind === "detail") {
       if (terminalSent) counts.readbacks++;
       else counts.polls++;
-      return jsonResponse({event_id: EVENT_ID, task_activity: {items: [], truncated: false}});
+      return jsonResponse({turn_id: TURN_ID, task_activity: {items: [], truncated: false}});
     }
     return jsonResponse({ error: "unexpected request" }, 500);
   } });
@@ -219,10 +219,10 @@ async function runPhasedSteer() {
     expect(stdout).not.toContain(STATUS_PROCESSED);
     expect(stdout).not.toContain(UNRELATED_CHUNK);
     expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 0 });
-    server.send(FRAME.complete, { event_id: EVENT_ID, status: STATUS_PROCESSED });
-    server.send(FRAME.complete, { event_id: EVENT_ID, status: STATUS_PROCESSED });
+    server.send(FRAME.complete, { turn_id: TURN_ID, status: STATUS_PROCESSED });
+    server.send(FRAME.complete, { turn_id: TURN_ID, status: STATUS_PROCESSED });
     expect(await exited).toBe(0);
-    expect(stdout.split(`${EVENT_ID} ${STATUS_PROCESSED}`)).toHaveLength(2);
+    expect(stdout.split(`${TURN_ID} ${STATUS_PROCESSED}`)).toHaveLength(2);
     expect(stdout.split(LIVE_CHUNK)).toHaveLength(2);
     expect(server.counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 1 });
   } finally {
@@ -240,7 +240,7 @@ describe("steer transport reaches a truthful terminal result", () => {
     const { result, counts } = await runSteer(SERVER_MODE.sseTerminal, false);
 
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain(`${EVENT_ID} ${STATUS_PROCESSED}`);
+    expect(result.stdout).toContain(`${TURN_ID} ${STATUS_PROCESSED}`);
     expect(counts).toEqual({ messages: 1, streams: 1, polls: 0, readbacks: 1 });
   });
 
@@ -249,7 +249,7 @@ describe("steer transport reaches a truthful terminal result", () => {
 
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.stdout) as Record<string, unknown>;
-    expect(parsed.event_id).toBe(EVENT_ID);
+    expect(parsed.turn_id).toBe(TURN_ID);
     expect(parsed.kind).toBe(KIND_COMPLETE);
     expect(parsed.status).toBe(STATUS_PROCESSED);
     expect(counts).toEqual({ messages: 1, streams: 1, polls: 1, readbacks: 0 });

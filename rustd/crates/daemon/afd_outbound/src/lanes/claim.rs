@@ -7,7 +7,7 @@ use super::{
     CYCLE_BACKOFF, EVENT_CLAIM_LAPSED, EVENT_DELIVERY_EXHAUSTED, EVENT_RELEASE_FAILED,
     EVENT_RENEW_FAILED, EVENT_REQUEUED_AT_SHUTDOWN, Inner, MAX_DELIVERY_CYCLES,
 };
-use crate::obligation::{self, AbandonReason, CLAIM_TTL, Claimed};
+use crate::delivery::{self, AbandonReason, CLAIM_TTL, Claimed};
 use crate::poster::Deliver;
 
 impl<S: Deliver + 'static> Inner<S> {
@@ -16,7 +16,7 @@ impl<S: Deliver + 'static> Inner<S> {
     /// landed for so long that the claim may lapse before the next one.
     /// Never returns while the claim is known to hold.
     pub(super) async fn renewing(&self, job: &Claimed) -> &'static str {
-        hold_claim(self.renew, || obligation::renew(&self.database, job)).await
+        hold_claim(self.renew, || delivery::renew(&self.database, job)).await
     }
 
     /// A retryable cycle: give the claim back, due again later, or abandon it
@@ -45,7 +45,7 @@ impl<S: Deliver + 'static> Inner<S> {
     }
 
     pub(super) async fn release(&self, job: &Claimed, after: Duration) {
-        match obligation::release(&self.database, job, after).await {
+        match delivery::release(&self.database, job, after).await {
             Ok(true) => {}
             Ok(false) => Self::lapsed(job, "release"),
             Err(failure) => crate::worker::report(EVENT_RELEASE_FAILED, &failure),

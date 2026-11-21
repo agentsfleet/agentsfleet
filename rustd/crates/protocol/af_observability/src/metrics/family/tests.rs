@@ -1,4 +1,4 @@
-//! Dimension 3.1, type-system half — the census and a family's traits agree.
+//! The type-system half: the census and a family's traits agree.
 //!
 //! The registry tests next door prove the contract READS correctly. These prove
 //! the other direction: that a Rust type claiming a kind is held against what

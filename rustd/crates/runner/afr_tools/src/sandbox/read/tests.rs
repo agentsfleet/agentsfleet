@@ -5,14 +5,15 @@
 
 use std::fmt::Write as _;
 
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
 use super::{LINES_DEFAULT, Page};
 use crate::catalog::FILE_READ;
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
-use crate::sandbox::output;
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
+use guffbolt::tools::process::output;
 
 /// The file the live reads page through.
 const NUMBERS: &str = "numbers.txt";
@@ -33,7 +34,7 @@ async fn read(live: &Live, arguments: Value) -> ToolOutput {
     call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &Lease::default(),
+        &Run::default(),
         arguments,
     )
     .await
@@ -182,7 +183,7 @@ async fn an_offset_or_limit_that_is_zero_or_past_the_end_is_refused() {
     for refused in [&zero_offset, &zero_limit] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::InvalidArguments),
+            Some(ToolErrorCode::InvalidArguments.into()),
             "{refused:?}"
         );
     }

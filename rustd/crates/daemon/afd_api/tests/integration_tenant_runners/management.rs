@@ -256,15 +256,7 @@ async fn only_the_platform_turns_durable_tasks_on() {
         .caller("Support triage", &[Scope::RunnerTenant])
         .await;
     let operator = operator(&mut fixture).await;
-    let asked = json_body(
-        register(
-            &a,
-            mint_id().as_str(),
-            &body("durable-box", r#""tenant""#, true),
-        )
-        .await,
-    )
-    .await;
+    let asked = json_body(register(&a, &body("durable-box", r#""tenant""#, true)).await).await;
     let runner = Uuid7::parse(text(&asked, "runner_id")).expect("a runner id");
     assert_eq!(
         asked

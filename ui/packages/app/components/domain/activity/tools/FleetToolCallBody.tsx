@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
 import { Button, cn } from "@agentsfleet/design-system";
 
+import type { FileChange } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { ToolResult } from "../replies/fleetReplyMessage";
 import { moreLinesLabel, outputPreview } from "./copy/tool-call-copy";
-import type { LineDiff } from "./diff/tool-call-diff";
+import type { DiffRow } from "./diff/tool-call-diff";
 import { CodeDiff } from "@/components/assistant-ui/CodeDiff";
 
 // Recorded input previews and returned output stay in separate disclosures.
 // Output is rendered as text nodes, never markup.
 
 export const SHOW_ALL_LABEL = "show all";
-export const CLIPPED_EDIT_NOTE = "Too long to diff here";
+/** The minus a count of removed lines reads with. */
+export const MINUS = "−";
 /** Under output the runner kept only the edges of: a long line, or a few. */
 export const OUTPUT_CUT_LABEL = "… output continues";
 export const OUTPUT_RAIL = "└";
@@ -24,10 +26,26 @@ export function ToolCallBody({outcome, onShowAll}: {outcome: ToolResult | undefi
   return <div className="flex min-w-0 flex-col pl-md"><OutputPreview outcome={outcome} onShowAll={onShowAll} /></div>;
 }
 
-/** An edit's lines, indented under its cell, tinted by side. Exported for the
- * full-call dialog, which draws the same rows from the untrimmed edit. */
-export function DiffRows({diff}: {diff: LineDiff}) {
-  return <CodeDiff filename="Changes" additions={diff.added} deletions={diff.removed} lines={diff.rows} />;
+/** Each file an edit changed and the lines it gained and lost, as the runner
+ * recorded them. */
+export function ChangedFiles({changes}: {changes: readonly FileChange[]}) {
+  return <>
+    {changes.map((change, index) => <RailRow key={`${index}-${change.path}`} glyph={index === 0 ? OUTPUT_RAIL : null}>
+      <span data-changed-file="">{change.path}</span>{" "}
+      <span className="tabular-nums text-success">+{change.added}</span>{" "}
+      <span className="tabular-nums text-destructive">{MINUS}{change.removed}</span>
+    </RailRow>)}
+  </>;
+}
+
+/** An edit's text as the full-call dialog draws it from the untrimmed call,
+ * tinted by side; the header counts are the recorded `changes`' totals, and
+ * absent when none were recorded. */
+export function DiffRows({rows, changes}: {rows: readonly DiffRow[]; changes: readonly FileChange[]}) {
+  const counted = changes.length > 0;
+  const added = changes.reduce((sum, change) => sum + change.added, 0);
+  const removed = changes.reduce((sum, change) => sum + change.removed, 0);
+  return <CodeDiff filename="Changes" {...(counted ? { additions: added, deletions: removed } : {})} lines={rows} />;
 }
 
 function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: OnShowAll }) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { reportsOwnRun } from "@/components/domain/activity/replies/fleetReplyMessage";
 import { appendOptimistic, discardOptimistic, getSnapshot, reconcileOptimistic, subscribe } from "@/tests/helpers/fleet-streams";
 import { NO_SEED, row, setupRegistryTests, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
@@ -19,33 +19,33 @@ const PENDING = "steer:pending";
 const MINE = "evt_mine";
 const ELSEWHERE = "evt_elsewhere";
 
-function announce(eventId: string, actor = OWN): void {
-  sourceAt(0).emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: eventId, actor });
+function announce(turnId: string, actor = OWN): void {
+  sourceAt(0).emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: turnId, actor });
 }
 
-function toolStarted(eventId: string): void {
-  sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true });
+function toolStarted(turnId: string): void {
+  sourceAt(0).emit({ call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: turnId, name: "read_file", args_redacted: true });
 }
 
 function ids(): string[] {
-  return getSnapshot(Z_A).events.map((event) => event.id);
+  return getSnapshot(Z_A).turns.map((turn) => turn.id);
 }
 
 describe("fleet-stream-registry — turns held on a send's 202", () => {
   it("lands this tab's own turn on its row once the 202 names it", () => {
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "deploy the canary", PENDING, OWN);
-    const stamped = getSnapshot(Z_A).events[0]?.submittedAtMs;
+    const stamped = getSnapshot(Z_A).turns[0]?.submittedAtMs;
     announce(MINE);
     toolStarted(MINE);
     // Held: the thread still shows the one optimistic row, and nothing else.
     expect(ids()).toEqual([tempId]);
 
     reconcileOptimistic(Z_A, tempId, MINE, false);
-    const events = getSnapshot(Z_A).events;
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ id: MINE, text: "deploy the canary", tools: [{ name: "read_file" }], submittedAtMs: stamped });
-    expect(reportsOwnRun(events, SUBJECT)).toBe(true);
+    const turns = getSnapshot(Z_A).turns;
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({ id: MINE, text: "deploy the canary", tools: [{ name: "read_file" }], submittedAtMs: stamped });
+    expect(reportsOwnRun(turns, SUBJECT)).toBe(true);
     release();
   });
 
@@ -56,10 +56,10 @@ describe("fleet-stream-registry — turns held on a send's 202", () => {
     expect(ids()).toEqual([tempId]);
 
     reconcileOptimistic(Z_A, tempId, MINE, false);
-    const events = getSnapshot(Z_A).events;
-    expect(events.map((event) => event.id)).toEqual([MINE, ELSEWHERE]);
-    expect(events[1]?.submittedAtMs).toBeUndefined();
-    expect(reportsOwnRun(events, SUBJECT)).toBe(false);
+    const turns = getSnapshot(Z_A).turns;
+    expect(turns.map((turn) => turn.id)).toEqual([MINE, ELSEWHERE]);
+    expect(turns[1]?.submittedAtMs).toBeUndefined();
+    expect(reportsOwnRun(turns, SUBJECT)).toBe(false);
     release();
   });
 
@@ -69,7 +69,7 @@ describe("fleet-stream-registry — turns held on a send's 202", () => {
     announce(ELSEWHERE, TEAMMATE);
     toolStarted(ELSEWHERE);
     expect(ids()).toEqual([tempId, ELSEWHERE]);
-    expect(getSnapshot(Z_A).events[1]?.tools).toEqual([expect.objectContaining({ name: "read_file" })]);
+    expect(getSnapshot(Z_A).turns[1]?.tools).toEqual([expect.objectContaining({ name: "read_file" })]);
     release();
   });
 
@@ -85,7 +85,7 @@ describe("fleet-stream-registry — turns held on a send's 202", () => {
   it("lands a held turn's activity before a backfill settles it", async () => {
     // The row the gap walk reads back finished while its frames were held; the
     // list carries no tools, so only the held frames can put them on the row.
-    fetchSpy.mockResolvedValue(pageWith([row({ event_id: ELSEWHERE, actor: OWN, status: "processed", response_text: "done" })]));
+    fetchSpy.mockResolvedValue(pageWith([row({ turn_id: ELSEWHERE, actor: OWN, status: "processed", response_text: "done" })]));
     const release = subscribe(WS, Z_A, NO_SEED, () => {});
     const es = sourceAt(0);
     es.open();
@@ -96,7 +96,7 @@ describe("fleet-stream-registry — turns held on a send's 202", () => {
     es.emit({ kind: FRAME_KIND.CATCHING_UP, dropped: 0 });
     await flushBackfill();
 
-    const settled = getSnapshot(Z_A).events.find((event) => event.id === ELSEWHERE);
+    const settled = getSnapshot(Z_A).turns.find((turn) => turn.id === ELSEWHERE);
     expect(settled).toMatchObject({ status: "processed", tools: [expect.objectContaining({ name: "read_file" })] });
     release();
   });

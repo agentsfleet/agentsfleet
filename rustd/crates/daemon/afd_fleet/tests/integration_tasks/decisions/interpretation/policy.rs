@@ -16,8 +16,8 @@ fn configured(fixture: &Decisions<'_>, settings: TaskSettings) -> Tasks {
     let mut dependencies = fixture.dependencies.clone();
     dependencies.policy = TaskPolicy::new(&checked);
     Tasks::new(
-        fixture.case.held.leases.clone(),
-        fixture.case.admissions.clone(),
+        fixture.case.held.runs.clone(),
+        fixture.case.turns.clone(),
         dependencies,
     )
 }
@@ -37,7 +37,7 @@ async fn saved_limits(case: &Case) {
                 model_budget_nanodollars: 750_000_000,
                 wall_seconds: 900,
                 running_seconds: 600,
-                max_leases: 3,
+                max_runs: 3,
                 max_publication_attempts: 2,
                 max_decision_calls: 9,
                 max_fallback_reads: 3,
@@ -47,7 +47,7 @@ async fn saved_limits(case: &Case) {
     );
     let input = valid(proposed(&fixture, TaskInputAction::NewWork).await);
     let accepted = tasks
-        .interpret(case.lease(), &input)
+        .interpret(case.run(), &input)
         .await
         .expect("new objective");
     assert!(!accepted.replayed);
@@ -56,7 +56,7 @@ async fn saved_limits(case: &Case) {
         model_nanos: 750_000_000,
         wall_seconds: 900,
         running_seconds: 600,
-        leases: 3,
+        runs: 3,
         publications: 2,
         decision_calls: 9,
         fallback_reads: 3,
@@ -86,7 +86,7 @@ async fn narrower_replay(
         },
     );
     let replay = narrowed
-        .interpret(case.lease(), input)
+        .interpret(case.run(), input)
         .await
         .expect("committed replay");
     assert!(replay.replayed);
@@ -144,7 +144,7 @@ async fn refused_bounds(case: &Case) {
     ];
     for policy in policies {
         let failure = configured(&fixture, policy)
-            .interpret(case.lease(), &input)
+            .interpret(case.run(), &input)
             .await
             .expect_err("policy refuses before unconfigured remote storage");
         assert_eq!(failure.code(), error_code::TASK_LIMIT_EXHAUSTED);
@@ -173,7 +173,7 @@ async fn a_smaller_action_limit_refuses_the_complete_message() {
         digest(&mut input);
         let before = case.counts().await;
         let failure = tasks
-            .interpret(case.lease(), &valid(input))
+            .interpret(case.run(), &valid(input))
             .await
             .expect_err("whole message cap");
         assert_eq!(failure.code(), error_code::TASK_LIMIT_EXHAUSTED);
@@ -185,7 +185,7 @@ async fn a_smaller_action_limit_refuses_the_complete_message() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_saved_fleet_slot_serializes_the_configured_unfinished_limit() {
+async fn the_saved_fleet_thread_serializes_the_configured_unfinished_limit() {
     exercise(async |case| {
         let settings = garde::Unvalidated::new(TaskSettings {
             max_unfinished_per_fleet: 1,
@@ -195,14 +195,10 @@ async fn the_saved_fleet_slot_serializes_the_configured_unfinished_limit() {
         .expect("one-task admission policy");
         let mut dependencies = afd_fleet::task::TaskDependencies::from(&case.held.fixtures.plane());
         dependencies.policy = TaskPolicy::new(&settings);
-        let tasks = Tasks::new(
-            case.held.leases.clone(),
-            case.admissions.clone(),
-            dependencies,
-        );
+        let tasks = Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
         let before = case.counts().await;
         let failure = tasks
-            .bind(case.lease(), &case.plan("two-objectives", 2))
+            .bind(case.run(), &case.plan("two-objectives", 2))
             .await
             .expect_err("two objectives cannot fit the configured one-task cap");
         assert_eq!(failure.code(), error_code::TASK_LIMIT_EXHAUSTED);
@@ -212,7 +208,7 @@ async fn the_saved_fleet_slot_serializes_the_configured_unfinished_limit() {
             "the first insertion rolled back too"
         );
         let accepted = tasks
-            .bind(case.lease(), &case.plan("one-objective", 1))
+            .bind(case.run(), &case.plan("one-objective", 1))
             .await
             .expect("one objective fits");
         assert_eq!(accepted.items.len(), 1);

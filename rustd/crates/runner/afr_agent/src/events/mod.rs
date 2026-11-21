@@ -1,4 +1,5 @@
-//! The run's streamed text, as live frames. Each tool call's frames are the
+//! The run's streamed text, as live frames, heard chunk by chunk from
+//! `guffbolt`. Each tool call's frames are the
 //! [`Ledger`](crate::ledger::Ledger)'s.
 //!
 //! Answer and reasoning text share one run-wide `stream_seq` from 0, the first
@@ -6,11 +7,15 @@
 //! each kind keeps its own scrub carry so a secret split across chunks is never
 //! sent (`docs/architecture/runner_fleet.md` §"Live activity (the SSE tail)").
 
+pub(crate) mod compaction;
+
 use std::borrow::Cow;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use af_core::clock::saturating_millis;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
+use guffbolt::{Listen, TextKind};
 
 use crate::engine::EventSink;
 use af_secrets::{Carry, Scrub};
@@ -27,14 +32,25 @@ impl EventSink for Silent {
 }
 
 /// Where one run's frames go, and the stream's position.
+///
+/// The position sits behind a lock because the loop hears a turn's text
+/// through a shared borrow: the request the stream reads still borrows the
+/// loop. One turn streams at a time, so the lock is never contended.
 pub(crate) struct Live<'run> {
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
     started: Instant,
+    private_reasoning: bool,
+    position: Mutex<Position>,
+}
+
+/// How far a run's stream has gone: the next frame's number, and each
+/// kind's held tail.
+#[derive(Default)]
+struct Position {
     next_seq: u64,
     answer: Carry,
     reasoning: Carry,
-    private_reasoning: bool,
 }
 
 impl<'run> Live<'run> {
@@ -44,10 +60,8 @@ impl<'run> Live<'run> {
             sink,
             scrub,
             started,
-            next_seq: 0,
-            answer: Carry::default(),
-            reasoning: Carry::default(),
             private_reasoning: false,
+            position: Mutex::default(),
         }
     }
 
@@ -60,39 +74,58 @@ impl<'run> Live<'run> {
         self.private_reasoning = true;
     }
 
+    /// The stream's position, whatever a panicking holder left: a frame is
+    /// sent and counted under one hold, so a panic leaves it whole.
+    fn position(&self) -> MutexGuard<'_, Position> {
+        self.position.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// A model pass's text, as it streams.
+impl Listen for Live<'_> {
     /// Streams `text` of `kind`, holding back any tail that could still be a
     /// secret's start.
-    pub(crate) fn text(&mut self, kind: StreamTextKind, text: &str) {
-        if self.private_reasoning && kind == StreamTextKind::Reasoning {
+    fn text(&self, kind: TextKind, text: &str) {
+        if self.private_reasoning && kind == TextKind::Reasoning {
             return;
         }
+        let mut position = self.position();
         let carry = match kind {
-            StreamTextKind::Answer => &mut self.answer,
-            StreamTextKind::Reasoning => &mut self.reasoning,
+            TextKind::Answer => &mut position.answer,
+            TextKind::Reasoning => &mut position.reasoning,
         };
         let ready = carry.push(self.scrub, text);
         if ready.is_empty() {
             return;
         }
-        let first = self.next_seq == 0;
+        let first = position.next_seq == 0;
         let first_chunk_after_ms = first.then(|| saturating_millis(self.started.elapsed()));
         self.sink
             .emit(ActivityFrame::FleetResponseChunk(FleetResponseChunk {
                 text: Cow::Owned(ready),
-                text_kind: kind,
+                text_kind: wire(kind),
                 first_chunk_after_ms,
                 stream_start: first,
                 stream_contiguous: true,
-                stream_seq: self.next_seq,
+                stream_seq: position.next_seq,
             }));
-        self.next_seq += 1;
+        position.next_seq += 1;
     }
 
     /// Ends a model pass: a held tail is dropped, never sent, because it may
     /// be the head of a secret. The report carries the whole answer.
-    pub(crate) fn end_pass(&mut self) {
-        self.answer = Carry::default();
-        self.reasoning = Carry::default();
+    fn end(&self) {
+        let mut position = self.position();
+        position.answer = Carry::default();
+        position.reasoning = Carry::default();
+    }
+}
+
+/// `kind` as a live frame names it.
+const fn wire(kind: TextKind) -> StreamTextKind {
+    match kind {
+        TextKind::Answer => StreamTextKind::Answer,
+        TextKind::Reasoning => StreamTextKind::Reasoning,
     }
 }
 

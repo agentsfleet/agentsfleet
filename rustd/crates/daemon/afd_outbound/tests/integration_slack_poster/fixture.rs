@@ -95,7 +95,7 @@ impl Fixture {
             destination: format!(r#"{{"channel_id":"{CHANNEL}","thread_ts":"{THREAD}"}}"#),
             workspace_id: self.workspace.clone(),
             fleet_id: self.fleet.clone(),
-            event_id: self.event.clone(),
+            turn_id: self.event.clone(),
             answer: ANSWER.to_owned(),
         }
     }
@@ -103,7 +103,7 @@ impl Fixture {
     /// Seeds the tenant, workspace and fleet whose grant the poster opens.
     ///
     /// No event row: where the answer belongs rides the job, and a poster that
-    /// still read `fleet.events` would find nothing here and fail.
+    /// still read the turn's row would find nothing here and fail.
     pub(super) async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         TenantSeed::new(&self.tenant)

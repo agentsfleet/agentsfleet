@@ -1,4 +1,4 @@
-//! Dimension 1.1 — the vocabulary covers everything this daemon spells.
+//! The vocabulary covers everything this daemon spells.
 //!
 //! # What these tests deliberately do not do
 //!
@@ -107,14 +107,14 @@ fn every_span_key_is_namespaced() {
     }
 }
 
-/// Every segment key the lease span writes is one the runner's spans declare,
+/// Every segment key the run span writes is one the runner's spans declare,
 /// so the segments never reach the exporter as keys nothing else names.
 #[test]
 fn every_runner_segment_key_is_a_runner_span_key() {
     for key in RUNNER_SEGMENT_KEYS {
         assert!(
             RUNNER_SPAN_KEYS.contains(&key),
-            "`{key}` is a lease segment the runner span keys do not declare"
+            "`{key}` is a run segment the runner span keys do not declare"
         );
     }
 }

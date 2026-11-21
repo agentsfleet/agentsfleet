@@ -218,7 +218,15 @@ impl Wire for FakeWire {
             let buffer = NetlinkBuffer::new(frame);
             let (message_type, flags) = (buffer.message_type(), buffer.flags());
             let sequence = buffer.sequence_number();
-            let header = frame.get(..header_len).unwrap().to_vec();
+            let header = frame
+                .get(..header_len)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "a netlink frame shorter than its header",
+                    )
+                })?
+                .to_vec();
             // A batch's ends are `nf_tables` framing; on a route socket the
             // same numbers are a new link and a deleted one.
             if self.protocol == Protocol::Netfilter && BATCH.contains(&message_type) {

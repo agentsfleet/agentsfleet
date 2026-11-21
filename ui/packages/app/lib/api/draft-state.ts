@@ -8,14 +8,14 @@ import { DRAFT_STATE } from "./draft-types";
 import { presentErrorString } from "@/lib/errors";
 
 export type DraftIdentity = {readonly account: string; readonly workspace: string; readonly subject: string};
-type SetupAction = "reading" | "sending" | "saving" | "publishing" | null;
+type SetupAction = "reading" | "sending" | "saving" | null;
 export type DraftRequestState =
   | {readonly kind: "idle" | "inaccessible"}
   | {readonly kind: "requesting" | "retrying" | "unconfirmed"; readonly action: SetupAction};
 export type DraftView = {
   readonly draft: Draft | null;
   readonly messages: readonly Message[];
-  readonly previousDrafts?: readonly {readonly id: string; readonly cancelledThrough: string; readonly messages: readonly Message[]; readonly truncated?: boolean}[];
+  readonly previousDrafts?: readonly {readonly id: string; readonly messages: readonly Message[]; readonly truncated?: boolean}[];
   readonly conversationCursor?: string | null;
   readonly activityCursor?: string | null;
   readonly messagesStartingAfter?: string | null;
@@ -29,7 +29,7 @@ export type DraftView = {
   readonly moreChats: boolean;
   readonly listStatus: typeof DRAFT_LIST_STATUS[keyof typeof DRAFT_LIST_STATUS];
   readonly model: string;
-  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string; readonly sourceLabel?: string} | null;
+  readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
   readonly savedSetupRevision: string | null;
   readonly saveOperation?: string | null;
   readonly setupAction?: SetupAction;
@@ -65,8 +65,8 @@ export function draftRequestView(request: DraftRequestState): Pick<DraftView, "b
 export function projectDraftView(previous: DraftView, patch: Partial<DraftView>): DraftView {
   const next = {...previous, ...patch};
   if (patch.activities && next.fleet?.id === previous.fleet?.id && next.fleet) {
-    const rows = new Map((previous.activities ?? []).map(row => [row.event_id, row]));
-    for (const row of patch.activities) if (!rows.has(row.event_id)) rows.set(row.event_id, row);
+    const rows = new Map((previous.activities ?? []).map(row => [row.turn_id, row]));
+    for (const row of patch.activities) if (!rows.has(row.turn_id)) rows.set(row.turn_id, row);
     next.activities = [...rows.values()];
   }
   return {...next, saveOperation: savingOperation(next)};
@@ -75,6 +75,6 @@ export function projectDraftView(previous: DraftView, patch: Partial<DraftView>)
 export function messagePatch(view: DraftView, draft: Draft, messages: readonly Message[], truncated: boolean): Partial<DraftView> {
   const answer = latestSaveAnswer(messages);
   const optimistic = messages.some(message => message.operation_id === view.optimistic?.operation) ? null : view.optimistic;
-  return {draft, model: draft.authoring_model_ref, messages, optimistic, truncated,
+  return {draft, model: draft.setup_model_ref, messages, optimistic, truncated,
     ...(draft.state === DRAFT_STATE.editing && answer?.save_error_code ? {error: presentErrorString({errorCode: answer.save_error_code, action: "save this setup"})} : {})};
 }

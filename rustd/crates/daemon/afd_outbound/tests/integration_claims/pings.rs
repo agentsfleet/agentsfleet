@@ -34,7 +34,7 @@ async fn a_ping_claims_a_full_backlog_without_a_pass() {
         let lane = ledger.lane().await;
         ledger.owe(&lane, "pinged").await;
     }
-    server.publish(&Subject::OutboundWake, "");
+    server.publish(&Subject::DeliveryWake, "");
     // One ping: a full batch claims again at once, so every lane drains.
     ledger.until_delivered(LANES).await;
     token.cancel();

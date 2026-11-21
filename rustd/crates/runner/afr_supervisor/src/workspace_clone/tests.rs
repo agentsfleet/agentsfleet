@@ -80,9 +80,9 @@ impl Fixture {
             .join(bare())
     }
 
-    /// A fresh workspace for the lease named `lease`.
-    pub(super) fn workspace(&self, lease: &str) -> PathBuf {
-        let workspace = self.root.path().join("workspaces").join(lease);
+    /// A fresh workspace for the run named `run`.
+    pub(super) fn workspace(&self, run: &str) -> PathBuf {
+        let workspace = self.root.path().join("workspaces").join(run);
         fs::create_dir_all(&workspace).unwrap();
         workspace
     }
@@ -150,7 +150,7 @@ fn a_request_prints_without_its_token() {
 #[tokio::test]
 async fn the_first_checkout_clones_and_lands_on_the_base_head() {
     let fixture = Fixture::new();
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     let fetched = fixture.check_out(&workspace, BASE).await.unwrap();
 
@@ -198,8 +198,8 @@ async fn the_first_checkout_clones_and_lands_on_the_base_head() {
 async fn test_supervisor_clones_at_base_with_cache() {
     let fixture = Fixture::new();
     let head = git(&fixture.remote(), &["rev-parse", BASE]);
-    let first = fixture.workspace("lease_1");
-    let second = fixture.workspace("lease_2");
+    let first = fixture.workspace("run_1");
+    let second = fixture.workspace("run_2");
 
     let cloned = fixture.check_out(&first, BASE).await.unwrap();
     git(
@@ -234,11 +234,11 @@ async fn test_supervisor_clones_at_base_with_cache() {
 async fn a_pushed_commit_updates_the_mirror_and_the_next_checkout() {
     let fixture = Fixture::new();
     fixture
-        .check_out(&fixture.workspace("lease_1"), BASE)
+        .check_out(&fixture.workspace("run_1"), BASE)
         .await
         .unwrap();
     commit(&fixture.remote(), "README.md", "second");
-    let second = fixture.workspace("lease_2");
+    let second = fixture.workspace("run_2");
 
     let fetched = fixture.check_out(&second, BASE).await.unwrap();
 
@@ -262,7 +262,7 @@ async fn a_base_other_than_the_default_branch_is_checked_out() {
     git(&remote, &["checkout", "--quiet", "-b", "release"]);
     commit(&remote, "CHANGELOG.md", "release notes");
     git(&remote, &["checkout", "--quiet", BASE]);
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     fixture.check_out(&workspace, "release").await.unwrap();
 
@@ -291,7 +291,7 @@ async fn a_binding_with_no_base_checks_out_the_default_branch() {
     let remote = fixture.remote();
     git(&remote, &["checkout", "--quiet", "-b", "trunk"]);
     commit(&remote, "TRUNK.md", "trunk notes");
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     fixture.check_out(&workspace, "").await.unwrap();
 
@@ -319,7 +319,7 @@ async fn a_tag_on_the_remote_reaches_the_working_copy() {
     let remote = fixture.remote();
     git(&remote, &["tag", "-a", "v1.2.3", "-m", "release 1.2.3"]);
     git(&remote, &["tag", "lightweight"]);
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     fixture.check_out(&workspace, BASE).await.unwrap();
 
@@ -336,7 +336,7 @@ async fn a_tag_on_the_remote_reaches_the_working_copy() {
 #[tokio::test]
 async fn every_file_is_handed_to_the_owner() {
     let fixture = Fixture::new();
-    let workspace = fixture.workspace("lease_1");
+    let workspace = fixture.workspace("run_1");
 
     fixture.check_out(&workspace, BASE).await.unwrap();
 

@@ -190,7 +190,7 @@ async fn blocked(case: &Case) {
     due(&fixture, std::slice::from_ref(&call)).await;
     let (database, tasks) = super::timeouts::single_connection(&fixture).await;
     let backing = &case.held.fixtures.database;
-    let mut connection = backing.acquire().await.expect("slot blocker");
+    let mut connection = backing.acquire().await.expect("fleet table blocker");
     let mut blocker = connection.begin().await.expect("owned transaction");
     sqlx::query("LOCK TABLE fleet.fleets IN ACCESS EXCLUSIVE MODE")
         .execute(&mut *blocker)
@@ -223,7 +223,7 @@ async fn blocked(case: &Case) {
     blocker
         .rollback()
         .await
-        .expect("release independent slot lock");
+        .expect("release independent fleet table lock");
     let swept = timeout(
         Duration::from_secs(5),
         tasks.maintain_decisions(&mut DecisionMaintenanceCursor::default()),
@@ -261,15 +261,15 @@ pub(super) async fn unissued(
     drop(connection);
     let fault = fixture
         .tasks
-        .reserve_decision(case.lease(), input)
+        .reserve_decision(case.run(), input)
         .await
         .expect_err("native intent commits before funding refuses");
     assert_eq!(fault.code(), error_code::TASK_DECISION_UNAVAILABLE);
     case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     sqlx::query_scalar(
-        "SELECT id FROM runner.decision_calls WHERE original_lease_id=$1 AND operation_id=$2",
+        "SELECT id FROM runner.decision_calls WHERE original_run_id=$1 AND operation_id=$2",
     )
-    .bind(&case.held.lease_key)
+    .bind(&case.held.run_key)
     .bind(id(&input.operation_id))
     .fetch_one(
         &mut *case
@@ -342,7 +342,7 @@ async fn index_bound(fixture: &Decisions<'_>) {
         let plan: sqlx::types::Json<Value> = sqlx::query_scalar(STATEMENT)
             .bind(100_i64)
             .bind(after.map(jiff_sqlx::Timestamp::from))
-            .bind(after.map(|_| &fixture.case.held.lease_key))
+            .bind(after.map(|_| &fixture.case.held.run_key))
             .bind(after.map(jiff_sqlx::Timestamp::from))
             .fetch_one(&mut *tx)
             .await

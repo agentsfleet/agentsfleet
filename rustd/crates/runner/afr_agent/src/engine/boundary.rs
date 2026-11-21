@@ -2,7 +2,7 @@
 
 use super::TurnSnapshot;
 use crate::{Result, TaskRecovery};
-use af_wire::lease::{TurnResume, TurnScope, TurnWorkspace};
+use af_wire::run::{TurnResume, TurnScope, TurnWorkspace};
 use garde::Validate as _;
 use std::sync::Arc;
 
@@ -22,9 +22,9 @@ pub enum RecoveryState {
 #[derive(Debug)]
 pub struct RecoverySnapshot {
     /// Current attempt, retained in the native request's authority proof.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event whose root was captured.
-    pub event_id: String,
+    pub turn_id: String,
     /// Current attempt's database fence.
     pub fencing_token: u64,
     /// Exact private state for the selected durable owner.
@@ -53,9 +53,9 @@ pub enum CommittedRecovery {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecoveryReceipt {
     /// Attempt that authorized publication.
-    pub lease_id: String,
+    pub run_id: String,
     /// Stable event owner.
-    pub event_id: String,
+    pub turn_id: String,
     /// Fence proved by publication.
     pub fencing_token: u64,
     /// Committed identity and compatibility facts for the selected family.
@@ -120,9 +120,9 @@ pub trait RecoveryBoundarySink: Send + Sync + std::fmt::Debug {
 
 /// Correlation witness retained while the capture owner owns the private bytes.
 pub(crate) struct RecoveryWitness {
-    lease_id: String,
-    event_id: String,
-    fence: u64,
+    run_id: String,
+    turn_id: String,
+    fencing_token: u64,
     generation: u64,
     digest: String,
     previous_id: Option<String>,
@@ -150,9 +150,9 @@ impl RecoverySnapshot {
             ),
         };
         RecoveryWitness {
-            lease_id: self.lease_id.clone(),
-            event_id: self.event_id.clone(),
-            fence: self.fencing_token,
+            run_id: self.run_id.clone(),
+            turn_id: self.turn_id.clone(),
+            fencing_token: self.fencing_token,
             generation,
             digest,
             previous_id,
@@ -163,9 +163,9 @@ impl RecoverySnapshot {
 
 impl RecoveryReceipt {
     pub(crate) fn matches(&self, expected: &RecoveryWitness) -> bool {
-        self.lease_id == expected.lease_id
-            && self.event_id == expected.event_id
-            && self.fencing_token == expected.fence
+        self.run_id == expected.run_id
+            && self.turn_id == expected.turn_id
+            && self.fencing_token == expected.fencing_token
             && self.checkpoint.generation() > expected.generation
             && af_core::id::Uuid7::parse(self.checkpoint.id()).is_ok()
             && expected.previous_id.as_deref() != Some(self.checkpoint.id())

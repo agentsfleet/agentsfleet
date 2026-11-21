@@ -68,7 +68,10 @@ jobs:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
-      CARGO_BUILD_JOBS: '2'
+      # Four jobs on the four-CPU runner: at two, every shard peaked at 2.6 to
+      # 3.5 GiB of 16 GiB (run 44869978955's memory lines), so the doubled
+      # compile still leaves the datastores most of the runner.
+      CARGO_BUILD_JOBS: '4'
     # The suite shares one migrated database per shard; only migrator fault
     # tests create scratch databases because schema state is what they
     # exercise. This still covers a cold instrumented workspace build on an
@@ -83,6 +86,18 @@ jobs:
       - name: Show the pinned toolchain
         run: rustup show && cargo --version
         working-directory: rustd
+      # Dependency builds, one key per shard: an instrumented build differs
+      # from the unit jobs' and between shards, and Actions caches are
+      # immutable, so a shared key would hand one shard another's artifacts.
+      # The workspace's own artifacts cannot go stale here: rust-cache prunes
+      # them before saving, and the lane's `cargo llvm-cov clean --workspace`
+      # removes any left before the first build, so a report never reads two
+      # revisions. Pinned to the commit v2.9.3 resolved to, as test-unit-rustd.yml.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: rustd -> target
+          shared-key: rustd-coverage-${{ matrix.shard }}
+          save-if: true
       # Restore only. warm-cache.yml saves this key from main, so pull requests read
       # a complete registry rather than writing their own.
       - name: Cache cargo registry

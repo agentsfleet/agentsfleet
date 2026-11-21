@@ -23,8 +23,8 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is the admission ledger's
-//! unique producer key in Postgres ([`afd_admission::Admissions`]), and a claim
+//! It does not prove the at-most-once claim. That is the turns ledger's
+//! unique producer key in Postgres ([`afd_turns::Turns`]), and a claim
 //! re-implemented here would agree with the suite whatever the ledger did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.
@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use afd_api::services::WebhookIngress;
+use afd_http::services::WebhookIngress;
 use afd_ingress::{Binding, Ingress, Surface};
 
 /// Which ingress a suite is driving.

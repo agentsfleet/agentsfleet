@@ -4,7 +4,7 @@ use super::PreparedReport;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, Tasks, continuation::Continuation, decision, execution, guard, transaction},
+    task::{TaskRun, Tasks, continuation::Continuation, decision, execution, guard, transaction},
 };
 use af_wire::{
     report::ReportRequest,
@@ -13,7 +13,7 @@ use af_wire::{
 
 pub(super) async fn prepare(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     request: &ReportRequest<'_>,
 ) -> Result<Option<PreparedReport>> {
     let Some(input) = &request.task else {
@@ -22,12 +22,12 @@ pub(super) async fn prepare(
     if garde::Validate::validate(input).is_err() {
         return Ok(None);
     }
-    let prepared = snapshot(tasks, lease, input).await;
+    let prepared = snapshot(tasks, run, input).await;
     let (owned, source, target) = match prepared {
         Ok(value) => value,
         Err(fault) if fault.is_datastore_unavailable() => return Err(fault),
         Err(fault) => {
-            tracing::warn!(event = "dt_report_evidence_refused", lease_id = lease.lease_id.as_str(), error_code = %fault.code());
+            tracing::warn!(event = "dt_report_evidence_refused", run_id = run.run_id.as_str(), error_code = %fault.code());
             return Ok(None);
         }
     };
@@ -40,10 +40,10 @@ pub(super) async fn prepare(
                 let Some(github) = &tasks.dependencies.github else {
                     return Ok(None);
                 };
-                let session = match github.read_session(lease, &target.repository).await {
+                let session = match github.read_session(run, &target.repository).await {
                     Ok(session) => session,
                     Err(fault) => {
-                        tracing::warn!(event = "dt_report_read_authority_refused", lease_id = lease.lease_id.as_str(), error_code = %fault.code());
+                        tracing::warn!(event = "dt_report_read_authority_refused", run_id = run.run_id.as_str(), error_code = %fault.code());
                         return Ok(None);
                     }
                 };
@@ -51,15 +51,15 @@ pub(super) async fn prepare(
                     .with_deadline(
                         owned
                             .current
-                            .lease_expires_at
-                            .min(owned.current.slot_expires_at),
+                            .run_expires_at
+                            .min(owned.current.thread_expires_at),
                     )
                     .status(target)
                     .await
                 {
                     Ok(evidence) => Some(evidence),
                     Err(fault) => {
-                        tracing::warn!(event = "dt_report_dependency_unavailable", lease_id = lease.lease_id.as_str(), error_code = %fault.code());
+                        tracing::warn!(event = "dt_report_dependency_unavailable", run_id = run.run_id.as_str(), error_code = %fault.code());
                         return Ok(None);
                     }
                 }
@@ -93,8 +93,8 @@ pub(super) async fn prepare(
     };
     Ok(Some(PreparedReport {
         tasks: tasks.clone(),
-        lease_id: lease.lease_id.clone(),
-        runner_id: lease.runner_id.clone(),
+        run_id: run.run_id.clone(),
+        runner_id: run.runner_id.clone(),
         scope: owned.scope,
         snapshot: owned.snapshot,
         input: input.clone(),
@@ -106,33 +106,33 @@ pub(super) async fn prepare(
 
 async fn snapshot(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &af_wire::task::TaskReport,
 ) -> Result<(
     execution::Owned,
     af_core::id::Uuid7,
     Option<crate::task::github::BoundPr>,
 )> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let owned = execution::load(&mut tx, lease, &input.task).await?;
-    decision::goal(&mut tx, lease, input, &owned.snapshot.context).await?;
-    let source = owned.current.source_admission_id.clone();
+    let owned = execution::load(&mut tx, run, &input.task).await?;
+    decision::goal(&mut tx, run, input, &owned.snapshot.context).await?;
+    let source = owned.current.source_turn_id.clone();
     let target = if matches!(owned.snapshot.context.target, TaskTarget::ApiOnly) {
         None
     } else {
         let target: sqlx::types::Json<crate::task::github::BoundPr> =
             sqlx::query_scalar(include_str!("../sql/native_target.sql"))
-                .bind(crate::task::guard::wire(&input.task.task_id)?)
+                .bind(guard::wire(&input.task.task_id)?)
                 .bind(&owned.scope.fleet_id)
                 .bind(&owned.scope.workspace_id)
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(query("read native report target"))?;
-        let accepted = crate::task::guard::wire(&owned.snapshot.context.accepted_revision_id)?;
+        let accepted = guard::wire(&owned.snapshot.context.accepted_revision_id)?;
         for revision in [Some(&accepted), None] {
             let config =
-                crate::lease::Leases::stored_config_on(&mut tx, &owned.scope.fleet_id, revision)
+                crate::run::Runs::stored_config_on(&mut tx, &owned.scope.fleet_id, revision)
                     .await?
                     .ok_or(crate::task::TaskRefusal::InvalidTarget)?;
             target.within(&config)?;

@@ -1,8 +1,8 @@
-//! Native continuations are ordinary admissions with an immutable task payload.
+//! Native continuations are ordinary turns with an immutable task payload.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 
 use super::{TaskScope, Tasks};
 
@@ -50,14 +50,14 @@ impl Continuation {
         Ok(self)
     }
 
-    pub(super) fn admission(&self) -> Admission<'_> {
-        Admission {
+    pub(super) fn turn(&self) -> IncomingTurn<'_> {
+        IncomingTurn {
             producer: Producer::TaskContinuation,
             key: Key::Repeated(&self.key),
             fleet: &self.scope.fleet_id,
             workspace: &self.scope.workspace_id,
             actor: &self.actor,
-            event_type: EventType::Continuation,
+            event_type: TurnKind::Continuation,
             request_json: &self.payload,
             reply: match &self.destination {
                 Destination::Recorded(provider, address) => Reply::To {
@@ -65,16 +65,16 @@ impl Continuation {
                     address,
                 },
                 Destination::None => Reply::None,
-                Destination::Inherit(source) => Reply::Inherit { event_id: source },
+                Destination::Inherit(source) => Reply::Inherit { turn_id: source },
             },
         }
     }
 
     pub(super) async fn confirm(&self, tasks: &Tasks) {
-        // A lost wake ring cannot undo a committed admission; normal ledger
+        // A lost wake ring cannot undo a committed turn; normal ledger
         // discovery still finds the row and this call's replay remains stable.
         if let Err(error) = tasks
-            .admissions
+            .turns
             .confirm(Producer::TaskContinuation, &self.key)
             .await
         {
@@ -83,7 +83,7 @@ impl Continuation {
     }
 }
 
-/// Retire superseded native work without settling an issued lease or human reply.
+/// Retire superseded native work without settling an issued run or human reply.
 pub(super) async fn retire(connection: &mut sqlx::PgConnection, task: &Uuid7) -> crate::Result<()> {
     sqlx::query(include_str!("sql/retire_continuations.sql"))
         .bind(task)

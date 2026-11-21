@@ -6,7 +6,7 @@ use jiff::Timestamp;
 
 use crate::error::{
     Result, admin_state_malformed, query, rejected, runner_not_found, runner_not_revoked,
-    runner_still_leased, selftest_refused,
+    runner_still_running, selftest_refused,
 };
 use crate::scope::RunnerScope;
 use crate::sql;
@@ -53,7 +53,7 @@ struct Transitioned {
 #[derive(Debug, sqlx::FromRow)]
 struct Retired {
     changed: bool,
-    leased: bool,
+    held: bool,
 }
 
 /// [`sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST`]'s row: the status the
@@ -120,22 +120,22 @@ impl RunnerScope<'_> {
     ///
     /// # Errors
     /// Returns a typed refusal for a missing runner, a runner not yet revoked,
-    /// a runner still holding an active lease, or an unavailable datastore.
+    /// a runner still holding an active run, or an unavailable datastore.
     pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
         let mut connection = self.runners.pool().acquire().await?;
         let row = sqlx::query_as::<_, Retired>(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner)
             .bind(state_wire(AdminState::Revoked))
-            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(sql::RUN_STATUS_ACTIVE)
             .bind(self.owner.tenant())
             .bind(self.owner.platform())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_DELETE))?
             .ok_or_else(runner_not_found)?;
-        match (row.changed, row.leased) {
+        match (row.changed, row.held) {
             (true, _) => Ok(()),
-            (false, true) => Err(runner_still_leased()),
+            (false, true) => Err(runner_still_running()),
             (false, false) => Err(runner_not_revoked()),
         }
     }

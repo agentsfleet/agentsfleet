@@ -1,6 +1,6 @@
 //! The store provider resolution reads through: one pool and the vault that opens its rows.
 //!
-//! Same shape as [`afd_billing::Accounts`] and [`crate::lease::Leases`], for
+//! Same shape as [`afd_billing::Accounts`] and [`crate::run::Runs`], for
 //! the same reason: the pool is OWNED here and [`Providers::pool`] is
 //! `pub(crate)`, so nothing outside this crate can run a statement that is not
 //! in [`crate::sql::provider`], and the side-by-side parity read of that module

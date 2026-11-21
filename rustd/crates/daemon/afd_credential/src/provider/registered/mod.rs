@@ -6,6 +6,8 @@
 mod key;
 mod sql;
 
+pub use key::RegisteredRoute;
+
 use std::time::Duration;
 
 use af_core::id::Uuid7;

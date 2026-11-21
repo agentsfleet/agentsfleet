@@ -23,7 +23,7 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
         (
             Error::from(ErrorKind::Binding),
             error_code::AUTH_FORBIDDEN,
-            "Attach this kind to the physical connection that authenticated its session.",
+            "Attach this kind to the physical connection that authenticated its connection.",
             "binding",
         ),
         (
@@ -54,7 +54,7 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
 }
 
 #[tokio::test]
-async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Proof {
+async fn transient_failures_keep_the_run_deadline_and_ask_for_a_retry() -> Proof {
     let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
         .await
         .err()
@@ -66,7 +66,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &timeout,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The stream timed out while renewing work. Retain the last confirmed lease deadline.",
+        "The stream timed out while renewing work. Retain the last confirmed run deadline.",
         true,
         "timeout",
     );
@@ -74,7 +74,7 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &closed,
         error_code::INTERNAL_OPERATION_FAILED,
-        "The connection ended. Reconnect before the last confirmed lease deadline.",
+        "The connection ended. Reconnect before the last confirmed run deadline.",
         true,
         "closed",
     );
@@ -82,22 +82,22 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
     assert_class(
         &query,
         error_code::INTERNAL_DB_QUERY,
-        "The database did not confirm the operation. Retain the last confirmed lease deadline.",
+        "The database did not confirm the operation. Retain the last confirmed run deadline.",
         true,
         "database",
     );
-    let session_worker = tokio::spawn(std::future::pending::<()>());
-    session_worker.abort();
+    let connection_worker = tokio::spawn(std::future::pending::<()>());
+    connection_worker.abort();
     let worker = Error::from(
-        session_worker
+        connection_worker
             .await
             .err()
-            .ok_or("the aborted session worker joined")?,
+            .ok_or("the aborted connection worker joined")?,
     );
     assert_class(
         &worker,
         error_code::INTERNAL_OPERATION_FAILED,
-        "A session worker stopped. Reconnect before the last confirmed lease deadline.",
+        "A connection worker stopped. Reconnect before the last confirmed run deadline.",
         true,
         "worker",
     );
@@ -126,16 +126,15 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
             "opening",
             "confirming the runner connection",
         ),
-        (Operation::Offer, "offer", "offering work"),
+        (Operation::Assign, "assign", "assigning work"),
         (Operation::Heartbeat, "heartbeat", "recording a heartbeat"),
         (Operation::Recheck, "recheck", "checking the current owner"),
         (Operation::Renewal, "renewal", "renewing work"),
-        (Operation::Model, "model", "calling the authoring model"),
-        (Operation::Activity, "activity", "publishing progress"),
+        (Operation::Progress, "progress", "publishing progress"),
         (Operation::Report, "report", "settling a report"),
         (Operation::Folds, "folds", "reading pending inputs"),
         (Operation::Write, "write", "sending a response"),
-        (Operation::Drain, "drain", "closing the runner session"),
+        (Operation::Drain, "drain", "closing the runner connection"),
     ];
     for (operation, label, sentence) in table {
         assert_eq!(operation.as_str(), label);

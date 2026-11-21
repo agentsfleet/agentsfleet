@@ -29,7 +29,7 @@ const POSTED: &str = "rt-posted";
 const REPLACEMENT: &str = "rt-replacement";
 
 /// The event the mint's write-back breadcrumb is logged under, as
-/// `afd_fleet::lease::mint` spells it (`EVENT_REFRESH_ROTATED`).
+/// `afd_fleet::run::mint` spells it (`EVENT_REFRESH_ROTATED`).
 const EVENT_REFRESH_ROTATED: &str = "refresh_rotated";
 
 /// The accounts server a European Zoho callback writes onto the handle.
@@ -77,7 +77,7 @@ impl Exchanger for Rotating {
             }
             Outcome::Ok(Minted {
                 token: Zeroizing::new(ACCESS.to_owned()),
-                expires_at: af_core::clock::after(af_core::clock::now(), LEASE_WINDOW),
+                expires_at: af_core::clock::after(af_core::clock::now(), RUN_WINDOW),
                 rotated_refresh_token: Some(Zeroizing::new(REPLACEMENT.to_owned())),
             })
         })
@@ -95,7 +95,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
         workspace: owner.workspace.clone(),
         during,
     };
-    let plane = afd_fleet::lease::LeaseService {
+    let plane = afd_fleet::run::RunService {
         task_reports: None,
         broker: Arc::new(Broker::new(Arc::new(Registry::default()), Arc::new(vendor))),
         ..fixtures.plane()
@@ -104,7 +104,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
     let minted = plane
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_ZOHO),
+            &requests::mint(owner.run.as_str(), CONNECTOR_ZOHO),
             fixtures.enrolled_at(),
         )
         .await

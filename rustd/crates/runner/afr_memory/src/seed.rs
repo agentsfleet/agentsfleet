@@ -15,7 +15,7 @@ use crate::error::Result;
 /// bounded handful of searches rather than one per turn.
 pub const RECALL_MISS_CAP: usize = 3;
 
-/// Asks `agentsfleetd` for memory the hydrated window does not hold.
+/// Asks `agentsfleetd` for memory the loaded window does not hold.
 #[async_trait::async_trait]
 pub trait Recall: Send + Sync + fmt::Debug {
     /// The fleet's entries holding `query` and, for a granted reader, the
@@ -26,7 +26,7 @@ pub trait Recall: Send + Sync + fmt::Debug {
     async fn recall(&self, query: &str, limit: usize) -> Result<MemoryRecallResponse<'static>>;
 }
 
-/// What `agentsfleetd` hydrated at lease start, borrowed from its reply.
+/// What `agentsfleetd` loaded at run start, borrowed from its reply.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Seed<'run> {
     /// The fleet's own window, newest first.

@@ -71,7 +71,7 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{token}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::fleet::DETAIL_INVALID_CURSOR,
+            afd_api_tenant::fleet::DETAIL_INVALID_CURSOR,
             "{token}"
         );
     }
@@ -119,7 +119,7 @@ async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
     assert_eq!(response.status(), StatusCode::PRECONDITION_REQUIRED);
     assert_eq!(
         harness::json_body(response).await["error_code"],
-        af_core::error_code::AUTHORING_PRECONDITION.as_str()
+        af_core::error_code::SETUP_PRECONDITION.as_str()
     );
 }
 
@@ -142,6 +142,8 @@ async fn creation_requires_one_header_key_and_refuses_file_sources() {
     assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
     for invalid in [
         r#"{"platform_plugin_id":"daily-digest"}"#,
+        // Plugins are gone, so a Plugin source is a shape Save does not know.
+        r#"{"source":{"kind":"plugin","plugin_id":"0199a801-1000-7000-8000-000000000001","revision_id":"0199a801-1000-7000-8000-000000000002"},"name":"daily-digest","review_digest":"review","start":{"kind":"none"}}"#,
         r#"{"source":{"kind":"file","path":"setup.json"},"name":"file","review_digest":"review","start":{"kind":"none"}}"#,
     ] {
         let response = harness::send_with_headers(

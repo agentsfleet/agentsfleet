@@ -36,7 +36,7 @@ use http::HeaderMap;
 use serde::Deserialize;
 
 use crate::handler::{Refusal, webhook};
-use crate::services::Services;
+use crate::services::IngressPlane;
 use afd_http::handler::parse_fleet_id;
 
 /// The scoped event a failed append is logged under.
@@ -84,7 +84,7 @@ pub(crate) struct FleetSourcePath {
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(FleetSourcePath { fleet_id, source }): Path<FleetSourcePath>,
     headers: HeaderMap,

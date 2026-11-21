@@ -7,7 +7,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_admission::Reply;
+use afd_turns::Reply;
 
 use super::Continuation;
 use crate::{
@@ -44,11 +44,11 @@ fn refused(provider: Option<&str>, address: Option<&str>) -> Option<TaskRefusal>
 #[test]
 fn an_unrecorded_destination_is_inherited_from_the_source_event() {
     let continuation = continuation();
-    let admission = continuation.admission();
+    let turn = continuation.turn();
     let source = id(SOURCE);
 
-    assert_eq!(admission.reply, Reply::Inherit { event_id: &source });
-    assert_eq!(admission.actor, "task:01924f4e-0000-7000-8000-0000000000a1");
+    assert_eq!(turn.reply, Reply::Inherit { turn_id: &source });
+    assert_eq!(turn.actor, "task:01924f4e-0000-7000-8000-0000000000a1");
 }
 
 #[test]
@@ -58,7 +58,7 @@ fn a_recorded_destination_names_its_connector_and_address() {
         .expect("a known connector with an address is a destination");
 
     assert_eq!(
-        recorded.admission().reply,
+        recorded.turn().reply,
         Reply::To {
             connector: "slack",
             address: "C0123456789",
@@ -72,7 +72,7 @@ fn a_cleared_destination_owes_no_reply() {
         .with_reply(None, None)
         .expect("no provider and no address is no destination");
 
-    assert_eq!(cleared.admission().reply, Reply::None);
+    assert_eq!(cleared.turn().reply, Reply::None);
 }
 
 #[test]

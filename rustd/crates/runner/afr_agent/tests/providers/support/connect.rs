@@ -4,8 +4,8 @@ use super::{CHAT_PROVIDER, Fake};
 use af_providers::{Connect, Connector, Provider, Result};
 use af_wire::{
     inference::{InferenceApi, ModelInference},
-    lease::LeasePayload,
     policy::ExecutionPolicy,
+    run::RunPayload,
 };
 
 #[derive(Debug)]
@@ -46,9 +46,9 @@ impl Connect for FixtureConnector {
         policy.inference = Some(self.policy(&policy));
         self.inner.admit(&policy)
     }
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
-        let mut lease = lease.clone();
-        lease.policy.inference = Some(self.policy(&lease.policy));
-        self.inner.connect(&lease)
+    fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>> {
+        let mut run = run.clone();
+        run.policy.inference = Some(self.policy(&run.policy));
+        self.inner.connect(&run)
     }
 }

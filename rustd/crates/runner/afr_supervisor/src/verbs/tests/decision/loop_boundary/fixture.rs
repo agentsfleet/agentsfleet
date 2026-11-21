@@ -16,7 +16,7 @@ pub(super) fn assignment() -> DecisionAssignment {
 pub(super) fn inputs() -> TaskInputsResponse<'static> {
     let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(5));
     TaskInputsResponse {
-        source_admission_id: CALL.into(),
+        source_turn_id: CALL.into(),
         accepted_revision_id: Some(CALL.into()),
         current_message: None,
         inputs: vec![],
@@ -137,14 +137,14 @@ fn outcome(mode: &str) -> DecisionOutcome {
 
 /// The tiny transport fixture has one context token; real Loop execution needs
 /// room for its accepted goal, initial instructions and one model response.
-pub(super) fn lease() -> af_wire::lease::LeasePayload<'static> {
-    let mut lease = crate::test_support::lease(super::LEASE_ID, CALL);
-    lease.policy.tools.clear();
-    lease.policy.context.context_cap_tokens = 64_000;
-    lease.policy.context.tool_window = 64;
-    lease.policy.model_context_tokens = 64_000;
-    lease.policy.context.memory_checkpoint_every = 100;
-    lease.durable_tasks = true;
-    lease.decision = Some(Box::new(assignment()));
-    lease
+pub(super) fn payload() -> af_wire::run::RunPayload<'static> {
+    let mut run = crate::test_support::payload(super::RUN_ID, CALL);
+    run.policy.tools.clear();
+    run.policy.context.context_cap_tokens = 64_000;
+    run.policy.context.tool_window = 64;
+    run.policy.model_context_tokens = 64_000;
+    run.policy.context.memory_checkpoint_every = 100;
+    run.durable_tasks = true;
+    run.decision = Some(Box::new(assignment()));
+    run
 }

@@ -26,6 +26,7 @@ percent-encoding.workspace = true
 af_core.workspace = true
 af_observability.workspace = true
 af_crypto.workspace = true
+af_validate.workspace = true
 af_wire.workspace = true
 boring.workspace = true
 bytes.workspace = true

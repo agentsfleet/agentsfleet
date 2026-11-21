@@ -20,7 +20,7 @@ struct Expired {
 }
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     sqlx::query(super::super::sql::COLLECT_COMPLETIONS)
         .bind(COMPLETION_RETENTION)
         .bind(COMPLETION_BATCH)
@@ -29,7 +29,7 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
         .map_err(query("collect bounded verified-completion inbox rows"))?;
     let expired: Vec<Expired> = sqlx::query_as(include_str!("sql/expired_tasks.sql"))
         .bind(64_i64)
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
         .fetch_all(&mut *connection)
         .await
         .map_err(query("select indexed task wall deadlines"))?;
@@ -48,7 +48,7 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
         workspace_id: owner.workspace.clone(),
     };
     let task = owner.task.clone();
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
     let _held: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_TASK)
@@ -62,8 +62,8 @@ async fn expire(tasks: &Tasks, owner: &Expired) -> Result<()> {
         .bind(&owner.task)
         .bind(TaskState::Exhausted.as_str())
         .bind("wall_deadline_reached")
-        .bind("lease_limit_reached")
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind("run_limit_reached")
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query(

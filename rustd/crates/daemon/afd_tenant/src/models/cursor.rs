@@ -15,7 +15,7 @@
 use af_core::paging::struct_cursor::{self, StructCursor};
 use serde::{Deserialize, Serialize};
 
-pub use af_core::paging::struct_cursor::Foreign;
+pub(crate) use af_core::paging::struct_cursor::Foreign;
 
 /// Cursor payload version, shared across every struct cursor issued.
 ///

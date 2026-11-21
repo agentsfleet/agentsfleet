@@ -1,13 +1,10 @@
-//! One clock for every deadline pass: every
-//! `maintenance.expired_work.interval_seconds` this task bills the last slice of each
-//! fleet lease that expired unreported, and moves each setup attempt past its
-//! deadline to accounting recovery. Both were riders on other clocks: the
-//! billing relay's and authoring's privacy pass.
+//! One clock for the deadline pass: every
+//! `maintenance.expired_work.interval_seconds` this task bills the last slice
+//! of each run that expired unreported, a fleet's or a setup draft's.
 
 use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
-use af_observability::Analytics;
 use afd_billing::biller::Biller;
 use afd_db::Db;
 
@@ -19,23 +16,20 @@ const FAILED: &str = "expiry_sweep_failed";
 /// A pass moved something.
 const COMPLETED: &str = "expiry_sweep_completed";
 
-/// The biller refused an expired lease's last slice; the next tick retries.
+/// The biller refused an expired run's last slice; the next tick retries.
 const REFUSED: &str = "expiry_sweep_refused";
 
 pub(super) fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,
-    analytics: &Analytics,
     biller: Arc<dyn Biller>,
     startup: &super::schedule::Startup,
     settings: crate::config::maintenance::ExpiredWork,
 ) {
     let passes = Passes {
         database: database.clone(),
-        biller: Arc::clone(&biller),
+        biller,
         entropy: Entropy::new(),
-        drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller)
-            .with_analytics(analytics.clone()),
     };
     let mut interval = startup.interval(
         super::EXPIRY,
@@ -57,20 +51,19 @@ struct Passes {
     database: Db,
     biller: Arc<dyn Biller>,
     entropy: Entropy,
-    drafts: afd_authoring::Drafts,
 }
 
 impl Passes {
-    /// Both deadline passes; a failed one is logged and the other still runs.
+    /// The deadline pass; a failed one is logged and the next tick retries.
     async fn tick(&self) -> Ticked {
-        let leases = afd_fleet::lease::billing_sweep::bill_expired_leases(
+        let runs = afd_fleet::run::billing_sweep::bill_expired_runs(
             &self.database,
             self.biller.as_ref(),
             &self.entropy,
             af_core::clock::now(),
         )
         .await;
-        let billed = match leases {
+        let billed = match runs {
             Ok(swept) => {
                 if let (true, Some(code)) = (swept.settle_failures > 0, swept.refused) {
                     let error_code = code.as_str();
@@ -79,7 +72,7 @@ impl Passes {
                         event = REFUSED,
                         error_code,
                         refused,
-                        "the biller refused an expired lease's last slice; the next tick retries"
+                        "the biller refused an expired run's last slice; the next tick retries"
                     );
                 }
                 Some(swept.billed)
@@ -89,46 +82,29 @@ impl Passes {
                 {
                     let (event, pass, message) = (
                         &FAILED,
-                        &"leases",
-                        format_args!("expired leases wait for the next tick"),
+                        &"runs",
+                        format_args!("expired runs wait for the next tick"),
                     );
                     tracing::warn!(message, event, pass, error_code);
                 };
                 None
             }
         };
-        let expired = match self.drafts.expire_attempts().await {
-            Ok(expired) => Some(expired),
-            Err(fault) => {
-                let error_code = fault.code().as_str();
-                {
-                    let (event, pass, message) = (
-                        &FAILED,
-                        &"attempts",
-                        format_args!("lapsed attempts wait for the next tick"),
-                    );
-                    tracing::warn!(message, event, pass, error_code);
-                };
-                None
-            }
-        };
-        if billed.unwrap_or(0) + expired.unwrap_or(0) > 0 {
+        if let Some(billed) = billed.filter(|billed| *billed > 0) {
             tracing::info!(
                 event = COMPLETED,
-                expired_leases = billed.unwrap_or(0),
-                expired_attempts = expired.unwrap_or(0),
+                expired_runs = billed,
                 "deadline passes advanced"
             );
         }
-        Ticked { billed, expired }
+        Ticked { billed }
     }
 }
 
-/// What a tick's two passes did: `None` where a pass could not reach its store.
+/// What a tick's pass did: `None` when it could not reach its store.
 #[derive(Debug, PartialEq, Eq)]
 struct Ticked {
     billed: Option<u64>,
-    expired: Option<u64>,
 }
 
 #[cfg(test)]
@@ -140,28 +116,23 @@ mod tests {
 
     use super::{FAILED, Passes, Ticked};
 
-    // One tick runs both deadline passes, and a store neither can reach is
-    // logged under its code and waits for the next tick, the task still
-    // running.
+    // One tick runs the deadline pass, and a store it cannot reach is logged
+    // under its code and waits for the next tick, the task still running.
     #[tokio::test]
-    async fn a_tick_runs_both_passes_and_logs_a_store_it_cannot_reach() {
+    async fn a_tick_runs_its_pass_and_logs_a_store_it_cannot_reach() {
         let log = Capture::install();
         let database = unreachable_db();
         let biller =
             crate::billing::biller(database.clone(), af_observability::Analytics::silent());
         let passes = Passes {
-            biller: std::sync::Arc::clone(&biller),
+            biller,
             entropy: Entropy::new(),
-            drafts: afd_authoring::Drafts::new(database.clone(), Entropy::new(), biller),
             database,
         };
         assert_eq!(
             passes.tick().await,
-            Ticked {
-                billed: None,
-                expired: None
-            },
-            "both passes ran and neither reached its store"
+            Ticked { billed: None },
+            "the pass ran and did not reach its store"
         );
         let failed: Vec<_> = log
             .events()
@@ -172,19 +143,13 @@ mod tests {
             .iter()
             .filter_map(|event| event.field("pass"))
             .collect();
-        assert_eq!(passes_logged, ["leases", "attempts"]);
+        assert_eq!(passes_logged, ["runs"]);
         assert!(
             failed.iter().all(|event| event.field("error_code")
                 == Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())),
             "each failure names the unreachable store's code"
         );
         // A second tick runs again: a failure is never the task's end.
-        assert_eq!(
-            passes.tick().await,
-            Ticked {
-                billed: None,
-                expired: None
-            }
-        );
+        assert_eq!(passes.tick().await, Ticked { billed: None });
     }
 }

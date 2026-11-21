@@ -60,16 +60,17 @@ impl Session {
 
     /// Opening refusals must arrive even when the runner has sent no hello.
     pub(crate) async fn opening(router: &Router, bearer: &str, version: &str) -> Response {
-        Self::new()
-            .open_stream(
-                router,
-                StreamKind::Control,
-                Some(bearer),
-                None,
-                Body::empty(),
-                version,
-            )
-            .await
+        let session = Self::new();
+        Self::open_stream(
+            &session.context,
+            router,
+            StreamKind::Control,
+            Some(bearer),
+            None,
+            Body::empty(),
+            version,
+        )
+        .await
     }
 
     async fn control(
@@ -78,19 +79,25 @@ impl Session {
         bearer: Option<&str>,
     ) -> Result<(), Box<Response>> {
         let (mut upload, body) = af_stream::Outgoing::pipe();
-        let hello = json!({"type":"hello","request_id":1,"accepted_kinds":["authoring"],"running":[],"credits":0});
-        self.write_to(&mut upload, StreamKind::Control, &hello)
-            .await;
-        let response = self
-            .open_stream(
-                router,
-                StreamKind::Control,
-                bearer,
-                None,
-                Body::new(body),
-                protocol::VERSION,
-            )
-            .await;
+        let hello = json!({"type":"hello","request_id":1,"accepted_kinds":["fleet","setup"],"running":[],"credits":0});
+        Self::write_to(
+            &self.output,
+            &self.stop,
+            &mut upload,
+            StreamKind::Control,
+            &hello,
+        )
+        .await;
+        let response = Self::open_stream(
+            &self.context,
+            router,
+            StreamKind::Control,
+            bearer,
+            None,
+            Body::new(body),
+            protocol::VERSION,
+        )
+        .await;
         if response.status() != http::StatusCode::OK {
             return Err(Box::new(response));
         }
@@ -132,18 +139,18 @@ impl Session {
     }
 
     async fn attach(&mut self, router: &Router, owner: &str) {
-        for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Activity] {
+        for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Progress] {
             let (upload, body) = af_stream::Outgoing::pipe();
-            let response = self
-                .open_stream(
-                    router,
-                    kind,
-                    None,
-                    Some(owner),
-                    Body::new(body),
-                    protocol::VERSION,
-                )
-                .await;
+            let response = Self::open_stream(
+                &self.context,
+                router,
+                kind,
+                None,
+                Some(owner),
+                Body::new(body),
+                protocol::VERSION,
+            )
+            .await;
             assert_eq!(
                 response.status(),
                 http::StatusCode::OK,
@@ -154,8 +161,10 @@ impl Session {
         }
     }
 
+    /// Opens one lane. Borrows only the connection context: the session's
+    /// readers are not `Sync`, so a borrow of the whole session is not `Send`.
     async fn open_stream(
-        &self,
+        context: &Arc<afd_gateway::ConnectionContext>,
         router: &Router,
         kind: StreamKind,
         bearer: Option<&str>,
@@ -173,14 +182,14 @@ impl Session {
             request = request.header(http::header::AUTHORIZATION, format!("Bearer {token}"));
         }
         if let Some(owner) = owner {
-            request = request.header(protocol::SESSION_HEADER, owner);
+            request = request.header(protocol::CONNECTION_HEADER, owner);
         }
         let mut request = request.body(body).expect("native stream request");
-        request.extensions_mut().insert(Arc::clone(&self.context));
+        request.extensions_mut().insert(Arc::clone(context));
         request
             .extensions_mut()
             .insert(afd_http::auth::NativeRunnerConnection::new(Arc::clone(
-                &self.context,
+                context,
             )));
         router
             .clone()
@@ -200,12 +209,18 @@ impl Session {
         )
     }
 
-    async fn write_to(&self, upload: &mut DuplexStream, kind: StreamKind, message: &Value) {
+    async fn write_to(
+        output: &Budget,
+        stop: &CancellationToken,
+        upload: &mut DuplexStream,
+        kind: StreamKind,
+        message: &Value,
+    ) {
         let deadline = Instant::now() + TIMEOUT;
-        let frame = af_stream::encode(message, &self.output, kind, &self.stop, deadline)
+        let frame = af_stream::encode(message, output, kind, stop, deadline)
             .await
             .expect("encode native frame");
-        af_stream::write(upload, &frame, &self.stop, deadline)
+        af_stream::write(upload, &frame, stop, deadline)
             .await
             .expect("write native frame");
     }

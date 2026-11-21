@@ -1,39 +1,39 @@
-//! A fixed span budget: so many spans per lease, so many per second.
+//! A fixed span budget: so many spans per run, so many per second.
 //!
 //! ```text
-//!   span starts ─► LeaseSampler::should_sample
-//!                    │ no parent: a lease's root ─► claim a slot, charge the second; always kept
+//!   span starts ─► RunSampler::should_sample
+//!                    │ no parent: a run's root ─► claim a slot, charge the second; always kept
 //!                    │ a parent that was shed    ─► shed, counted (its trace has a hole above it)
-//!                    │ a kept parent: its lease's slot ─► per-lease count < MAX_LEASE_SPANS?
+//!                    │ a kept parent: its run's slot ─► per-run count < MAX_RUN_SPANS?
 //!                    │                                   per-second window < RUNNER_SPANS_PER_SECOND?
 //!                    │                                   both ─► kept   either not ─► shed, counted
-//!   root span ends ─► LeaseReaper::ended ─► the slot is free for the next lease
+//!   root span ends ─► RunReaper::ended ─► the slot is free for the next run
 //! ```
 //!
 //! # Why the root is always kept
 //!
-//! Each lease is its own trace, joined to the daemon's `fleet.delivery` span by
-//! its `agentsfleet.event.id`; its `agentsfleet.lease.id` tells a redelivered
+//! Each run is its own trace, joined to the daemon's `fleet.delivery` span by
+//! its `agentsfleet.turn.id`; its `agentsfleet.run.id` tells a redelivered
 //! event's runs apart. A trace
 //! whose root was shed is a pile of children an operator cannot find, so the
-//! root spends one of its lease's spans and is never refused. It is charged to
+//! root spends one of its run's spans and is never refused. It is charged to
 //! its second when that second has room, so the children it admits make room
 //! for it; in a second already spent it is kept uncharged. What bounds roots is
-//! the rate leases start at, not this budget: one per lease, and a runner holds
-//! at most `MAX_WORKERS` leases at a time — so a second's exports can pass the
+//! the rate runs start at, not this budget: one per run, and a runner holds
+//! at most `MAX_WORKERS` runs at a time — so a second's exports can pass the
 //! budget by the roots started after it was spent.
 //!
 //! # Why a shed span's children are shed
 //!
 //! The SDK keeps a span it dropped as the active parent of what starts inside
 //! it. Admitting those children would export spans pointing at a parent the
-//! collector never received — an orphaned subtree that spends its lease's
+//! collector never received — an orphaned subtree that spends its run's
 //! budget and joins nothing. So a child of a span that was not sampled is shed
 //! and counted like any other.
 //!
 //! # Why atomics and no lock
 //!
-//! The sampler runs on every span start on every worker. The lease table is a
+//! The sampler runs on every span start on every worker. The run table is a
 //! fixed array of slots claimed by compare-and-swap, and the window is one
 //! packed word, so admitting a span never waits on another worker and never
 //! allocates. A full table, which a leak would cause, sheds children rather
@@ -48,20 +48,20 @@ use opentelemetry::trace::{Link, SpanKind, TraceContextExt as _, TraceId, TraceS
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_sdk::trace::{SamplingDecision, SamplingResult, ShouldSample, SpanData};
 
-use self::table::{LeaseTable, SecondWindow};
+use self::table::{RunTable, SecondWindow};
 
 mod table;
 
 #[cfg(test)]
 pub(crate) mod tests;
 
-/// Spans one lease may export, its root included: the root and 255 children.
+/// Spans one run may export, its root included: the root and 255 children.
 ///
-/// Sized from the heaviest lease the suites drive — the repair bundle's run,
+/// Sized from the heaviest run the suites drive — the repair bundle's run,
 /// a root, its `invoke_agent`, and a `chat` and an `execute_tool` per step,
-/// under forty spans — with room for a lease many times longer. A model looping
-/// on one tool reaches it, and the rest of that lease is counted, not sent.
-pub const MAX_LEASE_SPANS: u32 = 256;
+/// under forty spans — with room for a run many times longer. A model looping
+/// on one tool reaches it, and the rest of that run is counted, not sent.
+pub const MAX_RUN_SPANS: u32 = 256;
 
 /// Spans the whole runner may export per monotonic second: children, and the
 /// roots that start while the second has room. A root in a spent second is
@@ -76,15 +76,15 @@ pub const MAX_LEASE_SPANS: u32 = 256;
 /// drops inside the SDK, where nothing counts it.
 pub const RUNNER_SPANS_PER_SECOND: u32 = 128;
 
-/// Leases the table tracks at once: four times the most a runner can hold, so
-/// a lease's slot is free long before the table could fill.
-const TRACKED_LEASES: usize = MAX_WORKERS as usize * 4;
+/// Runs the table tracks at once: four times the most a runner can hold, so
+/// a run's slot is free long before the table could fill.
+const TRACKED_RUNS: usize = MAX_WORKERS as usize * 4;
 
 /// The two budgets, adjustable for a test that needs one out of the way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
-    /// Spans one lease may export.
-    pub per_lease: u32,
+    /// Spans one run may export.
+    pub per_run: u32,
     /// Spans the runner may export per second.
     pub per_second: u32,
 }
@@ -92,7 +92,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            per_lease: MAX_LEASE_SPANS,
+            per_run: MAX_RUN_SPANS,
             per_second: RUNNER_SPANS_PER_SECOND,
         }
     }
@@ -126,13 +126,13 @@ impl Seconds for Monotonic {
 ///
 /// A concrete type implementing the SDK's own sampling trait
 /// (`M-DI-HIERARCHY`): the pipeline takes it as a `ShouldSample`, and the
-/// budget behind it is shared with its [`LeaseReaper`].
+/// budget behind it is shared with its [`RunReaper`].
 #[derive(Debug, Clone)]
-pub struct LeaseSampler {
+pub struct RunSampler {
     budget: Arc<Budget>,
 }
 
-impl LeaseSampler {
+impl RunSampler {
     /// A sampler holding `limits`, reading `clock`, calling `shed` for every
     /// span it refuses.
     #[must_use]
@@ -144,7 +144,7 @@ impl LeaseSampler {
         Self {
             budget: Arc::new(Budget {
                 limits,
-                leases: LeaseTable::with_capacity(TRACKED_LEASES),
+                runs: RunTable::with_capacity(TRACKED_RUNS),
                 window: SecondWindow::default(),
                 clock: Box::new(clock),
                 shed: Box::new(shed),
@@ -152,16 +152,16 @@ impl LeaseSampler {
         }
     }
 
-    /// The processor that frees a lease's slot when its root span ends.
+    /// The processor that frees a run's slot when its root span ends.
     #[must_use]
-    pub fn reaper(&self) -> LeaseReaper {
-        LeaseReaper {
+    pub fn reaper(&self) -> RunReaper {
+        RunReaper {
             budget: Arc::clone(&self.budget),
         }
     }
 }
 
-impl ShouldSample for LeaseSampler {
+impl ShouldSample for RunSampler {
     fn should_sample(
         &self,
         parent_context: Option<&Context>,
@@ -194,17 +194,17 @@ impl ShouldSample for LeaseSampler {
     }
 }
 
-/// Frees a lease's slot in the budget when the lease's root span ends.
+/// Frees a run's slot in the budget when the run's root span ends.
 ///
 /// An observer inside the pipeline's one processor rather than a processor of
 /// its own, so the SDK moves each ended span once instead of cloning it for a
 /// second processor (`af_otlp::SpanEnd` says why).
 #[derive(Debug)]
-pub struct LeaseReaper {
+pub struct RunReaper {
     budget: Arc<Budget>,
 }
 
-impl SpanEnd for LeaseReaper {
+impl SpanEnd for RunReaper {
     fn ended(&self, span: &SpanData) {
         if span.parent_span_id == opentelemetry::trace::SpanId::INVALID {
             self.budget.close(span.span_context.trace_id());
@@ -215,7 +215,7 @@ impl SpanEnd for LeaseReaper {
 /// The state the sampler and its reaper share.
 struct Budget {
     limits: Limits,
-    leases: LeaseTable,
+    runs: RunTable,
     window: SecondWindow,
     clock: Box<dyn Seconds>,
     shed: Box<dyn Fn() + Send + Sync>,
@@ -225,35 +225,35 @@ impl core::fmt::Debug for Budget {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Budget")
             .field("limits", &self.limits)
-            .field("leases", &self.leases)
+            .field("runs", &self.runs)
             .finish_non_exhaustive()
     }
 }
 
 impl Budget {
-    /// A lease's root span started: its slot is claimed, its root counted
-    /// against the lease, and charged to the second when the second has room.
+    /// A run's root span started: its slot is claimed, its root counted
+    /// against the run, and charged to the second when the second has room.
     /// A full table leaves the root kept and its children untracked, which
     /// sheds them; a spent second keeps the root uncharged, because a root is
     /// never refused.
     fn open(&self, trace: TraceId) {
-        let _claimed = self.leases.open(key(trace));
+        let _claimed = self.runs.open(key(trace));
         let _charged = self
             .window
             .take(self.clock.second(), self.limits.per_second);
     }
 
-    /// A child span started: kept when its lease and the second both have
-    /// room. A per-lease reservation the second refused is handed back, so a
-    /// lease is charged only for what it exported.
+    /// A child span started: kept when its run and the second both have
+    /// room. A per-run reservation the second refused is handed back, so a
+    /// run is charged only for what it exported.
     fn admit(&self, trace: TraceId) -> bool {
-        let admitted = match self.leases.find(key(trace)) {
-            Some(lease) if lease.reserve(self.limits.per_lease) => {
+        let admitted = match self.runs.find(key(trace)) {
+            Some(run) if run.reserve(self.limits.per_run) => {
                 let fits = self
                     .window
                     .take(self.clock.second(), self.limits.per_second);
                 if !fits {
-                    lease.unreserve();
+                    run.unreserve();
                 }
                 fits
             }
@@ -269,9 +269,9 @@ impl Budget {
         false
     }
 
-    /// A lease's root span ended: its slot is free.
+    /// A run's root span ended: its slot is free.
     fn close(&self, trace: TraceId) {
-        self.leases.close(key(trace));
+        self.runs.close(key(trace));
     }
 }
 

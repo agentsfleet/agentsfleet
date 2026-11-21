@@ -1,53 +1,56 @@
 //! The ledger: what each tool call did, kept in one place.
 //!
-//! [`Ledger::call`] is the one way a call runs, the shape Exonum's
+//! `guffbolt` opens, runs and ends each call itself, the shape Exonum's
 //! `TopLevelContext::call` gives a transaction: one wrapper guarantees one
-//! outcome. A call is numbered from 1 and opens with its `tool_call_started`
-//! frame. It ends exactly once: its `tool_call_completed` frame, its trace row
-//! and, when its handler returned, its full record. A call whose future is
-//! dropped before the handler returned (the lease stopped, the run future was
-//! dropped) ends `interrupted`, live and in the trace, so no run ending can
-//! leave a call open. Records are held only while they fit what one event may
-//! keep, measured as the daemon measures it: one it would refuse is not held
-//! to be posted.
+//! outcome. The ledger hears both ends. [`Ledger::open`] numbers a call from
+//! 1 and sends its `tool_call_started` frame. [`Ledger::close`] sends its
+//! `tool_call_completed` frame, adds its trace row and, when it answered,
+//! holds its full record. A call whose run was dropped before it answered
+//! (the run stopped, the run future was dropped) ends `interrupted`, live
+//! and in the trace, so no run ending can leave a call open. Every record is
+//! held, whole: no event budget caps them (`records` cuts only one that would
+//! not fit a post on its own).
+//!
+//! Each record names the turn newest when its call's step began, the mark
+//! `guffbolt` ends the call with; a call whose step carried none, a child's,
+//! names the newest the run heard, and the run's own turn before any. An
+//! edit's record, its trace row and its end frame carry the files it changed,
+//! read from the report its file tool ended its output with (`changes`).
 
 use std::borrow::Cow;
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::Instant;
 
 use af_core::clock::{saturating_millis, saturating_millis_signed};
-use af_providers::Call;
 use af_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
-use af_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
+use af_wire::tool_detail::ToolCallRecord;
 use af_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
-use afr_tools::sandbox::ImageAttachment;
-use afr_tools::{ToolErrorCode, ToolOutput};
+use afr_tools::ToolErrorCode;
+use guffbolt::{Call, CallEnd, CallOutcome, Mark};
 use serde_json::{Map, Value};
-use tracing::Instrument as _;
+use tracing::Span;
 
 use crate::engine::EventSink;
-use crate::records::record;
+use crate::records::{Item, record};
 use crate::spans;
 use crate::trace::{Outcome, Trace, bounded_arguments};
 use af_secrets::{Clean, Scrub};
 
 pub(crate) const EVENT_CALL_STARTED: &str = "tool_call_started";
 pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";
-/// A full record past the event's budget, kept out of the post. The trace
-/// still lists the call, so an operator's "show all" finds no record for it.
-const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 
 /// Every call one run made, its children's included.
 ///
 /// Shared by the run's loop and every child loop it starts, so their calls
 /// take one counter and land in one trace. What a call changes sits behind
-/// one lock, taken to open the call and again to end it, never across its
-/// handler: a child's call opens and ends while its parent's `delegate` call
-/// is still open.
+/// one lock, taken to open the call and again to end it, never while it
+/// runs: a child's call opens and ends while its parent's `delegate` call is
+/// still open.
 pub(crate) struct Ledger<'run> {
-    lease_id: &'run str,
+    run_id: &'run str,
+    /// The turn the run was assigned for.
+    turn_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
     book: Mutex<Book>,
@@ -58,40 +61,33 @@ pub(crate) struct Ledger<'run> {
 struct Book {
     trace: Trace,
     records: Vec<ToolCallRecord<'static>>,
-    /// What the held records spend of the event's budget.
-    spent: usize,
     calls: u64,
+    /// The newest turn a call's step began with, once one did.
+    newest: Option<String>,
 }
 
 impl<'run> Ledger<'run> {
-    /// Lease `lease_id`'s ledger, sending its frames to `sink` and masking
-    /// through `scrub`.
-    pub(crate) fn new(lease_id: &'run str, sink: &'run dyn EventSink, scrub: &'run Scrub) -> Self {
+    /// Run `run_id`'s ledger, assigned for `turn_id`, sending its frames to
+    /// `sink` and masking through `scrub`.
+    pub(crate) fn new(
+        run_id: &'run str,
+        turn_id: &'run str,
+        sink: &'run dyn EventSink,
+        scrub: &'run Scrub,
+    ) -> Self {
         Self {
-            lease_id,
+            run_id,
+            turn_id,
             sink,
             scrub,
             book: Mutex::default(),
         }
     }
 
-    /// Runs `call` through `handler` and hands back the scrubbed text the
-    /// model reads, and the image the call read, when it read one.
-    pub(crate) async fn call(
-        &self,
-        call: &Call,
-        handler: impl Future<Output = ToolOutput>,
-    ) -> (Clean<String>, Option<ImageAttachment>) {
-        let open = self.open(call);
-        let span = spans::execute_tool(&call.name, &open.id);
-        let output = handler.instrument(span.clone()).await;
-        spans::failed(&span, output.error_code);
-        open.close(output)
-    }
-
-    /// Opens the next call: numbers it, scrubs and bounds its arguments, and
-    /// sends its start frame.
-    fn open<'a>(&'a self, call: &'a Call) -> Opened<'a, 'run> {
+    /// Opens `call` as the run's next: numbers it, scrubs and bounds its
+    /// arguments, and sends its start frame. Hands back what its end needs,
+    /// and the span it runs in.
+    pub(crate) fn open(&self, call: &Call) -> (Opened, Span) {
         // Numbered and announced under the lock, so the start frames leave
         // in the order the calls were numbered.
         let mut book = self.book();
@@ -104,11 +100,11 @@ impl<'run> Ledger<'run> {
         // fallback would break it; a JSON value always encodes, so there is
         // no failure to fall back from or carry.
         let args_redacted = Value::Object(bounded.clone()).to_string();
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let call_id = id.as_str();
         let tool = call.name.as_str();
         let event = EVENT_CALL_STARTED;
-        tracing::debug!(lease_id, call_id, tool, event);
+        tracing::debug!(run_id, call_id, tool, event);
         self.sink
             .emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
                 name: Cow::Owned(call.name.clone()),
@@ -116,31 +112,103 @@ impl<'run> Ledger<'run> {
                 call_id: Cow::Owned(id.clone()),
             }));
         drop(book);
-        Opened {
-            ledger: self,
+        let span = spans::execute_tool(&call.name, &id);
+        let opened = Opened {
             number,
             id,
-            name: &call.name,
-            arguments: Some((shown, bounded)),
-            started: Instant::now(),
-        }
+            shown,
+            bounded,
+        };
+        (opened, span)
     }
 
-    /// Holds `record` when it fits what is left of [`DETAIL_EVENT_MAX_BYTES`].
-    /// A record past it is dropped and a later, smaller one may still fit, as
-    /// the daemon keeps them.
-    fn hold(&self, book: &mut Book, record: ToolCallRecord<'static>) {
-        let after = book.spent.saturating_add(record.byte_count());
-        if after <= DETAIL_EVENT_MAX_BYTES {
-            book.spent = after;
-            book.records.push(record);
-        } else {
-            let lease_id = self.lease_id;
-            let call_number = record.call_number;
-            let bytes = record.byte_count();
-            let event = EVENT_RECORD_DROPPED;
-            tracing::warn!(lease_id, call_number, bytes, event);
+    /// Ends the call `opened` holds, as `end` says. A call that answered has
+    /// its error code typed on its span and its output masked in place, so
+    /// the model reads what the frames and the trace show.
+    pub(crate) fn close(&self, opened: Opened, end: CallEnd<'_>) {
+        let status = status(end.outcome());
+        let Opened {
+            number,
+            id,
+            shown,
+            bounded,
+        } = opened;
+        let ended = Ended {
+            number,
+            id,
+            name: &end.call.name,
+        };
+        let Some(output) = end.output else {
+            let outcome = Outcome::interrupted(end.duration);
+            self.end(&mut self.book(), ended, bounded, outcome);
+            return;
+        };
+        spans::failed(end.span, output.error_code);
+        if output.error_code == Some(ToolErrorCode::OutOfMemory.into()) {
+            record::out_of_memory();
         }
+        let text = self.scrub.clean(std::mem::take(&mut output.text));
+        let mut outcome = Outcome::ended(status, &text, output.exit_code, end.duration);
+        let kind = changes::kind(ended.name);
+        let changed = changes::changed(self.run_id, kind, status, &text);
+        outcome.changes.clone_from(&changed);
+        let item = Item {
+            turn_id: self.turn(end.mark),
+            kind,
+            tool: ended.name.to_owned(),
+            status: changes::item_status(status),
+            changes: changed,
+        };
+        let full = record(number, shown, &text, item);
+        output.text = text.into_inner();
+        let mut book = self.book();
+        self.end(&mut book, ended, bounded, outcome);
+        book.records.push(full);
+    }
+
+    /// The turn a call's item names: `mark`, the newest when its step began,
+    /// which the run has then heard; the newest the run heard for a call
+    /// whose step carried none; the run's own before any.
+    fn turn(&self, mark: Option<&Mark>) -> String {
+        let mut book = self.book();
+        if let Some(mark) = mark {
+            book.newest = Some(mark.as_str().to_owned());
+        }
+        book.newest
+            .clone()
+            .unwrap_or_else(|| self.turn_id.to_owned())
+    }
+
+    /// Logs a call's end, counts it, sends its end frame and adds its trace
+    /// row.
+    fn end(
+        &self,
+        book: &mut Book,
+        ended: Ended<'_>,
+        bounded: Map<String, Value>,
+        outcome: Outcome,
+    ) {
+        let run_id = self.run_id;
+        let call_id = ended.id.as_str();
+        let tool = ended.name;
+        let status = outcome.status;
+        let duration_ms = saturating_millis(outcome.elapsed);
+        let event = EVENT_CALL_COMPLETED;
+        tracing::debug!(run_id, call_id, tool, ?status, duration_ms, event);
+        record::tool_call(Tool::of(tool), tool_outcome(status), outcome.elapsed);
+        self.sink
+            .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
+                name: Cow::Owned(tool.to_owned()),
+                ms: saturating_millis_signed(outcome.elapsed),
+                call_id: Cow::Owned(ended.id),
+                status: outcome.status,
+                output_head: outcome.head.clone().map(Cow::Owned),
+                output_tail: outcome.tail.clone().map(Cow::Owned),
+                output_line_count: outcome.line_count,
+                exit_code: outcome.exit_code,
+                changes: outcome.changes.clone(),
+            }));
+        book.trace.push(ended.number, tool, bounded, outcome);
     }
 
     /// The run's known trace, including zero calls, and every record.
@@ -156,65 +224,30 @@ impl<'run> Ledger<'run> {
     }
 }
 
-/// One call between its start frame and its end.
-struct Opened<'a, 'run> {
-    ledger: &'a Ledger<'run>,
+/// One call between its start frame and its end: what its trace row and its
+/// record are built from.
+pub(crate) struct Opened {
+    number: u64,
+    id: String,
+    /// The scrubbed arguments, whole, for the record.
+    shown: Clean<Value>,
+    /// The same arguments within the trace row's bounds.
+    bounded: Map<String, Value>,
+}
+
+/// Which call ended, as its end frame and its trace row name it.
+struct Ended<'a> {
     number: u64,
     id: String,
     name: &'a str,
-    /// The scrubbed arguments for the record, and their bounded form for the
-    /// trace row; taken when the call ends, so it ends once.
-    arguments: Option<(Clean<Value>, Map<String, Value>)>,
-    started: Instant,
 }
 
-impl Opened<'_, '_> {
-    /// Ends the call with what its handler returned, and hands back the
-    /// scrubbed text the model reads and the image the call read.
-    fn close(mut self, output: ToolOutput) -> (Clean<String>, Option<ImageAttachment>) {
-        if output.error_code == Some(ToolErrorCode::OutOfMemory) {
-            record::out_of_memory();
-        }
-        let text = self.ledger.scrub.clean(output.text);
-        let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
-        let status = if failed {
-            ToolCallStatus::Failed
-        } else {
-            ToolCallStatus::Succeeded
-        };
-        let outcome = Outcome::ended(status, &text, output.exit_code, self.started.elapsed());
-        if let Some((shown, bounded)) = self.arguments.take() {
-            let full = record(self.number, shown, &text);
-            let mut book = self.ledger.book();
-            self.end(&mut book, bounded, outcome);
-            self.ledger.hold(&mut book, full);
-        }
-        (text, output.image)
-    }
-
-    /// Logs the end, sends the end frame and adds the trace row.
-    fn end(&mut self, book: &mut Book, bounded: Map<String, Value>, outcome: Outcome) {
-        let lease_id = self.ledger.lease_id;
-        let call_id = self.id.as_str();
-        let tool = self.name;
-        let status = outcome.status;
-        let duration_ms = saturating_millis(outcome.elapsed);
-        let event = EVENT_CALL_COMPLETED;
-        tracing::debug!(lease_id, call_id, tool, ?status, duration_ms, event);
-        record::tool_call(Tool::of(tool), tool_outcome(status), outcome.elapsed);
-        self.ledger
-            .sink
-            .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
-                name: Cow::Owned(self.name.to_owned()),
-                ms: saturating_millis_signed(outcome.elapsed),
-                call_id: Cow::Owned(std::mem::take(&mut self.id)),
-                status: outcome.status,
-                output_head: outcome.head.clone().map(Cow::Owned),
-                output_tail: outcome.tail.clone().map(Cow::Owned),
-                output_line_count: outcome.line_count,
-                exit_code: outcome.exit_code,
-            }));
-        book.trace.push(self.number, self.name, bounded, outcome);
+/// How a call ended, as its frames and its trace row carry it.
+const fn status(outcome: CallOutcome) -> ToolCallStatus {
+    match outcome {
+        CallOutcome::Succeeded => ToolCallStatus::Succeeded,
+        CallOutcome::Failed => ToolCallStatus::Failed,
+        CallOutcome::Interrupted => ToolCallStatus::Interrupted,
     }
 }
 
@@ -227,18 +260,11 @@ const fn tool_outcome(status: ToolCallStatus) -> ToolOutcome {
     }
 }
 
-impl Drop for Opened<'_, '_> {
-    fn drop(&mut self) {
-        if let Some((_, bounded)) = self.arguments.take() {
-            let ledger = self.ledger;
-            self.end(
-                &mut ledger.book(),
-                bounded,
-                Outcome::interrupted(self.started.elapsed()),
-            );
-        }
-    }
-}
+mod changes;
 
+#[cfg(test)]
+mod item_tests;
+#[cfg(test)]
+mod test_calls;
 #[cfg(test)]
 mod tests;

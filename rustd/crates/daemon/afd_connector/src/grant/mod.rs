@@ -46,13 +46,6 @@ pub use self::parse::{Grant, Install, InstallClaim};
 /// The context a failed install write reports under.
 const CONTEXT_INSTALL: &str = "record a connector install";
 
-/// Why the handle's serialization cannot fail — see [`handle_body`].
-///
-/// Named once rather than spelled at the site, so the invariant reads as a
-/// stated fact rather than as a hopeful message.
-const HANDLE_IS_ALWAYS_SERIALIZABLE: &str =
-    "a JSON object of strings and integers always serializes";
-
 /// The last connect stamp this process handed out, in epoch milliseconds: the
 /// unit the handle stores it in, and the step a strictly later one moves by.
 ///
@@ -94,21 +87,10 @@ fn connected_at(now: Timestamp) -> Timestamp {
 /// bytes are a non-empty JSON object within bound.
 ///
 /// # Errors
-/// Reports a handle past the bound a vault row may hold.
-///
-/// # Panics
-/// Cannot. Infallible, and the reason is structural rather than statistical:
-/// the handle is a `Map<String, Value>` this crate built out of strings and
-/// integers, and serializing one has no error case — the failures
-/// `to_raw_value` reports come from a custom `Serialize` refusing or from a
-/// non-string map key, and neither is constructible here.
+/// Reports a handle past the bound a vault row may hold, or one that would
+/// not serialize, which a map of strings and integers never does.
 fn handle_body(grant: &Grant) -> Result<SecretBody> {
-    #[expect(
-        clippy::expect_used,
-        reason = "a serde_json Map of strings and integers has no serialization failure; \
-                  see the paragraph above for why the arm is unconstructible"
-    )]
-    let raw = serde_json::value::to_raw_value(&grant.handle).expect(HANDLE_IS_ALWAYS_SERIALIZABLE);
+    let raw = serde_json::value::to_raw_value(&grant.handle)?;
     Ok(SecretBody::parse(&raw)?)
 }
 
@@ -257,7 +239,7 @@ impl Grants {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         match self
             .vault
             .create_in(transaction, workspace, name, body, now)

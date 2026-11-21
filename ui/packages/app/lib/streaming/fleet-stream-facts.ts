@@ -1,7 +1,7 @@
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import type { FleetFacts } from "@/lib/events/run-summary";
+import type { FleetFacts } from "@/lib/turns/run-summary";
 import { figure } from "./fleet-stream-row";
 
 // What a live frame says about the FLEET rather than about a row: the
@@ -31,7 +31,7 @@ const NO_PATCH: Partial<FleetFacts> = Object.freeze({});
  */
 export function factsOf(frame: LiveFrame): Partial<FleetFacts> {
   switch (frame.kind) {
-    case FRAME_KIND.EVENT_COMPLETE:
+    case FRAME_KIND.TURN_COMPLETE:
       return {
         status: fleetStatus(frame.fleet_status),
         pendingApprovals: figure(frame.pending_approvals),

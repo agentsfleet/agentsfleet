@@ -7,7 +7,7 @@
 //! spent before then is a debt the next grant repays. The built-in
 //! implementation is [`LedgerBiller`](crate::ledger::LedgerBiller); a billing
 //! service in its own process or a third-party metering system is another
-//! implementation of the same trait, held as `Arc<dyn Biller>` (billing §11).
+//! implementation of the same trait, held as `Arc<dyn Biller>`, per the billing design.
 //!
 //! `billing.usage_lines` records what happened (always ours); a biller moves
 //! money from it. `settle` is idempotent on each line's `(work, kind, seq)`, so
@@ -35,10 +35,11 @@ pub use self::recording::RecordingBiller;
 /// The piece of work money is charged for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WorkKey {
-    /// A fleet run's lease.
-    FleetLease(Uuid7),
-    /// A setup-chat attempt.
-    AuthoringAttempt(Uuid7),
+    /// A fleet run's run.
+    FleetRun(Uuid7),
+    /// A draft-owned setup run, by the run's id. The charges page shows its
+    /// lines as `setup`, with the run as their `run_id`.
+    SetupRun(Uuid7),
 }
 
 impl WorkKey {
@@ -46,8 +47,8 @@ impl WorkKey {
     #[must_use]
     pub const fn work_type(&self) -> &'static str {
         match self {
-            Self::FleetLease(_) => sql::work::FLEET_LEASE,
-            Self::AuthoringAttempt(_) => sql::work::AUTHORING_ATTEMPT,
+            Self::FleetRun(_) => sql::work::FLEET_RUN,
+            Self::SetupRun(_) => sql::work::SETUP_RUN,
         }
     }
 
@@ -55,7 +56,7 @@ impl WorkKey {
     #[must_use]
     pub const fn id(&self) -> &Uuid7 {
         match self {
-            Self::FleetLease(id) | Self::AuthoringAttempt(id) => id,
+            Self::FleetRun(id) | Self::SetupRun(id) => id,
         }
     }
 }
@@ -72,17 +73,22 @@ pub struct Account {
 /// What a charge names beside its work, for the charges page and budgets.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribution {
-    /// A fleet run: the fleet, its name at charge time, and the event it ran.
+    /// A fleet run: the fleet, its name at charge time, and the turn it ran.
     Fleet {
         /// The fleet.
         fleet: Uuid7,
         /// The fleet's name when the line was written.
         fleet_name: String,
-        /// The event the run answered.
-        event_id: Uuid7,
+        /// The turn the run answered.
+        turn_id: Uuid7,
     },
-    /// A setup-chat attempt; the attempt is the work itself.
-    SetupChat,
+    /// A draft-owned run's setup turn: the run is the work, and the line
+    /// names the draft message it ran as its `turn_id`, so a line reaches its
+    /// draft through the run and its message directly.
+    SetupRun {
+        /// The draft message the run ran.
+        message: Uuid7,
+    },
 }
 
 /// A request to check that `payer` can fund `next` more for `work`.
@@ -196,7 +202,7 @@ impl Balance {
     }
 }
 
-/// Checks funds and charges money for work (billing §11).
+/// Checks funds and charges money for work, per the billing design.
 ///
 /// `check` writes nothing; `settle` is idempotent on each line's
 /// `(work, kind, seq)`.

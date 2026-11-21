@@ -33,6 +33,10 @@ async fn checkpoint_real_sdk_verifies_create_only_ciphertext_and_restore_custody
     exercise(roundtrip).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn roundtrip(case: &Case) {
     let server = Server::start().await;
     let fixture = Decisions::create(case).await;
@@ -76,16 +80,16 @@ async fn allocate(
     request.logical_bytes = plaintext.len() as u64;
     request.entry_count = 1;
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request))
+        .plan_checkpoint(case.run(), &valid(request))
         .await
         .expect("capture plan");
     let checkpoint = id(&plan.checkpoint_id);
     let objects = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointObjectsInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id.clone(),
                 objects: vec![CheckpointPlaintext {
@@ -100,6 +104,10 @@ async fn allocate(
     (plan, objects.items.into_iter().next().expect("one object"))
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn upload(
     case: &Case,
     tasks: &Tasks,
@@ -121,10 +129,10 @@ async fn upload(
     );
     let uploads = tasks
         .checkpoint_uploads(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointUploadsInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id.clone(),
                 objects: vec![CheckpointUpload {
@@ -192,10 +200,10 @@ async fn confirm(
     let checkpoint = id(&plan.checkpoint_id);
     let confirmed = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointAuthorizationInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 purpose: CheckpointTransferPurpose::Upload,
                 pin_id: Some(plan.pin.id.clone()),
@@ -230,10 +238,10 @@ async fn restore(
     let checkpoint = id(&plan.checkpoint_id);
     let restore = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointAuthorizationInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 purpose: CheckpointTransferPurpose::Restore,
                 pin_id: None,
@@ -244,10 +252,10 @@ async fn restore(
         .expect("restore bootstrap");
     let objects = tasks
         .checkpoint_objects(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointReadQuery {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 pin_id: restore.plan.pin.id,
                 starting_after: None,
             }),
@@ -295,10 +303,10 @@ async fn publish(
     let page = plan.page_ids.first().expect("checkpoint manifest page");
     tasks
         .commit_checkpoint(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(CheckpointCommitInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id.clone(),
                 manifest_root: checkpoint_digest::manifest_root([(page.as_str(), digest.as_str())]),
@@ -333,11 +341,11 @@ async fn write_page(
     let page = plan.page_ids.first().expect("checkpoint manifest page");
     tasks
         .write_checkpoint_page(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &id(page),
             &valid(CheckpointPageInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id.clone(),
                 digest: digest.clone(),

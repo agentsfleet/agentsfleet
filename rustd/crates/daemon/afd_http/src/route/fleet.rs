@@ -25,7 +25,7 @@ pub enum FleetRoute {
     /// One fleet: read it, steer it, or delete it.
     Detail,
     /// Creator-private editor context with bounded conversations and receipts.
-    AuthoringContext,
+    SetupContext,
     /// Apply a reviewed private improvement to this fleet's setup.
     Revisions,
     /// The fleet's message thread.
@@ -40,14 +40,14 @@ pub enum FleetRoute {
     Schedule,
     /// Forcing a schedule to sync now.
     ScheduleSync,
-    /// The fleet's event history.
-    Events,
-    /// The fleet's live event stream.
-    EventsStream,
-    /// One event.
-    Event,
-    /// One tool call of an event, in full.
-    ToolCall,
+    /// The fleet's turn history.
+    Turns,
+    /// The fleet's live turn stream.
+    TurnsStream,
+    /// One turn: read it, or stop it.
+    Turn,
+    /// One tool call of a turn, in full.
+    Item,
     /// What the fleet remembers.
     Memories,
     /// One memory entry.
@@ -64,7 +64,7 @@ impl FleetRoute {
     /// Every fleet route.
     pub const ALL: &'static [Self] = &[
         Self::Detail,
-        Self::AuthoringContext,
+        Self::SetupContext,
         Self::Revisions,
         Self::Messages,
         Self::Tasks,
@@ -72,10 +72,10 @@ impl FleetRoute {
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleSync,
-        Self::Events,
-        Self::EventsStream,
-        Self::Event,
-        Self::ToolCall,
+        Self::Turns,
+        Self::TurnsStream,
+        Self::Turn,
+        Self::Item,
         Self::Memories,
         Self::Memory,
         Self::MemoryAccess,
@@ -91,15 +91,14 @@ impl FleetRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::AuthoringContext
+            Self::SetupContext
             | Self::Tasks
-            | Self::Events
-            | Self::EventsStream
-            | Self::Event
-            | Self::ToolCall
+            | Self::Turns
+            | Self::TurnsStream
+            | Self::Item
             | Self::Memories
             | Self::Grants => &[Verb::Get],
-            Self::Task => &[Verb::Get, Verb::Patch],
+            Self::Task | Self::Turn => &[Verb::Get, Verb::Patch],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync | Self::Revisions => &[Verb::Post],
             Self::MemoryAccess => &[Verb::Patch],
@@ -114,13 +113,13 @@ impl FleetRoute {
         RouteMeta::new(Guard::Bearer, self.class(), self.template(), self.scopes())
     }
 
-    /// The event tail streams; everything else answers once. Exhaustive
+    /// The turn tail streams; everything else answers once. Exhaustive
     /// rather than a wildcard, so a new route has to say which it is.
     const fn class(self) -> RouteClass {
         match self {
-            Self::EventsStream => RouteClass::Stream,
+            Self::TurnsStream => RouteClass::Stream,
             Self::Detail
-            | Self::AuthoringContext
+            | Self::SetupContext
             | Self::Revisions
             | Self::Messages
             | Self::Tasks
@@ -128,9 +127,9 @@ impl FleetRoute {
             | Self::Schedules
             | Self::Schedule
             | Self::ScheduleSync
-            | Self::Events
-            | Self::Event
-            | Self::ToolCall
+            | Self::Turns
+            | Self::Turn
+            | Self::Item
             | Self::Memories
             | Self::Memory
             | Self::MemoryAccess
@@ -143,7 +142,7 @@ impl FleetRoute {
     const fn template(self) -> &'static str {
         match self {
             Self::Detail => fleet_path!(""),
-            Self::AuthoringContext => fleet_path!("/authoring-context"),
+            Self::SetupContext => fleet_path!("/setup-context"),
             Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
             Self::Tasks => fleet_path!("/tasks"),
@@ -166,10 +165,10 @@ impl FleetRoute {
             // `cli/src/lib/api-paths.ts` and `public/openapi.json` name the new
             // spelling in the same diff.
             Self::ScheduleSync => fleet_path!("/schedules/{schedule_id}/sync"),
-            Self::Events => fleet_path!("/events"),
-            Self::EventsStream => fleet_path!("/events/stream"),
-            Self::Event => fleet_path!("/events/{event_id}"),
-            Self::ToolCall => fleet_path!("/events/{event_id}/tool-calls/{call_id}"),
+            Self::Turns => fleet_path!("/turns"),
+            Self::TurnsStream => fleet_path!("/turns/stream"),
+            Self::Turn => fleet_path!("/turns/{turn_id}"),
+            Self::Item => fleet_path!("/turns/{turn_id}/items/{item_id}"),
             Self::Memories => fleet_path!("/memories"),
             Self::Memory => fleet_path!("/memories/{key}"),
             Self::MemoryAccess => fleet_path!("/memory-access"),
@@ -187,18 +186,17 @@ impl FleetRoute {
             Self::Detail => Scopes::rwa(FLEET_READ, FLEET_WRITE, FLEET_ADMIN),
             // Who may read and publish shared memory is an edit to the fleet,
             // not a lifecycle transition, so it takes the write scope.
-            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::AuthoringContext => {
+            Self::Revisions | Self::Memory | Self::MemoryAccess | Self::SetupContext => {
                 Scopes::Always(FLEET_WRITE)
             }
-            Self::Messages | Self::Task => Scopes::rw(FLEET_READ, FLEET_WRITE),
+            // Stopping a turn is steering the fleet, so it takes the write
+            // scope its messages take.
+            Self::Messages | Self::Task | Self::Turn => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
-            Self::Tasks
-            | Self::Events
-            | Self::EventsStream
-            | Self::Event
-            | Self::ToolCall
-            | Self::Memories => Scopes::Always(FLEET_READ),
+            Self::Tasks | Self::Turns | Self::TurnsStream | Self::Item | Self::Memories => {
+                Scopes::Always(FLEET_READ)
+            }
             Self::Grants => Scopes::Always(GRANT_READ),
             Self::Grant => Scopes::Always(GRANT_WRITE),
         }

@@ -152,9 +152,9 @@ mod tests {
     #[test]
     fn a_failed_publish_is_owed_once() {
         let mut debt = debt();
-        debt.failed("af.fleet.a.tail");
-        debt.failed("af.fleet.a.tail");
-        assert_eq!(debt.take().subjects, ["af.fleet.a.tail"]);
+        debt.failed("af.thread.a.items");
+        debt.failed("af.thread.a.items");
+        assert_eq!(debt.take().subjects, ["af.thread.a.items"]);
         assert_eq!(debt.take(), Owed::default(), "paid debt is gone");
     }
 
@@ -162,27 +162,27 @@ mod tests {
     fn a_disconnect_owes_only_the_subjects_inside_the_window() {
         let start = Instant::now();
         let mut debt = debt();
-        debt.published("af.fleet.old.tail", start);
-        debt.published("af.fleet.new.tail", start + Duration::from_secs(3));
+        debt.published("af.thread.old.items", start);
+        debt.published("af.thread.new.items", start + Duration::from_secs(3));
         debt.disconnected(start + Duration::from_secs(3) + RECENT_WINDOW);
-        assert_eq!(debt.take().subjects, ["af.fleet.new.tail"]);
+        assert_eq!(debt.take().subjects, ["af.thread.new.items"]);
     }
 
     #[test]
     fn a_republish_refreshes_its_time() {
         let start = Instant::now();
         let mut debt = debt();
-        debt.published("af.wake.3", start);
-        debt.published("af.wake.3", start + Duration::from_secs(5));
+        debt.published("af.thread.3.wake", start);
+        debt.published("af.thread.3.wake", start + Duration::from_secs(5));
         debt.disconnected(start + Duration::from_secs(6));
-        assert_eq!(debt.take().subjects, ["af.wake.3"]);
+        assert_eq!(debt.take().subjects, ["af.thread.3.wake"]);
     }
 
     #[test]
     fn a_disconnect_forgets_what_it_counted() {
         let now = Instant::now();
         let mut debt = debt();
-        debt.published("af.fleet.a.tail", now);
+        debt.published("af.thread.a.items", now);
         debt.disconnected(now);
         let _ = debt.take();
         debt.disconnected(now);
@@ -197,12 +197,12 @@ mod tests {
     fn too_many_owed_subjects_owe_everyone_instead() {
         let mut debt = debt();
         for index in 0..DEBT_SUBJECTS_MAX {
-            debt.failed(&format!("af.fleet.{index}.tail"));
+            debt.failed(&format!("af.thread.{index}.items"));
         }
-        debt.failed("af.fleet.0.tail");
+        debt.failed("af.thread.0.items");
         assert!(!debt.everyone, "a known subject fits");
-        debt.failed("af.fleet.overflow.tail");
-        debt.failed("af.fleet.after.tail");
+        debt.failed("af.thread.overflow.items");
+        debt.failed("af.thread.after.items");
         let owed = debt.take();
         assert!(owed.everyone);
         assert_eq!(
@@ -218,7 +218,7 @@ mod tests {
         let now = Instant::now();
         let mut debt = debt();
         for index in 0..=DEBT_SUBJECTS_MAX {
-            debt.published(&format!("af.fleet.{index}.tail"), now);
+            debt.published(&format!("af.thread.{index}.items"), now);
         }
         debt.disconnected(now);
         assert!(debt.take().everyone);
@@ -230,13 +230,13 @@ mod tests {
         let later = start + RECENT_WINDOW + Duration::from_millis(1);
         let mut debt = debt();
         for index in 0..DEBT_SUBJECTS_MAX {
-            debt.published(&format!("af.fleet.{index}.tail"), start);
+            debt.published(&format!("af.thread.{index}.items"), start);
         }
-        debt.published("af.fleet.fresh.tail", later);
+        debt.published("af.thread.fresh.items", later);
         debt.disconnected(later);
         let owed = debt.take();
         assert!(!owed.everyone, "stale entries were evicted, not overflowed");
-        assert_eq!(owed.subjects, ["af.fleet.fresh.tail"]);
+        assert_eq!(owed.subjects, ["af.thread.fresh.items"]);
     }
 
     #[test]
@@ -244,10 +244,10 @@ mod tests {
         let start = Instant::now();
         let mut debt = debt();
         for index in 0..DEBT_SUBJECTS_MAX {
-            debt.published(&format!("af.fleet.{index}.tail"), start);
+            debt.published(&format!("af.thread.{index}.items"), start);
         }
         let inside = start + RECENT_WINDOW / 2;
-        debt.published("af.fleet.early.tail", inside);
+        debt.published("af.thread.early.items", inside);
         assert_eq!(
             debt.recent_overflow,
             Some(inside),
@@ -259,12 +259,12 @@ mod tests {
         );
 
         let past = start + RECENT_WINDOW + Duration::from_millis(1);
-        debt.published("af.fleet.late.tail", past);
+        debt.published("af.thread.late.items", past);
         assert!(
-            debt.recent.contains_key("af.fleet.late.tail"),
+            debt.recent.contains_key("af.thread.late.items"),
             "the stale were pruned"
         );
-        assert!(!debt.recent.contains_key("af.fleet.early.tail"));
+        assert!(!debt.recent.contains_key("af.thread.early.items"));
         debt.disconnected(past);
         assert!(
             debt.take().everyone,
@@ -277,7 +277,7 @@ mod tests {
         let start = Instant::now();
         let mut debt = debt();
         for index in 0..=DEBT_SUBJECTS_MAX {
-            debt.published(&format!("af.fleet.{index}.tail"), start);
+            debt.published(&format!("af.thread.{index}.items"), start);
         }
         debt.disconnected(start + RECENT_WINDOW + Duration::from_secs(1));
         assert_eq!(debt.take(), Owed::default());
@@ -287,7 +287,7 @@ mod tests {
     fn a_failed_broadcast_owes_everyone_again() {
         let mut debt = debt();
         debt.everyone();
-        debt.failed("af.fleet.a.tail");
+        debt.failed("af.thread.a.items");
         let owed = debt.take();
         assert!(owed.everyone);
         assert_eq!(owed.subjects, Vec::<String>::new());

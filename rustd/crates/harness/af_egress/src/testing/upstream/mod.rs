@@ -14,8 +14,7 @@
 )]
 
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 
 use axum::body::Body;
 use futures_util::StreamExt as _;
@@ -43,7 +42,8 @@ pub struct Upstream {
     address: SocketAddr,
     root: reqwest::Certificate,
     hosts: Vec<&'static str>,
-    seen: mpsc::Receiver<Seen>,
+    /// Locked so `&Upstream` is `Sync` and a suite may hold it across `.await`.
+    seen: Mutex<mpsc::Receiver<Seen>>,
     task: tokio::task::JoinHandle<()>,
     stop: tokio_util::sync::CancellationToken,
 }
@@ -97,7 +97,7 @@ impl Upstream {
             address,
             root,
             hosts,
-            seen,
+            seen: Mutex::new(seen),
             task,
             stop,
         }
@@ -120,7 +120,11 @@ impl Upstream {
     /// Every request seen since the last read.
     #[must_use]
     pub fn seen(&self) -> Vec<Seen> {
-        self.seen.try_iter().collect()
+        self.seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .try_iter()
+            .collect()
     }
 
     /// Reaps the listener; its owned connection set aborts every open socket.

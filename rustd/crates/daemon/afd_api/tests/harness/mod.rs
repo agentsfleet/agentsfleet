@@ -26,7 +26,7 @@
 //!
 //! A few stubs survive, and none is a uniform refusal — which is the line:
 //! [`OneWorkspace`] answers ownership honestly so both halves of that matrix
-//! stay reachable, [`NoWork`] answers a lease plane's verbs with success so the
+//! stay reachable, [`NoWork`] answers a run plane's verbs with success so the
 //! runner routes are reachable at all, and [`HarnessProviders`],
 //! [`HarnessTeam`], [`RecordingWriteback`] and [`HarnessIngress`] answer or
 //! record what their suites assert on. Each carries test LOGIC no real store
@@ -54,7 +54,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use af_observability::Analytics;
 use afd_admin::{Models as AdminModels, PlatformKeys};
 use afd_api::router::{Dependencies, ReadyInputs, build};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Planes, SchedulePlane, Services};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
@@ -67,9 +66,12 @@ use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
+use afd_http::admission::{Admission, DEFAULT_MAX_IN_FLIGHT};
+use afd_http::auth::Planes;
+use afd_http::services::SchedulePlane;
+use afd_http::services::Shared as _;
 use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::{Live, StreamLimit};
@@ -80,6 +82,7 @@ use afd_tenant::models::Models;
 use afd_tenant::preference::Preferences;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::view::{History, Steer};
 use afd_vault::Vault as SecretVault;
 use axum::Router;
 use jiff::Timestamp;
@@ -227,7 +230,7 @@ pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
     afd_ingress::Ingress::new(
         database.clone(),
         vault(database.clone()),
-        afd_admission::Admissions::for_tests(database, afd_bus::test_util::unreachable()),
+        afd_turns::Turns::for_tests(database, afd_bus::test_util::unreachable()),
     )
 }
 
@@ -241,10 +244,9 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 #[derive(Debug)]
 pub(crate) struct Fleet {
     native: Option<Db>,
-    authoring: afd_authoring::Drafts,
-    authoring_setup: afd_authoring::Setup,
-    creations: afd_authoring::Creations,
-    authoring_models: afd_authoring::ModelCalls,
+    drafts: afd_setup::Drafts,
+    setup: afd_setup::Setup,
+    creations: afd_setup::Creations,
     ready: ReadyInputs,
     mock_directory: MockDirectory,
     directory: Directory,
@@ -252,7 +254,7 @@ pub(crate) struct Fleet {
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
     runner_commands: afd_bus::Handle,
-    leases: NoWork,
+    runs: NoWork,
     tasks: afd_fleet::task::Tasks,
     workspaces: Ownership,
     workspace_directory: Workspaces,
@@ -267,7 +269,7 @@ pub(crate) struct Fleet {
     signup_writeback: RecordingWriteback,
     schedules: SchedulePlane,
     connectors: afd_connector::Connectors,
-    scheduler: std::sync::Arc<dyn afd_cron::Scheduler>,
+    scheduler: Arc<dyn afd_cron::Scheduler>,
     platform_admin: Option<Uuid7>,
     /// Opening a personal account, over whatever pool this fixture holds.
     signups: afd_tenant::signup::Signups,
@@ -289,7 +291,7 @@ pub(crate) struct Fleet {
     /// The tenant provider store: the same production value, over a pool that
     /// answers nothing and a fixture key that opens nothing.
     providers: HarnessProviders,
-    runner_lease_history: RunnerLeaseHistory,
+    runner_run_history: RunnerRunHistory,
     admin_models: AdminModels,
     platform_keys: PlatformKeys,
     now: Timestamp,

@@ -1,7 +1,7 @@
 //! Capacity is counted under the parent lock before intent and its fence commit.
 
 use super::history::{Fact, Receipt};
-use super::{CONTEXT_WRITE, NewSchedule, Refused, SYNC_LEASE, Schedules, admit, fire_at};
+use super::{CONTEXT_WRITE, NewSchedule, Refused, SYNC_RUN, Schedules, admit, fire_at};
 use crate::{DesiredStatus, Result, Schedule, SyncStatus, error, sql};
 use af_core::id::Uuid7;
 use afd_api_wire::activity::ScheduleChange;
@@ -103,7 +103,7 @@ async fn insert_row(
         .bind(SyncStatus::Syncing.as_str())
         .bind(FIRST_VERSION)
         .bind(token)
-        .bind(SYNC_LEASE)
+        .bind(SYNC_RUN)
         .bind(new.once)
         .fetch_one(connection)
         .await

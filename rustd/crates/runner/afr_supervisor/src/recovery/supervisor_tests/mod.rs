@@ -1,4 +1,4 @@
-//! Ordinary file offers drive the production supervisor and agent to the model boundary.
+//! Ordinary file assignments drive the production supervisor and agent to the model boundary.
 
 mod fixture;
 mod model;
@@ -9,12 +9,10 @@ use self::{
     model::ObservingModel,
 };
 use super::TestHttpsServer;
-use crate::test_support::{
-    self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, Rig,
-};
+use crate::test_support::{self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Freezer, RUN_ID, Rig};
 use af_core::clock;
 use af_wire::{
-    lease::{TurnId, TurnScope, TurnWorkspace},
+    run::{CheckpointOperationId, TurnScope, TurnWorkspace},
     task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointTransfer},
 };
 use afr_tools::{Catalog, catalog::FILE_READ, stub::Stub};
@@ -56,25 +54,25 @@ async fn run(outcome: Outcome) -> Checked {
     };
     let thawed = Arc::clone(&engine.thawed);
     let frozen = Arc::clone(&engine.frozen);
-    let mut lease = test_support::lease(LEASE_ID, FLEET_ID);
-    lease.event.workspace_id = ID.into();
-    lease.setup_revision_id = Some(ID.into());
-    lease.policy.context.context_cap_tokens = 64_000;
-    lease.policy.context.tool_window = 64;
-    lease.policy.context.memory_checkpoint_every = 100;
-    lease.policy.model_context_tokens = 64_000;
-    let scope = scope(&lease);
+    let mut run = test_support::payload(RUN_ID, FLEET_ID);
+    run.event.workspace_id = ID.into();
+    run.setup_revision_id = Some(ID.into());
+    run.policy.context.context_cap_tokens = 64_000;
+    run.policy.context.tool_window = 64;
+    run.policy.context.memory_checkpoint_every = 100;
+    run.policy.model_context_tokens = 64_000;
+    let scope = scope(&run);
     let (server, object, page) = objects(&scope, outcome).await?;
     let expiry = clock::after(clock::now(), Duration::from_mins(10));
-    let saved = fixture::checkpoint(&lease, scope, expiry, &page)?;
-    lease.turn_resume = Some(saved.descriptor.clone());
-    lease.resume_hold = true;
+    let saved = fixture::checkpoint(&run, scope, expiry, &page)?;
+    run.turn_resume = Some(saved.descriptor.clone());
+    run.resume_hold = true;
     let mut rig = Rig::new(
         test_support::daemon(move |call| fixture::answer(call, &saved, &page, &object)),
         engine,
         FakeAgent::new(Behaviour::Answer),
     );
-    warm(&mut rig, &lease).await?;
+    warm(&mut rig, &run).await?;
     let model = ObservingModel {
         root: root.path().into(),
         thawed,
@@ -82,7 +80,7 @@ async fn run(outcome: Outcome) -> Checked {
         calls: Arc::default(),
     };
     install(&mut rig, &model, &server, outcome, root.path())?;
-    rig.run(&lease).await?;
+    rig.run(&run).await?;
     assert_outcome(&mut rig, &model, outcome, root.path());
     rig.lessee.holds.shutdown().await;
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 2);
@@ -90,12 +88,12 @@ async fn run(outcome: Outcome) -> Checked {
     server.finish().await
 }
 
-fn scope(lease: &af_wire::lease::LeasePayload<'_>) -> TurnScope {
+fn scope(run: &af_wire::run::RunPayload<'_>) -> TurnScope {
     TurnScope {
-        event_id: TurnId(lease.event.event_id.to_string()),
-        fleet_id: TurnId(lease.event.fleet_id.to_string()),
-        workspace_id: TurnId(lease.event.workspace_id.to_string()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::Files {
             toolbox_digest: "b".repeat(64),
         },
@@ -126,10 +124,10 @@ fn install(
     Ok(())
 }
 
-async fn warm(rig: &mut Rig, offered: &af_wire::lease::LeasePayload<'_>) -> Checked {
+async fn warm(rig: &mut Rig, assigned: &af_wire::run::RunPayload<'_>) -> Checked {
     rig.lessee.holds.resize(2);
-    let mut warm = offered.clone();
-    warm.lease_id = "019f0000-0000-7000-8000-000000000099".into();
+    let mut warm = assigned.clone();
+    warm.run_id = "019f0000-0000-7000-8000-000000000099".into();
     warm.turn_resume = None;
     warm.resume_hold = false;
     rig.run(&warm).await?;
@@ -156,13 +154,9 @@ async fn objects(
     if matches!(outcome, Outcome::Corrupt) {
         *bytes.first_mut().ok_or("missing fixture ciphertext")? ^= 1;
     }
-    let server = TestHttpsServer::with_headers(
-        axum::http::StatusCode::OK,
-        bytes,
-        false,
-        axum::http::HeaderMap::new(),
-    )
-    .await?;
+    let server =
+        TestHttpsServer::with_headers(http::StatusCode::OK, bytes, false, http::HeaderMap::new())
+            .await?;
     object.transfer = Some(CheckpointTransfer {
         url: server.endpoint().to_owned(),
         headers: BTreeMap::new(),

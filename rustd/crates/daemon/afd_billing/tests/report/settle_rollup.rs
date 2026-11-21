@@ -25,7 +25,7 @@ const SETTLE_STATEMENTS: [&[u8]; 5] = [
     b"COMMIT",
 ];
 
-/// One fleet run of two lines and one setup attempt, logged and unsettled.
+/// One fleet run of two lines and one setup run, logged and unsettled.
 async fn run_and_setup(f: &Fixture) -> (Line, Line) {
     let first = Line::runtime(&f.tenant, &f.fleet, 17);
     let call = first.next(LineKind::Model, 0, 5);
@@ -49,20 +49,21 @@ fn settled(f: &Fixture) -> Written {
         line_count,
         unpriced_tokens: 0,
     };
+    // In the rollup's key order: day, then work type.
     Written {
         usage: vec![
-            row(work::AUTHORING_ATTEMPT, None, fixture::MODEL_B, 29, 1),
             row(
-                work::FLEET_LEASE,
+                work::FLEET_RUN,
                 Some(f.fleet.clone()),
                 fixture::MODEL_A,
                 22,
                 2,
             ),
+            row(work::SETUP_RUN, None, fixture::MODEL_B, 29, 1),
         ],
         runs: vec![RunRow {
             day,
-            work_type: work::FLEET_LEASE.to_owned(),
+            work_type: work::FLEET_RUN.to_owned(),
             fleet_id: Some(f.fleet.clone()),
             runs: 1,
         }],

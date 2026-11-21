@@ -19,19 +19,21 @@ const REPORT: &str = "/v1/tenants/me/billing/reports/current";
 const MODEL: &str = "billing-report-model";
 const NOW: &str = "2026-10-25T12:01:00Z";
 
-/// Setup-attempt lines as the attempt's own transaction logs them: unsettled.
+/// Setup-run lines as the run's own transaction logs them: unsettled, naming
+/// no fleet, the run as their work and run, and the draft message it answered
+/// as their turn. A line's references are opaque, so neither needs a row.
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
-    id, work_type, work_id, seq, kind, tenant_id, workspace_id, authoring_attempt_id,
+    id, work_type, work_id, seq, kind, tenant_id, workspace_id, turn_id, run_id,
     provider, model, posture, requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
     settled_at, created_at, updated_at
 )
-SELECT id, $5, id, 0, 'model', $2, $3, id, $4, $4, $6,
+SELECT id, $5, id, 0, 'model', $2, $3, message, id, $4, $4, $6,
        '2026-10-25T12:00:00Z', 23, 0, 0, 0, 0, 7, 31, 0, $7,
        NULL, '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z'
-  FROM unnest($1) AS source(id)
+  FROM unnest($1, $8) AS source(id, message)
 ";
 
 #[tokio::test]
@@ -62,7 +64,7 @@ async fn report_returns_exact_full_totals_without_private_setup_content() {
     let totals = report.get("totals").expect("report totals");
     assert_eq!(text(totals, "charged_nanos"), Some("68"));
     assert_eq!(totals.get("line_count"), Some(&json!(4)));
-    // A setup attempt has no runtime slice, so it is no run.
+    // No setup line here is a runtime slice, so no run is counted.
     assert_eq!(totals.get("activity_count"), Some(&json!(0)));
     assert!(report.get("activities").is_none(), "{report}");
     let setup = report
@@ -232,34 +234,37 @@ fn now() -> Timestamp {
     NOW.parse().expect("a fixed instant")
 }
 
-/// Logs `count` one-line setup attempts for `person`, unsettled.
+/// Logs `count` one-line setup runs for `person`, each answering a draft
+/// message of its own, unsettled. Answers the runs, which share their line's id.
 async fn seed(members: &Members, person: &Person, count: usize, money: i64) -> Vec<Uuid7> {
     let ids: Vec<_> = (0..count).map(|_| mint_id()).collect();
+    let messages: Vec<_> = (0..count).map(|_| mint_id()).collect();
     sqlx::query(INSERT_LINES)
         .bind(&ids)
         .bind(&person.tenant)
         .bind(&person.workspace)
         .bind(MODEL)
-        .bind(work::AUTHORING_ATTEMPT)
+        .bind(work::SETUP_RUN)
         .bind(posture::PLATFORM)
         .bind(money)
+        .bind(&messages)
         .execute(&mut *members.database.acquire().await.expect("a connection"))
         .await
         .expect("report lines seed");
     ids
 }
 
-/// Charges each attempt's lines through the built-in biller, as the relay does.
-async fn settle(members: &Members, attempts: &[Uuid7]) {
+/// Charges each run's lines through the built-in biller, as the relay does.
+async fn settle(members: &Members, runs: &[Uuid7]) {
     let biller = LedgerBiller::on_system_clock(members.database.clone());
-    for attempt in attempts {
-        let work = WorkKey::AuthoringAttempt(attempt.clone());
+    for run in runs {
+        let work = WorkKey::SetupRun(run.clone());
         let pending = ledger::unsettled_work(
             &mut *members.database.acquire().await.expect("a connection"),
             &work,
         )
         .await
-        .expect("the attempt's lines read");
+        .expect("the run's lines read");
         for settlement in pending {
             biller.settle(&settlement).await.expect("the lines settle");
         }

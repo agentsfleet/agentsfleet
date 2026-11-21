@@ -1,7 +1,7 @@
 "use client";
 
 import type { TaskSummary, TaskPage } from "@/lib/api/tasks";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
 import type { FleetTaskProps } from "./FleetTaskProvider";
@@ -16,10 +16,10 @@ import { workActivity } from "../conversation/summary/WorkActivity";
 import { WorkApprovals, WorkChanges, WorkOutputs, WorkSources } from "../conversation/summary/WorkContextSections";
 import { WorkSection } from "../shared/summary/WorkSection";
 
-type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void; expandedTask: string; onExpand: (id: string) => void};
+type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; turns: readonly FleetTurn[]; retry: () => void; retryDetails: () => void; expandedTask: string; onExpand: (id: string) => void};
 
 const EMPTY_TASKS: readonly TaskSummary[] = [];
-const EMPTY_EVENTS: readonly FleetEvent[] = [];
+const EMPTY_TURNS: readonly FleetTurn[] = [];
 
 /** Standalone consumers share the same owner; the fleet chat supplies it above both surfaces. */
 export function TaskPanel(props: FleetTaskProps) {
@@ -32,7 +32,7 @@ function CurrentWork() {
   const [workOpen, setWorkOpen] = useState(false);
   const [expandedTask, setExpandedTask] = useState("");
   if (!view?.subject) return null;
-  const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read, approvals} = view;
+  const {workspaceId, fleetId, sources, turns = EMPTY_TURNS, read, approvals} = view;
   const page = read ? confirmed(read.resource) : null;
   const tasks = page?.items ?? EMPTY_TASKS;
   const needsAttention = tasks.some(task => task.status === "blocked" || task.status === "exhausted");
@@ -47,12 +47,12 @@ function CurrentWork() {
         className="h-auto min-h-11 w-full justify-start whitespace-normal px-0 text-left summary:min-h-9" aria-expanded={workOpen && expandedTask === task.id}
         title="View task details" onClick={() => {setWorkOpen(true); setExpandedTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
-    <WorkChanges events={events} />
-    <WorkOutputs details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0} />
+    <WorkChanges turns={turns} />
+    <WorkOutputs details={read.details} expectedDetails={read.references.length} hideEmpty={turns.length > 0} />
     <WorkSources sources={sources} />
     {tasks.length ? <div className="border-t border-border pt-sm"><Accordion type="single" collapsible value={workOpen ? "tasks" : ""} onValueChange={value => setWorkOpen(value === "tasks")}><AccordionItem value="tasks" className="border-0">
       <AccordionTrigger className="min-h-11 gap-md py-sm text-label font-normal md:min-h-9"><span className="flex flex-1 items-center justify-between gap-md"><span className="inline-flex items-center gap-sm">Tasks{needsAttention ? <WarningIcon size={14} className="text-warning" aria-label="Needs attention" /> : null}</span><span className="text-eyebrow text-muted-foreground">{tasks.length}</span></span></AccordionTrigger>
-      <AccordionContent><TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} expandedTask={expandedTask} onExpand={setExpandedTask} /></AccordionContent>
+      <AccordionContent><TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} turns={turns} retry={read.retry} retryDetails={read.retryDetails} expandedTask={expandedTask} onExpand={setExpandedTask} /></AccordionContent>
     </AccordionItem></Accordion></div> : null}</> : null}
   </section></Section>;
 }
@@ -67,11 +67,11 @@ function WorkReadStatus({resource, retry}: {resource: TaskResource<TaskPage>; re
   return <><output className="block text-eyebrow text-muted-foreground">{confirmed(resource) ? "Connection interrupted. Last confirmed progress is shown. Retry connection to check again." : "Current work is unavailable."}</output><Button variant="ghost" size="sm" onClick={retry}>Retry connection</Button></>;
 }
 
-function TaskRows({workspaceId, fleetId, tasks, details, events, retry, retryDetails, expandedTask, onExpand}: RowsProps) {
+function TaskRows({workspaceId, fleetId, tasks, details, turns, retry, retryDetails, expandedTask, onExpand}: RowsProps) {
   return <Accordion type="single" collapsible value={expandedTask} onValueChange={onExpand}>
     {tasks.map(task => <AccordionItem key={task.id} value={task.id} className="border-0">
       <AccordionTrigger className="min-h-11 gap-sm py-sm text-label font-normal md:min-h-9">
-        <TaskIcon task={task} /><span className="min-w-0 flex-1 break-words">{task.title}<TaskAction task={task} details={details} events={events} /></span>
+        <TaskIcon task={task} /><span className="min-w-0 flex-1 break-words">{task.title}<TaskAction task={task} details={details} turns={turns} /></span>
       </AccordionTrigger>
       <AccordionContent className="pr-sm"><TaskDetailView workspaceId={workspaceId} fleetId={fleetId} task={task} onChanged={retry}
         resource={details.get(task.id) ?? {kind: "loading", previous: null}} retry={retryDetails} /></AccordionContent>
@@ -79,12 +79,12 @@ function TaskRows({workspaceId, fleetId, tasks, details, events, retry, retryDet
   </Accordion>;
 }
 
-function TaskAction({task, details, events}: Pick<RowsProps, "details" | "events"> & {task: TaskSummary}) {
+function TaskAction({task, details, turns}: Pick<RowsProps, "details" | "turns"> & {task: TaskSummary}) {
   const resource = details.get(task.id);
   const detail = resource ? confirmed(resource) : null;
   const dependency = detail?.dependency;
   const pending = dependency?.checks.find(check => check.status !== "completed");
-  const latest = workActivity(events, task.id).items.at(-1);
+  const latest = workActivity(turns, task.id).items.at(-1);
   const action = dependency?.active ? pending
     ? `Waiting for ${pending.run_number ? `CI run #${pending.run_number}` : "recorded checks"} on ${dependency.head.slice(0, 7)}`
     : "Recorded check wait is still active"

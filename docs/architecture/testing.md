@@ -26,7 +26,7 @@ Unit tests that must reach a private item stay in `src/` behind `#[cfg(test)]`. 
 
 `test-unit-rustd` is three targets, one per group of layer folders, run in this order:
 
-- `test-unit-rustd-runner`: the `runner/` and `harness/` layers;
+- `test-unit-rustd-runner`: the `runner/` and `harness/` layers, and `guffbolt`, which sits beside them;
 
 - `test-unit-rustd-daemon`: the `agentsfleetd` binary and its suites;
 
@@ -134,7 +134,7 @@ The failure these rules codify had no error in it. Every red was a query that su
 
 - a gate correctly marked `timed_out`, because a sibling ran the sweeper;
 
-- a chunk delivered to the right subscriber, because a sibling's daemon had leased this test's event.
+- a chunk delivered to the right subscriber, because a sibling's daemon had held this test's event.
 
 Shared test data read concurrently gives correct answers to the wrong question, and the assertion is what breaks.
 
@@ -144,7 +144,7 @@ Shared test data read concurrently gives correct answers to the wrong question, 
 
 **ISO-2: Placement reads a deployment-wide set.**
 
-A lease poll can choose any eligible fleet in its database.
+A run poll can choose any eligible fleet in its database.
 A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
 A minted fleet identity alone cannot isolate a global candidate scan.
 
@@ -172,7 +172,7 @@ The target is **100%**, project-wide and per flag. TypeScript gates at that targ
 
 | Flag | Paths | Gate |
 |---|---|---|
-| `rust-afd` | `rustd/crates/` | 98% project · 95% patch |
+| `rust-afd` | `rustd/crates/`, `rustd/guffbolt/` | 98% project · 95% patch |
 | `typescript` | `app`, `website`, `cli` | 100% |
 
 Every threshold is 0%, so a gate has no give. A patch status grades only the lines a diff touched, so on a small diff one unhit line reds the build. That is intended, and the answer is a test, never absorbed slack.

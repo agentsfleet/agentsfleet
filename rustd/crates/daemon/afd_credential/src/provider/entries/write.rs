@@ -34,7 +34,7 @@ use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
-/// constraint a retarget can collide with (`schema/20261108121500_model_tenant_models.sql`).
+/// constraint a retarget can collide with (`afd_db/schema/20261108121500_model_tenant_models.sql`).
 const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_workspace_model_secret";
 
 /// The context a failed registry write reports under.

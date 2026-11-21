@@ -13,7 +13,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::time::{Duration, Instant};
 
 use super::super::parts::{Parts, in_child};
-use super::support::{CLOSER, FakeHost, SLEEPER, request, serve_leases};
+use super::support::{CLOSER, FakeHost, SLEEPER, request, serve_runs};
 use crate::engine::{Engine as _, Killed};
 use crate::tenant::{Handover, TenantFiles};
 
@@ -51,15 +51,12 @@ fn handover(leaf: &std::path::Path) -> Handover {
 #[tokio::test]
 async fn test_a_kill_settles_only_once_the_cgroup_reads_empty() {
     let host = FakeHost::new(SLEEPER);
-    let server = serve_leases(host.config.state_dir.clone());
-    let sandbox = host.engine().prepare(request("lease-13")).await.unwrap();
+    let server = serve_runs(host.config.state_dir.clone());
+    let sandbox = host.engine().prepare(request("run-13")).await.unwrap();
 
     let unread = sandbox.kill().await;
     fs::write(
-        host.config
-            .cgroup_root
-            .join("lease-13")
-            .join("cgroup.events"),
+        host.config.cgroup_root.join("run-13").join("cgroup.events"),
         "populated 0\n",
     )
     .unwrap();
@@ -76,9 +73,9 @@ async fn test_a_kill_settles_only_once_the_cgroup_reads_empty() {
 #[tokio::test]
 async fn test_parts_with_no_cgroup_kill_unsettled() {
     let base = tempfile::tempdir().unwrap();
-    let dir = base.path().join("lease-14");
+    let dir = base.path().join("run-14");
     fs::create_dir(&dir).unwrap();
-    let parts = Parts::new("lease-14", dir);
+    let parts = Parts::new("run-14", dir);
 
     let killed = parts.kill().await;
 
@@ -93,11 +90,7 @@ async fn test_a_sandbox_that_drops_its_link_is_refused_as_not_ready() {
     let host = FakeHost::new(CLOSER);
     let started = Instant::now();
 
-    let refused = host
-        .engine()
-        .prepare(request("lease-15"))
-        .await
-        .unwrap_err();
+    let refused = host.engine().prepare(request("run-15")).await.unwrap_err();
 
     let took = started.elapsed();
     let said = refused.to_string();
@@ -111,8 +104,8 @@ async fn test_a_sandbox_that_drops_its_link_is_refused_as_not_ready() {
 #[tokio::test]
 async fn test_a_wait_cut_short_keeps_the_error_stream() {
     let base = tempfile::tempdir().unwrap();
-    let lease = base.path().join("lease-16");
-    fs::create_dir(&lease).unwrap();
+    let run = base.path().join("run-16");
+    fs::create_dir(&run).unwrap();
     let script = base.path().join("straggler");
     fs::write(
         &script,
@@ -120,10 +113,10 @@ async fn test_a_wait_cut_short_keeps_the_error_stream() {
     )
     .unwrap();
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-    let mut parts = Parts::new("lease-16", lease.clone());
-    let handed = handover(&lease);
+    let mut parts = Parts::new("run-16", run.clone());
+    let handed = handover(&run);
     parts
-        .spawn(&script, Vec::new(), &lease.join("procs"), handed, None)
+        .spawn(&script, Vec::new(), &run.join("procs"), handed, None)
         .unwrap();
 
     let cut_short = tokio::time::timeout(CUT_SHORT, parts.exited()).await;
@@ -148,15 +141,15 @@ async fn test_a_wait_cut_short_keeps_the_error_stream() {
 #[tokio::test]
 async fn test_a_second_wait_reports_the_exit_without_a_reason() {
     let base = tempfile::tempdir().unwrap();
-    let lease = base.path().join("lease-17");
-    fs::create_dir(&lease).unwrap();
+    let run = base.path().join("run-17");
+    fs::create_dir(&run).unwrap();
     let script = base.path().join("complainer");
     fs::write(&script, "#!/bin/sh\necho first-reason >&2\nexit 1\n").unwrap();
     fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-    let mut parts = Parts::new("lease-17", lease.clone());
-    let handed = handover(&lease);
+    let mut parts = Parts::new("run-17", run.clone());
+    let handed = handover(&run);
     parts
-        .spawn(&script, Vec::new(), &lease.join("procs"), handed, None)
+        .spawn(&script, Vec::new(), &run.join("procs"), handed, None)
         .unwrap();
 
     let first = tokio::time::timeout(PATIENCE, parts.exited()).await;

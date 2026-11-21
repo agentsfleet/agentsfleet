@@ -3,12 +3,12 @@
 //! # Why this is its own crate
 //!
 //! It is the lifecycle AROUND a fleet, where `afd_fleet` is the runner plane
-//! that acts on one — leases, gates, budgets, memory. The two never call each
+//! that acts on one — runs, gates, budgets, memory. The two never call each
 //! other; they meet at `fleet.fleets`, one writing the row and the other reading
 //! it, which is a table and not a dependency.
 //!
 //! Setup is not here. Every fleet is written by the native setup authority,
-//! `afd_authoring::Creations` — a person's reviewed Save, an explicit Apply,
+//! `afd_setup::Creations` — a person's reviewed Save, an explicit Apply,
 //! and the daemon's own system setup for a channel's resident — so one parser
 //! and one storage shape decide what a fleet may do.
 //!
@@ -49,8 +49,8 @@ use afd_db::Db;
 pub mod purge_statements {
     /// See `crate::sql::DELETE_FLEET`.
     pub const DELETE_FLEET: &str = crate::sql::DELETE_FLEET;
-    /// See `crate::sql::DELETE_ACTIVE_LEASES`.
-    pub const DELETE_ACTIVE_LEASES: &str = crate::sql::DELETE_ACTIVE_LEASES;
+    /// See `crate::sql::DELETE_ACTIVE_RUNS`.
+    pub const DELETE_ACTIVE_RUNS: &str = crate::sql::DELETE_ACTIVE_RUNS;
 }
 
 pub use self::access::{SecretAccess, SecretFleet};
@@ -141,8 +141,8 @@ impl FleetStatus {
 
 #[cfg(test)]
 mod tests {
-    /// `active` is the only runnable status, so the spelling admission binds
-    /// for a runnable send cannot go stale (`M242_001` Dimension 2.8).
+    /// `active` is the only runnable status, so the spelling turn intake binds
+    /// for a runnable send cannot go stale.
     #[test]
     fn only_active_is_runnable() {
         let runnable: Vec<FleetStatus> = FleetStatus::ALL

@@ -175,7 +175,7 @@ async fn another_tasks_status_reply_uses_its_listed_native_generation() -> crate
 fn use_listed_task(native: &Replies) {
     let mut inputs = native.inputs.lock().expect("fixture mutex is unpoisoned");
     inputs.current_task = None;
-    inputs.tasks = vec![af_wire::task::TaskInputCandidate {
+    inputs.tasks = vec![TaskInputCandidate {
         task_id: SOURCE.to_owned(),
         title: "Review the repair".to_owned(),
         state: TaskState::Waiting,

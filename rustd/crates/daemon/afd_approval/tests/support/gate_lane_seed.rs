@@ -9,6 +9,7 @@
 use af_core::id::Uuid7;
 use std::time::Duration;
 
+use afd_db::test_util::{SEEDED_TURN, TurnSeed};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
@@ -48,7 +49,7 @@ impl Lane {
         action
     }
 
-    /// One pending gate that held no run: `event_id` is NULL, the shape of a
+    /// One pending gate that held no run: `turn_id` is NULL, the shape of a
     /// standing grant raised at install time rather than by an event.
     pub(crate) async fn seed_runless_gate(&self, window: Window) -> Uuid7 {
         let action = mint();
@@ -76,6 +77,15 @@ impl Lane {
         action
     }
 
+    /// Seeds the turn a gate held a run for: a continuation resumes it, and
+    /// `fk_turns_resumes_turn_id` refuses a continuation of no turn.
+    pub(crate) async fn seed_turn(&self, turn: &Uuid7) {
+        TurnSeed::new(&self.fleet, &self.workspace, turn, SEEDED_TURN)
+            .insert(&mut *self.connection().await)
+            .await
+            .expect("the gated turn must insert");
+    }
+
     /// Inserts one pending gate row: what every seeder above writes through.
     ///
     /// The deadline is `now()` plus or minus [`WINDOW`], on the clock the
@@ -86,13 +96,16 @@ impl Lane {
         action: &Uuid7,
         window: Window,
         created_at: Timestamp,
-        event_id: Option<Uuid7>,
+        turn_id: Option<Uuid7>,
     ) {
+        if let Some(turn) = &turn_id {
+            self.seed_turn(turn).await;
+        }
         sqlx::query(
             "INSERT INTO fleet.approval_gates
                (id, fleet_id, workspace_id, action_id, tool_name, action_name,
                 gate_type, proposed_action, evidence, blast_radius, expires_at,
-                status, detail, created_at, updated_at, event_id)
+                status, detail, created_at, updated_at, turn_id)
              VALUES ($1, $2, $3, $4, 'git', 'push',
                      $5, 'open a pull request', '{}'::jsonb, 'one repository',
                      CASE WHEN $6 THEN now() - $7::interval ELSE now() + $7::interval END,
@@ -107,7 +120,7 @@ impl Lane {
         .bind(WINDOW)
         .bind(afd_api_wire::approval::status::PENDING)
         .bind(created_at.to_sqlx())
-        .bind(event_id)
+        .bind(turn_id)
         .execute(&mut *self.connection().await)
         .await
         .expect("the gate row must insert");

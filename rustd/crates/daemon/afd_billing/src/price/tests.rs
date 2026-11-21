@@ -9,7 +9,8 @@ use af_wire::usage::UsageLine;
 use jiff::Timestamp;
 
 use super::{PriceBook, Rater, Tier, Window};
-use crate::{NANOS_PER_USD, Posture};
+use crate::Posture;
+use af_core::money::NANOS_PER_USD;
 
 const BASE_ID: &str = "01990000-0000-7000-8000-000000000001";
 const UPPER_ID: &str = "01990000-0000-7000-8000-000000000002";

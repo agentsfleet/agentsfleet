@@ -1,12 +1,11 @@
-# Fleet definitions, revisions, and Plugin
+# Fleet definitions and revisions
 
-Read this when changing reusable setup, fleet setup revisions, or Definition validation. Exact wire types live in [API resources](api_resources.md). Creation and recovery live in [data flow](data_flow.md#fleet-creation-and-setup-recovery).
+Read this when changing fleet setup, fleet setup revisions, or Definition validation. Exact wire types live in [API resources](api_resources.md). Creation and recovery live in [data flow](data_flow.md#fleet-creation-and-setup-recovery).
 
 | Object | Authority and lifetime |
 |---|---|
 | Private draft | Creator-owned chat and mutable candidate selection; only its creator can read private text. |
 | Candidate | Immutable normalized Definition with a daemon-derived identity, revision and digest. |
-| Plugin entry | Explicitly published reusable revisions, visible to its owning account. |
 | Fleet | Independent runtime instance with its own setup revision, approvals, history, memory and schedules. |
 
 ## Setup authority
@@ -24,44 +23,35 @@ A DT freezes its accepted goal revision.
 Applying fleet setup does not silently replace an unfinished objective.
 Explicit revision adoption invalidates prior goal decisions.
 
-One validated Definition serves browser chat, terminal chat, review, Plugin publication and runtime setup. The typed implementation is `af_fleet_runtime`'s `definition` module. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
+One validated Definition serves browser chat, terminal chat, review and runtime setup. The typed implementation is `af_fleet_runtime`'s `definition` module. Observed checks and remaining live proof belong in the [verification ledger](shared_chat_verification.md#historical-verification-evidence).
 
-Customers supply the job through chat or an editable Plugin copy, such as a pull-request review starter.
+Customers supply the job through chat, or start from an editable starter such as pull-request review.
 
 The New fleet suggestion buttons load editable user-message text from `ui/packages/app/public/fleet-starters.json`.
 Review pull requests includes suggested completion questions and yes/no criteria; selecting it sends nothing and creates no fleet.
 The owner edits and submits that text through ordinary setup chat; Rust supplies no PR-review canned reply or default completion question.
 
-Plugin links select an immutable revision through the existing new-fleet page; copying grants no runtime authority.
 Conversation compaction retains context separately; saved instructions and accepted questions remain the authoritative setup.
 
-### Drafts, Plugin and fleets
+### Drafts and fleets
 
-A draft may publish V1 of a Plugin entry and continue editing. Publishing to that entry appends V2; publishing as a new entry creates a separate Plugin identity.
+A fleet keeps the setup revision it was saved with until an authorized person explicitly applies a reviewed improvement.
 
-A fleet created from V1 keeps V1 until an authorized person explicitly applies a reviewed improvement. A new install may select V2.
-
-Save creates a fleet and closes its setup draft after successful activation. Save never publishes to Plugin.
+Save creates a fleet and closes its setup draft after successful activation.
 
 Improve starts a new private draft pinned to the fleet's current setup. Cancelling setup returns its linked draft to editing; retry uses the recovery rules in data flow.
 
-### Explicit Plugin publication
-
-Publishing creates a Plugin entry or appends an immutable revision to a selected entry. Retry the same key and body within the [authoring replay window](api_resources.md#shared-wire-rules). Publication creates no fleet, leaves its draft open and changes no installed fleet.
-
 ## Storage and runtime reads
 
-Postgres stores normalized Definitions, immutable candidate/Plugin/fleet revisions, and content-free replay identities. Runtime leases receive instructions and parsed policy from the fleet's pinned revision.
+Postgres stores normalized Definitions, immutable candidate and fleet revisions, and content-free replay identities. Runtime runs receive instructions and parsed policy from the fleet's pinned revision.
 
-Setup saves, readiness, access storage and memory-sharing changes add history-only receipts to `fleet.events` in their mutation's transaction. Their `recorded` status creates no admission and stays outside runtime model history; the browser displays permitted metadata in chronological order.
-
-Plugin removal deletes the entry and its Plugin history. Installed fleets retain their own frozen revisions; draft source and publication references become null.
+Setup saves, readiness, access storage and memory-sharing changes add history-only turns to `thread.turns` in their mutation's transaction. A `recorded` turn gets no run and stays outside runtime model history. The browser displays permitted metadata in chronological order.
 
 No object-store bundle is needed for this path.
 
 Bundle upload, GitHub archive import, export, tar snapshots, runner bundle download, the `SKILL.md`/`TRIGGER.md` parser and source-Markdown setup writers are removed. Shared tools, vault storage, connector ingress and repository checkout keep their independent uses.
 
-`fleet.fleets` (`schema/20261108121900_fleet_fleets.sql`) has no instruction or bundle columns. A fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
+`fleet.fleets` (`rustd/crates/daemon/afd_db/schema/20261108121900_fleet_fleets.sql`) has no instruction or bundle columns. A fleet row carries no instructions of its own; they live only in its pinned revision (`fleet.revisions`).
 
 ## Validated Definition
 
@@ -86,13 +76,13 @@ Bundle upload, GitHub archive import, export, tar snapshots, runner bundle downl
 
 `Definition::parse` accepts this JSON and nothing wider: the four members above are the whole Definition, and any other top-level key is refused. The fleet's slug is `config.name` alone. The human title “Checkout watch” belongs to draft/review instance naming, separately from that slug.
 
-Instance allocation uses the existing validated fleet-name rules; a display title cannot relax parser validation. Runtime model selection stays in `config["x-agentsfleet"].model`; draft `runtime_model_ref` edits that field. Authoring model is separately pinned per turn and never becomes a hidden runtime selection.
+Instance allocation uses the existing validated fleet-name rules; a display title cannot relax parser validation. Runtime model selection stays in `config["x-agentsfleet"].model`; draft `runtime_model_ref` edits that field. The setup model is separately pinned per turn and never becomes a hidden runtime selection.
 
 | Field | Validation |
 |---|---|
 | `schema_version` | Required; only `1`. |
 | `description` | Required display text, nonempty, at most 32,768 characters, no NUL; CRLF and lone CR normalize to LF. Absent or empty refuses as missing; null or a non-string refuses as a shape. Nothing that decides what a fleet may do reads it. |
-| `instructions_md` | Required string, at most 32,768 characters, no NUL; CRLF and lone CR normalize to LF. May be empty while editing. |
+| `instructions_md` | Required string, at most 1,048,576 characters, no NUL; CRLF and lone CR normalize to LF. May be empty while editing. |
 | `config.name` | Required lowercase letters/digits/hyphens, 1..64 bytes. |
 
 Evidence: `Definition::parse` and the name validator in `af_fleet_runtime`. Runner tags are not setup: no level of the Definition accepts `tags`, and placement requires none. Browser and terminal chat use the same validator.
@@ -107,17 +97,17 @@ Native edits apply atomically to one candidate revision. Configuration operation
 
 The drawer supplies native edits with `If-Match`; runner proposals name both candidate ID and revision. Invalid boundaries, overlap, stale versions or invalid final setup change nothing. Accepted changes create a fresh immutable candidate ID and next revision; exact activity retries return their originally accepted version.
 
-The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. The daemon resolves exact text against the pinned candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
+The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. `af_fleet_runtime::setup` resolves exact text against the run's base candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
 
-The runner returns bounded corrective feedback for refused arguments or rejected native edits. Corrections share the admitted turn’s output allowance and maximum eight model calls; exhaustion ends without claiming the setup is ready. Usage remains charged for observed calls, including rejected proposals.
+The runner returns a refused proposal to the model as the tool result, and the model may correct it in the same run. The loop has no cap of its own; the payer's balance at each renewal and a person's Stop bound it, as they bound a fleet run. Usage remains charged for observed calls, including refused proposals.
 
 An accepted edit retains the model's conversational answer. A tool-only reply continues with its accepted receipt within the same allowance; the runner supplies no stock review reminder. Questions can be answered without proposing another edit.
 
-Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save and publication.
+Only a missing candidate permits full initialization. First drawer input uses a typed Definition with visible defaults. Empty instructions remain editable but block Save.
 
-Implementation: `afd_authoring`'s model-provider edits, `af_fleet_runtime`'s definition edit module, and `afr_supervisor`'s authoring proposal and turn modules.
+Implementation: `af_fleet_runtime`'s definition edit and setup modules, `afr_agent`'s setup loop, and `afd_setup`'s report check (`setup_run/refusal`).
 
-First generated instructions are at most 12,288 characters; later edited instructions at most 32,768 characters. These character ceilings never replace the tokenizer checks.
+Instructions are at most 1,048,576 characters, whether the model drafted them first or a person edited them later. That is the one text ceiling, `af_validate::TEXT_MAX_CHARS`, which setup messages and fleet messages share. Past it the refusal reads "Input exceeds the maximum length of 1,048,576 characters." Below it, the model's context window is the limit a person meets. These character ceilings never replace the tokenizer checks.
 
 Count system instructions, tools, history, and reserved output against the model window. Long instructions are changed through small edits rather than repeated full rewrites.
 
@@ -135,37 +125,33 @@ Review binds candidate content, instance name, runtime model, source/target revi
 
 Missing connections change live readiness without rewriting reusable requirements. Save rechecks the workspace owner's authority.
 
-In browser authoring, ordinary questions and changes continue the conversation without a review reminder. A standalone command such as “save this” or “save changes” starts one finalization-and-save operation.
+In browser setup chat, ordinary questions and changes continue the conversation without a review reminder. A standalone command such as “save this” or “save changes” starts one finalization-and-save operation.
 
 The selected model receives the working conversation context and current setup. It incorporates the person's latest decisions through validated native edits when needed. Exploratory questions do not become requirements.
 
 The browser shows “Saving setup...” while finalization and the checked Save or Apply write are pending. It shows “Save done vN” after the database acknowledges the write. Readiness is displayed separately, so saving does not claim connected access or start a run.
 
-The save uses the candidate pinned by that completed authoring report, including a candidate first created or changed by the Save turn. A different head after finalization, failed or stopped turns, unknown usage, quoted commands and ordinary questions cannot trigger a save. Fresh digest and setup-tag validation and the existing idempotency key protect the write.
+The save uses the candidate pinned by that completed setup report, including a candidate first created or changed by the Save turn. A different head after finalization, failed or stopped turns, unknown usage, quoted commands and ordinary questions cannot trigger a save. Fresh digest and setup-tag validation and the existing idempotency key protect the write.
 
 The command remains pending only in the current browser session; reloading history never runs it. There is no second review or Save confirmation.
 
-The fleet chat model selector saves a setup revision through the native edit and reviewed Apply path. Future chat, webhook and scheduled work use that runtime model. Saving sends no authoring message and preserves unsent conversation text and private setup edits.
+The fleet chat model selector saves a setup revision through the native edit and reviewed Apply path. Future chat, webhook and scheduled work use that runtime model. Saving sends no setup message and preserves unsent conversation text and private setup edits.
 
-One `model_changed` event commits with the revision and appears as “Model changed” in the fleet conversation. Replaying the same save adds no second notice.
+One `model_changed` turn commits with the revision and appears as “Model changed” in the fleet conversation. Replaying the same save adds no second notice.
 
 Saved fleets use current readiness checks when activating or resuming. A different review digest, including catalogue or price changes, does not add a repeat-review hold. Explicit new saves still validate their review digest and setup tag before writing.
 
-A Plugin revision holds reusable setup and immutable requirements. A fleet separately owns its setup revision, approvals, history, memory, sessions, overrides, and schedules.
-
-Applying an improvement does not publish it. Publishing a Plugin revision is an explicit separate action.
+A fleet owns its setup revision, approvals, history, memory, thread, overrides, and schedules.
 
 ### Native storage and terminal chat
 
-Private drafts are the authoring path in browser and terminal. [Source selection](user_flow.md#80-the-wedge-surface) covers blank, native JSON, Plugin and fleet inputs. The daemon stores typed setup and instructions in native revisions.
+Private drafts are the setup path in browser and terminal. [Source selection](user_flow.md#80-the-wedge-surface) covers blank, native JSON and fleet inputs. The daemon stores typed setup and instructions in native revisions.
 
-Authoring does not load `SKILL.md`, `TRIGGER.md`, bundle manifests or tar snapshots. Paste older prompts into chat or supply native JSON, then review before publication. Runtime repository access remains separate and requires grants.
+Setup does not load `SKILL.md`, `TRIGGER.md`, bundle manifests or tar snapshots. Paste older prompts into chat or supply native JSON, then review before Save. Runtime repository access remains separate and requires grants.
 
-Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 32,768-character instructions must work without retransmitting the definition.
+Serialization round trips cover the description, gates, anomaly rules, network read_only/read_post_paths, repository writes/base, context, trigger options, monthly budgets, and the runtime model reference. A missing description and uppercase/spaced slugs fail. Initialize → edit → edit, lost acknowledgements, stale/reordered proposals, and a small edit to 1,048,576-character instructions must work without retransmitting the definition.
 
-The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save or Plugin publication.
-
-Reusing a Plugin revision creates an independent fleet with that revision pinned. Plugin updates never propagate to existing fleets without Improve and explicit Apply.
+The terminal client creates or resumes a private draft and sends ordinary chat messages. It displays the same reviewed candidate and readiness checks before explicit Save.
 
 Budget fields are positive checked integer nanos with the daily/monthly ceiling limits, carried as decimal strings on the wire. The parser refuses the retired dollar keys. Frozen migration history and completed milestone records stay as historical evidence.
 

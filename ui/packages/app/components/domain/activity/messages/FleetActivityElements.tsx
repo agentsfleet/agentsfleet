@@ -5,7 +5,7 @@ import type { ActivityDetails, ActivityElementData, FleetChatElementData } from 
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
 import { CheckCircleIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
-import { senderLabelFor } from "@/lib/events/event-summary";
+import { senderLabelFor } from "@/lib/turns/turn-summary";
 import { workspacePath } from "@/lib/workspace-routes";
 import { FleetActivityRow, useSenderLabel } from "./FleetMessageRow";
 import { FleetMarkdown } from "../../shared/chat/FleetMarkdown";
@@ -20,7 +20,7 @@ export function IntegrationActivityElement({data}: {data: ActivityElementData}) 
 }
 
 export function WakeupActivityElement({data}: {data: ActivityElementData}) {
-  return <ActivityRow data={data} annotation={<FleetRunDetails eventId={data.eventId} status={data.status} />} />;
+  return <ActivityRow data={data} annotation={<FleetRunDetails turnId={data.turnId} status={data.status} />} />;
 }
 
 /** Keep decisions in the fleet Summary, backed by its authenticated gate reader. */
@@ -42,7 +42,7 @@ function ActivityRow({data, annotation}: {data: ActivityElementData; annotation:
   const senderLabel = useSenderLabel();
   return <FleetActivityRow sender={senderLabelFor(data.actor, senderLabel)} createdAt={data.createdAt}
     title={data.title} headline={data.headline} outcome={data.outcome} failed={data.failed} messageRole="system"
-    detailsLabel={data.details.kind === "message" ? "View message" : "View event"} annotation={annotation}>
+    detailsLabel={data.details.kind === "message" ? "View message" : "View turn"} annotation={annotation}>
     {data.details.kind === "none" ? null : <ActivityContent details={data.details} />}
   </FleetActivityRow>;
 }

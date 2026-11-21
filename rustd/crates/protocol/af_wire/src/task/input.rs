@@ -1,14 +1,14 @@
-//! Lease-scoped human input reads are separate from durable consumption receipts.
+//! Run-scoped human input reads are separate from durable consumption receipts.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Read a bounded page of human inputs using the current lease and recovery cursor.
+/// Read a bounded page of human inputs using the current run and recovery cursor.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema, utoipa::IntoParams))]
 #[derive(Debug, Clone, Deserialize, Serialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskInputsQuery {
-    /// Current native lease fence.
+    /// Current native run fence.
     #[garde(range(max = i64::MAX.unsigned_abs()))]
     pub fencing_token: u64,
     /// Opaque ascending boundary returned by the previous input page.
@@ -32,8 +32,8 @@ const fn input_page_size() -> u32 {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskHumanInput {
-    /// Native source admission identity used for decision and consumption.
-    pub source_admission_id: String,
+    /// Native source turn identity used for decision and consumption.
+    pub source_turn_id: String,
     /// Native FIFO position, independent of task-local input positions.
     pub sequence: u64,
     /// Complete user text; never a truncated interpretation.
@@ -56,16 +56,16 @@ pub struct TaskInputCandidate {
     pub generation: u64,
 }
 
-/// Complete bounded messages and eligible current work from the same lease scope.
+/// Complete bounded messages and eligible current work from the same run scope.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskInputsResponse<'a> {
-    /// Native admission owned by this lease, including signed continuation events.
-    pub source_admission_id: String,
+    /// Native turn owned by this run, including signed continuation events.
+    pub source_turn_id: String,
     /// Installed revision under which a new human interpretation may bind.
     pub accepted_revision_id: Option<String>,
     /// Complete current human message, absent for native machine continuations.
-    /// Its presence is established from native admission authority.
+    /// Its presence is established from native turn authority.
     pub current_message: Option<String>,
     /// Ascending native message order.
     pub inputs: Vec<TaskHumanInput>,
@@ -74,14 +74,14 @@ pub struct TaskInputsResponse<'a> {
     /// Current native objective and recovery pointer, including after interpretation replay.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
-    /// Immutable ceiling read with this lease's current native ownership.
+    /// Immutable ceiling read with this run's current native ownership.
     #[serde(
         default,
         with = "crate::instant::option",
         skip_serializing_if = "Option::is_none"
     )]
     pub execution_deadline: Option<jiff::Timestamp>,
-    /// Current admission's complete saved meaning, including a conversation-only replay.
+    /// Current turn's complete saved meaning, including a conversation-only replay.
     pub current_interpretation: Option<TaskAcceptedInterpretation>,
     /// At most sixteen unfinished native objectives.
     pub tasks: Vec<TaskInputCandidate>,
@@ -94,7 +94,7 @@ impl TaskInputsResponse<'_> {
     #[must_use]
     pub fn into_owned(self) -> TaskInputsResponse<'static> {
         TaskInputsResponse {
-            source_admission_id: self.source_admission_id,
+            source_turn_id: self.source_turn_id,
             accepted_revision_id: self.accepted_revision_id,
             current_message: self.current_message,
             inputs: self.inputs,
@@ -113,7 +113,7 @@ impl TaskInputsResponse<'_> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAcceptedInterpretation {
     /// Original admitted source.
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Complete accepted plan digest.
     pub plan_digest: String,
     /// Complete original human text.
@@ -140,8 +140,8 @@ pub struct TaskRecoveredItem {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAcceptedInput {
-    /// Original native admission, retained even after queue settlement.
-    pub source_admission_id: String,
+    /// Original native turn, retained even after queue settlement.
+    pub source_turn_id: String,
     /// Immutable complete interpretation digest.
     pub plan_digest: String,
     /// Immutable interpreted item.

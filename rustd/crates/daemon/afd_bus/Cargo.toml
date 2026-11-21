@@ -27,7 +27,6 @@ af_validate.workspace = true
 async-nats.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
-crc16.workspace = true
 futures-util.workspace = true
 garde.workspace = true
 serde.workspace = true

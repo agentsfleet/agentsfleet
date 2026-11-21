@@ -24,12 +24,12 @@ async fn ordinary_uploads_share_one_authorization_and_one_readback_request() -> 
         authorized,
     } = stage(root.path(), objects, &server.url, &stop)?;
     let (plane, mut calls) = upload_plane(authorized);
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let reference = TurnCheckpointRef {
-        checkpoint_id: TurnId(ID.to_owned()),
-        pin_id: TurnId(PAGE.to_owned()),
+        checkpoint_id: CheckpointOperationId(ID.to_owned()),
+        pin_id: CheckpointOperationId(PAGE.to_owned()),
     };
     let mut session = TurnSession::new(&native, &scope(), reference, pin(), &stop)?;
     session.upload_batch(pending).await?;
@@ -37,7 +37,7 @@ async fn ordinary_uploads_share_one_authorization_and_one_readback_request() -> 
     for _ in 0..4 {
         let seen = server.seen.try_recv()?;
         let seen_path = seen.path.split('?').next().ok_or("missing request path")?;
-        assert_eq!(seen.method, axum::http::Method::PUT);
+        assert_eq!(seen.method, http::Method::PUT);
         assert_eq!(
             seen.bytes.as_ref(),
             payloads.get(seen_path).ok_or("unknown PUT")?
@@ -149,7 +149,7 @@ fn unverifying_plane(
     objects: Vec<CheckpointObject>,
     fault: Option<Owner>,
 ) -> (crate::client::ControlPlane, test_support::Calls) {
-    super::session_tests::scripted(move |action| match action {
+    session_tests::scripted(move |action| match action {
         Action::Uploads { .. } => match fault {
             Some(Owner::NoCreateOnly) => Ok(Response::Uploads(
                 objects
@@ -193,9 +193,9 @@ async fn stored_chunks_the_owner_does_not_verify_fail_the_upload() -> Checked {
         authorized,
     } = stage(root.path(), objects, &server.url, &stop)?;
     let (plane, mut calls) = unverifying_plane(authorized, None);
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = server.transfers();
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
     let uploaded = session.upload_batch(pending).await;
@@ -205,11 +205,11 @@ async fn stored_chunks_the_owner_does_not_verify_fail_the_upload() -> Checked {
         Some("turn upload was not authenticated by its durable owner")
     );
     assert!(matches!(
-        super::session_tests::sent(&mut calls)?.as_slice(),
+        session_tests::sent(&mut calls)?.as_slice(),
         [Action::Uploads { .. }, Action::Authorize { .. }]
     ));
     for _ in 0..4 {
-        assert_eq!(server.seen.try_recv()?.method, axum::http::Method::PUT);
+        assert_eq!(server.seen.try_recv()?.method, http::Method::PUT);
     }
     server.finish().await
 }
@@ -224,9 +224,9 @@ async fn a_put_refused_before_sending_is_the_failure_an_unverified_batch_reports
         authorized,
     } = stage(root.path(), objects, "https://objects.invalid", &stop)?;
     let (plane, mut calls) = unverifying_plane(authorized, Some(Owner::NoCreateOnly));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = Transfers::new()?;
-    let native = NativeTurn::new(&plane, &lease, 1, &transfers);
+    let native = NativeTurn::new(&plane, &run, 1, &transfers);
     let mut session = TurnSession::new(&native, &scope(), reference(), pin(), &stop)?;
 
     let uploaded = session.upload_batch(pending).await;
@@ -236,7 +236,7 @@ async fn a_put_refused_before_sending_is_the_failure_an_unverified_batch_reports
         Some("checkpoint upload lacks create-only authority")
     );
     assert!(matches!(
-        super::session_tests::sent(&mut calls)?.as_slice(),
+        session_tests::sent(&mut calls)?.as_slice(),
         [Action::Uploads { .. }, Action::Authorize { .. }]
     ));
     Ok(())

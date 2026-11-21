@@ -39,7 +39,7 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &Uuid7) {
     for _ in 0..2 {
         assert_eq!(
             tasks
-                .effect(case.lease(), effect)
+                .effect(case.run(), effect)
                 .await
                 .expect_err("remote failure or mismatched repository leaves effect uncertain")
                 .code(),
@@ -48,14 +48,14 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &Uuid7) {
     }
     for _ in 0..3 {
         let receipt = tasks
-            .effect(case.lease(), effect)
+            .effect(case.run(), effect)
             .await
             .expect("authoritative unresolved history");
         assert_eq!(receipt.state, TaskEffectState::Unknown);
         assert!(receipt.commit.is_none());
     }
     let receipt = tasks
-        .effect(case.lease(), effect)
+        .effect(case.run(), effect)
         .await
         .expect("exact attributable history");
     assert_eq!(receipt.state, TaskEffectState::Confirmed);
@@ -64,7 +64,7 @@ async fn observe(tasks: &afd_fleet::task::Tasks, case: &Case, effect: &Uuid7) {
         Some("3333333333333333333333333333333333333333")
     );
     let replay = tasks
-        .effect(case.lease(), effect)
+        .effect(case.run(), effect)
         .await
         .expect("durable confirmed read without network");
     assert_eq!(receipt, replay);

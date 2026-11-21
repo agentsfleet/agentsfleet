@@ -3,7 +3,7 @@
 //! # No thread waits for a human
 //!
 //! Parking an event writes a durable `fleet.approval_gates` row naming the
-//! action it is waiting on. Every later lease poll finds that row and
+//! action it is waiting on. Every later run poll finds that row and
 //! re-evaluates it. There is no blocking wait, no parked handler, and no timer
 //! — the deadline is the row's `expires_at`, stamped by the database clock
 //! when the gate was raised and compared against that same clock when a poll
@@ -90,11 +90,7 @@ impl Recorded {
     /// which only a purge does: the gate is pending, the fail-safe direction.
     /// A status this build cannot spell is no answer, as the store reads it.
     #[must_use]
-    pub fn observed(
-        action_id: Option<&af_core::id::Uuid7>,
-        status: Option<&str>,
-        lapsed: Option<bool>,
-    ) -> Self {
+    pub fn observed(action_id: Option<&Uuid7>, status: Option<&str>, lapsed: Option<bool>) -> Self {
         if action_id.is_none() {
             return Self::Absent;
         }

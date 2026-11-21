@@ -54,7 +54,7 @@ impl Observer {
         let received = Arc::new(Mutex::new(Vec::new()));
         let app = Router::new()
             .route("/v1/traces", post(accept))
-            .route("/v1/metrics", post(|| async { "" }))
+            .route("/v1/metrics", post(async || ""))
             .with_state(Arc::clone(&received));
         let stop = CancellationToken::new();
         let stopping = stop.clone();
@@ -131,10 +131,10 @@ impl Observer {
 async fn accept(
     State(received): State<Arc<Mutex<Vec<Value>>>>,
     body: axum::body::Bytes,
-) -> axum::http::StatusCode {
+) -> http::StatusCode {
     let Ok(value) = serde_json::from_slice(&body) else {
-        return axum::http::StatusCode::BAD_REQUEST;
+        return http::StatusCode::BAD_REQUEST;
     };
     received.lock().push(value);
-    axum::http::StatusCode::OK
+    http::StatusCode::OK
 }

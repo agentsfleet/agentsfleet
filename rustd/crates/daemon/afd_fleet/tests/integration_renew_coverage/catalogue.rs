@@ -7,7 +7,7 @@ use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
 use af_core::test_util::trace::Capture;
 use af_wire::report::{RenewRequest, ReportRequest};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use jiff::Timestamp;
 
 /// A request a renewal could not price is logged unpriced, and the next
@@ -35,7 +35,7 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     assert_eq!(
         held.fixtures
             .text(
-                crate::rows::Row::ModelLine(&held.event_id, "1"),
+                crate::rows::Row::ModelLine(&held.turn_id, "1"),
                 "unpriced_token_count"
             )
             .await,
@@ -67,6 +67,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let report = ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         requests: af_wire::usage::RequestLines(vec![request(&held, 0, 12_000, 3_000, 500)]),
         ..processed(&held, None)
     };
@@ -84,11 +85,11 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
         )
         .await
         .expect("a catalogue fault does not stop the report");
-    let warned = log.only("lease_tokens_unpriced");
+    let warned = log.only("run_tokens_unpriced");
     assert_eq!(
         held.fixtures
             .text(
-                crate::rows::Row::ModelLine(&held.event_id, "0"),
+                crate::rows::Row::ModelLine(&held.turn_id, "0"),
                 "unpriced_token_count"
             )
             .await,
@@ -100,10 +101,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
             .field("error_code")
             .is_some_and(|code| !code.is_empty())
     );
-    assert_eq!(
-        warned.field("lease_id"),
-        Some(held.issued.lease_id.as_str())
-    );
+    assert_eq!(warned.field("run_id"), Some(held.issued.run_id.as_str()));
     drop(log);
     held.fixtures.set_catalogue_readable(true).await;
 
@@ -144,15 +142,15 @@ fn run_fee(from: Timestamp, to: Timestamp) -> afd_billing::Nanos {
     afd_billing::Nanos::from_i64(report_seed::run_fee(wall_ms))
 }
 
-/// Renews `held`'s lease with request `seq` of `input_tokens` and answers what
+/// Renews `held`'s run with request `seq` of `input_tokens` and answers what
 /// it charged for tokens alone: the charge less the run fee for the runtime it
 /// measured.
-async fn token_charge(held: &Held, plane: &LeaseService, seq: u32, input_tokens: u32) -> i64 {
+async fn token_charge(held: &Held, plane: &RunService, seq: u32, input_tokens: u32) -> i64 {
     let from = held.fixtures.metered_since(&held.fleet).await;
     let (_, charged) = plane
         .renew(
             &held.runner,
-            &held.issued.lease_id,
+            &held.issued.run_id,
             reported(held, seq, input_tokens),
             held.now,
         )
@@ -162,23 +160,27 @@ async fn token_charge(held: &Held, plane: &LeaseService, seq: u32, input_tokens:
     charged.as_i64() - run_fee(from, to).as_i64()
 }
 
-/// Renews `held`'s lease for `request` with the catalogue offline, and checks
+/// Renews `held`'s run for `request` with the catalogue offline, and checks
 /// the renewal charged the runtime it measured and no token, and said itself
 /// that it logged those tokens unpriced, not only the pricing helper it calls.
-async fn renew_through_a_catalogue_fault(held: &Held, plane: &LeaseService, request: RenewRequest) {
-    let lease_id = &held.issued.lease_id;
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
+async fn renew_through_a_catalogue_fault(held: &Held, plane: &RunService, request: RenewRequest) {
+    let run_id = &held.issued.run_id;
     held.fixtures.set_catalogue_readable(false).await;
     let log = Capture::install();
     let metered_from = held.fixtures.metered_since(&held.fleet).await;
     let (_, unpriced) = plane
-        .renew(&held.runner, lease_id, request, held.now)
+        .renew(&held.runner, run_id, request, held.now)
         .await
         .expect("a catalogue fault does not stop the run");
     // The renewal meters runtime up to the database clock it read, and stamps
     // that instant as the meter's next start.
     let metered_to = held.fixtures.metered_since(&held.fleet).await;
-    let warned = log.only("lease_tokens_unpriced");
-    assert_eq!(warned.field("lease_id"), Some(lease_id.as_str()));
+    let warned = log.only("run_tokens_unpriced");
+    assert_eq!(warned.field("run_id"), Some(run_id.as_str()));
     drop(log);
     assert_eq!(
         unpriced,

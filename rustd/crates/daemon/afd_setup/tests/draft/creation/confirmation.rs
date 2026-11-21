@@ -1,0 +1,171 @@
+//! A retained activation accepts only its own confirmed turn, and retries
+//! preserve its fleet and event while confirmation is unavailable.
+
+use super::super::{fixture::now, mint};
+use super::fixture::Case;
+use af_core::{id::Uuid7, test_util::trace::Capture};
+use af_crypto::entropy::Entropy;
+use afd_setup::{
+    Creations, SavedFleet,
+    types::{SaveFleet, Start, StartOutcome, StartState},
+};
+use afd_turns::Turns;
+
+struct Retained {
+    case: Case,
+    key: Uuid7,
+    request: SaveFleet,
+    saved: SavedFleet,
+    event: Uuid7,
+}
+
+impl Retained {
+    async fn create(name: &str) -> Self {
+        let case = Case::create().await;
+        let (_, request) = case
+            .request(
+                name,
+                Start::RunNow {
+                    message: "Run once".to_owned(),
+                },
+            )
+            .await;
+        case.fund().await;
+        let key = mint();
+        let saved = case.save(&key, request.clone()).await;
+        let event = match &saved.start {
+            StartOutcome::RunNow {
+                state: StartState::Accepted,
+                turn_id: Some(event),
+                ..
+            } => Some(Uuid7::parse(event).expect("the admitted run names a minted event")),
+            _ => None,
+        }
+        .expect("the funded activation admits its initial run");
+        Self {
+            case,
+            key,
+            request,
+            saved,
+            event,
+        }
+    }
+
+    async fn pending(&self, expected: &str) {
+        sqlx::query("UPDATE fleet.fleets SET initial_start=jsonb_set(initial_start, '{outcome}', $2::jsonb) WHERE id=$1")
+            .bind(&self.saved.id)
+            .bind(serde_json::json!({"kind":"run_now", "state":"pending", "turn_id":expected}).to_string())
+            .execute(&mut *self.case.base.connection().await).await.expect("unconfirmed activation");
+    }
+
+    async fn retry(&self, creations: &Creations, accepted: bool, expected: &str) {
+        let saved = creations
+            .save(
+                self.case.base.access(),
+                &self.key,
+                self.request.clone(),
+                now(),
+            )
+            .await
+            .expect("retained Save");
+        assert_eq!(saved.id, self.saved.id);
+        let (state, turn_id, error_code) = match saved.start {
+            StartOutcome::RunNow {
+                state,
+                turn_id,
+                error_code,
+            } => Some((state, turn_id, error_code)),
+            StartOutcome::None => None,
+        }
+        .expect("the initial run is retained");
+        assert_eq!(matches!(state, StartState::Accepted), accepted);
+        assert!(matches!(state, StartState::Pending) || accepted);
+        assert_eq!(turn_id.as_deref(), Some(expected));
+        assert!(error_code.is_none());
+        assert_eq!(self.case.fleet_count().await, 1);
+        assert_eq!(
+            self.case.turns(&saved.id).await.as_slice(),
+            std::slice::from_ref(&self.event)
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answers() {
+    let retained = Retained::create("confirm-missing").await;
+    retained.pending(retained.event.as_str()).await;
+    let mut connection = retained.case.base.connection().await;
+    let key: String = sqlx::query_scalar("SELECT producer_key FROM thread.turns WHERE id=$1")
+        .bind(&retained.event)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("initial producer key");
+    sqlx::query("UPDATE thread.turns SET producer_key=$2 WHERE id=$1")
+        .bind(&retained.event)
+        .bind(mint().to_string())
+        .execute(&mut *connection)
+        .await
+        .expect("hide confirmation");
+    retained
+        .retry(&retained.case.creations, false, retained.event.as_str())
+        .await;
+    sqlx::query("UPDATE thread.turns SET producer_key=$2 WHERE id=$1")
+        .bind(&retained.event)
+        .bind(key)
+        .execute(&mut *connection)
+        .await
+        .expect("restore confirmation");
+    drop(connection);
+    retained
+        .retry(&retained.case.creations, true, retained.event.as_str())
+        .await;
+    retained.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
+    let retained = Retained::create("confirm-mismatch").await;
+    let unexpected = mint();
+    retained.pending(unexpected.as_str()).await;
+    retained
+        .retry(&retained.case.creations, false, unexpected.as_str())
+        .await;
+    retained.pending(retained.event.as_str()).await;
+    retained
+        .retry(&retained.case.creations, true, retained.event.as_str())
+        .await;
+    retained.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_turn() {
+    let retained = Retained::create("confirm-outage").await;
+    retained.pending(retained.event.as_str()).await;
+    let turns = Turns::new(
+        afd_db::test_util::unreachable_db(),
+        retained.case.bus.clone(),
+        Entropy::new(),
+    );
+    let creations = Creations::new(retained.case.setup.clone(), turns);
+    let log = Capture::install();
+    retained
+        .retry(&creations, false, retained.event.as_str())
+        .await;
+    let fields = log.only("fleet_initial_run_unconfirmed").fields;
+    assert_eq!(
+        fields.get("fleet_id").map(String::as_str),
+        Some(retained.saved.id.as_str())
+    );
+    assert_eq!(
+        fields.get("error_code").map(String::as_str),
+        Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+    );
+    drop(log);
+    retained
+        .retry(&retained.case.creations, true, retained.event.as_str())
+        .await;
+    retained.case.cleanup().await;
+}

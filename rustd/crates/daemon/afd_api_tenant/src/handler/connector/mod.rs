@@ -36,7 +36,7 @@ use af_crypto::secret::SecretBytes;
 
 use super::Refusal;
 pub(crate) use super::provider_of;
-use crate::services::{APPROVAL_IDENTITY, Services, WebhookIngress as _};
+use crate::services::{APPROVAL_IDENTITY, TenantPlane, WebhookIngress as _};
 
 /// The scoped event a failed connector read is logged under.
 pub(crate) const EVENT_READ: &str = "connector_read_failed";
@@ -65,7 +65,9 @@ pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
 /// own refusal when the vault would not answer. Fail-closed: without a key
 /// there is nothing to sign a state with, and minting an unsigned one would be
 /// strictly worse than refusing the connect.
-pub(crate) async fn state_secret<D: Services>(services: &Arc<D>) -> Result<SecretBytes, Refusal> {
+pub(crate) async fn state_secret<D: TenantPlane>(
+    services: &Arc<D>,
+) -> Result<SecretBytes, Refusal> {
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(unconfigured());
     };

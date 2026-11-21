@@ -10,7 +10,7 @@ import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
 import { isRecord } from "../../lib/guards.ts";
 import { wsFleetMessagesPath } from "../../lib/api-paths.ts";
 import { streamGet as defaultStreamGet } from "../../lib/sse.ts";
-import { EVENT_STATUS } from "../../constants/event-status.ts";
+import { TURN_STATUS } from "../../constants/turn-status.ts";
 import {
   ConfigError,
   InterruptedError,
@@ -37,15 +37,15 @@ import {
   type MessagesResponse,
 } from "./steer-placement.ts";
 import {
-  openEventTail,
-  pollEventTerminal,
+  openTurnTail,
+  pollTurnTerminal,
   SSE_FALLBACK_TIMEOUT_SECONDS,
   STATUS_COMPLETE,
   TAIL_TIMED_OUT,
-  type EventTailHandle,
+  type TurnTailHandle,
   type PolledSteerOutcome,
   type TailReadiness,
-} from "./steer-events.ts";
+} from "./steer-turns.ts";
 
 const TAG_FIELD = "_tag";
 
@@ -56,7 +56,7 @@ const LINE_FOLDED = "added to the current run" as const;
 const LINE_QUEUED = "queued behind the current run" as const;
 const MESSAGE_PLACEHOLDER = "<message>" as const;
 const SUGGESTION_REPORT_COMMAND = "report this with the command you ran" as const;
-const SUGGESTION_INSPECT_EVENTS = "inspect fleet events before sending again; an accepted message may still run" as const;
+const SUGGESTION_INSPECT_TURNS = "inspect fleet turns before sending again; an accepted message may still run" as const;
 const DETAIL_STEER_INTERRUPTED = "steer interrupted" as const;
 
 type RenderableSteerOutcome = PolledSteerOutcome;
@@ -66,14 +66,14 @@ const failSteerInterrupted = (): Effect.Effect<never, CliError> =>
   Effect.fail(
     new InterruptedError({
       detail: DETAIL_STEER_INTERRUPTED,
-      suggestion: SUGGESTION_INSPECT_EVENTS,
+      suggestion: SUGGESTION_INSPECT_TURNS,
     }),
   );
 
-const failMissingEventId = (): Effect.Effect<never, CliError> =>
+const failMissingTurnId = (): Effect.Effect<never, CliError> =>
   Effect.fail(
     new ServerError({
-      detail: "messages response missing event_id",
+      detail: "messages response missing turn_id",
       suggestion: "retry; report request_id if the issue persists",
       code: "BAD_RESPONSE",
       status: 502,
@@ -86,7 +86,7 @@ const failMissingEventId = (): Effect.Effect<never, CliError> =>
 const failUnreadableResponse = (): CliError =>
   new ServerError({
     detail: "messages response did not match the supported API shape",
-    suggestion: SUGGESTION_INSPECT_EVENTS,
+    suggestion: SUGGESTION_INSPECT_TURNS,
     code: "BAD_RESPONSE",
     status: 502,
     requestId: null,
@@ -105,7 +105,7 @@ export interface SteerOptions {
 }
 
 // Subscribe before send: the activity channel has no replay, so the tail must
-// exist before the daemon can publish the event's first frame. Acquire/release
+// exist before the daemon can publish the turn's first frame. Acquire/release
 // structurally guarantees the tail closes on every exit — success, typed
 // failure, or defect — so no path (present or future) can leak the stream.
 const steerTurnEffect = (
@@ -117,7 +117,7 @@ const steerTurnEffect = (
   signal?: AbortSignal,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.acquireUseRelease(
-    openEventTail(wsId, fleetId, token, streamGet, signal),
+    openTurnTail(wsId, fleetId, token, streamGet, signal),
     (tail) => steerTurnWithTail(wsId, fleetId, message, token, tail, signal),
     (tail) => Effect.promise(() => tail.close()),
   );
@@ -127,14 +127,14 @@ const steerTurnWithTail = (
   fleetId: string,
   message: string,
   token: Redacted.Redacted<string>,
-  tail: EventTailHandle,
+  tail: TurnTailHandle,
   signal?: AbortSignal,
 ): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     // Headers-received means the server's subscription is live (it subscribes
     // before writing SSE headers), so a POST sent after this point cannot
-    // race the event's first frame. Bounded: a tail that can't open inside
+    // race the turn's first frame. Bounded: a tail that can't open inside
     // TAIL_OPEN_MAX_WAIT_MS degrades to post-then-poll.
     const readiness = yield* Effect.promise(() => tail.awaitReady());
     if (signal?.aborted) {
@@ -151,8 +151,8 @@ const steerTurnWithTail = (
       Effect.catch((error) => signal?.aborted ? failSteerInterrupted() : Effect.fail(error)),
     );
     const post = yield* decodeMessagesResponse(answer).pipe(Effect.mapError(failUnreadableResponse));
-    if (!post.event_id) {
-      return yield* failMissingEventId();
+    if (!post.turn_id) {
+      return yield* failMissingTurnId();
     }
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
@@ -163,45 +163,45 @@ const steerTurnWithTail = (
       if (placement === DISPOSITION_FOLDED) yield* output.info(LINE_FOLDED);
       if (placement === DISPOSITION_QUEUED) yield* output.info(LINE_QUEUED);
     }
-    // A folded message keeps its own event: the run it joined answers it
+    // A folded message keeps its own turn: the run it joined answers it
     // there when that run reports, so the CLI waits on the message's own id.
-    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.event_id, token, signal);
+    const outcome = yield* resolveSteerOutcome(tail, readiness, wsId, fleetId, post.turn_id, token, signal);
     if (signal?.aborted) {
       return yield* failSteerInterrupted();
     }
-    yield* readSteeredWork(wsId, fleetId, post.event_id, token, signal);
-    yield* renderOutcome(outcome, post.event_id, fleetId, wsId, token, post, signal);
+    yield* readSteeredWork(wsId, fleetId, post.turn_id, token, signal);
+    yield* renderOutcome(outcome, post.turn_id, fleetId, wsId, token, post, signal);
   });
 
-// A tail that never became ready may have missed the event's opening frames;
+// A tail that never became ready may have missed the turn's opening frames;
 // rendering from it could pass a truncated reply off as complete. It is
 // closed unheard and the durable poll is authoritative for the outcome.
 const resolveSteerOutcome = (
-  tail: EventTailHandle,
+  tail: TurnTailHandle,
   readiness: TailReadiness,
   wsId: string,
   fleetId: string,
-  eventId: string,
+  turnId: string,
   token: Redacted.Redacted<string>,
   signal?: AbortSignal,
 ): Effect.Effect<RenderableSteerOutcome, CliError, CliConfig | HttpClient | Output> =>
   Effect.gen(function* () {
     if (readiness === TAIL_TIMED_OUT) {
       yield* Effect.promise(() => tail.close());
-      return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal, tail.presentation);
+      return yield* pollTurnTerminal(wsId, fleetId, turnId, token, signal, tail.presentation);
     }
-    tail.deliverEventId(eventId);
+    tail.deliverTurnId(turnId);
     const streamOutcome = yield* Effect.promise(() => tail.awaitOutcome());
     if (streamOutcome.kind === STATUS_COMPLETE) {
       return streamOutcome;
     }
     if (signal?.aborted) return yield* failSteerInterrupted();
-    return yield* pollEventTerminal(wsId, fleetId, eventId, token, signal, tail.presentation);
+    return yield* pollTurnTerminal(wsId, fleetId, turnId, token, signal, tail.presentation);
   });
 
 const renderOutcome = (
   outcome: RenderableSteerOutcome,
-  eventId: string,
+  turnId: string,
   fleetId: string,
   wsId: string,
   token: Redacted.Redacted<string>,
@@ -213,22 +213,22 @@ const renderOutcome = (
 
     if (output.format !== OUTPUT_FORMAT.text) {
       yield* output.success(STEER_OUTCOME, {
-        event_id: eventId,
+        turn_id: turnId,
         ...(post.disposition ? { disposition: post.disposition } : {}),
-        ...(post.folded_into_event_id ? { folded_into_event_id: post.folded_into_event_id } : {}),
+        ...(post.folded_into_turn_id ? { folded_into_turn_id: post.folded_into_turn_id } : {}),
         ...outcome,
       });
     } else if (outcome.kind === STATUS_COMPLETE) {
       yield* output.info("");
-      yield* output.success(`event ${eventId} ${outcome.status}`);
+      yield* output.success(`turn ${turnId} ${outcome.status}`);
     }
 
     if (outcome.kind === STATUS_COMPLETE) {
-      if (outcome.status !== EVENT_STATUS.PROCESSED) {
+      if (outcome.status !== TURN_STATUS.PROCESSED) {
         return yield* Effect.fail(
           new ConfigError({
-            detail: `event ${eventId} terminated with status: ${outcome.status}`,
-            suggestion: `inspect: agentsfleet fleet events ${fleetId}`,
+            detail: `turn ${turnId} terminated with status: ${outcome.status}`,
+            suggestion: `inspect: agentsfleet fleet turns ${fleetId}`,
           }),
         );
       }
@@ -244,8 +244,8 @@ const renderOutcome = (
     if (signal?.aborted) return yield* failSteerInterrupted();
     return yield* Effect.fail(
       new ConfigError({
-        detail: `event ${eventId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
-        suggestion: parked ?? `inspect: agentsfleet fleet events ${fleetId}; sending again may create another event`,
+        detail: `turn ${turnId} still in flight after ${SSE_FALLBACK_TIMEOUT_SECONDS}s`,
+        suggestion: parked ?? `inspect: agentsfleet fleet turns ${fleetId}; sending again may create another turn`,
       }),
     );
   });
@@ -322,7 +322,7 @@ export const steerEffectFromArgs = (
         return yield* Effect.fail(
           new InterruptedError({
             detail: DETAIL_STEER_INTERRUPTED,
-            suggestion: SUGGESTION_INSPECT_EVENTS,
+            suggestion: SUGGESTION_INSPECT_TURNS,
           }),
         );
       }

@@ -24,6 +24,10 @@ async fn native_credit_shortage_and_payer_debt_preserve_unsent_calls_without_cha
     }
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn refused(case: &Case, funding: Funding) {
     let capture = Capture::install();
     let fixture = Decisions::create(case).await;
@@ -60,7 +64,7 @@ async fn retain_refusals(fixture: &Decisions<'_>) -> Value {
         let input = fixture.reservation(DecisionAssessment::Message, None);
         let failure = fixture
             .tasks
-            .reserve_decision(case.lease(), &input)
+            .reserve_decision(case.run(), &input)
             .await
             .expect_err("native funding refusal cannot issue provider material");
         assert_eq!(failure.code(), error_code::TASK_DECISION_UNAVAILABLE);
@@ -81,11 +85,11 @@ fn funding_events(capture: &Capture, case: &Case, reason: &'static str) {
     let refusals = events
         .iter()
         .filter(|event| event.field("event") == Some("dt_decision_funding_refused"))
-        .map(|event| (event.field("reason"), event.field("lease_id")))
+        .map(|event| (event.field("reason"), event.field("run_id")))
         .collect::<Vec<_>>();
     assert_eq!(
         refusals,
-        [(Some(reason), Some(case.lease().lease_id.as_str())); 2]
+        [(Some(reason), Some(case.run().run_id.as_str())); 2]
     );
 }
 
@@ -131,7 +135,7 @@ async fn recover(fixture: &Decisions<'_>, call: &Value, balance: i64) {
 
 async fn wallet_snapshot(fixture: &Decisions<'_>) -> (Value, Value) {
     sqlx::query_as("SELECT to_jsonb(w),COALESCE((SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$2),'[]'::jsonb) FROM billing.wallets w WHERE w.tenant_id=$1")
-        .bind(&fixture.case.held.tenant).bind(&fixture.case.held.lease_key)
+        .bind(&fixture.case.held.tenant).bind(&fixture.case.held.run_key)
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("native financial observer"))
         .await.expect("entire wallet and original usage ledger")
 }

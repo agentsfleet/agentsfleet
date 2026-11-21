@@ -144,16 +144,16 @@ where
         None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
             .bind(tenant)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::CHARGE_TYPE_SETUP)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
         Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
             .bind(tenant)
             .bind(after.created_at.to_sqlx())
             .bind(&after.id)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::CHARGE_TYPE_SETUP)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
     }
 }
@@ -180,12 +180,12 @@ pub struct ChargeRow {
     /// the charge landed leaves its identifier here, equal to `fleet_id`. A
     /// setup settlement's is the saved fleet's current name.
     pub fleet_name: Option<String>,
-    /// The event that triggered the work; a setup chat has none.
-    pub event_id: Option<Uuid7>,
-    /// The setup attempt a settlement paid for; a fleet charge has none.
-    pub authoring_attempt_id: Option<Uuid7>,
+    /// The turn that triggered the work; a setup chat has none.
+    pub turn_id: Option<Uuid7>,
+    /// The setup run a settlement paid for; a fleet charge has none.
+    pub run_id: Option<Uuid7>,
     /// `stage` for one usage line of a fleet run, or
-    /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
+    /// [`sql::CHARGE_TYPE_SETUP`] for a setup chat.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,

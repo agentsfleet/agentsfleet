@@ -32,8 +32,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A failed run delivered through an App installation.
-const RUN_FAILURE_APP: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure_app.json");
+const RUN_FAILURE_APP: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// Where one App's deliveries arrive.
 const PATH: &str = "/v1/ingress/github";

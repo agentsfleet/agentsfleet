@@ -1,7 +1,7 @@
 //! Public problem metadata: registry integrity, caller guidance and retry semantics.
 
-mod authoring;
 mod registry;
+mod setup;
 mod statuses;
 
 use af_core::error_code::{self, REGISTRY};

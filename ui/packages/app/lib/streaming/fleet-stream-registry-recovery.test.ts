@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CONNECTION_STATUS, getSnapshot, subscribe } from "@/tests/helpers/fleet-streams";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { setupRegistryTests, WS, Z_A, NO_SEED, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 
@@ -46,7 +46,7 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
     for (let cycle = 0; cycle < FAST_ATTEMPTS + 1; cycle += 1) {
       const es = sourceAt(-1);
       es.open();
-      es.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: `frame-${cycle}`, actor: "fleet" });
+      es.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: `frame-${cycle}`, actor: "fleet" });
       es.fail();
       vi.advanceTimersByTime(FAST_BACKOFF_CAP_MS);
     }
@@ -64,8 +64,8 @@ describe("fleet-stream-registry — a lost connection recovers itself", () => {
     const es = sourceAt(-1);
     es.open();
     es.emit({
-      kind: FRAME_KIND.EVENT_RECEIVED,
-      event_id: "e1",
+      kind: FRAME_KIND.TURN_RECEIVED,
+      turn_id: "e1",
       actor: "fleet",
     });
     vi.advanceTimersByTime(30_000);

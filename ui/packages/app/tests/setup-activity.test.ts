@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { fleetActivityText, FLEET_ACTIVITY } from "@/lib/turns/fleet-activity";
 
 import { draftThreadMessages } from "@/lib/api/draft-thread-messages";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
@@ -9,7 +9,7 @@ import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MESSAGE, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
-const RECEIPT = {event_id: "setup_saved:one", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
+const RECEIPT = {turn_id: "setup_saved:one", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
   request_json: JSON.stringify({kind: "setup_saved", revision: "1"}), created_at: "2026-10-26T08:00:00Z"};
 beforeEach(() => {fixture.mount(); fixture.fleet = FLEET_DETAIL;});
 afterEach(() => fixture.dispose());
@@ -39,14 +39,14 @@ it("reads a durable setup occurrence again after the client is recreated", async
 it("keeps setup saved before the next request and its working reply", () => {
   const later = {...MESSAGE, sequence: "2", state: "running", created_at: "2026-10-26T08:01:00Z"} as const;
   const projected = draftThreadMessages({...EMPTY_DRAFT_VIEW, messages: [later], activities: [RECEIPT],
-    previousDrafts: [{id: DRAFT_ID, cancelledThrough: "0", messages: [MESSAGE]}]});
-  expect(projected.map(row => row.id)).toEqual([`${DRAFT_ID}:1:user`, `activity:${RECEIPT.event_id}`, "2:user", "2:assistant"]);
+    previousDrafts: [{id: DRAFT_ID, messages: [MESSAGE]}]});
+  expect(projected.map(row => row.id)).toEqual([`${DRAFT_ID}:1:user`, `activity:${RECEIPT.turn_id}`, "2:user", "2:assistant"]);
 });
 
 it("refreshes access saved from history and readiness from the current database read", async () => {
   fixture.current = {...DRAFT, state: "closed", linked_fleet_id: FLEET_ID};
   const client = await fixture.ready(true);
-  const access = {...RECEIPT, event_id: "access:fly", request_json: JSON.stringify({kind: "access_saved", service: "fly"})};
+  const access = {...RECEIPT, turn_id: "access:fly", request_json: JSON.stringify({kind: "access_saved", service: "fly"})};
   fixture.override = ({path}) => path.includes("/fleets/") && path.endsWith("/messages")
     ? response({items: [access, RECEIPT], next_cursor: null}) : undefined;
   fixture.fleet = {...FLEET_DETAIL, setup: {state: "ready", checks: []}};
@@ -86,7 +86,7 @@ it("does not expose extra fields carried by an otherwise valid access event", ()
 });
 
 // Value: protects=safe readable persisted activity summaries; fails_when=permission states reverse or an extra payload field leaks into chat;
-// why_new=existing valid-event assertions covered access only; seam=none; no_claim=database receipt storage.
+// why_new=existing valid-turn assertions covered access only; seam=none; no_claim=database receipt storage.
 it("renders saved readiness and each memory-sharing state from permitted activity fields only", () => {
   const hidden = "unapproved event payload";
   expect(fleetActivityText(JSON.stringify({kind: "setup_ready", revision: "3", body: hidden}))).toBe("Setup done · v3");

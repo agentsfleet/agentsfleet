@@ -15,12 +15,12 @@ use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::Trigger;
 use serde_json::json;
 
-use crate::support::{CONTEXT_CAP_VALUE, MODEL_VALUE, definition, definition_path};
+use crate::support::{CONTEXT_CAP_VALUE, MODEL_VALUE, definition, definition_path, parsed};
 
 /// `minimal.json` carries the cron trigger, tool and ceiling it declares.
 #[test]
 fn the_minimal_definition_carries_its_authored_values() {
-    let parsed = definition("definition/minimal.json");
+    let parsed = parsed(super::cases::MINIMAL);
     let config = parsed.runtime();
 
     assert_eq!(config.name().as_str(), "minimal-setup");
@@ -43,7 +43,7 @@ fn the_minimal_definition_carries_its_authored_values() {
 /// its description.
 #[test]
 fn the_full_definition_carries_every_authored_block() {
-    let parsed = definition("definition/full.json");
+    let parsed = parsed(super::cases::FULL);
     let config = parsed.runtime();
 
     assert_eq!(config.name().as_str(), "full-setup");
@@ -70,7 +70,7 @@ fn the_full_definition_carries_every_authored_block() {
 /// refusal: the one knob that takes a WORD where its siblings take a number.
 #[test]
 fn an_auto_tool_window_resolves_to_the_zero_sentinel() {
-    let parsed = definition("definition/with_model_and_context.json");
+    let parsed = parsed(super::cases::WITH_MODEL_AND_CONTEXT);
     let config = parsed.runtime();
     let Some(context) = config.context() else {
         panic!("with_model_and_context.json declares a context block");
@@ -86,14 +86,14 @@ fn an_auto_tool_window_resolves_to_the_zero_sentinel() {
 /// The declarative-schedule fleet carries its cron fields and no local timer.
 #[test]
 fn the_declarative_schedule_definition_carries_its_cron_fields() {
-    let parsed = definition(&definition_path("zoho-sprint-daily-summarizer"));
+    let parsed = definition(&definition_path("runner-link-watch"));
 
     let [Trigger::Cron(cron)] = parsed.runtime().triggers() else {
-        panic!("the summarizer declares exactly one cron trigger");
+        panic!("the link watch declares exactly one cron trigger");
     };
-    assert_eq!(&*cron.schedule, "0 9 * * *");
-    assert_eq!(&*cron.timezone, "Asia/Kolkata");
-    assert_eq!(&*cron.message, "Summarize today's Zoho Sprints activity");
+    assert_eq!(&*cron.schedule, "7 * * * *");
+    assert_eq!(&*cron.timezone, "UTC");
+    assert_eq!(&*cron.message, "Hourly runner link check");
 }
 
 /// A configuration whose single gate rule declares `kind`.

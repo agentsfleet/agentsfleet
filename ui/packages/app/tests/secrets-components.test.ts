@@ -115,7 +115,7 @@ describe("EditSecretDialog dismiss guard", () => {
 // ── AddSecretDialog — trigger open/close wiring ─────────────────────────
 // Trigger, dialog title, and the form's own submit button all share the
 // label "Create secret" (a follow-up: consistent with "Create key" /
-// "Create workspace" / "Publish plugin" elsewhere in the product) —
+// "Create workspace" elsewhere in the product) —
 // once the dialog is open, both the still-mounted trigger and the submit
 // button match by that name, so tests scope to `within(dialog)` to
 // disambiguate the submit, same pattern as api-keys-components.test.ts's

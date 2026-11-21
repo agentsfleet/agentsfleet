@@ -1,44 +1,52 @@
 //! The agent loop: turns until the model answers without a tool call, the
-//! context cap is reached, the lease is stopped, or the provider fails.
+//! context cap is reached, the run is stopped, or the provider fails.
 //!
-//! One [`Harness`] drives one loop: the run's root, or a child a nested tool
-//! started, which is the same loop over a task of the model's with a narrower
-//! selection. What every loop of the run shares is [`Shared`]; the ledger
-//! keeps what each call did. Children are polled beside the root loop, never
-//! spawned, so a run that ends takes every child with it.
+//! One [`Harness`] is one loop: the run's root, or one turn of a child
+//! `guffbolt` drives for a subagent call, which is the same loop over the
+//! child's transcript. `guffbolt` makes each model call, runs and ends each
+//! tool call, keeps the transcript, and owns the children: their tools,
+//! narrowed from their parent's, their inboxes and their turns. The harness
+//! is its conversation, fits each call's window (`context`), and hears its
+//! work as its observer. What every loop of the run shares is [`Shared`]; the
+//! ledger keeps what each call did. `guffbolt::agents` polls the children
+//! beside the root loop, never spawned, so a run that ends takes every child
+//! with it. Every tool a loop holds, the subagent ones and `propose_change`
+//! included, sits in its router; the loop dispatches none by name.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
-use af_providers::{Call, Connect, Hosted, Message, ToolSpec};
+use af_providers::Connect;
 use af_secrets::Scrub;
 use af_wire::policy::ExecutionPolicy;
-use afr_tools::{Catalog, Selection};
+use afr_tools::{Backends, Catalog, Selection};
+use guffbolt::agents::{Agents, Children};
+use guffbolt::{Hosted, Transcript};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use self::children::Children;
 use self::shared::Shared;
 use crate::context::Checkpoints;
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
-use crate::nested::{self, Registry, Tether};
 use crate::prompt::Prompt;
-use crate::router::{self, Router};
+use crate::router::Router;
 use crate::spans;
 
 const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
 const EVENT_TURN_STARTED: &str = "provider_turn_started";
 const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
-/// Why a turn the lease stopped did not complete.
-const REASON_STOPPED: &str = "lease_stopped";
-/// What joins two messages a parent sent a child before one turn.
-const INPUT_JOIN: &str = "\n\n";
+/// Why a turn the run stopped did not complete.
+const REASON_STOPPED: &str = "run_stopped";
+/// One of a child's turns starts.
+const EVENT_CHILD_STARTED: &str = "child_started";
+/// One of a child's turns ended.
+const EVENT_CHILD_ENDED: &str = "child_ended";
 
 /// How a loop's turns ended, a failure being the provider's.
 pub(crate) type Ending = guffbolt::Ending<af_providers::Error>;
 
-/// The agent engine that runs the model against the lease's tools.
+/// The agent engine that runs the model against the run's tools.
 #[derive(Debug)]
 pub struct Loop {
     catalog: Catalog,
@@ -61,18 +69,24 @@ impl Loop {
 impl AgentEngine for Loop {
     async fn prepare_task(
         &self,
-        lease: &af_wire::lease::LeasePayload<'_>,
-        verbs: &dyn afr_tools::LeaseVerbs,
+        run: &af_wire::run::RunPayload<'_>,
+        verbs: &dyn afr_tools::RunVerbs,
         meter: &crate::Meter,
         stop: &CancellationToken,
     ) -> Result<Option<crate::PreparedTask>> {
-        if !lease.durable_tasks {
+        if !run.durable_tasks {
             return Ok(None);
         }
-        let provider = self.connect.connect(lease)?;
-        crate::decision::prepare(lease, verbs, provider.as_ref(), meter, stop)
+        let provider = self.connect.connect(run)?;
+        crate::decision::prepare(run, verbs, provider.as_ref(), meter, stop)
             .await
             .map(Some)
+    }
+
+    /// A setup run reaches its model the way a fleet run does, and holds no
+    /// catalog tool: its one tool is built per run (`crate::setup`).
+    async fn setup(&self, run: crate::setup::SetupRun<'_>) -> Result<crate::setup::SetupOutput> {
+        crate::setup::run(self.connect.as_ref(), run).await
     }
 
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs> {
@@ -82,8 +96,8 @@ impl AgentEngine for Loop {
     }
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
-        let policy = &run.lease.policy;
-        if run.lease.durable_tasks && run.prepared_task.is_none() {
+        let policy = &run.run.policy;
+        if run.run.durable_tasks && run.prepared_task.is_none() {
             return Err(crate::decision::unavailable());
         }
         let tools = if run
@@ -95,58 +109,90 @@ impl AgentEngine for Loop {
             &policy.tools
         };
         let selection = self.catalog.select(tools)?;
-        let provider = self.connect.connect(run.lease)?;
+        let provider = self.connect.connect(run.run)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
-        let prompt = Prompt::new(run.lease);
+        let prompt = Prompt::new(run.run);
         let mut instructions = scrub.clean(prompt.instructions).into_inner();
         if let Some(prepared) = run.prepared_task {
             let native = serde_json::json!({ "current_task": prepared.inputs.current_task,
                 "accepted_interpretation": prepared.inputs.current_interpretation,
                 "accepted_inputs": prepared.inputs.accepted_inputs });
-            instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply obligations but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
+            instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply deliveries but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
             instructions.push_str(&scrub.clean(native.to_string()).into_inner());
         }
-        // Every earlier turn passes the scrub the current message does: a
-        // secret said in an earlier message is still a secret.
-        let opening = construction::opening(&scrub, prompt.history);
+        // A fresh fleet chat opens on its thread's saved summary, and saves
+        // the next one as its compactions cover earlier turns.
+        let mut saved = if keeps_summary(&run) {
+            let (model, pinned) = context::digests(
+                &policy.context.model,
+                policy.inference.as_ref(),
+                policy.model_context_tokens,
+                &instructions,
+            )?;
+            context::Saved::load(run.verbs, &run.run.run_id, model, pinned).await
+        } else {
+            None
+        };
+        let opening =
+            construction::opening(&scrub, saved.as_mut(), &run.run.history, !tools.is_empty())?;
         let recovery_boundary::RootSetup {
             opening,
             memory,
-            mut state,
+            state,
         } = recovery_boundary::prepare_root(&run, &scrub, opening, &prompt.message)?;
-        let (registry, requests) = Registry::new();
-        if let Some(recovered) = &mut state {
-            registry.restore(std::mem::take(&mut recovered.children), &scrub)?;
-        }
+        // The run's state outlives its tools: the tools a run builds over its
+        // memory, verbs, guard, sandbox and children borrow it, and every loop
+        // borrows them. A recovered root brings its children back from its
+        // saved state.
+        let tools_run = shared::run_state(&run, memory, provider.as_ref());
+        let (registry, requests) = state.as_ref().map_or_else(
+            || Agents::new(shared::CAPS),
+            |recovered| Agents::restored(shared::CAPS, &recovered.driver),
+        );
+        let backends = Backends::new(&tools_run, run.executor, self.catalog.transport())
+            .with_agents(&registry);
+        let backed = backends.tools(tools)?;
         let shared = Shared::new(
             &run,
-            &selection,
+            (&selection, backed),
             provider.as_ref(),
             &scrub,
-            registry,
+            registry.clone(),
             instructions,
-            memory,
+            &tools_run,
         );
         let driven = async {
             let mut children = Children::new(requests);
-            let mut root = Harness::root(&shared, opening);
+            let mut root = Harness::root(&shared, opening, saved);
             if let Some(recovered) = state {
                 root.driver = recovered.driver;
                 root.context = context::State::new(recovered.pinned);
                 root.folded_through = recovered.folds.last().map_or(0, |fold| fold.sequence);
                 root.folded_inputs = recovered.folds;
-                root.claim_answered = false;
+                root.assignment_answered = false;
                 recovery_boundary::restored(&run);
             }
             let ending = children.beside(&shared, root.drive()).await;
             // Every child is dropped before the ledger closes, so each one's
             // open call ends `interrupted` in the trace the report carries.
-            let permit = children.end_all(&shared);
-            root.finish(ending, permit.as_ref()).await
+            let pause = children.end_all(&shared.registry);
+            root.finish(ending, pause.as_ref()).await
         };
         Ok(driven.instrument(span).await)
     }
+}
+
+/// Whether `run` keeps its thread's saved summary: a fresh fleet chat's
+/// root. A recovered root resumes its own saved history, and a durable
+/// task's run its task's.
+fn keeps_summary(run: &AgentRun<'_>) -> bool {
+    run.run.event.event_type == af_wire::turn::TurnKind::Chat
+        && run.recovered_task.is_none()
+        && run.recovered_turn.is_none()
+        && run.run.task.is_none()
+        && !run.run.durable_tasks
+        && run.run.owner.setup().is_none()
 }
 
 /// One loop in progress: the root, or a child.
@@ -156,40 +202,39 @@ pub(crate) struct Harness<'s, 'run> {
     reconciled_effect_ordinal: u64,
     confirmed_effect_watermark: u64,
     task_report: Option<af_wire::task::TaskReport>,
-    group_start: usize,
     pub(crate) shared: &'s Shared<'run>,
+    /// The child this loop is a turn of: zero for the root.
+    pub(crate) id: u64,
     /// How many loops this one is inside: zero for the root.
     pub(crate) depth: u8,
     /// Cancelled when this loop is to end: the run's token for the root, a
     /// descendant of its parent's for a child.
     pub(crate) stop: CancellationToken,
-    /// The tools this loop is offered; a child's selection narrows it.
+    /// The tools the run was offered; `guffbolt` narrows a child's.
     pub(crate) selection: &'s Selection<'run>,
-    router: Router<'s>,
-    specs: Vec<ToolSpec<'s>>,
+    /// Every tool this loop holds, and how a call reaches one.
+    router: Router<'s, 'run>,
     hosted: Vec<Hosted>,
     live: Live<'s>,
     checkpoints: Checkpoints,
     context: context::State,
-    messages: Vec<Message>,
+    /// The conversation `guffbolt` keeps for this loop.
+    transcript: Transcript,
     driver: guffbolt::DriveState,
-    /// The child this loop is, when it is one: its guard, and what its
-    /// parent sent, read into its next turn.
-    pub(crate) child: Option<Tether<'s, 'run>>,
     /// The last folded message this loop took, by sequence; 0 before the
     /// first. A child takes none.
     folded_through: i64,
     folded_inputs: Vec<crate::engine::FoldRef>,
-    turn_checkpoint: Option<af_wire::lease::TurnResume>,
-    /// Whether the daemon's claim already answered this loop's next fold ask:
-    /// its lease said no later message waited, so the ask before the first
-    /// model call would claim nothing. Spent by that ask.
-    claim_answered: bool,
+    turn_checkpoint: Option<af_wire::run::TurnResume>,
+    /// Whether the daemon's assignment already answered this loop's next fold ask:
+    /// its run said no later message waited, so the ask before the first
+    /// model call would be assigned nothing. Spent by that ask.
+    assignment_answered: bool,
 }
 
 impl Harness<'_, '_> {
-    /// Runs the loop's turns to their end: the root of a durable task with
-    /// its task's additions, every other loop as it is.
+    /// Runs the root's turns to their end, with a durable task's additions
+    /// when it is one; `guffbolt` drives every child's.
     pub(crate) async fn drive(&mut self) -> Ending {
         let mut state = std::mem::take(&mut self.driver);
         let ending = if self.task.is_some() {
@@ -200,53 +245,13 @@ impl Harness<'_, '_> {
         self.driver = state;
         ending
     }
-
-    /// Runs one call to its end, or answers it unrun when its turn was `cut`
-    /// at the output limit; `None` when the loop was stopped. A nested tool
-    /// the loop was offered runs here, beside the turn; every other call
-    /// goes to the router.
-    async fn call(&self, call: &Call, cut: bool) -> Option<Message> {
-        let handler = async {
-            if cut {
-                return router::cut(&call.name);
-            }
-            if call.name == publication::NAME {
-                return self.publish_task(&call.arguments).await;
-            }
-            if let Some(output) = nested::run(self, call).await {
-                return output;
-            }
-            let lease = &self.shared.lease;
-            self.router
-                .dispatch(&call.name, &call.arguments, lease)
-                .await
-        };
-        let (text, image) = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => return None,
-            answered = self.shared.ledger.call(call, handler) => answered,
-        };
-        if let Some(child) = &self.child {
-            child.guard.called();
-        }
-        // The image a call read rides its result alone; the ledger, the trace
-        // and the frames saw the text.
-        let image = image.map(attach::image_input);
-        Some(Message::ToolResult {
-            call_id: call.id.clone(),
-            output: text.into_inner(),
-            image,
-        })
-    }
 }
 
-mod attach;
-mod children;
 mod construction;
 mod context;
 mod conversation;
 mod finish;
-mod model_turn;
+mod observe;
 mod publication;
 mod recovery_boundary;
 pub(crate) mod shared;
@@ -296,3 +301,9 @@ mod compaction_tests;
 
 #[cfg(test)]
 mod fold_tests;
+
+#[cfg(test)]
+mod quiet_tests;
+
+#[cfg(test)]
+mod saved_tests;

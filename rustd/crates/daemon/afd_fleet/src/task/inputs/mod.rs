@@ -1,4 +1,4 @@
-//! Safe-boundary reads use the source conversation and the existing fleet slot.
+//! Safe-boundary reads use the source conversation and the existing fleet thread.
 
 mod recover;
 
@@ -9,7 +9,7 @@ use af_wire::task::{
     TaskInputsResponse,
 };
 
-use super::{TaskLease, Tasks, guard, row, transaction};
+use super::{TaskRun, Tasks, guard, row, transaction};
 use crate::{
     Result,
     error::{query, rejected},
@@ -33,7 +33,7 @@ struct Candidate {
 
 #[derive(sqlx::FromRow)]
 struct InputRow {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     plan_digest: String,
     item_id: Uuid7,
     task_id: Uuid7,
@@ -49,16 +49,16 @@ struct InputRow {
 
 pub(super) async fn read(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskInputsQuery>,
 ) -> Result<TaskInputsResponse<'static>> {
     let after = cursor(input.starting_after.as_deref())?;
     let limit = usize::try_from(input.limit)
         .map_err(|_overflow| rejected("Invalid task input limit"))?
         .min(tasks.dependencies.policy.input_batch());
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     let current_task = guard::context(&mut tx, &current).await?;
     let current_message = current_message(&mut tx, &current).await?;
     let accepted_inputs = accepted(
@@ -68,28 +68,28 @@ pub(super) async fn read(
         tasks.dependencies.policy.input_batch(),
     )
     .await?;
-    let humans = pending_humans(&mut tx, &current, after, limit, lease).await?;
+    let humans = pending_humans(&mut tx, &current, after, limit, run).await?;
     let (humans, next_cursor) = human_page(humans, limit);
     let sources: Vec<_> = humans
         .iter()
         .map(|human| human.id.clone())
-        .chain(std::iter::once(current.source_admission_id.clone()))
+        .chain(std::iter::once(current.source_turn_id.clone()))
         .collect();
     let mut recovered = recover::read(&mut tx, &current, &sources).await?;
-    let current_interpretation = recovered.remove(&current.source_admission_id);
+    let current_interpretation = recovered.remove(&current.source_turn_id);
     let candidates = candidates(&mut tx, &current).await?;
     let inputs = human_inputs(humans, &mut recovered)?;
-    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
+    let execution_deadline = crate::run::deadline::read(&mut tx, run.run_id).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
     Ok(TaskInputsResponse {
-        source_admission_id: current.source_admission_id.into(),
+        source_turn_id: current.source_turn_id.into(),
         accepted_revision_id: current.revision_id.map(String::from),
         current_message,
         inputs,
         accepted_inputs,
         current_task,
-        execution_deadline: Some(execution_deadline),
+        execution_deadline,
         current_interpretation,
         tasks: candidates,
         next_cursor,
@@ -105,7 +105,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
     else {
         return Err(rejected("Invalid task input cursor"));
     };
-    af_core::id::Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
+    Uuid7::parse(&id).map_err(|_invalid| rejected("Invalid task input cursor"))?;
     value
         .parse::<i64>()
         .ok()
@@ -115,7 +115,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
 
 async fn accepted(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     input: &TaskInputsQuery,
     batch: usize,
 ) -> Result<Vec<TaskAcceptedInput>> {
@@ -147,7 +147,7 @@ impl TryFrom<InputRow> for TaskAcceptedInput {
 
     fn try_from(item: InputRow) -> Result<Self> {
         Ok(Self {
-            source_admission_id: item.source_admission_id.into(),
+            source_turn_id: item.source_turn_id.into(),
             plan_digest: item.plan_digest,
             item_id: item.item_id.into(),
             task: DecisionTaskVersion {
@@ -172,7 +172,7 @@ impl TryFrom<InputRow> for TaskAcceptedInput {
 
 async fn candidates(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
 ) -> Result<Vec<TaskInputCandidate>> {
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("../sql/input_candidates.sql"))
         .bind(&current.fleet_id)
@@ -200,26 +200,26 @@ async fn candidates(
 
 async fn pending_humans(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     after: i64,
     limit: usize,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
 ) -> Result<Vec<Human>> {
     let humans: Vec<Human> = sqlx::query_as(include_str!("../sql/pending_inputs.sql"))
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(&current.source_admission_id)
-        .bind(afd_admission::Producer::Steer.as_str())
-        .bind(afd_events::ACTOR_MACHINE)
-        .bind(format!("{}%", afd_events::ACTOR_PREFIX))
+        .bind(&current.source_turn_id)
+        .bind(afd_turns::Producer::Steer.as_str())
+        .bind(afd_turns::view::ACTOR_MACHINE)
+        .bind(format!("{}%", afd_turns::view::ACTOR_PREFIX))
         .bind(after)
         .bind(row::sql_counter(limit, "input batch limit")? + 1)
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(current.fence)
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
+        .bind(None::<&str>.map(guard::wire).transpose()?)
         .bind(true)
-        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
         .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
@@ -253,7 +253,7 @@ fn human_inputs(
         .map(|source| {
             Ok(TaskHumanInput {
                 accepted: recovered.remove(&source.id),
-                source_admission_id: source.id.into(),
+                source_turn_id: source.id.into(),
                 sequence: row::counter(source.sequence, "input sequence")?,
                 message: super::admit::source::message_for(&source.producer, &source.request_json)?
                     .into_owned(),
@@ -265,10 +265,9 @@ fn human_inputs(
 
 async fn current_message(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
 ) -> Result<Option<String>> {
-    let source =
-        super::admit::source::load(connection, current, &current.source_admission_id).await?;
+    let source = super::admit::source::load(connection, current, &current.source_turn_id).await?;
     let message = if super::admit::source::check_human(&source).is_ok() {
         Some(source.message()?.into_owned())
     } else {

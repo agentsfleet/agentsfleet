@@ -20,8 +20,8 @@ It runs from event creation to the `event_complete` publish.
 
 | Attribute | Measured by | From → to |
 |---|---|---|
-| `agentsfleet.delivery.queue_wait_ms` | daemon | event created → lease issued |
-| `agentsfleet.delivery.memory_ms` | runner | memory read, only for a lease without a memory window |
+| `agentsfleet.delivery.queue_wait_ms` | daemon | event created → run issued |
+| `agentsfleet.delivery.memory_ms` | runner | memory read, only for a run without a memory window |
 | `agentsfleet.delivery.model_ms` | runner | the model's turns |
 | `agentsfleet.delivery.tools_ms` | runner | the tools those turns called |
 | `agentsfleet.delivery.sandbox_wait_ms` | runner | sandbox calls delayed by preparation |
@@ -54,14 +54,14 @@ One segment per fleet; swap in any attribute from the table:
 Every span one chat left, daemon and runner, by its event:
 
 ```traceql
-{ span."agentsfleet.event.id" = "$event_id" }
+{ span."agentsfleet.turn.id" = "$turn_id" }
 ```
 
-That returns `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.delivery` and `runner.lease`.
-A fallback `fleet.hydrate` or `fleet.capture` carries no event; find it by fleet within the window between the offer and the report:
+That returns `fleet.steer`, `fleet.assign`, `fleet.report`, `fleet.delivery` and `runner.run`.
+A fallback `fleet.load` or `fleet.capture` carries no event; find it by fleet within the window between the assignment and the report:
 
 ```traceql
-{ name =~ "fleet.hydrate|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }
+{ name =~ "fleet.load|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }
 ```
 
 One daemon stage per fleet; each verb's stages are `agentsfleet.<verb>.<stage>_ms`:
@@ -77,7 +77,7 @@ histogram_quantile(0.95, sum by (le, stage) (rate(agentsfleet_fleet_delivery_sta
 histogram_quantile(0.99, sum by (le, stage) (rate(agentsfleet_fleet_delivery_stage_seconds_bucket[5m])))
 ```
 
-`stage` is `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, `run_to_first_chunk`, `event_to_complete`, `lease_to_report` or `report_to_complete`.
+`stage` is `event_to_run`, `run_to_first_chunk`, `event_to_first_chunk`, `run_to_first_chunk`, `event_to_complete`, `run_to_report` or `report_to_complete`.
 
 ## Options
 

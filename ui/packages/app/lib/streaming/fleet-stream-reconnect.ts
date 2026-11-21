@@ -1,4 +1,4 @@
-// The reconnect policy for a live event stream: how fast to retry, when a
+// The reconnect policy for a live turn stream: how fast to retry, when a
 // retry is pending, and the two browser signals that warrant retrying
 // immediately. Pure policy plus Document Object Model (DOM) wiring — the
 // registry owns the connection state and passes the pieces this module needs

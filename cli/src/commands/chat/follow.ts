@@ -1,22 +1,22 @@
-// Bounded reconciliation follows durable state through ordinary message reads.
+// Reconciliation follows durable state through ordinary message reads. A
+// history walk ends when the server reports no next page; a follow ends when
+// the turn settles or the caller interrupts it. Neither counts pages or reads.
 
 import { Effect } from "effect";
-import { ServerError, ValidationError } from "../../errors/index.ts";
+import { ServerError } from "../../errors/index.ts";
 import { MESSAGE_ROLE, MESSAGE_STATE, type Message } from "./protocol.ts";
 import type { DraftSession } from "./session.ts";
 
-const MAX_HISTORY_PAGES = 200;
-const MAX_FOLLOW_READS = 160;
 const MIN_POLL_DELAY_MS = 250;
-const FOLLOW_PENDING = "CHAT_MESSAGE_PENDING";
 type Wait = (sequence: string, state: string) => Effect.Effect<void, ServerError>;
 type Emit = (message: Message) => Effect.Effect<void>;
 
 export function readHistory(session: DraftSession, emit: Emit, target?: string) {
   return Effect.gen(function* () {
+    const cursors = new Set<string>();
     let cursor: string | undefined;
     let matching: Message | undefined;
-    for (let pageIndex = 0; pageIndex < MAX_HISTORY_PAGES; pageIndex++) {
+    for (;;) {
       const page = yield* session.page(cursor);
       for (const message of page.items) {
         if (target === undefined || message.sequence === target) {
@@ -25,12 +25,15 @@ export function readHistory(session: DraftSession, emit: Emit, target?: string) 
         }
       }
       if (!page.next_cursor) return matching;
+      // A cursor the walk already followed would replay the same pages forever.
+      if (cursors.has(page.next_cursor)) return yield* Effect.fail(new ServerError({
+        detail: `The history of draft ${session.id} repeated page cursor ${page.next_cursor}`,
+        suggestion: "retry; if it persists, report the server's repeating next_cursor",
+        code: "CHAT_HISTORY_CURSOR_REPEATED", status: 502, requestId: null,
+      }));
+      cursors.add(page.next_cursor);
       cursor = page.next_cursor;
     }
-    return yield* Effect.fail(new ValidationError({
-      detail: "This conversation exceeds the terminal history window",
-      suggestion: "open it in the workspace to inspect the paged transcript",
-    }));
   });
 }
 
@@ -44,7 +47,7 @@ export function follow(session: DraftSession, sequence: string, emit: Emit, wait
       seen.set(identity, fingerprint);
       return emit(message);
     };
-    for (let read = 0; read < MAX_FOLLOW_READS; read++) {
+    for (;;) {
       const message = yield* readHistory(session, changed, sequence);
       if (message && message.state !== MESSAGE_STATE.queued && message.state !== MESSAGE_STATE.running) {
         yield* session.refresh();
@@ -53,10 +56,5 @@ export function follow(session: DraftSession, sequence: string, emit: Emit, wait
       yield* wait(sequence, message?.state ?? MESSAGE_STATE.queued);
       yield* Effect.sleep(MIN_POLL_DELAY_MS);
     }
-    return yield* Effect.fail(new ServerError({
-      detail: `Message ${sequence} remains pending in draft ${session.id}`,
-      suggestion: "resume that draft to reconcile its durable outcome; do not resend with a fresh operation key",
-      code: FOLLOW_PENDING, status: 408, requestId: null,
-    }));
   });
 }

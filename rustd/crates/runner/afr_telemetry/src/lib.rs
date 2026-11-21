@@ -4,7 +4,7 @@
 //! ```text
 //!   OTEL_EXPORTER_OTLP_ENDPOINT ──► Endpoint (no header, no user) ──► Telemetry
 //!                                                                      │
-//!   runner.lease ─► invoke_agent ─► chat / execute_tool  ──► LeaseSampler ─┤ spans
+//!   runner.run ─► invoke_agent ─► chat / execute_tool  ──► RunSampler ─┤ spans
 //!   turn · sandbox · frames · push · tool  ──► record::* ──► Families ┤ metrics
 //!                                                                      ▼
 //!                                                   OTLP/HTTP ──► runner collector
@@ -12,7 +12,7 @@
 //!
 //! The runner holds no observability credential. [`Endpoint`] is the only way
 //! to a pipeline, and it refuses a header knob and a user in the endpoint, so
-//! the credential lives with the collector on the host and nowhere a lease
+//! the credential lives with the collector on the host and nowhere a run
 //! runs. Logs stay on stderr for that collector to read from the host's log
 //! store; no log pipeline is built here.
 //!
@@ -46,7 +46,7 @@ mod telemetry;
 #[cfg(feature = "test-util")]
 pub mod testing;
 
-pub use self::budget::{LeaseSampler, MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND};
+pub use self::budget::{MAX_RUN_SPANS, RUNNER_SPANS_PER_SECOND, RunSampler};
 pub use self::endpoint::Endpoint;
 pub use self::error::{Error, Result};
 pub use self::record::Recorder;

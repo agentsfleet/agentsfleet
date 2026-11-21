@@ -77,7 +77,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
         .expect("the planner probe opens");
     sqlx::query(
         "INSERT INTO billing.usage_lines
-           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
             provider, model, posture, requested_at, input_token_count, cached_input_token_count,
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
             output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at,
@@ -94,7 +94,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
     .bind(&held.tenant)
     .bind(&workspace)
     .bind(DECOY_FLEETS)
-    .bind(afd_billing::sql::work::FLEET_LEASE)
+    .bind(afd_billing::sql::work::FLEET_RUN)
     .bind(DECOY_LINES)
     .bind(&held.fleet)
     .bind(HISTORY_DAYS)

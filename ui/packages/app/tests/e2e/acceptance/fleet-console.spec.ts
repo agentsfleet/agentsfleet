@@ -47,7 +47,7 @@ test.describe("fleet console", () => {
 
     // test_console_composer_is_reachable_without_page_scroll — the defect this
     // milestone exists for: the card used to grow to the height of its whole
-    // history, so reaching the composer meant scrolling past every event.
+    // history, so reaching the composer meant scrolling past every turn.
     // The composer is pinned OUTSIDE the chat card — a sibling below it —
     // so it stays reachable while the transcript scrolls internally.
     const composer = page.getByLabel("Chat composer");
@@ -109,7 +109,7 @@ test.describe("fleet console", () => {
 /** Observe the page's own stream; this proves only the browser-to-app hop. */
 async function visitFleetAndCheckStream(page: Page, workspaceId: string, fleetId: string) {
   const target = new URL(workspaceHref(workspaceId, `fleets/${fleetId}`), test.info().project.use.baseURL);
-  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleetId}/events/stream`;
+  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleetId}/turns/stream`;
   const session = await page.context().newCDPSession(page);
   let observed: { status: number; protocol: string | null; mimeType: string } | undefined;
   try {

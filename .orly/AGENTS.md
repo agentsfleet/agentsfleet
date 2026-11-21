@@ -241,6 +241,7 @@ Optimise for one thing: he never has to ask twice.
 |---|---|
 | `burst.acceptance` | `bash -c 'set -a; source <(deploy/local/machine-env.sh /run/orly-burst-machine-env); set +a; status=0; make acceptance SUITE=all || status=$?; logs=ui/packages/app/playwright-acceptance-results/logs; mkdir -p "$logs"; for file in ~/.local/state/agentsfleet/dev-*/worktrees/*/daemon.log ~/.local/state/agentsfleet/dev-*/worktrees/*/acceptance/*.log; do if [ -f "$file" ]; then cp "$file" "$logs/"; fi; done; exit "$status"'` |
 | `burst.integration` | `make test-integration-rustd` |
+| `burst.unit` | `make -k test-unit-all` |
 | `verify.integration` | `make test-integration-rustd` |
 | `verify.lint` | `make lint-all` |
 | `verify.unit` | `make test-unit-all` |

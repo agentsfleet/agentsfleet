@@ -1,5 +1,5 @@
 //! A hold as a runner reports it: the wire's `held_until`, through the
-//! plane's report and its commit, to the fleet's slot, capped there at one
+//! plane's report and its commit, to the fleet's thread, capped there at one
 //! idle window from the database's clock.
 
 #![expect(
@@ -10,24 +10,25 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, SANDBOX_HOLD_IDLE};
+use af_core::timing::{RUN_TTL, SANDBOX_HOLD_IDLE};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use jiff::Timestamp;
 
-use super::slot;
-use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
+use super::thread;
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID};
 use crate::report_seed::{Held, SLICE, SLICE_MS, held};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
-/// A processed report on `held`'s lease, asking to hold its sandbox until
+/// A processed report on `held`'s run, asking to hold its sandbox until
 /// `held_until`.
 pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         task: None,
-        lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
-        event_id: Cow::Borrowed(held.event_id.as_str()),
+        run_id: Cow::Borrowed(held.issued.run_id.as_str()),
+        turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: held.fence.as_u64(),
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -41,7 +42,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+            last_turn_id: Cow::Borrowed(RESUME_TURN_ID),
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
@@ -62,30 +63,29 @@ async fn window_around<T>(
     (output, idle(clock.start())..=idle(clock.end()))
 }
 
-/// `runner` claims `fleet` and releases it asking to hold its sandbox until
-/// `asked`; answers the hold the slot then stores.
+/// `runner` is assigned `fleet` and releases it asking to hold its sandbox until
+/// `asked`; answers the hold the thread then stores.
 async fn released(
     fixtures: &Fixtures,
     fleet: &Uuid7,
     runner: &Uuid7,
     asked: Option<Timestamp>,
 ) -> Option<Timestamp> {
-    let leases = fixtures.leases();
-    let claimed = leases
-        .claim(fleet, runner, LEASE_TTL)
+    let runs = fixtures.runs();
+    let assigned = runs
+        .assign(fleet, runner, RUN_TTL)
         .await
-        .expect("the claim answers")
+        .expect("the assignment answers")
         .expect("the runner wins its own fleet");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    leases
-        .release_through(&mut connection, fleet, claimed.fence, asked)
+    runs.release_through(&mut connection, fleet, assigned.fence, asked)
         .await
         .expect("the release lands");
     drop(connection);
-    slot(fixtures, fleet).await.0
+    thread(fixtures, fleet).await.0
 }
 
-/// A report that left its sandbox held records the hold on the fleet's slot,
+/// A report that left its sandbox held records the hold on the fleet's thread,
 /// in the report's own transaction, cut to one idle window from the commit.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -109,18 +109,18 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
     .await;
     let reported = reported.expect("the plane settles the report");
 
-    let (stored, holder) = slot(&held.fixtures, &held.fleet).await;
+    let (stored, holder) = thread(&held.fixtures, &held.fleet).await;
     let stored = stored.expect("the report recorded a hold");
     assert!(
         window.contains(&stored),
-        "the slot holds the fleet one idle window and no longer: {stored} outside {window:?}"
+        "the thread holds the fleet one idle window and no longer: {stored} outside {window:?}"
     );
     assert_eq!(holder, Some(held.runner.clone()));
     let receipt = reported
         .hold
         .expect("the native response names the accepted hold");
     assert_eq!(receipt.expires_at, stored);
-    assert_eq!(receipt.lease_id, held.issued.lease_id.as_str());
+    assert_eq!(receipt.run_id, held.issued.run_id.as_str());
     assert_eq!(receipt.fencing_token, held.fence.as_u64());
     let repeated = plane
         .report_with(
@@ -186,16 +186,16 @@ async fn test_expired_late_report_settles_without_a_new_hold() {
     let held = held().await;
     held.fixtures
         .age(
-            crate::rows::Row::Lease(&held.issued.lease_id),
-            "lease_expires_at",
-            LEASE_TTL.saturating_mul(2),
+            crate::rows::Row::Run(&held.issued.run_id),
+            "run_expires_at",
+            RUN_TTL.saturating_mul(2),
         )
         .await;
     held.fixtures
         .age(
-            crate::rows::Row::Slot(&held.fleet),
-            "lease_expires_at",
-            LEASE_TTL.saturating_mul(2),
+            crate::rows::Row::Thread(&held.fleet),
+            "run_expires_at",
+            RUN_TTL.saturating_mul(2),
         )
         .await;
     let request = processed(
@@ -216,6 +216,6 @@ async fn test_expired_late_report_settles_without_a_new_hold() {
         .expect("late completion still settles");
     assert!(!result.repeated);
     assert!(result.hold.is_none());
-    assert!(slot(&held.fixtures, &held.fleet).await.0.is_none());
+    assert!(thread(&held.fixtures, &held.fleet).await.0.is_none());
     held.fixtures.cleanup().await;
 }

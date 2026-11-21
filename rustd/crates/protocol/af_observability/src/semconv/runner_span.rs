@@ -1,8 +1,8 @@
-//! The runner's vocabulary: the lease span, its segments and the `GenAI`
+//! The runner's vocabulary: the run span, its segments and the `GenAI`
 //! spans under it.
 
 use super::{
-    ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL,
+    ATTR_AGENT_ID, ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL, ATTR_TURN_ID,
     ATTR_USAGE_CACHE_CREATION_TOKENS, ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS,
     ATTR_USAGE_OUTPUT_TOKENS,
 };
@@ -11,8 +11,8 @@ use super::{
 /// names: a span under it was opened on a runner host, never by the daemon.
 pub const RUNNER_SCOPE_NAME: &str = "agentsfleet-runner";
 
-/// The span one lease's work runs under; every runner span sits inside one.
-pub const SPAN_RUNNER_LEASE: &str = "runner.lease";
+/// The span one run's work runs under; every runner span sits inside one.
+pub const SPAN_RUNNER_RUN: &str = "runner.run";
 
 /// Which runner a signal came from: the daemon's id for the runner's row, so
 /// each runner in a farm is told apart and joins its daemon record.
@@ -21,14 +21,14 @@ pub const ATTR_RUNNER_ID: &str = "agentsfleet.runner.id";
 /// The host a runner reported itself on.
 pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
 
-/// The lease a runner span belongs to.
-pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
+/// The run a runner span belongs to.
+pub const ATTR_RUN_ID: &str = "agentsfleet.run.id";
 
-/// Whether a lease ran in the sandbox its fleet's previous lease left held,
-/// rather than a fresh one; absent from a lease that used no sandbox.
+/// Whether a run ran in the sandbox its fleet's previous run left held,
+/// rather than a fresh one; absent from a run that used no sandbox.
 pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
 
-/// The lease's memory hydrate, on the fallback path only.
+/// The run's memory load, on the fallback path only.
 pub const ATTR_RUNNER_MEMORY_MS: &str = "agentsfleet.runner.memory_ms";
 
 /// The sandbox, from sizing through checkout.
@@ -58,7 +58,7 @@ pub const ATTR_RUNNER_REPORT_MS: &str = "agentsfleet.runner.report_ms";
 /// Inside the model segment: the run's first answer chunk.
 pub const ATTR_RUNNER_FIRST_TOKEN_MS: &str = "agentsfleet.runner.first_token_ms";
 
-/// The lease span's segment keys, in the order the lease's last line logs them.
+/// The run span's segment keys, in the order the run's last line logs them.
 pub const RUNNER_SEGMENT_KEYS: [&str; 10] = [
     ATTR_RUNNER_MEMORY_MS,
     ATTR_RUNNER_SANDBOX_MS,
@@ -84,14 +84,14 @@ pub const ATTR_TOOL_NAME: &str = "gen_ai.tool.name";
 /// The call's id within its run.
 pub const ATTR_TOOL_CALL_ID: &str = "gen_ai.tool.call.id";
 
-/// Every key the runner's spans carry: the lease span's identity, then the
+/// Every key the runner's spans carry: the run span's identity, then the
 /// `GenAI` spans under it.
 pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_RUNNER_ID,
     ATTR_RUNNER_HOST,
-    ATTR_LEASE_ID,
+    ATTR_RUN_ID,
     ATTR_SANDBOX_REUSED,
-    ATTR_EVENT_ID,
+    ATTR_TURN_ID,
     ATTR_AGENT_ID,
     ATTR_RUNNER_MEMORY_MS,
     ATTR_RUNNER_SANDBOX_MS,

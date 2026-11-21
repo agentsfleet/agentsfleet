@@ -117,7 +117,7 @@ fn test_a_set_with_nothing_usable_is_unavailable() {
     }
 }
 
-/// Priming succeeds on a usable set — the boot check §7 calls.
+/// Priming succeeds on a usable set — the boot check the daemon runs.
 #[test]
 fn test_priming_succeeds_on_a_usable_key_set() {
     let verifier = JwksVerifier::new(

@@ -2,7 +2,7 @@
 
 use crate::{
     Result,
-    lease::Leases,
+    run::Runs,
     task::{TaskRefusal, storage::R2CheckpointStore},
 };
 use af_core::{clock, id::Uuid7};
@@ -43,7 +43,7 @@ pub(crate) struct NewObject {
 }
 
 pub(crate) fn prepare(
-    leases: &Leases,
+    runs: &Runs,
     storage: &R2CheckpointStore,
     scope: Registration<'_>,
     descriptor: &CheckpointPlaintext,
@@ -55,9 +55,9 @@ pub(crate) fn prepare(
         identity,
         format,
     } = scope;
-    let id = leases.entropy().uuid7(clock::now())?;
+    let id = runs.entropy().uuid7(clock::now())?;
     let prepared = PreparedCheckpointKey::create(
-        leases.entropy(),
+        runs.entropy(),
         &Sealer::new(),
         &storage.master,
         CheckpointScope {

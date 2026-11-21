@@ -32,9 +32,7 @@ use crate::identity::{Capabilities, Sessions, SignupWriteback};
 pub struct PlaneParts {
     /// Validated deployment clocks and recovery budgets.
     pub runtime: crate::preflight::RuntimeSettings,
-    /// Fixed-origin authoring transport, built before opening datastores.
-    pub authoring_transport: afd_authoring::Network,
-    /// Storage and GitHub share a guarded pool independent of inference timeouts.
+    /// Storage and GitHub share a guarded pool of their own.
     pub storage_client: reqwest::Client,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
@@ -136,19 +134,19 @@ pub struct LoginConfig {
 }
 
 /// The schedule plane over `scheduler`: the management service and its
-/// scheduler client, and the fire verb over the shared admissions ledger.
+/// scheduler client, and the fire verb over the shared turns ledger.
 pub(super) fn schedule_plane(
     database: &Db,
     scheduler: Arc<dyn afd_cron::Scheduler>,
-    admissions: afd_admission::Admissions,
-) -> afd_api::SchedulePlane {
-    afd_api::SchedulePlane::new(
+    turns: afd_turns::Turns,
+) -> afd_http::services::SchedulePlane {
+    afd_http::services::SchedulePlane::new(
         afd_cron::ScheduleService::new(
             afd_cron::Schedules::new(database.clone(), Entropy::new())
-                .with_activity_streams(admissions.streams()),
+                .with_activity_streams(turns.streams()),
             scheduler,
         ),
-        afd_cron::Fire::new(admissions),
+        afd_cron::Fire::new(turns),
         Entropy::new(),
     )
 }

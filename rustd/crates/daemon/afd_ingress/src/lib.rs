@@ -14,10 +14,10 @@
 //! folding a Postgres read into it would take that property away.
 //!
 //! It also classifies nothing. What a GitHub payload MEANS is
-//! `afd_api::handler::webhook::github`, beside the route whose policy decides
+//! `afd_api_ingress`'s GitHub webhook handler, beside the route whose policy decides
 //! it. This crate never parses a provider's body.
 //!
-//! # Why it is not part of `afd_events`
+//! # Why it is not part of `afd_turns`
 //!
 //! That crate owns the same table's reads and the steer's append, and it is the
 //! obvious home until you count what would come with this: `afd_vault` drags
@@ -42,7 +42,7 @@
 //!   Scheme::verify_at       `af_webhook`, constant-time  (NOT this crate)
 //!      │
 //!      ▼
-//!   Ingress::deliver        admission ledger row, at most once
+//!   Ingress::deliver        turn ledger row, at most once
 //! ```
 //!
 //! The secret is read BEFORE the body is parsed and the body is parsed only
@@ -66,8 +66,8 @@ pub mod sql;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_db::Db;
+use afd_turns::Turns;
 use afd_vault::Vault;
 
 pub use self::app::{Fanout, MAX_FANOUT, replay_id};
@@ -75,18 +75,12 @@ pub use self::binding::Binding;
 pub use self::deliver::{Delivery, Surface};
 pub use self::error::{Error, Result};
 
-// Re-exported because it is part of [`Ingress::deliver`]'s answer, and a
-// caller that has to name `afd_admission` to read this crate's return type
-// would be a caller depending on a ledger it never opens. `afd_api` states in
-// its own manifest that nothing in it opens a pool, and that stays true here.
-pub use afd_admission::Admitted;
-
 /// The context a failed fleet read reports under.
 const CONTEXT_BINDING: &str = "resolve a webhook binding";
 
 /// The three stores a signed delivery is resolved through.
 ///
-/// Cheap to clone: [`Db`] and [`Admissions`] are handles over shared pools and
+/// Cheap to clone: [`Db`] and [`Turns`] are handles over shared pools and
 /// [`Vault`] holds its key behind an `Arc`, so every clone shares one
 /// connection set and one copy of the key.
 #[derive(Debug, Clone)]
@@ -100,7 +94,7 @@ pub struct Ingress {
     /// checked against a projection.
     vault: Vault,
     /// Where the verified delivery is accepted, before anything is queued.
-    pub(crate) admissions: Admissions,
+    pub(crate) turns: Turns,
     /// What a channel binding's identifier is minted from.
     entropy: Entropy,
 }
@@ -108,11 +102,11 @@ pub struct Ingress {
 impl Ingress {
     /// Binds the ingress to an already-connected pool, vault and ledger.
     #[must_use]
-    pub const fn new(database: Db, vault: Vault, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, vault: Vault, turns: Turns) -> Self {
         Self {
             database,
             vault,
-            admissions,
+            turns,
             entropy: Entropy::new(),
         }
     }

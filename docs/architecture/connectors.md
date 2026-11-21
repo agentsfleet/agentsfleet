@@ -38,7 +38,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No pool slot rides a vendor call; credentials load under a short acquire released before the exchange (§Bounded outbound).
 
-- The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames (§GitHub App).
+- The App private key and webhook secret never enter the run, runner environment, sandbox, logs, or response frames (§GitHub App).
 
 ## Terminology (binding)
 
@@ -77,7 +77,7 @@ Complete a fresh Connect to restore the binding, or Disconnect again when remova
 - **Inbound routing follows the provider.** GitHub's app webhook uses `POST /v1/ingress/github` and its own routing statements in `afd_ingress`.
 
   Slack keeps `POST /v1/connectors/slack/events` for its signature, challenge, retry, channel and thread rules.
-  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` admission.
+  Only a configured addressed fleet or sole eligible subscriber receives a `slack_mention` turn.
   An unconfigured channel returns `channel_not_configured` without creating a fleet or calling a model.
 
   [Slack mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns selection and fixed notices.
@@ -279,31 +279,31 @@ This gives each layer one job:
 | Workspace connection | Installation-to-workspace identity and the outbound credential handle |
 | Fleet trigger | Explicit repository and event subscription |
 | Integration grant | Whether that fleet may use GitHub |
-| Admission row (`fleet.admissions`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
+| Turn row (`thread.turns`) | Exactly-once enqueue per matching fleet for one GitHub delivery |
 
 ### Where a grant comes from
 
-A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_authoring`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
+A grant is **requested at Save**. When a saved fleet's readiness review finds a declared credential's grant missing, setup activation asks for it (`afd_setup`'s creation activate). The request writes a `pending` `connector.integration_grants` row and raises an approval card in one transaction (`afd_approval`'s grant statements).
 
-The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_authoring`'s creation progress). The lease path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s lease deliver).
+The fleet stays `installing` until every readiness check, the grant included, is ready (`afd_setup`'s creation progress). The run path asks the same way the first time a delivery reaches a credential with no grant (`afd_fleet`'s run deliver).
 
 Either way, the decision belongs to the approval-gate machine this codebase already ships. That machine is an inbox and a detail page with an evidence tree. It also has resolve buttons, a webhook, a timeout sweeper and an append-only audit.
 
-**A gate is a per-event decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
+**A gate is a per-turn decision; a grant is the standing answer that outlives the run.** The gate asks; the grant remembers.
 
 Resolving the gate as approved flips the grant and the gate in one statement, so the two cannot disagree. Any non-approval outcome drives the grant to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no event, takes no lease and reports nothing.
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`. A fleet that cannot obtain a grant therefore writes no turn, takes no run and reports nothing.
 
 It goes silently inert rather than failing visibly.
 
 An origination path reachable only with a credential the fleet does not hold produces exactly that silence.
 
-A lease is the last checkpoint. A credential with a mintable handle but no
-approved grant **parks the event**.
+A run is the last checkpoint. A credential with a mintable handle but no
+approved grant **parks the turn**.
 
-Parked admissions stay out of runner claims until gate resolution clears the
-park stamp. A revoked grant ends the event with `grant_denied`.
+Parked turns stay out of run assignment until gate resolution clears the
+park stamp. A revoked grant ends the turn with `grant_denied`.
 
 An incoming delivery follows this order:
 
@@ -326,16 +326,16 @@ active fleets in that workspace
   ∩ approved GitHub integration grant
         │
         ▼
-commit fleet.admissions row (body digest + fleet)
+commit queued thread.turns row (body digest + fleet)
         │
         ├── best-effort wake notification
         ▼
-offer pass → Postgres ledger → fenced claim → runner stream
+assignment pass → thread row fence → run → Down::Run on the runner connection
 ```
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.
 
-If one fan-out leg fails before its admission commits, redelivery retries that leg. Fleets already admitted answer `replayed`; redelivery admits only the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
+If one fan-out leg fails before its turn commits, redelivery retries that leg. Fleets already holding the turn answer `replayed`; redelivery writes turns only for the missing fleets. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`afd_ingress`'s App routing).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries".
 
@@ -345,12 +345,12 @@ This page previously credited the recovery to "GitHub's retry", which does not e
 
 | Where the fan-out fails | What survives |
 |---|---|
-| After a leg's admission row commits | Durable. The committed ledger row remains available for the next eligible runner claim; wake notifications are best effort. |
+| After a leg's turn row commits | Durable. The committed queued turn stays available to the next run assignment; wake notifications are best effort. |
 | Before it commits (the failing leg, and every leg after it in the loop) | **Nothing.** No row, no entry, and no sender that will ask again. |
 
 So the durable-acceptance guarantee covers work this deployment ACCEPTED. The window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow.
 
-The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one admission per subscribed fleet, so fan-out width spends it.
+The ten-second budget is a hard deadline rather than a target. It is shared across signature verification, fleet resolution, and one turn write per subscribed fleet, so fan-out width spends it.
 
 Deduplication is still worth every line. The redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed. That is exactly when a duplicate review would otherwise appear on a pull request.
 
@@ -363,12 +363,12 @@ Slack is the contrast and the reason this page cannot generalise: its retry sema
 Receiving a signed event does not give GitHub credentials to a fleet.
 When the fleet calls GitHub through `${secrets.github.token}`, its runner-token plane asks the daemon to mint a token.
 
-The daemon derives the fleet and workspace from the lease and rechecks the approved integration grant.
+The daemon derives the fleet and workspace from the run and rechecks the approved integration grant.
 It loads the workspace installation handle, signs with the platform key and exchanges for a short-lived token.
 
-The runner caches that token for the lease and refreshes it 30 seconds before expiry.
+The runner caches that token for the run and refreshes it 30 seconds before expiry.
 It masks the token in tool responses (`af_egress`'s vault module).
-The App private key and webhook secret never enter the lease, runner environment, sandbox, logs or response frames.
+The App private key and webhook secret never enter the run, runner environment, sandbox, logs or response frames.
 
 The binding determines token scope (`afd_credential`'s GitHub request builder).
 Read bindings receive contents read without Pull Request permissions; repair bindings add bounded write permissions, never workflows.

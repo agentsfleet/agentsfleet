@@ -1,0 +1,221 @@
+//! The run store: one pool, one entropy source, and the verbs over both.
+//!
+//! The same shape as [`afd_runner::Runners`], for the same reason. A set of
+//! free functions taking `&Db` would read fine and give away the property this
+//! crate is built on: `Runs::pool` is `pub(crate)`, so nothing outside can
+//! run a statement that is not in [`crate::run::sql`], and that module stays
+//! the one place a reviewer reads every statement the plane runs.
+//!
+//! So the pool is OWNED here and the verbs are methods, split one concern per
+//! file — [`super::affinity`] is the assignment and the fence, and the modules
+//! beside it add the gates and the row.
+
+use af_crypto::entropy::Entropy;
+use afd_bus::{Handle, wake::Wake};
+use afd_db::Db;
+
+/// Queue selection, run writes and owed answers use Postgres. The bus
+/// carries the live tail and the disposable notifications.
+#[derive(Debug, Clone)]
+pub struct Runs {
+    clock: af_core::timing::RunClock,
+    resume_from_checkpoint: bool,
+    database: Db,
+    bus: Handle,
+    entropy: Entropy,
+    wake: Wake,
+    ticket: Option<afd_runner::capacity::choice::Ticket>,
+    authority: Option<afd_runner::capacity::authority::Authority>,
+    /// Parsed definitions by revision id, shared by every clone of this store.
+    definitions: crate::run::cache::Definitions,
+    /// Price books by model and catalogue version, shared the same way.
+    prices: crate::run::cache::PriceBooks,
+    /// The newest versions this replica has read, shared the same way.
+    latest: crate::run::cache::Latest,
+}
+
+impl Runs {
+    pub(crate) const fn clock(&self) -> af_core::timing::RunClock {
+        self.clock
+    }
+
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// Gate retries of ordinary turns carrying a committed checkpoint.
+    #[must_use]
+    pub fn with_checkpoint_resume(mut self, enabled: bool) -> Self {
+        self.resume_from_checkpoint = enabled;
+        self
+    }
+
+    /// Whether this replica may reassign an ordinary checkpointed turn.
+    #[must_use]
+    pub const fn checkpoint_resume_enabled(&self) -> bool {
+        self.resume_from_checkpoint
+    }
+
+    /// A store reading and writing through `database`, announcing on `bus`.
+    #[must_use]
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
+        Self {
+            clock: af_core::timing::RunClock::default(),
+            resume_from_checkpoint: true,
+            database,
+            bus,
+            entropy,
+            wake: Wake::default(),
+            ticket: None,
+            authority: None,
+            definitions: crate::run::cache::Definitions::default(),
+            prices: crate::run::cache::PriceBooks::default(),
+            latest: crate::run::cache::Latest::default(),
+        }
+    }
+
+    /// The newest catalogue version and head revisions this replica has read.
+    pub(crate) const fn latest(&self) -> &crate::run::cache::Latest {
+        &self.latest
+    }
+
+    /// The price books this replica holds, by model and catalogue version.
+    pub(crate) const fn prices(&self) -> &crate::run::cache::PriceBooks {
+        &self.prices
+    }
+
+    /// The parsed definitions this replica holds, by revision id.
+    pub(crate) const fn definitions(&self) -> &crate::run::cache::Definitions {
+        &self.definitions
+    }
+
+    /// Bind streamed run operations to the credential and owner acquired at opening.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    /// Lock the runner row through this transaction and count its occupied workers.
+    /// Stream grants also recheck the opening credential and connection owner.
+    pub(crate) async fn lock_host_capacity(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
+        Ok(match &self.authority {
+            Some(authority) => {
+                afd_runner::capacity::lock(
+                    tx,
+                    (runner, authority),
+                    afd_runner::capacity::Work::Existing,
+                    None,
+                )
+                .await?
+            }
+            None => {
+                afd_runner::capacity::lock(tx, runner, afd_runner::capacity::Work::Existing, None)
+                    .await?
+            }
+        })
+    }
+
+    /// Whether this store serves a stream connection, which must prove its
+    /// credential and connection on every host statement.
+    pub(crate) const fn connected(&self) -> bool {
+        self.authority.is_some()
+    }
+
+    /// The connection's proof for `runner`: its credential digest and
+    /// connection, or none for a trusted domain call.
+    pub(crate) fn host_proof<'a>(
+        &'a self,
+        runner: &'a af_core::id::Uuid7,
+    ) -> (Option<&'a str>, Option<&'a af_core::id::Uuid7>) {
+        let (_runner, digest, connection) = self.authority.as_ref().map_or_else(
+            || afd_runner::capacity::proof(runner),
+            |authority| afd_runner::capacity::proof((runner, authority)),
+        );
+        (digest, connection)
+    }
+
+    /// Lock the runner row and prove its owner, leaving the census to the
+    /// fleet issue's guarded insert.
+    pub(crate) async fn lock_host(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+        work_tenant: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        let work = Some(work_tenant);
+        Ok(match &self.authority {
+            Some(authority) => {
+                afd_runner::capacity::lock_host(tx, (runner, authority), work).await?
+            }
+            None => afd_runner::capacity::lock_host(tx, runner, work).await?,
+        })
+    }
+
+    /// Continue current work under a shared proof of the exact session.
+    pub(crate) async fn share_host(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::share_host(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::share_host(tx, runner).await?,
+        })
+    }
+
+    pub(super) const fn with_ticket(
+        mut self,
+        ticket: Option<afd_runner::capacity::choice::Ticket>,
+    ) -> Self {
+        self.ticket = ticket;
+        self
+    }
+
+    pub(super) const fn ticket(&self) -> Option<afd_runner::capacity::choice::Ticket> {
+        self.ticket
+    }
+
+    /// Share the replica's notification queue with placement and scheduling.
+    #[must_use]
+    pub fn with_wake(mut self, wake: Wake) -> Self {
+        self.wake = wake;
+        self
+    }
+
+    /// The entropy source, for the sibling module that mints a run's
+    /// identifiers.
+    ///
+    /// `pub(crate)` for the same reason [`Runs::pool`] is.
+    pub(crate) const fn entropy(&self) -> &Entropy {
+        &self.entropy
+    }
+
+    /// Recent-work reminders supplement the authoritative candidate read.
+    #[must_use]
+    pub const fn wake(&self) -> &Wake {
+        &self.wake
+    }
+
+    /// The fleet event streams, bound to this store's connection.
+    pub(crate) fn streams(&self) -> Handle {
+        self.bus.clone()
+    }
+
+    /// The pool this store reads through, for the sibling modules that add
+    /// verbs to [`Runs`] in their own files.
+    ///
+    /// `pub(crate)`, not `pub`: the pool is an implementation detail of this
+    /// crate, and handing it out would let a caller run a statement that is not
+    /// in [`crate::sql`].
+    pub(crate) const fn pool(&self) -> &Db {
+        &self.database
+    }
+}

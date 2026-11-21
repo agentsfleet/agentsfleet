@@ -28,7 +28,7 @@ use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 mod configuration;
 
@@ -47,7 +47,7 @@ const PATIENCE: Duration = Duration::from_secs(20);
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 
@@ -75,17 +75,18 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
         (
             "NATS_URL",
             afd_bus::test_util::lane_url()
-                .expect("the lane's NATS seeds: run through make test-integration-rustd"),
+                .expect("the lane's NATS seeds: scene through make test-integration-rustd"),
         ),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
     .chain(
-        crate::support::runner_stream::environment().map(|(knob, value)| (knob, value.to_owned())),
+        agentsfleetd::test_util::runner_stream::environment()
+            .map(|(knob, value)| (knob, value.to_owned())),
     )
-    .chain(crate::support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(agentsfleetd::test_util::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
 
@@ -128,9 +129,9 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
         "DATABASE_POOL_SIZE",
     ]
     .into_iter()
-    .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
-    .chain(crate::support::runner_stream::environment().map(|(knob, _value)| knob))
-    .chain(crate::support::IDENTITY_KNOBS)
+    .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, _value)| knob))
+    .chain(agentsfleetd::test_util::runner_stream::environment().map(|(knob, _value)| knob))
+    .chain(agentsfleetd::test_util::IDENTITY_KNOBS)
     {
         command.env_remove(knob);
     }
@@ -251,7 +252,7 @@ fn test_migrate_applies_and_reports_success() {
     );
     assert_eq!(
         again, SUCCESS,
-        "a second run is a no-op, not a failure — which is what makes this safe in an init container"
+        "a second scene is a no-op, not a failure — which is what makes this safe in an init container"
     );
 }
 

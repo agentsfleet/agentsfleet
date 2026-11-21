@@ -85,7 +85,7 @@ async fn refused(status: StatusCode, code: ErrorCode) -> Proof {
     let _stop_on_exit = stop.clone().drop_guard();
     let mut server = serve(listener, status, code, Arc::clone(&census), &stop)?;
     let config = configured(&origin, &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     let result = tokio::time::timeout(Duration::from_secs(8), downlink.run(&halt)).await?;
     let failure = result.err().ok_or("the refused opening was accepted")?;
@@ -230,7 +230,7 @@ async fn events_after(
 ) -> Proof<crate::Result<Progress>> {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let requests = Requests::new();
     let stop = CancellationToken::new();
     let (queues, _receivers) = Queues::new();
@@ -243,9 +243,9 @@ async fn events_after(
     let mut dispatch = Dispatch {
         requests: &requests,
         running: &downlink.running,
-        offers: &downlink.offers,
-        offer_budget: &downlink.offer_budget,
         assignments: &downlink.assignments,
+        assignment_budget: &downlink.assignment_budget,
+        policies: &downlink.policies,
         stop: &stop,
         early_cancel: std::collections::HashSet::new(),
     };
@@ -300,7 +300,7 @@ fn a_runner_credential_no_header_can_carry_is_refused_before_any_opening() -> Pr
 fn a_drained_connection_retries_without_stopping_the_runner() -> Proof {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     let mut outage = super::observation::Outage::new();
     downlink.retry(
@@ -319,7 +319,7 @@ fn a_drained_connection_retries_without_stopping_the_runner() -> Proof {
 async fn a_runner_stopped_before_its_first_attempt_opens_no_session() -> Proof {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     halt.stop();
     downlink.sessions(&halt).await?;

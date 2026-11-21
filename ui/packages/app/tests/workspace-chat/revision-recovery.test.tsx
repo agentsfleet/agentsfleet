@@ -25,7 +25,7 @@ it("defers a new source revision until the accepted turn completes", async () =>
   let messages: Message[] = [{...MESSAGE, state: MESSAGE_STATE.running}];
   let contextReads = 0;
   fixture.override = ({path}) => {
-    if (path.endsWith("/authoring-context")) {
+    if (path.endsWith("/setup-context")) {
       contextReads++;
       return response({fleet: fixture.fleet, conversations: [{draft: fixture.current, messages,
         messages_starting_after: null, truncated: false}], activities: {items: [], next_cursor: null}, next_cursor: null});
@@ -50,7 +50,7 @@ it("defers a new source revision until the accepted turn completes", async () =>
 });
 
 // Value: protects=the fleet-page chat stays at its owning fleet after a manual save;
-// fails_when=the shared authoring URL effect navigates to the new-fleet page; seam=HTTP and router.
+// fails_when=the shared setup URL effect navigates to the new-fleet page; seam=HTTP and router.
 it("keeps a saved fleet-page conversation on the fleet page", async () => {
   fixture.override = ({path}) => {
     if (path.endsWith("/revisions")) {

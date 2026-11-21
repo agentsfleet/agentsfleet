@@ -1,4 +1,4 @@
-//! Trusted supervisor decision calls use the existing fenced lease resource.
+//! Trusted supervisor decision calls use the existing fenced run resource.
 
 use std::borrow::Cow;
 
@@ -9,12 +9,12 @@ use crate::decision::{DecisionAssignment, DecisionRequest, DecisionResult};
 
 use super::{DecisionAssessment, DecisionUnavailableCause};
 
-/// Task identity and generation supplied from the native lease context.
+/// Task identity and generation supplied from the native run context.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionTaskVersion {
-    /// The current lease's objective; not another task selected by model text.
+    /// The current run's objective; not another task selected by model text.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub task_id: String,
     /// Expected current task generation, without resetting cumulative usage.
@@ -30,12 +30,12 @@ pub struct DecisionReservationInput {
     /// Retry identity of this reservation request, not a second physical send.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub operation_id: String,
-    /// Existing fleet-slot fence issued with the lease.
+    /// Existing fleet-thread fence issued with the run.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Admitted source whose meaning the call is assessing.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Logical role; native state derives its identity and accepted questions.
     #[garde(dive)]
     pub assessment: DecisionAssessment,
@@ -92,7 +92,7 @@ pub struct DecisionDispatch<'a> {
     pub assessment_id: String,
     /// Zero for the original call, one for its approved throttling retry.
     pub attempt: u8,
-    /// Reviewed selection already frozen on the original lease.
+    /// Reviewed selection already frozen on the original run.
     pub assignment: DecisionAssignment,
     /// Native call identity, evidence and accepted questions for this send.
     pub request: DecisionRequest,
@@ -221,7 +221,7 @@ pub enum DecisionRecordDisposition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionReceiptResult {
-    /// Original native call identity, even after lease deletion.
+    /// Original native call identity, even after run deletion.
     pub call_id: String,
     /// Current durable accounting state.
     pub state: DecisionCallState,

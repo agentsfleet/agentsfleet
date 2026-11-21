@@ -14,12 +14,12 @@ pub struct TaskDefaults {
     /// Lifetime including paused work and time waiting for a person.
     #[garde(range(min = 1, max = 31_536_000))]
     pub wall_seconds: u32,
-    /// Accumulated active time across every replacement lease.
+    /// Accumulated active time across every replacement run.
     #[garde(range(min = 1, max = self.wall_seconds))]
     pub running_seconds: u32,
-    /// Total distinct issued leases, including replacements.
+    /// Total distinct issued runs, including replacements.
     #[garde(range(min = 1, max = 65_535))]
-    pub max_leases: u32,
+    pub max_runs: u32,
     /// Total physical repair publication attempts.
     #[garde(range(min = 1, max = 65_535))]
     pub max_publication_attempts: u32,
@@ -38,7 +38,7 @@ impl Default for TaskDefaults {
             model_budget_nanodollars: limits.model_nanos,
             wall_seconds: limits.wall_seconds,
             running_seconds: limits.running_seconds,
-            max_leases: limits.leases,
+            max_runs: limits.runs,
             max_publication_attempts: limits.publications,
             max_decision_calls: limits.decision_calls,
             max_fallback_reads: limits.fallback_reads,
@@ -52,7 +52,7 @@ impl TaskDefaults {
             model_nanos: self.model_budget_nanodollars,
             wall_seconds: self.wall_seconds,
             running_seconds: self.running_seconds,
-            leases: self.max_leases,
+            runs: self.max_runs,
             publications: self.max_publication_attempts,
             decision_calls: self.max_decision_calls,
             fallback_reads: self.max_fallback_reads,

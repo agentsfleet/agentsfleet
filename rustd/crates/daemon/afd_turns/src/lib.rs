@@ -1,0 +1,135 @@
+//! One durable turn per producer key. The committed row is the work queue.
+//! Notifications are best-effort hints; polling Postgres always finds accepted work.
+
+// A dependency listed but unused is a supply-chain and compile-time cost with
+// no offsetting benefit. Gated on `not(test)` because the test build links
+// dev-dependencies into this same target.
+#![cfg_attr(not(test), deny(unused_crate_dependencies))]
+#![deny(clippy::self_named_module_files)]
+
+mod admit;
+mod backlog;
+pub mod budget;
+mod confirm;
+pub mod error;
+mod incoming;
+mod repeat;
+mod run_facts;
+pub mod sql;
+mod stage;
+pub mod view;
+mod wake;
+
+use std::sync::Arc;
+
+use af_crypto::entropy::Entropy;
+use afd_bus::Handle;
+use afd_db::Db;
+
+pub use self::admit::Unheld;
+pub use self::backlog::LedgerBacklog;
+pub use self::budget::Budgets;
+use self::budget::Ceiling;
+pub use self::confirm::Confirmation;
+pub use self::error::{Error, Result};
+pub use self::incoming::{IncomingTurn, Key, Producer, Reply};
+pub use self::repeat::Repeated;
+pub use self::run_facts::PersonSteer;
+pub use self::stage::PreparedTurn;
+
+/// What admitting a turn decided.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Admitted {
+    /// Whether an earlier call already admitted this key.
+    pub replayed: bool,
+    /// The row the key holds, as the admitting statement itself returned it:
+    /// this call's on a fresh insert, the earlier call's on a replay. Its id is
+    /// the event's, and its digest and fleet let a producer tell a retry from a
+    /// different payload under one key without a second read.
+    pub stored: Repeated,
+}
+
+/// What a steer's disposition is named from: [`Turns::run_facts`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunFacts {
+    /// The run holding the fleet's thread, when its run has not expired.
+    pub live_run: Option<LiveRun>,
+    /// Whether a message waits that this one must not pass: with no live
+    /// run, any earlier unsettled turn; with one, an earlier message in
+    /// the run's conversation that the run's assignment stops at.
+    pub earlier_waiting: bool,
+}
+
+/// The fleet's live run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveRun {
+    /// The event the run serves.
+    pub turn_id: String,
+    /// Whether the run is a durable task.
+    pub durable_task: bool,
+    /// Whether this message is in the run's conversation: the same reply
+    /// destination, or none on both.
+    pub same_conversation: bool,
+}
+
+/// The durable queue, its entropy source and best-effort notification transport.
+/// Clones share the deployment ceiling sample.
+#[derive(Debug, Clone)]
+pub struct Turns {
+    database: Db,
+    bus: Handle,
+    entropy: Entropy,
+    budgets: Budgets,
+    ceiling: Arc<Ceiling>,
+}
+
+impl Turns {
+    /// Binds the ledger to an already-connected pool and queue, under the
+    /// production budgets.
+    #[must_use]
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
+        Self {
+            database,
+            bus,
+            entropy,
+            budgets: Budgets::default(),
+            ceiling: Arc::new(Ceiling::default()),
+        }
+    }
+
+    /// The same ledger under other budgets.
+    ///
+    /// A builder step rather than a fourth argument to [`Turns::new`]:
+    /// every production caller wants the defaults, and the one caller that
+    /// does not — a suite proving a refusal without a hundred thousand rows —
+    /// should have to say so by name.
+    #[must_use]
+    pub const fn with_budgets(mut self, budgets: Budgets) -> Self {
+        self.budgets = budgets;
+        self
+    }
+
+    /// The same ledger, with the host's own entropy supplied for a suite.
+    ///
+    /// Every crate whose lane drives a producer needs an `Turns`, and the
+    /// only argument any of them has an opinion about is the pool and the
+    /// bus their own harness already opened. Handing the third one out here
+    /// keeps `af_crypto` out of eight `[dev-dependencies]` blocks and means a
+    /// suite that wants a CONTROLLED entropy source has to say so, by calling
+    /// [`Turns::new`] with one, rather than getting it by accident.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn for_tests(database: Db, bus: Handle) -> Self {
+        Self::new(database, bus, Entropy::new())
+    }
+
+    /// The live tails over this ledger's queue, for a producer announcing
+    /// what it admitted — the handle the run plane's `streams()` is too.
+    #[must_use]
+    pub fn streams(&self) -> Handle {
+        self.bus.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests;

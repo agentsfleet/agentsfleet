@@ -1,6 +1,6 @@
-//! Sandbox engines: where a lease's tool calls run.
+//! Sandbox engines: where a run's tool calls run.
 //!
-//! [`Engine`] builds one [`Sandbox`] per lease and the sandbox hands back the
+//! [`Engine`] builds one [`Sandbox`] per run and the sandbox hands back the
 //! [`afr_executor::Executor`] running inside it. The interface assumes no file
 //! system shared with the host — the workspace is a block image, the toolbox an
 //! image file, the executor a Unix socket — so a microVM engine attaches the
@@ -9,8 +9,8 @@
 //! # Shape
 //!
 //! [`bubblewrap`] is the pure command line, [`harden`] what the process inside
-//! does to itself, and [`probe`] what the host can enforce. The pieces a lease
-//! owns — [`LeaseCgroup`], [`WorkspaceDisk`] — each have one cleanup that
+//! does to itself, and [`probe`] what the host can enforce. The pieces a run
+//! owns — [`RunCgroup`], [`WorkspaceDisk`] — each have one cleanup that
 //! consumes them. [`BubblewrapEngine`] composes them on Linux; [`WarmSlots`]
 //! wraps any engine; [`UnsandboxedEngine`] serves the executor in-process for
 //! tests and refuses to exist in a release build.
@@ -55,7 +55,7 @@ pub use self::bubblewrap_engine::{
     BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
 };
 pub use self::cgroup::{
-    DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, MECHANISM_DELEGATED_CGROUP, SANDBOX_LEAF,
+    DEFAULT_IO_BYTES_PER_SECOND, Freezer, MECHANISM_DELEGATED_CGROUP, RunCgroup, SANDBOX_LEAF,
     SANDBOX_MEMORY_RESERVE_BYTES, SELF_CGROUP_PATH, SUBTREE_CONTROL, TENANT_LEAF, delegated_root,
 };
 pub use self::engine::{

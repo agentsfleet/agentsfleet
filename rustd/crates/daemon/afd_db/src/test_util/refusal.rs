@@ -6,7 +6,7 @@
 //! production would see a lost connection or an aborted transaction, while
 //! every other fleet in the shared lane is untouched.
 //!
-//! The authoring suite and the router suite both drive it from here, so they
+//! The setup suite and the router suite both drive it from here, so they
 //! drive the same fault rather than two copies drifting apart.
 
 use sqlx::{AssertSqlSafe, Connection as _};

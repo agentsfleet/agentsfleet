@@ -2,13 +2,16 @@
 //! carries, and what the run leaves behind.
 
 use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
-use af_wire::memory::MemoryDelta;
+use guffbolt::agents::Pause;
 
 use super::{Ending, Harness};
 use crate::engine::RunOutput;
 
-/// What a run stopped by its lease reports as its detail.
+/// What a run stopped by its run reports as its detail.
 pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished";
+/// What a run that asked the person a question fails with: no run carries
+/// a question to its person yet, so the run cannot wait on one.
+pub(super) const DETAIL_WAITING: &str = "the run asked a question this run cannot deliver";
 /// The event a run's end logs when it killed sessions still open.
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
@@ -29,6 +32,14 @@ impl Harness<'_, '_> {
         if !pending {
             return Ok(());
         }
+        // A run bound to no task has no execution ceiling: the fleet's budget
+        // and a person's Stop bound its replies, as they bound the run. A
+        // bound task whose ceiling is missing still answers nothing.
+        if self.task.as_ref().is_some_and(|task| {
+            task.execution_deadline.is_none() && task.inputs.current_task.is_none()
+        }) {
+            return self.answer_task_inputs().await;
+        }
         let budget = self.task_execution_budget();
         super::task_slice::within_budget(budget, self.answer_task_inputs()).await
     }
@@ -41,14 +52,14 @@ impl Harness<'_, '_> {
             return;
         };
         let remembered = matches!(
-            self.messages.last(),
-            Some(af_providers::Message::Assistant { calls, .. }) if calls.is_empty()
+            self.transcript.messages().last(),
+            Some(guffbolt::Message::Assistant { calls, .. }) if calls.is_empty()
         );
         if !remembered {
-            self.messages.push(af_providers::Message::Assistant {
+            self.transcript.push(guffbolt::Message::Assistant {
                 text: self.shared.scrub.text(text).into_owned(),
                 calls: Vec::new(),
-                replay: af_providers::Replay::default(),
+                replay: guffbolt::Replay::default(),
             });
         }
     }
@@ -57,11 +68,7 @@ impl Harness<'_, '_> {
     /// outcome, the answer and the tokens spent, with the calls and the memory
     /// the run leaves for the supervisor to post. The root's end; a child
     /// concludes instead.
-    pub(super) async fn finish(
-        mut self,
-        mut ending: Ending,
-        permit: Option<&crate::nested::CapturePermit>,
-    ) -> RunOutput {
+    pub(super) async fn finish(mut self, mut ending: Ending, pause: Option<&Pause>) -> RunOutput {
         self.close_sessions().await;
         if matches!(ending, Ending::Answered(_))
             && let Err(failure) = self.finish_task_replies().await
@@ -76,7 +83,7 @@ impl Harness<'_, '_> {
             ending = Ending::Answered(self.combined_task_answer(text));
         }
         self.record_answer(&ending);
-        let recovery = self.final_recovery(&mut ending, permit).await;
+        let recovery = self.final_recovery(&mut ending, pause).await;
         let folded_through_sequence = self
             .folded_through()
             .filter(|_| matches!(ending, Ending::Answered(_)));
@@ -100,14 +107,17 @@ impl Harness<'_, '_> {
                 };
                 (ResultOutcome::Failed(stopped), String::new())
             }
+            Ending::Waiting(_) => {
+                let waiting = Failure {
+                    class: None,
+                    detail: DETAIL_WAITING.into(),
+                };
+                (ResultOutcome::Failed(waiting), String::new())
+            }
         };
         let usage = shared.meter.read();
         let (trace, records) = shared.ledger.finish();
-        let memory = (shared.lease.memory.lock().await)
-            .pending()
-            .into_iter()
-            .map(MemoryDelta::into_owned)
-            .collect();
+        let memory = shared.run.memory.pending().await;
         RunOutput {
             recovery,
             task: self.task_report,
@@ -130,7 +140,7 @@ impl Harness<'_, '_> {
     async fn final_recovery(
         &mut self,
         ending: &mut Ending,
-        permit: Option<&crate::nested::CapturePermit>,
+        pause: Option<&Pause>,
     ) -> Option<crate::TaskRecovery> {
         let recovery_task = self
             .task
@@ -139,7 +149,7 @@ impl Harness<'_, '_> {
             .and_then(|task| task.inputs.current_task.clone());
         match recovery_task {
             None => None,
-            Some(task) => match self.capture_task_root(task, permit).await {
+            Some(task) => match self.capture_task_root(task, pause).await {
                 Ok(recovery) => Some(recovery),
                 Err(failure) => {
                     tracing::warn!(event = "task_history_capture_failed", error_code = %failure.code());
@@ -155,17 +165,22 @@ impl Harness<'_, '_> {
 
     /// Kills every process a session still holds, so none outlives the run
     /// whatever becomes of its sandbox, and logs how many there were. A call
-    /// the lease stopped mid-yield left its process registered, so it is
+    /// the run stopped mid-yield left its process registered, so it is
     /// closed here too.
     async fn close_sessions(&self) {
         let Some(executor) = self.shared.executor.peek() else {
             return;
         };
-        let sessions = self.shared.lease.sessions.close_all(executor).await;
+        let sessions = self
+            .shared
+            .run
+            .sessions
+            .close_all(&afr_tools::SandboxEnv::new(executor))
+            .await;
         if sessions > 0 {
-            let lease_id = self.shared.lease_id;
+            let run_id = self.shared.run_id;
             let event = EVENT_SESSIONS_INTERRUPTED;
-            tracing::info!(lease_id, sessions, event);
+            tracing::info!(run_id, sessions, event);
         }
     }
 }

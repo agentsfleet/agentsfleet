@@ -7,7 +7,7 @@ const PATH = `/v1/workspaces/${WORKSPACE}/drafts`;
 const TITLE = "Watch release failures";
 const CURSOR = "opaque/query+cursor=";
 const ROW = {id: DRAFT_ID, title: TITLE, etag: DRAFT.etag, state: "editing", linked_fleet_id: FLEET_ID,
-  updated_at: "2026-10-19T00:00:00Z", expires_at: null, candidate_revision: 7, setup_revision: 3, publication_revision: 2};
+  updated_at: "2026-10-19T00:00:00Z", expires_at: null, candidate_revision: 7, setup_revision: 3};
 const PAGE = {items: [ROW], next_cursor: CURSOR, total: null, extra: "preserved"};
 type Call = {method: string; path: string; query: string; body: unknown; tag: string | null; authenticated: boolean};
 type Reply = (request: Request, calls: readonly Call[]) => Response | Promise<Response>;
@@ -41,7 +41,7 @@ test("lists a bounded private page and repeats the same literal search with its 
   });
   expect(first.stdout).toContain(TITLE);
   expect(first.stdout).toContain(DRAFT_ID);
-  expect(first.stdout).toContain("Proposed v7 · Saved v3 · Published v2");
+  expect(first.stdout).toContain("Proposed v7 · Saved v3");
   expect(first.stdout).toContain("STATUS");
   expect(first.stdout).toContain("UPDATED");
   expect(first.stdout).toContain(CURSOR);
@@ -54,12 +54,12 @@ test("lists a bounded private page and repeats the same literal search with its 
 });
 
 test.each([
-  ["editing", null, null, null, "In progress", "—"],
-  ["saving", null, 4, null, "Saving fleet", "Saved v4"],
-  ["closed", FLEET_ID, null, null, "Fleet saved", "—"],
-  ["closed", null, null, null, "Chat closed", "—"],
-] as const)("renders recorded %s chat state without inventing versions", async (state, linked_fleet_id, setup_revision, publication_revision, label, versions) => {
-  const row = {...ROW, state, linked_fleet_id, candidate_revision: null, setup_revision, publication_revision};
+  ["editing", null, null, "In progress", "—"],
+  ["saving", null, 4, "Saving fleet", "Saved v4"],
+  ["closed", FLEET_ID, null, "Fleet saved", "—"],
+  ["closed", null, null, "Chat closed", "—"],
+] as const)("renders recorded %s chat state without inventing versions", async (state, linked_fleet_id, setup_revision, label, versions) => {
+  const row = {...ROW, state, linked_fleet_id, candidate_revision: null, setup_revision};
   const result = await run(["list"], () => Response.json({items: [row], next_cursor: null}));
   expect(result.code).toBe(0);
   expect(new URLSearchParams(result.calls[0]?.query).get("limit")).toBe("50");
@@ -75,7 +75,6 @@ test.each([
   ["missing revision", {items: [{...ROW, setup_revision: undefined}], next_cursor: null}],
   ["numeric title", {items: [{...ROW, title: 4}], next_cursor: null}],
   ["invalid instant", {items: [{...ROW, updated_at: "2026-13-01T00:00:00Z"}], next_cursor: null}],
-  ["oversized page", {items: Array.from({length: 101}, () => ROW), next_cursor: null}],
 ])("refuses %s before text or JSON success", async (_label, body) => {
   for (const json of [false, true]) {
     const result = await run(["list", ...(json ? ["--json"] : [])], () => Response.json(body));
@@ -98,15 +97,13 @@ test("an empty page is explicit in text and intact in JSON", async () => {
 
 test.each([
   ["search blank", ["list", "--search", "   "]],
-  ["search long", ["list", "--search", "x".repeat(201)]],
   ["search NUL", ["list", "--search", "x\0y"]],
-  ["zero limit", ["list", "--limit", "0"]], ["over limit", ["list", "--limit", "101"]],
+  ["zero limit", ["list", "--limit", "0"]],
   ["decimal limit", ["list", "--limit", "1.5"]], ["text limit", ["list", "--limit", "all"]],
   ["empty cursor", ["list", "--cursor", ""]], ["unknown state", ["list", "--state", "draft"]],
   ["invalid fleet", ["list", "--fleet", "missing"]],
   ["invalid draft", ["rename", "missing", TITLE]],
   ["title blank", ["rename", DRAFT_ID, "  "]],
-  ["title long", ["rename", DRAFT_ID, "x".repeat(101)]],
   ["title NUL", ["rename", DRAFT_ID, "x\0y"]],
   ["delete invalid draft", ["delete", "missing"]],
 ] as const)("rejects %s without a request", async (_label, args) => {
@@ -115,7 +112,26 @@ test.each([
   expect(result.calls).toHaveLength(0);
 });
 
-test("Unicode bounds count characters and rename uses the freshly read tag", async () => {
+// The bounds the terminal once copied: 100 per page, 200 search characters, 100 title characters.
+const RETIRED_PAGE_MAX = 100;
+const RETIRED_SEARCH_MAX = 200;
+const RETIRED_TITLE_MAX = 100;
+
+test("values past the retired client bounds reach the server, and a larger page is shown", async () => {
+  const search = "x".repeat(RETIRED_SEARCH_MAX + 1);
+  const page = {items: Array.from({length: RETIRED_PAGE_MAX + 1}, () => ROW), next_cursor: null};
+  const listed = await run(["list", "--search", search, "--limit", String(RETIRED_PAGE_MAX + 1), "--json"], () => Response.json(page));
+  expect(listed.code).toBe(0);
+  expect(Object.fromEntries(new URLSearchParams(listed.calls[0]?.query))).toEqual({q: search, limit: String(RETIRED_PAGE_MAX + 1)});
+  expect(JSON.parse(listed.stdout).items).toHaveLength(RETIRED_PAGE_MAX + 1);
+  const title = "x".repeat(RETIRED_TITLE_MAX + 1);
+  const renamed = await run(["rename", DRAFT_ID, title], request =>
+    Response.json(request.method === "GET" ? DRAFT : {...DRAFT, title}));
+  expect(renamed.code).toBe(0);
+  expect(renamed.calls[1]?.body).toEqual({title});
+});
+
+test("rename trims the title and uses the freshly read tag", async () => {
   const title = "🚀".repeat(100);
   const changed = {...DRAFT, title, etag: '"draft-2"', extra: "preserved"};
   for (const json of [false, true]) {
@@ -179,7 +195,7 @@ test("chat history commands describe their own filters and actions in help", asy
 
 test("rename explains the daemon's busy refusal without retrying a write", async () => {
   const result = await run(["rename", DRAFT_ID, TITLE], request => request.method === "GET" ? Response.json(DRAFT)
-    : Response.json({title: "Chat is busy", detail: "active message", error_code: "UZ-AUTHOR-002"}, {status: 409}));
+    : Response.json({title: "Chat is busy", detail: "active message", error_code: "UZ-SETUP-002"}, {status: 409}));
   expect(result.code).not.toBe(0);
   expect(result.stdout + result.stderr).toContain("busy or closed");
   expect(result.stdout + result.stderr).toContain("wait for its reply");

@@ -19,7 +19,7 @@
 //! ran, and live in the `#[ignore]`d lane `make test-integration-rustd` runs.
 //!
 //! An EMPTY path segment is absent for another reason: it reaches no handler —
-//! axum answers a bare 404 for a trailing one — so the empty-`event_id` guard
+//! axum answers a bare 404 for a trailing one — so the empty-`turn_id` guard
 //! pins nothing.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -33,8 +33,8 @@ use std::collections::HashMap;
 
 use af_core::error_code::{self, ErrorCode};
 use af_core::problem::Problem;
-use afd_api::route::FleetRoute;
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_http::route::FleetRoute;
 use axum::Router;
 use axum::extract::Path;
 use axum::response::Response;
@@ -56,7 +56,7 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
 const EVENT: &str = "01924f4e-0000-7000-8000-0000000e7e01";
 
 /// The longest event identifier the expanded read will look up.
-const EVENT_ID_MAX_LEN: usize = 256;
+const TURN_ID_MAX_LEN: usize = 256;
 
 /// The one rung all three routes declare.
 const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
@@ -82,12 +82,12 @@ const fn malformed(detail: &'static str) -> Refusal {
 /// What an event segment that names no event earns, before any store is asked.
 const EVENT_ABSENT: Refusal = (
     StatusCode::NOT_FOUND,
-    "Event not found",
-    error_code::EVENT_NOT_FOUND,
+    "Turn not found",
+    error_code::TURN_NOT_FOUND,
 );
 
 /// What an unreachable datastore earns. Spelled out rather than imported:
-/// `afd_events` keeps the sentence private, and a byte-parity suite wants its
+/// `afd_turns` keeps the sentence private, and a byte-parity suite wants its
 /// own copy of the bytes anyway.
 const DATASTORE_DOWN: Refusal = (
     StatusCode::SERVICE_UNAVAILABLE,
@@ -97,17 +97,17 @@ const DATASTORE_DOWN: Refusal = (
 
 /// The whole workspace's history.
 fn workspace_history(workspace: &str) -> String {
-    format!("/v1/workspaces/{workspace}/events")
+    format!("/v1/workspaces/{workspace}/turns")
 }
 
 /// One fleet's history.
 fn fleet_history(workspace: &str, fleet: &str) -> String {
-    format!("/v1/workspaces/{workspace}/fleets/{fleet}/events")
+    format!("/v1/workspaces/{workspace}/fleets/{fleet}/turns")
 }
 
 /// One event, expanded.
 fn one_event(workspace: &str, fleet: &str, event: &str) -> String {
-    format!("/v1/workspaces/{workspace}/fleets/{fleet}/events/{event}")
+    format!("/v1/workspaces/{workspace}/fleets/{fleet}/turns/{event}")
 }
 
 /// Every route on this surface, under `workspace`.
@@ -192,12 +192,12 @@ async fn every_route_reaches_the_store_once_its_path_is_valid() {
 /// because the off-by-one a `>=` in place of a `>` would introduce is invisible
 /// from either half alone: it would answer a 400 where a 404 belongs.
 #[tokio::test]
-async fn an_event_id_past_the_length_bound_is_malformed_and_one_at_it_is_absent() {
-    let at_bound = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN));
+async fn a_turn_id_past_the_length_bound_is_malformed_and_one_at_it_is_absent() {
+    let at_bound = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(TURN_ID_MAX_LEN));
     assert_refusal(authorised(&at_bound).await, EVENT_ABSENT, "256 bytes").await;
 
-    let past_it = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(EVENT_ID_MAX_LEN + 1));
-    let expected = malformed("event_id must be 1-256 bytes");
+    let past_it = one_event(OWNED_WORKSPACE, FLEET, &"e".repeat(TURN_ID_MAX_LEN + 1));
+    let expected = malformed("turn_id must be 1-256 bytes");
     assert_refusal(authorised(&past_it).await, expected, "257 bytes").await;
 }
 
@@ -210,13 +210,13 @@ async fn an_event_id_past_the_length_bound_is_malformed_and_one_at_it_is_absent(
 /// uniqueness test.
 #[test]
 fn the_absent_event_code_is_the_events_own_and_not_the_fleets() {
-    assert_eq!(Problem::of(error_code::EVENT_NOT_FOUND).status(), 404);
+    assert_eq!(Problem::of(error_code::TURN_NOT_FOUND).status(), 404);
 }
 
 /// The expanded read's template does not shadow the live tail's.
 ///
-/// `/events/stream` and `/events/{event_id}` are the same depth, and the router
-/// reads nothing of `event_id`'s shape — nothing there excludes the word `stream`. What
+/// `/turns/stream` and `/turns/{turn_id}` are the same depth, and the router
+/// reads nothing of `turn_id`'s shape — nothing there excludes the word `stream`. What
 /// keeps them apart is that the router resolves a static segment ahead of a
 /// parameter, and what is pinned is that the two TEMPLATES the route table
 /// declares are still resolvable that way.
@@ -231,11 +231,11 @@ async fn the_expanded_reads_template_does_not_shadow_the_live_tail() {
         StatusCode::IM_A_TEAPOT
     }
     async fn expanded(Path(bound): Path<HashMap<String, String>>) -> String {
-        bound.get("event_id").cloned().unwrap_or_default()
+        bound.get("turn_id").cloned().unwrap_or_default()
     }
     let router = Router::new()
-        .route(FleetRoute::EventsStream.meta().template, get(tail))
-        .route(FleetRoute::Event.meta().template, get(expanded));
+        .route(FleetRoute::TurnsStream.meta().template, get(tail))
+        .route(FleetRoute::Turn.meta().template, get(expanded));
     let ask = async |event: &str| {
         let path = one_event(OWNED_WORKSPACE, FLEET, event);
         harness::send(&router, Method::GET, &path, None, "").await

@@ -13,6 +13,6 @@ export type DraftListsView = {
 };
 
 export function defaultChatModel(models: readonly WorkspaceModel[], current: string): string {
-  return models.find(model => model.ref === current && model.eligibility.authoring)?.ref
-    ?? models.find(model => model.eligibility.authoring)?.ref ?? "";
+  return models.find(model => model.ref === current && model.eligibility.setup)?.ref
+    ?? models.find(model => model.eligibility.setup)?.ref ?? "";
 }

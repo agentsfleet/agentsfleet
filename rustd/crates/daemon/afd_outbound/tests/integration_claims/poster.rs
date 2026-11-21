@@ -114,7 +114,7 @@ fn started(log: &Mutex<Log>, workspace: &Uuid7, event: &Uuid7) {
 
 impl Deliver for Recorder {
     fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
-        let (workspace, event) = (job.workspace_id.clone(), job.event_id.clone());
+        let (workspace, event) = (job.workspace_id.clone(), job.turn_id.clone());
         let failing = self.failing.as_ref() == Some(&event);
         let refusing = self.refusing.as_ref() == Some(&event);
         let (log, slow, gate) = (Arc::clone(&self.log), self.slow, self.gate.clone());

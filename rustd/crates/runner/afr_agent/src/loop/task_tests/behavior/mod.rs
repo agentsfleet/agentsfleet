@@ -29,10 +29,13 @@ struct Goals {
     inputs: TaskInputsResponse<'static>,
     replies: Mutex<VecDeque<DecisionEvaluation>>,
     requests: Mutex<Vec<DecisionReservationInput>>,
+    /// What the decision model reads whole; past it the daemon refuses the
+    /// request as too large before reserving a call.
+    input_max_bytes: usize,
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Goals {
+impl RunVerbs for Goals {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -56,7 +59,7 @@ impl LeaseVerbs for Goals {
         input: DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
         assert!(matches!(input.assessment, DecisionAssessment::Goal { .. }));
-        assert_eq!(input.source_admission_id, SOURCE);
+        assert_eq!(input.source_turn_id, SOURCE);
         assert_eq!(
             input.task,
             Some(DecisionTaskVersion {
@@ -65,10 +68,16 @@ impl LeaseVerbs for Goals {
             })
         );
         let call_id = input.operation_id.clone();
+        let fits = af_validate::serialized_within(&input.evidence, self.input_max_bytes);
         self.requests
             .lock()
             .expect("fixture mutex is unpoisoned")
             .push(input);
+        if !fits {
+            return Err(Unanswered::Refused(Some(
+                af_core::error_code::PAYLOAD_TOO_LARGE,
+            )));
+        }
         let mut evaluation = self
             .replies
             .lock()
@@ -83,50 +92,12 @@ impl LeaseVerbs for Goals {
     }
 }
 
-fn assigned_lease(tools: &[&str], context: u32) -> af_wire::lease::LeasePayload<'static> {
-    let mut lease = lease(tools, unbounded());
-    lease.durable_tasks = true;
-    lease.policy.model_context_tokens = context;
-    lease.decision = Some(Box::new(assignment()));
-    lease
-}
-
-fn assignment() -> DecisionAssignment {
-    let threshold = DecisionThreshold {
-        probability_bps: 9000,
-        confidence_bps: 9000,
-    };
-    DecisionAssignment {
-        revision_id: SOURCE.to_owned(),
-        profile: DecisionProfile {
-            model_id: SOURCE.to_owned(),
-            revision: "reviewed".to_owned(),
-            api: DecisionApi::Typesafe,
-            endpoint: "https://decision.example.test/v1".to_owned(),
-            model: "decision-model".to_owned(),
-            accepted_models: vec!["decision-model".to_owned()],
-            capabilities: DecisionCapabilities {
-                noul: true,
-                choice: true,
-                score: false,
-            },
-            input_max_bytes: 24576,
-        },
-        intent: IntentDecisionPolicy {
-            questions_revision: "dt-routing-v1".to_owned(),
-            intent: threshold,
-            association: threshold,
-            single_request_max_bps: 1000,
-            multiple_request_min_bps: 9000,
-        },
-        goal: GoalDecisionPolicy {
-            questions_revision: "dt-goal-v1".to_owned(),
-            statement_min_bps: 9000,
-            continue_action: threshold,
-            wait: threshold,
-            done: threshold,
-        },
-    }
+fn assigned_run(tools: &[&str], context: u32) -> af_wire::run::RunPayload<'static> {
+    let mut this_run = payload(tools, unbounded());
+    this_run.durable_tasks = true;
+    this_run.policy.model_context_tokens = context;
+    this_run.decision = Some(Box::new(assignment()));
+    this_run
 }
 
 fn evaluation(choice: &str, confidence: Option<f64>, statement: f64) -> DecisionEvaluation {
@@ -190,6 +161,8 @@ fn goals(replies: impl IntoIterator<Item = DecisionEvaluation>) -> Goals {
         inputs,
         replies: Mutex::new(replies.into_iter().collect()),
         requests: Mutex::new(vec![]),
+        input_max_bytes: usize::try_from(assignment().profile.input_max_bytes)
+            .unwrap_or(usize::MAX),
     }
 }
 
@@ -202,14 +175,14 @@ async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history(
     ] {
         let script = Script::new([vec![say("Investigation recorded."), ended(false)]]);
         let engine = super::super::tests::engine(vec![], &script);
-        let lease = assigned_lease(&[], 16_384);
+        let this_run = assigned_run(&[], 16_384);
         let native = goals([evaluation(choice, Some(1.0), 1.0)]);
         let prepared = PreparedTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
             allow_actions: true,
         };
-        let output = run(&engine, &lease, &native, &prepared).await?;
+        let output = run(&engine, &this_run, &native, &prepared).await?;
         let report = output.task.ok_or_else(crate::decision::unavailable)?;
         assert_eq!(report.disposition, disposition);
 
@@ -272,14 +245,14 @@ async fn untrusted_goal_results_never_authorize_completion() -> crate::Result<()
     for result in refused_goals() {
         let script = Script::new([vec![say("I claim this is complete."), ended(false)]]);
         let engine = super::super::tests::engine(vec![], &script);
-        let lease = assigned_lease(&[], 16_384);
+        let this_run = assigned_run(&[], 16_384);
         let native = goals([result]);
         let prepared = PreparedTask {
             execution_deadline: native.inputs.execution_deadline,
             inputs: native.inputs.clone(),
             allow_actions: true,
         };
-        let output = run(&engine, &lease, &native, &prepared).await?;
+        let output = run(&engine, &this_run, &native, &prepared).await?;
         assert!(output.task.is_none());
         assert!(output.recovery.is_some());
         assert_eq!(
@@ -309,7 +282,7 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
         vec![say("Investigation recorded."), ended(false)],
     ]);
     let engine = super::super::tests::engine(vec![], &script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let native = goals([
         evaluation("CONTINUE", Some(1.0), 0.0),
         evaluation("DONE", Some(1.0), 1.0),
@@ -319,7 +292,7 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
         inputs: native.inputs.clone(),
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_eq!(
         output
             .task
@@ -347,4 +320,4 @@ async fn continue_requires_another_action_group_and_a_fresh_goal_receipt() -> cr
 }
 
 mod decision_fixture;
-use decision_fixture::{choice_answer, choice_question};
+use decision_fixture::{assignment, choice_answer, choice_question};

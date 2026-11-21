@@ -2,8 +2,8 @@
 //
 // Calls GET /v1/tenants/me/billing for the balance card and GET
 // /v1/tenants/me/billing/charges for runtime and settled setup costs. Runtime
-// receive/stage rows on the same page group by (fleet_id,event_id); setup rows
-// retain their independent attempt identity. Keep every returned cost before
+// receive/stage rows on the same page group by (fleet_id,turn_id); setup rows
+// retain their independent run identity. Keep every returned cost before
 // forwarding the server cursor, or pagination would silently skip money.
 
 import { Effect } from "effect";
@@ -26,13 +26,12 @@ const PURCHASE_FOOTER_LINE_2 =
 
 const BILLING_SHOWN = "Billing" as const;
 const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 100;
 const LIMIT_LITERAL = /^\d+$/;
 
-interface EventSummary {
+interface WorkSummary {
   fleet_id: string | null | undefined;
-  event_id: string | null | undefined;
-  authoring_attempt_id?: string;
+  turn_id: string | null | undefined;
+  run_id?: string;
   setup_nanos?: string;
   posture: string | undefined;
   model: string | undefined;
@@ -54,11 +53,12 @@ const parseLimit = (
 ): Effect.Effect<number, ValidationError> => {
   if (raw === undefined || raw === null) return Effect.succeed(DEFAULT_LIMIT);
   const n = typeof raw === "number" || LIMIT_LITERAL.test(raw) ? Number(raw) : Number.NaN;
-  if (!Number.isInteger(n) || n <= 0 || n > MAX_LIMIT) {
+  // Shape only: the server bounds its own page size and names it on refusal.
+  if (!Number.isInteger(n) || n <= 0) {
     return Effect.fail(
       new ValidationError({
-        detail: `--limit must be an integer between 1 and ${MAX_LIMIT}`,
-        suggestion: `pass --limit <1..${MAX_LIMIT}>`,
+        detail: "--limit must be a positive integer",
+        suggestion: "pass --limit <n>",
       }),
     );
   }
@@ -80,24 +80,24 @@ const parseCursor = (
   return Effect.succeed(raw);
 };
 
-// A charge belongs to one fleet's event, so the key is both. NUL separates
+// A charge belongs to one fleet's turn, so the key is both. NUL separates
 // them because daemon identifiers cannot contain one, unlike an ambiguous
 // plain concatenation.
 const groupKey = (row: ChargeRow): string =>
-  row.authoring_attempt_id != null
-    ? `${CHARGE_TYPE.authoring}\u0000${row.authoring_attempt_id}`
-    : `${row.fleet_id ?? ""}\u0000${row.event_id ?? ""}`;
+  row.run_id != null
+    ? `${CHARGE_TYPE.setup}\u0000${row.run_id}`
+    : `${row.fleet_id ?? ""}\u0000${row.turn_id ?? ""}`;
 
 const addNanos = (a: string, b: string): string => String(BigInt(a) + BigInt(b));
 const addCount = (a: number | null, b: number | null | undefined): number | null =>
   a === null && b == null ? null : (a ?? 0) + (b ?? 0);
 
-const applyCharge = (entry: EventSummary, row: ChargeRow): void => {
+const applyCharge = (entry: WorkSummary, row: ChargeRow): void => {
   if (row.charge_type === CHARGE_TYPE.receive) {
     entry.receive_nanos = addNanos(entry.receive_nanos, row.credit_deducted_nanos);
-  } else if (row.charge_type === CHARGE_TYPE.stage || row.charge_type === CHARGE_TYPE.authoring) {
-    if (row.charge_type === CHARGE_TYPE.authoring) {
-      if (row.authoring_attempt_id != null) entry.authoring_attempt_id = row.authoring_attempt_id;
+  } else if (row.charge_type === CHARGE_TYPE.stage || row.charge_type === CHARGE_TYPE.setup) {
+    if (row.charge_type === CHARGE_TYPE.setup) {
+      if (row.run_id != null) entry.run_id = row.run_id;
       entry.setup_nanos = addNanos(entry.setup_nanos ?? "0", row.credit_deducted_nanos);
     } else {
       entry.stage_nanos = addNanos(entry.stage_nanos, row.credit_deducted_nanos);
@@ -109,17 +109,17 @@ const applyCharge = (entry: EventSummary, row: ChargeRow): void => {
   entry.total_nanos = addNanos(entry.total_nanos, row.credit_deducted_nanos);
 };
 
-const groupRowsByEvent = (
+const groupRowsByWork = (
   rows: ReadonlyArray<ChargeRow>,
-): EventSummary[] => {
-  const byEvent = new Map<string, EventSummary>();
+): WorkSummary[] => {
+  const byWork = new Map<string, WorkSummary>();
   for (const r of rows) {
     const key = groupKey(r);
-    let entry = byEvent.get(key);
+    let entry = byWork.get(key);
     if (!entry) {
       entry = {
         fleet_id: r.fleet_id,
-        event_id: r.event_id,
+        turn_id: r.turn_id,
         posture: r.posture,
         model: r.model,
         recorded_at: r.recorded_at ?? null,
@@ -129,11 +129,11 @@ const groupRowsByEvent = (
         token_count_output: null,
         total_nanos: "0",
       };
-      byEvent.set(key, entry);
+      byWork.set(key, entry);
     }
     applyCharge(entry, r);
     // The receive row is recorded first; pin recorded_at to the earliest of
-    // the two so sort-by-time matches the event's gate-pass moment.
+    // the two so sort-by-time matches the turn's gate-pass moment.
     if (
       r.recorded_at != null &&
       (entry.recorded_at == null || byInstant(r.recorded_at, entry.recorded_at) < 0)
@@ -141,15 +141,15 @@ const groupRowsByEvent = (
       entry.recorded_at = r.recorded_at;
     }
   }
-  return Array.from(byEvent.values()).sort(
+  return Array.from(byWork.values()).sort(
     (a, b) => (instantMs(b.recorded_at) ?? 0) - (instantMs(a.recorded_at) ?? 0),
   );
 };
 
-const renderActivities = (output: Output, events: ReadonlyArray<EventSummary>) =>
+const renderActivities = (output: Output, events: ReadonlyArray<WorkSummary>) =>
   output.printEntityTable(
     {
-      id: { key: "event_id", label: "WORK_ID" },
+      id: { key: "turn_id", label: "WORK_ID" },
       domain: [
         { key: "posture", label: "POSTURE" },
         { key: "model", label: "MODEL" },
@@ -164,7 +164,7 @@ const renderActivities = (output: Output, events: ReadonlyArray<EventSummary>) =
       ageKey: null,
     },
     events.map((e) => ({
-      event_id: e.authoring_attempt_id ?? e.event_id ?? "",
+      turn_id: e.run_id ?? e.turn_id ?? "",
       posture: e.posture ?? "",
       model: e.model ?? "",
       in_tok: e.token_count_input != null ? String(e.token_count_input) : EMPTY_CELL,
@@ -178,7 +178,7 @@ const renderActivities = (output: Output, events: ReadonlyArray<EventSummary>) =
 
 const renderHuman = (
   balance: BillingSnapshot,
-  events: ReadonlyArray<EventSummary>,
+  events: ReadonlyArray<WorkSummary>,
   nextCursor: string | null,
 ): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
@@ -237,7 +237,7 @@ export const billingShowEffectFromArgs = (
       { concurrency: 2 },
     );
 
-    const events = groupRowsByEvent(charges.items);
+    const events = groupRowsByWork(charges.items);
     const nextCursor = charges.next_cursor ?? null;
 
     if (output.format !== OUTPUT_FORMAT.text) {

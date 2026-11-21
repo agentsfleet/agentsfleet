@@ -1,10 +1,10 @@
-//! A signed Slack mention, through the real route, to one admission.
+//! A signed Slack mention, through the real route, to one turn.
 //!
 //! Every store the mention reads is live — the app bag behind the wall, the
 //! install row the team resolves through, the grant the bot's identity comes
 //! from, and fleet rows stored from real documents — so each case below is
 //! the path a production mention takes, stopped only at the queue, which the
-//! admission ledger defers past by design.
+//! turns ledger defers past by design.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -120,7 +120,7 @@ fn key(team: &str, event_id: &str) -> String {
     format!("{team}:{event_id}")
 }
 
-/// Dimension 1.1 — a signed mention in a thread admits one event on the
+/// A signed mention in a thread admits one event on the
 /// channel's only fleet: keyed by Slack's event id, as the person, a chat, owed
 /// back to that thread, with the bot's mention removed from the message.
 #[tokio::test]
@@ -152,7 +152,7 @@ async fn signed_mention_admits_one_event() {
     );
 
     let admitted = fixture
-        .admission(&key(&fixture.team, "Ev01"))
+        .turn(&key(&fixture.team, "Ev01"))
         .await
         .expect("the mention was admitted");
     assert_eq!(admitted.fleet, responder.as_str());
@@ -193,7 +193,7 @@ fn a_chat_is_owed_back_to_the_thread_it_was_asked_in(admitted: &Admitted) {
     );
 }
 
-/// Dimension 1.2 — Slack's retry of the same event admits nothing new and
+/// Slack's retry of the same event admits nothing new and
 /// answers the first event, reported as replayed.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -228,16 +228,12 @@ async fn slack_retry_admits_nothing_new() {
     )
     .await;
     assert_eq!(
-        first.get("event_id"),
-        retried.get("event_id"),
+        first.get("turn_id"),
+        retried.get("turn_id"),
         "{first} / {retried}"
     );
     assert_eq!(retried.get("replayed").and_then(Value::as_bool), Some(true));
-    assert_eq!(
-        fixture.admissions().await,
-        1,
-        "one Slack event, one admission"
-    );
+    assert_eq!(fixture.turns().await, 1, "one Slack event, one turn");
 
     fixture.cleanup().await;
 }

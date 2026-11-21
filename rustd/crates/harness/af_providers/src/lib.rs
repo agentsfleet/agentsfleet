@@ -1,11 +1,11 @@
-//! The model providers: one [`Provider`] trait, the turn it streams, and the
-//! wires behind it (`docs/architecture/runner_execution.md` §Crates).
+//! The model providers: `guffbolt`'s model seam implemented over every wire
+//! (`docs/architecture/runner_execution.md` §Crates).
 //!
-//! A [`Connect`] picks the route a lease's policy names and builds its
-//! provider. rig speaks every wire; the runner owns which providers a lease
-//! may reach, the transport under rig (one HTTP client, no redirect, bounded
-//! retry) and the turn's chunks. The model key lives only here, in the
-//! supervisor: no provider runs inside a sandbox.
+//! A [`Connect`] picks the route a run's policy names and builds its
+//! [`Provider`]. rig speaks every wire; the runner owns which providers a
+//! run may reach, the transport under rig (one HTTP client, no redirect,
+//! bounded retry) and the turn's chunks. The model key lives only here, in
+//! the supervisor: no provider runs inside a sandbox.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -27,12 +27,6 @@ mod usage;
 
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
-pub use self::image_input::{ImageInput, ImageKind};
-pub use self::provider::{
-    Call, Chunk, End, Hosted, Message, Provider, Replay, Request, ToolSpec, Usage,
-};
+pub use self::provider::Provider;
 pub use self::retry::settings::{RetryPolicy, RetrySettings};
-pub use af_inference::log_filter;
-pub use af_inference::transport::REPLY_MAX_BYTES;
-pub use af_wire::inference::InferenceApi as Wire;
 pub use request::context_document;

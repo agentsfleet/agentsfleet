@@ -3,12 +3,13 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
-use super::{Target, tag};
+use super::tag;
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument names the calls spell.
@@ -44,11 +45,11 @@ async fn read_then_edit(
     let selection = catalog
         .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
         .unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK}),
     )
     .await;
@@ -58,7 +59,7 @@ async fn read_then_edit(
     let edit = call_in(
         offered(&selection, &FILE_EDIT_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
     )
     .await;
@@ -79,7 +80,7 @@ async fn test_hashed_edit_refuses_stale_hash() {
     assert_eq!(read.error_code, None, "{read:?}");
     assert_eq!(
         stale.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{stale:?}"
     );
     assert!(stale.text.contains("no longer matches"), "{}", stale.text);
@@ -98,12 +99,12 @@ async fn a_read_tags_every_line_with_its_number_and_hash() {
     std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_READ_HASHED.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
 
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK}),
     )
     .await;
@@ -151,8 +152,8 @@ async fn a_range_is_replaced_from_target_to_end_target() {
     assert!(edit.text.contains("2 lines replaced"), "{}", edit.text);
     assert_eq!(
         std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
-        "alpha\nboth",
-        "nothing but the file's end follows, so no newline is added"
+        "alpha\nboth\n",
+        "the empty line after the file's last newline follows, so the newline stays"
     );
     live.stop().await;
 }
@@ -169,7 +170,7 @@ async fn an_end_target_before_the_target_or_past_the_end_is_a_mismatch() {
     for refused in [&before, &beyond] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::HashMismatch),
+            Some(ToolErrorCode::HashMismatch.into()),
             "{refused:?}"
         );
     }
@@ -193,7 +194,7 @@ async fn a_tag_matching_twice_nearby_is_refused() {
     assert_eq!(hash_of(2), hash_of(3), "the two inner lines hash alike");
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("more than once"), "{}", edit.text);
@@ -202,22 +203,6 @@ async fn a_tag_matching_twice_nearby_is_refused() {
         "x\nx\nx\n"
     );
     live.stop().await;
-}
-
-#[tokio::test]
-async fn a_tag_that_does_not_parse_or_names_line_zero_is_invalid() {
-    for given in ["10:abc", "L10abc", "L10:ab", "L0:abc", "Lten:abc", ""] {
-        let refused = Target::parse(given).unwrap_err();
-
-        assert_eq!(
-            refused.error_code,
-            Some(ToolErrorCode::InvalidArguments),
-            "{given:?}"
-        );
-        assert!(refused.text.contains("is not a tag"), "{}", refused.text);
-    }
-    let parsed = Target::parse("L12:abc").unwrap();
-    assert_eq!((parsed.line, parsed.hash), (12, "abc"));
 }
 
 #[tokio::test]
@@ -233,7 +218,7 @@ async fn a_target_past_the_end_of_the_file_is_a_mismatch() {
     assert_eq!(read.error_code, None, "{read:?}");
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("past the end"), "{}", edit.text);
@@ -258,7 +243,7 @@ async fn an_end_target_found_before_the_target_is_refused() {
 
     assert_eq!(
         edit.error_code,
-        Some(ToolErrorCode::HashMismatch),
+        Some(ToolErrorCode::HashMismatch.into()),
         "{edit:?}"
     );
     assert!(edit.text.contains("was found before"), "{}", edit.text);

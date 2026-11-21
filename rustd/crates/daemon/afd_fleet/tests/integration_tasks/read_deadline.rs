@@ -4,12 +4,12 @@ use std::{error::Error as _, time::Duration};
 
 use af_core::{error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
-    lease::Leases,
+    run::Runs,
     task::{TaskLifecycle as _, TaskScope, Tasks},
 };
+use afd_turns::Turns;
 use tokio::time::{Instant, timeout};
 
 use super::fixture::{Case, exercise};
@@ -23,7 +23,7 @@ async fn a_missing_query_result_hits_the_client_deadline_and_releases_its_pool_p
 async fn deadline(case: &Case) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let accepted = tasks
-        .bind(case.lease(), &case.plan("readable-after-outage", 1))
+        .bind(case.run(), &case.plan("readable-after-outage", 1))
         .await
         .expect("accepted work");
     let task = accepted
@@ -94,12 +94,12 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
         )
         .await;
     let tasks = Tasks::new(
-        Leases::new(
+        Runs::new(
             database.clone(),
             case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
-        Admissions::new(
+        Turns::new(
             database.clone(),
             case.held.fixtures.bus().clone(),
             Entropy::new(),

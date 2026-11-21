@@ -12,7 +12,7 @@ type Editor = z.infer<typeof EditorSchema>;
 
 export function readEditor(base: string, fleet: string, signal: AbortSignal, after?: string): Promise<Editor> {
   const query = after ? `?${new URLSearchParams({starting_after: after})}` : "";
-  return setupRequest({path: `${base}/fleets/${fleet}/authoring-context${query}`}, EditorSchema, signal);
+  return setupRequest({path: `${base}/fleets/${fleet}/setup-context${query}`}, EditorSchema, signal);
 }
 
 export function editorPatch(editor: Editor, restoreCurrent = true) {
@@ -23,10 +23,10 @@ export function editorPatch(editor: Editor, restoreCurrent = true) {
     const {draft, messages} = item;
     if (draft.linked_fleet_id !== fleet.id) throw new SetupUnavailable("The setup chat does not belong to this fleet.", 409);
     if (restoreCurrent && draft.state === DRAFT_STATE.editing && draft.review?.effective.target_setup_revision === fleet.setup_revision && !current.draft) {
-      current = {draft, messages, model: draft.authoring_model_ref, messagesStartingAfter: item.messages_starting_after};
+      current = {draft, messages, model: draft.setup_model_ref, messagesStartingAfter: item.messages_starting_after};
     } else {
       if (messages.some(isRunning)) throw new SetupUnavailable("Finish or stop your earlier setup request before opening a new edit.", 409);
-      previousDrafts.push({id: draft.id, cancelledThrough: draft.cancelled_through, messages, truncated: item.truncated});
+      previousDrafts.push({id: draft.id, messages, truncated: item.truncated});
     }
   }
   return {...current, previousDrafts: previousDrafts.sort((a, b) => a.id.localeCompare(b.id)), fleet, schedules: fleet.schedules,

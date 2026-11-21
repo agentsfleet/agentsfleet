@@ -1,0 +1,223 @@
+//! The gate chain over an assigned event, entered where a suite can steer it.
+//!
+//! Every gate below the assignment is proven on its own elsewhere — `installed()`
+//! against an archived fleet, the money gates against a drained ledger,
+//! `Gates::check` against a recorded decision. What no suite reached is the
+//! ORDER above them: which of `Plane::run`'s endings each verdict becomes,
+//! and what the event row is left holding on the way out.
+//!
+//! # Three things stand between a test and that chain
+//!
+//! **The assignment.** `Plane::run` opens by asking the readiness index for work,
+//! and that call peeks ONE partition per invocation against a cursor the whole
+//! process shares. Everything below the assignment is deterministic, so the assignment is
+//! made here and the verb entered at `Plane::assign_selected`.
+//!
+//! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `TurnKind::parse`
+//! accepts `chat`, `webhook`, `cron` and `continuation` — nothing else. So
+//! every event `seeded()` puts on a stream refuses at `event_type_unsupported`
+//! BEFORE the money gates and the approval gate. These enqueue `chat`.
+//!
+//! **The platform provider, which is still in the way.** Past the event type,
+//! `admit` resolves the payer's provider before the money gates, and that
+//! resolution opens a secret named by `model.platform_defaults` — a
+//! table whose PRIMARY KEY is `provider`, so the row is platform-wide and the
+//! first suite to seed it owns it. `agentsfleetd`'s end-to-end seed writes it
+//! and seals the secret under its own `GOOD_KEK`, while this crate's fixture
+//! plane opens with `FIXTURE_KEK_HEX`, so the open fails with `OpenFailed`.
+//! Until those two keys are one, only the endings ABOVE that resolution are
+//! reachable from here — which is the single case below.
+//!
+//! Marked `#[ignore]` so the unit lane compiles and lints these without
+//! datastores; `make test-integration-rustd` is the only lane that runs them.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+mod bindings;
+mod cases;
+mod chat;
+mod decision;
+mod decision_expiry;
+mod faults;
+mod gates_read;
+mod history;
+mod lapses;
+mod restart;
+mod runaway;
+mod seed;
+mod slack;
+mod stops;
+mod tenant_keys;
+mod window;
+mod witness;
+
+use af_core::id::Uuid7;
+use afd_fleet::run::Acquired;
+use sqlx::Row as _;
+
+use crate::seed::{ACTOR, REQUEST_JSON, seeded_parts};
+use crate::support::Fixtures;
+
+/// An event type `TurnKind::parse` accepts. See the module note.
+const EVENT_TYPE_CHAT: &str = "chat";
+
+/// A stored document the runtime parser accepts, with a one-dollar ceiling.
+const BUDGETED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"}}}"#;
+
+/// [`BUDGETED_CONFIG`] with a WRITE reach over one repository.
+///
+/// Exactly one repository and a declared base, so the only thing left that can
+/// refuse the egress build is the repair branch — which is the subject.
+const WRITE_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe"],"repository_access":"write","repository_base":"main"}}"#;
+
+/// [`WRITE_BOUND_CONFIG`] with a second repository, which no write binding may
+/// carry.
+///
+/// `egress::write` locks its rules to ONE repository by construction: naming
+/// several would bind the first and leave the rest reachable. The parser admits
+/// the list, so the refusal lands at assembly — a fleet author's mistake, and
+/// the reachable trigger for `BINDING_UNENFORCEABLE` now that a write binding
+/// always resolves a branch.
+const MULTI_REPOSITORY_WRITE_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe","agentsfleet/second"],"repository_access":"write","repository_base":"main"}}"#;
+
+/// [`WRITE_BOUND_CONFIG`] differing in one word: the reach is READ.
+///
+/// A read binding carries no base — the parser refuses one that does — so the
+/// pair is as close as the config language allows two bindings to be.
+const READ_BOUND_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"repositories":["agentsfleet/probe"],"repository_access":"read"}}"#;
+
+/// The status a refused event's row is left in.
+const STATUS_GATE_BLOCKED: &str = "gate_blocked";
+
+/// The status an event that is delivered, or merely waiting, is left in.
+const STATUS_RECEIVED: &str = "received";
+
+/// The gate kind a fixture raises over a whole event.
+const KIND_EVENT: &str = "tool_call";
+
+/// The gate kind that answers "may this run author a branch".
+///
+/// Mirrored from `afd_gate::gate::KIND_REPOSITORY_WRITE` rather than imported,
+/// which is this suite's habit for anything the DAEMON reads back: a fixture
+/// that imported it would keep matching a kind that moved, and a kind the
+/// reader no longer selects on is the one failure this fixture exists to catch.
+const KIND_REPOSITORY_WRITE: &str = "repository_write";
+
+/// The stored spelling of a gate a human said yes to.
+const STATUS_APPROVED: &str = "approved";
+
+/// How long a fixture gate stays unexpired.
+const GATE_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// A settled spend past [`BUDGETED_CONFIG`]'s ceiling, in nanodollars.
+const OVERSPENT_NANOS: i64 = 2_000_000_000;
+
+/// The context ceiling the fixture model is catalogued with.
+const CONTEXT_CAP_TOKENS: i32 = 200_000;
+
+/// A provider credential body shaped like the real one and worth nothing.
+/// Runtime resolution vets it before dialling, so it names its provider.
+const PROVIDER_KEY_BODY: &str = const_format::concatcp!(
+    r#"{"provider":""#,
+    crate::seed::PROVIDER,
+    r#"","api_key":"sk-fixture-not-a-credential"}"#
+);
+
+/// What the tenant plane's write records beside a provider key.
+const PROVIDER_KEY_KIND: &str = "provider_key";
+
+/// A fleet with one runner and one `chat` event waiting on its stream.
+struct Ready {
+    /// The runner the event will be assigned to.
+    runner: Uuid7,
+    /// The fleet holding it.
+    fleet: Uuid7,
+    /// The logical event id, which the event row addresses.
+    turn_id: Uuid7,
+    /// Its billing tenant.
+    tenant: Uuid7,
+}
+
+/// Seeds [`Ready`], enqueuing a `chat` rather than `seed`'s `steer`.
+async fn ready(fixtures: &Fixtures) -> Ready {
+    let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(fixtures).await;
+    let turn_id = crate::queue::enqueue(
+        &fixtures.database,
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE_CHAT,
+        REQUEST_JSON,
+        fixtures.enrolled_at(),
+    )
+    .await;
+    Ready {
+        runner,
+        fleet,
+        turn_id,
+        tenant,
+    }
+}
+
+/// Assigns `ready`'s event, leaving the verb un-entered.
+///
+/// Split from [`drive`] because the case below has to act BETWEEN the two: a
+/// fleet archived after its event was assigned is a window that exists only here.
+async fn assign(fixtures: &Fixtures, ready: &Ready) -> Acquired {
+    crate::seed::select_fleet(&fixtures.runs(), &ready.runner, &ready.fleet)
+        .await
+        .expect("the fleet is leasable")
+}
+
+/// Runs the gate chain over an already-assigned event.
+async fn drive(
+    fixtures: &Fixtures,
+    ready: &Ready,
+    assigned: Acquired,
+) -> Option<serde_json::Value> {
+    fixtures
+        .plane()
+        .assign_selected(assigned, &ready.runner, fixtures.enrolled_at())
+        .await
+        .expect("every gate verdict is a decision, not a fault")
+}
+
+/// The status and failure label one turn's event carries, if the pass got
+/// far enough to open one.
+///
+/// Every stop answers identical bytes — `pull.rs`'s module note says so — so
+/// the ANSWER cannot tell one ending from another. The row can.
+async fn terminal_of(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    event: &Uuid7,
+) -> Option<(String, String)> {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let row = sqlx::query(
+        "SELECT status, COALESCE(failure_reason, '') \
+           FROM thread.turns WHERE thread_id = $1 AND id = $2 AND opened_at IS NOT NULL",
+    )
+    .bind(fleet)
+    .bind(event)
+    .fetch_optional(&mut *connection)
+    .await
+    .expect("the event row must be readable");
+    row.map(|row| {
+        (
+            row.try_get(0).expect("status is text"),
+            row.try_get(1).expect("failure_reason is text"),
+        )
+    })
+}
+
+/// Replaces a seeded fleet's stored configuration.
+async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
+    fixtures.native_config(fleet, config_json).await;
+}

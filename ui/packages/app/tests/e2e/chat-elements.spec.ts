@@ -36,8 +36,8 @@ test("typed chat outcomes remain readable in dark and light appearance", async (
   }
   const command = page.getByLabel("Command result");
   await expect(command.locator("code")).toHaveText("trivy image --severity CRITICAL release:latest");
-  await expect(page.locator('[data-tool="file_edit"] [data-diff="removed"]')).toContainText("ready: false");
-  await expect(page.locator('[data-tool="file_edit"] [data-diff="added"]')).toContainText("ready: true");
+  await expect(page.locator('[data-tool="file_edit"] [data-changed-file]')).toHaveText("release.yaml");
+  await expect(page.locator('[data-tool="file_edit"]')).toContainText("release.yaml +1 −1");
   await expect(page.locator('[data-tool="custom_release_report"]')).toContainText("Recorded example result");
   const report = page.getByRole("link", {name: "the build report"});
   await expect(report).toHaveAttribute("href", "https://example.test/release");

@@ -1,10 +1,10 @@
-//! Reserve exact immutable publication identity under the task's existing slot.
+//! Reserve exact immutable publication identity under the task's existing thread.
 
 use super::row::Effect;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, execution, github::BoundPr, guard, row, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, execution, github::BoundPr, guard, row, transaction},
 };
 use af_core::clock;
 use af_core::id::Uuid7;
@@ -30,7 +30,7 @@ struct Canonical<'a> {
 
 pub(super) async fn reserve(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskEffectInput>,
 ) -> Result<(Effect, bool)> {
     let request = serde_json::to_string(&Canonical {
@@ -43,13 +43,13 @@ pub(super) async fn reserve(
     })
     .map_err(af_core::json::Unreadable::from)?;
     let digest = af_core::etag::sha256_hex(request.as_bytes());
-    let task = crate::task::guard::wire(&input.task.task_id)?;
-    let operation = crate::task::guard::wire(&input.operation_id)?;
-    let source_item = crate::task::guard::wire(&input.source_item_id)?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let task = guard::wire(&input.task.task_id)?;
+    let operation = guard::wire(&input.operation_id)?;
+    let source_item = guard::wire(&input.source_item_id)?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // Replays remain readable after a stop, but never regain mutation authority.
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     if current.task_id.as_ref() != Some(&task) {
         return Err(TaskRefusal::NotFound.into());
     }
@@ -65,7 +65,7 @@ pub(super) async fn reserve(
     }
     let owned = execution::on_current(&mut tx, current, &input.task).await?;
     let target = publication_context(&mut tx, &owned, input).await?;
-    let id = tasks.leases.entropy().uuid7(clock::now())?;
+    let id = tasks.runs.entropy().uuid7(clock::now())?;
     let ordinal: i64 = sqlx::query_scalar(include_str!("sql/cursor.sql"))
         .bind(&task)
         .fetch_one(&mut *tx)
@@ -77,8 +77,8 @@ pub(super) async fn reserve(
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
         .bind(&source_item)
-        .bind(lease.lease_id)
-        .bind(lease.runner_id)
+        .bind(run.run_id)
+        .bind(run.runner_id)
         .bind(owned.current.fence)
         .bind(row::sql_counter(
             owned.snapshot.context.generation,
@@ -156,8 +156,8 @@ async fn publication_context(
     ) {
         return Err(TaskRefusal::InvalidTarget.into());
     }
-    let task = crate::task::guard::wire(&input.task.task_id)?;
-    let source_item = crate::task::guard::wire(&input.source_item_id)?;
+    let task = guard::wire(&input.task.task_id)?;
+    let source_item = guard::wire(&input.source_item_id)?;
     let target: PublicationContext = sqlx::query_as(include_str!("sql/target.sql"))
         .bind(&task)
         .bind(&source_item)
@@ -171,16 +171,14 @@ async fn publication_context(
     {
         return Err(TaskRefusal::StaleState.into());
     }
-    let config = crate::lease::Leases::stored_config_on(connection, &owned.current.fleet_id, None)
+    let config = crate::run::Runs::stored_config_on(connection, &owned.current.fleet_id, None)
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
     target.target.within(&config)?;
-    let accepted = crate::lease::Leases::stored_config_on(
+    let accepted = crate::run::Runs::stored_config_on(
         connection,
         &owned.current.fleet_id,
-        Some(&crate::task::guard::wire(
-            &owned.snapshot.context.accepted_revision_id,
-        )?),
+        Some(&guard::wire(&owned.snapshot.context.accepted_revision_id)?),
     )
     .await?
     .ok_or(TaskRefusal::InvalidTarget)?;

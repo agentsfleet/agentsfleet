@@ -8,8 +8,9 @@ import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 // The runner's tools beyond files, requests and memory, drawn in the thread:
-// a plan as its checklist, a patch as its diff, a hashed edit by its line, and
-// the web and schedule lookups folded with the other looks.
+// a plan as its checklist, a patch as the files and counts the runner
+// recorded, a hashed edit by its line, and the web and schedule lookups folded
+// with the other looks.
 
 const STARTED_AT_MS = 1_000;
 const DONE_MS = 400;
@@ -51,10 +52,29 @@ describe("FleetThread — runner tool cells", () => {
     expect(cell(TOOL_NAME.UPDATE_PLAN).textContent).toContain("└□ Only step");
     cleanup();
 
-    renderCalls([call(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: /workspace/a.ts\n-old\n+new\n+more" })]);
+    const patched = { patch: "*** Update File: /workspace/a.ts\n-old\n+new\n+more" };
+    renderCalls([{ ...call(TOOL_NAME.APPLY_PATCH, patched), changes: [{ path: "a.ts", added: 24, removed: 8 }] }]);
     const patch = cell(TOOL_NAME.APPLY_PATCH);
     expect(patch.firstElementChild?.textContent).toContain("Edited files");
-    expect([...patch.querySelectorAll("[data-diff]")].map((row) => row.getAttribute("data-diff"))).toEqual(["removed", "added", "added"]);
+    expect([...patch.querySelectorAll("[data-changed-file]")].map((file) => file.textContent)).toEqual(["a.ts"]);
+    expect(patch.textContent).toContain("a.ts +24 −8");
+    expect(patch.querySelector("[data-diff]"), "no line is worked out of the patch text").toBeNull();
+    cleanup();
+
+    // Each file the patch touched gets its own line; only the first takes the rail.
+    const twoFiles = [{ path: "a.ts", added: 24, removed: 8 }, { path: "b.ts", added: 3, removed: 1 }];
+    renderCalls([{ ...call(TOOL_NAME.APPLY_PATCH, patched), changes: twoFiles }]);
+    const both = cell(TOOL_NAME.APPLY_PATCH);
+    expect([...both.querySelectorAll("[data-changed-file]")].map((file) => file.textContent)).toEqual(["a.ts", "b.ts"]);
+    expect(both.textContent).toContain("b.ts +3 −1");
+    const glyphs = [...both.querySelectorAll("[data-changed-file]")].map((file) => file.parentElement?.parentElement?.firstElementChild);
+    expect(glyphs.map((glyph) => glyph?.classList.contains("invisible"))).toEqual([false, true]);
+    cleanup();
+
+    // A patch the runner recorded no change for claims none.
+    renderCalls([call(TOOL_NAME.APPLY_PATCH, patched)]);
+    expect(cell(TOOL_NAME.APPLY_PATCH).querySelector("[data-changed-file]")).toBeNull();
+    expect(cell(TOOL_NAME.APPLY_PATCH).textContent).not.toContain("+2");
     cleanup();
 
     // A hashed edit that names its line by tag carries no old text to diff.
@@ -70,13 +90,13 @@ describe("FleetThread — runner tool cells", () => {
       call(TOOL_NAME.WEB_SEARCH, { query: "nats cluster" }),
       call(TOOL_NAME.WEB_FETCH, { url: "https://docs.example/ops" }),
       call(TOOL_NAME.CRON_LIST, undefined),
-      call(TOOL_NAME.PUSHOVER, { message: "Done" }),
+      call(TOOL_NAME.NOTIFY, { message: "Done" }),
     ]);
     const tools = screen.getByRole("list", {name: TOOL_CALLS_LABEL});
     expect(within(tools).getAllByRole("listitem")).toHaveLength(4);
     expect(cell(TOOL_NAME.WEB_SEARCH).textContent).toContain("nats cluster");
     expect(cell(TOOL_NAME.WEB_FETCH).textContent).toContain("https://docs.example/ops");
     expect(cell(TOOL_NAME.CRON_LIST)).toBeTruthy();
-    expect(cell(TOOL_NAME.PUSHOVER).textContent).toContain("Done");
+    expect(cell(TOOL_NAME.NOTIFY).textContent).toContain("Done");
   });
 });

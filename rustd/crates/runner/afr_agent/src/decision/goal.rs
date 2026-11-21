@@ -6,12 +6,12 @@ use af_wire::{
     decision::{DecisionAnswer, DecisionAssignment},
     task::{DecisionAssessment, DecisionReservationInput, TaskDisposition, TaskReport},
 };
-use afr_tools::LeaseVerbs;
+use afr_tools::RunVerbs;
 
 pub(crate) async fn assess(
     prepared: &PreparedTask,
     assignment: &DecisionAssignment,
-    verbs: &dyn LeaseVerbs,
+    verbs: &dyn RunVerbs,
     fence: u64,
     evidence: serde_json::Value,
 ) -> Result<TaskReport> {
@@ -24,7 +24,7 @@ pub(crate) async fn assess(
         .task_decision(DecisionReservationInput {
             operation_id: identity()?,
             fencing_token: fence,
-            source_admission_id: prepared.inputs.source_admission_id.clone(),
+            source_turn_id: prepared.inputs.source_turn_id.clone(),
             assessment: DecisionAssessment::Goal {
                 action_group_id: identity()?,
             },

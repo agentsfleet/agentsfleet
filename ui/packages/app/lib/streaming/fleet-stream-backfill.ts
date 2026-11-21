@@ -1,8 +1,8 @@
-import { type EventRow, type EventsPage } from "@/lib/api/events";
-import { backfillFleetEventsUrl, backfillWorkspaceEventsUrl, type EventsQuery } from "@/lib/api/events-types";
+import { type TurnRow, type TurnsPage } from "@/lib/api/turns";
+import { backfillFleetTurnsUrl, backfillWorkspaceTurnsUrl, type TurnsQuery } from "@/lib/api/turns-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 
 // The reconnect gap-recovery walk. Split out of the registry's lifecycle file
 // so that file stays under the LENGTH GATE and the walk is testable without a
@@ -43,11 +43,11 @@ export type BackfillRequest = {
   /** False once the owning entry has been torn down mid-flight. */
   stillCurrent: () => boolean;
   /** Every row the walk fetched, all pages in one call, once per walk. */
-  onPage: (rows: EventRow[]) => void;
+  onPage: (rows: TurnRow[]) => void;
 };
 
 export type WorkspaceBackfillRequest = Omit<BackfillRequest, "fleetId">;
-type BackfillQuery = Pick<EventsQuery, "cursor" | "since" | "limit">;
+type BackfillQuery = Pick<TurnsQuery, "cursor" | "since" | "limit">;
 type BackfillWalkRequest = WorkspaceBackfillRequest & {
   pageUrl: (query: BackfillQuery) => string;
 };
@@ -57,13 +57,13 @@ type BackfillWalkRequest = WorkspaceBackfillRequest & {
 // sends exactly one of them.
 async function fetchBackfillPage(
   url: string,
-): Promise<EventsPage | null> {
+): Promise<TurnsPage | null> {
   const res = await fetch(url, { signal: AbortSignal.timeout(BACKFILL_TIMEOUT_MS) });
   if (!res.ok) {
     warnBackfillFailure(`HTTP ${res.status}`);
     return null;
   }
-  const page = (await res.json()) as EventsPage;
+  const page = (await res.json()) as TurnsPage;
   if (!Array.isArray(page.items)) {
     warnBackfillFailure("malformed page body");
     return null;
@@ -72,7 +72,7 @@ async function fetchBackfillPage(
 }
 
 // Rows arrive newest-first (`created_at DESC`), so the last one is the oldest.
-function oldestCreatedAt(rows: EventRow[]): number | null {
+function oldestCreatedAt(rows: TurnRow[]): number | null {
   const last = rows[rows.length - 1];
   return last === undefined ? null : Date.parse(last.created_at);
 }
@@ -89,7 +89,7 @@ function oldestCreatedAt(rows: EventRow[]): number | null {
 export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome> {
   return runBackfillWalk({
     ...req,
-    pageUrl: (query) => backfillFleetEventsUrl(req.workspaceId, req.fleetId, query),
+    pageUrl: (query) => backfillFleetTurnsUrl(req.workspaceId, req.fleetId, query),
   });
 }
 
@@ -98,7 +98,7 @@ export async function runWorkspaceBackfill(
 ): Promise<BackfillOutcome> {
   return runBackfillWalk({
     ...req,
-    pageUrl: (query) => backfillWorkspaceEventsUrl(req.workspaceId, query),
+    pageUrl: (query) => backfillWorkspaceTurnsUrl(req.workspaceId, query),
   });
 }
 
@@ -107,7 +107,7 @@ export async function runWorkspaceBackfill(
 // times for one gap. Rows already fetched still land when a later page fails
 // or throws, as they did page by page; a walk whose owner is gone lands none.
 async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcome> {
-  const fetched: EventRow[] = [];
+  const fetched: TurnRow[] = [];
   try {
     return await walkPages(req, fetched);
   } finally {
@@ -115,7 +115,7 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
   }
 }
 
-async function walkPages(req: BackfillWalkRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
+async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<BackfillOutcome> {
   const { anchorMs, stillCurrent, pageUrl } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
@@ -203,16 +203,16 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
   }
 }
 
-// A waiting row's history row carries its admission time, so a message leased
+// A waiting row's history row carries its intake time, so a message held
 // during an outage lands below the watermark when it waited longer than the
 // overlap. The walk reaches back to the oldest message this thread still shows
 // as waiting; the watermark itself never moves back for it.
 function recoveryAnchorMs(entry: Entry): number | null {
   let anchor = entry.serverSinceMs;
   if (anchor === null) return null;
-  for (const event of entry.snapshot.events) {
-    if (event.status === AGENTSFLEET_EVENT_STATUS.QUEUED) {
-      anchor = Math.min(anchor, event.createdAt.getTime());
+  for (const turn of entry.snapshot.turns) {
+    if (turn.status === AGENTSFLEET_TURN_STATUS.QUEUED) {
+      anchor = Math.min(anchor, turn.createdAt.getTime());
     }
   }
   return anchor;

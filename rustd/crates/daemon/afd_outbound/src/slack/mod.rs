@@ -48,7 +48,7 @@
 //! job's answer as the fleet wrote it, so an answer that names the channel
 //! shows the name and pages nobody.
 
-use crate::obligation::Outgoing;
+use crate::delivery::Outgoing;
 use af_crypto::secret::SecretString;
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
@@ -177,7 +177,7 @@ impl SlackPoster {
 
         let marker = AnswerMarker {
             fleet_id: job.fleet_id.clone().into(),
-            event_id: job.event_id.clone().into(),
+            turn_id: job.turn_id.clone().into(),
             part: part.cloned(),
         };
         Ok(Inputs {

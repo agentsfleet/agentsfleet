@@ -98,7 +98,7 @@ pub(super) fn sweep(dir: &Path) -> Result<usize> {
     let mut swept = 0;
     for entry in entries {
         let entry = entry?;
-        let partial_copy = entry.file_type()?.is_file()
+        let partial_copy = !entry.file_type()?.is_dir()
             && entry
                 .file_name()
                 .to_string_lossy()

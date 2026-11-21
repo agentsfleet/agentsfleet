@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
+use afd_api_tenant::services::TenantTeam;
 use afd_db::Db;
-use afd_http::services::TenantTeam;
 use afd_tenant::team::{
     Accepted, EmailAttempt, EmailStatus, Invitation, Invitee, Member, NewInvite, Removal, Team,
     Waiting,

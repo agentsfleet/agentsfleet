@@ -94,13 +94,13 @@ describe("FleetTile kinds", () => {
     // Footer reads server truth, not token math — figures carry their unit as
     // a plain word, never an abbreviation.
     expect(getByText("spent").textContent).toBe("$1.20 spent");
-    expect(getByText("events").textContent).toBe("7 events");
+    expect(getByText("turns").textContent).toBe("7 turns");
     // No snapshot eyebrow while live; the pulse animates (data-live set).
     expect(container.textContent).not.toContain("snapshot");
     expect(container.querySelector('[data-live="true"]')).not.toBeNull();
   });
 
-  it("a reconnecting stream degrades to a snapshot tile with its last event and a still sigil", async () => {
+  it("a reconnecting stream degrades to a snapshot tile with its last turn and a still sigil", async () => {
     streamMock.mockReturnValue({
       feed: "ran a check",
       connectionStatus: CONNECTION_STATUS.RECONNECTING,
@@ -254,7 +254,7 @@ describe("FleetTile kinds", () => {
 
   it("the footer is the snapshot the stream assigned, over the server render", () => {
     // The stream ASSIGNS what the last frame said; the tile never adds to the
-    // figures it was rendered with, so the server's 7 events and $1.20 are
+    // figures it was rendered with, so the server's 7 turns and $1.20 are
     // replaced by the frame's 9 and $2.50 outright.
     streamMock.mockReturnValue({
       feed: undefined,
@@ -262,22 +262,22 @@ describe("FleetTile kinds", () => {
       helloReceived: true,
       isLive: true,
       catchingUp: false,
-      counters: { eventsProcessed: 9, spentNanos: "2500000000" },
+      counters: { turnsProcessed: 9, spentNanos: "2500000000" },
     });
     const { getByText } = renderTile(fleet());
     expect(getByText("spent").textContent).toBe("$2.50 spent");
-    expect(getByText("events").textContent).toBe("9 events");
+    expect(getByText("turns").textContent).toBe("9 turns");
   });
 
   it("a fresh exact REST count wins over a retained stream snapshot", () => {
     streamMock.mockReturnValue({
       feed: undefined, connectionStatus: CONNECTION_STATUS.LIVE,
       helloReceived: true, isLive: true, catchingUp: false,
-      counters: { eventsProcessed: 9, spentNanos: "2000000000" },
+      counters: { turnsProcessed: 9, spentNanos: "2000000000" },
     });
     const { getByText } = renderTile(fleet({ budget_used_nanos: 9007199254740993n, events_processed: 9007199254740993n }));
     expect(getByText("spent").textContent).toBe("$9007199.25 spent");
-    expect(getByText("events").textContent).toBe("9007199254740993 events");
+    expect(getByText("turns").textContent).toBe("9007199254740993 turns");
   });
 
   it("a tile absent from the server hello set renders snapshot, not live", () => {

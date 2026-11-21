@@ -1,0 +1,139 @@
+//! Best-effort announcements after a report and its turn settle in Postgres.
+//!
+//! Tail frames and outbound wakes cannot undo acceptance of the report. The committed outbound delivery repairs a missed append.
+
+use af_core::id::Uuid7;
+use af_observability::producers;
+use af_wire::report::ReportRequest;
+use afd_billing::Nanos;
+use afd_turns::view::Closed;
+use jiff::Timestamp;
+
+use crate::run::delivery::Owing;
+use crate::run::fold::Folds;
+use crate::run::pull::RunService;
+use crate::run::settle::Reported;
+
+/// The `turn_complete` frame was published for a settled report.
+pub(super) const EVENT_COMPLETION_PUBLISHED: &str = "completion_published";
+
+/// A settled report was written.
+const EVENT_SETTLED: &str = "report_settled";
+
+/// A runner re-sent a report this run had already settled.
+const EVENT_ALREADY_SETTLED: &str = "report_already_settled";
+
+/// Accepted completion payload carried across the commit boundary.
+pub(super) struct Completion<'a> {
+    pub closed: Option<Box<Closed>>,
+    pub answer: &'a str,
+}
+
+impl RunService {
+    /// Announce a report that committed, and clear what it leaves behind.
+    ///
+    /// The money and queue transitions already committed. Completion frames
+    /// and the wake of an owed answer are best effort after that boundary.
+    pub(super) async fn announce(
+        &self,
+        runner_id: &Uuid7,
+        request: &ReportRequest<'_>,
+        run: &Reported,
+        completion: Completion<'_>,
+        charged: Nanos,
+    ) -> Option<Timestamp> {
+        let Completion { closed, answer } = completion;
+        let run_id = request.run_id.as_ref();
+        // Hoisted for the `log` bridge's duplicated field expressions.
+        let fleet = run.fleet_id.as_str();
+        let event = run.turn_id.as_str();
+        let nanos = charged.as_i64();
+        {
+            let (fleet_id, agentsfleet_turn_id, event, message) = (
+                &fleet,
+                &event,
+                &EVENT_SETTLED,
+                format_args!("the report won its fence and its final slice was charged"),
+            );
+            tracing::debug!(message, fleet_id, agentsfleet_turn_id, run_id, nanos, event);
+        };
+
+        // After the fence is won, so a refused report does not decrement a
+        // run its runner still holds. The counterpart of the increment
+        // `Runs::select` records when the run was granted.
+        producers::fleet::runner::run_released(runner_id.as_str());
+
+        // The completion publish is pinned here: after the report's commit,
+        // because the follow-up a fleet owner sends on seeing it is gated on the
+        // payer's balance, and before the owed answer's wake and the token read
+        // below, which nothing the owner sees depends on.
+        // Timed only when the frame landed: a dropped announcement is logged
+        // by the tail and leaves no completion instant to measure from.
+        match closed {
+            Some(closed) => match self.runs.publish_completion(&closed, Some(answer)).await {
+                Ok(()) => {
+                    let event = EVENT_COMPLETION_PUBLISHED;
+                    tracing::debug!(fleet_id = fleet, run_id, event);
+                    Some(af_core::clock::now())
+                }
+                Err(error) => {
+                    // The report is durable. Observe its failed live notification without undoing settlement.
+                    afd_bus::observe_notification(
+                        &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
+                        Err(error),
+                    );
+                    None
+                }
+            },
+            None => None,
+        }
+    }
+
+    /// Ping the outbound workers that an owed answer committed.
+    ///
+    /// Best-effort by construction, and logged rather than returned: the
+    /// delivery is already committed and claimable, so a lost ping costs
+    /// one claim pass of latency. Failing the report instead would tell a
+    /// runner its finished, charged run did not land — and it did.
+    pub(super) async fn wake_owed_answer(&self, owing: &Owing) {
+        self.runs.wake_delivery(&owing.delivery).await;
+    }
+
+    /// Record and announce what the run's folds settled.
+    ///
+    /// Best effort, as the run's own announcement is: every row is committed,
+    /// so a frame that does not land is re-read by the next page. The settled
+    /// log and counter are written here, after the commit, so a report that
+    /// rolled back leaves neither.
+    pub(super) async fn announce_folds(
+        &self,
+        run: &Reported,
+        run_id: &str,
+        folds: Folds,
+        answer: &str,
+    ) {
+        folds.record_settled(run.fleet_id.as_str(), run_id);
+        for closed in &folds.closed {
+            let publication = self.runs.publish_completion(closed, Some(answer)).await;
+            afd_bus::observe_notification(
+                &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
+                publication,
+            );
+        }
+    }
+
+    /// A repeated report returns the stored outcome without duplicating side effects.
+    pub(super) fn record_repeat(run: &Reported, run_id: &str) {
+        let fleet = run.fleet_id.as_str();
+        let event = run.turn_id.as_str();
+        {
+            let (fleet_id, agentsfleet_turn_id, event, message) = (
+                &fleet,
+                &event,
+                &EVENT_ALREADY_SETTLED,
+                format_args!("the runner re-sent a settled report; its stored outcome stands"),
+            );
+            tracing::info!(message, fleet_id, agentsfleet_turn_id, run_id, event);
+        };
+    }
+}

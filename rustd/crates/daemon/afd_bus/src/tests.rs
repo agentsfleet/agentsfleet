@@ -13,7 +13,7 @@ type Result<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>
 #[tokio::test]
 async fn shared_handles_preserve_subjects_payload_ownership_and_last_reader_drop() -> Result {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::FleetTail(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
+    let subject = Subject::ThreadItems(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
     let mut first = bus.subscribe(&subject).await?;
     let mut second = bus.clone().subscribe(&subject).await?;
     assert_eq!(server.readers(&subject), 2);
@@ -37,7 +37,7 @@ async fn shared_handles_preserve_subjects_payload_ownership_and_last_reader_drop
 #[tokio::test]
 async fn shutdown_closes_existing_readers_and_rejects_every_new_operation() -> Result {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::Wake(0);
+    let subject = Subject::DeliveryWake;
     let mut subscription = bus.subscribe(&subject).await?;
     bus.clone().shutdown().await?;
     bus.shutdown().await?;
@@ -63,7 +63,7 @@ async fn shutdown_closes_existing_readers_and_rejects_every_new_operation() -> R
 #[tokio::test]
 async fn reconnect_and_lag_cross_the_object_boundary_without_backend_types() -> Result {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::DraftEvents(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
+    let subject = Subject::ThreadItems(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
     let mut first = bus.subscribe(&subject).await?;
     let mut second = bus.subscribe(&subject).await?;
     server.gap(&subject);
@@ -76,6 +76,41 @@ async fn reconnect_and_lag_cross_the_object_boundary_without_backend_types() -> 
     assert_eq!(second.recv().await?, Received::Lagged(257));
     bus.publish_batch(&subject, &[]).await?;
     bus.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_wake_wildcard_hears_every_threads_wake_and_nothing_else() -> Result {
+    let (bus, server) = test_util::detached()?;
+    let one = Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?;
+    let two = Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000002")?;
+    let mut wakes = bus.subscribe_thread_wakes().await?;
+    bus.publish(&Subject::ThreadItems(one.clone()), "items")
+        .await?;
+    bus.publish(&Subject::DeliveryWake, "delivery").await?;
+    for thread in [&one, &two] {
+        bus.publish(&Subject::ThreadWake(thread.clone()), thread.as_str())
+            .await?;
+    }
+    for thread in [&one, &two] {
+        let Received::Message(message) = wakes.recv().await? else {
+            return Err("a thread's wake is missing".into());
+        };
+        assert_eq!(message.subject, Subject::ThreadWake(thread.clone()));
+        assert_eq!(
+            message.payload.as_str(),
+            thread.as_str(),
+            "no items, no delivery"
+        );
+    }
+    server.gap(&Subject::ThreadWake(one));
+    assert_eq!(
+        wakes.recv().await?,
+        Received::Gap,
+        "a marker on one wake gaps the wildcard"
+    );
+    drop(wakes);
+    assert_eq!(server.readers(&Subject::ThreadWake(two)), 0);
     Ok(())
 }
 
@@ -115,6 +150,10 @@ impl Bus for Defaults {
         Err(ErrorKind::Closed.into())
     }
 
+    async fn subscribe_thread_wakes(&self) -> crate::Result<Subscription> {
+        Err(ErrorKind::Closed.into())
+    }
+
     async fn shutdown(&self) -> crate::Result<()> {
         Ok(())
     }
@@ -126,7 +165,7 @@ async fn the_default_batch_publishes_in_order_and_stops_at_the_first_failure() -
     let bus = Handle::new(Defaults {
         published: Arc::clone(&published),
     });
-    let subject = Subject::OutboundWake;
+    let subject = Subject::DeliveryWake;
     let read = || {
         published
             .lock()
@@ -162,7 +201,7 @@ async fn the_default_reports_an_adapter_with_no_connection_to_lose_as_connected(
 #[tokio::test]
 async fn a_frame_json_cannot_spell_is_refused_before_any_reader_sees_it() -> Result {
     let (bus, server) = test_util::detached()?;
-    let subject = Subject::Wake(2);
+    let subject = Subject::Gap;
     let mut reader = bus.subscribe(&subject).await?;
     // A JSON object's keys are strings, and a pair has no string spelling.
     let frame = BTreeMap::from([((1_u8, 2_u8), "unencodable")]);
@@ -189,27 +228,27 @@ async fn a_frame_json_cannot_spell_is_refused_before_any_reader_sees_it() -> Res
 #[tokio::test]
 async fn a_subscription_debugs_without_its_stream() -> Result {
     let (bus, _server) = test_util::detached()?;
-    let subscription = bus.subscribe(&Subject::Wake(1)).await?;
+    let subscription = bus.subscribe(&Subject::Gap).await?;
     assert_eq!(format!("{subscription:?}"), "Subscription { .. }");
     Ok(())
 }
 
 #[test]
-fn a_dropped_notification_names_its_subject_kind_and_only_a_tail_names_its_fleet() -> Result {
-    const FLEET: &str = "0195b4ba-8d3a-7000-8000-000000000001";
-    let fleet = Uuid7::parse(FLEET)?;
+fn a_dropped_notification_names_its_subject_kind_and_only_items_name_their_thread() -> Result {
+    const THREAD: &str = "0195b4ba-8d3a-7000-8000-000000000001";
+    let thread = Uuid7::parse(THREAD)?;
     let capture = Capture::install();
 
     for subject in [
-        Subject::FleetTail(fleet.clone()),
-        Subject::DraftEvents(fleet.clone()),
-        Subject::Wake(3),
-        Subject::RunnerCommand(fleet),
-        Subject::OutboundWake,
+        Subject::ThreadItems(thread.clone()),
+        Subject::ThreadWake(thread.clone()),
+        Subject::RunnerCommand(thread.clone()),
+        Subject::DeliveryWake,
+        Subject::Gap,
     ] {
         crate::observe_notification(&subject, Err(ErrorKind::NatsDisconnected.into()));
     }
-    crate::observe_notification(&Subject::Wake(4), Ok(()));
+    crate::observe_notification(&Subject::ThreadWake(thread), Ok(()));
 
     let events = capture.events();
     assert_eq!(
@@ -218,20 +257,20 @@ fn a_dropped_notification_names_its_subject_kind_and_only_a_tail_names_its_fleet
             .map(|event| event.field("subject_kind"))
             .collect::<Vec<_>>(),
         [
-            Some("fleet_tail"),
-            Some("draft_events"),
-            Some("wake"),
+            Some("thread_items"),
+            Some("thread_wake"),
             Some("runner_command"),
-            Some("outbound_wake"),
+            Some("delivery_wake"),
+            Some("gap"),
         ],
         "one line per failed notification, none for a delivered one"
     );
     assert_eq!(
         events
             .iter()
-            .map(|event| event.field("fleet_id"))
+            .map(|event| event.field("thread_id"))
             .collect::<Vec<_>>(),
-        [Some(FLEET), None, None, None, None]
+        [Some(THREAD), None, None, None, None]
     );
     for event in &events {
         assert_eq!(event.level, tracing::Level::WARN);

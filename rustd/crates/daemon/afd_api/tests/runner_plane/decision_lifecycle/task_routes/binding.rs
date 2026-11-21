@@ -4,7 +4,7 @@ pub(super) async fn bind(fixture: &Fixture) -> (TaskBindingsInput, Value) {
     let input_path = format!(
         "{}?fencing_token={}",
         path(fixture, "inputs"),
-        fixture.lease.fence
+        fixture.run.fence
     );
     let before = success(fixture, Method::GET, &input_path, "", StatusCode::OK).await;
     assert_eq!(
@@ -24,7 +24,7 @@ pub(super) async fn bind(fixture: &Fixture) -> (TaskBindingsInput, Value) {
     let request = assertions::dispatch(fixture, &issued);
     let result = new_work_answer(&request);
     let receipt = DecisionReceiptInput {
-        fencing_token: fixture.lease.fence,
+        fencing_token: fixture.run.fence,
         receipt: DecisionReceipt::Provider { result },
     };
     call(
@@ -94,8 +94,8 @@ fn new_work_answer(
 
 fn binding_input(fixture: &Fixture, before: &Value, call_id: String) -> TaskBindingsInput {
     let mut binding = TaskBindingsInput {
-        fencing_token: fixture.lease.fence,
-        source_admission_id: fixture.lease.source.to_string(),
+        fencing_token: fixture.run.fence,
+        source_turn_id: fixture.run.source.to_string(),
         accepted_revision_id: before
             .pointer("/accepted_revision_id")
             .expect("response field exists")

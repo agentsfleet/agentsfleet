@@ -6,10 +6,6 @@
 //! `400` carrying the malformed-request code, and the bound itself gets past
 //! the parameter check. The refusal's sentence is copy, so it is not asserted.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use crate::harness;
 
@@ -34,7 +30,6 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
     Scope::FleetWrite,
     Scope::ApprovalRead,
     Scope::PlatformKeyAdmin,
-    Scope::PluginsWrite,
 ]);
 
 /// The malformed-request code.
@@ -47,7 +42,7 @@ const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = "UZ-LIBRARY-003";
 const MAX_KEY_LEN: usize = 255;
 
 /// The longest event identifier a path may name.
-const EVENT_ID_MAX_LEN: usize = 256;
+const TURN_ID_MAX_LEN: usize = 256;
 
 /// The longest provider a platform-key path may name.
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
@@ -108,15 +103,15 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
     assert_accepted(Method::DELETE, &fleet_path(&format!("memories/{encoded}"))).await;
 
     // An over-long event id is told its bound, on both paths that name one.
-    let event = "e".repeat(EVENT_ID_MAX_LEN + 1);
+    let event = "e".repeat(TURN_ID_MAX_LEN + 1);
     for path in [
-        fleet_path(&format!("events/{event}")),
-        fleet_path(&format!("events/{event}/tool-calls/fence:1")),
+        fleet_path(&format!("turns/{event}")),
+        fleet_path(&format!("turns/{event}/items/fence:1")),
     ] {
         assert_refused(Method::GET, &path, INVALID_REQUEST).await;
     }
-    let at_bound = "e".repeat(EVENT_ID_MAX_LEN);
-    assert_accepted(Method::GET, &fleet_path(&format!("events/{at_bound}"))).await;
+    let at_bound = "e".repeat(TURN_ID_MAX_LEN);
+    assert_accepted(Method::GET, &fleet_path(&format!("turns/{at_bound}"))).await;
 
     // The platform-key path is held to the body's provider bound.
     let provider = "p".repeat(KEY_PROVIDER_MAX_BYTES + 1);
@@ -130,7 +125,7 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
 
 #[tokio::test]
 async fn test_unbounded_filters_now_refuse_oversize() {
-    let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/events");
+    let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/turns");
     let over = "a".repeat(MAX_ACTOR_FILTER_BYTES + 1);
     for filter in ["actor", "actor_prefix"] {
         let path = format!("{events}?{filter}={over}");
@@ -162,57 +157,4 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     .await;
     let at_bound = "p".repeat(CATALOGUE_PROVIDER_BYTES);
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
-}
-
-#[tokio::test]
-async fn plugin_paths_reject_non_uuid_identifiers_before_storage() {
-    let base = format!("/v1/workspaces/{OWNED_WORKSPACE}/plugins");
-    for id in ["example", "owned", "01924f4e-0000-4000-8000-00000000b0de"] {
-        for method in [Method::GET, Method::DELETE] {
-            assert_refused(method, &format!("{base}/{id}"), INVALID_REQUEST).await;
-        }
-        assert_refused(
-            Method::GET,
-            &format!("{base}/{FLEET}/revisions/{id}"),
-            INVALID_REQUEST,
-        )
-        .await;
-    }
-    assert_accepted(Method::GET, &format!("{base}/{FLEET}")).await;
-}
-
-#[test]
-fn published_plugin_parameters_are_uuid_identifiers() {
-    let document = serde_json::to_value(afd_api::openapi::document())
-        .expect("the generated document serializes");
-    let paths = document
-        .get("paths")
-        .and_then(Value::as_object)
-        .expect("document paths");
-    let mut checked = 0;
-    for (path, route) in paths.iter().filter(|(path, _)| path.contains("/plugins/")) {
-        for operation in route.as_object().expect("path operations").values() {
-            let parameters = operation
-                .get("parameters")
-                .and_then(Value::as_array)
-                .expect("parameters");
-            for parameter in parameters {
-                if matches!(
-                    parameter.get("name").and_then(Value::as_str),
-                    Some("plugin_id" | "revision_id")
-                ) {
-                    assert_eq!(
-                        parameter.pointer("/schema/format").and_then(Value::as_str),
-                        Some("uuid"),
-                        "{path}"
-                    );
-                    checked += 1;
-                }
-            }
-        }
-    }
-    assert_eq!(
-        checked, 7,
-        "every Plugin operation declares its identifiers"
-    );
 }

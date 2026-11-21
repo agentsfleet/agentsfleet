@@ -5,14 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../../src/cli.ts";
 import { ChatActions } from "../../src/commands/chat/actions.ts";
-import { MAX_DEFINITION_BYTES } from "../../src/commands/chat/commands.ts";
 import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { SetupSession } from "../../src/commands/chat/setup-session.ts";
 import { HTTP_METHOD } from "../../src/constants/http-method.ts";
 import { isRecord } from "../../src/lib/guards.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import { outputDouble } from "../helpers-output-double.ts";
-import { ACCEPTED, CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_ID, PLUGIN_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
+import { ACCEPTED, CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW,
   WORKSPACE, withApi, problem } from "./fixture.ts";
 
 const DEFINITION = REVIEW.effective.definition;
@@ -65,7 +64,7 @@ test("a Definition file opens its draft without a first message and reviews it a
     const result = await invoke(origin, ["--definition", valid, "--model", MODEL, "--no-input", "--review"]);
     expect(result.code).toBe(0);
     expect(calls.map(({method, path}) => `${method} ${path}`)).toEqual([`POST ${DRAFTS}`, `GET ${DRAFTS}/${DRAFT_ID}`]);
-    expect(calls[0]?.body).toEqual({source: SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     const printed = result.out.trim().split("\n").map((line): unknown => JSON.parse(line));
     // pin test: literal is the contract
     expect(printed).toEqual([{kind: "chat_created", draft_id: DRAFT_ID}, {...REVIEW, draft_candidate_id: CANDIDATE_ID}]);
@@ -82,14 +81,23 @@ test("a first message travels with the Definition in one atomic creation", async
     const result = await invoke(origin, ["--definition", valid, "--model", MODEL, "--no-input", "--message", PRIVATE_TEXT]);
     expect(result.code).toBe(0);
     expect(calls.filter(({method}) => method === HTTP_METHOD.post)).toHaveLength(1);
-    expect(calls[0]?.body).toEqual({source: SOURCE, authoring_model_ref: MODEL, message: PRIVATE_TEXT,
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, message: PRIVATE_TEXT,
       operation_id: operationOf(calls[0]?.body)});
   });
 });
 
-test("the file bound is the daemon's Definition envelope bound", () => {
-  // pin test: literal is the contract — af_fleet_runtime's MAX_DEFINITION_BYTES, 6 × (32,768 + 32,768) + 65,536.
-  expect(MAX_DEFINITION_BYTES).toBe(458_752);
+// The 6,400 KiB file bound the terminal once copied from the daemon; the daemon is now the only judge.
+const RETIRED_DEFINITION_BYTES = 6_400 * 1024;
+
+test("a Definition file past the retired client bound is sent for the daemon to judge", async () => {
+  const large = await write("large.json", JSON.stringify(DEFINITION) + " ".repeat(RETIRED_DEFINITION_BYTES));
+  const calls: Call[] = [];
+  await withApi(async (request) => { await record(request, calls); return Response.json(DRAFT); }, async (_, origin) => {
+    const result = await invoke(origin, ["--definition", large, "--model", MODEL, "--no-input", "--review"]);
+    expect(result.code).toBe(0);
+    expect(calls[0]?.method).toBe(HTTP_METHOD.post);
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+  });
 });
 
 const UNUSABLE: ReadonlyArray<readonly [string, () => Promise<string>, string]> = [
@@ -98,7 +106,6 @@ const UNUSABLE: ReadonlyArray<readonly [string, () => Promise<string>, string]> 
   ["malformed", () => write("broken.json", '{"schema_version": 1,'), "is not valid JSON"],
   ["array", () => write("array.json", "[]"), "must hold one JSON object"],
   ["null", () => write("null.json", "null"), "must hold one JSON object"],
-  ["oversized", () => write("large.json", " ".repeat(MAX_DEFINITION_BYTES + 1)), `at most ${MAX_DEFINITION_BYTES}`],
 ];
 
 for (const [label, make, detail] of UNUSABLE) {
@@ -119,7 +126,6 @@ for (const [label, make, detail] of UNUSABLE) {
 const CONFLICTS: ReadonlyArray<readonly [string, ReadonlyArray<string>, string]> = [
   ["a resumed draft", [DRAFT_ID, "--no-input"], "A resumed draft keeps its source"],
   ["--fleet", ["--fleet", FLEET_ID, "--setup-revision", "1", "--model", MODEL, "--no-input"], "Choose one source"],
-  ["--plugin", ["--plugin", PLUGIN_ID, "--revision", REVISION_ID, "--model", MODEL, "--no-input"], "Choose one source"],
 ];
 
 for (const [label, args, detail] of CONFLICTS) {

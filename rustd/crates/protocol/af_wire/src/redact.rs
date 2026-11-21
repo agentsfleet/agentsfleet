@@ -3,7 +3,7 @@
 //! One module rather than an impl beside each type, so "are secrets redacted?"
 //! is a question with ONE place to look. A derived `Debug` on any of these would
 //! put a provider key, a tenant's whole secret map, a minted credential, or a
-//! runner's bearer token into the first log line that formats a lease. The mint
+//! runner's bearer token into the first log line that formats a run. The mint
 //! reply in particular is secret: never logged, never echoed into a frame.
 //!
 //! Redaction is on `Debug` ONLY. `Serialize` still emits the real value, because

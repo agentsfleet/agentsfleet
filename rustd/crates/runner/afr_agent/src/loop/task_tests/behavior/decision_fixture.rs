@@ -37,3 +37,43 @@ pub(super) fn choice_question(name: &str, options: &[&str]) -> NamedQuestion {
         },
     }
 }
+
+/// The reviewed decision profile every task fixture runs under; it reads
+/// 24 KiB of state and questions.
+pub(super) fn assignment() -> DecisionAssignment {
+    let threshold = DecisionThreshold {
+        probability_bps: 9000,
+        confidence_bps: 9000,
+    };
+    DecisionAssignment {
+        revision_id: SOURCE.to_owned(),
+        profile: DecisionProfile {
+            model_id: SOURCE.to_owned(),
+            revision: "reviewed".to_owned(),
+            api: DecisionApi::Typesafe,
+            endpoint: "https://decision.example.test/v1".to_owned(),
+            model: "decision-model".to_owned(),
+            accepted_models: vec!["decision-model".to_owned()],
+            capabilities: DecisionCapabilities {
+                noul: true,
+                choice: true,
+                score: false,
+            },
+            input_max_bytes: 24576,
+        },
+        intent: IntentDecisionPolicy {
+            questions_revision: "dt-routing-v1".to_owned(),
+            intent: threshold,
+            association: threshold,
+            single_request_max_bps: 1000,
+            multiple_request_min_bps: 9000,
+        },
+        goal: GoalDecisionPolicy {
+            questions_revision: "dt-goal-v1".to_owned(),
+            statement_min_bps: 9000,
+            continue_action: threshold,
+            wait: threshold,
+            done: threshold,
+        },
+    }
+}

@@ -32,7 +32,7 @@ impl Mode {
             .await
             .map_err(query("protect any remaining decision parent"))?;
         sqlx::query_scalar::<_, Uuid7>(
-            self.statement(crate::task::sql::LOCK_SCOPE_SLOT, sql::TRY_SLOT),
+            self.statement(crate::task::sql::LOCK_SCOPE_THREAD, sql::TRY_THREAD),
         )
         .bind(&call.fleet_id)
         .fetch_optional(&mut *connection)

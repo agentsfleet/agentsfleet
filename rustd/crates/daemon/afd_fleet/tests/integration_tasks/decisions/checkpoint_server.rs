@@ -82,7 +82,7 @@ async fn serve(
 ) {
     loop {
         let accepted = tokio::select! {
-            () = async { let _ = (&mut stopped).await; } => break,
+            _ = &mut stopped => break,
             accepted = socket.accept() => accepted,
         };
         let (socket, _) = accepted.expect("SDK connects");

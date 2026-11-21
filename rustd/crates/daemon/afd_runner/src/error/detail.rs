@@ -17,11 +17,12 @@ pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
 /// The refusal a delete of a runner still in service earns.
 pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
-/// The refusal a delete of a runner still holding a live or unbilled lease earns.
-pub const DETAIL_RUNNER_STILL_LEASED: &str =
-    "runner still holds a live or unbilled lease; retry once it is released and billed";
-/// The refusal a registration key reused for a different request earns.
-pub const DETAIL_REGISTRATION_KEY_REUSED: &str =
-    "this Idempotency-Key already registered a runner with a different request";
+/// The refusal a delete of a runner still holding a live or unbilled run earns.
+pub const DETAIL_RUNNER_STILL_RUNNING: &str =
+    "runner still holds a live or unbilled run; retry once it is released and billed";
+/// The refusal a second registration of one host earns. The `Location` header
+/// names the runner, which a client cannot read out of a fixed sentence.
+pub const DETAIL_HOST_REGISTERED: &str = "this host is already registered as the runner named in \
+                                          Location; rotate its token to recover it";
 /// The refusal a platform caller rotating a tenant runner's token earns.
 pub const DETAIL_TENANT_MANAGED: &str = "a tenant runner's token is rotated by its tenant";

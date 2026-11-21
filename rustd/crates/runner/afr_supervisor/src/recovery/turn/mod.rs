@@ -10,9 +10,9 @@ mod session;
 
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
-use af_wire::lease::{
-    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRead,
-    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
+    TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
 use zeroize::Zeroizing;
@@ -22,7 +22,7 @@ use crate::{Result, client::ControlPlane, error};
 #[derive(Debug)]
 pub(crate) struct NativeTurn<'a> {
     pub(crate) plane: &'a ControlPlane,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) fence: u64,
     transfers: &'a super::Transfers,
     publication: publication::Publication,
@@ -31,13 +31,13 @@ pub(crate) struct NativeTurn<'a> {
 impl<'a> NativeTurn<'a> {
     pub(crate) fn new(
         plane: &'a ControlPlane,
-        lease: &'a Uuid7,
+        run: &'a Uuid7,
         fence: u64,
         transfers: &'a super::Transfers,
     ) -> Self {
         Self {
             plane,
-            lease,
+            run,
             fence,
             transfers,
             publication: publication::Publication::default(),
@@ -47,25 +47,25 @@ impl<'a> NativeTurn<'a> {
     fn request(&self, action: Action) -> Result<TurnCheckpointCommand> {
         Ok(TurnCheckpointCommand {
             fencing_token: self.fence,
-            operation_id: TurnId(Entropy::new().uuid7(clock::now())?.to_string()),
+            operation_id: CheckpointOperationId(Entropy::new().uuid7(clock::now())?.to_string()),
             action,
         })
     }
 
     pub(crate) async fn command(&self, action: Action) -> Result<Response> {
         let request = self.request(action)?;
-        self.plane.turn_checkpoint(self.lease, &request).await
+        self.plane.turn_checkpoint(self.run, &request).await
     }
 
     async fn adopt(
         &self,
-        offer: &LeasePayload<'_>,
+        assignment: &RunPayload<'_>,
         saved: TurnCheckpointRead,
         workspace: TurnWorkspace,
     ) -> Result<TurnRecovery> {
         let reference = TurnCheckpointRef {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
-            pin_id: TurnId(saved.pin.id),
+            pin_id: CheckpointOperationId(saved.pin.id),
         };
         let result = async {
             let mut recovered = TurnRecovery {
@@ -74,7 +74,7 @@ impl<'a> NativeTurn<'a> {
                 adopted: saved.folds,
                 workspace,
             };
-            recovered.validate_for(offer).map_err(|source| {
+            recovered.validate_for(assignment).map_err(|source| {
                 error::boundary("ordinary root validation refused restore", source)
             })?;
             let Response::Adopted(adopted) = self

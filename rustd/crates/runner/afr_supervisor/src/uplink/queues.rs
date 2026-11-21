@@ -1,4 +1,4 @@
-//! Independent bounded writers keep report and activity pressure away from control.
+//! Independent bounded writers keep report and progress pressure away from control.
 
 use af_stream::OwnedFrame;
 use af_wire::protocol::StreamKind;
@@ -18,7 +18,7 @@ pub(crate) struct Queues {
     control: mpsc::Sender<Outbound>,
     work: mpsc::Sender<Outbound>,
     reports: mpsc::Sender<Outbound>,
-    activity: mpsc::Sender<Outbound>,
+    progress: mpsc::Sender<Outbound>,
 }
 
 pub(crate) struct Receivers {
@@ -26,7 +26,7 @@ pub(crate) struct Receivers {
     pub(crate) control: mpsc::Receiver<Outbound>,
     pub(crate) work: mpsc::Receiver<Outbound>,
     pub(crate) reports: mpsc::Receiver<Outbound>,
-    pub(crate) activity: mpsc::Receiver<Outbound>,
+    pub(crate) progress: mpsc::Receiver<Outbound>,
 }
 
 impl Queues {
@@ -35,21 +35,21 @@ impl Queues {
         let (control, control_rx) = mpsc::channel(16);
         let (work, work_rx) = mpsc::channel(16);
         let (reports, reports_rx) = mpsc::channel(16);
-        let (activity, activity_rx) = mpsc::channel(16);
+        let (progress, progress_rx) = mpsc::channel(16);
         (
             Self {
                 priority,
                 control,
                 work,
                 reports,
-                activity,
+                progress,
             },
             Receivers {
                 priority: priority_rx,
                 control: control_rx,
                 work: work_rx,
                 reports: reports_rx,
-                activity: activity_rx,
+                progress: progress_rx,
             },
         )
     }
@@ -66,7 +66,7 @@ impl Queues {
             StreamKind::Control => &self.control,
             StreamKind::Work => &self.work,
             StreamKind::Reports => &self.reports,
-            StreamKind::Activity => &self.activity,
+            StreamKind::Progress => &self.progress,
         };
         let deadline = message.deadline;
         tokio::select! {
@@ -78,12 +78,12 @@ impl Queues {
         }
     }
 
-    pub(crate) fn activity(&self, message: Outbound) -> Result<()> {
-        match self.activity.try_send(message) {
+    pub(crate) fn progress(&self, message: Outbound) -> Result<()> {
+        match self.progress.try_send(message) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 {
-                    let (event, reason) = (&"runner_stream_activity_dropped", &"queue_capacity");
+                    let (event, reason) = (&"runner_stream_progress_dropped", &"queue_capacity");
                     tracing::debug!(event, reason);
                 };
                 Ok(())

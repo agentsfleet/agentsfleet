@@ -6,17 +6,17 @@
 //! series set until the process died, and a producer that could pass a label
 //! of its own choosing would make [`crate::runner::MAX_SERIES`] a suggestion.
 
-use af_wire::report::{FailureClass, Outcome};
+use af_wire::report::FailureClass;
 
 pub mod stream;
 use opentelemetry::KeyValue;
 
 use crate::producers::fleet::UNMODELLED_REASON;
-use crate::producers::{Producers, installed};
+use crate::producers::installed;
 #[cfg(test)]
 mod tests;
 
-use crate::metrics::label::fleet::Fault;
+use crate::metrics::label::fleet::RunnerRun;
 use crate::semconv;
 
 /// Counts a committed automatic change with a closed, two-value label set.
@@ -29,20 +29,15 @@ pub fn cordon_changed(change: crate::metrics::label::fleet::CordonChange) {
     }
 }
 
-/// Records one runner's failed run.
+/// Records why one runner's run failed.
 ///
-/// Two families move, because a failed run is both a failure and a finished
-/// run. Recording only the failure would make the execution total disagree
-/// with the sum of its outcomes, and an operator would be looking for the
-/// difference rather than for the failure.
+/// How many runs ended, and how, is `agentsfleet_runner_runs_total`; this
+/// family carries the reason, which that one does not.
 pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
     let Some(producers) = installed() else {
         return;
     };
     let label = producers.fleet.runners.admit(runner_id);
-    // Classified before `reason` is shadowed by its wire spelling: the blame
-    // split reads the typed class, not the string it renders to.
-    let fault = fault_of(reason);
     let reason = reason.map_or(UNMODELLED_REASON, class_label);
     producers.fleet.runner_failures.add(
         1,
@@ -51,17 +46,25 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
             KeyValue::new(semconv::LABEL_REASON, reason),
         ],
     );
-    executed(producers, label, Outcome::FleetError, Some(fault));
     if label == crate::runner::OVERFLOW_RUNNER {
         producers.fleet.runner_failures_overflow.add(1, &[]);
     }
 }
 
-/// Records one runner's finished run.
-pub fn processed(runner_id: &str) {
+/// Records `count` runs on one runner under `outcome`: issued to it, or ended.
+///
+/// Called after the transaction that made the change commits, so a rolled-back
+/// one counts nothing.
+pub fn runs(runner_id: &str, outcome: RunnerRun, count: u64) {
     if let Some(producers) = installed() {
         let label = producers.fleet.runners.admit(runner_id);
-        executed(producers, label, Outcome::Processed, None);
+        producers.fleet.runner_runs.add(
+            count,
+            &[
+                KeyValue::new(semconv::LABEL_RUNNER_ID, label.to_owned()),
+                KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
+            ],
+        );
     }
 }
 
@@ -76,65 +79,18 @@ pub fn seen(runner_id: &str, at: jiff::Timestamp) {
     }
 }
 
-/// Records that a runner took a lease.
-pub fn lease_taken(runner_id: &str) {
+/// Records that a runner took a run.
+pub fn run_taken(runner_id: &str) {
     if let Some(producers) = installed() {
-        producers.fleet.runners.leased(runner_id);
+        producers.fleet.runners.held(runner_id);
     }
 }
 
-/// Records that a runner gave a lease back.
-pub fn lease_released(runner_id: &str) {
+/// Records that a runner gave a run back.
+pub fn run_released(runner_id: &str) {
     if let Some(producers) = installed() {
         producers.fleet.runners.released(runner_id);
     }
-}
-
-/// Which side of the platform boundary a failure falls on.
-///
-/// A match with no default arm, deliberately: a twelfth [`FailureClass`] must
-/// not compile until somebody decides whose fault it is. A default would pick
-/// a side silently, and the side it picked would be wrong half the time.
-///
-/// An unclassified failure is the PLATFORM's. The runner reports `None` when it
-/// could not say why a run died, and a cause nobody could name is not evidence
-/// against the tenant — failing toward our own accountability is the only
-/// direction that cannot quietly flatter the objective.
-const fn fault_of(reason: Option<FailureClass>) -> Fault {
-    match reason {
-        Some(
-            FailureClass::PolicyDeny
-            | FailureClass::LandlockDeny
-            | FailureClass::OomKill
-            | FailureClass::ResourceKill
-            | FailureClass::BudgetBreach
-            | FailureClass::TimeoutKill,
-        ) => Fault::Workload,
-        Some(
-            FailureClass::StartupPosture
-            | FailureClass::RunnerCrash
-            | FailureClass::TransportLoss
-            | FailureClass::LeaseExpired
-            | FailureClass::RenewalTerminate,
-        )
-        | None => Fault::Platform,
-    }
-}
-
-/// Records one finished run under an already-decided label.
-///
-/// A success carries no fault label at all rather than a third "none" value, so
-/// `{fault!="workload"}` reads as "everything the platform was accountable
-/// for" — an absent label satisfies a not-equal matcher.
-fn executed(producers: &Producers, label: &str, outcome: Outcome, fault: Option<Fault>) {
-    let mut labels = vec![
-        KeyValue::new(semconv::LABEL_RUNNER_ID, label.to_owned()),
-        KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
-    ];
-    if let Some(fault) = fault {
-        labels.push(KeyValue::new(semconv::LABEL_FAULT, fault.as_str()));
-    }
-    producers.fleet.runner_executions.add(1, &labels);
 }
 
 /// The wire spelling of a failure class.
@@ -153,8 +109,9 @@ const fn class_label(class: FailureClass) -> &'static str {
         FailureClass::RunnerCrash => "runner_crash",
         FailureClass::TransportLoss => "transport_loss",
         FailureClass::LandlockDeny => "landlock_deny",
-        FailureClass::LeaseExpired => "lease_expired",
+        FailureClass::RunExpired => "run_expired",
         FailureClass::RenewalTerminate => "renewal_terminate",
         FailureClass::BudgetBreach => "budget_breach",
+        FailureClass::FrameTooLarge => "frame_too_large",
     }
 }

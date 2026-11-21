@@ -195,7 +195,7 @@ impl Runner {
     /// Builds a runner principal from a proven `agt_r` token.
     ///
     /// `degraded` is the reconciled verdict carried out of the same lookup that
-    /// proved the token, so the lease gate needs no second read of the row.
+    /// proved the token, so the run gate needs no second read of the row.
     /// It is a plain `bool` and not an `Option`: an optional field with "null
     /// reads as degraded" enforced at every READER is one `unwrap_or(false)`
     /// away from inverting a fail-closed rule. Resolving it once, here, leaves

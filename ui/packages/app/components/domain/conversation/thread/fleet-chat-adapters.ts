@@ -1,8 +1,8 @@
 import type { AssistantState } from "@assistant-ui/react";
-import { ACTOR, baseActorOf, eventLinkFrom, eventReferenceFrom, parsePayload, senderLabelFor, SENDER, steerMessageFrom } from "@/lib/events/event-summary";
-import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
-import { eventOutcome, messageOutcome } from "../../activity/messages/fleetFailureCopy";
+import { ACTOR, baseActorOf, turnLinkFrom, turnReferenceFrom, parsePayload, senderLabelFor, SENDER, steerMessageFrom } from "@/lib/turns/turn-summary";
+import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/turns/fleet-activity";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
+import { turnOutcome, messageOutcome } from "../../activity/messages/fleetFailureCopy";
 import { hasOwnContent, readActor, readCustomStatus, readGroupMembers, readRenderKind, readRequestJson, readText, type RecordedActivity } from "../../activity/messages/fleetMessageReaders";
 import { STATUS_AGENT_ERROR, STATUS_IN_FLIGHT, STATUS_OPTIMISTIC } from "../../activity/messages/fleetMessageStatus";
 import { GROUP_META, RENDER_KIND } from "./useFleetThreadEntries";
@@ -10,7 +10,7 @@ import { CHAT_ELEMENT, type ActivityDetails, type ActivityElement, type FleetCha
 
 type MessageState = AssistantState["message"];
 
-/** One ordered event becomes presentation elements; this never performs work. */
+/** One ordered turn becomes presentation elements; this never performs work. */
 export function fleetChatElements(message: MessageState): readonly FleetChatElement[] {
   if (message.submission) return [{kind: CHAT_ELEMENT.SUBMISSION, data: {text: message.submission.text, createdAt: message.createdAt}}];
   if (message.metadata.custom[GROUP_META.MEMBERS] !== undefined) {
@@ -22,7 +22,7 @@ export function fleetChatElements(message: MessageState): readonly FleetChatElem
   const status = readCustomStatus(message);
   switch (message.role) {
     case "system": return [activityElement({
-      eventId: message.id, actor: readActor(message), status, createdAt: message.createdAt,
+      turnId: message.id, actor: readActor(message), status, createdAt: message.createdAt,
       text: readText(message), payload: readRequestJson(message), outcome: messageOutcome(message),
       split: readRenderKind(message) === RENDER_KIND.TRIGGER,
     })];
@@ -33,7 +33,7 @@ export function fleetChatElements(message: MessageState): readonly FleetChatElem
 
 function defaultElement(message: MessageState, notice: string | null): FleetChatElement<"default-activity"> {
   return {kind: CHAT_ELEMENT.DEFAULT, data: {
-    eventId: message.id, actor: readActor(message), status: readCustomStatus(message), createdAt: message.createdAt,
+    turnId: message.id, actor: readActor(message), status: readCustomStatus(message), createdAt: message.createdAt,
     headline: readText(message).trim() || "Activity update", outcome: messageOutcome(message) || undefined,
     failed: readCustomStatus(message) === STATUS_AGENT_ERROR, details: {kind: "none"}, source: null, notice,
   }};
@@ -50,15 +50,15 @@ function operatorElements(message: MessageState, status: string): FleetChatEleme
 }
 
 function recordedActivityElement(record: RecordedActivity): ActivityElement {
-  const element = activityElement({eventId: record.id, actor: record.actor, status: record.status,
+  const element = activityElement({turnId: record.id, actor: record.actor, status: record.status,
     createdAt: record.createdAt, text: record.text, payload: record.custom?.requestJson,
-    outcome: eventOutcome(record), split: false});
+    outcome: turnOutcome(record), split: false});
   // The collapsed row must retain its source reference while its members are hidden.
-  return {...element, data: {...element.data, headline: record.text, source: null, outcome: eventOutcome(record)}};
+  return {...element, data: {...element.data, headline: record.text, source: null, outcome: turnOutcome(record)}};
 }
 
 type ActivityInput = {
-  eventId: string; actor: string; status: string; createdAt: Date; text: string;
+  turnId: string; actor: string; status: string; createdAt: Date; text: string;
   payload: string | null | undefined; outcome: string; split: boolean;
 };
 
@@ -66,11 +66,11 @@ function activityElement(input: ActivityInput): ActivityElement {
   const recorded = input.status === FLEET_ACTIVITY.status;
   const activity = recorded && input.payload ? readFleetActivity(input.payload) : null;
   const schedule = senderLabelFor(input.actor) === SENDER.SCHEDULE;
-  const approval = baseActorOf(input.actor) === ACTOR.GATE_BLOCKED || input.status === AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED;
-  const link = recorded || schedule ? null : eventLinkFrom(input.payload);
-  const reference = link ? eventReferenceFrom(input.payload) : null;
+  const approval = baseActorOf(input.actor) === ACTOR.GATE_BLOCKED || input.status === AGENTSFLEET_TURN_STATUS.GATE_BLOCKED;
+  const link = recorded || schedule ? null : turnLinkFrom(input.payload);
+  const reference = link ? turnReferenceFrom(input.payload) : null;
   const data = {
-    eventId: input.eventId, actor: input.actor, status: input.status, createdAt: input.createdAt,
+    turnId: input.turnId, actor: input.actor, status: input.status, createdAt: input.createdAt,
     title: schedule ? "Woke up on schedule" : activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? "Scheduled wake-up" : undefined,
     headline: activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? `${activity.message} · ${activity.description}` : activityHeadline(input.text, reference),
     outcome: input.status === STATUS_IN_FLIGHT || input.split || recorded ? undefined : input.outcome,

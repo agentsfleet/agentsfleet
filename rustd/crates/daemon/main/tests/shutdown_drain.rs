@@ -1,4 +1,4 @@
-//! Dimension 7.7 — a deployment replaces processes, and no request with it.
+//! A deployment replaces processes, and no request with it.
 //!
 //! Against a real listener on a real socket, because the property is about what
 //! a client on the other end of a TCP connection observes, and a fake acceptor
@@ -7,7 +7,7 @@
 //! the wire — a complete status line and a complete body — and a client that
 //! retries or pools connections would hide exactly the failure being tested.
 //!
-//! The shape under test is the split between two tokens. Before Dimension 7.7
+//! The shape under test is the split between two tokens. Before the split
 //! both halves of a stop were one token, so a signal did not stop the server, it
 //! cut it: a request halfway through had its future dropped mid-await and the
 //! caller saw a closed socket with no status.
@@ -213,7 +213,7 @@ async fn test_shutdown_stops_within_its_bound_when_a_request_will_not_finish() {
     assert_eq!(settled.abandoned, 1, "the unfinished request is reported");
     assert!(
         !settled.is_clean(),
-        "an expired bound is not a clean stop, and the run must say so"
+        "an expired bound is not a clean stop, and the scene must say so"
     );
 
     // The supervisor's token is what actually cuts it — the step the drain

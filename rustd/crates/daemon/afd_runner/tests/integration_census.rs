@@ -36,10 +36,10 @@ async fn test_census_publishes_every_status() {
     assert_statuses(swept.scanned);
     fixture.seed_backlog().await;
     census.sweep().await.expect("the backlog counts");
-    assert_eq!(capture.gauge("agentsfleet_admission_backlog", &[]), Some(3));
+    assert_eq!(capture.gauge("agentsfleet_turn_backlog", &[]), Some(3));
     assert!(
         capture
-            .gauge("agentsfleet_admission_backlog_oldest_age_seconds", &[])
+            .gauge("agentsfleet_turn_backlog_oldest_age_seconds", &[])
             .is_some_and(|age| age >= 299)
     );
 
@@ -48,9 +48,9 @@ async fn test_census_publishes_every_status() {
         .sweep()
         .await
         .expect_err("a closed database withdraws its readings");
-    assert_eq!(capture.gauge("agentsfleet_admission_backlog", &[]), None);
+    assert_eq!(capture.gauge("agentsfleet_turn_backlog", &[]), None);
     assert_eq!(
-        capture.gauge("agentsfleet_admission_backlog_oldest_age_seconds", &[]),
+        capture.gauge("agentsfleet_turn_backlog_oldest_age_seconds", &[]),
         None
     );
     assert!(fleet_census_readings().is_empty());
@@ -137,20 +137,21 @@ impl Fixture {
         for ordinal in 0..4 {
             let id = mint_id();
             sqlx::query(
-                "INSERT INTO fleet.admissions \
-                (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type, \
-                 request_json,event_created_at,created_at,updated_at,delivered_at,settled_at) \
-                VALUES ($1,$2,$3,$4,$1,'fixture','fixture',$5,'{}', \
-                  now()-interval '5 minutes',now()-interval '5 minutes',now(), \
-                  CASE WHEN $6 THEN now() END, CASE WHEN $7 THEN now() END)",
+                "INSERT INTO thread.turns \
+                (id,thread_id,workspace_id,producer,producer_key,payload_digest,actor,kind,status, \
+                 request_json,created_at,updated_at,run_fence,settled_at) \
+                VALUES ($1,$2,$3,$4,$1,'fixture','fixture',$5,$8,'{}', \
+                  now()-interval '5 minutes',now(), \
+                  CASE WHEN $6 THEN 1 END, CASE WHEN $7 THEN now() END)",
             )
             .bind(&id)
             .bind(&self.fleets.first().expect("seeded fleet").0)
             .bind(&self.workspace)
-            .bind(afd_admission::Producer::Steer.as_str())
-            .bind(af_wire::event::EventType::Chat.as_str())
+            .bind(afd_turns::Producer::Steer.as_str())
+            .bind(af_wire::turn::TurnKind::Chat.as_str())
             .bind(ordinal == 1)
             .bind(ordinal == 3)
+            .bind(af_core::turn::status::QUEUED)
             .execute(&mut *connection)
             .await
             .expect("backlog fixture");

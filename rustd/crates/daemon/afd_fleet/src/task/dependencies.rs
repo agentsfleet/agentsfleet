@@ -1,11 +1,11 @@
-//! Existing native facilities shared by task calls and ordinary fleet leases.
+//! Existing native facilities shared by task calls and ordinary fleet runs.
 
 use std::sync::Arc;
 
 use afd_billing::biller::Biller;
 use afd_credential::provider::Providers;
 
-use crate::lease::LeaseService;
+use crate::run::RunService;
 
 /// Handles only; the task lifecycle owns behavior and introduces no dispatcher.
 #[derive(Debug, Clone)]
@@ -14,7 +14,7 @@ pub struct TaskDependencies {
     pub policy: super::policy::TaskPolicy,
     /// Deployment-owned Secrets workspace, never selected by fleet/model input.
     pub admin_workspace: Option<af_core::id::Uuid7>,
-    /// The same payer funds check as fleet leases; the relay settles logged usage.
+    /// The same payer funds check as fleet runs; the relay settles logged usage.
     pub biller: Arc<dyn Biller>,
     /// Fresh platform-admin provider-secret resolution.
     pub providers: Providers,
@@ -24,8 +24,8 @@ pub struct TaskDependencies {
     pub storage: Option<super::storage::R2CheckpointStore>,
 }
 
-impl From<&LeaseService> for TaskDependencies {
-    fn from(plane: &LeaseService) -> Self {
+impl From<&RunService> for TaskDependencies {
+    fn from(plane: &RunService) -> Self {
         Self {
             policy: super::policy::TaskPolicy::default(),
             admin_workspace: None,

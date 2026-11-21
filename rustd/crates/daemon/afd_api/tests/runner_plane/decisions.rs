@@ -5,7 +5,7 @@ use afd_auth::directory::Liveness;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use super::{FLEET_ID, LEASE_ID, RUNNER_TOKEN, TENANT_KEY, code_of};
+use super::{FLEET_ID, RUN_ID, RUNNER_TOKEN, TENANT_KEY, code_of};
 use crate::harness::{Fleet, runner_id, send};
 
 #[tokio::test]
@@ -13,10 +13,10 @@ async fn decision_routes_preserve_runner_auth_strict_input_and_datastore_failure
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    let collection = format!("/v1/runners/me/leases/{LEASE_ID}/tasks/decisions");
+    let collection = format!("/v1/runners/me/runs/{RUN_ID}/tasks/decisions");
     let receipt = format!("{collection}/{FLEET_ID}");
     let reservation = json!({"operation_id": FLEET_ID, "fencing_token": 7,
-        "source_admission_id": LEASE_ID, "assessment": {"kind": "message"}, "evidence": {}});
+        "source_turn_id": RUN_ID, "assessment": {"kind": "message"}, "evidence": {}});
     let accounted = json!({"fencing_token": 7,
         "receipt": {"outcome": "unknown", "cause": {"reason": "timeout"}}});
     for (method, path, body) in [

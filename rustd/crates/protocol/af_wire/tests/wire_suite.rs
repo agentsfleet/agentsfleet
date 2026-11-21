@@ -12,8 +12,7 @@
 //! `TestDatabase::shared` — `afd_runner` and `afd_tenant` — are deliberately
 //! NOT aggregated for that reason.
 
-mod authoring_compaction;
-mod claim_selection;
+mod assignment_selection;
 mod decision_receipts;
 
 #[path = "inference_images.rs"]
@@ -44,9 +43,12 @@ mod turn_checkpoint;
 mod validation;
 #[path = "validation_holds.rs"]
 mod validation_holds;
-#[path = "validation_lease.rs"]
-mod validation_lease;
 #[path = "validation_mutation.rs"]
 mod validation_mutation;
+#[path = "validation_run.rs"]
+mod validation_run;
+// The setup report admits every Definition the Definition parser admits.
+#[path = "validation_setup.rs"]
+mod validation_setup;
 #[path = "validation_steer.rs"]
 mod validation_steer;

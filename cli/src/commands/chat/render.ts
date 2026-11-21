@@ -59,7 +59,7 @@ export function renderFleet(output: Output, fleet: Fleet): Effect.Effect<void> {
       for (const check of fleet.setup.checks) {
         yield* output.warn(`${check.kind} ${check.subject}: ${check.state}${check.next_action?.href ? ` → ${check.next_action.href}` : ""}`);
       }
-      if (initialPending(fleet)) yield* output.warn(`Initial run: ${String(fleet.start.state)}. Resume setup to recover the same admission.`);
+      if (initialPending(fleet)) yield* output.warn(`Initial run: ${String(fleet.start.state)}. Resume setup to recover the same turn.`);
     }
     yield* renderScheduleOwed(output, fleet.schedules);
   });

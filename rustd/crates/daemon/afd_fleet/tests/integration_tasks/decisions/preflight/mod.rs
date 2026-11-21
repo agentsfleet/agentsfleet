@@ -42,7 +42,7 @@ async fn scenario(case: &Case, protected: bool) {
     let tasks = github_authority::publisher(&fixture, &remote).await;
     let input = proposed(&fixture).await;
     let before = case.counts().await;
-    let result = tasks.interpret(case.lease(), &valid(input.clone())).await;
+    let result = tasks.interpret(case.run(), &valid(input.clone())).await;
     if protected {
         assert_eq!(
             result
@@ -72,14 +72,14 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
     let case = fixture.case;
     let source = case
         .source_message(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("native_task_owner"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("native_task_owner"),
             MESSAGE,
         )
         .await;
     let reservation = fixture.reservation(DecisionAssessment::Message, None);
     let mut reservation = (*reservation).clone();
-    reservation.source_admission_id = source.to_string();
+    reservation.source_turn_id = source.to_string();
     let reservation = garde::Unvalidated::new(reservation)
         .validate()
         .expect("explicit human request");
@@ -106,8 +106,8 @@ async fn proposed(fixture: &Decisions<'_>) -> TaskBindingsInput {
 
 fn binding(case: &Case, source: String, revision: String, call: String) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
-        fencing_token: case.lease().fencing_token,
-        source_admission_id: source,
+        fencing_token: case.run().fencing_token,
+        source_turn_id: source,
         accepted_revision_id: revision,
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,
@@ -181,7 +181,7 @@ async fn accepted(
     let task = id(item.task_id.as_ref().expect("native target owner"));
     assert_target(case, &task).await;
     let replay = tasks
-        .interpret(case.lease(), &valid(input))
+        .interpret(case.run(), &valid(input))
         .await
         .expect("preflight result replay");
     assert!(replay.replayed);

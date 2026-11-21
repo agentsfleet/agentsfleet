@@ -53,7 +53,7 @@ const WIRE_ACCESS_TOKEN: &str = "access_token";
 
 /// Handle fields the broker's mint reads back — `afd_credential`'s
 /// `credential::github::installation` is the one reader of
-/// [`HANDLE_INSTALLATION_ID`], for the exchange and for the lease plane's
+/// [`HANDLE_INSTALLATION_ID`], for the exchange and for the run plane's
 /// ownership check against this crate's routing row, and accepts a decimal
 /// string.
 pub(crate) const HANDLE_INSTALLATION_ID: &str = "installation_id";

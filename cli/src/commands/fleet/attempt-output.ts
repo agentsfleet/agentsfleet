@@ -1,15 +1,16 @@
 import { Option, Schema } from "effect";
+import { TOOL_CALL_KINDS } from "./tool-activity.ts";
 
 const MAX_FENCE = "9223372036854775807";
 const FENCE = Schema.String.check(Schema.isPattern(/^[1-9][0-9]{0,18}$/u),
   Schema.makeFilter((value: string) => value.length < MAX_FENCE.length || value <= MAX_FENCE));
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([
-  "chunk", "tool_call_started", "tool_call_progress", "tool_call_completed",
+  "chunk", ...TOOL_CALL_KINDS,
   "context_progress", "task_decision_started", "task_decision_completed",
   "task_transfer_progress", "run_restarted",
 ]);
 
-/** One event's live attempt; a saved completion permanently closes its output. */
+/** One turn's live attempt; a saved completion permanently closes its output. */
 export class AttemptOutput {
   #fence: string | null = null;
   #terminal = false;
@@ -23,7 +24,7 @@ export class AttemptOutput {
 
   accept(kind: string, payload: Record<string, unknown>): boolean {
     if (this.#terminal) return false;
-    if (kind === "event_complete") this.#terminal = true;
+    if (kind === "turn_complete") this.#terminal = true;
     if (!OUTPUT_KINDS.has(kind)) return true;
     const parsed = Schema.decodeUnknownOption(FENCE)(payload["fencing_token"]);
     if (Option.isNone(parsed)) return false;

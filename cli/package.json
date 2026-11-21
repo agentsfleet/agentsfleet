@@ -18,7 +18,7 @@
     "README.md"
   ],
   "engines": {
-    "bun": ">=1.4.4"
+    "bun": ">=1.4.5"
   },
   "scripts": {
     "test": "bun run build && bun ./scripts/enforce-coverage.mjs",
@@ -36,7 +36,6 @@
   "dependencies": {
     "@effect/platform-bun": "4.1.4",
     "@vercel/detect-agent": "^1.2.7",
-    "diff": "^9.0.0",
     "effect": "4.1.4",
     "posthog-node": "^5.74.0",
     "uuid": "^14.0.3"
@@ -47,7 +46,7 @@
     "@playwright/test": "1.65.1",
     "@types/node": "^26.6.6",
     "@types/uuid": "^11.0.0",
-    "bun-types": "^1.4.4",
+    "bun-types": "^1.4.5",
     "oxlint": "^1.94.0",
     "playwright": "^1.65.1",
     "tsrs": "0.25.0-ts7.1.0-beta"

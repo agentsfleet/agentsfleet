@@ -10,7 +10,7 @@ const count = Schema.optionalKey(Schema.NullOr(
   Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
 ));
 const charge = Schema.Struct({
-  fleet_id: optionalText, event_id: optionalText, authoring_attempt_id: optionalText,
+  fleet_id: optionalText, turn_id: optionalText, run_id: optionalText,
   posture: Schema.optionalKey(Schema.String), model: Schema.optionalKey(Schema.String),
   recorded_at: Schema.optionalKey(Schema.NullOr(instant)), charge_type: Schema.String,
   credit_deducted_nanos: nanosSchema, token_count_input: count, token_count_output: count,

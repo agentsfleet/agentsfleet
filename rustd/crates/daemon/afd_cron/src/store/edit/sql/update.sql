@@ -7,7 +7,7 @@ UPDATE fleet.schedules
        sync_status = $7,
        resource_version = resource_version + 1,
        sync_token = $8,
-       sync_lease_expires_at = clock_timestamp() + $9::interval,
+       sync_run_expires_at = clock_timestamp() + $9::interval,
        last_error = NULL,
        updated_at = now()
  WHERE id = $1

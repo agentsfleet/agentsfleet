@@ -17,10 +17,10 @@ use garde::Validate as _;
 /// A fleet identifier as a runner sends it.
 const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
 /// A report from a runner that holds nothing.
-const REPORT: &str = r#"{"lease_id":"lease","event_id":"1-0","fencing_token":7,
+const REPORT: &str = r#"{"run_id":"run","turn_id":"1-0","fencing_token":7,
     "outcome":"processed","failure_reason":null,"failure_detail":"",
     "response_text":"done","tokens":3,"requests":[],"telemetry":{"time_to_first_token_ms":4,"wall_ms":5},
-    "checkpoint":{"last_event_id":"1-0","last_response":""}}"#;
+    "checkpoint":{"last_turn_id":"1-0","last_response":""}}"#;
 /// The instant a holding runner's report names, as it writes it.
 const HELD_UNTIL: &str = "2026-10-18T06:10:00.250Z";
 /// A heartbeat answer releasing nothing.
@@ -103,8 +103,8 @@ fn test_a_report_that_holds_nothing_writes_no_hold() {
 #[test]
 fn test_a_held_deadline_round_trips() {
     let held = REPORT.replace(
-        r#""lease_id""#,
-        &format!(r#""held_until":"{HELD_UNTIL}","lease_id""#),
+        r#""run_id""#,
+        &format!(r#""held_until":"{HELD_UNTIL}","run_id""#),
     );
 
     let report: ReportRequest<'_> = serde_json::from_str(&held).unwrap();

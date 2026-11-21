@@ -117,20 +117,20 @@ pub struct Runner {
     pub runner_id: String,
 }
 
-/// One lease a runner holds.
+/// One run a runner holds.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Lease {
-    /// Lease identifier (version 7 universally unique identifier, or UUID).
-    pub lease_id: String,
+pub struct Run {
+    /// Run identifier (version 7 universally unique identifier, or UUID).
+    pub run_id: String,
 }
 
-/// One schedule of the fleet a held lease runs.
+/// One schedule of the fleet a held run runs.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct LeaseSchedule {
-    /// Lease identifier (version 7 universally unique identifier, or UUID).
-    pub lease_id: String,
+pub struct RunSchedule {
+    /// Run identifier (version 7 universally unique identifier, or UUID).
+    pub run_id: String,
     /// Schedule identifier (version 7 universally unique identifier, or UUID).
     pub schedule_id: String,
 }
@@ -147,31 +147,31 @@ pub struct Schedule {
     pub schedule_id: String,
 }
 
-/// One event in a fleet's history.
+/// One turn in a fleet's history.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct Event {
+pub struct Turn {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// Event identifier (version 7 universally unique identifier, or UUID).
-    pub event_id: String,
+    /// Turn identifier (version 7 universally unique identifier, or UUID).
+    pub turn_id: String,
 }
 
-/// One tool call of one event.
+/// One item of one turn: a tool call.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]
-pub struct ToolCall {
+pub struct Item {
     /// Workspace identifier (version 7 universally unique identifier, or UUID).
     pub workspace_id: String,
     /// Fleet identifier (version 7 universally unique identifier, or UUID).
     pub fleet_id: String,
-    /// Event identifier (version 7 universally unique identifier, or UUID).
-    pub event_id: String,
+    /// Turn identifier (version 7 universally unique identifier, or UUID).
+    pub turn_id: String,
     /// Tool call identifier from the activity stream, in `{fence}:{n}` format. Keep it
     /// unchanged and URL-encode it.
-    pub call_id: String,
+    pub item_id: String,
 }
 
 /// One memory a fleet holds.
@@ -251,29 +251,4 @@ pub struct Draft {
     pub workspace_id: String,
     /// Draft identifier (version 7 universally unique identifier, or UUID).
     pub draft_id: String,
-}
-
-/// One Plugin entry a workspace can see.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Path)]
-pub struct Plugin {
-    /// Workspace identifier (version 7 universally unique identifier, or UUID).
-    pub workspace_id: String,
-    /// Plugin identifier (version 7 universally unique identifier, or UUID).
-    #[param(format = "uuid")]
-    pub plugin_id: String,
-}
-
-/// One immutable revision of a Plugin entry.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Path)]
-pub struct PluginRevision {
-    /// Workspace identifier (version 7 universally unique identifier, or UUID).
-    pub workspace_id: String,
-    /// Plugin identifier (version 7 universally unique identifier, or UUID).
-    #[param(format = "uuid")]
-    pub plugin_id: String,
-    /// Revision identifier (version 7 universally unique identifier, or UUID).
-    #[param(format = "uuid")]
-    pub revision_id: String,
 }

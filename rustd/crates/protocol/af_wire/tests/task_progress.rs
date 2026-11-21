@@ -9,7 +9,7 @@ use serde_json::json;
 fn retained_task_progress_preserves_live_facts_without_tool_call_identity() -> serde_json::Result<()>
 {
     let progress = json!({"activity_id":"01900000-0000-7000-8000-000000000001",
-        "task_id":null,"source_admission_id":null,"operation":"capture","phase":"uploading",
+        "task_id":null,"source_turn_id":null,"operation":"capture","phase":"uploading",
         "provider":null,"model":null,"completed":2,"total":3,
         "bytes":{"acknowledged":20,"missing":10,"reused":30},"sequence":7});
     for kind in [

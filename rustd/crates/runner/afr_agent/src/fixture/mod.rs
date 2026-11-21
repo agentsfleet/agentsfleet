@@ -1,4 +1,4 @@
-//! What the loop's suites share: a lease, a scripted provider that keeps every
+//! What the loop's suites share: a run, a scripted provider that keeps every
 //! request it was sent, and tools whose output or stall a test chooses.
 
 #![expect(
@@ -8,12 +8,12 @@
 )]
 
 use std::sync::mpsc;
-use std::time::Duration;
 
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
-use afr_tools::NoArguments;
-use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
+use af_wire::run::RunPayload;
+use afr_tools::{CatalogTool, Entry, ToolContext};
+use guffbolt::tools::{NoArguments, Schema};
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 
 pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
 use af_secrets::{Clean, Scrub};
@@ -22,21 +22,21 @@ mod model;
 
 /// Why a fixture send cannot fail: the test holds the receiver until it reads.
 pub(crate) const RECEIVER_HELD: &str = "the test holds the receiver for as long as the run";
-/// Where a fixture lease's context knobs sit.
+/// Where a fixture run's context knobs sit.
 const CONTEXT_POINTER: &str = "/policy/context";
-/// The instant the fixture lease expires at and its event was made at.
+/// The instant the fixture run expires at and its event was made at.
 const AT: &str = "1970-01-01T00:00:00.001Z";
 
-/// The provider key every fixture lease carries.
+/// The provider key every fixture run carries.
 pub(crate) const API_KEY: &str = "sk-test-0123456789";
-/// The static credential every fixture lease carries.
+/// The static credential every fixture run carries.
 pub(crate) const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 
-/// A lease offering `tools`, with `budget` as its context knobs.
-pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'static> {
+/// A run offering `tools`, with `budget` as its context knobs.
+pub(crate) fn payload(tools: &[&str], budget: serde_json::Value) -> RunPayload<'static> {
     let mut document = serde_json::json!({
-        "lease_id": "lease-1", "fencing_token": 7, "lease_expires_at": AT,
-        "event": {"event_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
+        "run_id": "run-1", "fencing_token": 7, "run_expires_at": AT,
+        "event": {"turn_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
             "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
         "policy": {"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
@@ -45,7 +45,8 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
             "mintable": [], "provider": "anthropic", "api_key": API_KEY,
             "inference_host": "h", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": null},
-        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true
+        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "owner": {"kind": "fleet", "fleet_id": "fleet-1"}
     });
     *document.pointer_mut(CONTEXT_POINTER).unwrap() = budget;
     // Leaked so the borrowed payload lives as long as the test that reads it.
@@ -53,9 +54,9 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
     serde_json::from_str(text).unwrap()
 }
 
-/// The scrub of a lease carrying the fixture secrets.
+/// The scrub of a run carrying the fixture secrets.
 pub(crate) fn scrub() -> Scrub {
-    Scrub::new(&lease(&[], unbounded()).policy).unwrap()
+    Scrub::new(&payload(&[], unbounded()).policy).unwrap()
 }
 
 /// `text` as the scrub hands it on.
@@ -89,7 +90,7 @@ pub(crate) struct Canned {
 }
 
 impl Canned {
-    pub(crate) fn boxed(entry: &'static Entry, output: &str) -> Box<dyn Tool> {
+    pub(crate) fn boxed(entry: &'static Entry, output: &str) -> Box<CatalogTool> {
         Box::new(Self {
             entry,
             schema: Schema::of::<NoArguments>(entry.name()),
@@ -98,66 +99,27 @@ impl Canned {
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Canned {
-    fn entry(&self) -> &'static Entry {
-        self.entry
-    }
-
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        if self.output.is_empty() {
-            return std::future::pending().await;
-        }
-        ToolOutput::succeeded(self.output.clone())
+impl Describe for Canned {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
     }
 }
 
-/// A tool answering every call with `output` after `delay`, for a suite
-/// under paused time that needs a call to be open until it says.
-#[derive(Debug)]
-pub(crate) struct Slow {
-    entry: &'static Entry,
-    schema: Schema,
-    output: String,
-    delay: Duration,
-}
-
-impl Slow {
-    pub(crate) fn boxed(entry: &'static Entry, output: &str, delay: Duration) -> Box<dyn Tool> {
-        Box::new(Self {
-            entry,
-            schema: Schema::of::<NoArguments>(entry.name()),
-            output: output.to_owned(),
-            delay,
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Canned {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        Box::pin(async move {
+            if self.output.is_empty() {
+                return std::future::pending().await;
+            }
+            ToolOutput::succeeded(self.output.clone())
         })
-    }
-}
-
-#[async_trait::async_trait]
-impl Tool for Slow {
-    fn entry(&self) -> &'static Entry {
-        self.entry
-    }
-
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        tokio::time::sleep(self.delay).await;
-        ToolOutput::succeeded(self.output.clone())
     }
 }
 
@@ -170,7 +132,7 @@ pub(crate) struct Exits {
 }
 
 impl Exits {
-    pub(crate) fn boxed(entry: &'static Entry, code: i32) -> Box<dyn Tool> {
+    pub(crate) fn boxed(entry: &'static Entry, code: i32) -> Box<CatalogTool> {
         Box::new(Self {
             entry,
             schema: Schema::of::<NoArguments>(entry.name()),
@@ -179,27 +141,24 @@ impl Exits {
     }
 }
 
-#[async_trait::async_trait]
-impl Tool for Exits {
-    fn entry(&self) -> &'static Entry {
-        self.entry
+impl Describe for Exits {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.schema.spec(self.entry.name())
     }
+}
 
-    fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    async fn call(
-        &self,
-        _arguments: &serde_json::Value,
-        _context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        ToolOutput {
-            text: format!("exited {}", self.code),
-            exit_code: Some(self.code),
-            error_code: None,
-            image: None,
-        }
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Exits {
+    fn call<'a>(
+        &'a self,
+        _arguments: &'a serde_json::Value,
+        _cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        let mut exited = ToolOutput::succeeded(format!("exited {}", self.code));
+        exited.exit_code = Some(self.code);
+        Box::pin(std::future::ready(exited))
     }
 }
 

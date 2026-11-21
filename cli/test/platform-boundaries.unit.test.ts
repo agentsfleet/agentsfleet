@@ -42,17 +42,17 @@ test("renders provider defaults as a terminal table", async () => {
 test("renders event history and a continuation cursor", async () => {
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, runner_id: RUNNER_ID,
     event_type: "runner_online", occurred_at: INSTANT, metadata: {}}], total: 1, next_cursor: RUNNER_ID});
-  const result = await fixture.run(["runners", "events", RUNNER_ID], "", true);
+  const result = await fixture.run(["runners", "history", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain("runner_online"); expect(result.stdout).toContain("Next page:");
 });
 
-test("renders a retained lease with its fleet identifier when the name is gone", async () => {
+test("renders a retained run with its fleet identifier when the name is gone", async () => {
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, fleet_id: RUNNER_ID, fleet_name: null, workspace_id: RUNNER_ID,
-    destination: "fleet_deleted", event_id: RUNNER_ID, event_type: null, actor: null, outcome: "succeeded", kind: "fresh",
+    destination: "fleet_deleted", turn_id: RUNNER_ID, event_type: null, actor: null, outcome: "succeeded", kind: "fresh",
     failure_label: null, failure_detail: null, fencing_token: 1, provider: "example", model: "reasoning-model", posture: "metered",
     metered_input_tokens: 0, metered_cached_tokens: 0, metered_output_tokens: 0, wall_ms: null,
-    lease_expires_at: INSTANT, created_at: INSTANT}], total: 1, next_cursor: RUNNER_ID});
-  const result = await fixture.run(["runners", "leases", RUNNER_ID], "", true);
+    run_expires_at: INSTANT, created_at: INSTANT}], total: 1, next_cursor: RUNNER_ID});
+  const result = await fixture.run(["runners", "runs", RUNNER_ID], "", true);
   expect(result.code).toBe(0); expect(result.stdout).toContain("succeeded"); expect(result.stdout).toContain(RUNNER_ID); expect(result.stdout).toContain("Next page:");
 });
 
@@ -70,9 +70,8 @@ test("replaces the complete policy from a file and removes duplicate labels", as
   expect(result.code).toBe(0); expect(fixture.calls[0]?.body).toEqual({assigned_policy: POLICY, labels: ["build", "linux"]});
 });
 
-test.each(["missing", "oversized", "terminal", "malformed"])("refuses %s policy input before HTTP", async kind => {
+test.each(["missing", "terminal", "malformed"])("refuses %s policy input before HTTP", async kind => {
   const file = join(fixture.state, "policy.json");
-  if (kind === "oversized") fs.writeFileSync(file, " ".repeat(1024 * 1024 + 1));
   if (kind === "malformed") await Bun.write(file, "{");
   const result = await fixture.run(["runners", "update", RUNNER_ID, "--policy", kind === "terminal" ? "-" : file, "--json"], "", false, kind === "terminal");
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
@@ -84,11 +83,18 @@ test("refuses a provider key requested from an interactive input", async () => {
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });
 
-test("stops oversized piped JSON before a platform request", async () => {
-  const result = await fixture.run(["runners", "update", RUNNER_ID, "--policy", "-", "--json"], " ".repeat(1024 * 1024 + 1));
-  expect(result.code).toBe(4);
-  expect(JSON.parse(result.stderr).error).toMatchObject({code: "INVALID_ARGUMENT", message: "Standard input exceeds 1048576 bytes"});
-  expect(fixture.calls).toEqual([]);
+// The 1 MiB cap platform JSON input once carried; the server is now the judge.
+const RETIRED_INPUT_CAP_BYTES = 1024 * 1024;
+
+test.each(["piped", "file"])("sends %s JSON past the retired client cap to the server", async source => {
+  const padded = JSON.stringify(POLICY) + " ".repeat(RETIRED_INPUT_CAP_BYTES);
+  const file = join(fixture.state, "policy.json");
+  if (source === "file") fs.writeFileSync(file, padded);
+  fixture.respond = () => Response.json({id: RUNNER_ID, status: "active", assigned_policy: POLICY, labels: []});
+  const result = await fixture.run(["runners", "update", RUNNER_ID, "--policy", source === "file" ? file : "-", "--json"],
+    source === "file" ? "" : padded);
+  expect(result.code).toBe(0);
+  expect(fixture.calls[0]?.body).toEqual({assigned_policy: POLICY});
 });
 
 test("releases a reserved token file when private permissions cannot be applied", async () => {

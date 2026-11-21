@@ -14,13 +14,13 @@ use axum::Json;
 use axum::response::{IntoResponse as _, Response};
 use http::{StatusCode, header};
 
-use crate::services::Services;
+use crate::services::TenantPlane;
 
 /// Where a person lands once the connect has finished.
 ///
 /// A redirect to the connector's page, or a `200` saying the grant landed
 /// when no such page can be named.
-pub(super) fn connected<D: Services>(services: &D, workspace: &Uuid7) -> Response {
+pub(super) fn connected<D: TenantPlane>(services: &D, workspace: &Uuid7) -> Response {
     found(&callback::connected_url(services.dashboard(), workspace)).unwrap_or_else(sealed)
 }
 

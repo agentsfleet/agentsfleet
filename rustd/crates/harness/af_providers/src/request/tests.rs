@@ -5,6 +5,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::{Call, Hosted, Message, Replay, Request, ToolSpec};
 use rig_core::completion::CompletionRequest;
 use rig_core::message::{
     AssistantContent, AssistantMessage, Message as RigMessage, ToolName, UserContent,
@@ -13,7 +14,6 @@ use serde_json::{Value, json};
 
 use super::request;
 use crate::error::raise;
-use crate::provider::{Call, Hosted, Message, Replay, Request, ToolSpec};
 use af_wire::inference::InferenceApi as Wire;
 
 /// The model every turn here names.
@@ -146,9 +146,8 @@ fn should_lead_with_the_instructions_and_answer_each_call_under_its_tool() {
 
 #[test]
 fn should_hand_the_replay_back_ahead_of_the_turns_text() {
-    let replay = Replay(AssistantMessage::new(vec![AssistantContent::reasoning(
-        THOUGHT,
-    )]));
+    let reasoned = AssistantMessage::new(vec![AssistantContent::reasoning(THOUGHT)]);
+    let replay = Replay::new(serde_json::to_value(reasoned).unwrap());
     let messages = [
         Message::User(QUESTION.to_owned()),
         said(PREAMBLE, Vec::new(), replay),
@@ -283,4 +282,53 @@ fn should_refuse_a_call_that_names_no_tool() {
     let empty = ToolName::new(String::new()).unwrap_err();
     assert_eq!(refused.detail(), raise::unnamed(CALL_ID, empty).detail());
     assert_eq!(refused.failure_class(), None);
+}
+
+#[test]
+fn should_refuse_a_replay_it_cannot_read_rather_than_send_the_turn_without_it() {
+    let messages = [
+        Message::User(QUESTION.to_owned()),
+        said(PREAMBLE, Vec::new(), Replay::new(json!("not a message"))),
+    ];
+    let turn = Request {
+        model: MODEL,
+        instructions: INSTRUCTIONS,
+        messages: &messages,
+        tools: &[],
+        hosted: &[],
+        cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
+    };
+
+    let refused = request(Wire::Messages, &turn).unwrap_err();
+
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert_eq!(refused.failure_class(), None);
+}
+
+#[test]
+fn should_hand_back_a_written_replay_exactly_as_rig_recorded_it() {
+    let reasoned = AssistantMessage::new(vec![
+        AssistantContent::reasoning(THOUGHT),
+        AssistantContent::text(PREAMBLE),
+    ]);
+    let replay = Replay::new(serde_json::to_value(&reasoned).unwrap());
+    let messages = [
+        Message::User(QUESTION.to_owned()),
+        said(PREAMBLE, Vec::new(), replay),
+    ];
+
+    let sent = built(Wire::Messages, &messages, &[], &[]);
+
+    let Some(RigMessage::Assistant(turn)) = sent.chat_history.last().map(AsRef::as_ref) else {
+        panic!("the turn ends the history: {:?}", sent.chat_history);
+    };
+    assert_eq!(
+        turn.content, reasoned.content,
+        "the record reads back whole"
+    );
 }

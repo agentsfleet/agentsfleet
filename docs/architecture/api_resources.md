@@ -6,19 +6,19 @@ product_version: 0.75.0
 executable: false
 ---
 
-# API resources — workspace setup, fleets, Plugin and runner
+# API resources — workspace setup, fleets and runner
 
 ## Synopsis
 
 This reference describes the implemented private setup and shared fleet APIs. The [verification ledger](shared_chat_verification.md#historical-verification-evidence) records observed checks and remaining live proof; implementation alone does not establish deployment success.
 
-Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`, `G=W/plugins/{plugin_id}`. Workspace, draft, candidate, fleet, revision and lease identifiers are UUIDv7.
+Prefixes: `W=/v1/workspaces/{workspace_id}`, `D=W/drafts/{draft_id}`, `F=W/fleets/{fleet_id}`. Workspace, draft, candidate, fleet, revision and run identifiers are UUIDv7.
 
-Authoring operation identifiers are UUIDv7; fleet-message keys follow C4. Plugin and revision identifiers are UUIDv7. Every Plugin belongs to one account; reads, reuse and mutations enforce that account through the requesting workspace.
+Setup operation identifiers are UUIDv7; fleet-message keys follow C4. Revision identifiers are UUIDv7.
 
 Person authorization uses workspace ownership resolved by the existing layer. Draft reads and writes additionally require the authenticated creator; workspace membership alone does not expose another person's draft.
 
-Draft access requires `fleet:write`. Plugin reads require `fleet:read`, writes and deletes require `plugins:write`; fleet reads and writes retain `fleet:read` and `fleet:write`. Fleet deletion retains `fleet:admin` in every lifecycle state.
+Draft access requires `fleet:write`. Fleet reads and writes retain `fleet:read` and `fleet:write`. Fleet deletion retains `fleet:admin` in every lifecycle state.
 
 Revalidate current access on every read, write, stream reconnect, and setup step.
 
@@ -30,7 +30,7 @@ The example omits authorization headers. The model reference is illustrative and
 POST /v1/workspaces/0199a801-1000-7000-8000-000000000001/drafts
 Content-Type: application/json
 
-{"source":{"kind":"blank"},"authoring_model_ref":"owner-model-1","operation_id":"0199a801-1000-7000-8000-000000000002","message":"Watch failed checkout deployments."}
+{"source":{"kind":"blank"},"setup_model_ref":"owner-model-1","operation_id":"0199a801-1000-7000-8000-000000000002","message":"Watch failed checkout deployments."}
 ```
 
 ```json
@@ -38,7 +38,7 @@ Content-Type: application/json
   "id":"0199a801-1000-7000-8000-000000000003",
   "state":"editing",
   "etag":"\"draft:0199a801-1000-7000-8000-000000000003:1\"",
-  "authoring_model_ref":"owner-model-1",
+  "setup_model_ref":"owner-model-1",
   "accepted":{"status":"accepted","sequence":"1","replayed":false}
 }
 ```
@@ -57,21 +57,21 @@ A candidate/review is absent until there is a validated candidate. A queued mess
 
 - Lists accept `limit` and `starting_after` using `af_core::paging::Cursor`. General lists default 50/max 100; draft messages default 20/max 25.
 
-- Private draft cursors bind resource, creator, ordering, filters, and limit. Fleet-message cursors carry position; the authorized workspace, fleet, and event filter are reapplied on every read.
+- Private draft cursors bind resource, creator, ordering, filters, and limit. Fleet-message cursors carry position; the authorized workspace, fleet, and `event_type` filter are reapplied on every read.
 
-- An entity tag (ETag) is a strong opaque version. GET D/F/G returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag.
+- An entity tag (ETag) is a strong opaque version. GET D/F returns its resource tag in `ETag` and `etag`. Compression may weaken the response header to `W/"value"`; the body retains the strong `"value"` tag.
 
-- Fleet and Plugin clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag.
+- Fleet clients accept that header only when its opaque value matches the strong body tag. Conditional writes retain the strong body tag.
 
 - GET F additionally exposes `setup_etag`. Fleet revision writes use the setup tag; status/name PATCH uses the fleet resource tag. A creation retry may advance progress but preserves identity and original accepted inputs.
 
-- Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation, fleet revision application, and Plugin create/revision use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
+- Draft creation and both conversation sends use **only** body `operation_id`; reject an `Idempotency-Key` header on those routes. Setup creation and fleet revision application use **only** `Idempotency-Key` (UUIDv7); reject body replay keys there. PATCH uses `If-Match`; Stop uses its monotone cutoff.
 
-- Authoring creation keys bind actor, workspace, operation type and parent collection. Member keys bind workspace, operation type and resource, with the accepting actor recorded. Authorization runs before replay.
+- Setup creation keys bind actor, workspace, operation type and parent collection. Member keys bind workspace, operation type and resource, with the accepting actor recorded. Authorization runs before replay.
 
-- The same authoring key, normalized body and actor recover the accepted result. Changed body or member-resource actor conflicts. Protection lasts 24 hours from receipt creation; deletion within that window returns 410.
+- The same setup key, normalized body and actor recover the accepted result. Changed body or member-resource actor conflicts. Protection lasts 24 hours from receipt creation; deletion within that window returns 410.
 
-- After expiry, inspect the draft, fleet or Plugin before another write. The old authoring key no longer prevents duplication.
+- After expiry, inspect the draft or fleet before another write. The old setup key no longer prevents duplication.
 
 ### Definition, candidate, review, and common types
 
@@ -83,18 +83,17 @@ Required daily ceiling is `1..1000000000000` nanos; optional monthly ceiling is 
 
 ```text
 {kind:"blank"}
-{kind:"plugin",plugin_id,revision_id}
 {kind:"fleet",fleet_id,setup_revision}
 {kind:"definition",definition:Definition}
 ```
 
-Resolve and authorize the source before allocating a row. Plugin and fleet sources pin immutable Definitions.
+Resolve and authorize the source before allocating a row. A fleet source pins an immutable Definition.
 
 The typed definition source accepts native JSON, including the CLI's `--definition <PATH>` input and the browser drawer. Repository and template-bundle imports remain unsupported.
 
 `Candidate = {id,revision,definition,canonical_digest,policy_semantics}`. Every accepted definition change gets a fresh immutable candidate ID and the next draft-local decimal revision. Initialization starts at `"1"`; unchanged metadata or model selection creates no candidate revision.
 
-Before the first proposal, a blank draft has no candidate. First drawer mutation creates a draft from an inline typed definition using shared explicit defaults displayed in the drawer. Empty instructions are allowed while editing but block Save/publication; review readiness includes a definition check.
+Before the first proposal, a blank draft has no candidate. First drawer mutation creates a draft from an inline typed definition using shared explicit defaults displayed in the drawer. Empty instructions are allowed while editing but block Save; review readiness includes a definition check.
 
 `Review = {effective,requirements,readiness[],review_digest,policy_semantics,observed_at}`:
 
@@ -109,19 +108,19 @@ next_action = {kind:"account_models"|"billing"|"workspace_connections"|"approval
 
 Requirements are derived immutable setup, not readiness results. Review digest excludes observation timestamps and includes candidate, selections, source/target revisions, policy marker, and effective access/model resolution versions.
 
-Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress. GET plugin Inspect computes equivalent review context without pretending the Plugin's requirements changed.
+Effective setup changes →409 plus fresh `review_digest`; missing live checks instead appear in `installing` setup progress.
 
 Save and Apply accept optional `origin` display metadata, with values `cli`, `dashboard` or `chat`. The field grants no access. The first accepted revision records the origin in its immutable `setup_saved` activity.
 
 Retries exclude `origin` when comparing request bodies and retain the original receipt. Changing only the origin with the same operation key creates no additional fleet, revision or receipt. Older clients may omit the field; older receipts retain their generic saved-version label.
 
-`Draft = {id,state,title,etag,authoring_model_ref,cancelled_through,candidate?,review?,linked_fleet_id?,publication?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate. `publication={plugin_id,revision_id,canonical_digest}` is a verified explicit publication receipt.
+`Draft = {id,state,title,etag,setup_model_ref,candidate?,review?,linked_fleet_id?,closed_at?,expires_at?}`. States: `editing|saving|closed`; message state is separate.
 
-Closing sets expiry 30 days later; linked active authoring/setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. Active authoring blocks PATCH and Save.
+Closing sets expiry 30 days later; a linked active setup blocks expiry. Cancelled setup returns `editing`, removing close/expiry fields. A queued or running setup turn blocks PATCH and Save.
 
 `Message = {sequence,operation_id,role:"user"|"assistant",state,text?,candidate_id?,usage?,failure?,save_requested,save_error_code?,created_at,finished_at?}`. User sequence names its request; answer shares that sequence. States `queued|running|completed|cancelled|failed|timed_out`.
 
-Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal lease/attempt IDs are not public turn resources.
+Usage is `{knowledge:"known"|"unknown",input_tokens?,output_tokens?,provider_cost_nanos?,runtime_cost_nanos?}`; unknown figures are absent, never zero estimates. Internal run IDs are not public turn resources.
 
 Create and Send accept an optional `save` boolean, defaulting to false. The accepted message records `save_requested`; replay includes this choice. Text alone grants no save authority.
 
@@ -129,26 +128,23 @@ For a completed save-requested turn, the daemon saves the answer, accounting, an
 
 A checked save refusal retains the answer and editable candidate with a stable `save_error_code`. An internal save failure rolls back the report transaction. Cancelled or failed turns never save setup.
 
-`failure={reason,error_code,recovery_action,cause?}` is required on failed/timed_out messages and absent otherwise.
-The optional cause is `deadline|cancelled|provider_interrupted|completion_unverified`, recorded with the dispatch outcome.
-Older failures may lack a cause; clients must not infer one or display provider bodies.
+`failure={reason,error_code,recovery_action}` is required on failed/timed_out messages and absent otherwise.
+Clients must not display provider bodies.
 
 The daemon records terminal state atomically and returns the same bounded fields after reload.
 Reports cannot supply diagnostic text, URLs, credentials, or actions.
 
 | Failure reason | Stable code | Recovery action |
 |---|---|---|
-| `insufficient_balance` | `UZ-AUTHOR-007` | `owner_billing` |
-| `model_unavailable` | `UZ-AUTHOR-008` | `choose_authoring_model` |
-| `context_too_large` | `UZ-AUTHOR-010` | `reduce_context` |
-| `provider_failed` | `UZ-AUTHOR-014` | `retry_message` |
-| `provider_usage_unknown` | `UZ-AUTHOR-015` | `retry_message` |
-| `attempt_timed_out` | `UZ-AUTHOR-016` | `retry_message` |
-| `policy_changed` | `UZ-AUTHOR-009` | `review_setup` |
+| `insufficient_balance` | `UZ-SETUP-007` | `owner_billing` |
+| `model_unavailable` | `UZ-SETUP-008` | `choose_setup_model` |
+| `provider_failed` | `UZ-SETUP-014` | `retry_message` |
+| `provider_usage_unknown` | `UZ-SETUP-015` | `retry_message` |
+| `frame_too_large` | `UZ-RUN-032` | `reduce_context` |
 
-An attempt whose provider usage is unknown no longer holds the draft: only a running attempt does. `provider_usage_unknown` keeps its reason, reports `retry_message`, and keeps its accounting hold until the billing sweep settles it.
+A failed message no longer holds the draft; only a live setup run does. `provider_usage_unknown` marks a turn whose runs all lapsed, and it reports `retry_message`.
 
-Stop/delete/revocation fences text writes; revoked callers receive no private failure detail. Fresh Send is accepted while an earlier attempt awaits accounting.
+Stop, delete and revocation fence text writes; revoked callers receive no private failure detail.
 
 Exact accepted replay is checked first. Retrying uses an explicit new message and key.
 
@@ -156,9 +152,9 @@ Exact accepted replay is checked first. Retrying uses an explicit new message an
 
 Grant checks record actual approved access; missing approval cannot be logged as ready.
 
-`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..32,768 UTF-8 bytes). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",event_id?,error_code?}`. Derive the initial admission's one identity from creation, not another client key.
+`Start` request is `{kind:"none"}` or `{kind:"run_now",message}` (message 1..1,048,576 characters). Result is `{kind:"none"}` or `{kind:"run_now",state:"pending"|"accepted"|"blocked",turn_id?,error_code?}`. Derive the initial turn's one identity from creation, not another client key.
 
-`start.accepted` requires confirmation of the committed initial admission with the expected event identity (`afd_authoring`'s start confirm). Ordinary fleet-message acceptance also requires a committed admission. Wake notifications are best effort.
+`start.accepted` requires confirmation of the committed initial turn with the expected turn identity (`afd_setup`'s start confirm). Ordinary fleet-message acceptance also requires a committed turn. Wake notifications are best effort.
 
 Neither acceptance nor a wake notification means completed work.
 
@@ -182,63 +178,56 @@ GET reports current prerequisites in `setup.checks`; changes to a saved review d
 
 An idle `instance_name` draft selection chooses the validated instance slug independently of the recipe. It changes the review digest without creating a new candidate revision. An unresolved account default has a null `effective.runtime_model_ref` and a missing model readiness check.
 
-`PluginCard = {id,name,description,created_at,requirements,required_credentials_reasons,head_revision_id,head_revision,etag}` keeps the gallery meaning of `afd_api_wire`'s plugin `Card`. `Plugin = {card,head:PluginRevision,review,etag}`. `PluginRevision = {id,plugin_id,revision,definition,canonical_digest,requirements,policy_semantics,created_at}`.
-
-Revision list items omit instructions, returning `{id,revision,canonical_digest,created_at}`. Member reads include definition and context review; no secret values.
-
 `ConfigOp = {op:"add"|"replace",path,value} | {op:"remove",path}` permits `/config` descendants and replacement of `/description`. Identity, manifest and receipt fields are unwritable.
 
-`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 32,768 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
+`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch has no operation or edit count; its replacement text totals at most 1,048,576 characters. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
 
-The serialized Definition or edit batch is bounded at 448 KiB; setup HTTP bodies allow 464 KiB including their wrapper. The runner model-call envelope has its separate 128 KiB limit. See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
+The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling. Each is counted at the widest escape a client may send, 12 bytes for an escaped astral character, so the body may be 25,640,960 bytes (`SETUP_BODY_BYTES_MAX`).
 
-The next two tables preserve the workspace-chat cutover's 17 new and seven changed person routes. Subsequent fleet editor and history reads are listed separately below.
+A body carrying one text, such as a fleet message, may be 12,599,296 bytes (`TEXT_BODY_BYTES_MAX`). The daemon reads that much on those routes, and the app's proxies read the same (`afd_http/tests/fixtures/body_limits.json`).
 
-### New person routes: 16
+A run carrying that text reaches its runner in one frame of at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`). See [native and model edits](fleet_definitions.md#small-atomic-edits) for conversion and correction behavior.
+
+The next two tables list the workspace-chat person routes that remain after M253 removed the Plugin library. Subsequent fleet editor and history reads are listed separately below.
+
+### New person routes: 11
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
-| N1 | GET W/models | No body; `purpose=authoring|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{authoring,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; owner's eligible enabled entries only | AUTH, INPUT, DEPENDENCY |
-| N2 | POST W/drafts | `{source:Source,authoring_model_ref,message?,save?,operation_id}`; `save:true` requires a message; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
-| N3 | GET W/drafts | No body; `state`, `linked_fleet_id` and `q` optional, paging; creator only. `q` (1..200 characters, trimmed) matches the title or any turn's text as a case-insensitive substring, LIKE metacharacters literal, and is bound into the cursor | 200 Page of `{id,title,state,etag,linked_fleet_id?,updated_at,expires_at?,candidate_revision,setup_revision,publication_revision}`; the three revisions are null until the chat reaches each (no candidate, no saved fleet, not published) | INPUT, CURSOR, AUTH, DEPENDENCY |
+| N1 | GET W/models | No body; `purpose=setup|runtime` optional, list paging; workspace authorization | 200 Page of `{ref,label,provider,model,context_window_tokens,max_output_tokens,eligibility:{setup,runtime},pricing:{input_nanos_per_million,output_nanos_per_million,runtime_nanos_per_second}}`; owner's eligible enabled entries only | AUTH, INPUT, DEPENDENCY |
+| N2 | POST W/drafts | `{source:Source,setup_model_ref,message?,save?,operation_id}`; `save:true` requires a message; body UUIDv7 key only. The chat's initial `title` is the first line of `message`, else of the source's description, else `New fleet`, cut to 100 characters; a later title edit is never overwritten | 201 Draft, optional `accepted:{status:"accepted",sequence,replayed}` when first message exists; `Location:D`, ETag | INPUT, HIDDEN, MODEL, REPLAY, GONE, DEPENDENCY |
+| N3 | GET W/drafts | No body; `state`, `linked_fleet_id` and `q` optional, paging; creator only. `q` (1..200 characters, trimmed) matches the title or any turn's text as a case-insensitive substring, LIKE metacharacters literal, and is bound into the cursor | 200 Page of `{id,title,state,etag,linked_fleet_id?,updated_at,expires_at?,candidate_revision,setup_revision}`; each revision is null until the chat reaches it (no candidate, no saved fleet) | INPUT, CURSOR, AUTH, DEPENDENCY |
 | N4 | GET D | No body; creator + current membership | 200 Draft with latest candidate/review when available; ETag | HIDDEN, AUTH, DEPENDENCY |
-| N5 | PATCH D | If-Match; `{title?,instance_name?,authoring_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; authoring selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
+| N5 | PATCH D | If-Match; `{title?,instance_name?,setup_model_ref?,runtime_model_ref?,config_ops?:ConfigOp[],instruction_edits?:InstructionEdit[]}`; at least one, editing and no running/queued messages | 200 Draft with new tag and current candidate/review; recheck owner eligibility; the setup model selection applies to future sends only | PRECONDITION, STALE, STATE, INPUT, MODEL, POLICY |
 | N6 | DELETE D | No body; creator only, no If-Match | 204 after fencing and private-text deletion boundary; ongoing setup link may remain shared | HIDDEN, AUTH, DEPENDENCY; residual-copy bounds are in runner page |
-| N7 | POST D/messages | `{message,save?,operation_id}`; text1..32,768 bytes; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
+| N7 | POST D/messages | `{message,save?,operation_id}`; text 1..1,048,576 characters; body UUIDv7 only; `editing`; omitted `save` is false | 202 `{status:"accepted",sequence,replayed}`; `Location:D/messages`; queued answer not implied | INPUT, STATE, REPLAY, GONE, HIDDEN, UNKNOWN, DEPENDENCY |
 | N8 | GET D/messages | No body; creator; limit default 20/max 25, starting_after | 200 Page of Message; ordered sequence then role; states/usage included | HIDDEN, CURSOR, INPUT, DEPENDENCY |
-| N9 | POST D/cancellations | `{through_sequence}` decimal string, at most current last accepted sequence; no If-Match | 200 `{cancelled_through,stopped:[{sequence,state:"cancelled"}]}`; lower repeated cutoff returns standing watermark | INPUT, HIDDEN, DEPENDENCY |
-| N10 | GET D/events/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
+| N9 | PATCH D/turns/{turn_id} | `{"status":"cancelled"}`; no If-Match | A queued turn never runs, and a running turn's setup run ends; later turns stay queued. Repeating the call answers the same state | INPUT, HIDDEN, STATE (a finished turn), DEPENDENCY |
+| N10 | GET D/turns/stream | Creator; `Last-Event-ID` optional ephemeral hint; no body | 200 `text/event-stream`; typed progress described below; reconnect reconciles GET D/messages and GET D | HIDDEN, AUTH, DEPENDENCY |
 | N11 | POST F/revisions | If-Match setup tag + Idempotency-Key; `{draft_candidate_id,review_digest,origin?}`; own authorized idle improvement draft targets this fleet | 201 `{fleet_id,setup_revision,setup_etag,etag,review_digest,schedules[]}`; Location F, ETag resource tag | PRECONDITION, STALE, REVIEW, POLICY, REPLAY, HIDDEN, STATE |
-| N13 | GET G | No body; optional `revision_id` to Inspect a pinned revision; fleet:read | 200 Plugin; selected revision and review; ETag | HIDDEN, INPUT, DEPENDENCY |
-| N14 | DELETE G | No body; plugins:write; owned only | 204 deletes entry and Plugin history; installed fleets retain independent fleet revisions | HIDDEN (foreign), AUTH, DEPENDENCY |
-| N15 | POST G/revisions | If-Match Plugin tag + Idempotency-Key; `{draft_candidate_id}`; owned only; candidate valid for Save and idle | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G/revisions/{revision_id}, ETag | PRECONDITION, STALE, REPLAY, POLICY, HIDDEN, STATE |
-| N16 | GET G/revisions | No body; fleet:read; list paging | 200 Page of revision summary | HIDDEN, INPUT, CURSOR, DEPENDENCY |
-| N17 | GET G/revisions/{revision_id} | No body; fleet:read | 200 `{revision:PluginRevision,review}`; immutable content plus live context readiness | HIDDEN, AUTH, DEPENDENCY |
 
-GET D has a complete review only when a candidate exists. Queue acceptance can succeed before wallet admission: balance/model failure becomes a visible failed message rather than silent queued work. Draft creation with a first message atomically records both or neither.
+GET D has a complete review only when a candidate exists. Queue acceptance can succeed before the wallet check: balance/model failure becomes a visible failed message rather than silent queued work. Draft creation with a first message atomically records both or neither.
 
-Send atomically captures the draft's selected authoring model reference; admission pins its resolved provider, inference settings, context window, and prices. Earlier admitted turns keep their pins. Idle PATCH can replace a disabled model and survives reload.
+Send atomically captures the draft's selected setup model reference. Earlier turns keep their own. Idle PATCH can replace a disabled model and survives reload.
 
-Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; an authoring-model-only change leaves its definition/digest unchanged.
+Title is a human display name, independent of validated definition slugs. Runtime/config changes invalidate setup review; a setup-model-only change leaves its definition/digest unchanged.
 
-### Changed person routes: 7
+### Changed person routes: 5
 
 | # | Method and resource | Exact target input | Target success output | Specific failures |
 |---|---|---|---|---|
-| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id}|{kind:"plugin",plugin_id,revision_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle, Plugin install can bypass drafts | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
+| C1 | POST W/fleets | Idempotency-Key; `{source:{kind:"draft",draft_candidate_id},name,review_digest,start:Start,origin?}`; draft must be creator-owned/idle | 201 Fleet with `status:active|installing`, setup checks, start outcome, schedules; Location F and ETag; key retry resumes same identity | REPLAY, GONE, REVIEW, HIDDEN, INPUT, POLICY, DEPENDENCY |
 | C2 | GET F | No body; fleet:read | 200 Fleet including current setup/start and both resource/setup tags | existing fleet404 `UZ-AGT-009`, AUTH, DEPENDENCY |
 | C3 | PATCH F | Required If-Match resource tag; `{status?,name?}` only; at least one. `active` on installing retries checks, `archived` cancels setup and live work | 200 Fleet and ETag; cancelled linked draft returns editing | PRECONDITION, STALE, STATE, INPUT, AUTH, DEPENDENCY; an archived fleet returns 409 `UZ-AGT-020` with `current_state: archived` after write preconditions pass; a fleet that does not exist returns 404 `UZ-AGT-009` |
-| C4 | POST F/messages | `{message,operation_id?}`; message 1..8,192 bytes; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",event_id,replayed,disposition,folded_into_event_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_event_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT, REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
+| C4 | POST F/messages | `{message,operation_id?}`; message 1..1,048,576 characters; operation_id 1..200 bytes when supplied; neither permits NUL; no header key | 202 `{status:"accepted",turn_id,replayed,disposition,folded_into_turn_id?}`; `disposition` is `started`, `folded` or `queued`, and `folded_into_turn_id` names the live run a folded message joined; Location F/messages; recovery through existing message read/stream | INPUT (a message past the ceiling is `UZ-REQ-004`), REPLAY (`UZ-AGT-016`), lifecycle/state, AUTH, DEPENDENCY |
 | C5 | PATCH F/schedules/{schedule_id} | Required If-Match schedule tag; `{override:ScheduleOverride|null}` for inherited recipe; independent schedule uses `{cron?,timezone?,message?,status?}` and cannot Restore | 200 Schedule and ETag; tag covers recipe revision + instance setup revision + override revision; null restores exact inherited setup | PRECONDITION, STALE, INPUT, STATE, existing schedule404 `UZ-SCHED-002`, DEPENDENCY |
-| C6 | POST W/plugins | Idempotency-Key; `{draft_candidate_id,label}`; creator-owned valid idle candidate; plugins:write | 201 `{plugin_id,revision_id,head_revision_id,etag}`; Location G; explicit publication receipt on linked draft | INPUT, REPLAY, GONE, POLICY, STATE, AUTH, DEPENDENCY |
-| C7 | GET W/plugins | Bounded limit/starting_after paging; no body | 200 Page of account-owned PluginCard, including head_revision_id, its decimal head_revision and etag | existing plugin input/cursor errors, AUTH, DEPENDENCY |
 
 ### Fleet editor and history reads
 
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
-| E1 | GET F/authoring-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
-| E2 | GET F/messages | Existing paging; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and undelivered admissions | INPUT, CURSOR, AUTH, DEPENDENCY |
+| E1 | GET F/setup-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
+| E2 | GET F/messages | limit default 25/max 100, a page at most 512 KiB with the newest item always included, starting_after; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and queued turns | INPUT, CURSOR, AUTH, DEPENDENCY |
 
 E1 returns at most three creator-private conversations, each with at most 25 recent message rows, plus 25 shared activity receipts. Runtime request bodies are excluded.
 
@@ -248,36 +237,38 @@ Conversation cursors bind creator, workspace, fleet, and ordering. Each conversa
 
 The fleet, conversations, and receipts are bounded independent reads, rather than one database snapshot. Every private conversation checks current membership and creator ownership.
 
-The existing GET F/messages includes undelivered, unsettled steer admissions alongside delivered history in one statement snapshot (`afd_events`'s thread-page statements). It preserves the queued-message shape, logical event ID, ordering, cursor, and authorization across delivery and settlement.
+The existing GET F/messages includes queued steer turns alongside opened history in one statement snapshot (`afd_turns`'s thread-page statements). It preserves the queued-message shape, turn ID, ordering, cursor, and authorization across opening and settlement.
 
-A message that folded into a live run keeps its own event. Once the run's report succeeds, that event carries `resumes_event_id`, naming the run, and the run's answer as its reply.
+A message that folded into a live run keeps its own turn. Once the run's report succeeds, that turn carries `resumes_turn_id`, naming the run's turn, and the run's answer as its reply.
 
 This is an internal read change, not another route. Retry after an uncertain acceptance reuses the original operation ID.
 
-C1 accepts a reviewed private candidate or a pinned Plugin revision. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save.
+C1 accepts a reviewed private candidate. A selected Slack trigger must be part of the reviewed setup. Changed install name/model choices open a private draft before Save.
 
 No hidden trigger mutation or preview route is retained.
 
-C4 uses the fleet admission ledger, separately from authoring replay receipts. Reuse its key with the same message and sender; omission creates new work on every request.
+C4 deduplicates on the turn's producer key in `thread.turns`, separately from setup replay receipts. Reuse its key with the same message and sender; omission creates new work on every request.
 
-A message sent while the fleet's run is live folds into that run (`disposition: folded`). The running lease claims it at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
+A message sent while the fleet's run is live folds into that run (`disposition: folded`). The live run folds it in at its next model call, and the run's answer is its reply. A parked (approval-gated) or task-bound message ahead of it is a barrier, so the message queues instead.
 
-C6 publishes only a draft candidate. Native JSON can initialize that draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported. Account Plugin writes resolve an authorized creator-owned draft candidate and require `plugins:write`.
+Native JSON can initialize a draft; GitHub/template-bundle import and Markdown/bundle export remain unsupported.
 
 Source-repository fields, upload/import/re-import routes, bundle delivery and retired bundle flags are removed with their dedicated implementations. GitHub runtime triggers and repository tools remain independent capabilities.
 
-The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10 and reviews N4. It explicitly invokes C1 to Save. It can publish through C6/N15 or install a pinned Plugin revision through C1.
+The terminal client starts or resumes a private draft, sends text through N7, follows N8/N10 and reviews N4. It explicitly invokes C1 to Save.
 
-Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the authoring input; scripts may submit text but cannot skip review or grant checks.
+Browser and terminal use the same authorization, replay, validation, billing and readiness rules. Terminal conversation text is the setup input; scripts may submit text but cannot skip review or grant checks.
 
-### Removed person routes: 2
+### Removed person routes
 
 | # | Removed method and resource | Replacement |
 |---|---|---|
-| R1 | GET W/library-entries | GET W/plugins |
-| R2 | DELETE W/library-entries/{entry_id} | DELETE G |
-| R3 | /v1/admin/fleet-libraries and its members | Removed; Plugins belong to accounts |
-| R4 | W/fleet-libraries and its members, including /owned | W/plugins and its members; no aliases |
+| R1 | GET W/library-entries | None |
+| R2 | DELETE W/library-entries/{entry_id} | None |
+| R3 | /v1/admin/fleet-libraries and its members | None |
+| R4 | W/fleet-libraries and its members, including /owned | None |
+| R5 | W/plugins and its members (M253 removed the Plugin library) | None |
+| R6 | POST D/cancellations | PATCH D/turns/{turn_id} |
 
 Removal is immediate; there is no alias. The following are absent:
 
@@ -285,11 +276,11 @@ Removal is immediate; there is no alias. The following are absent:
 
 - Fleet creation/attempt resources.
 
-- Draft revisions/events collections and preview POST.
+- Draft revisions/turns collections and preview POST.
 
-- Publication/deletion resources and definition-update resources.
+- Deletion resources and definition-update resources.
 
-- Schedule-overrides resources, fleet revision reads, and a second Plugin collection.
+- Schedule-overrides resources and fleet revision reads.
 
 ### Private Server-Sent Events (SSE)
 
@@ -298,13 +289,16 @@ Their event names are `message.accepted|message.running|message.completed|messag
 No private content enters workspace or operator streams.
 
 Preview `message.delta` frames contain `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
-`sequence` is a decimal string; `stream_seq` starts at one per physical dispatch.
-Answer text is at most 4,096 UTF-8 bytes; the serialized payload is bounded at 8,192 bytes.
+`sequence` is a decimal string; `stream_seq` counts within one run, and a reassigned turn starts a new stream.
+
+Answer text is at most 163,157 UTF-8 bytes, about 159 KiB (`afd_setup`'s `DELTA_BYTES`), and the daemon skips a longer chunk.
+The serialized frame is at most 983,040 bytes, 960 KiB (`afd_bus::DRAFT_FRAME_BYTES`), which is NATS's default 1 MiB payload less a 64 KiB envelope.
+The app and CLI check a frame's shape only and trust the daemon's size bound.
 
 Reasoning and tool arguments never enter the private preview.
 `draft.resync` carries `{}` after a subscription gap and requests a durable read, without another model request.
 
-Before each frame, recheck current membership, deletion generation, Stop watermark and running message state.
+Before each frame, recheck current membership, deletion generation, the run and running message state.
 Quiet streams check each second; each access read has a ten-second deadline.
 Revocation closes the stream; deletion emits only identity and closes.
 
@@ -314,107 +308,83 @@ Final GET messages remains authoritative; previews never prove completion or usa
 ### Runner routes and wire
 
 Runner route identities live in `afd_http`; path constants and native message types live in `af_wire`.
-Each host opens one authenticated session through `POST /v1/runners/me/stream` on the private listener.
+Each host opens one authenticated connection through `POST /v1/runners/me/stream` on the private listener.
 The [runner guide](runner_protocol.md) owns connection setup, trust and recovery.
 
-The daemon pushes fleet and authoring offers when the host advertises capacity.
+The daemon assigns fleet and setup runs when the host advertises capacity.
 Both kinds count against the same daemon-enforced worker limit.
-Heartbeats, renewal batches, activity, folded inputs and reports use that session.
+Heartbeats, renewal batches, activity, folded inputs and reports use that connection.
 
-Fleet renewal and report messages carry at most 512 provider usage records (`af_wire::usage::LINES_MAX`).
-Each renewal answer includes its lease's `recorded_through` acknowledgement.
-The report carries the remaining records and uses its original lease identity when retried.
+Fleet renewal and report messages carry every provider usage record the daemon has not yet recorded, oldest first, with no count cap.
+Each renewal answer includes its run's `recorded_through` acknowledgement.
+The report carries the remaining records and uses its original run identity when retried.
 
-The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_CLAIM_MAX`).
+The native `folds` request carries `fencing_token` and `after_sequence`. Its reply holds every pending input, oldest first, cut to one frame; the next fold returns the rest.
 Only a successful report settles inputs through its `folded_through_sequence`.
 
-Authoring offers carry the scoped model capability and current candidate identity, revision and definition when present.
-Fence and sequence values are decimal strings; the attempt identifier and capability are machine-only.
-The capability accompanies model calls on the authenticated session.
+A setup turn rides the same connection as a fleet turn; [setup runs](#setup-runs) below covers its payload and report.
 
-Authoring model calls, proposals, renewals and completion use `authoring_model`, `authoring_activity`, `authoring_renew` and `authoring_report` messages.
-The [runner guide](runner_protocol.md#authoring-operations-on-the-native-session) describes their authority and recovery rules.
-Their existing proposal, accounting and dispatch rules follow below.
+### Setup runs
 
-`Proposal={kind:"initialize",definition:Definition}` is allowed only when no candidate exists and caps first generated instructions at 12,288 characters. Subsequent proposals are `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops:ConfigOp[],instruction_edits:InstructionEdit[]}`. Match both base fields against the current version before atomically replacing it.
+A setup turn is a run its draft owns, assigned to a runner like a fleet turn. The daemon makes no model call; the runner makes every one.
+The [runner guide](runner_protocol.md#setup-operations-on-the-native-session) owns renewal, fencing and report delivery.
 
-Both use the same validator as drawer input. An activity receipt is keyed by attempt + activity_sequence and normalized body; sequences are contiguous decimal strings from `"1"`. Exact retry returns the originally accepted candidate version even after later edits.
+The run payload's `owner` is `{kind:"draft",draft_id}`, and its `setup` part is `SetupWork`.
+The message rides `event.request_json`, and earlier answered turns ride `history`.
 
-Changed-body reuse, gaps, stale bases, or reordered new proposals change nothing. Initialization retry returns its saved receipt instead of testing the now-existing candidate again. Invalid initialization creates no candidate, and no tool can set grants or manifests.
+`SetupWork={sequence,candidate?:{id,revision,definition},save_requested,tool}`. Each `history` turn carries its own `sequence`, which a saved context's watermark counts in.
+`tool` is the `propose_setup` definition, and its description is also the run's instructions.
 
-Empty editing instructions block Save/publication.
+The run's policy offers one tool, `propose_setup`, and the runner prepares no sandbox for it.
+The run carries the pinned model's key, as a fleet run does, and no runtime credentials, memory or repository.
+A tenant's runner is never assigned a turn on the platform model, whose key the run would carry.
 
-Reports also accept `{kind:"accounting",fence,report_id,outcome,failure_reason?,usage:Meter}` with no private text or content digest. The immutable accounting identity is attempt + report_id + normalized fence/generation/outcome/failure_reason/usage, validated against daemon dispatch receipts. Store its digest and accounting acknowledgement independently from optional answer submission.
+Assignment checks that the pinned model takes tool calls and that the payer's balance covers one run lifetime of runtime.
+Nothing is reserved; renewals and the report log the run's usage lines.
+A refused model or balance fails the message as `model_unavailable` or `insufficient_balance`.
 
-Exact accounting replay returns that acknowledgement whether the original terminal report committed, was never received, or the draft was deleted. Changed accounting under the same identity conflicts; a caller-supplied digest never substitutes for validated usage. First accounting-only settlement records terminal accounting once and cannot create a message, candidate or answer.
+A setup run has no runtime ceiling.
+It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it.
 
-A deleted/expired generation may confirm or settle authenticated attempt accounting but cannot restore private state. Terminal answer submission has a separate content digest.
+A lapsed run is reassigned at the next fence, and the message reruns from its start.
+A turn gets at most three runs (`af_core::limits::EVENT_RUNS_MAX`); when all three lapse, the message fails as `provider_usage_unknown`.
+A run whose frame never left the daemon is deleted when it is released, so it does not count toward the three.
 
-Exact terminal replay may acknowledge it while retained, but accounting replay never opens or reconstructs it. Known daemon receipts override runner estimates; unknown liability remains until authoritative settlement.
+`propose_setup` takes `{kind:"initialize",definition}` before a candidate exists.
+After that it takes `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops,instruction_edits}`.
+Each instruction edit adds text or replaces exact text, never a byte offset.
 
-`failure_reason` is required for failed/timed_out reports and absent otherwise. It uses the Message reason enum above. The daemon validates the reason against dispatch facts and controls the final code/action.
+The runner applies each call in memory with `af_fleet_runtime::setup`'s rules, which the daemon applies again at report.
+A refused call returns `[kind] sentence` to the model as the tool result, and the model may try again in the same run.
+The proposal loop has no cap of its own; the payer's balance at each renewal and a person's Stop bound it.
 
-A runner cannot downgrade unknown usage to an ordinary retryable failure.
+The refusal kinds are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, `stale_candidate` and `edit_not_requested`.
+A later edit applies to the setup the run last kept, on the same base.
+A message that asked to save proposes nothing; every call is refused as `edit_not_requested`.
 
-### Scoped model invocation
+The report carries the answer, the usage and `setup:{proposal?:{base_candidate_id?,base_revision,definition}}`.
+`definition` is the final Definition as JSON text, at most 6,553,600 bytes (`SETUP_DEFINITION_BYTES_MAX`). That is `af_validate::DEFINITION_MAX_BYTES`, the bound the Definition parser applies.
+A text-only answer carries no proposal, and a save turn's report saves the head candidate.
 
-`ModelCall={capability_token,attempt_id,fence,dispatch_id,call_index,request:{messages:ModelMessage[],max_output_tokens}}`. `dispatch_id` is UUIDv7; `call_index` is a contiguous integer 1..8. `ModelMessage` is `{role:"user",text}`, `{role:"assistant",text,proposal_calls:ProposalCall[]}`, or `{role:"tool",call_id,text}`.
+The report's transaction locks the draft, settles the run, then checks the proposal again.
+The base must still name the head candidate and its revision, and `Definition::parse` must accept the Definition.
+A proposal that passes becomes candidate revision N+1.
 
-Text is untrusted context; only the fixed proposal tool is callable. The daemon adds pinned system instructions, the current candidate and tool schema. The bounded runner envelope carries current-turn work; the daemon pages prior history and applies [shared compaction](context_lifecycle.md) before provider access.
+A refused proposal writes no candidate, and the turn still completes with its answer.
+The turn keeps the refusal's sentence as its failure detail, and the daemon logs `setup_proposal_refused` with `error_code`, `draft_id` and `run_id`.
+A moved base refuses with `UZ-SETUP-003`; a Definition the parser refuses keeps the parser's code.
 
-Reject provider/model/host/key/header/system/tool-schema override fields.
+A report below the run's current fence is refused with `UZ-RUN-005` and writes nothing.
+A replayed report finds its run settled and writes nothing a second time.
 
-Native provider replies stay in `authoring.dispatches.native_reply`; the runner receives only text, validated proposals and usage. A saved reply binds its assistant position and the complete normalized conversation prefix through a digest. Later calls must retain that exact prefix before the daemon restores the SDK message, including signed or encrypted reasoning and provider tool identifiers.
+The run loads and saves the draft's compacted context with `context_load` and `context_save`, under its fence.
+A save is a compare-and-swap on `resource_version` over the thread's `memory.context_checkpoints` row. A fleet chat's run loads and saves its fleet's thread the same way.
+A superseded run's save is refused with `UZ-RUN-005`, and the row stays as it was.
 
-Current membership, model and capability checks precede private reads. Expired or malformed state refuses dispatch. Deletion and private-result expiry clear both the public result and native reply; a fenced late response records usage without either private copy.
+The runner streams answer chunks on the run's activity verb, as a fleet run does.
+The daemon rechecks the run, its message and the creator's access. It then republishes each chunk as a `message.delta` frame within the 960 KiB draft frame, skipping a chunk past about 159 KiB.
 
-`ProposalCall={id,proposal:Proposal}|{id,reason}`. Refusal reasons are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, or `stale_candidate`; no raw rejected arguments cross this boundary. The [edit correction loop](fleet_definitions.md#small-atomic-edits) handles these results within the admitted turn.
-
-`ModelResult={dispatch_id,call_index,replayed,text,proposal_calls:ProposalCall[],usage:{knowledge,input_tokens?,output_tokens?,provider_cost_nanos?},cut,compacted}`. `cut:true` means incomplete proposals cannot run. `compacted:true` records a metered summary; the worker continues the same turn without publishing the summary.
-
-Responses fit 128 KiB and the remaining output-token allowance.
-
-A proposal result is untrusted until `authoring_activity` commits it.
-No separate model-call read route or raw provider response exists.
-
-1. Admission creates a random 256-bit token, stores its hash and binds it to the current runner, owner, draft and attempt.
-   The binding also covers sequence, fence, generation and pinned model.
-   Issue the capability only in the lease over the authenticated daemon transport; never log it or write it to disk.
-2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation, and unexpired lease using authoritative database time. Capability expiry follows the lease and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
-3. Measure the complete request under subject → attempt locks, release the transaction, and confirm its billed hold. Recheck authority, exact request digest and output allowance under a second transaction. Commit dispatch identity before provider access; no provider request holds these locks.
-
-   Concurrent dispatches and unfinished replays return STATE without another provider call. [Billing](billing_and_provider_keys.md#authoring-admission-and-settlement) describes the separate billing transactions.
-
-4. The daemon alone resolves the pinned owner's provider key and approved destination. Eligibility requires configured credentials, an approved transport, valid saved context/output bounds, and pinned prices. Known tokenizers count assembled input; unknown model names are estimated as their `o200k_base` count plus a quarter.
-
-   Apply the outbound address guard and reject unsafe private/custom destinations. Authoring transport disables redirects and every provider retry. Each physical dispatch consumes one index and the shared output/time budget; ordinary runtime transport stays separate.
-
-5. Save the bounded result and authoritative usage before answering `authoring_model`.
-   Exact completed replay rechecks live authorization and returns the saved result without another provider call or charge.
-   Changed-body reuse returns REPLAY.
-
-   A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls. Never redispatch that intent.
-
-6. Stop, delete, membership/model revocation, terminal settlement, and expiry invalidate the capability through the guarded attempt state. Authorization commits are the dispatch boundary: revocation first prevents dispatch; a previously authorized call may finish upstream and incur usage. Its late text cannot publish after fencing.
-
-Input reservation uses the shared tokenizer library, with no bundled model-specific tokenizer assets.
-Unrecognized models are estimated as their `o200k_base` count plus a quarter, so a request can be refused earlier than the provider's tokenizer would require.
-Provider-reported usage determines settlement.
-
-Setup and runtime use `af_inference::stream::StreamTurn` and Rig's native provider decoding.
-Purpose adapters retain their credential, authorization and tool boundaries.
-Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.
-
-Replay uses that recorded deadline; an unfinished intent never sends the request again.
-The runner allows 310 seconds for the native answer and receipt settlement.
-The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
-
-The authoring capability grants no runtime tools, memory, schedules, fleet messages or credential minting.
-Fleet runtime credentials retain their separate path through `afd_fleet`'s lease answer and `af_providers`' connect module.
-
-`Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates.
-
-Report/cancel/deletion share the guarded attempt row; terminal replay can confirm accounting without resurrecting text. Daemon claim and both renewal kinds share host capacity enforcement. Details and deletion-copy limits: [runner design](runner_fleet.md#authoring-leases).
+Compaction progress reaches the same private stream as `context.progress`.
 
 ### Current task reads
 
@@ -443,22 +413,20 @@ The following codes name the route tables' error categories. Read the operation'
 |---|---|---|---|
 | AUTH | Existing `UZ-AUTH-002` / `UZ-AUTH-022` | 401 /403 | Invalid authentication / insufficient scope; creator mismatch is HIDDEN. |
 | INPUT | Existing `UZ-REQ-001` / `UZ-UUIDV7-009` | 400 | Invalid body shape/key/bound/unknown field; existing path UUIDv7 validation uses UZ-UUIDV7-009. |
-| HIDDEN | `UZ-AUTHOR-001` | 404 | Missing, foreign, creator-private, or non-writable platform resource; do not distinguish. |
-| STATE | `UZ-AUTHOR-002` | 409 | Wrong lifecycle state; include current_state. |
-| STALE | `UZ-AUTHOR-003` | 412 | Version differs; include current etag. |
-| PRECONDITION | `UZ-AUTHOR-004` | 428 | Required If-Match absent; refetch before writing. |
-| REPLAY | `UZ-AUTHOR-005` | 409 | Key was accepted with a different normalized body/actor; fleet messages keep UZ-AGT-016. |
-| REVIEW | `UZ-AUTHOR-006` | 409 | Effective setup changed; include fresh review_digest and refetch review. |
-| BALANCE | `UZ-AUTHOR-007` | 402 | Owner wallet fails bounded authoring admission; queued message records this outcome. |
-| MODEL | `UZ-AUTHOR-008` | 409 | Selected owner model missing, disabled, or ineligible; no fallback. |
-| POLICY | `UZ-AUTHOR-009` | 409 | Marker or supported setup differs; requires new review. |
-| TOKEN | `UZ-AUTHOR-010` | 422 | Assembled context cannot fit tokenizer/window bounds; record failed message before call. |
-| CURSOR | `UZ-AUTHOR-011` | 400 | Cursor malformed or bound to another query/subject. |
-| FENCE | `UZ-AUTHOR-012` | 409 | Stale, cancelled, expired, or deleted lease attempt cannot publish. |
-| GONE | `UZ-AUTHOR-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
-| PROVIDER | `UZ-AUTHOR-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
-| UNKNOWN | `UZ-AUTHOR-015` | 409 | Dispatch/usage unresolved; retain its bound. Stop permits a new message beyond its cutoff while accounting remains unresolved. |
-| TIMEOUT | `UZ-AUTHOR-016` | 504 | Attempt timed out; safe retry only when its provider obligation is resolved. |
+| HIDDEN | `UZ-SETUP-001` | 404 | Missing, foreign, creator-private, or non-writable platform resource; do not distinguish. |
+| STATE | `UZ-SETUP-002` | 409 | Wrong lifecycle state; include current_state. |
+| STALE | `UZ-SETUP-003` | 412 | Version differs; include current etag. |
+| PRECONDITION | `UZ-SETUP-004` | 428 | Required If-Match absent; refetch before writing. |
+| REPLAY | `UZ-SETUP-005` | 409 | Key was accepted with a different normalized body/actor; fleet messages keep UZ-AGT-016. |
+| REVIEW | `UZ-SETUP-006` | 409 | Effective setup changed; include fresh review_digest and refetch review. |
+| BALANCE | `UZ-SETUP-007` | 402 | Owner wallet fails the bounded setup billing check; queued message records this outcome. |
+| MODEL | `UZ-SETUP-008` | 409 | Selected owner model missing, disabled, or ineligible; no fallback. |
+| POLICY | `UZ-SETUP-009` | 409 | Marker or supported setup differs; requires new review. |
+| TOKEN | `UZ-SETUP-010` | 422 | The context cannot fit the model's window; the message fails. |
+| CURSOR | `UZ-SETUP-011` | 400 | Cursor malformed or bound to another query/subject. |
+| GONE | `UZ-SETUP-013` | 410 | Accepted resource was purged; recreation is refused within the original 24-hour replay window. |
+| PROVIDER | `UZ-SETUP-014` | 502 | Provider failed with known usage; store bounded failure and permit explicit retry. |
+| UNKNOWN | `UZ-SETUP-015` | 409 | The message's usage stayed unknown after its runs lapsed; send it again. |
 | DEPENDENCY | Existing `UZ-INTERNAL-001` | 503 | Required datastore unavailable; no guessed success. |
 
 Oversized HTTP envelopes use existing `UZ-REQ-002` with its registered413. Validation detail names the offending field without echoing private message content. Provider failures become message state and accounting knowledge, not a fabricated completion.
@@ -468,5 +436,5 @@ Oversized HTTP envelopes use existing `UZ-REQ-002` with its registered413. Valid
 - [API gaps](../reviews/workspace-setup/api.md)
 - [Definition](fleet_definitions.md#validated-definition)
 - [Creation barrier](data_flow.md#fleet-creation-and-setup-recovery)
-- [Runner behavior](runner_fleet.md#authoring-leases)
+- [Runner behavior](runner_fleet.md#setup-runs)
 - [Public change handoff](../reviews/workspace-setup/public-changes.md)

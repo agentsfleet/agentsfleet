@@ -21,7 +21,7 @@ use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
 use super::revocable::{Membership, Recheck, STREAM_FLEET, Turn, Verdict, Watch, until_revoked};
-use crate::services::Services;
+use crate::services::TenantPlane;
 
 /// How often an open fleet stream re-asks its caller's access.
 ///
@@ -37,7 +37,7 @@ struct Guard<R> {
 }
 
 /// `frames`, ended with `access_revoked` once `principal` loses `workspace`.
-pub(super) fn guarded<D: Services>(
+pub(super) fn guarded<D: TenantPlane>(
     frames: BoxStream<'static, Frame>,
     services: Arc<D>,
     principal: Principal,

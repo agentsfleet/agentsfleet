@@ -1,4 +1,4 @@
-//! The toolbox: a read-only EROFS image every lease sees as its root.
+//! The toolbox: a read-only EROFS image every run sees as its root.
 //!
 //! A host admits an image in the order `docs/architecture/runner_execution.md`
 //! §Toolbox gives: the release manifest's signature and facts

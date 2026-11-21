@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{
     Result,
-    task::{TaskLease, TaskRefusal},
+    task::{TaskRefusal, TaskRun},
 };
 use af_fleet_runtime::{
     FleetConfig,
@@ -46,7 +46,7 @@ struct Branch {
 impl Github {
     pub(in crate::task) async fn prepare(
         &self,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         config: &FleetConfig,
         repository: &str,
         number: u32,
@@ -70,7 +70,7 @@ impl Github {
         }) {
             return Err(TaskRefusal::InvalidTarget.into());
         }
-        let session = self.read_session(lease, repository).await?;
+        let session = self.read_session(run, repository).await?;
         let (owner, name) = repository
             .split_once('/')
             .ok_or(TaskRefusal::InvalidTarget)?;
@@ -160,8 +160,9 @@ impl BoundPr {
                 .any(|repository| repository.eq_ignore_ascii_case(&self.repository))
             || binding.validation_workflows().len() != self.workflows.len()
             || !self.workflows.iter().all(|workflow| {
+                // The fleet's `sha256` and the target's `digest` name one hash.
                 binding.validation_workflows().iter().any(|accepted| {
-                    accepted.path == workflow.path && accepted.sha256 == workflow.digest
+                    (&accepted.path, &accepted.sha256) == (&workflow.path, &workflow.digest)
                 })
             })
         {

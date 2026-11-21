@@ -34,7 +34,7 @@ const CLOSER_NAME: &str = "closer";
 const ONE_CORE: u32 = 1_000;
 /// The digest the fake host's toolbox is known by, and is configured for.
 pub(super) const DIGEST: &str = "c4e5f5bb";
-/// The lease directory's workspace image, which a refused unmount keeps.
+/// The run directory's workspace image, which a refused unmount keeps.
 pub(super) const IMAGE: &str = "workspace.img";
 
 /// A "bubblewrap" that stays up until it is killed.
@@ -72,10 +72,10 @@ pub(super) const LIMITS: Limits = Limits {
 };
 /// How long a fake sandbox may take to answer.
 const READY: Duration = Duration::from_secs(5);
-/// The note an answering launcher leaves in its lease's directory: its
+/// The note an answering launcher leaves in its run's directory: its
 /// process, and the number it holds the entry's end of the link under.
 pub(super) const SANDBOXED: &str = "sandboxed";
-/// How often the in-process executor looks for a new lease.
+/// How often the in-process executor looks for a new run.
 pub(super) const POLL: Duration = Duration::from_millis(1);
 
 /// One fake launcher, by name.
@@ -86,6 +86,10 @@ pub(super) struct Launcher(&'static str);
 /// another thread is still writing. The failing one's first line overruns the
 /// drain's line cap, which skips it and reads on, and more lines follow than a
 /// refusal quotes, so the oldest are dropped.
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "the fake scripts use shell `${VAR:+word}` expansion, not format strings"
+)]
 fn scripts() -> &'static Path {
     static DIR: OnceLock<TempDir> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -119,15 +123,15 @@ fn scripts() -> &'static Path {
     .path()
 }
 
-/// A "bubblewrap" that answers: it leaves [`SANDBOXED`] in its lease's
+/// A "bubblewrap" that answers: it leaves [`SANDBOXED`] in its run's
 /// directory, found from the workspace bind, then sleeps for `seconds`.
 fn answering(seconds: &str) -> String {
     format!(
         "#!/bin/sh\nfor arg; do\n  [ \"$take\" = 1 ] && executor=\"$arg\"\n  take=0\n  \
          [ \"$arg\" = --executor ] && take=1\n  \
-         case \"$arg\" in */workspace/workspace) lease=\"${{arg%/workspace/workspace}}\" ;; esac\n\
-         done\necho \"$$ $executor\" > \"$lease/.{SANDBOXED}\" && \
-         mv \"$lease/.{SANDBOXED}\" \"$lease/{SANDBOXED}\"\nexec sleep {seconds}\n"
+         case \"$arg\" in */workspace/workspace) run=\"${{arg%/workspace/workspace}}\" ;; esac\n\
+         done\necho \"$$ $executor\" > \"$run/.{SANDBOXED}\" && \
+         mv \"$run/.{SANDBOXED}\" \"$run/{SANDBOXED}\"\nexec sleep {seconds}\n"
     )
 }
 
@@ -172,7 +176,7 @@ impl FakeHost {
             },
             toolbox: Arc::new(Toolbox::at(base.join("toolbox"), DIGEST.to_owned())),
             cgroup_root,
-            state_dir: base.join("leases"),
+            state_dir: base.join("runs"),
             entry: PathBuf::from(TRUE),
             entry_args: vec![OsString::from("sandbox")],
             sandbox_ids: (65_534, 65_534),
@@ -186,12 +190,12 @@ impl FakeHost {
         BubblewrapEngine::new(self.config.clone(), &self.probe).unwrap()
     }
 
-    pub(super) fn lease_dir(&self, lease_id: &str) -> PathBuf {
-        self.config.state_dir.join(lease_id)
+    pub(super) fn run_dir(&self, run_id: &str) -> PathBuf {
+        self.config.state_dir.join(run_id)
     }
 
-    /// The names of the lease directories that exist right now.
-    pub(super) fn leases(&self) -> Vec<String> {
+    /// The names of the run directories that exist right now.
+    pub(super) fn runs(&self) -> Vec<String> {
         fs::read_dir(&self.config.state_dir)
             .into_iter()
             .flatten()
@@ -201,23 +205,23 @@ impl FakeHost {
     }
 }
 
-/// Serves the real executor, in-process, on every lease's link as soon as
+/// Serves the real executor, in-process, on every run's link as soon as
 /// its fake bubblewrap says where it holds the entry's end — what
 /// `agentsfleet-runner sandbox` does inside a real sandbox.
-pub(super) fn serve_leases(state_dir: PathBuf) -> JoinHandle<()> {
+pub(super) fn serve_runs(state_dir: PathBuf) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut served = HashSet::new();
         loop {
             for entry in fs::read_dir(&state_dir).into_iter().flatten().flatten() {
-                let lease = entry.path();
-                let Ok(note) = fs::read_to_string(lease.join(SANDBOXED)) else {
+                let run = entry.path();
+                let Ok(note) = fs::read_to_string(run.join(SANDBOXED)) else {
                     continue;
                 };
-                if served.insert(lease.clone()) {
+                if served.insert(run.clone()) {
                     let link = taken(&note);
                     tokio::spawn(async move {
                         afr_executor::connected(link)?
-                            .serve(&lease.join("workspace"))
+                            .serve(&run.join("workspace"))
                             .await
                     });
                 }
@@ -227,7 +231,7 @@ pub(super) fn serve_leases(state_dir: PathBuf) -> JoinHandle<()> {
     })
 }
 
-/// The entry's end of a lease's link, duplicated out of the fake bubblewrap
+/// The entry's end of a run's link, duplicated out of the fake bubblewrap
 /// that `note` names with the number it holds the end under. A parent may
 /// take a descriptor from its own child with `pidfd_getfd`.
 fn taken(note: &str) -> UnixStream {
@@ -247,6 +251,6 @@ fn taken(note: &str) -> UnixStream {
     UnixStream::from(end)
 }
 
-pub(super) fn request(lease_id: &str) -> SandboxRequest<'_> {
-    SandboxRequest::new(lease_id, LIMITS)
+pub(super) fn request(run_id: &str) -> SandboxRequest<'_> {
+    SandboxRequest::new(run_id, LIMITS)
 }

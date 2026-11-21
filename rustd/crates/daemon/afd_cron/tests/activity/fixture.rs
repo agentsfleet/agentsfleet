@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_cron::{Change, NewSchedule, Schedule, Source};
-use afd_events::{EventDetailRow, History};
+use afd_turns::view::{History, TurnDetailRow};
 use serde_json::{Value, json};
 
 use crate::support::{CronLane, SEED_AT};
@@ -66,13 +66,13 @@ pub(super) async fn stored(lane: &CronLane, id: &Uuid7) -> Option<Schedule> {
         .expect("stored schedule")
 }
 
-pub(super) async fn thread(lane: &CronLane) -> Vec<EventDetailRow> {
+pub(super) async fn thread(lane: &CronLane) -> Vec<TurnDetailRow> {
     History::new(lane.database.clone())
         .thread_page(
             &lane.workspace_id(),
             &lane.fleet_id(),
             None,
-            afd_events::THREAD_MAX_LIMIT,
+            afd_turns::view::THREAD_MAX_LIMIT,
         )
         .await
         .expect("reload native fleet history")
@@ -83,7 +83,7 @@ pub(super) async fn receipts(lane: &CronLane) -> Vec<Value> {
         .await
         .into_iter()
         .filter_map(|event| {
-            if event.row.event_type != afd_events::activity::EVENT_TYPE_ACTIVITY {
+            if event.row.event_type != afd_turns::view::activity::EVENT_TYPE_ACTIVITY {
                 return None;
             }
             assert_eq!(
@@ -119,7 +119,7 @@ pub(super) async fn no_work(lane: &CronLane) {
     let mut connection = lane.connection().await;
     let counts: (i64, i64) = sqlx::query_as(
         "SELECT \
-        (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1), \
+        (SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND settled_at IS NULL), \
         (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1)",
     )
     .bind(&lane.fleet)

@@ -1,4 +1,4 @@
-//! Dimension 7.1 — preference and onboarding round-trips against live Postgres.
+//! Preference and onboarding round-trips against live Postgres.
 //!
 //! The half `workspace_preferences.rs` cannot prove: a bag is rows, and the
 //! checklist is five `EXISTS` subqueries plus a platform-default read. What is

@@ -29,7 +29,7 @@ In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node s
 | Decision | Requirement |
 |---|---|
 | Bus | Core NATS, routed as one cluster in one region, with JetStream off. Boot refuses a server that fails any of these. |
-| Durable state | Postgres: admissions, outbound obligations, device-login sessions, OAuth nonces and approval gates. |
+| Durable state | Postgres: turns, outbound deliveries, device-login sessions, OAuth nonces and approval gates. |
 | Deployment | The Fly apps `agentsfleet-nats-prod` and `agentsfleet-nats-dev` each run two nodes, both in `iad`, with no volume (`.github/workflows/release.yml`, `deploy-dev-fly.yml`). |
 | Rust client | `async-nats` 0.52.0 without default features, so its JetStream module does not compile (`rustd/Cargo.toml`). |
 | Evidence | Compare before and after each change on the same rig and workload. |
@@ -47,7 +47,7 @@ The runtime pages ([`data_flow.md`](./data_flow.md), [`runner_fleet.md`](./runne
 ## Why it exists
 
 A lost bus node must cost latency, never accepted work or an owed reply.
-Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `fleet.obligations`.
+Keeping every fact in Postgres makes that true: a viewer backfills from `thread.turns`, and a worker claims from `thread.deliveries`.
 
 Before M244, the bus also held durable jobs, and all its nodes ran on one machine per environment.
 One machine loss froze every viewer's tail with no signal.
@@ -60,74 +60,82 @@ An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
 
 Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
 It also refuses a server reporting JetStream, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
-The largest frame is 128 KiB: the tail's 64 KiB batch plus 64 KiB of envelope.
+
+The largest frame is the setup draft frame, 960 KiB (`afd_bus::DRAFT_FRAME_BYTES`).
+That is NATS's default 1 MiB `max_payload`, which no server here overrides, less a 64 KiB envelope.
+The tail's 64 KiB batch plus 64 KiB of envelope fits under it.
 
 The deploy workflows bring the NATS app up before the daemon.
 `scripts/ensure_fly_app.sh` waits until every NATS machine passes its `/healthz` check, so a daemon never deploys against a bus that refuses it.
 The daemon reaches NATS over Fly's private network in plaintext `nats://`.
 
-### The admissions ledger is the queue
+### The turns ledger is the queue
+
+The heading keeps its old words because other pages link to it. The queue is the unsettled rows of `thread.turns`.
 
 ```text
-producer -> commit fleet.admissions -> publish af.wake.<shard>
+producer -> commit queued thread.turns row -> publish af.thread.<thread_id>.wake
                          |
-wake ring or 5 s recovery probe -> offer pass -> Postgres head probe
+wake ring or 5 s recovery probe -> assignment pass -> Postgres head probe
                          |
-              slot + admission claim
+              thread row lock + head turn opened
                          |
-        fenced lease offered down the runner stream
+        fenced run sent down the runner connection as Down::Run
                          |
-report -> usage + terminal event + settlement + delivery obligation
+report -> usage + terminal turn status + settlement + delivery
 ```
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-A wake ring starts an offer pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`).
+A wake ring starts an assignment pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`).
 
-Each replica also asks Postgres for pending work every 5 s (`OFFER_FALLBACK_TICK`, `afd_gateway/src/scheduler/recovery/mod.rs`).
+Each replica also asks Postgres for pending work every 5 s (`af_core::timing::ASSIGN_FALLBACK_TICK`, wired in `afd_gateway/src/lib.rs`).
 A lost ring therefore costs up to 5 s, never work.
 
-The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
-When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
+The candidate query first checks whether any unsettled fleet turn exists. An empty queue skips fleet scans.
+When work exists, it reads each eligible fleet's oldest unsettled turn through `idx_turns_thread_id_sequence_unsettled` on `(thread_id, sequence)`.
 
-Admission holds the fleet row lock within its one statement, before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
+Writing a turn holds the fleet row lock within its one statement, before allocating its sequence and through commit. A transaction that inserts later therefore stays behind unfinished work.
 
-A parked head blocks later rows while standing access awaits an answer or an unresolved event approval has a future deadline.
-Both discovery and claim probe these two scopes through `idx_approval_gates_pending_scope_deadline`.
+A parked head blocks later rows while standing access awaits an answer or an unresolved turn approval has a future deadline.
+Both discovery and assignment probe these two scopes through `idx_approval_gates_pending_scope_deadline`.
 
 One `NOT EXISTS` over `UNION ALL` keeps the probes correlated to the chosen head. Each branch limits its search to one blocker, including when many approvals match.
 
-Expired event approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
-A parked event finds its gate in `fleet.approval_gates` alone, so a long bus outage cannot erase that decision.
+Expired turn approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
+A parked turn finds its gate in `fleet.approval_gates` alone, so a long bus outage cannot erase that decision.
 
-The claim locks the slot and exact head with `SKIP LOCKED`, then checks whether that head can run and advances both fences together.
-A blocked or unavailable head returns no work, and the caller rolls back the slot claim.
+Assignment locks the thread row and the exact head turn with `SKIP LOCKED`, then checks whether that head can run.
+One statement raises the thread's fence, stamps the turn's `run_fence` and opens the turn.
+A blocked or unavailable head returns no work, and the caller rolls back the thread-row update.
 
-Claims retain held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
+Assignments keep held-sandbox preference and spread other candidates randomly. They provide order within each fleet, with no global waiting-time guarantee.
 
-`delivered_at` records admission into runtime history. `settled_at` removes a row from the queue.
-A report settles the admission in the transaction that records usage, terminal state, checkpoint, slot release and any outbound obligation.
+`opened_at` records the turn's entry into runtime history. `settled_at` removes a row from the queue.
+A report settles the turn in the transaction that records usage, terminal state, checkpoint, thread-row release and any outbound delivery.
 
-An expired slot exposes the same unsettled head to another runner. The original billing identity survives redelivery.
+An expired run leaves the same unsettled head to another runner. The original billing identity survives redelivery.
 
-Admission is one statement, `admit_one.sql`, that holds the fleet row `NO KEY UPDATE` until it commits, so one fleet's messages commit in sequence order.
-That lock permits the foreign-key checks needed to record delivery concurrently. No per-fleet cap exists; the deployment ceiling bounds the total.
+Writing a turn is one statement, `afd_turns/src/sql/admit_one.sql`, that holds the fleet row `NO KEY UPDATE` until it commits.
+One fleet's messages therefore commit in sequence order.
 
-The deployment ceiling estimates 100,000 unsettled admissions. It refreshes every 1,000 admissions or five seconds, and every 500 milliseconds while refusing.
+That lock still lets concurrent foreign-key checks on the fleet row proceed. No per-fleet cap exists; the deployment ceiling bounds the total.
 
-Each process adds its own accepted admissions between samples. Concurrent replicas can overshoot this estimate; one fleet's sequence stays serialized.
-The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
+The deployment ceiling estimates 100,000 unsettled turns. It refreshes every 1,000 turns or five seconds, and every 500 milliseconds while refusing.
+
+Each process adds its own accepted turns between samples. Concurrent replicas can overshoot this estimate; one fleet's sequence stays serialized.
+The census publishes `agentsfleet_turn_backlog` and `agentsfleet_turn_backlog_oldest_age_seconds` from PostgreSQL, withdrawing them when its query fails.
 
 ### Signals on core NATS, facts in Postgres
 
-The live tail publishes on `af.fleet.<fleet_id>.tail`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
+The live tail publishes on `af.thread.<thread_id>.items`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
 
-Wake notifications use sixteen `af.wake.<shard>` subjects, the shard a CRC-16/XMODEM of the fleet id (`afd_bus/src/wake/publish.rs`).
-Each replica keeps a local queue of at most 64 fleets by default (`afd_bus/src/wake/config.rs`).
-A full queue evicts its oldest fleet, and the 5 s recovery probe still finds that fleet's work.
+Wake notifications publish on `af.thread.<thread_id>.wake`, and each replica reads them all through one `af.thread.*.wake` wildcard subscription (`afd_bus/src/wake/mod.rs`).
+Each replica keeps a local queue of at most 64 threads by default (`afd_bus/src/wake/config.rs`).
+A full queue evicts its oldest thread, and the 5 s recovery probe still finds that thread's work.
 
-The report path writes the `fleet.obligations` row in its own transaction, then publishes `af.outbound.wake`.
-A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/obligation/sql/claim_heads.sql`).
+The report path writes the `thread.deliveries` row in its own transaction, then publishes `af.delivery.wake`.
+A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/delivery/sql/claim_heads.sql`).
 A claim lasts 30 s, the holder renews it every 10 s, and every replica also claims every 30 s.
 
 Up to eight deliveries run at once across lanes; each lane holds at most 32 jobs (`afd_outbound/src/lanes/mod.rs`).

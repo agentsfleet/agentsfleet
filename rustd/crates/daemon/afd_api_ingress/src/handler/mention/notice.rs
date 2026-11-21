@@ -1,5 +1,5 @@
 //! Fixed routing text uses a stable channel carrier and the ordinary outbound ledger.
-//! A carrier is never an admission target and never creates or rewrites a fleet.
+//! A carrier is never a turn target and never creates or rewrites a fleet.
 
 use af_core::id::Uuid7;
 use afd_api_wire::ingress::Accepted;
@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, REASON_NO_ACTIVE_CARRIER, address};
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use afd_fleet_lifecycle::FleetStatus;
 use afd_ingress::slack::{NoticeOwner, Subscriber};
 
@@ -18,7 +18,7 @@ use afd_ingress::slack::{NoticeOwner, Subscriber};
 /// # Errors
 /// A datastore or a ledger that would not answer, as the refusal a
 /// provider retries.
-pub(super) async fn owe<D: Services>(
+pub(super) async fn owe<D: IngressPlane>(
     services: &D,
     provider: Provider,
     workspace: &Uuid7,
@@ -55,13 +55,13 @@ fn accepted(workspace: &Uuid7, owner: &Uuid7, verdict: &str, owed: Uuid7) -> Out
     let fleet_id = owner.as_str();
     tracing::info!(workspace_id, fleet_id, verdict, event = EVENT_ROUTED);
     Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(owed.into()),
+        turn_id: Cow::Owned(owed.into()),
         replayed: false,
     })
 }
 
 /// Existing bindings, including historical ones, are notice carriers only.
-async fn owner<D: Services>(
+async fn owner<D: IngressPlane>(
     services: &D,
     provider: Provider,
     workspace: &Uuid7,
@@ -106,7 +106,7 @@ async fn owner<D: Services>(
 
 /// The channel's carrier: its oldest runnable fleet, whatever the notice is
 /// about. An archived fleet is never chosen, since it could not carry the
-/// obligation, so a channel with no runnable fleet has no carrier.
+/// delivery, so a channel with no runnable fleet has no carrier.
 fn carrier(subscribers: &[Subscriber]) -> Option<&Subscriber> {
     subscribers
         .iter()

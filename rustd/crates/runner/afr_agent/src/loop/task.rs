@@ -2,11 +2,9 @@
 //!
 //! Only the root assesses completed action groups; children cannot settle goals.
 
-use super::{Ending, Harness};
+use super::{Ending, Harness, task_evidence::Unassessed};
 use af_wire::task::{TaskDisposition, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery};
-use guffbolt::Budget;
-
-use crate::turn::Turn;
+use guffbolt::{Budget, Step};
 
 /// What becomes of a task's answer, a failure being the provider's.
 type Answer = guffbolt::Answer<af_providers::Error>;
@@ -69,10 +67,10 @@ impl<'s, 'run> guffbolt::Extension<Harness<'s, 'run>> for Task {
         root.save_boundary(state).await
     }
 
-    fn after_turn(&mut self, _root: &Harness<'s, 'run>, turn: &Turn) -> Option<Ending> {
-        // A task never acts on a turn its stream did not finish, or one cut at
+    fn after_step(&mut self, _root: &Harness<'s, 'run>, step: &Step) -> Option<Ending> {
+        // A task never acts on a step its stream did not finish, or one cut at
         // its output limit.
-        (!turn.finished || turn.cut).then_some(Ending::Stopped)
+        (!step.finished || step.cut).then_some(Ending::Stopped)
     }
 
     async fn on_answer(&mut self, root: &mut Harness<'s, 'run>, answer: &str) -> Answer {
@@ -109,42 +107,32 @@ impl Harness<'_, '_> {
         };
         // Tool results are data. Native report preparation independently reads
         // exact-head validation and refuses stale completion evidence.
-        let evidence = match self.task_evidence(answer).await {
-            Ok(evidence) => evidence,
-            Err(failure) => {
+        let report = match self.assess_group(assignment, answer).await {
+            Ok(report) => report,
+            Err(Unassessed::Stopped) => return Some(Ending::Stopped),
+            Err(Unassessed::Evidence(failure)) => {
                 self.task_report = None;
                 tracing::warn!(event = "task_evidence_unavailable", error_code = %failure.code());
                 return Some(Ending::Stopped);
             }
-        };
-        let prepared = self.task.as_ref()?;
-        let assessed = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => return Some(Ending::Stopped),
-            assessed = crate::decision::goal::assess(prepared, assignment, self.shared.lease.verbs,
-                self.shared.fencing_token, evidence) => assessed,
-        };
-        match assessed {
-            Ok(report) => {
-                let disposition = report.disposition;
-                self.task_report = Some(report);
-                match disposition {
-                    TaskDisposition::Continue if self.task_yield_due() =>
-                        Some(Ending::Answered("The task remains in progress. Its state will be saved before the next execution slice.".to_owned())),
-                    TaskDisposition::Continue => None,
-                    TaskDisposition::Complete | TaskDisposition::Waiting | TaskDisposition::Blocked =>
-                        Some(Ending::Answered(if answer.trim().is_empty() { match disposition {
-                            TaskDisposition::Complete => "The action group finished and the goal assessment requested completion. Native publication and validation checks will confirm the final task status.",
-                            TaskDisposition::Waiting => "The action group finished. The task is waiting for its recorded dependency to complete.",
-                            TaskDisposition::Blocked | TaskDisposition::Continue => "The task is blocked; its current progress will be saved.",
-                        }.to_owned() } else { answer.to_owned() })),
-                }
-            }
-            Err(failure) => {
+            Err(Unassessed::Goal(failure)) => {
                 self.task_report = None;
                 tracing::warn!(event = "task_goal_unavailable", error_code = %failure.code());
-                Some(Ending::Stopped)
+                return Some(Ending::Stopped);
             }
+        };
+        let disposition = report.disposition;
+        self.task_report = Some(report);
+        match disposition {
+            TaskDisposition::Continue if self.task_yield_due() =>
+                Some(Ending::Answered("The task remains in progress. Its state will be saved before the next execution slice.".to_owned())),
+            TaskDisposition::Continue => None,
+            TaskDisposition::Complete | TaskDisposition::Waiting | TaskDisposition::Blocked =>
+                Some(Ending::Answered(if answer.trim().is_empty() { match disposition {
+                    TaskDisposition::Complete => "The action group finished and the goal assessment requested completion. Native publication and validation checks will confirm the final task status.",
+                    TaskDisposition::Waiting => "The action group finished. The task is waiting for its recorded dependency to complete.",
+                    TaskDisposition::Blocked | TaskDisposition::Continue => "The task is blocked; its current progress will be saved.",
+                }.to_owned() } else { answer.to_owned() })),
         }
     }
 
@@ -152,7 +140,7 @@ impl Harness<'_, '_> {
         let Some(prepared) = self.task.as_mut().filter(|prepared| prepared.allow_actions) else {
             return Ok(());
         };
-        let verbs = self.shared.lease.verbs;
+        let verbs = self.shared.run.verbs;
         // Always read the oldest unsettled source page. Advancing the message
         // cursor before all mixed-source replies are acknowledged can strand
         // an accepted conversation item while a later action completes.
@@ -170,13 +158,13 @@ impl Harness<'_, '_> {
             .collect();
         for input in pending {
             let binding = crate::decision::Intake {
-                lease: self.shared.payload,
+                run: self.shared.payload,
                 verbs,
                 provider: self.shared.provider,
                 meter: self.shared.meter,
                 stop: &self.stop,
             }
-            .bind(&inputs, &input.source_admission_id, &input.message)
+            .bind(&inputs, &input.source_turn_id, &input.message)
             .await?;
             prepared.execution_deadline =
                 match (prepared.execution_deadline, binding.execution_deadline) {
@@ -201,7 +189,7 @@ impl Harness<'_, '_> {
                     return Err(crate::decision::unavailable());
                 }
                 let text = serde_json::json!({ "accepted_task_input": input });
-                self.messages.push(af_providers::Message::User(
+                self.transcript.push(guffbolt::Message::User(
                     self.shared.scrub.clean(text.to_string()).into_inner(),
                 ));
                 // Durable application follows incorporation. A replacement reconstructs
@@ -256,7 +244,7 @@ impl Harness<'_, '_> {
 }
 
 async fn record_input(
-    verbs: &dyn afr_tools::LeaseVerbs,
+    verbs: &dyn afr_tools::RunVerbs,
     fencing_token: u64,
     input: &af_wire::task::TaskAcceptedInput,
     mode: TaskInputMode,
@@ -266,7 +254,7 @@ async fn record_input(
         .task_input_receipt(TaskInputReceiptInput {
             fencing_token,
             operation_id: crate::decision::identity()?,
-            source_admission_id: input.source_admission_id.clone(),
+            source_turn_id: input.source_turn_id.clone(),
             plan_digest: input.plan_digest.clone(),
             item_id: input.item_id.clone(),
             task: Some(input.task.clone()),
@@ -286,7 +274,7 @@ async fn record_input(
 }
 
 async fn read_inputs(
-    verbs: &dyn afr_tools::LeaseVerbs,
+    verbs: &dyn afr_tools::RunVerbs,
     fencing_token: u64,
     incorporated: u64,
 ) -> crate::Result<af_wire::task::TaskInputsResponse<'static>> {

@@ -3,16 +3,16 @@
 //! the output limit never runs, and a reply past the transport's cap ends the
 //! run without being asked again.
 
-use af_providers::REPLY_MAX_BYTES;
+use af_inference::transport::REPLY_MAX_BYTES;
 use af_wire::activity::{ActivityFrame, StreamTextKind};
 use af_wire::tool_trace::ToolCallStatus;
 use afr_agent::ResultOutcome;
-use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
+use guffbolt::ErrorCode;
 use serde_json::{Value, json};
 
 use super::support::wires::{self, Wire};
-use super::support::{Fake, Reply, engine, lease, run};
+use super::support::{Fake, Reply, engine, payload, run};
 use super::{ANSWER, CALL_ID};
 
 /// What the model thought before its call.
@@ -64,9 +64,9 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
+    let held = payload(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
 
-    let (output, frames) = run(&engine(&fake), &leased).await;
+    let (output, frames) = run(&engine(&fake), &held).await;
 
     assert_eq!(output.result.content, ANSWER);
     assert_eq!(
@@ -91,9 +91,9 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
+    let held = payload(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     assert_eq!(output.result.content, ANSWER, "the run went on");
     assert_eq!(
@@ -101,7 +101,7 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
         ToolCallStatus::Failed
     );
     let answered = wire.results(&fake.seen()[1].body);
-    let refused = format!("[{}] ", ToolErrorCode::OutputLimitReached);
+    let refused = format!("[{}] ", ErrorCode::OUTPUT_LIMIT_REACHED);
     assert!(answered[0].starts_with(&refused), "{answered:?}");
 }
 
@@ -111,9 +111,9 @@ async fn a_call_cut_at_the_output_limit_is_answered_and_never_run() {
 async fn a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once() {
     let wire = Wire::Chat;
     let mut fake = Fake::serve(vec![padding_past_the_cap(), wire.answer(ANSWER)]).await;
-    let leased = lease(&wire.provider(), &[], "hello");
+    let held = payload(&wire.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a reply past the cap is no answer");

@@ -19,7 +19,7 @@ use http::StatusCode;
 use crate::auth::HumanIdentity;
 use crate::handler::{malformed, refuse};
 use crate::request_id::RequestId;
-use crate::services::{DeviceFlow as _, Services};
+use crate::services::{DeviceFlow as _, TenantPlane};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_OPEN: &str = "auth_session_open_failed";
@@ -65,7 +65,7 @@ const DETAIL_VERIFY_BODY: &str = "Malformed verify payload";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Bytes) -> Response {
+pub(crate) async fn open<D: TenantPlane>(State(services): State<Arc<D>>, body: Bytes) -> Response {
     let Ok(request) = afd_http::handler::read_body::<OpenSessionRequest<'_>>(&body) else {
         return malformed(DETAIL_OPEN_BODY);
     };
@@ -120,7 +120,7 @@ pub(crate) async fn open<D: Services>(State(services): State<Arc<D>>, body: Byte
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn poll<D: Services>(
+pub(crate) async fn poll<D: TenantPlane>(
     State(services): State<Arc<D>>,
     Path(session_id): Path<String>,
 ) -> Response {
@@ -157,7 +157,7 @@ pub(crate) async fn poll<D: Services>(
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn delete_all<D: Services>(
+pub(crate) async fn delete_all<D: TenantPlane>(
     State(services): State<Arc<D>>,
     person: HumanIdentity,
 ) -> Response {

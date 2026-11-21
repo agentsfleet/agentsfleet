@@ -1,4 +1,4 @@
-//! §4 Dimension 4.3 — what refuses a write, and the lock a delete is taken under.
+//! What refuses a write, and the lock a delete is taken under.
 //!
 //! `#[ignore]`d so `make test-unit-all` compiles and lints these without a
 //! datastore; `make test-integration-rustd` runs them against compose Postgres.

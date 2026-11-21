@@ -6,7 +6,7 @@ afterEach(() => {cleanup(); vi.useRealTimers();});
 
 // Value: protects=live feedback without repeated screen-reader announcements;
 // fails_when=queued work lacks a spinner or the clock stops after a minute; seam=clock; no_claim=provider progress.
-it.each(["Queued", "Thinking", "Saving and publishing"])("ticks whole seconds for %s with a stable spoken label", label => {
+it.each(["Queued", "Thinking", "Saving"])("ticks whole seconds for %s with a stable spoken label", label => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-14T12:00:00Z"));
   const {container, unmount} = render(<ChatProgressLabel label={label} />);
   expect(screen.getByText("0s").getAttribute("aria-hidden")).toBe("true");

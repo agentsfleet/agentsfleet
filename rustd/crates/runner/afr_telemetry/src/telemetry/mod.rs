@@ -12,7 +12,7 @@ use tracing::Metadata;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::{Layer as _, Registry};
 
-use crate::budget::{LeaseSampler, Limits, Monotonic, Seconds};
+use crate::budget::{Limits, Monotonic, RunSampler, Seconds};
 use crate::endpoint::Endpoint;
 use crate::error::Result;
 use crate::families::{self, Families};
@@ -77,7 +77,7 @@ impl Telemetry {
     /// The seam a suite moves time through: the budget's per-second window is
     /// the behaviour under test, and a real clock makes that test wait it out.
     pub(crate) fn install_on(endpoint: &Endpoint, clock: impl Seconds + 'static) -> Result<Self> {
-        let sampler = LeaseSampler::new(Limits::default(), clock, || {
+        let sampler = RunSampler::new(Limits::default(), clock, || {
             record::spans_suppressed(1);
         });
         let config = endpoint.config();
@@ -103,7 +103,7 @@ impl Telemetry {
         self.recording
     }
 
-    /// The layer that exports the runner's spans: `runner.lease`,
+    /// The layer that exports the runner's spans: `runner.run`,
     /// `invoke_agent`, `chat`, `decision` and `execute_tool`.
     ///
     /// Filtered to the runner target and the shared transport's value-free
@@ -114,10 +114,10 @@ impl Telemetry {
     /// the catalog's closed set, never the model's own spelling.
     ///
     /// Context activation, inactivity timing and the target attribute are off.
-    /// The runner's spans wrap long futures — a lease, a run, a streamed turn
+    /// The runner's spans wrap long futures — a run, a run, a streamed turn
     /// — so activation would swap the OpenTelemetry context and take two locks
     /// on every poll, for a context nothing in the runner reads; a child's
-    /// parent is found from the span stack either way, so a lease's root still
+    /// parent is found from the span stack either way, so a run's root still
     /// reaches the sampler first. The target is the filter's own constant.
     #[must_use]
     pub fn layer(&self) -> SpanLayer {

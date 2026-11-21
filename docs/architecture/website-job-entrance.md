@@ -1,7 +1,7 @@
 # Website job entrance
 
 Read this when changing the public composer, sample conversation, signup boundary, or shared brand assets.
-The website illustrates the [chat authoring experience](high_level.md#fleet-authoring-and-runtime); the illustration does not author, install, or run a fleet.
+The website illustrates the [chat setup experience](high_level.md#fleet-setup-and-runtime); the illustration does not author, install, or run a fleet.
 
 ## Experience and component boundaries
 
@@ -41,12 +41,11 @@ Describe the job --> clarify --> /schedule --> review setup --> chat Save
                      |
                  loop the example
 
-Separate explicit action: Save and publish --> reusable Plugin revision
-Ordinary Save creates the fleet; it makes no Plugin-publication claim.
+Save creates the fleet.
 ```
 
-The sample story reports fleet creation after ordinary Save and makes no Plugin-publication claim.
-The website's machine-readable summaries describe native chat setup and separate, explicit Plugin publication.
+The sample story reports fleet creation after Save.
+The website's machine-readable summaries describe native chat setup.
 
 Messages type and append to the current history; the caret blinks during typing.
 The signal loader names the current activity, such as understanding the job or preparing the setup.
@@ -67,7 +66,7 @@ Mobile uses the same conversation in a bounded viewport.
 Selecting evidence reveals sample excerpts within that viewport; closing restores the preceding chat position.
 
 The example labels sample output and unapplied changes. The incident, regression, and agent examples use real Linkwarden repository sources pinned to an immutable revision; run excerpts stay illustrative.
-The current runtime's access rules, lease behavior, and delivery limits come from the [runtime comparison](../reviews/workspace-setup/runtime-baseline.md).
+The current runtime's access rules, run behavior, and delivery limits come from the [runtime comparison](../reviews/workspace-setup/runtime-baseline.md).
 
 The animation makes no claim that it performs automatic repair, GitHub posting or private draft API calls.
 

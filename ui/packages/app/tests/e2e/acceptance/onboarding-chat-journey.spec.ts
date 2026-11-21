@@ -4,7 +4,7 @@
  * The path a new user actually takes, typed rather than seeded: open New
  * fleet, see which model is drafting, describe the work, review the proposal
  * the setup chat returns, save it, and find the fleet live on the wall. The
- * description is complete and asks for no questions, so a live authoring
+ * description is complete and asks for no questions, so a live setup
  * model has what it needs to propose in one turn.
  */
 import { expect, test } from "@playwright/test";
@@ -42,7 +42,7 @@ test.describe("onboarding chat", () => {
     await page.goto(workspaceHref(workspaceId, "fleets/new"));
 
     // The drafting model is named before the first word is typed.
-    const model = page.getByRole("combobox", { name: "Authoring model" });
+    const model = page.getByRole("combobox", { name: "Setup model" });
     await expect(model).toBeVisible();
     await expect(model).not.toHaveText(/^\s*(Choose model)?\s*$/);
 

@@ -85,19 +85,13 @@ test("remaining resource pages and empty setup retain the approved frame", async
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
-  await page.route("**/live/v1/workspaces/*/plugins?*", route => route.fulfill({json: {items: [{
-    id: "01924f4e-0000-7000-8000-00000000c4a2", name: "Release watch", description: "A saved setup for checking image builds and release readiness.",
-    head_revision_id: "01924f4e-0000-7000-8000-00000000c4a1", head_revision: "1", etag: "sample", requirements: {},
-    created_at: "2026-11-11T10:00:00Z", required_credentials_reasons: {},
-  }], next_cursor: null}}));
   for (const theme of ["dark", "light"]) {
     await page.goto(`${chatProbe}?resourcePages=1`);
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
     await page.evaluate(() => document.fonts.ready);
-    for (const label of ["Usage", "Secrets", "Plugins", "Connected apps", "New fleet"]) {
+    for (const label of ["Usage", "Secrets", "Connected apps", "New fleet"]) {
       await page.locator("[data-review-pages]").getByRole("button", {name: label, exact: true}).click();
-      if (label === "Plugins") await expect(page.getByText("Release watch", {exact: true})).toBeVisible();
-      else if (label === "New fleet") {
+      if (label === "New fleet") {
         const composer = page.getByRole("textbox", {name: "Describe the work you want this fleet to do…"});
         await expect(page.getByRole("heading", {name: "What should your fleet do?"})).toBeVisible();
         await expect(composer).toBeVisible();

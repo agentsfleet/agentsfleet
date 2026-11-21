@@ -20,7 +20,7 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantKeys as _};
+use crate::services::{TenantKeys as _, TenantPlane};
 
 use super::{DETAIL_MALFORMED_BODY, parameter, tenant_of};
 
@@ -68,7 +68,7 @@ const DETAIL_NO_TENANT: &str =
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn mint<D: Services>(
+pub(crate) async fn mint<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -121,7 +121,7 @@ pub(crate) async fn mint<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
@@ -165,7 +165,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn revoke<D: Services>(
+pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(key_id): Path<String>,
@@ -211,7 +211,7 @@ pub(crate) async fn revoke<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(key_id): Path<String>,

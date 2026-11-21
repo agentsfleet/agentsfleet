@@ -7,16 +7,16 @@
     reason = "test module: a harness that cannot start should fail the test loudly"
 )]
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use af_egress::testing::RecordingTransport;
 use afr_executor::Client;
+use guffbolt::ToolOutput;
 use serde_json::json;
 
-use crate::catalog::{Catalog, EXEC_COMMAND, WRITE_STDIN};
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::SandboxEnv;
+use crate::catalog::{EXEC_COMMAND, WRITE_STDIN};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// How long the suite waits on the executor before failing.
@@ -45,20 +45,21 @@ async fn test_exec_session_survives_across_calls() {
         async move { afr_executor::serve(&socket, &root).await }
     });
     let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
-    let (transport, _sent) = RecordingTransport::replying(200, "");
-    let catalog = Catalog::hosted(Arc::new(transport));
+    let (catalog, _sent) = hosted();
     let names = [EXEC_COMMAND.name(), WRITE_STDIN.name()];
     let selection = catalog.select(&names).unwrap();
+    // Each call builds its tool the way a run does; the sessions live on the
+    // run, so `write_stdin` reaches the `cat` an earlier build started.
     let (exec, write) = (
-        selection.tool(EXEC_COMMAND.name()).unwrap(),
-        selection.tool(WRITE_STDIN.name()).unwrap(),
+        offered(&selection, &EXEC_COMMAND),
+        offered(&selection, &WRITE_STDIN),
     );
-    let lease = Lease::default();
+    let run = Run::default();
 
     let opened = call_in(
         exec,
         &client,
-        &lease,
+        &run,
         json!({"cmd": "cat", "yield_time_ms": 250}),
     )
     .await;
@@ -66,7 +67,7 @@ async fn test_exec_session_survives_across_calls() {
     let mut echoes = Vec::new();
     for chars in ["one\n", "two\n"] {
         let arguments = json!({"session_id": id, "chars": chars, "yield_time_ms": ECHO_YIELD_MS});
-        echoes.push(call_in(write, &client, &lease, arguments).await.text);
+        echoes.push(call_in(write, &client, &run, arguments).await.text);
     }
 
     let running = format!("Process running with session ID {id}");
@@ -76,7 +77,7 @@ async fn test_exec_session_survives_across_calls() {
         [format!("one\n{running}"), format!("two\n{running}")]
     );
     assert_eq!(
-        lease.sessions.close_all(&client).await,
+        run.sessions.close_all(&SandboxEnv::new(&client)).await,
         1,
         "the run's end kills cat"
     );
@@ -98,31 +99,31 @@ async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[EXEC_COMMAND.name()]).unwrap();
     let exec = offered(&selection, &EXEC_COMMAND);
-    let lease = Lease::default();
+    let run = Run::default();
 
     let missing = call_in(
         exec,
         &live.client,
-        &lease,
+        &run,
         json!({"cmd": "true", "workdir": "gone"}),
     )
     .await;
     let escaping = call_in(
         exec,
         &live.client,
-        &lease,
+        &run,
         json!({"cmd": "true", "workdir": "out"}),
     )
     .await;
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     assert_eq!(
         escaping.error_code,
-        Some(ToolErrorCode::PathNotAllowed),
+        Some(ToolErrorCode::PathNotAllowed.into()),
         "{escaping:?}"
     );
     live.stop().await;
@@ -142,13 +143,13 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
         offered(&selection, &EXEC_COMMAND),
         offered(&selection, &WRITE_STDIN),
     );
-    let lease = Lease::default();
+    let run = Run::default();
     let cmd = "yes | head -c 700000; read word; echo said-$word; sleep 30";
 
     let opened = call_in(
         exec,
         &live.client,
-        &lease,
+        &run,
         json!({"cmd": cmd, "yield_time_ms": ECHO_YIELD_MS}),
     )
     .await;
@@ -157,10 +158,13 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
         "chars": "go\n",
         "yield_time_ms": ECHO_YIELD_MS,
     });
-    let answered = call_in(write, &live.client, &lease, arguments).await;
+    let answered = call_in(write, &live.client, &run, arguments).await;
 
     assert!(answered.text.contains("said-go\n"), "{}", answered.text);
-    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    assert_eq!(
+        run.sessions.close_all(&SandboxEnv::new(&live.client)).await,
+        1
+    );
     live.stop().await;
 }
 
@@ -178,11 +182,11 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
         offered(&selection, &EXEC_COMMAND),
         offered(&selection, &WRITE_STDIN),
     );
-    let lease = Lease::default();
+    let run = Run::default();
     let opened = call_in(
         exec,
         &live.client,
-        &lease,
+        &run,
         json!({"cmd": "exec 0<&-; sleep 30", "yield_time_ms": 250}),
     )
     .await;
@@ -192,7 +196,7 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
     let mut refused = None;
     for _ in 0..50 {
         let arguments = json!({"session_id": id, "chars": "x\n", "yield_time_ms": 250});
-        let output = call_in(write, &live.client, &lease, arguments).await;
+        let output = call_in(write, &live.client, &run, arguments).await;
         if output.text.starts_with(super::INPUT_REFUSED) {
             refused = Some(output);
             break;
@@ -208,6 +212,9 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
             super::INPUT_REFUSED
         )
     );
-    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    assert_eq!(
+        run.sessions.close_all(&SandboxEnv::new(&live.client)).await,
+        1
+    );
     live.stop().await;
 }

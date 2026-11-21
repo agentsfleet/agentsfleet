@@ -1,0 +1,95 @@
+// Direct Effect-layer tests for turnsEffectFromFlags — covers the
+// ValidationError guard (missing fleetId) that is unreachable via the
+// normal CLI path because the tree enforces <fleet_id> as a required
+// positional before the handler runs.
+
+import { describe, test, expect } from "bun:test";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
+
+import { turnsEffectFromFlags } from "../src/commands/fleet/turns.ts";
+import { CliConfig } from "../src/services/config.ts";
+import { HttpClient } from "../src/services/http-client.ts";
+import { Output } from "../src/services/output.ts";
+import { outputDouble } from "./helpers-output-double.ts";
+import { Workspaces } from "../src/services/workspaces.ts";
+import { Credentials } from "../src/services/credentials.ts";
+import { ValidationError, type CliError } from "../src/errors/index.ts";
+
+// Minimal stub layers — only the services accessed before the
+// guard under test fires need real implementations.
+
+const configLayer = (): Layer.Layer<CliConfig> =>
+  Layer.succeed(CliConfig, {
+    apiUrl: "https://api.test.local",
+    dashboardUrl: "https://dash.test.local",
+    accessToken: Option.none(),
+    jsonMode: false,
+    noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
+  });
+
+const outputLayer = (): Layer.Layer<Output> =>
+  Layer.succeed(Output, {
+  ...outputDouble(),
+  });
+
+const httpClientLayer = (): Layer.Layer<HttpClient> =>
+  Layer.succeed(HttpClient, {
+    request: () => Effect.die("should not be called"),
+  });
+
+const unusedWorkspacesLayer = (): Layer.Layer<Workspaces> =>
+  Layer.succeed(Workspaces, {
+    load: Effect.die("should not be called"),
+    save: () => Effect.die("should not be called"),
+  });
+
+const unusedCredentialsLayer = (): Layer.Layer<Credentials> =>
+  Layer.succeed(Credentials, {
+    getAccessToken: Effect.die("should not be called"),
+    snapshot: Effect.succeed({ accessToken: Option.none(), savedAt: null, sessionId: null, apiUrl: null, credentialId: null }),
+    saveAccessToken: () => Effect.die("should not be called"),
+    clearAccessToken: Effect.die("should not be called"),
+  });
+
+const runWith = <E extends CliError>(
+  effect: Effect.Effect<void, E, CliConfig | Output | HttpClient | Workspaces | Credentials>,
+): Promise<Exit.Exit<void, E>> =>
+  Effect.runPromiseExit(
+    effect.pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(outputLayer()),
+      Effect.provide(httpClientLayer()),
+      Effect.provide(unusedWorkspacesLayer()),
+      Effect.provide(unusedCredentialsLayer()),
+    ),
+  );
+
+describe("turnsEffectFromFlags — ValidationError guard", () => {
+  test("fails with ValidationError when fleetId is undefined", async () => {
+    const effect = turnsEffectFromFlags({ fleetId: undefined });
+    const exit = await runWith(effect);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      const err = Option.getOrNull(failure);
+      expect(err).toBeInstanceOf(ValidationError);
+      if (err instanceof ValidationError) {
+        expect(err.detail).toMatch(/fleet_id is required/i);
+        expect(err.suggestion).toMatch(/agentsfleet fleet turns/);
+      }
+    }
+  });
+
+  test("fails with ValidationError when fleetId is empty string", async () => {
+    const effect = turnsEffectFromFlags({ fleetId: "" });
+    const exit = await runWith(effect);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.findErrorOption(exit.cause);
+      const err = Option.getOrNull(failure);
+      expect(err).toBeInstanceOf(ValidationError);
+    }
+  });
+});

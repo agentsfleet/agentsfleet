@@ -16,7 +16,7 @@ import {
 import { TOOL_CALL_READ, readToolCall, type ToolCallFull, type ToolCallRead } from "@/lib/streaming/fleet-tool-call-reader";
 import { FleetPayloadDisclosure } from "../messages/FleetPayloadDisclosure";
 import type { FleetScope } from "../../conversation/stream/FleetScope";
-import { DiffRows } from "./FleetToolCallBody";
+import { ChangedFiles, DiffRows } from "./FleetToolCallBody";
 import type { ToolResult } from "../replies/fleetReplyMessage";
 import { fullDiff } from "./copy/tool-call-copy";
 import { outputLines } from "./presentation/tool-call-text";
@@ -39,7 +39,7 @@ const NOTE_CLASS = "text-body-sm text-text-subtle";
 
 type FleetToolOutputDialogProps = {
   scope: FleetScope;
-  eventId: string;
+  turnId: string;
   callId: string;
   name: string;
   /** The cell's header, as its title: the verb in words, the target as a value. */
@@ -51,8 +51,8 @@ type FleetToolOutputDialogProps = {
 
 /** Mounted when "show all" is pressed, so the read starts with it and is
  * dropped with it. */
-export function FleetToolOutputDialog({ scope, eventId, callId, name, verb, target, outcome, onClose }: FleetToolOutputDialogProps) {
-  const read = useToolCallRead(scope, eventId, callId);
+export function FleetToolOutputDialog({ scope, turnId, callId, name, verb, target, outcome, onClose }: FleetToolOutputDialogProps) {
+  const read = useToolCallRead(scope, turnId, callId);
   return (
     // Controlled open, so the only change the dialog asks for is to close.
     <Dialog open onOpenChange={onClose}>
@@ -71,15 +71,15 @@ export function FleetToolOutputDialog({ scope, eventId, callId, name, verb, targ
   );
 }
 
-function useToolCallRead({ workspaceId, fleetId }: FleetScope, eventId: string, callId: string): ToolCallRead | null {
+function useToolCallRead({ workspaceId, fleetId }: FleetScope, turnId: string, callId: string): ToolCallRead | null {
   const [read, setRead] = useState<ToolCallRead | null>(null);
   useEffect(() => {
     const inflight = new AbortController();
-    void readToolCall({ workspaceId, fleetId, eventId, callId }, inflight.signal).then((result) => {
+    void readToolCall({ workspaceId, fleetId, turnId, callId }, inflight.signal).then((result) => {
       if (!inflight.signal.aborted) setRead(result);
     });
     return () => inflight.abort();
-  }, [workspaceId, fleetId, eventId, callId]);
+  }, [workspaceId, fleetId, turnId, callId]);
   return read;
 }
 
@@ -96,10 +96,11 @@ function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: st
 
 function FullCall({ call, name }: { call: ToolCallFull; name: string }) {
   const diff = useMemo(() => fullDiff(name, call.args), [name, call.args]);
+  const changed = call.changes.length === 0 ? null : <ChangedFiles changes={call.changes} />;
   const rows = useMemo(() => outputLines(call.output).map((text, index) => ({ number: index + 1, text })), [call.output]);
   return (
     <>
-      {diff === null ? null : <div className="font-mono text-label leading-mono"><DiffRows diff={diff} /></div>}
+      {diff === null ? changed : <div className="font-mono text-label leading-mono"><DiffRows rows={diff} changes={call.changes} /></div>}
       <NumberedOutput rows={rows} copyValue={call.output} />
       {call.outputTruncated ? <p className={NOTE_CLASS}>{OUTPUT_CUT_NOTE}</p> : null}
       {call.argsTruncated ? <p className={NOTE_CLASS}>{ARGS_NOT_KEPT_NOTE}</p> : null}

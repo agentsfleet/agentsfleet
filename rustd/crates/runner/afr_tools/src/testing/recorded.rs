@@ -1,11 +1,11 @@
-//! The recording fakes: a lease's verbs answering from a script, and what each
+//! The recording fakes: a run's verbs answering from a script, and what each
 //! call asked, compared whole.
 
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
 
-use crate::lease::Lease;
+use crate::run::Run;
 
-/// One call a tool made through the lease's verbs, owned so a suite can read
+/// One call a tool made through the run's verbs, owned so a suite can read
 /// it after the call returns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Asked {
@@ -132,7 +132,7 @@ impl From<crate::verbs::ScheduleCall<'_>> for OwnedCall {
     }
 }
 
-/// Lease verbs answering every call with `answer`, recording what was asked.
+/// Run verbs answering every call with `answer`, recording what was asked.
 #[derive(Debug)]
 pub(crate) struct RecordingVerbs {
     answer: Result<String, crate::verbs::Unanswered>,
@@ -155,7 +155,7 @@ impl RecordingVerbs {
             answer,
             delivered,
             steered: Ok(af_wire::steer_verb::FleetSteerAccepted {
-                event_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
+                turn_id: std::borrow::Cow::Borrowed(STEERED_EVENT),
                 replayed: false,
             }),
             asked: std::sync::Mutex::new(Vec::new()),
@@ -184,7 +184,7 @@ impl RecordingVerbs {
 }
 
 #[async_trait::async_trait]
-impl crate::verbs::LeaseVerbs for RecordingVerbs {
+impl crate::verbs::RunVerbs for RecordingVerbs {
     async fn schedules(
         &self,
         call: crate::verbs::ScheduleCall<'_>,
@@ -219,11 +219,7 @@ impl crate::verbs::LeaseVerbs for RecordingVerbs {
     }
 }
 
-/// A lease whose verbs are `verbs`, with empty memory and closed egress.
-pub(crate) fn lease_with(verbs: &dyn crate::verbs::LeaseVerbs) -> Lease<'_> {
-    Lease::new(
-        Box::new(Hydrated::default()),
-        af_egress::testing::closed(),
-        verbs,
-    )
+/// A run whose verbs are `verbs`, with empty memory and closed egress.
+pub(crate) fn run_with(verbs: &dyn crate::verbs::RunVerbs) -> Run<'_> {
+    Run::new(Loaded::default(), af_egress::testing::closed(), verbs)
 }

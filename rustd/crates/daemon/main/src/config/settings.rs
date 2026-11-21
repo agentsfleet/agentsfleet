@@ -8,14 +8,10 @@ use serde::Deserialize;
 pub(super) struct ConfigToml {
     #[garde(dive)]
     pub outbound: Outbound,
-    #[garde(dive)]
-    pub inference: af_inference::TimeoutSettings,
     #[garde(skip)]
     pub maintenance: super::maintenance::Maintenance,
     #[garde(skip)]
     pub fleet: Fleet,
-    #[garde(skip)]
-    pub authoring: Authoring,
     #[garde(dive)]
     pub server: Server,
     #[garde(dive)]
@@ -39,12 +35,6 @@ pub(super) struct ConfigToml {
 pub(super) struct Outbound {
     #[garde(dive)]
     pub retries: afd_outbound::retry::RetrySettings,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub(super) struct Authoring {
-    pub turn: afd_authoring::turn_policy::TurnSettings,
 }
 
 #[derive(Default, Deserialize)]
@@ -105,7 +95,7 @@ pub(super) struct Runner {
     #[garde(dive)]
     pub stream: Stream,
     #[garde(dive)]
-    pub lease: Lease,
+    pub run: Run,
     #[garde(skip)]
     pub health: super::timing::Health,
     #[garde(skip)]
@@ -133,25 +123,31 @@ pub(super) struct Listener {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Stream {
     #[garde(dive)]
-    pub control: MessageBuffer,
+    pub control: ControlBuffer,
     #[garde(dive)]
-    pub data: MessageBuffer,
+    pub data: DataBuffer,
 }
 
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct MessageBuffer {
-    #[garde(range(min = af_stream::MemoryLimits::MIN_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
+pub(super) struct ControlBuffer {
+    #[garde(range(min = af_stream::MemoryLimits::MIN_CONTROL_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
+    pub max_buffered_bytes: Option<usize>,
+}
+
+/// Its floor holds one maximum work or report frame in each direction.
+#[derive(Default, Deserialize, Validate)]
+#[serde(default, deny_unknown_fields)]
+pub(super) struct DataBuffer {
+    #[garde(range(min = af_stream::MemoryLimits::MIN_DATA_BUFFER_BYTES, max = af_stream::MemoryLimits::MAX_BUFFER_BYTES))]
     pub max_buffered_bytes: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(super) struct Lease {
-    #[garde(range(min = af_core::timing::MIN_LEASE_SECONDS, max = af_core::timing::MAX_LEASE_SECONDS))]
+pub(super) struct Run {
+    #[garde(range(min = af_core::timing::MIN_RUN_SECONDS, max = af_core::timing::MAX_RUN_SECONDS))]
     pub ttl_seconds: Option<u64>,
-    #[garde(range(min = af_core::timing::MIN_LEASE_SECONDS + 1, max = af_core::timing::MAX_RUNTIME.as_secs()))]
-    pub max_runtime_seconds: Option<u64>,
 }
 
 #[derive(Default, Deserialize, Validate)]
@@ -164,10 +160,11 @@ pub(super) struct Recovery {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Scheduling {
-    #[garde(range(min = 1, max = 43_198))]
+    /// Strictly shorter than the longest run lifetime, `MAX_RUN_SECONDS`.
+    #[garde(range(min = 1, max = 3_599))]
     pub missed_wake_probe_seconds: Option<u32>,
     #[garde(range(min = 1, max = 64))]
-    pub max_concurrent_recovery_claims: Option<usize>,
+    pub max_concurrent_recovery_assignments: Option<usize>,
 }
 
 #[derive(Default, Deserialize, Validate)]

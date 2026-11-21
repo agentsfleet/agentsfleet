@@ -30,7 +30,7 @@ const TILE_CARD = "[data-kind]";
 /** Mirrors of `FleetTile.tsx` / `lib/wall/tile-liveness.ts` copy. */
 const MANAGE_FLEET_LABEL = "Manage fleet";
 const TILE_SPEND_SUFFIX = "spent";
-const TILE_EVENTS_SUFFIX = "events";
+const TILE_TURNS_SUFFIX = "turns";
 const AGENT_PREFIX = "AGENT";
 
 /** What the footer prints where the daemon sent no figure at all — never a
@@ -44,13 +44,13 @@ const SPEND_DECIMALS = 2;
 export interface TileCounters {
   /** The spend cell verbatim — `$0.03`, or the absent dash. */
   readonly spend: string;
-  /** The event count as a number, or `null` for the absent dash. */
-  readonly events: number | null;
+  /** The turn count as a number, or `null` for the absent dash. */
+  readonly turns: number | null;
 }
 
 // The VALUE shape is part of each pattern, not a wildcard, and that is
-// load-bearing: the tile's own description line reads "wakes on events,
-// gathers evidence", so `(\S+)\s+events` captures the word "on" and every
+// load-bearing: the tile's own description line is prose, so a wildcard
+// value would capture a word from it before the suffix, and every
 // comparison downstream becomes NaN — a failure that looks like the counter
 // never moved. Only a currency figure, a bare count, or the absent dash can
 // match, and the LAST match wins so prose can never outrank the footer.
@@ -58,8 +58,8 @@ const SPEND_PATTERN = new RegExp(
   `(\\$\\d+\\.\\d{${SPEND_DECIMALS}}|${TILE_FIGURE_ABSENT})\\s+${TILE_SPEND_SUFFIX}\\b`,
   "g",
 );
-const EVENTS_PATTERN = new RegExp(
-  `(\\d+|${TILE_FIGURE_ABSENT})\\s+${TILE_EVENTS_SUFFIX}\\b`,
+const TURNS_PATTERN = new RegExp(
+  `(\\d+|${TILE_FIGURE_ABSENT})\\s+${TILE_TURNS_SUFFIX}\\b`,
   "g",
 );
 
@@ -94,15 +94,15 @@ export function tileForAgent(page: Page, callsign: string): Locator {
 export async function readTileCounters(tile: Locator): Promise<TileCounters> {
   const rendered = await tile.innerText();
   const spend = figure(rendered, SPEND_PATTERN);
-  const events = figure(rendered, EVENTS_PATTERN);
-  if (spend === undefined || events === undefined) {
+  const turns = figure(rendered, TURNS_PATTERN);
+  if (spend === undefined || turns === undefined) {
     throw new Error(
-      `the tile printed no "${TILE_SPEND_SUFFIX}"/"${TILE_EVENTS_SUFFIX}" figure:\n${rendered}`,
+      `the tile printed no "${TILE_SPEND_SUFFIX}"/"${TILE_TURNS_SUFFIX}" figure:\n${rendered}`,
     );
   }
   return {
     spend,
-    events: events === TILE_FIGURE_ABSENT ? null : Number(events),
+    turns: turns === TILE_FIGURE_ABSENT ? null : Number(turns),
   };
 }
 

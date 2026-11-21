@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 pub(super) async fn execute(
     script: &Script,
-    native: &dyn LeaseVerbs,
+    native: &dyn RunVerbs,
     inputs: TaskInputsResponse<'static>,
     executor: &ScriptedExecutor,
 ) -> crate::Result<crate::RunOutput> {
@@ -15,7 +15,7 @@ pub(super) async fn execute(
         afr_tools::Catalog::hosted(Arc::new(transport)),
         script.replay(),
     );
-    let lease = assigned_lease(&[afr_tools::catalog::EXEC_COMMAND.name()], 16_384);
+    let this_run = assigned_run(&[afr_tools::catalog::EXEC_COMMAND.name()], 16_384);
     let prepared = PreparedTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
@@ -24,7 +24,7 @@ pub(super) async fn execute(
     engine
         .run(AgentRun {
             recovery: None,
-            lease: &lease,
+            run: &this_run,
             prepared_task: Some(&prepared),
             recovered_task: None,
             recovered_turn: None,
@@ -41,7 +41,7 @@ pub(super) async fn execute(
         .await
 }
 
-pub(super) fn publication_call() -> af_providers::Chunk {
+pub(super) fn publication_call() -> guffbolt::Chunk {
     call(
         "publish",
         "propose_change",
@@ -55,7 +55,11 @@ pub(super) fn refusal(
     expected: &str,
 ) -> crate::Result<()> {
     assert_eq!(
-        native.published.lock().expect("publication requests").len(),
+        native
+            .published
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
         0
     );
     assert_eq!(
@@ -65,7 +69,11 @@ pub(super) fn refusal(
             .effect_watermark,
         0
     );
-    let requests = native.goals.requests.lock().expect("goal requests");
+    let requests = native
+        .goals
+        .requests
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(requests.len(), 1);
     assert!(
         requests

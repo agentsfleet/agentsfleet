@@ -1,4 +1,4 @@
-//! The lease path logs usage and returns; the billing relay is the only thing
+//! The run path logs usage and returns; the billing relay is the only thing
 //! that moves the money.
 //!
 //! Each test takes a private database, because a relay pass settles every
@@ -20,7 +20,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::report::RenewRequest;
 use af_wire::usage::{RequestLines, RequestUsage};
 use afd_billing::ledger::{LedgerBiller, log_lines};
-use afd_fleet::lease::billing_sweep::sweep;
+use afd_fleet::run::billing_sweep::sweep;
 use sqlx::Connection as _;
 
 use crate::integration_billing_sweep::settlement;
@@ -29,7 +29,7 @@ use crate::report_seed::{DEEP_POOL, Held, held_in};
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
 
-/// `(lines, unsettled lines, charged nanos)` logged for one lease.
+/// `(lines, unsettled lines, charged nanos)` logged for one run.
 const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL), \
      COALESCE(sum(charged_nanos), 0)::BIGINT FROM billing.usage_lines WHERE work_id = $1";
 
@@ -50,10 +50,10 @@ fn biller(held: &Held) -> LedgerBiller {
     )
 }
 
-/// `held`'s lease's lines, unsettled lines and total charge.
+/// `held`'s run's lines, unsettled lines and total charge.
 async fn lines(held: &Held) -> (i64, i64, i64) {
     sqlx::query_as(LINES)
-        .bind(&held.lease_key)
+        .bind(&held.run_key)
         .fetch_one(
             &mut *held
                 .fixtures
@@ -97,7 +97,7 @@ async fn report_returns_while_the_wallet_row_is_locked() {
     )
     .await
     .expect("the report returns while the wallet row is held")
-    .expect("the report settles the lease");
+    .expect("the report settles the run");
     let (logged, unsettled, charged) = lines(&held).await;
     assert!(logged > 0, "the report logs its runtime line");
     assert_eq!(unsettled, logged, "the report charges nothing itself");
@@ -142,12 +142,12 @@ async fn a_renewal_logs_its_slice_and_leaves_it_unsettled() {
     plane
         .renew(
             &held.runner,
-            &held.issued.lease_id,
+            &held.issued.run_id,
             RenewRequest { requests },
             held.now,
         )
         .await
-        .expect("a funded lease renews");
+        .expect("a funded run renews");
 
     let (logged, unsettled, charged) = lines(&held).await;
     assert!(logged > 0, "the renewal logs the request line");
@@ -159,11 +159,11 @@ async fn a_renewal_logs_its_slice_and_leaves_it_unsettled() {
     held.fixtures.cleanup().await;
 }
 
-/// With no wait, one pass settles a reported lease's lines, and a second pass
+/// With no wait, one pass settles a reported run's lines, and a second pass
 /// finds nothing.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn one_pass_settles_a_reported_lease() {
+async fn one_pass_settles_a_reported_run() {
     let held = isolated().await;
     let database = &held.fixtures.database;
     let plane = held.fixtures.plane();
@@ -176,7 +176,7 @@ async fn one_pass_settles_a_reported_lease() {
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
-        .expect("the report settles the lease");
+        .expect("the report settles the run");
 
     let swept = sweep(database, &biller(&held), &Entropy::new(), held.now, None)
         .await
@@ -196,7 +196,7 @@ async fn one_pass_settles_a_reported_lease() {
     held.fixtures.cleanup().await;
 }
 
-/// Logs one line on `held`'s lease, as its report would, and answers what it
+/// Logs one line on `held`'s run, as its report would, and answers what it
 /// charges.
 async fn log_one_line(held: &Held) -> i64 {
     let work = settlement(held).await;

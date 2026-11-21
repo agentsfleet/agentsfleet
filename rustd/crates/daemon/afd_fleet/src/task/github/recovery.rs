@@ -4,7 +4,7 @@ use super::{BoundPr, Github, http::Session};
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal},
+    task::{TaskRefusal, TaskRun},
 };
 use af_core::{clock, id::Uuid7};
 use af_crypto::{
@@ -51,12 +51,12 @@ pub(in crate::task) struct Opened<'a> {
 impl Github {
     pub(in crate::task) async fn seal_recovery(
         &self,
-        lease: TaskLease<'_>,
+        run: TaskRun<'_>,
         workspace: &Uuid7,
         effect: &Uuid7,
         target: &BoundPr,
     ) -> Result<Sealed> {
-        let session = self.read_session(lease, &target.repository).await?;
+        let session = self.read_session(run, &target.repository).await?;
         let credential = session.read_credential()?;
         if session.installation_id != target.installation_id
             || credential.expires_at <= clock::now()

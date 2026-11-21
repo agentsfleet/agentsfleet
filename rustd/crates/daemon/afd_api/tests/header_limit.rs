@@ -1,6 +1,6 @@
-//! Dimension 5.3 — a head that does not fit is refused, not read without bound.
+//! A head that does not fit is refused, not read without bound.
 //!
-//! This is the one §5 dimension that cannot be tested through a `Service`. The
+//! This is the one HTTP bound that cannot be tested through a `Service`. The
 //! limit is enforced while hyper is PARSING, before a request value exists to
 //! hand to a tower stack at all, so the only tier that can observe it is a real
 //! socket carrying real bytes. Everything here is written by hand onto a

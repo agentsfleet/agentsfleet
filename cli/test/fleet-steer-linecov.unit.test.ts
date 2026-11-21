@@ -17,16 +17,16 @@ import { describe, expect, test, setSystemTime } from "bun:test";
 import { Effect, Exit } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { KIND_TURN_COMPLETE } from "../src/commands/fleet/steer-turns.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
 import {
   FLEET_ID,
-  EVENT_ID,
+  TURN_ID,
   POST,
   SINGLE_MESSAGE,
-  postedEvent,
+  postedTurn,
   streamFrom,
   nullOutput,
   makeRecorder,
@@ -50,9 +50,9 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
   test("an SSE transport error is rendered as the recovered terminal status, not as sse_error", async () => {
     const rec = makeRecorder();
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (isPost(input)) return postedEvent<T>();
+      if (isPost(input)) return postedTurn<T>();
       // Recovery poll finds the event already PROCESSED.
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -67,7 +67,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     // the sse_error render arm was bypassed entirely.
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.requests.some((r) => !isPost(r))).toBe(true);
-    expect(rec.stdout.join("\n")).toContain(`${EVENT_ID} ${EVENT_STATUS.PROCESSED}`);
+    expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
     expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
   });
 
@@ -75,7 +75,7 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
     const rec = makeRecorder();
     let firstPoll = true;
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (isPost(input)) return postedEvent<T>();
+      if (isPost(input)) return postedTurn<T>();
       if (firstPoll) {
         firstPoll = false;
         setSystemTime(Date.now() + 120_000); // jump past the 60s poll deadline
@@ -108,17 +108,17 @@ describe("steer — sse_error never renders because the poll overwrites it", () 
 describe("steer — onTurnError classifies CliError turn failures via the _tag arm", () => {
   test("a failing REPL turn renders the original CliError, never a synthesized UnexpectedError", async () => {
     const rec = makeRecorder();
-    // First POST omits event_id → steerTurnEffect fails with a ServerError
+    // First POST omits turn_id → steerTurnEffect fails with a ServerError
     // (a tagged CliError). runTurn throws exitToCliError(exit) → onTurnError
     // sees a `_tag`-bearing cause → renderCliError prints its detail.
     let postCount = 0;
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (isPost(input)) {
         postCount += 1;
-        if (postCount === 1) return {} as T; // no event_id → ServerError
-        return postedEvent<T>();
+        if (postCount === 1) return {} as T; // no turn_id → ServerError
+        return postedTurn<T>();
       }
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -126,7 +126,7 @@ describe("steer — onTurnError classifies CliError turn failures via the _tag a
         stdin: streamFrom(["first\nsecond\n"], false),
         stdout: nullOutput(),
         streamGet: eventStream([
-          { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+          { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } },
         ]),
         signalSource: new ReplSignalEmitter(),
       }).pipe(Effect.provide(makeLayer(rec, httpReply))),
@@ -137,7 +137,7 @@ describe("steer — onTurnError classifies CliError turn failures via the _tag a
     // The rendered error is the genuine ServerError detail — proof the _tag
     // true arm fired, not the UnexpectedError else arm.
     const renderedErrors = rec.stderr.join("\n");
-    expect(renderedErrors).toContain("messages response missing event_id");
+    expect(renderedErrors).toContain("messages response missing turn_id");
     expect(renderedErrors).not.toContain("report this with the command you ran");
     // Second turn still posted + completed.
     expect(rec.requests.filter(isPost)).toHaveLength(2);
@@ -148,8 +148,8 @@ describe("steer — single-shot SSE error path is shielded by the recovery poll"
   test("a silent stream plus a recovering poll renders the terminal status without an error", async () => {
     const rec = makeRecorder();
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (isPost(input)) return postedEvent<T>();
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      if (isPost(input)) return postedTurn<T>();
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -161,7 +161,7 @@ describe("steer — single-shot SSE error path is shielded by the recovery poll"
     );
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.stdout.join("\n")).toContain(`${EVENT_ID} ${EVENT_STATUS.PROCESSED}`);
+    expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
     expect(rec.stderr.join("\n")).not.toContain(SSE_ERROR_RENDER_PREFIX);
   });
 });

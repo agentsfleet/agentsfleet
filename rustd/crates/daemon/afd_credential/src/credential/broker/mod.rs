@@ -78,7 +78,7 @@ const ROTATING_FIELDS: [&str; 3] = [
 /// What one runner is asking for.
 #[derive(Debug, Clone, Copy)]
 pub struct Ask<'a> {
-    /// The workspace the lease resolved to. Never taken from the wire.
+    /// The workspace the run resolved to. Never taken from the wire.
     pub workspace_id: &'a Uuid7,
     /// The stored handle, as the vault holds it.
     pub handle: &'a Value,

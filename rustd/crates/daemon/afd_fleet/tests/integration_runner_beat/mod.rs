@@ -1,4 +1,4 @@
-//! §1 against a live datastore — what a BEAT moves.
+//! What a BEAT moves.
 //!
 //! The sibling of `integration_runner_row.rs`, which proves what enrolment
 //! WRITES. The two were one file until it outgrew RULE FLL's cap, and the seam

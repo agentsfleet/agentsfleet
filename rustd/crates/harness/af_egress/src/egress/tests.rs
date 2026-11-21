@@ -5,7 +5,7 @@ use super::Egress;
 use crate::admission::{Draft, Placement};
 use crate::error::raise;
 use crate::fixture::{
-    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, LEASE_ID, PUSHOVER_TOKEN, PUSHOVER_USER, START, Shown,
+    BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, RUN_ID, START, Shown,
     TOKEN_LIFETIME, policy, shown,
 };
 use crate::testing::CountingMint;
@@ -34,7 +34,7 @@ async fn prepare(draft: Draft) -> Result<String, Shown> {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
-    let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
+    let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);
     egress
         .prepare(draft)
         .await
@@ -131,7 +131,7 @@ async fn should_print_no_secret_in_its_debug_after_a_mint() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
-    let mut egress = Egress::new(LEASE_ID, &policy, &mint, &clock);
+    let mut egress = Egress::new(RUN_ID, &policy, &mint, &clock);
     let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
     let prepared = egress.prepare(post(REFS, &named)).await;
 

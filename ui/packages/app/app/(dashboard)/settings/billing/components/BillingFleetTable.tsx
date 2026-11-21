@@ -5,7 +5,7 @@ import {DataTable, List, ListItem, type DataTableColumn} from "@agentsfleet/desi
 import {useModelLabels} from "@/components/domain/models/ModelLabels";
 import {modelLabel, type ModelLabels} from "@/lib/model-labels";
 import {formatBalance} from "@/lib/money";
-import {formatCount} from "@/lib/events/run-figures-format";
+import {formatCount} from "@/lib/turns/run-figures-format";
 
 /** Only the named table waits for labels; totals and daily bars need just the report. */
 export function BillingFleetTable({rows}: {rows: BillingFleetBreakdown[]}) {

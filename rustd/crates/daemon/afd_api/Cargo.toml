@@ -73,7 +73,7 @@ http.workspace = true
 # executor HTTP/2 drives its own per-connection tasks on. A library dependency,
 # not only the dev one below: the connection POLICY lives with the route table.
 hyper-util.workspace = true
-# One warn per shed. §6 attaches the subscriber; until then this goes nowhere,
+# One warn per shed. The daemon attaches the subscriber; until then this goes nowhere,
 # which is the correct default for a library.
 tracing.workspace = true
 
@@ -81,6 +81,8 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The captured GitHub deliveries the webhook suites drive.
+afd_api_ingress = { workspace = true, features = ["test-util"] }
 afd_gateway.workspace = true
 afd_gate.workspace = true
 af_stream.workspace = true
@@ -89,20 +91,22 @@ tokio-util.workspace = true
 # unreachable one the harness builds every other store over.
 afd_bus = { workspace = true, features = ["test-util"] }
 garde.workspace = true
+# The text ceiling the ceiling suite fills, through the served routes.
+af_validate.workspace = true
 af_context.workspace = true
 async-trait.workspace = true
 # The harness's frozen instant and every stamp a fixture writes.
 jiff.workspace = true
 hex.workspace = true
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The harness stubs the runner plane, whose request and report types are the
 # shared protocol.
 af_wire.workspace = true
 # The harness's invite mailer, the production one over the fixture vault; its
 # test-util seam shortens the send deadline for the stalled-relay case.
 afd_mail = { workspace = true, features = ["test-util"] }
-# The admission ledger every producer seam in the harness writes through.
-afd_admission = { workspace = true, features = ["test-util"] }
+# The turns ledger every producer seam in the harness writes through.
+afd_turns = { workspace = true, features = ["test-util"] }
 # The signup fixture signs a Svix delivery, whose tag is base64 over the
 # HMAC. Encoding it is the only way the suite can present a signature the
 # vendored verifier accepts, which is what makes a passing case a round trip.
@@ -168,9 +172,8 @@ hyper.workspace = true
 # fleets through `FleetSeed`.
 afd_db = { workspace = true, features = ["test-util"] }
 # A library dependency too, but named again here for its feature: the thread
-# handler's page arithmetic is decided over `EventDetailRow`, which is
+# handler's page arithmetic is decided over `TurnDetailRow`, which is
 # `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.
-afd_events = { workspace = true, features = ["test-util"] }
 # Live-router integration tests resolve both operator and runner credentials
 # through the production Postgres directory.
 afd_state.workspace = true

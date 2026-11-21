@@ -5,15 +5,15 @@ use af_core::id::Uuid7;
 /// Exact checkpoint ownership and coverage required by an execution report.
 ///
 /// This predicate reads on the caller's already-authorized report transaction;
-/// it does not grant lease custody or settle the task.
+/// it does not grant run custody or settle the task.
 #[derive(Debug)]
 pub struct CheckpointGuard<'a> {
     /// Recovery pointer supplied by the report.
     pub checkpoint_id: Option<&'a str>,
     /// Native task identity.
     pub task_id: &'a Uuid7,
-    /// Reporting lease identity.
-    pub lease_id: &'a Uuid7,
+    /// Reporting run identity.
+    pub run_id: &'a Uuid7,
     /// Current task generation.
     pub generation: i64,
     /// Current stop generation.
@@ -41,7 +41,7 @@ impl CheckpointGuard<'_> {
                     .transpose()?,
             )
             .bind(self.task_id)
-            .bind(self.lease_id)
+            .bind(self.run_id)
             .bind(self.generation)
             .bind(self.stop_generation)
             .bind(self.revision_id)

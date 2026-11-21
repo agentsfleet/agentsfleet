@@ -135,15 +135,15 @@ async fn capture(
     );
     request.upload_budget_bytes = 20;
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request))
+        .plan_checkpoint(case.run(), &valid(request))
         .await
         .expect("capture");
     let objects = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(CheckpointObjectsInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id.clone(),
                 objects: vec![CheckpointPlaintext {

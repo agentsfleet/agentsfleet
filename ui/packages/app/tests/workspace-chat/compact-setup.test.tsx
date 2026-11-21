@@ -65,11 +65,11 @@ it("anchors saved setup to the last assistant in an older chat and handles histo
   const older = {...MESSAGE, text: "Earlier private request"};
   const reply = {...MESSAGE, role: "assistant" as const, text: "Saved proposal from earlier chat"};
   const view: DraftView = {...client.getSnapshot(), fleet: FLEET, messages: [{...MESSAGE, text: HEY}],
-    activities: [{event_id: "unrelated", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z", request_json: "{"}],
-    previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older]}]};
+    activities: [{turn_id: "unrelated", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z", request_json: "{"}],
+    previousDrafts: [{id: "earlier-chat", messages: [older]}]};
   const page = render(conversation(view));
   expect(before(screen.getByRole("region", {name: SUMMARY}), screen.getByText(HEY))).toBe(true);
-  page.rerender(conversation({...view, previousDrafts: [{id: "earlier-chat", cancelledThrough: "0", messages: [older, reply]}]}));
+  page.rerender(conversation({...view, previousDrafts: [{id: "earlier-chat", messages: [older, reply]}]}));
   const summary = screen.getByRole("region", {name: SUMMARY});
   expect(before(screen.getByText(reply.text), summary)).toBe(true);
   expect(before(summary, screen.getByText(HEY))).toBe(true);
@@ -128,11 +128,11 @@ it("does not hide an unconfirmed first run behind a saved-success summary", () =
 // Value: protects=one saved acknowledgement per revision; fails_when=unrelated or malformed activity suppresses it or a saved receipt duplicates it;
 // why_new=existing anchoring tests supplied custom setup children rather than FleetSetup; seam=none; no_claim=receipt durability.
 it("suppresses the fallback acknowledgement only for a recorded setup receipt of the current revision", () => {
-  const activity = {event_id: "setup:current", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z"};
+  const activity = {turn_id: "setup:current", event_type: "activity", status: "recorded", created_at: "1970-01-01T00:00:01Z"};
   const snapshot = {...client.getSnapshot(), draft: null, fleet: {...FLEET, status: "active", setup: {state: "ready", checks: []}}};
   const page = render(<FleetSetup client={client} view={snapshot} workspace={WORKSPACE} />);
   const unrelated = ["{", JSON.stringify({kind: "access_saved", service: "fly"}), JSON.stringify({kind: "setup_saved", revision: "0"})];
-  page.rerender(<FleetSetup client={client} view={{...snapshot, activities: unrelated.map((request_json, index) => ({...activity, event_id: String(index), request_json}))}} workspace={WORKSPACE} />);
+  page.rerender(<FleetSetup client={client} view={{...snapshot, activities: unrelated.map((request_json, index) => ({...activity, turn_id: String(index), request_json}))}} workspace={WORKSPACE} />);
   expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
   for (const kind of ["setup_saved", "setup_ready"]) {
     page.rerender(<FleetSetup client={client} view={{...snapshot, activities: [{...activity, request_json: JSON.stringify({kind, revision: "1"})}]}} workspace={WORKSPACE} />);

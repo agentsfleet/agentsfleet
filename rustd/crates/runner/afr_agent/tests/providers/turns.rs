@@ -1,12 +1,12 @@
-//! One turn streamed straight from the provider a lease connects to, with no
+//! One turn streamed straight from the provider a run connects to, with no
 //! loop above it to stop reading at the first failure: a conversation that
 //! cannot be sent, a call whose arguments are not JSON, an output item the
 //! wire does not model, and the reasoning a turn hands back.
 
-use af_providers::{Call, Chunk, Connect as _, Message, Request};
-use af_wire::activity::StreamTextKind;
+use af_providers::Connect as _;
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::StreamExt as _;
+use guffbolt::{Call, Chunk, Message, Request, TextKind};
 use serde_json::{Value, json};
 
 mod replay;
@@ -14,7 +14,7 @@ mod usage_failure;
 
 use super::ends::{SIGNATURE, THOUGHT};
 use super::support::wires::{self, Wire};
-use super::support::{Fake, RUN_BUDGET, Reply, connector, lease};
+use super::support::{Fake, RUN_BUDGET, Reply, connector, payload};
 use super::{ANSWER, CALL_ID};
 
 /// The model every turn here names.
@@ -33,8 +33,8 @@ async fn streamed(
     wire: Wire,
     messages: &[Message],
 ) -> Vec<af_providers::Result<Chunk>> {
-    let leased = lease(&wire.provider(), &[], QUESTION);
-    let provider = connector(fake).connect(&leased).unwrap();
+    let held = payload(&wire.provider(), &[], QUESTION);
+    let provider = connector(fake).connect(&held).unwrap();
     let request = Request {
         model: MODEL,
         instructions: "Read the run.",
@@ -122,7 +122,7 @@ async fn an_output_item_the_wire_does_not_model_shows_nothing() {
     let streamed = chunks(streamed(&fake, wire, &asked()).await);
 
     let shown = Chunk::Text {
-        kind: StreamTextKind::Answer,
+        kind: TextKind::Answer,
         text: ANSWER.to_owned(),
     };
     assert!(
@@ -147,14 +147,24 @@ async fn a_turn_hands_back_its_signed_thinking_and_a_bare_answer_hands_back_noth
     let thought = chunks(streamed(&fake, wire, &asked()).await);
     let answered = chunks(streamed(&fake, wire, &asked()).await);
 
+    // Both turns are recorded whole; only the thinking turn's record holds
+    // anything beyond its text for the provider to read back.
     let nothing_back = |turn: &[Chunk]| match turn.last() {
-        Some(Chunk::End(end)) => Some(end.replay.is_empty()),
+        Some(Chunk::End(end)) => Some(only_text(end.replay.record())),
         _ => None,
     };
     assert_eq!(
         (nothing_back(&thought), nothing_back(&answered)),
         (Some(false), Some(true))
     );
+}
+
+/// Whether a turn's record, rig's assistant message, holds text alone: no
+/// reasoning, signature or provider item for the next request to hand back.
+fn only_text(record: &Value) -> bool {
+    record["content"]
+        .as_array()
+        .is_some_and(|parts| parts.iter().all(|part| part["type"] == "text"))
 }
 
 /// Check the assistant payload itself, rather than any copy in user history.
@@ -199,7 +209,7 @@ async fn edited_assistant_text_never_restores_the_original_provider_item() {
         let first = chunks(streamed(&fake, wire, &asked()).await);
         assert!(
             first.iter().any(|chunk| matches!(chunk,
-                Chunk::Text { kind: StreamTextKind::Answer, text } if text == ORIGINAL)),
+                Chunk::Text { kind: TextKind::Answer, text } if text == ORIGINAL)),
             "{wire:?}: the first turn must actually yield the original provider text"
         );
         let Some(Chunk::End(end)) = first.into_iter().last() else {

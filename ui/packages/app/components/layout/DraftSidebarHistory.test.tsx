@@ -44,7 +44,7 @@ it.each([false, true])("draft_sidebar_title_and_delete retain navigation typogra
 
 it("keeps loaded chats visible while a page is pending and after it fails", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
   const next = Promise.withResolvers<Response>();
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -160,7 +160,7 @@ it("keeps pending and failed states accessible without visible status icons", ()
   expect(screen.getByText("Waiting for a result").classList.contains("sr-only")).toBe(true);
   expect(link.querySelector("svg")).toBeTruthy();
   view.rerender(tree({...initial, messages: [{...MESSAGE, role: "assistant", state: "failed",
-    failure: {reason: "provider_usage_unknown", error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}]}));
+    failure: {reason: "provider_usage_unknown", error_code: "UZ-SETUP-015", recovery_action: "retry_message"}}]}));
   expect(screen.getByText("Setup message failed")).toBeTruthy();
   expect(link.querySelector("svg")).toBeTruthy();
   fireEvent.focus(link);
@@ -201,7 +201,7 @@ it("removes unfinished history when leaving chat and retains completed cards wit
 });
 
 it("deduplicates the current draft and preserves the other loaded titles", () => {
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
   const linked = {...DRAFT, linked_fleet_id: FLEET_ID};
   const cards = [{...card, linked_fleet_id: FLEET_ID}, {...card, id: "another-chat", title: "Another setup"}];
   const view = render(tree({...initial, draft: linked, cards}));
@@ -221,7 +221,7 @@ function LiveBridge({current}: {current: DraftClient}) {
 
 it("loads the next chat page on demand and keeps both titles visible", async () => {
   const current = new DraftClient({account: "account", workspace: WORKSPACE, subject: "reader"});
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
   const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = (typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     if (url.includes("/models?")) return response({items: [], next_cursor: null});
@@ -241,7 +241,7 @@ it("loads the next chat page on demand and keeps both titles visible", async () 
 });
 
 it("keeps the selected second chat in place and exposes its setup version", () => {
-  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const card = {...DRAFT, linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
   render(tree({...initial, cards: [{...card, id: NEXT_DRAFT_ID, title: "First setup"}, card]}));
   expect(screen.getAllByRole("link").map((link) => link.getAttribute("aria-label"))).toEqual(["First setup", DRAFT.title]);
   expect(screen.getByRole("link", {name: DRAFT.title}).getAttribute("aria-describedby")).toBe(`${DRAFT.id}-state`);
@@ -254,7 +254,7 @@ it("requires confirmation and keeps a chat available after a refused deletion", 
     render(tree(initial));
     fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
     const dialog = await screen.findByRole("alertdialog", {name: "Delete setup chat?"});
-    expect(dialog.textContent).toContain("Saved fleets and published plugin versions stay available");
+    expect(dialog.textContent).toContain("Saved fleets stay available");
     fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
     expect(fetcher).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", {name: `Delete chat: ${DRAFT.title}`}));
@@ -269,7 +269,7 @@ it("requires confirmation and keeps a chat available after a refused deletion", 
 });
 
 it("deletes another chat without navigating away from the selected conversation", async () => {
-  const other = {...DRAFT, id: NEXT_DRAFT_ID, title: "Other setup", linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null, publication_revision: null};
+  const other = {...DRAFT, id: NEXT_DRAFT_ID, title: "Other setup", linked_fleet_id: null, updated_at: "1970-01-01T00:00:00Z", expires_at: null, candidate_revision: null, setup_revision: null};
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, 204));
   try {
     render(tree({...initial, cards: [other]}));

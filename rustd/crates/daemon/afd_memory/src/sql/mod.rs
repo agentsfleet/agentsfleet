@@ -28,8 +28,8 @@ pub(crate) const UPSERT_ENTRY: &str = include_str!("upsert_entry.sql");
 ///
 /// `ORDER BY (category = $3) DESC` sorts the protected category first, so
 /// `OFFSET $2` drops the coldest non-core rows and reaches a `core` row only
-/// when no other remains. `$3` is the category hydration pins on, which is
-/// what stops eviction deleting what hydration promises.
+/// when no other remains. `$3` is the category a load pins on, which is
+/// what stops eviction deleting what a load promises.
 ///
 /// `$1` fleet, `$2` the cap, `$3` the protected category.
 pub(crate) const EVICT_PAST_CAP: &str = include_str!("evict_past_cap.sql");
@@ -39,7 +39,7 @@ pub(crate) const EVICT_PAST_CAP: &str = include_str!("evict_past_cap.sql");
 /// `$1` fleet, `$2` category, `$3` cutoff.
 pub(crate) const DELETE_AGED_IN_CATEGORY: &str = include_str!("delete_aged_in_category.sql");
 
-/// A fleet's whole memory set, newest first — hydration's input, unbounded
+/// A fleet's whole memory set, newest first — the load's input, unbounded
 /// because the window spends the budget, not the statement.
 ///
 /// `$1` fleet.

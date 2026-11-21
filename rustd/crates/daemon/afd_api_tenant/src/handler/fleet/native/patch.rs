@@ -7,9 +7,9 @@ use crate::{
         fleet::detail::{FleetPath, parse_fleet_id},
         input::expected,
     },
-    services::Services,
+    services::TenantPlane,
 };
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     body::Bytes,
     extract::{Path, State},
@@ -36,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn change<D: Services>(
+pub(crate) async fn change<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -48,7 +48,7 @@ pub(crate) async fn change<D: Services>(
     let request = input::patch(&body)?;
     let expected = expected(&headers)?.ok_or_else(|| {
         Refusal::coded(
-            af_core::error_code::AUTHORING_PRECONDITION,
+            af_core::error_code::SETUP_PRECONDITION,
             "Send the current fleet If-Match tag",
         )
     })?;
@@ -63,7 +63,7 @@ pub(crate) async fn change<D: Services>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     if matches!(
         request.status,
         Some(afd_api_wire::fleet::PatchStatus::Active)

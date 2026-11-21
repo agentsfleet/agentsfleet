@@ -4,9 +4,9 @@ use super::{Case, Checked, files, storage::Files};
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId,
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+        TurnCheckpointResponse as Response,
     },
     task::{CheckpointObjectStatus, CheckpointPlaintext},
 };
@@ -25,7 +25,7 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     let (plan, history) = files::begin(&files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id.clone(),
-        pin_id: TurnId(plan.pin.id.clone()),
+        pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
     let tasks = tasks(&files);
     race(&files, &tasks, &object, &reference).await?;
@@ -41,8 +41,8 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     );
     assert_storage(&files, &object, true).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp()-interval '8 days',updated_at=now() WHERE id=$1")
-        .bind(&files.case.acquired.event_id).execute(&mut *connection).await?;
+    sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp()-interval '8 days',updated_at=now() WHERE id=$1")
+        .bind(&files.case.acquired.turn_id).execute(&mut *connection).await?;
     drop(connection);
     let mut cursor = CheckpointMaintenanceCursor::default();
     let removed = tasks.maintain_checkpoints(&mut cursor).await?;
@@ -54,21 +54,21 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
 }
 
 fn tasks(files: &Files) -> Tasks {
-    let admissions = afd_admission::Admissions::new(
+    let turns = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let mut dependencies = TaskDependencies::from(&files.case.fixtures.plane());
     dependencies.storage = Some(files.storage.clone());
-    Tasks::new(files.case.leases.clone(), admissions, dependencies)
+    Tasks::new(files.case.runs.clone(), turns, dependencies)
 }
 
 async fn orphan(files: &Files) -> Checked<Uuid7> {
     let (plan, _) = files::begin(files).await?;
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id,
-        pin_id: TurnId(plan.pin.id),
+        pin_id: CheckpointOperationId(plan.pin.id),
     };
     let object = files::authenticated_chunk(files, &reference).await?;
     files

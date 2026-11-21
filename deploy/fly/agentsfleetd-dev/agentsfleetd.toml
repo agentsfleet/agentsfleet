@@ -45,11 +45,10 @@ max_buffered_bytes = 16_777_216
 
 # Work offers, reports and activity share the data budget.
 [runner.stream.data]
-max_buffered_bytes = 50_331_648
+max_buffered_bytes = 67_108_864
 
-[runner.lease]
+[runner.run]
 ttl_seconds = 35
-max_runtime_seconds = 43_200
 
 [runner.health]
 heartbeat_interval_seconds = 10
@@ -64,7 +63,7 @@ resume_from_checkpoint = false
 
 [runner.scheduling]
 missed_wake_probe_seconds = 5
-max_concurrent_recovery_claims = 8
+max_concurrent_recovery_assignments = 8
 
 [maintenance]
 startup_spread_ms = 5_000
@@ -79,7 +78,7 @@ interval_seconds = 2
 [maintenance.fleet_census]
 interval_seconds = 30
 
-[maintenance.authoring_cleanup]
+[maintenance.setup_cleanup]
 interval_seconds = 10
 
 [maintenance.billing]
@@ -95,34 +94,15 @@ pass_timeout_seconds = 30
 interval_seconds = 300
 pass_timeout_seconds = 240
 
-[maintenance.runner_history]
-idle_interval_seconds = 3_600
-backlog_interval_seconds = 60
-keep_days = 30
-batch_size = 1_000
-max_batches = 8
-
 [maintenance.outbound_delivery]
 interval_seconds = 30
 
 # Inline vendor sends per answer, the first included; once exhausted, a later
-# claim of the durable obligation retries the delivery.
+# claim of the durable delivery retries it.
 [outbound.retries]
 max_attempts = 3
 initial_backoff_ms = 200
 max_backoff_ms = 800
-
-# Provider connection and stream inactivity limits for authoring requests this
-# daemon sends; earlier turn deadlines win. Fleet runs use the runner's profile.
-[inference]
-connect_timeout_seconds = 10
-stream_idle_timeout_seconds = 300
-
-[authoring.turn]
-max_model_calls = 8
-max_wall_seconds = 300
-max_proposal_corrections = 1
-provider_timeout_seconds = 300
 
 [fleet.tasks]
 max_unfinished_per_fleet = 16
@@ -138,7 +118,7 @@ max_authored_question_bytes = 1_024
 model_budget_nanodollars = 5_000_000_000
 wall_seconds = 604_800
 running_seconds = 7_200
-max_leases = 12
+max_runs = 12
 max_publication_attempts = 8
 max_decision_calls = 128
 max_fallback_reads = 24

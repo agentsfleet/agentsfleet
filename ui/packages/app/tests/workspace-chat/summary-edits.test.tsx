@@ -111,7 +111,7 @@ it("retries source materialization with its original identity after a lost respo
   const base = fixture.fetch.getMockImplementation()!;
   let lost = true;
   fixture.fetch.mockImplementation(async (input, init) => {
-    if (lost && init?.method === "POST") {lost = false;await base(input, init);throw new TypeError("lost admission response");}
+    if (lost && init?.method === "POST") {lost = false;await base(input, init);throw new TypeError("lost turn response");}
     return base(input, init);
   });
   render(<LiveSummary />);fireEvent.click(screen.getByRole("button", {name: "Manage repositories"}));

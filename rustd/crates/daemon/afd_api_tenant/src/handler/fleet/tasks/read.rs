@@ -17,7 +17,7 @@ use super::input::{self, TaskPath};
 use crate::{
     auth::WorkspaceContext,
     handler::fleet::detail::{FleetPath, parse_fleet_id},
-    services::Services,
+    services::TenantPlane,
 };
 
 const EVENT_READ: &str = "fleet_task_read_failed";
@@ -35,7 +35,7 @@ const EVENT_READ: &str = "fleet_task_read_failed";
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -72,7 +72,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn one<D: Services>(
+pub(crate) async fn one<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(TaskPath { fleet_id, task_id }): Path<TaskPath>,

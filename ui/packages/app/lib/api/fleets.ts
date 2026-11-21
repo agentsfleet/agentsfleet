@@ -89,12 +89,12 @@ export async function deleteFleet(
 
 // POST /v1/workspaces/{ws}/fleets/{id}/messages
 // Submits a steer message — the user's natural-language nudge during a
-// running stage or to start a new one. Returns the synthesized event_id, and
+// running stage or to start a new one. Returns the synthesized turn_id, and
 // whether it answers an earlier send, so the caller can reconcile its
-// optimistic UI frame against the live SSE stream's matching EVENT_RECEIVED —
-// or read a replayed event that ran before the page saw it. The body carries the caller's
+// optimistic UI frame against the live SSE stream's matching TURN_RECEIVED —
+// or read a replayed turn that ran before the page saw it. The body carries the caller's
 // operation id, so the policy's socket-drop replay (`retry.ts`) re-sends the
-// same operation and the daemon answers the first admission.
+// same operation and the daemon answers the first turn.
 export async function steerFleet(
   workspaceId: string,
   fleetId: string,

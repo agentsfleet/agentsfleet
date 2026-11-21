@@ -94,11 +94,11 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         now: Timestamp,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
-    /// [`Self::create`] for a fleet, under the lease `guard` proves on the
+    /// [`Self::create`] for a fleet, under the run `guard` proves on the
     /// write's own transaction.
     ///
     /// # Errors
-    /// As [`Self::create`]. A lease that no longer holds is
+    /// As [`Self::create`]. A run that no longer holds is
     /// `Ok(Err(Refused::Unheld))`, and nothing is written.
     fn create_guarded(
         &self,
@@ -108,11 +108,11 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         guard: &dyn Precondition,
     ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send;
 
-    /// [`Self::change`] for a fleet, under the lease `guard` proves on the
+    /// [`Self::change`] for a fleet, under the run `guard` proves on the
     /// write's own transaction.
     ///
     /// # Errors
-    /// As [`Self::change`]. A lease that no longer holds is
+    /// As [`Self::change`]. A run that no longer holds is
     /// `Ok(Err(Refused::Unheld))`, and nothing is written.
     fn change_guarded(
         &self,

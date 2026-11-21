@@ -25,7 +25,7 @@
 //! is the isolation that does the work; a database per test was belt over
 //! braces, and the braces are the ones holding.
 //!
-//! **The obligation it puts on a test:** assert on rows you MINTED, never on a
+//! **The delivery it puts on a test:** assert on rows you MINTED, never on a
 //! table's whole contents. A count must carry a workspace or a tenant in its
 //! predicate. `SELECT count(*) FROM …` with no `WHERE` is a test that will pass
 //! alone and fail beside its neighbours.
@@ -57,11 +57,11 @@ pub const PING_AFTER_IDLE: std::time::Duration = crate::pool::PING_AFTER_IDLE;
 mod billing;
 mod connector;
 mod fleet;
-mod fleet_event;
 mod handle;
 mod identity;
 mod platform_default;
 mod platform_model;
+mod turn_seed;
 // A trigger that refuses one fixture fleet's chosen updates, removed on drop.
 pub mod refusal;
 mod rows;
@@ -76,12 +76,12 @@ pub use self::fleet::{
     FIXTURE_SETUP_DEFINITION, FIXTURE_SETUP_DIGEST, FIXTURE_SETUP_MODEL_REF,
     FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
 };
-pub use self::fleet_event::{EventKind, FleetEventSeed};
 pub use self::identity::{ApiKeySeed, TenantSeed, UserSeed, WorkspaceSeed};
 pub use self::platform_default::{DefaultSeed, PlatformDefault};
 pub use self::platform_model::ModelSeed;
 pub use self::rows::OwnedRows;
 pub use self::runner::{RunnerPolicy, RunnerSeed};
+pub use self::turn_seed::{SEEDED_TURN, TurnFacts, TurnSeed};
 pub use self::unreachable::unreachable_db;
 
 /// The fixed instant fixtures stamp on the rows they seed: one millisecond past
@@ -327,11 +327,8 @@ fn knob(name: &str) -> String {
     })
 }
 
-/// Installs a subscriber so event macros actually run.
-///
-/// Re-exported for the live suites that already reach it through this seed
-/// home; the one implementation is `af_core`'s.
-pub use af_core::test_util::trace::install_subscriber;
+// The one subscriber install, `af_core`'s, so event macros actually run.
+use af_core::test_util::trace::install_subscriber;
 
 #[cfg(test)]
 mod tests;

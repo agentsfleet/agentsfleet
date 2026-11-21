@@ -12,11 +12,11 @@ use af_crypto::{
     secret::{Kek, SecretBytes},
 };
 use af_wire::{
-    lease::{TurnCheckpointAction, TurnCheckpointResponse},
+    run::{TurnCheckpointAction, TurnCheckpointResponse},
     task::CheckpointObject,
 };
 use afd_fleet::{
-    lease::turn_checkpoint::TurnCheckpoints,
+    run::turn_checkpoint::TurnCheckpoints,
     task::storage::{CheckpointStorageConfig, R2CheckpointStore},
 };
 use afd_vault::{SecretBody, SecretName};
@@ -80,8 +80,8 @@ impl Files {
         Ok(self
             .store
             .execute(
-                &self.case.leases,
-                self.case.lease(),
+                &self.case.runs,
+                self.case.run(),
                 &valid(command(&self.case, action))?,
             )
             .await?)

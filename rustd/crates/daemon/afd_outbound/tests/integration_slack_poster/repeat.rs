@@ -13,7 +13,7 @@ fn marker(fixture: &Fixture) -> AnswerMarker {
     let job = fixture.job();
     AnswerMarker {
         fleet_id: job.fleet_id.into(),
-        event_id: job.event_id.into(),
+        turn_id: job.turn_id.into(),
         part: None,
     }
 }

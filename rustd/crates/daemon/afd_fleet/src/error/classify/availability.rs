@@ -12,17 +12,17 @@ impl Error {
     /// self-termination ceiling and resets that counter on transport failures
     /// (RULE ECL, and `docs/AUTH.md` §Runner token). A wrapped plane's error
     /// decides for itself whether a reached bound is one, and this table asks
-    /// it: the runner host's capacity lock is where a lease verb waits.
+    /// it: the runner host's capacity lock is where a run verb waits.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.inner.kind {
             ErrorKind::Datastore { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. } => true,
-            ErrorKind::TaskControlAdmission { ref source, .. } => source.is_datastore_unavailable(),
+            ErrorKind::TaskControlTurn { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::TaskMutation { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
-            ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
+            ErrorKind::Setup { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
             ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
@@ -35,7 +35,7 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
@@ -63,14 +63,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -98,13 +96,13 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
@@ -112,7 +110,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -131,14 +129,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -166,13 +162,13 @@ impl Error {
             | ErrorKind::DecisionDeadline { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
@@ -180,7 +176,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -199,14 +195,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -226,8 +220,8 @@ impl Error {
     pub fn is_rejected(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Rejected { .. })
     }
-    /// Whether a lease verb was refused because the fleet moved past the
-    /// lease. The fence logs its own event for it, so a caller that goes on
+    /// Whether a run verb was refused because the fleet moved past the
+    /// run. The fence logs its own event for it, so a caller that goes on
     /// without the write logs nothing more.
     #[must_use]
     pub(crate) fn is_fence_refusal(&self) -> bool {

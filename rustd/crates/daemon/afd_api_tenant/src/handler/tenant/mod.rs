@@ -72,7 +72,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 
 use crate::handler::{Refusal, parameter};
-use crate::services::{Services, WorkspaceOwnership as _};
+use crate::services::{TenantPlane, WorkspaceOwnership as _};
 
 /// A whole list as its one page: every row, the count of them, no cursor.
 ///
@@ -97,7 +97,7 @@ fn one_page<'a, T>(items: Vec<T>) -> afd_api_wire::tenant::PageResponse<'a, T> {
 /// credential earns names what it cannot do HERE, so the api-key verbs and the
 /// billing reads each hand in their sentence rather than sharing one that is
 /// wrong for somebody.
-async fn tenant_of<D: Services>(
+async fn tenant_of<D: TenantPlane>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,
     detail: &'static str,

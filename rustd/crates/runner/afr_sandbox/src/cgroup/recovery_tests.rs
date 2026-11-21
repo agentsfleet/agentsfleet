@@ -2,13 +2,13 @@
 
 use std::fs;
 
-use super::LeaseCgroup;
+use super::RunCgroup;
 use crate::engine::Limits;
 
 #[test]
 fn recovery_quiescence_reads_the_entire_tenant_subtree() -> crate::Result<()> {
     let root = tempfile::tempdir()?;
-    let group = LeaseCgroup::create(root.path(), "recovery-boundary", &Limits::default())?;
+    let group = RunCgroup::create(root.path(), "recovery-boundary", &Limits::default())?;
     // Its parent may contain the resident executor while tenant custody is empty.
     fs::write(
         root.path().join("recovery-boundary/cgroup.events"),

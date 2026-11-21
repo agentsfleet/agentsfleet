@@ -1,21 +1,21 @@
-//! What a write lease for a Slack-requested event can reach: one branch, one
+//! What a write run for a Slack-requested event can reach: one branch, one
 //! draft pull request, and only non-force updates to that same event-owned ref.
 //!
 //! Split from the binding cases beside it. No approval stands between a
-//! channel member's request and a write-bound fleet's lease, so these rules
+//! channel member's request and a write-bound fleet's run, so these rules
 //! are the whole boundary that request meets.
 
 use super::*;
 
-/// The event a Slack-requested lease names its branch after, as the admission
+/// The event a Slack-requested run names its branch after, as the turn
 /// ledger mints one.
 const SLACK_EVENT: &str = "1700000000000-7";
 
-/// Dimension 3.1 — a write lease for a Slack-requested event admits one ref,
+/// A write run for a Slack-requested event admits one ref,
 /// named for that event, and one pull request: from that ref, into the trusted
 /// base, as a draft.
 #[test]
-fn slack_write_lease_admits_one_branch_and_one_draft() {
+fn slack_write_run_admits_one_branch_and_one_draft() {
     let branch = crate::policy::repair::branch_for(SLACK_EVENT);
     assert!(
         branch.starts_with(crate::policy::repair::PREFIX),
@@ -73,14 +73,14 @@ fn slack_write_lease_admits_one_branch_and_one_draft() {
     );
 }
 
-/// Dimension 3.2 — nothing in a Slack-requested write lease reaches a merge, a
+/// Nothing in a Slack-requested write run reaches a merge, a
 /// ready-for-review, a foreign ref update or a deletion.
 ///
 /// The one PATCH is exact and event-owned. What a rule could still get wrong is a path: every
 /// POST is exact, on exactly the five write endpoints, and none reaches
 /// `/graphql`, a merge, or one existing pull request.
 #[test]
-fn slack_write_lease_has_no_merge_or_foreign_ref_update_path() {
+fn slack_write_run_has_no_merge_or_foreign_ref_update_path() {
     let branch = crate::policy::repair::branch_for(SLACK_EVENT);
     let rules = rules(
         &binding(&["acme/widgets"], "write", Some("main")),

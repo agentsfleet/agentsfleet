@@ -11,12 +11,12 @@ mod tasks;
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use afr_agent::{LeaseVerbs as _, ScheduleCall, Unanswered};
+use afr_tools::{RunVerbs as _, ScheduleCall, Unanswered};
 
 use super::FencedVerbs;
 use crate::client::Verb;
 use crate::error;
-use crate::test_support::{Answer, FENCING, LEASE_ID, json, plane};
+use crate::test_support::{Answer, FENCING, RUN_ID, json, plane};
 
 /// The schedules page a healthy daemon answers.
 const PAGE: &str = r#"{"schedules":[]}"#;
@@ -28,11 +28,11 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
         assert_eq!(call.verb, Verb::TaskDecisionReserve);
         json(&serde_json::json!({"status": "existing", "call_id": call_id, "state": "unknown"}))
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -41,7 +41,7 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
     let input = af_wire::task::DecisionReservationInput {
         operation_id: call_id.to_owned(),
         fencing_token: 0,
-        source_admission_id: call_id.to_owned(),
+        source_turn_id: call_id.to_owned(),
         task: None,
         retry_of: None,
         assessment: af_wire::task::DecisionAssessment::Message,
@@ -58,11 +58,11 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
 #[tokio::test]
 async fn a_schedules_reply_reaches_the_tool_as_its_text() {
     let (plane, _calls) = plane(|_call| Answer::Reply(bytes::Bytes::from_static(PAGE.as_bytes())));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -82,11 +82,11 @@ async fn a_refusal_keeps_its_code() {
             Some(error_code::MESSAGE_NO_CHANNEL),
         ))
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -103,11 +103,11 @@ async fn a_refusal_keeps_its_code() {
 #[tokio::test]
 async fn an_unavailable_daemon_is_unreachable_after_one_attempt() {
     let (plane, mut calls) = plane(|call| Answer::Fail(error::unavailable(call.verb, 503)));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -126,11 +126,11 @@ async fn a_message_answers_whether_the_thread_has_it() {
         Verb::Message => json(&serde_json::json!({"delivered": false})),
         _other => json(&serde_json::json!({})),
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -143,11 +143,11 @@ async fn a_message_answers_whether_the_thread_has_it() {
 #[tokio::test]
 async fn an_unreadable_message_reply_is_unreachable() {
     let (plane, _calls) = plane(|_call| json(&serde_json::json!(["not", "a", "reply"])));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -176,21 +176,21 @@ impl Host {
 #[tokio::test]
 async fn a_fleet_steer_answers_the_event_it_became() {
     let (plane, _calls) = plane(|call| match call.verb {
-        Verb::FleetSteer => json(&serde_json::json!({"event_id": "e-1", "replayed": true})),
+        Verb::FleetSteer => json(&serde_json::json!({"turn_id": "e-1", "replayed": true})),
         _other => json(&serde_json::json!({})),
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let fleet = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let fleet = Uuid7::parse(RUN_ID).unwrap();
     let host = Host::new();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
         &host.decisions,
     );
     let accepted = verbs.fleet_steer(&fleet, "hello").await.unwrap();
-    assert_eq!(accepted.event_id, "e-1");
+    assert_eq!(accepted.turn_id, "e-1");
     assert!(accepted.replayed);
 }

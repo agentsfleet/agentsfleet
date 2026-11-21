@@ -23,7 +23,7 @@ const WORKSPACE: &str = "01924f4e-0000-7000-8000-000000000001";
 /// The fleet a fixture run belongs to.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 
-/// The stream entry a fixture run was leased from.
+/// The stream entry a fixture run was held from.
 const ENTRY: &str = "1700000000000-0";
 
 /// The request a fixture event was answered on.
@@ -113,7 +113,7 @@ fn should_report_each_event_under_its_published_name() {
                 actor: ACTOR.to_owned(),
                 workspace_id: WORKSPACE.to_owned(),
                 fleet_id: FLEET.to_owned(),
-                event_id: ENTRY.to_owned(),
+                turn_id: ENTRY.to_owned(),
                 source: "steer".to_owned(),
             },
         ),
@@ -144,7 +144,7 @@ fn completed() -> Telemetry {
         actor: ACTOR.to_owned(),
         workspace_id: WORKSPACE.to_owned(),
         fleet_id: FLEET.to_owned(),
-        event_id: ENTRY.to_owned(),
+        turn_id: ENTRY.to_owned(),
         tokens: 1_200,
         wall_ms: 4_500,
         exit_status: "succeeded".to_owned(),
@@ -295,7 +295,7 @@ fn should_never_give_two_runs_the_same_deduplication_key() {
             actor: ACTOR.to_owned(),
             workspace_id: WORKSPACE.to_owned(),
             fleet_id: fleet.to_owned(),
-            event_id: entry.to_owned(),
+            turn_id: entry.to_owned(),
             tokens: 0,
             wall_ms: 0,
             exit_status: "succeeded".to_owned(),

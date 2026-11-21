@@ -4,9 +4,10 @@ use super::super::{catalog::Catalog, files::Workspace, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointBegin,
+        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
+        TurnWorkspace,
     },
     task::{CheckpointObjectStatus, CheckpointPage},
 };
@@ -40,7 +41,7 @@ impl NativeTurn<'_> {
         plan.validate()?;
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let result = async {
             if plan.scope != snapshot.scope
@@ -68,12 +69,12 @@ impl NativeTurn<'_> {
         &mut self,
         snapshot: TurnSnapshot,
         catalog: Option<Catalog>,
-        plan: &af_wire::lease::TurnCheckpointPlan,
+        plan: &af_wire::run::TurnCheckpointPlan,
         stop: &CancellationToken,
     ) -> Result<TurnResume> {
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let mut session = TurnSession::new(
             self,
@@ -121,7 +122,7 @@ impl TurnSession<'_, '_> {
     async fn capture_files(
         &mut self,
         catalog: Catalog,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
     ) -> Result<Vec<(String, String)>> {
         let mut ids = BTreeMap::new();
         let chunks: Vec<_> = catalog.chunks.iter().collect();
@@ -160,13 +161,13 @@ impl TurnSession<'_, '_> {
                 self.upload_batch(pending).await?;
             }
         }
-        let pages = catalog.pages(Some(&ids), af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
+        let pages = catalog.pages(Some(&ids), af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
         self.write_file_pages(page_ids, pages).await
     }
 
     async fn write_file_pages(
         &mut self,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
         pages: Vec<CheckpointPage>,
     ) -> Result<Vec<(String, String)>> {
         if pages.len() != page_ids.len() {
@@ -234,7 +235,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
     let count = catalog
         .map(|catalog| {
             catalog
-                .pages(None, af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)
+                .pages(None, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
                 .map(|pages| pages.len())
         })
         .transpose()?
@@ -244,7 +245,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
             .previous
             .as_ref()
             .map(|saved| saved.checkpoint_id.clone()),
-        format_version: af_wire::lease::TURN_CHECKPOINT_FORMAT,
+        format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
         workspace: snapshot.scope.workspace.clone(),
         history_digest: af_core::etag::sha256_hex(&snapshot.history),
         page_count: u32::try_from(count)

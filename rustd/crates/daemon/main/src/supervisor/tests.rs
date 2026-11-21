@@ -11,7 +11,7 @@ async fn test_runtime_boundaries_emit_exactly_one_terminal_event() {
 
     let recorder = Capture::install();
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(TASK, |token| async move { token.cancelled().await });
+    supervisor.spawn(TASK, async |token| token.cancelled().await);
     let report = supervisor.shutdown().await;
     assert!(report.is_clean(), "the fixture task must stop cleanly");
 

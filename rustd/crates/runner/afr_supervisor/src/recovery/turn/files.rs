@@ -7,7 +7,9 @@ use super::super::{
 use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
-    lease::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointResponse as Response,
+    },
     task::{CheckpointEntry, CheckpointTransferPurpose},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
@@ -29,7 +31,7 @@ struct Bounds {
 impl TurnSession<'_, '_> {
     pub(super) async fn restore_files(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
         destination: (PathBuf, (u32, u32)),
         permit: Option<&afr_agent::FileRecoveryPermit>,
@@ -55,7 +57,7 @@ impl TurnSession<'_, '_> {
 
     async fn manifest(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
     ) -> Result<BTreeMap<String, CheckpointEntry>> {
         if pages.is_empty() {
@@ -82,10 +84,7 @@ impl TurnSession<'_, '_> {
             page.validate()?;
             if usize::try_from(page.page_number).ok() != Some(number)
                 || !page.history_objects.is_empty()
-                || !af_wire::decision::serialized_within(
-                    &page,
-                    af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES,
-                )
+                || !af_validate::serialized_within(&page, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
             {
                 return Err(error::config(
                     "turn manifest page has invalid layout or size",
@@ -108,7 +107,9 @@ impl TurnSession<'_, '_> {
                 .map(|(id, digest)| (id.as_str(), digest.as_str())),
         ) != digest
         {
-            return Err(error::config("turn manifest differs from the offered root"));
+            return Err(error::config(
+                "turn manifest differs from the assigned root",
+            ));
         }
         Ok(entries)
     }
@@ -127,7 +128,7 @@ impl TurnSession<'_, '_> {
         let workspace = &self.workspace;
         // Every GET in this bounded batch starts under the same freshly proved pin.
         let chunks: BTreeMap<_, _> = stream::iter(objects)
-            .map(|mut object| async move {
+            .map(async |mut object| {
                 let bytes = transfers.download(&object).await?;
                 let plaintext = transfer::open(workspace, &mut object, bytes)?;
                 Ok::<_, crate::Error>((object.object_id.clone(), Arc::new(plaintext)))

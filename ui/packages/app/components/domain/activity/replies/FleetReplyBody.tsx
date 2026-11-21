@@ -44,8 +44,8 @@ export function FleetReply({
   const figures = readReplyFigures(message);
   const queued = readQueued(message);
   const context = readContextProgress(message.metadata.custom.contextProgress);
-  const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
-  useFirstVisiblePaint(eventId, readSubmittedAtMs(message), message.content.length > 0);
+  const turnId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
+  useFirstVisiblePaint(turnId, readSubmittedAtMs(message), message.content.length > 0);
   const sender = senderLabel || DEFAULT_SENDER;
   useRestartAnnouncement(readRunRestarted(message) ? readRestartAttempt(message) : undefined);
   // Spoken the way the row reads: who replied, then what they said.
@@ -60,7 +60,7 @@ export function FleetReply({
     >
       {readRunRestarted(message) ? <p className="text-body-sm text-text-subtle">Run restarted</p> : null}
       <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} attentionOnly />
-      <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
+      <FleetReplyParts errored={errored} running={running} queued={queued} turnId={turnId}
         reasoning={reasoningText(message)} span={span} content={message.content}
         startedAtMs={message.createdAt.getTime()} wallMs={figures.wallMs} figures={figures} activity={message.metadata.custom.taskActivity} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
       {running ? <ContextProgressStatus value={context} /> : null}

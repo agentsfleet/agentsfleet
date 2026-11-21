@@ -12,18 +12,10 @@
 // own test target — and fires there for a dev-dependency only the suites in
 // `tests/` import, since those are separate crates it cannot see. Naming them
 // here is the lint's own documented remedy, and keeps the deny in force for
-// everything else. The first three belong to the end-to-end suite; the runner
-// crates, `tempfile` and `async-trait` drive the Rust runner through a lease
-// against it; the egress, provider and tool crates, `futures-util` and the
-// three TLS crates carry the corpus suite's real loop to its HTTPS fakes.
+// everything else: the TLS posture proof's two crates, and the bodies and
+// scratch directories the boot suites build.
 #[cfg(test)]
-use {
-    af_context as _, af_egress as _, af_fleet_runtime as _, af_providers as _, af_webhook as _,
-    af_wire as _, afd_admin as _, afr_agent as _, afr_executor as _, afr_sandbox as _,
-    afr_supervisor as _, afr_telemetry as _, afr_tools as _, async_trait as _, futures_util as _,
-    jiff_sqlx as _, rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _,
-    tokio_rustls as _,
-};
+use {rcgen as _, rustls as _, serde_json as _, tempfile as _};
 
 pub mod banner;
 pub mod billing;
@@ -46,6 +38,8 @@ pub mod serve;
 pub mod supervisor;
 pub mod sweepers;
 pub mod telemetry;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod tty;
 
 pub use self::cli::{Cli, Command};

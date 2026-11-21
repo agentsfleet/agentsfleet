@@ -35,7 +35,7 @@ mod tests;
 /// the parity test grades byte-for-byte, and a name assembled at run time is
 /// the beginning of an unbounded family set.
 pub trait Metric {
-    /// The wire name, byte-exact, as `docs/metrics.census.tsv` declares it.
+    /// The wire name, byte-exact, as `metrics/census.tsv` declares it.
     fn name(&self) -> &'static str;
 }
 

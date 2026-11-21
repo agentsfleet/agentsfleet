@@ -23,9 +23,9 @@ use progress::Pass;
 use crate::observe;
 use crate::observe::labels::{CallOutcome, Provider as ProviderLabel, RetryReason};
 use af_inference::stream::{StreamTurn, TurnControl};
-use af_wire::activity::StreamTextKind;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
+use guffbolt::{Call, Chunk, End, Model, Replay, Request, TextKind};
 use rig_core::DynModel;
 use rig_core::completion::{CompletionResponse, FinishReason};
 use rig_core::error::ProviderError;
@@ -34,7 +34,6 @@ use rig_core::operation::Completion;
 use rig_core::streaming::StreamEvent;
 
 use crate::error::{Error, Result, raise};
-use crate::provider::{Call, Chunk, End, Provider, Replay, Request};
 use crate::request;
 use crate::usage;
 use af_crypto::secret::SecretString;
@@ -45,12 +44,12 @@ use af_wire::policy::ExecutionPolicy;
 /// The log line a turn opened again writes.
 const EVENT_REOPENED: &str = "provider_turn_reopened";
 
-/// One lease's provider: a rig model and the wire it speaks.
+/// One run's provider: a rig model and the wire it speaks.
 pub(crate) struct Turns {
     model: DynModel<Completion>,
     settings: ModelInference,
     model_context_tokens: u32,
-    lease_id: Box<str>,
+    run_id: Box<str>,
     /// The provider as the policy spells it, named when its endpoint is refused.
     provider: Box<str>,
     counting_key: SecretString,
@@ -63,26 +62,26 @@ impl fmt::Debug for Turns {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Turns")
             .field("wire", &self.settings.api)
-            .field("lease_id", &self.lease_id)
+            .field("run_id", &self.run_id)
             .finish_non_exhaustive()
     }
 }
 
 impl Turns {
-    /// Lease `lease_id`'s provider, `provider` as the policy spells it,
+    /// Run `run_id`'s provider, `provider` as the policy spells it,
     /// using the selected model's persisted inference and context settings.
     pub(crate) fn new(
         model: DynModel<Completion>,
         settings: &ModelInference,
         policy: &ExecutionPolicy<'_>,
-        lease_id: &str,
+        run_id: &str,
         counting_transport: HttpTransport,
     ) -> Self {
         Self {
             model,
             settings: settings.clone(),
             model_context_tokens: policy.model_context_tokens,
-            lease_id: lease_id.into(),
+            run_id: run_id.into(),
             provider: policy.provider.as_ref().into(),
             counting_key: SecretString::new(policy.api_key.to_string()),
             counting_transport,
@@ -149,7 +148,7 @@ impl Turns {
                 );
                 observe::model_tokens(&observed_model, observed_provider, timing.tokens);
             })),
-            correlation_id: self.lease_id.clone().into(),
+            correlation_id: self.run_id.clone().into(),
             ..Default::default()
         };
         let mut count = route
@@ -175,18 +174,20 @@ impl Turns {
             ProviderLabel::of(&self.provider),
             RetryReason::StreamReopened,
         );
-        let lease_id = &*self.lease_id;
+        let run_id = &*self.run_id;
         let reason = raise::code(failure);
         let event = EVENT_REOPENED;
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-        tracing::warn!(lease_id, attempt, reason, event, error_code);
+        tracing::warn!(run_id, attempt, reason, event, error_code);
     }
 }
 
 #[cfg(test)]
 mod tests;
 
-impl Provider for Turns {
+impl Model for Turns {
+    type Error = Error;
+
     fn measure(&self, request: Request<'_>) -> Result<u64> {
         let body = request::request(self.settings.api, &request)?;
         let route = af_inference::Configured::new(&self.settings, self.model_context_tokens)
@@ -213,11 +214,11 @@ type Ending = std::array::IntoIter<Result<Chunk>, 2>;
 fn chunk(event: StreamEvent) -> Option<Chunk> {
     match event {
         StreamEvent::Text { text, .. } => Some(Chunk::Text {
-            kind: StreamTextKind::Answer,
+            kind: TextKind::Answer,
             text,
         }),
         StreamEvent::Reasoning { text, .. } => Some(Chunk::Text {
-            kind: StreamTextKind::Reasoning,
+            kind: TextKind::Reasoning,
             text,
         }),
         StreamEvent::End {
@@ -250,13 +251,22 @@ fn reopens(failure: &ProviderError) -> bool {
 }
 
 /// The chunks a finished turn on `api` ends on: what it spent, then its end.
+/// The end carries the turn's own message as its replay; one that will not
+/// encode fails the turn after its spend is sent, never drops the record.
 fn ending(api: InferenceApi, response: CompletionResponse) -> Ending {
     let cut = !matches!(
         response.finish_reason(),
         Some(FinishReason::Stop | FinishReason::ToolCalls)
     );
     let spent = usage::spent(api, &response.usage, &response.raw);
-    let replay = Replay(response.head().with_content(response.choice));
-    let end = End { replay, cut };
-    [Ok(Chunk::Usage(spent)), Ok(Chunk::End(end))].into_iter()
+    let message = response.head().with_content(response.choice);
+    let end = serde_json::to_value(&message)
+        .map(|record| {
+            Chunk::End(End {
+                replay: Replay::new(record),
+                cut,
+            })
+        })
+        .map_err(Error::from);
+    [Ok(Chunk::Usage(spent)), end].into_iter()
 }

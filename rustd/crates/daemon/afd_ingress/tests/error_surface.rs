@@ -31,7 +31,7 @@
 use af_core::test_util::error_surface::{Expect, grade};
 
 use af_core::error_code;
-use afd_ingress::error::{detail, one_of_each_kind};
+use afd_ingress::error::one_of_each_kind;
 
 /// The labels the sample gives the failures a retry could plausibly fix.
 ///
@@ -41,16 +41,12 @@ use afd_ingress::error::{detail, one_of_each_kind};
 /// changes sides has to be moved by hand.
 /// The kinds a sender should retry against.
 ///
-/// `admission unreachable` is one of them: the acceptance could not be written
+/// `turn unreachable` is one of them: the acceptance could not be written
 /// because the ledger's datastore was gone, which is the same incident as this
 /// crate's own pool being gone and earns the same answer. It replaced
 /// `queue unreachable` when the append stopped being this crate's to make.
-/// `obligation unreachable` is the same incident for a notice's ledger.
-const OUTAGES: &[&str] = &[
-    "datastore",
-    "admission unreachable",
-    "obligation unreachable",
-];
+/// `delivery unreachable` is the same incident for a notice's ledger.
+const OUTAGES: &[&str] = &["datastore", "turn unreachable", "delivery unreachable"];
 
 /// Everything every error surface owes, graded once by
 /// `af_core::test_util::error_surface`: registered codes, `[CODE] message`
@@ -98,7 +94,7 @@ fn an_outage_answers_the_unavailable_code_and_everything_else_does_not() {
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 "{label} is an outage and must answer the code a retry reads"
             );
-            assert_eq!(error.detail(), detail::DATABASE_UNAVAILABLE);
+            assert_eq!(error.detail(), af_core::error::DETAIL_DATABASE_UNAVAILABLE);
         } else {
             assert_ne!(
                 error.code(),
@@ -118,9 +114,7 @@ fn no_sentence_names_which_internal_failure_it_was() {
     // signature passes.
     let opaque: Vec<&'static str> = one_of_each_kind()
         .into_iter()
-        .filter(|(label, _error)| {
-            ["vault", "admission answered", "config unreadable"].contains(label)
-        })
+        .filter(|(label, _error)| ["vault", "turn answered", "config unreadable"].contains(label))
         .map(|(_label, error)| error.detail())
         .collect();
 
@@ -137,7 +131,7 @@ fn no_sentence_names_which_internal_failure_it_was() {
     );
     assert_eq!(
         opaque.first().copied(),
-        Some(detail::OPERATION_FAILED),
+        Some(af_core::error::DETAIL_OPERATION_FAILED),
         "and the one sentence they share is the generic one"
     );
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { EVENTS } from "@/lib/analytics/events";
-import { MODEL_CHANGED_LABEL } from "@/lib/events/event-payload";
+import { MODEL_CHANGED_LABEL } from "@/lib/turns/turn-payload";
 import { CONNECTION_STATUS, appendOptimistic, getSnapshot, reconcileServerRows, subscribe } from "@/tests/helpers/fleet-streams";
 import { setupRegistryTests, row, WS, Z_A, IDLE_RELEASE_MS, sourceAt } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, RECONNECT_ADVANCE_MS, SEED_AT_MS, MISSED_AT_MS, SEED_SINCE_PARAM, MISSED_SINCE_PARAM, fetchSpy, pageWith, queryOf, flushBackfill, reconnect } from "@/tests/helpers/fleet-stream-backfill-fixtures";
@@ -10,43 +10,43 @@ setupRegistryTests();
 setupBackfillTests();
 
 describe("fleet-stream-registry — backfill", () => {
-  it("test_registry_backfills_on_reconnect — error→reopen issues one backfill keyed off the last-seen event and merges the rows", async () => {
+  it("test_registry_backfills_on_reconnect — error→reopen issues one backfill keyed off the last-seen turn and merges the rows", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]),
+      pageWith([row({ turn_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = String(fetchSpy.mock.calls[0]?.[0]);
-    expect(url).toContain(`/live/v1/workspaces/${WS}/fleets/${Z_A}/events?`);
+    expect(url).toContain(`/live/v1/workspaces/${WS}/fleets/${Z_A}/turns?`);
     expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
     expect(url).toContain("limit=200");
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);
     a();
   });
 
   it("keeps the recovery anchor behind a reconciled partial page", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]),
+      pageWith([row({ turn_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]),
     );
     const release = subscribe(WS, Z_A, [
-      row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() }),
+      row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() }),
     ], () => {});
     reconcileServerRows(Z_A, [
-      row({ event_id: "evt_newest", created_at: new Date(MISSED_AT_MS + 60_000).toISOString() }),
+      row({ turn_id: "evt_newest", created_at: new Date(MISSED_AT_MS + 60_000).toISOString() }),
     ]);
 
     reconnect();
     await flushBackfill();
 
     expect(queryOf(0).get("since")).toBe(SEED_SINCE_PARAM);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toContain("evt_missed");
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toContain("evt_missed");
     release();
   });
 
   it("test_registry_initial_open_no_backfill — the first-ever onopen issues no backfill fetch", async () => {
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es = sourceAt(0);
     es.open();
     es.heartbeat();
@@ -58,12 +58,12 @@ describe("fleet-stream-registry — backfill", () => {
 
   it("backfills when the initial connection failed before its first open", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_initial_gap", created_at: new Date(MISSED_AT_MS).toISOString() })]),
+      pageWith([row({ turn_id: "evt_initial_gap", created_at: new Date(MISSED_AT_MS).toISOString() })]),
     );
     const a = subscribe(
       WS,
       Z_A,
-      [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })],
+      [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })],
       () => {},
     );
     const initial = sourceAt(0);
@@ -74,7 +74,7 @@ describe("fleet-stream-registry — backfill", () => {
     recovered.heartbeat();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual([
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toEqual([
       "evt_seed",
       "evt_initial_gap",
     ]);
@@ -84,14 +84,14 @@ describe("fleet-stream-registry — backfill", () => {
   it("test_registry_backfill_dedupes — a row delivered both live and via backfill appears once", async () => {
     fetchSpy.mockResolvedValueOnce(
       pageWith([
-        row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() }),
-        row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() }),
+        row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() }),
+        row({ turn_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() }),
       ]),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
-    const ids = getSnapshot(Z_A).events.map((e) => e.id);
+    const ids = getSnapshot(Z_A).turns.map((e) => e.id);
     expect(ids).toEqual(["evt_seed", "evt_missed"]);
     a();
   });
@@ -99,10 +99,10 @@ describe("fleet-stream-registry — backfill", () => {
   it("test_registry_backfill_failure_tolerated — a rejected backfill fetch leaves the timeline intact and the stream LIVE", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchSpy.mockRejectedValueOnce(new Error("network drop mid-backfill"));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_seed"]);
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
@@ -112,22 +112,22 @@ describe("fleet-stream-registry — backfill", () => {
   it("test_registry_backfill_failure_tolerated — an HTTP-error backfill response is swallowed the same way", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchSpy.mockResolvedValueOnce({ ok: false, status: 503 });
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_seed"]);
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
     expect(warnSpy).toHaveBeenCalled();
     warnSpy.mockRestore();
     a();
   });
 
-  it("keys the backfill off the last server event, skipping a newer optimistic row", async () => {
+  it("keys the backfill off the last server turn, skipping a newer optimistic row", async () => {
     // A steer sent mid-outage appends an optimistic row with a client-clock
     // timestamp; keying `since` off it would skip frames published earlier
     // in the outage window.
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es0 = sourceAt(0);
     es0.open();
     es0.heartbeat();
@@ -143,9 +143,9 @@ describe("fleet-stream-registry — backfill", () => {
     a();
   });
 
-  it("keys the backfill off the last server event, skipping a newer browser-made row", async () => {
+  it("keys the backfill off the last server turn, skipping a newer browser-made row", async () => {
     fetchSpy.mockResolvedValueOnce(pageWith([]));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es0 = sourceAt(0);
     es0.open();
     es0.heartbeat();
@@ -163,10 +163,10 @@ describe("fleet-stream-registry — backfill", () => {
 
   it("ignores a malformed backfill body whose items is not an array", async () => {
     fetchSpy.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ items: "nope" }) });
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_seed"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_seed"]);
     expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.LIVE);
     a();
   });
@@ -174,19 +174,19 @@ describe("fleet-stream-registry — backfill", () => {
   it("drops a backfill page that resolves after the entry was torn down", async () => {
     const pendingFetch = Promise.withResolvers<unknown>();
     fetchSpy.mockReturnValueOnce(pendingFetch.promise);
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     a();
     vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
-    pendingFetch.resolve(pageWith([row({ event_id: "evt_late", created_at: new Date(MISSED_AT_MS).toISOString() })]));
+    pendingFetch.resolve(pageWith([row({ turn_id: "evt_late", created_at: new Date(MISSED_AT_MS).toISOString() })]));
     await flushBackfill();
     // Torn down — the late page must not resurrect a snapshot.
-    expect(getSnapshot(Z_A).events).toEqual([]);
+    expect(getSnapshot(Z_A).turns).toEqual([]);
   });
 
   it("test_chat_backfills_on_catching_up — a gap on an open stream reads the missed rows back", async () => {
-    fetchSpy.mockResolvedValue(pageWith([row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]));
-    const release = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    fetchSpy.mockResolvedValue(pageWith([row({ turn_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]));
+    const release = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es = sourceAt(0);
     es.open();
     es.heartbeat();
@@ -200,11 +200,11 @@ describe("fleet-stream-registry — backfill", () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(queryOf(0).get("since")).toBe(SEED_SINCE_PARAM);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toEqual(["evt_seed", "evt_missed"]);
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toEqual(["evt_seed", "evt_missed"]);
     release();
   });
   it("shows a committed model notice in an already open chat and deduplicates repeated refresh signals", async () => {
-    const notice = row({event_id: "evt_model", actor: "config_reload", event_type: EVENTS.model_changed,
+    const notice = row({turn_id: "evt_model", actor: "config_reload", event_type: EVENTS.model_changed,
       status: "processed", created_at: new Date(MISSED_AT_MS).toISOString()});
     fetchSpy.mockResolvedValue(pageWith([notice]));
     const release = subscribe(WS, Z_A, [], () => {});
@@ -213,20 +213,20 @@ describe("fleet-stream-registry — backfill", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     source.emit({kind: FRAME_KIND.CATCHING_UP, dropped: 0});
     await flushBackfill();
-    expect(getSnapshot(Z_A).events).toMatchObject([{id: notice.event_id, text: MODEL_CHANGED_LABEL, status: "processed"}]);
+    expect(getSnapshot(Z_A).turns).toMatchObject([{id: notice.turn_id, text: MODEL_CHANGED_LABEL, status: "processed"}]);
     source.emit({kind: FRAME_KIND.CATCHING_UP, dropped: 0});
     await flushBackfill();
-    expect(getSnapshot(Z_A).events).toHaveLength(1);
+    expect(getSnapshot(Z_A).turns).toHaveLength(1);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     release();
   });
   it("test_chat_backfills_on_catching_up — a gap during a walk runs a second walk, from the first one's watermark, after it", async () => {
     const first = await gapDuringWalk(1);
-    first.resolve(pageWith([row({ event_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]));
+    first.resolve(pageWith([row({ turn_id: "evt_missed", created_at: new Date(MISSED_AT_MS).toISOString() })]));
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(queryOf(1).get("since")).toBe(MISSED_SINCE_PARAM);
-    expect(getSnapshot(Z_A).events.map((event) => event.id)).toContain("evt_late");
+    expect(getSnapshot(Z_A).turns.map((turn) => turn.id)).toContain("evt_late");
   });
 
   it("test_chat_backfills_on_catching_up — three gaps during a walk still queue one walk after it", async () => {
@@ -253,8 +253,8 @@ let releaseGapStream: () => void = () => {};
 async function gapDuringWalk(gaps: number) {
   const first = Promise.withResolvers<unknown>();
   fetchSpy.mockReturnValueOnce(first.promise);
-  fetchSpy.mockResolvedValue(pageWith([row({ event_id: "evt_late", created_at: new Date(MISSED_AT_MS + 1).toISOString() })]));
-  releaseGapStream = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+  fetchSpy.mockResolvedValue(pageWith([row({ turn_id: "evt_late", created_at: new Date(MISSED_AT_MS + 1).toISOString() })]));
+  releaseGapStream = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
   const es = sourceAt(0);
   es.open();
   es.heartbeat();

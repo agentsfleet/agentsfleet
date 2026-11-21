@@ -1,18 +1,18 @@
-import type { LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import type { LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { SEND_MARK } from "@/lib/streaming/send-marks";
 
-/** A send's marks in the order its events reach this tab. */
+/** A send's marks in the order its frames reach this tab. */
 export const IN_ORDER = [SEND_MARK.SEND, SEND_MARK.ACCEPTED, SEND_MARK.FIRST_FRAME, SEND_MARK.COMPLETE];
 
-/** A piece of `eventId`'s streamed answer. */
-export function chunkOf(eventId: string): LiveFrame {
-  return { kind: FRAME_KIND.CHUNK, event_id: eventId, text: "…", text_kind: "answer" };
+/** A piece of `turnId`'s streamed answer. */
+export function chunkOf(turnId: string): LiveFrame {
+  return { kind: FRAME_KIND.CHUNK, turn_id: turnId, text: "…", text_kind: "answer" };
 }
 
-/** `eventId`'s completion. */
-export function completionOf(eventId: string): LiveFrame {
-  return { kind: FRAME_KIND.EVENT_COMPLETE, event_id: eventId, status: "processed", final_reply: "" };
+/** `turnId`'s completion. */
+export function completionOf(turnId: string): LiveFrame {
+  return { kind: FRAME_KIND.TURN_COMPLETE, turn_id: turnId, status: "processed", final_reply: "" };
 }
 
 /** Every send mark left so far, as (name, operation id), in the order left. */

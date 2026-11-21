@@ -1,10 +1,10 @@
-//! `/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs` — one
+//! `/v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs` — one
 //! schedule's runs: the ones that ran, and a new one to fire it now.
 //!
 //! A run is an event whose actor is `cron:<schedule_id>`, which a `QStash` fire
 //! and a run-now both record (`afd_cron::schedule_actor`). Running now admits
 //! through the same producer `QStash`'s callback does, keyed by the event the
-//! lease runs, so a retried post, from this lease or one a reclaim handed the
+//! run runs, so a retried post, from this run or one a reassignment handed the
 //! event to, answers the run it already created rather than a second one. A
 //! run joins this list once a runner has taken it: until then it is queued
 //! work, not history.
@@ -23,14 +23,14 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
 use af_validate::Limit;
-use af_wire::event::EventsResponse;
 use af_wire::schedule_verb::{ScheduleRun, ScheduleRunRequest};
+use af_wire::turn::TurnsResponse;
 use afd_cron::{ACTOR_PREFIX, FireTarget, schedule_actor};
-use afd_events::{Cursor, EventRow, next_cursor};
-use afd_fleet::lease::Standing;
+use afd_fleet::run::Standing;
 use afd_fleet_lifecycle::FleetStatus;
 use afd_http::handler::schedule::not_found;
 use afd_http::handler::{Refusal, parameter, read_strict_body};
+use afd_turns::view::{Cursor, TurnRow, next_cursor};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, RawQuery, State};
@@ -39,7 +39,7 @@ use http::StatusCode;
 
 use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Services, WorkspaceEvents as _};
+use crate::services::{FleetSchedules as _, RunnerPlane, WorkspaceTurns as _};
 
 /// The refusal a page size outside the served band earns: the paging
 /// vocabulary's own sentence, which names [`CEILING`].
@@ -66,14 +66,14 @@ const STATE_FLEET_UNREADABLE: &str = "unknown";
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "starting_after must be a next_cursor this daemon returned";
 
-/// What a run-now's admission key names after the schedule: the event the
-/// asking lease runs, so every retry of one run is one run, across a reclaim.
+/// What a run-now's turn key names after the schedule: the event the
+/// asking run runs, so every retry of one run is one run, across a reassignment.
 const RUN_KEY_PREFIX: &str = "run:";
 
 /// Fires a schedule of the fleet's now.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::LEASE_SCHEDULE_RUNS,
+    path = af_wire::paths::RUN_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_run_schedule",
     summary = "Run a schedule now",
@@ -87,7 +87,7 @@ const RUN_KEY_PREFIX: &str = "run:";
         "return the same run; later requests after retirement return 404.",
     ),
     request_body = ScheduleRunRequest,
-    params(afd_http::openapi::path::LeaseSchedule),
+    params(afd_http::openapi::path::RunSchedule),
     responses(
         (status = 201, description = "The run that was created", body = ScheduleRun<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -97,17 +97,17 @@ const RUN_KEY_PREFIX: &str = "run:";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn run<D: Services>(
+pub(crate) async fn run<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease_id, schedule_id_raw)): Path<(String, String)>,
+    Path((run_id, schedule_id_raw)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let request: ScheduleRunRequest =
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
+    let run = standing(&*services, runner.id(), &run_id, request.fencing_token).await?;
     // Read by the schedule alone, so the fleet is checked here: a schedule of
     // another fleet answers exactly as one that never existed.
     let target = services
@@ -115,10 +115,10 @@ pub(crate) async fn run<D: Services>(
         .fire_target(&schedule)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
-        .filter(|target| target.fleet == lease.fleet_id)
+        .filter(|target| target.fleet == run.fleet_id)
         .ok_or_else(not_found)?;
-    runnable(&lease, &target)?;
-    let key = format!("{RUN_KEY_PREFIX}{}", lease.event_id);
+    runnable(&run, &target)?;
+    let key = format!("{RUN_KEY_PREFIX}{}", run.turn_id);
     let fired = services
         .schedules()
         .fire(&schedule, &target, &key, now)
@@ -127,7 +127,7 @@ pub(crate) async fn run<D: Services>(
     Ok((
         StatusCode::CREATED,
         Json(ScheduleRun {
-            event_id: Cow::Owned(fired.event_id),
+            turn_id: Cow::Owned(fired.turn_id),
         }),
     )
         .into_response())
@@ -136,7 +136,7 @@ pub(crate) async fn run<D: Services>(
 /// Lists one schedule's runs, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = af_wire::paths::LEASE_SCHEDULE_RUNS,
+    path = af_wire::paths::RUN_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedule_runs",
     summary = "List a schedule's runs",
@@ -145,19 +145,19 @@ pub(crate) async fn run<D: Services>(
         "`cron:<schedule_id>`. One-time schedules keep their history after retiring. ",
         "Continue with `starting_after` and `limit`.",
     ),
-    params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::ScheduleRunsPage),
+    params(afd_http::openapi::path::RunSchedule, afd_http::openapi::query::ScheduleRunsPage),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = EventsResponse<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = TurnsResponse<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn runs<D: Services>(
+pub(crate) async fn runs<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease_id, schedule_id_raw)): Path<(String, String)>,
+    Path((run_id, schedule_id_raw)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
@@ -173,13 +173,13 @@ pub(crate) async fn runs<D: Services>(
         .map(Cursor::decode)
         .transpose()
         .map_err(|_unminted| Refusal::malformed(DETAIL_CURSOR))?;
-    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
+    let run = standing(&*services, runner.id(), &run_id, token).await?;
     let rows = i64::from(limit);
     let page = services
         .events()
         .page_of_actor(
-            &lease.workspace_id,
-            &lease.fleet_id,
+            &run.workspace_id,
+            &run.fleet_id,
             &schedule_actor(&schedule),
             cursor.as_ref(),
             rows,
@@ -192,13 +192,13 @@ pub(crate) async fn runs<D: Services>(
     if page.is_empty() && cursor.is_none() {
         services
             .schedules()
-            .one(&lease.workspace_id, &lease.fleet_id, &schedule)
+            .one(&run.workspace_id, &run.fleet_id, &schedule)
             .await
             .map_err(Refusal::at(EVENT_FAILED))?
             .ok_or_else(not_found)?;
     }
-    Ok(Json(EventsResponse {
-        items: page.iter().map(EventRow::summary).collect(),
+    Ok(Json(TurnsResponse {
+        items: page.iter().map(TurnRow::summary).collect(),
         next_cursor: next_cursor(&page, rows).map(|after| Cow::Owned(after.encode())),
     })
     .into_response())
@@ -209,10 +209,10 @@ pub(crate) async fn runs<D: Services>(
 ///
 /// The fleet first, as the `QStash` callback orders it: a fleet that is not
 /// active runs nothing, whatever its schedules say.
-fn runnable(lease: &Standing, target: &FireTarget) -> Result<(), Refusal> {
+fn runnable(run: &Standing, target: &FireTarget) -> Result<(), Refusal> {
     let fleet = FleetStatus::parse(&target.fleet_status);
     if !fleet.is_some_and(FleetStatus::is_runnable) {
-        log_refused(lease, error_code::AGENTSFLEET_NOT_ACTIVE);
+        log_refused(run, error_code::AGENTSFLEET_NOT_ACTIVE);
         return Err(Refusal::conflict(
             error_code::AGENTSFLEET_NOT_ACTIVE,
             DETAIL_FLEET_NOT_RUNNABLE,
@@ -220,15 +220,15 @@ fn runnable(lease: &Standing, target: &FireTarget) -> Result<(), Refusal> {
         ));
     }
     if !target.desired_status.fires() {
-        log_refused(lease, error_code::SCHEDULE_NOT_RUNNABLE);
+        log_refused(run, error_code::SCHEDULE_NOT_RUNNABLE);
         return Err(Refusal::conflict(
             error_code::SCHEDULE_NOT_RUNNABLE,
             DETAIL_NOT_RUNNABLE,
             target.desired_status.as_str(),
         ));
     }
-    if lease.actor.starts_with(ACTOR_PREFIX) {
-        log_refused(lease, error_code::SCHEDULE_NOT_RUNNABLE);
+    if run.actor.starts_with(ACTOR_PREFIX) {
+        log_refused(run, error_code::SCHEDULE_NOT_RUNNABLE);
         return Err(Refusal::conflict(
             error_code::SCHEDULE_NOT_RUNNABLE,
             DETAIL_SCHEDULED_RUN,

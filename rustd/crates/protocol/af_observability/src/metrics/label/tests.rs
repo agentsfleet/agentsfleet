@@ -19,7 +19,7 @@ use crate::metrics::label::scheduler as scheduler_labels;
 use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
-/// Where a sent message went, and the folds a live run claimed and settled.
+/// Where a sent message went, and the folds a live run was assigned and settled.
 fn fold_products() -> [(&'static str, usize); 2] {
     [
         (
@@ -27,7 +27,7 @@ fn fold_products() -> [(&'static str, usize); 2] {
             fleet_labels::SteerPlaced::ALL.len(),
         ),
         (
-            fleet::LEASE_FOLDS_TOTAL.wire_name(),
+            fleet::RUN_FOLDS_TOTAL.wire_name(),
             fleet_labels::FoldOutcome::ALL.len(),
         ),
     ]
@@ -225,16 +225,16 @@ fn fleet_products() -> [(&'static str, usize); 10] {
             fleet_labels::CordonChange::ALL.len(),
         ),
         (
-            fleet::LEASE_CACHE_LOOKUPS_TOTAL.wire_name(),
-            fleet_labels::LeaseCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),
+            fleet::RUN_CACHE_LOOKUPS_TOTAL.wire_name(),
+            fleet_labels::RunCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),
         ),
         (
             fleet::SIGNUP_FAILED_TOTAL.wire_name(),
             fleet_labels::SignupFailure::ALL.len(),
         ),
         (
-            fleet::ADMISSIONS_TOTAL.wire_name(),
-            fleet_labels::AdmissionOutcome::ALL.len(),
+            fleet::TURNS_TOTAL.wire_name(),
+            fleet_labels::IncomingTurnOutcome::ALL.len(),
         ),
         (
             fleet::FLEETS.wire_name(),
@@ -253,12 +253,12 @@ fn fleet_products() -> [(&'static str, usize); 10] {
             fleet_labels::ReportAnswer::ALL.len(),
         ),
         (
-            fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
+            fleet::RUN_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),
         (
-            fleet::LEASE_HELD_CLAIMS_TOTAL.wire_name(),
-            fleet_labels::HeldClaim::ALL.len(),
+            fleet::RUN_HELD_ASSIGNMENTS_TOTAL.wire_name(),
+            fleet_labels::HeldAssignment::ALL.len(),
         ),
     ]
 }

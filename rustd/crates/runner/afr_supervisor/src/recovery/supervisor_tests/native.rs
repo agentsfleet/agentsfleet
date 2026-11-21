@@ -5,12 +5,13 @@ use super::fixture::{self, Checked, ID};
 use crate::{
     Result, error,
     recovery::{NativeTurn, Transfers},
-    test_support::{self, Answer, FLEET_ID, LEASE_ID},
+    test_support::{self, Answer, FLEET_ID, RUN_ID},
 };
 use af_core::{clock, id::Uuid7};
-use af_wire::lease::{
-    FoldRef, LeasePayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
-    TurnCheckpointRead, TurnCheckpointResponse as Response, TurnId, TurnScope, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, FoldRef, RunPayload, TurnCheckpointAction as Action,
+    TurnCheckpointCommand, TurnCheckpointRead, TurnCheckpointResponse as Response, TurnScope,
+    TurnWorkspace,
 };
 use af_wire::task::CheckpointPage;
 use std::time::Duration;
@@ -25,16 +26,16 @@ enum Fault {
     WrongRelease,
 }
 
-/// A lease offered an API-only ordinary checkpoint, and what the owner saved.
-fn api_only() -> Checked<(LeasePayload<'static>, TurnCheckpointRead)> {
-    let mut lease = test_support::lease(LEASE_ID, FLEET_ID);
-    lease.event.workspace_id = ID.into();
-    lease.setup_revision_id = Some(ID.into());
+/// A run assigned an API-only ordinary checkpoint, and what the owner saved.
+fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
+    let mut run = test_support::payload(RUN_ID, FLEET_ID);
+    run.event.workspace_id = ID.into();
+    run.setup_revision_id = Some(ID.into());
     let scope = TurnScope {
-        event_id: TurnId(lease.event.event_id.to_string()),
-        fleet_id: TurnId(lease.event.fleet_id.to_string()),
-        workspace_id: TurnId(lease.event.workspace_id.to_string()),
-        setup_revision_id: TurnId(ID.to_owned()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        setup_revision_id: CheckpointOperationId(ID.to_owned()),
         workspace: TurnWorkspace::ApiOnly,
     };
     let page = CheckpointPage {
@@ -43,12 +44,12 @@ fn api_only() -> Checked<(LeasePayload<'static>, TurnCheckpointRead)> {
         history_objects: Vec::new(),
     };
     let expiry = clock::after(clock::now(), Duration::from_mins(10));
-    let mut saved = fixture::checkpoint(&lease, scope, expiry, &page)?;
+    let mut saved = fixture::checkpoint(&run, scope, expiry, &page)?;
     saved.page_ids = Vec::new();
     saved.descriptor.manifest_root =
         af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
-    lease.turn_resume = Some(saved.descriptor.clone());
-    Ok((lease, saved))
+    run.turn_resume = Some(saved.descriptor.clone());
+    Ok((run, saved))
 }
 
 fn owner(
@@ -71,7 +72,7 @@ fn owner(
                 }
                 Action::Adopt { .. } if fault == Some(Fault::ChangedAdopt) => {
                     Ok(Response::Adopted(vec![FoldRef {
-                        event_id: TurnId(ID.to_owned()),
+                        turn_id: CheckpointOperationId(ID.to_owned()),
                         sequence: 1,
                     }]))
                 }
@@ -100,30 +101,30 @@ fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
         .collect()
 }
 
-/// Restores `offer` API-only against an owner holding `saved`.
+/// Restores `assignment` API-only against an owner holding `saved`.
 async fn restore(
-    offer: &LeasePayload<'_>,
+    assignment: &RunPayload<'_>,
     saved: TurnCheckpointRead,
     fault: Option<Fault>,
     stop: &CancellationToken,
 ) -> Checked<(Result<Option<afr_agent::TurnRecovery>>, Vec<Action>)> {
     let (plane, mut calls) = owner(saved, fault);
-    let lease = Uuid7::parse(LEASE_ID)?;
+    let run = Uuid7::parse(RUN_ID)?;
     let transfers = Transfers::new()?;
-    let restored = NativeTurn::new(&plane, &lease, offer.fencing_token, &transfers)
-        .restore(offer, TurnWorkspace::ApiOnly, None, stop, None)
+    let restored = NativeTurn::new(&plane, &run, assignment.fencing_token, &transfers)
+        .restore(assignment, TurnWorkspace::ApiOnly, None, stop, None)
         .await;
     Ok((restored, sent(&mut calls)?))
 }
 
 #[tokio::test]
 async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
     let descriptor = saved.descriptor.clone();
 
-    let (restored, sent) = restore(&offer, saved, None, &CancellationToken::new()).await?;
+    let (restored, sent) = restore(&assignment, saved, None, &CancellationToken::new()).await?;
 
-    let recovered = restored?.ok_or("the offered checkpoint was not restored")?;
+    let recovered = restored?.ok_or("the assigned checkpoint was not restored")?;
     assert_eq!(recovered.descriptor, descriptor);
     assert_eq!(recovered.adopted, Vec::<FoldRef>::new());
     assert!(matches!(
@@ -139,7 +140,7 @@ async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> C
 
 #[tokio::test]
 async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
     let root = tempfile::tempdir()?;
     for workspace in [
         TurnWorkspace::Files {
@@ -148,12 +149,12 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
         TurnWorkspace::ApiOnly,
     ] {
         let (plane, mut calls) = owner(saved.clone(), None);
-        let lease = Uuid7::parse(LEASE_ID)?;
+        let run = Uuid7::parse(RUN_ID)?;
         let transfers = Transfers::new()?;
 
-        let restored = NativeTurn::new(&plane, &lease, offer.fencing_token, &transfers)
+        let restored = NativeTurn::new(&plane, &run, assignment.fencing_token, &transfers)
             .restore(
-                &offer,
+                &assignment,
                 workspace,
                 Some((root.path().to_owned(), (0, 0))),
                 &CancellationToken::new(),
@@ -172,17 +173,19 @@ async fn an_ordinary_restore_without_its_actual_workspace_asks_nothing() -> Chec
 
 #[tokio::test]
 async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted() -> Checked {
-    for case in ["files", "changed offer", "stopped"] {
-        let (mut offer, mut saved) = api_only()?;
+    for case in ["files", "changed assignment", "stopped"] {
+        let (mut assignment, mut saved) = api_only()?;
         let stop = CancellationToken::new();
         let expected = match case {
             "files" => {
-                saved.page_ids = vec![TurnId("019f0000-0000-7000-8000-000000000012".to_owned())];
+                saved.page_ids = vec![CheckpointOperationId(
+                    "019f0000-0000-7000-8000-000000000012".to_owned(),
+                )];
                 "API-only recovery unexpectedly contains files"
             }
-            "changed offer" => {
-                if let Some(offered) = offer.turn_resume.as_mut() {
-                    offered.history_digest = "c".repeat(64);
+            "changed assignment" => {
+                if let Some(assigned) = assignment.turn_resume.as_mut() {
+                    assigned.history_digest = "c".repeat(64);
                 }
                 "ordinary root validation refused restore"
             }
@@ -192,7 +195,7 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
             }
         };
 
-        let (restored, sent) = restore(&offer, saved, None, &stop).await?;
+        let (restored, sent) = restore(&assignment, saved, None, &stop).await?;
 
         assert_eq!(test_support::detail(&restored), Some(expected), "{case}");
         assert!(
@@ -210,10 +213,10 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
 /// fails the restore, and the pin is still released.
 #[tokio::test]
 async fn an_adoption_naming_other_saved_inputs_fails_the_restore() -> Checked {
-    let (offer, saved) = api_only()?;
+    let (assignment, saved) = api_only()?;
 
     let (restored, sent) = restore(
-        &offer,
+        &assignment,
         saved,
         Some(Fault::ChangedAdopt),
         &CancellationToken::new(),

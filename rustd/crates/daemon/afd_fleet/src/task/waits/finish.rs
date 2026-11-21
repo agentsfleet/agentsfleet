@@ -32,7 +32,7 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
             .ok()
             .and_then(|value| value.checked_add(1))
             .ok_or(crate::task::TaskRefusal::LimitExhausted)?,
-        &probe.owner.source_admission_id,
+        &probe.owner.source_turn_id,
     )
     .with_reply(
         probe.owner.reply_provider.as_deref(),
@@ -43,11 +43,11 @@ pub(super) async fn finish(tasks: &Tasks, probe: Probe) -> Result<bool> {
         .as_ref()
         .is_ok_and(|snapshot| actionable(snapshot, &probe.owner))
     {
-        Some(tasks.admissions.prepare(wake.admission()).await?)
+        Some(tasks.turns.prepare(wake.turn()).await?)
     } else {
         None
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     guard::scope(&mut tx, &scope).await?;
     let _task: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_TASK)
@@ -88,7 +88,7 @@ async fn apply(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
 ) -> Result<bool> {
     if !owner.within_limits {
         claim::stop(
@@ -188,7 +188,7 @@ async fn consume(
     connection: &mut PgConnection,
     owner: &Wait,
     probe: &Probe,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
     snapshot: &Snapshot,
 ) -> Result<bool> {
     let Some(prepared) = prepared else {
@@ -198,11 +198,10 @@ async fn consume(
         .begin()
         .await
         .map_err(query("begin wait continuation savepoint"))?;
-    let admitted = match tasks.admissions.stage(&mut savepoint, prepared).await {
+    let admitted = match tasks.turns.stage(&mut savepoint, prepared).await {
         Ok(admitted) => admitted,
         Err(fault)
-            if fault.is_over_capacity()
-                || fault.code() == af_core::error_code::AUTHORING_POLICY =>
+            if fault.is_over_capacity() || fault.code() == af_core::error_code::SETUP_POLICY =>
         {
             savepoint
                 .rollback()
@@ -228,7 +227,7 @@ async fn consume(
         .await
         .map_err(query("make consumed dependency continuation ready"))?;
     crate::task::continuation::retire(&mut savepoint, &owner.task_id).await?;
-    sqlx::query(crate::task::sql::CONTROL_ADMISSION)
+    sqlx::query(crate::task::sql::CONTROL_TURN)
         .bind(&owner.task_id)
         .bind(&admitted.stored.id)
         .execute(&mut *savepoint)

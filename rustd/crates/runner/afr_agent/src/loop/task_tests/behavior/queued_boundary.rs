@@ -10,7 +10,7 @@ struct Queued {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Queued {
+impl RunVerbs for Queued {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -58,7 +58,7 @@ impl LeaseVerbs for Queued {
         input: TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult, Unanswered> {
         assert_eq!(input.mode, TaskInputMode::Answered);
-        assert_eq!(input.source_admission_id, SOURCE);
+        assert_eq!(input.source_turn_id, SOURCE);
         let result = TaskInputReceiptResult {
             item_id: input.item_id.clone(),
             mode: input.mode,
@@ -92,7 +92,7 @@ fn queued() -> Queued {
     {
         let mut inputs = intake.inputs.lock().expect("queued source");
         inputs.inputs.push(TaskHumanInput {
-            source_admission_id: SOURCE.to_owned(),
+            source_turn_id: SOURCE.to_owned(),
             sequence: 1,
             message: "hello".to_owned(),
             accepted: None,
@@ -121,7 +121,7 @@ async fn queued_message_is_bound_once_then_reread_and_answered_before_root_work(
         vec![say("Investigation awaits checks."), ended(false)],
     ]);
     let engine = super::super::super::tests::engine(vec![], &script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let inputs = native
         .intake
         .inputs
@@ -133,7 +133,7 @@ async fn queued_message_is_bound_once_then_reread_and_answered_before_root_work(
         inputs,
         allow_actions: true,
     };
-    let output = run(&engine, &lease, &native, &prepared).await?;
+    let output = run(&engine, &this_run, &native, &prepared).await?;
     assert_queued_outcome(&native, &script, output)
 }
 
@@ -157,12 +157,28 @@ fn assert_queued_outcome(
             .contains("Investigation awaits checks.")
     );
     assert_eq!(script.sent().len(), 3);
-    assert_eq!(native.intake.bindings.lock().expect("bound plans").len(), 1);
     assert_eq!(
-        native.intake.decisions.lock().expect("intent calls").len(),
+        native
+            .intake
+            .bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
         1
     );
-    let receipts = native.receipts.lock().expect("source receipts");
+    assert_eq!(
+        native
+            .intake
+            .decisions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .len(),
+        1
+    );
+    let receipts = native
+        .receipts
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(receipts.len(), 1);
     assert_eq!(
         receipts
@@ -170,7 +186,10 @@ fn assert_queued_outcome(
             .and_then(|receipt| receipt.response_text.as_deref()),
         Some("Hello.")
     );
-    let reads = native.queries.lock().expect("input reads");
+    let reads = native
+        .queries
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(reads.len() >= 2);
     assert!(
         reads

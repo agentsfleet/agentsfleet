@@ -18,7 +18,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
 use crate::handler::refuse;
-use crate::services::Services;
+use crate::services::RunnerPlane;
 
 /// The scoped event a failed self read is logged under.
 const EVENT: &str = "runner_self_read_failed";
@@ -40,7 +40,7 @@ const EVENT: &str = "runner_self_read_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
 ) -> Response {

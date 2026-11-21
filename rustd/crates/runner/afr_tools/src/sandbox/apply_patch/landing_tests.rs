@@ -39,7 +39,7 @@ async fn a_write_refused_while_landing_reports_the_executor_and_keeps_what_lande
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{refused:?}"
     );
     assert!(
@@ -85,7 +85,7 @@ async fn a_move_whose_delete_is_refused_keeps_both_files_and_a_retry_heals_it() 
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{refused:?}"
     );
     assert!(
@@ -130,7 +130,13 @@ async fn two_update_hunks_on_one_file_both_land() {
         std::fs::read_to_string(live.root.join(KEEP)).unwrap(),
         "ONE\ntwo\nTHREE\n"
     );
-    assert!(applied.text.ends_with("+2 \u{2212}2"), "{}", applied.text);
+    assert!(
+        applied
+            .text
+            .ends_with("Lines changed:\n\"src/keep.txt\" +1 -1\n\"./src/keep.txt\" +1 -1"),
+        "{}",
+        applied.text
+    );
     live.stop().await;
 }
 
@@ -183,7 +189,7 @@ async fn a_hunk_on_a_path_the_patch_already_removed_lands_nothing() {
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{refused:?}"
     );
     assert!(refused.text.contains("src/keep.txt"), "{}", refused.text);

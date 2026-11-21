@@ -33,7 +33,7 @@ pub(crate) struct SessionSender {
 pub(crate) struct StreamHandle {
     session: watch::Receiver<Option<Arc<SessionSender>>>,
     pub(crate) running: Arc<crate::downlink::running::Running>,
-    pub(crate) assignments: watch::Receiver<Option<Arc<OwnedFrame>>>,
+    pub(crate) policies: watch::Receiver<Option<Arc<OwnedFrame>>>,
     pub(crate) renewing: Arc<renewals::Renewals>,
 }
 
@@ -41,12 +41,12 @@ impl StreamHandle {
     pub(crate) fn new(
         session: watch::Receiver<Option<Arc<SessionSender>>>,
         running: Arc<crate::downlink::running::Running>,
-        assignments: watch::Receiver<Option<Arc<OwnedFrame>>>,
+        policies: watch::Receiver<Option<Arc<OwnedFrame>>>,
     ) -> Self {
         Self {
             session,
             running,
-            assignments,
+            policies,
             renewing: Arc::new(renewals::Renewals::default()),
         }
     }
@@ -129,18 +129,18 @@ impl SessionSender {
         let kind = message.stream_kind();
         let priority = matches!(
             message,
-            Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. } | Up::AuthoringRenew { .. }
+            Up::Ping { .. } | Up::RenewBatch { .. } | Up::Ready { .. }
         );
         let frame = af_stream::encode(message, &self.budget, kind, &self.stop, deadline).await?;
         if matches!(message, Up::TurnCheckpoint { .. }) {
-            af_wire::lease::TurnMessageSize {
+            af_wire::run::TurnMessageSize {
                 bytes: frame.as_bytes().len(),
             }
             .validate()?;
         }
         let message = Outbound { frame, deadline };
-        if kind == StreamKind::Activity {
-            return self.queues.activity(message);
+        if kind == StreamKind::Progress {
+            return self.queues.progress(message);
         }
         self.queues.send(kind, priority, message, &self.stop).await
     }

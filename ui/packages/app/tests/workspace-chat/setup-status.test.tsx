@@ -106,7 +106,7 @@ it("shows unresolved defaults and the exact source and fleet revisions under rev
   expect(screen.getByText("source-2")).toBeTruthy();
   expect(screen.getByText("Current saved setup")).toBeTruthy();
   expect(screen.getByText("Revision 3")).toBeTruthy();
-  expect(screen.getByText("Add instructions before saving or publishing.")).toBeTruthy();
+  expect(screen.getByText("Add instructions before saving.")).toBeTruthy();
 });
 
 it("shows resolved model and instructions for a new setup without inventing saved revisions", async () => {
@@ -115,5 +115,5 @@ it("shows resolved model and instructions for a new setup without inventing save
   expect(await screen.findByText(REVIEW.effective.definition.instructions_md.trim())).toBeTruthy();
   expect(screen.getByText("Source revision unavailable")).toBeTruthy();
   expect(screen.queryByText("Current saved setup")).toBeNull();
-  expect(screen.queryByText("Add instructions before saving or publishing.")).toBeNull();
+  expect(screen.queryByText("Add instructions before saving.")).toBeNull();
 });

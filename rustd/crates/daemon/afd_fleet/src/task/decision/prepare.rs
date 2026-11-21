@@ -19,8 +19,8 @@ use super::{
 use crate::{
     Result,
     error::query,
-    lease::Leases,
-    task::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, guard},
+    run::Runs,
+    task::{TaskRefusal, TaskRun, TaskScope, TaskSnapshot, guard},
 };
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -35,7 +35,7 @@ pub(super) struct Candidate {
 }
 
 pub(super) struct Prepared {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub assignment: DecisionAssignment,
     pub context: AssessedContext,
     pub request: DecisionRequest,
@@ -45,11 +45,11 @@ pub(super) struct Prepared {
 
 pub(super) async fn on(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
     call: &Uuid7,
 ) -> Result<(Prepared, FrozenQuote)> {
-    let native = super::ownership::NativeContext::load(connection, lease, input).await?;
+    let native = super::ownership::NativeContext::load(connection, run, input).await?;
     native.prepare(connection, input, call).await
 }
 
@@ -69,10 +69,10 @@ impl super::ownership::NativeContext {
             .clone();
         let provider = enabled(connection, &assignment).await?;
         let revision = self.revision(input.assessment.purpose())?;
-        let config = Leases::stored_config_on(
+        let config = Runs::stored_config_on(
             connection,
             &self.current.fleet_id,
-            Some(&crate::task::guard::wire(revision)?),
+            Some(&guard::wire(revision)?),
         )
         .await?
         .ok_or(TaskRefusal::DecisionUnavailable)?;
@@ -104,8 +104,10 @@ impl super::ownership::NativeContext {
             &candidates,
             questions,
         )?;
-        garde::Validate::validate(&request)?;
+        // Judged before the request's own validation, so an oversize state
+        // reads as too large rather than as a native fault.
         supported(&assignment, &request)?;
+        garde::Validate::validate(&request)?;
         let quote = quote(connection, &assignment, self.current.checked_at).await?;
         Ok((
             Prepared {
@@ -140,8 +142,8 @@ pub(super) async fn enabled(
     assignment: &DecisionAssignment,
 ) -> Result<String> {
     sqlx::query_scalar(sql::PROFILE)
-        .bind(crate::task::guard::wire(&assignment.profile.model_id)?)
-        .bind(crate::task::guard::wire(&assignment.revision_id)?)
+        .bind(guard::wire(&assignment.profile.model_id)?)
+        .bind(guard::wire(&assignment.revision_id)?)
         .fetch_optional(connection)
         .await
         .map_err(query("check frozen decision revision activation"))?
@@ -199,17 +201,28 @@ fn questions(
     Ok(questions)
 }
 
+/// A question the profile cannot answer is unavailable whatever the evidence.
+/// A request the model cannot read whole (state and questions past the
+/// profile's reviewed input ceiling) is refused as too large, before any
+/// reservation, so the caller may send a shorter description of the same
+/// evidence.
 fn supported(assignment: &DecisionAssignment, request: &DecisionRequest) -> Result<()> {
     if !request
         .questions
         .iter()
         .all(|named| assignment.profile.capabilities.supports(&named.question))
-        || !af_wire::decision::serialized_within(
-            &(&request.state, &request.questions),
-            usize::try_from(assignment.profile.input_max_bytes).unwrap_or(usize::MAX),
-        )
     {
         return Err(TaskRefusal::DecisionUnavailable.into());
     }
+    if !af_validate::serialized_within(
+        &(&request.state, &request.questions),
+        usize::try_from(assignment.profile.input_max_bytes).unwrap_or(usize::MAX),
+    ) {
+        return Err(TaskRefusal::DecisionInputTooLarge.into());
+    }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "prepare_tests.rs"]
+mod tests;

@@ -1,15 +1,14 @@
 //! The `custom` rules a trace is declared with.
 //!
 //! Each rule reports the spelling of the [`TraceRejection`] it is, so a garde
-//! report maps back to the reason a drop logs (`TraceRejection::of`). The one
-//! bound garde writes itself, the call count, is named by its path instead.
+//! report maps back to the reason a drop logs (`TraceRejection::of`).
 
 use serde_json::{Map, Value};
 
 use crate::activity::CALL_ID_MAX_BYTES;
 
 use super::{
-    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, TRACE_MAX_BYTES, ToolTrace, ToolTraceCall, TraceRejection,
+    ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, ToolTraceCall, TraceRejection, changes_free_of_nul,
     edge_fits, encoded_len, fields_free_of_nul, free_of_nul,
 };
 
@@ -25,21 +24,14 @@ fn refuse_unless(holds: bool, rejection: TraceRejection) -> garde::Result {
     }
 }
 
-/// The whole trace, encoded, within [`TRACE_MAX_BYTES`].
-pub(super) fn trace_fits<C: ?Sized>(trace: &ToolTrace<'_>, _context: &C) -> garde::Result {
-    refuse_unless(
-        encoded_len(trace) <= TRACE_MAX_BYTES,
-        TraceRejection::TooLarge,
-    )
-}
-
 /// Every string one call carries, arguments included, free of NUL.
 pub(super) fn call_free_of_nul<C: ?Sized>(call: &ToolTraceCall<'_>, _context: &C) -> garde::Result {
     let edges = [call.output_head.as_deref(), call.output_tail.as_deref()];
     let clean = free_of_nul(&call.call_id)
         && free_of_nul(&call.name)
         && edges.into_iter().flatten().all(free_of_nul)
-        && fields_free_of_nul(&call.arguments);
+        && fields_free_of_nul(&call.arguments)
+        && changes_free_of_nul(&call.changes);
     refuse_unless(clean, TraceRejection::HoldsNul)
 }
 

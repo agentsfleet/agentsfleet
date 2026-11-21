@@ -1,9 +1,9 @@
 import * as v from "valibot";
 
-import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "./fleet-stream-row";
 
 // A tool call's arguments and outcome, narrowed where they cross into the
-// browser: off a live frame, and off an event's saved trace. Each field
+// browser: off a live frame, and off a turn's saved trace. Each field
 // narrows on its own, so a malformed one reads as absent and the call still
 // renders without it — the frame's name and timing are what make a call, and
 // `fleet-stream-tool-frames` reads those. Also where a settled turn's calls
@@ -30,6 +30,11 @@ export type JsonValue = string | number | boolean | null | readonly JsonValue[] 
 
 export type ToolArgs = { readonly [key: string]: JsonValue };
 
+/** One file an edit changed, as `af_wire::tool_trace::FileChange` carries
+ * it: the runner's file tool counted the lines, so nothing here derives them
+ * from the call's arguments. */
+export type FileChange = { path: string; added: number; removed: number };
+
 /** Live calls have no status until completion; output fields may be absent. */
 export type ToolOutcome = {
   status?: ToolCallStatus;
@@ -37,6 +42,8 @@ export type ToolOutcome = {
   outputTail?: string;
   outputLineCount?: number;
   exitCode?: number;
+  /** An edit's files and the lines each gained and lost; absent otherwise. */
+  changes?: readonly FileChange[];
 };
 
 const LINE_COUNT = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
@@ -57,12 +64,19 @@ const ARGS = v.pipe(
   v.check((args) => Object.keys(args).length > 0),
 );
 
+const FILE_CHANGE = v.object({ path: NAMED, added: LINE_COUNT, removed: LINE_COUNT });
+
+/** An edit's changed files, narrowed as a whole: one malformed entry drops
+ * the list rather than showing a count it cannot vouch for. */
+export const FILE_CHANGES = v.fallback(v.optional(v.array(FILE_CHANGE)), undefined);
+
 const OUTCOME = v.object({
   status: TOOL_CALL_STATUS_SCHEMA,
   output_head: v.fallback(v.optional(v.string()), undefined),
   output_tail: v.fallback(v.optional(v.string()), undefined),
   output_line_count: v.fallback(v.optional(LINE_COUNT), undefined),
   exit_code: v.fallback(v.optional(EXIT_CODE), undefined),
+  changes: FILE_CHANGES,
 });
 
 const SAVED_CALL = v.object({
@@ -75,7 +89,6 @@ const SAVED_CALL = v.object({
 
 const SAVED_TRACE = v.object({
   calls: v.array(v.unknown()),
-  omitted_call_count: v.fallback(LINE_COUNT, 0),
 });
 
 export type SavedTrace = { calls: FleetToolCall[]; omitted: number };
@@ -92,28 +105,29 @@ export function readToolOutcome(value: unknown): ToolOutcome | null {
   return parsed.success ? outcomeOf(parsed.output) : null;
 }
 
-function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
+function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code, changes }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
   return {
     status,
     ...(output_head === undefined ? {} : { outputHead: output_head }),
     ...(output_tail === undefined ? {} : { outputTail: output_tail }),
     ...(output_line_count === undefined ? {} : { outputLineCount: output_line_count }),
     ...(exit_code === undefined ? {} : { exitCode: exit_code }),
+    ...(changes === undefined || changes.length === 0 ? {} : { changes }),
   };
 }
 
 /**
- * An event's saved trace as finished calls, or null when it carries none.
+ * A turn's saved trace as finished calls, or null when it carries none.
  * Only the difference between a call's start and its end renders, so every
- * call starts at `startedAtMs` — the event's own instant. A call too
- * malformed to render counts with the ones the runner left out, so the thread
- * still says something is missing.
+ * call starts at `startedAtMs` — the turn's own instant. The runner lists
+ * every call; one too malformed to render is counted as omitted, so the
+ * thread still says something is missing.
  */
 export function readSavedTrace(value: unknown, startedAtMs: number): SavedTrace | null {
   const trace = v.safeParse(SAVED_TRACE, value);
   if (!trace.success) return null;
   const calls: FleetToolCall[] = [];
-  let omitted = trace.output.omitted_call_count;
+  let omitted = 0;
   for (const raw of trace.output.calls) {
     const call = v.safeParse(SAVED_CALL, raw);
     if (!call.success) {
@@ -135,19 +149,19 @@ export function readSavedTrace(value: unknown, startedAtMs: number): SavedTrace 
 }
 
 /** Every call still open, closed as interrupted: a turn that ended ended them.
- * The same event back when none was open. */
-export function interruptOpenCalls(event: FleetEvent): FleetEvent {
-  const tools = event.tools;
-  if (tools === undefined || tools.every((call) => call.done)) return event;
+ * The same turn back when none was open. */
+export function interruptOpenCalls(turn: FleetTurn): FleetTurn {
+  const tools = turn.tools;
+  if (tools === undefined || tools.every((call) => call.done)) return turn;
   return {
-    ...event,
+    ...turn,
     tools: tools.map((call) => (call.done ? call : { ...call, done: true, status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true })),
   };
 }
 
 /** Whether the turn closed any call itself rather than hearing how it ended. */
-export function closedAnyAtSettle(events: readonly FleetEvent[], eventId: string): boolean {
-  return events.find((event) => event.id === eventId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
+export function closedAnyAtSettle(turns: readonly FleetTurn[], turnId: string): boolean {
+  return turns.find((turn) => turn.id === turnId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
 }
 
 /**
@@ -156,7 +170,7 @@ export function closedAnyAtSettle(events: readonly FleetEvent[], eventId: string
  * to the one already shown keeps its array, so a page restating a settled turn
  * re-renders nothing.
  */
-export function settleTools(row: FleetEvent, live: FleetEvent, hasSavedTrace: boolean): FleetEvent {
+export function settleTools(row: FleetTurn, live: FleetTurn, hasSavedTrace: boolean): FleetTurn {
   if (row.tools === undefined) {
     // A replacement's saved detail with no calls excludes the provisional old trace.
     if (live.runRestarted && hasSavedTrace) return row;

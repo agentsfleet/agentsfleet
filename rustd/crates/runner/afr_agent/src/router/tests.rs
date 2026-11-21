@@ -1,22 +1,28 @@
 #![expect(
     clippy::unwrap_used,
+    clippy::indexing_slicing,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
+use af_wire::tool_trace::ToolCallStatus;
 use afr_executor::{
     Executor, ExecutorSlot, FileContent, Listing, Process, ProcessId, Spawn, Unavailable,
 };
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
-use afr_tools::{
-    Catalog, Entry, Lease, Runtime, Schema, Tool, ToolContext, ToolErrorCode, ToolOutput,
-};
+use afr_tools::{Catalog, CatalogTool, Entry, Run, Runtime, Selection, ToolContext, ToolErrorCode};
 use bytes::Bytes;
+use guffbolt::Message;
+use guffbolt::{CallRef, Describe, Tool, ToolFuture, ToolSpec};
+use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
-use super::Router;
+use super::Routed;
+use crate::fixture::{Script, call, payload, say, unbounded};
+use crate::harness::tests::{completions, drive, engine};
 
 /// An executor that counts the calls that crossed into it.
 #[derive(Debug, Default)]
@@ -74,16 +80,30 @@ pub(super) fn catalog() -> Catalog {
     Catalog::new(vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)])
 }
 
+/// Where the one call each case makes sits: the first of step 1.
+pub(super) fn first_call() -> CallRef {
+    CallRef {
+        step: 1,
+        index: 0,
+        call_id: "call-1-0".to_owned(),
+    }
+}
+
+/// The handler `selection` offers for `entry`, as a loop routes it.
+pub(super) fn routed<'c>(selection: &Selection<'c>, entry: &Entry) -> Routed<'c> {
+    Routed::new(selection.tool(entry.name()).unwrap(), entry.runtime())
+}
+
 #[tokio::test]
 async fn test_router_sends_each_tool_to_its_runtime() {
     let catalog = catalog();
     let selection = catalog.select(&["update_plan", "file_read"]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::ready(&executor);
-    let router = Router::new(&selection, &slot);
+    let (arguments, run) = (json!({}), Run::default());
 
-    let supervised = router
-        .dispatch("update_plan", &serde_json::json!({}), &Lease::default())
+    let supervised = routed(&selection, &UPDATE_PLAN)
+        .run(&arguments, &slot, &run, &first_call())
         .await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
@@ -92,8 +112,8 @@ async fn test_router_sends_each_tool_to_its_runtime() {
         "the supervisor ran it"
     );
 
-    let sandboxed = router
-        .dispatch("file_read", &serde_json::json!({}), &Lease::default())
+    let sandboxed = routed(&selection, &FILE_READ)
+        .run(&arguments, &slot, &run, &first_call())
         .await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
@@ -101,121 +121,171 @@ async fn test_router_sends_each_tool_to_its_runtime() {
 }
 
 #[tokio::test]
-async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
-    let catalog = catalog();
-    let selection = catalog.select(&["update_plan"]).unwrap();
-    let executor = Counting::default();
-    let slot = ExecutorSlot::ready(&executor);
-    let router = Router::new(&selection, &slot);
-
-    for name in ["shell", "file_read", "teleport"] {
-        let output = router
-            .dispatch(name, &serde_json::json!({}), &Lease::default())
-            .await;
-
-        assert_eq!(output.error_code, Some(ToolErrorCode::NotOffered));
-        assert!(
-            output.text.starts_with("[tool_not_offered] "),
-            "{}",
-            output.text
-        );
-        assert!(output.text.contains(name));
-    }
-    assert_eq!(executor.calls.load(Ordering::SeqCst), 0);
-}
-
-#[tokio::test]
-async fn a_provider_hosted_tool_reaching_the_router_names_its_code() {
-    let catalog = catalog();
-    let selection = catalog.select(&[WEB_SEARCH.name()]).unwrap();
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-    let router = Router::new(&selection, &slot);
-
-    let output = router
-        .dispatch("web_search", &serde_json::json!({}), &Lease::default())
-        .await;
-
-    assert_eq!(
-        output.error_code,
-        Some(ToolErrorCode::HostedToolUnavailable)
-    );
-    assert!(
-        output
-            .text
-            .starts_with("[hosted_tool_unavailable] web_search ")
-    );
-}
-
-#[tokio::test]
 async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let catalog = catalog();
     let selection = catalog.select(&["file_read"]).unwrap();
     let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-    let router = Router::new(&selection, &slot);
 
-    let output = router
-        .dispatch("file_read", &serde_json::json!({}), &Lease::default())
-        .await;
-
-    assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert!(output.text.contains("file_read"));
-}
-
-/// A handler claiming the provider's runtime for a tool the catalog publishes
-/// as a supervisor one, counting every call that reaches it.
-#[derive(Debug)]
-struct ClaimsProvider {
-    served: Box<dyn Tool>,
-    calls: Arc<AtomicUsize>,
-}
-
-#[async_trait::async_trait]
-impl Tool for ClaimsProvider {
-    fn entry(&self) -> &'static Entry {
-        self.served.entry()
-    }
-
-    fn schema(&self) -> &Schema {
-        self.served.schema()
-    }
-
-    async fn call(
-        &self,
-        arguments: &serde_json::Value,
-        context: ToolContext<'_, '_>,
-    ) -> ToolOutput {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        self.served.call(arguments, context).await
-    }
-
-    fn runtime(&self) -> Runtime {
-        Runtime::Provider
-    }
-}
-
-#[tokio::test]
-async fn a_handler_claiming_the_providers_runtime_is_never_run() {
-    let calls = Arc::new(AtomicUsize::new(0));
-    let claimant = ClaimsProvider {
-        served: Stub::boxed(&UPDATE_PLAN),
-        calls: Arc::clone(&calls),
-    };
-    let catalog = Catalog::new(vec![Box::new(claimant)]);
-    let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
-    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-    let router = Router::new(&selection, &slot);
-
-    let output = router
-        .dispatch(
-            UPDATE_PLAN.name(),
-            &serde_json::json!({}),
-            &Lease::default(),
-        )
+    let output = routed(&selection, &FILE_READ)
+        .run(&json!({}), &slot, &Run::default(), &first_call())
         .await;
 
     assert_eq!(
         output.error_code,
-        Some(ToolErrorCode::HostedToolUnavailable)
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
+    assert!(output.text.contains("file_read"));
+}
+
+/// The model calls a tool its run was not offered, and one the provider
+/// hosts but did not run: each reads its own refusal and the run goes on.
+#[tokio::test]
+async fn a_name_not_offered_and_a_hosted_name_are_refused_as_tool_errors() {
+    let names = ["shell", FILE_READ.name(), "teleport", WEB_SEARCH.name()];
+    let script = Script::new([
+        names
+            .iter()
+            .map(|name| call(name, name, json!({})))
+            .collect(),
+        vec![say("done")],
+    ]);
+    let engine = engine(
+        vec![Stub::boxed(&UPDATE_PLAN), Stub::boxed(&FILE_READ)],
+        &script,
+    );
+    let run = payload(&[UPDATE_PLAN.name(), WEB_SEARCH.name()], unbounded());
+
+    let (output, frames) = drive(&engine, &run, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, "done");
+    let results: Vec<String> = script.sent()[1]
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::ToolResult { output, .. } => Some(output.clone()),
+            Message::User(_) | Message::Assistant { .. } => None,
+        })
+        .collect();
+    assert_eq!(results.len(), names.len(), "every call answered");
+    for (name, result) in names.iter().take(3).zip(&results) {
+        assert!(
+            result.starts_with(&format!("[tool_not_offered] {name} ")),
+            "{result}"
+        );
+    }
+    assert!(
+        results[3].starts_with("[hosted_tool_unavailable] web_search "),
+        "{}",
+        results[3]
+    );
+    assert!(
+        completions(&frames)
+            .iter()
+            .all(|(_id, status)| *status == ToolCallStatus::Failed)
+    );
+}
+
+/// A handler that counts every call reaching it, then serves `served`'s.
+#[derive(Debug)]
+struct Counted {
+    served: Box<CatalogTool>,
+    calls: Arc<AtomicUsize>,
+}
+
+impl Describe for Counted {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.served.spec()
+    }
+}
+
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Counted {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.served.call(arguments, cx)
+    }
+}
+
+/// A runtime is its published entry's, so no handler claims the provider's;
+/// a handler routed as the provider's anyway is never run.
+#[tokio::test]
+async fn a_handler_routed_as_the_providers_is_never_run() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = Counted {
+        served: Stub::boxed(&UPDATE_PLAN),
+        calls: Arc::clone(&calls),
+    };
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+
+    let output = Routed::new(&counted, Runtime::Provider)
+        .run(&json!({}), &slot, &Run::default(), &first_call())
+        .await;
+
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::HostedToolUnavailable.into())
+    );
+    assert!(
+        output
+            .text
+            .starts_with("[hosted_tool_unavailable] update_plan ")
     );
     assert_eq!(calls.load(Ordering::SeqCst), 0, "the handler never ran");
+}
+
+/// A handler that keeps where each call it ran sits.
+#[derive(Debug)]
+struct Placed {
+    served: Box<CatalogTool>,
+    seen: Arc<Mutex<Vec<CallRef>>>,
+}
+
+impl Describe for Placed {
+    fn spec(&self) -> ToolSpec<'_> {
+        self.served.spec()
+    }
+}
+
+impl<'call, 'run> Tool<ToolContext<'call, 'run>> for Placed {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: ToolContext<'call, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        ToolContext<'call, 'run>: 'a,
+    {
+        self.seen.lock().unwrap().push(cx.call_ref.clone());
+        self.served.call(arguments, cx)
+    }
+}
+
+/// A backend derives its idempotency key from where the call sits, so the
+/// router lends the handler the reference the loop dispatched the call with.
+#[tokio::test]
+async fn a_routed_call_lends_its_handler_where_the_call_sits() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let placed = Placed {
+        served: Stub::boxed(&UPDATE_PLAN),
+        seen: Arc::clone(&seen),
+    };
+    let slot = ExecutorSlot::unavailable(Unavailable::NoSandbox);
+    let at = CallRef {
+        step: 3,
+        index: 1,
+        call_id: "call-3-1".to_owned(),
+    };
+
+    let output = Routed::new(&placed, Runtime::Supervisor)
+        .run(&json!({}), &slot, &Run::default(), &at)
+        .await;
+
+    assert_eq!(output.error_code, None, "{}", output.text);
+    assert_eq!(*seen.lock().unwrap(), [at]);
 }

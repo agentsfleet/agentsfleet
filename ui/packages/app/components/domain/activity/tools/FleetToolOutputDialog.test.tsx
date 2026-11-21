@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { CLIPPED_EDIT_NOTE } from "./FleetToolCallBody";
 import { FleetScopeProvider, useFleetScope } from "../../conversation/stream/FleetScope";
 import {
   ARGS_NOT_KEPT_NOTE,
@@ -17,7 +16,7 @@ import type { ToolResult } from "../replies/fleetReplyMessage";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 const SCOPE = { workspaceId: "ws_1", fleetId: "flt_1" };
-const EVENT_ID = "evt_1";
+const TURN_ID = "evt_1";
 const CALL_ID = "f1:3";
 const VERB = "Requested";
 const TARGET = "GET https://api.example/run";
@@ -47,7 +46,7 @@ function renderDialog(over: { name?: string; outcome?: ToolResult; onClose?: () 
   return render(
     <FleetToolOutputDialog
       scope={SCOPE}
-      eventId={EVENT_ID}
+      turnId={TURN_ID}
       callId={CALL_ID}
       name={over.name ?? TOOL_NAME.HTTP_REQUEST}
       verb={VERB}
@@ -75,7 +74,7 @@ describe("FleetToolOutputDialog", () => {
     expect(screen.getByText("line 224")).toBeTruthy();
     // The id is encoded once, through the same-origin proxy.
     expect(fetchMock).toHaveBeenCalledWith(
-      "/live/v1/workspaces/ws_1/fleets/flt_1/events/evt_1/tool-calls/f1%3A3",
+      "/live/v1/workspaces/ws_1/fleets/flt_1/turns/evt_1/items/f1%3A3",
       expect.objectContaining({ redirect: "manual" }),
     );
     expect(screen.getByRole("button", { name: "Copy output" })).toBeTruthy();
@@ -83,14 +82,31 @@ describe("FleetToolOutputDialog", () => {
     expect(screen.queryByText(OUTPUT_CUT_NOTE)).toBeNull();
   });
 
-  it("should draw a whole edit's diff and say when the output was cut", async () => {
+  it("should draw a whole edit's lines with its recorded counts and say when the output was cut", async () => {
     const before = `${"x".repeat(300)}\nkeep`;
-    stubRead(200, { call_id: CALL_ID, arguments: { path: "big.md", old_text: before, new_text: "keep\nnew" }, output: "ok", truncated: true });
+    stubRead(200, { call_id: CALL_ID, arguments: { path: "big.md", old_text: before, new_text: "keep\nnew" }, output: "ok", truncated: true,
+      changes: [{ path: "big.md", added: 24, removed: 8 }] });
     renderDialog({ name: TOOL_NAME.FILE_EDIT });
     await waitFor(() => expect(screen.getByText(OUTPUT_CUT_NOTE)).toBeTruthy());
     const rows = [...document.querySelectorAll("[data-diff]")].map((row) => row.getAttribute("data-diff"));
     expect(rows).toEqual(["removed", "context", "added"]);
-    expect(screen.queryByText(CLIPPED_EDIT_NOTE)).toBeNull();
+    // The header counts are the runner's, not the drawn rows' one each way.
+    expect(document.querySelector("[data-slot='code-diff']")?.textContent).toContain("+24 −8");
+  });
+
+  it("should count nothing from a whole edit's lines when the runner recorded no change", async () => {
+    stubRead(200, { call_id: CALL_ID, arguments: { path: "a.md", old_text: "old", new_text: "new" }, output: "ok" });
+    renderDialog({ name: TOOL_NAME.FILE_EDIT });
+    await waitFor(() => expect(document.querySelectorAll("[data-diff]")).toHaveLength(2));
+    expect(document.querySelector("[data-slot='code-diff']")?.textContent).not.toContain("+1");
+  });
+
+  it("should list a write's recorded files, which have no lines to draw", async () => {
+    stubRead(200, { call_id: CALL_ID, arguments: { path: "src/a.rs", content: "fn main() {}" }, output: "ok",
+      changes: [{ path: "src/a.rs", added: 1, removed: 0 }] });
+    renderDialog({ name: TOOL_NAME.FILE_WRITE });
+    await waitFor(() => expect(document.querySelector("[data-changed-file]")?.textContent).toBe("src/a.rs"));
+    expect(document.querySelectorAll("[data-diff]")).toHaveLength(0);
   });
 
   it("should show no arguments when the full read carries none", async () => {

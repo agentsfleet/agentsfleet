@@ -1,6 +1,6 @@
 //! When a runner counts as gone, and when it has simply not arrived.
 //!
-//! The staleness predicate is the whole of Dimension 6.3 and it needs no
+//! The staleness predicate is the whole of that distinction and it needs no
 //! datastore: what it reads is a column and the clock the fetch answered with,
 //! both of which are fields.
 
@@ -38,13 +38,13 @@ fn seen_at(last_seen_at: Timestamp) -> Due {
 
 #[test]
 fn a_runner_that_has_never_connected_is_not_stale() {
-    // Dimension 6.3. The sentinel is the epoch, decades before any fetch, so
+    // The sentinel is the epoch, decades before any fetch, so
     // arithmetic alone would report a runner enrolled a second ago as long
     // dead — offline before it ever had a chance to beat. A runner that has
     // never connected is not one that stopped; it is one that has not started,
     // and that is a different word to an operator and a different row on a
     // dashboard.
-    assert!(!seen_at(sql::NEVER_SEEN).is_stale(af_core::timing::LeaseClock::default()));
+    assert!(!seen_at(sql::NEVER_SEEN).is_stale(af_core::timing::RunClock::default()));
 }
 
 #[test]
@@ -52,15 +52,15 @@ fn a_runner_is_stale_only_once_it_is_past_the_threshold() {
     let threshold = clock::before(NOW, RUNNER_OFFLINE_AFTER);
     // Exactly at the threshold is not past it: the comparison is strict, so a
     // runner whose beat is due this instant gets the instant.
-    assert!(!seen_at(threshold).is_stale(af_core::timing::LeaseClock::default()));
+    assert!(!seen_at(threshold).is_stale(af_core::timing::RunClock::default()));
     assert!(
         seen_at(clock::before(threshold, ONE_MILLISECOND))
-            .is_stale(af_core::timing::LeaseClock::default())
+            .is_stale(af_core::timing::RunClock::default())
     );
     // And one that beat a moment ago is plainly alive.
     assert!(
         !seen_at(clock::before(NOW, ONE_MILLISECOND))
-            .is_stale(af_core::timing::LeaseClock::default())
+            .is_stale(af_core::timing::RunClock::default())
     );
 }
 
@@ -69,9 +69,9 @@ fn a_clock_that_went_backwards_does_not_make_a_runner_stale() {
     // A last-seen stamp in the FUTURE is what an NTP correction or a clock skew
     // between two database replicas produces. It reads as no time elapsed —
     // the safe direction, because the alternative reports a live runner
-    // offline and releases the slots it is actively using.
+    // offline and releases the threads it is actively using.
     assert!(
         !seen_at(clock::after(NOW, RUNNER_OFFLINE_AFTER))
-            .is_stale(af_core::timing::LeaseClock::default())
+            .is_stale(af_core::timing::RunClock::default())
     );
 }

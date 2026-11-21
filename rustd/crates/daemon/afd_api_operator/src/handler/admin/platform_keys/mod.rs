@@ -17,10 +17,10 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use garde::Validate as _;
 
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
 use crate::handler::{refuse, reject};
 use crate::request_id::RequestId;
-use crate::services::Services;
 
 const DETAIL_BODY_REQUIRED: &str = "Request body required";
 const DETAIL_MALFORMED_JSON: &str = "Malformed JSON";
@@ -48,7 +48,7 @@ const DETAIL_MODEL_UNKNOWN: &str =
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Response {
+pub(crate) async fn list<D: OperatorPlane>(State(services): State<Arc<D>>) -> Response {
     match services.platform_keys().list().await {
         Ok(keys) => Json(PlatformKeysResponse {
             keys: keys.iter().map(item).collect(),
@@ -75,7 +75,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn set<D: Services>(
+pub(crate) async fn set<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -144,7 +144,7 @@ pub(crate) async fn set<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn deactivate<D: Services>(
+pub(crate) async fn deactivate<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(provider): Path<String>,

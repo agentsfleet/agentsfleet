@@ -7,7 +7,7 @@
 )]
 
 use super::*;
-use afd_api_wire::authoring::{Conversation, CursorPage, Draft, Message};
+use afd_api_wire::setup::{Conversation, CursorPage, Draft, Message};
 use serde_json::{Value, json};
 
 const LARGE_METADATA_BYTES: usize = 2 * 1024 * 1024;
@@ -71,8 +71,8 @@ fn an_oversized_current_setup_is_refused_without_dropping_its_state() {
     assert!(value.conversations[0].draft.review.is_some());
 }
 
-fn context() -> AuthoringContext<Value, Value, Value> {
-    AuthoringContext {
+fn context() -> SetupContext<Value, Value, Value> {
+    SetupContext {
         fleet: json!({"setup_revision":"1"}),
         conversations: (0..3)
             .map(|index| Conversation {
@@ -81,12 +81,10 @@ fn context() -> AuthoringContext<Value, Value, Value> {
                     state: "editing".into(),
                     title: "Private setup".into(),
                     etag: "draft-tag".into(),
-                    authoring_model_ref: "owner-model".into(),
-                    cancelled_through: "0".into(),
+                    setup_model_ref: "owner-model".into(),
                     candidate: None,
                     review: None,
                     linked_fleet_id: Some("fleet".into()),
-                    publication: None,
                     closed_at: None,
                     expires_at: None,
                 },
@@ -122,6 +120,7 @@ fn boundaries() -> Vec<Boundaries> {
 
 fn message(sequence: u8, role: &str) -> Message {
     Message {
+        turn_id: "turn".into(),
         save_requested: false,
         save_error_code: None,
         sequence: sequence.to_string(),

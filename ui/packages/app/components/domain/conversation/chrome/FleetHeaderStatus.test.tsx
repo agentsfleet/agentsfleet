@@ -3,22 +3,22 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { FleetHeaderStatus } from "./FleetHeaderStatus";
 import { FleetStreamProvider } from "../stream/FleetStreamProvider";
-import { useFleetEventStream } from "../stream/useFleetEventStream";
+import { useFleetTurnStream } from "../stream/useFleetTurnStream";
 import { FleetStreams } from "@/lib/streaming/fleet-stream-registry";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { row } from "@/tests/helpers/fleet-stream-fixtures";
 import {SCHEDULE} from "@/tests/helpers/draft-fixtures";
 
 const PROPS = {workspaceId: "workspace", fleetId: "fleet", initial: 2};
-const INITIAL = [row({event_id: "recorded", status: "processed", response_text: "Retained answer"})];
+const INITIAL = [row({turn_id: "recorded", status: "processed", response_text: "Retained answer"})];
 let streams: FleetStreams;
 beforeEach(() => {FakeEventSource.install(); streams = new FleetStreams();});
 afterEach(() => {cleanup(); streams.close(); FakeEventSource.uninstall();});
 
 function Timeline() {
-  const stream = useFleetEventStream(PROPS.workspaceId, PROPS.fleetId, INITIAL);
-  return <p>{stream.events.map(event => event.reply).join(" ")}</p>;
+  const stream = useFleetTurnStream(PROPS.workspaceId, PROPS.fleetId, INITIAL);
+  return <p>{stream.turns.map(turn => turn.reply).join(" ")}</p>;
 }
 
 it("keeps the server's verified attention outside a live stream provider", () => {

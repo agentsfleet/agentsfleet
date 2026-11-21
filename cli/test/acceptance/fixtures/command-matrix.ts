@@ -152,8 +152,8 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["platform", "runners", "self-test"], missingArgName: "runner_id" },
   { args: ["platform", "runners", "rotate-token"], missingArgName: "runner_id" },
   { args: ["platform", "runners", "delete"], missingArgName: "runner_id" },
-  { args: ["platform", "runners", "events"], missingArgName: "runner_id" },
-  { args: ["platform", "runners", "leases"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "history"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "runs"], missingArgName: "runner_id" },
   { args: ["runners", "show"], missingArgName: "runner_id" },
   { args: ["runners", "update"], missingArgName: "runner_id" },
   { args: ["runners", "cordon"], missingArgName: "runner_id" },
@@ -174,9 +174,6 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["api-keys", "revoke"], missingArgName: "api_key_id" },
   { args: ["api-keys", "delete"], missingArgName: "api_key_id" },
   { args: ["fleet", "grants", "revoke"], missingArgName: "grant_id" },
-  { args: ["plugins", "show"], missingArgName: "plugin_id" },
-  { args: ["plugins", "revisions"], missingArgName: "plugin_id" },
-  { args: ["plugins", "delete"], missingArgName: "plugin_id" },
   { args: ["fleet", "show"], missingArgName: "fleet_id" },
   { args: ["fleet", "approvals", "show"], missingArgName: "gate_id" },
   { args: ["fleet", "approvals", "approve"], missingArgName: "gate_id" },
@@ -185,7 +182,7 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["fleet", "activate"], missingArgName: "fleet_id" },
   { args: ["fleet", "archive"], missingArgName: "fleet_id" },
   { args: ["fleet", "delete"], missingArgName: "fleet_id" },
-  { args: ["fleet", "events"], missingArgName: "fleet_id" },
+  { args: ["fleet", "turns"], missingArgName: "fleet_id" },
   { args: ["fleet", "steer"], missingArgName: "fleet_id" },
   { args: ["fleet", "memory", "search"], missingArgName: "query" },
   { args: ["secrets", "create"], missingArgName: "name" },
@@ -206,8 +203,8 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 // invocation through `help({ error: true })`, i.e. stderr).
 //
 // A node that owns subcommands and ALSO runs is listed in ACTION_GROUP_NODES
-// instead: bare `agentsfleet plugins` lists them, so asserting it prints
-// help would be asserting the opposite of what it is for.
+// instead: bare `agentsfleet chat` opens a conversation, so asserting it
+// prints help would be asserting the opposite of what it is for.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["platform"],
   ["platform", "runners"],
@@ -231,7 +228,6 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
 // the command, so these are excluded from the print-help-and-exit-0 sweep and
 // covered by their own command's tests instead.
 export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
-  ["plugins"],
   ["chat"],
 ];
 

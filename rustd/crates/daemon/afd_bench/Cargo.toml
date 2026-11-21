@@ -1,6 +1,6 @@
 [package]
 name = "afd_bench"
-description = "Measurement lanes for the paths a fleet's life runs through: what steer, lease and delivery sustain, and which datastore gives out first."
+description = "Measurement lanes for the paths a fleet's life runs through: what intake, runs and delivery sustain, and which datastore gives out first."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,24 +12,26 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-# The NATS Bus the live tail and the wakes run over, connected the way the
+# The NATS Bus the live items stream and the wakes run over, connected the way the
 # daemon connects it.
 afd_bus.workspace = true
 afd_auth.workspace = true
 af_stream.workspace = true
 afd_gateway = { workspace = true, features = ["test-util"] }
 # THE dependency that makes this a measurement rather than a model: the lanes
-# drive `Leases::select`, the real assignment pass, not a copy of it. A
+# drive `Runs::select`, the real assignment pass, not a copy of it. A
 # reimplementation would not compile against these signatures (Invariant 2).
 afd_fleet.workspace = true
-# The memory store the lease plane it drives is built with.
+# The memory store the run plane it drives is built with.
 afd_memory.workspace = true
-# Enrolling the runners a lease is issued to.
+# Enrolling the runners a run is issued to.
 afd_runner.workspace = true
-# The steer ingress path the steer lane drives.
-afd_events.workspace = true
-# The rest of the lease plane the drain composes: `Plane::lease` walks past the
-# claim into the payer's wallet (`afd_billing`), the provider
+# The run and runner status spellings its statements bind.
+afd_state.workspace = true
+# The steer ingress path the intake lane drives.
+afd_turns.workspace = true
+# The rest of the run plane the drain composes: `Plane::run` walks past the
+# assignment into the payer's wallet (`afd_billing`), the provider
 # (`afd_credential`), the vault (`afd_vault`), the approval gate (`afd_gate`)
 # and the standing grants (`afd_approval`). The drain builds the same plane the daemon's root builds,
 # so each is here for the same reason `afd_fleet` is: a copy would not be the
@@ -38,29 +40,29 @@ afd_billing.workspace = true
 afd_credential.workspace = true
 afd_gate.workspace = true
 afd_approval.workspace = true
-# The setup chat half of the production poll: `Plane::claim` admits chat
+# The setup chat half of the production poll: `RunService::assign_with` admits chat
 # work through `Drafts`, and the saturation shape seeds its drafts through
 # `Drafts::create`, the route's own write path.
-afd_authoring.workspace = true
+afd_setup.workspace = true
 # The live set a wall's viewers re-read every tick, read beside the poll so the
 # saturation shape measures the two competing for one pool.
 afd_fleet_lifecycle.workspace = true
 # The client the credential broker is built over. The drain never mints — its
 # fleets declare no integration — but the broker will not construct without one.
 reqwest.workspace = true
-# The delivery worker the outbound lane drives, and the trait its scripted
+# The delivery worker the delivery lane drives, and the trait its scripted
 # destination implements.
 afd_outbound.workspace = true
 # `Provider`, the connector an owed answer names.
 afd_connector.workspace = true
 # The token the worker is stopped by.
 tokio-util.workspace = true
-# The live tail's per-viewer stream and its stream ceiling, as the tenant
-# routes hold them: the tail lane measures that path, not a copy of it.
+# The live items stream per viewer and its stream ceiling, as the tenant
+# routes hold them: the stream lane measures that path, not a copy of it.
 afd_sse.workspace = true
-# Pulling frames off a tail, which is a `Stream`.
+# Pulling frames off an items stream, which is a `Stream`.
 futures-util.workspace = true
-# The pool the lease path reads through, opened the way the daemon opens it,
+# The pool the run path reads through, opened the way the daemon opens it,
 # and the shared seeds the lane's fixture rows are written through: the same
 # builders the integration suites use, so a schema change reaches the bench
 # with them. The release build names its package (`make/build.mk`), so this
@@ -69,10 +71,9 @@ afd_db = { workspace = true, features = ["test-util"] }
 # Identifiers, the clock the pass is given, and the environment source the
 # daemon's own pool config resolves through.
 af_core = { workspace = true, features = ["sqlx"] }
-# The entropy surface a lease mints its identifiers from.
+# The entropy surface a run mints its identifiers from.
 # The ledger a steer is admitted through. The lane builds one so its
 # measured cost is the production path's, not a shortcut around it.
-afd_admission.workspace = true
 af_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
 af_wire.workspace = true
@@ -85,8 +86,8 @@ jiff.workspace = true
 afd_vault.workspace = true
 # The concurrency the lanes exist to measure.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time", "sync"] }
-# The daemon's own lease instrument: candidates per poll are READ from
-# `producers::fleet::lease_polled`. Statements come from `pg_stat_statements`,
+# The daemon's own run instrument: candidates per poll are READ from
+# `producers::fleet::run_polled`. Statements come from `pg_stat_statements`,
 # which counts what every crate sends.
 af_observability.workspace = true
 # The manual reader the counters are collected through. Nothing exports

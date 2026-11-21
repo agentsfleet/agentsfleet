@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { test as base } from "@playwright/test";
 import { applicationCss } from "./fleet-output-browser-assets";
 import { summary, detail } from "@/tests/helpers/task-reads";
-import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
+import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
 import { visualTaskDetail, visualTaskPage } from "./refresh-visual-data";
 
 export const test = base.extend<object, {chatProbe: string}>({
@@ -30,11 +30,11 @@ export const test = base.extend<object, {chatProbe: string}>({
         const task = {...summary(undefined, "running"), title: "Validate the Linkwarden repair"};
         response.writeHead(200, {"content-type": "application/json"});
         response.end(JSON.stringify(request.url.includes("?limit=") ? {items: [task], next_cursor: null} : detail(task)));
-      } else if (request.url?.startsWith("/event-details?")) {
+      } else if (request.url?.startsWith("/turn-details?")) {
         const query = new URL(request.url, "http://localhost").searchParams;
-        const owned = query.get("workspace") === SCHEDULE_EVENT.workspace_id && query.get("fleet") === SCHEDULE_EVENT.fleet_id;
+        const owned = query.get("workspace") === SCHEDULE_TURN.workspace_id && query.get("fleet") === SCHEDULE_TURN.fleet_id;
         response.writeHead(owned ? 200 : 404, {"content-type": "application/json"});
-        response.end(JSON.stringify({...SCHEDULE_EVENT, event_id: query.get("event"), response_text: "Native recorded support review."}));
+        response.end(JSON.stringify({...SCHEDULE_TURN, turn_id: query.get("turn"), response_text: "Native recorded support review."}));
       } else {
         response.writeHead(200, {"content-type": "text/html"});
         response.end(`<html data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script type="module" src="/probe.js"></script></body></html>`);

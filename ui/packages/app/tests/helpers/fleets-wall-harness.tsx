@@ -7,7 +7,7 @@ import {
   WorkspaceStreamProvider,
   useWorkspaceFleetStream,
 } from "@/components/domain/conversation/stream/useWorkspaceStream";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { __resetWorkspaceRegistryForTests } from "@/lib/streaming/workspace-stream";
 import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
@@ -17,7 +17,7 @@ import { deriveTileLiveness } from "@/lib/wall/tile-liveness";
 // reads. Split from the wall suite so the suite keeps to its behaviour.
 
 export const WORKSPACE_ID = "ws_wall";
-export const EVENT_CREATED_AT_MS = 1_700_000_000_000;
+export const TURN_CREATED_AT_MS = 1_700_000_000_000;
 export const SPENT_NANOS = "2000000000";
 export const LIVE_LABEL = "live";
 export const LAST_KNOWN_LABEL = "last known";
@@ -115,7 +115,7 @@ export function FleetProbe({ fleetId }: { fleetId: string }) {
   const live = state.isLive ? LIVE_LABEL : LAST_KNOWN_LABEL;
   const recovery = state.catchingUp ? CATCHING_UP_LABEL : CURRENT_LABEL;
   const kind = deriveTileLiveness(AGENTSFLEET_STATUS.ACTIVE, state.connectionStatus).kind;
-  const processed = state.counters?.eventsProcessed ?? ABSENT;
+  const processed = state.counters?.turnsProcessed ?? ABSENT;
   return React.createElement(
     "output",
     { "data-testid": fleetId },
@@ -137,34 +137,34 @@ export function renderWall(fleetIds: string[], onRender?: ProfilerOnRenderCallba
 export function activityFrame(fleetId: string) {
   return {
     fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_RECEIVED,
-    event_id: `event_${fleetId}`,
+    kind: FRAME_KIND.TURN_RECEIVED,
+    turn_id: `event_${fleetId}`,
     actor: FLEET_ACTOR,
   };
 }
 
-export function completionFrame(fleetId: string, eventId: string, eventsProcessed: number) {
+export function completionFrame(fleetId: string, turnId: string, turnsProcessed: number) {
   return {
     fleet_id: fleetId,
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    event_id: eventId,
+    kind: FRAME_KIND.TURN_COMPLETE,
+    turn_id: turnId,
     status: SETTLED,
-    created_at: EVENT_CREATED_AT_MS,
-    updated_at: EVENT_CREATED_AT_MS,
-    events_processed: eventsProcessed,
+    created_at: TURN_CREATED_AT_MS,
+    updated_at: TURN_CREATED_AT_MS,
+    events_processed: turnsProcessed,
     budget_used_nanos: SPENT_NANOS,
   };
 }
 
-export function eventRow(fleetId: string, eventId: string) {
+export function turnRow(fleetId: string, turnId: string) {
   return {
-    event_id: eventId,
+    turn_id: turnId,
     fleet_id: fleetId,
     actor: FLEET_ACTOR,
     response_text: "recovered",
     request_json: "{}",
     status: SETTLED,
-    created_at: EVENT_CREATED_AT_MS,
+    created_at: TURN_CREATED_AT_MS,
   };
 }
 

@@ -1,0 +1,158 @@
+//! Native provider and runner configuration precede ordinary task reissuance.
+use super::super::{super::fixture::Case, fixture::Decisions};
+use af_core::id::Uuid7;
+use afd_db::test_util::{DefaultSeed, PlatformDefault};
+use afd_fleet::run::Acquired;
+use afd_vault::{SecretBody, SecretName};
+use serde_json::{json, value::RawValue};
+use std::borrow::Cow;
+
+pub(in super::super) async fn provider(fixture: &Decisions<'_>) -> PlatformDefault {
+    let case = fixture.case;
+    case.held
+        .fixtures
+        .seed_model_rate(crate::seed::PROVIDER, crate::seed::MODEL)
+        .await;
+    let body = RawValue::from_string(
+        json!({"provider":crate::seed::PROVIDER,"api_key":"sk-fixture-not-a-credential"})
+            .to_string(),
+    )
+    .expect("private synthetic provider body");
+    fixture
+        .vault
+        .create(
+            &case.scope.workspace_id,
+            &SecretName::parse(crate::seed::PROVIDER).expect("provider name"),
+            &SecretBody::parse(&body).expect("provider credential"),
+            af_core::clock::now(),
+        )
+        .await
+        .expect("encrypted coding-provider key");
+    PlatformDefault::hold(
+        &case.held.fixtures.database,
+        DefaultSeed {
+            provider: crate::seed::PROVIDER,
+            source_workspace_id: &case.scope.workspace_id,
+            model: crate::seed::MODEL,
+            context_cap_tokens: 200_000,
+            created_at: case.held.fixtures.enrolled_at(),
+        },
+    )
+    .await
+}
+
+pub(in super::super) async fn model(fixture: &Decisions<'_>, selected: Option<&Uuid7>) {
+    let runners = fixture.case.held.fixtures.runners();
+    let row = runners
+        .self_record(&fixture.case.held.runner)
+        .await
+        .expect("native runner assignment");
+    let mut policy = row.assignment.decode().expect("stored assignment");
+    policy.decision_model_id = selected.map(|id| Cow::Borrowed(id.as_str()));
+    runners
+        .platform()
+        .edit(
+            &fixture.case.held.runner,
+            afd_runner::RunnerEdit {
+                assigned_policy: Some(&policy),
+                labels: None,
+            },
+            af_core::clock::now(),
+        )
+        .await
+        .expect("reviewed native decision model selection");
+}
+
+pub(in super::super) async fn expire(case: &Case) {
+    chat_source(case).await;
+    let mut connection = case
+        .held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("elapsed fixture clock");
+    sqlx::query("UPDATE thread.threads SET run_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
+        .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior thread elapsed");
+    sqlx::query("UPDATE thread.runs SET status='expired' WHERE id=$1")
+        .bind(&case.held.run_key)
+        .execute(&mut *connection)
+        .await
+        .expect("old execution expired");
+}
+
+pub(in super::super) async fn assign(case: &Case) -> Acquired {
+    let acquired = crate::seed::select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
+        .await
+        .expect("native turn reassignment");
+    assert_eq!(acquired.turn_id, case.held.turn_id);
+    acquired
+}
+
+pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence: i64) {
+    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.run_expires_at<=l.task_execution_deadline_at AND l.run_expires_at=(SELECT s.run_expires_at FROM thread.threads s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_runs FROM thread.runs l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
+        .bind(run).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("issued ownership observer")).await.expect("ordinary run owns exact task");
+    assert_eq!(row, (task.clone(), 1, 0, fence, true, true, 2));
+    let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM thread.runs WHERE fleet_id=$1),(SELECT count(*) FROM thread.runs WHERE fleet_id=$1 AND status='active')")
+        .bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("single execution observer")).await.expect("old and new runs");
+    assert_eq!(rows, (2, 1));
+}
+
+pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
+    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
+        .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
+    assert_eq!(
+        row,
+        (
+            "blocked".to_owned(),
+            "setup_authority_changed".to_owned(),
+            2,
+            1,
+            1,
+            1
+        )
+    );
+    let live: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE task_id=$1 AND settled_at IS NULL",
+    )
+    .bind(task)
+    .fetch_one(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("continuation observer"),
+    )
+    .await
+    .expect("preserved original human source");
+    assert_eq!(
+        live, 1,
+        "original human source is not falsely settled by an authority refusal"
+    );
+}
+
+async fn chat_source(case: &Case) {
+    // The shared direct-issue seed predates TurnKind and stores the producer
+    // spelling as its event kind. Full Plane issuance requires a native Chat.
+    let mut connection = case
+        .held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("native event fixture");
+    // One turn row holds both the queued input and its history, so one update
+    // moves the kind for both.
+    let turn = sqlx::query(
+        "UPDATE thread.turns SET kind=$3 WHERE thread_id=$1 AND id=$2 AND kind='steer'",
+    )
+    .bind(&case.held.fleet)
+    .bind(&case.held.turn_id)
+    .bind(af_wire::turn::TurnKind::Chat.as_str())
+    .execute(&mut *connection)
+    .await
+    .expect("native human turn kind");
+    assert_eq!(turn.rows_affected(), 1);
+}

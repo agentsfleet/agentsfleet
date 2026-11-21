@@ -12,7 +12,7 @@
 //! # Borrowed, not owned
 //!
 //! Text fields are `Cow<'a, str>` behind `#[serde(borrow)]` rather than `String`.
-//! Every lease, report, heartbeat and activity frame crosses this layer, so the
+//! Every run, report, heartbeat and activity frame crosses this layer, so the
 //! common case — a payload with no JSON escapes — parses without allocating a
 //! single field, while an escaped string still decodes correctly by falling back
 //! to an owned copy. `String` everywhere would allocate per field per request and
@@ -35,13 +35,13 @@
 //! `#[serde(deny_unknown_fields)]`, such as the report and the activity
 //! frames. There a field added after release skips itself when absent, so a
 //! message that does not use it still decodes on a receiver that predates it.
-//! A shape that admits unknown fields, such as [`lease::LeasePayload`], never
+//! A shape that admits unknown fields, such as [`run::RunPayload`], never
 //! skips: its newer fields decode from absence through `#[serde(default)]`.
 //!
 //! # Version
 //!
-//! This is the CURRENT lease shape only. One lease version is on the wire, and
-//! a second lease type here would be a second implementation of the same verb
+//! This is the CURRENT run shape only. One run version is on the wire, and
+//! a second run type here would be a second implementation of the same verb
 //! rather than a field added to this one.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with no
@@ -52,16 +52,13 @@
 #![deny(clippy::self_named_module_files)]
 
 pub mod activity;
-pub mod authoring;
 pub mod context;
 pub mod credentials;
 pub mod decision;
-pub mod event;
 pub mod fleets_verb;
 pub mod fold;
 pub mod inference;
 pub mod instant;
-pub mod lease;
 pub mod memory;
 pub mod message_verb;
 pub mod nanos;
@@ -70,10 +67,13 @@ pub mod policy;
 pub mod protocol;
 pub mod redact;
 pub mod report;
+pub mod run;
 pub mod runner;
 pub mod schedule_verb;
+pub mod setup;
 pub mod steer_verb;
 pub mod task;
 pub mod tool_detail;
 pub mod tool_trace;
+pub mod turn;
 pub mod usage;

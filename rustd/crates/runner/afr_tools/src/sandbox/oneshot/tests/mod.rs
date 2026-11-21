@@ -11,7 +11,7 @@ use serde_json::json;
 use tokio::sync::Notify;
 
 use crate::catalog::{GIT, SHELL};
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{call_in, hosted, offered};
 
@@ -32,7 +32,7 @@ async fn silent_endings_interrupt_commands_and_fence_later_calls() {
         let (witness, mut peer) = pair();
         let (catalog, _sent) = hosted();
         let selection = catalog.select(&[entry.name()]).expect("offered command");
-        let lease = Lease::default();
+        let run = Run::default();
         let drive = async {
             let request = peer.spawn(&witness).await;
             tokio::time::pause();
@@ -45,7 +45,7 @@ async fn silent_endings_interrupt_commands_and_fence_later_calls() {
             call_in(
                 offered(&selection, entry),
                 &witness,
-                &lease,
+                &run,
                 arguments.clone()
             ),
             drive
@@ -57,17 +57,17 @@ async fn silent_endings_interrupt_commands_and_fence_later_calls() {
         );
         assert_eq!(
             (output.exit_code, output.error_code),
-            (None, Some(ToolErrorCode::Interrupted))
+            (None, Some(ToolErrorCode::Interrupted.into()))
         );
         let later = tokio::time::timeout(
             PATIENCE,
-            call_in(offered(&selection, entry), &witness, &lease, arguments),
+            call_in(offered(&selection, entry), &witness, &run, arguments),
         )
         .await
         .expect("invalid link refuses without waiting for the peer");
         assert_eq!(
             (later.exit_code, later.error_code),
-            (None, Some(ToolErrorCode::SandboxUnavailable))
+            (None, Some(ToolErrorCode::SandboxUnavailable.into()))
         );
         assert_deadline(&capture);
     }
@@ -80,7 +80,7 @@ fn assert_deadline(capture: &Capture) {
     assert_eq!(event.field("process_id"), Some("7"));
     assert_eq!(event.field("timeout_ms"), Some("100"));
     assert_eq!(event.field("runner_wait_ms"), Some("5100"));
-    assert!(event.field("lease_id").is_some());
+    assert!(event.field("run_id").is_some());
     assert!(
         event
             .fields
@@ -98,7 +98,7 @@ async fn an_ending_during_cleanup_preserves_the_confirmed_timeout_without_a_seco
     let (witness, mut peer) = pair();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[SHELL.name()]).expect("offered shell");
-    let lease = Lease::default();
+    let run = Run::default();
     let drive = async {
         peer.spawn(&witness).await;
         tokio::time::pause();
@@ -108,13 +108,13 @@ async fn an_ending_during_cleanup_preserves_the_confirmed_timeout_without_a_seco
     };
     let arguments = json!({"command":"sleep 60", "timeout_ms":100});
     let (output, ()) = tokio::join!(
-        call_in(offered(&selection, &SHELL), &witness, &lease, arguments),
+        call_in(offered(&selection, &SHELL), &witness, &run, arguments),
         drive
     );
     assert_eq!(output.text, "partial\nProcess timed out after 100 ms");
     assert_eq!(
         (output.exit_code, output.error_code),
-        (None, Some(ToolErrorCode::TimedOut))
+        (None, Some(ToolErrorCode::TimedOut.into()))
     );
     assert_eq!(
         capture.only(EVENT_TIMED_OUT).field("timeout_ms"),
@@ -138,7 +138,7 @@ async fn caller_cancellation_keeps_native_cleanup_and_the_connection_usable() {
     let (witness, mut peer) = pair();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[SHELL.name()]).expect("offered shell");
-    let lease = Lease::default();
+    let run = Run::default();
     let cancel = Notify::new();
     let drive = async {
         peer.spawn(&witness).await;
@@ -148,7 +148,7 @@ async fn caller_cancellation_keeps_native_cleanup_and_the_connection_usable() {
     let arguments = json!({"command":"sleep 60", "timeout_ms":100});
     let call = async {
         tokio::select! {
-            output = call_in(offered(&selection, &SHELL), &witness, &lease, arguments) => Some(output),
+            output = call_in(offered(&selection, &SHELL), &witness, &run, arguments) => Some(output),
             () = cancel.notified() => None,
         }
     };

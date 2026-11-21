@@ -70,17 +70,17 @@ async fn parked_event_finds_its_gate_from_the_table() -> Result<(), &'static str
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let gates = gates_without_a_bus(fixture.database.clone());
-    let event_id = &mint_id();
+    let turn_id = &mint_id();
     let config = config(false);
-    let scope = fixture.check(event_id, &config);
+    let scope = fixture.check(turn_id, &config);
 
     let parked = gates
         .park(
             Park {
                 fleet_id: scope.fleet_id,
                 workspace_id: scope.workspace_id,
-                event_id,
-                stated: Stated::of("chat", "user:fixture", event_id.as_str(), REFERENCE_TIMEOUT),
+                turn_id,
+                stated: Stated::of("chat", "user:fixture", turn_id.as_str(), REFERENCE_TIMEOUT),
                 claim: &Claim::of(None),
             },
             NOW,
@@ -91,7 +91,7 @@ async fn parked_event_finds_its_gate_from_the_table() -> Result<(), &'static str
     };
 
     let found = gates
-        .recorded(scope.fleet_id, event_id)
+        .recorded(scope.fleet_id, turn_id)
         .await
         .expect("the durable read answers");
 

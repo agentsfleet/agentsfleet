@@ -7,7 +7,9 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
+use afd_http::{auth, client, etag, request_id, route};
+
+pub mod services;
 
 pub(crate) mod handler;
 
@@ -18,12 +20,21 @@ pub use handler::{fleet, secret, tenant};
 
 use std::sync::Arc;
 
+use afd_http::handler::setup_input::{SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX};
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, delete, get, patch, post, put};
 use route::{AuthRoute, ConnectorRoute, FleetRoute, TenantRoute, WorkspaceRoute};
-use services::Services;
+use services::TenantPlane;
+
+/// `router`, reading request bodies up to `max` bytes in place of axum's
+/// 2 MiB default: a route whose body carries text at the one ceiling
+/// (`af_validate::TEXT_MAX_CHARS`), every character at its widest escape.
+fn reading<D: TenantPlane>(router: MethodRouter<Arc<D>>, max: usize) -> MethodRouter<Arc<D>> {
+    router.layer(DefaultBodyLimit::max(max))
+}
 
 /// Selects the device-flow handler for an authentication route.
-pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn auth_handler_for<D: TenantPlane>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         AuthRoute::CreateSession => Some(post(handler::auth::open::<D>)),
         AuthRoute::PollSession => Some(get(handler::auth::poll::<D>)),
@@ -35,7 +46,7 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
 }
 
 /// Selects the handler for a tenant-owned route.
-pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn tenant_handler_for<D: TenantPlane>(verb: TenantRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         TenantRoute::ApiKeys => Some(get(tenant::list::<D>).post(tenant::mint::<D>)),
         TenantRoute::ApiKey => Some(patch(tenant::revoke::<D>).delete(tenant::delete::<D>)),
@@ -73,19 +84,18 @@ pub fn tenant_handler_for<D: Services>(verb: TenantRoute) -> Option<MethodRouter
 }
 
 /// Selects the handler for a workspace collection or item route.
-pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         WorkspaceRoute::Models
         | WorkspaceRoute::Drafts
         | WorkspaceRoute::Draft
         | WorkspaceRoute::DraftMessages
         | WorkspaceRoute::DraftStream
-        | WorkspaceRoute::DraftCancellations => {
-            draft_handler_for::<D>(verb).map(handler::draft::private)
-        }
-        WorkspaceRoute::Fleets => {
-            Some(get(fleet::list::<D>).post(fleet::native::create::save::<D>))
-        }
+        | WorkspaceRoute::DraftTurn => draft_handler_for::<D>(verb).map(handler::draft::private),
+        WorkspaceRoute::Fleets => Some(reading(
+            get(fleet::list::<D>).post(fleet::native::create::save::<D>),
+            TEXT_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
         WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
         WorkspaceRoute::Onboarding => Some(get(handler::preference::onboarding::<D>)),
@@ -93,48 +103,40 @@ pub fn workspace_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<Method
         WorkspaceRoute::Approvals => Some(get(handler::approval::list::<D>)),
         WorkspaceRoute::Approval => Some(get(handler::approval::detail::<D>)),
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
-        WorkspaceRoute::Events => Some(get(handler::event::workspace_list::<D>)),
-        WorkspaceRoute::EventsStream => Some(get(handler::stream::workspace::<D>)),
-        WorkspaceRoute::Plugin => Some(
-            get(handler::plugin::list::gallery::<D>).post(handler::plugin::publish::create::<D>),
-        ),
-        WorkspaceRoute::PluginItem => {
-            Some(get(handler::plugin::read::one::<D>).delete(handler::plugin::remove::one::<D>))
-        }
-        WorkspaceRoute::PluginRevisions => Some(
-            get(handler::plugin::list::history::<D>)
-                .post(handler::plugin::publish_revision::revision::<D>),
-        ),
-        WorkspaceRoute::PluginRevision => Some(get(handler::plugin::read::revision::<D>)),
+        WorkspaceRoute::Turns => Some(get(handler::turn::workspace_list::<D>)),
+        WorkspaceRoute::TurnsStream => Some(get(handler::stream::workspace::<D>)),
         WorkspaceRoute::Members => Some(get(tenant::member::in_workspace::<D>)),
     }
 }
 
-/// The private-authoring half of [`workspace_handler_for`], before the
+/// The private setup half of [`workspace_handler_for`], before the
 /// no-store marking every one of them carries. `None` for a route that is
-/// not an authoring route.
-fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
+/// not a setup route.
+fn draft_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRouter<Arc<D>>> {
     use handler::draft::{message, models, patch, read, stream, write};
     match verb {
         WorkspaceRoute::Models => Some(get(models::list::<D>)),
-        WorkspaceRoute::Drafts => Some(get(read::list::<D>).post(write::create::<D>)),
-        WorkspaceRoute::Draft => Some(
+        WorkspaceRoute::Drafts => Some(reading(
+            get(read::list::<D>).post(write::create::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
+        WorkspaceRoute::Draft => Some(reading(
             get(read::one::<D>)
                 .patch(patch::patch::<D>)
                 .delete(write::delete::<D>),
-        ),
-        WorkspaceRoute::DraftMessages => Some(get(message::list::<D>).post(message::send::<D>)),
+            SETUP_BODY_BYTES_MAX,
+        )),
+        WorkspaceRoute::DraftMessages => Some(reading(
+            get(message::list::<D>).post(message::send::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
         WorkspaceRoute::DraftStream => Some(get(stream::open::<D>)),
-        WorkspaceRoute::DraftCancellations => Some(post(message::cancel::<D>)),
-        WorkspaceRoute::Plugin
-        | WorkspaceRoute::PluginItem
-        | WorkspaceRoute::PluginRevisions
-        | WorkspaceRoute::PluginRevision
-        | WorkspaceRoute::Fleets
+        WorkspaceRoute::DraftTurn => Some(patch(handler::turn::stop::draft::<D>)),
+        WorkspaceRoute::Fleets
         | WorkspaceRoute::Secrets
         | WorkspaceRoute::Secret
-        | WorkspaceRoute::Events
-        | WorkspaceRoute::EventsStream
+        | WorkspaceRoute::Turns
+        | WorkspaceRoute::TurnsStream
         | WorkspaceRoute::Onboarding
         | WorkspaceRoute::Preference
         | WorkspaceRoute::Approvals
@@ -145,31 +147,38 @@ fn draft_handler_for<D: Services>(verb: WorkspaceRoute) -> Option<MethodRouter<A
 }
 
 /// Selects the handler for a route scoped to one fleet.
-pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
-        FleetRoute::Detail => Some(
+        FleetRoute::Detail => Some(reading(
             get(fleet::native::read::one::<D>)
                 .patch(fleet::native::patch::change::<D>)
                 .delete(fleet::detail::purge::<D>),
-        ),
-        FleetRoute::AuthoringContext => Some(handler::draft::private(get(
+            SETUP_BODY_BYTES_MAX,
+        )),
+        FleetRoute::SetupContext => Some(handler::draft::private(get(
             fleet::native::context::read::<D>,
         ))),
-        FleetRoute::Revisions => Some(post(fleet::native::revision::apply::<D>)),
-        FleetRoute::Events => Some(get(handler::event::fleet_list::<D>)),
+        FleetRoute::Revisions => Some(reading(
+            post(fleet::native::revision::apply::<D>),
+            SETUP_BODY_BYTES_MAX,
+        )),
+        FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
         FleetRoute::Tasks => Some(get(fleet::tasks::list::<D>)),
         FleetRoute::Task => Some(get(fleet::tasks::one::<D>).patch(fleet::tasks::change::<D>)),
-        FleetRoute::Event => Some(get(handler::event::detail::<D>)),
-        FleetRoute::ToolCall => Some(get(handler::event::tool_call::read::<D>)),
+        FleetRoute::Turn => {
+            Some(get(handler::turn::detail::<D>).patch(handler::turn::stop::fleet::<D>))
+        }
+        FleetRoute::Item => Some(get(handler::turn::tool_call::read::<D>)),
         FleetRoute::Grants => Some(get(handler::grant::list::<D>)),
         FleetRoute::Grant => Some(delete(handler::grant::revoke::<D>)),
         FleetRoute::Memories => Some(get(fleet::memory::list::<D>)),
         FleetRoute::Memory => Some(delete(fleet::memory::forget::<D>)),
         FleetRoute::MemoryAccess => Some(patch(fleet::memory_access::set::<D>)),
-        FleetRoute::Messages => {
-            Some(get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>))
-        }
-        FleetRoute::EventsStream => Some(get(handler::stream::fleet::<D>)),
+        FleetRoute::Messages => Some(reading(
+            get(fleet::message::thread::<D>).post(fleet::message_steer::steer::<D>),
+            TEXT_BODY_BYTES_MAX,
+        )),
+        FleetRoute::TurnsStream => Some(get(handler::stream::fleet::<D>)),
         // No PUT beside the PATCH: a schedule is edited field by field, and a
         // whole-row replace would let a caller silently drop the upstream
         // handle the sync reconciles against.
@@ -192,7 +201,7 @@ pub fn fleet_handler_for<D: Services>(verb: FleetRoute) -> Option<MethodRouter<A
 /// and it belongs to the ingress plane. Splitting the family this way is what
 /// keeps "every handler in that crate is signature-walled" a fact about a
 /// compilation unit rather than a per-route claim.
-pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn connector_handler_for<D: TenantPlane>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         ConnectorRoute::Catalog => Some(get(handler::connector::catalogue::list::<D>)),
         // GET reads and DELETE forgets, on one template: two verbs on one

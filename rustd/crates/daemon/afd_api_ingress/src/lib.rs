@@ -13,9 +13,15 @@
 
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{route, services};
+use afd_http::route;
+
+pub mod services;
 
 pub(crate) mod handler;
+
+// The captured deliveries the webhook suites drive, here and in `afd_api`.
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
 
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
@@ -28,10 +34,10 @@ use std::sync::Arc;
 
 use axum::routing::{MethodRouter, post};
 use route::{AuthRoute, ConnectorRoute, WebhookRoute};
-use services::Services;
+use services::IngressPlane;
 
 /// Selects the handler for a signed inbound delivery.
-pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<D>> {
+pub fn webhook_handler_for<D: IngressPlane>(verb: WebhookRoute) -> MethodRouter<Arc<D>> {
     match verb {
         WebhookRoute::ReceiveSource => post(handler::webhook::source_route::receive::<D>),
         WebhookRoute::Approval => post(handler::webhook::approval_route::receive::<D>),
@@ -52,7 +58,7 @@ pub fn webhook_handler_for<D: Services>(verb: WebhookRoute) -> MethodRouter<Arc<
 /// It arrives before the account it opens exists, so there is no credential for
 /// the sender to present; what it presents is a signature over the body.
 #[must_use]
-pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn auth_handler_for<D: IngressPlane>(verb: AuthRoute) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         AuthRoute::IdentityEventClerk => Some(post(handler::webhook::identity_route::receive::<D>)),
         AuthRoute::CreateSession
@@ -69,7 +75,9 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
 /// connecting a provider proves itself, where a provider delivering an event
 /// proves only the signature. Returning `None` for those keeps this crate from
 /// answering a surface it does not own.
-pub fn connector_handler_for<D: Services>(verb: ConnectorRoute) -> Option<MethodRouter<Arc<D>>> {
+pub fn connector_handler_for<D: IngressPlane>(
+    verb: ConnectorRoute,
+) -> Option<MethodRouter<Arc<D>>> {
     match verb {
         ConnectorRoute::Events => Some(post(handler::events::receive::<D>)),
         ConnectorRoute::Connect

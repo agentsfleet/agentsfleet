@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { loadEnvFile } from "node:process";
+import { PROXY_BODY_LIMIT_BYTES } from "./lib/api/body-limits";
 
 const uiEnvFile = process.env.AGENTSFLEET_UI_ENV_FILE;
 if (uiEnvFile) loadEnvFile(uiEnvFile);
@@ -40,6 +41,9 @@ const nextConfig: NextConfig = {
   // retired JavaScript compiler API (vercel/next.js#95831, stable in 16.2.12).
   experimental: {
     useTypeScriptCli: true,
+    // `proxy.ts` matches the setup and message routes, so Next buffers their
+    // bodies, and past its 10 MiB default it truncates them silently.
+    proxyClientMaxBodySize: PROXY_BODY_LIMIT_BYTES,
     optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 

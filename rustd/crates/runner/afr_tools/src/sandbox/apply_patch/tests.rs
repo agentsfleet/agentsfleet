@@ -3,11 +3,12 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use crate::catalog::APPLY_PATCH;
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call_in, hosted, offered};
 
@@ -39,11 +40,11 @@ const EACH_KIND: &str = concat!(
 pub(super) async fn apply(live: &Live, patch: &str) -> ToolOutput {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
     call_in(
         offered(&selection, &APPLY_PATCH),
         &live.client,
-        &lease,
+        &run,
         json!({PATCH: patch}),
     )
     .await
@@ -67,7 +68,8 @@ async fn test_apply_patch_applies_codex_grammar() {
     assert_eq!(applied.error_code, None, "{applied:?}");
     assert_eq!(
         applied.text,
-        "Success. Updated the following files:\nA src/new.txt\nM src/keep.txt\nD src/old.txt\n+3 \u{2212}1"
+        "Success. Updated the following files:\nA src/new.txt\nM src/keep.txt\nD src/old.txt\n\
+         Lines changed:\n\"src/new.txt\" +2 -0\n\"src/keep.txt\" +1 -0\n\"src/old.txt\" +0 -1"
     );
     assert_eq!(
         std::fs::read_to_string(live.root.join("src/new.txt")).unwrap(),
@@ -100,7 +102,13 @@ async fn a_move_hunk_writes_the_new_path_and_removes_the_old() {
         "{}",
         applied.text
     );
-    assert!(applied.text.ends_with("+1 \u{2212}1"), "{}", applied.text);
+    assert!(
+        applied
+            .text
+            .ends_with("Lines changed:\n\"src/kept.txt\" +1 -1"),
+        "{}",
+        applied.text
+    );
     assert_eq!(
         std::fs::read_to_string(live.root.join("src/kept.txt")).unwrap(),
         "one\nTWO\nthree\n"
@@ -140,7 +148,7 @@ async fn a_patch_that_does_not_parse_or_changes_nothing_is_refused() {
 
     assert_eq!(
         unparsed.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{unparsed:?}"
     );
     assert!(
@@ -150,7 +158,7 @@ async fn a_patch_that_does_not_parse_or_changes_nothing_is_refused() {
     );
     assert_eq!(
         empty.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{empty:?}"
     );
     assert!(empty.text.contains("changes no file"), "{}", empty.text);
@@ -180,7 +188,7 @@ async fn a_hunk_whose_lines_are_not_in_the_file_lands_nothing() {
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{refused:?}"
     );
     assert!(
@@ -219,7 +227,7 @@ async fn a_hunk_on_a_file_the_workspace_does_not_have_reads_file_not_found() {
     for refused in [&update, &delete] {
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::FileNotFound),
+            Some(ToolErrorCode::FileNotFound.into()),
             "{refused:?}"
         );
     }
@@ -234,7 +242,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
     let tool = offered(&selection, &APPLY_PATCH);
-    let lease = Lease::default();
+    let run = Run::default();
 
     for patch in [
         "*** Begin Patch\n*** Add File: ../escape.txt\n+x\n*** End Patch\n",
@@ -242,15 +250,15 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
         "*** Begin Patch\n*** Delete File: a/../../b\n*** End Patch\n",
         "*** Begin Patch\n*** Add File: ok.txt\n+x\n*** Update File: a.txt\n*** Move to: ../moved.txt\n@@\n-a\n+b\n*** End Patch\n",
     ] {
-        let refused = call_in(tool, &executor, &lease, json!({PATCH: patch})).await;
+        let refused = call_in(tool, &executor, &run, json!({PATCH: patch})).await;
 
         assert_eq!(
             refused.error_code,
-            Some(ToolErrorCode::PathNotAllowed),
+            Some(ToolErrorCode::PathNotAllowed.into()),
             "{refused:?}"
         );
         assert!(
-            refused.text.contains("leaves the workspace"),
+            refused.text.contains("leaves the working directory"),
             "{}",
             refused.text
         );

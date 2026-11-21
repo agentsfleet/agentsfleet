@@ -12,22 +12,22 @@ import { FleetConversationLayout } from "@/components/domain/shared/summary/Flee
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
 import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { SenderNamesProvider } from "@/components/domain/shared/identity/SenderNames";
-import { senderNamesFrom } from "@/lib/events/sender-names";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { senderNamesFrom } from "@/lib/turns/sender-names";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { toReplyMessage, replyParts } from "@/components/domain/activity/replies/fleetReplyMessage";
-import { VISUAL_SCENARIOS, visualEvents, type VisualScenario } from "./refresh-visual-data";
+import { VISUAL_SCENARIOS, visualTurns, type VisualScenario } from "./refresh-visual-data";
 import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
 import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
-import { CONNECTION_STATUS, convertEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS, convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY, useFleetThreadEntries } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixtures";
 import { useFleetUploadPreviews } from "@/components/domain/conversation/composer/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolRegistry";
 import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 import { chatMessageText } from "@/lib/chat-message-text";
-import { latestFigures } from "@/lib/events/run-summary";
+import { latestFigures } from "@/lib/turns/run-summary";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
@@ -39,16 +39,16 @@ export function RefreshVisualFixture() {
   const [started] = useState(Date.now);
   const [phase, setPhase] = useState<VisualScenario>(() => VISUAL_SCENARIOS.find(value => value === new URLSearchParams(location.search).get("state")) ?? "running");
   const showScenario = useCallback((value: VisualScenario) => {const url = new URL(location.href); url.searchParams.set("state", value); history.replaceState(null, "", url); setPhase(value);}, []);
-  const events = useMemo(() => visualEvents(phase, started, new URLSearchParams(location.search).has("code")), [phase, started]);
-  const grouped = useFleetThreadEntries(events, convertEvent);
+  const turns = useMemo(() => visualTurns(phase, started, new URLSearchParams(location.search).has("code")), [phase, started]);
+  const grouped = useFleetThreadEntries(turns, convertTurn);
   const fleetName = phase === "wake-up" ? "Merge watch" : "Release watch";
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
     if (phase === "error") showScenario("running");
     setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}]}]);
   }, [phase, showScenario]);
-  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events, onNew});
-  const messages = useMemo(() => [...(phase === "wake-up" ? grouped.entries.map(grouped.convertEntry) : conversation(events, started)), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
+  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", turns, onNew});
+  const messages = useMemo(() => [...(phase === "wake-up" ? grouped.entries.map(grouped.convertEntry) : conversation(turns, started)), ...sent, ...previews.entries.map(entry => entry.message)], [turns, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
   const runtime = useExternalStoreRuntime({ messages, isDisabled: archived, isRunning: !archived && phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
     onNew: previews.onNew, adapters: {attachments: previews.attachments},
@@ -63,13 +63,13 @@ export function RefreshVisualFixture() {
       </div>
       <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
-      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
+      <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
         <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
-            <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
+            <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
           </div>
         </FleetConversationLayout>
@@ -87,18 +87,18 @@ function ReviewChrome({ children }: { children: ReactNode }) {
   </>;
 }
 
-function conversation(events: FleetEvent[], started: number): ThreadMessageLike[] {
-  const event = events[0];
-  if (!event) return [];
+function conversation(turns: FleetTurn[], started: number): ThreadMessageLike[] {
+  const turn = turns[0];
+  if (!turn) return [];
   const actor = `${ACTOR.STEER_PREFIX}fixture-owner`;
-  const answer = toReplyMessage(convertEvent(event), event, actor);
-  const [intro, ...rest] = event.reply.split("\n\n");
+  const answer = toReplyMessage(convertTurn(turn), turn, actor);
+  const [intro, ...rest] = turn.reply.split("\n\n");
   return [
     {id: "request", role: "user", createdAt: new Date(started - 138_000),
       content: "Update the runner image using the release checklist. Run the scans, then ask me before publishing.",
       attachments: [{id: "sample-release-notes", type: "file", name: "release-notes.md", contentType: "text/markdown", status: {type: "complete"}, content: []}],
       metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor}}},
-    {...answer, content: [{type: "text", text: intro ?? ""}, ...replyParts(event).filter(part => part.type !== "text"),
+    {...answer, content: [{type: "text", text: intro ?? ""}, ...replyParts(turn).filter(part => part.type !== "text"),
       ...(rest.length ? [{type: "text" as const, text: rest.join("\n\n")}] : [])]},
   ];
 }

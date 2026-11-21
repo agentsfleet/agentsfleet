@@ -1,19 +1,19 @@
 "use client";
 
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/turns";
 import type {Schedule} from "@/lib/api/draft-types";
-import type {RunFigures} from "@/lib/events/run-summary";
+import type {RunFigures} from "@/lib/turns/run-summary";
 import {cn} from "@agentsfleet/design-system";
 import { useCallback, useSyncExternalStore } from "react";
 import { useOptionalFleetStreams } from "../stream/FleetStreamProvider";
-import { CONNECTION_STATUS } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "../stream/useFleetTurnStream";
 
-const NO_EVENTS: EventRow[] = [];
+const NO_TURNS: TurnRow[] = [];
 
 /** The same identity-owned registry as the thread; no separate API reader. */
 export function FleetHeaderStatus({workspaceId, fleetId, initial, schedules = [], latestRun}: {workspaceId: string; fleetId: string; initial: number; schedules?: readonly Schedule[]; latestRun?: RunFigures | null}) {
   const streams = useOptionalFleetStreams();
-  const subscribe = useCallback((listener: () => void) => streams?.subscribe(workspaceId, fleetId, NO_EVENTS, listener) ?? (() => {}), [streams, workspaceId, fleetId]);
+  const subscribe = useCallback((listener: () => void) => streams?.subscribe(workspaceId, fleetId, NO_TURNS, listener) ?? (() => {}), [streams, workspaceId, fleetId]);
   const snapshot = useCallback(() => {
     const value = streams?.getSnapshot(fleetId);
     return value?.connectionStatus === CONNECTION_STATUS.REVOKED ? null : labelFor(value?.fleet.pendingApprovals ?? initial, value?.latest ?? latestRun, schedules);

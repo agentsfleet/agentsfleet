@@ -2,7 +2,7 @@
 // operator presses Send until the daemon's 202 is reconciled, one entry per
 // operation id. It is what makes a lost response recoverable — the entry
 // carries the id and the text, so Resend posts the same operation and the
-// daemon answers the first admission instead of running a second.
+// daemon answers the first turn instead of running a second.
 //
 // Module state, keyed by user, workspace and fleet, the way
 // `fleet-stream-registry` holds its entries: it outlives a composer remount

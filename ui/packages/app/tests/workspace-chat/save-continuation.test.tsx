@@ -90,7 +90,7 @@ it("loads a revision selected before the initial chat surface mounts", async () 
   const latest = {...first, name: "Current deployment watch", setup_revision: "2", definition};
   let reads = 0;
   fixture.override = call => {
-    if (call.method === "GET" && call.path.endsWith("/authoring-context")) return response({fleet: ++reads === 1 ? first : latest, conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null});
+    if (call.method === "GET" && call.path.endsWith("/setup-context")) return response({fleet: ++reads === 1 ? first : latest, conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null});
     return normal(call);
   };
   render(<OpeningNavigation />);
@@ -105,7 +105,7 @@ it("loads a revision selected before the initial chat surface mounts", async () 
 it.each([false, true])("reopens saved instructions and creator history (restored edit: %s)", async restored => {
   chatRouter.search = "view=chat";
   const normal = fixture.override;
-  if (restored) fixture.override = call => call.method === "GET" && call.path.endsWith("/authoring-context")
+  if (restored) fixture.override = call => call.method === "GET" && call.path.endsWith("/setup-context")
     ? response({fleet: fixture.fleet, conversations: [{draft: fixture.current, messages: [], messages_starting_after: null, truncated: false}],
       activities: {items: [], next_cursor: null}, next_cursor: null}) : normal(call);
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
@@ -138,9 +138,9 @@ it.each([false, true])("reopens saved instructions and creator history (restored
   expect(fixture.mutations()).toEqual(writes);
 });
 
-// Value: protects=recovery from a stale saved authoring URL; fails_when=Start over reuses its old revision;
+// Value: protects=recovery from a stale saved setup URL; fails_when=Start over reuses its old revision;
 // seam=HTTP fixture and router; no_claim=real browser reload.
-it("starts over from the current revision when a reloaded authoring URL is stale", async () => {
+it("starts over from the current revision when a reloaded setup URL is stale", async () => {
   chatRouter.replace.mockClear();
   fixture.fleet = {...fixture.fleet, setup_revision: "2", definition};
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
@@ -156,7 +156,7 @@ it("starts over from the current revision when a reloaded authoring URL is stale
   expect(fixture.mutations()).toEqual([]);
 });
 
-it("retains the authoring route when a save response does not advance the pinned setup", async () => {
+it("retains the setup route when a save response does not advance the pinned setup", async () => {
   const normal = fixture.override;
   fixture.override = call => call.method === "POST" && call.path.endsWith("/revisions")
     ? response({fleet_id: FLEET_ID, setup_revision: "1", setup_etag: fixture.fleet.setup_etag, etag: fixture.fleet.etag, schedules: []}, 201)

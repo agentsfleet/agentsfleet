@@ -35,7 +35,7 @@ async fn an_archived_fleets_notice_is_carried_by_an_active_one() {
         deliver(&fixture.router(), &body).await.status(),
         StatusCode::OK
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
@@ -95,6 +95,6 @@ async fn a_channel_with_only_archived_fleets_drops_the_notice_by_name() {
         Some(REASON_NO_ACTIVE_CARRIER)
     );
     assert!(owed(&fixture).await.is_empty());
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     fixture.cleanup().await;
 }

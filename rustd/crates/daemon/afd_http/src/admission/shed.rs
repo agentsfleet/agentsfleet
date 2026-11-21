@@ -56,7 +56,7 @@ pub(super) fn response(admission: &Admission, request: &Request) -> Response {
         error_code = code,
         request_id = request_id_field,
         limit,
-        // The raw path. It is NOT what §6 will put on a span — a path
+        // The raw path. It is NOT what tracing puts on a span — a path
         // carries workspace and fleet identifiers, and a span
         // attribute is exported to a backend — but an operator reading their
         // own logs during a storm needs to know which endpoint is storming.

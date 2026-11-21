@@ -16,6 +16,10 @@ invalid:
   - |
     Run `agentsfleet library list`.
   - |
+    Run `agentsfleet plugins list`.
+  - |
+    Run `agentsfleet chat --plugin x`.
+  - |
     Run `agentsfleet platform keys set`.
   - |
     Run `agentsfleet fleet kill x`.

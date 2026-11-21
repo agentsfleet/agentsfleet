@@ -1,9 +1,9 @@
 // Tests for the same-origin backfill proxy route handler at
-// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events.
+// app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns.
 //
 // The non-stream sibling of sse-route.test.ts: same Clerk trust boundary
 // (cookie-authed browser → Bearer-only `agentsfleetd`), but a buffered JSON
-// events page instead of a piped stream. Coverage pins the auth, query
+// turns page instead of a piped stream. Coverage pins the auth, query
 // forwarding, and error-passthrough behavior the reconnect backfill
 // (fleet-stream-registry) depends on.
 
@@ -33,10 +33,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route";
+import { GET } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/route";
 
 const UPSTREAM_PAGE = JSON.stringify({
-  items: [{ event_id: "evt_1" }],
+  items: [{ turn_id: "evt_1" }],
   next_cursor: null,
 });
 
@@ -92,7 +92,7 @@ describe("backfill route handler — authed proxying", () => {
     const [url, init] = fetchSpy.mock.calls[0]!;
     // cursor/since/limit forward; the non-allowlisted `actor` is dropped.
     expect(url).toBe(
-      "https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/events" +
+      "https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/turns" +
         "?since=2026-05-15T18%3A29%3A58Z&limit=200",
     );
     const headers = (init as RequestInit).headers as Record<string, string>;
@@ -116,7 +116,7 @@ describe("backfill route handler — authed proxying", () => {
     await GET(makeReq("?cursor=abc123"), paramsOf("ws_1", "zomb_1"));
     const [url] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
-      "https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/events?cursor=abc123",
+      "https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/turns?cursor=abc123",
     );
   });
 
@@ -130,7 +130,7 @@ describe("backfill route handler — authed proxying", () => {
     );
     await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
     const [url] = fetchSpy.mock.calls[0]!;
-    expect(url).toBe("https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/events");
+    expect(url).toBe("https://api.example.test/v1/workspaces/ws_1/fleets/zomb_1/turns");
   });
 
   it("URL-encodes path parameters to defend against traversal", async () => {
@@ -144,7 +144,7 @@ describe("backfill route handler — authed proxying", () => {
     await GET(makeReq(), paramsOf("ws/../admin", "zomb 1"));
     const [url] = fetchSpy.mock.calls[0]!;
     expect(url).toBe(
-      "https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/zomb%201/events",
+      "https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/zomb%201/turns",
     );
   });
 

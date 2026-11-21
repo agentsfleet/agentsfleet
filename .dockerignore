@@ -13,7 +13,7 @@ ui/
 docs/
 .github/
 make/
-schema/
+rustd/crates/daemon/afd_db/schema/
 runbooks/
 skills/
 agentsfleet/

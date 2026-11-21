@@ -10,18 +10,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_wire::memory::{MemoryDelta, MemoryHydrateResponse};
+use af_wire::memory::{MemoryDelta, MemoryLoadResponse};
 
 use afr_agent::Checkpoint as _;
 use afr_memory::Recall as _;
 use afr_telemetry::labels::PushFailure;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::{CapturedMemory, LeaseCheckpoint, Recaller, hydrate};
+use super::{CapturedMemory, Recaller, RunCheckpoint, load};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{
-    Answer, FENCING, FLEET_ID, LEASE_ID, answer, daemon, drain, json, lease, plane,
+    Answer, FENCING, FLEET_ID, RUN_ID, answer, daemon, drain, json, payload, plane,
 };
 
 /// What a model searched for past its window.
@@ -36,14 +36,14 @@ fn assert_kept<C: PartialEq + std::fmt::Debug>(got: &C, daemons: &C) {
 }
 
 #[tokio::test(start_paused = true)]
-async fn hydrate_rides_out_a_blip() {
+async fn load_rides_out_a_blip() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&attempts);
     let (plane, _calls) = plane(move |_call| {
         if counted.fetch_add(1, Ordering::SeqCst) == 0 {
-            Answer::Fail(error::unavailable(Verb::Hydrate, 503))
+            Answer::Fail(error::unavailable(Verb::Load, 503))
         } else {
-            json(&MemoryHydrateResponse {
+            json(&MemoryLoadResponse {
                 memory: answer().memory,
                 shared: Vec::new(),
                 publish: false,
@@ -51,12 +51,12 @@ async fn hydrate_rides_out_a_blip() {
         }
     });
 
-    let body = hydrate(&plane, &Uuid7::parse(FLEET_ID).unwrap())
+    let body = load(&plane, &Uuid7::parse(FLEET_ID).unwrap())
         .await
         .unwrap();
 
     assert_eq!(
-        body.decode::<MemoryHydrateResponse<'_>>()
+        body.decode::<MemoryLoadResponse<'_>>()
             .unwrap()
             .memory
             .len(),
@@ -68,10 +68,10 @@ async fn hydrate_rides_out_a_blip() {
 #[tokio::test]
 async fn a_checkpoint_pushes_the_runs_memory_under_the_fencing_token() {
     let (plane, mut calls) = plane(|_call| json(&serde_json::json!({"stored": 1, "skipped": 0})));
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
-    LeaseCheckpoint::new(&plane, &fleet, &lease)
+    RunCheckpoint::new(&plane, &fleet, &run)
         .push(answer().memory)
         .await
         .unwrap();
@@ -91,10 +91,10 @@ async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
         counted.fetch_add(1, Ordering::SeqCst);
         Answer::Fail(error::unavailable(Verb::Capture, 503))
     });
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
-    let refused = LeaseCheckpoint::new(&plane, &fleet, &lease)
+    let refused = RunCheckpoint::new(&plane, &fleet, &run)
         .push(answer().memory)
         .await
         .unwrap_err();
@@ -111,10 +111,10 @@ async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
 #[tokio::test]
 async fn a_recall_carries_the_query_under_the_fencing_token() {
     let (plane, mut calls) = plane(daemon(|_call| None));
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
-    let found = Recaller::new(&plane, &fleet, &lease)
+    let found = Recaller::new(&plane, &fleet, &run)
         .recall(QUERY, LIMIT)
         .await
         .unwrap();
@@ -124,7 +124,7 @@ async fn a_recall_carries_the_query_under_the_fencing_token() {
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].verb, Verb::Recall);
     let body: serde_json::Value = serde_json::from_slice(asked[0].body.as_ref().unwrap()).unwrap();
-    assert_eq!(body["lease_id"], LEASE_ID);
+    assert_eq!(body["run_id"], RUN_ID);
     assert_eq!(body["fencing_token"], FENCING);
     assert_eq!(body["query"], QUERY);
     assert_eq!(body["limit"], LIMIT);
@@ -138,10 +138,10 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
         counted.fetch_add(1, Ordering::SeqCst);
         Answer::Fail(error::unavailable(Verb::Recall, 503))
     });
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
-    let unanswered = Recaller::new(&plane, &fleet, &lease)
+    let unanswered = Recaller::new(&plane, &fleet, &run)
         .recall(QUERY, LIMIT)
         .await
         .unwrap_err();
@@ -161,10 +161,10 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
 async fn test_memory_push_failure_is_counted() {
     let (plane, _calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Capture, 500)));
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let (tally, recorded) = Tally::new();
 
-    let checkpoint = LeaseCheckpoint::new(&plane, &fleet, &lease);
+    let checkpoint = RunCheckpoint::new(&plane, &fleet, &run);
     let checkpointed = scoped(tally, checkpoint.push(answer().memory)).await;
     assert!(checkpointed.is_err(), "nor did the checkpoint");
 

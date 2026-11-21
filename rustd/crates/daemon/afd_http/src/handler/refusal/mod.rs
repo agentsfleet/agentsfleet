@@ -102,6 +102,14 @@ impl Refusal {
         Self(Box::new(malformed(detail)))
     }
 
+    /// The refusal of a text past the one ceiling every text shares
+    /// (`af_validate::TEXT_MAX_CHARS`), under its own code so the dashboard
+    /// shows the person the ceiling it names.
+    #[must_use]
+    pub fn input_too_long() -> Self {
+        Self::coded(error_code::INPUT_TOO_LONG, af_validate::TEXT_TOO_LONG)
+    }
+
     /// A self-written refusal whose registry code the call site names.
     ///
     /// [`Refusal::malformed`] with the code as a parameter: the library

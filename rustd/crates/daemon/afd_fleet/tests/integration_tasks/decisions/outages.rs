@@ -82,7 +82,7 @@ async fn unpriced(
     assert_eq!(removed.rows_affected(), 1);
     let failure = fixture
         .tasks
-        .reserve_decision(case.lease(), input)
+        .reserve_decision(case.run(), input)
         .await
         .expect_err("decision issuance requires known whole-work credit headroom");
     assert_eq!(failure.code(), error_code::TASK_DECISION_UNAVAILABLE);
@@ -112,7 +112,7 @@ async fn unissued_replays(fixture: &Decisions<'_>) -> String {
     ] {
         let failure = fixture
             .tasks
-            .reserve_decision(fixture.case.lease(), candidate)
+            .reserve_decision(fixture.case.run(), candidate)
             .await
             .expect_err(
                 "independent operations cannot duplicate or change an unfinished assessment",
@@ -129,7 +129,7 @@ async fn unissued_replays(fixture: &Decisions<'_>) -> String {
 
 async fn premature_receipt(fixture: &Decisions<'_>, call: &str) {
     let receipt = garde::Unvalidated::new(DecisionReceiptInput {
-        fencing_token: fixture.case.lease().fencing_token,
+        fencing_token: fixture.case.run().fencing_token,
         receipt: DecisionReceipt::Unknown {
             cause: DecisionUnavailableCause::Timeout,
         },
@@ -138,7 +138,7 @@ async fn premature_receipt(fixture: &Decisions<'_>, call: &str) {
     .expect("bounded premature receipt");
     let failure = fixture
         .tasks
-        .record_decision(fixture.case.lease(), &id(call), &receipt)
+        .record_decision(fixture.case.run(), &id(call), &receipt)
         .await
         .expect_err("an unissued call cannot acquire a physical receipt");
     assert_eq!(failure.code(), error_code::TASK_INVALID_TARGET);
@@ -149,23 +149,20 @@ fn funding_events(capture: &Capture, case: &Case) {
     let reasons = events
         .iter()
         .filter(|event| event.field("event") == Some("dt_decision_funding_refused"))
-        .map(|event| (event.field("reason"), event.field("lease_id")))
+        .map(|event| (event.field("reason"), event.field("run_id")))
         .collect::<Vec<_>>();
     assert_eq!(
         reasons,
         [
             (
                 Some("coding_price_unavailable"),
-                Some(case.lease().lease_id.as_str())
+                Some(case.run().run_id.as_str())
             ),
             (
                 Some("coding_price_unavailable"),
-                Some(case.lease().lease_id.as_str())
+                Some(case.run().run_id.as_str())
             ),
-            (
-                Some("credit_unconfirmed"),
-                Some(case.lease().lease_id.as_str())
-            ),
+            (Some("credit_unconfirmed"), Some(case.run().run_id.as_str())),
         ]
     );
 }
@@ -176,13 +173,9 @@ async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReser
     dependencies.biller = Arc::new(FailOpen::new(LedgerBiller::on_system_clock(
         unreachable_db(),
     )));
-    let unconfirmed = Tasks::new(
-        case.held.leases.clone(),
-        case.admissions.clone(),
-        dependencies,
-    );
+    let unconfirmed = Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies);
     let failure = unconfirmed
-        .reserve_decision(case.lease(), input)
+        .reserve_decision(case.run(), input)
         .await
         .expect_err("a physical decision needs confirmed funding");
     assert_eq!(failure.code(), error_code::TASK_DECISION_UNAVAILABLE);

@@ -1,4 +1,4 @@
-//! Dimension 2.4 (config half) — the env surface a deployment already has.
+//! The env surface a deployment already has.
 //!
 //! Every knob name is one a deployment already exports, so these tests are the
 //! proof that an existing environment resolves the pool it describes.

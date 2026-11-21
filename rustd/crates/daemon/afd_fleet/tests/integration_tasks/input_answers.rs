@@ -2,12 +2,12 @@
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
-    event::EventType,
     task::{DecisionTaskVersion, TaskInputMode, TaskInputReceiptInput, TaskLimits},
+    turn::TurnKind,
 };
-use afd_admission::{Admission, Key, Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
+use afd_turns::{IncomingTurn, Key, Producer, Reply};
 use serde_json::{Value, json};
 
 use super::fixture::{Case, GOALS, exercise};
@@ -44,18 +44,18 @@ async fn scenario(case: &Case, reply: Reply<'_>) {
     let plan = case.source_plan(source.clone(), &"a".repeat(64), 3, TaskLimits::default());
     let bindings = case
         .tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("accepted separate source");
     assert_eq!(bindings.items.len(), 3);
     interpreted(case, &source).await;
-    let before_lease = lease(case).await;
+    let before_run = payload(case).await;
     let mut accepted = Vec::new();
     for (index, item) in bindings.items.iter().enumerate().rev() {
         let input = receipt(case, &source, item, index);
         let result = case
             .tasks
-            .accept_input(case.lease(), &input)
+            .accept_input(case.run(), &input)
             .await
             .expect("item answer");
         assert!(!result.replayed);
@@ -72,33 +72,33 @@ async fn scenario(case: &Case, reply: Reply<'_>) {
     refuse_replacement(case, accepted.first().expect("three accepted receipts")).await;
     assert_eq!(assert_completed(case, &source, reply).await, saved);
     assert_eq!(
-        lease(case).await,
-        before_lease,
+        payload(case).await,
+        before_run,
         "answering input does not settle its owning execution"
     );
 }
 
 async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
     let key = afd_db::test_util::mint_id();
-    let actor = afd_events::steer_actor("native_task_owner");
+    let actor = afd_turns::view::steer_actor("native_task_owner");
     let request = json!({"message": GOALS.join("; ")}).to_string();
     let admitted = case
-        .admissions
-        .admit(Admission {
+        .turns
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
             fleet: &case.scope.fleet_id,
             workspace: &case.scope.workspace_id,
             actor: &actor,
-            event_type: EventType::Chat,
+            event_type: TurnKind::Chat,
             request_json: &request,
             reply,
         })
         .await
         .expect("separate human source with original reply destination");
     let source = admitted.stored.id.clone();
-    assert_ne!(source.as_str(), case.held.event_id);
-    case.claim(&source).await;
+    assert_ne!(source.as_str(), case.held.turn_id);
+    case.assign(&source).await;
     source
 }
 
@@ -120,9 +120,9 @@ fn receipt(
         ),
     };
     garde::Unvalidated::new(TaskInputReceiptInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
-        source_admission_id: source.to_string(),
+        source_turn_id: source.to_string(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
         task: Some(DecisionTaskVersion {
@@ -145,7 +145,7 @@ async fn assert_pending(case: &Case, source: &Uuid7) {
         .await
         .expect("completion observer");
     let state: (bool, i64, i64) = sqlx::query_as(
-        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2 AND event_id=$1), (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$2 AND event_id=$1) FROM fleet.admissions WHERE id=$1"
+        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM thread.turns WHERE thread_id=$2 AND id=$1 AND opened_at IS NOT NULL), (SELECT count(*) FROM thread.deliveries WHERE fleet_id=$2 AND turn_id=$1) FROM thread.turns WHERE id=$1"
     ).bind(source).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("incomplete source");
     assert_eq!(
         state,
@@ -163,7 +163,7 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
         .await
         .expect("completed source observer");
     let events: Vec<Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(e) FROM fleet.events e WHERE fleet_id=$1 AND event_id=$2",
+        "SELECT to_jsonb(e) FROM thread.turns e WHERE thread_id=$1 AND id=$2 AND opened_at IS NOT NULL",
     )
     .bind(&case.scope.fleet_id)
     .bind(source)
@@ -174,15 +174,15 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
     let event = events.first().expect("one completed event");
     assert_event(event);
     let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM fleet.admissions WHERE id=$1",
+        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM thread.turns WHERE id=$1",
     )
     .bind(source)
     .fetch_one(&mut *connection)
     .await
     .expect("settled original source");
     assert!(settled);
-    let obligations: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM fleet.obligations WHERE fleet_id=$1 AND event_id=$2")
-        .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply obligations");
+    let deliveries: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM thread.deliveries WHERE fleet_id=$1 AND turn_id=$2")
+        .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply deliveries");
     let expected = match reply {
         Reply::To { connector, address } => vec![(
             connector.to_owned(),
@@ -191,13 +191,13 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
         )],
         _ => Vec::new(),
     };
-    assert_eq!(obligations, expected);
+    assert_eq!(deliveries, expected);
     event.clone()
 }
 
-async fn lease(case: &Case) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.leases l WHERE id=$1")
-        .bind(&case.held.lease_key)
+async fn payload(case: &Case) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(l) FROM thread.runs l WHERE id=$1")
+        .bind(&case.held.run_key)
         .fetch_one(
             &mut *case
                 .held
@@ -205,10 +205,10 @@ async fn lease(case: &Case) -> Value {
                 .database
                 .acquire()
                 .await
-                .expect("owning lease observer"),
+                .expect("owning run observer"),
         )
         .await
-        .expect("original execution lease")
+        .expect("original execution run")
 }
 
 async fn refuse_replacement(case: &Case, original: &TaskInputReceiptInput) {
@@ -221,7 +221,7 @@ async fn refuse_replacement(case: &Case, original: &TaskInputReceiptInput) {
         .expect("bounded conflicting answer");
     let error = case
         .tasks
-        .accept_input(case.lease(), &replacement)
+        .accept_input(case.run(), &replacement)
         .await
         .expect_err("first answer is immutable");
     assert_eq!(error.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -231,7 +231,7 @@ async fn replay(case: &Case, accepted: &[garde::Valid<TaskInputReceiptInput>]) {
     for input in accepted {
         let result = case
             .tasks
-            .accept_input(case.lease(), input)
+            .accept_input(case.run(), input)
             .await
             .expect("exact receipt replay");
         assert!(result.replayed);
@@ -244,21 +244,18 @@ async fn replay(case: &Case, accepted: &[garde::Valid<TaskInputReceiptInput>]) {
 fn assert_event(event: &Value) {
     assert_eq!(
         event.get("actor"),
-        Some(&json!(afd_events::steer_actor("native_task_owner")))
+        Some(&json!(afd_turns::view::steer_actor("native_task_owner")))
     );
     assert_eq!(
         event.get("request_json"),
         Some(&json!({"message": GOALS.join("; ")}))
     );
-    assert_eq!(
-        event.get("event_type"),
-        Some(&json!(EventType::Chat.as_str()))
-    );
+    assert_eq!(event.get("kind"), Some(&json!(TurnKind::Chat.as_str())));
     assert_eq!(
         event.get("status"),
-        Some(&json!(af_core::event::status::PROCESSED))
+        Some(&json!(af_core::turn::status::PROCESSED))
     );
-    assert_eq!(event.get("response_text"), Some(&json!(ANSWER)));
+    assert_eq!(event.get("answer_text"), Some(&json!(ANSWER)));
     assert_eq!(event.get("token_count"), Some(&json!(0)));
     assert_eq!(event.get("wall_ms"), Some(&json!(0)));
 }
@@ -266,8 +263,8 @@ fn assert_event(event: &Value) {
 async fn interpreted(case: &Case, source: &Uuid7) {
     // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
     // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_lease_id=$2 AND interpreted_at IS NULL")
-        .bind(source).bind(&case.held.lease_key)
+    let updated = sqlx::query("UPDATE thread.turns SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_run_id=$2 AND interpreted_at IS NULL")
+        .bind(source).bind(&case.held.run_key)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
         .await.expect("accepted source interpretation boundary");
     assert_eq!(updated.rows_affected(), 1);

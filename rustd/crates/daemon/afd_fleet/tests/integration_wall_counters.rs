@@ -8,7 +8,7 @@
 //! an event that then PARKS behind a gate never closes, so that frame is the
 //! only word the tail hears about it. If it carried the old count, the tile
 //! would show a fleet that never received the event a human is being asked
-//! about. Proven against the lane because the claim is about the trigger's
+//! about. Proven against the lane because the assignment is about the trigger's
 //! timing relative to the read, which no stub reproduces.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -25,7 +25,7 @@ use std::time::Duration;
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
 use afd_bus::{Received, Subject, Subscription};
-use afd_fleet::lease::Delivery;
+use afd_fleet::run::Delivery;
 use sqlx::Row as _;
 
 use crate::rows::{LAPSE, Row};
@@ -39,10 +39,10 @@ const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 const SILENCE_BUDGET: Duration = Duration::from_millis(500);
 
 /// The frame kind the receive publishes.
-const EVENT_RECEIVED: &str = "event_received";
+const EVENT_RECEIVED: &str = "turn_received";
 
 /// The frame kind a closing would publish, and which a park never does.
-const EVENT_COMPLETE: &str = "event_complete";
+const EVENT_COMPLETE: &str = "turn_complete";
 
 /// A seeded fleet whose narrative log this test opens and then leaves parked.
 struct Parked {
@@ -53,7 +53,7 @@ struct Parked {
     counters: FleetCounters,
 }
 
-/// Leases a seeded event and records its receive, which answers the counters
+/// Runs a seeded event and records its receive, which answers the counters
 /// the pull hands the frame — the row is then left open, which is what a
 /// park is from the tail's point of view: nothing closes it.
 async fn parked() -> Parked {
@@ -68,28 +68,28 @@ async fn parked() -> Parked {
     // published afterwards cannot race the subscription.
     let tail = fixtures
         .bus()
-        .subscribe(&Subject::FleetTail(fleet.clone()))
+        .subscribe(&Subject::ThreadItems(fleet.clone()))
         .await
         .expect("the tail subscribes");
 
     let now = fixtures.enrolled_at();
-    let leases = fixtures.leases();
-    let held = crate::seed::select_fleet(&leases, &runner, &fleet)
+    let runs = fixtures.runs();
+    let held = crate::seed::select_fleet(&runs, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
     let received = held.opened.received;
     assert_eq!(received.delivery, Delivery::First);
     let counters = received
         .counters
-        .expect("a first delivery carries the counters its claim moved");
+        .expect("a first delivery carries the counters its assignment moved");
     assert_eq!(
-        afd_events::fleet_counters(&fixtures.database, &fleet)
+        afd_turns::view::fleet_counters(&fixtures.database, &fleet)
             .await
             .expect("the counters read back"),
         counters,
         "the figures the receive carries are the database's"
     );
-    leases.publish_received(&held, now, Some(counters)).await;
+    runs.publish_received(&held, now, Some(counters)).await;
 
     Parked {
         fixtures,
@@ -142,7 +142,7 @@ async fn a_parked_event_still_reports_its_event_count() {
     );
 
     // Nothing closes a parked event, so the tail hears nothing more — and in
-    // particular never an `event_complete` for it.
+    // particular never an `turn_complete` for it.
     let silence = tokio::time::timeout(SILENCE_BUDGET, run.tail.recv()).await;
     assert!(
         silence.is_err(),
@@ -173,7 +173,7 @@ async fn a_parked_event_moves_no_budget() {
             .expect("the ledger answers a count");
     assert_eq!(ledger_rows, 0, "a park charges nothing");
 
-    let after = afd_events::fleet_counters(&run.fixtures.database, &run.fleet)
+    let after = afd_turns::view::fleet_counters(&run.fixtures.database, &run.fleet)
         .await
         .expect("the counters read");
     assert_eq!(
@@ -183,7 +183,8 @@ async fn a_parked_event_moves_no_budget() {
     assert_eq!(after, run.counters, "nothing moved since the receive");
 
     let status: String = sqlx::query(
-        "SELECT status FROM fleet.events WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT status FROM thread.turns WHERE thread_id = $1 AND opened_at IS NOT NULL \
+         ORDER BY created_at DESC LIMIT 1",
     )
     .bind(&fleet)
     .fetch_one(&mut *connection)
@@ -193,7 +194,7 @@ async fn a_parked_event_moves_no_budget() {
     .expect("status is text");
     assert_eq!(
         status,
-        af_core::event::status::RECEIVED,
+        af_core::turn::status::RECEIVED,
         "the parked row is still open — a retry, not a settled charge"
     );
 }
@@ -206,14 +207,14 @@ async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
 
-    // The holder stops renewing; its slot lapses and the admission is claimed
-    // again, over the row the first claim opened.
+    // The holder stops renewing; its thread lapses and the turn is assigned
+    // again, over the row the first assignment opened.
     run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Thread(&run.fleet), "run_expires_at", LAPSE)
         .await;
-    let again = crate::seed::select_fleet(&run.fixtures.leases(), &run.runner, &run.fleet)
+    let again = crate::seed::select_fleet(&run.fixtures.runs(), &run.runner, &run.fleet)
         .await
-        .expect("the lapsed admission is claimed again")
+        .expect("the lapsed turn is assigned again")
         .opened
         .received;
     assert_eq!(again.delivery, Delivery::Repeat);

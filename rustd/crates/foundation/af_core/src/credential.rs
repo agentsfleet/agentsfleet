@@ -9,7 +9,7 @@
 //! `credential` and `vault` in a dependency cycle after every other edge
 //! between them was gone.
 //!
-//! Here for the reason [`crate::event`]'s column spellings are here: a word two
+//! Here for the reason [`crate::turn`]'s column spellings are here: a word two
 //! planes must agree on belongs below both of them, not in whichever one
 //! happened to write it first.
 

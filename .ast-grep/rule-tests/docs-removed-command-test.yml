@@ -7,7 +7,7 @@ valid:
   - |
     const vault = "agentsfleet secrets list";
   - |
-    // agentsfleet chat --publish x
+    // agentsfleet chat --fleet x
 invalid:
   - |
     const hint = "agentsfleet secret add";
@@ -21,6 +21,10 @@ invalid:
     const hint = "agentsfleet kill x";
   - |
     const hint = "agentsfleet library list";
+  - |
+    const hint = "agentsfleet plugins list";
+  - |
+    // agentsfleet chat --publish x
   - |
     const hint = "agentsfleet platform keys set";
   - |

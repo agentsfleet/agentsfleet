@@ -27,6 +27,22 @@ use std::sync::Arc;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+/// The stream ceiling when the daemon's `SSE_MAX_STREAMS` knob is unset.
+///
+/// Bound by FILE DESCRIPTORS, not by the tail itself: every stream holds a
+/// socket, nothing in this daemon raises `RLIMIT_NOFILE`, and a stock soft
+/// limit is 1,024. About 300 of those are spoken for before any stream — up
+/// to 256 admitted requests (`afd_http` `admission/mod.rs:62`), 20 per
+/// Postgres pool (`afd_db` `config.rs:52-60`), one NATS connection and the
+/// runtime's own — which leaves room for 256 and not for the next rung.
+///
+/// The stream path holds up well past that. `make bench-stream PROFILE=rig` on
+/// NATS (Nov 09, 2026, `docs/architecture/push_scheduler.md` §Baselines) burst
+/// 4,096 streams at a p99 of 9.83 ms with no frame undelivered, so a host with
+/// a raised descriptor limit can set the knob far higher. That lane refuses a
+/// default above the highest rung it measured inside its bounds.
+pub const MAX_STREAMS_DEFAULT: usize = 256;
+
 /// The instance's concurrent-stream budget.
 #[derive(Debug, Clone)]
 pub struct StreamLimit {

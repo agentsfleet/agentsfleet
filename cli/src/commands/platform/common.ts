@@ -9,7 +9,6 @@ import { resolveAuthToken } from "../workspace/guards.ts";
 export const ADMIN_RUNNERS_PATH = "/v1/admin/runners";
 export const ADMIN_MODELS_PATH = "/v1/admin/models";
 export const ADMIN_KEYS_PATH = "/v1/admin/platform-keys";
-const INPUT_MAX_BYTES = 1024 * 1024;
 const INPUT_HINT = "use the JSON shape documented by `agentsfleet platform --help`";
 const RESPONSE_DETAIL = "The platform response did not match the supported API shape";
 const RESPONSE_HINT = "verify that this terminal client and daemon use the same version";
@@ -41,12 +40,10 @@ export function invalidInput(detail: string) {
 export const readPlatformFile = Effect.fn("platform.readFile")(function* (path: string) {
   const stdin = yield* Stdin;
   if (path === "-" && stdin.isTTY) return yield* Effect.fail(invalidInput("Pipe JSON into stdin or name an input file"));
-  const file = Bun.file(path);
-  if (path !== "-" && file.size > INPUT_MAX_BYTES) return yield* Effect.fail(invalidInput("JSON input must be at most 1 MiB"));
-  const text = path === "-" ? yield* stdin.readBounded(INPUT_MAX_BYTES) : yield* Effect.tryPromise({
-    try: () => file.text(), catch: () => invalidInput("The JSON input file could not be read"),
+  // No size cap: the server bounds the body it accepts and names the bound.
+  const text = path === "-" ? yield* stdin.readAll() : yield* Effect.tryPromise({
+    try: () => Bun.file(path).text(), catch: () => invalidInput("The JSON input file could not be read"),
   });
-  if (Buffer.byteLength(text) > INPUT_MAX_BYTES) return yield* Effect.fail(invalidInput("JSON input must be at most 1 MiB"));
   return yield* Effect.try({try: (): unknown => JSON.parse(text), catch: () => invalidInput("The input must contain valid JSON")});
 });
 

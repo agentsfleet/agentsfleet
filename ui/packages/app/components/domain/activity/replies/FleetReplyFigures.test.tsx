@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
 import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "./FleetReplyFigures";
-import type { FleetEvent, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn, FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 
 // Optional reported figures, and the waiting clock, through the real thread.
 
@@ -13,7 +13,7 @@ const WALL_MS = 41_000;
 const COST_NANOS = 30_000_000;
 const RUNNING_FOR_MS = 65_000;
 const TICK_MS = 1_000;
-const PROCESSED: FleetEventStatus = "processed";
+const PROCESSED: FleetTurnStatus = "processed";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -24,7 +24,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function renderTurn(over: Partial<FleetEvent>) {
+function renderTurn(over: Partial<FleetTurn>) {
   mockStream([ev({ id: "evt_turn", role: "user", actor: "operator", text: "Go", reply: "Done.", status: PROCESSED, ...over })]);
   renderThread();
 }
@@ -84,7 +84,7 @@ describe("FleetThread — reply figures", () => {
 
 it("keeps routine task assessment in native run details even when no usage was reported", () => {
   const taskActivity = {truncated: false, items: [{kind: "task_decision_completed", progress: {
-    activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_admission_id: null,
+    activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_turn_id: null,
     operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1}}]} as const;
   mockStream([{...ev({role: "user", actor: "operator", text: "Go", reply: "Done.", status: PROCESSED}), taskActivity: {...taskActivity, items: [...taskActivity.items]}}]);
   renderThread();

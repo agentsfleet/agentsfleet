@@ -60,10 +60,10 @@ export const inputAlwaysEmpty: Layer.Layer<Input> = Layer.succeed(Input, {
 // tests below exercise). The direct-token suite swaps in a piped variant.
 export const stdinTty: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
   isTTY: true,
-  readBounded: () => Effect.die("Unexpected bounded input"),
+  readAll: () => Effect.die("Unexpected piped input"),
 });
 export const stdinPiped = (text: string): Layer.Layer<Stdin> =>
-  Layer.succeed(Stdin, { isTTY: false, readBounded: () => Effect.succeed(text) });
+  Layer.succeed(Stdin, { isTTY: false, readAll: () => Effect.succeed(text) });
 
 export const credentialsLayer = (
   initial: Option.Option<Redacted.Redacted<string>>,

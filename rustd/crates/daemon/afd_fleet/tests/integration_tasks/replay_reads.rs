@@ -8,29 +8,29 @@ use tokio::time::{interval, timeout};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn accepted_replays_share_slot_and_lease_read_locks() {
+async fn accepted_replays_share_thread_and_run_read_locks() {
     exercise(async |case| {
         let plan = case.plan("shared-receipt", 3);
         let first = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("reader");
         let mut reader = connection.begin().await.expect("authority read");
-        sqlx::query("SELECT fleet_id FROM runner.slots WHERE fleet_id=$1 FOR SHARE")
+        sqlx::query("SELECT fleet_id FROM thread.threads WHERE fleet_id=$1 FOR SHARE")
             .bind(&case.held.fleet)
             .fetch_one(&mut *reader)
             .await
-            .expect("shared slot lock");
-        sqlx::query("SELECT id FROM runner.leases WHERE id=$1 FOR SHARE")
-            .bind(&case.held.lease_key)
+            .expect("shared thread lock");
+        sqlx::query("SELECT id FROM thread.runs WHERE id=$1 FOR SHARE")
+            .bind(&case.held.run_key)
             .fetch_one(&mut *reader)
             .await
-            .expect("shared lease lock");
+            .expect("shared run lock");
         let replay = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("receipt readers coexist while both locks remain held");
         assert!(replay.replayed);
@@ -50,28 +50,30 @@ async fn accepted_replays_wait_for_writers_and_recheck_the_fence() {
         let plan = case.plan("fenced-receipt", 1);
         let first = case
             .tasks
-            .bind(case.lease(), &plan)
+            .bind(case.run(), &plan)
             .await
             .expect("accepted plan");
         let mut connection = case.held.fixtures.database.acquire().await.expect("writer");
         let mut writer = connection.begin().await.expect("authority write");
         let pid: i32 = sqlx::query_scalar(
-            "SELECT pg_backend_pid() FROM runner.slots WHERE fleet_id=$1 FOR UPDATE",
+            "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id=$1 FOR UPDATE",
         )
         .bind(&case.held.fleet)
         .fetch_one(&mut *writer)
         .await
-        .expect("exclusive slot lock");
+        .expect("exclusive thread lock");
         let change = async {
             waiting(case, pid).await;
-            sqlx::query("UPDATE runner.slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
-                .bind(&case.held.fleet)
-                .execute(&mut *writer)
-                .await
-                .expect("new authority fence");
+            sqlx::query(
+                "UPDATE thread.threads SET fencing_token=fencing_token+1 WHERE fleet_id=$1",
+            )
+            .bind(&case.held.fleet)
+            .execute(&mut *writer)
+            .await
+            .expect("new authority fence");
             writer.commit().await.expect("release writer");
         };
-        let (replay, ()) = tokio::join!(case.tasks.bind(case.lease(), &plan), change);
+        let (replay, ()) = tokio::join!(case.tasks.bind(case.run(), &plan), change);
         assert_eq!(
             replay
                 .expect_err("old fence cannot read an execution receipt")

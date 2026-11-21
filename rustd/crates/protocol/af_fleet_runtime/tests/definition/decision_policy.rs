@@ -13,8 +13,10 @@ const POLICY_PATH: &str = "/config/x-agentsfleet/decision_policy";
 
 pub(super) fn document() -> Value {
     let mut document = value();
-    let policy = serde_json::from_str(&crate::support::fixture("goal-repair/decision-policy.json"))
-        .expect("shared owner-reviewed question fixture");
+    let policy = serde_json::from_str(&crate::support::fixture(
+        "fleets/ci-repairer/decision-policy.json",
+    ))
+    .expect("shared owner-reviewed question fixture");
     document
         .pointer_mut("/config/x-agentsfleet")
         .and_then(Value::as_object_mut)

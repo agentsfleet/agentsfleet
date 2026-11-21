@@ -1,4 +1,4 @@
-//! Dimension 6.1's HTTP half — everything in FRONT of the gate store.
+//! The approvals' HTTP half — everything in FRONT of the gate store.
 //!
 //! The race and the terminal-row rule are proven against live Postgres in
 //! `afd_fleet/tests/integration_approval_inbox.rs`, because only a real

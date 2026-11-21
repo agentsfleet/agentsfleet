@@ -8,26 +8,11 @@ use afd_credential::credential::Exchanger;
 use super::{BootFailure, Booted, open, open_analytics, preflight};
 use crate::supervisor::Supervisor;
 
-/// Boots the production daemon with provider HTTP directed to a test-owned server.
-///
-/// # Errors
-/// As [`super::boot`]. This exists only with `test-util`.
-pub async fn boot_with_authoring_boundary<E: EnvSource + ?Sized>(
-    env: &E,
-    port: u16,
-    supervisor: &mut Supervisor,
-    transport: afd_authoring::Network,
-) -> Result<Booted, BootFailure> {
-    let config = preflight(env)?.with_authoring_transport(transport);
-    let analytics = open_analytics(config.posthog()).await;
-    open(config, analytics, port, supervisor).await
-}
-
 /// Boots real admission and routing while connector calls stay on a local vendor.
 ///
 /// # Errors
 /// As [`super::boot_with_exchanger`]. This exists only with `test-util`.
-pub async fn boot_with_connector_boundary<E: EnvSource + ?Sized>(
+pub async fn boot_with_connector_boundary<E: EnvSource + Sync + ?Sized>(
     env: &E,
     port: u16,
     supervisor: &mut Supervisor,

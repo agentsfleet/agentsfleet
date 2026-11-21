@@ -133,7 +133,7 @@ pub enum CredentialRecord {
         /// The `runner.runners` row the credential proved.
         runner: Uuid7,
         /// The row's reconciled verdict, read in the same statement as the
-        /// token hash so the lease gate never re-reads the row.
+        /// token hash so the run gate never re-reads the row.
         degraded: bool,
         /// Whether the row is still usable.
         live: Liveness,

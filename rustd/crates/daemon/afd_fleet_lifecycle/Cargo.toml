@@ -24,7 +24,7 @@ af_core = { workspace = true, features = ["sqlx"] }
 afd_db.workspace = true
 # The counter snapshot the live wall's `hello` carries.
 afd_api_wire.workspace = true
-# The lease status spelling a purge deletes its fleet's live leases by.
+# The run status spelling a purge deletes its fleet's live runs by.
 afd_state.workspace = true
 # Row instants, read through the `TIMESTAMPTZ(3)` bridge.
 jiff.workspace = true

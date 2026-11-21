@@ -32,6 +32,11 @@ report does not measure (a crate's `tests/` target) is not coverable here, the
 same rule the patch grade applies. Codecov has no per-file status, so this
 grade is the only one.
 
+With --crate-floor NAME=PCT, repeatable, it also grades one crate's lines of
+the union against a floor of its own, beside the global one: the published
+harness, `guffbolt`, is held to 99% (make/test-integration-rustd.mk). A crate
+the union holds no line of is refused, as a shard that never reported is.
+
 Exit 0 when every floor holds, 1 when one does not, 2 when the inputs are unusable.
 """
 import argparse
@@ -46,9 +51,12 @@ EXIT_UNUSABLE = 2
 ROLLUP_ROWS = 12
 CRATES_SEGMENT = "/crates/"
 # Every crate sits one folder below `crates/`, in its layer (`rustd/Cargo.toml`).
-LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon"})
+LAYERS = frozenset({"foundation", "protocol", "harness", "runner", "daemon", "e2e"})
 # The folder a layer's binary sits in.
 BINARY = "main"
+# The agent harness sits beside `crates/`, in no layer (`rustd/Cargo.toml`).
+HARNESS = "guffbolt"
+HARNESS_SEGMENT = f"/rustd/{HARNESS}/"
 WORKSPACE_ROOT = "(workspace root)"
 REVISION_SUFFIX = ".rev"
 NOT_TAKEN = "-"
@@ -166,10 +174,11 @@ def totals(merged):
 def crate_of(path):
     """The crate a source path belongs to, past its layer folder.
 
-    A layer's binary sits in `main/`, so it is named with its layer.
+    A layer's binary sits in `main/`, so it is named with its layer; the
+    harness sits beside `crates/` and is named alone.
     """
     if CRATES_SEGMENT not in path:
-        return WORKSPACE_ROOT
+        return HARNESS if HARNESS_SEGMENT in path else WORKSPACE_ROOT
     parts = path.split(CRATES_SEGMENT, 1)[1].split("/")
     if parts[0] not in LAYERS or len(parts) < 2:
         return parts[0]
@@ -185,6 +194,27 @@ def missed_by_crate(merged):
             crate = crate_of(path)
             missed[crate] = missed.get(crate, 0) + gap
     return sorted(missed.items(), key=lambda item: (-item[1], item[0]))
+
+
+def crate_grade(merged, crate):
+    """Covered and total lines of the union that belong to `crate`."""
+    sources = [source for path, source in merged.items() if crate_of(path) == crate]
+    covered = sum(1 for source in sources for hits in source.lines.values() if hits > 0)
+    total = sum(len(source.lines) for source in sources)
+    if total == 0:
+        raise UnusableReport(f"no report measured a line of {crate}, which --crate-floor grades")
+    return covered, total
+
+
+def crate_floors(pairs):
+    """{crate: floor} from `NAME=PCT` arguments; a malformed one raises InvalidOperation."""
+    floors = {}
+    for pair in pairs:
+        crate, _, floor = pair.partition("=")
+        if not crate:
+            raise InvalidOperation(pair)
+        floors[crate] = Decimal(floor)
+    return floors
 
 
 def holds(covered, total, floor):
@@ -316,6 +346,15 @@ def report_patch(covered, total, unhit, floor):
     return EXIT_FLOOR_MISSED
 
 
+def report_crate(crate, covered, total, floor):
+    pct = f"{covered * 100 / total:.4f}"
+    if holds(covered, total, floor):
+        print(f"✓ [rustd] {crate} coverage {pct}% >= {floor}% floor — {covered} of {total} lines covered")
+        return 0
+    print(f"✗ [rustd] {crate} coverage {pct}% < {floor}% floor — {covered} of {total} lines covered")
+    return EXIT_FLOOR_MISSED
+
+
 def report_files(grades, floor):
     failing = [grade for grade in grades if not holds(grade[1], grade[2], floor)]
     if not failing:
@@ -339,14 +378,18 @@ def main(argv=None):
     parser.add_argument("--patch-base", help="grade the lines HEAD adds over this revision")
     parser.add_argument("--patch-floor", default="99", help="patch floor, in percent (codecov.yml's rust-afd target)")
     parser.add_argument("--per-file-floor", help="floor, in percent, for each whole file the patch touches")
+    parser.add_argument("--crate-floor", action="append", default=[], metavar="NAME=PCT",
+                        help="floor, in percent, for one crate's lines; repeatable")
     parser.add_argument("reports", nargs="+", type=Path)
     args = parser.parse_args(argv)
     try:
         floor, patch_floor = Decimal(args.floor), Decimal(args.patch_floor)
         file_floor = Decimal(args.per_file_floor) if args.per_file_floor is not None else None
+        floors = crate_floors(args.crate_floor)
     except InvalidOperation:
         print(f"✗ [rustd] --floor {args.floor!r} / --patch-floor {args.patch_floor!r} / "
-              f"--per-file-floor {args.per_file_floor!r}: not a number", file=sys.stderr)
+              f"--per-file-floor {args.per_file_floor!r} / --crate-floor {args.crate_floor!r}: "
+              "not a number", file=sys.stderr)
         return EXIT_UNUSABLE
     if file_floor is not None and not args.patch_base:
         print("✗ [rustd] --per-file-floor grades the files a patch touches: it needs --patch-base", file=sys.stderr)
@@ -358,11 +401,14 @@ def main(argv=None):
             raise UnusableReport("the reports hold no lines: nothing was measured")
         changed = diff_against(args.patch_base) if args.patch_base else None
         touched = touched_against(args.patch_base) if file_floor is not None else None
+        crates = {crate: crate_grade(merged, crate) for crate in floors}
     except (UnusableReport, OSError) as failure:
         print(f"✗ [rustd] coverage merge refused: {failure}", file=sys.stderr)
         return EXIT_UNUSABLE
     args.out.write_text(render(merged), encoding="utf-8")
     verdict = report(covered, total, floor, merged, args.out)
+    for crate, (crate_covered, crate_total) in crates.items():
+        verdict = max(verdict, report_crate(crate, crate_covered, crate_total, floors[crate]))
     if changed is not None:
         verdict = max(verdict, report_patch(*patch_grade(merged, changed), patch_floor))
         if file_floor is not None:

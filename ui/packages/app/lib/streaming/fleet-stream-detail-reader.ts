@@ -1,31 +1,31 @@
 import type { ActionResult } from "@/lib/actions/with-token";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/turns";
 import { HTTP_STATUS_UNAUTHORIZED } from "@/lib/api/errors";
-import { fleetEventDetailUrl } from "@/lib/api/events-types";
+import { fleetTurnDetailUrl } from "@/lib/api/turns-types";
 import { ERROR_CODE } from "@/lib/errors";
 
-// The chat's read of one event's saved row, over the same-origin route rather
+// The chat's read of one turn's saved row, over the same-origin route rather
 // than a Server Action. Next runs a tab's Server Actions one at a time, so a
 // read sent as one waits behind a send in flight, and the next send waits
 // behind the read.
 
 /** How long one read may take before it counts as failed. The registry's own
  * cadence reads again, so a hung proxy never pins a recovery. */
-export const EVENT_DETAIL_TIMEOUT_MS = 10_000;
+export const TURN_DETAIL_TIMEOUT_MS = 10_000;
 
-const MALFORMED_DETAIL = "malformed event detail";
+const MALFORMED_DETAIL = "malformed turn detail";
 const SIGNED_OUT = "Not authenticated";
 
-/** Reads one event's saved row, in the result shape the registry consumes. */
-export async function readEventDetailRoute(
+/** Reads one turn's saved row, in the result shape the registry consumes. */
+export async function readTurnDetailRoute(
   workspaceId: string,
   fleetId: string,
-  eventId: string,
-): Promise<ActionResult<EventDetail>> {
+  turnId: string,
+): Promise<ActionResult<TurnDetail>> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), EVENT_DETAIL_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), TURN_DETAIL_TIMEOUT_MS);
   try {
-    const res = await fetch(fleetEventDetailUrl(workspaceId, fleetId, eventId), {
+    const res = await fetch(fleetTurnDetailUrl(workspaceId, fleetId, turnId), {
       signal: controller.signal,
       // The session check answers a signed-out read with a redirect to
       // sign-in. Followed, the sign-in page fails to parse with no status, and
@@ -38,7 +38,7 @@ export async function readEventDetailRoute(
     }
     if (!res.ok) return { ok: false, error: `HTTP ${res.status}`, status: res.status };
     const body: unknown = await res.json();
-    return isEventDetail(body) ? { ok: true, data: body } : { ok: false, error: MALFORMED_DETAIL };
+    return isTurnDetail(body) ? { ok: true, data: body } : { ok: false, error: MALFORMED_DETAIL };
   } catch (err) {
     // A timeout, a dropped connection or an unreadable body: the caller keeps
     // the row as it is and reads again on its own cadence.
@@ -50,8 +50,8 @@ export async function readEventDetailRoute(
 
 // The two fields the registry settles a row by. The rest of the row is the
 // daemon's to shape; a body without these is not a row at all.
-function isEventDetail(body: unknown): body is EventDetail {
+function isTurnDetail(body: unknown): body is TurnDetail {
   return typeof body === "object" && body !== null
-    && "event_id" in body && typeof body.event_id === "string"
+    && "turn_id" in body && typeof body.turn_id === "string"
     && "status" in body && typeof body.status === "string";
 }

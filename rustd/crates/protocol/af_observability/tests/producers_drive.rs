@@ -34,7 +34,8 @@ use core::time::Duration;
 use af_observability::metrics::instrument::Instruments;
 use af_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use af_observability::metrics::label::fleet::{
-    AdmissionOutcome, DeliveryStage, FoldOutcome, ReadyWake, SignupFailure, SteerPlaced,
+    DeliveryStage, FoldOutcome, IncomingTurnOutcome, ReadyWake, RunnerRun, SignupFailure,
+    SteerPlaced,
 };
 use af_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -83,12 +84,10 @@ fn test_every_fleet_producer_runs_its_body() {
 
     producers::fleet::signup_bootstrapped();
     producers::fleet::signup_replayed();
-    producers::fleet::lease_polled(11);
+    producers::fleet::run_polled(11);
     for wake in [ReadyWake::Ring, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }
-    producers::fleet::retention_swept(9);
-    producers::fleet::retention_failed();
     for placed in SteerPlaced::ALL {
         producers::fleet::fold::disposition(*placed);
     }
@@ -99,17 +98,17 @@ fn test_every_fleet_producer_runs_its_body() {
         producers::fleet::delivery_stage(*stage, Duration::from_millis(40));
     }
 
-    // Both admission counters, over every arm of their closed sets. The label
+    // Both turn counters, over every arm of their closed sets. The label
     // is the only thing separating a queue outage from a deployment spending
     // its budget, so a variant added without a spelling here is a counter that
     // silently stops distinguishing them.
     for outcome in [
-        AdmissionOutcome::Accepted,
-        AdmissionOutcome::Replayed,
-        AdmissionOutcome::Refused,
-        AdmissionOutcome::OverBudget,
+        IncomingTurnOutcome::Accepted,
+        IncomingTurnOutcome::Replayed,
+        IncomingTurnOutcome::Refused,
+        IncomingTurnOutcome::OverBudget,
     ] {
-        producers::fleet::admission::admitted(outcome);
+        producers::fleet::turn::admitted(outcome);
     }
     // Every arm, because the label is what distinguishes them and a variant
     // added without a spelling is the failure this catches.
@@ -141,10 +140,12 @@ fn test_every_runner_producer_runs_its_body() {
     producers::fleet::runner::cordon_changed(
         af_observability::metrics::label::fleet::CordonChange::Lifted,
     );
-    producers::fleet::runner::processed(RUNNER);
     producers::fleet::runner::seen(RUNNER, jiff::Timestamp::constant(1_767_225_600, 0));
-    producers::fleet::runner::lease_taken(RUNNER);
-    producers::fleet::runner::lease_released(RUNNER);
+    producers::fleet::runner::run_taken(RUNNER);
+    producers::fleet::runner::run_released(RUNNER);
+    for outcome in RunnerRun::ALL {
+        producers::fleet::runner::runs(RUNNER, *outcome, 1);
+    }
 
     // No class at all is its own arm — an unmodelled reason still counts.
     producers::fleet::runner::failed(RUNNER, None);
@@ -157,9 +158,10 @@ fn test_every_runner_producer_runs_its_body() {
         FailureClass::RunnerCrash,
         FailureClass::TransportLoss,
         FailureClass::LandlockDeny,
-        FailureClass::LeaseExpired,
+        FailureClass::RunExpired,
         FailureClass::RenewalTerminate,
         FailureClass::BudgetBreach,
+        FailureClass::FrameTooLarge,
     ] {
         producers::fleet::runner::failed(RUNNER, Some(class));
     }
@@ -200,10 +202,10 @@ fn test_every_http_producer_runs_its_body() {
 fn test_every_memory_producer_runs_its_body() {
     install();
 
-    producers::memory::hydration_window(12, 3, 4_096);
+    producers::memory::load_window(12, 3, 4_096);
     producers::memory::captured(5);
     producers::memory::push_failed();
-    producers::memory::hydration_dropped(2, 512);
+    producers::memory::load_dropped(2, 512);
     producers::memory::cap_evicted(1);
     producers::memory::capture_truncated(4);
     producers::memory::capture_skipped(6);

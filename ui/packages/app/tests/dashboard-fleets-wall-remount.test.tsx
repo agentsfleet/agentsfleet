@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import WallLiveBadge from "@/app/(dashboard)/w/[workspaceId]/fleets/components/WallLiveBadge";
 import {
   FakeEventSource,
@@ -26,8 +26,8 @@ const FLEET_IDS = [FLEET_A, FLEET_B];
 const BADGE = "badge";
 const CONNECTING = "connecting…";
 const LIVE = `${FLEET_IDS.length} live`;
-const EVENTS_PROCESSED = 5;
-const COUNTED = `processed:${EVENTS_PROCESSED}`;
+const TURNS_PROCESSED = 5;
+const COUNTED = `processed:${TURNS_PROCESSED}`;
 const UNCOUNTED = "processed:none";
 
 setupWallTests();
@@ -51,7 +51,7 @@ function greetOnlyFleetA() {
   source.emit({
     kind: FRAME_KIND.HELLO,
     fleet_ids: [FLEET_A],
-    counters: { [FLEET_A]: { events_processed: EVENTS_PROCESSED, budget_used_nanos: SPENT_NANOS } },
+    counters: { [FLEET_A]: { events_processed: TURNS_PROCESSED, budget_used_nanos: SPENT_NANOS } },
   });
   flushAnimationFrame();
 }

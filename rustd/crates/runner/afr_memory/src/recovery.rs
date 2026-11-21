@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::RECALL_MISS_CAP;
 use crate::error::Result;
 
-/// Maximum keys hidden by a running turn, including keys outside hydration.
+/// Maximum keys hidden by a running turn, including keys outside the load.
 const MAX_HIDDEN_KEYS: usize = 4 * MAX_ENTRIES_PER_FLEET;
 
 /// Private memory changes captured with the root conversation.

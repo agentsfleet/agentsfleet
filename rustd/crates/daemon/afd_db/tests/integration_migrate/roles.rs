@@ -19,11 +19,12 @@ use super::*;
 const INSUFFICIENT_PRIVILEGE: &str = "42501";
 
 /// The schemas the product's tables live in.
-const PRODUCT_SCHEMAS: [&str; 9] = [
+const PRODUCT_SCHEMAS: [&str; 10] = [
     "identity",
-    "authoring",
+    "setup",
     "fleet",
     "runner",
+    "thread",
     "connector",
     "model",
     "billing",
@@ -64,7 +65,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 89] = [
+const GRANTS: [(&str, &str, &[Verb]); 76] = [
     ("identity.tenants", "api_runtime", READ_WRITE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", READ_WRITE),
@@ -83,8 +84,6 @@ const GRANTS: [(&str, &str, &[Verb]); 89] = [
     ("model.platform_defaults", "api_runtime", READ_WRITE),
     ("model.tenant_models", "api_runtime", READ_WRITE),
     ("model.tenant_selections", "api_runtime", READ_WRITE),
-    ("authoring.plugin_entries", "api_runtime", READ_WRITE),
-    ("authoring.plugin_revisions", "api_runtime", WRITE_ONCE),
     ("fleet.fleets", "api_runtime", READ_WRITE),
     ("fleet.revisions", "api_runtime", WRITE_ONCE),
     ("fleet.task_items", "api_runtime", WRITE_ONCE),
@@ -120,22 +119,18 @@ const GRANTS: [(&str, &str, &[Verb]); 89] = [
     ("connector.person_links", "api_runtime", READ_WRITE),
     ("connector.oauth_nonces", "api_runtime", WRITE_ONCE),
     ("connector.channels", "api_runtime", APPEND_ONLY),
-    ("fleet.events", "api_runtime", KEPT),
-    ("fleet.tool_calls", "api_runtime", READ_WRITE),
-    ("fleet.admissions", "api_runtime", KEPT),
+    ("thread.turns", "api_runtime", KEPT),
+    ("thread.items", "api_runtime", READ_WRITE),
     ("fleet.approval_gates", "api_runtime", KEPT),
-    ("fleet.obligations", "api_runtime", KEPT),
+    ("thread.deliveries", "api_runtime", KEPT),
     ("fleet.schedules", "api_runtime", READ_WRITE),
-    ("fleet.sessions", "api_runtime", READ_WRITE),
     ("fleet.activity_counters", "api_runtime", READ_ONLY),
     ("runner.runners", "api_runtime", READ_WRITE),
-    ("runner.leases", "api_runtime", READ_WRITE),
+    ("thread.runs", "api_runtime", READ_WRITE),
     ("runner.decision_calls", "api_runtime", KEPT),
     ("runner.decision_payloads", "api_runtime", READ_WRITE),
-    ("runner.slots", "api_runtime", KEPT),
-    ("runner.events", "api_runtime", WRITE_ONCE),
-    ("runner.lifetime_counters", "api_runtime", KEPT),
-    ("runner.registration_receipts", "api_runtime", APPEND_ONLY),
+    ("thread.threads", "api_runtime", KEPT),
+    ("runner.history", "api_runtime", APPEND_ONLY),
     ("runner.turn_recovery", "api_runtime", READ_WRITE),
     ("runner.turn_checkpoints", "api_runtime", READ_WRITE),
     ("runner.turn_checkpoint_pages", "api_runtime", READ_WRITE),
@@ -146,24 +141,13 @@ const GRANTS: [(&str, &str, &[Verb]); 89] = [
         "api_runtime",
         WRITE_ONCE,
     ),
-    ("authoring.drafts", "api_runtime", READ_WRITE),
-    ("authoring.candidates", "api_runtime", WRITE_ONCE),
-    ("authoring.messages", "api_runtime", READ_WRITE),
-    ("authoring.attempts", "api_runtime", KEPT),
-    ("authoring.dispatches", "api_runtime", KEPT),
-    ("authoring.edit_decisions", "api_runtime", KEPT),
-    ("authoring.activity_receipts", "api_runtime", APPEND_ONLY),
-    ("authoring.answer_receipts", "api_runtime", WRITE_ONCE),
-    ("authoring.replay_receipts", "api_runtime", WRITE_ONCE),
+    ("setup.drafts", "api_runtime", READ_WRITE),
+    ("setup.candidates", "api_runtime", WRITE_ONCE),
+    ("setup.replay_receipts", "api_runtime", WRITE_ONCE),
     ("billing.wallets", "api_runtime", READ_WRITE),
     ("billing.usage_lines", "api_runtime", KEPT),
     ("billing.usage_daily", "api_runtime", KEPT),
     ("billing.runs_daily", "api_runtime", KEPT),
-    (
-        "billing.authoring_report_receipts",
-        "api_runtime",
-        APPEND_ONLY,
-    ),
     ("memory.entries", "memory_runtime", READ_WRITE),
     ("memory.context_checkpoints", "api_runtime", READ_WRITE),
 ];
@@ -238,7 +222,6 @@ async fn assert_money_is_integral(connection: &mut PgConnection) {
         .unwrap();
     let names: BTreeSet<&str> = nanos.iter().map(|(name, _)| name.as_str()).collect();
     for expected in [
-        "authoring.attempts.reserved_nanos",
         "billing.usage_lines.charged_nanos",
         "billing.wallets.balance_nanos",
     ] {

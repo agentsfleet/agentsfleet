@@ -4,12 +4,12 @@ import { Cause, Effect, Exit, Option, Redacted } from "effect";
 
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
-  KIND_EVENT_COMPLETE,
+  KIND_TURN_COMPLETE,
   STATUS_SSE_DISCONNECTED,
-  openEventTail,
-} from "../src/commands/fleet/steer-events.ts";
+  openTurnTail,
+} from "../src/commands/fleet/steer-turns.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { type HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
 // Shared fixtures + mocked-layer config — single source of truth with the
@@ -19,8 +19,8 @@ import {
   CALL_POST,
   CALL_STREAM_OPEN,
   FLEET_ID,
-  EVENT_ID,
-  OTHER_EVENT_ID,
+  TURN_ID,
+  OTHER_TURN_ID,
   POST,
   TOKEN,
   streamFrom,
@@ -37,27 +37,27 @@ const silentStream: StreamGetFn = async (): Promise<void> => { /* no events → 
 // ── SSE error path (lines 139-141) ────────────────────────────────────────
 
 describe("steer — SSE error path (lines 139-141)", () => {
-  test("stream frames for a different event_id are ignored", async () => {
+  test("stream frames for a different turn_id are ignored", async () => {
     const rec = makeRecorder();
-    const otherEventStream: StreamGetFn = async (_url, _headers, cb) => {
+    const otherTurnStream: StreamGetFn = async (_url, _headers, cb) => {
       cb({
         id: null,
-        type: KIND_EVENT_COMPLETE,
+        type: KIND_TURN_COMPLETE,
         data: {
-          event_id: OTHER_EVENT_ID,
-          status: EVENT_STATUS.PROCESSED,
+          turn_id: OTHER_TURN_ID,
+          status: TURN_STATUS.PROCESSED,
         },
       });
     };
     const handle = await Effect.runPromise(
-      openEventTail(
+      openTurnTail(
         "ws_test",
         FLEET_ID,
         Redacted.make(TOKEN),
-        otherEventStream,
+        otherTurnStream,
       ).pipe(Effect.provide(makeLayer(rec))),
     );
-    handle.deliverEventId(EVENT_ID);
+    handle.deliverTurnId(TURN_ID);
     const outcome = await handle.awaitOutcome();
     expect(outcome.kind).toBe(STATUS_SSE_DISCONNECTED);
     expect(rec.stdout).toEqual([]);
@@ -67,8 +67,8 @@ describe("steer — SSE error path (lines 139-141)", () => {
     const rec = makeRecorder();
     const throwingStream = async (): Promise<void> => { throw new Error("connection refused"); };
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      if (input.method === POST) return { turn_id: TURN_ID } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -88,8 +88,8 @@ describe("steer — SSE error path (lines 139-141)", () => {
     // oxlint-disable-next-line no-throw-literal -- fixture: simulate a non-Error rejection from the stream
     const throwingStream = async (): Promise<void> => { throw "raw string error"; };
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      if (input.method === POST) return { turn_id: TURN_ID } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -111,12 +111,12 @@ describe("steer — a parked run names the gate holding it", () => {
   // A Fleet whose trigger declares a write capability opens a gate per run and
   // waits. The timeout is the SYMPTOM; the gate is the cause, and before this
   // the terminal carried only the symptom plus a suggestion pointing at
-  // `agentsfleet fleet events`, which showed the message stuck at `received`.
+  // `agentsfleet fleet turns`, which showed the message stuck at `received`.
   // Narrows on `status` and `fleet_id` the way the route does. Without that a
   // decided gate would still be offered as the explanation, and the test would
   // pass while the CLI lied.
   const parkedReply = (gates: Array<Record<string, unknown>>) => <T>(input: HttpRequestInput): T => {
-    if (input.method === POST) return { event_id: EVENT_ID } as T;
+    if (input.method === POST) return { turn_id: TURN_ID } as T;
     if (input.path.includes("/approvals")) {
       const query = new URLSearchParams(input.path.split("?")[1] ?? "");
       const status = query.get("status");
@@ -179,7 +179,7 @@ describe("steer — a parked run names the gate holding it", () => {
       { gate_id: GATE_ID, fleet_id: "01900000-0000-7000-8000-0000007670ff", status: "pending" },
     ]);
     const rendered = JSON.stringify(exit);
-    expect(rendered).toContain("sending again may create another event");
+    expect(rendered).toContain("sending again may create another turn");
     expect(rendered).not.toContain("approvals approve");
   }, 10_000);
 
@@ -187,7 +187,7 @@ describe("steer — a parked run names the gate holding it", () => {
     const exit = await runParkedSteer([
       { gate_id: GATE_ID, fleet_id: FLEET_ID, status: "approved" },
     ]);
-    expect(JSON.stringify(exit)).toContain("sending again may create another event");
+    expect(JSON.stringify(exit)).toContain("sending again may create another turn");
   }, 10_000);
 });
 
@@ -211,15 +211,15 @@ describe("steer — REPL tryPromise catch (lines 319-324)", () => {
       return Effect.sync(() => { rec.stderr.push(_m); });
     };
 
-    // First POST returns no event_id → ServerError → onTurnError invoked.
+    // First POST returns no turn_id → ServerError → onTurnError invoked.
     let postCount = 0;
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (input.method === POST) {
         postCount += 1;
-        if (postCount === 1) return {} as T; // triggers ServerError (no event_id)
-        return { event_id: EVENT_ID } as T;
+        if (postCount === 1) return {} as T; // triggers ServerError (no turn_id)
+        return { turn_id: TURN_ID } as T;
       }
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
 
     const exit = await Effect.runPromiseExit(
@@ -227,7 +227,7 @@ describe("steer — REPL tryPromise catch (lines 319-324)", () => {
         stdin: streamFrom(["first\nsecond\n"], false),
         stdout: nullOutput(),
         streamGet: eventStream([
-          { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+          { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } },
         ]),
         signalSource: new ReplSignalEmitter(),
       }).pipe(Effect.provide(makeLayer(rec, httpReply, false, { error: errorOverride }))),
@@ -255,9 +255,9 @@ describe("steer — subscribe-first failure paths", () => {
     const httpReply = <T>(input: HttpRequestInput): T => {
       if (input.method === POST) {
         calls.push(CALL_POST);
-        return { event_id: EVENT_ID } as T;
+        return { turn_id: TURN_ID } as T;
       }
-      return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+      return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
     };
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, "go", {}, {
@@ -271,7 +271,7 @@ describe("steer — subscribe-first failure paths", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(calls).toEqual([CALL_STREAM_OPEN, CALL_POST]);
     expect(rec.requests.some((r) => r.method !== POST)).toBe(true);
-    expect(rec.stdout.join("\n")).toContain(`${EVENT_ID} ${EVENT_STATUS.PROCESSED}`);
+    expect(rec.stdout.join("\n")).toContain(`${TURN_ID} ${TURN_STATUS.PROCESSED}`);
   });
 
   test("test_post_failure_closes_stream", async () => {

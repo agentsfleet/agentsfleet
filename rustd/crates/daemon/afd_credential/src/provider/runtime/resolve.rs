@@ -24,12 +24,12 @@ impl Providers {
     }
 
     /// [`Self::resolve_reference`], answered from the platform key cache when
-    /// `observed` — the witnesses the caller's claim statement read — names a
+    /// `observed` — the witnesses the caller's assignment statement read — names a
     /// held entry.
     ///
     /// Only the platform reference is cached; a tenant entry is read every
     /// time. A miss resolves and holds the result under the witnesses its own
-    /// read returned, so a change between the claim and this read is cached as
+    /// read returned, so a change between the assignment and this read is cached as
     /// the newer resolution, never the older.
     ///
     /// # Errors
@@ -46,7 +46,7 @@ impl Providers {
         {
             return Ok(held);
         }
-        // The cache frees an expired entry only inside its own calls, and a claim
+        // The cache frees an expired entry only inside its own calls, and an assignment
         // that names no witnesses (a deactivated default, a tenant's own key)
         // never calls it: sweep before every read, so a replaced key's plaintext
         // leaves memory while the replica resolves keys at all.
@@ -64,7 +64,7 @@ impl Providers {
     }
 
     /// What a platform read observes now, for a test to compare with what the
-    /// lease claim read beside the slot.
+    /// run assignment read beside the thread.
     ///
     /// # Errors
     /// As [`Self::resolve_reference`], for the statements before the credential

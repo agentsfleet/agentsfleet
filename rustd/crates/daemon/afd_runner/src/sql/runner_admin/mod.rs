@@ -8,16 +8,16 @@
 //! read-then-write race.
 
 /// Retire one runner's record, but only from the terminal state and only once
-/// no lease of its is still active.
+/// no run of its is still active.
 ///
 /// One statement rather than a SELECT then a DELETE, so an operator revoking
 /// concurrently cannot slip between the check and the write. The row's
-/// leases and events cascade and its slots clear, all declared in schema; the
-/// daemon deletes nothing else by hand. A lease still active would take with
-/// it the row the liveness sweep releases the fleet's slot through, so the
-/// delete waits for the sweep or the lease's expiry. The single result row says
+/// runs and events cascade and its threads clear, all declared in schema; the
+/// daemon deletes nothing else by hand. A run still active would take with
+/// it the row the liveness sweep releases the fleet's thread through, so the
+/// delete waits for the sweep or the run's expiry. The single result row says
 /// which of the three things happened, and its absence says there was no such
-/// runner. `$1` runner, `$2` the revoked status, `$3` the active lease status.
+/// runner. `$1` runner, `$2` the revoked status, `$3` the active run status.
 pub const DELETE_RUNNER_IF_IN_STATE: &str = include_str!("delete_runner_if_in_state.sql");
 
 /// Move one runner's status and append its audit event.

@@ -7,8 +7,9 @@
 
 use af_fleet_runtime::Definition;
 use af_fleet_runtime::definition::{
-    ConfigOp, EditBatch, InstructionEdit, MAX_INSTRUCTION_OFFSET, MAX_INSTRUCTIONS_CHARS,
+    ConfigOp, EditBatch, InstructionEdit, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTION_OFFSET,
 };
+use af_validate::TEXT_MAX_CHARS;
 use serde_json::{Value, json};
 
 use super::{parse, set, value};
@@ -110,9 +111,12 @@ fn test_definition_utf8_overlap_and_invalid_end_are_rejected() {
 #[test]
 fn test_definition_replacement_budget_counts_all_operations_before_overwrites() {
     let original = parse(&value());
+    // Each replacement fits the description's own bound; only their sum, overwrites
+    // included, passes the batch's ceiling.
+    let over = TEXT_MAX_CHARS / MAX_DESCRIPTION_CHARS + 1;
     let batch = EditBatch {
-        config_ops: ["a".repeat(16_384), "b".repeat(16_384), "valid".into()]
-            .into_iter()
+        config_ops: std::iter::repeat_n("a".repeat(MAX_DESCRIPTION_CHARS), over)
+            .chain(std::iter::once("valid".to_owned()))
             .map(|text| ConfigOp::Replace {
                 path: "/description".into(),
                 value: json!(text),
@@ -120,9 +124,10 @@ fn test_definition_replacement_budget_counts_all_operations_before_overwrites() 
             .collect(),
         ..EditBatch::default()
     };
-    original
+    let refused = original
         .edit(batch)
         .expect_err("replacements over the budget are refused before any applies");
+    assert!(refused.to_string().contains(OUT_OF_BOUNDS), "{refused}");
     assert_eq!(original, parse(&value()));
 }
 
@@ -177,20 +182,15 @@ fn an_array_value_counts_the_characters_of_every_string_it_holds() {
     let counted = TOOLS.iter().map(|tool| tool.chars().count()).sum();
 
     let at_bound = original
-        .edit(batch(&original, tools(), counted, MAX_INSTRUCTIONS_CHARS))
+        .edit(batch(&original, tools(), counted, TEXT_MAX_CHARS))
         .expect("a batch at the bound is kept");
     assert_eq!(
         at_bound.instructions_md().chars().count(),
-        MAX_INSTRUCTIONS_CHARS - counted
+        TEXT_MAX_CHARS - counted
     );
 
     let refusal = original
-        .edit(batch(
-            &original,
-            tools(),
-            counted,
-            MAX_INSTRUCTIONS_CHARS + 1,
-        ))
+        .edit(batch(&original, tools(), counted, TEXT_MAX_CHARS + 1))
         .expect_err("one character over the bound is refused");
     assert!(refusal.to_string().contains(OUT_OF_BOUNDS), "{refusal}");
 }
@@ -206,7 +206,7 @@ fn an_object_value_counts_its_string_values_and_not_its_keys() {
     let counted = host.chars().count() + post_path.chars().count();
 
     let at_bound = original
-        .edit(batch(&original, network(), counted, MAX_INSTRUCTIONS_CHARS))
+        .edit(batch(&original, network(), counted, TEXT_MAX_CHARS))
         .expect("a batch at the bound is kept");
     let kept = at_bound
         .runtime()
@@ -215,12 +215,7 @@ fn an_object_value_counts_its_string_values_and_not_its_keys() {
     assert_eq!(kept.allow(), [Box::from(host)]);
 
     let refusal = original
-        .edit(batch(
-            &original,
-            network(),
-            counted,
-            MAX_INSTRUCTIONS_CHARS + 1,
-        ))
+        .edit(batch(&original, network(), counted, TEXT_MAX_CHARS + 1))
         .expect_err("one character over the bound is refused");
     assert!(refusal.to_string().contains(OUT_OF_BOUNDS), "{refusal}");
 }
@@ -255,7 +250,7 @@ fn a_scalar_value_and_a_removal_count_no_replacement_characters() {
     ];
     for (operation, pointer, expected) in free {
         let changed = original
-            .edit(batch(&original, operation, 0, MAX_INSTRUCTIONS_CHARS))
+            .edit(batch(&original, operation, 0, TEXT_MAX_CHARS))
             .unwrap_or_else(|failure| {
                 panic!("{pointer} counts characters it should not: {failure}")
             });
@@ -265,10 +260,7 @@ fn a_scalar_value_and_a_removal_count_no_replacement_characters() {
             expected,
             "{pointer} was not applied"
         );
-        assert_eq!(
-            changed.instructions_md().chars().count(),
-            MAX_INSTRUCTIONS_CHARS
-        );
+        assert_eq!(changed.instructions_md().chars().count(), TEXT_MAX_CHARS);
     }
 }
 
@@ -395,11 +387,11 @@ fn instruction_offsets_stay_bytes_while_text_bounds_count_characters() {
     set(
         &mut input,
         "/instructions_md",
-        json!(TWO_BYTE.repeat(MAX_INSTRUCTIONS_CHARS)),
+        json!(TWO_BYTE.repeat(TEXT_MAX_CHARS)),
     );
     let at_cap = parse(&input);
     let end = at_cap.instructions_md().len();
-    assert!(end > MAX_INSTRUCTIONS_CHARS && end <= MAX_INSTRUCTION_OFFSET);
+    assert!(end > TEXT_MAX_CHARS && end <= MAX_INSTRUCTION_OFFSET);
     let changed = at_cap
         .edit(EditBatch {
             instruction_edits: vec![InstructionEdit {

@@ -1,5 +1,4 @@
-//! Invites and members against live Postgres, the spec's Dimensions 3.1 to
-//! 3.4: issuing, accepting once, refusing, conflicting, and the transaction
+//! Invites and members against live Postgres: issuing, accepting once, refusing, conflicting, and the transaction
 //! that keeps a membership and its accepted invite together. The edges are
 //! `integration_team_invites.rs`, `integration_team_members.rs` and
 //! `integration_team_races.rs`; the email record is `integration_team_email.rs`.
@@ -26,7 +25,7 @@ const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
 /// decides expiry, so a case backdates the row rather than the call.
 const LAPSED: std::time::Duration = std::time::Duration::from_millis(1);
 
-/// Dimension 3.1: an owner issues, lists and revokes; revoking twice is quiet.
+/// An owner issues, lists and revokes; revoking twice is quiet.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_owner_manages_invites() {
@@ -72,7 +71,7 @@ async fn test_owner_manages_invites() {
     fixture.cleanup().await;
 }
 
-/// Dimension 3.2: accepting writes one membership, twice or concurrently.
+/// Accepting writes one membership, twice or concurrently.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_invitee_accepts_once() {
@@ -116,7 +115,7 @@ async fn test_invitee_accepts_once() {
     fixture.cleanup().await;
 }
 
-/// Dimension 3.3: another address is `UZ-INV-002`; expired and revoked are
+/// Another address is `UZ-INV-002`; expired and revoked are
 /// `UZ-INV-001`.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -168,7 +167,7 @@ async fn test_accept_refusals() {
     fixture.cleanup().await;
 }
 
-/// Dimension 3.4: a second pending invite and an invite for a member are
+/// A second pending invite and an invite for a member are
 /// `UZ-INV-003`; an expired one is superseded; the last owner stays.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

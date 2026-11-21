@@ -43,7 +43,7 @@ use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use agentsfleetd::probes::LiveDependencies;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -51,7 +51,7 @@ const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
-        panic!("{knob} is unset — run these through `make test-integration-rustd`")
+        panic!("{knob} is unset — scene these through `make test-integration-rustd`")
     })
 }
 
@@ -152,7 +152,8 @@ async fn readyz_stays_ready_through_a_bus_outage() {
         afd_api::router::ready_decision(inputs),
         "Postgres backs every bus signal, so readiness holds"
     );
-    let _ = bus.shutdown().await;
+    // Every seed is gone, so the drain may fail; nothing here depends on it.
+    drop(bus.shutdown().await);
 }
 
 /// The probe answers within its own deadline rather than hanging.

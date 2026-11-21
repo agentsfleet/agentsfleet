@@ -20,7 +20,7 @@ fn offering(tools: &[&'static str]) -> ExecutionPolicy<'static> {
 }
 
 /// Every tool that runs in the sandbox works in the workspace, so each one
-/// gets the bound repositories checked out: a lease of file tools alone reads
+/// gets the bound repositories checked out: a run of file tools alone reads
 /// the repository, not an empty directory.
 #[test]
 fn should_check_out_every_bound_repository_for_any_tool_in_the_sandbox() {
@@ -47,7 +47,7 @@ fn should_check_out_every_bound_repository_for_any_tool_in_the_sandbox() {
 }
 
 #[test]
-fn should_check_out_nothing_for_a_lease_with_no_tool_in_the_sandbox() {
+fn should_check_out_nothing_for_a_run_with_no_tool_in_the_sandbox() {
     let in_the_supervisor_or_at_the_provider: Vec<&'static str> = PUBLISHED
         .iter()
         .filter(|entry| entry.runtime() != Runtime::Sandbox)
@@ -64,7 +64,7 @@ fn should_check_out_nothing_for_a_lease_with_no_tool_in_the_sandbox() {
 }
 
 #[test]
-fn should_check_out_nothing_for_a_lease_with_no_binding() {
+fn should_check_out_nothing_for_a_run_with_no_binding() {
     let mut policy = offering(&[SHELL.name()]);
     policy.repository_binding = None;
 
@@ -100,7 +100,7 @@ fn should_refuse_a_bound_name_that_is_not_owner_and_name() {
     }
 }
 
-/// Two bound repositories of one name would land in one directory; the lease
+/// Two bound repositories of one name would land in one directory; the run
 /// is refused naming both, rather than failing its checkout part way.
 #[test]
 fn should_refuse_two_bound_repositories_that_share_a_directory() {
@@ -127,7 +127,7 @@ fn should_refuse_two_bound_repositories_that_share_a_directory() {
 }
 
 /// A name the catalog does not publish runs nowhere, so it alone checks
-/// nothing out; the daemon refuses such a policy before a lease, and this is
+/// nothing out; the daemon refuses such a policy before a run, and this is
 /// the runner not guessing past it.
 #[test]
 fn should_check_out_nothing_for_a_name_the_catalog_does_not_publish() {

@@ -6,14 +6,14 @@ use crate::registry::Registry;
 use crate::{Gateway, Operation, Result, error::within};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use afd_bus::wake::Wake;
-use afd_fleet::lease::waiting::{Waiting, waiting};
+use afd_fleet::run::waiting::{Waiting, waiting};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 pub(super) async fn notifications(
     registry: &Registry,
     wake: &Wake,
-    claims: usize,
+    assignments: usize,
     stop: &CancellationToken,
 ) -> Result<()> {
     let mut generations = wake.generations();
@@ -25,7 +25,7 @@ pub(super) async fn notifications(
                 &std::collections::HashSet::new(),
                 &std::collections::HashSet::new(),
             );
-            drain::drain(credited, claims, stop).await;
+            drain::drain(credited, assignments, stop).await;
             wake.recovered(recovery);
         }
         tokio::select! {
@@ -41,8 +41,8 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
     probe_ticks(
         &gateway.inner.dependencies.wake,
         &stop,
-        gateway.inner.dependencies.recovery.offer_fallback,
-        || async { Ok(waiting_work(&gateway, &stop, &[]).await?.pending()) },
+        gateway.inner.dependencies.recovery.assign_fallback,
+        async || Ok(waiting_work(&gateway, &stop, &[]).await?.pending()),
     )
     .await;
     Ok(())
@@ -63,7 +63,7 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
             _instant = tick.tick() => {
                 match probe().await {
                     Ok(true) => wake.recheck(),
-                    Err(error) if !stop.is_cancelled() => crate::Gateway::observe(&error, Operation::Recheck),
+                    Err(error) if !stop.is_cancelled() => Gateway::observe(&error, Operation::Recheck),
                     Ok(false) | Err(_) => {}
                 }
             }
@@ -72,7 +72,7 @@ async fn probe_ticks<F: Future<Output = Result<bool>>>(
 }
 
 /// The query only asks whether a pass may help, and which of `runners` it
-/// cannot help; it does not acquire leases or reimplement admission.
+/// cannot help; it does not acquire runs or reimplement admission.
 pub(super) async fn waiting_work(
     gateway: &Gateway,
     stop: &CancellationToken,
@@ -83,15 +83,15 @@ pub(super) async fn waiting_work(
         Instant::now() + STREAM_ANSWER_TIMEOUT,
         Operation::Recheck,
         async {
-            let mut connection = gateway.inner.dependencies.database.acquire().await?;
+            let mut connection_id = gateway.inner.dependencies.database.acquire().await?;
             Ok(waiting(
-                &mut connection,
+                &mut connection_id,
                 runners,
                 gateway
                     .inner
                     .dependencies
-                    .leases
-                    .leases
+                    .runs
+                    .runs
                     .checkpoint_resume_enabled(),
             )
             .await?)

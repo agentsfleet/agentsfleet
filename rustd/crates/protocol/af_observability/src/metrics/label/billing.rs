@@ -9,10 +9,10 @@ use crate::metrics::label::closed_set;
 closed_set! {
     /// Which product's work a billing count is about.
     WorkType {
-        /// A fleet run's lease.
-        FleetLease => "fleet_lease",
-        /// A setup-chat attempt.
-        AuthoringAttempt => "authoring_attempt",
+        /// A fleet run's run.
+        FleetRun => "fleet_run",
+        /// A draft-owned setup run.
+        SetupRun => "setup_run",
     }
 }
 

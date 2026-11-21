@@ -2,12 +2,12 @@
 
 mod loop_boundary;
 
-use super::{FENCING, FencedVerbs, Host, LEASE_ID};
+use super::{FENCING, FencedVerbs, Host, RUN_ID};
 use crate::client::Verb;
 use crate::test_support::{Answer, drain, json, plane};
 use af_core::id::Uuid7;
 use af_wire::task::{DecisionCallState, DecisionReservationInput};
-use afr_agent::{LeaseVerbs as _, Unanswered};
+use afr_tools::{RunVerbs as _, Unanswered};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -19,7 +19,7 @@ fn input() -> DecisionReservationInput {
     DecisionReservationInput {
         operation_id: CALL.to_owned(),
         fencing_token: 0,
-        source_admission_id: CALL.to_owned(),
+        source_turn_id: CALL.to_owned(),
         assessment: af_wire::task::DecisionAssessment::Message,
         task: None,
         retry_of: None,
@@ -41,7 +41,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
             "association":threshold,"single_request_max_bps":2000,"multiple_request_min_bps":8000},
         "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,
             "continue_action":threshold,"wait":threshold,"done":threshold}},
-        "request":{"call_id":CALL,"purpose":purpose,"state":{"task":{"task_id":CALL},"source_admission_id":CALL},
+        "request":{"call_id":CALL,"purpose":purpose,"state":{"task":{"task_id":CALL},"source_turn_id":CALL},
             "questions":[{"name":"matches","question":{"type":"noul","instructions":"Does the evidence match?",
                 "criteria":{"true":"It matches","false":"It does not match"}}}]}
     }})
@@ -72,10 +72,10 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
     if fault == "cancelled" {
         host.stop.cancel();
     }
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -88,7 +88,7 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
     crate::test_support::bounded("native decision progress", async {
         while requests
             .iter()
-            .filter(|call| call.verb == Verb::Activity)
+            .filter(|call| call.verb == Verb::Progress)
             .count()
             < 2
         {
@@ -121,7 +121,7 @@ fn preflight_reply(
             assert_eq!(*receipt.pointer("/receipt/cause").unwrap(), "preflight");
             json(&acknowledged())
         }
-        Verb::Activity => json(&serde_json::json!({})),
+        Verb::Progress => json(&serde_json::json!({})),
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
     }
 }
@@ -135,10 +135,10 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
     let (plane, mut calls) = plane(receipt_retries(count, saved));
     let host = Host::new();
     host.stop.cancel();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -166,14 +166,14 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     let (plane, mut calls) = plane(|call| {
         assert_eq!(call.verb, Verb::TaskDecisionReserve);
         let mut value = dispatch("typesafe", "goal");
-        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(LEASE_ID);
+        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(RUN_ID);
         json(&value)
     });
     let host = Host::new();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &plane,
-        &lease,
+        &run,
         FENCING,
         &host.halt,
         &host.stop,
@@ -217,7 +217,7 @@ fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
 fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpose: &str) {
     let authorities: Vec<_> = requests
         .iter()
-        .filter(|call| call.verb != Verb::Activity)
+        .filter(|call| call.verb != Verb::Progress)
         .map(|call| call.verb)
         .collect();
     assert_eq!(
@@ -226,7 +226,7 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
     );
     let progress: Vec<serde_json::Value> = requests
         .iter()
-        .filter(|call| call.verb == Verb::Activity)
+        .filter(|call| call.verb == Verb::Progress)
         .map(|call| serde_json::from_slice(call.body.as_ref().unwrap()).unwrap())
         .collect();
     assert_eq!(
@@ -248,8 +248,7 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
     assert_eq!(
         *progress
             .get(1)
-            .unwrap()
-            .pointer("/frames/0/task_decision_completed/phase")
+            .and_then(|frame| frame.pointer("/frames/0/task_decision_completed/phase"))
             .unwrap(),
         "unavailable"
     );
@@ -273,7 +272,7 @@ fn receipt_retries(
                 json(&acknowledged())
             }
         }
-        Verb::Activity => json(&serde_json::json!({})),
+        Verb::Progress => json(&serde_json::json!({})),
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
     }
 }

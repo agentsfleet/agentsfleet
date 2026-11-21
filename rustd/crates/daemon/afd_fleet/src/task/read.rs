@@ -12,7 +12,7 @@ pub(super) async fn read(
     task_id: &Uuid7,
 ) -> Result<TaskSnapshot> {
     fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         statement(scope, task_id),
         None,
         "read durable task",

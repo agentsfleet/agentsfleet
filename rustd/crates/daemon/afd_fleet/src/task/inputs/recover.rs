@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, guard::LeaseRow, row},
+    task::{TaskRefusal, guard::RunRow, row},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskAcceptedInterpretation, TaskItemBinding, TaskRecoveredItem, TaskState};
@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 
 #[derive(sqlx::FromRow)]
 struct InterpretationRow {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     plan_digest: String,
     message: String,
     item_id: Uuid7,
@@ -29,7 +29,7 @@ struct InterpretationRow {
 
 pub(super) async fn read(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     sources: &[Uuid7],
 ) -> Result<BTreeMap<Uuid7, TaskAcceptedInterpretation>> {
     let rows: Vec<InterpretationRow> =
@@ -78,9 +78,9 @@ pub(super) async fn read(
                 .transpose()?,
         };
         let accepted = interpretations
-            .entry(item.source_admission_id.clone())
+            .entry(item.source_turn_id.clone())
             .or_insert_with(|| TaskAcceptedInterpretation {
-                source_admission_id: item.source_admission_id.into(),
+                source_turn_id: item.source_turn_id.into(),
                 plan_digest: item.plan_digest,
                 message: item.message,
                 items: Vec::new(),

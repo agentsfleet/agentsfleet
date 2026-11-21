@@ -1,6 +1,6 @@
 // The built `agentsfleet runners register` against the mock API: a tenant
 // registers its own host, the token lands in a private file and never on a
-// stream, and the request carries one UUIDv7 Idempotency-Key.
+// stream, and the request carries no Idempotency-Key: a host registers once.
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,7 +8,6 @@ import { join } from "node:path";
 import { authedScope, jsonResponse, withMockApi } from "./helpers-fleet-install.ts";
 import { composeEnv, runFleetctl } from "./acceptance/fixtures/cli.js";
 
-const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const RUNNER_ID = "019f0000-0000-7000-8000-000000000246";
 const TOKEN = `agt_r${"c".repeat(64)}`;
 const POLICY = {
@@ -38,7 +37,7 @@ test("runners register from the built binary", async () => {
       expect(JSON.parse(result.stdout)).toMatchObject({ runner_id: RUNNER_ID, token_file: tokenFile });
       const registrations = calls.filter((call) => call.method === "POST" && call.path === "/v1/tenants/me/runners");
       expect(registrations).toHaveLength(1);
-      expect(registrations[0]?.headers["idempotency-key"] ?? "").toMatch(UUIDV7);
+      expect(registrations[0]?.headers["idempotency-key"]).toBeUndefined();
     }));
   } finally {
     rmSync(work, { recursive: true, force: true });

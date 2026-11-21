@@ -1,10 +1,10 @@
 //! Delivering a fleet's answer back to the connector the question came from.
 //!
 //! ```text
-//!   report path ──► obligation::owe (inside the report's transaction)
-//!                        │  then a lossy af.outbound.wake ping
+//!   report path ──► delivery::owe (inside the report's transaction)
+//!                        │  then a lossy af.delivery.wake ping
 //!                        ▼
-//!                   Worker::run ── claims lane heads from fleet.obligations
+//!                   Worker::run ── claims lane heads from thread.deliveries
 //!                        │         on the ping, or every CLAIM_PASS
 //!                        ▼
 //!                   dispatch by provider ──► the poster ──► the vendor
@@ -41,10 +41,10 @@
 #![deny(clippy::self_named_module_files)]
 
 mod abandon;
+pub mod delivery;
 pub mod error;
 pub mod interim;
 pub mod lanes;
-pub mod obligation;
 pub mod poster;
 pub mod retry;
 pub mod slack;
@@ -56,13 +56,13 @@ pub use self::error::{Error, Result};
 #[cfg(feature = "test-util")]
 pub mod test_util {
     /// The lane locks a claim takes first, for their query-plan test.
-    pub const LOCK_LANES: &str = crate::obligation::sql::LOCK_LANES;
+    pub const LOCK_LANES: &str = crate::delivery::sql::LOCK_LANES;
     /// The lane-head claim, for its query-plan test.
-    pub const CLAIM_HEADS: &str = crate::obligation::sql::CLAIM_HEADS;
+    pub const CLAIM_HEADS: &str = crate::delivery::sql::CLAIM_HEADS;
 }
+pub use self::delivery::{Claimed, Outgoing};
 pub use self::interim::{Interim, Interjector};
 pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
-pub use self::obligation::{Claimed, Outgoing};
 pub use self::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
 pub use self::worker::Worker;

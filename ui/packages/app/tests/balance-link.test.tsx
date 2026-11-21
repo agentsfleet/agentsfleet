@@ -34,7 +34,7 @@ describe("BalanceLink", () => {
 
   it.each([["0", "$0.00"], ["-50000000", "-$0.05"], ["-50", ">-$0.0001"]])(
     "shows exhausted balance %s with destructive treatment", (balanceNanos, expected) => {
-    // Exhausted is the one state an operator has to act on: new fleet events
+    // Exhausted is the one state an operator has to act on: new fleet turns
     // gate-block until a top-up.
     render(<BalanceLink balanceNanos={balanceNanos} isExhausted />);
     expect(screen.getByText(expected).className).toContain("text-destructive");

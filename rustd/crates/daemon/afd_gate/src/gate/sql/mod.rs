@@ -1,10 +1,10 @@
 //! The statements a raised gate is written and read through.
 //!
-//! The lease path recovers an event's reference and reads its gate status.
+//! The run path recovers an event's reference and reads its gate status.
 //! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
+//! (`afd_db/schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
 //! database's: the row is stamped `now()`, its deadline is `now()` plus the
 //! rule's timeout, and whether that deadline has passed is read against
 //! `statement_timestamp()`.
@@ -100,7 +100,7 @@ pub struct PendingRow<'a> {
     /// What the fleet's model claims — bounded and card-safe by construction.
     pub claim: &'a Claim,
     /// The event this question is about.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
 }
 
 impl<'a> PendingRow<'a> {
@@ -124,7 +124,7 @@ impl<'a> PendingRow<'a> {
             .bind(self.stated.radius)
             .bind(timeout(self.stated.timeout))
             .bind(GateStatus::Pending.as_str())
-            .bind(self.event_id)
+            .bind(self.turn_id)
     }
 }
 

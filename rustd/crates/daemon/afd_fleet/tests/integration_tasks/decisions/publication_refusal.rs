@@ -41,14 +41,14 @@ async fn assert_refusal(tasks: &Tasks, case: &Case, input: TaskEffectInput) {
         .expect("valid publication");
     assert_eq!(
         tasks
-            .publish_effect(case.lease(), &valid)
+            .publish_effect(case.run(), &valid)
             .await
             .expect_err("closed PR cannot publish")
             .code(),
         TaskRefusal::InvalidTarget.code()
     );
     let (receipt, replayed) = tasks
-        .publish_effect(case.lease(), &valid)
+        .publish_effect(case.run(), &valid)
         .await
         .expect("durable refused replay");
     assert!(replayed);
@@ -68,7 +68,7 @@ async fn conflict(tasks: &Tasks, case: &Case, mut input: TaskEffectInput) {
         .expect("different valid request");
     assert_eq!(
         tasks
-            .publish_effect(case.lease(), &valid)
+            .publish_effect(case.run(), &valid)
             .await
             .expect_err("changed request cannot replay the operation")
             .code(),
@@ -90,7 +90,7 @@ async fn stale_inputs(tasks: &Tasks, case: &Case, input: &TaskEffectInput) {
             .expect("well-shaped stale request");
         assert_eq!(
             tasks
-                .publish_effect(case.lease(), &valid)
+                .publish_effect(case.run(), &valid)
                 .await
                 .expect_err("stale source, head, cursor or generation cannot allocate")
                 .code(),
@@ -111,7 +111,7 @@ pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffe
     let task_id = id(&task.task_id);
     // Represents a preexisting accepted target with reviewed workflow under this revision.
     // The tested behavior is publication; this fixture does not claim target preflight ran.
-    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,'{workflows}',$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
+    sqlx::query("UPDATE fleet.tasks t SET accepted_revision_id=f.head_revision_id,target=jsonb_set(t.target,ARRAY['workflows'],$2) FROM fleet.fleets f WHERE t.id=$1 AND f.id=t.fleet_id")
         .bind(&task_id).bind(Json(workflows)).execute(&mut *connection).await.expect("preexisting accepted binding");
     let (source, sequence): (Uuid7, i64) = sqlx::query_as(
         "SELECT originating_task_item_id,input_sequence FROM fleet.tasks WHERE id=$1",
@@ -122,7 +122,7 @@ pub(super) async fn prepared(case: &Case, task: DecisionTaskVersion) -> TaskEffe
     .expect("actual accepted source");
     TaskEffectInput {
         operation_id: mint_id().into(),
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task,
         source_item_id: source.into(),
         covered_input_sequence: u64::try_from(sequence).expect("input sequence"),

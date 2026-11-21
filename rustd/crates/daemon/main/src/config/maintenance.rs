@@ -1,6 +1,6 @@
 //! Supervised maintenance cadences are checked before opening any service.
 
-use afd_runner::sweep::{liveness::LivenessSettings, retention::RetentionSettings};
+use afd_runner::sweep::liveness::LivenessSettings;
 use garde::Validate;
 use serde::Deserialize;
 
@@ -11,14 +11,12 @@ pub(crate) struct Maintenance {
     pub startup_spread_ms: u64,
     #[garde(skip)]
     pub runner_liveness: LivenessSettings,
-    #[garde(skip)]
-    pub runner_history: RetentionSettings,
     #[garde(dive)]
     pub expired_work: ExpiredWork,
     #[garde(dive)]
     pub fleet_census: FleetCensus,
     #[garde(dive)]
-    pub authoring_cleanup: AuthoringCleanup,
+    pub setup_cleanup: SetupCleanup,
     #[garde(dive)]
     pub billing: Billing,
     #[garde(dive)]
@@ -34,10 +32,9 @@ impl Default for Maintenance {
         Self {
             startup_spread_ms: 5000,
             runner_liveness: LivenessSettings::default(),
-            runner_history: RetentionSettings::default(),
             expired_work: ExpiredWork::default(),
             fleet_census: FleetCensus::default(),
-            authoring_cleanup: AuthoringCleanup::default(),
+            setup_cleanup: SetupCleanup::default(),
             billing: Billing::default(),
             durable_tasks: DurableTasks::default(),
             checkpoint_storage: CheckpointStorage::default(),
@@ -87,7 +84,7 @@ macro_rules! cycle {
 
 cadence!(ExpiredWork, 2);
 cadence!(FleetCensus, 30);
-cadence!(AuthoringCleanup, 10);
+cadence!(SetupCleanup, 10);
 cadence!(OutboundDelivery, 30);
 cycle!(DurableTasks, 10, 30);
 cycle!(CheckpointStorage, 300, 240);
@@ -117,14 +114,12 @@ impl Default for Billing {
 pub(crate) struct MaintenancePolicy {
     pub loops: garde::Valid<Maintenance>,
     pub liveness: garde::Valid<LivenessSettings>,
-    pub retention: garde::Valid<RetentionSettings>,
 }
 
 impl MaintenancePolicy {
     pub(crate) fn resolve(settings: Maintenance) -> Result<Self, garde::Report> {
         Ok(Self {
             liveness: garde::Unvalidated::new(settings.runner_liveness).validate()?,
-            retention: garde::Unvalidated::new(settings.runner_history).validate()?,
             loops: garde::Unvalidated::new(settings).validate()?,
         })
     }

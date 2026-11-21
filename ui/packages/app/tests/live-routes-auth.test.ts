@@ -1,5 +1,5 @@
-// The same-origin event routes answer a signed-out request with the one
-// registered 401 code, as the event-detail and steer routes do. An
+// The same-origin turn routes answer a signed-out request with the one
+// registered 401 code, as the turn-detail and steer routes do. An
 // unregistered code reads as UZ-UNKNOWN to every error surface.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,10 +16,10 @@ vi.mock("@/lib/api/client", () => ({
   request: vi.fn(),
 }));
 
-import { GET as workspaceEvents } from "../app/live/v1/workspaces/[workspaceId]/events/route";
-import { GET as workspaceStream } from "../app/live/v1/workspaces/[workspaceId]/events/stream/route";
-import { GET as fleetEvents } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route";
-import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream/route";
+import { GET as workspaceTurns } from "../app/live/v1/workspaces/[workspaceId]/turns/route";
+import { GET as workspaceStream } from "../app/live/v1/workspaces/[workspaceId]/turns/stream/route";
+import { GET as fleetTurns } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/route";
+import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/stream/route";
 import { GET as fleetTasks } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/route";
 import { GET as fleetTask } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/[taskId]/route";
 
@@ -30,9 +30,9 @@ const FLEET_ID = "fleet_1";
 type Route = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
 const ROUTES: ReadonlyArray<readonly [string, Route, Record<string, string>]> = [
-  ["workspace events", workspaceEvents as Route, { workspaceId: WORKSPACE_ID }],
+  ["workspace turns", workspaceTurns as Route, { workspaceId: WORKSPACE_ID }],
   ["workspace stream", workspaceStream as Route, { workspaceId: WORKSPACE_ID }],
-  ["fleet events", fleetEvents as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
+  ["fleet turns", fleetTurns as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
   ["fleet stream", fleetStream as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
   ["fleet tasks", fleetTasks as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
   ["fleet task", fleetTask as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID, taskId: "task_one" }],
@@ -42,7 +42,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("same-origin event routes — signed out", () => {
+describe("same-origin turn routes — signed out", () => {
   it.each(ROUTES)("test_routes_answer_auth_401 — %s", async (_name, route, params) => {
     getTokenFn.mockResolvedValueOnce(null);
     const res = await route(new Request("http://localhost/live"), { params: Promise.resolve(params) });

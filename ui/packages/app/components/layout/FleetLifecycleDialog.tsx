@@ -39,6 +39,6 @@ function LifecycleConfirmation({workspace, fleet, action, onRemoved, onClose}: P
     : error ? "Try again" : action === "archive" ? "Archive" : "Permanently delete";
   return <ConfirmDialog open onOpenChange={onClose} intent="destructive" title={action === "archive" ? "Archive fleet?" : "Permanently delete fleet?"}
     description={action === "archive" ? `Permanently stop “${fleet.name}” and retain its chat and activity. It cannot be restored.`
-      : `Permanently stop and delete “${fleet.name}”, including its chat, activity and fleet memory. Published plugin versions remain available.`}
+      : `Permanently stop and delete “${fleet.name}”, including its chat, activity and fleet memory.`}
     confirmLabel={label} onConfirm={confirm} errorMessage={error} />;
 }

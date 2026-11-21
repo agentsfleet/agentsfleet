@@ -1,6 +1,6 @@
 [package]
 name = "afr_agent"
-description = "The runner's agent-engine seam: what runs one lease's turn, and where its activity goes."
+description = "The runner's agent-engine seam: what runs one run's turn, and where its activity goes."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -30,40 +30,48 @@ af_core.workspace = true
 # The span vocabulary the loop's turns and calls are traced in.
 af_observability.workspace = true
 af_wire.workspace = true
-# A lease's outbound guard, and the mint seam the supervisor implements.
+# `serialized_within`, the byte bound a recovered history or decision is held to.
+af_validate.workspace = true
+# A run's outbound guard, and the mint seam the supervisor implements.
 af_egress.workspace = true
 afr_executor.workspace = true
 # The fleet's memory a run's calls share, and the deltas it pushes.
 afr_memory.workspace = true
 # The model a run drives, behind one trait.
 af_providers.workspace = true
-# The loop's order of turns: this crate is its conversation, and a durable
-# task is its extension.
-guffbolt.workspace = true
+# The loop's order of turns, the model call each one makes, each tool call's
+# start and end, the transcript it keeps and the run's children, which it
+# drives itself: this crate is its conversation and its observer, for the root
+# and for each child's turn, and a durable task is its extension. Its `tools`
+# carry the sessions a run's end closes.
+guffbolt = { workspace = true, features = ["tools"] }
 # Every secret value masked in one pass over a frame, an output or a reply.
 af_secrets.workspace = true
 # The catalog a run is offered from, and the handlers the router calls.
 afr_tools.workspace = true
 async-trait.workspace = true
-# A turn reads the provider's stream of chunks.
+# A decision reads the provider's stream of chunks.
 futures-util.workspace = true
 serde.workspace = true
 # A tool call's arguments.
 serde_json.workspace = true
 thiserror.workspace = true
-# `select!` races each turn and each call against the lease's stop.
+# `select!` races each turn and each call against the run's stop.
 tokio = { workspace = true, features = ["macros", "time"] }
-# The token that stops a run when its lease ends early.
+# The token that stops a run when its run ends early.
 tokio-util.workspace = true
 tracing.workspace = true
 
 [features]
-# M-TEST-UTIL. The scripted engine the supervisor's lanes drive a lease with:
+# M-TEST-UTIL. The scripted engine the supervisor's lanes drive a run with:
 # a fixed turn whose every frame is known, so a sandbox or wire fault cannot
 # hide behind a model's choices.
 test-util = []
 
 [dev-dependencies]
+# Real encoded images: the image tool decodes every file it reads.
+image.workspace = true
+base64.workspace = true
 aho-corasick.workspace = true
 memmap2.workspace = true
 # The recorder a suite reads its own measurements back through.

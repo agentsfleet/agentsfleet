@@ -81,7 +81,7 @@ fn request(method: Method, suffix: &str, body: Value, reply: Value) -> Request {
     Request {
         status: StatusCode::OK,
         method,
-        path: format!("/v1/runners/me/leases/{ID}/tasks/{suffix}"),
+        path: format!("/v1/runners/me/runs/{ID}/tasks/{suffix}"),
         body,
         reply,
     }
@@ -97,7 +97,7 @@ async fn typed_reads_preserve_fences_cursors_and_native_effect_receipts() {
     server.finish();
 }
 fn inputs() -> Value {
-    json!({"source_admission_id":ID,"accepted_revision_id":ID,"current_message":"private accepted message","inputs":[],"accepted_inputs":[],"current_task":null,"current_interpretation":null,"tasks":[],"next_cursor":"next-input"})
+    json!({"source_turn_id":ID,"accepted_revision_id":ID,"current_message":"private accepted message","inputs":[],"accepted_inputs":[],"current_task":null,"current_interpretation":null,"tasks":[],"next_cursor":"next-input"})
 }
 fn read_requests(inputs: &Value) -> Vec<Request> {
     vec![
@@ -124,11 +124,11 @@ fn read_requests(inputs: &Value) -> Vec<Request> {
     ]
 }
 async fn read_assertions(server: &Server, inputs: &Value) {
-    let lease = Uuid7::parse(ID).unwrap();
+    let run = Uuid7::parse(ID).unwrap();
     let read = server
         .plane
         .task_inputs(
-            &lease,
+            &run,
             &TaskInputsQuery {
                 fencing_token: FENCE,
                 starting_after: Some("a+b/=".to_owned()),
@@ -142,7 +142,7 @@ async fn read_assertions(server: &Server, inputs: &Value) {
     let effects = server
         .plane
         .task_effects(
-            &lease,
+            &run,
             &TaskEffectsQuery {
                 fencing_token: FENCE,
                 task_id: ID.to_owned(),
@@ -159,7 +159,7 @@ async fn read_assertions(server: &Server, inputs: &Value) {
     );
     let read = server
         .plane
-        .task_effect(&lease, &Uuid7::parse(EFFECT).unwrap(), FENCE)
+        .task_effect(&run, &Uuid7::parse(EFFECT).unwrap(), FENCE)
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(read).unwrap(), effect());

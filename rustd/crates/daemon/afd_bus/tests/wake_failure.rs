@@ -32,6 +32,10 @@ impl Bus for Silent {
         std::future::pending().await
     }
 
+    async fn subscribe_thread_wakes(&self) -> Result<Subscription> {
+        std::future::pending().await
+    }
+
     async fn shutdown(&self) -> Result<()> {
         Ok(())
     }

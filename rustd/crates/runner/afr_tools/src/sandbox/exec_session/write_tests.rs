@@ -10,15 +10,16 @@ use afr_executor::Ending;
 use bytes::Bytes;
 use tokio::time::Instant;
 
+use super::session;
 use super::tests::{
-    CAT, EXIT, FIRST, FIRST_RUNNING, LEASE_ID, ONE, REPL, named_lease, open, write, writing,
+    CAT, EXIT, FIRST, FIRST_RUNNING, ONE, REPL, RUN_ID, named_run, open, write, writing,
 };
 use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MIN};
-use crate::lease::Lease;
+use crate::run::Run;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
+use guffbolt::tools::process::oneshot::EVENT_OUT_OF_MEMORY;
 
 /// A process that ended between the look before a write and the write
 /// itself: the write finds no process, and the call answers its ending,
@@ -27,10 +28,10 @@ use crate::testing::call_in;
 async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
     let executor =
         ScriptedExecutor::new([ScriptedProcess::ends_when_written("", Ending::Exited(3))]);
-    let lease = Lease::default();
-    open(&executor, &lease, REPL).await;
+    let run = Run::default();
+    open(&executor, &run, REPL).await;
 
-    let output = call_in(&*write(), &executor, &lease, writing(1, EXIT, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, EXIT, None)).await;
 
     assert_eq!(
         output.text,
@@ -42,30 +43,33 @@ async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
         executor.written(),
         [(FIRST, Bytes::from_static(EXIT.as_bytes()))]
     );
-    assert!(lease.sessions.get(FIRST).is_none(), "the session is closed");
+    assert!(
+        run.sessions.get(session(FIRST)).is_none(),
+        "the session is closed"
+    );
 }
 
 /// A process the kernel killed for memory while a write was on its way is
-/// logged as a one-shot command killed for memory is, under the lease whose
+/// logged as a one-shot command killed for memory is, under the run whose
 /// call wrote to it.
 #[tokio::test(start_paused = true)]
-async fn should_log_a_session_killed_for_memory_during_a_write_under_its_lease() {
+async fn should_log_a_session_killed_for_memory_during_a_write_under_its_run() {
     let capture = Capture::install();
     let executor =
         ScriptedExecutor::new([ScriptedProcess::ends_when_written("", Ending::OutOfMemory)]);
-    let lease = named_lease();
-    open(&executor, &lease, REPL).await;
+    let run = named_run();
+    open(&executor, &run, REPL).await;
 
-    let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(
         logged.field("error_code"),
         Some(ToolErrorCode::OutOfMemory.as_str())
     );
-    assert_eq!(logged.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(logged.field("run_id"), Some(RUN_ID));
 }
 
 /// A write that found no process, with no ending yet: the ending is on its
@@ -74,25 +78,28 @@ async fn should_log_a_session_killed_for_memory_during_a_write_under_its_lease()
 #[tokio::test(start_paused = true)]
 async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
     let executor = ScriptedExecutor::new([ScriptedProcess::gone_when_written("")]);
-    let lease = Lease::default();
-    open(&executor, &lease, REPL).await;
+    let run = Run::default();
+    open(&executor, &run, REPL).await;
     let started = Instant::now();
 
     let first = call_in(
-        &*write(),
+        write(),
         &executor,
-        &lease,
+        &run,
         writing(1, EXIT, Some(saturating_millis(YIELD_MIN))),
     )
     .await;
     assert!(executor.end(FIRST, Ending::Exited(0)));
-    let next = call_in(&*write(), &executor, &lease, writing(1, "", None)).await;
+    let next = call_in(write(), &executor, &run, writing(1, "", None)).await;
 
     assert_eq!(started.elapsed(), YIELD_MIN);
     assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
     assert_eq!(first.error_code, None);
     assert_eq!(next.text, "Process exited with code 0");
-    assert!(lease.sessions.get(FIRST).is_none(), "closed by the ending");
+    assert!(
+        run.sessions.get(session(FIRST)).is_none(),
+        "closed by the ending"
+    );
 }
 
 /// A process that would not take the write says why, on the line before its
@@ -100,14 +107,14 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
 #[tokio::test(start_paused = true)]
 async fn should_say_why_a_write_was_refused_and_run_on() {
     let executor = ScriptedExecutor::new([ScriptedProcess::closes_its_input("")]);
-    let lease = Lease::default();
-    open(&executor, &lease, CAT).await;
+    let run = Run::default();
+    open(&executor, &run, CAT).await;
 
-    let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
     assert_eq!(output.text, format!("{INPUT_REFUSED}\n{FIRST_RUNNING}"));
     assert_eq!(output.error_code, None);
-    assert!(lease.sessions.get(FIRST).is_some(), "runs on");
+    assert!(run.sessions.get(session(FIRST)).is_some(), "runs on");
 }
 
 /// A write refused for no reason of the process's own is the sandbox gone,
@@ -115,25 +122,28 @@ async fn should_say_why_a_write_was_refused_and_run_on() {
 #[tokio::test(start_paused = true)]
 async fn should_answer_any_other_refusal_at_once_and_keep_the_session() {
     let executor = ScriptedExecutor::new([ScriptedProcess::refuses_writes("")]);
-    let lease = Lease::default();
-    open(&executor, &lease, CAT).await;
+    let run = Run::default();
+    open(&executor, &run, CAT).await;
     let started = Instant::now();
 
-    let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, ONE, None)).await;
 
     assert_eq!(started.elapsed(), Duration::ZERO, "nothing to wait for");
-    assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert!(lease.sessions.get(FIRST).is_some());
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
+    assert!(run.sessions.get(session(FIRST)).is_some());
 }
 
 #[tokio::test(start_paused = true)]
 async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let lease = Lease::default();
-    open(&executor, &lease, CAT).await;
+    let run = Run::default();
+    open(&executor, &run, CAT).await;
     assert!(executor.forget(FIRST));
 
-    let output = call_in(&*write(), &executor, &lease, writing(1, "x", None)).await;
+    let output = call_in(write(), &executor, &run, writing(1, "x", None)).await;
 
     assert_eq!(output.error_code, None);
     assert!(
@@ -142,7 +152,7 @@ async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
         output.text
     );
     assert!(
-        lease.sessions.get(FIRST).is_some(),
+        run.sessions.get(session(FIRST)).is_some(),
         "left for the run's end to close"
     );
 }

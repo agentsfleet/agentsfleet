@@ -3,12 +3,13 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use guffbolt::{Image, ImageKind, ToolOutput};
 use serde_json::json;
 
-use super::{IMAGE_MAX_BYTES, ImageAttachment, ImageKind};
+use super::{IMAGE_MAX_BYTES, sniffed};
 use crate::catalog::IMAGE;
-use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
 use crate::testing::{Live, call, call_in, hosted, offered};
 
@@ -21,28 +22,42 @@ const SHOT: &str = "shot.png";
 const BIG: &str = "big.png";
 const NOTES: &str = "notes.txt";
 
-/// `kind`'s first bytes, padded with zeros to `length`.
+/// A real `kind` image; a PNG is padded to `length`.
 fn bytes_of(kind: ImageKind, length: usize) -> Vec<u8> {
-    let mut bytes = match kind {
-        ImageKind::Png => super::PNG_MAGIC.to_vec(),
-        ImageKind::Jpeg => super::JPEG_MAGIC.to_vec(),
-        ImageKind::Gif => b"GIF89a".to_vec(),
-        ImageKind::Webp => b"RIFF\0\0\0\0WEBPVP8 ".to_vec(),
+    let format = match kind {
+        ImageKind::Png => image::ImageFormat::Png,
+        ImageKind::Jpeg => image::ImageFormat::Jpeg,
+        ImageKind::Gif => image::ImageFormat::Gif,
+        ImageKind::Webp => image::ImageFormat::WebP,
     };
-    bytes.resize(length, 0);
+    real_image(format, length)
+}
+
+/// A real `format` image, 64 by 64, padded with zeros past its end marker to
+/// `length` when that is longer: decoders stop at the marker.
+fn real_image(format: image::ImageFormat, length: usize) -> Vec<u8> {
+    let picture = image::RgbImage::from_pixel(64, 64, image::Rgb([200, 80, 40]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(picture)
+        .write_to(&mut bytes, format)
+        .unwrap();
+    let mut bytes = bytes.into_inner();
+    if format == image::ImageFormat::Png && length > bytes.len() {
+        bytes.resize(length, 0);
+    }
     bytes
 }
 
-/// Calls `image` on `path` through `live`, with a lease whose wire takes
-/// images or not; the answer and what the lease holds after it.
-async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<ImageAttachment>) {
+/// Calls `image` on `path` through `live`, with a run whose wire takes
+/// images or not; the answer and what the run holds after it.
+async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<Image>) {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
-    let lease = Lease::default().with_image_input(images);
+    let run = Run::default().with_image_input(images);
     let answer = call_in(
         offered(&selection, &IMAGE),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: path}),
     )
     .await;
@@ -64,21 +79,23 @@ async fn test_image_refusals_carry_codes() {
 
     assert_eq!(
         too_big.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{too_big:?}"
     );
     assert_eq!(
         not_image.error_code,
-        Some(ToolErrorCode::NotAnImage),
+        Some(ToolErrorCode::NotAnImage.into()),
         "{not_image:?}"
     );
     assert_eq!(
         no_input.error_code,
-        Some(ToolErrorCode::ImageInputUnavailable),
+        Some(ToolErrorCode::ImageInputUnavailable.into()),
         "{no_input:?}"
     );
     assert!(
-        too_big.text.contains(&IMAGE_MAX_BYTES.to_string()),
+        too_big
+            .text
+            .contains(&guffbolt::tools::env::MAX_READ_BYTES.to_string()),
         "{}",
         too_big.text
     );
@@ -95,10 +112,10 @@ async fn test_image_refusals_carry_codes() {
     live.stop().await;
 }
 
-/// The bytes wait on the lease; the text the thread keeps names the path,
+/// The bytes wait on the run; the text the thread keeps names the path,
 /// the size and the kind, and none of the bytes.
 #[tokio::test]
-async fn an_image_is_attached_to_the_lease_and_the_text_names_no_bytes() {
+async fn an_image_is_attached_to_the_run_and_the_text_names_no_bytes() {
     let live = Live::start().await;
     let shot = bytes_of(ImageKind::Png, SHOT_BYTES);
     std::fs::write(live.root.join(SHOT), &shot).unwrap();
@@ -108,11 +125,11 @@ async fn an_image_is_attached_to_the_lease_and_the_text_names_no_bytes() {
     assert_eq!(answer.error_code, None, "{answer:?}");
     assert_eq!(
         answer.text,
-        "Attached shot.png (40960 bytes, image/png) for your next turn"
+        "Attached shot.png (40960 bytes, image/png) for your next step"
     );
     let held = held.unwrap();
     assert_eq!(held.kind, ImageKind::Png);
-    assert_eq!(held.bytes.as_ref(), shot.as_slice());
+    assert_eq!(held.data.as_ref(), shot.as_slice());
     live.stop().await;
 }
 
@@ -129,7 +146,7 @@ async fn a_jpeg_a_gif_and_a_webp_attach_under_their_kinds() {
         let (answer, held) = viewed(&live, name, true).await;
 
         assert_eq!(answer.error_code, None, "{answer:?}");
-        assert!(answer.text.contains(kind.mime()), "{}", answer.text);
+        assert!(answer.text.contains(kind.media_type()), "{}", answer.text);
         assert_eq!(held.map(|held| held.kind), Some(kind));
     }
     live.stop().await;
@@ -138,35 +155,22 @@ async fn a_jpeg_a_gif_and_a_webp_attach_under_their_kinds() {
 #[test]
 fn each_kind_is_told_by_its_first_bytes() {
     // pin test: literal is the contract
-    assert_eq!(
-        ImageKind::sniffed(b"\x89PNG\r\n\x1a\nrest"),
-        Some(ImageKind::Png)
-    );
+    assert_eq!(sniffed(b"\x89PNG\r\n\x1a\nrest"), Some(ImageKind::Png));
     // pin test: literal is the contract
-    assert_eq!(
-        ImageKind::sniffed(&[0xff, 0xd8, 0xff, 0xe0]),
-        Some(ImageKind::Jpeg)
-    );
+    assert_eq!(sniffed(&[0xff, 0xd8, 0xff, 0xe0]), Some(ImageKind::Jpeg));
     // pin test: literal is the contract
-    assert_eq!(ImageKind::sniffed(b"GIF87a"), Some(ImageKind::Gif));
+    assert_eq!(sniffed(b"GIF87a"), Some(ImageKind::Gif));
     // pin test: literal is the contract
+    assert_eq!(sniffed(b"RIFF\x10\0\0\0WEBPVP8 "), Some(ImageKind::Webp));
     assert_eq!(
-        ImageKind::sniffed(b"RIFF\x10\0\0\0WEBPVP8 "),
-        Some(ImageKind::Webp)
-    );
-    assert_eq!(
-        ImageKind::sniffed(b"RIFF\x10\0\0\0WAVEfmt "),
+        sniffed(b"RIFF\x10\0\0\0WAVEfmt "),
         None,
         "a RIFF that is not WebP"
     );
+    assert_eq!(sniffed(b"RIFF"), None, "a RIFF cut before its word");
+    assert_eq!(sniffed(b""), None);
     assert_eq!(
-        ImageKind::sniffed(b"RIFF"),
-        None,
-        "a RIFF cut before its word"
-    );
-    assert_eq!(ImageKind::sniffed(b""), None);
-    assert_eq!(
-        ImageKind::sniffed(b"<svg xmlns"),
+        sniffed(b"<svg xmlns"),
         None,
         "the wires take no SVG from a tool"
     );
@@ -177,7 +181,7 @@ fn each_kind_is_told_by_its_first_bytes() {
             ImageKind::Gif,
             ImageKind::Webp
         ]
-        .map(ImageKind::mime),
+        .map(ImageKind::media_type),
         ["image/png", "image/jpeg", "image/gif", "image/webp"]
     );
 }
@@ -189,25 +193,25 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
     let tool = offered(&selection, &IMAGE);
-    let lease = Lease::default().with_image_input(true);
+    let run = Run::default().with_image_input(true);
 
-    let missing = call_in(tool, &live.client, &lease, json!({PATH: "absent.png"})).await;
-    let out = call_in(tool, &scripted, &lease, json!({PATH: "../etc/x.png"})).await;
-    let unsandboxed = call(tool, &lease, json!({PATH: SHOT})).await;
+    let missing = call_in(tool, &live.client, &run, json!({PATH: "absent.png"})).await;
+    let out = call_in(tool, &scripted, &run, json!({PATH: "../etc/x.png"})).await;
+    let unsandboxed = call(tool, &run, json!({PATH: SHOT})).await;
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     assert_eq!(
         out.error_code,
-        Some(ToolErrorCode::PathNotAllowed),
+        Some(ToolErrorCode::PathNotAllowed.into()),
         "{out:?}"
     );
     assert_eq!(
         unsandboxed.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
+        Some(ToolErrorCode::SandboxUnavailable.into()),
         "{unsandboxed:?}"
     );
     assert!(

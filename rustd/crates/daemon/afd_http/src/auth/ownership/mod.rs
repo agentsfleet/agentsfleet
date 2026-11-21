@@ -39,7 +39,7 @@ use axum::response::{IntoResponse as _, Response};
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
 use crate::route::{RouteMeta, Scopes, WORKSPACE_PARAMETER};
-use crate::services::{Services, WorkspaceOwnership as _};
+use crate::services::{Shared, WorkspaceOwnership as _};
 
 /// The refusal a caller reads for a workspace that is not theirs.
 ///
@@ -109,7 +109,7 @@ impl<D> Clone for Owner<D> {
 ///
 /// Mounted over exactly the routes whose [`crate::route::Ownership`] is
 /// checked, so there is no "unowned" arm here to get wrong.
-pub async fn own<D: Services>(
+pub async fn own<D: Shared>(
     State(owner): State<Owner<D>>,
     mut request: Request,
     next: Next,
@@ -151,7 +151,7 @@ pub async fn own<D: Services>(
     authorize(&owner, request, next, &principal, workspace).await
 }
 
-async fn authorize<D: Services>(
+async fn authorize<D: Shared>(
     owner: &Owner<D>,
     request: Request,
     next: Next,

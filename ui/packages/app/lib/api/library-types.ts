@@ -1,13 +1,11 @@
 // Read failures for the authenticated Models registry.
-// Fleet Plugin reads use the authoring transport vocabulary.
 //
 // No `cache()` and no server-only import: these are plain types and pure
 // functions shared by server reads and client components alike.
 
 /**
- * Typed read failure. A deep-linked id absent from the loaded page is NOT a
- * kind here — it is a *selection* outcome (`selectionNotFound` on the install
- * screen), because no read path in this vocabulary's surfaces produces a 404.
+ * Typed read failure. There is no not-found kind, because no read path in
+ * this vocabulary's surfaces produces a 404.
  */
 export const LIBRARY_ERROR_KIND = {
   unauthenticated: "unauthenticated",

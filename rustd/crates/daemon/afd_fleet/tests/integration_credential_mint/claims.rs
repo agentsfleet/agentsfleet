@@ -42,7 +42,7 @@ impl Exchanger for Counting {
         self.0.fetch_add(1, Ordering::SeqCst);
         Box::pin(std::future::ready(Outcome::Ok(Minted {
             token: Zeroizing::new(COUNTED_TOKEN.to_owned()),
-            expires_at: af_core::clock::after(af_core::clock::now(), LEASE_WINDOW),
+            expires_at: af_core::clock::after(af_core::clock::now(), RUN_WINDOW),
             rotated_refresh_token: None,
         })))
     }
@@ -94,7 +94,7 @@ async fn seed_install(fixtures: &Fixtures, workspace: &Uuid7, installation: &str
 
 /// A fleet granted `service` whose workspace holds `handle` under `name`.
 async fn granted_with(fixtures: &Fixtures, name: &str, service: &str, handle: &str) -> Bound {
-    let owner = bound(fixtures, &super::authority::config(&[name])).await;
+    let owner = bound(fixtures, &authority::config(&[name])).await;
     seed_handle(fixtures, &owner.workspace, name, handle).await;
     seed_grant(fixtures, &owner.fleet, service, STATUS_APPROVED).await;
     owner
@@ -122,7 +122,7 @@ async fn mint(
     integration: &str,
 ) -> (Result<Minted, ErrorCode>, usize) {
     let counting = Arc::new(Counting::default());
-    let plane = afd_fleet::lease::LeaseService {
+    let plane = afd_fleet::run::RunService {
         task_reports: None,
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
@@ -133,7 +133,7 @@ async fn mint(
     let answer = plane
         .mint(
             &who.runner,
-            &requests::mint(who.lease.as_str(), integration),
+            &requests::mint(who.run.as_str(), integration),
             fixtures.enrolled_at(),
         )
         .await

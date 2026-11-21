@@ -1,4 +1,4 @@
-//! Dimension 2.2 — no schema object carries a vocabulary literal (RULE STS).
+//! No schema object carries a vocabulary literal (RULE STS).
 //!
 //! Every string literal in a CHECK, an index predicate, a column default or a
 //! trigger function is read out of the catalog and held to the structural
@@ -10,11 +10,12 @@ use super::*;
 
 /// The schemas whose objects are held to the rule. `audit` holds only sqlx's
 /// own ledger, which is not ours to shape.
-const PRODUCT_SCHEMAS: [&str; 9] = [
+const PRODUCT_SCHEMAS: [&str; 10] = [
     "identity",
-    "authoring",
+    "setup",
     "fleet",
     "runner",
+    "thread",
     "connector",
     "model",
     "billing",

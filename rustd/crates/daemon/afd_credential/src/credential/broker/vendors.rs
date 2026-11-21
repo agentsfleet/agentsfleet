@@ -103,7 +103,7 @@ impl Exchanger for Vendors {
 /// The `static` connector's whole exchange: there isn't one.
 ///
 /// The stored handle already holds a usable credential, so this hands it back
-/// with no upstream expiry. It reaches the broker even though the lease path
+/// with no upstream expiry. It reaches the broker even though the run path
 /// delivers static credentials inline, because the runner may ask for anything
 /// its fleet declared and refusing here would be a refusal the tenant cannot
 /// act on.

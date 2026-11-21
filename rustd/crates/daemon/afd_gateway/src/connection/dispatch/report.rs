@@ -1,0 +1,67 @@
+//! The terminal acknowledgement follows saved settlement and preserves replay suppression.
+
+use std::num::NonZeroU64;
+
+use af_core::id::Uuid7;
+use af_observability::verb_span::{ReportStage, VerbClock};
+use af_wire::report::{ReportRequest, ReportResponse};
+use garde::Validate as _;
+
+use super::super::{ConnectionServices, Message, context::answer};
+use crate::{Operation, Result};
+
+impl ConnectionServices {
+    pub(in super::super) async fn report(
+        &self,
+        request_id: NonZeroU64,
+        request: &ReportRequest<'_>,
+    ) -> Result<()> {
+        let mut clock = VerbClock::<ReportStage>::start();
+        let result = self
+            .operation(Operation::Report, async {
+                request.requests.validate()?;
+                let id = Uuid7::parse(&request.run_id)?;
+                let received = self.gateway.inner.dependencies.wall_clock.now();
+                // A draft-owned run's report carries its setup outcome.
+                if request.setup.is_some() {
+                    self.runs
+                        .report_draft(&self.creations, &self.handle.runner, request, received)
+                        .await?;
+                    self.cache.forget(&id);
+                    return Ok(ReportResponse {
+                        ok: true,
+                        hold: None,
+                    });
+                }
+                let kept = self.cache.reported(&id);
+                let settled = self
+                    .runs
+                    .report_with(&self.handle.runner, request, received, kept, &mut clock)
+                    .await?;
+                if let Err(error) = afd_fleet::run::report::observe(
+                    &self.gateway.inner.dependencies.analytics,
+                    &settled,
+                    request,
+                    self.handle.runner.as_str(),
+                    received,
+                ) {
+                    crate::Gateway::observe(&error.into(), Operation::Report);
+                }
+                self.cache.forget(&id);
+                Ok(ReportResponse {
+                    ok: true,
+                    hold: settled.hold,
+                })
+            })
+            .await;
+        let acknowledged = self
+            .send(&Message::ReportAck {
+                request_id,
+                run_id: request.run_id.as_ref().into(),
+                answer: answer(result),
+            })
+            .await;
+        clock.mark(ReportStage::Ack);
+        acknowledged
+    }
+}

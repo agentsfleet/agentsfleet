@@ -13,7 +13,7 @@
 //!
 //! The second test is the other half, and the more important one: an erasure
 //! this spec RELAXES must be shown not to have relaxed anything else. Memory,
-//! approval gates, integration grants and sessions are counted after the purge
+//! approval gates, integration grants and threads are counted after the purge
 //! and every count must be zero.
 //!
 //! `#[ignore]`d; `make test-integration-rustd` runs it.
@@ -38,7 +38,7 @@ const CHARGED_AS: &str = "deploy-bot";
 /// Spelled here rather than borrowed from `afd_billing`: this crate does not
 /// depend on it, and a literal in a fixture that only has to be well formed is
 /// cheaper than a crate edge drawn to share two words.
-const WORK_TYPE: &str = "fleet_lease";
+const WORK_TYPE: &str = "fleet_run";
 /// The posture column's platform spelling.
 const POSTURE: &str = "platform";
 /// Any model name; nothing here prices it.
@@ -50,21 +50,21 @@ pub(crate) const SEEDED: [(&str, i64); 4] = [
     ("memory.entries", 1),
     ("fleet.approval_gates", 2),
     ("connector.integration_grants", 1),
-    ("fleet.sessions", 1),
+    ("thread.threads", 1),
 ];
 
 /// Writes one usage line against a fleet, capturing the name the way the
 /// daemon does.
 ///
 /// `fleet_name` is read from the fleet row by subselect rather than bound, as
-/// the lease path's metering statement reads it — a fixture that bound a
+/// the run path's metering statement reads it — a fixture that bound a
 /// literal would prove the column holds text, not that the capture works.
 async fn charge(lane: &Lane, fleet: &Uuid7) -> Uuid7 {
     let row = mint();
     sqlx::query(
         "INSERT INTO billing.usage_lines
            (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name,
-            event_id, authoring_attempt_id, provider, model, posture, requested_at,
+            turn_id, run_id, provider, model, posture, requested_at,
             input_token_count, cached_input_token_count, cache_write_token_count,
             cache_write_5m_token_count, cache_write_1h_token_count, output_token_count,
             runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos,
@@ -170,13 +170,15 @@ pub(crate) async fn seed_everything_the_purge_destroys(lane: &Lane, fleet: &Uuid
     .expect("seeding an integration grant");
 
     sqlx::query(
-        "INSERT INTO fleet.sessions (fleet_id, context_json, created_at, updated_at)
-         VALUES ($1, '{}'::jsonb, now(), now())",
+        "INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, resume_context, created_at, updated_at)
+         VALUES ($1, $1, 0, now(), '{}'::jsonb, now(), now())
+         ON CONFLICT (id) DO UPDATE SET fencing_token = 0, run_expires_at = now(),
+             resume_context = EXCLUDED.resume_context, updated_at = now()",
     )
     .bind(fleet)
     .execute(&mut *connection)
     .await
-    .expect("seeding a session");
+    .expect("seeding a thread");
     drop(connection);
     owner.close().await;
 }
@@ -205,7 +207,7 @@ async fn seed_approval_gates(connection: &mut sqlx::PgConnection, lane: &Lane, f
     }
 }
 
-/// Dimension 1.1. The charge still names its fleet after the fleet is gone.
+/// The charge still names its fleet after the fleet is gone.
 ///
 /// Both halves in one purge, because they fail for different reasons and a
 /// reader needs to see which: the identifier survives only if the foreign key
@@ -237,7 +239,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
         charged.fleet_id,
         fleet.as_str(),
         "the purge nulled fleet_id — a referential action on \
-         billing.usage_lines.fleet_id is armed, which schema/2040 must not grow"
+         billing.usage_lines.fleet_id is armed, which afd_db/schema/2040 must not grow"
     );
     assert_eq!(
         charged.fleet_name, CHARGED_AS,
@@ -247,7 +249,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
     lane.cleanup().await;
 }
 
-/// Dimension 1.4. Relaxing one erasure relaxed no other.
+/// Relaxing one erasure relaxed no other.
 ///
 /// The risk this carries: `fleet_id` is retained by declaring NO referential
 /// action, and the tempting way to write that slot drops a cascade beside it. Counting the four children after a

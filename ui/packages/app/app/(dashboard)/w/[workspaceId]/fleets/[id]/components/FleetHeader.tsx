@@ -9,7 +9,7 @@ import { EditSetupMenuItem } from "@/components/domain/setup/EditSetupControls";
 import { FleetHeaderStatus } from "@/components/domain/conversation/chrome/FleetHeaderStatus";
 import { NewFleetShortcut } from "@/components/layout/ResourceHeader";
 import { FleetRunCost } from "@/components/domain/activity/replies/FleetRunCost";
-import type { RunFigures } from "@/lib/events/run-summary";
+import type { RunFigures } from "@/lib/turns/run-summary";
 
 export function FleetHeader({
   workspaceId,

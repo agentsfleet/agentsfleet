@@ -2,7 +2,7 @@
 //!
 //! Three entries, each only composing library crates:
 //!
-//! - `run` supervises this host's leases, as the systemd unit: each lease's
+//! - `run` supervises this host's runs, as the systemd unit: each run's
 //!   turn runs on the agent loop, its tools in a bubblewrap sandbox of its own
 //!   (`host`). It exports its spans and its own metric families to the runner
 //!   collector when `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no
@@ -54,7 +54,7 @@ struct Cli {
 /// The binary's entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
 enum Command {
-    /// Supervise this host's leases.
+    /// Supervise this host's runs.
     Run(RunArgs),
     /// Print what this host's kernel can enforce.
     Probe,
@@ -63,13 +63,13 @@ enum Command {
     Sandbox(afr_sandbox::Inherited),
 }
 
-/// How `run` builds each lease's sandbox.
+/// How `run` builds each run's sandbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::Args)]
 struct RunArgs {
-    /// Sandbox engine used for every lease on this host.
+    /// Sandbox engine used for every run on this host.
     #[arg(long, value_enum, default_value_t)]
     engine: engine::EngineChoice,
-    /// Build no sandbox: every lease's tools run unconfined in a scratch
+    /// Build no sandbox: every run's tools run unconfined in a scratch
     /// directory under the storage home. A debug build alone has the flag, so
     /// a suite can drive this binary end to end on a host without bubblewrap.
     #[cfg(debug_assertions)]
@@ -135,7 +135,7 @@ fn answer(host: &afr_sandbox::HostProbe, out: &mut impl std::io::Write) -> ExitC
     }
 }
 
-/// Starts the export when an endpoint is configured, serves leases until the
+/// Starts the export when an endpoint is configured, serves runs until the
 /// process is asked to stop, and delivers what the export holds on the way
 /// out.
 fn run(args: RunArgs) -> ExitCode {
@@ -154,7 +154,7 @@ fn run(args: RunArgs) -> ExitCode {
 /// collector, and says which.
 ///
 /// Read before boot so a misconfigured export refuses the start rather than a
-/// lease, and before the subscriber so the subscriber carries the export's
+/// run, and before the subscriber so the subscriber carries the export's
 /// layer from its first record. A refusal is logged through a subscriber
 /// without it, naming the knob and never its value.
 fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
@@ -179,7 +179,7 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
     Ok(telemetry)
 }
 
-/// Boots, builds this host's engine and the agent loop, and serves leases
+/// Boots, builds this host's engine and the agent loop, and serves runs
 /// until the process is asked to stop or the daemon says stop.
 ///
 /// Every check a start makes runs before the daemon is dialled — the
@@ -208,7 +208,7 @@ fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
 }
 
 impl RunArgs {
-    /// The host `run` leases on: no sandbox when a debug build is told so,
+    /// The host `run` runs on: no sandbox when a debug build is told so,
     /// bubblewrap otherwise.
     ///
     /// # Errors
@@ -222,7 +222,7 @@ impl RunArgs {
     }
 }
 
-/// Serves leases until SIGTERM or SIGINT, or until the daemon says stop.
+/// Serves runs until SIGTERM or SIGINT, or until the daemon says stop.
 async fn serve(
     config: &afr_supervisor::Config,
     home: StorageHome,
@@ -259,9 +259,9 @@ async fn serve(
 }
 
 /// Resolves on a second SIGINT or SIGTERM, once the first has begun a drain:
-/// the operator will not wait for the leases in flight. The first signal's
+/// the operator will not wait for the runs in flight. The first signal's
 /// handler stays installed for the process's life, so without this a second
-/// one would be swallowed until a lease ended. Dropping the run unwinds
+/// one would be swallowed until a run ended. Dropping the run unwinds
 /// through `main`, so the toolbox is still unmounted on the way out.
 async fn forced(shutdown: &CancellationToken) {
     shutdown.cancelled().await;
@@ -296,7 +296,7 @@ where
 /// The level the environment names, with the model library's own lines held
 /// to its warnings, so no level puts a model's raw reply in the journal.
 fn log_filter(env: &impl EnvSource) -> Targets {
-    af_providers::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
+    af_inference::log_filter(af_core::env::log_level(env, DEFAULT_LEVEL))
 }
 
 #[cfg(test)]

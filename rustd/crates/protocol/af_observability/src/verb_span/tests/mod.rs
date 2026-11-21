@@ -15,7 +15,7 @@ use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider, SpanData, SpanExporter};
 
 use super::{
-    CaptureStage, HydrateStage, OfferStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
+    AssignStage, CaptureStage, LoadStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
 };
 use crate::semconv;
 
@@ -87,7 +87,7 @@ impl Ticks for Moved {
     }
 }
 
-const EVENT_ID: &str = "01936f00-0000-7000-8000-00000000e7e1";
+const TURN_ID: &str = "01936f00-0000-7000-8000-00000000e7e1";
 const FLEET_ID: &str = "01936f00-0000-7000-8000-0000000f1ee7";
 const ALL_REPORT_STAGES: [ReportStage; 6] = [
     ReportStage::Load,
@@ -112,7 +112,7 @@ fn stage_keys(span: &SpanData) -> Vec<&str> {
     span.attributes
         .iter()
         .map(|pair| pair.key.as_str())
-        .filter(|key| *key != semconv::ATTR_EVENT_ID && *key != semconv::ATTR_AGENT_ID)
+        .filter(|key| *key != semconv::ATTR_TURN_ID && *key != semconv::ATTR_AGENT_ID)
         .collect()
 }
 
@@ -126,7 +126,7 @@ fn test_verb_clock_writes_each_reached_stage_once() {
     let ticks = Moved::new();
 
     let mut whole = VerbClock::<ReportStage, Moved>::start_on(ticks.clone());
-    whole.identify(EVENT_ID, FLEET_ID);
+    whole.identify(TURN_ID, FLEET_ID);
     for stage in ALL_REPORT_STAGES {
         ticks.advance(Duration::from_millis(3));
         whole.mark(stage);
@@ -179,7 +179,7 @@ fn test_a_clock_that_reached_no_stage_records_nothing() {
     let collected = Collected::default();
     let (_provider, tracer) = tracer(&collected);
     let mut clock = VerbClock::<SteerStage, Moved>::start_on(Moved::new());
-    clock.identify(EVENT_ID, FLEET_ID);
+    clock.identify(TURN_ID, FLEET_ID);
     clock.record_on(&tracer);
     assert_eq!(
         collected.spans().len(),
@@ -195,7 +195,7 @@ fn test_verb_span_carries_only_declared_keys() {
     let collected = Collected::default();
     let (_provider, tracer) = tracer(&collected);
     let mut clock = VerbClock::<SteerStage, Moved>::start_on(Moved::new());
-    clock.identify(EVENT_ID, FLEET_ID);
+    clock.identify(TURN_ID, FLEET_ID);
     clock.mark(SteerStage::Admit);
     clock.mark(SteerStage::Announce);
     clock.record_on(&tracer);
@@ -213,7 +213,7 @@ fn test_verb_span_carries_only_declared_keys() {
             texts.push(text.as_str().to_owned());
         }
     }
-    assert_eq!(texts, [EVENT_ID, FLEET_ID]);
+    assert_eq!(texts, [TURN_ID, FLEET_ID]);
 }
 
 /// Every stage key belongs to its own verb and is declared: a stage wired to
@@ -228,13 +228,13 @@ fn test_every_stage_key_belongs_to_its_verb() {
                 .to_vec(),
         ),
         (
-            "agentsfleet.offer.",
+            "agentsfleet.assign.",
             [
-                OfferStage::Claim,
-                OfferStage::Admit,
-                OfferStage::Issue,
-                OfferStage::Encode,
-                OfferStage::Send,
+                AssignStage::Select,
+                AssignStage::Admit,
+                AssignStage::Issue,
+                AssignStage::Encode,
+                AssignStage::Send,
             ]
             .map(Stage::key)
             .to_vec(),
@@ -244,8 +244,8 @@ fn test_every_stage_key_belongs_to_its_verb() {
             ALL_REPORT_STAGES.map(Stage::key).to_vec(),
         ),
         (
-            "agentsfleet.hydrate.",
-            [HydrateStage::Fence, HydrateStage::MemoryRead]
+            "agentsfleet.load.",
+            [LoadStage::Fence, LoadStage::MemoryRead]
                 .map(Stage::key)
                 .to_vec(),
         ),

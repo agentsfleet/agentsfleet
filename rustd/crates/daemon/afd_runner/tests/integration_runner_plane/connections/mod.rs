@@ -39,17 +39,12 @@ async fn acquire(
     }
 }
 
-async fn can_claim(fixture: &Fixture, authority: &Authority) -> TestResult<bool> {
+async fn can_assign(fixture: &Fixture, authority: &Authority) -> TestResult<bool> {
     let mut connection = fixture.database.acquire().await?;
     let mut transaction = connection.begin().await?;
-    let available = capacity::lock(
-        &mut transaction,
-        authority,
-        afd_runner::capacity::Claimant::Authoring,
-        None,
-    )
-    .await?
-    .is_some_and(capacity::Capacity::can_claim);
+    let available = capacity::lock(&mut transaction, authority, capacity::Work::Setup, None)
+        .await?
+        .is_some_and(capacity::Capacity::can_assign);
     transaction.commit().await?;
     Ok(available)
 }
@@ -60,15 +55,15 @@ async fn a_replaced_connection_cannot_regain_ownership_through_automatic_resume(
     let mut fixture = Fixture::create().await;
     let (runner, digest) = enrol(&mut fixture).await?;
     let first = acquire(&fixture, &runner, &digest, None).await?;
-    assert!(can_claim(&fixture, &first).await?);
+    assert!(can_assign(&fixture, &first).await?);
     let second = acquire(&fixture, &runner, &digest, None).await?;
     assert_ne!(first.connection(), second.connection());
     assert_eq!(
         fixture.runners.check_connection(&first).await?,
         Decision::Refused(Refusal::Superseded)
     );
-    assert!(!can_claim(&fixture, &first).await?);
-    assert!(can_claim(&fixture, &second).await?);
+    assert!(!can_assign(&fixture, &first).await?);
+    assert!(can_assign(&fixture, &second).await?);
     let refused = fixture
         .runners
         .acquire_connection(
@@ -88,7 +83,7 @@ async fn a_replaced_connection_cannot_regain_ownership_through_automatic_resume(
         fixture.runners.check_connection(&second).await?,
         Decision::Refused(Refusal::Superseded)
     );
-    assert!(can_claim(&fixture, &resumed).await?);
+    assert!(can_assign(&fixture, &resumed).await?);
     assert_eq!(
         Refusal::Superseded.code(),
         error_code::RUN_STREAM_SUPERSEDED
@@ -112,7 +107,7 @@ async fn rotation_refuses_old_acquisition_and_old_locked_grants() -> TestResult 
         fixture.runners.check_connection(&old).await?,
         Decision::Refused(Refusal::Credential)
     );
-    assert!(!can_claim(&fixture, &old).await?);
+    assert!(!can_assign(&fixture, &old).await?);
     assert_eq!(
         fixture
             .runners
@@ -121,7 +116,7 @@ async fn rotation_refuses_old_acquisition_and_old_locked_grants() -> TestResult 
         Decision::Refused(Refusal::Credential)
     );
     let current = acquire(&fixture, &runner, rotated.digest(), None).await?;
-    assert!(can_claim(&fixture, &current).await?);
+    assert!(can_assign(&fixture, &current).await?);
     assert_eq!(
         Refusal::Credential.code(),
         error_code::RUN_INVALID_RUNNER_TOKEN
@@ -144,7 +139,7 @@ async fn a_connection_proof_never_authorizes_another_host_and_debug_omits_its_di
     assert!(!format!("{guard:?}").contains(digest.as_str()));
     assert!(!format!("{authority:?}").contains(digest.as_str()));
     assert!(
-        capacity::lock(&mut transaction, guard, capacity::Claimant::Existing, None)
+        capacity::lock(&mut transaction, guard, capacity::Work::Existing, None)
             .await?
             .is_none()
     );
@@ -182,7 +177,7 @@ async fn stopped_and_removed_hosts_return_terminal_classified_decisions() -> Tes
                 .await?,
             Decision::Refused(Refusal::Revoked)
         );
-        assert!(!can_claim(&fixture, &authority).await?);
+        assert!(!can_assign(&fixture, &authority).await?);
         if action == RunnerAdminAction::Revoke {
             fixture.runners.platform().delete_revoked(&runner).await?;
             assert_eq!(

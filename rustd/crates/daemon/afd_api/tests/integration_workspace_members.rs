@@ -69,7 +69,7 @@ async fn past_heartbeats(body: &mut BodyDataStream) -> String {
     event
 }
 
-/// Dimension 2.1: Bob opens, lists, streams and steers John's workspace, and
+/// Bob opens, lists, streams and steers John's workspace, and
 /// the list names the account it is in and Bob's role there.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -114,7 +114,7 @@ async fn test_member_reaches_owner_workspace() {
         "a member steers the owner's fleet"
     );
 
-    let stream = format!("/v1/workspaces/{}/events/stream", john.workspace.as_str());
+    let stream = format!("/v1/workspaces/{}/turns/stream", john.workspace.as_str());
     let mut body = open(&router, &stream, bob).await;
     assert!(next_chunk(&mut body).await.contains("event: hello"));
     drop(body);
@@ -122,10 +122,10 @@ async fn test_member_reaches_owner_workspace() {
     members.cleanup().await;
 }
 
-/// Dimension 2.2: an owner of another account, holding everything signup
+/// An owner of another account, holding everything signup
 /// grants and no membership, is refused John's workspace with exactly today's
 /// answer. Not every scope: the platform-wide one is how an operator crosses,
-/// and that crossing is §5's to prove.
+/// and that crossing is the operator suites' to prove.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_non_member_refused_unchanged() {
@@ -150,7 +150,7 @@ async fn test_non_member_refused_unchanged() {
     members.cleanup().await;
 }
 
-/// Dimension 2.3, from real rows: Bob reads John's secrets and is refused
+/// From real rows: Bob reads John's secrets and is refused
 /// writing one, with the owner-only code rather than a foreign-workspace one.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -178,7 +178,7 @@ async fn test_member_refused_owner_only_routes() {
     members.cleanup().await;
 }
 
-/// Dimension 2.4: John removes Bob while Bob watches, and each of Bob's open
+/// John removes Bob while Bob watches, and each of Bob's open
 /// streams ends on `access_revoked` within one re-check.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -186,7 +186,7 @@ async fn test_removed_member_stream_ends() {
     let members = Members::create().await;
     let router = members.live(&members.bob, owner_scopes()).await;
     let wall = format!(
-        "/v1/workspaces/{}/events/stream",
+        "/v1/workspaces/{}/turns/stream",
         members.john.workspace.as_str()
     );
     let mut wall_body = open(&router, &wall, &members.bob).await;
@@ -219,7 +219,7 @@ async fn test_removed_member_stream_ends() {
     members.cleanup().await;
 }
 
-/// Dimension 2.6: an owner with no invites sees exactly their own account,
+/// An owner with no invites sees exactly their own account,
 /// and steers as before.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -284,7 +284,7 @@ async fn test_platform_write_acts_attributed() {
     assert_eq!(
         members.admitted_actors().await,
         [operator.actor()],
-        "one admission, attributed to the operator"
+        "one turn, attributed to the operator"
     );
 
     members.cleanup().await;

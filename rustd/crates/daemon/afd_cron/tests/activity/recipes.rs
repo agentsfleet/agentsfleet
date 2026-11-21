@@ -8,7 +8,7 @@ use crate::support::{CronLane, SEED_AT};
 
 // Value: protects=setup-owned schedule writes/receipts commit or roll back together;
 // fails_when=recipe writers omit receipts or persist them outside the caller transaction;
-// seam=caller rollback is deliberate; no_claim=authoring HTTP or external registration.
+// seam=caller rollback is deliberate; no_claim=setup HTTP or external registration.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn rolled_back_setup_schedule_writes_leave_neither_state_nor_history() {
@@ -41,7 +41,7 @@ async fn rolled_back_setup_schedule_writes_leave_neither_state_nor_history() {
 
 // Value: protects=unchanged setup saves retain one history fact and retirement stays pending;
 // fails_when=question-only revisions duplicate schedule history or removal is called confirmed;
-// seam=none; no_claim=external registration or authoring HTTP.
+// seam=none; no_claim=external registration or setup HTTP.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn setup_schedule_revisions_commit_their_activity_atomically() {
@@ -97,7 +97,7 @@ async fn save(lane: &CronLane, revision: i64, recipes: &[Recipe]) {
         )
         .await
         .expect("replace pinned recipes");
-    afd_events::activity::commit(tx, announcement, None)
+    afd_turns::view::activity::commit(tx, announcement, None)
         .await
         .expect("same history commit");
 }
@@ -141,7 +141,7 @@ async fn conditional_schedule_edits_record_the_saved_revision_only() {
     assert_eq!(
         (error.code(), error.etag()),
         (
-            af_core::error_code::AUTHORING_STALE,
+            af_core::error_code::SETUP_STALE,
             Some(edited.etag().as_str())
         )
     );

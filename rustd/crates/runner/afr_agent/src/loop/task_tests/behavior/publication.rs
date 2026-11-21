@@ -286,7 +286,7 @@ fn assert_evidence(native: &Publisher, expected: &str) -> crate::Result<()> {
         .goals
         .requests
         .lock()
-        .expect("fixture mutex is unpoisoned");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let evidence = requests
         .first()
         .ok_or_else(crate::decision::unavailable)?

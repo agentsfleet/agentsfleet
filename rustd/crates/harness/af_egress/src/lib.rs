@@ -1,10 +1,10 @@
 //! The runner's outbound guard.
 //!
-//! A supervisor-side tool hands its request to the lease's [`Egress`] as a
-//! [`Draft`]. It is admitted against the lease's network policy and the
+//! A supervisor-side tool hands its request to the run's [`Egress`] as a
+//! [`Draft`]. It is admitted against the run's network policy and the
 //! daemon's origin rules before any connection exists; its
 //! `${secrets.NAME.FIELD}` placeholders are put in place at send time, from the
-//! lease's static secrets or a token minted once per lease; and it leaves
+//! run's static secrets or a token minted once per run; and it leaves
 //! through a [`Transport`] whose resolver never answers a private address. Only
 //! this crate builds an [`Outbound`], so nothing reaches a transport without
 //! admission. What comes back is masked for every minted token before a tool

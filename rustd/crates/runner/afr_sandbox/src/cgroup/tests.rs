@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::LeaseCgroup;
+use super::RunCgroup;
 use crate::engine::Limits;
 
 /// A mebibyte, and a gibibyte.
@@ -25,19 +25,19 @@ fn read(dir: &Path, file: &str) -> String {
 }
 
 /// A cgroup over a plain directory, which takes every write.
-fn plain(root: &Path, name: &str) -> (LeaseCgroup, std::path::PathBuf) {
+fn plain(root: &Path, name: &str) -> (RunCgroup, std::path::PathBuf) {
     let dir = root.join(name);
     fs::create_dir(&dir).unwrap();
-    (LeaseCgroup { dir: dir.clone() }, dir)
+    (RunCgroup { dir: dir.clone() }, dir)
 }
 
 #[test]
-fn test_lease_cgroup_writes_every_limit() {
+fn test_run_cgroup_writes_every_limit() {
     let root = tempfile::tempdir().unwrap();
 
-    let made = LeaseCgroup::create(root.path(), "lease-1", &LIMITS).unwrap();
+    let made = RunCgroup::create(root.path(), "run-1", &LIMITS).unwrap();
 
-    let dir = root.path().join("lease-1");
+    let dir = root.path().join("run-1");
     assert_eq!(read(&dir, "memory.max"), "268435456");
     // pin test: literal is the contract
     assert_eq!(read(&dir, "cpu.max"), "150000 100000");
@@ -50,12 +50,12 @@ fn test_lease_cgroup_writes_every_limit() {
 }
 
 #[test]
-fn test_a_lease_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
+fn test_a_run_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
     let root = tempfile::tempdir().unwrap();
 
-    let made = LeaseCgroup::create(root.path(), "lease-9", &LIMITS).unwrap();
+    let made = RunCgroup::create(root.path(), "run-9", &LIMITS).unwrap();
 
-    let dir = root.path().join("lease-9");
+    let dir = root.path().join("run-9");
     assert_eq!(
         read(&dir, "cgroup.subtree_control"),
         "+cpu +io +memory +pids"
@@ -77,9 +77,9 @@ fn test_a_lease_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
 fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
     let root = tempfile::tempdir().unwrap();
 
-    LeaseCgroup::create(root.path(), "lease-11", &LIMITS).unwrap();
+    RunCgroup::create(root.path(), "run-11", &LIMITS).unwrap();
 
-    let tenant = root.path().join("lease-11/tenant");
+    let tenant = root.path().join("run-11/tenant");
     let limit = LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
     assert_eq!(
         read(&tenant, "memory.high"),
@@ -87,7 +87,7 @@ fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
     );
 }
 
-/// A large lease keeps the headroom a mid-sized one gets and no more: with
+/// A large run keeps the headroom a mid-sized one gets and no more: with
 /// no swap, everything inside the band is throttled, so an eighth of a large
 /// limit would slow the allocation-heavy work it was sized for.
 #[test]
@@ -98,9 +98,9 @@ fn test_a_large_tenant_leaf_throttles_a_capped_headroom_below_its_limit() {
         ..LIMITS
     };
 
-    LeaseCgroup::create(root.path(), "lease-14", &large).unwrap();
+    RunCgroup::create(root.path(), "run-14", &large).unwrap();
 
-    let tenant = root.path().join("lease-14/tenant");
+    let tenant = root.path().join("run-14/tenant");
     let limit = large.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
     assert_eq!(
         read(&tenant, "memory.high"),
@@ -116,35 +116,35 @@ fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping
         ..LIMITS
     };
 
-    LeaseCgroup::create(root.path(), "lease-10", &tiny).unwrap();
+    RunCgroup::create(root.path(), "run-10", &tiny).unwrap();
 
-    let tenant = root.path().join("lease-10/tenant");
+    let tenant = root.path().join("run-10/tenant");
     assert_eq!(read(&tenant, "memory.max"), "0");
     assert_eq!(read(&tenant, "memory.high"), "0");
 }
 
 #[test]
-fn test_removal_takes_both_leaves_before_the_lease_cgroup() {
+fn test_removal_takes_both_leaves_before_the_run_cgroup() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-11");
+    let (made, dir) = plain(root.path(), "run-11");
     fs::create_dir(dir.join("sandbox")).unwrap();
     fs::create_dir(dir.join("tenant")).unwrap();
 
-    // A directory with children cannot go, so the lease going at all says
+    // A directory with children cannot go, so the run going at all says
     // its leaves went first.
     made.remove_dirs().unwrap();
 
-    assert!(!dir.exists(), "leaves, then the lease");
+    assert!(!dir.exists(), "leaves, then the run");
 }
 
 #[test]
 fn test_a_crash_before_the_split_leaves_nothing_the_removal_trips_on() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-12");
+    let (made, dir) = plain(root.path(), "run-12");
 
     made.remove_dirs().unwrap();
 
-    assert!(!dir.exists(), "no leaves, the lease goes alone");
+    assert!(!dir.exists(), "no leaves, the run goes alone");
 }
 
 /// A split refused after it made the sandbox leaf, as `create` undoes it:
@@ -152,7 +152,7 @@ fn test_a_crash_before_the_split_leaves_nothing_the_removal_trips_on() {
 #[test]
 fn test_a_split_refused_midway_is_undone_with_the_leaf_it_made() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-13");
+    let (made, dir) = plain(root.path(), "run-13");
     // A file where the tenant leaf goes: the sandbox leaf is made, then the
     // tenant leaf is refused.
     fs::write(dir.join("tenant"), "").unwrap();
@@ -171,7 +171,7 @@ fn test_a_split_refused_midway_is_undone_with_the_leaf_it_made() {
 #[test]
 fn test_swap_is_zeroed_where_the_kernel_accounts_it() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-2");
+    let (made, dir) = plain(root.path(), "run-2");
     fs::write(dir.join("memory.swap.max"), "max").unwrap();
 
     made.limit(&LIMITS).unwrap();
@@ -182,7 +182,7 @@ fn test_swap_is_zeroed_where_the_kernel_accounts_it() {
 #[test]
 fn test_io_is_limited_on_the_workspace_device() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-3");
+    let (made, dir) = plain(root.path(), "run-3");
 
     made.limit_io((7, 3), 1_024).unwrap();
     // pin test: literal is the contract
@@ -193,7 +193,7 @@ fn test_io_is_limited_on_the_workspace_device() {
 fn test_a_cgroup_under_a_missing_root_is_refused() {
     let root = tempfile::tempdir().unwrap();
 
-    let refused = LeaseCgroup::create(&root.path().join("absent"), "lease-4", &LIMITS);
+    let refused = RunCgroup::create(&root.path().join("absent"), "run-4", &LIMITS);
 
     refused.unwrap_err();
 }
@@ -201,7 +201,7 @@ fn test_a_cgroup_under_a_missing_root_is_refused() {
 #[test]
 fn test_a_refused_limit_names_its_control_file() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-5");
+    let (made, dir) = plain(root.path(), "run-5");
     fs::create_dir(dir.join("pids.max")).unwrap();
 
     let refused = made.limit(&LIMITS).unwrap_err();
@@ -213,8 +213,8 @@ fn test_a_refused_limit_names_its_control_file() {
 fn test_undo_removes_an_empty_cgroup_and_logs_one_it_cannot() {
     let root = tempfile::tempdir().unwrap();
     let capture = af_core::test_util::trace::Capture::install();
-    let (empty, empty_dir) = plain(root.path(), "lease-6");
-    let (full, full_dir) = plain(root.path(), "lease-7");
+    let (empty, empty_dir) = plain(root.path(), "run-6");
+    let (full, full_dir) = plain(root.path(), "run-7");
     fs::write(full_dir.join("memory.max"), "1").unwrap();
 
     let first = empty.undo(crate::error::unconfined("first"));
@@ -231,7 +231,7 @@ fn test_undo_removes_an_empty_cgroup_and_logs_one_it_cannot() {
 #[test]
 fn test_kill_writes_one_and_remove_names_the_cgroup_that_stayed() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-8");
+    let (made, dir) = plain(root.path(), "run-8");
 
     made.kill().unwrap();
     assert_eq!(read(&dir, "cgroup.kill"), "1");
@@ -239,17 +239,17 @@ fn test_kill_writes_one_and_remove_names_the_cgroup_that_stayed() {
     // non-empty directory: refused at once, not retried, and named.
     let left = made.remove().unwrap_err();
 
-    assert!(left.to_string().contains("lease-8"), "{left}");
+    assert!(left.to_string().contains("run-8"), "{left}");
     assert!(left.to_string().contains("could not be removed"), "{left}");
 }
 
-/// Both leaves stop together because the freezer is the lease cgroup's own:
+/// Both leaves stop together because the freezer is the run cgroup's own:
 /// it writes the request and reads the settled state beside the leaves,
 /// never inside one.
 #[test]
-fn test_the_freezer_acts_on_the_lease_cgroup_itself() {
+fn test_the_freezer_acts_on_the_run_cgroup_itself() {
     let root = tempfile::tempdir().unwrap();
-    let (made, dir) = plain(root.path(), "lease-14");
+    let (made, dir) = plain(root.path(), "run-14");
     fs::write(dir.join("cgroup.events"), "populated 1\nfrozen 1\n").unwrap();
 
     let freezer = made.freezer();
@@ -275,7 +275,7 @@ fn io_kind(error: &crate::Error) -> Option<std::io::ErrorKind> {
 #[tokio::test(start_paused = true)]
 async fn test_a_killed_tree_that_empties_drains() {
     let root = tempfile::tempdir().unwrap();
-    let (cgroup, dir) = plain(root.path(), "lease-20");
+    let (cgroup, dir) = plain(root.path(), "run-20");
     fs::write(dir.join("cgroup.events"), EMPTIED).unwrap();
 
     cgroup.kill_and_drain().await.unwrap();
@@ -288,7 +288,7 @@ async fn test_a_killed_tree_that_empties_drains() {
 #[tokio::test(start_paused = true)]
 async fn test_a_tree_still_populated_past_the_bound_fails_the_drain() {
     let root = tempfile::tempdir().unwrap();
-    let (cgroup, dir) = plain(root.path(), "lease-21");
+    let (cgroup, dir) = plain(root.path(), "run-21");
     fs::write(dir.join("cgroup.events"), LIVING).unwrap();
     let started = tokio::time::Instant::now();
 
@@ -309,7 +309,7 @@ async fn test_a_tree_still_populated_past_the_bound_fails_the_drain() {
 #[tokio::test(start_paused = true)]
 async fn test_a_kill_the_kernel_refuses_fails_the_drain_at_once() {
     let root = tempfile::tempdir().unwrap();
-    let cgroup = LeaseCgroup {
+    let cgroup = RunCgroup {
         dir: root.path().join("never-made"),
     };
 
@@ -321,7 +321,7 @@ async fn test_a_kill_the_kernel_refuses_fails_the_drain_at_once() {
 #[tokio::test(start_paused = true)]
 async fn test_a_tree_whose_events_cannot_be_read_fails_the_drain() {
     let root = tempfile::tempdir().unwrap();
-    let (cgroup, _dir) = plain(root.path(), "lease-22");
+    let (cgroup, _dir) = plain(root.path(), "run-22");
     let started = tokio::time::Instant::now();
 
     let refused = cgroup.kill_and_drain().await.unwrap_err();

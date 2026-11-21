@@ -2,8 +2,10 @@
 
 use garde::Validate as _;
 
-use super::{HAS_NUL, NOT_ASCII_DIGITS, NOT_FINITE, OUTSIDE_CHARSET, RELATIVE_SEGMENT};
-use super::{ascii_digits, charset, finite, not_relative, nul_free};
+use super::{
+    HAS_NUL, NOT_ASCII_DIGITS, NOT_EXACTLY, NOT_FINITE, OUTSIDE_CHARSET, RELATIVE_SEGMENT,
+};
+use super::{ascii_digits, charset, exactly, finite, not_relative, nul_free};
 
 /// The rules as an author declares them: beside garde's own bounds, through
 /// the attribute, on borrowed and owned text alike.
@@ -116,5 +118,18 @@ fn not_relative_refuses_only_the_two_path_steps() {
     }
     for name in ["...", ".hidden", "a.b", "..x", ""] {
         assert!(not_relative(name, &()).is_ok(), "{name:?}");
+    }
+}
+
+#[test]
+fn exactly_admits_only_its_one_value() {
+    let rule = exactly::<()>("dt-v1");
+    assert_eq!(rule("dt-v1", &()), Ok(()));
+    for refused in ["dt-v2", "dt-v1 ", "DT-V1", "", "xdt-v1"] {
+        assert_eq!(
+            rule(refused, &()).map_err(|error| error.message().to_owned()),
+            Err(NOT_EXACTLY.to_owned()),
+            "{refused:?}"
+        );
     }
 }

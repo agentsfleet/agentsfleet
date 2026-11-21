@@ -4,7 +4,7 @@ import { DraftLists } from "@/lib/api/draft-lists";
 import { DRAFT, FLEET, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const CARD = {id: DRAFT.id, title: DRAFT.title, state: DRAFT.state, etag: DRAFT.etag,
-  candidate_revision: 1, setup_revision: null, publication_revision: null,
+  candidate_revision: 1, setup_revision: null,
   linked_fleet_id: null, updated_at: "2026-10-19T00:00:00Z", expires_at: null};
 const SECOND = {...CARD, id: "0199a801-1000-7000-8000-00000000000a"};
 const page = (items: unknown[], next_cursor: string | null = null) => response({items, next_cursor});
@@ -41,19 +41,6 @@ it.each(["clear", "remove"] as const)("never restores a chat when %s supersedes 
   if (action === "clear") lists.clear(); else lists.remove(CARD.id);
   pending.resolve(page([CARD]));
   expect((await refreshing).cards).toEqual([]);
-});
-
-it("keeps an observed publication through a title change and invalidates an unknown later publication", async () => {
-  const publication = {plugin_id: "plugin", revision_id: SECOND.id, canonical_digest: "published"};
-  const published = {...CARD, publication_revision: 7};
-  vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(page([])).mockResolvedValueOnce(page([published, SECOND]));
-  const lists = new DraftLists(`/live/v1/workspaces/${WORKSPACE}`);
-  await lists.open(signal());
-  expect(lists.updateDraft({...DRAFT, publication}).cards[0]?.publication_revision).toBe(7);
-  const renamed = {...DRAFT, title: "Daily brief", etag: '"renamed"', publication};
-  expect(lists.updateDraft(renamed).cards[0]?.publication_revision).toBe(7);
-  expect(lists.updateDraft({...renamed, publication: {...publication, revision_id: DRAFT.id}}).cards[0]?.publication_revision).toBeNull();
-  expect(lists.view.cards[1]).toEqual(SECOND);
 });
 
 it.each(["0", "9007199254740993"])("keeps inexact or invalid revision %s out of recorded summaries", async revision => {

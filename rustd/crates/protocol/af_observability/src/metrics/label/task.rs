@@ -23,7 +23,7 @@ closed_set! {
         DecisionRecord => "decision_record",
         /// Release reservations natively proved unsent after their deadline.
         DecisionSweep => "decision_sweep",
-        /// Acknowledge accepted input at its original obligation.
+        /// Acknowledge accepted input at its original delivery.
         InputReceipt => "input_receipt",
         /// Allocate and issue one native exact-head publication.
         EffectPublish => "effect_publish",
@@ -79,9 +79,9 @@ closed_set! {
         Accepted => "accepted",
         /// A previously committed receipt was returned unchanged.
         Replayed => "replayed",
-        /// No task or lease is visible in the authorized scope.
+        /// No task or run is visible in the authorized scope.
         NotFound => "not_found",
-        /// Version or lease ownership changed.
+        /// Version or run ownership changed.
         Stale => "stale",
         /// Native target validation refused the proposal.
         Invalid => "invalid",

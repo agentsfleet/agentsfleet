@@ -1,4 +1,4 @@
-//! Dimension 5.5 — a runner token resolves to a machine, live only while active.
+//! A runner token resolves to a machine, live only while active.
 //!
 //! The runner class of the credential directory: the reconciled verdict rides
 //! the lookup, every status but `active` bars the runner plane, and a row this
@@ -44,7 +44,7 @@ async fn test_a_runner_token_resolves_to_a_machine() {
             assert_eq!(runner.as_str(), id);
             assert!(
                 degraded,
-                "the reconciliation verdict rides the same read, so the lease \
+                "the reconciliation verdict rides the same read, so the run \
                  gate never re-reads this row"
             );
             assert_eq!(live, Liveness::Live);

@@ -244,7 +244,7 @@ async fn an_ending_carries_whether_output_was_left_behind() {
 }
 
 #[test]
-fn events_that_go_while_their_process_may_run_run_their_hook_once() {
+fn events_that_go_while_their_process_may_run_their_hook_once() {
     let (feed, events, runs) = counted();
     feed.output(Stream::Stdout, Bytes::from_static(b"unread"));
 

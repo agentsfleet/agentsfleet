@@ -8,13 +8,13 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 import { runCli } from "../src/cli.ts";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { KIND_CHUNK, KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { KIND_CHUNK, KIND_TURN_COMPLETE } from "../src/commands/fleet/steer-turns.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
 import { jsonResponse, withMockApi, type MockCall, type MockRoutes } from "./helpers-mock-api.ts";
 import {
-  EVENT_ID, FLEET_ID, POST, WS_ID, authedScope, eventStream, makeLayer, makeRecorder, nullOutput, streamFrom,
+  TURN_ID, FLEET_ID, POST, WS_ID, authedScope, eventStream, makeLayer, makeRecorder, nullOutput, streamFrom,
 } from "./helpers-fleet-steer.ts";
 
 const NAME = "agentbob";
@@ -54,13 +54,13 @@ const sse = (...frames: ReadonlyArray<{ readonly type: string; readonly data: un
 // Every route a steer to `fleetId` crosses once the fleet is known, answered so
 // a run that reaches them succeeds; an absent request is then a real absence.
 const steerRoutes = (fleetId: string): MockRoutes => ({
-  [`GET ${FLEETS}/${fleetId}/events/stream`]: () => sse(
-    { type: KIND_CHUNK, data: { event_id: EVENT_ID, text: "Retrying run 991." } },
-    { type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED, final_reply: REPLY } },
+  [`GET ${FLEETS}/${fleetId}/turns/stream`]: () => sse(
+    { type: KIND_CHUNK, data: { turn_id: TURN_ID, text: "Retrying run 991." } },
+    { type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED, final_reply: REPLY } },
   ),
-  [`POST ${FLEETS}/${fleetId}/messages`]: () => jsonResponse(202, { event_id: EVENT_ID, disposition: "started" }),
-  [`GET ${FLEETS}/${fleetId}/events/${EVENT_ID}`]: () =>
-    jsonResponse(200, { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED }),
+  [`POST ${FLEETS}/${fleetId}/messages`]: () => jsonResponse(202, { turn_id: TURN_ID, disposition: "started" }),
+  [`GET ${FLEETS}/${fleetId}/turns/${TURN_ID}`]: () =>
+    jsonResponse(200, { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED }),
 });
 
 const steer = (argv: ReadonlyArray<string>, routes: MockRoutes): Promise<Run> =>
@@ -87,9 +87,9 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
     expect(named.code).toBe(0);
     expect(requested(named)).toEqual([
       LOOKUP,
-      `GET ${FLEETS}/${FLEET_ID}/events/stream`,
+      `GET ${FLEETS}/${FLEET_ID}/turns/stream`,
       `POST ${FLEETS}/${FLEET_ID}/messages`,
-      `GET ${FLEETS}/${FLEET_ID}/events/${EVENT_ID}`,
+      `GET ${FLEETS}/${FLEET_ID}/turns/${TURN_ID}`,
     ]);
     expect(postedBodies(named)).toEqual([{ message: "retry" }]);
     expect(requested(byId)).toEqual(requested(named).slice(1));
@@ -100,7 +100,7 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
     const byIdJson = await steer([FLEET_ID, "retry", "--json"], routes);
     expect(namedJson.code).toBe(0);
     expect(JSON.parse(namedJson.stdout)).toEqual({
-      event_id: EVENT_ID, disposition: "started", kind: "complete", status: EVENT_STATUS.PROCESSED,
+      turn_id: TURN_ID, disposition: "started", kind: "complete", status: TURN_STATUS.PROCESSED,
     });
     expect(namedJson.stdout).toBe(byIdJson.stdout);
   });
@@ -159,7 +159,7 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
       unfiltered(row(OTHER_FLEET_ID, "release-notes"), row(FLEET_ID, NAME)));
     expect(newestFirst.code).toBe(0);
     expect(requested(newestFirst)).toEqual([
-      LOOKUP, `GET ${FLEETS}/${FLEET_ID}/events/stream`, `POST ${FLEETS}/${FLEET_ID}/messages`,
+      LOOKUP, `GET ${FLEETS}/${FLEET_ID}/turns/stream`, `POST ${FLEETS}/${FLEET_ID}/messages`,
     ]);
 
     const nameAbsent = await steer(["@agentbob", "retry", "--json"], unfiltered(row(OTHER_FLEET_ID, "release-notes")));
@@ -171,13 +171,13 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
   test("fleet_steer_prompt_resolves_a_name_once_and_stays_on_that_fleet", async () => {
     const rec = makeRecorder();
     const reply = <T>(input: HttpRequestInput): T =>
-      (input.method === POST ? { event_id: EVENT_ID } : page(row(FLEET_ID, NAME))) as T;
+      (input.method === POST ? { turn_id: TURN_ID } : page(row(FLEET_ID, NAME))) as T;
     const exit = await Effect.runPromiseExit(
       steerEffectFromArgs(`@${NAME}`, undefined, { forceTty: true }, {
         stdin: streamFrom([], true),
         stdout: nullOutput(),
         streamGet: eventStream([
-          { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+          { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } },
         ]),
         runRepl: async ({ runTurn }) => {
           await runTurn("retry", new AbortController().signal);
@@ -187,7 +187,7 @@ describe("fleet steer reaches a fleet by the name it was saved under", () => {
       }).pipe(Effect.provide(makeLayer(rec, reply))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    const turn = [`POST ${FLEETS}/${FLEET_ID}/messages`, `GET ${FLEETS}/${FLEET_ID}/events/${EVENT_ID}`];
+    const turn = [`POST ${FLEETS}/${FLEET_ID}/messages`, `GET ${FLEETS}/${FLEET_ID}/turns/${TURN_ID}`];
     expect(rec.requests.map((request) => `${request.method ?? "GET"} ${request.path}`)).toEqual([
       `GET ${FLEETS}?name=agentbob`, ...turn, ...turn,
     ]);

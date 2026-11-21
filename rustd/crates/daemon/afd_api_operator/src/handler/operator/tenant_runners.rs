@@ -10,7 +10,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 // Named only in the OpenAPI annotations below.
 #[cfg(feature = "openapi")]
-use af_wire::runner::{RegisterRequest, RegisterResponse, RegistrationReplay};
+use af_wire::runner::{RegisterRequest, RegisterResponse};
 #[cfg(feature = "openapi")]
 use afd_api_wire::admin::{RunnerAdminPatchRequest, RunnerPatchReply};
 #[cfg(feature = "openapi")]
@@ -19,13 +19,15 @@ use afd_http::handler::Refusal;
 use axum::body::Bytes;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
-use http::HeaderMap;
 
+use crate::OperatorPlane;
 use crate::auth::PersonIdentity;
-use crate::services::Services;
 
 /// The caller's tenant, or the response that refuses it.
-async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<Uuid7, Refusal> {
+async fn tenant<D: OperatorPlane>(
+    services: &D,
+    identity: &PersonIdentity,
+) -> Result<Uuid7, Refusal> {
     afd_http::handler::caller_tenant::of(services, identity.person()).await
 }
 
@@ -38,32 +40,30 @@ async fn tenant<D: Services>(services: &D, identity: &PersonIdentity) -> Result<
     summary = "Register a tenant runner",
     description = concat!(
         "Registers a runner that takes only the calling tenant's work. Requires `runner:tenant`, ",
-        "which a platform admin grants per account. Send a UUIDv7 `Idempotency-Key`. A retry ",
-        "with the same key and body answers 200 with the same runner and no token. The token ",
-        "appears only once, so rotate it to recover. The same key with another body answers 409. ",
-        "Durable tasks are stored off whatever the body asks; only a platform admin turns them on.",
+        "which a platform admin grants per account. A host registers once: `host_id` is unique ",
+        "within the tenant, and `Idempotency-Key` is not used. Registering a host again answers ",
+        "409 with `current_state` `registered` and `Location` naming its runner. The token ",
+        "appears only once, so recover it with that runner's `rotate` action. Durable tasks are ",
+        "stored off whatever the body asks; only a platform admin turns them on.",
     ),
-    params(("Idempotency-Key" = String, Header, description = "Required UUIDv7 registration key.")),
     request_body = RegisterRequest<'_>,
     responses(
         (status = 201, description = "Runner registered; the bearer token is returned exactly once", body = RegisterResponse<'_>),
-        (status = 200, description = "A retry of a registration that already succeeded; no token", body = RegistrationReplay<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
-        (status = 409, description = "This Idempotency-Key already registered a runner with a different request"),
+        (status = 409, description = "This host is already registered; `Location` names its runner",
+            headers(("Location" = String, description = "The runner the host is registered as"))),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn register<D: Services>(
+pub(crate) async fn register<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
-    headers: HeaderMap,
     body: Bytes,
 ) -> Response {
     match tenant(&*services, &identity).await {
         Ok(tenant) => {
-            super::runner_register::tenant(&*services, &tenant, identity.subject(), &headers, &body)
-                .await
+            super::runner_register::tenant(&*services, &tenant, identity.subject(), &body).await
         }
         Err(refused) => refused.into_response(),
     }
@@ -84,7 +84,7 @@ pub(crate) async fn register<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Query(params): Query<HashMap<String, String>>,
@@ -111,7 +111,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn detail<D: Services>(
+pub(crate) async fn detail<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,
@@ -146,7 +146,7 @@ pub(crate) async fn detail<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,
@@ -184,7 +184,7 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(raw): Path<String>,

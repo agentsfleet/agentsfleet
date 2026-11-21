@@ -10,7 +10,7 @@ use af_core::{
     clock::FixedClock,
     env::MapEnv,
     id::Uuid7,
-    timing::{LEASE_TTL, RENEWAL_TICK, STREAM_ANSWER_TIMEOUT},
+    timing::{RENEWAL_TICK, RUN_TTL, STREAM_ANSWER_TIMEOUT},
 };
 use af_wire::protocol::Up;
 use futures_util::poll;
@@ -27,11 +27,11 @@ async fn reconnect_renews_before_the_next_periodic_tick() -> crate::Result<()> {
 async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> crate::Result<()> {
     let (handle, mut peer) = RenewalPeer::new();
     let registry = Arc::clone(&handle.renewing);
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let _held = registry.register(
-        &lease,
+        &run,
         Arc::new(afr_agent::Meter::default()),
-        Instant::now() + LEASE_TTL,
+        Instant::now() + RUN_TTL,
     )?;
     let stop = CancellationToken::new();
     let renewing = registry.run(&handle, stop.clone());
@@ -62,11 +62,11 @@ async fn the_full_recovery_and_answer_budgets_preserve_running_work() -> crate::
 async fn recovered(connected: Duration, answer_delay: Duration) -> crate::Result<()> {
     let (handle, mut old) = RenewalPeer::new();
     let plane = control_plane(handle.clone())?;
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let clock = FixedClock::at(jiff::Timestamp::UNIX_EPOCH);
     let meter = Arc::new(afr_agent::Meter::default());
-    let grant = af_core::clock::after(jiff::Timestamp::UNIX_EPOCH, LEASE_TTL);
-    let keeping = Renewal::new(&plane, &lease, grant, &clock, &meter).keep();
+    let grant = af_core::clock::after(jiff::Timestamp::UNIX_EPOCH, RUN_TTL);
+    let keeping = Renewal::new(&plane, &run, grant, &clock, &meter).keep();
     let stop = CancellationToken::new();
     let registry = Arc::clone(&handle.renewing);
     let renewing = registry.run(&handle, stop.clone());
@@ -98,8 +98,8 @@ async fn recovered(connected: Duration, answer_delay: Duration) -> crate::Result
     replacement
         .deliver(
             &serde_json::json!({"type":"renewed", "request_id":request_id,
-        "leases":[{"lease_id":lease, "answer":{"status":"ok", "response":{
-            "lease_expires_at":"2030-01-01T00:00:00Z"}}}]}),
+        "runs":[{"run_id":run, "answer":{"status":"ok", "response":{
+            "run_expires_at":"2030-01-01T00:00:00Z"}}}]}),
         )
         .await?;
     assert!(poll!(&mut renewing).is_pending());

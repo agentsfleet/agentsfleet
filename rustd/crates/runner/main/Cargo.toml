@@ -1,7 +1,7 @@
 [package]
 name = "agentsfleet_runner"
 autotests = false
-description = "The one runner binary: `run` supervises leases, `probe` reports what the host can enforce, `sandbox` serves the executor inside each sandbox."
+description = "The one runner binary: `run` supervises runs, `probe` reports what the host can enforce, `sandbox` serves the executor inside each sandbox."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,7 +25,15 @@ path = "tests/recovery_process/main.rs"
 required-features = ["test-util"]
 
 [features]
-test-util = ["af_providers/test-util"]
+# M-TEST-UTIL. The recovery fixture's scripted providers, and the kernel lane's
+# egress far host, killed-run leftovers and supervisor fixtures.
+test-util = [
+    "af_providers/test-util",
+    "afr_sandbox/test-util",
+    "afr_supervisor/test-util",
+    "afr_tools/test-util",
+    "af_egress/test-util",
+]
 
 [dependencies]
 af_config.workspace = true
@@ -35,7 +43,7 @@ serde.workspace = true
 # The log-level knob both binaries read, declared once, and the stop `run`
 # waits on (`signal`).
 af_core = { workspace = true, features = ["signal"] }
-# The agent loop every lease's turn runs on.
+# The agent loop every run's turn runs on.
 afr_agent.workspace = true
 # Every tool the loop hosts, and the guarded network its egress tools send on.
 afr_tools.workspace = true
@@ -65,19 +73,51 @@ tempfile.workspace = true
 # `MapEnv`, so the log-level fallback is tested without the process environment.
 af_core = { workspace = true, features = ["test-util"] }
 # The `run` suite's fake daemon and collector: real listeners, so the binary
-# leases and exports over the sockets it uses on a host.
-axum.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
+# runs and exports over the sockets it uses on a host; the kernel lane's fakes
+# answer JSON.
+axum = { workspace = true, features = ["json"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 # The routes the fake daemon answers, spelled once.
 af_wire.workspace = true
-# Lease and credential expiries are jiff instants on the wire.
+# Run and credential expiries are jiff instants on the wire.
 jiff.workspace = true
 # The fake daemon answers as the supervisor's own suites' healthy daemon does,
-# over the same fixture lease.
+# over the same fixture run.
 afr_supervisor = { workspace = true, features = ["test-util"] }
 # The span, attribute and knob names the suite reads back, spelled once.
 af_observability.workspace = true
 af_otlp.workspace = true
+# The kernel lane (`examples/kernel_lane`): the sandbox engines on a real
+# kernel, driven with the supervisor's own checkout, the runner's real tools
+# through their catalog and the agent loop, as this binary links them.
+af_crypto.workspace = true
+afr_executor.workspace = true
+guffbolt.workspace = true
+hyper.workspace = true
+futures-util.workspace = true
+libtest-mimic.workspace = true
+# The kernel lane's own engine and release fixtures: a supervisor engine that
+# wraps bubblewrap, a toolbox release signed and digested as the runner admits
+# one (ECDSA P-256 over SHA-256, the signature in base64), and the mount,
+# ownership and process calls a trial makes directly.
+async-trait.workspace = true
+aws-lc-rs.workspace = true
+base64.workspace = true
+digest-io.workspace = true
+hex.workspace = true
+rustix.workspace = true
+sha2.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# The kernel calls the lane's confinement and delegation trials read back.
+libc.workspace = true
+
+# The kernel lane proves egress with the `test-util` far host; run without it,
+# it refuses to build rather than skip those trials. Linux only: elsewhere its
+# `main` reports the platform and exits.
+[[example]]
+name = "kernel_lane"
+required-features = ["test-util"]
 
 [[test]]
 name = "runner_suite"

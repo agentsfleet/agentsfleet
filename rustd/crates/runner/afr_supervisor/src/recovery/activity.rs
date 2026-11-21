@@ -8,7 +8,7 @@ use af_wire::activity::{
 
 pub(super) async fn emit(
     plane: &ControlPlane,
-    lease: &Uuid7,
+    run: &Uuid7,
     task: &str,
     activity: &str,
     operation: TaskActivityOperation,
@@ -19,20 +19,20 @@ pub(super) async fn emit(
         frames: vec![ActivityFrame::TaskTransferProgress(TaskActivity {
             activity_id: activity.to_owned(),
             task_id: Some(task.to_owned()),
-            source_admission_id: None,
+            source_turn_id: None,
             operation,
             phase,
             provider: None,
             model: None,
             completed: progress.map_or(0, |progress| progress.completed),
             total: progress.and_then(|progress| progress.total),
-            bytes: progress.map(|progress| progress.bytes.clone()),
+            bytes: progress.map(|progress| progress.bytes),
             sequence: None,
         })],
     };
     let _sent = tokio::time::timeout(
         std::time::Duration::from_millis(500),
-        plane.activity(lease, &request),
+        plane.activity(run, &request),
     )
     .await;
 }
@@ -52,7 +52,7 @@ impl super::Session<'_> {
         }
         emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &self.activity_id,
             operation,

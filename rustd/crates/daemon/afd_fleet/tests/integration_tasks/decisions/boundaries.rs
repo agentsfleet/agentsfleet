@@ -117,7 +117,7 @@ async fn task_calls(case: &Case) {
 async fn denied(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservationInput>) {
     let fault = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), input)
+        .reserve_decision(fixture.case.run(), input)
         .await
         .expect_err("exact cumulative allowance blocks new work");
     assert_eq!(fault.code(), error_code::TASK_LIMIT_EXHAUSTED);

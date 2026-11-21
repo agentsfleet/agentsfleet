@@ -2,7 +2,7 @@
 //! lines that committed without a settlement.
 //!
 //! A work's own transaction logs its lines and returns; the billing relay
-//! settles them (billing §11). [`unsettled`] hands them back as one
+//! settles them, per the billing design. [`unsettled`] hands them back as one
 //! [`Settlement`] per work and pricing header, and [`resettle`] passes each to a biller, so a
 //! biller in another process sees the same calls an in-process one does and
 //! `(work, kind, seq)` keeps a retried or repeated pass from charging twice.
@@ -112,8 +112,8 @@ pub async fn resettle(
     let owed = {
         let mut connection = database.acquire().await?;
         sqlx::query_as::<_, OwedRow>(SELECT_OWED)
-            .bind(sql::work::FLEET_LEASE)
-            .bind(sql::work::AUTHORING_ATTEMPT)
+            .bind(sql::work::FLEET_RUN)
+            .bind(sql::work::SETUP_RUN)
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_OWED))
@@ -132,7 +132,7 @@ pub async fn resettle(
 #[derive(Debug, sqlx::FromRow)]
 struct OwedRow {
     fleet_nanos: i64,
-    authoring_nanos: i64,
+    setup_nanos: i64,
     oldest_seconds: i64,
 }
 
@@ -140,7 +140,7 @@ impl From<OwedRow> for metrics::Owed {
     fn from(row: OwedRow) -> Self {
         let gauge = |value: i64| u64::try_from(value).unwrap_or(0);
         Self {
-            unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.authoring_nanos)],
+            unsettled_nanos: [gauge(row.fleet_nanos), gauge(row.setup_nanos)],
             oldest_seconds: gauge(row.oldest_seconds),
         }
     }
@@ -240,7 +240,12 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Vec<Settlement> {
             skipped(Unreadable::LineKind, &row.work_type, unnamed);
             continue;
         };
-        settlements.push(row.settlement(work, posture, lines));
+        let work_type = row.work_type.clone();
+        let Some(settlement) = row.settlement(work, posture, lines) else {
+            skipped(Unreadable::Attribution, &work_type, &work_type);
+            continue;
+        };
+        settlements.push(settlement);
     }
     settlements
 }

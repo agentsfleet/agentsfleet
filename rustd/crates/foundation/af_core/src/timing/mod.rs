@@ -1,8 +1,8 @@
-//! The lease clock: how long a claim lives, and how long silence is tolerated.
+//! The run clock: how long an assignment lives, and how long silence is tolerated.
 //!
-//! Defaults are declared here. The validated deployment clock sets `leased_until` and treats the
+//! Defaults are declared here. The validated deployment clock sets `held_until` and treats the
 //! same instant as the kill deadline it sends the host, and derives liveness
-//! from the lapse threshold. Each runner retains its confirmed lease expiry
+//! from the lapse threshold. Each runner retains its confirmed run expiry
 //! and uses the heartbeat cadence advertised by the daemon.
 //!
 //! Each is a [`Duration`]: the one span type that a `tokio` sleep takes and
@@ -15,24 +15,20 @@
 
 use std::time::Duration;
 
-mod lease;
-pub use lease::{LeaseClock, LeaseSettings, MAX_LEASE_SECONDS, MIN_LEASE_SECONDS};
+mod run;
+pub use run::{MAX_RUN_SECONDS, MIN_RUN_SECONDS, RunClock, RunSettings};
 
-/// Authoring provider work keeps its existing five-minute budget plus delivery slack.
-/// Control ping and renewal deadlines remain independent while the model is pending.
-pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
-
-/// How long an issued lease or affinity claim stays valid before the slot
-/// becomes reclaimable, and the increment each renewal adds.
+/// How long an issued run or thread assignment stays valid before the thread
+/// becomes reassignable, and the increment each renewal adds.
 ///
 /// Deliberately short: it is the backstop
 /// against a runner that dies silently, and a live runner extends it through
-/// the renew verb rather than being handed a long lease up front.
-pub const LEASE_TTL: Duration = Duration::from_secs(35);
+/// the renew verb rather than being handed a long run up front.
+pub const RUN_TTL: Duration = Duration::from_secs(35);
 
-/// The renewal slack preserved by the lease and connection-recovery relationship.
+/// The renewal slack preserved by the run and connection-recovery relationship.
 ///
-/// Strictly below [`LEASE_TTL`] so a renewal that fails transiently still
+/// Strictly below [`RUN_TTL`] so a renewal that fails transiently still
 /// has room to retry before the deadline.
 pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 
@@ -42,24 +38,16 @@ pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 /// window.
 pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
-/// Hard ceiling on one lease's total wall-clock, measured from the lease row's
-/// `created_at`.
-///
-/// Renewal clamps to
-/// `min(now + LEASE_TTL, created_at + MAX_RUNTIME)`, so a wedged agent
-/// that keeps emitting progress still terminates.
-pub const MAX_RUNTIME: Duration = Duration::from_hours(12);
-
 /// How long a stopped engine may close calls and return measured work.
 pub const ENGINE_STOP_GRACE: Duration = Duration::from_secs(5);
 
 /// Silence after which a runner is DERIVED offline by a fleet read.
 ///
-/// Three lease TTLs: an idle host
-/// heartbeats every cycle, and a busy one is reported `busy` by the live-lease
+/// Three run TTLs: an idle host
+/// heartbeats every cycle, and a busy one is reported `busy` by the live-run
 /// check before this threshold is ever consulted — so a long execution that
 /// stops beating is never mistaken for a dead host.
-pub const RUNNER_OFFLINE_AFTER: Duration = LEASE_TTL.saturating_mul(3);
+pub const RUNNER_OFFLINE_AFTER: Duration = RUN_TTL.saturating_mul(3);
 
 /// How often a runner's control loop emits a host heartbeat.
 ///
@@ -70,8 +58,8 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// Continuous healthy native heartbeats required to lift automatic quarantine.
 pub const UNCORDON_AFTER: Duration = HEARTBEAT_INTERVAL.saturating_mul(3);
 
-/// How long a runner holds a fleet's sandbox, frozen, after a lease that used
-/// it ends processed, for that fleet's next lease to continue in.
+/// How long a runner holds a fleet's sandbox, frozen, after a run that used
+/// it ends processed, for that fleet's next run to continue in.
 ///
 /// A chat follow-up usually lands within minutes. The runner holds at most as
 /// many as it has workers, and a frozen sandbox runs nothing, which is what
@@ -80,7 +68,7 @@ pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
 /// How long an ephemeral NATS wake or runner command may wait for its broker.
 ///
-/// Admission is already durable; a lost wake leaves work for the replica's
+/// The turn is already durable; a lost wake leaves work for the replica's
 /// recovery probe, and heartbeat or renewal checks repair a lost runner command.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
@@ -99,7 +87,7 @@ pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
 /// A connection must remain usable this long before reconnect backoff resets.
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// One independent ready-work probe per daemon replica, regardless of broker traffic.
-pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
+pub const ASSIGN_FALLBACK_TICK: Duration = Duration::from_secs(5);
 /// The shortest idle timeout a proxy or load balancer on the runner's path is assumed to apply.
 ///
 /// Nothing reads it at run time. It is the floor [`STREAM_PING_INTERVAL`] is held under, so an
@@ -107,8 +95,8 @@ pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
 pub const PROXY_IDLE_FLOOR: Duration = Duration::from_secs(60);
 
 const _: () = assert!(
-    STREAM_PING_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < LEASE_TTL.as_nanos(),
-    "a silent stream must be detected before an unrenewed lease lapses"
+    STREAM_PING_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < RUN_TTL.as_nanos(),
+    "a silent stream must be detected before an unrenewed run lapses"
 );
 
 const _: () = assert!(
@@ -122,8 +110,8 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
-    OFFER_FALLBACK_TICK.as_nanos() < LEASE_TTL.as_nanos(),
-    "work stranded by a lost ring must be offered again before the lease backstop would free it"
+    ASSIGN_FALLBACK_TICK.as_nanos() < RUN_TTL.as_nanos(),
+    "work stranded by a lost ring must be assigned again before the run backstop would free it"
 );
 
 const _: () = assert!(
@@ -131,7 +119,7 @@ const _: () = assert!(
         + STREAM_ANSWER_TIMEOUT.as_nanos()
         + STREAM_RECOVERY_BUDGET.as_nanos()
         + RENEWAL_WINDOW.as_nanos()
-        < LEASE_TTL.as_nanos(),
+        < RUN_TTL.as_nanos(),
     "a failed renewal and bounded reconnect must leave a complete renewal window"
 );
 
@@ -145,7 +133,7 @@ const _: () = assert!(
 
 /// One day.
 ///
-/// Not a lease value. It is the one spelling of a day for whatever counts in
+/// Not a run value. It is the one spelling of a day for whatever counts in
 /// days — a rolling spend window, an invite's life, a `since=` duration — so no
 /// caller re-derives it from hours and minutes.
 pub const DAY: Duration = Duration::from_hours(24);
@@ -154,7 +142,7 @@ pub const DAY: Duration = Duration::from_hours(24);
 // whether or not anything reads them, so a value edited out of order fails the
 // BUILD rather than being caught by a test somebody might not run.
 const _: () = assert!(
-    RENEWAL_WINDOW.as_nanos() < LEASE_TTL.as_nanos(),
+    RENEWAL_WINDOW.as_nanos() < RUN_TTL.as_nanos(),
     "a renewal must be attempted with slack left to retry before the deadline"
 );
 const _: () = assert!(
@@ -171,6 +159,6 @@ const _: () = assert!(
     "lifting quarantine requires several healthy beats before another offline interval"
 );
 const _: () = assert!(
-    LEASE_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),
-    "a lease must be renewable at least once before it hits the runtime ceiling"
+    RUN_TTL.as_secs() <= MAX_RUN_SECONDS,
+    "the default run lifetime must be one a deployment may configure"
 );

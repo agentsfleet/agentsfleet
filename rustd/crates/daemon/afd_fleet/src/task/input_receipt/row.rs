@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, guard::LeaseRow, row::counter},
+    task::{TaskRefusal, guard::RunRow, row::counter},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskInputReceiptInput, TaskInputReceiptResult};
@@ -21,16 +21,16 @@ pub(super) struct Item {
 
 pub(super) async fn item(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Item> {
     let item: Item = sqlx::query_as(include_str!("sql/item.sql"))
         .bind(crate::task::guard::wire(&input.item_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(crate::task::guard::wire(&input.source_turn_id)?)
         .bind(&input.plan_digest)
-        .bind(afd_admission::Producer::SlackMention.as_str())
+        .bind(afd_turns::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
         .bind(afd_connector::slack::PERSON_ACTOR_SEPARATOR)
@@ -61,7 +61,7 @@ pub(super) fn current(item: &Item, input: &TaskInputReceiptInput) -> Result<()> 
 
 pub(super) async fn replay(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     input: &TaskInputReceiptInput,
 ) -> Result<Option<String>> {
     let mut saved: Vec<String> = sqlx::query_scalar(include_str!("sql/replay.sql"))

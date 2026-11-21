@@ -5,7 +5,7 @@
 //! `af_validate::Limit` before it calls one.
 
 mod decode;
-mod events;
+mod history;
 mod store;
 
 use af_core::id::Uuid7;
@@ -13,7 +13,7 @@ use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, Selftest
 use afd_api_wire::admin::RunnerEventItem;
 use jiff::Timestamp;
 
-pub use self::events::RunnerEventFilter;
+pub use self::history::RunnerHistoryFilter;
 
 /// The final composite key from a page, used to seek the next one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,7 +56,7 @@ pub struct RunnerItem {
     sandbox_tier: String,
     /// Operator-controlled status.
     status: afd_api_wire::admin::AdminState,
-    /// Runtime state derived from heartbeat and lease rows.
+    /// Runtime state derived from heartbeat and run rows.
     liveness: RunnerLiveness,
     /// Placement labels, as enrolment or the last operator replacement stored them.
     labels: Vec<String>,
@@ -111,7 +111,7 @@ impl RunnerItem {
         self.status
     }
 
-    /// Runtime state derived from heartbeat and lease rows.
+    /// Runtime state derived from heartbeat and run rows.
     #[must_use]
     pub const fn liveness(&self) -> RunnerLiveness {
         self.liveness
@@ -197,23 +197,15 @@ impl RunnerPage {
     }
 }
 
-/// The single-runner read with live and lifetime counters.
+/// The single-runner read with its live counters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunnerDetail {
     /// The same runner shape the list returns.
     item: RunnerItem,
-    /// Live leases currently held by this runner.
-    active_lease_count: i64,
-    /// Distinct fleets represented by those live leases.
+    /// Live runs currently held by this runner.
+    active_run_count: i64,
+    /// Distinct fleets represented by those live runs.
     active_fleet_count: i64,
-    /// Leases acquired over the runner's lifetime.
-    leases_acquired: i64,
-    /// Leases settled successfully over the runner's lifetime.
-    leases_succeeded: i64,
-    /// Leases settled unsuccessfully over the runner's lifetime.
-    leases_failed: i64,
-    /// Leases expired over the runner's lifetime.
-    leases_expired: i64,
     /// Outstanding self-test request instant.
     selftest_requested_at: Option<Timestamp>,
     /// Most recent self-test completion instant.
@@ -229,40 +221,16 @@ impl RunnerDetail {
         &self.item
     }
 
-    /// Live leases currently held by this runner.
+    /// Live runs currently held by this runner.
     #[must_use]
-    pub const fn active_lease_count(&self) -> i64 {
-        self.active_lease_count
+    pub const fn active_run_count(&self) -> i64 {
+        self.active_run_count
     }
 
-    /// Distinct fleets represented by those live leases.
+    /// Distinct fleets represented by those live runs.
     #[must_use]
     pub const fn active_fleet_count(&self) -> i64 {
         self.active_fleet_count
-    }
-
-    /// Leases acquired over the runner's lifetime.
-    #[must_use]
-    pub const fn leases_acquired(&self) -> i64 {
-        self.leases_acquired
-    }
-
-    /// Leases settled successfully over the runner's lifetime.
-    #[must_use]
-    pub const fn leases_succeeded(&self) -> i64 {
-        self.leases_succeeded
-    }
-
-    /// Leases settled unsuccessfully over the runner's lifetime.
-    #[must_use]
-    pub const fn leases_failed(&self) -> i64 {
-        self.leases_failed
-    }
-
-    /// Leases expired over the runner's lifetime.
-    #[must_use]
-    pub const fn leases_expired(&self) -> i64 {
-        self.leases_expired
     }
 
     /// Outstanding self-test request instant.
@@ -286,7 +254,7 @@ impl RunnerDetail {
 
 /// A keyset page of append-only runner history.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunnerEventPage {
+pub struct RunnerHistoryPage {
     /// History rows in newest-first keyset order.
     items: Vec<RunnerEventItem<'static>>,
     /// Total history rows for this runner.
@@ -295,7 +263,7 @@ pub struct RunnerEventPage {
     next_cursor: Option<KeysetCursor>,
 }
 
-impl RunnerEventPage {
+impl RunnerHistoryPage {
     /// History rows in newest-first keyset order.
     #[must_use]
     pub fn items(&self) -> &[RunnerEventItem<'static>] {

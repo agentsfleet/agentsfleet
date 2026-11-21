@@ -1,9 +1,9 @@
-//! `/v1/runners/me/leases/{lease_id}/fleets` — the fleet a lease runs reading
+//! `/v1/runners/me/runs/{run_id}/fleets` — the fleet a run runs reading
 //! which fleets its workspace holds, and what one of them did recently.
 //!
-//! # The workspace is the lease's
+//! # The workspace is the run's
 //!
-//! Both reads prove the lease first and act inside the workspace that lease
+//! Both reads prove the run first and act inside the workspace that run
 //! runs in. Nothing in a query names a workspace, so a runner cannot read
 //! another workspace's fleets, and a fleet id from one reads as unknown.
 //!
@@ -23,24 +23,24 @@ use af_core::paging::{
     CEILING, Cursor as PageCursor, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER,
 };
 use af_validate::{Ceiling, Limit};
-use af_wire::event::message_of;
-use af_wire::fleets_verb::{FleetEventItem, FleetEventsPage, FleetItem, FleetsPage, excerpt};
-use afd_events::{Cursor, EventDetailRow};
-use afd_fleet::lease::Standing;
+use af_wire::fleets_verb::{FleetItem, FleetTurnItem, FleetTurnsPage, FleetsPage, excerpt};
+use af_wire::turn::message_of;
+use afd_fleet::run::Standing;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow};
 use afd_http::handler::{Refusal, decoded_parameter, parameter, parse_id};
+use afd_turns::view::{Cursor, TurnDetailRow};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 
-use super::schedule::{fence, lease};
+use super::schedule::{fence, run};
 use crate::auth::RunnerIdentity;
-use crate::services::{Leasing as _, Services, WorkspaceEvents as _, WorkspaceFleets as _};
+use crate::services::{RunPlane as _, RunnerPlane, WorkspaceFleets as _, WorkspaceTurns as _};
 
 /// The scoped event a fleets read that failed is logged under.
 const EVENT_FAILED: &str = "runner_fleets_failed";
 
-/// The `current_state` a holder a reclaim superseded names.
+/// The `current_state` a holder a reassignment superseded names.
 pub(super) const STATE_SUPERSEDED: &str = "superseded";
 
 /// The refusal a fleet path segment that is not an identifier earns.
@@ -52,12 +52,13 @@ pub(super) const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
 /// The refusal a fleets page size outside the shared band earns.
 const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
 
-/// The most events one read serves: the thread read's own cap, since each row
-/// is read with its bodies.
-const EVENTS_MAX: u32 = 25;
+/// The most events one read serves: the thread read's own page, Codex's
+/// `THREAD_TURNS_MAX_LIMIT`.
+const EVENTS_MAX: u32 = 100;
 
-/// The events a read serves when it names no `limit`.
-const EVENTS_DEFAULT: u32 = 20;
+/// The events a read serves when it names no `limit`: Codex's
+/// `THREAD_TURNS_DEFAULT_LIMIT`.
+const EVENTS_DEFAULT: u32 = 25;
 
 /// The refusal an events page size outside its band earns.
 const DETAIL_EVENTS_LIMIT: &str =
@@ -69,10 +70,10 @@ const DETAIL_CURSOR: &str = "The cursor is not valid";
 /// One fleet's events: [`EVENTS_DEFAULT`] unless asked, at most [`EVENTS_MAX`].
 const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
 
-/// Lists the fleets of the leased fleet's workspace, newest first.
+/// Lists the fleets of the held fleet's workspace, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = af_wire::paths::LEASE_FLEETS,
+    path = af_wire::paths::RUN_FLEETS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_list_fleets",
     summary = "List the workspace's fleets",
@@ -82,7 +83,7 @@ const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
         "and `limit`.",
     ),
     params(
-        afd_http::openapi::path::Lease,
+        afd_http::openapi::path::Run,
         afd_http::openapi::query::Fence,
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<u32>, Query, description = "Page size, 1 to 100. Defaults to 50."),
@@ -95,10 +96,10 @@ const EVENTS_CEILING: Ceiling = Ceiling::new(EVENTS_MAX, EVENTS_DEFAULT);
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease_id): Path<String>,
+    Path(run_id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
@@ -106,10 +107,10 @@ pub(crate) async fn list<D: Services>(
     let limit = Limit::parse(parameter(&query, QUERY_LIMIT), CEILING)
         .map_err(|_break| Refusal::malformed(DETAIL_LIMIT))?;
     let after = list_cursor(starting_after(&query)?.as_deref())?;
-    let lease = proven(&*services, runner.id(), &lease_id, token, EVENT_FAILED).await?;
+    let run = proven(&*services, runner.id(), &run_id, token, EVENT_FAILED).await?;
     let page = services
         .fleets()
-        .page(&lease.workspace_id, after.as_ref(), limit)
+        .page(&run.workspace_id, after.as_ref(), limit)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
     Ok(Json(fleets_page(&page)).into_response())
@@ -119,10 +120,10 @@ pub(crate) async fn list<D: Services>(
 /// runner included.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = af_wire::paths::LEASE_FLEET_EVENTS,
+    path = af_wire::paths::RUN_FLEET_TURNS,
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "runner_list_fleet_events",
-    summary = "List one fleet's recent events",
+    operation_id = "runner_list_fleet_turns",
+    summary = "List one fleet's recent turns",
     description = concat!(
         "Lists one fleet's events in the running fleet's workspace, newest first. Each ",
         "row carries at most 1024 bytes of what was asked and what was answered. ",
@@ -130,24 +131,24 @@ pub(crate) async fn list<D: Services>(
         "`UZ-AGT-009`.",
     ),
     params(
-        afd_http::openapi::path::Lease,
+        afd_http::openapi::path::Run,
         ("fleet_id" = String, Path, description = "The fleet to read: one in the running fleet's workspace."),
         afd_http::openapi::query::Fence,
         ("starting_after" = Option<String>, Query, description = "Use the previous response's `next_cursor` unchanged."),
         ("limit" = Option<u32>, Query, description = "Page size, 1 to 25. Defaults to 20."),
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = FleetEventsPage<'_>),
+        (status = 200, description = afd_http::openapi::OK, body = FleetTurnsPage<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn events<D: Services>(
+pub(crate) async fn events<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease_id, fleet_id)): Path<(String, String)>,
+    Path((run_id, fleet_id)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
@@ -160,30 +161,30 @@ pub(crate) async fn events<D: Services>(
         .map(Cursor::decode)
         .transpose()
         .map_err(|_unminted| Refusal::malformed(DETAIL_CURSOR))?;
-    let lease = proven(&*services, runner.id(), &lease_id, token, EVENT_FAILED).await?;
-    known(&*services, &lease, &fleet).await?;
+    let run = proven(&*services, runner.id(), &run_id, token, EVENT_FAILED).await?;
+    known(&*services, &run, &fleet).await?;
     let rows = i64::from(limit);
     // One row more than will be served, so has-more is a fact and not a guess.
     let fetched = services
         .events()
-        .thread_for_fleet(&lease.workspace_id, &fleet, cursor.as_ref(), rows + 1, None)
+        .thread_for_fleet(&run.workspace_id, &fleet, cursor.as_ref(), rows + 1, None)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
     Ok(Json(events_page(&fetched, rows)).into_response())
 }
 
-/// Proves `lease_id` is `runner`'s live lease under `token`, naming
-/// `superseded` when a reclaim took it.
-pub(super) async fn proven<D: Services>(
+/// Proves `run_id` is `runner`'s live run under `token`, naming
+/// `superseded` when a reassignment took it.
+pub(super) async fn proven<D: RunnerPlane>(
     services: &D,
     runner: &Uuid7,
-    lease_id: &str,
+    run_id: &str,
     token: u64,
     event: &'static str,
 ) -> Result<Standing, Refusal> {
     services
-        .leases()
-        .standing(runner, lease(lease_id)?, token)
+        .runs()
+        .standing(runner, run(run_id)?, token)
         .await
         .map_err(Refusal::conflict_or_at(event, superseded))
 }
@@ -193,12 +194,12 @@ pub(super) fn superseded(error: &afd_fleet::Error) -> Option<&'static str> {
     (error.code() == error_code::RUN_STALE_FENCING_TOKEN).then_some(STATE_SUPERSEDED)
 }
 
-/// Refuses a fleet the lease's workspace does not hold, as one that never
+/// Refuses a fleet the run's workspace does not hold, as one that never
 /// existed: the scope is an authorization, not a filter.
-async fn known<D: Services>(services: &D, lease: &Standing, fleet: &Uuid7) -> Result<(), Refusal> {
+async fn known<D: RunnerPlane>(services: &D, run: &Standing, fleet: &Uuid7) -> Result<(), Refusal> {
     let status = services
         .fleets()
-        .ingress_status(&lease.workspace_id, fleet)
+        .ingress_status(&run.workspace_id, fleet)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
     if status.is_none() {
@@ -262,14 +263,14 @@ fn fleet_item(row: &FleetRow) -> FleetItem<'_> {
 
 /// One page of events from `fetched`, which holds one row more than `rows`
 /// when a page follows.
-fn events_page(fetched: &[EventDetailRow], rows: i64) -> FleetEventsPage<'_> {
+fn events_page(fetched: &[TurnDetailRow], rows: i64) -> FleetTurnsPage<'_> {
     let kept = usize::try_from(rows).unwrap_or(usize::MAX);
     let items = fetched.get(..kept).unwrap_or(fetched);
     let next_cursor = (fetched.len() > items.len())
         .then(|| items.last())
         .flatten()
-        .map(|last| Cow::Owned(Cursor::after(last.row.created_at, &last.row.event_id).encode()));
-    FleetEventsPage {
+        .map(|last| Cow::Owned(Cursor::after(last.row.created_at, &last.row.turn_id).encode()));
+    FleetTurnsPage {
         items: items.iter().map(event_item).collect(),
         total: None,
         next_cursor,
@@ -277,14 +278,14 @@ fn events_page(fetched: &[EventDetailRow], rows: i64) -> FleetEventsPage<'_> {
 }
 
 /// One event as another fleet reads it, its bodies cut to excerpts.
-fn event_item(detail: &EventDetailRow) -> FleetEventItem<'_> {
+fn event_item(detail: &TurnDetailRow) -> FleetTurnItem<'_> {
     let row = &detail.row;
     let request_excerpt = match message_of(&detail.request_json) {
         Cow::Borrowed(text) => Cow::Borrowed(excerpt(text)),
         Cow::Owned(text) => Cow::Owned(excerpt(&text).to_owned()),
     };
-    FleetEventItem {
-        event_id: Cow::Borrowed(row.event_id.as_str()),
+    FleetTurnItem {
+        turn_id: Cow::Borrowed(row.turn_id.as_str()),
         actor: Cow::Borrowed(&row.actor),
         event_type: Cow::Borrowed(&row.event_type),
         status: Cow::Borrowed(&row.status),

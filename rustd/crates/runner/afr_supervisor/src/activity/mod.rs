@@ -14,12 +14,12 @@
 //! batcher and keeps taking frames, so a streamed answer joins it rather than
 //! being dropped piecemeal; only a batch that has filled while it waited is
 //! dropped, counted and logged. The last batch of a run waits for room
-//! instead. Two frames skip the tick: a lease's first frame, and its first
+//! instead. Two frames skip the tick: a run's first frame, and its first
 //! answer chunk with whatever was buffered before it, so the live tail shows
 //! a run has started, and its first words, without the batching delay (see
 //! [`Early`]).
 //!
-//! A lease that stops waiting for the drain drops the pump with frames still
+//! A run that stops waiting for the drain drops the pump with frames still
 //! held — in the batch, the queue, a post in flight, or the channel from the
 //! sink. The pump counts what it holds as it goes and records that remainder
 //! as `abandoned` when it is dropped, so the frames a slow daemon cost are
@@ -51,7 +51,7 @@ pub(crate) const MAX_BATCHES_HELD: usize = 4;
 /// The most frame bytes one batch carries; a single larger frame rides alone.
 pub(crate) const MAX_BATCH_BYTES: usize = 64 * 1024;
 /// How long a partial batch waits for company before it is sent anyway; a
-/// lease's first frame and first answer chunk do not wait (see `Early`).
+/// run's first frame and first answer chunk do not wait (see `Early`).
 const FLUSH_EVERY: Duration = Duration::from_millis(250);
 const EVENT_BATCH_DROPPED: &str = "activity_batch_dropped";
 const EVENT_POST_FAILED: &str = "activity_frame_write_failed";
@@ -79,12 +79,12 @@ impl ActivitySink {
 impl EventSink for ActivitySink {
     fn emit(&self, frame: ActivityFrame<'static>) {
         self.clock.note(&frame);
-        // A closed pump means the lease is ending; a frame then has no reader.
+        // A closed pump means the run is ending; a frame then has no reader.
         drop(self.frames.send(frame));
     }
 }
 
-/// Which frames go the moment they arrive rather than on the tick: a lease's
+/// Which frames go the moment they arrive rather than on the tick: a run's
 /// first frame, and its first answer chunk with whatever was buffered before
 /// it. Each is tried once; a batch every slot refuses waits for the tick like
 /// any other, and is never waited on from the emitting side.
@@ -109,22 +109,22 @@ impl Early {
 pub(crate) trait ActivityWriter: Send + Sync {
     fn activity(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         request: &ActivityRequest<'_>,
     ) -> impl Future<Output = crate::Result<()>> + Send;
 }
 
 impl ActivityWriter for ControlPlane {
-    async fn activity(&self, lease: &Uuid7, request: &ActivityRequest<'_>) -> crate::Result<()> {
-        self.activity(lease, request).await
+    async fn activity(&self, run: &Uuid7, request: &ActivityRequest<'_>) -> crate::Result<()> {
+        self.activity(run, request).await
     }
 }
 
-/// The posting side: batches frames and posts them, for one lease.
+/// The posting side: batches frames and posts them, for one run.
 #[derive(Debug)]
 pub(crate) struct ActivityPump<'a, W: ActivityWriter + ?Sized = ControlPlane> {
     plane: &'a W,
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
     frames: mpsc::UnboundedReceiver<ActivityFrame<'static>>,
     /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
     dropped: u64,
@@ -137,7 +137,7 @@ pub(crate) struct ActivityPump<'a, W: ActivityWriter + ?Sized = ControlPlane> {
 
 impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
     /// Records the frames a pump still holds as abandoned: zero for a pump
-    /// that drained, everything left for one the lease stopped waiting for.
+    /// that drained, everything left for one the run stopped waiting for.
     fn drop(&mut self) {
         let queued = frame_count(self.frames.len());
         let abandoned = self.held.load(Ordering::Relaxed).saturating_add(queued);
@@ -150,12 +150,12 @@ impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
 /// A sink for the run and the pump that posts what it emits.
 pub(crate) fn channel<'a, W: ActivityWriter + ?Sized>(
     plane: &'a W,
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
 ) -> (ActivitySink, ActivityPump<'a, W>) {
     let (sender, receiver) = mpsc::unbounded_channel();
     let pump = ActivityPump {
         plane,
-        lease_id,
+        run_id,
         frames: receiver,
         dropped: 0,
         held: Arc::default(),
@@ -178,12 +178,12 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
         // The poster holds one batch in flight; the channel queues the rest.
         let (posts, mut queued) = mpsc::channel::<Batch>(MAX_BATCHES_HELD - 1);
         let plane = self.plane;
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let held = Arc::clone(&self.held);
         let poster = async move {
             while let Some(frames) = queued.recv().await {
                 let posted = frame_count(frames.len());
-                post(plane, lease_id, frames).await;
+                post(plane, run_id, frames).await;
                 held.fetch_sub(posted, Ordering::Relaxed);
             }
         };
@@ -241,7 +241,7 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
         record::frames_dropped(FrameDrop::Backpressure, lost);
         self.dropped += 1;
         let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-        let lease_id = self.lease_id.as_str();
+        let run_id = self.run_id.as_str();
         let dropped = self.dropped;
         let event = EVENT_BATCH_DROPPED;
         {
@@ -249,7 +249,7 @@ impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
                 &code,
                 format_args!("the live tail fell behind; a batch was dropped"),
             );
-            tracing::warn!(message, error_code, lease_id, dropped, event);
+            tracing::warn!(message, error_code, run_id, dropped, event);
         };
     }
 }
@@ -265,17 +265,17 @@ fn offer(posts: &mpsc::Sender<Batch>, batch: &mut Batch, bytes: &mut usize) {
 }
 
 /// Posts one batch. Activity is best-effort: a failure is logged, not retried.
-async fn post(plane: &(impl ActivityWriter + ?Sized), lease_id: &Uuid7, frames: Batch) {
+async fn post(plane: &(impl ActivityWriter + ?Sized), run_id: &Uuid7, frames: Batch) {
     let lost = frame_count(frames.len());
-    if let Err(failure) = plane.activity(lease_id, &ActivityRequest { frames }).await {
+    if let Err(failure) = plane.activity(run_id, &ActivityRequest { frames }).await {
         record::frames_dropped(FrameDrop::PostFailed, lost);
         let code = failure.code().as_str();
-        let lease_id = lease_id.as_str();
+        let run_id = run_id.as_str();
         let event = EVENT_POST_FAILED;
         {
             let (error_code, message) =
                 (&code, format_args!("a live-tail batch was not delivered"));
-            tracing::warn!(message, error_code, lease_id, event);
+            tracing::warn!(message, error_code, run_id, event);
         };
     }
 }

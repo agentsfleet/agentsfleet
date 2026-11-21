@@ -4,7 +4,7 @@ use super::row::{Pin, Plan};
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, execution, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, execution, transaction},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{CheckpointPin, CheckpointPinInput, CheckpointTransferPurpose};
@@ -15,14 +15,14 @@ pub(super) async fn insert(
     connection: &mut PgConnection,
     owned: &execution::Owned,
     plan: &Plan,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     kind: &str,
 ) -> Result<Pin> {
-    // The live task/slot lock proves a replacement fence before releasing the prior reader.
+    // The live task/thread lock proves a replacement fence before releasing the prior reader.
     sqlx::query(include_str!("sql/pin_replace.sql"))
         .bind(&plan.id)
         .bind(kind)
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(owned.current.fence)
         .execute(&mut *connection)
         .await
@@ -39,7 +39,7 @@ pub(super) async fn insert(
         }
         return Ok(pin);
     }
-    let id = tasks.leases.entropy().uuid7(clock::now())?;
+    let id = tasks.runs.entropy().uuid7(clock::now())?;
     sqlx::query(include_str!("sql/pin_insert.sql"))
         .bind(&id)
         .bind(&plan.id)
@@ -47,7 +47,7 @@ pub(super) async fn insert(
         .bind(&plan.fleet_id)
         .bind(&plan.workspace_id)
         .bind(kind)
-        .bind(lease.lease_id)
+        .bind(run.run_id)
         .bind(owned.current.fence)
         .bind(
             i64::try_from(owned.snapshot.context.generation)
@@ -73,14 +73,14 @@ pub(super) async fn insert(
 
 pub(in crate::task) async fn renew(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     pin: &Uuid7,
     input: &garde::Valid<CheckpointPinInput>,
 ) -> Result<CheckpointPin> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let owned = execution::load(&mut tx, lease, &input.task).await?;
+    let owned = execution::load(&mut tx, run, &input.task).await?;
     let plan = Plan::load(
         &mut tx,
         checkpoint,
@@ -104,7 +104,7 @@ pub(in crate::task) async fn renew(
         _ => return Err(TaskRefusal::CheckpointIncompatible.into()),
     };
     plan.compatible(&owned, purpose)?;
-    if current.owner_lease_id != lease.lease_id.as_str()
+    if current.owner_run_id != run.run_id.as_str()
         || current.owner_fence != owned.current.fence
         || current.resource_version
             != i64::try_from(input.resource_version).map_err(|_overflow| TaskRefusal::StaleState)?

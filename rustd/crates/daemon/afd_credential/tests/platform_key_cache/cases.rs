@@ -1,8 +1,8 @@
 use super::*;
 
-// Value: protects=a same-KEK key replace reaches the next lease; fails_when=the
+// Value: protects=a same-KEK key replace reaches the next run; fails_when=the
 // cache keys on the secret's id or the catalogue alone; why_new=a replace keeps
-// the id and kek_version; seam=none; no_claim=a rotation during a lease.
+// the id and kek_version; seam=none; no_claim=a rotation during a run.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn platform_key_cache_misses_on_same_kek_rotation() {
@@ -11,15 +11,15 @@ async fn platform_key_cache_misses_on_same_kek_rotation() {
     lane.activate_default().await;
 
     let window = Window::open(&lane.owner).await;
-    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    assert_eq!(lane.run(PLATFORM_MODEL_REF).await, "sk-key-a");
     assert_eq!(
-        lane.lease(PLATFORM_MODEL_REF).await,
+        lane.run(PLATFORM_MODEL_REF).await,
         "sk-key-a",
         "the held version answers"
     );
     lane.key("sk-key-b", true).await;
     assert_eq!(
-        lane.lease(PLATFORM_MODEL_REF).await,
+        lane.run(PLATFORM_MODEL_REF).await,
         "sk-key-b",
         "the moved version misses"
     );
@@ -28,7 +28,7 @@ async fn platform_key_cache_misses_on_same_kek_rotation() {
     assert_eq!(
         secret_reads(&ran),
         2,
-        "read for lease one and after the rotation: {:?}",
+        "read for run one and after the rotation: {:?}",
         ran.statements()
     );
     lane.cleanup().await;
@@ -39,7 +39,7 @@ async fn platform_key_cache_misses_on_same_kek_rotation() {
 // path both kinds share; seam=none; no_claim=a tenant entry, which is never cached.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn tenant_model_reference_reads_every_lease() {
+async fn tenant_model_reference_reads_every_run() {
     let lane = Lane::create().await;
     lane.key("sk-tenant", false).await;
     lane.activate_default().await;
@@ -63,7 +63,7 @@ async fn tenant_model_reference_reads_every_lease() {
 
     let window = Window::open(&lane.owner).await;
     for _ in 0..2 {
-        assert_eq!(lane.lease(&reference).await, "sk-tenant");
+        assert_eq!(lane.run(&reference).await, "sk-tenant");
     }
     let ran = window.close().await;
 

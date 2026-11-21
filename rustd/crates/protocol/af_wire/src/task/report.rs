@@ -1,4 +1,4 @@
-//! A task outcome is settled through the existing lease report.
+//! A task outcome is settled through the existing run report.
 
 use super::DecisionTaskVersion;
 use garde::Validate;
@@ -15,7 +15,7 @@ pub enum TaskDisposition {
     Waiting,
     /// A prerequisite needs attention; no autonomous restart is authorized.
     Blocked,
-    /// Save and fairly rejoin the existing admission order for another slice.
+    /// Save and fairly rejoin the existing turn order for another slice.
     Continue,
 }
 

@@ -11,16 +11,16 @@ use std::time::Duration;
 use af_core::clock::{FixedClock, before};
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_providers::Usage;
 use af_wire::report::{FailureClass, RenewResponse};
 use afr_agent::Meter;
+use guffbolt::Usage;
 use jiff::Timestamp;
 use tokio::time::Instant;
 
 use super::{EXPIRY_MARGIN, Renewal};
 use crate::client::Verb;
 use crate::error;
-use crate::test_support::{Answer, GRANTED_UNTIL, LEASE_ID, drain, json, plane};
+use crate::test_support::{Answer, GRANTED_UNTIL, RUN_ID, drain, json, plane};
 use af_core::timing::RENEWAL_TICK;
 
 /// The renew body's usage lines, by the key the daemon reads them under.
@@ -32,14 +32,14 @@ const SEQ: &str = "seq";
 /// The grant every successful renewal answers with: thirty seconds after the
 /// fixed clock's zero, so each one pushes the deadline a full grant ahead.
 fn renewed() -> Answer {
-    json(&serde_json::json!({"lease_expires_at": GRANTED_UNTIL}))
+    json(&serde_json::json!({"run_expires_at": GRANTED_UNTIL}))
 }
 
 fn clock() -> FixedClock {
     FixedClock::at(Timestamp::UNIX_EPOCH)
 }
 
-/// What the lease is granted for, less the margin it is given up early by.
+/// What the run is granted for, less the margin it is given up early by.
 fn budget() -> Duration {
     let granted = GRANTED_UNTIL.duration_since(Timestamp::UNIX_EPOCH);
     Duration::try_from(granted)
@@ -54,22 +54,18 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
     let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
         0 => renewed(),
         1 | 2 => Answer::Fail(error::unavailable(Verb::Renew, 503)),
-        _ => Answer::Fail(error::refused(
-            Verb::Renew,
-            409,
-            Some(error_code::RUN_LEASE_LOST),
-        )),
+        _ => Answer::Fail(error::refused(Verb::Renew, 409, Some(error_code::RUN_LOST))),
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
     let started = Instant::now();
 
     let class = Renewal::new(
         &plane,
-        &lease,
+        &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -78,24 +74,24 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
     assert_eq!(
         renewals.load(Ordering::SeqCst),
         4,
-        "two 503s kept the lease; the 409 ended it"
+        "two 503s kept the run; the 409 ended it"
     );
     assert_eq!(started.elapsed(), RENEWAL_TICK * 4);
 }
 
 #[tokio::test(start_paused = true)]
-async fn blips_past_the_granted_deadline_end_the_lease() {
+async fn blips_past_the_granted_deadline_end_the_run() {
     let (plane, _calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Renew, 503)));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
     let started = Instant::now();
 
     let class = Renewal::new(
         &plane,
-        &lease,
+        &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -111,16 +107,16 @@ async fn blips_past_the_granted_deadline_end_the_lease() {
 #[tokio::test(start_paused = true)]
 async fn a_hanging_renewal_does_not_outlive_the_deadline() {
     let (plane, _calls) = plane(|_call| Answer::Stall);
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
     let started = Instant::now();
 
     Renewal::new(
         &plane,
-        &lease,
+        &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -129,7 +125,7 @@ async fn a_hanging_renewal_does_not_outlive_the_deadline() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
+async fn each_grant_moves_the_deadline_and_a_lapsed_run_ends_at_once() {
     let renewals = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&renewals);
     let (plane, _calls) = plane(move |_call| {
@@ -139,16 +135,16 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
             Answer::Fail(error::unavailable(Verb::Renew, 503))
         }
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
     let started = Instant::now();
 
     Renewal::new(
         &plane,
-        &lease,
+        &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -156,10 +152,10 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
     let lapsed_grant = before(Timestamp::UNIX_EPOCH, Duration::from_millis(1));
     Renewal::new(
         &plane,
-        &lease,
+        &run,
         lapsed_grant,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -172,7 +168,7 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
     assert_eq!(
         lapsed.elapsed(),
         Duration::ZERO,
-        "a grant already past ends the lease at once"
+        "a grant already past ends the run at once"
     );
 }
 
@@ -185,15 +181,15 @@ async fn an_exhausted_budget_ends_the_run_as_a_budget_breach() {
             Some(error_code::RUN_BUDGET_EXCEEDED),
         ))
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
 
     let class = Renewal::new(
         &plane,
-        &lease,
+        &run,
         GRANTED_UNTIL,
         &clock,
-        &std::sync::Arc::new(Meter::default()),
+        &Arc::new(Meter::default()),
     )
     .keep()
     .await;
@@ -212,9 +208,9 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
         0 => renewed(),
         _ => Answer::Fail(error::refused(Verb::Renew, 409, None)),
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
-    let meter = std::sync::Arc::new(Meter::default());
+    let meter = Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         cached_input: 100,
@@ -224,7 +220,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
         output: 40,
     });
 
-    Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &meter)
+    Renewal::new(&plane, &run, GRANTED_UNTIL, &clock, &meter)
         .keep()
         .await;
 
@@ -249,22 +245,22 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     let counted = Arc::clone(&renewals);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
         0 => json(&RenewResponse {
-            lease_expires_at: GRANTED_UNTIL,
+            run_expires_at: GRANTED_UNTIL,
             recorded_through: Some(0),
         }),
         1 => renewed(),
         _ => Answer::Fail(error::refused(Verb::Renew, 409, None)),
     });
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let run = Uuid7::parse(RUN_ID).unwrap();
     let clock = clock();
-    let meter = std::sync::Arc::new(Meter::default());
+    let meter = Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         output: 40,
         ..Usage::default()
     });
 
-    Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &meter)
+    Renewal::new(&plane, &run, GRANTED_UNTIL, &clock, &meter)
         .keep()
         .await;
 
@@ -290,7 +286,7 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
 #[tokio::test(start_paused = true)]
 async fn reconnect_uses_the_live_fleet_deadline_and_recovers_freely_after_expiry() {
     let (plane, _calls) = plane(|_call| Answer::Stall);
-    let id = Uuid7::parse(LEASE_ID).unwrap();
+    let id = Uuid7::parse(RUN_ID).unwrap();
     let meter = Arc::new(Meter::default());
     let wall = clock();
     let renewal = Renewal::new(&plane, &id, Timestamp::constant(10, 0), &wall, &meter);
@@ -314,4 +310,56 @@ async fn reconnect_uses_the_live_fleet_deadline_and_recovers_freely_after_expiry
             .recovery_deadline(Instant::now() + Duration::from_secs(7)),
         started + Duration::from_secs(8)
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_renewal_refused_for_the_cancel_mark_is_a_stop() {
+    let (plane, _calls) = plane(|_call| {
+        Answer::Fail(error::refused(
+            Verb::Renew,
+            409,
+            Some(error_code::RUN_CANCELLED),
+        ))
+    });
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let registration = plane.stream.running.assign(run.clone(), false).unwrap();
+    let clock = clock();
+
+    let class = Renewal::new(
+        &plane,
+        &run,
+        GRANTED_UNTIL,
+        &clock,
+        &Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
+
+    assert_eq!(class, FailureClass::RenewalTerminate);
+    assert!(registration.stop.is_cancelled(), "the run is interrupted");
+    assert!(
+        plane.stream.running.stopped(&run),
+        "the lost hint's Stop is remembered, so the run reports stopped"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_renewal_refused_for_another_reason_is_no_stop() {
+    let (plane, _calls) =
+        plane(|_call| Answer::Fail(error::refused(Verb::Renew, 409, Some(error_code::RUN_LOST))));
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let _registration = plane.stream.running.assign(run.clone(), false).unwrap();
+    let clock = clock();
+
+    Renewal::new(
+        &plane,
+        &run,
+        GRANTED_UNTIL,
+        &clock,
+        &Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
+
+    assert!(!plane.stream.running.stopped(&run));
 }

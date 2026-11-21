@@ -1,6 +1,6 @@
 INSERT INTO fleet.task_objects (id, workspace_id, task_identity_key_id, content_identity, plaintext_digest,
     plaintext_size, kind, format_version, bucket_reference, accounted_bytes, owner_checkpoint_id,
-    owner_lease_id, owner_fence, dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext,
+    owner_run_id, owner_fence, dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext,
     secret_tag, kek_version, object_nonce, reclaim_after_at, created_at, updated_at)
 SELECT n.id, $2, n.task_identity_key_id, n.content_identity, n.plaintext_digest,
     n.plaintext_size, n.kind, n.format_version, $6, n.accounted_bytes, $3, $4, $5,

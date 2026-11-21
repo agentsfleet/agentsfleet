@@ -21,18 +21,18 @@ struct Owner {
 
 pub(crate) async fn record(
     connection: &mut PgConnection,
-    lease: &Uuid7,
+    run: &Uuid7,
     model_nanos: Nanos,
 ) -> Result<bool> {
     let owner: Option<Owner> = sqlx::query_as(include_str!("sql/usage_owner.sql"))
-        .bind(lease)
+        .bind(run)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("read original task usage owner"))?;
     let Some(owner) = owner else {
         return Ok(true);
     };
-    // Existing metering already owns slot/lease. No host or parent lock follows this task lock.
+    // Existing metering already owns thread/run. No host or parent lock follows this task lock.
     let _task: Option<String> = sqlx::query_scalar(sql::LOCK_TASK)
         .bind(&owner.task)
         .bind(&owner.fleet)
@@ -43,7 +43,7 @@ pub(crate) async fn record(
             "hold original task while accumulating measured usage",
         ))?;
     let allowed: Option<bool> = sqlx::query_scalar(include_str!("sql/usage_record.sql"))
-        .bind(lease)
+        .bind(run)
         .bind(model_nanos.as_i64())
         .bind(NANOS_PER_SECOND)
         .bind(TaskState::Exhausted.as_str())

@@ -1,42 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 import { HeldTurns } from "./fleet-stream-held";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurn } from "./fleet-stream-row";
 
 const OWN = `${ACTOR.STEER_PREFIX}user_viewer`;
 const TEAMMATE = `${ACTOR.STEER_PREFIX}user_teammate`;
 const MINE = "evt_mine";
 const ELSEWHERE = "evt_elsewhere";
 // This tab's send, awaiting its 202, to be named under the viewer's account.
-const WAITING: FleetEvent[] = [
-  evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC, sentAs: OWN }),
+const WAITING: FleetTurn[] = [
+  evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_TURN_STATUS.OPTIMISTIC, sentAs: OWN }),
 ];
-const NAMED_MINE: FleetEvent[] = [evt({ id: MINE, role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.RECEIVED })];
-const IDLE: FleetEvent[] = [];
+const NAMED_MINE: FleetTurn[] = [evt({ id: MINE, role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_TURN_STATUS.RECEIVED })];
+const IDLE: FleetTurn[] = [];
 
-function opening(eventId: string, actor = OWN): LiveFrame {
-  return { kind: FRAME_KIND.EVENT_RECEIVED, event_id: eventId, actor };
+function opening(turnId: string, actor = OWN): LiveFrame {
+  return { kind: FRAME_KIND.TURN_RECEIVED, turn_id: turnId, actor };
 }
 
-function tool(eventId: string): LiveFrame {
-  return { call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: eventId, name: "read_file", args_redacted: true };
+function tool(turnId: string): LiveFrame {
+  return { call_id: "read_file", kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: turnId, name: "read_file", args_redacted: true };
 }
 
 describe("HeldTurns", () => {
   it("test_held_turns_hold_admitted_frames", () => {
     const held = new HeldTurns();
-    const admitted: LiveFrame = { kind: FRAME_KIND.EVENT_ADMITTED, event_id: MINE, actor: OWN, message: "hi" };
+    const admitted: LiveFrame = { kind: FRAME_KIND.TURN_ADMITTED, turn_id: MINE, actor: OWN, message: "hi" };
     // The admitted frame can beat this tab's 202: it waits like an opening.
     expect(held.take(admitted, WAITING)).toBe(true);
     // Its received frame joins the same held turn.
     expect(held.take(opening(MINE), WAITING)).toBe(true);
     // The 202 names it, and both land in arrival order.
     expect(held.release(NAMED_MINE).map((frame) => frame.kind)).toEqual([
-      FRAME_KIND.EVENT_ADMITTED,
-      FRAME_KIND.EVENT_RECEIVED,
+      FRAME_KIND.TURN_ADMITTED,
+      FRAME_KIND.TURN_RECEIVED,
     ]);
     // A teammate's admitted message is never this tab's.
     expect(held.take({ ...admitted, actor: TEAMMATE }, WAITING)).toBe(false);
@@ -57,7 +57,7 @@ describe("HeldTurns", () => {
     expect(held.take(opening(MINE, TEAMMATE), WAITING)).toBe(false);
     expect(held.take(opening(MINE, ACTOR.API_STEER), WAITING)).toBe(false);
     // A send whose sender is unknown holds nothing.
-    const unnamed = [evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_EVENT_STATUS.OPTIMISTIC })];
+    const unnamed = [evt({ id: "optim-1", role: "user", actor: ACTOR.PENDING_STEER, status: AGENTSFLEET_TURN_STATUS.OPTIMISTIC })];
     expect(held.take(opening(MINE), unnamed)).toBe(false);
     // A fleet or webhook turn is never a send from a tab.
     expect(held.take(opening(MINE, ACTOR.FLEET), WAITING)).toBe(false);

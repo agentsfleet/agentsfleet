@@ -26,8 +26,8 @@ async fn selected(case: &Case) {
     let fixture = Decisions::create(case).await;
     let source = case
         .source_message(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("native_decision_source"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("native_decision_source"),
             MESSAGE,
         )
         .await;
@@ -51,7 +51,7 @@ async fn refused_ranges(fixture: &Decisions<'_>, source: &Uuid7) {
         let input = item(fixture, source, start..end);
         let failure = fixture
             .tasks
-            .reserve_decision(fixture.case.lease(), &input)
+            .reserve_decision(fixture.case.run(), &input)
             .await
             .expect_err("reversed, oversized and split-Unicode ranges cannot fund a call");
         assert_eq!(failure.code(), error_code::TASK_INVALID_TARGET);
@@ -67,7 +67,7 @@ fn assert_item(request: &af_wire::decision::DecisionRequest, source: &Uuid7) {
         Some(&json!("café 🦉"))
     );
     assert_eq!(
-        request.state.get("source_admission_id"),
+        request.state.get("source_turn_id"),
         Some(&json!(source.as_str()))
     );
     assert_eq!(
@@ -131,14 +131,14 @@ fn item(
             None,
         )
         .into_inner();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     garde::Unvalidated::new(input)
         .validate()
         .expect("bounded independent item request")
 }
 
 async fn source_snapshot(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(a) FROM fleet.admissions a WHERE a.id=$1")
+    sqlx::query_scalar("SELECT to_jsonb(a) FROM thread.turns a WHERE a.id=$1")
         .bind(source)
         .fetch_one(
             &mut *fixture
@@ -151,5 +151,5 @@ async fn source_snapshot(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
                 .expect("native source observer"),
         )
         .await
-        .expect("entire admitted source and claim state")
+        .expect("entire admitted source and assignment state")
 }

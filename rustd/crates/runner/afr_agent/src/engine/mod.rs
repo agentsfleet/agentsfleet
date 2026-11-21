@@ -10,7 +10,7 @@ pub(crate) use boundary::RecoveryWitness;
 pub use meter::Meter;
 mod recovery;
 mod root_recovery;
-pub(crate) use af_wire::lease::FoldRef;
+pub(crate) use af_wire::run::FoldRef;
 pub(crate) use root_recovery::RootRecovery;
 mod turn_recovery;
 pub use turn_recovery::{TurnRecovery, TurnSnapshot};
@@ -27,14 +27,14 @@ use std::fmt;
 use crate::ExecutionResult;
 use af_egress::Mint;
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
 use af_wire::memory::MemoryDelta;
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
 use af_wire::tool_detail::ToolCallRecord;
 use af_wire::tool_trace::ToolTrace;
 use afr_executor::ExecutorSource;
 use afr_memory::Seed;
-use afr_tools::LeaseVerbs;
+use afr_tools::RunVerbs;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -58,11 +58,11 @@ where
     }
 }
 
-/// One message a person sent the fleet while the run works, claimed for it.
+/// One message a person sent the fleet while the run works, assigned to it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Folded {
-    /// Stable admission identity retained for exact checkpoint publication and adoption.
-    pub event_id: String,
+    /// Stable turn identity retained for exact checkpoint publication and adoption.
+    pub turn_id: String,
     /// Its place in the fleet's order; the report names the last one read.
     pub sequence: i64,
     /// What the person wrote, unscrubbed: the run masks it with everything else.
@@ -71,13 +71,14 @@ pub struct Folded {
 
 /// Where a run's root takes the messages a person sends while it works.
 ///
-/// The loop claims before each model call. A claim never fails the run: an
-/// implementation logs what went wrong and answers nothing, and the next claim
-/// asks again from the same place, so a lost answer loses no message.
+/// The loop asks for an assignment before each model call. An assignment never
+/// fails the run: an implementation logs what went wrong and answers nothing,
+/// and the next assignment asks again from the same place, so a lost answer
+/// loses no message.
 #[async_trait::async_trait]
 pub trait Inbox: Send + Sync + fmt::Debug {
     /// The messages sent after `after_sequence`, oldest first.
-    async fn claim(&self, after_sequence: i64) -> Vec<Folded>;
+    async fn assign(&self, after_sequence: i64) -> Vec<Folded>;
 }
 
 /// Writes a run's memory back while it runs, fenced like the push before the
@@ -106,20 +107,20 @@ pub struct AgentRun<'run> {
     pub recovered_turn: Option<&'run TurnRecovery>,
     /// Native intent and recovery read completed before sandbox construction.
     pub prepared_task: Option<&'run crate::PreparedTask>,
-    /// The lease being run.
-    pub lease: &'run LeasePayload<'run>,
-    /// The fleet's memory, hydrated before the run started, and where a
+    /// The run being run.
+    pub run: &'run RunPayload<'run>,
+    /// The fleet's memory, loaded before the run started, and where a
     /// recall past it asks.
     pub memory: Seed<'run>,
     /// Where the run's sandbox-side calls get the sandbox's executor. The
-    /// lease's build fills it while the run goes on; a lease with no sandbox
+    /// run's build fills it while the run goes on; a run with no sandbox
     /// passes one that answers `NoSandbox`.
     pub executor: &'run dyn ExecutorSource,
-    /// Mints the credentials the lease's policy names, under the held lease.
+    /// Mints the credentials the run's policy names, under the held run.
     pub mint: &'run dyn Mint,
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
-    /// by the held lease.
-    pub verbs: &'run dyn LeaseVerbs,
+    /// by the held run.
+    pub verbs: &'run dyn RunVerbs,
     /// Writes the run's memory back every `memory_checkpoint_every` calls.
     pub checkpoint: &'run dyn Checkpoint,
     /// Where the root takes the messages a person sends while it works.
@@ -129,7 +130,7 @@ pub struct AgentRun<'run> {
     /// The tokens the run has spent so far, which the engine adds to after
     /// each turn and the supervisor reads into every renewal.
     pub meter: &'run Meter,
-    /// Cancelled when the lease ends early. The engine closes every open call
+    /// Cancelled when the run ends early. The engine closes every open call
     /// `interrupted` and returns what it has.
     pub stop: &'run CancellationToken,
 }
@@ -137,7 +138,7 @@ pub struct AgentRun<'run> {
 impl fmt::Debug for AgentRun<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AgentRun")
-            .field("lease_id", &self.lease.lease_id)
+            .field("run_id", &self.run.run_id)
             .field("memory", &self.memory.len())
             .field("executor", &self.executor)
             .finish_non_exhaustive()
@@ -162,40 +163,40 @@ pub struct RunOutput {
     /// Each finished call's full record, posted before the report.
     pub records: Vec<ToolCallRecord<'static>>,
     /// The last folded message a completed model call read, when the run
-    /// answered: each message claimed up to it is answered by this result.
+    /// answered: each message assigned up to it is answered by this result.
     pub folded_through_sequence: Option<i64>,
 }
 
-/// What a lease needs prepared before its turn runs.
+/// What a run needs prepared before its turn runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Needs {
-    /// Whether any of its tools runs inside a sandbox. A lease whose tools all
+    /// Whether any of its tools runs inside a sandbox. A run whose tools all
     /// run in the supervisor starts none.
     pub sandbox: bool,
 }
 
-/// Runs one lease's turn.
+/// Runs one run's turn.
 #[async_trait::async_trait]
 pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// Establishes native intent before provisioning any sandbox or checkout.
-    /// Engines without durable coordination refuse durable leases explicitly.
+    /// Engines without durable coordination refuse durable runs explicitly.
     async fn prepare_task(
         &self,
-        lease: &LeasePayload<'_>,
-        _verbs: &dyn LeaseVerbs,
+        run: &RunPayload<'_>,
+        _verbs: &dyn RunVerbs,
         _meter: &Meter,
         _stop: &CancellationToken,
     ) -> Result<Option<crate::PreparedTask>> {
-        if lease.durable_tasks {
+        if run.durable_tasks {
             return Err(crate::decision::unavailable());
         }
         Ok(None)
     }
-    /// Says what a lease under `policy` needs, before anything is prepared
+    /// Says what a run under `policy` needs, before anything is prepared
     /// for it.
     ///
     /// # Errors
-    /// The policy names a tool this engine cannot host. The lease is refused
+    /// The policy names a tool this engine cannot host. The run is refused
     /// rather than run with a quieter tool set than its author wrote.
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<Needs>;
 
@@ -205,6 +206,20 @@ pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// a failed [`ExecutionResult`]. An error here means the engine itself
     /// could not run.
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput>;
+
+    /// Runs a setup draft's turn to its end: no sandbox, `propose_setup`
+    /// alone, and the proposal the run kept handed back
+    /// ([`crate::setup::SetupRun`]).
+    ///
+    /// # Errors
+    /// The engine hosts no setup run, which this default refuses, or its
+    /// model or the run's assignment could not be used. A failure the model
+    /// caused is a failed result, as [`AgentEngine::run`]'s is.
+    async fn setup(&self, _run: crate::setup::SetupRun<'_>) -> Result<crate::setup::SetupOutput> {
+        Err(crate::error::setup_assignment(
+            "this engine hosts no setup run",
+        ))
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Blocked and cancelled SQL cannot strand the native lease or its connection.
+//! Blocked and cancelled SQL cannot strand the native run or its connection.
 
 use std::time::Duration;
 
@@ -6,7 +6,7 @@ use af_core::{error_code, test_util::trace::Capture};
 use af_wire::task::{DecisionAssessment, DecisionReservationInput};
 use afd_db::{Db, config::DbRole};
 use afd_fleet::{
-    lease::Leases,
+    run::Runs,
     task::{TaskLifecycle as _, Tasks},
 };
 use sqlx::Connection as _;
@@ -39,21 +39,21 @@ async fn blocked(case: &Case, capture: &Capture) {
         .begin()
         .await
         .expect("source blocker transaction");
-    sqlx::query("SELECT id FROM fleet.admissions WHERE id=$1 FOR UPDATE")
-        .bind(&case.held.event_id)
+    sqlx::query("SELECT id FROM thread.turns WHERE id=$1 FOR UPDATE")
+        .bind(&case.held.turn_id)
         .execute(&mut *blocker)
         .await
-        .expect("hold source after slot can be acquired");
+        .expect("hold source after thread can be acquired");
     statement_timeout(&tasks, case, &input, capture).await;
     cancellation(&tasks, case, &input, capture, &database).await;
     blocker.rollback().await.expect("release source blocker");
     assert_eq!(fixture.counts().await, (0, 0, 0));
     let result = timeout(
         Duration::from_secs(5),
-        tasks.reserve_decision(case.lease(), &input),
+        tasks.reserve_decision(case.run(), &input),
     )
     .await
-    .expect("original fleet slot is usable after cancellation")
+    .expect("original fleet thread is usable after cancellation")
     .expect("same accepted source recovers");
     assert!(result.into_parts().0);
     assert_eq!(fixture.counts().await, (1, 1, 0));
@@ -79,12 +79,12 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
         )
         .await;
     let tasks = Tasks::new(
-        Leases::new(
+        Runs::new(
             database.clone(),
             case.held.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
         ),
-        case.admissions.clone(),
+        case.turns.clone(),
         fixture.dependencies.clone(),
     );
     (database, tasks)
@@ -98,7 +98,7 @@ async fn statement_timeout(
 ) {
     let failure = timeout(
         Duration::from_secs(6),
-        tasks.reserve_decision(case.lease(), input),
+        tasks.reserve_decision(case.run(), input),
     )
     .await
     .expect("server deadline bounds source lock wait")
@@ -130,7 +130,7 @@ async fn cancellation(
     assert!(
         timeout(
             Duration::from_millis(200),
-            tasks.reserve_decision(case.lease(), input)
+            tasks.reserve_decision(case.run(), input)
         )
         .await
         .is_err(),

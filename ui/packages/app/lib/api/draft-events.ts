@@ -40,7 +40,7 @@ class DraftProgress {
   constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: DraftProgressCallbacks) {
     this.#draft = draft; this.#reconcile = reconcile; this.#needsPolling = needsPolling;
     this.#source = new ChatConnection({
-      url: `${path}/events/stream`,
+      url: `${path}/turns/stream`,
       events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, DRAFT_CONTEXT_EVENT],
       onOpen: () => {
         clearTimeout(this.#retryTimer); this.#retryTimer = undefined;

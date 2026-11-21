@@ -2,7 +2,7 @@ import { act, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
 import { ACCESS_REVOKED_LABEL } from "@/components/domain/conversation/chrome/FleetConnectionIndicator";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { ERROR_CODE } from "@/lib/errors";
 import WallLiveBadge from "@/app/(dashboard)/w/[workspaceId]/fleets/components/WallLiveBadge";
 import {

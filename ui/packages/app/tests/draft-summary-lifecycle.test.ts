@@ -2,13 +2,12 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { sidebarDrafts } from "@/lib/api/draft-summary";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
-import { DRAFT, FLEET, FLEET_ID, PUBLICATION, REVIEW, response } from "./helpers/draft-fixtures";
+import { DRAFT, FLEET, FLEET_ID, REVIEW, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const CARD = {...DRAFT, linked_fleet_id: FLEET_ID, updated_at: "2026-10-19T00:00:00Z", expires_at: null,
-  candidate_revision: 1, setup_revision: 1, publication_revision: 1};
+  candidate_revision: 1, setup_revision: 1};
 const NEXT_REVISION = "0199a801-1000-7000-8000-00000000000a";
-const NEXT_PUBLICATION = {...PUBLICATION, revision_id: NEXT_REVISION, head_revision_id: NEXT_REVISION};
 const PROPOSED = {...DRAFT, linked_fleet_id: FLEET_ID, etag: '"candidate-two"',
   candidate: DRAFT.candidate ? {...DRAFT.candidate, revision: "2"} : undefined,
   review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
@@ -57,33 +56,4 @@ it("retains the actual Save response's revision when the chat is left", async ()
   const client = await fixture.ready(true);
   await client.save(); client.fresh();
   expect(sidebarDrafts(client.getSnapshot().cards, null)[0]?.detail).toContain("Saved v4");
-});
-
-it("refreshes a publication's actual ordinal rather than incrementing a local counter", async () => {
-  let published = false;
-  fixture.override = ({path, method}) => {
-    if (path.endsWith("/drafts")) return response({items: [{...CARD, publication_revision: published ? 7 : 1}], next_cursor: "older"});
-    if (path.endsWith("/plugins") && method === "POST") {
-      published = true;
-      fixture.current = {...DRAFT, etag: '"published-seven"', publication: {...NEXT_PUBLICATION, canonical_digest: "seven"}};
-      return response(NEXT_PUBLICATION, 201);
-    }
-    return undefined;
-  };
-  const client = await fixture.ready(true);
-  await client.publish("Build repair", false);
-  expect(client.getSnapshot().cards[0]?.publication_revision).toBe(7);
-  expect(client.getSnapshot().moreChats).toBe(true);
-  client.fresh();
-  expect(sidebarDrafts(client.getSnapshot().cards, null)[0]?.detail).toContain("Published v7");
-  expect(fixture.calls.filter(call => call.path.endsWith("/drafts"))).toHaveLength(2);
-});
-
-it("never presents a previous publication ordinal when the current chat has changed", async () => {
-  fixture.override = ({path}) => path.endsWith("/drafts") ? response({items: [CARD], next_cursor: null}) : undefined;
-  fixture.current = {...DRAFT, etag: '"published-again"', publication: {...NEXT_PUBLICATION, canonical_digest: "new"}};
-  const client = await fixture.ready(true);
-  const view = client.getSnapshot();
-  expect(sidebarDrafts(view.cards, view.draft)[0]?.detail).toContain("Published");
-  expect(sidebarDrafts(view.cards, view.draft)[0]?.detail).not.toContain("Published v1");
 });

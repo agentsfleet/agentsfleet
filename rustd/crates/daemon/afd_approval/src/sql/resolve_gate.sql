@@ -9,7 +9,7 @@ WITH resolved AS (
   WHERE action_id = $4 AND resolved_at IS NULL
     AND (fleet_id = $5 OR $5 IS NULL)
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,
-            resolved_by, detail, gate_type, evidence, event_id
+            resolved_by, detail, gate_type, evidence, turn_id
 ), granted AS (
   UPDATE connector.integration_grants g
   SET status      = CASE WHEN r.status = $6 THEN $7 ELSE $8 END,
@@ -20,21 +20,21 @@ WITH resolved AS (
   WHERE g.fleet_id = r.fleet_id
     AND g.service  = r.evidence->>'service'
     AND r.gate_type = $9
-    AND r.event_id IS NULL
+    AND r.turn_id IS NULL
     AND g.status != $8
   RETURNING g.id
 ), unparked AS (
-  UPDATE fleet.admissions a SET parked_at = NULL, updated_at = now()
+  UPDATE thread.turns a SET parked_at = NULL, updated_at = now()
   FROM resolved r
-  -- Parked rows and claimed ones: a park in flight holds a claimed row's lock and
-  -- this waits on it, so the park cannot strand its flag. The unclaimed backlog is
+  -- Parked rows and assigned ones: a park in flight holds an assigned row's lock and
+  -- this waits on it, so the park cannot strand its flag. The unassigned backlog is
   -- neither rewritten nor locked.
-  WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
-    AND (a.parked_at IS NOT NULL OR a.lease_fence IS NOT NULL)
+  WHERE a.thread_id = r.fleet_id AND a.settled_at IS NULL
+    AND (a.parked_at IS NOT NULL OR a.run_fence IS NOT NULL)
 )
 
 SELECT id AS gate_id, action_id, workspace_id,
-       fleet_id, status, resolved_at, resolved_by, detail, event_id,
+       fleet_id, status, resolved_at, resolved_by, detail, turn_id,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals

@@ -13,10 +13,10 @@ const ignore = (): void => undefined;
 export function ChatToolbar({ client, view }: { client: DraftClient; view: DraftView }) {
   "use memo";
   const locked = view.busy || view.pending || view.inaccessible || view.messages.some(isRunning);
-  const models = view.models.filter((model) => model.eligibility.authoring);
+  const models = view.models.filter((model) => model.eligibility.setup);
   return <div className="flex min-w-0 flex-wrap items-center gap-sm">
     <Select value={view.model} disabled={locked || models.length === 0} onValueChange={(model) => { void client.selectModel(model).catch(ignore); }}>
-      <ChatComposerModel select aria-label="Authoring model" title="Model for this setup conversation"><SelectValue placeholder="Choose model" /></ChatComposerModel>
+      <ChatComposerModel select aria-label="Setup model" title="Model for this setup conversation"><SelectValue placeholder="Choose model" /></ChatComposerModel>
       <SelectContent>{models.map((model) => <SelectItem key={model.ref} value={model.ref}>{model.label}</SelectItem>)}</SelectContent>
     </Select>
     {view.moreModels && !view.inaccessible ? <DraftLoadMore copy={LOAD_MORE_COPY.models} onLoad={() => client.loadMore(DRAFT_LIST.models)} /> : null}

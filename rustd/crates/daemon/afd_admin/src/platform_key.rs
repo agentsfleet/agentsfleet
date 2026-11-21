@@ -111,7 +111,7 @@ impl PlatformKeys {
     /// workspace with no row. Either leaves the previous default unchanged.
     ///
     /// A change advances the catalogue version in the same transaction, so a
-    /// platform key cache keyed on it misses on the next claim; a refusal rolls
+    /// platform key cache keyed on it misses on the next assignment; a refusal rolls
     /// back and moves nothing.
     ///
     /// # Errors

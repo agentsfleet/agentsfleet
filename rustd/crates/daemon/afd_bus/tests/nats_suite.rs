@@ -20,7 +20,7 @@ use support::{
 const LIVE: &str = "needs live NATS: make test-integration-rustd";
 
 fn fleet(n: u8) -> Fallible<Subject> {
-    Ok(Subject::FleetTail(Uuid7::parse(&format!(
+    Ok(Subject::ThreadItems(Uuid7::parse(&format!(
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb0{n:02}"
     ))?))
 }
@@ -209,7 +209,8 @@ async fn failed_publish_sends_a_gap_marker_on_reconnect() -> TestResult {
     settle(&publisher, &subject, &mut [&mut subscription]).await?;
     publisher.publish(&subject, "before").await?;
     proxy.cut().await;
-    let _ = publisher.publish(&subject, "lost").await;
+    // Whether the cut publish errors is timing; the gap marker is what is asserted.
+    drop(publisher.publish(&subject, "lost").await);
     tokio::time::sleep(Duration::from_millis(500)).await;
     proxy.restore();
     let before = until(&publisher, &subject, &mut subscription, "after").await?;
@@ -276,7 +277,7 @@ async fn a_payload_that_is_not_utf8_never_reaches_a_reader() -> TestResult {
     )
     .connect(port_and_host(node)?)
     .await?;
-    let physical = format!("dev.{ns}.af.fleet.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001.tail");
+    let physical = format!("dev.{ns}.af.thread.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001.items");
     raw.publish(physical.clone(), bytes::Bytes::from_static(b"\xff\xfe"))
         .await?;
     raw.publish(physical, bytes::Bytes::from_static(b"valid"))

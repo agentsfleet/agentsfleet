@@ -10,7 +10,7 @@ use core::time::Duration;
 use super::Outcomes;
 
 #[test]
-fn test_failures_are_neither_attempts_nor_wasted_claims() {
+fn test_failures_are_neither_attempts_nor_wasted_assignments() {
     let mut outcomes = Outcomes::new().expect("buildable");
     for _ in 0..5 {
         outcomes.failed();

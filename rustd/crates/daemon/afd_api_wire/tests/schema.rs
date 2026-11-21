@@ -95,7 +95,7 @@ fn a_map_of_borrowed_keys_to_raw_values_publishes_as_an_object() {
 /// The two `NetworkPolicy` types publish under two names.
 ///
 /// utoipa keys components by name alone, so two types spelled alike collapse
-/// into one entry and whichever registered second wins. The lease's egress
+/// into one entry and whichever registered second wins. The run's egress
 /// rules were published as the runner's three-word posture that way, and the
 /// reference-resolves gate could not see it: the name resolved.
 #[test]

@@ -8,7 +8,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::{Ceiling, QUERY_LIMIT};
+use af_core::paging::QUERY_LIMIT;
+use af_validate::Ceiling;
 use af_validate::{Limit, LimitBreak};
 use afd_api_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
 use afd_billing::Wallet;
@@ -20,7 +21,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantBilling as _};
+use crate::services::{TenantBilling as _, TenantPlane};
 
 use super::{parameter, tenant_of};
 
@@ -54,7 +55,7 @@ pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn snapshot<D: Services>(
+pub(crate) async fn snapshot<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -94,7 +95,7 @@ pub(crate) async fn snapshot<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn charges<D: Services>(
+pub(crate) async fn charges<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
@@ -167,11 +168,8 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
         fleet_id: row.fleet_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
-        event_id: row.event_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
-        authoring_attempt_id: row
-            .authoring_attempt_id
-            .as_ref()
-            .map(|id| Cow::Borrowed(id.as_str())),
+        turn_id: row.turn_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
+        run_id: row.run_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
         model: Cow::Borrowed(&row.model),

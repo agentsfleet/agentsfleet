@@ -13,15 +13,14 @@ export const MESSAGE_STATE = {
   failed: "failed", timedOut: "timed_out",
 } as const;
 export const SETUP_HEADERS = {match: "If-Match", key: "Idempotency-Key"} as const;
-export const MESSAGE_MAX_BYTES = 32 * 1024;
 export const PAGE_LIMIT = 25;
 // The largest page a workspace model or private-chat list answers with.
 export const LIST_PAGE_MAX = 100;
 const DECIMAL = /^(0|[1-9][0-9]*)$/;
 const decimal = z.string().regex(DECIMAL);
 const summaryRevision = z.number().int().positive().safe().nullable();
-const encoder = new TextEncoder();
-export const MessageInputSchema = z.string().min(1).refine(text => text.trim().length > 0).refine((text) => encoder.encode(text).byteLength <= MESSAGE_MAX_BYTES);
+// Length is the daemon's to refuse; its refusal names the ceiling.
+export const MessageInputSchema = z.string().min(1).refine(text => text.trim().length > 0);
 const record = z.record(z.string(), z.unknown());
 
 export const DefinitionSchema = z.object({
@@ -44,24 +43,20 @@ export const ReviewSchema = z.object({
   policy_semantics: z.string(), observed_at: Instant,
 });
 export const AcceptedSchema = z.object({status: z.literal("accepted"), sequence: decimal, replayed: z.boolean()});
-export const CancellationSchema = z.object({cancelled_through: decimal,
-  stopped: z.array(z.object({sequence: decimal, state: z.literal(MESSAGE_STATE.cancelled)}))});
 export const DraftSchema = z.object({
   id: z.uuidv7(), state: z.enum(DRAFT_STATE), title: z.string(), etag: z.string(),
-  authoring_model_ref: z.string(), cancelled_through: decimal,
+  setup_model_ref: z.string(),
   candidate: CandidateSchema.optional(), review: ReviewSchema.optional(), linked_fleet_id: z.uuidv7().optional(),
-  publication: z.object({plugin_id: z.uuidv7(), revision_id: z.uuidv7(), canonical_digest: z.string()}).optional(),
 });
 export const CreatedMessageSchema = DraftSchema.extend({accepted: AcceptedSchema});
 export const MessageSchema = z.object({
-  save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
+  turn_id: z.uuidv7(), save_requested: z.boolean().optional(), save_error_code: z.string().optional(),
   sequence: decimal, operation_id: z.uuidv7(), role: z.enum(MESSAGE_ROLE), state: z.enum(MESSAGE_STATE),
   text: z.string().optional(), created_at: Instant, candidate_id: z.uuidv7().optional(),
-  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string(),
-    cause: z.enum(["deadline", "cancelled", "provider_interrupted", "completion_unverified"]).optional()}).optional(),
+  failure: z.object({reason: z.string(), error_code: z.string(), recovery_action: z.string()}).optional(),
 });
 export const MessagesSchema = z.object({items: z.array(MessageSchema).max(PAGE_LIMIT), next_cursor: z.string().nullable()});
-// The published schedule `View`; sync stays an open string so an unknown state counts as not registered.
+// The daemon's schedule `View`; sync stays an open string so an unknown state counts as not registered.
 export const ScheduleSchema = z.object({
   schedule_id: z.string(), fleet_id: z.string(), sync: z.string(), last_error: z.string().nullable().optional(),
   cron: z.string(), timezone: z.string(), message: z.string(), status: z.string(),
@@ -73,25 +68,22 @@ export const FleetSchema = z.object({
   definition: DefinitionSchema.optional(), setup: z.object({state: z.string(), checks: z.array(CheckSchema)}),
   start: z.discriminatedUnion("kind", [z.object({kind: z.literal(START_KIND.none)}), z.object({
     kind: z.literal(START_KIND.runNow), state: z.enum(["pending", "accepted", "blocked"]),
-    event_id: z.string().optional(), error_code: z.string().optional(),
+    turn_id: z.string().optional(), error_code: z.string().optional(),
   })]),
   schedules: z.array(ScheduleSchema),
-});
-export const PublishedSchema = z.object({
-  plugin_id: z.uuidv7(), revision_id: z.uuidv7(), head_revision_id: z.uuidv7(), etag: z.string(),
 });
 export const AppliedSchema = z.object({fleet_id: z.uuidv7(), setup_revision: decimal, setup_etag: z.string(), etag: z.string(),
   schedules: z.array(ScheduleSchema)});
 export const ModelsSchema = z.object({items: z.array(z.object({
   ref: z.string(), label: z.string(), provider: z.string(), model: z.string(),
   context_window_tokens: z.number().int().positive(), max_output_tokens: z.number().int().positive().optional(),
-  eligibility: z.object({authoring: z.boolean(), runtime: z.boolean()}),
+  eligibility: z.object({setup: z.boolean(), runtime: z.boolean()}),
   pricing: z.object({input_nanos_per_million: nanosSchema, output_nanos_per_million: nanosSchema, runtime_nanos_per_second: nanosSchema}),
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 export const DraftCardsSchema = z.object({items: z.array(z.object({
   id: z.uuidv7(), title: z.string(), state: z.enum(DRAFT_STATE), etag: z.string(),
   linked_fleet_id: z.uuidv7().nullable().default(null), updated_at: Instant, expires_at: Instant.nullable().default(null),
-  candidate_revision: summaryRevision, setup_revision: summaryRevision, publication_revision: summaryRevision,
+  candidate_revision: summaryRevision, setup_revision: summaryRevision,
 })).max(LIST_PAGE_MAX), next_cursor: z.string().nullable()});
 
 export type Definition = z.infer<typeof DefinitionSchema>;
@@ -103,7 +95,6 @@ export type Schedule = z.infer<typeof ScheduleSchema>;
 export type WorkspaceModel = z.infer<typeof ModelsSchema>["items"][number];
 export type DraftCard = z.infer<typeof DraftCardsSchema>["items"][number];
 export type Source = {kind: typeof SOURCE_KIND.blank} | {kind: typeof SOURCE_KIND.definition; definition: Definition}
-  | {kind: typeof SOURCE_KIND.plugin; plugin_id: string; revision_id: string}
   | {kind: typeof SOURCE_KIND.fleet; fleet_id: string; setup_revision: string};
 export type Start = {kind: typeof START_KIND.none} | {kind: typeof START_KIND.runNow; message: string};
 

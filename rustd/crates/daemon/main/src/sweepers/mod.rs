@@ -18,15 +18,15 @@ use std::sync::Arc;
 use af_crypto::entropy::Entropy;
 use af_observability::Analytics;
 use afd_db::Db;
-use afd_runner::sweep::{self, census::Census, liveness::Liveness, retention::Retention};
+use afd_runner::sweep::{self, census::Census, liveness::Liveness};
 
 use crate::supervisor::Supervisor;
 
-mod authoring;
 mod billing;
 mod checkpoints;
 mod expiry;
 mod schedule;
+mod setup;
 mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
@@ -37,18 +37,15 @@ mod tasks;
 /// The supervised name of the liveness sweeper.
 pub const LIVENESS: &str = "sweeper:liveness";
 
-/// The supervised name of the retention sweeper.
-pub const RETENTION: &str = "sweeper:retention";
-
 /// The supervised name of the fleet census sweeper.
 pub const FLEET_CENSUS: &str = "sweeper:fleet-census";
 
-/// The supervised name of the private authoring recovery worker.
-pub const AUTHORING: &str = "sweeper:authoring";
+/// The supervised name of the private setup recovery worker.
+pub const SETUP: &str = "sweeper:setup";
 
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
-/// The supervised name of the deadline sweeper: expired leases' last slices
+/// The supervised name of the deadline sweeper: expired runs' last slices
 /// and lapsed setup attempts, on one clock.
 pub const EXPIRY: &str = "sweeper:expiry";
 /// Native task waits, effect readback and storage cleanup; never a second work queue.
@@ -111,15 +108,6 @@ fn spawn_runner_maintenance(
         sweep::run_starting_in(liveness, token, delay)
     });
 
-    let retention = Retention::new(database.clone()).with_settings(&policy.retention);
-    let delay = startup.delayed_first_pass(
-        RETENTION,
-        std::time::Duration::from_secs(policy.retention.idle_interval_seconds),
-    );
-    supervisor.spawn(RETENTION, move |token| {
-        sweep::run_starting_in(retention, token, delay)
-    });
-
     // Reads only: the fleet count the dashboard draws, sampled from the table
     // that owns it rather than moved on every transition.
     let period = std::time::Duration::from_secs(policy.loops.fleet_census.interval_seconds);
@@ -141,13 +129,12 @@ fn spawn_financial_maintenance(
     // One biller for every sweeper that moves money, so they share one
     // counted, failing-open path and report through the same analytics.
     let biller = crate::billing::biller(database.clone(), analytics.clone());
-    authoring::spawn(
+    setup::spawn(
         supervisor,
         database,
         analytics,
-        Arc::clone(&biller),
         startup,
-        settings.authoring_cleanup,
+        settings.setup_cleanup,
     );
 
     billing::spawn(
@@ -158,12 +145,5 @@ fn spawn_financial_maintenance(
         startup,
         settings.billing,
     );
-    expiry::spawn(
-        supervisor,
-        database,
-        analytics,
-        biller,
-        startup,
-        settings.expired_work,
-    );
+    expiry::spawn(supervisor, database, biller, startup, settings.expired_work);
 }

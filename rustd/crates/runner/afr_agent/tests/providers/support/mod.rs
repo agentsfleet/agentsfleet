@@ -1,5 +1,5 @@
-//! What the provider suites share: a fake provider on a real socket, a lease
-//! naming it, and the loop driving that lease.
+//! What the provider suites share: a fake provider on a real socket, a run
+//! naming it, and the loop driving that run.
 //!
 //! The fake answers each request with the next scripted reply, read through
 //! an atomic cursor, and streams a reply's events one per body chunk, so the
@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use af_egress::testing::CountingMint;
 use af_providers::testing::tls;
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use afr_agent::testing::Discard;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, Meter, RunOutput};
 use afr_executor::Executor;
@@ -44,13 +44,13 @@ use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 use tokio_util::sync::CancellationToken;
 
-/// The provider key every suite's lease carries.
+/// The provider key every suite's run carries.
 pub(crate) const KEY: &str = "sk-test-provider-key-0123456789";
-/// The static credential every suite's lease carries.
+/// The static credential every suite's run carries.
 pub(crate) const TOKEN: &str = "ghp_suite_token_abcdef";
-/// The lease every suite's run is.
-pub(crate) const LEASE_ID: &str = "lease-1";
-/// The instant every lease here is stamped with: one millisecond past the epoch.
+/// The run every suite's run is.
+pub(crate) const RUN_ID: &str = "run-1";
+/// The instant every run here is stamped with: one millisecond past the epoch.
 const AT: &str = "1970-01-01T00:00:00.001Z";
 /// The content type a streamed turn answers with.
 const EVENT_STREAM: &str = "text/event-stream";
@@ -212,13 +212,13 @@ fn answer(reply: Option<&Reply>) -> Response<Body> {
     .unwrap()
 }
 
-/// A lease naming `provider`, offering `tools`, carrying [`KEY`] and
+/// A run naming `provider`, offering `tools`, carrying [`KEY`] and
 /// [`TOKEN`], asking `message`.
-pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePayload<'static> {
+pub(crate) fn payload(provider: &str, tools: &[&str], message: &str) -> RunPayload<'static> {
     let request = serde_json::json!({ "message": message }).to_string();
     let document = serde_json::json!({
-        "lease_id": LEASE_ID, "fencing_token": 1, "lease_expires_at": AT,
-        "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
+        "run_id": RUN_ID, "fencing_token": 1, "run_expires_at": AT,
+        "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": request, "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": tools, "secrets_map": {"github": {"token": TOKEN, "host": "api.github.com"}},
@@ -226,7 +226,8 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 200_000}},
-        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true
+        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "owner": {"kind": "fleet", "fleet_id": "f"}
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
@@ -255,19 +256,19 @@ pub(crate) fn engine_hosting(fake: &Fake, catalog: Catalog) -> Loop {
     Loop::new(catalog, connector(fake))
 }
 
-/// Runs `lease` on `engine` to its end, with every frame it sent.
+/// Runs `run` on `engine` to its end, with every frame it sent.
 pub(crate) async fn run(
     engine: &Loop,
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
-    run_with(engine, lease, None).await
+    run_with(engine, run, None).await
 }
 
-/// Runs `lease` on `engine` to its end, its sandbox-side calls served by
+/// Runs `run` on `engine` to its end, its sandbox-side calls served by
 /// `executor`, with every frame it sent.
 pub(crate) async fn run_with(
     engine: &Loop,
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
     executor: Option<&dyn Executor>,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let (sent, frames) = std::sync::mpsc::channel();
@@ -282,7 +283,7 @@ pub(crate) async fn run_with(
         prepared_task: None,
         recovered_task: None,
         recovered_turn: None,
-        lease,
+        run,
         memory: afr_memory::Seed::default(),
         executor: &executor,
         mint: &CountingMint::never(),

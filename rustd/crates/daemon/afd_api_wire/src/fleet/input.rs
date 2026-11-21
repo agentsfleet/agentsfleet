@@ -1,4 +1,4 @@
-//! File mutation cannot bypass private authoring and human review.
+//! File mutation cannot bypass private setup and human review.
 
 use serde::{Deserialize, Serialize};
 
@@ -25,13 +25,6 @@ pub enum SaveSource {
         /// Copy `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`.
         draft_candidate_id: String,
     },
-    /// Pinned accessible Plugin revision.
-    Plugin {
-        /// Entry identity.
-        plugin_id: String,
-        /// Immutable revision identity.
-        revision_id: String,
-    },
 }
 
 /// Saving and running are distinct explicit choices.
@@ -43,7 +36,7 @@ pub enum Start {
     None,
     /// Queue this message once after activation.
     RunNow {
-        /// Nonempty text, at most 32,768 UTF-8 bytes.
+        /// Nonempty text, at most 1,048,576 characters.
         message: String,
     },
 }
@@ -74,11 +67,11 @@ pub struct SaveFleetRequest {
 #[serde(deny_unknown_fields)]
 pub struct PatchFleetRequest {
     /// Supported lifecycle target, omitted to keep current state.
-    #[serde(default, deserialize_with = "crate::authoring::present")]
+    #[serde(default, deserialize_with = "crate::setup::present")]
     #[garde(skip)]
     pub status: Option<PatchStatus>,
     /// Validated instance slug, omitted to retain it.
-    #[serde(default, deserialize_with = "crate::authoring::present")]
+    #[serde(default, deserialize_with = "crate::setup::present")]
     #[garde(inner(length(bytes, min = 1, max = 64)))]
     pub name: Option<String>,
 }

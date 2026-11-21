@@ -74,7 +74,7 @@ async fn verify_together(
     let mut callers = Vec::new();
     for _ in 0..CALLERS {
         let (sessions, barrier) = (sessions.clone(), Arc::clone(&barrier));
-        let (session_id, fingerprint) = (session_id.to_owned(), fingerprint.clone());
+        let (session_id, fingerprint) = (session_id.to_owned(), *fingerprint);
         callers.push(tokio::spawn(async move {
             barrier.wait().await;
             let code = Code::parse(code).expect("digits");

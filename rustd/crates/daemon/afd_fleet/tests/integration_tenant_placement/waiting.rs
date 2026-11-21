@@ -1,12 +1,12 @@
-//! The offer probe: one statement per wake that names the connected tenant
+//! The assignment probe: one statement per wake that names the connected tenant
 //! runners whose tenant has nothing waiting, so the pass skips them.
 
 use super::*;
-use afd_fleet::lease::waiting::waiting;
+use afd_fleet::run::waiting::waiting;
 
 /// The probe names exactly the tenant runners with nothing to take.
 // Value: protects=a wake skips only a tenant runner whose tenant has no work
-// waiting; fails_when=the probe names a runner whose tenant has an admission
+// waiting; fails_when=the probe names a runner whose tenant has a turn
 // waiting, names a platform runner, or misses an idle tenant runner;
 // why_new=the idle skip; seam=none.
 #[tokio::test]
@@ -29,11 +29,11 @@ async fn the_probe_names_only_the_tenant_runners_with_nothing_waiting() {
     .await
     .expect("the probe reads");
 
-    assert!(found.pending(), "the busy tenant's admission waits");
+    assert!(found.pending(), "the busy tenant's turn waits");
     assert_eq!(
         found.idle(),
         [quiet_runner],
-        "only the quiet tenant's runner is idle; the busy tenant's and the platform's are offered"
+        "only the quiet tenant's runner is idle; the busy tenant's and the platform's are assigned"
     );
 }
 

@@ -50,8 +50,12 @@ coverage:
 
 flags:
   rust-afd:
+    # Every workspace member, the layer crates and the agent harness beside
+    # them (`rustd/Cargo.toml`), so this flag grades what the lane's own judge
+    # grades.
     paths:
       - rustd/crates/
+      - rustd/guffbolt/
 
 comment:
   layout: "reach,diff,flags,tree"
@@ -59,7 +63,7 @@ comment:
   require_changes: false
 
 ignore:
-  - "schema/**"
+  - "rustd/crates/daemon/afd_db/schema/**"
   - "tests/**"
   - "rustd/target/**"
   # The bench crate is a measuring instrument, not shipped code, and leaves

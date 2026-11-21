@@ -70,7 +70,7 @@ impl Pages {
             .last_mut()
             .ok_or_else(|| error::config("checkpoint page is absent"))?;
         page.history_objects = history;
-        if !af_wire::decision::serialized_within(page, self.ceiling) {
+        if !af_validate::serialized_within(page, self.ceiling) {
             let history = std::mem::take(&mut page.history_objects);
             self.next()?;
             self.items
@@ -80,7 +80,7 @@ impl Pages {
         }
         for page in &self.items {
             garde::Validate::validate(page)?;
-            if !af_wire::decision::serialized_within(page, self.ceiling) {
+            if !af_validate::serialized_within(page, self.ceiling) {
                 return Err(error::capture_limit(
                     "checkpoint entry exceeds a manifest page",
                 ));

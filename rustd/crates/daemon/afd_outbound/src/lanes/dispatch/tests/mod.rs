@@ -5,8 +5,8 @@
 )]
 
 use super::*;
+use crate::delivery::{Claimed, Outgoing};
 use crate::lanes::LANE_DEPTH;
-use crate::obligation::{Claimed, Outgoing};
 use af_core::id::Uuid7;
 
 mod capacity;
@@ -25,14 +25,13 @@ fn answer(number: impl std::fmt::LowerHex) -> Uuid7 {
 fn job(number: u32) -> Job {
     Box::new(Claimed {
         id: afd_db::test_util::mint_id(),
-        token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
-            .expect("a fixture token"),
+        token: Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff").expect("a fixture token"),
         outgoing: Outgoing {
             provider: "slack".to_owned(),
             destination: "thread".to_owned(),
             workspace_id: id("0199a0b0-0001-7000-8000-000000000001"),
             fleet_id: id("0199a0b0-0001-7000-8000-000000000002"),
-            event_id: answer(number),
+            turn_id: answer(number),
             answer: format!("answer {number}"),
         },
     })
@@ -54,7 +53,7 @@ fn a_current_lane_receives_a_reserved_job_once() {
             .try_recv()
             .expect("the job reached its lane")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(1)
     );
     assert!(matches!(
@@ -82,7 +81,7 @@ fn a_reserved_job_survives_removal_of_its_lane() {
     let returned = publish(&lanes, &destination, &sender, permit, first)
         .expect_err("retirement must return the job rather than discard it")
         .0;
-    assert_eq!(returned.outgoing.event_id, answer(1));
+    assert_eq!(returned.outgoing.turn_id, answer(1));
     let (fresh, mut receiver) = mpsc::channel(LANE_DEPTH);
     lanes.insert(destination.clone(), fresh.clone());
     let permit = fresh.try_reserve().expect("the fresh lane has capacity");
@@ -97,7 +96,7 @@ fn a_reserved_job_survives_removal_of_its_lane() {
             .try_recv()
             .expect("the first job survived")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(1)
     );
     assert_eq!(
@@ -105,7 +104,7 @@ fn a_reserved_job_survives_removal_of_its_lane() {
             .try_recv()
             .expect("the second job follows it")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(2)
     );
     assert!(matches!(
@@ -130,7 +129,7 @@ fn a_reserved_job_cannot_publish_to_a_replaced_lane() {
     let returned = publish(&lanes, &destination, &sender, permit, first)
         .expect_err("a stale permit must not accept the job")
         .0;
-    assert_eq!(returned.outgoing.event_id, answer(1));
+    assert_eq!(returned.outgoing.turn_id, answer(1));
     assert!(matches!(
         receiver.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
@@ -143,7 +142,7 @@ fn a_reserved_job_cannot_publish_to_a_replaced_lane() {
             .try_recv()
             .expect("the job arrived once")
             .outgoing
-            .event_id,
+            .turn_id,
         answer(1)
     );
     assert!(matches!(

@@ -28,8 +28,8 @@ import {
 } from "../../errors/index.ts";
 
 // Table preview cap in Unicode code points. Full content is never lost —
-// JSON mode carries it verbatim. The server limit mirrors live in
-// src/constants/memory-limits.ts (consumed by the command tree).
+// JSON mode carries it verbatim. The server's defaults, quoted in help, live
+// in src/constants/memory-limits.ts (consumed by the command tree).
 const PREVIEW_MAX = 80;
 const SERVER_ERROR_TAG = "ServerError" as const;
 

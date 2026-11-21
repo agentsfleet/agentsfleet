@@ -1,12 +1,11 @@
-//! Typed writes use the transaction whose source and slot are already locked.
+//! Typed writes use the transaction whose source and thread are already locked.
 
 use af_core::id::Uuid7;
 use af_wire::task::TaskState;
 use sqlx::PgConnection;
 
 use super::super::{
-    PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskLease, TaskRefusal, guard::LeaseRow,
-    sql,
+    PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskRefusal, TaskRun, guard::RunRow, sql,
 };
 use super::source::Source;
 use crate::error::{Error, ErrorKind, Result, query};
@@ -21,7 +20,7 @@ pub(super) struct Admission<'a> {
 
 pub(super) async fn item(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     plan: &PreparedPlan,
     item: &PreparedItem,
     binding: &TaskBinding,
@@ -37,7 +36,7 @@ pub(super) async fn item(
         .bind(&binding.item_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
-        .bind(&plan.source_admission_id)
+        .bind(&plan.source_turn_id)
         .bind(ordinal)
         .bind(&plan.digest)
         .bind(item.action().as_str())
@@ -52,7 +51,7 @@ pub(super) async fn item(
 
 pub(super) async fn task(
     connection: &mut PgConnection,
-    current: &LeaseRow,
+    current: &RunRow,
     plan: &PreparedPlan,
     item: &PreparedTask,
     binding: &TaskBinding,
@@ -80,7 +79,7 @@ pub(super) async fn task(
         .bind(status.as_str())
         .bind(item.limits.model_nanos)
         .bind(i64::from(item.limits.running_seconds) * 1_000_000_000)
-        .bind(i64::from(item.limits.leases))
+        .bind(i64::from(item.limits.runs))
         .bind(i32::from(admission.active))
         .bind(i64::from(item.limits.publications))
         .bind(i64::from(item.limits.decision_calls))
@@ -96,18 +95,18 @@ pub(super) async fn task(
     Ok(())
 }
 
-pub(super) async fn lease(
+pub(super) async fn run(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     binding: &TaskBinding,
 ) -> Result<()> {
-    sqlx::query(sql::BIND_LEASE)
+    sqlx::query(sql::BIND_RUN)
         .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
-        .bind(lease.lease_id)
-        .bind(lease.runner_id)
-        .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
+        .bind(run.run_id)
+        .bind(run.runner_id)
+        .bind(afd_billing::biller::WorkKey::FleetRun(run.run_id.clone()).work_type())
         .bind(af_wire::usage::LineKind::Model.as_str())
-        .bind(super::super::lease::SLICE_SECONDS)
+        .bind(super::super::run::SLICE_SECONDS)
         .bind(1_000_000_000_i64)
         .execute(connection)
         .await
@@ -115,15 +114,15 @@ pub(super) async fn lease(
     Ok(())
 }
 
-pub(super) async fn admission(
+pub(super) async fn bind_turn(
     connection: &mut PgConnection,
-    admission: &Uuid7,
+    turn: &Uuid7,
     binding: &TaskBinding,
 ) -> Result<()> {
-    sqlx::query(sql::BIND_ADMISSION)
+    sqlx::query(sql::BIND_TURN)
         .bind(binding.task_id.as_ref().ok_or(TaskRefusal::InvalidTarget)?)
         .bind(&binding.item_id)
-        .bind(admission)
+        .bind(turn)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

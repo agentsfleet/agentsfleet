@@ -200,8 +200,8 @@ test.describe("operator journey", () => {
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    await page.goto(workspaceHref(wsId, "events"));
-    await expect(page).toHaveURL(workspaceUrlPattern("events"));
+    await page.goto(workspaceHref(wsId, "turns"));
+    await expect(page).toHaveURL(workspaceUrlPattern("turns"));
     await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
     await expect(page.getByLabel("Workspace activity", { exact: true })).toBeVisible();
 

@@ -1,4 +1,4 @@
-//! Real lease/queue fixtures; only already-accepted plan data is synthetic.
+//! Real run/queue fixtures; only already-accepted plan data is synthetic.
 
 use std::{panic::AssertUnwindSafe, time::Duration};
 
@@ -6,17 +6,17 @@ use af_core::{etag::sha256_hex, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
     decision::{DecisionQuestion, NamedQuestion, NoulCriteria},
-    event::EventType,
     task::TaskLimits,
+    turn::TurnKind,
 };
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_db::test_util::TestDatabase;
-use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLease, TaskScope, Tasks};
+use afd_fleet::task::{PreparedPlan, PreparedTask, TaskRun, TaskScope, Tasks};
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use futures_util::FutureExt as _;
 use serde_json::json;
 
 use crate::{
-    report_seed::{Held, held_admission},
+    report_seed::{Held, held_turn},
     support::Fixtures,
 };
 
@@ -32,14 +32,14 @@ pub(super) struct Case {
     pub(super) scope: TaskScope,
     pub(super) revision: Uuid7,
     pub(super) revision_number: u64,
-    pub(super) admissions: Admissions,
+    pub(super) turns: Turns,
 }
 
 impl Case {
     async fn create(lane: &TestDatabase) -> Self {
-        let actor = afd_events::steer_actor("native_task_owner");
+        let actor = afd_turns::view::steer_actor("native_task_owner");
         let request = json!({"message": GOALS.join("; ")}).to_string();
-        let held = held_admission(
+        let held = held_turn(
             Fixtures::create_in(lane.shared_handle()).await,
             &actor,
             &request,
@@ -70,14 +70,14 @@ impl Case {
             workspace_id: workspace,
             fleet_id: held.fleet.clone(),
         };
-        let admissions = Admissions::new(
+        let turns = Turns::new(
             held.fixtures.database.clone(),
             held.fixtures.bus().clone(),
             Entropy::new(),
         );
         let tasks = Tasks::new(
-            held.leases.clone(),
-            admissions.clone(),
+            held.runs.clone(),
+            turns.clone(),
             afd_fleet::task::TaskDependencies::from(&held.fixtures.plane()),
         );
         Self {
@@ -86,14 +86,14 @@ impl Case {
             scope,
             revision,
             revision_number: u64::try_from(number).expect("positive saved revision"),
-            admissions,
+            turns,
         }
     }
 
-    pub(super) const fn lease(&self) -> TaskLease<'_> {
-        TaskLease {
+    pub(super) const fn run(&self) -> TaskRun<'_> {
+        TaskRun {
             runner_id: &self.held.runner,
-            lease_id: &self.held.lease_key,
+            run_id: &self.held.run_key,
             fencing_token: self.held.fence.as_u64(),
         }
     }
@@ -104,7 +104,7 @@ impl Case {
 
     pub(super) fn plan(&self, digest: &str, count: usize) -> PreparedPlan {
         self.source_plan(
-            self.held.event_id.clone(),
+            self.held.turn_id.clone(),
             digest,
             count,
             TaskLimits::default(),
@@ -126,12 +126,12 @@ impl Case {
         )
     }
 
-    /// The forthcoming input API owns this claim in production. Seeding it here
-    /// exercises the existing binder's claim/fence validation without faking it.
-    pub(super) async fn claimed_source(&self) -> Uuid7 {
-        let actor = afd_events::steer_actor("native_task_owner");
+    /// The forthcoming input API owns this assignment in production. Seeding it here
+    /// exercises the existing binder's assignment/fence validation without faking it.
+    pub(super) async fn assigned_source(&self) -> Uuid7 {
+        let actor = afd_turns::view::steer_actor("native_task_owner");
         let source = self.source(Producer::Steer, &actor).await;
-        self.claim(&source).await;
+        self.assign(&source).await;
         source
     }
 
@@ -148,45 +148,43 @@ impl Case {
     ) -> Uuid7 {
         let key = afd_db::test_util::mint_id();
         let request = json!({"message": message}).to_string();
-        let admission = self
-            .admissions
-            .admit(Admission {
+        let turn = self
+            .turns
+            .admit(IncomingTurn {
                 producer,
                 key: Key::Repeated(key.as_str()),
                 fleet: &self.scope.fleet_id,
                 workspace: &self.scope.workspace_id,
                 actor,
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json: &request,
                 reply: Reply::None,
             })
             .await
             .expect("additional human source");
-        admission.stored.id
+        turn.stored.id
     }
 
-    pub(super) async fn claim(&self, source: &Uuid7) {
-        sqlx::query(
-            "UPDATE fleet.admissions SET input_claim_lease_id=$2,input_claim_fence=$3 WHERE id=$1",
-        )
-        .bind(source)
-        .bind(&self.held.lease_key)
-        .bind(self.held.fence.as_i64())
-        .execute(
-            &mut *self
-                .held
-                .fixtures
-                .database
-                .acquire()
-                .await
-                .expect("claim connection"),
-        )
-        .await
-        .expect("native input claim fixture");
+    pub(super) async fn assign(&self, source: &Uuid7) {
+        sqlx::query("UPDATE thread.turns SET input_run_id=$2,input_fence=$3 WHERE id=$1")
+            .bind(source)
+            .bind(&self.held.run_key)
+            .bind(self.held.fence.as_i64())
+            .execute(
+                &mut *self
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("assignment connection"),
+            )
+            .await
+            .expect("native input assignment fixture");
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1)")
+        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1), (SELECT count(*) FROM thread.turns WHERE thread_id=$1)")
             .bind(&self.scope.fleet_id)
             .fetch_one(&mut *self.held.fixtures.database.acquire().await.expect("count connection"))
             .await.expect("all residual state is readable")

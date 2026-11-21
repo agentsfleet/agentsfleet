@@ -30,17 +30,17 @@ pub(super) fn start(api: &Arc<dyn RunnerApi>, stop: CancellationToken) -> Stream
     let initial = session(&stop);
     let (current, session) = watch::channel(Some(Arc::clone(&initial.0)));
     let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&initial.0)));
-    let (assignment, assignments) = watch::channel(None);
-    let handle = StreamHandle::new(session, Arc::new(Running::default()), assignments);
+    let (policy, policies) = watch::channel(None);
+    let handle = StreamHandle::new(session, Arc::new(Running::default()), policies);
     let mut renewal_handle = StreamHandle::new(
         renewal_session,
         Arc::clone(&handle.running),
-        handle.assignments.clone(),
+        handle.policies.clone(),
     );
     renewal_handle.renewing = Arc::clone(&handle.renewing);
     let api = Arc::clone(api);
     tokio::spawn(async move {
-        let _assignment = assignment;
+        let _policy = policy;
         let batching = async {
             let _stop_on_exit = stop.clone().drop_guard();
             if let Err(error) = renewal_handle
@@ -90,9 +90,9 @@ async fn connections(
             control,
             work,
             reports,
-            activity,
+            progress,
         } = receivers;
-        for queue in [priority, control, work, reports, activity] {
+        for queue in [priority, control, work, reports, progress] {
             workers.spawn(serve(
                 queue,
                 Arc::clone(&api),
@@ -188,21 +188,29 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         } => report_reply(api, request_id, &request).await?,
         Up::Folds {
             request_id,
-            lease_id,
+            run_id,
             request,
-        } => folds_reply(api, request_id, &lease_id, &request).await?,
+        } => folds_reply(api, request_id, &run_id, &request).await?,
         Up::TurnCheckpoint {
             request_id,
-            lease_id,
+            run_id,
             request,
-        } => checkpoint_reply(api, request_id, &lease_id, request.as_ref()).await?,
-        Up::RenewBatch { request_id, leases } => renewals(api, request_id, leases).await?,
-        message @ (Up::AuthoringModel { .. }
-        | Up::AuthoringActivity { .. }
-        | Up::AuthoringRenew { .. }
-        | Up::AuthoringReport { .. }) => authoring_reply(api, message).await?,
+        } => checkpoint_reply(api, request_id, &run_id, request.as_ref()).await?,
+        Up::RenewBatch { request_id, runs } => renewals(api, request_id, runs).await?,
+        Up::ContextLoad {
+            request_id,
+            run_id,
+            request,
+        } => json!({"type":"context_loaded", "request_id":request_id, "run_id":run_id,
+            "answer":answer(api, Verb::ContextLoad, &request).await?}),
+        Up::ContextSave {
+            request_id,
+            run_id,
+            request,
+        } => json!({"type":"context_saved", "request_id":request_id, "run_id":run_id,
+            "answer":answer(api, Verb::ContextSave, request.as_ref()).await?}),
         Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
-        Up::Activity { request, .. } => return activity_reply(api, &request).await,
+        Up::Progress { request, .. } => return activity_reply(api, &request).await,
         Up::Ready { .. } => return Ok(None),
         Up::Hello { .. } | Up::Confirm { .. } => {
             panic!("opening is tested by the native connection fixtures")
@@ -211,41 +219,11 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
     Ok(Some(reply))
 }
 
-async fn authoring_reply(api: &dyn RunnerApi, message: Up<'_>) -> Result<Value> {
-    Ok(match message {
-        Up::AuthoringModel {
-            request_id,
-            lease_id,
-            request,
-        } => json!({"type":"authoring_model_result", "request_id":request_id,
-            "lease_id":lease_id, "answer":answer(api, Verb::AuthoringModel, &request).await?}),
-        Up::AuthoringActivity {
-            request_id,
-            lease_id,
-            request,
-        } => json!({"type":"authoring_activity_ack", "request_id":request_id,
-            "lease_id":lease_id, "answer":answer(api, Verb::AuthoringActivity, &request).await?}),
-        Up::AuthoringRenew {
-            request_id,
-            lease_id,
-            request,
-        } => json!({"type":"authoring_renewed", "request_id":request_id,
-            "lease_id":lease_id, "answer":answer(api, Verb::AuthoringRenew, &request).await?}),
-        Up::AuthoringReport {
-            request_id,
-            lease_id,
-            request,
-        } => json!({"type":"authoring_report_ack", "request_id":request_id,
-            "lease_id":lease_id, "answer":answer(api, Verb::AuthoringReport, &request).await?}),
-        _ => panic!("an authoring reply requires an authoring request"),
-    })
-}
-
 async fn checkpoint_reply(
     api: &dyn RunnerApi,
     request_id: std::num::NonZeroU64,
-    lease_id: &str,
-    request: &af_wire::lease::TurnCheckpointCommand,
+    run_id: &str,
+    request: &af_wire::run::TurnCheckpointCommand,
 ) -> Result<Value> {
     let mut reply = answer(api, Verb::TurnCheckpoint, request).await?;
     if reply.get("response").is_some_and(Value::is_null) {
@@ -253,12 +231,16 @@ async fn checkpoint_reply(
             "detail":"This scripted peer has no durable checkpoint store.","retryable":false});
     }
     Ok(
-        json!({"type":"turn_checkpoint","request_id":request_id,"lease_id":lease_id,
+        json!({"type":"turn_checkpoint","request_id":request_id,"run_id":run_id,
         "operation_id":request.operation_id,"kind":request.action.kind(),"answer":reply}),
     )
 }
 
-async fn answer(api: &dyn RunnerApi, verb: Verb, request: &impl Serialize) -> Result<Value> {
+async fn answer(
+    api: &dyn RunnerApi,
+    verb: Verb,
+    request: &(impl Serialize + Sync),
+) -> Result<Value> {
     let body = Some(bytes::Bytes::from(
         serde_json::to_vec(request).map_err(error::encode)?,
     ));
@@ -283,22 +265,20 @@ async fn activity_reply(
     api: &dyn RunnerApi,
     request: &af_wire::activity::ActivityRequest<'_>,
 ) -> Result<Option<Value>> {
-    answer(api, Verb::Activity, request).await?;
+    answer(api, Verb::Progress, request).await?;
     Ok(None)
 }
 
 async fn renewals(
     api: &dyn RunnerApi,
     request_id: std::num::NonZeroU64,
-    leases: Vec<af_wire::protocol::Renewal<'_>>,
+    runs: Vec<af_wire::protocol::Renewal<'_>>,
 ) -> Result<Value> {
     let mut answers = Vec::new();
-    for lease in leases {
-        answers.push(
-            json!({"lease_id":lease.lease_id, "answer":answer(api, Verb::Renew, &lease).await?}),
-        );
+    for run in runs {
+        answers.push(json!({"run_id":run.run_id, "answer":answer(api, Verb::Renew, &run).await?}));
     }
-    Ok(json!({"type":"renewed", "request_id":request_id, "leases":answers}))
+    Ok(json!({"type":"renewed", "request_id":request_id, "runs":answers}))
 }
 
 async fn report_reply(
@@ -307,15 +287,15 @@ async fn report_reply(
     request: &af_wire::report::ReportRequest<'_>,
 ) -> Result<Value> {
     Ok(json!({"type":"report_ack", "request_id":request_id,
-        "lease_id":request.lease_id, "answer":answer(api, Verb::Report, request).await?}))
+        "run_id":request.run_id, "answer":answer(api, Verb::Report, request).await?}))
 }
 
 async fn folds_reply(
     api: &dyn RunnerApi,
     request_id: std::num::NonZeroU64,
-    lease_id: &str,
+    run_id: &str,
     request: &af_wire::fold::FoldRequest,
 ) -> Result<Value> {
     Ok(json!({"type":"folded", "request_id":request_id,
-        "lease_id":lease_id, "answer":answer(api, Verb::Folds, request).await?}))
+        "run_id":run_id, "answer":answer(api, Verb::Folds, request).await?}))
 }

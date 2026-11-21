@@ -19,7 +19,7 @@ test("chat_sends_an_addressed_message_and_opens_the_named_fleet", async ({page, 
   });
   await page.route("**/live/v1/workspaces/*/fleets/*/messages", async route => {
     posts.push({path: new URL(route.request().url()).pathname, body: route.request().postDataJSON()});
-    await route.fulfill({status: 202, json: {status: "accepted", event_id: "0199a801-1000-7000-8000-0000000000e0", replayed: false}});
+    await route.fulfill({status: 202, json: {status: "accepted", turn_id: "0199a801-1000-7000-8000-0000000000e0", replayed: false}});
   });
   await page.goto(`${chatProbe}?address=1`);
   await page.getByRole("textbox", {name: "Message your fleet…"}).fill("@agentbob retry");

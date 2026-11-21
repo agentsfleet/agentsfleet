@@ -1,15 +1,14 @@
 import {RunnerAction, RunnerHistory} from "./runner-vocabulary.ts";
-import { Clock, Effect, Schema } from "effect";
+import { Clock, Effect } from "effect";
 import {instantNanos} from "../../lib/instant.ts";
 import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
-import { RegistrationReplaySchema, RunnerDetailSchema, RunnerRegisteredSchema, RunnerEventsSchema, RunnerLabelsSchema, RunnerLeasesSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
+import { RunnerDetailSchema, RunnerRegisteredSchema, RunnerHistoryPageSchema, RunnerLabelsSchema, RunnerRunsSchema, RunnerMutationSchema, RunnerPageSchema, RunnerPolicySchema, RunnerRotatedSchema } from "./runner-schema.ts";
 import { withRunnerTokenFile } from "./token.ts";
 import type { RunnerKind } from "./runner-kind.ts";
-import { v7 as uuidv7 } from "uuid";
-import { ServerError } from "../../errors/index.ts";
+import { CLI_ERROR_TAG, ServerError } from "../../errors/index.ts";
 
 export type RunnerPaging = {readonly limit?: number | undefined; readonly startingAfter?: string | undefined};
 type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; readonly fleet?: string | undefined; readonly eventType?: string | undefined; readonly since?: string | undefined; readonly until?: string | undefined};
@@ -42,8 +41,7 @@ export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind,
     "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
     Labels: runner.labels.join(", ") || "None", "Last seen": runner.last_seen_at,
     Health: runner.degraded ? `Degraded: ${runner.degraded_reason ?? "unknown reason"}` : "Ready",
-    "Active leases": String(runner.active_lease_count), "Active fleets": String(runner.active_fleet_count),
-    "Leases succeeded": String(runner.leases_succeeded), "Leases failed": String(runner.leases_failed),
+    "Active runs": String(runner.active_run_count), "Active fleets": String(runner.active_fleet_count),
     "Self-test": selftestStatus(runner),
     "Auto cordon": runner.cordon?.reason ?? "None",
     ...(runner.cordon ? {"Cordoned at": runner.cordon.cordoned_at,
@@ -68,15 +66,15 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
     fleet: options.fleet, event_type: options.eventType, since, until});
   const body = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id, `/${kind}`) + query});
   const output = yield* Output;
-  if (kind === RunnerHistory.Events) {
-    const page = yield* decodePlatform(RunnerEventsSchema, body);
+  if (kind === RunnerHistory.History) {
+    const page = yield* decodePlatform(RunnerHistoryPageSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
     yield* output.printEntityTable({id: {key: "id", label: "ID"}, domain: [
       {key: "event_type", label: "EVENT"}, {key: "occurred_at", label: "OCCURRED"},
     ], ageKey: null}, page.items);
     if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
   } else {
-    const page = yield* decodePlatform(RunnerLeasesSchema, body);
+    const page = yield* decodePlatform(RunnerRunsSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
     yield* output.printEntityTable({id: {key: "id", label: "ID"}, name: {key: "fleet", label: "FLEET"}, domain: [
       {key: "outcome", label: "OUTCOME"}, {key: "kind", label: "KIND"}, {key: "model", label: "MODEL"},
@@ -105,29 +103,27 @@ export const runnerDelete = Effect.fn("runners.delete")(function* (kind: RunnerK
   yield* platformResult({id, deleted: true}, "Runner deleted", {ID: id});
 });
 
-const REPLAY_DETAIL = "This runner was registered earlier; its token was shown once and is never stored";
-// The registration already happened; a named code lets a script tell this from a server failure.
-const REPLAY_CODE = "RUNNER_REGISTRATION_REPLAYED";
+// A host registers once per owner; the daemon answers a second registration with this code.
+const HOST_REGISTERED = "UZ-RUN-033";
+/** The way back to a registered host's runner, in the group that owns it. */
+const hostRegisteredHint = (kind: RunnerKind): string => {
+  const group = isOperator(kind) ? "agentsfleet platform runners" : "agentsfleet runners";
+  return `this host is already a runner, and its token was shown once: find its id with \`${group} list\`, ` +
+    `then run \`${group} rotate-token <RUNNER_ID> --token-out <new-file>\``;
+};
 
 export const runnerRegister = Effect.fn("runners.register")(function* (kind: RunnerKind, host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
-  // One key per invocation: the CLI's own retries resend it, so a lost reply
-  // inside this run never registers twice. The platform route takes no key.
-  const request = kind.idempotentRegister
-    ? {path: kind.path, method: HTTP_METHOD.post, body, headers: {"Idempotency-Key": uuidv7()}}
-    : {path: kind.path, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}};
+  // A host registers once per owner, so a retry cannot make a second runner.
+  const request = {path: kind.path, method: HTTP_METHOD.post, body};
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
-    const answer = yield* platformRequest(request);
-    // A token-carrying answer first: a struct schema ignores extra keys, so the
-    // replay shape also matches a fresh registration.
-    const fresh = Schema.decodeUnknownOption(RunnerRegisteredSchema)(answer);
-    const replay = fresh._tag === "None" ? Schema.decodeUnknownOption(RegistrationReplaySchema)(answer) : fresh;
-    if (fresh._tag === "None" && replay._tag === "Some") {
-      return yield* Effect.fail(new ServerError({
-        detail: REPLAY_DETAIL, code: REPLAY_CODE, status: 200, requestId: null,
-        suggestion: `agentsfleet runners rotate-token ${replay.value.runner_id} --token-out <new-file>`,
-      }));
-    }
+    const answer = yield* platformRequest(request).pipe(Effect.catchIf(
+      (error): error is ServerError => error._tag === CLI_ERROR_TAG.server && error.code === HOST_REGISTERED,
+      (error) => Effect.fail(new ServerError({
+        detail: error.detail, code: error.code, status: error.status, requestId: error.requestId,
+        suggestion: hostRegisteredHint(kind),
+      })),
+    ));
     const registered = yield* decodePlatform(RunnerRegisteredSchema, answer);
     yield* save(registered.runner_token);
     yield* platformResult({runner_id: registered.runner_id, assigned_policy: registered.assigned_policy, token_file: tokenFile}, "Runner registered", {ID: registered.runner_id, "Token file": tokenFile});

@@ -1,4 +1,4 @@
-//! `runner.runners` and `runner.events` — enrolment, liveness, verdict.
+//! `runner.runners` and `runner.history` — enrolment, liveness, verdict.
 //!
 //! Every statement here is runner-scoped: a runner principal authorises only
 //! verbs about itself, so each carries `runner_id` in its predicate and can
@@ -10,23 +10,29 @@ use afd_db::statement::Bound;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
-/// Enrol a runner and record its enrolment event atomically.
+/// Enrol a runner and record its enrolment event atomically, answering the
+/// runner the host is (`id`) and whether this call `inserted` it.
 ///
 /// One statement, so an observer can never see a registered runner with no
-/// audit row explaining where it came from. The operator's ASSIGNED policy
-/// lands on the row here — the host never writes it. The enrolment event takes
-/// the row's own `created_at`, so the two cannot disagree about when.
-pub const INSERT_RUNNER_WITH_EVENT: &str = include_str!("insert_runner_with_event.sql");
+/// audit row explaining where it came from. A host its owner already
+/// registered inserts neither row: `(tenant_id, host_id)` is unique with nulls
+/// not distinct, so the platform registers each host once too. The no-op
+/// `DO UPDATE` answers the existing row even when it committed concurrently,
+/// where `DO NOTHING` answers no row and a second read can miss a row deleted
+/// in between. The operator's ASSIGNED policy lands on the row here — the host
+/// never writes it. The enrolment event takes the row's own `created_at`, so
+/// the two cannot disagree about when.
+pub const INSERT_RUNNER_WITH_HISTORY: &str = include_str!("insert_runner_with_history.sql");
 
-/// The lease-type counter a freshly enrolled host starts at.
-const FIRST_LEASE_VERSION: i64 = 0;
+/// The run-type counter a freshly enrolled host starts at.
+const FIRST_RUN_VERSION: i64 = 0;
 
-/// Everything [`INSERT_RUNNER_WITH_EVENT`] needs, by name.
+/// Everything [`INSERT_RUNNER_WITH_HISTORY`] needs, by name.
 ///
 /// # Why this one gets a struct and most statements do not
 ///
-/// It takes twenty-one positional parameters and `$2` and `$4` are each read
-/// twice. A flat bind list is correct only as far as someone counts arguments
+/// It takes twenty-five positional parameters, and `$2`, `$4`, `$17` and
+/// `$20` are each read twice. A flat bind list is correct only as far as someone counts arguments
 /// against the statement text. Two same-typed arguments transposed —
 /// `host_id` and `token_hash` are both text, and one is a CREDENTIAL — compiles
 /// clean and writes the wrong column.
@@ -38,7 +44,7 @@ const FIRST_LEASE_VERSION: i64 = 0;
 /// orders, and a caller names fields instead of counting slots.
 #[derive(Debug)]
 pub struct RegisterRow<'a> {
-    /// Whether the enrolled runner accepts new durable task leases.
+    /// Whether the enrolled runner accepts new durable task runs.
     pub durable_tasks_enabled: bool,
     /// Complete validated sandbox configuration, including enrollment binds.
     pub sandbox_config_json: &'a str,
@@ -86,13 +92,13 @@ pub struct RegisterRow<'a> {
 }
 
 impl<'a> RegisterRow<'a> {
-    /// Binds this row to [`INSERT_RUNNER_WITH_EVENT`], in `$n` order.
+    /// Binds this row to [`INSERT_RUNNER_WITH_HISTORY`], in `$n` order.
     ///
-    /// The metadata keys (`$15`, `$16`, `$18`) and the opening lease version
+    /// The metadata keys (`$15`, `$16`, `$18`) and the opening run version
     /// (`$12`) are constants rather than caller data, so they are supplied
     /// here and no caller supplies anything positionally.
     pub fn bind(&'a self) -> Bound<'a> {
-        sqlx::query(INSERT_RUNNER_WITH_EVENT)
+        sqlx::query(INSERT_RUNNER_WITH_HISTORY)
             .bind(self.runner_id)
             .bind(self.host_id)
             .bind(self.token_digest)
@@ -104,7 +110,7 @@ impl<'a> RegisterRow<'a> {
             .bind(self.worker_count)
             .bind(self.degraded_reason)
             .bind(self.last_seen_at.to_sqlx())
-            .bind(FIRST_LEASE_VERSION)
+            .bind(FIRST_RUN_VERSION)
             .bind(self.event_id)
             .bind(self.event_type)
             .bind(super::meta::HOST_ID)
@@ -140,13 +146,6 @@ pub const ROTATE_RUNNER_TOKEN: &str = include_str!("rotate_runner_token.sql");
 /// Whether a runner is the platform's, read on a refused rotation to tell `404` from `409`.
 pub const SELECT_RUNNER_PLATFORM_OWNED: &str = include_str!("select_runner_platform_owned.sql");
 
-/// A tenant registration's retry receipt; no row back means the key exists.
-/// `$1` id, `$2` tenant, `$3` operation id, `$4` request digest, `$5` runner.
-pub const INSERT_REGISTRATION_RECEIPT: &str = include_str!("insert_registration_receipt.sql");
-
-/// The stored receipt for `$1` tenant and `$2` operation id.
-pub const SELECT_REGISTRATION_RECEIPT: &str = include_str!("select_registration_receipt.sql");
-
 /// The heartbeat's policy read.
 ///
 /// Assignment, stored capability, and the prior verdict, so every beat
@@ -180,8 +179,8 @@ pub const UPDATE_RUNNER_VERDICT: &str = include_str!("update_runner_verdict.sql"
 /// zeros trimmed — the form `jiff` writes, so the operator API serves one
 /// spelling of an instant. `$1` runner, `$2` event id, `$3` event type, `$4`
 /// the metadata key, `$5` the never-seen sentinel, `$6` the offline threshold.
-pub const HEARTBEAT_WITH_TRANSITION_EVENT: &str =
-    include_str!("heartbeat_with_transition_event.sql");
+pub const HEARTBEAT_WITH_TRANSITION_HISTORY: &str =
+    include_str!("heartbeat_with_transition_history.sql");
 
 /// Store a reported self-test verdict and retire the request that asked for it,
 /// in one write.
@@ -195,7 +194,7 @@ pub const UPDATE_RUNNER_SELFTEST: &str = include_str!("update_runner_selftest.sq
 
 /// Liveness-only bump, for the paths that must not emit history.
 ///
-/// The fallback when [`HEARTBEAT_WITH_TRANSITION_EVENT`] could not run — an
+/// The fallback when [`HEARTBEAT_WITH_TRANSITION_HISTORY`] could not run — an
 /// event identifier that would not mint, or a statement Postgres refused. A
 /// beat that writes liveness without its transition event is a quieter loss
 /// than a beat that writes nothing: the fleet read stays true, and only the

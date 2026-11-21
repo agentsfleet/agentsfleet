@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 import { Readable } from "node:stream";
-import { UnexpectedError, ValidationError } from "../src/errors/index.ts";
+import { UnexpectedError } from "../src/errors/index.ts";
 import {
   makeLive,
   stdinFromStreamLayer,
@@ -14,35 +14,28 @@ import {
 } from "../src/services/stdin.ts";
 
 const readVia = (stream: Readable): Promise<string> =>
-  Effect.runPromise(makeLive(stream).readBounded(1024));
+  Effect.runPromise(makeLive(stream).readAll());
 
-describe("bounded standard input", () => {
-  test("accepts multibyte input exactly at the byte limit", async () => {
+// The 1 MiB cap platform JSON input once carried; the server is now the judge.
+const RETIRED_INPUT_CAP_BYTES = 1024 * 1024;
+
+describe("standard input read to the end", () => {
+  test("keeps multibyte input whole", async () => {
     const stream = Readable.from(["🌱", Buffer.from("é")]);
-    expect(await Effect.runPromise(makeLive(stream).readBounded(6))).toBe("🌱é");
+    expect(await readVia(stream)).toBe("🌱é");
     expect(stream.listenerCount("data")).toBe(0);
   });
 
-  test("refuses excess bytes without waiting for EOF and releases the stream", async () => {
-    let sent = false;
-    const stream = new Readable({read() {if (!sent) {sent = true; this.push(Buffer.from("🌱é"));}}});
-    try {
-      const exit = await Effect.runPromiseExit(makeLive(stream).readBounded(4));
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const error = Option.getOrNull(Cause.findErrorOption(exit.cause));
-        expect(error).toBeInstanceOf(ValidationError);
-        expect(error).toMatchObject({_tag: "ValidationError", detail: "Standard input exceeds 4 bytes", suggestion: "pipe a smaller input"});
-      }
-      expect(stream.readableEnded).toBe(false);
-      expect(stream.isPaused()).toBe(true);
-      for (const event of ["data", "end", "error"]) expect(stream.listenerCount(event)).toBe(0);
-    } finally {stream.destroy();}
+  test("keeps input past the retired client cap whole for the server to judge", async () => {
+    const chunk = Buffer.alloc(64 * 1024, "x");
+    const chunks = Array.from({length: RETIRED_INPUT_CAP_BYTES / chunk.byteLength + 1}, () => chunk);
+    const text = await readVia(Readable.from(chunks));
+    expect(Buffer.byteLength(text)).toBe(RETIRED_INPUT_CAP_BYTES + chunk.byteLength);
   });
 
   test("reports an input failure without exposing its contents", async () => {
     const stream = new Readable({read() {this.destroy(new Error("private pipe contents"));}});
-    const exit = await Effect.runPromiseExit(makeLive(stream).readBounded(4));
+    const exit = await Effect.runPromiseExit(makeLive(stream).readAll());
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const error = Option.getOrNull(Cause.findErrorOption(exit.cause));
@@ -55,7 +48,7 @@ describe("bounded standard input", () => {
   test("releases a waiting input when the caller cancels", async () => {
     const stream = new Readable({read() {}});
     const controller = new AbortController();
-    const pending = Effect.runPromiseExit(makeLive(stream).readBounded(4), {signal: controller.signal});
+    const pending = Effect.runPromiseExit(makeLive(stream).readAll(), {signal: controller.signal});
     await Promise.resolve(); controller.abort();
     const exit = await pending;
     expect(Exit.isFailure(exit)).toBe(true);
@@ -66,7 +59,7 @@ describe("bounded standard input", () => {
   });
 });
 
-describe("Stdin.readBounded (makeLive)", () => {
+describe("Stdin.readAll (makeLive)", () => {
   test("drains buffered chunks to the full utf8 text", async () => {
     const stream = Readable.from([Buffer.from("agt_t"), Buffer.from("abc\n")]);
     expect(await readVia(stream)).toBe("agt_tabc\n");
@@ -105,7 +98,7 @@ describe("Stdin layer factories", () => {
       Effect.provide(
         Effect.gen(function* () {
           const s = yield* Stdin;
-          const text = yield* s.readBounded(1024);
+          const text = yield* s.readAll();
           return { text, isTTY: s.isTTY };
         }),
         stdinFromStreamLayer(stream),

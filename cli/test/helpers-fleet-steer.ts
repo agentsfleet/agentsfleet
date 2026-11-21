@@ -19,8 +19,8 @@ import { withAuthedStateDir } from "./helpers-cli-state.ts";
 export const WS_ID = "01910000-0000-7000-8000-000000a6e711";
 export const FLEET_ID = "01910000-0000-7000-8000-000000a67e57";
 export const TOKEN = "test.jwt.token";
-export const EVENT_ID = "01910000-0000-7000-8000-000000a6e712";
-export const OTHER_EVENT_ID = "01910000-0000-7000-8000-000000a6e713";
+export const TURN_ID = "01910000-0000-7000-8000-000000a6e712";
+export const OTHER_TURN_ID = "01910000-0000-7000-8000-000000a6e713";
 export const API_URL = "https://api.steer-test.local";
 export const DASHBOARD_URL = "https://dash.steer-test.local";
 // Call-order markers shared with the failure-path suite: fakes push these so
@@ -30,7 +30,7 @@ export const CALL_POST = "post-message";
 // Shared across the steer suites (single declaration site).
 export const POST = "POST";
 export const SINGLE_MESSAGE = "go";
-export const postedEvent = <T>(): T => ({ event_id: EVENT_ID } as T);
+export const postedTurn = <T>(): T => ({ turn_id: TURN_ID } as T);
 
 export const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_steer" }, fn);
@@ -55,7 +55,7 @@ export const makeRecorder = (): Recorder => ({ stdout: [], stderr: [], requests:
 
 export const makeLayer = (
   rec: Recorder,
-  httpReply: <T>(input: HttpRequestInput) => T = <T>() => ({ event_id: EVENT_ID } as T),
+  httpReply: <T>(input: HttpRequestInput) => T = <T>() => ({ turn_id: TURN_ID } as T),
   jsonMode = false,
   outputOverrides?: Partial<OutputShape>,
 ) =>

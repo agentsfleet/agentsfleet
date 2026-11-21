@@ -1,17 +1,17 @@
-//! Write one complete interpretation through the already locked source and fleet slot.
+//! Write one complete interpretation through the already locked source and fleet thread.
 
-use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskLease, Tasks, guard::LeaseRow};
+use super::super::{PreparedItem, PreparedPlan, TaskBinding, TaskRun, Tasks, guard::RunRow};
 use super::{input, insert, prepare::Wake, source::Source};
 use crate::Result;
 use af_core::id::Uuid7;
-use afd_admission::PreparedAdmission;
+use afd_turns::PreparedTurn;
 
 pub(super) struct Writer<'a> {
     pub tasks: &'a Tasks,
-    pub current: &'a LeaseRow,
+    pub current: &'a RunRow,
     pub source: &'a Source,
     pub plan: &'a PreparedPlan,
-    pub lease: TaskLease<'a>,
+    pub run: TaskRun<'a>,
 }
 
 pub(super) struct Written {
@@ -25,7 +25,7 @@ impl Writer<'_> {
         connection: &mut sqlx::PgConnection,
         identities: &mut [TaskBinding],
         continuations: &[Option<Wake>],
-        prepared: Vec<Option<PreparedAdmission<'_>>>,
+        prepared: Vec<Option<PreparedTurn<'_>>>,
     ) -> Result<Written> {
         let mut queued = Vec::new();
         let mut bound = self.current.task_id.clone();
@@ -57,13 +57,13 @@ impl Writer<'_> {
             if should_queue {
                 let admitted = self
                     .tasks
-                    .admissions
+                    .turns
                     .stage(
                         connection,
                         continuation.ok_or(super::super::TaskRefusal::StaleState)?,
                     )
                     .await?;
-                insert::admission(connection, &admitted.stored.id, binding).await?;
+                insert::bind_turn(connection, &admitted.stored.id, binding).await?;
                 queued.push(ordinal);
             }
         }
@@ -93,8 +93,8 @@ impl Writer<'_> {
         binding.applies_here = active;
         binding.task_generation = Some(1);
         if active {
-            insert::lease(connection, self.lease, binding).await?;
-            insert::admission(connection, &self.plan.source_admission_id, binding).await?;
+            insert::run(connection, self.run, binding).await?;
+            insert::bind_turn(connection, &self.plan.source_turn_id, binding).await?;
             bound.clone_from(&binding.task_id);
         }
         Ok(!active)

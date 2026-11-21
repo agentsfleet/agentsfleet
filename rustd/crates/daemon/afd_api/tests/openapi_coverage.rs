@@ -17,14 +17,14 @@
 //! # Why path × method and not paths
 //!
 //! Two route identities can share a template and differ only by method — the
-//! runner's memory hydrate and capture are one path (`afd_http::route::runner`).
+//! runner's memory load and capture are one path (`afd_http::route::runner`).
 //! A comparison over paths alone would pass while a verb went missing, which is
 //! most of what this exists to catch.
 #![cfg(all(feature = "test-util", feature = "openapi"))]
 
 use std::collections::BTreeSet;
 
-use afd_api::Route;
+use afd_http::route::Route;
 
 /// One operation, as both sides of the comparison spell it.
 type Operation = (String, String);
@@ -47,7 +47,7 @@ fn served() -> BTreeSet<Operation> {
 /// `PathItem` carries one `Option<Operation>` per verb rather than a map, so
 /// the five this daemon serves are read by name. HEAD, OPTIONS and TRACE are
 /// absent from the list for the same reason they are absent from
-/// [`afd_api::route::Verb`]: the daemon has never served them, and a document
+/// [`afd_http::route::Verb`]: the daemon has never served them, and a document
 /// that published one would be describing a route that answers 405.
 fn documented() -> BTreeSet<Operation> {
     afd_api::openapi::document()

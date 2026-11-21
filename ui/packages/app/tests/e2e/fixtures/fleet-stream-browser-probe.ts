@@ -18,7 +18,7 @@ const releases: Array<() => void> = [];
 function render(): void {
   const snapshot = getSnapshot(FLEET);
   const current = snapshot.connectionStatus;
-  reply?.render(createElement(RestartBrowserProbe, {events: snapshot.events}));
+  reply?.render(createElement(RestartBrowserProbe, {turns: snapshot.turns}));
   if (transitions.at(-1) !== current) transitions.push(current);
   if (status) status.textContent = current;
   if (history) history.textContent = JSON.stringify(transitions);

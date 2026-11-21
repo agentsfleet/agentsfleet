@@ -1,7 +1,7 @@
-//! `PATCH|DELETE /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}` —
+//! `PATCH|DELETE /v1/runners/me/runs/{run_id}/schedules/{schedule_id}` —
 //! a fleet changing or retiring a schedule it made.
 //!
-//! Both prove the lease, then that the schedule is the fleet's and was made by
+//! Both prove the run, then that the schedule is the fleet's and was made by
 //! it (`super::schedule::fleet_owned`), then reconcile exactly as the tenant
 //! surface does. A delete does not delete: it sets `deleting` and pushes, and
 //! the row goes once `QStash` agrees — see `afd_cron::DesiredStatus::Deleting`.
@@ -22,7 +22,7 @@ use super::schedule::{
     refused_for, schedule_id, standing, write_fence,
 };
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Services};
+use crate::services::{FleetSchedules as _, RunnerPlane};
 
 /// A fleet retired one of its schedules.
 const EVENT_DELETED: &str = "fleet_schedule_deleted";
@@ -30,7 +30,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
 /// Changes a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
-    path = af_wire::paths::LEASE_SCHEDULE,
+    path = af_wire::paths::RUN_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_update_schedule",
     summary = "Change a schedule the fleet made",
@@ -40,7 +40,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
         "`UZ-SCHED-010`. Repeating the same body is safe.",
     ),
     request_body = SchedulePatchRequest<'_>,
-    params(afd_http::openapi::path::LeaseSchedule),
+    params(afd_http::openapi::path::RunSchedule),
     responses(
         (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -50,35 +50,35 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease_id, schedule_id_raw)): Path<(String, String)>,
+    Path((run_id, schedule_id_raw)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let request: SchedulePatchRequest<'_> =
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
+    let run = standing(&*services, runner.id(), &run_id, request.fencing_token).await?;
     checked_for(
-        &lease,
+        &run,
         validate::Fields {
             expression: request.cron.as_deref(),
             timezone: request.timezone.as_deref(),
             message: request.message.as_deref(),
         },
     )?;
-    fleet_owned(&*services, &lease, &schedule).await?;
+    fleet_owned(&*services, &run, &schedule).await?;
     let message = match request.message.as_deref() {
-        Some(text) => Some(masked(&*services, &lease, text).await?),
+        Some(text) => Some(masked(&*services, &run, text).await?),
         None => None,
     };
-    let guard = write_fence(runner.id(), &lease_id, request.fencing_token)?;
+    let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
     let changed = services
         .schedules()
         .change_guarded(
-            &lease.fleet_id,
+            &run.fleet_id,
             &schedule,
             Change {
                 cron: request.cron.as_deref(),
@@ -91,14 +91,14 @@ pub(crate) async fn update<D: Services>(
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
-        .map_err(refused_for(&lease))?;
+        .map_err(refused_for(&run))?;
     held_or(changed, StatusCode::OK, services.now())
 }
 
 /// Retires a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = af_wire::paths::LEASE_SCHEDULE,
+    path = af_wire::paths::RUN_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_delete_schedule",
     summary = "Delete a schedule the fleet made",
@@ -107,7 +107,7 @@ pub(crate) async fn update<D: Services>(
         "when complete, or 200 with the schedule while removal is pending. User-created ",
         "schedules return `UZ-SCHED-010`.",
     ),
-    params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::Fence),
+    params(afd_http::openapi::path::RunSchedule, afd_http::openapi::query::Fence),
     responses(
         (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 204, description = afd_http::openapi::NO_CONTENT),
@@ -117,22 +117,22 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn remove<D: Services>(
+pub(crate) async fn remove<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease_id, schedule_id_raw)): Path<(String, String)>,
+    Path((run_id, schedule_id_raw)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let schedule = schedule_id(&schedule_id_raw)?;
     let token = fence(query.as_deref())?;
     let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
-    fleet_owned(&*services, &lease, &schedule).await?;
-    let guard = write_fence(runner.id(), &lease_id, token)?;
+    let run = standing(&*services, runner.id(), &run_id, token).await?;
+    fleet_owned(&*services, &run, &schedule).await?;
+    let guard = write_fence(runner.id(), &run_id, token)?;
     let removed = services
         .schedules()
         .change_guarded(
-            &lease.fleet_id,
+            &run.fleet_id,
             &schedule,
             Change {
                 desired_status: Some(DesiredStatus::Deleting),
@@ -143,11 +143,11 @@ pub(crate) async fn remove<D: Services>(
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
-        .map_err(refused_for(&lease))?;
+        .map_err(refused_for(&run))?;
     // Logged once the row is gone: a delete QStash has not yet agreed to
     // answers the row, and a superseded one a conflict.
     if matches!(removed, Some(Reconciled::Removed)) {
-        log_written(&lease, &schedule, EVENT_DELETED);
+        log_written(&run, &schedule, EVENT_DELETED);
     }
     held_or(removed, StatusCode::OK, services.now())
 }

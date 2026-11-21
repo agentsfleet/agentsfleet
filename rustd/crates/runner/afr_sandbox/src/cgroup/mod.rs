@@ -1,16 +1,16 @@
-//! One cgroup v2 per lease: its limits, its two leaves, and the kill that ends
+//! One cgroup v2 per run: its limits, its two leaves, and the kill that ends
 //! its whole tree.
 //!
-//! The lease's cgroup holds the limits and no process. Bubblewrap and the
+//! The run's cgroup holds the limits and no process. Bubblewrap and the
 //! executor run in its `sandbox` leaf; every process the executor starts runs
 //! in its `tenant` leaf, whose memory limit sits [`SANDBOX_MEMORY_RESERVE_BYTES`]
-//! below the lease's, so the kernel's out-of-memory killer chooses among
+//! below the run's, so the kernel's out-of-memory killer chooses among
 //! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
 //! where a manager's processes and the subtree it hands out never share a leaf.
 //!
 //! Plain writes to the control files the kernel publishes. `cgroups-rs` does
 //! v2 and `cgroup.kill`, but carries a D-Bus client for its systemd manager;
-//! the few files a lease needs do not justify that.
+//! the few files a run needs do not justify that.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ const MEMORY_HIGH: &str = "memory.high";
 const TENANT_HIGH_SHARE: u64 = 8;
 /// The most headroom that share may take. Write-back needs only so much room,
 /// and with no swap every byte inside the band is throttled, so an eighth of a
-/// large lease would slow allocation-heavy work across a wide slow band.
+/// large run would slow allocation-heavy work across a wide slow band.
 const TENANT_HIGH_HEADROOM_MAX_BYTES: u64 = 128 * 1024 * 1024;
 /// Swap a cgroup may use; zero, so a runaway is killed rather than paged out.
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
@@ -91,13 +91,13 @@ pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
 /// limit: room for the executor's resident set and bubblewrap's.
 pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// One lease's cgroup. Removing it is the only cleanup, and it consumes it.
+/// One run's cgroup. Removing it is the only cleanup, and it consumes it.
 #[derive(Debug)]
-pub struct LeaseCgroup {
+pub struct RunCgroup {
     dir: PathBuf,
 }
 
-impl LeaseCgroup {
+impl RunCgroup {
     /// Makes the cgroup `name` under the delegated `root`, writes `limits`,
     /// and splits it into its two leaves.
     ///
@@ -151,9 +151,9 @@ impl LeaseCgroup {
         Ok(())
     }
 
-    /// Hands the lease's controllers to its two leaves, caps the tenant
-    /// leaf's memory below the lease's, and throttles it a bounded headroom
-    /// below that cap. The lease's own swap limit already covers both leaves.
+    /// Hands the run's controllers to its two leaves, caps the tenant
+    /// leaf's memory below the run's, and throttles it a bounded headroom
+    /// below that cap. The run's own swap limit already covers both leaves.
     fn split(&self, limits: &Limits) -> Result<()> {
         let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
         self.write(SUBTREE_CONTROL, &enable.join(" "))?;

@@ -4,7 +4,7 @@ use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 
 use af_core::{
     env::EnvSource,
-    timing::{LeaseClock, LeaseSettings},
+    timing::{RunClock, RunSettings},
 };
 use garde::Validate;
 
@@ -14,38 +14,36 @@ use super::{Fault, Refusal};
 #[derive(Debug, Clone)]
 pub struct RuntimeSettings {
     pub(crate) operations: Arc<OperationalSettings>,
-    pub(crate) clock: LeaseClock,
+    pub(crate) clock: RunClock,
     pub(crate) resume_from_checkpoint: bool,
     pub(crate) fallback: Duration,
-    pub(crate) claims: NonZeroUsize,
+    pub(crate) assignments: NonZeroUsize,
     pub(crate) requests: NonZeroUsize,
 }
 
 #[derive(Debug)]
 pub(crate) struct OperationalSettings {
     pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
-    pub(crate) inference: af_inference::Timeouts,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
     pub(crate) maintenance: crate::config::maintenance::MaintenancePolicy,
     pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
-    pub(crate) authoring: afd_authoring::turn_policy::TurnPolicy,
 }
 
 impl RuntimeSettings {
     pub(crate) fn announce(&self) {
-        let (lease_ttl_seconds, resume_from_checkpoint, offer_fallback_seconds) = (
+        let (run_ttl_seconds, resume_from_checkpoint, assign_fallback_seconds) = (
             self.clock.ttl().as_secs(),
             self.resume_from_checkpoint,
             self.fallback.as_secs(),
         );
-        let (max_concurrent_claims, max_in_flight_requests) =
-            (self.claims.get(), self.requests.get());
+        let (max_concurrent_assignments, max_in_flight_requests) =
+            (self.assignments.get(), self.requests.get());
         tracing::info!(
             event = "daemon_configuration_loaded",
-            lease_ttl_seconds,
+            run_ttl_seconds,
             resume_from_checkpoint,
-            offer_fallback_seconds,
-            max_concurrent_claims,
+            assign_fallback_seconds,
+            max_concurrent_assignments,
             max_in_flight_requests
         );
     }
@@ -54,14 +52,14 @@ impl RuntimeSettings {
 #[derive(Validate)]
 struct Readings {
     #[garde(skip)]
-    clock: LeaseClock,
+    clock: RunClock,
     #[garde(custom(|value: &NonZeroUsize, &()| maximum::<64>(value.get())))]
-    claims: NonZeroUsize,
+    assignments: NonZeroUsize,
     #[garde(custom(|value: &NonZeroUsize, &()| maximum::<65_536>(value.get())))]
     requests: NonZeroUsize,
     #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
     fallback_seconds: u64,
-    /// A lapsed lease must be found and billed within one lease lifetime of lapsing.
+    /// A lapsed run must be found and billed within one run lifetime of lapsing.
     #[garde(range(min = 1, max = self.clock.ttl().as_secs().saturating_sub(1)))]
     expired_work_interval_seconds: u64,
 }
@@ -69,7 +67,7 @@ struct Readings {
 #[cfg(test)]
 pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, Refusal> {
     let operations = operations(crate::config::maintenance::Maintenance::default())?;
-    configured(env, operations, LeaseSettings::default())
+    configured(env, operations, RunSettings::default())
 }
 
 /// Default operational policy around the given maintenance settings.
@@ -79,8 +77,6 @@ pub(crate) fn operations(
 ) -> Result<OperationalSettings, Refusal> {
     Ok(OperationalSettings {
         tasks: afd_fleet::task::policy::TaskPolicy::default(),
-        authoring: afd_authoring::turn_policy::TurnPolicy::default(),
-        inference: af_inference::Timeouts::DEFAULT,
         outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
         maintenance: crate::config::maintenance::MaintenancePolicy::resolve(maintenance)
             .map_err(|report| refused("maintenance", report.to_string()))?,
@@ -93,29 +89,29 @@ pub(crate) fn operations(
 pub(crate) fn configured(
     env: &(impl EnvSource + ?Sized),
     operations: OperationalSettings,
-    mut lease: LeaseSettings,
+    mut run: RunSettings,
 ) -> Result<RuntimeSettings, Refusal> {
-    lease.ttl_seconds = value(env, "AGENTSFLEET_LEASE_TTL_SECONDS", lease.ttl_seconds)?;
-    let lease = garde::Unvalidated::new(lease)
+    run.ttl_seconds = value(env, "AGENTSFLEET_RUN_TTL_SECONDS", run.ttl_seconds)?;
+    let run = garde::Unvalidated::new(run)
         .validate()
-        .map_err(|report| refused("runner.lease", report.to_string()))?;
+        .map_err(|report| refused("runner.run", report.to_string()))?;
     let defaults = afd_gateway::RecoverySettings::default();
     let readings = garde::Unvalidated::new(Readings {
-        clock: LeaseClock::new(&lease),
-        claims: value(
+        clock: RunClock::new(&run),
+        assignments: value(
             env,
-            "AGENTSFLEET_RECOVERY_CONCURRENT_CLAIMS",
-            defaults.max_concurrent_claims,
+            "AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS",
+            defaults.max_concurrent_assignments,
         )?,
         requests: value(
             env,
             "AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS",
-            afd_api::DEFAULT_MAX_IN_FLIGHT,
+            afd_http::admission::DEFAULT_MAX_IN_FLIGHT,
         )?,
         fallback_seconds: value(
             env,
-            "AGENTSFLEET_OFFER_FALLBACK_SECONDS",
-            defaults.offer_fallback.as_secs(),
+            "AGENTSFLEET_ASSIGN_FALLBACK_SECONDS",
+            defaults.assign_fallback.as_secs(),
         )?,
         expired_work_interval_seconds: operations.maintenance.loops.expired_work.interval_seconds,
     })
@@ -126,7 +122,7 @@ pub(crate) fn configured(
         clock: readings.clock,
         resume_from_checkpoint: value(env, "AGENTSFLEET_RESUME_FROM_CHECKPOINT", false)?,
         fallback: Duration::from_secs(readings.fallback_seconds),
-        claims: readings.claims,
+        assignments: readings.assignments,
         requests: readings.requests,
     })
 }

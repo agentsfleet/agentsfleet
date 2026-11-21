@@ -27,9 +27,7 @@ use crate::error::{ErrorKind, Result, missing};
 pub use self::digest::canonical_digest;
 pub use self::document::ConfigDocument;
 pub(crate) use self::document::RUNTIME_BLOCK;
-#[cfg(feature = "openapi")]
-pub use self::edit::narrow_edit_batch;
-pub use self::edit::{ConfigOp, EditBatch, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS};
+pub use self::edit::{ConfigOp, EditBatch, InstructionEdit};
 #[cfg(feature = "openapi")]
 pub use self::schema::DefinitionSchema;
 
@@ -37,27 +35,18 @@ pub use self::schema::DefinitionSchema;
 pub const DEFINITION_SCHEMA_VERSION: u8 = 1;
 /// Explicit policy meaning included in every review and content digest.
 pub const POLICY_SEMANTICS: &str = "fleet-setup-v1";
-/// Maximum description, in characters.
-pub const MAX_DESCRIPTION_CHARS: usize = 32 * 1024;
-/// Maximum edited instructions, in characters.
-pub const MAX_INSTRUCTIONS_CHARS: usize = 32 * 1024;
-/// First generated instructions are deliberately smaller than later edits.
-pub const MAX_INITIAL_INSTRUCTIONS_CHARS: usize = 12 * 1024;
+/// Maximum description, in characters: [`af_validate::DESCRIPTION_MAX_CHARS`].
+pub const MAX_DESCRIPTION_CHARS: usize = af_validate::DESCRIPTION_MAX_CHARS;
 /// The widest character in UTF-8, which is how stored text is addressed.
 const UTF8_MAX_CHAR_BYTES: usize = 4;
-/// The widest one character serializes to in JSON: a `\u00XX` control escape.
-const JSON_MAX_CHAR_BYTES: usize = 6;
-/// Room the configuration takes in an envelope beside the two texts.
-const CONFIG_ALLOWANCE_BYTES: usize = 64 * 1024;
 /// The largest UTF-8 byte offset an instruction edit can name: instructions
-/// at their character cap, every character at its widest.
-pub const MAX_INSTRUCTION_OFFSET: usize = UTF8_MAX_CHAR_BYTES * MAX_INSTRUCTIONS_CHARS;
-/// Maximum Definition or edit envelope before allocating its parsed tree.
-///
-/// Both texts at their character caps in the widest JSON encoding, plus the
-/// configuration, so the envelope never refuses what the text bounds admit.
-pub const MAX_DEFINITION_BYTES: usize =
-    JSON_MAX_CHAR_BYTES * (MAX_DESCRIPTION_CHARS + MAX_INSTRUCTIONS_CHARS) + CONFIG_ALLOWANCE_BYTES;
+/// at the text ceiling, [`af_validate::TEXT_MAX_CHARS`], every character at
+/// its widest.
+pub const MAX_INSTRUCTION_OFFSET: usize = UTF8_MAX_CHAR_BYTES * af_validate::TEXT_MAX_CHARS;
+/// Maximum Definition or edit envelope before allocating its parsed tree:
+/// [`af_validate::DEFINITION_MAX_BYTES`], the bound the runner's setup report
+/// reads too.
+pub const MAX_DEFINITION_BYTES: usize = af_validate::DEFINITION_MAX_BYTES;
 /// The `description` key, named once for the refusal that cites it.
 const FIELD_DESCRIPTION: &str = "description";
 
@@ -90,16 +79,10 @@ struct Raw {
     #[serde(default, deserialize_with = "crate::optional::present")]
     #[garde(inner(length(chars, max = MAX_DESCRIPTION_CHARS), custom(af_validate::rules::nul_free)))]
     description: Option<String>,
-    #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, max = af_validate::TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     instructions_md: String,
     #[garde(skip)]
     config: Value,
-}
-
-#[derive(garde::Validate)]
-struct InitialInstructions<'a> {
-    #[garde(length(chars, max = MAX_INITIAL_INSTRUCTIONS_CHARS))]
-    text: &'a str,
 }
 
 impl Definition {
@@ -154,28 +137,16 @@ impl Definition {
         self.config.runtime()
     }
 
-    /// Checks the stronger boundary for Save and explicit Plugin publication.
+    /// Checks the stronger boundary for Save.
     ///
     /// # Errors
-    /// Editing may be empty; publication and runnable setup may not.
+    /// Editing may be empty; a saved, runnable setup may not.
     pub fn validate_for_save(&self) -> Result<()> {
         if self.instructions_md.trim().is_empty() {
             return Err(invalid(
                 "instructions are required before Save or publication",
             ));
         }
-        Ok(())
-    }
-
-    /// Proves the smaller text bound for the model's first generated candidate.
-    ///
-    /// # Errors
-    /// Refuses initial instructions beyond the shared generation allowance.
-    pub fn validate_initial_generation(&self) -> Result<()> {
-        garde::Unvalidated::new(InitialInstructions {
-            text: self.instructions_md(),
-        })
-        .validate()?;
         Ok(())
     }
 }

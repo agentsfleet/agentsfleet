@@ -1,10 +1,10 @@
-//! Where a placeholder's value comes from, for one lease.
+//! Where a placeholder's value comes from, for one run.
 //!
 //! A static credential is read from `secrets_map`. A mintable one is minted
 //! through the daemon the first time a request needs it and kept until shortly
 //! before it expires, so three calls needing `github` mint once. The cache is
-//! a plain map the lease owns: a lease's calls run one after another, lent
-//! the lease by `&mut`, so no two can race to mint and no lock is needed.
+//! a plain map the run owns: a run's calls run one after another, lent
+//! the run by `&mut`, so no two can race to mint and no lock is needed.
 //!
 //! Every minted token joins one masker, built with the same [`Scrub`] the loop
 //! applies, so a response echoing a token reads `«secret:NAME.token»` before
@@ -29,26 +29,26 @@ const REFRESH_MARGIN: Duration = Duration::from_secs(30);
 /// The event a mint logs under.
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
 
-/// One lease's credentials.
+/// One run's credentials.
 #[derive(Debug)]
 pub(crate) struct Vault<'run> {
-    lease_id: &'run str,
+    run_id: &'run str,
     mint: &'run dyn Mint,
     clock: &'run dyn Clock,
     minted: HashMap<String, Minted>,
     /// Tokens a re-mint replaced. The upstream may honour one until it
-    /// expires, so the masker keeps every token this lease was handed.
+    /// expires, so the masker keeps every token this run was handed.
     retired: Vec<(String, Minted)>,
     /// Masks every minted token; `None` until the first mint.
     masker: Option<Scrub>,
 }
 
 impl<'run> Vault<'run> {
-    /// Lease `lease_id`'s vault, minting through `mint`, its tokens expiring
+    /// Run `run_id`'s vault, minting through `mint`, its tokens expiring
     /// against `clock`.
-    pub(crate) fn new(lease_id: &'run str, mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
+    pub(crate) fn new(run_id: &'run str, mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
         Self {
-            lease_id,
+            run_id,
             mint,
             clock,
             minted: HashMap::new(),
@@ -117,9 +117,9 @@ impl<'run> Vault<'run> {
         )
         .map_err(raise::unmaskable)?;
         let expires_at = minted.expires_at();
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let event = EVENT_CREDENTIAL_MINTED;
-        tracing::info!(lease_id, integration, %expires_at, event);
+        tracing::info!(run_id, integration, %expires_at, event);
         if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
             self.retired.push((name.to_owned(), replaced));
         }

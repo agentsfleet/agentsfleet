@@ -17,11 +17,11 @@ describe("fleet-stream-registry — pagination", () => {
     fetchSpy.mockResolvedValueOnce(
       pageWith(descRows(["evt_oldest"], MISSED_AT_MS), null),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual([
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual([
       "evt_seed",
       "evt_oldest",
       "evt_mid",
@@ -37,7 +37,7 @@ describe("fleet-stream-registry — pagination", () => {
     fetchSpy.mockResolvedValueOnce(
       pageWith(descRows(["evt_c"], MISSED_AT_MS), null),
     );
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     const first = queryOf(0);
@@ -59,7 +59,7 @@ describe("fleet-stream-registry — pagination", () => {
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_first_ever"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_first_ever"]);
     a();
   });
 
@@ -73,7 +73,7 @@ describe("fleet-stream-registry — pagination", () => {
         pageWith(descRows([`evt_${i}`], OUTAGE_UNREACHABLE_MS), `cursor_${i}`),
       );
     }
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     reconnect();
     await flushBackfill();
     expect(fetchSpy).toHaveBeenCalledTimes(MAX_PAGES);
@@ -92,12 +92,12 @@ describe("fleet-stream-registry — pagination", () => {
     );
     fetchSpy.mockResolvedValueOnce({ ok: false, status: 503 });
     fetchSpy.mockResolvedValueOnce(pageWith([], null));
-    const a = subscribe(WS, Z_A, [row({ event_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
+    const a = subscribe(WS, Z_A, [row({ turn_id: "evt_seed", created_at: new Date(SEED_AT_MS).toISOString() })], () => {});
     const es1 = reconnect();
     await flushBackfill();
     // Page 1's rows are merged (id-dedupe makes the retry idempotent), but the
     // watermark must NOT have advanced past the unrecovered remainder.
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toContain("evt_newest");
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toContain("evt_newest");
     reconnectAgain(es1);
     await flushBackfill();
     expect(queryOf(2).get("since")).toBe(SEED_SINCE_PARAM);
@@ -105,9 +105,9 @@ describe("fleet-stream-registry — pagination", () => {
     a();
   });
 
-  it("test_registry_backfill_empty_timeline_requests_recent — a reconnect with no last-seen event fetches the most-recent bounded page", async () => {
+  it("test_registry_backfill_empty_timeline_requests_recent — a reconnect with no last-seen turn fetches the most-recent bounded page", async () => {
     fetchSpy.mockResolvedValueOnce(
-      pageWith([row({ event_id: "evt_first_ever", created_at: new Date(SEED_AT_MS).toISOString() })]),
+      pageWith([row({ turn_id: "evt_first_ever", created_at: new Date(SEED_AT_MS).toISOString() })]),
     );
     const a = subscribe(WS, Z_A, NO_SEED, () => {});
     reconnect();
@@ -117,7 +117,7 @@ describe("fleet-stream-registry — pagination", () => {
     expect(url).not.toContain("since=");
     expect(url).not.toContain("cursor=");
     expect(url).toContain("limit=200");
-    expect(getSnapshot(Z_A).events.map((e) => e.id)).toEqual(["evt_first_ever"]);
+    expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_first_ever"]);
     a();
   });
 });

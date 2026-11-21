@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { type EventDetail, type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { NO_FACTS } from "@/lib/events/run-summary";
+import { type TurnDetail, type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { NO_FACTS } from "@/lib/turns/run-summary";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import {
   __resetRegistryForTests,
@@ -19,9 +19,9 @@ const WS = "ws_1";
 const FLEET = "fleet_a";
 const SEED_AT = Date.UTC(2026, 4, 15, 18, 30, 0);
 
-function row(over: Partial<EventDetail> = {}): EventDetail {
+function row(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "evt_seed",
+    turn_id: "evt_seed",
     fleet_id: FLEET,
     workspace_id: WS,
     actor: "cron:*",
@@ -35,24 +35,24 @@ function row(over: Partial<EventDetail> = {}): EventDetail {
     cost_nanos: null,
     failure_label: null,
     failure_detail: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: new Date(SEED_AT).toISOString(),
     updated_at: new Date(SEED_AT).toISOString(),
     ...over,
   };
 }
 
-function completion(over: Partial<Extract<LiveFrame, { kind: "event_complete" }>> = {}): LiveFrame {
+function completion(over: Partial<Extract<LiveFrame, { kind: "turn_complete" }>> = {}): LiveFrame {
   return {
-    kind: FRAME_KIND.EVENT_COMPLETE,
-    ...row({ event_id: "evt_live", tokens: 1200, created_at: new Date(SEED_AT + 60_000).toISOString() }),
+    kind: FRAME_KIND.TURN_COMPLETE,
+    ...row({ turn_id: "evt_live", tokens: 1200, created_at: new Date(SEED_AT + 60_000).toISOString() }),
     fleet_status: "active",
     pending_approvals: 0,
     ...over,
   };
 }
 
-function open(initial: EventDetail[] = [row()]) {
+function open(initial: TurnDetail[] = [row()]) {
   const release = subscribe(WS, FLEET, initial, () => {});
   const es = FakeEventSource.instances[0]!;
   return { release, emit: (frame: LiveFrame) => es.emit(frame) };
@@ -79,7 +79,7 @@ describe("fleet-stream-registry — fleet facts", () => {
 
   it("a completion folds both facts and the row's figures in", () => {
     const { release, emit } = open();
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     emit(completion({ fleet_status: "installing", pending_approvals: 2 }));
     const snap = getSnapshot(FLEET);
     expect(snap.fleet).toEqual({ status: "installing", pendingApprovals: 2 });
@@ -90,10 +90,10 @@ describe("fleet-stream-registry — fleet facts", () => {
   it("a gate frame moves the count and no row", () => {
     const { release, emit } = open();
     const before = getSnapshot(FLEET);
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "evt_seed", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "evt_seed", pending_approvals: 1 });
     const after = getSnapshot(FLEET);
     expect(after.fleet).toEqual({ status: null, pendingApprovals: 1 });
-    expect(after.events).toBe(before.events);
+    expect(after.turns).toBe(before.turns);
     expect(after.latest).toBe(before.latest);
     release();
   });
@@ -103,7 +103,7 @@ describe("fleet-stream-registry — fleet facts", () => {
     emit(completion({ fleet_status: "installing", pending_approvals: 1 }));
     reconcileServerFacts(FLEET, { status: "archived", pendingApprovals: 0 });
     expect(getSnapshot(FLEET).fleet).toEqual({ status: "archived", pendingApprovals: 0 });
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "e", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "e", pending_approvals: 1 });
     expect(getSnapshot(FLEET).fleet).toEqual({ status: "archived", pendingApprovals: 1 });
     release();
   });
@@ -117,7 +117,7 @@ describe("fleet-stream-registry — fleet facts", () => {
     const listener = vi.fn();
     const release = subscribe(WS, FLEET, [row()], listener);
     const es = FakeEventSource.instances[0]!;
-    es.emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "cron:*" });
+    es.emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*" });
     const woken = listener.mock.calls.length;
     es.emit(completion({ fleet_status: "installing", pending_approvals: 3 }));
     expect(listener.mock.calls.length).toBe(woken + 1);
@@ -130,10 +130,10 @@ describe("fleet-stream-registry — fleet facts", () => {
   it("only frames advance the facts sequence; a server render never does", () => {
     const { release, emit } = open();
     const before = getSnapshot(FLEET).factsSeq;
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "e", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "e", pending_approvals: 1 });
     expect(getSnapshot(FLEET).factsSeq).toBe(before + 1);
     // A frame that restates the facts is not a word spoken.
-    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g2", event_id: "e", pending_approvals: 1 });
+    emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g2", turn_id: "e", pending_approvals: 1 });
     expect(getSnapshot(FLEET).factsSeq).toBe(before + 1);
     reconcileServerFacts(FLEET, { status: "archived", pendingApprovals: 0 });
     const landed = getSnapshot(FLEET).fleet;
@@ -150,10 +150,10 @@ describe("fleet-stream-registry — fleet facts", () => {
     const listener = vi.fn();
     const release = subscribe(WS, FLEET, [row()], listener);
     const es = FakeEventSource.instances[0]!;
-    es.emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "e", pending_approvals: 1 });
+    es.emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "e", pending_approvals: 1 });
     const woken = listener.mock.calls.length;
     const before = getSnapshot(FLEET);
-    es.emit({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "g", event_id: "e", status: "approved", resolved_by: "x", pending_approvals: 1 });
+    es.emit({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "g", turn_id: "e", status: "approved", resolved_by: "x", pending_approvals: 1 });
     expect(listener.mock.calls.length).toBe(woken + 1);
     expect(getSnapshot(FLEET).approvalsSeq).toBe(before.approvalsSeq + 1);
     expect(getSnapshot(FLEET).factsSeq).toBe(before.factsSeq);
@@ -165,18 +165,18 @@ describe("fleet-stream-registry — fleet facts", () => {
 describe("fleet-stream-registry — the newest figures", () => {
   it("keep their identity across chunks of a streaming reply", () => {
     const { release, emit } = open();
-    emit({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "evt_live", actor: "fleet", created_at: new Date(SEED_AT + 1).toISOString() });
+    emit({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "fleet", created_at: new Date(SEED_AT + 1).toISOString() });
     const opened = getSnapshot(FLEET).latest;
     expect(opened).toMatchObject({ status: "received", tokens: null });
-    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "Hel" });
-    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "evt_live", text: "lo" });
+    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_live", text: "Hel" });
+    emit({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "evt_live", text: "lo" });
     expect(getSnapshot(FLEET).latest).toBe(opened);
     release();
   });
 
   it("move when a backfill lands a newer terminal row", () => {
     const { release } = open();
-    reconcileServerRows(FLEET, [row({ event_id: "evt_missed", tokens: 7, created_at: new Date(SEED_AT + 5).toISOString() })]);
+    reconcileServerRows(FLEET, [row({ turn_id: "evt_missed", tokens: 7, created_at: new Date(SEED_AT + 5).toISOString() })]);
     expect(getSnapshot(FLEET).latest).toMatchObject({ tokens: 7 });
     release();
   });

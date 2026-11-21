@@ -1,4 +1,4 @@
-//! One host's renewals in one statement: each lease answered on
+//! One host's renewals in one statement: each run answered on
 //! its own, every write under its own fence, and the frame's statements
 //! counted.
 //!
@@ -8,58 +8,58 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::error_code::{ErrorCode, RUN_LEASE_EXCEEDED_MAX_RUNTIME, RUN_LEASE_LOST};
+use af_core::error_code::{ErrorCode, RUN_LOST};
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::report::RenewRequest;
 use af_wire::usage::LineKind;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
-use afd_fleet::lease::renew::Renewals;
+use afd_fleet::run::renew::Renewals;
 use jiff::Timestamp;
 
 use crate::report_seed::{Held, held_in};
 use crate::rows::Row;
 use crate::support::Fixtures;
 
-/// The seeded fleet's daily ceiling (`fleet_lease_reads.rs`).
+/// The seeded fleet's daily ceiling (`fleet_run_reads.rs`).
 pub(crate) const SEEDED_DAILY_NANOS: i64 = 1_000_000_000;
 
-/// The lease's runtime lines, as `(seq, runtime_ms)`.
+/// The run's runtime lines, as `(seq, runtime_ms)`.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
      WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
 /// One spend line on `fleet`, charged `nanos` now: what the fleet's budget reads.
 const SPEND: &str = "INSERT INTO billing.usage_lines \
-     (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id, \
+     (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
       provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
       cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
       output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at) \
-     VALUES (uuidv7(), 'fleet_lease', uuidv7(), $5, 0, $1, $2, $3, 'spend', uuidv7(), \
+     VALUES (uuidv7(), 'fleet_run', uuidv7(), $5, 0, $1, $2, $3, 'spend', uuidv7(), \
              'fixture', 'fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $4, now(), now())";
 
-/// Renews `leases` on `held`'s host in one frame, on a fresh lease service.
+/// Renews `runs` on `held`'s host in one frame, on a fresh run service.
 pub(crate) async fn frame(
     held: &Held,
-    leases: &[&Uuid7],
+    runs: &[&Uuid7],
     funds_due: bool,
 ) -> Vec<afd_fleet::Result<Timestamp>> {
-    frame_on(&held.fixtures.plane(), held, leases, funds_due).await
+    frame_on(&held.fixtures.plane(), held, runs, funds_due).await
 }
 
 /// [`frame`], on `plane`: a long-lived service keeps its caches between frames.
 async fn frame_on(
-    plane: &afd_fleet::lease::LeaseService,
+    plane: &afd_fleet::run::RunService,
     held: &Held,
-    leases: &[&Uuid7],
+    runs: &[&Uuid7],
     funds_due: bool,
 ) -> Vec<afd_fleet::Result<Timestamp>> {
     plane
         .renew_batch(Renewals {
             runner_id: &held.runner,
-            leases: leases
+            runs: runs
                 .iter()
-                .map(|lease| ((*lease).clone(), RenewRequest::default()))
+                .map(|run| ((*run).clone(), RenewRequest::default()))
                 .collect(),
             funds_due,
             now: held.now,
@@ -76,9 +76,9 @@ pub(crate) fn codes(answers: &[afd_fleet::Result<Timestamp>]) -> Vec<Option<Erro
         .collect()
 }
 
-async fn runtime_lines(held: &Held, lease: &Uuid7) -> Vec<(i64, i64)> {
+async fn runtime_lines(held: &Held, run: &Uuid7) -> Vec<(i64, i64)> {
     sqlx::query_as(RUNTIME_LINES)
-        .bind(lease)
+        .bind(run)
         .bind(LineKind::Runtime.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
         .await
@@ -103,43 +103,45 @@ pub(crate) async fn spend(
         .expect("the spend line writes");
 }
 
-// Value: protects=one statement renews a host's live leases and refuses the
-// rest each on its own; fails_when=a refused lease blocks or extends another,
-// or the frame costs more than its pre-read and statement once caches are warm;
-// why_new=renewal was about ten statements a lease; seam=none; no_claim=a
-// lease with a durable task, which keeps the per-lease path.
+// Value: protects=one statement renews a host's live runs, a run hours old
+// among them, and refuses the rest each on its own; fails_when=a refused run
+// blocks or extends another, a run is refused for its age, or the frame costs
+// more than its pre-read and statement once caches are warm; why_new=renewal
+// was about ten statements a run, and the 12-hour ceiling is gone (M253_003
+// §8); seam=none; no_claim=a run with a durable task, which keeps the per-run
+// path.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn host_batch_extends_live_refuses_fenced() {
     let held = held_in(Fixtures::create_isolated().await).await;
-    let reclaimed = held.hold_another().await;
-    let capped = held.hold_another().await;
+    let reassigned = held.hold_another().await;
+    let old = held.hold_another().await;
     held.fixtures
-        .lapse_holder(&reclaimed.lease, &reclaimed.fleet)
+        .lapse_holder(&reassigned.run, &reassigned.fleet)
         .await;
-    crate::seed::select_fleet(&held.leases, &held.spare, &reclaimed.fleet)
+    crate::seed::select_fleet(&held.runs, &held.spare, &reassigned.fleet)
         .await
-        .expect("the spare reclaims the lapsed fleet");
+        .expect("the spare is reassigned the lapsed fleet");
     held.fixtures
         .age(
-            Row::Lease(&capped.lease),
+            Row::Run(&old.run),
             "created_at",
-            af_core::timing::MAX_RUNTIME,
+            std::time::Duration::from_hours(13),
         )
         .await;
     held.run_a_slice().await;
-    let leases = [&held.issued.lease_id, &reclaimed.lease, &capped.lease];
+    let runs = [&held.issued.run_id, &reassigned.run, &old.run];
     // Warms the price and definition caches, so the counted frame is a
     // steady-state tick's.
     let plane = held.fixtures.plane();
-    let _warm = frame_on(&plane, &held, &leases, false).await;
+    let _warm = frame_on(&plane, &held, &runs, false).await;
     held.run_a_slice().await;
 
     let owner = held.fixtures.open(DbRole::Migrator).await;
     statements::install(&owner).await;
     let window = Counted::open(&owner).await;
     let log = Capture::install();
-    let answers = frame_on(&plane, &held, &leases, false).await;
+    let answers = frame_on(&plane, &held, &runs, false).await;
     let ran = window.close().await;
     let refusals: Vec<_> = log
         .events()
@@ -147,7 +149,7 @@ async fn host_batch_extends_live_refuses_fenced() {
         .filter(|line| line.field("event") == Some("renew_batch_refused"))
         .map(|line| {
             (
-                line.field("lease_id").map(str::to_owned),
+                line.field("run_id").map(str::to_owned),
                 line.field("verdict").map(str::to_owned),
             )
         })
@@ -156,26 +158,16 @@ async fn host_batch_extends_live_refuses_fenced() {
 
     assert_eq!(
         codes(&answers),
-        [
-            None,
-            Some(RUN_LEASE_LOST),
-            Some(RUN_LEASE_EXCEEDED_MAX_RUNTIME)
-        ],
-        "{answers:?}"
+        [None, Some(RUN_LOST), None],
+        "a run thirteen hours old renews: {answers:?}"
     );
     assert_eq!(
         refusals,
-        [
-            (
-                Some(reclaimed.lease.as_str().to_owned()),
-                Some("lost".to_owned())
-            ),
-            (
-                Some(capped.lease.as_str().to_owned()),
-                Some("max_runtime".to_owned())
-            ),
-        ],
-        "each refusal the per-lease path answers silently is named once"
+        [(
+            Some(reassigned.run.as_str().to_owned()),
+            Some("lost".to_owned())
+        )],
+        "each refusal the per-run path answers silently is named once"
     );
     let heads: Vec<String> = ran
         .statements()
@@ -184,54 +176,14 @@ async fn host_batch_extends_live_refuses_fenced() {
         .collect();
     assert_eq!(ran.total(), 2, "the pre-read and the statement: {heads:#?}");
     assert_eq!(
-        runtime_lines(&held, &held.issued.lease_id).await.len(),
+        runtime_lines(&held, &held.issued.run_id).await.len(),
         2,
         "two slices billed"
     );
     assert!(
-        runtime_lines(&held, &reclaimed.lease).await.is_empty(),
-        "the reclaimed lease bills nothing"
-    );
-    assert!(
-        runtime_lines(&held, &capped.lease).await.is_empty(),
-        "the capped lease bills nothing"
+        runtime_lines(&held, &reassigned.run).await.is_empty(),
+        "the reassigned run bills nothing"
     );
     owner.close().await;
     held.fixtures.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn single_and_batch_renewals_obey_the_saved_runtime_cap()
--> Result<(), Box<dyn std::error::Error>> {
-    let held = crate::report_seed::held().await;
-    let lease = &held.issued.lease_id;
-    sqlx::query("UPDATE runner.leases SET max_runtime_seconds=60, created_at=clock_timestamp()-interval '50 seconds' WHERE id=$1")
-        .bind(lease).execute(&mut *held.fixtures.database.acquire().await?).await?;
-    let started = held
-        .fixtures
-        .instant(Row::Lease(lease), "created_at")
-        .await
-        .ok_or("saved lease creation time")?;
-    let expected = af_core::clock::after(started, std::time::Duration::from_secs(60));
-    let renewed = crate::integration_renew_clamp::extend(
-        &held.leases,
-        lease,
-        &held.runner,
-        (&held.lease_key, &held.pricing),
-        held.now,
-    )
-    .await?;
-    assert_eq!(
-        crate::integration_renew_clamp::deadline(&renewed),
-        Some(expected)
-    );
-    let batch = crate::integration_renew_batch::frame(&held, &[lease], false)
-        .await
-        .into_iter()
-        .next()
-        .ok_or("one batch answer")??;
-    assert_eq!(batch, expected);
-    held.fixtures.cleanup().await;
-    Ok(())
 }

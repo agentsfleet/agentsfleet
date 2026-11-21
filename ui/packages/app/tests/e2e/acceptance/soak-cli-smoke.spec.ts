@@ -8,7 +8,7 @@ import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { ensureSecondWorkspace } from "./fixtures/seed";
 import { cliEnv, deleteCliKey, makeCliStateDir, mintCliKey, spawnAgentsfleet, writeCliState } from "./fixtures/cli-runner";
 import { clientFor } from "./fixtures/api-client";
-import { authoringModelRef } from "./fixtures/native-setup";
+import { setupModelRef } from "./fixtures/native-setup";
 import { draftHistory, runtimeHistory } from "./fixtures/soak-history";
 import { SOAK_FLEET_PREFIX, initialSetupMessage, runtimeMessage, setupMessage } from "./fixtures/soak-scenario";
 import { purgeFixtureFleet } from "./fixtures/teardown";
@@ -54,7 +54,7 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     const who = await spawnAgentsfleet(["--json", "whoami"], env);
     evidence.whoami = {exit: who.code, stdout: who.stdout.trim()};
     expect(who.code, who.stderr).toBe(0);
-    const model = await authoringModelRef({sessionJwt: key.key}, workspace);
+    const model = await setupModelRef({sessionJwt: key.key}, workspace);
 
     for (let index = 0; index < SETUP_TURNS; index++) {
       const input = index === 0 ? initialSetupMessage(name) : `For fleet ${name}: ${setupMessage(index, 1).text}`;
@@ -102,18 +102,18 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     for (let index = 0; index < RUNTIME_TURNS; index++) {
       const input = `For project ${name}: ${runtimeMessage(index + 1)}`;
       const turn: Turn = {stage: "runtime", turn: index + 1, input, sentAt: new Date().toISOString(),
-        reference: {fleet: evidence.fleet, event: null}};
+        reference: {fleet: evidence.fleet, turn: null}};
       turns.push(turn);
       const steered = await spawnAgentsfleet(["--json", "fleet", "steer", evidence.fleet!, input], env, TURN_TIMEOUT_MS);
       turn.exit = steered.code; turn.doneAt = new Date().toISOString();
       if (steered.code !== 0) turn.stderr = steered.stderr.slice(-4000);
       const rows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");
-      const event = rows.find((row) => Steered.safeParse(JSON.parse(row.request_json)).data?.message === input);
-      turn.reference.event = event?.event_id ?? null; turn.reply = event?.response_text ?? undefined; turn.state = event?.status;
+      const saved = rows.find((row) => Steered.safeParse(JSON.parse(row.request_json)).data?.message === input);
+      turn.reference.turn = saved?.turn_id ?? null; turn.reply = saved?.response_text ?? undefined; turn.state = saved?.status;
       expect(steered.code, `runtime turn ${index + 1} exit: ${steered.stderr}`).toBe(0);
-      expect(event?.status, `runtime turn ${index + 1}: ${event?.failure_label ?? ""}`).toBe("processed");
-      expect(event?.response_text?.trim().length, `runtime turn ${index + 1} reply text`).toBeGreaterThan(0);
-      console.log(JSON.stringify({cli: "runtime", turn: index + 1, event: event?.event_id, status: "PASS"}));
+      expect(saved?.status, `runtime turn ${index + 1}: ${saved?.failure_label ?? ""}`).toBe("processed");
+      expect(saved?.response_text?.trim().length, `runtime turn ${index + 1} reply text`).toBeGreaterThan(0);
+      console.log(JSON.stringify({cli: "runtime", turn: index + 1, turn_id: saved?.turn_id, status: "PASS"}));
     }
 
     // History keeps every input once, in order, with its own reply.
@@ -123,7 +123,7 @@ test("command line: 20 setup messages, save, 20 runtime messages", async () => {
     expect(setupRows.filter((row) => row.role === MESSAGE_ROLE.assistant)).toHaveLength(SETUP_TURNS);
     const runtimeRows = (await runtimeHistory(client, `${base}/fleets/${evidence.fleet}`)).filter((row) => row.event_type === "chat");
     expect(runtimeRows).toHaveLength(RUNTIME_TURNS);
-    expect(new Set(runtimeRows.map((row) => row.event_id)).size).toBe(RUNTIME_TURNS);
+    expect(new Set(runtimeRows.map((row) => row.turn_id)).size).toBe(RUNTIME_TURNS);
     evidence.verdict = "pass";
     passed = true;
   } catch (error) {

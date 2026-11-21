@@ -14,20 +14,17 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::liveness::Liveness;
-use afd_runner::sweep::retention::Retention;
 use jiff::Timestamp;
 
-/// Long before any retention window, and after the never-seen sentinel.
+/// Long ago, and after the never-seen sentinel.
 const OLD: Timestamp = Timestamp::constant(1, 0);
 /// Passes the lane's backlog may take to drain: far past any lane's runners
 /// over the liveness batch.
 const MAX_DRAIN_PASSES: usize = 64;
-static SWEEP_LANE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn liveness_and_retention_converge_real_runner_rows() {
-    let _lane = SWEEP_LANE.lock().await;
+async fn liveness_converges_real_runner_rows() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
 
@@ -43,14 +40,14 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     );
     assert_eq!(fixture.runner_state(&fixture.draining).await, "drained");
     assert!(
-        !fixture.slot_is_expired(&fixture.stale_fleet).await,
-        "silence never backdates a live slot"
+        !fixture.thread_is_expired(&fixture.stale_fleet).await,
+        "silence never backdates a live thread"
     );
     assert!(
-        !fixture.slot_is_expired(&fixture.cordoned_fleet).await,
+        !fixture.thread_is_expired(&fixture.cordoned_fleet).await,
         "operator policy leaves the live deadline alone"
     );
-    assert!(!fixture.slot_is_expired(&fixture.unknown_fleet).await);
+    assert!(!fixture.thread_is_expired(&fixture.unknown_fleet).await);
     assert_eq!(fixture.offline_events().await, 1);
     // The episode's instant reaches the operator API the way every other
     // instant does: RFC 3339, in the form jiff writes.
@@ -60,13 +57,6 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     // batch of other suites' stale rows; the repeat converges once they drain.
     converge(&liveness).await;
     assert_eq!(fixture.offline_events().await, 1);
-
-    let retention = Retention::new(fixture.database.clone());
-    let retained = retention.sweep().await.expect("retention sweeps real rows");
-    assert!(retained.changed >= 4);
-    assert!(!fixture.lease_exists(&fixture.reported_lease).await);
-    assert_eq!(fixture.lease_state(&fixture.unknown_lease).await, "expired");
-    assert!(!fixture.runner_event_exists(&fixture.old_event).await);
 
     fixture.cleanup().await;
 }
@@ -83,11 +73,9 @@ struct Fixture {
     stale_fleet: Uuid7,
     cordoned_fleet: Uuid7,
     unknown_fleet: Uuid7,
-    stale_lease: Uuid7,
-    cordoned_lease: Uuid7,
-    unknown_lease: Uuid7,
-    reported_lease: Uuid7,
-    old_event: Uuid7,
+    stale_run: Uuid7,
+    cordoned_run: Uuid7,
+    unknown_run: Uuid7,
 }
 
 impl Fixture {
@@ -104,11 +92,9 @@ impl Fixture {
             stale_fleet: mint_id(),
             cordoned_fleet: mint_id(),
             unknown_fleet: mint_id(),
-            stale_lease: mint_id(),
-            cordoned_lease: mint_id(),
-            unknown_lease: mint_id(),
-            reported_lease: mint_id(),
-            old_event: mint_id(),
+            stale_run: mint_id(),
+            cordoned_run: mint_id(),
+            unknown_run: mint_id(),
             lane,
         }
     }
@@ -130,9 +116,9 @@ impl Fixture {
             .await
     }
 
-    async fn slot_is_expired(&self, fleet: &Uuid7) -> bool {
+    async fn thread_is_expired(&self, fleet: &Uuid7) -> bool {
         self.scalar(
-            "SELECT lease_expires_at < statement_timestamp() FROM runner.slots WHERE fleet_id = $1",
+            "SELECT run_expires_at < statement_timestamp() FROM thread.threads WHERE fleet_id = $1",
             fleet,
         )
         .await
@@ -140,37 +126,16 @@ impl Fixture {
 
     async fn offline_events(&self) -> i64 {
         self.scalar(
-            "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
+            "SELECT count(*) FROM runner.history WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
     }
 
     async fn offline_last_seen(&self) -> String {
         self.scalar(
-            "SELECT metadata->>'last_seen_at' FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
+            "SELECT metadata->>'last_seen_at' FROM runner.history WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
-    }
-
-    async fn lease_exists(&self, lease: &Uuid7) -> bool {
-        self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.leases WHERE id = $1)",
-            lease,
-        )
-        .await
-    }
-
-    async fn lease_state(&self, lease: &Uuid7) -> String {
-        self.scalar("SELECT status FROM runner.leases WHERE id = $1", lease)
-            .await
-    }
-
-    async fn runner_event_exists(&self, event: &Uuid7) -> bool {
-        self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.events WHERE id = $1)",
-            event,
-        )
-        .await
     }
 
     async fn cleanup(self) {
@@ -190,78 +155,6 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
-}
-
-/// Past the retention window by a day: due for deletion on any pass.
-const AGED: Timestamp = Timestamp::constant(86_400, 0);
-
-/// Rows one retention cycle may delete from one table: its batch ceiling
-/// times its batch limit, as the module note on saturation states them.
-const CYCLE_CEILING: i64 = 8 * 1_000;
-
-/// Rows past [`CYCLE_CEILING`]: what is left for the following cycle.
-const LEFT_OVER: i64 = 500;
-
-/// A cycle that fills every batch it is allowed comes back in a minute; the
-/// one after, which drains what was left, idles again.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
-    // Every retention pass in the lane deletes from the same tables; the
-    // sweep above runs one, so the two take turns.
-    let _lane = SWEEP_LANE.lock().await;
-    let fixture = Fixture::create().await;
-    let mut connection = fixture.database.acquire().await.expect("an API connection");
-    afd_db::test_util::RunnerSeed::new(
-        &fixture.stale,
-        afd_runner::sql::RUNNER_STATUS_ACTIVE,
-        crate::rows::POLICY,
-    )
-    .at(OLD)
-    .insert(&mut *connection)
-    .await
-    .expect("the runner row seeds");
-    sqlx::query(
-        "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
-         SELECT uuidv7(), $1, 'lease_acquired', '{}', $2::timestamptz \
-         FROM generate_series(1, $3::bigint)",
-    )
-    .bind(&fixture.stale)
-    .bind(jiff_sqlx::ToSqlx::to_sqlx(AGED))
-    .bind(CYCLE_CEILING + LEFT_OVER)
-    .execute(&mut *connection)
-    .await
-    .expect("the aged backlog seeds");
-    drop(connection);
-
-    let retention = Retention::new(fixture.database.clone());
-    let idle = retention.interval();
-    let first = retention.sweep().await.expect("retention sweeps real rows");
-    assert!(
-        first.changed >= u64::try_from(CYCLE_CEILING).expect("a row count"),
-        "the cycle deleted its whole ceiling: {first:?}"
-    );
-    assert!(
-        retention.interval() < idle,
-        "a cycle that hit its ceiling comes back sooner"
-    );
-
-    retention
-        .sweep()
-        .await
-        .expect("retention sweeps the remainder");
-    assert_eq!(
-        fixture
-            .scalar::<i64>(
-                "SELECT count(*) FROM runner.events WHERE runner_id = $1",
-                &fixture.stale,
-            )
-            .await,
-        0,
-        "the second cycle drained what the first left"
-    );
-    assert_eq!(retention.interval(), idle, "a drained cycle idles again");
-    fixture.cleanup().await;
 }
 
 async fn converge(liveness: &Liveness) {

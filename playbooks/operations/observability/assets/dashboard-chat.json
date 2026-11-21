@@ -132,7 +132,7 @@
       "id": 41,
       "title": "Wait for runner",
       "type": "stat",
-      "description": "Event creation to lease issue for the selected fleet. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
+      "description": "Event creation to run issue for the selected fleet. Selected fleet; p95/p99 use at most 1,000 returned delivery spans. Missing segments have no samples. Timings overlap; do not add them.",
       "gridPos": {
         "x": 12,
         "y": 0,

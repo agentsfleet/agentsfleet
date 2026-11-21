@@ -7,7 +7,7 @@
 //!
 //! The crate under test does not depend on the runner plane, so neither does
 //! its suite. Seeding a tenant, a workspace and a fleet is three statements;
-//! borrowing them from `afd_fleet::tests` would put leases, money and policy
+//! borrowing them from `afd_fleet::tests` would put runs, money and policy
 //! behind a test about a person answering a question.
 //!
 //! # One tenant, and a workspace and fleet per test
@@ -38,7 +38,7 @@
 //! Each lane's connection to the integration lane's NATS carries activity
 //! frames and wake notifications, and a test subscribes through the same
 //! handle the inbox publishes on.
-//! Continuations commit to the admissions ledger; notification failure cannot
+//! Continuations commit to the turn ledger; notification failure cannot
 //! undo them.
 #![expect(
     clippy::expect_used,
@@ -100,7 +100,7 @@ pub(crate) struct Lane {
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
-    /// The bus the lane's inbox and admissions publish on, and the one its
+    /// The bus the lane's inbox and turns publish on, and the one its
     /// tests subscribe through.
     pub(crate) bus: Handle,
     pub(crate) inbox: Inbox,
@@ -137,7 +137,7 @@ impl Lane {
             inbox: Inbox::new(
                 pool.clone(),
                 bus.clone(),
-                afd_admission::Admissions::for_tests(pool.clone(), bus.clone()),
+                afd_turns::Turns::for_tests(pool.clone(), bus.clone()),
             ),
             _database: database,
             pool,

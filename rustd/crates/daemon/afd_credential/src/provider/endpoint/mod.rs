@@ -3,7 +3,7 @@
 //! The URL is hostile input. A tenant who can set it can aim the runner's
 //! egress at a loopback admin port, the cloud metadata service, or an internal
 //! RFC1918 host — Server-Side Request Forgery. This module refuses those at the
-//! RESOLVE boundary, before a lease exists, so a blocked endpoint never reaches
+//! RESOLVE boundary, before a run exists, so a blocked endpoint never reaches
 //! the engine or the egress allowlist.
 //!
 //! # Two rules, and they are one function

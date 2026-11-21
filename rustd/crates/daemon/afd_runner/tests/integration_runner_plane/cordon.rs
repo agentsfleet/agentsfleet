@@ -1,4 +1,4 @@
-//! Automatic quarantine is independent of operator intent and lease expiry.
+//! Automatic quarantine is independent of operator intent and run expiry.
 
 use af_core::{clock, id::Uuid7, timing::RUNNER_OFFLINE_AFTER};
 use af_crypto::entropy::Entropy;

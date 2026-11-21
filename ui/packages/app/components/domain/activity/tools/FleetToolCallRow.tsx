@@ -19,10 +19,10 @@ export type ToolCallRowProps = {
   result: unknown;
   running: boolean;
   settled: boolean;
-  eventId: string;
+  turnId: string;
 };
 
-export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, eventId}: ToolCallRowProps) {
+export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, turnId}: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
   const outcome = readToolResult(result);
   const state = cellState(outcome !== undefined, outcome?.status, running);
@@ -44,7 +44,7 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
         </AccordionContent>
       </AccordionItem>
     </Accordion>
-    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} eventId={eventId} callId={callId} name={name}
+    {shown && canShowAll ? <Suspense fallback={FULL_OUTPUT_LOADING}><FleetToolOutputDialog scope={scope} turnId={turnId} callId={callId} name={name}
       verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });

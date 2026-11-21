@@ -46,7 +46,7 @@ pub struct VerifiedCompletion {
 pub struct WaitMaintenance {
     /// Native status observations attempted.
     pub checked: u32,
-    /// One current wait consumed through ordinary admission.
+    /// One current wait consumed through an ordinary turn.
     pub woken: u32,
     /// Reads deferred or refused without an agent or model call.
     pub deferred: u32,

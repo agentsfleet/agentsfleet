@@ -20,7 +20,7 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
     CREATE TABLE billing.usage_lines ( \
       id uuid PRIMARY KEY, work_type text NOT NULL, work_id uuid NOT NULL, \
       kind text NOT NULL, seq bigint NOT NULL, tenant_id uuid NOT NULL, workspace_id uuid NOT NULL, \
-      fleet_id uuid, fleet_name text, event_id uuid, provider text NOT NULL, \
+      fleet_id uuid, fleet_name text, turn_id uuid, provider text NOT NULL, \
       model text NOT NULL, posture text NOT NULL, requested_at timestamptz NOT NULL, \
       input_token_count bigint NOT NULL, cached_input_token_count bigint NOT NULL, \
       cache_write_token_count bigint NOT NULL, cache_write_5m_token_count bigint NOT NULL, \
@@ -29,15 +29,17 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
       unpriced_token_count bigint NOT NULL, charged_nanos bigint NOT NULL, \
       settled_at timestamptz, created_at timestamptz NOT NULL)";
 
-/// One unsettled line, logged at the epoch. When `$5` is set its price
-/// reference is Postgres's `gen_random_uuid()`, a version-4 UUID the column
-/// takes and no identifier this daemon mints can be.
+/// One unsettled line, logged at the epoch, naming the fleet and turn a fleet
+/// line names; a line naming no turn is one no work this build writes. When
+/// `$5` is set its price reference is Postgres's `gen_random_uuid()`, a
+/// version-4 UUID the column takes and no identifier this daemon mints can be.
 const SEED_LINE: &str = "INSERT INTO billing.usage_lines \
-    (id, work_type, work_id, seq, kind, tenant_id, workspace_id, provider, model, posture, \
-     requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
-     cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
-     platform_model_price_id, unpriced_token_count, charged_nanos, created_at) \
-    VALUES ($6, $1, $2, 0, 'model', $3, $4, 'sweep', 'sweep', 'platform', \
+    (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, turn_id, provider, \
+     model, posture, requested_at, input_token_count, cached_input_token_count, \
+     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
+     output_token_count, runtime_ms, platform_model_price_id, unpriced_token_count, \
+     charged_nanos, created_at) \
+    VALUES ($6, $1, $2, 0, 'model', $3, $4, $7, $8, 'sweep', 'sweep', 'platform', \
             'epoch', 0, 0, 0, 0, 0, 0, 0, CASE WHEN $5 THEN gen_random_uuid() END, \
             0, 0, 'epoch')";
 
@@ -68,6 +70,8 @@ async fn seed(database: &Db, work_type: &str, foreign_price: bool) {
         .bind(mint_id())
         .bind(mint_id())
         .bind(foreign_price)
+        .bind(mint_id())
+        .bind(mint_id())
         .bind(mint_id())
         .execute(&mut *connection)
         .await
@@ -110,7 +114,7 @@ async fn a_foreign_line_is_skipped_by_the_read_and_the_pass() {
 async fn an_unreadable_debt_fails_the_pass() {
     let (lane, database) = private_log().await;
     for _ in 0..2 {
-        seed(&database, afd_billing::sql::work::FLEET_LEASE, false).await;
+        seed(&database, afd_billing::sql::work::FLEET_RUN, false).await;
     }
     sqlx::query("UPDATE billing.usage_lines SET charged_nanos = 9223372036854775807")
         .execute(&mut *database.acquire().await.expect("a private connection"))
@@ -138,7 +142,7 @@ async fn an_unreadable_debt_fails_the_pass() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_malformed_price_reference_refuses_the_read() {
     let (lane, database) = private_log().await;
-    seed(&database, afd_billing::sql::work::FLEET_LEASE, true).await;
+    seed(&database, afd_billing::sql::work::FLEET_RUN, true).await;
 
     let mut connection = database.acquire().await.expect("a private connection");
     let refused = unsettled(&mut *connection, READ_LIMIT, None)
@@ -160,7 +164,7 @@ async fn a_read_resumes_after_a_full_batch_and_then_laps() {
     const BATCH: i64 = 3;
     let (lane, database) = private_log().await;
     for _ in 0..=BATCH {
-        seed(&database, afd_billing::sql::work::FLEET_LEASE, false).await;
+        seed(&database, afd_billing::sql::work::FLEET_RUN, false).await;
     }
 
     let mut connection = database.acquire().await.expect("a private connection");

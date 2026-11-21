@@ -21,11 +21,11 @@
 
 use std::collections::HashSet;
 
-use afd_api::route::{
+use afd_http::route::{
     AdminRoute, AuthRoute, ConnectorRoute, FleetRoute, OpsRoute, RunnerOpsRoute, RunnerRoute,
     TenantRoute, WebhookRoute, WorkspaceRoute,
 };
-use afd_api::{Guard, Route, RouteClass};
+use afd_http::route::{Guard, Route, RouteClass};
 
 /// The route count the surface is pinned to. Stated as a number so the surface
 /// cannot quietly shed part of itself: a family that lost a route would
@@ -35,7 +35,7 @@ const PINNED_ROUTE_COUNT: usize = 76;
 /// Routes the pinned count includes that this daemon deliberately does not table.
 ///
 /// One. `/v1/fleets/streams`, dropped on purpose — see
-/// `afd_api::route::runner_ops` for the reasoning. Counted rather than
+/// `afd_http::route::runner_ops` for the reasoning. Counted rather than
 /// subtracted inline so the divergence has to be justified to change: another
 /// route going missing still fails this test, which is the whole reason the
 /// count is pinned.
@@ -56,7 +56,7 @@ const VERB_SPLITS: usize = 1;
 /// plus the two tool-call record routes: the runner's post of each call in
 /// full, and the read of one call — plus the two shared-memory routes: the
 /// runner's recall past its window, and a fleet's memory-access grants — plus
-/// the four lease routes a running fleet manages its own schedules and speaks
+/// the four run routes a running fleet manages its own schedules and speaks
 /// to its thread through: the schedules, one schedule, one schedule's runs, and
 /// the messages.
 ///
@@ -65,35 +65,35 @@ const VERB_SPLITS: usize = 1;
 /// dropped route.
 const POST_PORT_ADDITIONS: usize = 17;
 
-/// Routes authoring a fleet in chat added, counted apart for the reason
+/// Routes that set up a fleet in chat added, counted apart for the reason
 /// [`POST_PORT_ADDITIONS`] is.
 ///
-/// Fifteen: a creator's drafts, one draft, its messages, its Stop watermark and
-/// its setup-progress stream, and the models a draft may run on; the
+/// Fourteen: a creator's drafts, one draft, its messages and its
+/// setup-progress stream, and the models a draft may run on; the
 /// workspace's Plugin entries it owns, one entry, an entry's revisions and one
 /// pinned revision; applying a reviewed improvement to a fleet; and the four
-/// runner routes an authoring lease works through: its activity, its model
+/// runner routes a setup run works through: its activity, its model
 /// calls, its renewal and its report.
-const CHAT_AUTHORING_ADDITIONS: usize = 15;
+const CHAT_SETUP_ADDITIONS: usize = 14;
 
 /// Settled period reports, read from the daily usage rollup, and the removed
 /// per-activity charges route, kept so it answers `410 Gone`.
 const BILLING_REPORT_ADDITIONS: usize = 2;
 
 /// The creator-private editor read joins the current fleet with bounded history.
-const AUTHORING_CONTEXT_ADDITIONS: usize = 1;
+const SETUP_CONTEXT_ADDITIONS: usize = 1;
 
 /// The first-trigger Svix URL was replaced by the existing per-source route.
 const RETIRED_WEBHOOK_ROUTES: usize = 1;
 
-/// Current-work collection/detail and lease-scoped decision reservation/receipt.
+/// Current-work collection/detail and run-scoped decision reservation/receipt.
 const DURABLE_TASK_ADDITIONS: usize = 16;
 
-/// The lease route a running fleet claims the messages it receives through.
+/// The run route a running fleet is assigned the messages it receives through.
 const FOLD_ADDITIONS: usize = 1;
 /// Native runner sessions replace the polling routes as the runtime wiring completes.
 const RUNNER_STREAM_ADDITIONS: usize = 1;
-/// Six polling and lease-update routes plus four authoring routes now use native frames.
+/// Six polling and run-update routes plus four setup-run routes now use native frames.
 const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 
 /// The two platform catalogue routes and the redundant owned collection were retired.
@@ -103,24 +103,34 @@ const RETIRED_CATALOGUE_ROUTES: usize = 3;
 const TENANT_RUNNER_ADDITIONS: usize = 5;
 
 /// A fleet steering another fleet, and reading the workspace's fleets and one
-/// fleet's events, through the lease it runs.
+/// fleet's events, through the run it runs.
 const FLEET_TO_FLEET_ADDITIONS: usize = 3;
+
+/// Stop on a draft's turn. A fleet turn's Stop is a `PATCH` on the
+/// turn route it already reads, so it adds a verb and no route.
+const STOP_ADDITIONS: usize = 1;
+
+/// The workspace's four Plugin routes — its entries, one entry, an entry's
+/// revisions and one revision — went with Plugins.
+const RETIRED_PLUGIN_ROUTES: usize = 4;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
     + POST_PORT_ADDITIONS
-    + CHAT_AUTHORING_ADDITIONS
+    + CHAT_SETUP_ADDITIONS
     + BILLING_REPORT_ADDITIONS
-    + AUTHORING_CONTEXT_ADDITIONS
+    + SETUP_CONTEXT_ADDITIONS
     + DURABLE_TASK_ADDITIONS
     + FOLD_ADDITIONS
     + RUNNER_STREAM_ADDITIONS
     + TENANT_RUNNER_ADDITIONS
     + FLEET_TO_FLEET_ADDITIONS
+    + STOP_ADDITIONS
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
-    - RETIRED_CATALOGUE_ROUTES;
+    - RETIRED_CATALOGUE_ROUTES
+    - RETIRED_PLUGIN_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -218,8 +228,8 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
         streams,
         vec![
             Route::Workspace(WorkspaceRoute::DraftStream),
-            Route::Workspace(WorkspaceRoute::EventsStream),
-            Route::Fleet(FleetRoute::EventsStream),
+            Route::Workspace(WorkspaceRoute::TurnsStream),
+            Route::Fleet(FleetRoute::TurnsStream),
             Route::Runner(RunnerRoute::Stream),
         ],
         "a route joined the stream class. That moves it off the request \
@@ -243,7 +253,7 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
 fn test_ownership_is_checked_exactly_where_the_path_names_a_workspace() {
     for route in Route::all() {
         let meta = route.meta();
-        let addressed = meta.template.contains(afd_api::route::WORKSPACE_PARAMETER);
+        let addressed = meta.template.contains(afd_http::route::WORKSPACE_PARAMETER);
         assert_eq!(
             meta.ownership.is_checked(),
             addressed,

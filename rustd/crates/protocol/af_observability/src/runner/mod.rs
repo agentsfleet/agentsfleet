@@ -10,15 +10,14 @@
 //! or a hostile one, produces unbounded distinct label values, and a metric
 //! registry that grew a series per value would consume memory until the process
 //! died — with no request ever failing to explain why. So the table has a fixed
-//! capacity, and everything past it accumulates into ONE overflow series
-//! (Dimension 6.4).
+//! capacity, and everything past it accumulates into ONE overflow series.
 //!
 //! Overflow keeps the reason and the outcome and loses only WHICH runner: a
 //! deployment past four thousand distinct runners has an operational problem
 //! that per-runner attribution would not help with, and the failure totals stay
 //! correct either way.
 //!
-//! # The overflow spelling, settled (M181 §3)
+//! # The overflow spelling, settled
 //!
 //! This module used to defer the overflow series' NAME to the milestone that
 //! configures the metrics pipeline. That milestone is M181, and the answer is
@@ -104,13 +103,13 @@ pub const MAX_SERIES: usize = 4096;
 struct Counters {
     /// When this runner was last heard from.
     last_seen: LastSeen,
-    /// How many leases it is believed to hold.
+    /// How many runs it is believed to hold.
     ///
-    /// Best effort, and knowingly: a lease abandoned by a dead runner expires
+    /// Best effort, and knowingly: a run abandoned by a dead runner expires
     /// by the clock with no report to decrement against, so a crashed host's
     /// gauge stays high until the process restarts. The liveness sweeper's row
     /// is the authority; this is a hint next to it.
-    active_leases: AtomicI64,
+    active_runs: AtomicI64,
 }
 
 /// The per-runner metric families this process holds.
@@ -126,7 +125,7 @@ pub struct RunnerMetrics {
     /// before it writes — which is what keeps a slow publisher from blocking a
     /// fast one, and what makes the write path lock-free in the common case.
     ///
-    /// Sharded rather than one map behind one lock: every lease poll, beat and
+    /// Sharded rather than one map behind one lock: every run poll, beat and
     /// release looks a runner up here, so the table is read from every request
     /// task in the process at once, and admitting a new runner took a lock
     /// over the WHOLE table to insert one key. Nothing is ever removed, which
@@ -197,24 +196,24 @@ impl RunnerMetrics {
         }
     }
 
-    /// Records that a runner took a lease.
-    pub fn leased(&self, runner_id: &str) {
+    /// Records that a runner took a run.
+    pub fn held(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_add(1, Ordering::Relaxed);
+            counters.active_runs.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     /// Records that a runner gave one back.
     pub fn released(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_sub(1, Ordering::Relaxed);
+            counters.active_runs.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
     /// How many distinct runners currently hold a series.
     ///
-    /// Never above [`MAX_SERIES`], which is the property Dimension 6.4 asks
-    /// for and the reason this is public.
+    /// Never above [`MAX_SERIES`], which is the property the table's capacity
+    /// exists for and the reason this is public.
     #[must_use]
     pub fn series_count(&self) -> usize {
         self.series.len()

@@ -40,9 +40,9 @@ use std::sync::Arc;
 
 use crate::harness;
 
-use afd_api::Route;
-use afd_api::route::Verb;
 use afd_api::router::unlayered_mount;
+use afd_http::route::Route;
+use afd_http::route::Verb;
 use axum::Router;
 use http::StatusCode;
 

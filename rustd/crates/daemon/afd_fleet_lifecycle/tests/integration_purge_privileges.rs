@@ -13,9 +13,9 @@
 //!
 //! # Statements, then the purge itself
 //!
-//! The delete runs two statements — the live-lease delete and the delete of
+//! The delete runs two statements — the live-run delete and the delete of
 //! `fleet.fleets` — and every other child, memory included, cascades from that row
-//! (schema/2100 for memory). The first two tests drive them under
+//! (`afd_db/schema/2100` for memory). The first two tests drive them under
 //! `SET ROLE api_runtime`: one that both run, one that memory refuses
 //! `api_runtime` outright, which is why the purge leaves memory to the cascade. Neither proves `delete_locked` works, because each runs the
 //! statements itself.
@@ -52,8 +52,8 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 
 /// The regression: the purge's own statements, in order, under the real role.
 ///
-/// The live-lease delete needs DELETE on `runner.leases` and the fleet delete
-/// needs DELETE on `fleet.fleets` (schema/1500); withholding either fails here.
+/// The live-run delete needs DELETE on `thread.runs` and the fleet delete
+/// needs DELETE on `fleet.fleets` (`afd_db/schema/1500`); withholding either fails here.
 #[tokio::test]
 #[ignore = "needs the lane's Postgres"]
 async fn the_purge_statements_all_run_as_api_runtime() {
@@ -69,15 +69,15 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         .expect("the probe transaction must open");
     as_api_runtime(&mut connection).await;
 
-    let leases = sqlx::query(statements::DELETE_ACTIVE_LEASES)
+    let runs = sqlx::query(statements::DELETE_ACTIVE_RUNS)
         .bind(&fleet)
-        .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
         .execute(&mut *connection)
         .await;
     assert!(
-        leases.is_ok(),
-        "api_runtime must hold DELETE on runner.leases: {:?}",
-        leases.err()
+        runs.is_ok(),
+        "api_runtime must hold DELETE on thread.runs: {:?}",
+        runs.err()
     );
     let deleted = sqlx::query(statements::DELETE_FLEET)
         .bind(fleet)
@@ -122,7 +122,7 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
 
     let failure = refused.expect_err(
         "api_runtime reached memory without assuming memory_runtime — the fence \
-         in schema/1010 is gone, or the login role holds pg_write_all_data",
+         in afd_db/schema/1010 is gone, or the login role holds pg_write_all_data",
     );
     let text = failure.to_string();
     assert!(

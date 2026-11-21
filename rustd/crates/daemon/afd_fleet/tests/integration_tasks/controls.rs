@@ -15,7 +15,7 @@ async fn pause_resume_and_cancel_preserve_progress_and_enqueue_only_real_transit
 async fn control(case: &Case) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let bindings = tasks
-        .bind(case.lease(), &case.plan("controlled-goals", 3))
+        .bind(case.run(), &case.plan("controlled-goals", 3))
         .await
         .expect("initial goals");
     let task = bindings

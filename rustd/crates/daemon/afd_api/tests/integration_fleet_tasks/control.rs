@@ -104,7 +104,7 @@ async fn refusals(router: &axum::Router, fixture: &Tasks<'_>, path: &str, pause:
     )
     .await;
     assert_eq!(missing.status(), StatusCode::PRECONDITION_REQUIRED);
-    assert_eq!(crate::harness::code_of(missing).await, "UZ-AUTHOR-004");
+    assert_eq!(crate::harness::code_of(missing).await, "UZ-SETUP-004");
     for invalid in ["*", "W/\"weak\"", "\"stale\"", "\"a\", \"b\""] {
         let response = send_with_headers(
             router,
@@ -273,11 +273,13 @@ pub(super) async fn queued(fixture: &Tasks<'_>) -> i64 {
         .acquire()
         .await
         .expect("continuation read");
-    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
-        .bind(&fixture.base.fleet)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("native work queue count")
+    sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND producer IS NOT NULL",
+    )
+    .bind(&fixture.base.fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("native work queue count")
 }
 
 pub(super) async fn read_task(

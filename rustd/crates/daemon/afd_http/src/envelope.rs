@@ -160,7 +160,7 @@ impl ProblemResponse {
         Self {
             review_digest: Some(digest.into()),
             ..Self::conflict(
-                af_core::error_code::AUTHORING_REVIEW,
+                af_core::error_code::SETUP_REVIEW,
                 detail,
                 request_id,
                 "review_required",

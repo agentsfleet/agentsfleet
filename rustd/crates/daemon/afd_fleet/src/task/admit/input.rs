@@ -39,7 +39,7 @@ pub(super) async fn wake(
     }
     let id = item.existing_task().ok_or(TaskRefusal::InvalidTarget)?;
     let origin: Origin = fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         sqlx::query_as(include_str!("sql/input_origin.sql"))
             .bind(id)
             .bind(&scope.fleet_id)
@@ -79,7 +79,7 @@ pub(super) async fn wake(
 
 pub(super) async fn accept(
     connection: &mut PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     item: &PreparedItem,
     binding: &mut TaskBinding,
     source: &Source,

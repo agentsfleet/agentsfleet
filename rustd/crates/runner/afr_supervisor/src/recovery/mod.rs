@@ -46,14 +46,14 @@ use af_wire::task::{CheckpointPlan, DecisionTaskVersion};
 #[derive(Debug)]
 pub(super) struct Session<'a> {
     plane: &'a ControlPlane,
-    lease: &'a Uuid7,
+    run: &'a Uuid7,
     workspace: &'a Uuid7,
     fence: u64,
     task: DecisionTaskVersion,
     plan: CheckpointPlan,
     activity_id: String,
     progress: &'a mut progress::Progress,
-    transfers: transfer::Transfers,
+    transfers: Transfers,
     stop: &'a tokio_util::sync::CancellationToken,
 }
 

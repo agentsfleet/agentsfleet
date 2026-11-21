@@ -53,7 +53,7 @@ impl Daemon {
                 } else {
                     counted2.fetch_add(1, Ordering::SeqCst);
                 }
-                tower::service_fn(|request: Request<Incoming>| async move {
+                tower::service_fn(async |request: Request<Incoming>| {
                     Ok::<_, Infallible>(Response::new(Outgoing::new(request.into_body())))
                 })
             },
@@ -202,7 +202,7 @@ async fn a_daemon_that_returns_after_a_refused_outage_is_reached_over_http3() ->
 #[tokio::test]
 async fn a_connect_after_http3_failed_and_http2_connected_skips_http3_without_a_datagram() -> Proof
 {
-    let mut daemon = NativeDaemon::serve_idle(healthy(), |_frame| async {}).await?;
+    let mut daemon = NativeDaemon::serve_idle(healthy(), async |_frame| {}).await?;
     let relay = daemon.tcp_only().await?;
     let config = StreamConfig {
         endpoint: Endpoint::parse(&relay.url)?,

@@ -14,7 +14,7 @@
 # The toolbox lands in the runner's incoming directory, and the runner admits it
 # at boot: it verifies the manifest's signature against the key it is built
 # with, stages the image and mounts it. A host without an admitted toolbox
-# refuses every lease, so a deploy that lacks one stops before it writes
+# refuses every run, so a deploy that lacks one stops before it writes
 # anything to the host, as does every other refusal (see main).
 #
 # At most one deploy runs per host: main() takes a non-blocking flock and exits
@@ -22,7 +22,7 @@
 # — deploy_test.sh relies on that to exercise the functions directly.
 #
 # The runner holds zero datastore credentials, so an abrupt stop is safe: the
-# control plane reclaims its in-flight lease (see drain_runner).
+# control plane reclaims its in-flight run (see drain_runner).
 
 set -euo pipefail
 

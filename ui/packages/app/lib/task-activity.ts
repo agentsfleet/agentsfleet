@@ -6,7 +6,7 @@ const label = v.pipe(v.string(), v.minLength(1), v.maxLength(256));
 const byteCount = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(68_719_476_736));
 const progress = v.object({
   sequence: v.optional(v.pipe(v.number(), v.safeInteger(), v.minValue(0))),
-  activity_id: identity, task_id: v.nullable(identity), source_admission_id: v.nullable(identity),
+  activity_id: identity, task_id: v.nullable(identity), source_turn_id: v.nullable(identity),
   operation: v.picklist(["intent", "goal", "capture", "restore"]),
   phase: v.picklist(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
   provider: v.nullable(label), model: v.nullable(label), completed: count, total: v.nullable(count),

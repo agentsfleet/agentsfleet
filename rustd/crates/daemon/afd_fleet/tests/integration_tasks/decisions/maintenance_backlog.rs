@@ -7,7 +7,7 @@ use sqlx::Connection as _;
 
 use super::{
     super::fixture::{Case, exercise},
-    fixture::{Decisions, lock_slot, policy},
+    fixture::{Decisions, lock_thread, policy},
     maintenance::{due, state},
     maintenance_fairness::{due_after_scan, extra_unissued},
 };
@@ -55,8 +55,8 @@ async fn busy_passes(
 ) -> (DecisionMaintenanceCursor, [Uuid7; 2]) {
     let database = &fixture.case.held.fixtures.database;
     let mut connection = database.acquire().await.expect("busy oldest fleet");
-    let mut blocker = connection.begin().await.expect("native slot owner");
-    let _pid = lock_slot(&mut blocker, fixture.case).await;
+    let mut blocker = connection.begin().await.expect("native thread owner");
+    let _pid = lock_thread(&mut blocker, fixture.case).await;
     let mut cursor = DecisionMaintenanceCursor::default();
     let first = fixture
         .tasks

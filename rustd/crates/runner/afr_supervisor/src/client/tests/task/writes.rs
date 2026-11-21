@@ -2,12 +2,12 @@
 use super::*;
 
 fn binding() -> Value {
-    json!({"fencing_token":FENCE,"source_admission_id":ID,"accepted_revision_id":ID,
+    json!({"fencing_token":FENCE,"source_turn_id":ID,"accepted_revision_id":ID,
         "plan_digest":"a".repeat(64),"message_decision_call_id":EFFECT,
         "items":[{"proposed":{"source_start":0,"source_end":5,"action":"conversation","task_id":null,"title":"Reply","interpretation":"Answer the question","target":null},"decision_call_id":null}]})
 }
 fn receipt() -> Value {
-    json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_admission_id":ID,
+    json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_turn_id":ID,
         "plan_digest":"a".repeat(64),"item_id":ID,"task":{"task_id":ID,"generation":7},
         "mode":"answered","response_text":"Private source answer"})
 }
@@ -26,16 +26,16 @@ async fn typed_bindings_and_receipts_preserve_complete_native_request_and_replay
         request(Method::POST, "input-receipts", receipt(), answered.clone()),
     ])
     .await;
-    let lease = Uuid7::parse(ID).unwrap();
+    let run = Uuid7::parse(ID).unwrap();
     let result = server
         .plane
-        .task_bindings(&lease, &serde_json::from_value(binding()).unwrap())
+        .task_bindings(&run, &serde_json::from_value(binding()).unwrap())
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(result).unwrap(), bound);
     let result = server
         .plane
-        .task_input_receipt(&lease, &serde_json::from_value(receipt()).unwrap())
+        .task_input_receipt(&run, &serde_json::from_value(receipt()).unwrap())
         .await
         .unwrap();
     assert_eq!(serde_json::to_value(result).unwrap(), answered);
@@ -81,9 +81,6 @@ async fn a_native_publication_refusal_is_not_redispatched_or_reinterpreted() {
         .await
         .unwrap_err();
     assert_eq!(failure.refusal_status(), Some(409));
-    assert_eq!(
-        failure.refusal_code(),
-        Some(af_core::error_code::RUN_LEASE_LOST)
-    );
+    assert_eq!(failure.refusal_code(), Some(af_core::error_code::RUN_LOST));
     server.finish();
 }

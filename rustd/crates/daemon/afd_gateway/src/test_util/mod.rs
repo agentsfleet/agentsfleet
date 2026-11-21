@@ -1,11 +1,11 @@
-//! In-process gateway sessions for local measurement and fixtures.
+//! In-process gateway connections for local measurement and fixtures.
 //!
 //! The measured gateway keeps its production cache, authority, dispatch and frame writers.
 //! Listener authentication, the replica registry and scheduler have separate native tests.
 
-use crate::session::{
-    OfferMode, OfferOutcome, SchedulingState, SessionHandle, SessionServices,
-    cache::LeaseCache,
+use crate::connection::{
+    AssignMode, AssignOutcome, ConnectionHandle, ConnectionServices, SchedulingState,
+    cache::RunCache,
     io::{self, IncomingFrame, StreamWriters},
     liveness::Liveness,
     opening::allowed,
@@ -15,8 +15,8 @@ use crate::{Gateway, Result, error::ErrorKind};
 use af_core::{id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_stream::{Budget, OwnedFrame, Reader};
 use af_wire::{
-    lease::AcceptedKinds,
     protocol::{StreamKind, Up},
+    run::AcceptedKinds,
 };
 use afd_auth::directory::Digest;
 use std::{collections::BTreeMap, num::NonZeroU64, sync::Arc};
@@ -29,9 +29,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 /// A local caller drives real gateway operations without network or background probes.
-/// Dropping the session cancels and aborts its owned frame writers.
-pub struct Session {
-    services: Arc<SessionServices>,
+/// Dropping the connection cancels and aborts its owned frame writers.
+pub struct RunnerConnection {
+    services: Arc<ConnectionServices>,
     readers: BTreeMap<StreamKind, Reader<DuplexStream>>,
     budget: Budget,
     requests: Arc<RequestTracker>,
@@ -39,16 +39,16 @@ pub struct Session {
     revision: u64,
 }
 
-impl std::fmt::Debug for Session {
+impl std::fmt::Debug for RunnerConnection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Session")
+        f.debug_struct("RunnerConnection")
             .field("runner", &self.services.handle.runner)
             .finish_non_exhaustive()
     }
 }
 
-impl Session {
-    /// Acquire the enrolled identity and rebuild its real lease targets before measurement.
+impl RunnerConnection {
+    /// Acquire the enrolled identity and rebuild its real run targets before measurement.
     ///
     /// # Errors
     /// Preserves ownership, database and frame-assembly failures.
@@ -67,12 +67,12 @@ impl Session {
                 .await?,
         )?;
         let authority = allowed(dependencies.runners.confirm_connection(proposed).await?)?;
-        let cache = LeaseCache::rebuild(&dependencies.database, &runner).await?;
+        let cache = RunCache::rebuild(&dependencies.database, &runner).await?;
         let stop = CancellationToken::new();
         let budget = Budget::default();
         let pipes = Pipes::new(&stop, &budget)?;
         let handle = handle(&authority, credits, stop);
-        let services = Arc::new(SessionServices::connected(
+        let services = Arc::new(ConnectionServices::connected(
             gateway.clone(),
             handle,
             authority,
@@ -80,7 +80,7 @@ impl Session {
             pipes.writers,
             accepted,
         ));
-        let mut session = Self {
+        let mut connection = Self {
             services,
             readers: pipes.readers,
             budget,
@@ -88,46 +88,48 @@ impl Session {
             workers: pipes.workers,
             revision: 0,
         };
-        session.ready(credits).await?;
-        Ok(session)
+        connection.ready(credits).await?;
+        Ok(connection)
     }
 
-    /// Advertise capacity through the production revision and observed-offer checks.
+    /// Advertise capacity through the production revision and observed-assignment checks.
     ///
     /// # Errors
     /// Refuses exhausted revisions or invalid readiness frames.
     pub async fn ready(&mut self, credits: usize) -> Result<()> {
         self.revision = self.revision.checked_add(1).ok_or(ErrorKind::Protocol)?;
         let revision = NonZeroU64::new(self.revision).ok_or(ErrorKind::Protocol)?;
-        let observed_offers = self.services.handle.snapshot.lock().offers_sent;
+        let observed_assignments = self.services.handle.snapshot.lock().assignments_sent;
         self.send(&Up::Ready {
             credits,
             revision,
-            observed_offers,
+            observed_assignments,
         })
         .await
     }
 
-    /// Run one production offer pass entry, returning its charged encoded offer.
+    /// Run one production assignment pass entry, returning its charged encoded assignment.
     ///
     /// # Errors
     /// Preserves issue and frame delivery failures.
-    pub async fn offer(&mut self) -> Result<Option<OwnedFrame>> {
+    pub async fn assign(&mut self) -> Result<Option<OwnedFrame>> {
         let services = Arc::clone(&self.services);
         let reader = self
             .readers
             .get_mut(&StreamKind::Work)
             .ok_or(ErrorKind::Protocol)?;
-        let offered = services.offer(OfferMode::Ordinary);
+        // Boxed: the assignment's future is the whole placement, and every
+        // fixture that awaits this one would otherwise carry it inline.
+        let mut assigned = Box::pin(services.assign(AssignMode::Ordinary));
         let receive = reader.next();
-        tokio::pin!(offered, receive);
+        tokio::pin!(receive);
         tokio::select! {
-            result = &mut offered => {
-                if result? == OfferOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
+            result = &mut assigned => {
+                if result? == AssignOutcome::Issued { Ok(Some(receive.await?.ok_or(ErrorKind::Closed)?)) } else { Ok(None) }
             }
             frame = &mut receive => {
                 let frame = frame?.ok_or(ErrorKind::Closed)?;
-                if offered.await? != OfferOutcome::Issued { return Err(ErrorKind::Protocol.into()); }
+                if assigned.await? != AssignOutcome::Issued { return Err(ErrorKind::Protocol.into()); }
                 Ok(Some(frame))
             }
         }
@@ -184,21 +186,21 @@ impl Session {
         self.shutdown().await;
     }
 
-    /// Cancel and join writers while retaining the caller's session allocation.
+    /// Cancel and join writers while retaining the caller's connection allocation.
     pub async fn shutdown(&mut self) {
         self.services.handle.stop.cancel();
         self.workers.shutdown().await;
     }
 }
 
-impl Drop for Session {
+impl Drop for RunnerConnection {
     fn drop(&mut self) {
         self.services.handle.stop.cancel();
         self.workers.abort_all();
     }
 }
 
-/// No registry runs in this measurement; the session still owns its bounded writers.
+/// No registry runs in this measurement; the connection still owns its bounded writers.
 struct Pipes {
     readers: BTreeMap<StreamKind, Reader<DuplexStream>>,
     writers: StreamWriters,
@@ -236,18 +238,18 @@ fn handle(
     authority: &afd_runner::capacity::authority::Authority,
     credits: usize,
     stop: CancellationToken,
-) -> Arc<SessionHandle> {
+) -> Arc<ConnectionHandle> {
     let (commands, _) = mpsc::channel(1);
-    let (claims, _) = mpsc::channel(1);
-    Arc::new(SessionHandle {
+    let (passes, _) = mpsc::channel(1);
+    Arc::new(ConnectionHandle {
         runner: authority.runner().clone(),
-        connection: authority.connection().clone(),
+        connection_id: authority.connection().clone(),
         stop,
         drain: CancellationToken::new(),
         liveness: Liveness::default(),
         superseded: CancellationToken::new(),
-        offers: Notify::new(),
-        claims,
+        assignments: Notify::new(),
+        passes,
         recovery_scan: parking_lot::Mutex::default(),
         rechecks: Notify::new(),
         commands,
@@ -255,11 +257,11 @@ fn handle(
             ready: false,
             degraded: false,
             credits,
-            offers_sent: 0,
-            offers_seen: 0,
+            assignments_sent: 0,
+            assignments_seen: 0,
             ready_revision: None,
             held: Vec::new(),
-            last_offer: Instant::now(),
+            last_assignment: Instant::now(),
             recovery_pending: None,
         }),
     })

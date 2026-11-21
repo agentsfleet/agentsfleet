@@ -9,7 +9,7 @@ use afd_auth::{credential::Presented, directory::Digest};
 use http::{HeaderMap, request::Parts};
 
 use super::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
-use crate::{handler::Refusal, route::RouteMeta, services::Services};
+use crate::{handler::Refusal, route::RouteMeta, services::Shared};
 
 /// The initial middleware proves the bearer; session transactions retain only its digest.
 #[derive(Clone)]
@@ -60,19 +60,19 @@ impl AuthenticatedRunnerStream {
 /// A native connection proves continuity; the common registry proves a new bearer.
 #[derive(Debug)]
 pub enum ConnectionCredentials {
-    /// No session has authenticated on this connection yet.
+    /// No runner has authenticated on this connection yet.
     Bearer,
     /// A secondary stream belongs to the connection's already proved runner.
-    Session {
+    Bound {
         /// Runner already authenticated on this physical connection.
         runner: Runner,
-        /// Secondary stream and session checked by its connection owner.
+        /// Secondary stream checked by its connection owner.
         kind: AuthenticatedRunnerStream,
     },
 }
 
 /// A refused stream already carries its HTTP problem response.
-pub type ConnectionAuthenticationResult = core::result::Result<ConnectionCredentials, Refusal>;
+pub type ConnectionAuthenticationResult = Result<ConnectionCredentials, Refusal>;
 
 /// Implemented by the native connection owner, independent of HTTP route dispatch.
 pub trait RunnerConnectionAuthentication: Send + Sync + std::fmt::Debug + 'static {
@@ -119,14 +119,14 @@ impl<D> Clone for RunnerStreamAuthentication<D> {
     }
 }
 
-impl<D: Services> RequestAuthentication for RunnerStreamAuthentication<D> {
+impl<D: Shared> RequestAuthentication for RunnerStreamAuthentication<D> {
     async fn authenticate(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let Some(native) = parts.extensions.get::<NativeRunnerConnection>().cloned() else {
             return self.initial(parts, route).await;
         };
         match native.0.credentials(&parts.headers) {
             Ok(ConnectionCredentials::Bearer) => self.initial(parts, route).await,
-            Ok(ConnectionCredentials::Session { runner, kind }) => {
+            Ok(ConnectionCredentials::Bound { runner, kind }) => {
                 parts.extensions.insert(kind);
                 Ok(Some(Principal::Runner(runner)))
             }
@@ -135,7 +135,7 @@ impl<D: Services> RequestAuthentication for RunnerStreamAuthentication<D> {
     }
 }
 
-impl<D: Services> RunnerStreamAuthentication<D> {
+impl<D: Shared> RunnerStreamAuthentication<D> {
     async fn initial(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let principal = self.bearer.authenticate(parts, route).await?;
         if matches!(&principal, Some(Principal::Runner(_))) {

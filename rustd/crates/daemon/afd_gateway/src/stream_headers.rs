@@ -12,23 +12,22 @@ const AUTHORIZATION_HEADER: &str = "authorization";
 #[derive(Debug)]
 pub(crate) enum StreamHeaders {
     Control { previous: Option<Uuid7> },
-    Work { session: Uuid7 },
-    Reports { session: Uuid7 },
-    Activity { session: Uuid7 },
+    Work { connection: Uuid7 },
+    Reports { connection: Uuid7 },
+    Progress { connection: Uuid7 },
 }
 
 impl TryFrom<&HeaderMap> for StreamHeaders {
     type Error = crate::Error;
 
     fn try_from(headers: &HeaderMap) -> Result<Self> {
-        let version = required(headers, protocol::VERSION_HEADER)?;
-        if version != protocol::VERSION {
-            return Err(ErrorKind::UnsupportedVersion.into());
-        }
+        version(headers)?;
         let kind = StreamKind::parse(required(headers, protocol::STREAM_KIND_HEADER)?)
             .ok_or(ErrorKind::UnknownStream)?;
-        let session = one(headers, protocol::SESSION_HEADER)?
-            .map(|raw| Uuid7::parse(raw).map_err(|source| ErrorKind::SessionIdentifier { source }))
+        let connection = one(headers, protocol::CONNECTION_HEADER)?
+            .map(|raw| {
+                Uuid7::parse(raw).map_err(|source| ErrorKind::ConnectionIdentifier { source })
+            })
             .transpose()?;
         let bearer = one(headers, AUTHORIZATION_HEADER)?.is_some();
         match kind {
@@ -36,26 +35,39 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
                 if !bearer {
                     return Err(ErrorKind::ControlBearerMissing.into());
                 }
-                Ok(Self::Control { previous: session })
+                Ok(Self::Control {
+                    previous: connection,
+                })
             }
-            StreamKind::Work => secondary(bearer, session).map(|session| Self::Work { session }),
+            StreamKind::Work => {
+                secondary(bearer, connection).map(|connection| Self::Work { connection })
+            }
             StreamKind::Reports => {
-                secondary(bearer, session).map(|session| Self::Reports { session })
+                secondary(bearer, connection).map(|connection| Self::Reports { connection })
             }
-            StreamKind::Activity => {
-                secondary(bearer, session).map(|session| Self::Activity { session })
+            StreamKind::Progress => {
+                secondary(bearer, connection).map(|connection| Self::Progress { connection })
             }
         }
     }
 }
 
-/// A secondary lane binds to the authenticated session and never carries its own bearer.
-fn secondary(bearer: bool, session: Option<Uuid7>) -> Result<Uuid7> {
+/// The protocol revision a stream's request names, refused unless it is the
+/// one this daemon speaks, [`protocol::VERSION`]. Every stream names one.
+pub(crate) fn version(headers: &HeaderMap) -> Result<()> {
+    if required(headers, protocol::VERSION_HEADER)? != protocol::VERSION {
+        return Err(ErrorKind::UnsupportedVersion.into());
+    }
+    Ok(())
+}
+
+/// A secondary lane binds to the authenticated connection and never carries its own bearer.
+fn secondary(bearer: bool, connection: Option<Uuid7>) -> Result<Uuid7> {
     if bearer {
         return Err(ErrorKind::UnexpectedBearer.into());
     }
-    Ok(session.ok_or(ErrorKind::MissingHeader {
-        header: protocol::SESSION_HEADER,
+    Ok(connection.ok_or(ErrorKind::MissingHeader {
+        header: protocol::CONNECTION_HEADER,
     })?)
 }
 
@@ -65,16 +77,16 @@ impl StreamHeaders {
             Self::Control { .. } => StreamKind::Control,
             Self::Work { .. } => StreamKind::Work,
             Self::Reports { .. } => StreamKind::Reports,
-            Self::Activity { .. } => StreamKind::Activity,
+            Self::Progress { .. } => StreamKind::Progress,
         }
     }
 
-    pub(crate) fn session(&self) -> Option<&Uuid7> {
+    pub(crate) fn connection(&self) -> Option<&Uuid7> {
         match self {
             Self::Control { previous } => previous.as_ref(),
-            Self::Work { session } | Self::Reports { session } | Self::Activity { session } => {
-                Some(session)
-            }
+            Self::Work { connection }
+            | Self::Reports { connection }
+            | Self::Progress { connection } => Some(connection),
         }
     }
 }
@@ -124,11 +136,11 @@ mod tests {
     }
 
     #[test]
-    fn control_carries_the_bearer_and_secondary_lanes_bind_the_session() {
+    fn control_carries_the_bearer_and_secondary_lanes_bind_the_connection() {
         let control = StreamHeaders::try_from(&headers(&[
             (protocol::STREAM_KIND_HEADER, b"control"),
             ("authorization", b"Bearer agt_r_fixture"),
-            (protocol::SESSION_HEADER, SESSION.as_bytes()),
+            (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
         ]));
         let control = control.map_err(|error| error.to_string());
         assert!(
@@ -138,9 +150,9 @@ mod tests {
         for (kind, name) in [
             (StreamKind::Work, b"work".as_slice()),
             (StreamKind::Reports, b"reports"),
-            (StreamKind::Activity, b"activity"),
+            (StreamKind::Progress, b"progress"),
         ] {
-            let mut map = headers(&[(protocol::SESSION_HEADER, SESSION.as_bytes())]);
+            let mut map = headers(&[(protocol::CONNECTION_HEADER, SESSION.as_bytes())]);
             map.append(
                 protocol::STREAM_KIND_HEADER,
                 HeaderValue::from_bytes(name).unwrap_or(HeaderValue::from_static("")),
@@ -154,7 +166,7 @@ mod tests {
                 bound
                     .as_ref()
                     .ok()
-                    .and_then(StreamHeaders::session)
+                    .and_then(StreamHeaders::connection)
                     .map(af_core::id::Uuid7::as_str),
                 Some(SESSION)
             );
@@ -173,29 +185,29 @@ mod tests {
             (
                 &[
                     (protocol::STREAM_KIND_HEADER, b"work"),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                     ("authorization", b"Bearer agt_r_fixture"),
                 ],
                 |kind| matches!(kind, ErrorKind::UnexpectedBearer),
             ),
             (
                 &[(protocol::STREAM_KIND_HEADER, b"reports")],
-                |kind| matches!(kind, ErrorKind::MissingHeader { header } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::MissingHeader { header } if *header == protocol::CONNECTION_HEADER),
             ),
             (
                 &[
-                    (protocol::STREAM_KIND_HEADER, b"activity"),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
-                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    (protocol::STREAM_KIND_HEADER, b"progress"),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
+                    (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
                 ],
-                |kind| matches!(kind, ErrorKind::RepeatedHeader { header } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::RepeatedHeader { header } if *header == protocol::CONNECTION_HEADER),
             ),
             (
                 &[
                     (protocol::STREAM_KIND_HEADER, b"work"),
-                    (protocol::SESSION_HEADER, b"\xff"),
+                    (protocol::CONNECTION_HEADER, b"\xff"),
                 ],
-                |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::SESSION_HEADER),
+                |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::CONNECTION_HEADER),
             ),
         ];
         for (pairs, expected) in cases {

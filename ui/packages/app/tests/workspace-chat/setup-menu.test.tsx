@@ -1,14 +1,12 @@
-// Exercise the preserved Plugin tree with its UI switch explicitly enabled.
-vi.mock("@/lib/plugin-ui", () => ({pluginsUiEnabled: () => true}));
 import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction, setupAction } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chooseSetupAction, setupAction } from "./fixture";
 import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftClient } from "@/lib/api/drafts";
-import { DRAFT, FLEET, MESSAGE, REVIEW, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, MESSAGE, REVIEW, response } from "@/tests/helpers/draft-fixtures";
 
 const MENU = "Setup chat actions";
 const EDIT = "Instructions";
@@ -84,8 +82,8 @@ it("keeps an unfinished candidate unsavable and allows naming the conversation",
 });
 
 it("allows editing after Stop has cleared the pending turn", async () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, cancelled_through: MESSAGE.sequence},
-    messages: [{...MESSAGE, state: "running"}]}} />);
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: DRAFT,
+    messages: [{...MESSAGE, state: "cancelled"}]}} />);
   expect(await setupAction(EDIT)).toHaveProperty("disabled", false);
   await chooseSetupAction(EDIT);
   expect(await screen.findByRole("dialog", {name: EDIT})).toBeTruthy();
@@ -148,7 +146,7 @@ it("clears unfinished rename and editor state when New fleet resets the conversa
   expect(fixture.writes()).toHaveLength(0);
 });
 
-it("removes the save button and setup ellipsis from the authoring heading", () => {
+it("removes the save button and setup ellipsis from the setup heading", () => {
   const review = {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}};
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review}}} />);
   expect(screen.queryByRole("button", {name: "Save changes"})).toBeNull();
@@ -171,35 +169,6 @@ it("removes the save action when the current viewer loses access", () => {
   render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), inaccessible: true}} />);
   expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
-});
-
-// Value: protects=opening the current fleet after activation; fails_when=the heading navigates to stale setup or writes a new revision;
-// why_new=existing heading tests used no fleet or an installing fleet; seam=none; no_claim=server refresh success.
-it("opens the current active fleet from the composer without writing a revision", async () => {
-  render(<WorkspaceChat {...CHAT_PROPS} fleetPage source={{kind: "fleet", fleet_id: FLEET.id, setup_revision: "1"}} />);
-  const open = await screen.findByRole("button", {name: "Open fleet"});
-  expect(screen.getByRole("heading", {name: FLEET.name})).toBeTruthy();
-  expect(screen.queryByRole("link", {name: "Edit setup"})).toBeNull();
-  expect(screen.getByTestId("fleet-chat-footer").contains(open)).toBe(true);
-  fireEvent.click(open);
-  expect(chatRouter.refresh).toHaveBeenCalledOnce();
-  expect(chatRouter.push).not.toHaveBeenCalled();
-  expect(fixture.writes()).toEqual([]);
-});
-
-// Value: protects=publishing a source before any chat turn; fails_when=publication opens without a reviewable draft or saves a fleet;
-// why_new=existing publish tests began with a persisted draft; seam=none; no_claim=durable publication or provider latency.
-it("prepares a definition source for publication without saving or running the fleet", async () => {
-  render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: REVIEW.effective.definition}} />);
-  const publish = await screen.findByRole("button", {name: "Save and publish"});
-  expect(fixture.writes()).toHaveLength(0);
-  fireEvent.click(publish);
-  await screen.findByText("Setup published");
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(fixture.writes()).toHaveLength(2);
-  expect(fixture.writes()[0]).toMatchObject({path: expect.stringMatching(/\/drafts$/), method: "POST",
-    body: {source: {kind: "definition", definition: REVIEW.effective.definition}}});
-  expect(fixture.saveAttempts).toBe(0);
 });
 
 // Value: protects=unsaved instruction changes on dialog dismissal; fails_when=declining discard loses manual work;
@@ -253,16 +222,4 @@ it("keeps an unfinished private chat identifiable before its first recorded mess
     workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} />);
   expect(screen.getByRole("heading", {name: DRAFT.title})).toBeTruthy();
   expect(screen.getByRole("button", {name: "Rename chat"})).toBeTruthy();
-});
-
-it("publishes an inspected saved-fleet source without saving another fleet or a setup revision", async () => {
-  render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET.id, setup_revision: "1"}} />);
-  const publish = await screen.findByRole("button", {name: "Save and publish"});
-  expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toContain(FLEET.id);
-  fireEvent.click(publish);
-  await screen.findByText("Setup published");
-  expect(fixture.writes()).toHaveLength(2);
-  expect(fixture.writes()[0]?.body).toMatchObject({source: {kind: "fleet", fleet_id: FLEET.id, setup_revision: "1"}});
-  expect(fixture.writes()[1]?.path).toMatch(/\/plugins$/);
-  expect(fixture.saveAttempts).toBe(0);
 });

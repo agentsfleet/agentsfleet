@@ -1,5 +1,5 @@
 //! Against a live datastore: a tenant's runner takes only its
-//! tenant's work, never work that carries the platform model key, and the claim
+//! tenant's work, never work that carries the platform model key, and the assignment
 //! and the issue each refuse on their own.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -10,8 +10,7 @@
 use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_db::test_util::mint_id;
-use afd_fleet::lease::{Acquired, Billed, Leases};
-use afd_runner::Registered;
+use afd_fleet::run::{Acquired, Billed, Runs};
 
 use crate::requests::{enrolment_tagged, placement_tag};
 use crate::seed::{ACTOR, PROVIDER, REQUEST_JSON, reports_capable, select_fleet};
@@ -37,7 +36,7 @@ impl Owner {
         }
     }
 
-    /// A fleet on `model` with one queued admission.
+    /// A fleet on `model` with one queued turn.
     async fn fleet(&self, fixtures: &Fixtures, model: &str) -> Uuid7 {
         let fleet = mint_id();
         fixtures
@@ -69,21 +68,13 @@ async fn tenant_runner(fixtures: &Fixtures, tenant: &Uuid7, tag: &str) -> Uuid7 
         .runners()
         .register_tenant(
             tenant,
-            &mint_id(),
             &request,
             "fixture:tenant-owner",
             fixtures.enrolled_at(),
         )
         .await
         .expect("the tenant registers its runner");
-    assert!(
-        matches!(registered, Registered::Created(_)),
-        "a fresh key registers a new runner"
-    );
-    let runner = match registered {
-        Registered::Created(enrolled) => enrolled.runner_id,
-        Registered::Replayed { runner_id, .. } => runner_id,
-    };
+    let runner = registered.runner_id;
     reports_capable(fixtures, &runner).await;
     runner
 }
@@ -112,27 +103,26 @@ async fn platform_runner(fixtures: &Fixtures, tag: &str) -> Uuid7 {
 /// Issues `held` to `runner`, billed to `tenant` under `posture`.
 async fn issue(
     fixtures: &Fixtures,
-    leases: &Leases,
+    runs: &Runs,
     runner: &Uuid7,
     held: &Acquired,
     tenant: &Uuid7,
     posture: &str,
 ) -> bool {
-    leases
-        .issue(
-            runner,
-            held,
-            Billed {
-                tenant_id: tenant,
-                posture,
-                provider: PROVIDER,
-                model: TENANT_MODEL,
-            },
-            fixtures.enrolled_at(),
-        )
-        .await
-        .expect("the issue answers")
-        .is_some()
+    runs.issue(
+        runner,
+        held,
+        Billed {
+            tenant_id: tenant,
+            posture,
+            provider: PROVIDER,
+            model: TENANT_MODEL,
+        },
+        fixtures.enrolled_at(),
+    )
+    .await
+    .expect("the issue answers")
+    .is_some()
 }
 
 async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64 {
@@ -143,86 +133,86 @@ async fn scalar(fixtures: &Fixtures, statement: &'static str, id: &Uuid7) -> i64
         .expect("the count reads")
 }
 
-/// Leases ever issued to `runner`.
-async fn leases_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
+/// Runs ever issued to `runner`.
+async fn runs_of(fixtures: &Fixtures, runner: &Uuid7) -> i64 {
     scalar(
         fixtures,
-        "SELECT count(*) FROM runner.leases WHERE runner_id = $1",
+        "SELECT count(*) FROM thread.runs WHERE runner_id = $1",
         runner,
     )
     .await
 }
 
-/// Whether `fleet` has a slot row, which only a winning claim writes.
-async fn slotted(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
+/// Whether an assignment took `fleet`'s thread: creation writes it at fence 0, and
+/// only a winning assignment raises the fence.
+async fn thread_taken(fixtures: &Fixtures, fleet: &Uuid7) -> bool {
     scalar(
         fixtures,
-        "SELECT count(*) FROM runner.slots WHERE fleet_id = $1",
+        "SELECT count(*) FROM thread.threads WHERE fleet_id = $1 AND fencing_token > 0",
         fleet,
     )
     .await
         > 0
 }
 
-/// `fleet`'s slot as a claim leaves it: its fence, deadline and holder.
-async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
+/// `fleet`'s thread as an assignment leaves it: its fence, deadline and holder.
+async fn thread(fixtures: &Fixtures, fleet: &Uuid7) -> (i64, String, Option<Uuid7>) {
     sqlx::query_as(
-        "SELECT fencing_token, lease_expires_at::text, last_runner_id FROM runner.slots WHERE fleet_id = $1",
+        "SELECT fencing_token, run_expires_at::text, last_runner_id FROM thread.threads WHERE fleet_id = $1",
     )
     .bind(fleet)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
     .await
-    .expect("the slot reads")
+    .expect("the thread reads")
 }
 
-/// Lapses `fleet`'s claim, as an expired lease leaves it.
+/// Lapses `fleet`'s assignment, as an expired run leaves it.
 async fn lapse(fixtures: &Fixtures, fleet: &Uuid7) {
     sqlx::query(
-        "UPDATE runner.slots SET lease_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
+        "UPDATE thread.threads SET run_expires_at = now() - interval '1 hour', hold_expires_at = NULL WHERE fleet_id = $1",
     )
     .bind(fleet)
     .execute(&mut *fixtures.database.acquire().await.expect("a connection"))
     .await
-    .expect("the claim lapses");
+    .expect("the assignment lapses");
 }
 
-/// The claim statement alone, bound as the ledger binds it; whether it claimed.
-async fn claim_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
-    use afd_fleet::lease::sql;
+/// The assignment statement alone, bound as the ledger binds it; whether it assigned.
+async fn assign_head(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) -> bool {
+    use afd_fleet::run::sql;
     use sqlx::Connection as _;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    let mut transaction = connection.begin().await.expect("a claim transaction");
-    let claimed = sqlx::query(sql::queue::CLAIM_HEAD)
+    let mut transaction = connection.begin().await.expect("an assignment transaction");
+    let assigned = sqlx::query(sql::queue::ASSIGN_HEAD)
         .bind(fleet)
         .bind(runner)
-        .bind(af_core::timing::LEASE_TTL)
+        .bind(af_core::timing::RUN_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-        .bind(sql::RUNNER_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_ACTIVE)
-        .bind(sql::LEASE_STATUS_EXPIRED)
+        .bind(afd_state::sql::RUNNER_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_ACTIVE)
+        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
         .bind(af_wire::task::CAPABILITY)
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
-        .bind(sql::FLEET_STATUS_ACTIVE)
-        .bind(af_core::event::status::RECEIVED)
-        .bind(afd_admission::Producer::Steer.as_str())
+        .bind(afd_state::sql::FLEET_STATUS_ACTIVE)
+        .bind(af_core::turn::status::RECEIVED)
         .bind(true)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
         .fetch_optional(&mut *transaction)
         .await
-        .expect("the claim answers")
+        .expect("the assignment answers")
         .is_some();
-    // As the ledger does: a claim that took no head rolls its slot write back.
-    if claimed {
-        transaction.commit().await.expect("the claim commits");
+    // As the ledger does: an assignment that took no head rolls its thread write back.
+    if assigned {
+        transaction.commit().await.expect("the assignment commits");
     } else {
         transaction
             .rollback()
             .await
-            .expect("the refused claim rolls back");
+            .expect("the refused assignment rolls back");
     }
-    claimed
+    assigned
 }
 
 const SELF_MANAGED: &str = afd_billing::sql::posture::SELF_MANAGED;

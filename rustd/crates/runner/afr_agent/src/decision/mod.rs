@@ -9,23 +9,23 @@ mod routing;
 
 use crate::{Meter, Result};
 use af_wire::{
-    lease::LeasePayload,
+    run::RunPayload,
     task::{
         DecisionAssessment, DecisionReservationInput, DecisionTaskVersion, TaskBindingItem,
         TaskBindingsInput, TaskBindingsResponse, TaskContext, TaskInputAction, TaskInputsQuery,
         TaskInputsResponse, TaskItemBinding,
     },
 };
-use afr_tools::LeaseVerbs;
+use afr_tools::RunVerbs;
 
 /// Native inputs and accepted meaning prepared before any sandbox is built.
 #[derive(Debug, Clone)]
 pub struct PreparedTask {
-    /// Immutable native lease execution ceiling, narrowed by accepted task binding.
+    /// Immutable native run execution ceiling, narrowed by accepted task binding.
     pub execution_deadline: Option<jiff::Timestamp>,
     /// Complete native read, including current ownership and recovery cursors.
     pub inputs: TaskInputsResponse<'static>,
-    /// True only when native binding permits an action on this lease's task.
+    /// True only when native binding permits an action on this run's task.
     pub allow_actions: bool,
 }
 
@@ -48,6 +48,16 @@ pub(crate) fn native(reason: afr_tools::verbs::Unanswered) -> crate::Error {
     crate::error::ErrorKind::TaskNative { reason }.into()
 }
 
+/// Whether `agentsfleetd` refused a decision only because the request does
+/// not fit what the decision model reads whole. It answers that refusal under
+/// the shared byte-bound code before reserving, funding or sending any call,
+/// so a shorter description of the same evidence may still be assessed.
+pub(crate) fn exceeds_input(failure: &crate::Error) -> bool {
+    matches!(failure.kind(), crate::error::ErrorKind::TaskNative {
+        reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
+    } if *code == af_core::error_code::PAYLOAD_TOO_LARGE)
+}
+
 pub(crate) fn identity() -> Result<String> {
     Ok(af_crypto::entropy::Entropy::new()
         .uuid7(af_core::clock::now())?
@@ -55,15 +65,15 @@ pub(crate) fn identity() -> Result<String> {
 }
 
 pub(crate) async fn prepare(
-    lease: &LeasePayload<'_>,
-    verbs: &dyn LeaseVerbs,
-    provider: &dyn af_providers::Provider,
+    run: &RunPayload<'_>,
+    verbs: &dyn RunVerbs,
+    provider: &af_providers::Provider,
     meter: &Meter,
     stop: &tokio_util::sync::CancellationToken,
 ) -> Result<PreparedTask> {
     let inputs = verbs
         .task_inputs(TaskInputsQuery {
-            fencing_token: lease.fencing_token,
+            fencing_token: run.fencing_token,
             starting_after: None,
             after_input_sequence: None,
             limit: 4,
@@ -83,17 +93,13 @@ pub(crate) async fn prepare(
         return Ok(prepared);
     };
     let accepted = Intake {
-        lease,
+        run,
         verbs,
         provider,
         meter,
         stop,
     }
-    .bind(
-        &prepared.inputs,
-        &prepared.inputs.source_admission_id,
-        message,
-    )
+    .bind(&prepared.inputs, &prepared.inputs.source_turn_id, message)
     .await;
     if let Ok(binding) = &accepted {
         prepared.execution_deadline = binding.execution_deadline;
@@ -113,7 +119,7 @@ pub(crate) async fn prepare(
     // Read the immutable interpretation back, including native item identities.
     prepared.inputs = verbs
         .task_inputs(TaskInputsQuery {
-            fencing_token: lease.fencing_token,
+            fencing_token: run.fencing_token,
             starting_after: None,
             after_input_sequence: None,
             limit: 4,
@@ -131,9 +137,9 @@ pub(crate) async fn prepare(
 
 /// One root's existing coding/decision seams; no additional worker or queue.
 pub(crate) struct Intake<'a> {
-    pub(crate) lease: &'a LeasePayload<'a>,
-    pub(crate) verbs: &'a dyn LeaseVerbs,
-    pub(crate) provider: &'a dyn af_providers::Provider,
+    pub(crate) run: &'a RunPayload<'a>,
+    pub(crate) verbs: &'a dyn RunVerbs,
+    pub(crate) provider: &'a af_providers::Provider,
     pub(crate) meter: &'a Meter,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
 }
@@ -146,18 +152,18 @@ impl Intake<'_> {
         message: &str,
     ) -> Result<TaskBindingsResponse<'static>> {
         let Self {
-            lease,
+            run,
             verbs,
             provider,
             meter,
             stop,
         } = *self;
-        let assignment = lease.decision.as_ref().ok_or_else(unavailable)?;
+        let assignment = run.decision.as_ref().ok_or_else(unavailable)?;
         let evaluated = verbs
             .task_decision(DecisionReservationInput {
                 operation_id: identity()?,
-                fencing_token: lease.fencing_token,
-                source_admission_id: source.to_owned(),
+                fencing_token: run.fencing_token,
+                source_turn_id: source.to_owned(),
                 assessment: DecisionAssessment::Message,
                 task: inputs.current_task.as_ref().map(version),
                 retry_of: None,
@@ -168,11 +174,11 @@ impl Intake<'_> {
         let answers = routing::answers(&evaluated)?;
         let count = routing::multiplicity(answers, &assignment.intent)?;
         let proposed =
-            interpretation::propose(lease, provider, meter, stop, message, &inputs.tasks, count)
+            interpretation::propose(run, provider, meter, stop, message, &inputs.tasks, count)
                 .await?;
         let mut binding = TaskBindingsInput {
-            fencing_token: lease.fencing_token,
-            source_admission_id: source.to_owned(),
+            fencing_token: run.fencing_token,
+            source_turn_id: source.to_owned(),
             accepted_revision_id: inputs
                 .accepted_revision_id
                 .clone()
@@ -196,8 +202,8 @@ impl Intake<'_> {
                 let item_call = verbs
                     .task_decision(DecisionReservationInput {
                         operation_id: identity()?,
-                        fencing_token: lease.fencing_token,
-                        source_admission_id: binding.source_admission_id.clone(),
+                        fencing_token: run.fencing_token,
+                        source_turn_id: binding.source_turn_id.clone(),
                         assessment: DecisionAssessment::Item {
                             ordinal: u8::try_from(ordinal).map_err(|source| {
                                 boundary("interpretation item ordinal", source)

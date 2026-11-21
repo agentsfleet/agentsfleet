@@ -3,7 +3,7 @@
 
 use crate::harness;
 use afd_auth::scope::{Scope, ScopeSet};
-use http::{HeaderName, Method, StatusCode};
+use http::{Method, StatusCode};
 
 use self::harness::Fleet;
 
@@ -48,16 +48,12 @@ async fn a_tenant_registration_whose_body_is_not_one_is_refused() {
     let router = Fleet::new()
         .with_dashboard_holding(SUBJECT, RUNNER_TENANT)
         .router();
-    let response = harness::send_with_headers(
+    let response = harness::send(
         &router,
         Method::POST,
         RUNNERS,
         Some("session"),
         "{not a registration",
-        &[(
-            HeaderName::from_static("idempotency-key"),
-            "0199a801-1000-7000-8000-0000000000ff",
-        )],
     )
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);

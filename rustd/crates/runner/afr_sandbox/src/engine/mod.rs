@@ -8,22 +8,22 @@ use afr_executor::Executor;
 use crate::error::{Error, Result};
 use crate::network::{Allowlist, Network};
 
-/// Memory a lease's sandbox may hold before its tree is killed.
+/// Memory a run's sandbox may hold before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// Processor share, in thousandths of one core.
 pub const DEFAULT_CPU_MILLIS: u32 = 2_000;
 /// Processes and threads the sandbox's tree may hold at once.
 pub const DEFAULT_PIDS: u32 = 512;
-/// Size of the lease's workspace disk; a write past it answers `ENOSPC`.
+/// Size of the run's workspace disk; a write past it answers `ENOSPC`.
 pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 /// The share of a sandbox's memory its `/dev/shm` may fill: one part in this
 /// many. Shared memory is a `tmpfs`, so its pages stay charged to the tenant
 /// after the process that wrote them dies; uncapped, one full `/dev/shm`
-/// leaves every later command in the lease, and in a held sandbox the next
-/// lease too, killed for memory at its first allocation.
+/// leaves every later command in the run, and in a held sandbox the next
+/// run too, killed for memory at its first allocation.
 const SHARED_MEMORY_SHARE: u64 = 4;
 
-/// What one lease's sandbox enforces.
+/// What one run's sandbox enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {
     /// Memory, in bytes.
@@ -70,8 +70,8 @@ pub struct HostWorkspace<'a> {
 /// What a sandbox is built for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SandboxRequest<'a> {
-    /// The lease it serves, which names its workspace and cgroup.
-    pub lease_id: &'a str,
+    /// The run it serves, which names its workspace and cgroup.
+    pub run_id: &'a str,
     /// What it enforces.
     pub limits: Limits,
     /// What its network reaches.
@@ -79,13 +79,13 @@ pub struct SandboxRequest<'a> {
 }
 
 impl<'a> SandboxRequest<'a> {
-    /// A sandbox for `lease_id` enforcing `limits`, reaching nothing beyond
+    /// A sandbox for `run_id` enforcing `limits`, reaching nothing beyond
     /// loopback until [`SandboxRequest::with_network`] says otherwise: an
     /// engine never opens a network no one asked for.
     #[must_use]
-    pub const fn new(lease_id: &'a str, limits: Limits) -> Self {
+    pub const fn new(run_id: &'a str, limits: Limits) -> Self {
         Self {
-            lease_id,
+            run_id,
             limits,
             network: Network::Isolated,
         }
@@ -97,40 +97,40 @@ impl<'a> SandboxRequest<'a> {
         Self { network, ..self }
     }
 
-    /// The lease's identifier, checked as a name its directory and its cgroup
+    /// The run's identifier, checked as a name its directory and its cgroup
     /// can both carry.
     ///
     /// # Errors
     /// The identifier is not exactly one plain path segment, so it could name
-    /// a directory outside its base or one shared with another lease.
-    pub(crate) fn name(&self) -> Result<LeaseName<'a>> {
-        LeaseName::parse(self.lease_id)
+    /// a directory outside its base or one shared with another run.
+    pub(crate) fn name(&self) -> Result<RunName<'a>> {
+        RunName::parse(self.run_id)
     }
 }
 
-/// A lease identifier that is one plain path segment: no separator, not empty,
+/// A run identifier that is one plain path segment: no separator, not empty,
 /// not `.` or `..`. Checked once, so the directory and the cgroup named by it
-/// are the same lease's.
+/// are the same run's.
 ///
 /// A segment is checked as text rather than through `Path::components`, which
 /// reads `x/` and `x/.` as the single segment `x`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LeaseName<'a>(&'a str);
+pub(crate) struct RunName<'a>(&'a str);
 
-impl<'a> LeaseName<'a> {
+impl<'a> RunName<'a> {
     /// The segments that name a directory without being one of their own.
     const RELATIVE: [&'static str; 2] = [".", ".."];
 
-    /// `lease_id` as a name, or a refusal.
-    fn parse(lease_id: &'a str) -> Result<Self> {
-        let plain = !lease_id.is_empty()
-            && !lease_id.contains(std::path::MAIN_SEPARATOR)
-            && !lease_id.contains('\0')
-            && !Self::RELATIVE.contains(&lease_id);
+    /// `run_id` as a name, or a refusal.
+    fn parse(run_id: &'a str) -> Result<Self> {
+        let plain = !run_id.is_empty()
+            && !run_id.contains(std::path::MAIN_SEPARATOR)
+            && !run_id.contains('\0')
+            && !Self::RELATIVE.contains(&run_id);
         if plain {
-            Ok(Self(lease_id))
+            Ok(Self(run_id))
         } else {
-            Err(crate::error::lease_id_unsafe(lease_id))
+            Err(crate::error::run_id_unsafe(run_id))
         }
     }
 
@@ -146,7 +146,7 @@ impl<'a> LeaseName<'a> {
         self.0
     }
 
-    /// The lease's own directory under `base`.
+    /// The run's own directory under `base`.
     pub(crate) fn dir_in(self, base: &Path) -> PathBuf {
         base.join(self.0)
     }
@@ -159,22 +159,22 @@ pub enum Killed {
     /// writes to its disk.
     Settled,
     /// The kill could not prove the tree empty, and why. A process may still
-    /// run and write: the lease still reports, and nothing may save the disk
+    /// run and write: the run still reports, and nothing may save the disk
     /// on this record's strength.
     Unsettled(Error),
 }
 
-/// Builds one sandbox per lease.
+/// Builds one sandbox per run.
 #[async_trait::async_trait]
 pub trait Engine: Send + Sync + fmt::Debug {
     /// Builds a sandbox with its executor ready, or refuses.
     ///
-    /// A sandbox that cannot be built refuses the lease; nothing ever runs
+    /// A sandbox that cannot be built refuses the run; nothing ever runs
     /// unsandboxed in its place.
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>>;
 }
 
-/// One lease's sandbox, owned by the task running that lease.
+/// One run's sandbox, owned by the task running that run.
 #[async_trait::async_trait]
 pub trait Sandbox: Send + Sync + fmt::Debug {
     /// Verified immutable toolbox image used by checkpoint compatibility.
@@ -193,7 +193,7 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     }
 
     /// Whether the sandbox is still up. A warm slot whose sandbox died while
-    /// it waited is discarded on claim rather than handed to a lease; an
+    /// it waited is discarded on claim rather than handed to a run; an
     /// engine with no process to watch keeps the default.
     fn is_running(&mut self) -> bool {
         true
@@ -201,7 +201,7 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
 
     /// Stops every process inside where it stands, keeping its memory and its
     /// workspace, until [`Sandbox::thaw`]; returns once nothing in it runs.
-    /// Between two leases of one fleet the runner holds its sandbox frozen.
+    /// Between two runs of one fleet the runner holds its sandbox frozen.
     ///
     /// # Errors
     /// The engine cannot stop the sandbox's processes, or cannot confirm they
@@ -224,12 +224,12 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     ///
     /// # Errors
     /// As [`Sandbox::freeze`]. A sandbox that will not thaw is destroyed, and
-    /// its lease gets a fresh one.
+    /// its run gets a fresh one.
     async fn thaw(&self) -> Result<()>;
 
     /// Holds the sandbox to `allowlist` from now on, in place of the
     /// allowlist it was built to, and renders its names to match: what a held
-    /// sandbox takes when its next lease's hosts resolved anew. The addresses
+    /// sandbox takes when its next run's hosts resolved anew. The addresses
     /// change in one transaction, so no connection meets half of each set;
     /// call it while the sandbox is frozen, so nothing reads its names
     /// mid-write.
@@ -242,7 +242,7 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
 
     /// Ends every process inside and waits, bounded, for the tree to empty.
     /// The disk, the cgroup and the egress rules stay for
-    /// [`Sandbox::destroy`], so the lease can report before it releases them.
+    /// [`Sandbox::destroy`], so the run can report before it releases them.
     async fn kill(&self) -> Killed;
 
     /// Ends every process inside, then removes what it held.

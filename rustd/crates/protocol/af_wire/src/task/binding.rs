@@ -104,12 +104,12 @@ pub struct TaskBindingItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskBindingsInput {
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
-    /// Complete native source admission; queued human claims use this same ID.
+    /// Complete native source turn; queued human turns use this same ID.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Reviewed setup used for the message's questions and new objectives.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub accepted_revision_id: String,
@@ -125,11 +125,11 @@ pub struct TaskBindingsInput {
 }
 
 impl TaskBindingsInput {
-    /// Stable meaning excludes call IDs and lease fences, which grant no replay authority.
+    /// Stable meaning excludes call IDs and run fences, which grant no replay authority.
     #[must_use]
     pub fn interpretation(&self) -> impl Serialize + '_ {
         (
-            &self.source_admission_id,
+            &self.source_turn_id,
             &self.accepted_revision_id,
             self.items
                 .iter()
@@ -163,10 +163,10 @@ pub struct TaskItemBinding {
 pub struct TaskBindingsResponse<'a> {
     /// Accepted immutable items in their original order.
     pub items: Vec<TaskItemBinding>,
-    /// Current lease objective after binding, with native target and recovery state.
+    /// Current run objective after binding, with native target and recovery state.
     #[serde(borrow)]
     pub current_task: Option<super::TaskContext<'a>>,
-    /// Current lease's immutable ceiling after native task binding.
+    /// Current run's immutable ceiling after native task binding.
     #[serde(
         default,
         with = "crate::instant::option",

@@ -8,18 +8,18 @@ use af_egress::fixture::REPOSITORY;
 use afr_executor::Spawn;
 use serde_json::{Value, json};
 
-use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, Git, subcommand};
-use crate::handler::Typed;
-use crate::lease::Lease;
-use crate::runtime::{Tool, ToolErrorCode};
+use super::{EVENT_REFUSED, GIT_REFUSED_SUBCOMMANDS, subcommand};
+use crate::catalog::{Entry, GIT};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
 use crate::testing::{Live, call, call_in};
 
 /// The directory the fixture repository is checked out in.
 const WIDGETS: &str = "widgets";
 
-fn git() -> Box<dyn Tool> {
-    Typed::boxed(Git)
+fn git() -> &'static Entry {
+    &GIT
 }
 
 /// `git`'s arguments for `args`.
@@ -35,9 +35,9 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
     }
 }
 
-/// A lease whose workspace holds `checkouts`.
-fn holding(checkouts: Vec<Checkout<'static>>) -> Lease<'static> {
-    Lease::default().with_checkouts(checkouts)
+/// A run whose workspace holds `checkouts`.
+fn holding(checkouts: Vec<Checkout<'static>>) -> Run<'static> {
+    Run::default().with_checkouts(checkouts)
 }
 
 /// The fixture repository, checked out under its name.
@@ -53,9 +53,9 @@ fn widgets() -> Checkout<'static> {
 #[tokio::test]
 async fn test_git_tool_runs_in_the_one_checked_out_repository() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("On branch dev\n", 0)]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let output = call_in(&*git(), &executor, &lease, running(&["status"])).await;
+    let output = call_in(git(), &executor, &run, running(&["status"])).await;
 
     assert_eq!(output.text, "On branch dev\n");
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
@@ -80,9 +80,9 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
         ..widgets()
     };
 
-    call_in(&*git(), &executor, &holding(Vec::new()), running(&["log"])).await;
+    call_in(git(), &executor, &holding(Vec::new()), running(&["log"])).await;
     call_in(
-        &*git(),
+        git(),
         &executor,
         &holding(vec![widgets(), other]),
         running(&["-C", WIDGETS, "log"]),
@@ -101,22 +101,22 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
 async fn test_git_tool_refuses_network_subcommands() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
     for refused in GIT_REFUSED_SUBCOMMANDS {
-        let output = call_in(&*git(), &executor, &lease, running(&[refused, "origin"])).await;
+        let output = call_in(git(), &executor, &run, running(&[refused, "origin"])).await;
 
         assert_eq!(
             output.error_code,
-            Some(ToolErrorCode::SubcommandNotAllowed),
+            Some(ToolErrorCode::SubcommandNotAllowed.into()),
             "{refused}"
         );
-        assert!(
-            output.text.starts_with(&format!(
-                "[subcommand_not_allowed] git {refused} reaches a remote"
-            )) && output.text.ends_with("propose_change"),
-            "{}",
-            output.text
+        assert_eq!(
+            output.text,
+            format!(
+                "[subcommand_not_allowed] git {refused} reaches a remote, which this environment \
+                 does not reach"
+            )
         );
     }
     assert!(executor.spawned().is_empty(), "nothing ran");
@@ -132,17 +132,20 @@ async fn test_git_tool_refuses_network_subcommands() {
 #[tokio::test]
 async fn should_find_the_subcommand_after_global_options() {
     let executor = ScriptedExecutor::new([]);
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
     let output = call_in(
-        &*git(),
+        git(),
         &executor,
-        &lease,
+        &run,
         running(&["-c", "user.name=x", "--no-pager", "-C", WIDGETS, "push"]),
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::SubcommandNotAllowed));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::SubcommandNotAllowed.into())
+    );
 }
 
 #[test]
@@ -178,20 +181,20 @@ fn should_skip_each_valued_global_option_with_its_value() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let unsandboxed = call(&*git(), &lease, running(&["status"])).await;
+    let unsandboxed = call(git(), &run, running(&["status"])).await;
     let refused = call_in(
-        &*git(),
+        git(),
         &ScriptedExecutor::new([]),
-        &lease,
+        &run,
         running(&["status"]),
     )
     .await;
 
     assert_eq!(
         unsandboxed.error_code,
-        Some(ToolErrorCode::SandboxUnavailable)
+        Some(ToolErrorCode::SandboxUnavailable.into())
     );
     assert!(
         refused.text.ends_with(": no scripted process left"),
@@ -204,15 +207,12 @@ async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
 async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     let executor = ScriptedExecutor::new([]);
 
-    let output = call_in(
-        &*git(),
-        &executor,
-        &Lease::default(),
-        json!({"args": "status"}),
-    )
-    .await;
+    let output = call_in(git(), &executor, &Run::default(), json!({"args": "status"})).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     let spawned = executor.spawned();
     assert!(spawned.is_empty(), "{spawned:?}");
 }
@@ -222,13 +222,13 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
 #[tokio::test]
 async fn should_read_file_not_found_when_the_checkout_is_gone() {
     let live = Live::start().await;
-    let lease = holding(vec![widgets()]);
+    let run = holding(vec![widgets()]);
 
-    let missing = call_in(&*git(), &live.client, &lease, running(&["status"])).await;
+    let missing = call_in(git(), &live.client, &run, running(&["status"])).await;
 
     assert_eq!(
         missing.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{missing:?}"
     );
     live.stop().await;

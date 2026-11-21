@@ -171,7 +171,7 @@ impl<V: TokenVerifier> TokenVerifier for std::sync::Arc<V> {
 /// every reader has to trace to find out what happens when it is `None`. Here
 /// the answer is the type's whole body.
 ///
-/// It is also what makes Dimension 4.1's second half structural rather than
+/// It is also what makes credential routing's second half structural rather than
 /// procedural: with no verifier configured, an `agt_t` or `afc_` credential is
 /// still resolved, because those classes never consult a verifier at all.
 #[derive(Debug, Clone, Copy, Default)]

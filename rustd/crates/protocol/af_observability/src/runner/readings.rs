@@ -27,15 +27,15 @@ impl RunnerMetrics {
         })
     }
 
-    /// How many leases each admitted runner is believed to hold.
+    /// How many runs each admitted runner is believed to hold.
     ///
-    /// Best effort, and knowingly: a lease abandoned by a dead runner expires
+    /// Best effort, and knowingly: a run abandoned by a dead runner expires
     /// by the clock with no report to decrement against, so a crashed host's
     /// reading stays high until the process restarts. The liveness sweeper's
     /// row is the authority; this is a hint beside it.
     #[must_use]
-    pub fn active_lease_readings(&self) -> Vec<crate::metrics::instrument::Reading> {
-        self.readings(|counters| u64::try_from(counters.active_leases.load(Ordering::Relaxed)).ok())
+    pub fn active_run_readings(&self) -> Vec<crate::metrics::instrument::Reading> {
+        self.readings(|counters| u64::try_from(counters.active_runs.load(Ordering::Relaxed)).ok())
     }
 
     /// One reading per admitted runner, for those that have one.

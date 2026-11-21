@@ -1,12 +1,12 @@
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { AGENTSFLEET_EVENT_STATUS, type FleetEvent } from "./fleet-stream-row";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { AGENTSFLEET_TURN_STATUS, type FleetTurn } from "./fleet-stream-row";
 
 /**
  * Turns under this tab's own account whose tab it cannot tell yet.
  *
  * A steer's opening frame names the sender's account, never the tab, and the
- * daemon can lease a send and announce it before the send's own 202 reaches
+ * daemon can run a send and announce it before the send's own 202 reaches
  * this tab. While a send here awaits its 202, a turn the thread has no row for,
  * opened under the account that send will be named under (`sentAs`), may be
  * this tab's or the same operator's in another tab, so its frames wait here
@@ -20,38 +20,38 @@ export class HeldTurns {
   #frames = new Map<string, LiveFrame[]>();
 
   /** Takes `frame` when its turn is held, or starts holding a turn it opens. */
-  take(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
-    const eventId = "event_id" in frame ? frame.event_id : null;
-    if (eventId === null) return false;
-    const held = this.#frames.get(eventId);
+  take(frame: LiveFrame, turns: readonly FleetTurn[]): boolean {
+    const turnId = "turn_id" in frame ? frame.turn_id : null;
+    if (turnId === null) return false;
+    const held = this.#frames.get(turnId);
     if (held !== undefined) {
       held.push(frame);
       return true;
     }
-    if (!opensAWaitingSendsTurn(frame, events)) return false;
-    this.#frames.set(eventId, [frame]);
+    if (!opensAWaitingSendsTurn(frame, turns)) return false;
+    this.#frames.set(turnId, [frame]);
     return true;
   }
 
   /** The frames now free to land, each turn's in arrival order: a turn the
    * thread holds a row for (the 202 named it), and every turn once no send
    * here awaits its 202. */
-  release(events: readonly FleetEvent[]): LiveFrame[] {
-    const waiting = events.some(isAwaitingAck);
-    return this.#take((eventId) => !waiting || events.some((event) => event.id === eventId));
+  release(turns: readonly FleetTurn[]): LiveFrame[] {
+    const waiting = turns.some(isAwaitingAck);
+    return this.#take((turnId) => !waiting || turns.some((turn) => turn.id === turnId));
   }
 
-  /** The frames of the held turns among `eventIds`, which a backfill page is
+  /** The frames of the held turns among `turnIds`, which a backfill page is
    * about to settle. */
-  releaseTurns(eventIds: ReadonlySet<string>): LiveFrame[] {
-    return this.#take((eventId) => eventIds.has(eventId));
+  releaseTurns(turnIds: ReadonlySet<string>): LiveFrame[] {
+    return this.#take((turnId) => turnIds.has(turnId));
   }
 
-  #take(free: (eventId: string) => boolean): LiveFrame[] {
+  #take(free: (turnId: string) => boolean): LiveFrame[] {
     const frames: LiveFrame[] = [];
-    for (const [eventId, held] of this.#frames) {
-      if (!free(eventId)) continue;
-      this.#frames.delete(eventId);
+    for (const [turnId, held] of this.#frames) {
+      if (!free(turnId)) continue;
+      this.#frames.delete(turnId);
       frames.push(...held);
     }
     return frames;
@@ -59,13 +59,13 @@ export class HeldTurns {
 }
 
 // Either frame can open a turn: the admitted frame normally comes first, but a
-// runner can lease a send and announce it before the route publishes.
-function opensAWaitingSendsTurn(frame: LiveFrame, events: readonly FleetEvent[]): boolean {
-  if (frame.kind !== FRAME_KIND.EVENT_ADMITTED && frame.kind !== FRAME_KIND.EVENT_RECEIVED) return false;
-  return !events.some((event) => event.id === frame.event_id)
-    && events.some((event) => isAwaitingAck(event) && event.sentAs === frame.actor);
+// runner can run a send and announce it before the route publishes.
+function opensAWaitingSendsTurn(frame: LiveFrame, turns: readonly FleetTurn[]): boolean {
+  if (frame.kind !== FRAME_KIND.TURN_ADMITTED && frame.kind !== FRAME_KIND.TURN_RECEIVED) return false;
+  return !turns.some((turn) => turn.id === frame.turn_id)
+    && turns.some((turn) => isAwaitingAck(turn) && turn.sentAs === frame.actor);
 }
 
-function isAwaitingAck(event: FleetEvent): boolean {
-  return event.status === AGENTSFLEET_EVENT_STATUS.OPTIMISTIC;
+function isAwaitingAck(turn: FleetTurn): boolean {
+  return turn.status === AGENTSFLEET_TURN_STATUS.OPTIMISTIC;
 }

@@ -3,7 +3,7 @@
 use super::{Case, Checked, lifecycle::isolated, manifest::Pending, storage::Files};
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
-use af_wire::lease::{
+use af_wire::run::{
     TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
 };
 use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
@@ -11,13 +11,13 @@ use sqlx::Connection as _;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn reading_an_uncaptured_offer_does_not_allocate_recovery_state() -> Checked {
+async fn reading_an_uncaptured_assignment_does_not_allocate_recovery_state() -> Checked {
     let files = isolated().await?;
     assert!(
         files
             .case
-            .leases
-            .turn_resume(files.case.lease())
+            .runs
+            .turn_resume(files.case.run())
             .await?
             .is_none()
     );
@@ -112,20 +112,19 @@ async fn retention_collects_a_second_owner_while_the_first_head_is_locked() -> C
         committed(files).await?;
         age_source(files).await?;
     }
-    let (older, newer) = if first.case.acquired.event_id < second.case.acquired.event_id {
+    let (older, newer) = if first.case.acquired.turn_id < second.case.acquired.turn_id {
         (&first, &second)
     } else {
         (&second, &first)
     };
     let mut connection = older.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
-    let locked: Uuid7 = sqlx::query_scalar(
-        "SELECT event_id FROM runner.turn_recovery WHERE event_id=$1 FOR UPDATE",
-    )
-    .bind(&older.case.acquired.event_id)
-    .fetch_one(&mut *held)
-    .await?;
-    assert_eq!(locked, older.case.acquired.event_id);
+    let locked: Uuid7 =
+        sqlx::query_scalar("SELECT turn_id FROM runner.turn_recovery WHERE turn_id=$1 FOR UPDATE")
+            .bind(&older.case.acquired.turn_id)
+            .fetch_one(&mut *held)
+            .await?;
+    assert_eq!(locked, older.case.acquired.turn_id);
 
     let tasks = newer.case.tasks();
     let mut cursor = CheckpointMaintenanceCursor::default();
@@ -200,10 +199,10 @@ async fn age_source(files: &Files) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     assert_eq!(
         sqlx::query(
-            "UPDATE fleet.admissions
+            "UPDATE thread.turns
              SET settled_at=clock_timestamp()-interval '8 days', updated_at=now() WHERE id=$1",
         )
-        .bind(&files.case.acquired.event_id)
+        .bind(&files.case.acquired.turn_id)
         .execute(&mut *connection)
         .await?
         .rows_affected(),
@@ -212,13 +211,12 @@ async fn age_source(files: &Files) -> Checked {
     Ok(())
 }
 
-async fn public_source(files: &Files) -> Checked<(String, String)> {
+async fn public_source(files: &Files) -> Checked<String> {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    Ok(sqlx::query_as(
-        "SELECT to_jsonb(e)::text, to_jsonb(a)::text
-         FROM fleet.events e JOIN fleet.admissions a ON a.id=e.event_id WHERE e.event_id=$1",
+    Ok(sqlx::query_scalar(
+        "SELECT to_jsonb(t)::text FROM thread.turns t WHERE t.id=$1 AND t.opened_at IS NOT NULL",
     )
-    .bind(&files.case.acquired.event_id)
+    .bind(&files.case.acquired.turn_id)
     .fetch_one(&mut *connection)
     .await?)
 }
@@ -227,11 +225,11 @@ async fn private_rows(files: &Files) -> Checked<(i64, i64, i64)> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_as(
         "SELECT
-         (SELECT count(*) FROM runner.turn_recovery WHERE event_id=$1),
-         (SELECT count(*) FROM runner.turn_checkpoints WHERE event_id=$1),
-         (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE event_id=$1)",
+         (SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1),
+         (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
+         (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1)",
     )
-    .bind(&files.case.acquired.event_id)
+    .bind(&files.case.acquired.turn_id)
     .fetch_one(&mut *connection)
     .await?)
 }

@@ -24,7 +24,7 @@ use axum::response::{IntoResponse as _, Response};
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
 use crate::handler::tenant::{DETAIL_TENANT_REQUIRED, tenant_of};
-use crate::services::{Services, TenantProviders as _};
+use crate::services::{TenantPlane, TenantProviders as _};
 
 use super::{
     DETAIL_MALFORMED_BODY, DETAIL_MODEL_NOT_IN_CATALOGUE, DETAIL_NO_PRIMARY_WORKSPACE,
@@ -54,7 +54,7 @@ use super::{
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn reset<D: Services>(
+pub(crate) async fn reset<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -105,7 +105,7 @@ pub(crate) async fn reset<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn apply<D: Services>(
+pub(crate) async fn apply<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,

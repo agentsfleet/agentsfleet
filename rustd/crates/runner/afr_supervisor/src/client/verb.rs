@@ -44,35 +44,27 @@ pub(crate) enum Verb {
     Open,
     /// Liveness, capability, assignment.
     Heartbeat,
-    /// Scoped private model invocation; never automatically redispatched.
-    AuthoringModel,
-    /// Native proposal receipt for a private authoring attempt.
-    AuthoringActivity,
-    /// Retain an unexpired authoring slot.
-    AuthoringRenew,
-    /// Independent authoring accounting and optional answer.
-    AuthoringReport,
-    /// More time on a held lease.
+    /// More time on a held run.
     Renew,
-    /// Live-tail frames for a held lease.
-    Activity,
-    /// A lease's terminal result.
+    /// Live-tail frames for a held run.
+    Progress,
+    /// A run's terminal result.
     Report,
-    /// A fleet's memory at lease start.
-    Hydrate,
+    /// A fleet's memory at run start.
+    Load,
     /// A fleet's memory written back.
     Capture,
     /// A search of a fleet's memory past the window.
     Recall,
-    /// A scoped credential for a held lease.
+    /// A scoped credential for a held run.
     Mint,
-    /// Finished calls' full records for a held lease.
-    Records,
+    /// Finished calls' full records for a held run.
+    Items,
     /// The runner's own row: which runner this is, as the daemon names it.
     Me,
-    /// A schedule created for the leased fleet.
+    /// A schedule created for the held fleet.
     ScheduleCreate,
-    /// The leased fleet's schedules.
+    /// The held fleet's schedules.
     ScheduleList,
     /// A change to a schedule the fleet made.
     ScheduleUpdate,
@@ -82,18 +74,22 @@ pub(crate) enum Verb {
     ScheduleRun,
     /// A schedule's runs.
     ScheduleRuns,
-    /// A line said to the leased event's thread.
+    /// A line said to the held turn's thread.
     Message,
-    /// The leased fleet's workspace's fleets.
+    /// The held fleet's workspace's fleets.
     FleetList,
-    /// One fleet's recent events, as the leased fleet reads them.
-    FleetEvents,
-    /// Work the leased fleet puts on another fleet.
+    /// One fleet's recent turns, as the held fleet reads them.
+    FleetTurns,
+    /// Work the held fleet puts on another fleet.
     FleetSteer,
-    /// The messages a person sent while the run works, claimed for it.
+    /// The messages a person sent while the run works, assigned to it.
     Folds,
     /// Native event-owned recovery command.
     TurnCheckpoint,
+    /// A setup run's read of its draft's compacted context.
+    ContextLoad,
+    /// A setup run's fenced save of its draft's compacted context.
+    ContextSave,
     /// Complete native human input and recovered meaning.
     TaskInputs,
     /// One complete immutable human interpretation.
@@ -132,21 +128,17 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 43] = [
+    pub(crate) const ALL: [Self; 41] = [
         Self::Open,
         Self::Heartbeat,
-        Self::AuthoringModel,
-        Self::AuthoringActivity,
-        Self::AuthoringRenew,
-        Self::AuthoringReport,
         Self::Renew,
-        Self::Activity,
+        Self::Progress,
         Self::Report,
-        Self::Hydrate,
+        Self::Load,
         Self::Capture,
         Self::Recall,
         Self::Mint,
-        Self::Records,
+        Self::Items,
         Self::Me,
         Self::ScheduleCreate,
         Self::ScheduleList,
@@ -156,10 +148,12 @@ impl Verb {
         Self::ScheduleRuns,
         Self::Message,
         Self::FleetList,
-        Self::FleetEvents,
+        Self::FleetTurns,
         Self::FleetSteer,
         Self::Folds,
         Self::TurnCheckpoint,
+        Self::ContextLoad,
+        Self::ContextSave,
         Self::TaskInputs,
         Self::TaskBindings,
         Self::TaskInputReceipt,
@@ -181,12 +175,12 @@ impl Verb {
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {
-            Self::Hydrate
+            Self::Load
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
             | Self::FleetList
-            | Self::FleetEvents
+            | Self::FleetTurns
             | Self::TaskInputs
             | Self::TaskEffects
             | Self::TaskEffect
@@ -199,23 +193,21 @@ impl Verb {
             Self::ScheduleDelete => Method::Delete,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Capture
             | Self::Recall
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::ScheduleCreate
             | Self::ScheduleRun
             | Self::Message
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
+            | Self::ContextLoad
+            | Self::ContextSave
             | Self::TaskBindings
             | Self::TaskInputReceipt
             | Self::TaskDecisionReserve
@@ -232,18 +224,14 @@ impl Verb {
         match self {
             Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
-            Self::AuthoringModel => "authoring_model",
-            Self::AuthoringActivity => "authoring_activity",
-            Self::AuthoringRenew => "authoring_renew",
-            Self::AuthoringReport => "authoring_report",
             Self::Renew => "renew",
-            Self::Activity => "activity",
+            Self::Progress => "progress",
             Self::Report => "report",
-            Self::Hydrate => "hydrate",
+            Self::Load => "load",
             Self::Capture => "capture",
             Self::Recall => "recall",
             Self::Mint => "mint",
-            Self::Records => "records",
+            Self::Items => "items",
             Self::Me => "me",
             Self::ScheduleCreate => "schedule_create",
             Self::ScheduleList => "schedule_list",
@@ -253,10 +241,12 @@ impl Verb {
             Self::ScheduleRuns => "schedule_runs",
             Self::Message => "message",
             Self::FleetList => "fleet_list",
-            Self::FleetEvents => "fleet_events",
+            Self::FleetTurns => "fleet_turns",
             Self::FleetSteer => "fleet_steer",
             Self::Folds => "folds",
             Self::TurnCheckpoint => "turn_checkpoint",
+            Self::ContextLoad => "context_load",
+            Self::ContextSave => "context_save",
             Self::TaskInputs => "task_inputs",
             Self::TaskBindings => "task_bindings",
             Self::TaskInputReceipt => "task_input_receipt",
@@ -279,18 +269,14 @@ impl Verb {
     /// The registry code a failure of this verb is logged under.
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
-            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
+            Self::Load | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::Open
             | Self::Heartbeat
-            | Self::AuthoringModel
-            | Self::AuthoringActivity
-            | Self::AuthoringRenew
-            | Self::AuthoringReport
             | Self::Renew
-            | Self::Activity
+            | Self::Progress
             | Self::Report
             | Self::Mint
-            | Self::Records
+            | Self::Items
             | Self::Me
             | Self::ScheduleCreate
             | Self::ScheduleList
@@ -300,10 +286,12 @@ impl Verb {
             | Self::ScheduleRuns
             | Self::Message
             | Self::FleetList
-            | Self::FleetEvents
+            | Self::FleetTurns
             | Self::FleetSteer
             | Self::Folds
             | Self::TurnCheckpoint
+            | Self::ContextLoad
+            | Self::ContextSave
             | Self::TaskInputs
             | Self::TaskBindings
             | Self::TaskInputReceipt

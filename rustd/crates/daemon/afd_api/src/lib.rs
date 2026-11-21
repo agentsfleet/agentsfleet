@@ -23,38 +23,23 @@
 #[cfg(test)]
 use {
     af_context as _, af_crypto as _, af_fleet_runtime as _, af_stream as _, af_webhook as _,
-    af_wire as _, afd_admin as _, afd_admission as _, afd_approval as _, afd_authoring as _,
-    afd_billing as _, afd_bus as _, afd_connector as _, afd_credential as _, afd_cron as _,
-    afd_db as _, afd_events as _, afd_fleet as _, afd_fleet_lifecycle as _, afd_fleet_ops as _,
-    afd_gate as _, afd_gateway as _, afd_identity as _, afd_ingress as _, afd_mail as _,
-    afd_memory as _, afd_outbound as _, afd_runner as _, afd_sse as _, afd_state as _,
-    afd_tenant as _, afd_vault as _, async_trait as _, base64 as _, bytes as _, futures_util as _,
-    garde as _, hex as _, hyper as _, hyper_util as _, jiff as _, jsonwebtoken as _, reqwest as _,
-    serde as _, serde_json as _, sha2 as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _,
-    tower as _,
+    af_wire as _, afd_admin as _, afd_approval as _, afd_billing as _, afd_bus as _,
+    afd_connector as _, afd_credential as _, afd_cron as _, afd_db as _, afd_fleet as _,
+    afd_fleet_lifecycle as _, afd_fleet_ops as _, afd_gate as _, afd_gateway as _,
+    afd_identity as _, afd_ingress as _, afd_mail as _, afd_memory as _, afd_outbound as _,
+    afd_runner as _, afd_setup as _, afd_sse as _, afd_state as _, afd_tenant as _, afd_turns as _,
+    afd_vault as _, async_trait as _, base64 as _, bytes as _, futures_util as _, garde as _,
+    hex as _, hyper as _, hyper_util as _, jiff as _, jsonwebtoken as _, reqwest as _, serde as _,
+    serde_json as _, sha2 as _, sqlx as _, tempfile as _, tokio as _, tokio_util as _, tower as _,
 };
 
-pub use afd_http::admission;
-pub use afd_http::auth;
-pub use afd_http::client;
-pub use afd_http::envelope;
-pub use afd_http::etag;
-pub mod handler;
+use afd_http::{admission, auth, envelope, route};
 // The document generator, compiled only when it is asked for.
 #[cfg(feature = "openapi")]
 pub mod openapi;
-pub use afd_http::request_id;
-pub use afd_http::route;
 pub mod router;
 pub mod server;
-pub use afd_http::services;
 mod telemetry;
 
-pub use self::admission::{Admission, DEFAULT_MAX_IN_FLIGHT, admit, is_metered};
-pub use self::auth::{Authenticator, Planes, RunnerIdentity};
-pub use self::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
-pub use self::request_id::{RequestId, UNKNOWN_REQUEST_ID};
-pub use self::route::{Guard, Route, RouteClass, RouteMeta, Scopes};
 pub use self::router::{Dependencies, ReadyInputs, Serving, ready_decision};
 pub use self::server::{MAX_REQUEST_HEADER_BYTES, connection_builder};
-pub use self::services::{SchedulePlane, Services, TenantSurface};

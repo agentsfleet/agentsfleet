@@ -325,7 +325,7 @@ One row in `identity.device_sessions`, with one deadline.
 
 | Fact | Value | Source |
 |---|---|---|
-| Table | `identity.device_sessions`, keyed by the session's UUIDv7 | `schema/20261108193100_identity_device_sessions.sql` |
+| Table | `identity.device_sessions`, keyed by the session's UUIDv7 | `rustd/crates/daemon/afd_db/schema/20261108193100_identity_device_sessions.sql` |
 | Statements | one `.sql` file per transition | `rustd/crates/daemon/afd_tenant/src/sql/session/` |
 | Deadline | five minutes, re-stamped on every transition | `SESSION_TTL`, `rustd/crates/daemon/afd_tenant/src/session/store.rs` |
 | Cleanup | none: an expired row stays, and every read refuses it | Indy's decision, M244 spec Discovery |
@@ -468,7 +468,7 @@ sequenceDiagram
     Note over API: Registry::authenticate:<br/>SHA-256 → identity.cli_credentials row (JOIN identity.users),<br/>revoked? → UZ-AUTH-023,<br/>scopes resolved from the provider on oidc_subject (cached),<br/>→ Principal::Person{ CliCredential, tenant, subject, scopes }
     API-->>CLI: 200 events
 
-    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream<br/>Authorization: Bearer afc_…<br/>Accept: text/event-stream
+    CLI->>API: GET /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream<br/>Authorization: Bearer afc_…<br/>Accept: text/event-stream
     API-->>CLI: 200 text/event-stream (long-lived)
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```

@@ -1,15 +1,16 @@
-//! Restore and capture keep the private root, memory and child book together.
+//! Restore and capture keep the private root, memory and the run's children
+//! together: the children ride the root's drive state.
 
-use af_providers::Message;
 use af_secrets::Scrub;
 use af_wire::task::TaskContext;
-use afr_memory::Hydrated;
+use afr_memory::Loaded;
+use guffbolt::Message;
+use guffbolt::agents::Pause;
 
 use super::Ending;
 use super::Harness;
 use crate::engine::{AgentRun, RecoveryWitness, RootRecovery};
 use crate::error::recovery_invalid;
-use crate::nested::CapturePermit;
 use crate::{
     CommittedRecovery, RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState, Result,
     TaskRecovery, TurnSnapshot,
@@ -19,7 +20,7 @@ use guffbolt::DriveState;
 pub(super) struct RootSetup<'run> {
     pub(super) opening: Vec<Message>,
     pub(super) state: Option<RootRecovery>,
-    pub(super) memory: Hydrated<'run>,
+    pub(super) memory: Loaded<'run>,
 }
 
 pub(super) fn prepare_root<'run>(
@@ -29,10 +30,10 @@ pub(super) fn prepare_root<'run>(
     message: &str,
 ) -> Result<RootSetup<'run>> {
     if (run.recovered_task.is_some() && run.recovered_turn.is_some())
-        || (run.lease.turn_resume.is_some() && run.recovered_turn.is_none())
+        || (run.run.turn_resume.is_some() && run.recovered_turn.is_none())
     {
         return Err(recovery_invalid(
-            "offered recovery has no single complete restore owner",
+            "assigned recovery has no single complete restore owner",
         ));
     }
     let mut state = if let Some(recovered) = run.recovered_task {
@@ -43,22 +44,22 @@ pub(super) fn prepare_root<'run>(
         Some(TaskRecovery::restore(
             &recovered.history,
             current,
-            &run.lease.policy.context.model,
-            &run.lease.policy.provider,
+            &run.run.policy.context.model,
+            &run.run.policy.provider,
             scrub,
         )?)
     } else if let Some(recovered) = run.recovered_turn {
-        Some(recovered.restore(run.lease, recovered.workspace.clone(), scrub)?)
+        Some(recovered.restore(run.run, recovered.workspace.clone(), scrub)?)
     } else {
         None
     };
     let memory = if let Some(saved) = &mut state {
         opening = std::mem::take(&mut saved.messages);
         opening.push(Message::User("Resume the accepted objective from this authenticated history. Reconcile native inputs and confirmed effects before taking another action.".to_owned()));
-        Hydrated::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
+        Loaded::recover(run.memory, std::mem::take(&mut saved.memory), scrub)?
     } else {
         opening.push(Message::User(scrub.text(message).into_owned()));
-        Hydrated::new(run.memory)
+        Loaded::new(run.memory)
     };
     Ok(RootSetup {
         opening,
@@ -69,13 +70,13 @@ pub(super) fn prepare_root<'run>(
 
 impl Harness<'_, '_> {
     pub(super) async fn capture_task_root(
-        &mut self,
+        &self,
         task: TaskContext<'static>,
-        permit: Option<&CapturePermit>,
+        pause: Option<&Pause>,
     ) -> Result<TaskRecovery> {
-        let permit = permit
+        let pause = pause
             .ok_or_else(|| recovery_invalid("child cleanup did not grant a terminal boundary"))?;
-        let root = self.root_snapshot(&self.driver, permit).await?;
+        let root = self.root_snapshot(&self.driver, pause).await?;
         TaskRecovery::capture(
             task,
             self.shared.model,
@@ -84,23 +85,30 @@ impl Harness<'_, '_> {
         )
     }
 
-    async fn root_snapshot(
-        &self,
-        driver: &DriveState,
-        permit: &CapturePermit,
-    ) -> Result<RootRecovery> {
-        Ok(RootRecovery {
-            messages: self.messages.clone(),
-            driver: driver.clone(),
-            children: self.shared.registry.snapshot(permit)?,
-            memory: self.shared.lease.memory.lock().await.snapshot()?,
+    /// The root as a checkpoint saves it: its transcript, and its loop's
+    /// progress with the run's children written in under `pause`.
+    async fn root_snapshot(&self, driver: &DriveState, pause: &Pause) -> Result<RootRecovery> {
+        let mut driver = driver.clone();
+        if !self.shared.registry.save(pause, &mut driver) {
+            return Err(recovery_invalid(
+                "the child capture permit belongs to another run",
+            ));
+        }
+        let root = RootRecovery {
+            messages: self.transcript.messages().to_vec(),
+            driver,
+            memory: self.shared.run.memory.snapshot().await?,
             pinned: self.context.pinned,
             folds: self.folded_inputs.clone(),
-        })
+        };
+        // Checked as a restore will check it, so a checkpoint whose children
+        // could not come back is skipped rather than saved.
+        root.check()?;
+        Ok(root)
     }
 
     pub(super) async fn save_boundary(&mut self, driver: &DriveState) -> Option<Ending> {
-        if self.depth != 0 || driver.completed_turns() == 0 {
+        if self.depth != 0 || driver.completed_steps() == 0 {
             return None;
         }
         let sink = self.shared.recovery?;
@@ -115,11 +123,11 @@ impl Harness<'_, '_> {
         } else {
             None
         };
-        let Some(permit) = self.shared.registry.capture_permit().await else {
+        let Some(pause) = self.shared.registry.pause().await else {
             skipped(RecoverySkip::BusyChildren);
             return None;
         };
-        if !self.shared.lease.sessions.is_quiescent() {
+        if !self.shared.run.sessions.is_quiescent() {
             skipped(RecoverySkip::BusySessions);
             return None;
         }
@@ -130,10 +138,10 @@ impl Harness<'_, '_> {
                 return None;
             }
         };
-        let snapshot = match self.snapshot_state(driver, &permit, workspace).await {
+        let snapshot = match self.snapshot_state(driver, &pause, workspace).await {
             Ok(state) => RecoverySnapshot {
-                lease_id: self.shared.lease_id.to_owned(),
-                event_id: self.shared.payload.event.event_id.to_string(),
+                run_id: self.shared.run_id.to_owned(),
+                turn_id: self.shared.payload.event.turn_id.to_string(),
                 fencing_token: self.shared.fencing_token,
                 state,
                 file_permit,
@@ -185,10 +193,10 @@ impl Harness<'_, '_> {
     async fn snapshot_state(
         &self,
         driver: &DriveState,
-        permit: &CapturePermit,
-        workspace: Option<af_wire::lease::TurnWorkspace>,
+        pause: &Pause,
+        workspace: Option<af_wire::run::TurnWorkspace>,
     ) -> Result<RecoveryState> {
-        let root = self.root_snapshot(driver, permit).await?;
+        let root = self.root_snapshot(driver, pause).await?;
         if let Some(mut task) = self
             .task
             .as_ref()
@@ -217,15 +225,15 @@ impl Harness<'_, '_> {
 }
 
 fn committed(receipt: &crate::RecoveryReceipt) {
-    let lease_id = receipt.lease_id.as_str();
-    let event_id = receipt.event_id.as_str();
+    let run_id = receipt.run_id.as_str();
+    let turn_id = receipt.turn_id.as_str();
     let fencing_token = receipt.fencing_token;
     let checkpoint_id = receipt.checkpoint.id();
     let generation = receipt.checkpoint.generation();
     tracing::debug!(
         event = "respawn_checkpoint_committed",
-        lease_id,
-        event_id,
+        run_id,
+        turn_id,
         fencing_token,
         checkpoint_id,
         generation
@@ -249,13 +257,13 @@ pub(super) fn restored(run: &AgentRun<'_>) {
     } else {
         return;
     };
-    let lease_id = run.lease.lease_id.as_ref();
-    let event_id = run.lease.event.event_id.as_ref();
-    let fencing_token = run.lease.fencing_token;
+    let run_id = run.run.run_id.as_ref();
+    let turn_id = run.run.event.turn_id.as_ref();
+    let fencing_token = run.run.fencing_token;
     tracing::debug!(
         event = "respawn_checkpoint_restored",
-        lease_id,
-        event_id,
+        run_id,
+        turn_id,
         fencing_token,
         checkpoint_id,
         generation

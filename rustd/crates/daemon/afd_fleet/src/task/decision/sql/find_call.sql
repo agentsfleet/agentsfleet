@@ -1,5 +1,5 @@
-SELECT id, original_runner_id, original_lease_id,
-       source_admission_id, fleet_id, workspace_id, tenant_id,
+SELECT id, original_runner_id, original_run_id,
+       source_turn_id, fleet_id, workspace_id, tenant_id,
        task_id, fencing_token, request_digest, assessment_id,
        assessment_key, attempt_number, retry_of_decision_call_id, logical_expires_at,
        purpose, status, provider, fleet_name, profile_snapshot, price_snapshot,
@@ -12,6 +12,6 @@ SELECT id, original_runner_id, original_lease_id,
        created_at
 FROM runner.decision_calls
 WHERE (id = $1 AND $1 IS NOT NULL)
-   OR (original_lease_id = $2 AND operation_id = $3 AND $2 IS NOT NULL)
+   OR (original_run_id = $2 AND operation_id = $3 AND $2 IS NOT NULL)
    OR ($4::text IS NOT NULL AND assessment_key = $4 AND attempt_number = $5)
 LIMIT 1

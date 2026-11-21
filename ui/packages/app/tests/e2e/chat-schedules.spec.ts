@@ -1,10 +1,10 @@
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
-import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
+import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
 
 test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProbe}, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
-  const reads: string[] = []; page.on("request", request => {if (request.url().includes("/event-details?")) reads.push(request.url());});
+  const reads: string[] = []; page.on("request", request => {if (request.url().includes("/turn-details?")) reads.push(request.url());});
   await page.goto(`${chatProbe}?schedules=1`);
   await expect(page.getByText("Scheduled wake-up", {exact: true})).toBeVisible();
   await expect(page.getByText("Review support failures — 東京 🦉 · At 9:00 AM (Asia/Kolkata)", {exact: true})).toBeVisible();
@@ -21,10 +21,10 @@ test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProb
   const details = page.getByRole("button", {name: "Run details"}).first();
   await expect(details).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
   await details.focus(); await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", {name: "Event details"});
+  const dialog = page.getByRole("dialog", {name: "Turn details"});
   await expect(dialog.getByText("Native recorded support review.", {exact: true})).toBeVisible();
   const address = new URL(reads[0]!);
-  expect(Object.fromEntries(address.searchParams)).toEqual({workspace: SCHEDULE_EVENT.workspace_id, fleet: SCHEDULE_EVENT.fleet_id, event: SCHEDULE_EVENT.event_id});
+  expect(Object.fromEntries(address.searchParams)).toEqual({workspace: SCHEDULE_TURN.workspace_id, fleet: SCHEDULE_TURN.fleet_id, turn: SCHEDULE_TURN.turn_id});
   await page.keyboard.press("Escape"); await expect(dialog).not.toBeVisible();
   expect(errors).toEqual([]);
   await info.attach("schedule-activity", {body: await page.screenshot({fullPage: true}), contentType: "image/png"});

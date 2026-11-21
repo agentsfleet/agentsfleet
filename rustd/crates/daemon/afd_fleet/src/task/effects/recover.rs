@@ -4,14 +4,14 @@ use super::row::Effect;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, guard, transaction},
 };
 use af_core::id::Uuid7;
 
-pub(super) async fn abandon(tasks: &Tasks, lease: TaskLease<'_>, effect: &Effect) -> Result<bool> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+pub(super) async fn abandon(tasks: &Tasks, run: TaskRun<'_>, effect: &Effect) -> Result<bool> {
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     if current.task_id.as_ref().map(Uuid7::as_str) != Some(effect.task_id.as_str()) {
         return Err(TaskRefusal::NotFound.into());
     }
@@ -26,7 +26,7 @@ pub(super) async fn abandon(tasks: &Tasks, lease: TaskLease<'_>, effect: &Effect
         .bind(&effect.id)
         .bind("refused")
         .bind("prepared")
-        .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .bind(crate::run::sql::RUN_STATUS_ACTIVE)
         .bind(af_wire::task::TaskState::Running.as_str())
         .execute(&mut *tx)
         .await

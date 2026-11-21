@@ -1,4 +1,4 @@
-//! Dimension 6.2 — a collector that is down costs spans, never requests.
+//! A collector that is down costs spans, never requests.
 
 #![expect(
     clippy::expect_used,

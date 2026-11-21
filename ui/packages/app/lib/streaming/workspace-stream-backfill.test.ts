@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import {
   onlyEventSource,
   settlePromises,

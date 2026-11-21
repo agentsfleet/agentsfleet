@@ -86,7 +86,7 @@ fn scoped(binding: &RepositoryBinding) -> ScopedRequest {
     ScopedRequest::for_binding(binding, &everything)
 }
 
-/// Dimension 1.2 — a read token missing `actions`, carrying `actions: write`,
+/// A read token missing `actions`, carrying `actions: write`,
 /// or carrying `workflows` is refused rather than delivered.
 #[test]
 fn verify_refuses_a_ci_scope_mismatch() {
@@ -258,7 +258,7 @@ fn installation_ids_accept_only_unsigned_numbers_and_decimal_strings() {
 
 #[test]
 fn a_handle_names_its_installation_only_through_the_installation_field() {
-    // The reader the lease plane's ownership check and the exchange share:
+    // The reader the run plane's ownership check and the exchange share:
     // whatever this answers is both the installation checked and the one
     // minted for.
     assert_eq!(

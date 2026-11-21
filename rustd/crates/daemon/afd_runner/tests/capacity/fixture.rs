@@ -11,12 +11,12 @@ use afd_db::{
 use jiff::Timestamp;
 use sqlx::{Connection as _, Postgres, Transaction};
 
-use crate::rows::{self, AttemptRow, LeaseRow, POLICY};
+use crate::rows::{self, POLICY, RunRow, SetupRunRow};
 
-/// How long a live seeded lease or attempt has left.
+/// How long a live seeded run has left.
 pub(super) const LIVE_FOR: Duration = Duration::from_mins(1);
 
-/// How far past its expiry a lapsed seeded lease or attempt is.
+/// How far past its expiry a lapsed seeded run is.
 pub(super) const LAPSED_BY: Duration = Duration::from_millis(1);
 
 pub(super) struct Fixture {
@@ -55,7 +55,7 @@ impl Fixture {
             .expect("seed the capacity workspace");
         RunnerSeed::new(
             &fixture.runner,
-            afd_runner::sql::RUNNER_STATUS_ACTIVE,
+            afd_state::sql::RUNNER_STATUS_ACTIVE,
             POLICY,
         )
         .workers(workers)
@@ -76,14 +76,13 @@ impl Fixture {
         fixture
     }
 
-    pub(super) async fn authoring(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
-        rows::attempt(
+    pub(super) async fn setup(&self, tx: &mut Transaction<'_, Postgres>, until: Timestamp) {
+        rows::setup_run(
             tx,
             (&self.runner, &self.workspace, &self.tenant),
-            AttemptRow {
-                status: afd_runner::sql::LEASE_STATUS_ACTIVE,
-                lease_expires_at: until,
-                reserved_nanos: 0,
+            SetupRunRow {
+                status: afd_state::sql::RUN_STATUS_ACTIVE,
+                run_expires_at: until,
             },
         )
         .await;
@@ -91,15 +90,15 @@ impl Fixture {
 
     pub(super) async fn runtime(&self, until: Timestamp) {
         let mut connection = self.owner.acquire().await.expect("runtime seed connection");
-        rows::lease(
+        rows::payload(
             &mut connection,
-            LeaseRow {
+            RunRow {
                 id: &mint_id(),
                 runner: &self.runner,
                 fleet: &self.fleet,
                 workspace: &self.workspace,
                 tenant: &self.tenant,
-                status: afd_runner::sql::LEASE_STATUS_ACTIVE,
+                status: afd_state::sql::RUN_STATUS_ACTIVE,
                 expires_at: until,
                 stamped_at: None,
             },
@@ -107,7 +106,7 @@ impl Fixture {
         .await;
     }
 
-    /// A hold is a slot deadline, independent of the preceding lease's status.
+    /// A hold is a thread deadline, independent of the preceding run's status.
     pub(super) async fn hold(&self, until: Timestamp) -> Uuid7 {
         use jiff_sqlx::ToSqlx as _;
         let mut connection = self.owner.acquire().await.expect("hold seed connection");
@@ -121,12 +120,15 @@ impl Fixture {
         .name("Hold capacity")
         .insert(&mut *connection)
         .await
-        .expect("seed a fleet distinct from the live lease");
+        .expect("seed a fleet distinct from the live run");
         sqlx::query(
-            "INSERT INTO runner.slots \
-             (id, fleet_id, last_runner_id, fencing_token, lease_expires_at, \
+            "INSERT INTO thread.threads \
+             (id, fleet_id, last_runner_id, fencing_token, run_expires_at, \
               hold_expires_at, created_at, updated_at) \
-             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now())",
+             VALUES ($1, $1, $2, 1, clock_timestamp(), $3, now(), now()) \
+             ON CONFLICT (id) DO UPDATE SET last_runner_id = EXCLUDED.last_runner_id, \
+               fencing_token = 1, run_expires_at = EXCLUDED.run_expires_at, \
+               hold_expires_at = EXCLUDED.hold_expires_at, updated_at = now()",
         )
         .bind(&fleet)
         .bind(&self.runner)
@@ -139,11 +141,11 @@ impl Fixture {
 
     pub(super) async fn capacity(
         &self,
-        claimant: afd_runner::capacity::Claimant<'_>,
+        work: afd_runner::capacity::Work<'_>,
     ) -> afd_runner::capacity::Capacity {
         let mut connection = self.db.acquire().await.expect("capacity connection");
         let mut tx = connection.begin().await.expect("capacity transaction");
-        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, claimant, None)
+        let capacity = afd_runner::capacity::lock(&mut tx, &self.runner, work, None)
             .await
             .expect("locked census")
             .expect("seeded host exists");
@@ -151,63 +153,56 @@ impl Fixture {
         capacity
     }
 
-    /// Moves this host's runtime lease to lapse `after` from now on the
+    /// Moves this host's runtime run to lapse `after` from now on the
     /// database clock, the clock the census compares against.
     pub(super) async fn lapse_runtime_in(&self, after: Duration) {
         let millis = i64::try_from(after.as_millis()).expect("a test interval fits");
-        let mut connection = self.owner.acquire().await.expect("lease update connection");
+        let mut connection = self.owner.acquire().await.expect("run update connection");
         sqlx::query(
-            "UPDATE runner.leases \
-             SET lease_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
+            "UPDATE thread.runs \
+             SET run_expires_at = clock_timestamp() + $2 * interval '1 millisecond' \
              WHERE runner_id = $1",
         )
         .bind(&self.runner)
         .bind(millis)
         .execute(&mut *connection)
         .await
-        .expect("the runtime lease's expiry moves");
+        .expect("the runtime run's expiry moves");
     }
 
-    pub(super) async fn try_claim(&self) -> bool {
-        let mut connection = self.db.acquire().await.expect("claim connection");
-        let mut tx = connection.begin().await.expect("claim transaction");
+    pub(super) async fn try_assign(&self) -> bool {
+        let mut connection = self.db.acquire().await.expect("assignment connection");
+        let mut tx = connection.begin().await.expect("assignment transaction");
         let capacity = afd_runner::capacity::lock(
             &mut tx,
             &self.runner,
-            afd_runner::capacity::Claimant::Authoring,
+            afd_runner::capacity::Work::Setup,
             None,
         )
         .await
         .expect("lock host")
         .expect("isolated host exists");
-        let accepted = capacity.can_claim();
+        let accepted = capacity.can_assign();
         if accepted {
-            self.authoring(&mut tx, clock::after(capacity.now(), LIVE_FOR))
+            self.setup(&mut tx, clock::after(capacity.now(), LIVE_FOR))
                 .await;
         }
-        tx.commit().await.expect("commit the guarded claim");
+        tx.commit().await.expect("commit the guarded assignment");
         accepted
     }
 
     /// Takes the host row's lock on a connection of its own, the way a
-    /// concurrent claimant on another replica holds it.
+    /// concurrent assignment on another replica holds it.
     pub(super) async fn lock_host(&self, tx: &mut Transaction<'_, Postgres>) {
         sqlx::query("SELECT 1 FROM runner.runners WHERE id = $1 FOR UPDATE")
             .bind(&self.runner)
             .execute(&mut **tx)
             .await
-            .expect("the competing claimant locks the host");
+            .expect("the competing assignment locks the host");
     }
 
     pub(super) async fn cleanup(self) {
         let mut connection = self.owner.acquire().await.expect("cleanup connection");
-        // Attempts outlive their runner by design, so a test removes the ones
-        // it seeded itself rather than leaving them in the lane.
-        sqlx::query("DELETE FROM authoring.attempts WHERE runner_id = $1")
-            .bind(&self.runner)
-            .execute(&mut *connection)
-            .await
-            .expect("remove only this test's attempts");
         sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)

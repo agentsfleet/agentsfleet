@@ -21,7 +21,7 @@ pub enum Refusal {
     /// The host is not in the fleet's network allowlist.
     HostNotAllowed,
     /// The host is, or resolves to, an address this runner never reaches.
-    AddressNotAllowed,
+    EgressDenied,
     /// A placeholder, or a header, stands where none may.
     PlacementNotAllowed,
     /// A credential named by a placeholder may not be sent to this host.

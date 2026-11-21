@@ -1,4 +1,4 @@
-//! Financial settlement exhausts original limits without minting another admission.
+//! Financial settlement exhausts original limits without minting another turn.
 use super::{
     fixture::{Case, exercise, id},
     report_settlement::request,
@@ -28,26 +28,26 @@ async fn measured_report_runtime_exhausts_original_budget_without_reissuing_or_d
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn final_lease_limit_refuses_continuation_before_missing_checkpoint_without_losing_payment() {
+async fn final_run_limit_refuses_continuation_before_missing_checkpoint_without_losing_payment() {
     exercise(async |case| {
         let task = bind(
             case,
             TaskLimits {
-                leases: 1,
+                runs: 1,
                 ..TaskLimits::default()
             },
         )
         .await;
-        Box::pin(settle(case, task, Some("lease_limit_reached"))).await;
+        Box::pin(settle(case, task, Some("run_limit_reached"))).await;
     })
     .await;
 }
 
 async fn bind(case: &Case, limits: TaskLimits) -> DecisionTaskVersion {
-    let plan = case.source_plan(case.held.event_id.clone(), "bounded-report", 1, limits);
+    let plan = case.source_plan(case.held.turn_id.clone(), "bounded-report", 1, limits);
     let result = case
         .tasks
-        .bind(case.lease(), &plan)
+        .bind(case.run(), &plan)
         .await
         .expect("bounded accepted task");
     DecisionTaskVersion {
@@ -75,7 +75,7 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
     let report = request(case, Some(semantic));
     assert!(
         case.tasks
-            .prepare_report(case.lease(), &report)
+            .prepare_report(case.run(), &report)
             .await
             .expect("current continuation evidence")
             .is_some()
@@ -132,12 +132,12 @@ async fn evidence(case: &Case, task: &Uuid7, reason: Option<&str>) -> Value {
         .acquire()
         .await
         .expect("accounting observer");
-    let row: (Option<String>, bool, i64, bool) = sqlx::query_as("SELECT t.status_reason,t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$3) FROM fleet.tasks t WHERE t.id=$1")
-        .bind(task).bind(&case.held.lease_key).bind(&case.held.event_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
+    let row: (Option<String>, bool, i64, bool) = sqlx::query_as("SELECT t.status_reason,t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$3) FROM fleet.tasks t WHERE t.id=$1")
+        .bind(task).bind(&case.held.run_key).bind(&case.held.turn_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
     assert_eq!(row, (reason.map(str::to_owned), true, 1, true));
-    sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM fleet.events e WHERE e.fleet_id=$1 AND e.event_id=$2),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'lease',(SELECT to_jsonb(l) FROM runner.leases l WHERE l.id=$3))")
-        .bind(&case.scope.fleet_id).bind(&case.held.event_id).bind(&case.held.lease_key)
-        .fetch_one(&mut *connection).await.expect("original event charge and lease snapshot")
+    sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM thread.turns e WHERE e.thread_id=$1 AND e.id=$2 AND e.opened_at IS NOT NULL),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'run',(SELECT to_jsonb(l) FROM thread.runs l WHERE l.id=$3))")
+        .bind(&case.scope.fleet_id).bind(&case.held.turn_id).bind(&case.held.run_key)
+        .fetch_one(&mut *connection).await.expect("original event charge and run snapshot")
 }
 
 async fn exhausted(case: &Case, task: &str, reason: Option<&str>) -> afd_fleet::task::TaskSnapshot {
@@ -160,7 +160,7 @@ async fn exhausted(case: &Case, task: &str, reason: Option<&str>) -> afd_fleet::
 
 async fn report_after_preparation_deadline(
     case: &Case,
-    plane: &afd_fleet::lease::LeaseService,
+    plane: &afd_fleet::run::RunService,
     report: &af_wire::report::ReportRequest<'_>,
     now: jiff::Timestamp,
 ) {
@@ -172,24 +172,24 @@ async fn report_after_preparation_deadline(
         .acquire()
         .await
         .expect("commit barrier");
-    // The report statement locks the fleet's slot before it measures the
-    // slice; holding the slot holds the report there.
-    let mut held = connection.begin().await.expect("slot barrier");
+    // The report statement locks the fleet's thread before it measures the
+    // slice; holding the thread holds the report there.
+    let mut held = connection.begin().await.expect("thread barrier");
     let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM runner.slots WHERE fleet_id=$1 FOR UPDATE",
+        "SELECT pg_backend_pid() FROM thread.threads WHERE fleet_id=$1 FOR UPDATE",
     )
     .bind(&case.scope.fleet_id)
     .fetch_one(&mut *held)
     .await
-    .expect("hold the report's slot row");
+    .expect("hold the report's thread row");
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
     let reporting = plane.report_with(&case.held.runner, report, now, None, &mut untimed);
     let release = async {
         observe_report_commit(case, pid).await;
         // Preparation has finished and commit owns the original report. Advance
         // to its actual database deadline, without inventing a runtime cursor.
-        sqlx::query("SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM lease_expires_at-clock_timestamp()))) FROM runner.leases WHERE id=$1")
-            .bind(&case.held.lease_key).execute(&mut *held).await.expect("original task runtime reaches its native ceiling");
+        sqlx::query("SELECT pg_sleep(GREATEST(0,EXTRACT(EPOCH FROM run_expires_at-clock_timestamp()))) FROM thread.runs WHERE id=$1")
+            .bind(&case.held.run_key).execute(&mut *held).await.expect("original task runtime reaches its native ceiling");
         held.commit()
             .await
             .expect("allow original report accounting");
@@ -200,7 +200,7 @@ async fn report_after_preparation_deadline(
     ))
     .await
     .expect("report deadline barrier is bounded");
-    result.expect("original expired lease still settles measured work");
+    result.expect("original expired run still settles measured work");
 }
 
 async fn observe_report_commit(case: &Case, pid: i32) {
@@ -220,7 +220,7 @@ async fn observe_report_commit(case: &Case, pid: i32) {
                     .expect("report lock observer"),
             )
             .await
-            .expect("native commit slot lock wait");
+            .expect("native commit thread lock wait");
             if blocked {
                 break;
             }
@@ -241,9 +241,9 @@ async fn observe_report_commit(case: &Case, pid: i32) {
 async fn a_notice_is_owed_when_the_run_answered_nothing() {
     exercise(async |case| {
         sqlx::query(
-            "UPDATE fleet.admissions SET reply_provider = $2, reply_address = $3 WHERE id = $1",
+            "UPDATE thread.turns SET reply_provider = $2, reply_address = $3 WHERE id = $1",
         )
-        .bind(&case.held.event_id)
+        .bind(&case.held.turn_id)
         .bind(afd_connector::Provider::Slack.id())
         .bind("C0FIXTURE:1700000000.000100")
         .execute(
@@ -256,11 +256,11 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
                 .expect("producer"),
         )
         .await
-        .expect("the admission asks for its answer on a thread");
+        .expect("the turn asks for its answer on a thread");
         let task = bind(
             case,
             TaskLimits {
-                leases: 1,
+                runs: 1,
                 ..TaskLimits::default()
             },
         )
@@ -291,10 +291,10 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
             .expect("the report settles");
 
         let (owed, answered): (Option<String>, String) = sqlx::query_as(
-            "SELECT (SELECT o.answer FROM fleet.obligations o WHERE o.event_id = e.event_id), \
-                    e.response_text FROM fleet.events e WHERE e.event_id = $1",
+            "SELECT (SELECT o.answer FROM thread.deliveries o WHERE o.turn_id = e.id), \
+                    e.answer_text FROM thread.turns e WHERE e.id = $1",
         )
-        .bind(&case.held.event_id)
+        .bind(&case.held.turn_id)
         .fetch_one(
             &mut *case
                 .held

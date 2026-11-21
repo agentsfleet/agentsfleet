@@ -1,8 +1,8 @@
 //! Ordinary private state binds to its original event and the matching workspace.
 
-use af_wire::lease::{
-    FoldRef, LeasePayload, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT, TurnId, TurnResume,
-    TurnScope, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, FoldRef, RunPayload, TURN_CHECKPOINT_BYTES, TURN_CHECKPOINT_FORMAT,
+    TurnResume, TurnScope, TurnWorkspace,
 };
 use garde::Validate;
 use serde::{Deserialize, Serialize};
@@ -16,11 +16,11 @@ use crate::{
 
 /// Private state awaiting event-owned publication by the supervisor.
 pub struct TurnSnapshot {
-    /// Derived from the issued lease and the supervisor's actual workspace.
+    /// Derived from the issued run and the supervisor's actual workspace.
     pub scope: TurnScope,
     /// Last acknowledged descriptor; publication compares this exact head.
     pub previous: Option<TurnResume>,
-    /// Exact incorporated admissions, checked against the private root at commit.
+    /// Exact incorporated turns, checked against the private root at commit.
     pub folds: Vec<FoldRef>,
     /// Bounded versioned root; no model credential or prior usage meter.
     pub history: Zeroizing<Vec<u8>>,
@@ -29,13 +29,13 @@ pub struct TurnSnapshot {
 /// A fenced native read has authenticated these bytes with its exact descriptor.
 #[derive(Clone)]
 pub struct TurnRecovery {
-    /// Exact offer generation, including the files and root digests.
+    /// Exact assignment generation, including the files and root digests.
     pub descriptor: TurnResume,
     /// Complete root bytes returned by the fenced reader.
     pub history: Zeroizing<Vec<u8>>,
-    /// Exact membership adopted under the replacement lease before model startup.
+    /// Exact membership adopted under the replacement run before model startup.
     pub adopted: Vec<FoldRef>,
-    /// Actual workspace proof supplied after restore, independently compared with the offer.
+    /// Actual workspace proof supplied after restore, independently compared with the assignment.
     pub workspace: TurnWorkspace,
 }
 
@@ -80,13 +80,13 @@ struct Encoded<'a> {
 
 impl TurnSnapshot {
     pub(crate) fn capture(
-        lease: &LeasePayload<'_>,
+        run: &RunPayload<'_>,
         workspace: TurnWorkspace,
         previous: Option<TurnResume>,
         root: RootRecovery,
     ) -> Result<Self> {
         root.check()?;
-        let scope = scope(lease, workspace)?;
+        let scope = scope(run, workspace)?;
         if let Some(previous) = &previous {
             previous.validate()?;
             if previous.scope != scope {
@@ -99,12 +99,12 @@ impl TurnSnapshot {
         let history = History {
             format: TURN_CHECKPOINT_FORMAT,
             scope: scope.clone(),
-            model: lease.policy.context.model.to_string(),
-            provider: lease.policy.provider.to_string(),
+            model: run.policy.context.model.to_string(),
+            provider: run.policy.provider.to_string(),
             root,
         };
         history.validate()?;
-        if !af_wire::decision::serialized_within(&history, TURN_CHECKPOINT_BYTES) {
+        if !af_validate::serialized_within(&history, TURN_CHECKPOINT_BYTES) {
             return Err(recovery_invalid(
                 "ordinary private history exceeds its byte limit",
             ));
@@ -119,19 +119,18 @@ impl TurnSnapshot {
 }
 
 impl TurnRecovery {
-    /// Check the complete private codec and offered scope before adopting inputs.
+    /// Check the complete private codec and assigned scope before adopting inputs.
     ///
     /// # Errors
     /// Refuses unsupported formats, corrupt root state, changed membership and scope.
-    pub fn validate_for(&self, lease: &LeasePayload<'_>) -> Result<()> {
-        let scrub = af_secrets::Scrub::new(&lease.policy)?;
-        self.restore(lease, self.workspace.clone(), &scrub)
-            .map(drop)
+    pub fn validate_for(&self, run: &RunPayload<'_>) -> Result<()> {
+        let scrub = af_secrets::Scrub::new(&run.policy)?;
+        self.restore(run, self.workspace.clone(), &scrub).map(drop)
     }
 
     pub(crate) fn restore(
         &self,
-        lease: &LeasePayload<'_>,
+        run: &RunPayload<'_>,
         workspace: TurnWorkspace,
         scrub: &af_secrets::Scrub,
     ) -> Result<RootRecovery> {
@@ -140,13 +139,13 @@ impl TurnRecovery {
             bytes: &self.history,
         }
         .validate()?;
-        let scope = scope(lease, workspace)?;
-        if lease.turn_resume.as_ref() != Some(&self.descriptor)
+        let scope = scope(run, workspace)?;
+        if run.turn_resume.as_ref() != Some(&self.descriptor)
             || self.descriptor.scope != scope
             || af_core::etag::sha256_hex(&self.history) != self.descriptor.history_digest
         {
             return Err(recovery_invalid(
-                "ordinary restore differs from the offered scope or digest",
+                "ordinary restore differs from the assigned scope or digest",
             ));
         }
         let mut history: History = serde_json::from_slice(&self.history)
@@ -160,28 +159,27 @@ impl TurnRecovery {
         }
         history.root.scrub(
             scrub,
-            history.model != lease.policy.context.model
-                || history.provider != lease.policy.provider,
+            history.model != run.policy.context.model || history.provider != run.policy.provider,
         )?;
         Ok(history.root)
     }
 }
 
-fn scope(lease: &LeasePayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
-    if lease.durable_tasks || lease.task.is_some() {
+fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
+    if run.durable_tasks || run.task.is_some() {
         return Err(recovery_invalid(
             "ordinary recovery cannot impersonate native task state",
         ));
     }
-    let revision = lease
+    let revision = run
         .setup_revision_id
         .as_ref()
         .ok_or_else(|| recovery_invalid("ordinary recovery has no issued setup witness"))?;
     let scope = TurnScope {
-        workspace_id: TurnId(lease.event.workspace_id.to_string()),
-        fleet_id: TurnId(lease.event.fleet_id.to_string()),
-        event_id: TurnId(lease.event.event_id.to_string()),
-        setup_revision_id: TurnId(revision.to_string()),
+        workspace_id: CheckpointOperationId(run.event.workspace_id.to_string()),
+        fleet_id: CheckpointOperationId(run.event.fleet_id.to_string()),
+        turn_id: CheckpointOperationId(run.event.turn_id.to_string()),
+        setup_revision_id: CheckpointOperationId(revision.to_string()),
         workspace,
     };
     scope.validate()?;

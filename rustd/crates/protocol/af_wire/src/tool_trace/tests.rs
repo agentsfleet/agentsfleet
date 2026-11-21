@@ -10,8 +10,7 @@ use serde_json::{Map, Value, json};
 
 use super::{
     ARGS_LEAF_MAX_BYTES, ARGS_MAX_BYTES, OUTPUT_EDGE_MAX_BYTES, OUTPUT_EDGE_MAX_LINES,
-    TRACE_MAX_BYTES, TRACE_MAX_CALLS, ToolCallStatus, ToolTrace, ToolTraceCall, TraceRejection,
-    edge_fits,
+    ToolCallStatus, ToolTrace, ToolTraceCall, TraceRejection, edge_fits,
 };
 use crate::activity::CALL_ID_MAX_BYTES;
 
@@ -29,14 +28,12 @@ fn call(call_id: &str) -> ToolTraceCall<'static> {
         output_line_count: Some(214),
         exit_code: None,
         duration_ms: 12,
+        changes: Vec::new(),
     }
 }
 
 fn trace(calls: Vec<ToolTraceCall<'static>>) -> ToolTrace<'static> {
-    ToolTrace {
-        calls,
-        omitted_call_count: 0,
-    }
+    ToolTrace { calls }
 }
 
 /// A call whose arguments hold one string of `bytes` bytes under `key`.
@@ -52,18 +49,8 @@ fn call_with_argument(key: &str, bytes: usize) -> ToolTraceCall<'static> {
 #[test]
 fn test_tool_trace_validator_enforces_bounds() {
     assert_eq!(trace(vec![call("1"), call("2")]).validate(), Ok(()));
-
-    let full: Vec<_> = (1..=TRACE_MAX_CALLS)
-        .map(|n| call(&n.to_string()))
-        .collect();
-    assert_eq!(trace(full.clone()).validate(), Ok(()), "exactly 200 fits");
-    let mut over = full;
-    over.push(call("201"));
-    assert_eq!(
-        trace(over).validate(),
-        Err(TraceRejection::TooManyCalls),
-        "201 calls"
-    );
+    let many: Vec<_> = (1..=1_000).map(|n| call(&n.to_string())).collect();
+    assert_eq!(trace(many).validate(), Ok(()), "no count caps the calls");
 
     // The leaf is over its own bound here, which the object bound beats.
     assert_eq!(
@@ -82,8 +69,9 @@ fn test_tool_trace_validator_enforces_bounds() {
 }
 
 #[test]
-fn a_trace_over_its_byte_bound_is_too_large() {
-    // Leaves just under their own bound, so only the trace total breaks.
+fn a_trace_is_bounded_by_its_rows_not_its_total_size() {
+    // Every leaf at its own bound: the rows fit, and together they pass the
+    // 64 KiB a trace was once held to.
     let wide: Vec<_> = (1..=40)
         .map(|n| {
             let mut built = call(&n.to_string());
@@ -96,8 +84,8 @@ fn a_trace_over_its_byte_bound_is_too_large() {
     let encoded = serde_json::to_vec(&trace(wide.clone()))
         .expect("encodes")
         .len();
-    assert!(encoded > TRACE_MAX_BYTES, "fixture is over: {encoded}");
-    assert_eq!(trace(wide).validate(), Err(TraceRejection::TooLarge));
+    assert!(encoded > 64 * 1024, "fixture is wide: {encoded}");
+    assert_eq!(trace(wide).validate(), Ok(()));
 }
 
 #[test]
@@ -242,10 +230,7 @@ fn a_trace_round_trips_with_every_status_and_optional_field() {
         let mut built = call("7:3");
         built.status = status;
         built.exit_code = Some(2);
-        let sent = ToolTrace {
-            calls: vec![built],
-            omitted_call_count: 4,
-        };
+        let sent = ToolTrace { calls: vec![built] };
         let text = serde_json::to_string(&sent).expect("encodes");
         let back: ToolTrace<'_> = serde_json::from_str(&text).expect("decodes");
         assert_eq!(back, sent);
@@ -254,7 +239,6 @@ fn a_trace_round_trips_with_every_status_and_optional_field() {
     let sent = json!({
         "calls": [{"call_id": "1", "name": "shell", "arguments": {}, "status": "interrupted",
                    "duration_ms": 0}],
-        "omitted_call_count": 0,
     })
     .to_string();
     let bare: ToolTrace<'_> = serde_json::from_str(&sent).expect("optional fields may be absent");
@@ -268,17 +252,18 @@ fn a_trace_round_trips_with_every_status_and_optional_field() {
         "an absent optional is omitted, not null"
     );
 
-    let unknown = serde_json::from_str::<ToolTrace<'_>>(
-        r#"{"calls": [], "omitted_call_count": 0, "extra": 1}"#,
-    );
-    assert!(unknown.is_err(), "unknown fields are refused");
+    for unknown in [
+        r#"{"calls": [], "extra": 1}"#,
+        r#"{"calls": [], "omitted_call_count": 0}"#,
+    ] {
+        let refused = serde_json::from_str::<ToolTrace<'_>>(unknown);
+        assert!(refused.is_err(), "unknown fields are refused: {unknown}");
+    }
 }
 
 #[test]
 fn every_rejection_has_its_own_spelling() {
     let all = [
-        TraceRejection::TooManyCalls,
-        TraceRejection::TooLarge,
         TraceRejection::CallIdUnusable,
         TraceRejection::ArgumentsTooLarge,
         TraceRejection::ArgumentTooLong,
@@ -315,8 +300,12 @@ fn statuses_use_their_snake_case_spelling() {
 
 /// The raw carrier a report holds, narrowed the way the daemon narrows it.
 fn raw_narrowed(text: &str) -> Result<usize, TraceRejection> {
-    let raw: super::RawToolTrace<'_> = serde_json::from_str(text).expect("any JSON is carried");
-    raw.narrow().map(|kept| kept.calls.len())
+    carried(text).narrow().map(|kept| kept.calls.len())
+}
+
+/// The raw carrier `text` reads as; any JSON is carried.
+fn carried(text: &str) -> super::RawToolTrace<'_> {
+    serde_json::from_str(text).expect("any JSON is carried")
 }
 
 #[test]
@@ -325,15 +314,8 @@ fn a_raw_trace_narrows_only_when_it_is_one_and_fits() {
     assert_eq!(raw_narrowed(&kept), Ok(2));
     assert_eq!(raw_narrowed("7"), Err(TraceRejection::Malformed));
     assert_eq!(
-        raw_narrowed(r#"{"calls":[{"call_id":"1"}],"omitted_call_count":0}"#),
+        raw_narrowed(r#"{"calls":[{"call_id":"1"}]}"#),
         Err(TraceRejection::Malformed)
-    );
-    // Inside the object: whitespace after a value is not part of it.
-    let padded = format!("{{{}{}", " ".repeat(TRACE_MAX_BYTES), &kept[1..]);
-    assert_eq!(
-        raw_narrowed(&padded),
-        Err(TraceRejection::TooLarge),
-        "the bytes sent are bounded before any parse"
     );
     let unusable = serde_json::to_string(&trace(vec![call("")])).expect("encodes");
     assert_eq!(raw_narrowed(&unusable), Err(TraceRejection::CallIdUnusable));

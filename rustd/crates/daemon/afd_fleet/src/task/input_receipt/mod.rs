@@ -3,18 +3,18 @@
 mod answer;
 mod row;
 
-use super::{TaskLease, TaskRefusal, Tasks, execution, guard, transaction};
+use super::{TaskRefusal, TaskRun, Tasks, execution, guard, transaction};
 use crate::{Result, error::query};
 use af_wire::task::{TaskInputMode, TaskInputReceiptInput, TaskInputReceiptResult};
 
 pub(super) async fn accept(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskInputReceiptInput>,
 ) -> Result<TaskInputReceiptResult> {
     let digest = af_core::etag::sha256_hex(
         &serde_json::to_vec(&(
-            &input.source_admission_id,
+            &input.source_turn_id,
             &input.plan_digest,
             &input.item_id,
             &input.task,
@@ -23,9 +23,9 @@ pub(super) async fn accept(
         ))
         .map_err(af_core::json::Unreadable::from)?,
     );
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     let item = row::item(&mut tx, &current, input).await?;
     if let Some(saved) = row::replay(&mut tx, &current, input).await? {
         if saved != digest {
@@ -39,17 +39,17 @@ pub(super) async fn accept(
         return Ok(result);
     }
     row::current(&item, input)?;
-    let response = response(&mut tx, lease, input, &item).await?;
+    let response = response(&mut tx, run, input, &item).await?;
     if response.is_some() && row::has_answer(&mut tx, input).await? {
         return Err(TaskRefusal::ReplayConflict.into());
     }
     sqlx::query(include_str!("sql/insert.sql"))
-        .bind(crate::task::guard::wire(&input.item_id)?)
+        .bind(guard::wire(&input.item_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(input.mode.as_str())
-        .bind(crate::task::guard::wire(&input.operation_id)?)
-        .bind(lease.lease_id)
+        .bind(guard::wire(&input.operation_id)?)
+        .bind(run.run_id)
         .bind(current.fence)
         .bind(digest)
         .bind(&response)
@@ -58,22 +58,21 @@ pub(super) async fn accept(
         .map_err(query("retain immutable input outcome"))?;
     if response.is_some() {
         sqlx::query(include_str!("sql/answered.sql"))
-            .bind(crate::task::guard::wire(&input.item_id)?)
+            .bind(guard::wire(&input.item_id)?)
             .execute(&mut *tx)
             .await
-            .map_err(query("retain fulfilled input reply obligation"))?;
+            .map_err(query("retain fulfilled input reply delivery"))?;
     }
-    let completion =
-        if input.source_admission_id != current.source_admission_id && response.is_some() {
-            answer::finish(tasks, &mut tx, &current, input).await?
-        } else {
-            None
-        };
+    let completion = if input.source_turn_id != current.source_turn_id && response.is_some() {
+        answer::finish(tasks, &mut tx, &current, input).await?
+    } else {
+        None
+    };
     let item = row::item(&mut tx, &current, input).await?;
     let result = row::result(input, &item, false)?;
     tx.commit()
         .await
-        .map_err(query("commit accepted input and reply obligation"))?;
+        .map_err(query("commit accepted input and reply delivery"))?;
     transaction::recycle(connection);
     if let Some(completion) = completion {
         completion.announce(tasks).await;
@@ -95,7 +94,7 @@ pub(super) async fn accept(
 
 async fn response(
     connection: &mut sqlx::PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &TaskInputReceiptInput,
     item: &row::Item,
 ) -> Result<Option<String>> {
@@ -105,10 +104,10 @@ async fn response(
                 return Err(TaskRefusal::ReplayConflict.into());
             }
             let version = input.task.as_ref().ok_or(TaskRefusal::InvalidTarget)?;
-            execution::load(connection, lease, version).await?;
+            execution::load(connection, run, version).await?;
             let sequence = item.sequence.ok_or(TaskRefusal::InvalidTarget)?;
             let applied = sqlx::query(include_str!("sql/apply.sql"))
-                .bind(crate::task::guard::wire(&version.task_id)?)
+                .bind(guard::wire(&version.task_id)?)
                 .bind(sequence)
                 .execute(&mut *connection)
                 .await

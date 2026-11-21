@@ -52,17 +52,17 @@ pub enum RunnerRoute {
     TaskCheckpointPin,
     /// Record one original-owner decision result, including late usage.
     TaskDecision,
-    /// Minting the per-lease credentials a fleet needs.
+    /// Minting the per-run credentials a fleet needs.
     CredentialsMint,
-    /// Loading a fleet's memory at lease start.
-    MemoryHydrate,
+    /// Loading a fleet's memory at run start.
+    MemoryLoad,
     /// Writing a fleet's memory back.
     MemoryCapture,
     /// Searching a fleet's memory past the window a run was seeded with.
     MemoryRecall,
     /// Keeping each finished tool call's full arguments and output.
-    ToolCalls,
-    /// The schedules of the fleet a held lease runs: listing them, and a
+    Items,
+    /// The schedules of the fleet a held run runs: listing them, and a
     /// fleet creating its own.
     Schedules,
     /// One schedule the fleet created: changing it, and deleting it.
@@ -71,12 +71,12 @@ pub enum RunnerRoute {
     ScheduleRuns,
     /// A line said to the event's thread before the answer.
     Messages,
-    /// Work the leased fleet puts on another fleet in its workspace.
+    /// Work the held fleet puts on another fleet in its workspace.
     Steers,
-    /// The fleets of the leased fleet's workspace.
+    /// The fleets of the held fleet's workspace.
     Fleets,
-    /// One fleet's recent events, as the leased fleet reads them.
-    FleetEvents,
+    /// One fleet's recent events, as the held fleet reads them.
+    FleetTurns,
 }
 
 impl RunnerRoute {
@@ -99,17 +99,17 @@ impl RunnerRoute {
         Self::TaskCheckpointPin,
         Self::TaskDecision,
         Self::CredentialsMint,
-        Self::MemoryHydrate,
+        Self::MemoryLoad,
         Self::MemoryCapture,
         Self::MemoryRecall,
-        Self::ToolCalls,
+        Self::Items,
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleRuns,
         Self::Messages,
         Self::Steers,
         Self::Fleets,
-        Self::FleetEvents,
+        Self::FleetTurns,
     ];
 
     /// The verbs this route identity serves.
@@ -130,16 +130,16 @@ impl RunnerRoute {
             Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::TaskDecision | Self::TaskCheckpoint | Self::TaskCheckpointPin => &[Verb::Patch],
             Self::SelfRecord
-            | Self::MemoryHydrate
+            | Self::MemoryLoad
             | Self::TaskInputs
             | Self::TaskEffect
             | Self::Fleets
-            | Self::FleetEvents => &[Verb::Get],
+            | Self::FleetTurns => &[Verb::Get],
             Self::Stream
             | Self::CredentialsMint
             | Self::MemoryCapture
             | Self::MemoryRecall
-            | Self::ToolCalls
+            | Self::Items
             | Self::TaskDecisions
             | Self::TaskBindings
             | Self::TaskInputReceipts
@@ -151,40 +151,40 @@ impl RunnerRoute {
         }
     }
 
-    /// Hydrate and capture share a path and differ by method, so they share an
+    /// Load and capture share a path and differ by method, so they share an
     /// arm here. They stay two routes because they are two operations — one
-    /// reads a fleet's memory at lease start, the other writes it back — and
+    /// reads a fleet's memory at run start, the other writes it back — and
     /// collapsing them would lose the distinction every other table keys on.
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let template = match self {
             Self::SelfRecord => paths::RUNNER_SELF,
             Self::Stream => paths::RUNNER_STREAM,
-            Self::TaskDecisions => paths::LEASE_TASK_DECISIONS,
-            Self::TaskInputs => paths::LEASE_TASK_INPUTS,
-            Self::TaskBindings => paths::LEASE_TASK_BINDINGS,
-            Self::TaskEffects => paths::LEASE_TASK_EFFECTS,
-            Self::TaskEffect => paths::LEASE_TASK_EFFECT,
-            Self::TaskInputReceipts => paths::LEASE_TASK_INPUT_RECEIPTS,
-            Self::TaskCheckpoints => paths::LEASE_TASK_CHECKPOINTS,
-            Self::TaskCheckpoint => paths::LEASE_TASK_CHECKPOINT,
-            Self::TaskCheckpointPage => paths::LEASE_TASK_CHECKPOINT_PAGE,
-            Self::TaskCheckpointObjects => paths::LEASE_TASK_CHECKPOINT_OBJECTS,
-            Self::TaskCheckpointUploads => paths::LEASE_TASK_CHECKPOINT_UPLOADS,
-            Self::TaskCheckpointAuthorizations => paths::LEASE_TASK_CHECKPOINT_AUTHORIZATIONS,
-            Self::TaskCheckpointPin => paths::LEASE_TASK_CHECKPOINT_PIN,
-            Self::TaskDecision => paths::LEASE_TASK_DECISION,
+            Self::TaskDecisions => paths::RUN_TASK_DECISIONS,
+            Self::TaskInputs => paths::RUN_TASK_INPUTS,
+            Self::TaskBindings => paths::RUN_TASK_BINDINGS,
+            Self::TaskEffects => paths::RUN_TASK_EFFECTS,
+            Self::TaskEffect => paths::RUN_TASK_EFFECT,
+            Self::TaskInputReceipts => paths::RUN_TASK_INPUT_RECEIPTS,
+            Self::TaskCheckpoints => paths::RUN_TASK_CHECKPOINTS,
+            Self::TaskCheckpoint => paths::RUN_TASK_CHECKPOINT,
+            Self::TaskCheckpointPage => paths::RUN_TASK_CHECKPOINT_PAGE,
+            Self::TaskCheckpointObjects => paths::RUN_TASK_CHECKPOINT_OBJECTS,
+            Self::TaskCheckpointUploads => paths::RUN_TASK_CHECKPOINT_UPLOADS,
+            Self::TaskCheckpointAuthorizations => paths::RUN_TASK_CHECKPOINT_AUTHORIZATIONS,
+            Self::TaskCheckpointPin => paths::RUN_TASK_CHECKPOINT_PIN,
+            Self::TaskDecision => paths::RUN_TASK_DECISION,
             Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
-            Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
+            Self::MemoryLoad | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
             Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
-            Self::ToolCalls => paths::LEASE_TOOL_CALLS,
-            Self::Schedules => paths::LEASE_SCHEDULES,
-            Self::Schedule => paths::LEASE_SCHEDULE,
-            Self::ScheduleRuns => paths::LEASE_SCHEDULE_RUNS,
-            Self::Messages => paths::LEASE_MESSAGES,
-            Self::Steers => paths::LEASE_STEERS,
-            Self::Fleets => paths::LEASE_FLEETS,
-            Self::FleetEvents => paths::LEASE_FLEET_EVENTS,
+            Self::Items => paths::RUN_ITEMS,
+            Self::Schedules => paths::RUN_SCHEDULES,
+            Self::Schedule => paths::RUN_SCHEDULE,
+            Self::ScheduleRuns => paths::RUN_SCHEDULE_RUNS,
+            Self::Messages => paths::RUN_MESSAGES,
+            Self::Steers => paths::RUN_STEERS,
+            Self::Fleets => paths::RUN_FLEETS,
+            Self::FleetTurns => paths::RUN_FLEET_TURNS,
         };
         RouteMeta::new(
             Guard::RunnerBearer,

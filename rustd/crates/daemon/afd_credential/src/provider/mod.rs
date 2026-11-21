@@ -1,8 +1,8 @@
-//! Whose key this run dials with, resolved from the saved setup for every lease.
+//! Whose key this run dials with, resolved from the saved setup for every run.
 //!
 //! A saved reference names either the platform default or one of the tenant's
 //! own registry entries. Resolving it ([`Providers::resolve_reference`], and
-//! [`Providers::resolve_observed`] for the lease path) takes three steps, and
+//! [`Providers::resolve_observed`] for the run path) takes three steps, and
 //! only the middle one touches the vault:
 //!
 //! ```text
@@ -13,13 +13,13 @@
 //! ```
 //!
 //! The platform default is the one reference a replica may answer from memory:
-//! when the lease claim's witnesses name a held entry ([`cache`]) the vault is
+//! when the run assignment's witnesses name a held entry ([`cache`]) the vault is
 //! not read at all. A tenant's own entry is read every time.
 //!
 //! # Where this crate keeps it, and where it may have to move
 //!
 //! A read of shared tenant state like this one would normally sit in `afd_state`.
-//! It is in this crate instead because its only caller today is the lease
+//! It is in this crate instead because its only caller today is the run
 //! verb, and because the rich refusal classification it produces
 //! ([`crate::Error::is_config_permanent`]) is this crate's error type. The
 //! tenant plane resolves the same credentials for `PUT /v1/tenants/me/provider`
@@ -31,6 +31,7 @@ mod activate;
 pub mod cache;
 mod cap;
 mod decision;
+mod eligibility;
 mod endpoint;
 pub mod entries;
 mod managed;
@@ -52,12 +53,15 @@ use serde::de::DeserializeOwned;
 use crate::error::{Result, provider_malformed};
 
 pub use self::activate::Activation;
+pub use self::eligibility::{Eligibility, ModelFacts};
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
 pub use self::entries::{
     Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,
     Retargeted,
 };
-pub use self::registered::{PLATFORM_MODEL_REF, RegisteredModel, registered_model};
+pub use self::registered::{
+    PLATFORM_MODEL_REF, RegisteredModel, RegisteredRoute, registered_model,
+};
 pub use self::resolved::{Dialled, Resolved};
 pub use self::runtime::{RuntimeModel, runtime_model};
 pub use self::secret_kind::SecretKind;

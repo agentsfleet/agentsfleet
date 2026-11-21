@@ -105,7 +105,7 @@ async fn four_lanes_share_a_limited_path_without_starving_each_other() -> Result
     let path = PathLimit::start(&host, Path::limited(limit)).await?;
     let deadline = Instant::now() + CASE_DEADLINE;
     let mut connection = connect(&fixture.trust, &path.endpoint, deadline).await?;
-    let [mut control, mut work, mut reports, mut activity] =
+    let [mut control, mut work, mut reports, mut progress] =
         open_all_lanes(&mut connection, &path.endpoint, deadline).await?;
     let sent = [
         payload(1_024),
@@ -117,9 +117,9 @@ async fn four_lanes_share_a_limited_path_without_starving_each_other() -> Result
         control.echo(&sent[0], deadline),
         work.echo(&sent[1], deadline),
         reports.echo(&sent[2], deadline),
-        activity.echo(&sent[3], deadline),
+        progress.echo(&sent[3], deadline),
     );
-    let failures: Vec<String> = [("control", a), ("work", b), ("reports", c), ("activity", d)]
+    let failures: Vec<String> = [("control", a), ("work", b), ("reports", c), ("progress", d)]
         .into_iter()
         .zip(&sent)
         .filter_map(|((lane, answer), expected)| match answer {

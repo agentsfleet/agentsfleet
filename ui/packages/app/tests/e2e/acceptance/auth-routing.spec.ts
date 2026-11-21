@@ -24,7 +24,7 @@ const NO_INDEX_SELECTOR = 'meta[name="robots"][content*="noindex"]';
 const PROTECTED_ROUTES = [
   "/",
   "/w/ws_probe/fleets",
-  "/w/ws_probe/events",
+  "/w/ws_probe/turns",
   "/settings/billing",
   "/settings/security",
 ] as const;
@@ -54,8 +54,8 @@ test.describe("auth routing", () => {
       });
     }
 
-    await gotoWorkspace(page, FIXTURE_KEY.regular, "events");
-    await expect(page).toHaveURL(workspaceUrlPattern("events"), { timeout: ROUTING_TIMEOUT_MS });
+    await gotoWorkspace(page, FIXTURE_KEY.regular, "turns");
+    await expect(page).toHaveURL(workspaceUrlPattern("turns"), { timeout: ROUTING_TIMEOUT_MS });
     await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
   });
 

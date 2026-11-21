@@ -61,8 +61,8 @@ pub(super) async fn proposed(
 
 fn input(fixture: &Decisions<'_>, call: String, action: TaskInputAction) -> TaskBindingsInput {
     let mut input = TaskBindingsInput {
-        fencing_token: fixture.case.lease().fencing_token,
-        source_admission_id: fixture.case.held.event_id.clone().into(),
+        fencing_token: fixture.case.run().fencing_token,
+        source_turn_id: fixture.case.held.turn_id.clone().into(),
         accepted_revision_id: fixture.revision.to_string(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: call,
@@ -96,7 +96,7 @@ async fn conversation(case: &Case) {
     let input = valid(proposed(&fixture, TaskInputAction::Conversation).await);
     let accepted = fixture
         .tasks
-        .interpret(case.lease(), &input)
+        .interpret(case.run(), &input)
         .await
         .expect("paid interpretation");
     assert!(!accepted.replayed);
@@ -108,15 +108,15 @@ async fn conversation(case: &Case) {
     assert_eq!(case.counts().await, (0, 1, 1));
     let replay = fixture
         .tasks
-        .interpret(case.lease(), &input)
+        .interpret(case.run(), &input)
         .await
         .expect("same interpretation replay");
     assert!(replay.replayed);
     assert_eq!(replay.items, accepted.items);
     assert_eq!(case.counts().await, (0, 1, 1));
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.task_interpretations WHERE admission_id=$1")
-            .bind(&case.held.event_id)
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_interpretations WHERE turn_id=$1")
+            .bind(&case.held.turn_id)
             .fetch_one(
                 &mut *case
                     .held
@@ -169,7 +169,7 @@ async fn refusals(case: &Case) {
     ] {
         let error = fixture
             .tasks
-            .interpret(case.lease(), &valid(input))
+            .interpret(case.run(), &valid(input))
             .await
             .expect_err("invalid interpretation");
         assert_eq!(error.code(), code);

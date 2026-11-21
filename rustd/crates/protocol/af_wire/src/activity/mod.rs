@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use crate::tool_trace::{ToolCallStatus, edge_fits};
+use crate::tool_trace::{FileChange, ToolCallStatus, changes_fit, edge_fits};
 
 mod task;
 pub use task::{
@@ -121,6 +121,12 @@ pub struct ToolCallCompleted<'a> {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(skip)]
     pub exit_code: Option<i32>,
+    /// For an edit: each file it changed and the lines it added and removed,
+    /// at most 64. Absent for any other call, and for an edit that failed.
+    // Judged by `ActivityFrame::outcome_usable`, beside the edges.
+    #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub changes: Vec<FileChange<'a>>,
 }
 
 /// A long-running tool is still working, so a reader's spinner survives it.
@@ -219,17 +225,16 @@ impl ActivityFrame<'_> {
         self.validate().is_ok()
     }
 
-    /// Whether a completion's output edges, if any, fit the bounds a stored
-    /// trace holds them to. Every other frame carries no edges.
+    /// Whether a completion's output edges and changes, if any, fit the
+    /// bounds a stored trace holds them to. Every other frame carries
+    /// neither.
     #[must_use]
     pub fn outcome_usable(&self) -> bool {
         let Self::ToolCallCompleted(body) = self else {
             return true;
         };
-        [body.output_head.as_deref(), body.output_tail.as_deref()]
-            .into_iter()
-            .flatten()
-            .all(edge_fits)
+        let edges = [body.output_head.as_deref(), body.output_tail.as_deref()];
+        edges.into_iter().flatten().all(edge_fits) && changes_fit(&body.changes)
     }
 }
 

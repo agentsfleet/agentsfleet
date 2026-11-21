@@ -19,7 +19,7 @@ use super::{
 };
 use crate::{
     Result,
-    task::{TaskLease, TaskRefusal, Tasks, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, transaction},
 };
 
 pub(super) struct Coverage {
@@ -29,15 +29,15 @@ pub(super) struct Coverage {
 
 pub(super) async fn issue(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
     call: Call,
 ) -> Result<ReservedDecision> {
-    let result = run(tasks, lease, input, &call).await;
+    let result = run(tasks, task_run, input, &call).await;
     match result {
         Ok(response) => Ok(response),
         Err(fault) => {
-            let saved = row::peek(tasks.leases.pool(), Lookup::Id(&call.id)).await?;
+            let saved = row::peek(tasks.runs.pool(), Lookup::Id(&call.id)).await?;
             if let Some(saved) = saved.filter(|saved| saved.issued || saved.accounted) {
                 return replay::response(tasks, saved).await;
             }
@@ -48,7 +48,7 @@ pub(super) async fn issue(
 
 async fn run(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    task_run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
     call: &Call,
 ) -> Result<ReservedDecision> {
@@ -57,7 +57,7 @@ async fn run(
         .filter(|remaining| *remaining > 0)
         .ok_or(TaskRefusal::DecisionUnavailable)?;
     let work = async {
-        let coverage = cover(tasks, lease, call).await?;
+        let coverage = cover(tasks, task_run, call).await?;
         let admin = tasks
             .dependencies
             .admin_workspace
@@ -66,7 +66,7 @@ async fn run(
         let key = key(tasks, admin, call.profile_snapshot.0.profile.api).await?;
         Issuance {
             tasks,
-            lease,
+            run: task_run,
             input,
             call,
             coverage,
@@ -82,10 +82,10 @@ async fn run(
         })?
 }
 
-async fn cover(tasks: &Tasks, lease: TaskLease<'_>, call: &Call) -> Result<Coverage> {
-    let proposed = proposed(tasks, lease).await?;
+async fn cover(tasks: &Tasks, task_run: TaskRun<'_>, call: &Call) -> Result<Coverage> {
+    let proposed = proposed(tasks, task_run).await?;
     let ask = Ask {
-        work: WorkKey::FleetLease(lease.lease_id.clone()),
+        work: WorkKey::FleetRun(task_run.run_id.clone()),
         payer: Account {
             tenant: call.tenant_id.clone(),
             workspace: call.workspace_id.clone(),
@@ -94,23 +94,23 @@ async fn cover(tasks: &Tasks, lease: TaskLease<'_>, call: &Call) -> Result<Cover
     };
     match tasks.dependencies.biller.check(&ask).await? {
         Funds::Covered => Ok(proposed),
-        Funds::Short { .. } => Err(refused(lease, "insufficient_credit")),
-        Funds::Unconfirmed => Err(refused(lease, "credit_unconfirmed")),
+        Funds::Short { .. } => Err(refused(task_run, "insufficient_credit")),
+        Funds::Unconfirmed => Err(refused(task_run, "credit_unconfirmed")),
     }
 }
 
-async fn proposed(tasks: &Tasks, lease: TaskLease<'_>) -> Result<Coverage> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
-    let result = proposed_on(&mut connection, lease).await;
+async fn proposed(tasks: &Tasks, task_run: TaskRun<'_>) -> Result<Coverage> {
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let result = proposed_on(&mut connection, task_run).await;
     transaction::recycle(connection);
     result
 }
 
-async fn proposed_on(connection: &mut PgConnection, lease: TaskLease<'_>) -> Result<Coverage> {
+async fn proposed_on(connection: &mut PgConnection, task_run: TaskRun<'_>) -> Result<Coverage> {
     let mut tx = transaction::begin(connection).await?;
-    let current = crate::lease::Leases::load_for_renew_on(&mut tx, lease.lease_id, lease.runner_id)
+    let current = crate::run::Runs::load_for_renew_on(&mut tx, task_run.run_id, task_run.runner_id)
         .await?
-        .filter(|lease| lease.status == crate::lease::sql::LEASE_STATUS_ACTIVE)
+        .filter(|task_run| task_run.status == crate::run::sql::RUN_STATUS_ACTIVE)
         .ok_or(TaskRefusal::StaleState)?;
     let posture = Posture::parse(&current.posture).ok_or(TaskRefusal::DecisionUnavailable)?;
     let estimate = Accounts::estimate_on(
@@ -122,19 +122,19 @@ async fn proposed_on(connection: &mut PgConnection, lease: TaskLease<'_>) -> Res
     )
     .await?;
     let Estimate::Priced(headroom) = estimate else {
-        return Err(refused(lease, "coding_price_unavailable"));
+        return Err(refused(task_run, "coding_price_unavailable"));
     };
-    let required = super::credit::required_on(&mut tx, lease.lease_id, headroom).await?;
+    let required = super::credit::required_on(&mut tx, task_run.run_id, headroom).await?;
     tx.commit().await.map_err(crate::error::query(
         "finish bounded decision credit prerequisites",
     ))?;
     Ok(Coverage { headroom, required })
 }
 
-fn refused(lease: TaskLease<'_>, reason: &'static str) -> crate::Error {
+fn refused(task_run: TaskRun<'_>, reason: &'static str) -> crate::Error {
     tracing::warn!(
         event = "dt_decision_funding_refused",
-        lease_id = lease.lease_id.as_str(),
+        run_id = task_run.run_id.as_str(),
         reason
     );
     TaskRefusal::DecisionUnavailable.into()
@@ -145,7 +145,7 @@ async fn key(
     admin: &af_core::id::Uuid7,
     api: af_wire::decision::DecisionApi,
 ) -> Result<SecretString> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let result = async {
         let mut tx = transaction::begin(&mut connection).await?;
         let key = tasks

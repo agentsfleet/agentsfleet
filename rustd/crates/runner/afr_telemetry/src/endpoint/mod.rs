@@ -5,7 +5,7 @@
 //! timeout — and refuses every header knob. A header is how an OTLP exporter
 //! carries a credential, and a user in the endpoint is the other way to
 //! smuggle one, so both refuse `run` naming the knob: the credential belongs
-//! to the runner collector on the host, which a lease cannot read.
+//! to the runner collector on the host, which a run cannot read.
 //!
 //! "Every header knob" is four, not one. The exporter reads each signal's own
 //! header knob from the process environment itself, prefers it to the general

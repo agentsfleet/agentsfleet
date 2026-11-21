@@ -38,10 +38,9 @@ it("preserves a partial answer but refuses malformed failure metadata", () => {
 });
 
 it.each([
-  {cause: "deadline", title: "Model request timed out"},
-  {cause: "cancelled", title: "Request stopped"},
-])("explains a recorded $cause without retrying outside its owning conversation", ({cause, title}) => {
-  render(<RecordedFailure failure={{reason: "provider_failed", cause, error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"}} />);
+  {reason: "frame_too_large", title: "Message too large"},
+])("explains a recorded $reason without retrying outside its owning conversation", ({reason, title}) => {
+  render(<RecordedFailure failure={{reason, error_code: "UZ-SETUP-014", recovery_action: "retry_message"}} />);
   expect(screen.getByText(title)).toBeTruthy();
   expect(screen.getByText(PARTIAL)).toBeTruthy();
   expect(screen.queryByRole("button", {name: RETRY})).toBeNull();
@@ -49,7 +48,7 @@ it.each([
 });
 
 it("rechecks the client before admitting a retry from a stale eligible render", async () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", failure}];
   await client.resume(DRAFT.id);
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={client.getSnapshot()} />);

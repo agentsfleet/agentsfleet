@@ -1,4 +1,4 @@
-//! Dimension 2.4 — the route table carries exactly this milestone's inventory.
+//! The route table carries exactly this milestone's inventory.
 //!
 //! # Why a hand-written list is the right shape here
 //!
@@ -23,22 +23,22 @@
 #![cfg(feature = "test-util")]
 use std::collections::BTreeSet;
 
-use afd_api::Route;
-use afd_api::route::{Ownership, RunnerRoute, TenantRoute};
+use afd_http::route::Route;
+use afd_http::route::{Ownership, RunnerRoute, TenantRoute};
 
-/// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
+/// Every path the daemon serves.
 ///
 /// Schedules and connector surfaces are M180's and are deliberately absent even
 /// though the table carries them; the families walked below exclude them the
 /// same way.
 const INVENTORY: &[&str] = &[
     "/v1/runners/me/stream",
-    // §1 — the device-flow login surface.
+    // The device-flow login surface.
     "/v1/auth/sessions",
     "/v1/auth/sessions/{session_id}",
     "/v1/auth/sessions/{session_id}/approve",
     "/v1/auth/sessions/{session_id}/verify",
-    // §2 — the tenant plane.
+    // The tenant plane.
     "/v1/models",
     "/v1/workspaces",
     "/v1/tenants/me/billing",
@@ -56,21 +56,21 @@ const INVENTORY: &[&str] = &[
     // The caller's identity read. Listed here beside the tenant plane's own
     // rows because it is read for the caller itself, like every path above it.
     "/v1/users/me",
-    // §3 — workspace fleets and install.
+    // Workspace fleets and install.
     "/v1/workspaces/{workspace_id}/fleets",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/authoring-context",
-    // §4 — the vault.
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/setup-context",
+    // The vault.
     "/v1/workspaces/{workspace_id}/secrets",
     "/v1/workspaces/{workspace_id}/secrets/{name}",
-    // §5 — events, streams, messages, memories, grants.
-    "/v1/workspaces/{workspace_id}/events",
-    "/v1/workspaces/{workspace_id}/events/stream",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}",
+    // Events, streams, messages, memories, grants.
+    "/v1/workspaces/{workspace_id}/turns",
+    "/v1/workspaces/{workspace_id}/turns/stream",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}",
     // One tool call of an event, in full — the read behind "show all".
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/{event_id}/tool-calls/{call_id}",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}/items/{item_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks/{task_id}",
@@ -80,27 +80,24 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memory-access",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/integration-grants/{grant_id}",
-    // §6 — approvals.
+    // Approvals.
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
-    // Onboarding, preferences, Plugin reads.
+    // Onboarding and preferences.
     "/v1/workspaces/{workspace_id}/onboarding",
     "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
-    "/v1/workspaces/{workspace_id}/plugins",
-    // M227 N1–N17 (`docs/architecture/api_resources.md`) — eligible models,
-    // creator-private drafts, reviewed setup revisions and explicit Plugin
-    // publication. Removed R1/R2 `library-entries` have no row here.
+    // M227 N1–N11 (`docs/architecture/api_resources.md`) — eligible models,
+    // creator-private drafts and reviewed setup revisions. Removed R1/R2
+    // `library-entries` and the retired Plugin routes have no row here.
     "/v1/workspaces/{workspace_id}/models",
     "/v1/workspaces/{workspace_id}/drafts",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}",
     "/v1/workspaces/{workspace_id}/drafts/{draft_id}/messages",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/cancellations",
-    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/events/stream",
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/stream",
+    // Stop on a draft's turn, beside the fleet turn's PATCH.
+    "/v1/workspaces/{workspace_id}/drafts/{draft_id}/turns/{turn_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions",
-    "/v1/workspaces/{workspace_id}/plugins/{plugin_id}/revisions/{revision_id}",
 ];
 
 /// The paths the table carries that belong to a LATER milestone.
@@ -207,6 +204,100 @@ fn test_workspace_create_is_tenant_scoped_not_workspace_scoped() {
     assert_eq!(meta.ownership, Ownership::None);
 }
 
+/// The surface speaks in turns, items and runs.
+///
+/// A run's tool calls are items, a runner works a run rather than a lease, a
+/// turn is stopped by its own `PATCH`, and a fleet's history is its turns. So
+/// no inventory path, and no template the daemon tables, names a retired
+/// segment, and `/events` survives only as the vendor webhook's ingress.
+#[test]
+fn the_route_inventory_names_turns_items_and_runs() {
+    const RETIRED: [&str; 3] = ["/tool-calls", "/leases", "/cancellations"];
+    const VENDOR_EVENTS: &str = "/v1/connectors/{provider}/events";
+    let paths = INVENTORY
+        .iter()
+        .copied()
+        .chain(DEFERRED_TO_M180.iter().copied())
+        .chain(Route::all().map(|route| route.meta().template));
+    for path in paths {
+        for retired in RETIRED {
+            assert!(!path.contains(retired), "{path} names {retired}");
+        }
+        assert!(
+            !path.contains("/events") || path == VENDOR_EVENTS,
+            "{path} names /events, which only the vendor webhook keeps"
+        );
+    }
+}
+
+/// Plugins are gone end to end: no route the
+/// daemon tables, no schema file or statement naming a `setup.plugin_*`
+/// table, and no `/plugins` page in the app.
+#[test]
+fn no_plugin_table_route_or_page_remains() -> std::io::Result<()> {
+    for route in Route::all() {
+        let template = route.meta().template;
+        assert!(
+            !template.contains("/plugins"),
+            "{template} is a Plugin route"
+        );
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
+    let mut statements = Vec::new();
+    sql_files(&root.join("rustd/crates"), &mut statements)?;
+    assert!(!statements.is_empty(), "the walk found no statement");
+    for path in statements {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
+        assert!(
+            !name.contains("_plugin_"),
+            "{} is a Plugin schema file",
+            path.display()
+        );
+        let text = std::fs::read_to_string(&path)?;
+        assert!(
+            !names_a_plugin_table(&text),
+            "{} names a Plugin table",
+            path.display()
+        );
+    }
+    let page = root.join("ui/packages/app/app/(dashboard)/w/[workspaceId]/plugins");
+    assert!(!page.exists(), "{} is a Plugin page", page.display());
+    Ok(())
+}
+
+/// The scan above would name a statement that still reads a Plugin table.
+#[test]
+fn a_statement_naming_a_plugin_table_is_named() {
+    assert!(names_a_plugin_table(
+        "SELECT id FROM setup.plugin_entries WHERE tenant_id = $1"
+    ));
+    assert!(!names_a_plugin_table(
+        "SELECT id FROM setup.drafts WHERE id = $1"
+    ));
+}
+
+fn names_a_plugin_table(statement: &str) -> bool {
+    statement.contains("setup.plugin_")
+}
+
+/// Every `.sql` file under `dir`, skipping build output.
+fn sql_files(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            if path.file_name().is_some_and(|name| name != "target") {
+                sql_files(&path, found)?;
+            }
+        } else if path.extension().is_some_and(|extension| extension == "sql") {
+            found.push(path);
+        }
+    }
+    Ok(())
+}
+
 /// The templates of the two families this milestone's inventory covers.
 fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
     Route::all()
@@ -226,7 +317,7 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
         .filter(|route| {
             !matches!(
                 route,
-                Route::Auth(afd_api::route::AuthRoute::IdentityEventClerk)
+                Route::Auth(afd_http::route::AuthRoute::IdentityEventClerk)
             )
         })
         .map(|route| route.meta().template)

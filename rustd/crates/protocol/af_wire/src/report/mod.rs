@@ -1,4 +1,4 @@
-//! Lease renewal and the terminal execution report — the metering-bearing half.
+//! Run renewal and the terminal execution report — the metering-bearing half.
 
 use std::borrow::Cow;
 
@@ -17,6 +17,12 @@ pub enum Outcome {
     Processed,
     /// The run failed.
     FleetError,
+    /// A person stopped the run's turn, and the runner ended the run early.
+    ///
+    /// Reported only after the daemon said so: a `Down::Cancel` naming
+    /// `UZ-RUN-022`, or a renewal refused with it. Usage is billed and the
+    /// run's items stay, but the turns it served get no answer.
+    Stopped,
 }
 
 impl Outcome {
@@ -31,6 +37,7 @@ impl Outcome {
         match self {
             Self::Processed => "processed",
             Self::FleetError => "fleet_error",
+            Self::Stopped => "stopped",
         }
     }
 }
@@ -56,15 +63,19 @@ pub enum FailureClass {
     TransportLoss,
     /// Filesystem isolation refused an access.
     LandlockDeny,
-    /// The lease expired before the run finished.
-    LeaseExpired,
+    /// The run expired before the run finished.
+    RunExpired,
     /// Renewal was refused and the child was terminated.
     RenewalTerminate,
     /// The run exceeded its spend budget.
     BudgetBreach,
+    /// The run would not fit the runner protocol's frame
+    /// (`crate::protocol::MESSAGE_BYTES_MAX`). Set by `agentsfleetd`, never a
+    /// runner: the run is failed at assignment and never sent.
+    FrameTooLarge,
 }
 
-/// One lease's native renewal acknowledgement.
+/// One run's native renewal acknowledgement.
 ///
 /// The authoritative new kill deadline. A non-`200` means stop renewing and kill
 /// the child — the run is over.
@@ -73,7 +84,7 @@ pub enum FailureClass {
 pub struct RenewResponse {
     /// The new deadline.
     #[serde(with = "crate::instant")]
-    pub lease_expires_at: jiff::Timestamp,
+    pub run_expires_at: jiff::Timestamp,
     /// Highest usage record saved. Discard records through this number and resend later ones.
     /// An unreadable body saves no records, even when renewal succeeds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -117,7 +128,7 @@ pub struct ReportTelemetry {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunSegments {
-    /// The memory read, when the lease carried no window.
+    /// The memory read, when the run carried no window.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_ms: Option<u64>,
     /// The model's turns.
@@ -141,7 +152,7 @@ pub struct RunSegments {
 pub struct ReportCheckpoint<'a> {
     /// The last event this session processed.
     #[serde(borrow)]
-    pub last_event_id: Cow<'a, str>,
+    pub last_turn_id: Cow<'a, str>,
     /// The last response it produced.
     #[serde(borrow)]
     pub last_response: Cow<'a, str>,
@@ -149,19 +160,19 @@ pub struct ReportCheckpoint<'a> {
 
 /// Native runner report — one batched write keyed by event id.
 //
-// The fencing token is echoed and verified: a reclaimed holder carrying a token
+// The fencing token is echoed and verified: a holder a reassignment superseded, carrying a token
 // below the fleet's live sequence is refused. No runner id — the token owns the
 // identity.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportRequest<'a> {
-    /// The lease being reported on.
+    /// The run being reported on.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// The event this report is about.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
     /// Monotonic guard, verified against the fleet's live sequence.
     pub fencing_token: u64,
     /// The binary verdict.
@@ -202,16 +213,21 @@ pub struct ReportRequest<'a> {
     )]
     pub held_until: Option<jiff::Timestamp>,
     /// The last folded message a completed model call read, by sequence:
-    /// every message the run claimed up to it settles with this report's
+    /// every message the run was assigned up to it settles with this report's
     /// answer. Absent when the run folded nothing, and ignored unless the run
     /// succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folded_through_sequence: Option<i64>,
     /// What the run learned, for the fleet's next run. Written before the
-    /// report settles, so the next lease's memory window holds it. Entries
+    /// report settles, so the next run's memory window holds it. Entries
     /// past 262144 bytes in total are dropped and counted, never refused.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
+    /// A draft-owned run's setup outcome; present exactly on such a run's
+    /// report. The daemon re-checks its base and Definition in the report
+    /// transaction and writes at most one candidate.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<crate::run::SetupReport<'a>>,
 }
 
 /// The exact local hold the daemon accepted with a terminal report.
@@ -219,9 +235,9 @@ pub struct ReportRequest<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AcceptedHold {
-    /// Lease that parked the sandbox; a later lease's hold is independent.
-    pub lease_id: String,
-    /// Slot fence under which this hold was accepted.
+    /// Run that parked the sandbox; a later run's hold is independent.
+    pub run_id: String,
+    /// Thread fence under which this hold was accepted.
     pub fencing_token: u64,
     /// Deadline saved by the daemon, capped by its idle policy.
     #[serde(with = "crate::instant")]

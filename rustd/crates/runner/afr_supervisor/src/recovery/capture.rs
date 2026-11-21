@@ -16,7 +16,7 @@ use zeroize::Zeroizing;
 pub(crate) struct Capture<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) transfers: &'a Transfers,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
     pub(crate) task: &'a TaskContext<'a>,
@@ -40,7 +40,7 @@ impl Capture<'_> {
             .to_string();
         super::activity::emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &activity,
             Operation::Capture,
@@ -59,7 +59,7 @@ impl Capture<'_> {
         };
         super::activity::emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &activity,
             Operation::Capture,
@@ -84,7 +84,7 @@ impl Capture<'_> {
         let stop = self.stop.clone();
         super::activity::emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             activity,
             Operation::Capture,
@@ -116,7 +116,7 @@ impl Capture<'_> {
         }
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,
@@ -163,7 +163,7 @@ impl Capture<'_> {
         let plan = self
             .plane
             .task_checkpoint_plan(
-                self.lease,
+                self.run,
                 &CheckpointPlanInput {
                     fencing_token: self.fence,
                     operation_id: activity.to_owned(),
@@ -279,7 +279,7 @@ impl Session<'_> {
         };
         let saved = self
             .plane
-            .task_checkpoint_commit(self.lease, &checkpoint, &input)
+            .task_checkpoint_commit(self.run, &checkpoint, &input)
             .await?;
         if saved.checkpoint_id != self.plan.checkpoint_id
             || saved.base_id != self.plan.base_id
@@ -313,7 +313,7 @@ impl Session<'_> {
             let accepted = self
                 .plane
                 .task_checkpoint_page_write(
-                    self.lease,
+                    self.run,
                     checkpoint,
                     &Uuid7::parse(&page_id)?,
                     &CheckpointPageInput {

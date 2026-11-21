@@ -4,22 +4,14 @@
 mod openapi;
 mod patch;
 
-#[cfg(feature = "openapi")]
-pub use self::openapi::narrow_edit_batch;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::{
-    Definition, MAX_DEFINITION_BYTES, MAX_INSTRUCTION_OFFSET, MAX_INSTRUCTIONS_CHARS, document,
-    invalid,
-};
+use af_validate::TEXT_MAX_CHARS;
+
+use super::{Definition, MAX_DEFINITION_BYTES, MAX_INSTRUCTION_OFFSET, document, invalid};
 use crate::Result;
 
-/// Maximum configuration operations in one batch.
-pub const MAX_CONFIG_OPS: usize = 64;
-/// Maximum instruction ranges in one batch.
-pub const MAX_INSTRUCTION_EDITS: usize = 32;
 const MAX_POINTER_CHARS: usize = 512;
 
 /// One JSON Patch operation on the setup: `add`, `replace` or `remove`.
@@ -70,7 +62,7 @@ pub struct InstructionEdit {
     #[garde(range(max = MAX_INSTRUCTION_OFFSET))]
     pub end_byte: usize,
     /// Replacement text.
-    #[garde(length(chars, max = MAX_INSTRUCTIONS_CHARS), custom(af_validate::rules::nul_free))]
+    #[garde(length(chars, max = TEXT_MAX_CHARS), custom(af_validate::rules::nul_free))]
     pub text: String,
 }
 
@@ -80,11 +72,11 @@ pub struct InstructionEdit {
 pub struct EditBatch {
     /// Configuration and description operations, applied in their declared order.
     #[serde(default)]
-    #[garde(length(max = MAX_CONFIG_OPS), dive)]
+    #[garde(dive)]
     pub config_ops: Vec<ConfigOp>,
     /// Non-overlapping ranges, always interpreted against the base instructions.
     #[serde(default)]
-    #[garde(length(max = MAX_INSTRUCTION_EDITS), dive)]
+    #[garde(dive)]
     pub instruction_edits: Vec<InstructionEdit>,
 }
 
@@ -113,7 +105,7 @@ impl Definition {
 /// Every character one batch writes, across config values and instruction text.
 #[derive(garde::Validate)]
 struct ReplacementChars {
-    #[garde(range(max = MAX_INSTRUCTIONS_CHARS))]
+    #[garde(range(max = TEXT_MAX_CHARS))]
     chars: usize,
 }
 
@@ -174,6 +166,6 @@ fn instructions(base: &str, batch: &garde::Valid<EditBatch>) -> Result<String> {
     }
     // `end` is zero or a range end proved a boundary in the loop.
     output.push_str(base.get(end..).unwrap_or_default());
-    document::bounded_chars(&output, MAX_INSTRUCTIONS_CHARS)?;
+    document::bounded_chars(&output, TEXT_MAX_CHARS)?;
     Ok(output)
 }

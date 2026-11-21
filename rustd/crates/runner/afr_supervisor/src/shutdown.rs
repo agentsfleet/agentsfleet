@@ -104,7 +104,7 @@ mod tests {
         shutdown.cancel();
         let reporting = async {
             let delivered =
-                until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, || async {
+                until_acknowledged(&halt, crate::config::RuntimePolicy::DEFAULT, async || {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     Ok(Some("acknowledged"))
                 })

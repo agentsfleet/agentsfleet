@@ -4,7 +4,7 @@ use crate::{
     Result,
     client::{ControlPlane, HttpRunnerApi},
     config::Config,
-    downlink::{Downlink, Offered, running::LeaseRegistration},
+    downlink::{Assigned, Downlink, running::RunRegistration},
     error::ErrorKind,
     halt::Halt,
 };
@@ -24,8 +24,8 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 #[derive(Debug)]
 pub struct Session {
     plane: ControlPlane,
-    offers: tokio::sync::Mutex<mpsc::Receiver<Offered>>,
-    held: Mutex<HashMap<Uuid7, LeaseRegistration>>,
+    assignments: tokio::sync::Mutex<mpsc::Receiver<Assigned>>,
+    held: Mutex<HashMap<Uuid7, RunRegistration>>,
     halt: Arc<Halt>,
     owner: AbortOnDropHandle<Result<()>>,
 }
@@ -36,7 +36,7 @@ impl Session {
     /// # Errors
     /// Returns configuration, authentication or connection failures before the opening deadline.
     pub async fn connect(config: &Config) -> Result<Self> {
-        let (stream, downlink, offers) = Downlink::new(config)?;
+        let (stream, downlink, assignments) = Downlink::new(config)?;
         let halt = Arc::new(Halt::new(CancellationToken::new()));
         let serving_halt = Arc::clone(&halt);
         let owner =
@@ -45,7 +45,7 @@ impl Session {
             ));
         let session = Self {
             plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream),
-            offers: tokio::sync::Mutex::new(offers),
+            assignments: tokio::sync::Mutex::new(assignments),
             held: Mutex::new(HashMap::new()),
             halt,
             owner,
@@ -63,12 +63,12 @@ impl Session {
         self.plane.stream.running.capacity(workers);
     }
 
-    /// Observe the same cancellation token the received lease's worker retains.
+    /// Observe the same cancellation token the received run's worker retains.
     #[cfg(test)]
-    pub(crate) fn lease_cancellation(&self, lease: &Uuid7) -> Option<CancellationToken> {
+    pub(crate) fn run_cancellation(&self, run: &Uuid7) -> Option<CancellationToken> {
         self.held
             .lock()
-            .get(lease)
+            .get(run)
             .map(|registration| registration.stop.clone())
     }
 
@@ -80,13 +80,13 @@ impl Session {
         self.plane.heartbeat(request).await?.decode()
     }
 
-    /// Receive an issued offer while retaining its cancellation and worker registration.
+    /// Receive an issued assignment while retaining its cancellation and worker registration.
     ///
     /// # Errors
-    /// Returns a disconnected owner or a malformed protocol offer.
-    pub async fn offer(&self) -> Result<OwnedFrame> {
-        let offered = self
-            .offers
+    /// Returns a disconnected owner or a malformed protocol assignment.
+    pub async fn assign(&self) -> Result<OwnedFrame> {
+        let assigned = self
+            .assignments
             .lock()
             .await
             .recv()
@@ -94,8 +94,8 @@ impl Session {
             .ok_or(ErrorKind::Disconnected)?;
         self.held
             .lock()
-            .insert(offered.registration.lease.clone(), offered.registration);
-        Ok(offered.frame)
+            .insert(assigned.registration.run.clone(), assigned.registration);
+        Ok(assigned.frame)
     }
 
     /// Deliver the current report and release its registration only after acknowledgement.
@@ -106,34 +106,34 @@ impl Session {
         let request: af_wire::report::ReportRequest<'_> =
             af_core::json::object_from_slice(bytes)
                 .map_err(crate::error::malformed(crate::client::Verb::Report))?;
-        let lease = Uuid7::parse(&request.lease_id)?;
+        let run = Uuid7::parse(&request.run_id)?;
         let response = self
             .plane
             .stream
             .compute(crate::client::stream::Report::try_from(bytes)?)
             .await?;
-        self.held.lock().remove(&lease);
+        self.held.lock().remove(&run);
         Ok(response)
     }
 
-    /// Renew one lease through the production batch computation.
+    /// Renew one run through the production batch computation.
     ///
     /// # Errors
-    /// Preserves native failures and the lease's domain refusal.
-    pub async fn renew(&self, lease: &Uuid7, request: &RenewRequest) -> Result<RenewResponse> {
-        self.plane.renew(lease, request).await
+    /// Preserves native failures and the run's domain refusal.
+    pub async fn renew(&self, run: &Uuid7, request: &RenewRequest) -> Result<RenewResponse> {
+        self.plane.renew(run, request).await
     }
 
-    /// Keep a real lease meter registered with the host renewal ticker until cancellation.
+    /// Keep a real run meter registered with the host renewal ticker until cancellation.
     pub async fn keep_usage(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         expires: jiff::Timestamp,
         meter: &Arc<afr_agent::Meter>,
     ) -> af_wire::report::FailureClass {
         crate::renew::Renewal::new(
             &self.plane,
-            lease,
+            run,
             expires,
             &af_core::clock::SystemClock,
             meter,
@@ -146,83 +146,16 @@ impl Session {
     ///
     /// # Errors
     /// Returns transport, encoding or queue failures.
-    pub async fn activity(&self, lease: &Uuid7, request: &ActivityRequest<'_>) -> Result<()> {
-        self.plane.activity(lease, request).await
+    pub async fn activity(&self, run: &Uuid7, request: &ActivityRequest<'_>) -> Result<()> {
+        self.plane.activity(run, request).await
     }
 
-    /// Read pending folds under the current lease fence.
+    /// Read pending folds under the current run fence.
     ///
     /// # Errors
     /// Preserves native and domain refusals.
-    pub async fn folds(&self, lease: &Uuid7, fence: u64, after: i64) -> Result<serde_json::Value> {
-        self.plane.folds(lease, fence, after).await?.decode()
-    }
-
-    /// Invoke a model through the same native connection as the lease offer.
-    ///
-    /// # Errors
-    /// Preserves native transport failures and coded authoring refusals.
-    pub async fn authoring_model(
-        &self,
-        lease: &Uuid7,
-        request: &af_wire::authoring::ModelCall,
-    ) -> Result<af_wire::authoring::ModelResult> {
-        self.plane.authoring_model(lease, request).await
-    }
-
-    /// Exercise the production answer deadline without advancing native transport clocks.
-    ///
-    /// # Errors
-    /// Preserves deadline expiry, transport failures and coded authoring refusals.
-    pub async fn authoring_model_until(
-        &self,
-        lease: &Uuid7,
-        request: &af_wire::authoring::ModelCall,
-        deadline: Instant,
-    ) -> Result<af_wire::authoring::ModelResult> {
-        self.plane
-            .authoring_model_until(lease, request, deadline)
-            .await
-    }
-
-    /// Submit a proposal and receive its durable activity receipt.
-    ///
-    /// # Errors
-    /// Preserves native transport failures and coded authoring refusals.
-    pub async fn authoring_activity(
-        &self,
-        lease: &Uuid7,
-        request: &af_wire::authoring::ActivityRequest,
-    ) -> Result<af_wire::authoring::ActivityAccepted> {
-        self.plane.authoring_activity(lease, request).await
-    }
-
-    /// Renew the authoring lease under this connection's authority.
-    ///
-    /// # Errors
-    /// Preserves native transport failures and coded authoring refusals.
-    pub async fn authoring_renew(
-        &self,
-        lease: &Uuid7,
-        request: &af_wire::authoring::Renew,
-    ) -> Result<af_wire::authoring::Renewed> {
-        self.plane.authoring_renew(lease, request).await
-    }
-
-    /// Complete authoring, retaining the worker until accounting is settled.
-    ///
-    /// # Errors
-    /// Preserves native transport failures and coded settlement refusals.
-    pub async fn authoring_report(
-        &self,
-        lease: &Uuid7,
-        request: &af_wire::authoring::Report,
-    ) -> Result<af_wire::authoring::Reported> {
-        let result = self.plane.authoring_report(lease, request).await?;
-        if result.settled {
-            self.held.lock().remove(lease);
-        }
-        Ok(result)
+    pub async fn folds(&self, run: &Uuid7, fence: u64, after: i64) -> Result<serde_json::Value> {
+        self.plane.folds(run, fence, after).await?.decode()
     }
 
     /// Stop recovery and join the downlink and native child tasks.

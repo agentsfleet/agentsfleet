@@ -2,7 +2,7 @@
 name = "afd_fleet"
 # One aggregated integration binary; see tests/fleet_suite.rs for why.
 autotests = false
-description = "The runner control plane: enrolment, liveness, lease assignment, report settlement, and the sweepers behind them."
+description = "The run plane: assigning, renewing and settling a fleet's runs, the turn checkpoints they write, and durable tasks."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,18 +21,18 @@ test-util = [
   "af_core/test-util",
   "af_crypto/test-util",
   "afd_db/test-util",
-  # The capturing metric reader the lease suite reads the runs-started
+  # The capturing metric reader the run suite reads the runs-started
   # counter back through.
   "af_observability/test-util",
   # The labelled billing refusal the fail-open posture suite absorbs. Taken
   # from that crate's own sample rather than named here, because the kind is
   # private to it.
   "afd_billing/test-util",
-  # Admissions::for_tests seeds the real ledger in lease integration tests.
-  "afd_admission/test-util",
-  # The pointed admission a mixed-kind lease suite places its own queued turn
-  # with, beside a runtime lease on the same host.
-  "afd_authoring/test-util",
+  # Turns::for_tests seeds the real ledger in run integration tests.
+  "afd_turns/test-util",
+  # The pointed admission a mixed-kind run suite places its own queued turn
+  # with, beside a runtime run on the same host.
+  "afd_setup/test-util",
 ]
 
 # Each dependency is added by the module that uses it, for the reason
@@ -52,19 +52,19 @@ http.workspace = true
 aws-sigv4.workspace = true
 aws-credential-types.workspace = true
 bytes.workspace = true
-# A lease's two post-issue reads, the thread's turns and the memory window,
+# A run's two post-issue reads, the thread's turns and the memory window,
 # run overlapped (`future::join`).
 futures-util.workspace = true
-af_context = { workspace = true, features = ["postgres"] }
+af_context.workspace = true
 # The shared poll admits private setup through its production-domain owner.
-afd_authoring.workspace = true
-# The thread a chat lease reads its turns from is a trait object, so a read
+afd_setup.workspace = true
+# The thread a chat run reads its turns from is a trait object, so a read
 # that fails is tested with a failing implementation.
 async-trait.workspace = true
 # The message-cap sentence spells the cap from its constant.
 const_format.workspace = true
 # The families this crate produces. The dependency points this way and not the
-# other: telemetry knows nothing about leases or memory, and the counts below exist only
+# other: telemetry knows nothing about runs or memory, and the counts below exist only
 # where the work happens.
 af_observability.workspace = true
 # The per-replica definition cache, keyed by revision id.
@@ -73,7 +73,7 @@ moka.workspace = true
 afd_billing.workspace = true
 # The only writer of `connector.integration_grants`. A delivery that finds no grant
 # asks for one through this crate rather than inserting a row the approval
-# resolve would have to trust — the direction the `afd_events` split below made
+# resolve would have to trust — the direction the `afd_turns` split below made
 # possible, taken the other way.
 afd_approval.workspace = true
 afd_credential.workspace = true
@@ -82,11 +82,11 @@ af_core = { workspace = true, features = ["sqlx"] }
 # The pool every statement in `sql/` runs against.
 afd_db.workspace = true
 scopeguard.workspace = true
-# `fleet.events`. The table's statements moved out of this crate's
+# `thread.turns`. The event statements moved out of this crate's
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
-# them without depending on leases, money, policy and four sweepers.
-afd_events.workspace = true
-# Owns `fleet.obligations`: the report path commits an obligation through
+# them without depending on runs, money, policy and four sweepers.
+afd_turns.workspace = true
+# Owns `thread.deliveries`: the report path commits an delivery through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
 # The one masker the product carries: an interim message is scrubbed of the
@@ -94,22 +94,21 @@ afd_outbound.workspace = true
 # can never disagree on what a masked value reads as.
 af_secrets.workspace = true
 # The admission producer identity and stored reply destination.
-afd_admission.workspace = true
 # The connector a reply destination names, parsed from the admission row
-# once, so an obligation carries the type and never a model provider's
+# once, so an delivery carries the type and never a model provider's
 # string. Already in this crate's graph through `afd_outbound`.
 afd_connector.workspace = true
-# The HOST's plane. The lease is issued TO a runner, so the lease statements
+# The HOST's plane. The run is issued TO a runner, so the run statements
 # bind runner rows through its `Bound`, and finalize writes the one
-# `lease_released` audit row using its vocabulary — the single point the two
+# `run_released` audit row using its vocabulary — the single point the two
 # planes meet.
 afd_runner.workspace = true
 # The runner-plane state reads, and the `admin_state` spelling the credential
 # lookup already owns — imported rather than restated (RULE UFS).
 afd_state.workspace = true
-# The stored fleet config a lease resolves: the budget ceiling the gate reads,
+# The stored fleet config a run resolves: the budget ceiling the gate reads,
 # the credential names the secrets map is built from, and the network and
-# repository policy the `ExecutionPolicy` carries. Resolved fresh per lease —
+# repository policy the `ExecutionPolicy` carries. Resolved fresh per run —
 # a PATCH takes effect on the next one, never on a cached copy.
 af_fleet_runtime.workspace = true
 # The UTC month a spend ceiling opens at. Confined to `money::window`; see the
@@ -123,7 +122,7 @@ hex.workspace = true
 # authored here.
 afd_api_wire.workspace = true
 af_wire.workspace = true
-# Fleet memory. The lease plane fences the runner's two memory verbs and then
+# Fleet memory. The run plane fences the runner's two memory verbs and then
 # reaches memory only through the store trait this crate holds.
 afd_memory.workspace = true
 sqlx.workspace = true
@@ -161,14 +160,14 @@ afd_admin = { workspace = true, features = ["test-util"] }
 # The `tracing` capture the suites read their log lines back through
 # (`af_core::test_util::trace`). A dev-dependency feature only.
 af_core = { workspace = true, features = ["test-util"] }
-# The thread row fixture the lease history's caps are proven against.
-afd_events = { workspace = true, features = ["test-util"] }
+# The thread row fixture the run history's caps are proven against.
+afd_turns = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
-# still what the lease suite constructs a stub broker with.
+# still what the run suite constructs a stub broker with.
 afd_credential = { workspace = true, features = ["test-util"] }
 afd_runner = { workspace = true, features = ["test-util"] }
 # The suites need REAL parallelism: every contention proof in this crate — the
-# affinity race, the reclaim fence, the mint single-flight — is worthless on a
+# affinity race, the reassignment fence, the mint single-flight — is worthless on a
 # single-threaded runtime, because the interleaving it exists to force cannot
 # happen (`dispatch/write_rust.md`: "Concurrency work needs a deterministic
 # contention test, not only a happy-path asynchronous test").

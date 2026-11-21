@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 300" width="320" height="300" role="img" aria-labelledby="title desc">
+  <title id="title">Guffy</title>
+  <desc id="desc">Guffy, the guffbolt mascot: a grinning lightning bolt with googly eyes, its tongue out, holding a wrench and saying "guff guff!"</desc>
+  <!-- speech bubble -->
+  <path d="M196 22 h104 a14 14 0 0 1 14 14 v34 a14 14 0 0 1 -14 14 h-62 l-22 20 l4 -20 h-24 a14 14 0 0 1 -14 -14 v-34 a14 14 0 0 1 14 -14 z" fill="#ffffff" stroke="#1f2937" stroke-width="4" stroke-linejoin="round"/>
+  <text x="248" y="62" font-family="Comic Sans MS, Comic Neue, Chalkboard SE, cursive" font-size="22" font-weight="700" fill="#1f2937" text-anchor="middle">guff guff!</text>
+  <!-- motion sparks -->
+  <path d="M40 92 l18 6 M30 126 l20 0 M40 160 l18 -6" stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
+  <!-- the bolt -->
+  <path d="M150 30 L78 160 L132 160 L104 280 L214 128 L156 128 L196 30 Z" fill="#facc15" stroke="#1f2937" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M150 42 L92 150 L118 150" fill="none" stroke="#fef08a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- googly eyes, looking two different ways -->
+  <circle cx="132" cy="96" r="19" fill="#ffffff" stroke="#1f2937" stroke-width="4"/>
+  <circle cx="176" cy="92" r="15" fill="#ffffff" stroke="#1f2937" stroke-width="4"/>
+  <circle cx="125" cy="102" r="8" fill="#1f2937"/>
+  <circle cx="182" cy="86" r="6" fill="#1f2937"/>
+  <circle cx="122" cy="99" r="2.5" fill="#ffffff"/>
+  <circle cx="180" cy="84" r="2" fill="#ffffff"/>
+  <!-- a grin with its tongue out -->
+  <path d="M118 128 Q148 156 182 124" fill="#7f1d1d" stroke="#1f2937" stroke-width="4" stroke-linecap="round"/>
+  <path d="M146 140 q10 18 22 2" fill="#fb7185" stroke="#1f2937" stroke-width="3" stroke-linejoin="round"/>
+  <!-- blush -->
+  <ellipse cx="108" cy="124" rx="9" ry="5" fill="#fb923c" opacity="0.6"/>
+  <ellipse cx="196" cy="116" rx="8" ry="5" fill="#fb923c" opacity="0.6"/>
+  <!-- an arm with a wrench, ready to fix whatever it just broke -->
+  <path d="M206 140 q26 4 40 24" fill="none" stroke="#1f2937" stroke-width="6" stroke-linecap="round"/>
+  <g transform="rotate(35 252 176)">
+    <rect x="246" y="160" width="12" height="54" rx="5" fill="#9ca3af" stroke="#1f2937" stroke-width="4"/>
+    <path d="M238 150 a16 16 0 1 0 28 0 l-6 8 h-16 z" fill="#9ca3af" stroke="#1f2937" stroke-width="4" stroke-linejoin="round"/>
+  </g>
+  <!-- little feet -->
+  <path d="M96 286 h22 M100 278 l-4 8" stroke="#1f2937" stroke-width="5" stroke-linecap="round"/>
+</svg>

@@ -126,7 +126,7 @@ async fn a_delete_after_a_lost_answer_removes_the_registration_the_scheduler_hol
 
 #[tokio::test]
 #[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
-async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
+async fn a_pause_whose_run_ran_out_leaves_a_newer_resume_registered() {
     let Some((url, token)) = live() else {
         return;
     };
@@ -135,7 +135,7 @@ async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
     let service = against_live(&lane, url.clone(), token.clone());
     let registered = push(&lane, &service, &created.schedule_id, Change::default()).await;
 
-    // One syncer claims a pause, then stalls past its lease before pushing it.
+    // One syncer claims a pause, then stalls past its run before pushing it.
     let stale = CronLane::token();
     let pausing = lane
         .store
@@ -148,7 +148,7 @@ async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
         .await
         .expect("the lane's Postgres must answer")
         .expect("an unheld schedule is claimable");
-    lane.expire_lease(&created.schedule_id).await;
+    lane.expire_run(&created.schedule_id).await;
 
     // Another takes the expired row and resumes it.
     let resumed = push(

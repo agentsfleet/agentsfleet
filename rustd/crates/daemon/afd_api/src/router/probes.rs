@@ -76,7 +76,7 @@ const EVENT_BUS_UNAVAILABLE: &str = "bus_unavailable_at_readyz";
 
 /// What `/readyz` consults.
 ///
-/// The trait is the seam between §5 and §7: routing and the response shape are
+/// The trait is the seam between the router and the daemon's boot: routing and the response shape are
 /// settled here, and what it MEANS to reach Postgres and the bus is supplied by
 /// whoever owns the connections. Generic rather than `dyn`, so the probe is a static
 /// call and the trait needs no boxed future to stay object safe.
@@ -151,7 +151,7 @@ pub(super) async fn readyz<D: Dependencies>(State(dependencies): State<Arc<D>>) 
         if !inputs.queue {
             // `warn` once per probe: an operator should see the bus is down,
             // and the instance keeps serving because Postgres backs every signal.
-            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             {
                 let (event, message) = (
                     &EVENT_BUS_UNAVAILABLE,

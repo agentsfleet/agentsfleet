@@ -1,9 +1,9 @@
-//! Runtime routes come from the selected model's persisted lease settings.
+//! Runtime routes come from the selected model's persisted run settings.
 
 use std::fmt;
 
-use af_wire::lease::LeasePayload;
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
 
 use crate::error::{Result, raise};
 use crate::provider::Provider;
@@ -11,17 +11,17 @@ use crate::transport::Transport;
 use crate::turn::Turns;
 use af_inference::Configured;
 
-/// What reaches the model a lease names.
+/// What reaches the model a run names.
 ///
-/// One lease's life against it, in order:
+/// One run's life against it, in order:
 ///
 /// ```text
-/// LEASE ::= admit [connect TURN*]
-/// TURN  ::= Provider::stream (Chunk)* [failure]
+/// RUN ::= admit [connect TURN*]
+/// TURN  ::= Model::stream (Chunk)* [failure]
 /// ```
 ///
-/// `admit` runs before anything is prepared for the lease, so a refusal costs
-/// no sandbox and no bundle. `connect` runs once per lease.
+/// `admit` runs before anything is prepared for the run, so a refusal costs
+/// no sandbox and no bundle. `connect` runs once per run.
 pub trait Connect: Send + Sync + fmt::Debug {
     /// Refuses missing or invalid saved inference settings.
     ///
@@ -29,14 +29,14 @@ pub trait Connect: Send + Sync + fmt::Debug {
     /// The selected model's saved inference settings are missing or invalid.
     fn admit(&self, policy: &ExecutionPolicy<'_>) -> Result<()>;
 
-    /// The provider `lease` drives.
+    /// The provider `run` drives.
     ///
     /// # Errors
     /// The selected model's saved inference settings are missing or invalid.
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>>;
+    fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>>;
 }
 
-/// The production [`Connect`]: one HTTP client every lease's provider shares.
+/// The production [`Connect`]: one HTTP client every run's provider shares.
 ///
 /// A cheap handle: cloning it shares the client's connection pool. The client
 /// follows no redirect, so a turn reaches the host its route names and no
@@ -105,20 +105,20 @@ impl Connect for Connector {
         configured(policy).map(drop)
     }
 
-    fn connect(&self, lease: &LeasePayload<'_>) -> Result<Box<dyn Provider>> {
-        let policy = &lease.policy;
+    fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>> {
+        let policy = &run.policy;
         let route = configured(policy)?;
         let settings = policy
             .inference
             .as_ref()
             .ok_or_else(|| raise::unhosted(&policy.provider))?;
-        let lease_id = lease.lease_id.as_ref();
-        let transport = Transport::new(self.client.clone(), lease_id, &policy.provider)
-            .with_retry(self.retries);
+        let run_id = run.run_id.as_ref();
+        let transport =
+            Transport::new(self.client.clone(), run_id, &policy.provider).with_retry(self.retries);
         let counting_transport = transport.clone().once().http();
         let model = route.model(&policy.context.model, &policy.api_key, transport.http());
         Ok(Box::new(
-            Turns::new(model, settings, policy, lease_id, counting_transport)
+            Turns::new(model, settings, policy, run_id, counting_transport)
                 .with_settings(self.timeouts, self.retries),
         ))
     }

@@ -101,7 +101,7 @@ export type FleetGroupRowProps = {
 /**
  * A run of identical deliveries as one row: "headline ×N · newest time".
  * Collapsed by default and expandable in place, so the count is a summary the
- * operator can always open — never a replacement for the events themselves.
+ * operator can always open — never a replacement for the turns themselves.
  */
 export function FleetGroupRow({
   sender,

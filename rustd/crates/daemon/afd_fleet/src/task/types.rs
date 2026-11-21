@@ -20,7 +20,7 @@ pub struct DecisionMaintenance {
     pub oldest_overdue_ms: u64,
 }
 
-/// Native exact-effect evidence reads never create another publication or agent lease.
+/// Native exact-effect evidence reads never create another publication or agent run.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EffectMaintenance {
     /// Retained read capabilities examined by this pass.
@@ -82,12 +82,12 @@ pub struct TaskScope {
 
 /// A runner's current attempt; the task service derives its workspace in SQL.
 #[derive(Debug, Clone, Copy)]
-pub struct TaskLease<'a> {
+pub struct TaskRun<'a> {
     /// Authenticated runner identity, never a body field.
     pub runner_id: &'a Uuid7,
-    /// Lease identity supplied by the path.
-    pub lease_id: &'a Uuid7,
-    /// Native fencing token issued with that lease.
+    /// Run identity supplied by the path.
+    pub run_id: &'a Uuid7,
+    /// Native fencing token issued with that run.
     pub fencing_token: u64,
 }
 
@@ -109,7 +109,7 @@ pub struct PreparedTask {
 /// Complete immutable interpretation; partial item acceptance is forbidden.
 #[derive(Debug, Clone)]
 pub struct PreparedPlan {
-    pub(super) source_admission_id: Uuid7,
+    pub(super) source_turn_id: Uuid7,
     pub(super) accepted_revision_id: Uuid7,
     pub(super) digest: String,
     pub(super) items: Vec<super::PreparedItem>,
@@ -121,10 +121,11 @@ pub struct PreparedPlan {
 pub struct TaskBindings {
     /// Stable task and item associations for every accepted action.
     pub items: Vec<TaskBinding>,
-    /// Native objective attached to this lease after the complete binding.
+    /// Native objective attached to this run after the complete binding.
     pub current_task: Option<TaskContext<'static>>,
-    /// Immutable runtime ceiling read under the current lease ownership locks.
-    pub execution_deadline: jiff::Timestamp,
+    /// The bound task's immutable execution ceiling, read under the current
+    /// run ownership locks; `None` when the run is bound to no task.
+    pub execution_deadline: Option<jiff::Timestamp>,
     /// True when the complete original interpretation was recovered.
     pub replayed: bool,
 }
@@ -134,7 +135,7 @@ pub struct TaskBindings {
 pub struct TaskBinding {
     /// Stable identity of the interpreted source item.
     pub item_id: Uuid7,
-    /// Stable objective owner across all its execution leases.
+    /// Stable objective owner across all its execution runs.
     pub task_id: Option<Uuid7>,
     /// Current generation, without granting execution of another task.
     pub task_generation: Option<u64>,

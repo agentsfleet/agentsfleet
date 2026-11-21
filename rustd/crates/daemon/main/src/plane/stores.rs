@@ -3,7 +3,7 @@
 //!
 //! Every builder here borrows the pool, the queue and the key and moves
 //! nothing, so the plane may build these groups in any order relative to each
-//! other; they are built after the shared provider store and admissions ledger
+//! other; they are built after the shared provider store and turns ledger
 //! only because they take a share of them.
 
 use std::sync::Arc;
@@ -11,14 +11,12 @@ use std::sync::Arc;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_admin::{Models as AdminModels, PlatformKeys};
-use afd_admission::Admissions;
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
-use afd_events::History;
 use afd_fleet_lifecycle::Fleets;
-use afd_fleet_ops::RunnerLeaseHistory;
+use afd_fleet_ops::RunnerRunHistory;
 use afd_ingress::Ingress;
 use afd_mail::InviteMailer;
 use afd_tenant::apikey::ApiKeys;
@@ -28,6 +26,8 @@ use afd_tenant::preference::Preferences;
 use afd_tenant::signup::Signups;
 use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
+use afd_turns::Turns;
+use afd_turns::view::History;
 use afd_vault::Vault as SecretVault;
 
 use super::platform;
@@ -84,13 +84,13 @@ pub(super) struct Admin {
     /// reads the same rows.
     pub(super) models: AdminModels,
     pub(super) platform_keys: PlatformKeys,
-    pub(super) runner_lease_history: RunnerLeaseHistory,
+    pub(super) runner_run_history: RunnerRunHistory,
 }
 
 /// Builds the admin surface's stores.
 pub(super) fn admin(database: &Db) -> Admin {
     Admin {
-        runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+        runner_run_history: RunnerRunHistory::new(database.clone()),
         models: AdminModels::new(database.clone(), Entropy::new()),
         platform_keys: PlatformKeys::new(database.clone()),
     }
@@ -103,7 +103,7 @@ pub(super) struct Activity {
     pub(super) approvals: Inbox,
     pub(super) grants: IntegrationGrants,
     pub(super) events: History,
-    pub(super) steering: afd_events::Steer,
+    pub(super) steering: afd_turns::view::Steer,
     pub(super) ingress: Ingress,
 }
 
@@ -115,16 +115,16 @@ pub(super) struct Activity {
 /// share of [`Tenant::secrets`] because the two are different surfaces over
 /// one table — that one seals and never opens, this one opens exactly one name
 /// and never lists.
-pub(super) fn activity(database: &Db, kek: &Arc<Kek>, admissions: &Admissions) -> Activity {
+pub(super) fn activity(database: &Db, kek: &Arc<Kek>, turns: &Turns) -> Activity {
     Activity {
-        approvals: Inbox::new(database.clone(), admissions.streams(), admissions.clone()),
+        approvals: Inbox::new(database.clone(), turns.streams(), turns.clone()),
         grants: IntegrationGrants::new(database.clone(), Entropy::new()),
         events: History::new(database.clone()),
-        steering: afd_events::Steer::new(admissions.clone()),
+        steering: afd_turns::view::Steer::new(turns.clone()),
         ingress: Ingress::new(
             database.clone(),
             SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
-            admissions.clone(),
+            turns.clone(),
         ),
     }
 }

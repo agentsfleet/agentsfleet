@@ -27,7 +27,7 @@
 //!
 //! A fence lost BEFORE the push is refused the same way, before the scheduler
 //! is called: every push names one upstream id per schedule, so a syncer that
-//! stalled past its lease would otherwise remove the registration a newer
+//! stalled past its run would otherwise remove the registration a newer
 //! resume made, or overwrite a newer edit, and its refused finalize would leave
 //! the row marked synced. A stall between that read and the request still
 //! races; per-revision upstream ids are what close it.

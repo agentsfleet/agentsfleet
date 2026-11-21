@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, type ReactNode } from "react";
-import { NO_SENDER_NAMES, isNamedTeammate, nameSender, type SenderNames } from "@/lib/events/sender-names";
+import { NO_SENDER_NAMES, isNamedTeammate, nameSender, type SenderNames } from "@/lib/turns/sender-names";
 
 /** How a person's turn is labelled: the words, and whether they are shown. */
 export type SenderIdentity = { label: string; shown: boolean };

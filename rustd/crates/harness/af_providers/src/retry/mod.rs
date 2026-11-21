@@ -7,7 +7,7 @@
 //! the client's own guard refused the name: that resolves the same way every
 //! time. A 4xx is a refusal no retry changes (RULE ECL). Nothing is retried once a stream has
 //! started, since its chunks have already gone out live. A wait the provider
-//! asks for past the configured wait ceiling is not waited: the lease would spend its time
+//! asks for past the configured wait ceiling is not waited: the run would spend its time
 //! asleep, so the turn ends with the status instead.
 //!
 //! The last answer, a refusal included, is handed back as it arrived, so the

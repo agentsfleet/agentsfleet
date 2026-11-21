@@ -1,7 +1,7 @@
 //! Ownership, the complete binding and its immutable receipt share one transaction.
 
 use super::super::{
-    PreparedPlan, TaskBinding, TaskBindings, TaskLease, TaskScope, Tasks, guard, transaction,
+    PreparedPlan, TaskBinding, TaskBindings, TaskRun, TaskScope, Tasks, guard, transaction,
 };
 use super::{
     CONTEXT, authorize, mark_interpreted,
@@ -10,7 +10,7 @@ use super::{
     write::{Writer, Written},
 };
 use crate::{Result, error::query};
-use afd_admission::PreparedAdmission;
+use afd_turns::PreparedTurn;
 
 pub(super) struct Committed {
     pub bindings: TaskBindings,
@@ -19,17 +19,17 @@ pub(super) struct Committed {
 
 pub(super) async fn commit(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     plan: &PreparedPlan,
     scope: &TaskScope,
     mut identities: Vec<TaskBinding>,
     continuations: &[Option<Wake>],
-    prepared: Vec<Option<PreparedAdmission<'_>>>,
+    prepared: Vec<Option<PreparedTurn<'_>>>,
 ) -> Result<Committed> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
-    let source = source::lock(&mut tx, lease, &current, plan).await?;
+    let current = guard::run(&mut tx, run).await?;
+    let source = source::lock(&mut tx, run, &current, plan).await?;
     if let Some(bindings) = replay::read(&mut tx, &current, plan).await? {
         tx.commit().await.map_err(query(CONTEXT))?;
         transaction::recycle(connection);
@@ -39,13 +39,13 @@ pub(super) async fn commit(
         });
     }
     source::check(&source, &current, plan)?;
-    authorize(&mut tx, lease, &current, plan, &source).await?;
+    authorize(&mut tx, run, &current, plan, &source).await?;
     let Written { bound, queued } = Writer {
         tasks,
         current: &current,
         source: &source,
         plan,
-        lease,
+        run,
     }
     .apply(&mut tx, &mut identities, continuations, prepared)
     .await?;
@@ -54,7 +54,7 @@ pub(super) async fn commit(
         Some(id) => Some(super::super::read::on(&mut tx, scope, &id).await?.context),
         None => None,
     };
-    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
+    let execution_deadline = crate::run::deadline::read(&mut tx, run.run_id).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);
     Ok(Committed {

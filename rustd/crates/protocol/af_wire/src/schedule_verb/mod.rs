@@ -1,8 +1,8 @@
 //! The runner's schedules verb: a fleet keeping its own follow-ups on the
-//! daemon's schedule plane, through the lease it runs under.
+//! daemon's schedule plane, through the run it runs under.
 //!
-//! The fleet is never named here. It is the lease's, proved by the daemon from
-//! the path's `lease_id`, so a body cannot reach another fleet's schedules. A
+//! The fleet is never named here. It is the run's, proved by the daemon from
+//! the path's `run_id`, so a body cannot reach another fleet's schedules. A
 //! read and a delete carry the fence in the query; a create, an edit and a run
 //! carry it in the body. The views a reply carries are the tenant surface's
 //! own `afd_api_wire::schedule::View`, so a person and a fleet read one shape.
@@ -11,7 +11,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// `POST /v1/runners/me/leases/{lease_id}/schedules` request.
+/// `POST /v1/runners/me/runs/{run_id}/schedules` request.
 //
 // The three text fields are bounded by `afd_cron::validate::Fields` at the
 // daemon, the one place a schedule's grammar is decided, as the tenant create
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleCreateRequest<'a> {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
     /// A five-field cron expression.
     #[serde(borrow)]
@@ -42,7 +42,7 @@ pub struct ScheduleCreateRequest<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SchedulePatchRequest<'a> {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
     /// A new expression.
     #[serde(borrow, default)]
@@ -58,13 +58,13 @@ pub struct SchedulePatchRequest<'a> {
     pub paused: Option<bool>,
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs`
+/// `POST /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs`
 /// request: run the schedule now.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduleRunRequest {
-    /// The lease's fencing token; a holder the fleet has superseded is refused.
+    /// The run's fencing token; a holder the fleet has superseded is refused.
     pub fencing_token: u64,
 }
 
@@ -74,10 +74,10 @@ pub struct ScheduleRunRequest {
 pub struct ScheduleRun<'a> {
     /// The event that is the new run.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
+    pub turn_id: Cow<'a, str>,
 }
 
-/// The query parameter that carries the lease's fencing token.
+/// The query parameter that carries the run's fencing token.
 ///
 /// A schedules read, a delete and a runs read carry no body, so the fence
 /// rides the query; the page parameters beside it on a runs read are the

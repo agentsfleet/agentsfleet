@@ -26,10 +26,10 @@ fn with_optional<'a>(optional: impl IntoIterator<Item = (&'a str, &'a str)>) -> 
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
-        .chain(crate::support::SESSION_PEPPER)
-        .chain(crate::support::BUS)
-        .chain(crate::support::runner_stream::environment())
-        .chain(crate::support::IDENTITY)
+        .chain(agentsfleetd::test_util::SESSION_PEPPER)
+        .chain(agentsfleetd::test_util::BUS)
+        .chain(agentsfleetd::test_util::runner_stream::environment())
+        .chain(agentsfleetd::test_util::IDENTITY)
         .chain(optional),
     )
 }

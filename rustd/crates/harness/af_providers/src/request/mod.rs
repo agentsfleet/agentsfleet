@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use guffbolt::{Call, Hosted, Image, Message, Request};
 use rig_core::completion::{
     CacheRetention, CompletionRequest, ProviderToolDefinition, ToolAnnotations, ToolDefinition,
 };
@@ -18,8 +19,7 @@ use rig_core::message::{
 };
 
 use crate::error::{Result, raise};
-use crate::image_input::{self, ImageInput};
-use crate::provider::{Call, Hosted, Message, Request};
+use crate::image_input;
 use af_wire::inference::InferenceApi as Wire;
 
 mod replay;
@@ -113,7 +113,7 @@ impl<'a> Conversation<'a> {
                     replay,
                 } => {
                     let content = self.assistant(text, calls)?;
-                    let turn = replay::restore(&replay.0, text, content);
+                    let turn = replay::restore(&replay::original(replay)?, text, content);
                     if !turn.content.is_empty() {
                         history.push(RigMessage::Assistant(turn));
                     }
@@ -151,12 +151,7 @@ impl<'a> Conversation<'a> {
 
     /// One call's result, under the tool its call named: its text, then the
     /// image it read, when it read one.
-    fn result(
-        &self,
-        call_id: &str,
-        output: &str,
-        image: Option<&ImageInput>,
-    ) -> Result<UserContent> {
+    fn result(&self, call_id: &str, output: &str, image: Option<&Image>) -> Result<UserContent> {
         let name = self
             .tools
             .get(call_id)

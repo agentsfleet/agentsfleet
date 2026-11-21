@@ -21,11 +21,11 @@ export function sidebarDrafts(cards: readonly DraftCard[], draft: Draft | null, 
     linkedFleet: draft.linked_fleet_id ?? null,
     activity: activity ?? chatActivity(draft.state, !!draft.linked_fleet_id),
     detail: chatDetail({state: draft.state, linked: !!draft.linked_fleet_id, candidate: draft.candidate?.revision ?? null,
-      setup: setupRevision ?? recorded?.setup_revision ?? null, publication: recorded?.publication_revision ?? null, published: !!draft.publication}),
+      setup: setupRevision ?? recorded?.setup_revision ?? null}),
   } : null;
   const rows = cards.map((card) => current?.id === card.id ? current : {
     id: card.id, title: chatTitle(card.title, card.id), linkedFleet: card.linked_fleet_id, detail: chatDetail({state: card.state, linked: !!card.linked_fleet_id,
-      candidate: card.candidate_revision, setup: card.setup_revision, publication: card.publication_revision, published: false}),
+      candidate: card.candidate_revision, setup: card.setup_revision}),
     activity: chatActivity(card.state, !!card.linked_fleet_id),
   });
   return current && !cards.some((card) => card.id === current.id) ? [current, ...rows] : rows;
@@ -35,15 +35,13 @@ function chatActivity(state: DraftCard["state"], linked: boolean): ChatActivity 
   return state === DRAFT_STATE.saving ? CHAT_ACTIVITY.pending : state === DRAFT_STATE.closed && linked ? CHAT_ACTIVITY.saved : CHAT_ACTIVITY.draft;
 }
 
-type ChatFacts = {state: DraftCard["state"]; linked: boolean; candidate: string | number | null;
-  setup: string | number | null; publication: number | null; published: boolean};
+type ChatFacts = {state: DraftCard["state"]; linked: boolean; candidate: string | number | null; setup: string | number | null};
 
 function chatDetail(facts: ChatFacts): string {
   const saved = facts.state === DRAFT_STATE.closed && facts.linked && facts.setup !== null;
   return [saved ? "" : chatState(facts.state, facts.candidate !== null, facts.linked),
     facts.state !== DRAFT_STATE.closed && facts.candidate !== null ? `Proposed v${facts.candidate}` : "",
-    facts.setup !== null ? `Saved v${facts.setup}` : "",
-    facts.publication !== null ? `Published v${facts.publication}` : facts.published ? "Published" : ""].filter(Boolean).join(" · ");
+    facts.setup !== null ? `Saved v${facts.setup}` : ""].filter(Boolean).join(" · ");
 }
 
 function chatState(state: DraftCard["state"], candidate: boolean, linked: boolean): string {

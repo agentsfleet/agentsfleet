@@ -1,24 +1,29 @@
 //! SDK diagnostics cannot print provider-controlled private strings.
 
 use af_core::test_util::trace::Capture;
-use af_providers::{Connect as _, Message, Request};
+use af_providers::Connect as _;
 use futures_util::StreamExt as _;
+use guffbolt::{Message, Request};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 
-use super::support::{Fake, Reply, connector, lease, wires::Wire};
+use super::support::{Fake, Reply, connector, payload, wires::Wire};
 
 const PRIVATE: &str = "private-provider-content-never-log";
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn recorded(reply: Reply, filtered: bool) -> String {
     let capture = if filtered {
-        Capture::install_filtered(af_providers::log_filter(LevelFilter::TRACE))
+        Capture::install_filtered(af_inference::log_filter(LevelFilter::TRACE))
     } else {
         Capture::install()
     };
     let fake = Fake::serve(vec![reply]).await;
-    let leased = lease(&Wire::Chat.provider(), &[], "hello");
-    let provider = connector(&fake).connect(&leased).unwrap();
+    let held = payload(&Wire::Chat.provider(), &[], "hello");
+    let provider = connector(&fake).connect(&held).unwrap();
     let messages = [Message::User("hello".into())];
     let request = Request {
         model: "configured-model",
@@ -38,7 +43,7 @@ async fn recorded(reply: Reply, filtered: bool) -> String {
     );
     assert_eq!(
         capture.only("model_turn_started").field("correlation_id"),
-        Some(super::support::LEASE_ID)
+        Some(super::support::RUN_ID)
     );
     format!("{:?}", capture.events())
 }

@@ -1,0 +1,92 @@
+//! Live daemon coverage for an operator label edit reaching placement.
+//!
+//! The runner binary never reads its own labels: the daemon's run poll reads
+//! `runner.runners.labels` afresh on every request and assigns a fleet only when
+//! its `required_tags` are a subset of them. So an edit takes effect on the
+//! runner's next polls, with no restart, no re-enrolment and nothing for the
+//! host to pick up, and this is the test that holds the daemon to that.
+
+use super::*;
+
+use crate::e2e::EVENT_TYPE;
+use af_wire::runner::AssignedPolicy;
+use afd_runner::{RunnerEdit, Runners};
+use std::borrow::Cow;
+
+/// The label enrolment gave the scenario's runner (`e2e_seed::enrolment`).
+const ENROLLED_LABEL: &str = "fixture";
+
+/// Pins the scenario's fleet to `tag`, the tag no runner in the lane carries.
+async fn require_tag(scene: &Scenario, tag: &str) {
+    let mut connection = scene.booted.database.acquire().await.expect("a connection");
+    sqlx::query("UPDATE fleet.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1")
+        .bind(&scene.fleet)
+        .bind(tag)
+        .execute(&mut *connection)
+        .await
+        .expect("the fleet's required tags update");
+}
+
+/// Replaces the runner's labels through the store verb the operator's
+/// `PATCH /v1/admin/runners/{runner_id}` calls, and checks what it stored.
+async fn edit_labels(scene: &Scenario, labels: &[&str]) {
+    let labels: Vec<Cow<'_, str>> = labels.iter().map(|label| Cow::Borrowed(*label)).collect();
+    let edit = RunnerEdit {
+        assigned_policy: None::<&AssignedPolicy<'_>>,
+        labels: Some(&labels),
+    };
+    let stored = Runners::new(
+        scene.booted.database.clone(),
+        af_crypto::entropy::Entropy::new(),
+    )
+    .platform()
+    .edit(&scene.runner_id, edit, af_core::clock::now())
+    .await
+    .expect("an operator may edit a live runner's labels");
+    assert_eq!(stored.labels.as_deref(), Some(labels.as_slice()));
+}
+
+/// Spends the whole poll budget asserting the fleet under test is never assigned.
+async fn assert_never_assigned(scene: &Scenario, why: &str) {
+    let ended = wait_without_assignment(scene, async || false).await;
+    assert!(!ended, "{why}");
+}
+
+/// A fleet requiring a tag is withheld from a runner without it, assigned on
+/// that same runner's next polls once an operator adds the label, and withheld
+/// again once the label is edited away — with the runner never restarted or
+/// re-enrolled.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
+    let mut supervisor = Supervisor::new();
+    let scene = scenario(&mut supervisor).await;
+    // `gpu`, made unique to this fleet so another suite's runner on the shared
+    // lane can never be the one that matches it.
+    let tag = format!("gpu-{}", scene.fleet);
+    require_tag(&scene, &tag).await;
+
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
+    assert_never_assigned(&scene, "a runner without the tag was assigned the fleet").await;
+
+    edit_labels(&scene, &[ENROLLED_LABEL, &tag]).await;
+    let (run_id, fence) = wait_for_seeded_assignment(&scene).await;
+    let report = report_body(&run_id, &scene.turn_id, fence);
+    let settled = crate::wire::report(&scene, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
+
+    edit_labels(&scene, &[ENROLLED_LABEL]).await;
+    let _next = scene.enqueue_event(EVENT_TYPE).await;
+    assert_never_assigned(
+        &scene,
+        "a runner whose tag was edited away was assigned the fleet again",
+    )
+    .await;
+
+    supervisor.shutdown().await;
+    scene.cleanup().await;
+}

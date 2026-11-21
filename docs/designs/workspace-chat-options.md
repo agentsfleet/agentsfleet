@@ -14,7 +14,7 @@ The approved centered composer, charcoal surfaces, typography, signal mark, and 
 
 ## Why it exists
 
-The person needs clear workspace/account ownership, a private authoring prefix, and reliable next actions. The [21 decisions](../reviews/workspace-setup/decisions.md) and [API reference](../architecture/api_resources.md) govern behavior.
+The person needs clear workspace/account ownership, a private setup prefix, and reliable next actions. The [21 decisions](../reviews/workspace-setup/decisions.md) and [API reference](../architecture/api_resources.md) govern behavior.
 
 ## How it behaves
 
@@ -53,7 +53,7 @@ The person needs clear workspace/account ownership, a private authoring prefix, 
 
 Current navigation comes from `ui/packages/app/components/layout/sidebar-navigation-data.ts`; the shell uses `ShellFrame.tsx`. The live `lib/onboarding-refresh.ts` remains; delete the unmounted `GettingStartedWidget.tsx` and its isolated tests.
 
-### Private authoring and contextual drawers
+### Private setup and contextual drawers
 
 ```text
 +----------------------+------------------------------------+----------------------+
@@ -79,7 +79,7 @@ Current navigation comes from `ui/packages/app/components/layout/sidebar-navigat
 | Job | Name, display description, Markdown instructions | Idle typed candidate, If-Match; stale edit shows refreshed difference. |
 | Access | Tools, credential names, repository/network policy, gates, anomaly rules | No aliases or secret values in chat. Dedicated connection/secret forms; actual grant readiness. |
 | Triggers | Supported API/event/cron/mention fields | Exactly reviewed configuration; registration after activation. No hidden trigger mutation on Save. |
-| Authoring model | Owner-eligible authoring entries | Idle If-Match selection update survives reload; queued/running work blocks changes. Earlier turns keep their model. Unavailable selection offers another eligible model or owner recovery. |
+| Setup model | Owner-eligible setup entries | Idle If-Match selection update survives reload; queued/running work blocks changes. Earlier turns keep their model. Unavailable selection offers another eligible model or owner recovery. |
 | Runtime model | Owner-eligible runtime entries | Candidate config.model; review reflects selection. |
 | Budget | Daily and optional monthly amount in readable currency | Translate deterministically to positive decimal-string nanos; show exact ceiling in review. No float wire fields. |
 | Send | One body operation_id | Keep text on refusal; keep same key/body on uncertain receipt; recover through messages. |
@@ -129,7 +129,7 @@ Other authorized members see shared fleet checks/history, never the creator's pr
 | Action | Result |
 |---|---|
 | Inspect | Exact immutable Library revision, reusable requirements, live workspace readiness. |
-| Install unchanged | POST fleets from pinned Library revision; no authoring draft required. |
+| Install unchanged | POST fleets from pinned Library revision; no setup draft required. |
 | Customize | First mutation creates private draft from exact Library revision. |
 | Save to library | Explicit owned entry/revision; no transcript. Platform entries are read-only. |
 | Library history | Immutable versions; existing fleets stay pinned. |

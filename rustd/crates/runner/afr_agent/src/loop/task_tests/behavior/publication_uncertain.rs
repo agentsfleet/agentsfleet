@@ -18,7 +18,7 @@ enum Failure {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Uncertain {
+impl RunVerbs for Uncertain {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -190,7 +190,7 @@ fn assert_uncertain_outcome(
             .native
             .published
             .lock()
-            .expect("publication attempts")
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .len(),
         1
     );
@@ -205,7 +205,12 @@ fn assert_uncertain_outcome(
 }
 
 fn assert_reconciled_evidence(native: &Uncertain, recorded_state: &str) -> crate::Result<()> {
-    let requests = native.native.goals.requests.lock().expect("goal requests");
+    let requests = native
+        .native
+        .goals
+        .requests
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let evidence = requests
         .first()
         .ok_or_else(crate::decision::unavailable)?

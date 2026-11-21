@@ -16,7 +16,7 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
 use crate::{Result, error::ErrorKind};
 
-/// A caller accepts exactly one response variant and, where present, one lease.
+/// A caller accepts exactly one response variant and, where present, one run.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expected {
     Heartbeat,
@@ -24,18 +24,13 @@ pub(crate) enum Expected {
     Renewed(Vec<af_core::id::Uuid7>),
     Report(af_core::id::Uuid7),
     Folds(af_core::id::Uuid7),
+    ContextLoad(af_core::id::Uuid7),
+    ContextSave(af_core::id::Uuid7),
     TurnCheckpoint {
-        lease: af_core::id::Uuid7,
-        operation: af_wire::lease::TurnId,
-        kind: af_wire::lease::TurnCheckpointKind,
+        run: af_core::id::Uuid7,
+        operation: af_wire::run::CheckpointOperationId,
+        kind: af_wire::run::TurnCheckpointKind,
     },
-    AuthoringModel {
-        lease: af_core::id::Uuid7,
-        dispatch: String,
-    },
-    AuthoringActivity(af_core::id::Uuid7),
-    AuthoringRenew(af_core::id::Uuid7),
-    AuthoringReport(af_core::id::Uuid7),
 }
 
 struct Pending {
@@ -128,19 +123,19 @@ impl Expected {
         match (self, message) {
             (
                 Self::TurnCheckpoint {
-                    lease,
+                    run,
                     operation,
                     kind,
                 },
                 Down::TurnCheckpoint {
-                    lease_id,
+                    run_id,
                     operation_id,
                     kind: received,
                     answer,
                     ..
                 },
             ) => {
-                lease.as_str() == lease_id
+                run.as_str() == run_id
                     && operation == operation_id
                     && kind == received
                     && match answer {
@@ -149,33 +144,18 @@ impl Expected {
                     }
             }
             (Self::Heartbeat, Down::Heartbeat { .. }) | (Self::Pong, Down::Pong { .. }) => true,
-            (Self::Report(expected), Down::ReportAck { lease_id, .. })
-            | (Self::Folds(expected), Down::Folded { lease_id, .. })
-            | (Self::AuthoringActivity(expected), Down::AuthoringActivityAck { lease_id, .. })
-            | (Self::AuthoringRenew(expected), Down::AuthoringRenewed { lease_id, .. })
-            | (Self::AuthoringReport(expected), Down::AuthoringReportAck { lease_id, .. }) => {
-                expected.as_str() == lease_id
+            (Self::Report(expected), Down::ReportAck { run_id, .. })
+            | (Self::Folds(expected), Down::Folded { run_id, .. })
+            | (Self::ContextLoad(expected), Down::ContextLoaded { run_id, .. })
+            | (Self::ContextSave(expected), Down::ContextSaved { run_id, .. }) => {
+                expected.as_str() == run_id
             }
-            (
-                Self::AuthoringModel { lease, dispatch },
-                Down::AuthoringModelResult {
-                    lease_id, answer, ..
-                },
-            ) => {
-                lease.as_str() == lease_id
-                    && match answer {
-                        af_wire::protocol::Answer::Ok { response } => {
-                            &response.dispatch_id == dispatch
-                        }
-                        af_wire::protocol::Answer::Refused { .. } => true,
-                    }
-            }
-            (Self::Renewed(expected), Down::Renewed { leases, .. }) => {
+            (Self::Renewed(expected), Down::Renewed { runs, .. }) => {
                 let ids: std::collections::HashSet<_> =
-                    leases.iter().map(|entry| entry.lease_id.as_ref()).collect();
-                ids.len() == leases.len()
+                    runs.iter().map(|entry| entry.run_id.as_ref()).collect();
+                ids.len() == runs.len()
                     && ids.len() == expected.len()
-                    && expected.iter().all(|lease| ids.contains(lease.as_str()))
+                    && expected.iter().all(|run| ids.contains(run.as_str()))
             }
             _ => false,
         }

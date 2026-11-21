@@ -10,16 +10,16 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
+use crate::OperatorPlane;
 use crate::handler::{malformed, parse_id, refuse};
-use crate::services::Services;
 
-const EVENT: &str = "runner_events_failed";
+const EVENT: &str = "runner_history_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/admin/runners/{runner_id}/events",
+    path = "/v1/admin/runners/{runner_id}/history",
     tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "list_platform_runner_events",
+    operation_id = "list_platform_runner_history",
     summary = "List runner activity",
     description = concat!(
         "Lists a runner's recorded activity newest first. Requires platform administrator ",
@@ -28,7 +28,7 @@ const EVENT: &str = "runner_events_failed";
     params(
         afd_http::openapi::path::Runner,
         afd_http::openapi::query::OperatorPage,
-        ("event_type" = Option<String>, Query, description = "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, lease_acquired, lease_released, runner_cordoned, runner_uncordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request."),
+        ("event_type" = Option<String>, Query, description = "Filter to one runner event type, or a comma-separated set returning the union (multi-value equality). Allowed tags: runner_registered, runner_online, runner_offline, run_acquired, run_released, runner_cordoned, runner_uncordoned, runner_draining, runner_drained, runner_revoked. An unrecognised tag or an empty value refuses the whole request."),
         ("since" = Option<String>, Query, description = "Lower bound on occurred_at, an RFC 3339 instant (inclusive)."),
         ("until" = Option<String>, Query, description = "Upper bound on occurred_at, an RFC 3339 instant (inclusive). Must be >= since."),
     ),
@@ -39,7 +39,7 @@ const EVENT: &str = "runner_events_failed";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: OperatorPlane>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
     Query(params): Query<HashMap<String, String>>,
@@ -54,7 +54,7 @@ pub(crate) async fn list<D: Services>(
     };
     match services
         .runners()
-        .runner_events(&runner, &query.filter, query.cursor.as_ref(), query.limit)
+        .runner_history(&runner, &query.filter, query.cursor.as_ref(), query.limit)
         .await
     {
         Ok(rows) => {

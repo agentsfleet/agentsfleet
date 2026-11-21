@@ -1,6 +1,6 @@
-import { type LiveFrame } from "@/lib/api/events";
+import { type LiveFrame } from "@/lib/api/turns";
 import { z } from "zod";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { backfillEntry } from "./fleet-stream-backfill";
 import type { Entry } from "./fleet-stream-entry";
 import { factsOf } from "./fleet-stream-facts";
@@ -11,10 +11,10 @@ import {
   recoverRunningReplies,
   settleRepliesFromBackfill,
   watchRunningRows,
-  type ApplyEvents,
+  type ApplyTurns,
 } from "./fleet-stream-reply-registry";
 import { acceptAttemptFrame } from "./fleet-stream-attempt";
-import { patchSnapshot, patchGateFacts, setEvents } from "./fleet-stream-snapshot";
+import { patchSnapshot, patchGateFacts, setTurns } from "./fleet-stream-snapshot";
 
 // Where a live frame goes: held while a send here awaits its 202
 // (`HeldTurns`), else onto the thread. The registry owns the entry and the
@@ -23,7 +23,7 @@ import { patchSnapshot, patchGateFacts, setEvents } from "./fleet-stream-snapsho
 // An entry the registry holds, with the write every reply helper makes and its
 // check that this entry still owns the fleet. Both are made once, when the
 // entry is adopted, so a frame allocates neither.
-export type LiveEntry = Entry & { apply: ApplyEvents; isCurrent: () => boolean };
+export type LiveEntry = Entry & { apply: ApplyTurns; isCurrent: () => boolean };
 
 const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)});
 
@@ -31,7 +31,7 @@ const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().i
 // costs one more walk after it, not one each.
 export function recoverGap(entry: LiveEntry, fleetId: string): void {
   patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
-  setEvents(entry, hideContextProgress);
+  setTurns(entry, hideContextProgress);
   void backfillEntry(entry, fleetId, {
     stillCurrent: entry.isCurrent,
     onComplete: () => recoverRunningReplies(entry, fleetId, entry.apply, entry.isCurrent),
@@ -39,8 +39,8 @@ export function recoverGap(entry: LiveEntry, fleetId: string): void {
       // A held turn the page settles lands its live frames first, as if never
       // held: the durable row then settles it and keeps the tools and text
       // they carried, which the list itself never has.
-      landFrames(entry, fleetId, entry.held.releaseTurns(new Set(rows.map((row) => row.event_id))));
-      setEvents(entry, (prev) => mergeBackfill(prev, rows));
+      landFrames(entry, fleetId, entry.held.releaseTurns(new Set(rows.map((row) => row.turn_id))));
+      setTurns(entry, (prev) => mergeBackfill(prev, rows));
       watchRunningRows(entry, rows);
       settleRepliesFromBackfill(entry, fleetId, rows, entry.apply, entry.isCurrent);
     },
@@ -48,7 +48,7 @@ export function recoverGap(entry: LiveEntry, fleetId: string): void {
 }
 
 export function onFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
-  if (entry.held.take(frame, entry.snapshot.events)) return;
+  if (entry.held.take(frame, entry.snapshot.turns)) return;
   applyFrame(entry, fleetId, frame);
 }
 
@@ -83,5 +83,5 @@ function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
     patchGateFacts(entry, facts);
     return;
   }
-  setEvents(entry, (prev) => applyLiveFrame(prev, frame), facts);
+  setTurns(entry, (prev) => applyLiveFrame(prev, frame), facts);
 }

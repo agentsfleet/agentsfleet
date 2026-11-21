@@ -22,8 +22,8 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
         &runner_id,
         jiff::Timestamp::constant(1_760_000_000, 999_000_000),
     );
-    metrics.leased(&runner_id);
-    metrics.leased(&runner_id);
+    metrics.held(&runner_id);
+    metrics.held(&runner_id);
     metrics.released(&runner_id);
 
     let seen = metrics.last_seen_readings();
@@ -35,10 +35,10 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
          truncated, not the milliseconds it is stored in"
     );
 
-    let leases = metrics.active_lease_readings();
-    assert_eq!(leases.len(), 1);
-    let leases = leases.first().expect("the length was just asserted");
-    assert_eq!(leases.value, 1, "two taken and one given back is one held");
+    let runs = metrics.active_run_readings();
+    assert_eq!(runs.len(), 1);
+    let runs = runs.first().expect("the length was just asserted");
+    assert_eq!(runs.value, 1, "two taken and one given back is one held");
 
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);
@@ -58,9 +58,9 @@ fn a_runner_never_heard_from_publishes_no_last_seen_reading() {
         "an unpublished stamp must leave a gap, not report the epoch"
     );
     assert_eq!(
-        metrics.active_lease_readings().len(),
+        metrics.active_run_readings().len(),
         1,
-        "a lease count of zero IS a measurement — the runner holds nothing"
+        "a run count of zero IS a measurement — the runner holds nothing"
     );
 }
 
@@ -68,19 +68,19 @@ fn a_runner_never_heard_from_publishes_no_last_seen_reading() {
 fn gauges_ignore_a_runner_that_has_not_acquired_a_series() {
     let metrics = RunnerMetrics::new();
     metrics.seen("unknown", jiff::Timestamp::UNIX_EPOCH);
-    metrics.leased("unknown");
+    metrics.held("unknown");
     metrics.released("unknown");
     assert_eq!(metrics.series_count(), 0);
 }
 
-/// More releases than leases publishes no reading rather than a huge one.
+/// More releases than runs publishes no reading rather than a huge one.
 ///
 /// The count is a signed cell and the reading is unsigned, so an over-release
 /// is the one input that cannot be published truthfully. A conversion that
 /// reached for `as` instead of `try_from` would report the largest number a
 /// gauge can hold on a fleet that is merely idle.
 #[test]
-fn more_releases_than_leases_publishes_no_reading() {
+fn more_releases_than_runs_publishes_no_reading() {
     let metrics = RunnerMetrics::new();
     let runner_id = runner(1);
     let _label = metrics.admit(&runner_id);
@@ -88,7 +88,7 @@ fn more_releases_than_leases_publishes_no_reading() {
     metrics.released(&runner_id);
 
     assert!(
-        metrics.active_lease_readings().is_empty(),
+        metrics.active_run_readings().is_empty(),
         "a count below zero is a gap in the gauge, never a number in it"
     );
 }
@@ -105,13 +105,13 @@ fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
     let _first = metrics.admit(&first);
     let _second = metrics.admit(&second);
 
-    metrics.leased(&first);
-    for _lease in 0..3 {
-        metrics.leased(&second);
+    metrics.held(&first);
+    for _run in 0..3 {
+        metrics.held(&second);
     }
 
     let mut attributed: Vec<(String, u64)> = metrics
-        .active_lease_readings()
+        .active_run_readings()
         .into_iter()
         .map(|reading| {
             let carried = reading
@@ -147,14 +147,14 @@ fn a_panicking_recorder_leaves_the_table_readable() {
     let metrics = Arc::new(RunnerMetrics::new());
     let first = runner(0);
     metrics.admit(&first);
-    metrics.leased(&first);
+    metrics.held(&first);
 
     let panicking = Arc::clone(&metrics);
     let second = runner(1);
     let recorded = second;
     let panicked = std::thread::spawn(move || {
         panicking.admit(&recorded);
-        panicking.leased(&recorded);
+        panicking.held(&recorded);
         // Ends by panicking, mid-way through recording. Spelled as a failing
         // parse rather than `panic!` because the workspace denies
         // `clippy::panic` — and as a REAL failure rather than a literal
@@ -166,7 +166,7 @@ fn a_panicking_recorder_leaves_the_table_readable() {
     .join();
     assert!(panicked.is_err(), "the helper thread panicked as intended");
 
-    let readings = metrics.active_lease_readings();
+    let readings = metrics.active_run_readings();
     assert_eq!(
         readings.len(),
         2,
@@ -177,10 +177,10 @@ fn a_panicking_recorder_leaves_the_table_readable() {
         2,
         "the panicking thread's series was admitted and is still counted"
     );
-    metrics.leased(&first);
+    metrics.held(&first);
     assert!(
         metrics
-            .active_lease_readings()
+            .active_run_readings()
             .iter()
             .any(|reading| reading.value == 2),
         "the table still ACCEPTS records after the panic, not just reads"

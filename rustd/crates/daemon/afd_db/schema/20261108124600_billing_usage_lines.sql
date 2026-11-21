@@ -1,0 +1,87 @@
+-- One priced provider request or runtime slice. No foreign keys: a line outlives what it names,
+-- so references are opaque and `fleet_name` is the name at write time. Amounts are nanodollars.
+-- By `work_type`: a fleet line sets `fleet_id` and `turn_id`; a setup line sets `run_id`, and
+-- `turn_id` to the draft message its run answered.
+CREATE TABLE billing.usage_lines (
+    id                          UUID   PRIMARY KEY,
+    work_type                   TEXT   NOT NULL,
+    work_id                     UUID   NOT NULL,
+    kind                        TEXT   NOT NULL,
+    seq                         BIGINT NOT NULL,
+    tenant_id                   UUID   NOT NULL,
+    workspace_id                UUID   NOT NULL,
+    fleet_id                    UUID,
+    fleet_name                  TEXT,
+    turn_id                     UUID,
+    run_id                      UUID,
+    provider                    TEXT   NOT NULL,
+    model                       TEXT   NOT NULL,
+    posture                     TEXT   NOT NULL,
+    requested_at                TIMESTAMPTZ(3) NOT NULL,
+    input_token_count           BIGINT NOT NULL,
+    cached_input_token_count    BIGINT NOT NULL,
+    cache_write_token_count     BIGINT NOT NULL,
+    cache_write_5m_token_count  BIGINT NOT NULL,
+    cache_write_1h_token_count  BIGINT NOT NULL,
+    output_token_count          BIGINT NOT NULL,
+    runtime_ms                  BIGINT NOT NULL,
+    -- NULL when no catalogue price covered the request; `unpriced_token_count` keeps those
+    -- tokens visible rather than free.
+    platform_model_price_id     UUID,
+    unpriced_token_count        BIGINT NOT NULL,
+    charged_nanos               BIGINT NOT NULL,
+    settled_at                  TIMESTAMPTZ(3),
+    created_at                  TIMESTAMPTZ(3) NOT NULL,
+    updated_at                  TIMESTAMPTZ(3) NOT NULL,
+    CONSTRAINT uq_usage_lines_work_type_work_id_kind_seq UNIQUE (work_type, work_id, kind, seq),
+    CONSTRAINT ck_usage_lines_non_negative
+        CHECK (seq >= 0 AND input_token_count >= 0 AND cached_input_token_count >= 0
+            AND cache_write_token_count >= 0 AND cache_write_5m_token_count >= 0
+            AND cache_write_1h_token_count >= 0 AND output_token_count >= 0
+            AND runtime_ms >= 0 AND unpriced_token_count >= 0 AND charged_nanos >= 0)
+);
+
+CREATE INDEX idx_usage_lines_tenant_id_created_at_id
+    ON billing.usage_lines (tenant_id, created_at DESC, id DESC);
+
+CREATE INDEX idx_usage_lines_fleet_id_created_at
+    ON billing.usage_lines (fleet_id, created_at) WHERE fleet_id IS NOT NULL;
+
+-- INCLUDE lets a turn's cost be summed without visiting the table.
+CREATE INDEX idx_usage_lines_fleet_id_turn_id
+    ON billing.usage_lines (fleet_id, turn_id) INCLUDE (charged_nanos)
+    WHERE fleet_id IS NOT NULL;
+
+CREATE INDEX idx_usage_lines_created_at_unsettled
+    ON billing.usage_lines (created_at) WHERE settled_at IS NULL;
+
+-- Only an insert moves the budget, because a line's price never changes. A setup-chat line and a
+-- purged fleet write none.
+CREATE FUNCTION billing.usage_lines_bump_budget() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO pg_catalog, fleet, billing
+AS $$
+BEGIN
+    INSERT INTO fleet.activity_counters
+        (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
+    SELECT f.id, 0, NEW.charged_nanos, f.created_at, NEW.updated_at
+      FROM fleet.fleets f WHERE f.id = NEW.fleet_id
+    ON CONFLICT (fleet_id) DO UPDATE
+       SET budget_used_nanos = fleet.activity_counters.budget_used_nanos
+                             + EXCLUDED.budget_used_nanos,
+           updated_at = GREATEST(fleet.activity_counters.updated_at, EXCLUDED.updated_at);
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_usage_lines_bump_budget
+    AFTER INSERT ON billing.usage_lines
+    FOR EACH ROW WHEN (NEW.fleet_id IS NOT NULL)
+    EXECUTE FUNCTION billing.usage_lines_bump_budget();
+
+GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;
+
+-- Funds checks sum a tenant's unsettled lines; the partial index keeps that read small however
+-- long the tenant's history.
+CREATE INDEX idx_usage_lines_tenant_id_unsettled
+    ON billing.usage_lines (tenant_id) INCLUDE (charged_nanos) WHERE settled_at IS NULL;

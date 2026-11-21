@@ -1,4 +1,4 @@
-//! Identities and ordinary admission preparation precede native lifecycle locks.
+//! Identities and ordinary turn preparation precede native lifecycle locks.
 
 use super::super::{
     PreparedItem, PreparedPlan, TaskBinding, TaskScope, Tasks, continuation::Continuation,
@@ -20,11 +20,11 @@ pub(super) async fn identities(
     let mut identities = Vec::with_capacity(plan.items.len());
     let mut wakes = Vec::with_capacity(plan.items.len());
     for item in &plan.items {
-        let item_id = tasks.leases.entropy().uuid7(now)?;
+        let item_id = tasks.runs.entropy().uuid7(now)?;
         let (task_id, wake) = match item {
             PreparedItem::New { .. } => {
-                let task = tasks.leases.entropy().uuid7(now)?;
-                let continuation = Continuation::new(scope, &task, 1, &plan.source_admission_id);
+                let task = tasks.runs.entropy().uuid7(now)?;
+                let continuation = Continuation::new(scope, &task, 1, &plan.source_turn_id);
                 (
                     Some(task),
                     Some(Wake {

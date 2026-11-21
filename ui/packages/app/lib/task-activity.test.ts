@@ -7,7 +7,7 @@ import { evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 const ID = "019f0000-0000-7000-8000-000000000001";
 
 function stage(phase: TaskActivity["progress"]["phase"], completed = 0): TaskActivity {
-  return {kind: "task_transfer_progress", progress: {activity_id: ID, task_id: ID, source_admission_id: null,
+  return {kind: "task_transfer_progress", progress: {activity_id: ID, task_id: ID, source_turn_id: null,
     operation: "capture", phase, provider: null, model: null, completed, total: 10}};
 }
 
@@ -53,7 +53,7 @@ describe("task progress across stream loss", () => {
     expect(readTaskActivityHistory({items: [{...latest, progress: {...latest.progress,
       bytes: {acknowledged: -1, missing: 0, reused: 0}}}], truncated: false})).toBeUndefined();
   });
-  it("restores progress on a running event without replacing its streamed answer", () => {
+  it("restores progress on a running turn without replacing its streamed answer", () => {
     const live = evt({id: "e1", reply: "Working on the repair", taskActivity: {items: [stage("uploading", 8)], truncated: false}});
     const detail = row({status: "received", task_activity: {items: [stage("preparing"), stage("uploading", 3)], truncated: false}});
     const merged = mergeBackfill([live], [detail]);
@@ -67,7 +67,7 @@ describe("task progress across stream loss", () => {
     const delayed = addTaskActivity(history, stage("uploading", 4));
     expect(latestTaskActivity(delayed).map(item => item.progress.phase)).toEqual(["saved"]);
     const live = evt({id: "e1", taskActivity: history});
-    const changed = applyLiveFrame([live], {...stage("verifying", 10), event_id: "e1"});
+    const changed = applyLiveFrame([live], {...stage("verifying", 10), turn_id: "e1"});
     expect(changed[0]?.status).toBe("received");
     expect(taskActivityLabel(stage("saved"))).toBe("Recovery point saved");
   });

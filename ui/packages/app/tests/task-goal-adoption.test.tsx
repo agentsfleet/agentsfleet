@@ -8,7 +8,7 @@ import { setupRequest } from "@/lib/api/draft-request";
 import { detail, TASK_IDS, SETUP_ID } from "./helpers/task-reads";
 vi.mock("@/lib/api/tasks", async original => ({...await original<typeof import("@/lib/api/tasks")>(), adoptTaskGoal: vi.fn()}));
 vi.mock("@/lib/api/draft-request", () => ({setupRequest: vi.fn()}));
-const POLICY: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../tests/fixtures/fleets/goal-repair/decision-policy.json"), "utf8"));
+const POLICY: unknown = JSON.parse(readFileSync(resolve(process.cwd(), "../../../rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/ci-repairer/decision-policy.json"), "utf8"));
 const saved = (revision: string = TASK_IDS[1], config: unknown = {"x-agentsfleet": {decision_policy: POLICY}}) => ({setup_revision_id: revision, setup_revision: "3", definition: {config}});
 const props = () => ({workspaceId: "w", fleetId: "f", detail: {...detail(), etag: `"${"a".repeat(64)}"`}, enabled: true, onChanged: vi.fn()});
 const request = vi.mocked(setupRequest);

@@ -1,4 +1,4 @@
-//! Runner liveness, retention, outbound recovery and durable census sampling.
+//! Runner liveness, outbound recovery and durable census sampling.
 //!
 //! # One loop, every sweeper
 //!
@@ -18,7 +18,6 @@
 pub mod census;
 pub mod liveness;
 pub mod rebuild;
-pub mod retention;
 
 use std::time::Duration;
 
@@ -52,12 +51,10 @@ pub trait Sweep: Send + Sync + 'static {
     ///
     /// A property of the sweeper rather than a parameter of [`run`], because
     /// the interval is part of what the sweeper IS: liveness paces itself
-    /// against the heartbeat interval, and retention has no reason to run more
-    /// than hourly.
+    /// against the heartbeat interval.
     ///
-    /// Asked again before every wait, so a sweeper may VARY it — retention
-    /// shortens its own gap while a backlog drains, and the loop needs to know
-    /// nothing about retention for that to work.
+    /// Asked again before every wait, so a sweeper may vary it without the
+    /// loop knowing why.
     fn interval(&self) -> Duration;
 
     /// Performs one pass.
@@ -118,9 +115,8 @@ pub async fn run_starting_in<S: Sweep>(sweeper: S, token: CancellationToken, fir
 
     let mut delay = first.min(sweeper.interval());
     loop {
-        // Read EVERY tick, not once at start-up: retention shortens its own
-        // interval while a backlog drains, and the loop learns that by asking
-        // rather than by knowing anything about retention.
+        // Read every tick, not once at start-up, so a sweeper may vary its
+        // own interval.
         tokio::select! {
             () = token.cancelled() => break,
             () = tokio::time::sleep(delay) => {}

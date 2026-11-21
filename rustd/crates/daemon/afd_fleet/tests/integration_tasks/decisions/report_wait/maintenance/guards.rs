@@ -16,8 +16,8 @@ async fn exhausted_wait_stops_before_credential_mint_or_dependency_read() {
             "cumulative_limit_reached",
         ),
         (
-            "UPDATE fleet.tasks SET used_leases=max_leases WHERE id=$1",
-            "lease_limit_reached",
+            "UPDATE fleet.tasks SET used_runs=max_runs WHERE id=$1",
+            "run_limit_reached",
         ),
     ] {
         exercise(async |case| {

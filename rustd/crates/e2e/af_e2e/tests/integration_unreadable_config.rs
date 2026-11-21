@@ -1,0 +1,124 @@
+//! One fleet's unreadable configuration refuses that fleet, not the deployment.
+//!
+//! # The hazard, which this lane produced on its own
+//!
+//! A runner does not poll one fleet. Readiness is sixteen partitions and a
+//! rotation visits every one, so a runner's polls reach every fleet the
+//! deployment holds. The pull path resolves a fleet's stored configuration —
+//! it is what the money gates price and the approval gate judges — and that
+//! read used to leave the path as an error, which the router answered as a
+//! 500. So one fleet carrying a document this daemon cannot parse refused
+//! every runner, for every fleet, once per rotation: six of this suite's own
+//! tests failed that way against a shared database, each reporting
+//! `UZ-INTERNAL-003 fleet configuration unreadable` from a poll that had
+//! nothing to do with the broken fleet.
+//!
+//! The decision recorded against it is that one bad document is one fleet's
+//! problem. This is the test that holds the daemon to it.
+//!
+//! # Why the neighbour's setup is `{}` exactly
+//!
+//! Valid JSON that is not a fleet, selected as the fleet's setup revision under
+//! the current policy semantics. Intake reads only the semantics, so the
+//! neighbour's event is admitted; the PULL path is the first reader that parses
+//! the document, which is the seam this test holds.
+//!
+//! Marked `#[ignore]` like the rest of the live-service suite; run by
+//! `make test-integration-rustd`.
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::id::Uuid7;
+use af_wire::turn::TurnKind;
+use afd_db::test_util::{
+    FIXTURE_SETUP_MODEL_REF, FIXTURE_SETUP_SEMANTICS, FleetSeed, SetupRevision,
+};
+use afd_state::sql::FLEET_STATUS_ACTIVE;
+use agentsfleetd::supervisor::Supervisor;
+
+use crate::e2e::{Scenario, scenario};
+use crate::e2e_event::enqueue;
+use crate::reads::event_column_of;
+use crate::wire::{capable_beat, report_body, wait_for_seeded_assignment, wait_without_assignment};
+
+/// Valid JSON, and not a fleet.
+const UNREADABLE_CONFIG: &str = "{}";
+
+/// The digest the unreadable revision carries; nothing reads it before the
+/// parse refuses the document.
+const UNREADABLE_DIGEST: &str = "unreadable";
+
+/// The label the refusal writes, as an operator reads it.
+const CONFIG_UNREADABLE: &str = "config_unreadable";
+
+/// The terminal status a refused event carries.
+const GATE_BLOCKED: &str = "gate_blocked";
+
+/// A second fleet in the scenario's workspace, whose selected setup nothing parses.
+///
+/// Its identifier is the scenario's own with a distinct trailing slot, so it
+/// satisfies the column's version-7 CHECK and cannot collide with any other
+/// scenario's fleet in a shared lane.
+async fn seed_unreadable_fleet(scene: &Scenario) -> Uuid7 {
+    let own = scene.fleet.as_str();
+    let fleet = Uuid7::parse(&format!("{}00f0", &own[..own.len() - 4]))
+        .expect("the neighbour's id is a canonical UUIDv7");
+    FleetSeed::new(&fleet, &scene.workspace, &scene.tenant, FLEET_STATUS_ACTIVE)
+        .name("e2e-unreadable-fleet")
+        .at(scene.seeded_at)
+        .setup(SetupRevision {
+            definition: UNREADABLE_CONFIG,
+            digest: UNREADABLE_DIGEST,
+            semantics: FIXTURE_SETUP_SEMANTICS,
+            model_ref: Some(FIXTURE_SETUP_MODEL_REF),
+        })
+        .insert(&mut *scene.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the neighbour fleet must insert");
+    fleet
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
+    let mut supervisor = Supervisor::new();
+    let scene = scenario(&mut supervisor).await;
+
+    let beat = crate::wire::heartbeat(&scene, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
+
+    let poisoned = seed_unreadable_fleet(&scene).await;
+    let poisoned_event = enqueue(&scene.booted, &poisoned, &scene.workspace, TurnKind::Chat).await;
+
+    // The deployment still serves work. Every poll on the way is asserted to
+    // answer 200, which is the regression this file exists for: before the
+    // fix, the poll that sampled the neighbour's partition answered 500 and
+    // this loop died there rather than finding the scenario's own event.
+    let (run_id, fence) = wait_for_seeded_assignment(&scene).await;
+
+    // Settled so the runner's one run slot is free for the polls below.
+    let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
+
+    // And the neighbour is ended rather than retried forever, which is what
+    // puts it in front of a human.
+    let refused = wait_without_assignment(&scene, async || {
+        event_column_of(&scene, &poisoned, &poisoned_event, "status").await
+            == Some(GATE_BLOCKED.to_owned())
+    })
+    .await;
+    assert!(refused, "the unreadable fleet's own event is ended");
+    assert_eq!(
+        event_column_of(&scene, &poisoned, &poisoned_event, "failure_reason").await,
+        Some(CONFIG_UNREADABLE.to_owned()),
+        "and the row names the document rather than the runner or the money"
+    );
+
+    supervisor.shutdown().await;
+    scene.cleanup().await;
+}

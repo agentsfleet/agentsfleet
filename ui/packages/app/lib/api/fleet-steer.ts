@@ -30,12 +30,12 @@ const SIGNED_OUT = "Not authenticated";
 // daemon holds the message.
 const AcceptedSchema = z.object({
   status: z.string(),
-  event_id: z.string(),
+  turn_id: z.string(),
   replayed: z.boolean(),
   disposition: z
     .enum([STEER_DISPOSITION.STARTED, STEER_DISPOSITION.FOLDED, STEER_DISPOSITION.QUEUED])
     .default(STEER_DISPOSITION.STARTED),
-  folded_into_event_id: z.string().nullish().transform((runEventId) => runEventId ?? null),
+  folded_into_turn_id: z.string().nullish().transform((runTurnId) => runTurnId ?? null),
 });
 // The route answers a refusal as the daemon's problem body does.
 const RefusalSchema = z.object({ detail: z.string().optional(), error_code: z.string().optional() });

@@ -11,7 +11,7 @@ pub(crate) mod revision;
 pub(crate) mod schedules;
 
 use crate::auth::{Owned, PersonIdentity};
-use afd_authoring::Access;
+use afd_setup::Access;
 
 fn access<'a>(owned: &'a Owned, person: &'a PersonIdentity) -> Access<'a> {
     Access {

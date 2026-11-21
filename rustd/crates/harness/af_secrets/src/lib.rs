@@ -1,7 +1,7 @@
 //! The runner's secrets, and the one masker every output passes.
 //!
 //! A [`Secret`] is a token held in memory: the runner's own, or one minted for
-//! a lease. [`StaticSecrets`] is a lease's `secrets_map`, read one way.
+//! a run. [`StaticSecrets`] is a run's `secrets_map`, read one way.
 //! [`Scrub`] masks every known secret value as `«secret:NAME»` before text
 //! reaches a frame, the trace, a record, the model or the report; the egress
 //! guard masks the tokens it mints with the same type, so there is one masker

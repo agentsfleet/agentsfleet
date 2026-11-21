@@ -1,14 +1,15 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import * as v from "valibot";
 
-import { isSteerBy } from "@/lib/events/event-summary";
+import { isSteerBy } from "@/lib/turns/turn-summary";
 import { TOOL_NAME } from "../tools/presentation/tool-call-shape";
 import {
-  AGENTSFLEET_EVENT_STATUS,
-  type FleetEvent,
+  AGENTSFLEET_TURN_STATUS,
+  type FleetTurn,
   type FleetToolCall,
 } from "@/lib/streaming/fleet-stream-row";
 import {
+  FILE_CHANGES,
   TOOL_CALL_STATUS,
   TOOL_CALL_STATUS_SCHEMA,
   type ToolArgs,
@@ -44,6 +45,7 @@ const TOOL_RESULT = v.object({
   outputLineCount: v.fallback(v.optional(v.number()), undefined),
   exitCode: v.fallback(v.optional(v.number()), undefined),
   callId: v.fallback(v.optional(v.string()), undefined),
+  changes: FILE_CHANGES,
 });
 
 export type ToolResult = v.InferOutput<typeof TOOL_RESULT>;
@@ -56,9 +58,9 @@ const RUNNING = { type: STATUS_RUNNING } as const;
 const MESSAGE_COMPLETE = { type: "complete", reason: "stop" } as const;
 const PART_COMPLETE = { type: "complete" } as const;
 const IN_FLIGHT: ReadonlySet<string> = new Set([
-  AGENTSFLEET_EVENT_STATUS.OPTIMISTIC,
-  AGENTSFLEET_EVENT_STATUS.QUEUED,
-  AGENTSFLEET_EVENT_STATUS.RECEIVED,
+  AGENTSFLEET_TURN_STATUS.OPTIMISTIC,
+  AGENTSFLEET_TURN_STATUS.QUEUED,
+  AGENTSFLEET_TURN_STATUS.RECEIVED,
 ]);
 const TOOL_CALL_ID_INFIX = ":tool:";
 const ERROR_STATUSES: ReadonlySet<string> = new Set([TOOL_CALL_STATUS.FAILED, TOOL_CALL_STATUS.INTERRUPTED]);
@@ -68,10 +70,10 @@ const INTERNAL_MEMORY_TOOLS: ReadonlySet<string> = new Set([
 
 type ReplyPart = Exclude<ThreadMessageLike["content"], string>[number];
 
-/** Whether this event's reply is still running: the rule behind a reply
+/** Whether this turn's reply is still running: the rule behind a reply
  * row's status. */
-export function isReplyInFlight(event: FleetEvent): boolean {
-  return IN_FLIGHT.has(event.status);
+export function isReplyInFlight(turn: FleetTurn): boolean {
+  return IN_FLIGHT.has(turn.status);
 }
 
 /** Whether the thread reports a run: the newest turn is one this tab sent,
@@ -79,8 +81,8 @@ export function isReplyInFlight(event: FleetEvent): boolean {
  * turn to the top wherever the reader is, so a turn a teammate, the API, a
  * webhook, or the same operator in another tab sent never engages it, and a
  * reader back in the history stays where they are. */
-export function reportsOwnRun(events: readonly FleetEvent[], subject: string | null): boolean {
-  const newest = events.at(-1);
+export function reportsOwnRun(turns: readonly FleetTurn[], subject: string | null): boolean {
+  const newest = turns.at(-1);
   if (newest === undefined || !isReplyInFlight(newest) || !isSteerBy(newest.actor, subject)) return false;
   // A row this tab painted keeps its submit clock through every frame, and
   // another tab's row never had one. A turn announced before its 202 waits in
@@ -93,44 +95,44 @@ export function reportsOwnRun(events: readonly FleetEvent[], subject: string | n
  * (status, outcome, failure, timing), so the reply reads the same fields the
  * trigger does.
  */
-export function toReplyMessage(base: ThreadMessageLike, event: FleetEvent, requestActor = event.actor): ThreadMessageLike {
+export function toReplyMessage(base: ThreadMessageLike, turn: FleetTurn, requestActor = turn.actor): ThreadMessageLike {
   return {
     ...base,
     role: "assistant",
-    status: isReplyInFlight(event) ? RUNNING : MESSAGE_COMPLETE,
-    content: replyParts(event),
+    status: isReplyInFlight(turn) ? RUNNING : MESSAGE_COMPLETE,
+    content: replyParts(turn),
     metadata: {
       ...base.metadata,
       custom: {
         ...base.metadata?.custom,
         requestActor,
-        taskActivity: event.taskActivity,
-        contextProgress: event.contextProgressHidden ? undefined : event.contextProgress,
-        [REASONING_SPAN.STARTED]: event.reasoningStartedAtMs,
-        [REASONING_SPAN.ENDED]: event.reasoningEndedAtMs,
-        [REPLY_FIGURE.TOKENS]: event.tokens,
-        [REPLY_FIGURE.WALL_MS]: event.wallMs,
-        [REPLY_FIGURE.COST_NANOS]: event.costNanos,
-        [REPLY_FIGURE.OMITTED_CALLS]: event.omittedCallCount,
+        taskActivity: turn.taskActivity,
+        contextProgress: turn.contextProgressHidden ? undefined : turn.contextProgress,
+        [REASONING_SPAN.STARTED]: turn.reasoningStartedAtMs,
+        [REASONING_SPAN.ENDED]: turn.reasoningEndedAtMs,
+        [REPLY_FIGURE.TOKENS]: turn.tokens,
+        [REPLY_FIGURE.WALL_MS]: turn.wallMs,
+        [REPLY_FIGURE.COST_NANOS]: turn.costNanos,
+        [REPLY_FIGURE.OMITTED_CALLS]: turn.omittedCallCount,
       },
     },
   };
 }
 
 /** Reasoning, then each tool call in first-seen order, then the answer. */
-export function replyParts(event: FleetEvent): ReplyPart[] {
+export function replyParts(turn: FleetTurn): ReplyPart[] {
   const parts: ReplyPart[] = [];
-  const reasoning = event.reasoning ?? "";
+  const reasoning = turn.reasoning ?? "";
   if (reasoning.length > 0) {
     // The part's own status: the thought stops running when the answer
     // starts, while the message keeps running until the turn ends.
-    parts.push({ type: "reasoning", text: reasoning, status: event.thinking === true ? RUNNING : PART_COMPLETE });
+    parts.push({ type: "reasoning", text: reasoning, status: turn.thinking === true ? RUNNING : PART_COMPLETE });
   }
   // Keep the recorded trace intact; internal memory bookkeeping has no chat row.
-  (event.tools ?? []).forEach((tool, index) => {
-    if (!INTERNAL_MEMORY_TOOLS.has(tool.name)) parts.push(toolCallPart(event.id, tool, index));
+  (turn.tools ?? []).forEach((tool, index) => {
+    if (!INTERNAL_MEMORY_TOOLS.has(tool.name)) parts.push(toolCallPart(turn.id, tool, index));
   });
-  const answer = event.reply.trim();
+  const answer = turn.reply.trim();
   if (answer.length > 0) parts.push({ type: "text", text: answer });
   return parts;
 }
@@ -155,13 +157,13 @@ const PART_FIELDS = new WeakMap<FleetToolCall, PartFields>();
 // reply is converted, and a fresh object breaks every memo that holds it.
 const NO_ARGS: ToolArgs = Object.freeze({});
 
-function toolCallPart(eventId: string, tool: FleetToolCall, index: number): ReplyPart {
+function toolCallPart(turnId: string, tool: FleetToolCall, index: number): ReplyPart {
   const { result, timing } = partFields(tool);
   return {
     type: "tool-call",
     // The runner's own id when it names the call: a saved trace that replaces
     // the live list keeps each call's identity even where positions differ.
-    toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
+    toolCallId: `${turnId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
     toolName: tool.name,
     args: tool.args ?? NO_ARGS,
     ...(result === undefined ? {} : { result, isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) }),
@@ -181,6 +183,6 @@ function partFields(tool: FleetToolCall): PartFields {
   return fields;
 }
 
-function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId }: FleetToolCall): ToolResult {
-  return { status, outputHead, outputTail, outputLineCount, exitCode, callId };
+function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId, changes }: FleetToolCall): ToolResult {
+  return { status, outputHead, outputTail, outputLineCount, exitCode, callId, changes: changes === undefined ? undefined : [...changes] };
 }

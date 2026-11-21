@@ -27,7 +27,7 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// `payload` as the hub hands it to every reader of its channel.
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
-        subject: Subject::FleetTail(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
+        subject: Subject::ThreadItems(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
         payload: Arc::new(payload.to_owned()),
     })
 }
@@ -81,7 +81,7 @@ async fn an_idle_stream_emits_named_heartbeats_at_the_documented_cadence() {
 async fn heartbeats_neither_consume_activity_ids_nor_delay_ready_activity() {
     let ceiling = StreamLimit::new(1);
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
-    let frames = stream::unfold(receiver, |mut receiver| async move {
+    let frames = stream::unfold(receiver, async |mut receiver| {
         receiver.recv().await.map(|frame| (frame, receiver))
     });
     let mut body = serve(
@@ -202,7 +202,7 @@ async fn the_body_writes_what_axum_would() {
     );
 }
 
-/// Dimension 5.4, the body's half: three viewers of one frame write its
+/// The body's half: three viewers of one frame write its
 /// payload from the one allocation the hub dispatched.
 #[tokio::test]
 async fn test_the_body_shares_one_payload_across_viewers() {

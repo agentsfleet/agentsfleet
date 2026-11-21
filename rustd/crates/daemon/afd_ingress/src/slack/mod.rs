@@ -20,7 +20,7 @@ mod notice;
 mod notice_owner;
 mod route;
 
-pub use self::admit::MentionAdmission;
+pub use self::admit::MentionTurn;
 pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
@@ -28,7 +28,7 @@ pub use self::notice::{NoticeOwed, notice_text};
 pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
 pub use self::route::{Notice, Route, route};
 /// The channel type used by mention routing and notice ownership.
-pub use af_fleet_runtime::config::ChannelId;
+pub(crate) use af_fleet_runtime::config::ChannelId;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_MENTION_SUBSCRIBERS: &str = "resolve mention subscribers";

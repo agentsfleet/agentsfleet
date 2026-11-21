@@ -1,4 +1,4 @@
-//! Dimension 4.7: the published field names match the columns they read, and
+//! The published field names match the columns they read, and
 //! every instant they carry is an RFC 3339 string.
 #![expect(
     clippy::unwrap_used,

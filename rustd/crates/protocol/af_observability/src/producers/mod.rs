@@ -107,7 +107,7 @@ pub type Reader = Arc<dyn Fn() -> Option<u64> + Send + Sync>;
 ///
 /// Three, and the shortness is the design. A gauge whose value a producer
 /// computes publishes it into a cell beside that producer — the readiness
-/// depth a lease poll saw, the entries a hydration window carried, the backlog
+/// depth a run poll saw, the entries a load window carried, the backlog
 /// a repair pass found — because the producer is where the number exists and
 /// threading it out to boot and back would be two hops for no reader.
 ///

@@ -15,10 +15,10 @@ pub(super) async fn restore(
     let checkpoint = id(&delta.plan.checkpoint_id);
     let read = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &checkpoint,
             &valid(CheckpointAuthorizationInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 purpose: CheckpointTransferPurpose::Restore,
                 pin_id: None,
@@ -31,7 +31,7 @@ pub(super) async fn restore(
     assert_eq!(read.plan.base_id, base.plan.base_id);
     assert_eq!(read.plan.base_page_ids, base.plan.page_ids);
     let query = valid(CheckpointReadQuery {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         pin_id: read.plan.pin.id,
         starting_after: None,
     });
@@ -50,7 +50,7 @@ async fn manifest(
 ) {
     let page = tasks
         .checkpoint_page(
-            case.lease(),
+            case.run(),
             checkpoint,
             &id(saved.plan.page_ids.first().expect("page")),
             query,
@@ -78,7 +78,7 @@ async fn downloads(
     server: &Server,
 ) {
     let inventory = tasks
-        .checkpoint_objects(case.lease(), checkpoint, query)
+        .checkpoint_objects(case.run(), checkpoint, query)
         .await
         .expect("scoped objects");
     assert_eq!(inventory.items.len(), 2);

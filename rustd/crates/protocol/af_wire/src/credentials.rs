@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-/// Requests a tool credential for the current work assignment. `lease_id` determines
+/// Requests a tool credential for the current work assignment. `run_id` determines
 /// workspace access; the body cannot select another workspace and contains no token.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 pub struct MintCredentialRequest<'a> {
     /// Current work assignment authorizing this credential request.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Connected integration that needs a credential.
     #[serde(borrow)]
     pub integration: Cow<'a, str>,

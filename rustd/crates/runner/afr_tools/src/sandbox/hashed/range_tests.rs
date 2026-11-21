@@ -5,12 +5,12 @@
 
 //! Edits that name a range by its start and end tags.
 
+use guffbolt::ToolOutput;
 use serde_json::json;
 
 use super::tests::{END_TARGET, GREEK, NEW_TEXT, PATH, TARGET, THREE_LINES, tag_of};
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
-use crate::lease::Lease;
-use crate::runtime::ToolOutput;
+use crate::run::Run;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// `given` with every `{L<n>}` replaced by line n's tag in `read`.
@@ -32,11 +32,11 @@ async fn edit_by_tags(
     let selection = catalog
         .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
         .unwrap();
-    let lease = Lease::default();
+    let run = Run::default();
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK}),
     )
     .await;
@@ -45,7 +45,7 @@ async fn edit_by_tags(
     call_in(
         offered(&selection, &FILE_EDIT_HASHED),
         &live.client,
-        &lease,
+        &run,
         json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
     )
     .await

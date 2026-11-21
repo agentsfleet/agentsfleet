@@ -14,8 +14,8 @@
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use afd_api::services::WorkspaceOwnership;
 use afd_db::Db;
+use afd_http::services::WorkspaceOwnership;
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::access::{Access, Grant, Role};
 use std::sync::Arc;

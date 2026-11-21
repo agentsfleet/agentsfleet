@@ -1,4 +1,4 @@
-//! A lease retains physical receipts when its agent future is cancelled.
+//! A run retains physical receipts when its agent future is cancelled.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -13,7 +13,7 @@ use crate::{
     Result, client::ControlPlane, error, halt::Halt, report::delivery::until_acknowledged,
 };
 
-/// Owned by one lease; each in-flight physical call retains at most one receipt.
+/// Owned by one run; each in-flight physical call retains at most one receipt.
 #[derive(Default)]
 pub(crate) struct PendingDecisions {
     receipts: Mutex<HashMap<Uuid7, Arc<Receipt>>>,
@@ -46,12 +46,12 @@ impl PendingDecisions {
         &self,
         plane: &ControlPlane,
         halt: &Halt,
-        lease: &Uuid7,
+        run: &Uuid7,
         call: &Uuid7,
         input: &DecisionReceiptInput,
     ) -> Result<DecisionReceiptResult> {
-        let result = until_acknowledged(halt, plane.runtime, || async {
-            let result = plane.task_decision_record(lease, call, input).await?;
+        let result = until_acknowledged(halt, plane.runtime, async || {
+            let result = plane.task_decision_record(run, call, input).await?;
             if result.call_id != call.as_str() {
                 return Err(error::config(
                     "decision receipt acknowledgement names another call",
@@ -60,7 +60,7 @@ impl PendingDecisions {
             Ok(Some(result))
         })
         .await;
-        // A dropped future never reaches removal; its lease still owns the receipt.
+        // A dropped future never reaches removal; its run still owns the receipt.
         self.receipts.lock().remove(call);
         result
     }
@@ -69,7 +69,7 @@ impl PendingDecisions {
         &self,
         plane: &ControlPlane,
         halt: &Halt,
-        lease: &Uuid7,
+        run: &Uuid7,
     ) -> Result<()> {
         let receipts: Vec<_> = self
             .receipts
@@ -78,7 +78,7 @@ impl PendingDecisions {
             .map(|(call, input)| (call.clone(), Arc::clone(input)))
             .collect();
         for (call, input) in receipts {
-            self.record(plane, halt, lease, &call, &input).await?;
+            self.record(plane, halt, run, &call, &input).await?;
         }
         Ok(())
     }

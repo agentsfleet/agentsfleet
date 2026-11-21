@@ -1,4 +1,4 @@
-//! Dimension 2.3 — a table whose rows change carries `updated_at`; an immutable
+//! A table whose rows change carries `updated_at`; an immutable
 //! table lacks it, grants no runtime role UPDATE, and refuses UPDATE by trigger,
 //! while a cascade from its parent still deletes it (rule 9).
 
@@ -7,13 +7,7 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 24] = [
-    "authoring.activity_receipts",
-    "authoring.answer_receipts",
-    "authoring.candidates",
-    "authoring.plugin_revisions",
-    "authoring.replay_receipts",
-    "billing.authoring_report_receipts",
+const IMMUTABLE: [&str; 19] = [
     "connector.oauth_nonces",
     "fleet.revisions",
     "fleet.task_adoptions",
@@ -28,10 +22,11 @@ const IMMUTABLE: [&str; 24] = [
     "identity.memberships",
     "identity.workspaces",
     "model.decision_revisions",
-    "runner.events",
-    "runner.registration_receipts",
+    "runner.history",
     "runner.turn_checkpoint_operations",
     "runner.turn_checkpoint_refs",
+    "setup.candidates",
+    "setup.replay_receipts",
 ];
 
 /// Every runtime role, none of which may update an immutable table.

@@ -4,8 +4,8 @@
 //! in one statement and then owes the tail one frame per row. The statement
 //! hands back each row's fleet, event and the fleet's count after the sweep;
 //! the loop below reads the fleet's counters and wakes the fleet once per
-//! distinct fleet, then decodes and announces. Expiry clears the admission's
-//! park stamp in Postgres. A failed wake cannot hide the admission from polls.
+//! distinct fleet, then decodes and announces. Expiry clears the turn's
+//! park stamp in Postgres. A failed wake cannot hide the turn from polls.
 //!
 //! # The rows decode by construction
 //!
@@ -116,14 +116,14 @@ impl Inbox {
         } else {
             self.wake_parked_delivery(&swept.fleet).await;
             let counters =
-                afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
+                afd_turns::view::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             read.insert(swept.fleet.clone(), counters);
             counters
         };
         self.announce(Answer {
             fleet_id: &swept.fleet,
             gate_id: swept.gate.as_str(),
-            event_id: swept.event.as_ref().map(Uuid7::as_str),
+            turn_id: swept.event.as_ref().map(Uuid7::as_str),
             status: status::TIMED_OUT,
             resolved_by: SWEEPER,
             pending_approvals: swept.pending,

@@ -8,12 +8,12 @@
  * A second session opened Edit setup while the fleet was on revision 1. When
  * that session saves instructions after revision 2 has landed, the daemon
  * refuses the save, and the fleet keeps revision 2. Both proposals come from
- * the live authoring model, so each request is complete and asks no questions.
+ * the live setup model, so each request is complete and asks no questions.
  */
 import { expect, test } from "@playwright/test";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftSchema } from "@/lib/api/draft-types";
-import { saveDoneText } from "@/lib/events/fleet-activity";
+import { saveDoneText } from "@/lib/turns/fleet-activity";
 import { clientFor } from "./fixtures/api-client";
 import { signedInContext, signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -30,8 +30,8 @@ const FIRST_WORD = "ACK";
 const SECOND_WORD = "DONE";
 const DESCRIPTION_MARK = "replies with one line";
 const STALE_INSTRUCTIONS = "Reply with the single word STALE.";
-// `afd_authoring` refuses a save whose source revision is no longer the fleet's head.
-const SOURCE_REVISION_CHANGED = "UZ-AUTHOR-002";
+// `afd_setup` refuses a save whose source revision is no longer the fleet's head.
+const SOURCE_REVISION_CHANGED = "UZ-SETUP-002";
 const CONFLICT = 409;
 const JOURNEY_TIMEOUT_MS = 600_000;
 const PROPOSAL_TIMEOUT_MS = 180_000;

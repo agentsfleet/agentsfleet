@@ -13,19 +13,19 @@
 //!
 //! # Why the claim and the finalize are separate statements
 //!
-//! `schema/20261108122800_fleet_schedules.sql` gives this table a `resource_version`, a
-//! `sync_token` and a `sync_lease_expires_at` so one syncer at a time can push
+//! `afd_db/schema/20261108122800_fleet_schedules.sql` gives this table a `resource_version`, a
+//! `sync_token` and a `sync_run_expires_at` so one syncer at a time can push
 //! a schedule. The claim takes the fence and bumps the version; the finalize
 //! releases it and is conditioned on BOTH the version and the token it was
-//! given. A syncer whose lease expired and whose row was taken by another
+//! given. A syncer whose run expired and whose row was taken by another
 //! finalizes nothing — its `WHERE` matches no row — rather than overwriting
 //! the newer state.
 //!
 //! # Whose clock
 //!
 //! Postgres stamps every row: `created_at` and `updated_at` are `now()`. A
-//! lease is set and judged on `clock_timestamp()`, the instant the statement
-//! actually runs, because a claim may have waited on the row lock and a lease
+//! run is set and judged on `clock_timestamp()`, the instant the statement
+//! actually runs, because a claim may have waited on the row lock and a run
 //! that ran out during that wait has run out.
 
 /// Whether this fleet belongs to the workspace the caller was proven in.
@@ -99,7 +99,7 @@ pub const INSERT: &str = include_str!("insert.sql");
 /// Each `COALESCE` is a field the caller may leave alone, which is what makes a
 /// partial edit one round trip rather than a read followed by a write that
 /// could race the read. The trailing predicate is the fence: an unheld row, or
-/// one whose lease has run out, may be claimed; one another syncer holds may
+/// one whose run has run out, may be claimed; one another syncer holds may
 /// not, and the statement matches nothing rather than stealing it.
 pub const CLAIM_MUTATION: &str = include_str!("claim_mutation.sql");
 

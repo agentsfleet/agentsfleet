@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { NO_FACTS } from "@/lib/events/run-summary";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { NO_FACTS } from "@/lib/turns/run-summary";
 import { factsOf, mergeFacts } from "./fleet-stream-facts";
 import { figure, text } from "./fleet-stream-row";
 
@@ -27,8 +27,8 @@ describe("text", () => {
 describe("factsOf", () => {
   it("a completion carries both fleet facts", () => {
     const frame: LiveFrame = {
-      kind: FRAME_KIND.EVENT_COMPLETE,
-      event_id: "e1",
+      kind: FRAME_KIND.TURN_COMPLETE,
+      turn_id: "e1",
       fleet_status: "installing",
       pending_approvals: 2,
     };
@@ -37,13 +37,13 @@ describe("factsOf", () => {
 
   it("a gate frame carries the count alone — a gate changes nothing about the lifecycle", () => {
     expect(
-      factsOf({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "e", pending_approvals: 1 }),
+      factsOf({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", turn_id: "e", pending_approvals: 1 }),
     ).toEqual({ pendingApprovals: 1 });
     expect(
       factsOf({
         kind: FRAME_KIND.GATE_RESOLVED,
         gate_id: "g",
-        event_id: "e",
+        turn_id: "e",
         status: "denied",
         resolved_by: "human:x",
         pending_approvals: 0,
@@ -52,13 +52,13 @@ describe("factsOf", () => {
   });
 
   it("a completion with unreadable facts says nothing rather than something false", () => {
-    const frame = { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1" } as LiveFrame;
+    const frame = { kind: FRAME_KIND.TURN_COMPLETE, turn_id: "e1" } as LiveFrame;
     expect(factsOf(frame)).toEqual({ status: null, pendingApprovals: null });
   });
 
   it("every other frame carries no fleet fact", () => {
-    expect(factsOf({ text_kind: "answer", kind: FRAME_KIND.CHUNK, event_id: "e", text: "hi" })).toEqual({});
-    expect(factsOf({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e", actor: "fleet" })).toEqual({});
+    expect(factsOf({ text_kind: "answer", kind: FRAME_KIND.CHUNK, turn_id: "e", text: "hi" })).toEqual({});
+    expect(factsOf({ kind: FRAME_KIND.TURN_RECEIVED, turn_id: "e", actor: "fleet" })).toEqual({});
     expect(factsOf({ kind: FRAME_KIND.HELLO, fleet_ids: [] })).toEqual({});
   });
 });
@@ -67,8 +67,8 @@ describe("factsOf — the status is a fleet status or nothing", () => {
   it("an empty or unknown spelling reads as unknown, never as a status the strip would show", () => {
     for (const notAStatus of ["", "ACTIVE", "exploded", 7, null]) {
       const frame = {
-        kind: FRAME_KIND.EVENT_COMPLETE,
-        event_id: "e1",
+        kind: FRAME_KIND.TURN_COMPLETE,
+        turn_id: "e1",
         fleet_status: notAStatus,
         pending_approvals: 0,
       } as unknown as LiveFrame;

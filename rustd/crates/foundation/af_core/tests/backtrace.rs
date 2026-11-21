@@ -67,7 +67,7 @@ mod nested {
         #[derive(Debug, thiserror::Error)]
         pub(crate) enum Kind {
             /// The engine's sentence over the kernel's errno.
-            #[error("the lease's egress was refused: 257 addresses")]
+            #[error("the run's egress was refused: 257 addresses")]
             Refused {
                 /// The kernel's answer.
                 #[source]
@@ -110,7 +110,7 @@ mod nested {
         #[derive(Debug, thiserror::Error)]
         pub(crate) enum Kind {
             /// The engine's failure as a cause beneath the supervisor's sentence.
-            #[error("the lease's egress allowlist was refused")]
+            #[error("the run's egress allowlist was refused")]
             Egress {
                 /// The engine's reason.
                 #[source]
@@ -178,13 +178,13 @@ fn should_tell_a_shelled_cause_without_its_code_or_backtrace() {
     assert_eq!(
         reason,
         format!(
-            "the lease's egress allowlist was refused: \
-             the lease's egress was refused: 257 addresses: {errno}"
+            "the run's egress allowlist was refused: \
+             the run's egress was refused: 257 addresses: {errno}"
         )
     );
     assert_eq!(
         passed.told(),
-        format!("the lease's egress was refused: 257 addresses: {errno}")
+        format!("the run's egress was refused: 257 addresses: {errno}")
     );
     for told in [&reason, &passed.told()] {
         assert!(!told.contains("[UZ-"), "no code in the reason: {told}");

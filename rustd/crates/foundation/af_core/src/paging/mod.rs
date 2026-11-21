@@ -41,7 +41,7 @@
 
 pub mod struct_cursor;
 
-pub use af_validate::Ceiling;
+pub(crate) use af_validate::Ceiling;
 use af_validate::Limit;
 
 /// Where a page resumes from, as a caller spells it (RULE UFS).

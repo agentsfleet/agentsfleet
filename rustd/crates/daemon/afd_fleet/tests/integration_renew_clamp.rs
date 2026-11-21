@@ -1,9 +1,8 @@
-//! §3 against live datastores — the renewal's clamp and its coverage gate.
+//! The renewal's grant and its coverage gate.
 //!
-//! Dimension 3.4. Split from `integration_report_settle.rs` because the
-//! precondition differs in a way that matters: these tests need a lease whose
-//! `created_at` is far enough back to reach the hard ceiling, and a wallet that
-//! is deliberately empty. A suite that seeded both for every test would make
+//! Split from `integration_report_settle.rs` because the
+//! precondition differs in a way that matters: these tests need a run whose
+//! `created_at` is hours back, and a wallet that is deliberately empty. A suite that seeded both for every test would make
 //! the report's row-parity assertions depend on state they do not care about.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -16,107 +15,113 @@
 )]
 
 use af_core::id::Uuid7;
-use af_core::timing::{LEASE_TTL, MAX_RUNTIME};
-use afd_fleet::lease::sql::meter::Metering;
-use afd_fleet::lease::usage::Pricing;
-use afd_fleet::lease::{Leases, Renewed};
+use af_core::timing::RUN_TTL;
+use afd_fleet::run::sql::meter::Metering;
+use afd_fleet::run::usage::Pricing;
+use afd_fleet::run::{Renewed, Runs};
 use jiff::Timestamp;
 
 use crate::report_seed::{Held, held};
 use crate::rows::{LAPSE, Row};
 use crate::seed::{MODEL, PROVIDER};
 
-/// One renewal of `lease`, reporting no tokens.
+/// One renewal of `run`, reporting no tokens.
 pub(crate) async fn extend(
-    leases: &Leases,
-    lease: &Uuid7,
+    runs: &Runs,
+    run: &Uuid7,
     runner: &Uuid7,
     priced: (&Uuid7, &Pricing),
     now: Timestamp,
 ) -> afd_fleet::Result<Renewed> {
-    let (lease_key, pricing) = priced;
-    leases
-        .extend(
-            Metering {
-                lease_id: lease,
-                runner_id: runner,
-                requests: &[],
-            },
-            lease_key,
-            pricing,
-            now,
-        )
-        .await
+    let (run_key, pricing) = priced;
+    runs.extend(
+        Metering {
+            run_id: run,
+            runner_id: runner,
+            requests: &[],
+        },
+        run_key,
+        pricing,
+        now,
+    )
+    .await
 }
 
 /// The deadline a renewal granted, when it extended.
 pub(crate) const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
     match renewed {
         Renewed::Extended { expires_at, .. } => Some(*expires_at),
-        Renewed::MaxRuntime | Renewed::Lost | Renewed::Cancelled => None,
+        Renewed::Lost | Renewed::Cancelled => None,
     }
 }
 
+// Value: protects=a run of any age renews for a full run lifetime, the
+// thread with it; fails_when=a renewal clamps a grant to the run's start again;
+// why_new=the 12-hour ceiling is gone (M253_003 §8); seam=the per-run
+// renewal over live Postgres; no_claim=the batch, which
+// `host_batch_extends_live_refuses_fenced` covers.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_renew_clamps_to_the_hard_ceiling() {
+async fn test_renew_grants_a_full_ttl_at_any_age() {
     let held = held().await;
     assert_full_ttl(&held).await;
-    assert_hard_ceiling(&held).await;
+    held.fixtures
+        .age(
+            Row::Run(&held.issued.run_id),
+            "created_at",
+            std::time::Duration::from_hours(13),
+        )
+        .await;
+    assert_full_ttl(&held).await;
     held.fixtures.cleanup().await;
 }
 
-/// Dimension 3.4b — a renewal for a lease that is no longer ours is LOST.
-///
-/// The other terminal verdict, and the one that must not be confused with the
-/// cap: `MaxRuntime` says the runner did nothing wrong and its result is still
-/// wanted, where `Lost` says the lease belongs to somebody else and the result
-/// will be refused. A renewal that answered the cap here would have the runner
-/// report a result into a lease it no longer holds.
+/// A renewal for a run that is no longer ours is LOST: the run belongs to
+/// somebody else, and its result will be refused.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_renew_after_reclaim_is_lost() {
+async fn test_renew_after_reassignment_is_lost() {
     let Held {
         fixtures,
-        leases,
+        runs,
         runner: first,
         spare: second,
         issued,
         fleet,
         now,
-        lease_key,
+        run_key,
         pricing,
         ..
     } = held().await;
-    let lease = &issued.lease_id;
+    let run = &issued.run_id;
 
     // The holder stalls past its TTL and the work is taken back.
     fixtures
-        .age(Row::Slot(&fleet), "lease_expires_at", LAPSE)
+        .age(Row::Thread(&fleet), "run_expires_at", LAPSE)
         .await;
-    crate::seed::select_fleet(&leases, &second, &fleet)
+    crate::seed::select_fleet(&runs, &second, &fleet)
         .await
-        .expect("a lapsed claim is winnable");
+        .expect("a lapsed assignment is winnable");
 
     assert_eq!(
-        extend(&leases, lease, &first, (&lease_key, &pricing), now)
+        extend(&runs, run, &first, (&run_key, &pricing), now)
             .await
             .expect("a lost renewal is an answer, not a fault"),
         Renewed::Lost,
-        "the reclaim expired this lease, so its former holder must terminate its child"
+        "the reassignment expired this run, so its former holder must terminate its child"
     );
 
     fixtures.cleanup().await;
 }
 
-/// Dimension 3.4c — an exhausted tenant cannot buy another slice.
+/// An exhausted tenant cannot buy another slice.
 ///
 /// The refusal that makes the clamp above matter: without it a run whose
 /// tenant went to zero mid-flight would renew forever on credit nobody has.
 ///
-/// This is the one §3 test that needs the composed [`Plane`] rather than the
+/// This is the one renewal test that needs the composed [`Plane`] rather than the
 /// store, and the reason is the gate's own shape — it reads a WALLET and a
-/// fleet ceiling, neither of which the lease store can see. The wallet is
+/// fleet ceiling, neither of which the run store can see. The wallet is
 /// seeded holding zero rather than left absent, which is a distinction the gate
 /// draws deliberately: a tenant with no wallet row at all is ADMITTED, because
 /// an unprovisioned tenant is an operator gap and refusing every one of its
@@ -124,7 +129,7 @@ async fn test_renew_after_reclaim_is_lost() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_renew_coverage_refuses_an_empty_wallet() {
-    // Funded at issue: the lease must be grantable, or this test would be
+    // Funded at issue: the run must be grantable, or this test would be
     // proving the ISSUE gate and not the renewal one.
     let Held {
         fixtures,
@@ -140,55 +145,48 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
     // refuse and this test asserting the wrong code for the right outcome.
     fixtures.seed_model_rate(PROVIDER, MODEL).await;
-    let lease = &issued.lease_id;
-    let original = issued_deadline(&fixtures, lease).await;
+    let run = &issued.run_id;
+    let original = issued_deadline(&fixtures, run).await;
     let plane = fixtures.plane();
 
-    // The pool runs dry mid-run. Nothing about the lease changes; the gate is
+    // The pool runs dry mid-run. Nothing about the run changes; the gate is
     // read LIVE, which is the property this asserts.
     fixtures.seed_wallet(&tenant, 0).await;
 
     let refusal = plane
-        .renew(
-            &runner,
-            lease,
-            af_wire::report::RenewRequest::default(),
-            now,
-        )
+        .renew(&runner, run, af_wire::report::RenewRequest::default(), now)
         .await
         .expect_err("an exhausted tenant cannot fund another slice");
     assert_eq!(
         refusal.code(),
-        af_core::error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+        af_core::error_code::RUN_RENEWAL_NO_CREDITS,
         "the runner is told WHICH pool ran dry: the tenant's balance, not the fleet's ceiling"
     );
 
     assert_eq!(
-        fixtures
-            .instant(Row::Lease(lease), "lease_expires_at")
-            .await,
+        fixtures.instant(Row::Run(run), "run_expires_at").await,
         Some(original),
-        "a refused renewal advances nothing — the lease expires on its original deadline"
+        "a refused renewal advances nothing — the run expires on its original deadline"
     );
 
     fixtures.cleanup().await;
 }
 
-async fn issued_deadline(fixtures: &crate::support::Fixtures, lease: &Uuid7) -> Timestamp {
+async fn issued_deadline(fixtures: &crate::support::Fixtures, run: &Uuid7) -> Timestamp {
     fixtures
-        .instant(Row::Lease(lease), "lease_expires_at")
+        .instant(Row::Run(run), "run_expires_at")
         .await
-        .expect("the issued lease has a deadline")
+        .expect("the issued run has a deadline")
 }
 
 async fn assert_full_ttl(held: &Held) {
     let fixtures = &held.fixtures;
-    let lease = &held.issued.lease_id;
+    let run = &held.issued.run_id;
     let early = extend(
-        &held.leases,
-        lease,
+        &held.runs,
+        run,
         &held.runner,
-        (&held.lease_key, &held.pricing),
+        (&held.run_key, &held.pricing),
         held.now,
     )
     .await
@@ -196,131 +194,15 @@ async fn assert_full_ttl(held: &Held) {
     let renewed_at = fixtures.metered_since(&held.fleet).await;
     assert_eq!(
         deadline(&early),
-        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
-        "with hours of budget left, a renewal takes the full lease TTL"
+        Some(af_core::clock::after(renewed_at, RUN_TTL)),
+        "with hours of budget left, a renewal takes the full run TTL"
     );
     assert_eq!(
         fixtures
-            .instant(Row::Slot(&held.fleet), "lease_expires_at")
+            .instant(Row::Thread(&held.fleet), "run_expires_at")
             .await,
-        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
-        "the SLOT moves with the lease — advancing one without the other is what \
-         gets a healthy run reclaimed mid-flight"
+        Some(af_core::clock::after(renewed_at, RUN_TTL)),
+        "the THREAD moves with the run — advancing one without the other is what \
+         gets a healthy run reassigned mid-flight"
     );
-}
-
-async fn assert_hard_ceiling(held: &Held) {
-    let fixtures = &held.fixtures;
-    let lease = &held.issued.lease_id;
-    // The run has been going almost its whole budget: the ceiling now falls
-    // inside the TTL window of the database clock, so the ceiling arm wins.
-    let nearly_spent = MAX_RUNTIME.saturating_sub(LEASE_TTL / 2);
-    fixtures
-        .age(Row::Lease(lease), "created_at", nearly_spent)
-        .await;
-    let started = fixtures
-        .instant(Row::Lease(lease), "created_at")
-        .await
-        .expect("the lease row carries its start");
-    let ceiling = af_core::clock::after(started, MAX_RUNTIME);
-
-    let clamped = extend(
-        &held.leases,
-        lease,
-        &held.runner,
-        (&held.lease_key, &held.pricing),
-        held.now,
-    )
-    .await
-    .expect("the extend must reach the datastore");
-    assert_eq!(
-        deadline(&clamped),
-        Some(ceiling),
-        "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
-    );
-    assert_eq!(
-        fixtures
-            .instant(Row::Lease(lease), "lease_expires_at")
-            .await,
-        Some(ceiling),
-        "the clamped instant is what the row carries, so the runner's kill deadline is the real one"
-    );
-
-    assert_past_ceiling(held, ceiling).await;
-}
-
-async fn assert_past_ceiling(held: &Held, ceiling: Timestamp) {
-    let fixtures = &held.fixtures;
-    let lease = &held.issued.lease_id;
-    // Past the ceiling by the database clock, the guard's `capped > now`
-    // fails and nothing moves.
-    fixtures
-        .age(Row::Lease(lease), "created_at", LEASE_TTL)
-        .await;
-    assert_eq!(
-        extend(
-            &held.leases,
-            lease,
-            &held.runner,
-            (&held.lease_key, &held.pricing),
-            held.now
-        )
-        .await
-        .expect("a capped renewal is an answer, not a fault"),
-        Renewed::MaxRuntime,
-        "past its ceiling a run cannot renew at all — it stops and reports"
-    );
-    assert_eq!(
-        fixtures
-            .instant(Row::Lease(lease), "lease_expires_at")
-            .await,
-        Some(ceiling),
-        "and the refused renewal advanced nothing"
-    );
-}
-
-// Value: protects=a run at its runtime ceiling with request lines to settle
-// is told it reached the ceiling; fails_when=the settled lines turn the
-// verdict into a stop the runner reads as a lost lease; why_new=the refusal
-// arm settled known lines and replaced every verdict but a cancel; seam=none;
-// no_claim=what the settled lines charge.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_run_at_its_ceiling_with_lines_to_settle_reaches_the_ceiling() {
-    let held = held().await;
-    let lease = &held.issued.lease_id;
-    held.fixtures
-        .age(Row::Lease(lease), "created_at", MAX_RUNTIME + LEASE_TTL)
-        .await;
-    let requests = [af_wire::usage::RequestUsage {
-        seq: 0,
-        at: held.now,
-        input_tokens: 10,
-        cached_input_tokens: 0,
-        cache_write_tokens: 0,
-        cache_write_5m_tokens: 0,
-        cache_write_1h_tokens: 0,
-        output_tokens: 10,
-    }];
-
-    let renewed = held
-        .leases
-        .extend(
-            Metering {
-                lease_id: lease,
-                runner_id: &held.runner,
-                requests: &requests,
-            },
-            &held.lease_key,
-            &held.pricing,
-            held.now,
-        )
-        .await
-        .expect("the extend must reach the datastore");
-
-    assert!(
-        matches!(renewed, Renewed::MaxRuntime),
-        "the ceiling, not a lost lease: {renewed:?}"
-    );
-    held.fixtures.cleanup().await;
 }

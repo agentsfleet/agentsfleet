@@ -6,10 +6,10 @@ import { useFleetTaskView } from "../../tasks/FleetTaskProvider";
 import { recordedChanges } from "./recorded-changes";
 import { RecordedChangesDialog } from "./RecordedChangesDialog";
 
-/** Only confirmed writes from this fleet's recorded events enter the count. */
+/** Only confirmed writes from this fleet's recorded turns enter the count. */
 export function ChangesStrip() {
   const view = useFleetTaskView();
-  const changes = view?.subject ? recordedChanges(view.events ?? [], {includeRunning: false}) : [];
+  const changes = view?.subject ? recordedChanges(view.turns ?? [], {includeRunning: false}) : [];
   if (!changes.length) return null;
   return <div data-changes-strip="" className="flex justify-center pb-md"><RecordedChangesDialog changes={changes}>
     <Button variant="secondary" className="h-9.5 min-h-9.5 pointer-coarse:min-h-9.5 w-fit gap-md rounded-md bg-muted px-lg py-md text-eyebrow text-muted-foreground [&_svg]:size-[15px]">

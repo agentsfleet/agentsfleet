@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     Result,
-    task::{TaskLease, TaskRefusal},
+    task::{TaskRefusal, TaskRun},
 };
 use af_core::id::Uuid7;
 use af_wire::{
@@ -23,13 +23,13 @@ pub(super) struct Answered {
 
 pub(super) async fn load(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     id: &Uuid7,
 ) -> Result<Answered> {
     let call = row::read_on(connection, id)
         .await?
         .ok_or(TaskRefusal::NotFound)?;
-    if !call.owned_by(lease) || !call.accounted || !call.issued {
+    if !call.owned_by(run) || !call.accounted || !call.issued {
         return Err(TaskRefusal::StaleState.into());
     }
     let payload = row::payload(connection, id)
@@ -54,12 +54,12 @@ pub(super) async fn load(
 
 pub(in crate::task) async fn binding(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &TaskBindingsInput,
 ) -> Result<()> {
     let whole = load(
         connection,
-        lease,
+        run,
         &crate::task::guard::wire(&input.message_decision_call_id)?,
     )
     .await?;
@@ -89,7 +89,7 @@ pub(in crate::task) async fn binding(
                 .decision_call_id
                 .as_deref()
                 .ok_or(TaskRefusal::InputAmbiguous)?;
-            let evaluated = load(connection, lease, &crate::task::guard::wire(id)?).await?;
+            let evaluated = load(connection, run, &crate::task::guard::wire(id)?).await?;
             source(&evaluated, input)?;
             let expected = DecisionAssessment::Item {
                 ordinal: u8::try_from(ordinal).map_err(|_overflow| TaskRefusal::InputAmbiguous)?,
@@ -107,7 +107,7 @@ pub(in crate::task) async fn binding(
 }
 
 fn source(evaluated: &Answered, input: &TaskBindingsInput) -> Result<()> {
-    if evaluated.call.source_admission_id != input.source_admission_id
+    if evaluated.call.source_turn_id != input.source_turn_id
         || evaluated.call.context_snapshot.accepted_revision_id != input.accepted_revision_id
     {
         return Err(TaskRefusal::ReplayConflict.into());
@@ -183,7 +183,7 @@ pub(super) fn choice<'a>(
 /// A native report accepts only its recorded goal call and reviewed thresholds.
 pub(in crate::task) async fn goal(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &af_wire::task::TaskReport,
     task: &af_wire::task::TaskContext<'_>,
 ) -> Result<()> {
@@ -196,7 +196,7 @@ pub(in crate::task) async fn goal(
     }
     let evaluated = load(
         connection,
-        lease,
+        run,
         &crate::task::guard::wire(
             input
                 .decision_call_id

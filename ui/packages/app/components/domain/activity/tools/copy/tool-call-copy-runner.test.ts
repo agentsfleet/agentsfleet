@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { CELL_STATE, toolCopy } from "./tool-call-copy";
-import { patchDiff } from "./tool-call-copy-runner";
+import { patchRows } from "./tool-call-copy-runner";
 import { DIFF_ROW } from "../diff/tool-call-diff";
 import { ARGS_NOT_RECORDED, PLAN_STATUS, TOOL_BODY, TOOL_NAME } from "../presentation/tool-call-shape";
 import { ARGS_LEAF_MAX_BYTES, CLIP_MARK } from "../presentation/tool-call-text";
@@ -31,8 +31,8 @@ const PATCH = [
 describe("runner tool copy", () => {
   it("test_runner_tools_name_verb_and_target", () => {
     const cases: ReadonlyArray<readonly [string, ToolArgs, string, string]> = [
-      [TOOL_NAME.PUSHOVER, { message: "Deploy done", title: "Prod" }, "Notifying Prod", "Notified Prod"],
-      [TOOL_NAME.PUSHOVER, { message: "Deploy done\nall green" }, `Notifying Deploy done${CLIP_MARK}`, `Notified Deploy done${CLIP_MARK}`],
+      [TOOL_NAME.NOTIFY, { message: "Deploy done", title: "Prod" }, "Notifying Prod", "Notified Prod"],
+      [TOOL_NAME.NOTIFY, { message: "Deploy done\nall green" }, `Notifying Deploy done${CLIP_MARK}`, `Notified Deploy done${CLIP_MARK}`],
       [TOOL_NAME.IMAGE, { path: "/workspace/chart.png" }, "Viewing image chart.png", "Viewed image chart.png"],
       [TOOL_NAME.BROWSER_OPEN, { url: "https://example.test" }, "Opening https://example.test", "Opened https://example.test"],
       [TOOL_NAME.BROWSER, { action: "click", selector: "#save" }, "Clicking #save", "Clicked #save"],
@@ -61,7 +61,7 @@ describe("runner tool copy", () => {
       [TOOL_NAME.MESSAGE, { content: "On it" }, "Sending message On it", "Sent message On it"],
       [TOOL_NAME.UPDATE_PLAN, { plan: [] }, "Updating plan", "Updated plan"],
       // Called without its main argument: nothing invented in its place.
-      [TOOL_NAME.PUSHOVER, { priority: 1 }, "Notifying", "Notified"],
+      [TOOL_NAME.NOTIFY, { priority: 1 }, "Notifying", "Notified"],
       [TOOL_NAME.BROWSER_OPEN, { wait: true }, "Opening", "Opened"],
       [TOOL_NAME.DELEGATE, { tools: [] }, "Delegating", "Delegated"],
       [TOOL_NAME.SPAWN, { tools: [] }, "Starting agent", "Started agent"],
@@ -122,31 +122,27 @@ describe("runner tool copy", () => {
     expect(header(TOOL_NAME.WRITE_STDIN, { chars: cut }, CELL_STATE.SUCCEEDED)).toBe(`Wrote to terminal: "${cut}"${CLIP_MARK}`);
   });
 
-  it("test_patch_copy_reads_its_files_and_lines", () => {
-    const { files, diff } = patchDiff(PATCH);
-    expect(files).toEqual(["src/app.ts", "notes.md"]);
-    expect(diff.rows).toEqual([
+  it("draws a patch's lines as rows, its file headers and hunk marks left out", () => {
+    expect(patchRows(PATCH)).toEqual([
       { kind: DIFF_ROW.CONTEXT, text: "keep" },
       { kind: DIFF_ROW.REMOVED, text: "old" },
       { kind: DIFF_ROW.ADDED, text: "new" },
       { kind: DIFF_ROW.ADDED, text: "more" },
       { kind: DIFF_ROW.ADDED, text: "hello" },
     ]);
-    expect([diff.added, diff.removed]).toEqual([3, 1]);
-    expect(patchDiff("*** Update File: a\n*** Move to: b\nplain").files).toEqual(["a", "b"]);
-    const short = "*** Update File: a.md\n-x\n+y";
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: short })).toMatchObject({ target: "a.md", body: { kind: TOOL_BODY.DIFF } });
-    const cut = `*** Update File: a.md\n+${"x".repeat(ARGS_LEAF_MAX_BYTES)}`;
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: cut })).toEqual({
-      verbs: { running: "Editing", done: "Edited" }, target: `a.md${CLIP_MARK}`, body: { kind: TOOL_BODY.CLIPPED_EDIT },
+    expect(patchRows("*** Update File: a\n*** Move to: b\nplain")).toEqual([{ kind: DIFF_ROW.CONTEXT, text: "plain" }]);
+    expect(patchRows("")).toEqual([]);
+  });
+
+  it("names a patch's files and counts from its recorded changes, never its text", () => {
+    const changes = [{ path: "src/app.ts", added: 3, removed: 1 }];
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: PATCH }, changes)).toEqual({
+      verbs: { running: "Editing", done: "Edited" }, target: "src/app.ts", body: { kind: TOOL_BODY.CHANGES, changes },
     });
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "x".repeat(ARGS_LEAF_MAX_BYTES) }).target).toBe("");
-    // No patch text, or none in the patch grammar: the arguments as they came,
-    // never "+0 −0" for a change nobody saw.
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { input: "*** Begin Patch" })).toEqual({
-      verbs: { running: "Editing", done: "Edited" }, target: '({"input":"*** Begin Patch"})', body: { kind: TOOL_BODY.OUTPUT },
-    });
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: 7 }).target).toBe('({"patch":7})');
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "just words" })).toMatchObject({ target: '({"patch":"just words"})', body: { kind: TOOL_BODY.OUTPUT } });
+    // No change recorded, whatever the patch says: no file and no "+0 −0".
+    const unrecorded: ToolArgs[] = [{ patch: PATCH }, { patch: `*** Update File: a.md\n+${"x".repeat(ARGS_LEAF_MAX_BYTES)}` }, { input: "*** Begin Patch" }, { patch: 7 }];
+    for (const args of unrecorded) {
+      expect(toolCopy(TOOL_NAME.APPLY_PATCH, args)).toEqual({ verbs: { running: "Editing", done: "Edited" }, target: "", body: { kind: TOOL_BODY.OUTPUT } });
+    }
   });
 });

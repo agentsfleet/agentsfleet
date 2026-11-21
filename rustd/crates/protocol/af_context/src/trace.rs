@@ -15,7 +15,7 @@ const FAILED: &str = "context_compaction_failed";
 #[derive(Debug, Clone, Copy)]
 pub enum Host {
     /// Creator-private setup conversation.
-    Authoring,
+    Setup,
     /// One fleet execution branch.
     Runtime,
 }
@@ -34,7 +34,7 @@ impl Trace {
     #[must_use]
     pub fn start(correlation: Arc<str>, host: Host, task: &Compaction) -> Self {
         let host = match host {
-            Host::Authoring => "authoring",
+            Host::Setup => "setup",
             Host::Runtime => "runtime",
         };
         let correlation_id = correlation.as_ref();

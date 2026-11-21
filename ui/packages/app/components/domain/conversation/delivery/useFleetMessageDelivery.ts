@@ -8,10 +8,10 @@ import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
 import { PENDING_SEND_STATE, type PendingSendOutcome, type PendingSendWriters } from "./useFleetPendingSends";
 import { outcomeOf, releaseRoute, routeOf } from "./useFleetMessageRoute";
-import type { useFleetEventStream } from "../stream/useFleetEventStream";
+import type { useFleetTurnStream } from "../stream/useFleetTurnStream";
 import { postSteer } from "@/lib/api/fleet-steer";
-import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { STEER_DISPOSITION, type SteerAccepted } from "@/lib/api/fleets-types";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
 import { SEND_MARK, sendMarks } from "@/lib/streaming/send-marks";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -20,7 +20,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 // length cap. Every send is one operation: named before the optimistic append,
 // held in the fleet's ledger until the daemon's 202 is reconciled, and sent
 // again under the same name by Resend, so the daemon answers the first
-// admission instead of running a second. A send that fails leaves the thread;
+// turn instead of running a second. A send that fails leaves the thread;
 // its text goes back to the composer the way Claude.ai does it — the handler
 // rejects with assistant-ui's `MessageNotSentError` and the composer restores
 // the draft it cleared — and its ledger entry keeps the recovery.
@@ -40,7 +40,7 @@ import { workspacePath } from "@/lib/workspace-routes";
 // renamed or taken since (`useFleetMessageRoute.ts`).
 
 // Placeholder actor on an optimistic row until the stream's matching
-// `EVENT_RECEIVED` lands and reconciliation replaces it with the real
+// `TURN_RECEIVED` lands and reconciliation replaces it with the real
 // authenticated principal.
 const OPTIMISTIC_ACTOR = ACTOR.PENDING_STEER;
 const settledEitherWay = (): void => undefined;
@@ -53,7 +53,7 @@ export const SEND_TIMEOUT_MS = 30_000;
 // queues behind the send still out instead of overtaking it.
 const DELIVERY_TAILS = new Map<string, Promise<void>>();
 
-type StreamApi = ReturnType<typeof useFleetEventStream>;
+type StreamApi = ReturnType<typeof useFleetTurnStream>;
 type DeliveryCtx = {
   workspaceId: string;
   fleetId: string;
@@ -99,9 +99,6 @@ export function useMessageDelivery(ctx: DeliveryCtx): MessageDelivery {
       const send = ++sends.current;
       const text = extractMessageText(msg);
       if (text.length === 0) return;
-      // Refused before it is named or recorded: the daemon would refuse it, and
-      // the composer keeps the draft while its hint says why.
-      if (overSteerLimit(steerBytesNearLimit(text))) throw new MessageNotSentError();
       const back = take();
       const operationId = back?.text === text && back.ledger === writers ? back.operationId : mintOrNull();
       if (operationId === null) throw new MessageNotSentError();
@@ -152,7 +149,7 @@ export function useOpenFleet(workspaceId: string): (fleetId: string) => void {
 
 // The draft a failure put back, and the id it was sent under. Only that draft,
 // sent unchanged, reuses the id: the same words typed later are a new message,
-// and an old id would replay an old admission and run nothing.
+// and an old id would replay an old turn and run nothing.
 function useRestoredDraft(writers: PendingSendWriters) {
   const restored = useRef<Restored | null>(null);
 
@@ -192,7 +189,7 @@ function useRestoredDraft(writers: PendingSendWriters) {
 // One send: recorded, painted, then POSTed behind the fleet's previous send.
 // Removing the browser-side queue let two rapid submissions race: their POSTs
 // could reach the server out of submission order, so "stop" could be assigned
-// an earlier event id than the "deploy" it was meant to follow.
+// an earlier turn id than the "deploy" it was meant to follow.
 function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: string) => Promise<boolean> {
   const { workspaceId, fleetId, fleetName, sentAs, appendOptimistic, discardOptimistic, writers } = ctx;
   const acknowledged = useAcknowledgement(ctx);
@@ -248,14 +245,14 @@ function useAcknowledgement({ workspaceId, fleetId, reconcileOptimistic, discard
       writers.settle(operationId);
       releaseRoute(workspaceId, operationId);
       // Before the reconcile, which lets this send's held frames land.
-      sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.event_id);
+      sendMarks.mark(SEND_MARK.ACCEPTED, operationId, accepted.turn_id);
       if (target !== fleetId) {
         discardOptimistic(tempId);
         openFleet(target);
         return true;
       }
-      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
-      reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
+      const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_turn_id : null;
+      reconcileOptimistic(tempId, accepted.turn_id, accepted.replayed, foldedInto);
       return true;
     },
     [workspaceId, fleetId, reconcileOptimistic, discardOptimistic, openFleet, writers],

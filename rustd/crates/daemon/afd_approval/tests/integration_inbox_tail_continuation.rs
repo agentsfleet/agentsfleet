@@ -11,9 +11,9 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer};
+use af_wire::turn::TurnKind;
 use afd_approval::{Decision, Inbox, Resolution};
+use afd_turns::{IncomingTurn, Key, Producer, Turns};
 use serde_json::json;
 
 use crate::lane::{Lane, Window};
@@ -27,7 +27,7 @@ use crate::tail_watch::{
 /// The common operator path, and the one with an ordering to prove: the
 /// continuation row is inserted by the resolve, so the runner's pull finds it
 /// already there and announces nothing — the resolve is the one writer that
-/// can open it on the tail. A watcher hears `event_received` for the
+/// can open it on the tail. A watcher hears `turn_received` for the
 /// continuation, then `gate_resolved` for the answer, and the count on the
 /// answer says the sibling still waits.
 #[tokio::test(flavor = "multi_thread")]
@@ -39,7 +39,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
     let approved = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
-    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+    let before = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
     let outcome = lane
@@ -48,7 +48,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::Resolved(resolved) => resolved.continuation_turn_id,
         Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
     }
     .expect("a pending gate is this caller's to answer, and an approval continues its run");
@@ -73,7 +73,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let inbox = Inbox::new(
         lane.pool.clone(),
         afd_bus::test_util::unreachable(),
-        Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
+        Turns::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let action = lane.seed_gate(Window::Open).await;
 
@@ -83,7 +83,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
         .expect("a bus that refuses the notification does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
     let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::Resolved(resolved) => resolved.continuation_turn_id,
         Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
     };
     assert!(
@@ -96,17 +96,17 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     );
 }
 
-/// A continuation the lease path already opened is not announced twice.
+/// A continuation the run path already opened is not announced twice.
 ///
-/// Both writers run `INSERT_FLEET_EVENT` against `(fleet_id, event_id)`, and
-/// the admission ledger hands them the SAME id, because the gate's action is
+/// Both writers run `INSERT_TURN` against `(fleet_id, turn_id)`, and
+/// the turn ledger hands them the SAME id, because the gate's action is
 /// the repeated key. Whichever lands second converges on the first's row,
 /// `RETURNING (xmax = 0)` reports `inserted = false`, and the frame must stay
-/// home: a console that heard `event_received` twice would count one run as
+/// home: a console that heard `turn_received` twice would count one run as
 /// two, and the second frame would carry a counter that never moved.
 ///
 /// Absence is proved by ORDER, not by waiting. The positive case publishes
-/// `event_received` BEFORE `gate_resolved`, so a tail whose FIRST frame is
+/// `turn_received` BEFORE `gate_resolved`, so a tail whose FIRST frame is
 /// `gate_resolved` is a tail the continuation never reached. Sleeping and
 /// finding nothing would prove only that the publisher was slow.
 ///
@@ -123,7 +123,7 @@ async fn a_converged_continuation_announces_nothing() {
 
     // Read AFTER the pre-insert: that row moved the counter legitimately, and
     // what this test asserts is that the RESOLVE moves it no further.
-    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+    let before = afd_turns::view::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
 
@@ -136,13 +136,13 @@ async fn a_converged_continuation_announces_nothing() {
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::Resolved(resolved) => resolved.continuation_turn_id,
         Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
     }
     .expect("an approved gate still reports the run it continues");
     assert_eq!(
         continuation, admitted,
-        "the resolve converged on the row the lease path opened, it did not mint a second"
+        "the resolve converged on the row the run path opened, it did not mint a second"
     );
 
     let frame = next_frame(&mut tail)
@@ -151,7 +151,7 @@ async fn a_converged_continuation_announces_nothing() {
     assert_eq!(
         frame.get("kind"),
         Some(&json!("gate_resolved")),
-        "the first frame is the answer: no `event_received` was published for a row that already stood"
+        "the first frame is the answer: no `turn_received` was published for a row that already stood"
     );
     assert_eq!(frame.get("status"), Some(&json!("approved")));
     assert_eq!(
@@ -171,14 +171,14 @@ async fn assert_continued_frame(
     let opened = next_frame(tail)
         .await
         .expect("the continued run opens on the fleet's tail");
-    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
-    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
+    assert_eq!(opened.get("kind"), Some(&json!("turn_received")));
+    assert_eq!(opened.get("turn_id"), Some(&json!(continuation)));
     assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
     assert_eq!(
         opened.get("actor"),
         Some(&json!(format!(
             "continuation:{}",
-            lane.gate_column(approved, "event_id").await
+            lane.gate_column(approved, "turn_id").await
         )))
     );
     // The continuation's own insert moved the count, and its frame carries
@@ -191,39 +191,39 @@ async fn assert_continued_frame(
 }
 
 async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
-    let predecessor = Uuid7::parse(&lane.gate_column(approved, "event_id").await)
+    let predecessor = Uuid7::parse(&lane.gate_column(approved, "turn_id").await)
         .expect("the seeded gate held a run's event");
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
-    // The lease path, played by hand: the same admission the resolve is about
+    // The run path, played by hand: the same turn the resolve is about
     // to ask for, then the row it would have written. Keyed on the gate's
     // action, so the resolve's own `admit` returns this very id.
-    let admitted = Admissions::for_tests(lane.pool.clone(), lane.bus.clone())
-        .admit(Admission {
+    let admitted = Turns::for_tests(lane.pool.clone(), lane.bus.clone())
+        .admit(IncomingTurn {
             producer: Producer::GateContinuation,
             key: Key::Repeated(approved.as_str()),
             fleet: &lane.fleet,
             workspace: &lane.workspace,
             actor: actor.as_str(),
-            event_type: EventType::Continuation,
+            event_type: TurnKind::Continuation,
             request_json: CONTINUATION_BODY,
-            reply: afd_admission::Reply::None,
+            reply: afd_turns::Reply::None,
         })
         .await
-        .expect("the admission ledger accepts the continuation");
+        .expect("the turn ledger accepts the continuation");
     // The statement answers `inserted` first, which is the column this reads.
-    let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
+    let landed: bool = sqlx::query_scalar(afd_turns::view::sql::INSERT_TURN)
         .bind(&lane.fleet)
         .bind(&admitted.stored.id)
         .bind(&lane.workspace)
         .bind(&actor)
-        .bind(EventType::Continuation.as_str())
+        .bind(TurnKind::Continuation.as_str())
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(&predecessor)
-        .bind(af_core::event::status::RECEIVED)
+        .bind(af_core::turn::status::RECEIVED)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
         .await
-        .expect("the lease path's insert must not fault");
+        .expect("the run path's insert must not fault");
     assert!(landed, "the fixture must be the writer that opened the row");
     admitted.stored.id
 }

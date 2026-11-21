@@ -11,7 +11,7 @@
 
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_api_wire::admin::RunnerAdminAction;
-use afd_fleet::lease::Billed;
+use afd_fleet::run::Billed;
 
 use crate::requests::enrolment;
 use crate::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -80,15 +80,15 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
     );
 }
 
-/// A revoked runner keeps its record while a lease of its is still active.
+/// A revoked runner keeps its record while a run of its is still active.
 ///
-/// The lease row is what the liveness sweep releases the fleet's slot
-/// through; retiring the runner under it would strand the slot until the
-/// lease's own expiry. Once the lease is gone the record retires as usual.
+/// The run row is what the liveness sweep releases the fleet's thread
+/// through; retiring the runner under it would strand the thread until the
+/// run's own expiry. Once the run is gone the record retires as usual.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
-    // The one retirement test that takes a lease, so the one whose lease path
+async fn test_a_assigned_runner_keeps_its_record_until_the_run_is_gone() {
+    // The one retirement test that takes a run, so the one whose run path
     // publishes on the fixture's bus.
     let fixtures = Fixtures::create().await;
     let Seeded {
@@ -100,15 +100,15 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     let now = af_core::clock::after(fixtures.enrolled_at(), std::time::Duration::from_millis(1));
     // Select finds the work, the narrative log opens, and issue writes the
     // row. The retirement predicate reads the row, so every step is needed,
-    // as `integration_lease_issue` does them.
+    // as `integration_run_issue` does them.
     // Narrowed to THIS fleet: the readiness cursor is process-global, and the
     // issue below charges this tenant's wallet for whatever was acquired.
-    let held = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet)
+    let held = crate::seed::select_fleet(&fixtures.runs(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
-    // The lease row references the event's row, which the claim opened.
+    // The run row references the event's row, which the assignment opened.
     let issued = fixtures
-        .leases()
+        .runs()
         .issue(
             &runner,
             &held,
@@ -121,9 +121,9 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
             now,
         )
         .await
-        .expect("the lease row must be written")
-        .expect("the claim is still held");
-    let lease = issued.lease_id;
+        .expect("the run row must be written")
+        .expect("the assignment is still held");
+    let run = issued.run_id;
 
     fixtures
         .runners()
@@ -137,23 +137,23 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .await
         .expect("an active runner may be revoked");
 
-    let still_leased = fixtures
+    let still_running = fixtures
         .runners()
         .platform()
         .delete_revoked(&runner)
         .await
         .err();
     assert_eq!(
-        still_leased.as_ref().map(afd_runner::Error::code),
+        still_running.as_ref().map(afd_runner::Error::code),
         Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST)
     );
     assert_eq!(
-        still_leased.as_ref().map(afd_runner::Error::detail),
-        Some(afd_runner::DETAIL_RUNNER_STILL_LEASED),
-        "the refusal names the lease, not the revocation the operator already did"
+        still_running.as_ref().map(afd_runner::Error::detail),
+        Some(afd_runner::DETAIL_RUNNER_STILL_RUNNING),
+        "the refusal names the run, not the revocation the operator already did"
     );
 
-    fixtures.expire_lease(&lease).await;
+    fixtures.expire_run(&run).await;
     let unbilled = fixtures
         .runners()
         .platform()
@@ -163,15 +163,15 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     assert_eq!(
         unbilled.as_ref().map(afd_runner::Error::code),
         Some(af_core::error_code::RUNNER_MUST_REVOKE_FIRST),
-        "an expired lease whose runtime tail is unbilled still holds the record"
+        "an expired run whose runtime tail is unbilled still holds the record"
     );
-    fixtures.bill_lease_tail(&lease).await;
+    fixtures.bill_run_tail(&run).await;
     fixtures
         .runners()
         .platform()
         .delete_revoked(&runner)
         .await
-        .expect("once its lease is gone and billed, a revoked runner's record retires");
+        .expect("once its run is gone and billed, a revoked runner's record retires");
 
     fixtures.cleanup().await;
 }

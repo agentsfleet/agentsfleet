@@ -73,15 +73,11 @@ impl RunnerApi for HttpRunnerApi {
             call.verb,
             super::Verb::Heartbeat
                 | super::Verb::Renew
-                | super::Verb::Activity
+                | super::Verb::Progress
                 | super::Verb::Report
                 | super::Verb::Folds
-                | super::Verb::AuthoringModel
-                | super::Verb::AuthoringActivity
-                | super::Verb::AuthoringRenew
-                | super::Verb::AuthoringReport
         ) {
-            return Err(crate::error::ErrorKind::StreamProtocol.into());
+            return Err(error::ErrorKind::StreamProtocol.into());
         }
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;

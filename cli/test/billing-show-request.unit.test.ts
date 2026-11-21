@@ -47,10 +47,11 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     );
   });
 
-  test("--limit 5 reads five charge records", async () => {
+  // 100 was the retired client ceiling; the daemon now judges the page size.
+  test.each(["5", "9999"])("--limit %s is forwarded to the charges endpoint", async (limit) => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
-      limit: "5",
+      limit,
       cursor: undefined,
     }).pipe(
       Effect.provide(configLayer()),
@@ -69,11 +70,11 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
       Effect.provide(outputLayer(rec)),
     );
     await runWith(program);
-    expect(rec.httpCalls).toContain(`${CHARGES_PATH_PREFIX}?limit=5`);
+    expect(rec.httpCalls).toContain(`${CHARGES_PATH_PREFIX}?limit=${limit}`);
   });
 
   // Pin tests: each literal violates the documented integer input rule.
-  test.each(["0", "lots", "9999", "5garbage", "1.5", "1e2", "0x10", 1.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid --limit %s before making a request", async (limit) => {
+  test.each(["0", "lots", "5garbage", "1.5", "1e2", "0x10", 1.5, Number.NaN, Number.POSITIVE_INFINITY])("rejects invalid --limit %s before making a request", async (limit) => {
     const rec = makeRecorder();
     const program = billingShowEffectFromArgs({
       limit,
@@ -88,7 +89,7 @@ describe("billingShowEffectFromArgs — request shape and validation", () => {
     );
     const failure = expectFailure(await runWith(program));
     expect(failure).toBeInstanceOf(ValidationError);
-    expect(failure.message).toMatch(/--limit must be an integer/);
+    expect(failure.message).toMatch(/--limit must be a positive integer/);
     expect(rec.httpCalls).toEqual([]);
   });
 

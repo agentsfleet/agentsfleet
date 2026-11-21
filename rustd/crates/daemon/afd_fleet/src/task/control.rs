@@ -1,4 +1,4 @@
-//! Human controls share the fleet slot and retain all cumulative usage.
+//! Human controls share the fleet thread and retain all cumulative usage.
 
 use af_core::id::Uuid7;
 use af_wire::task::TaskState;
@@ -14,7 +14,7 @@ const CONTEXT: &str = "control durable task";
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    source_admission_id: Uuid7,
+    source_turn_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
@@ -42,11 +42,11 @@ pub(super) async fn apply(
         None
     };
     let prepared = match continuation.as_ref() {
-        Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
+        Some(wake) => Some(tasks.turns.prepare(wake.turn()).await?),
         None => None,
     };
     // Cancellation closes the socket, so a blocked statement holds no lock.
-    let mut connection = super::transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = super::transaction::acquire(tasks.runs.pool()).await?;
     let mut transaction = super::transaction::begin(&mut connection).await?;
     guard::scope(&mut transaction, scope).await?;
     let (changed, previous) = transition(
@@ -125,19 +125,19 @@ async fn queue(
     tasks: &Tasks,
     connection: &mut PgConnection,
     task_id: &Uuid7,
-    prepared: Option<afd_admission::PreparedAdmission<'_>>,
+    prepared: Option<afd_turns::PreparedTurn<'_>>,
     previous: TaskState,
 ) -> Result<()> {
     if let Some(prepared) = prepared {
         let admitted = tasks
-            .admissions
+            .turns
             .stage(&mut *connection, prepared)
             .await
-            .map_err(|source| crate::error::ErrorKind::TaskControlAdmission {
+            .map_err(|source| crate::error::ErrorKind::TaskControlTurn {
                 state: previous,
                 source,
             })?;
-        sqlx::query(sql::CONTROL_ADMISSION)
+        sqlx::query(sql::CONTROL_TURN)
             .bind(task_id)
             .bind(&admitted.stored.id)
             .execute(&mut *connection)
@@ -170,7 +170,7 @@ async fn publish(
 }
 
 async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Result<Continuation> {
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     let origin: Origin = sqlx::query_as(sql::CONTROL_ORIGIN)
         .bind(task_id)
         .bind(&scope.fleet_id)
@@ -182,7 +182,7 @@ async fn prepare_resume(tasks: &Tasks, scope: &TaskScope, task_id: &Uuid7) -> Re
     let generation = row::counter(origin.generation, "generation")?
         .checked_add(1)
         .ok_or(TaskRefusal::LimitExhausted)?;
-    Continuation::new(scope, task_id, generation, &origin.source_admission_id).with_reply(
+    Continuation::new(scope, task_id, generation, &origin.source_turn_id).with_reply(
         origin.reply_provider.as_deref(),
         origin.reply_address.as_deref(),
     )

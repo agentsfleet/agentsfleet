@@ -33,13 +33,13 @@ impl Error {
             | ErrorKind::TaskRemoteCooldown { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
@@ -47,7 +47,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -66,14 +66,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured

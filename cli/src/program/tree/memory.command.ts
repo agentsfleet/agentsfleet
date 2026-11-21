@@ -13,7 +13,6 @@ import {
 import {
   DEFAULT_LIST_LIMIT,
   DEFAULT_RECALL_LIMIT,
-  MAX_RECALL_LIMIT,
 } from "../../constants/memory-limits.ts";
 import { categoryFlag, fleetFlag, memoryLimitFlag, opt, optNum, queryArgument, startingAfterFlag, workspaceFlag } from "./flags.ts";
 import { stdoutIsTty } from "./tty.ts";
@@ -26,7 +25,7 @@ const memoryListCommand = Command.make("list", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription(
-    `List entries newest-first (server default ${DEFAULT_LIST_LIMIT}, cap ${MAX_RECALL_LIMIT})`,
+    `List entries newest-first (server default ${DEFAULT_LIST_LIMIT})`,
   ),
   guardedHandler(({ fleet, category, limit, startingAfter, workspace }) =>
     Effect.gen(function* () {
@@ -50,7 +49,7 @@ const memorySearchCommand = Command.make("search", {
   workspace: workspaceFlag,
 }).pipe(
   Command.withDescription(
-    `Substring-search keys and content (server default ${DEFAULT_RECALL_LIMIT}, cap ${MAX_RECALL_LIMIT})`,
+    `Substring-search keys and content (server default ${DEFAULT_RECALL_LIMIT})`,
   ),
   guardedHandler(({ query, fleet, limit, workspace }) =>
     Effect.gen(function* () {

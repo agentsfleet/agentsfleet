@@ -12,7 +12,7 @@
 )]
 
 use afd_billing::Accounts;
-use afd_fleet::lease::admit::{Admission, money_gates};
+use afd_fleet::run::admit::{Admission, money_gates};
 
 use afd_db::test_util::mint_id;
 
@@ -28,7 +28,7 @@ const DEBT_NANOS: i64 = 50;
 ///
 /// A settlement takes its whole charge, so a balance can sit below zero. The
 /// model is unpriced, so the floor is zero: what refuses here is the debt
-/// alone, and an admission gate that clamped the balance at zero would cover a
+/// alone, and a turn gate that clamped the balance at zero would cover a
 /// zero floor and admit a payer who owes money.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -56,7 +56,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let Admission::Refuse(refusal) = decided else {
         panic!("a tenant in debt must be refused, got {decided:?}");
     };
-    assert_eq!(refusal.label, af_core::event::label::BALANCE_EXHAUSTED);
+    assert_eq!(refusal.label, af_core::turn::label::BALANCE_EXHAUSTED);
 
     fixtures.seed_wallet(&tenant, DEBT_NANOS).await;
     let decided = money_gates(

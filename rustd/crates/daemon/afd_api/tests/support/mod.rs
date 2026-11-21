@@ -21,7 +21,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use afd_api::{Admission, admit};
+use afd_http::admission::{Admission, admit};
 use axum::Router;
 use axum::body::Body;
 use axum::extract::State;

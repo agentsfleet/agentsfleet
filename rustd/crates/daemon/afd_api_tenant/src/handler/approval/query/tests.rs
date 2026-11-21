@@ -56,7 +56,7 @@ fn the_three_filters_are_read_off_the_string() {
     ));
     assert_eq!(listing.status, Some(GateStatus::Denied));
     assert_eq!(
-        listing.fleet_id.as_ref().map(af_core::id::Uuid7::as_str),
+        listing.fleet_id.as_ref().map(Uuid7::as_str),
         Some(CLEAR_CURSOR_GATE)
     );
     assert_eq!(listing.gate_type.as_deref(), Some("spend"));
@@ -101,7 +101,7 @@ fn a_fleet_id_that_is_not_an_identifier_is_refused_here() {
         parsed(&format!("fleet_id={CLEAR_CURSOR_GATE}"))
             .fleet_id
             .as_ref()
-            .map(af_core::id::Uuid7::as_str),
+            .map(Uuid7::as_str),
         Some(CLEAR_CURSOR_GATE)
     );
 }

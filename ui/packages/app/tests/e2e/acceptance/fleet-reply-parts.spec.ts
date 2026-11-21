@@ -3,7 +3,7 @@
  * and what the reply costs the main thread while it streams. */
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { formatMs } from "@/lib/utils";
 import { FIXTURE_KEY, FRAME_BUDGET_TAG } from "./fixtures/constants";
 import { sseFrame as frame } from "./fixtures/sse";
@@ -11,7 +11,7 @@ import type { TimedFrame } from "./fixtures/page-event-stream";
 import { withReplyPage } from "./fixtures/reply-page";
 
 const FLEET_NAME = "pull-request-review";
-const EVENT_ID = "9200000000000-1";
+const TURN_ID = "9200000000000-1";
 const ACTOR = "steer:reply-parts@agentsfleet.dev";
 const REASONING_CHUNKS = 60;
 const REASONING_EVERY_MS = 50;
@@ -57,12 +57,12 @@ const FRAMES_PER_TURN = 2;
 
 test("test_slack_received_uses_readable_label_without_empty_details", async ({page}) => {
   await withReplyPage(page, FLEET_NAME, async ({chat, stream}) => {
-    await stream.send([{afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, {
-      event_id: EVENT_ID, actor: "slack:fixture-member", created_at: Date.now(), event_type: "chat",
+    await stream.send([{afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, {
+      turn_id: TURN_ID, actor: "slack:fixture-member", created_at: Date.now(), event_type: "chat",
     })}]);
     await expect(chat.getByText("Slack", {exact: true})).toBeVisible();
     await expect(chat.getByText("Message received", {exact: true})).toBeVisible();
-    await expect(chat.getByRole("button", {name: "View event"})).toHaveCount(0);
+    await expect(chat.getByRole("button", {name: "View turn"})).toHaveCount(0);
     await expect(chat.getByRole("button", {name: "View message", exact: true})).toHaveCount(0);
   });
 });
@@ -176,7 +176,7 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
       expect(await sample.evaluate((probe) => probe.states)).toEqual(["true", "false"]);
       await stream.send([{
         afterMs: 0,
-        body: frame(FRAME_KIND.EVENT_COMPLETE, { event_id: EVENT_ID, actor: ACTOR, status: "processed", final_reply: INTERLEAVED_ANSWER }),
+        body: frame(FRAME_KIND.TURN_COMPLETE, { turn_id: TURN_ID, actor: ACTOR, status: "processed", final_reply: INTERLEAVED_ANSWER }),
       }]);
       await expect(chat.getByText(INTERLEAVED_ANSWER, { exact: true })).toBeVisible();
     } finally {
@@ -188,15 +188,15 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
 test("repeated markdown replies preserve their text when each turn completes", async ({ page }, testInfo) => {
   await withReplyPage(page, FLEET_NAME, async ({ chat, stream, ownActor, sendOwn }) => {
     for (let turn = 0; turn < 3; turn++) {
-      const eventId = `950000000000${turn}-1`;
+      const turnId = `950000000000${turn}-1`;
       const intro = `Review ${turn + 1} is ready.`;
       const segments = [intro + "\n\n", "- Verify the signature.\n", "- Match the repository.\n\n",
         "```ts\n", "const verified = true;\n", "```\n\n", "Ready for the next question."];
-      await sendOwn(`Please continue review ${turn + 1}.`, eventId);
+      await sendOwn(`Please continue review ${turn + 1}.`, turnId);
       await stream.send([
-        { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: eventId, actor: ownActor, created_at: Date.now() }) },
+        { afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, { turn_id: turnId, actor: ownActor, created_at: Date.now() }) },
         ...segments.map((text, seq) => ({ afterMs: ANSWER_EVERY_MS, body: frame(FRAME_KIND.CHUNK, {
-          event_id: eventId, text, text_kind: "answer", stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
+          turn_id: turnId, text, text_kind: "answer", stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
         }) })),
       ]);
       const paragraph = chat.getByText(intro, { exact: true });
@@ -214,8 +214,8 @@ test("repeated markdown replies preserve their text when each turn completes", a
         };
         tick();
       }) }));
-      await stream.send([{ afterMs: 0, body: frame(FRAME_KIND.EVENT_COMPLETE, {
-        event_id: eventId, actor: ownActor, status: "processed", final_reply: segments.join(""),
+      await stream.send([{ afterMs: 0, body: frame(FRAME_KIND.TURN_COMPLETE, {
+        turn_id: turnId, actor: ownActor, status: "processed", final_reply: segments.join(""),
       }) }]);
       const samples = await probe.evaluate(async probe => probe.samples);
       await probe.dispose();
@@ -284,14 +284,14 @@ test("test_settled_row_keeps_its_focus_ring", async ({ page }) => {
 // way the daemon publishes a finished turn (`final_reply` on the completion).
 function settledHistory(firstCreatedAt: number): TimedFrame[] {
   return Array.from({ length: HISTORY_TURNS }, (_, index) => {
-    const eventId = `${HISTORY_ID_BASE + index}-1`;
+    const turnId = `${HISTORY_ID_BASE + index}-1`;
     const createdAt = firstCreatedAt + index;
     return [
-      { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: eventId, actor: ACTOR, created_at: createdAt }) },
+      { afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, { turn_id: turnId, actor: ACTOR, created_at: createdAt }) },
       {
         afterMs: 0,
-        body: frame(FRAME_KIND.EVENT_COMPLETE, {
-          event_id: eventId, actor: ACTOR, created_at: createdAt, status: HISTORY_STATUS,
+        body: frame(FRAME_KIND.TURN_COMPLETE, {
+          turn_id: turnId, actor: ACTOR, created_at: createdAt, status: HISTORY_STATUS,
           final_reply: `Settled answer ${index + 1}`,
         }),
       },
@@ -300,7 +300,7 @@ function settledHistory(firstCreatedAt: number): TimedFrame[] {
 }
 
 function opening(createdAt: number): TimedFrame {
-  return { afterMs: 0, body: frame(FRAME_KIND.EVENT_RECEIVED, { event_id: EVENT_ID, actor: ACTOR, created_at: createdAt }) };
+  return { afterMs: 0, body: frame(FRAME_KIND.TURN_RECEIVED, { turn_id: TURN_ID, actor: ACTOR, created_at: createdAt }) };
 }
 
 // One reply as the runner streams it: typed chunks on one contiguous
@@ -321,7 +321,7 @@ function chunk(seq: number, kind: "reasoning" | "answer", text: string): TimedFr
   return {
     afterMs: 0,
     body: frame(FRAME_KIND.CHUNK, {
-      event_id: EVENT_ID, text, text_kind: kind,
+      turn_id: TURN_ID, text, text_kind: kind,
       stream_seq: seq, stream_start: seq === 0, stream_contiguous: true,
     }),
   };
@@ -332,7 +332,7 @@ function toolFrame(kind: string, extra: Record<string, unknown>): TimedFrame {
 }
 
 function callFrame(name: string, kind: string, extra: Record<string, unknown>): TimedFrame {
-  return { afterMs: 0, body: frame(kind, { event_id: EVENT_ID, name, ...extra }) };
+  return { afterMs: 0, body: frame(kind, { turn_id: TURN_ID, name, ...extra }) };
 }
 
 // Long tasks from the browser's own observer; frame gaps from consecutive

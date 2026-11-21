@@ -7,7 +7,7 @@ use std::sync::Arc;
 use futures_util::FutureExt as _;
 use tokio::sync::Barrier;
 
-use super::tests::{FLEET_A, FLEET_B, LEASE, fleets, hold, holds, id, key, sandbox};
+use super::tests::{FLEET_A, FLEET_B, RUN, fleets, hold, holds, id, key, sandbox};
 use super::{Occupant, Parked};
 use crate::test_support::FakeEngine;
 
@@ -33,7 +33,7 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await.unwrap();
     let guard = holds.occupy(Occupant::Fleet {
-        lease: id(LEASE),
+        run: id(RUN),
         fleet: id(FLEET_A),
     });
     assert_eq!(
@@ -43,7 +43,7 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
     );
     let taken = holds.take(&key(FLEET_A)).await.unwrap();
     assert!(matches!(
-        holds.park(key(FLEET_A), id(LEASE), taken.sandbox).await,
+        holds.park(key(FLEET_A), id(RUN), taken.sandbox).await,
         Parked::Held(_)
     ));
     drop(guard);
@@ -56,13 +56,13 @@ async fn test_two_worker_hold_transfers_count_each_sandbox_once() {
 }
 
 #[tokio::test]
-async fn test_authoring_occupancy_preserves_the_keeper_reserve() {
+async fn test_setup_occupancy_preserves_the_keeper_reserve() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     hold(&holds, &engine, FLEET_A).await.unwrap();
-    let author = holds.occupy(Occupant::Authoring { lease: id(FLEET_B) });
+    let setup = holds.occupy(Occupant::Setup { run: id(FLEET_B) });
     assert_eq!(fleets(&holds).await, Vec::<String>::new());
-    drop(author);
+    drop(setup);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());
     holds.shutdown().await;
 }
@@ -72,13 +72,13 @@ async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
     let busy = holds.occupy(Occupant::Fleet {
-        lease: id(LEASE),
+        run: id(RUN),
         fleet: id(FLEET_A),
     });
     let frozen = sandbox(&engine).await;
     assert!(
         holds
-            .park(key(FLEET_A), id(LEASE), frozen)
+            .park(key(FLEET_A), id(RUN), frozen)
             .now_or_never()
             .is_none()
     );
@@ -92,20 +92,20 @@ async fn cancelled_park_and_guard_drop_leave_no_busy_reservation() {
 }
 
 #[tokio::test]
-async fn concurrent_authoring_guard_drops_release_only_their_own_attempts() {
+async fn concurrent_setup_guard_drops_release_only_their_own_runs() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
-    let keeper = holds.occupy(Occupant::Authoring { lease: id(LEASE) });
+    let keeper = holds.occupy(Occupant::Setup { run: id(RUN) });
     let barrier = Arc::new(Barrier::new(100));
     let mut workers = tokio::task::JoinSet::new();
     for _ in 0..100 {
         let holds = holds.clone();
         let barrier = Arc::clone(&barrier);
         workers.spawn(async move {
-            let lease = af_crypto::entropy::Entropy::new()
+            let run = af_crypto::entropy::Entropy::new()
                 .uuid7(af_core::clock::now())
                 .unwrap();
-            let guard = holds.occupy(Occupant::Authoring { lease });
+            let guard = holds.occupy(Occupant::Setup { run });
             barrier.wait().await;
             drop(guard);
         });
@@ -115,7 +115,7 @@ async fn concurrent_authoring_guard_drops_release_only_their_own_attempts() {
     }
     assert!(
         hold(&holds, &engine, FLEET_A).await.is_none(),
-        "the original author still owns a worker"
+        "the original setup run still owns a worker"
     );
     drop(keeper);
     assert!(hold(&holds, &engine, FLEET_A).await.is_some());
@@ -135,8 +135,8 @@ async fn accepted_hold_deadlines_only_shorten_the_exact_parked_attempt() {
         [FLEET_A],
         "another attempt cannot shorten this hold"
     );
-    holds.accept(id(LEASE), shorter);
-    holds.accept(id(LEASE), until);
+    holds.accept(id(RUN), shorter);
+    holds.accept(id(RUN), until);
     clock.advance(Duration::from_secs(5));
     assert_eq!(
         fleets(&holds).await,

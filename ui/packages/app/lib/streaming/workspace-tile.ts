@@ -1,8 +1,8 @@
-import type { FleetCountersSnapshot, WorkspaceLiveFrame } from "@/lib/api/events";
+import type { FleetCountersSnapshot, WorkspaceLiveFrame } from "@/lib/api/turns";
 import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { readNanos } from "@/lib/api/nanos";
 
 /**
@@ -14,7 +14,7 @@ import { readNanos } from "@/lib/api/nanos";
  */
 export type TileCounters = {
   spentNanos: string;
-  eventsProcessed: number;
+  turnsProcessed: number;
 };
 
 /**
@@ -58,8 +58,8 @@ export function isMidRunFrame(frame: WorkspaceLiveFrame): frame is MidRunFrame {
 }
 
 /** The newest row's trigger text, which is the whole of a tile's feed line. */
-export function feedOf(events: readonly FleetEvent[] | undefined): string | undefined {
-  return events?.at(-1)?.text;
+export function feedOf(turns: readonly FleetTurn[] | undefined): string | undefined {
+  return turns?.at(-1)?.text;
 }
 
 /** Whether two projections render the same tile. Counters compare by identity: `mergeCounters` keeps the standing object when the figures did not move. */
@@ -93,11 +93,11 @@ function isCounter(value: unknown): value is number {
  */
 function readCounters(carried: unknown): TileCounters | undefined {
   if (typeof carried !== "object" || carried === null) return undefined;
-  const { events_processed: eventsProcessed, budget_used_nanos: spentNanos } =
+  const { events_processed: turnsProcessed, budget_used_nanos: spentNanos } =
     carried as FleetCountersSnapshot;
   const amount = readNanos(spentNanos);
-  if (!isCounter(eventsProcessed) || amount === null) return undefined;
-  return { eventsProcessed, spentNanos: amount };
+  if (!isCounter(turnsProcessed) || amount === null) return undefined;
+  return { turnsProcessed, spentNanos: amount };
 }
 
 /**
@@ -117,10 +117,10 @@ export function mergeCounters(
   const counters = readCounters(carried);
   if (counters === undefined) return standing;
   if (standing === undefined) return counters;
-  const eventsProcessed = Math.max(standing.eventsProcessed, counters.eventsProcessed);
+  const turnsProcessed = Math.max(standing.turnsProcessed, counters.turnsProcessed);
   const spentNanos = BigInt(standing.spentNanos) > BigInt(counters.spentNanos) ? standing.spentNanos : counters.spentNanos;
-  if (eventsProcessed === standing.eventsProcessed && spentNanos === standing.spentNanos) {
+  if (turnsProcessed === standing.turnsProcessed && spentNanos === standing.spentNanos) {
     return standing;
   }
-  return { eventsProcessed, spentNanos };
+  return { turnsProcessed, spentNanos };
 }

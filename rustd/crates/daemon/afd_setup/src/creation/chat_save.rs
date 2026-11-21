@@ -1,0 +1,192 @@
+//! A completed save request and its immutable setup share the report transaction.
+
+use super::{ARCHIVED, CONTEXT, Creations, read, reserve::Instance, revision, source::Captured};
+use crate::{
+    Access, Result, candidate, draft,
+    error::{ErrorKind, raise::query},
+    message, review,
+    types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
+};
+use af_core::{id::Uuid7, problem::Problem};
+use afd_turns::view::activity::Announcement;
+use sqlx::{Connection as _, PgConnection};
+
+/// The turn a save request rides: its locked draft, its message, and the
+/// report's clock.
+pub(crate) struct SaveTurn<'a> {
+    pub(crate) draft: &'a draft::read::Locked,
+    pub(crate) sequence: i64,
+    pub(crate) now: jiff::Timestamp,
+}
+
+/// Which completed save request a report's after-commit step finishes.
+pub(crate) struct SavedKey {
+    pub(crate) draft_id: Uuid7,
+    pub(crate) workspace_id: Uuid7,
+    pub(crate) user_id: Uuid7,
+    pub(crate) tenant_id: Uuid7,
+    pub(crate) sequence: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct SavedTurn {
+    fleet_id: Uuid7,
+    oidc_subject: String,
+}
+
+impl Creations {
+    pub(crate) async fn save_turn_on(
+        &self,
+        connection: &mut PgConnection,
+        turn: SaveTurn<'_>,
+    ) -> Result<Announcement> {
+        if !message::accepted(connection, &turn.draft.id, turn.sequence)
+            .await?
+            .save_requested
+        {
+            return Ok(Announcement::default());
+        }
+        let mut savepoint = connection.begin().await.map_err(query(CONTEXT))?;
+        match self.write_turn(&mut savepoint, &turn).await {
+            Ok(announcement) => {
+                savepoint.commit().await.map_err(query(CONTEXT))?;
+                Ok(announcement)
+            }
+            Err(error) => {
+                savepoint.rollback().await.map_err(query(CONTEXT))?;
+                if Problem::of(error.code()).status() >= 500 {
+                    return Err(error);
+                }
+                sqlx::query(include_str!("sql/save_refused.sql"))
+                    .bind(&turn.draft.id)
+                    .bind(turn.sequence)
+                    .bind(error.code().as_str())
+                    .execute(connection)
+                    .await
+                    .map_err(query(CONTEXT))?;
+                Ok(Announcement::default())
+            }
+        }
+    }
+
+    async fn write_turn(
+        &self,
+        connection: &mut PgConnection,
+        turn: &SaveTurn<'_>,
+    ) -> Result<Announcement> {
+        let locked = turn.draft;
+        draft::idle(connection, locked).await?;
+        let id = locked.head_candidate_id.as_ref().ok_or(ErrorKind::State {
+            current: "no_candidate",
+        })?;
+        let candidate = candidate::read(connection, &locked.id, id).await?;
+        candidate.definition.validate_for_save()?;
+        if candidate.policy_semantics != af_fleet_runtime::definition::POLICY_SEMANTICS {
+            return Err(ErrorKind::Policy.into());
+        }
+        let mut captured = Captured {
+            origin: Some(SaveOrigin::Chat),
+            candidate,
+            context: review::Context::from(locked),
+            draft: Some(locked.clone()),
+        };
+        let name = locked.instance_name.clone().unwrap_or_else(|| {
+            captured
+                .candidate
+                .definition
+                .runtime()
+                .name()
+                .as_str()
+                .to_owned()
+        });
+        af_fleet_runtime::FleetName::parse(&name)?;
+        captured.context.instance_name = Some(name.clone());
+        let checked = review::build(
+            &self.setup,
+            connection,
+            &captured.context,
+            &captured.candidate,
+            turn.now,
+        )
+        .await?;
+        if let Some(SourcePin::Fleet { fleet_id, .. }) = &locked.source_pin {
+            let row = read::lock(connection, &locked.workspace_id, fleet_id).await?;
+            revision::target(&captured, fleet_id, row.head_revision)?;
+            if row.status == ARCHIVED {
+                return Err(ErrorKind::State { current: ARCHIVED }.into());
+            }
+            self.write_improvement(
+                connection,
+                &row,
+                &captured,
+                &checked,
+                &self.setup.drafts.mint(turn.now)?,
+                turn.now,
+            )
+            .await
+        } else {
+            let instance = Instance {
+                name: &name,
+                start: &Start::None,
+            };
+            self.insert(
+                connection,
+                &self.setup.drafts.mint(turn.now)?,
+                &captured,
+                instance,
+                &checked,
+                turn.now,
+            )
+            .await
+        }
+    }
+
+    /// Retries activation after a committed report, including after a lost acknowledgement,
+    /// then registers the activated fleet's trigger schedules.
+    ///
+    /// A report replayed after a daemon stopped between activation and the sweep finds its
+    /// draft closed, and only the sweep is owed: it pushes the schedules not yet synced and
+    /// does nothing for the rest, so running it again is harmless.
+    pub(crate) async fn finish_saved_turn(&self, attempt: &SavedKey) -> Result<()> {
+        let mut connection = self.setup.drafts.database.acquire().await?;
+        let mut owed = None;
+        for (state, activation_owed) in [(DraftState::Saving, true), (DraftState::Closed, false)] {
+            if let Some(saved) = saved_turn(&mut connection, attempt, state).await? {
+                owed = Some((saved, activation_owed));
+                break;
+            }
+        }
+        let Some((saved, activation_owed)) = owed else {
+            return Ok(());
+        };
+        let access = Access {
+            workspace: &attempt.workspace_id,
+            subject: &saved.oidc_subject,
+        };
+        drop(connection);
+        let now = af_core::clock::now();
+        if activation_owed {
+            self.advance(access, &saved.fleet_id, now).await?;
+        }
+        self.register_triggers(access, &saved.fleet_id, now).await
+    }
+}
+
+/// The save request `attempt` finished, while its draft is in `state`.
+async fn saved_turn(
+    connection: &mut PgConnection,
+    attempt: &SavedKey,
+    state: DraftState,
+) -> Result<Option<SavedTurn>> {
+    sqlx::query_as(include_str!("sql/saved_turn.sql"))
+        .bind(&attempt.draft_id)
+        .bind(&attempt.workspace_id)
+        .bind(&attempt.user_id)
+        .bind(attempt.sequence)
+        .bind(MessageState::Completed.as_str())
+        .bind(state.as_str())
+        .bind(&attempt.tenant_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))
+}

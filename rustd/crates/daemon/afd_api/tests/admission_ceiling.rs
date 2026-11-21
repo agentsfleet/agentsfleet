@@ -1,4 +1,4 @@
-//! Dimension 5.2 — requests past the ceiling shed before any handler runs.
+//! Requests past the ceiling shed before any handler runs.
 //!
 //! Every test here is deterministic by handshake rather than by clock: the
 //! handler parks on a barrier, so "the instance is exactly full" is a state the
@@ -17,11 +17,12 @@ mod support;
 use std::num::NonZeroUsize;
 
 use af_core::clock;
-use afd_api::admission::{
+use afd_http::admission::is_metered;
+use afd_http::admission::{
     HEADER_RATELIMIT_LIMIT, HEADER_RATELIMIT_REMAINING, HEADER_RATELIMIT_RESET,
     RETRY_AFTER_SECONDS, SHED_DETAIL,
 };
-use afd_api::{RouteClass, is_metered};
+use afd_http::route::RouteClass;
 use http::{StatusCode, header};
 
 use self::support::{Fixture, header_str};
@@ -110,7 +111,7 @@ async fn test_the_shed_carries_the_problem_envelope() {
     let content_type = header_str(&shed, header::CONTENT_TYPE.as_str());
     let body = support::json_body(shed).await;
 
-    assert_eq!(content_type, afd_api::CONTENT_TYPE_PROBLEM_JSON);
+    assert_eq!(content_type, afd_http::envelope::CONTENT_TYPE_PROBLEM_JSON);
     assert_eq!(body["error_code"], "UZ-API-001");
     assert_eq!(body["title"], "Too many requests");
     assert_eq!(body["detail"], SHED_DETAIL);

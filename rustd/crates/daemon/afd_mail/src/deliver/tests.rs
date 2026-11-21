@@ -107,7 +107,7 @@ fn built_from(rendered: RenderedEmail, key: IdempotencyKey) -> Message {
     .expect("the message builds")
 }
 
-/// Dimension 2.6: the stub transport records one message carrying the
+/// The stub transport records one message carrying the
 /// envelope, the subject, the idempotency header and both parts.
 #[tokio::test]
 async fn test_deliver_builds_message() {

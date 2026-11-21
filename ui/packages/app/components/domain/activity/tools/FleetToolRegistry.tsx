@@ -17,7 +17,7 @@ export const FLEET_CHAT_CONFIG = AuiConfig({tools: Tools({toolkit})});
 export function FleetRegisteredTool(part: ToolCallMessagePartProps<ToolArgs, unknown>) {
   const id = useAuiState(state => state.message.id);
   const settled = useAuiState(state => state.message.status?.type !== "running");
-  const eventId = id.endsWith(REPLY_ID_SUFFIX) ? id.slice(0, -REPLY_ID_SUFFIX.length) : id;
+  const turnId = id.endsWith(REPLY_ID_SUFFIX) ? id.slice(0, -REPLY_ID_SUFFIX.length) : id;
   return <ToolCallRow name={part.toolName} args={part.args} argsText={part.argsText} result={part.result}
-    running={part.status.type === "running"} settled={settled} eventId={eventId} />;
+    running={part.status.type === "running"} settled={settled} turnId={turnId} />;
 }

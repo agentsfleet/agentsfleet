@@ -1,11 +1,11 @@
 //! Bound the complete editor response, retaining recent turns and reusable cursors.
 
-use afd_api_wire::authoring::AuthoringContext;
+use afd_api_wire::setup::SetupContext;
 use afd_http::handler::Refusal;
 use serde::Serialize;
 
 const RESPONSE_LIMIT_BYTES: usize = 4 * 1024 * 1024;
-const READ_FAILED: &str = "fleet_authoring_context_encode_failed";
+const READ_FAILED: &str = "fleet_setup_context_encode_failed";
 
 #[cfg(test)]
 #[path = "context_budget_tests.rs"]
@@ -16,7 +16,7 @@ pub(super) struct Boundaries {
     pub(super) messages: Vec<String>,
 }
 
-pub(super) fn capture(conversations: &[afd_authoring::Conversation]) -> Vec<Boundaries> {
+pub(super) fn capture(conversations: &[afd_setup::Conversation]) -> Vec<Boundaries> {
     conversations
         .iter()
         .map(|value| {
@@ -30,7 +30,7 @@ pub(super) fn capture(conversations: &[afd_authoring::Conversation]) -> Vec<Boun
 }
 
 pub(super) fn fit<F: Serialize, D: Serialize, R: Serialize>(
-    value: &mut AuthoringContext<F, D, R>,
+    value: &mut SetupContext<F, D, R>,
     mut boundaries: Vec<Boundaries>,
 ) -> Result<(), Refusal> {
     let mut bytes = encoded_len(value)?;
@@ -52,7 +52,7 @@ pub(super) fn fit<F: Serialize, D: Serialize, R: Serialize>(
 }
 
 fn trim_oldest_turn<F, D, R>(
-    value: &mut AuthoringContext<F, D, R>,
+    value: &mut SetupContext<F, D, R>,
     boundaries: &mut [Boundaries],
     bytes: &mut usize,
 ) -> Result<bool, Refusal> {

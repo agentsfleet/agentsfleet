@@ -1,0 +1,19 @@
+id: vocab-retired-identifiers-markdown
+valid:
+  - |
+      The `afd_turns` crate holds turns.
+  - |
+      A word like afd_events_v2 is different.
+invalid:
+  - |
+      The `afd_events` crate.
+  - |
+      # TaggedLease
+  - |
+      | a | DraftEvents |
+      |---|---|
+      | 1 | 2 |
+  - |
+      ```rust
+      use afd_admission;
+      ```

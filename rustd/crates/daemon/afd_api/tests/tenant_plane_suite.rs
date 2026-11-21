@@ -1,7 +1,7 @@
 //! Tenant, workspace, and fleet HTTP regression suite.
 
-mod authoring;
 mod harness;
+mod setup;
 
 #[path = "fleet_schedules_input.rs"]
 mod fleet_schedules_input;

@@ -1,6 +1,5 @@
 import type { DraftView } from "./draft-state";
-import { DRAFT_STATE, isRunning, MESSAGE_ROLE, type Message } from "./draft-types";
-import { isStopped } from "./draft-recovery";
+import { DRAFT_STATE, isRunning, MESSAGE_ROLE, MESSAGE_STATE, type Message } from "./draft-types";
 
 // The accepted flag is the authority used by both the daemon and its prompt.
 // Allow an imperative followed by another instruction, never a condition or question.
@@ -20,7 +19,7 @@ export function latestSaveAnswer(messages: readonly Message[]): Message | undefi
 export function savingOperation(view: DraftView): string | null {
   if (view.optimistic?.save) return view.optimistic.operation;
   const user = view.messages.findLast(message => message.role === MESSAGE_ROLE.user);
-  if (!user?.save_requested || isStopped(user, view.draft?.cancelled_through ?? "0")) return null;
+  if (!user?.save_requested || user.state === MESSAGE_STATE.cancelled) return null;
   const answer = view.messages.find(message => message.role === MESSAGE_ROLE.assistant && message.operation_id === user.operation_id);
   if (!answer || isRunning(answer)) return user.operation_id;
   return view.draft?.state !== DRAFT_STATE.editing && !view.fleet ? user.operation_id : null;

@@ -1,15 +1,15 @@
 import type {
-  EventRow,
+  TurnRow,
   WorkspaceControlFrame,
   WorkspaceLiveFrame,
-} from "@/lib/api/events";
+} from "@/lib/api/turns";
 import type { ConnectionStatus } from "@/lib/streaming/fleet-stream-registry";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { WorkspaceConnectionStatus } from "@/lib/streaming/workspace-stream";
 import type { TileCounters, WorkspaceTileSnapshot } from "@/lib/streaming/workspace-tile";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { capEvents } from "@/lib/streaming/fleet-stream-cap";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { capTurns } from "@/lib/streaming/fleet-stream-cap";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import {
   runWorkspaceBackfill,
@@ -64,11 +64,11 @@ export class WorkspaceStore {
   #liveFleetIds = new Set<string>();
   // Bounded on both axes: a key only for a subscribed fleet, since frames and
   // backfill rows reach the store through the subscriptions `connect` opened
-  // and nothing else; and `capEvents` on every write, so a tab left open on a
+  // and nothing else; and `capTurns` on every write, so a tab left open on a
   // busy fleet keeps a window rather than a history. The wall's own rows: they
   // order the feed and hold nothing a tile does not show, so a reply's chunks
   // and tool calls never land here once their row is open.
-  #eventsByFleet = new Map<string, FleetEvent[]>();
+  #turnsByFleet = new Map<string, FleetTurn[]>();
   #countersByFleet = new Map<string, TileCounters>();
   #snapshots = new Map<string, WorkspaceTileSnapshot>();
   #listenersByFleet = new Map<string, Set<Listener>>();
@@ -155,7 +155,7 @@ export class WorkspaceStore {
 
   #project(fleetId: string): WorkspaceTileSnapshot {
     return {
-      feed: feedOf(this.#eventsByFleet.get(fleetId)),
+      feed: feedOf(this.#turnsByFleet.get(fleetId)),
       connectionStatus: this.#status,
       helloReceived: this.#helloReceived,
       isLive: !this.#helloReceived || this.#liveFleetIds.has(fleetId),
@@ -230,7 +230,7 @@ export class WorkspaceStore {
       this.#liveFleetIds = new Set(frame.fleet_ids);
       this.#catchingUp = false;
       // The set arrives with where each fleet stands, so a subscriber that
-      // came late is right before its first event frame. A fleet the map
+      // came late is right before its first turn frame. A fleet the map
       // omits keeps whatever it had: the server chose silence over a guess.
       // Only subscribed fleets are kept — the map is bounded by the tiles on
       // screen, never by what a payload chose to name.
@@ -255,13 +255,13 @@ export class WorkspaceStore {
   #applyFleetFrame(fleetId: string, frame: WorkspaceLiveFrame) {
     // A tile changes when work starts: a message still waiting for a runner
     // moves nothing a tile shows, and its received frame follows.
-    if (frame.kind === FRAME_KIND.EVENT_ADMITTED) return;
-    const held = this.#eventsByFleet.get(fleetId) ?? [];
+    if (frame.kind === FRAME_KIND.TURN_ADMITTED) return;
+    const held = this.#turnsByFleet.get(fleetId) ?? [];
     // A chunk or a tool call for a row the wall already holds changes nothing
     // a tile shows. Anything else is folded as before: a chunk for a row the
     // wall has not seen opens it, so the feed line reads as it always did.
-    if (isMidRunFrame(frame) && held.some((event) => event.id === frame.event_id)) return;
-    this.#eventsByFleet.set(fleetId, capEvents(applyLiveFrame(held, frame)));
+    if (isMidRunFrame(frame) && held.some((turn) => turn.id === frame.turn_id)) return;
+    this.#turnsByFleet.set(fleetId, capTurns(applyLiveFrame(held, frame)));
     // Only the four daemon-authored frames carry the snapshot; a runner's
     // mid-run frame says nothing about where the fleet stands.
     if ("events_processed" in frame || "budget_used_nanos" in frame) {
@@ -297,8 +297,8 @@ export class WorkspaceStore {
     }
   }
 
-  #applyBackfillRows(rows: EventRow[]) {
-    const rowsByFleet = new Map<string, EventRow[]>();
+  #applyBackfillRows(rows: TurnRow[]) {
+    const rowsByFleet = new Map<string, TurnRow[]>();
     for (const row of rows) {
       if (!this.#subscribedFleetIds.has(row.fleet_id)) continue;
       const fleetRows = rowsByFleet.get(row.fleet_id) ?? [];
@@ -306,8 +306,8 @@ export class WorkspaceStore {
       rowsByFleet.set(row.fleet_id, fleetRows);
     }
     for (const [fleetId, fleetRows] of rowsByFleet) {
-      const events = capEvents(mergeBackfill(this.#eventsByFleet.get(fleetId) ?? [], fleetRows));
-      this.#eventsByFleet.set(fleetId, events);
+      const turns = capTurns(mergeBackfill(this.#turnsByFleet.get(fleetId) ?? [], fleetRows));
+      this.#turnsByFleet.set(fleetId, turns);
       this.#retile(fleetId);
     }
   }

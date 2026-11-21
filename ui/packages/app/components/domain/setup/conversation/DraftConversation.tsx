@@ -7,23 +7,21 @@ import type { ReactNode } from "react";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
-import { GitPullRequestIcon, PuzzlePieceIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
+import { GitPullRequestIcon, TerminalWindowIcon } from "@phosphor-icons/react/ssr";
 import nextDynamic from "next/dynamic";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { CHAT_STARTERS } from "../chat-defaults";
-import {pluginsUiEnabled} from "@/lib/plugin-ui";
 import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
 import { createDraftThreadProjection } from "@/lib/api/draft-thread-messages";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND } from "@/lib/turns/fleet-activity";
 import { DraftMessage, DraftRetryProvider } from "./DraftMessage";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { SetupApprovalSummary } from "../../approvals/SetupApprovalSummary";
-import { AuthoringPrompt } from "../composer/AuthoringPrompt";
 
 const SetupReview = nextDynamic(() => import("../summary/SetupReview").then(module => module.SetupReview), {ssr: false});
 
@@ -46,7 +44,6 @@ export function DraftConversation({client, view, workspace, subject, children, u
   const empty = messages.length === 0 && !view.fleet && !view.draft && !view.preview;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <AuthoringPrompt hasMessages={messages.length > 0} />
       <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
       <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" centered={empty}
         footer={<>{errorNotice}<ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />
@@ -93,7 +90,7 @@ function setupAnchor(view: DraftView): string | null {
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady)
       && activity.revision === view.fleet?.setup_revision;
   });
-  if (saved) return `activity:${saved.event_id}`;
+  if (saved) return `activity:${saved.turn_id}`;
   const previous = view.previousDrafts?.at(-1);
   if (view.fleet && previous) {
     const origin = previous.messages.findLast(message => message.role === MESSAGE_ROLE.assistant);
@@ -115,8 +112,8 @@ function ChatEntrance() {
 
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
   return <div className="mt-5 flex w-full flex-wrap justify-start gap-lg sm:justify-center">
-    {CHAT_STARTERS.filter(starter => starter.title !== "Create a plugin" || pluginsUiEnabled()).map(({ title, prompt }, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
-      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : index === 1 ? <GitPullRequestIcon size={16} /> : <PuzzlePieceIcon size={16} />}{title}</Button>
+    {CHAT_STARTERS.map(({ title, prompt }, index) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
+      <Button variant="outline" size="sm" disabled={disabled} className="min-h-9.5 rounded-full text-eyebrow font-semibold text-muted-foreground">{index === 0 ? <TerminalWindowIcon size={16} /> : <GitPullRequestIcon size={16} />}{title}</Button>
     </ThreadPrimitive.Suggestion>)}
   </div>;
 }

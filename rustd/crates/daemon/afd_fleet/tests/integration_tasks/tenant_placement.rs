@@ -4,11 +4,10 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use af_wire::runner::{HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier};
-use afd_admission::Producer;
-use afd_db::test_util::mint_id;
-use afd_fleet::lease::Billed;
+use afd_fleet::run::Billed;
 use afd_fleet::task::TaskLifecycle as _;
-use afd_runner::{Registered, RunnerEdit};
+use afd_runner::RunnerEdit;
+use afd_turns::Producer;
 
 use super::fixture::{Case, exercise};
 use crate::requests::{capable, enrolment_tagged, placement_tag};
@@ -34,21 +33,13 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
         .runners()
         .register_tenant(
             &case.held.tenant,
-            &mint_id(),
             &request,
             "fixture:tenant-owner",
             case.held.now,
         )
         .await
         .expect("the tenant registers its runner");
-    assert!(
-        matches!(registered, Registered::Created(_)),
-        "a fresh key registers"
-    );
-    let runner = match registered {
-        Registered::Created(enrolled) => enrolled.runner_id,
-        Registered::Replayed { runner_id, .. } => runner_id,
-    };
+    let runner = registered.runner_id;
     let mut capability = capable();
     capability.durable_tasks_v1 = true;
     let beat = HeartbeatRequest {
@@ -87,12 +78,12 @@ async fn tenant_runner(case: &Case) -> Uuid7 {
 }
 
 /// Binds two goals, so the second queues a task-bound continuation, then
-/// retires the source and lapses the claim: the continuation becomes the head.
-/// Answers the continuation's admission.
+/// retires the source and lapses the assignment: the continuation becomes the head.
+/// Answers the continuation's turn.
 async fn queued_continuation(case: &Case) -> Uuid7 {
     let binding = case
         .tasks
-        .bind(case.lease(), &case.plan("tenant-placement", 2))
+        .bind(case.run(), &case.plan("tenant-placement", 2))
         .await
         .expect("a real task continuation");
     let task = binding
@@ -102,9 +93,9 @@ async fn queued_continuation(case: &Case) -> Uuid7 {
         .task_id
         .clone()
         .expect("its task");
-    execute(case, SETTLE, &case.held.event_id).await;
+    execute(case, SETTLE, &case.held.turn_id).await;
     lapse(case).await;
-    sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE task_id = $1 AND settled_at IS NULL")
+    sqlx::query_scalar("SELECT id FROM thread.turns WHERE task_id = $1 AND settled_at IS NULL")
         .bind(&task)
         .fetch_one(
             &mut *case
@@ -136,21 +127,21 @@ async fn execute(case: &Case, statement: &'static str, id: &Uuid7) {
         .expect("the fixture statement runs");
 }
 
-/// Marks one admission settled, as its report leaves it.
-const SETTLE: &str = "UPDATE fleet.admissions SET settled_at = clock_timestamp() WHERE id = $1";
+/// Marks one turn settled, as its report leaves it.
+const SETTLE: &str = "UPDATE thread.turns SET settled_at = clock_timestamp() WHERE id = $1";
 
-/// Lapses the fleet's claim and its lease, as an expired holder leaves them.
+/// Lapses the fleet's assignment and its run, as an expired holder leaves them.
 async fn lapse(case: &Case) {
     execute(
         case,
-        "UPDATE runner.slots SET lease_expires_at = clock_timestamp() - interval '1 second', \
+        "UPDATE thread.threads SET run_expires_at = clock_timestamp() - interval '1 second', \
          hold_expires_at = NULL WHERE fleet_id = $1",
         &case.held.fleet,
     )
     .await;
     execute(
         case,
-        "UPDATE runner.leases SET status = 'expired' WHERE fleet_id = $1 AND status = 'active'",
+        "UPDATE thread.runs SET status = 'expired' WHERE fleet_id = $1 AND status = 'active'",
         &case.held.fleet,
     )
     .await;
@@ -174,31 +165,31 @@ async fn head_on_tenant_model(case: &Case) {
         .await;
 }
 
-// Value: protects=a task accepted on the platform model never leases on a tenant
+// Value: protects=a task accepted on the platform model never runs on a tenant
 // runner, even with the fleet's head on the tenant's model; fails_when=the head
 // test reads the fleet's head instead of the task's revision; why_new=the model
 // filter; seam=an Acquired handed straight to issue.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn platform_task_revision_never_leases_on_a_tenant_runner() {
+async fn platform_task_revision_never_runs_on_a_tenant_runner() {
     exercise(async |case| {
         queued_continuation(case).await;
         head_on_tenant_model(case).await;
         let tenant = tenant_runner(case).await;
         for poll in 1..=2 {
-            let picked = select_fleet(&case.held.leases, &tenant, &case.held.fleet).await;
+            let picked = select_fleet(&case.held.runs, &tenant, &case.held.fleet).await;
             assert!(
                 picked.is_none(),
                 "poll {poll}: no candidate for the tenant runner"
             );
         }
 
-        let acquired = select_fleet(&case.held.leases, &case.held.runner, &case.held.fleet)
+        let acquired = select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
             .await
             .expect("a platform runner takes the task");
         let issued = case
             .held
-            .leases
+            .runs
             .issue_for_revision(
                 &tenant,
                 &acquired,
@@ -214,28 +205,27 @@ async fn platform_task_revision_never_leases_on_a_tenant_runner() {
             .await
             .expect("the issue answers");
         assert!(issued.is_none(), "issue refuses the tenant runner too");
-        let leases: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE runner_id = $1")
-                .bind(&tenant)
-                .fetch_one(
-                    &mut *case
-                        .held
-                        .fixtures
-                        .database
-                        .acquire()
-                        .await
-                        .expect("a connection"),
-                )
-                .await
-                .expect("the count reads");
-        assert_eq!(leases, 0);
+        let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id = $1")
+            .bind(&tenant)
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("a connection"),
+            )
+            .await
+            .expect("the count reads");
+        assert_eq!(runs, 0);
     })
     .await;
 }
 
 // Value: protects=a head a tenant runner may not take blocks the fleet for it;
 // fails_when=the model test filters rows before `ORDER BY sequence LIMIT 1`, so
-// a later admission jumps the head; why_new=the model filter; seam=none.
+// a later turn jumps the head; why_new=the model filter; seam=none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn tenant_runner_never_jumps_a_platform_model_head() {
@@ -245,32 +235,32 @@ async fn tenant_runner_never_jumps_a_platform_model_head() {
         let chat = case
             .source(
                 Producer::Steer,
-                &afd_events::steer_actor("native_task_owner"),
+                &afd_turns::view::steer_actor("native_task_owner"),
             )
             .await;
         let tenant = tenant_runner(case).await;
 
-        let first = select_fleet(&case.held.leases, &tenant, &case.held.fleet).await;
+        let first = select_fleet(&case.held.runs, &tenant, &case.held.fleet).await;
         assert!(
             first.is_none(),
             "the tenant runner takes neither the head nor the chat behind it"
         );
 
-        let head = select_fleet(&case.held.leases, &case.held.runner, &case.held.fleet)
+        let head = select_fleet(&case.held.runs, &case.held.runner, &case.held.fleet)
             .await
             .expect("a platform runner takes the head");
         assert_eq!(
-            head.event_id, continuation,
+            head.turn_id, continuation,
             "the platform runner took the head"
         );
 
         execute(case, SETTLE, &continuation).await;
         lapse(case).await;
 
-        let next = select_fleet(&case.held.leases, &tenant, &case.held.fleet)
+        let next = select_fleet(&case.held.runs, &tenant, &case.held.fleet)
             .await
             .expect("once the head settles, the tenant runner takes the chat");
-        assert_eq!(next.event_id, chat);
+        assert_eq!(next.turn_id, chat);
     })
     .await;
 }

@@ -2,9 +2,9 @@ import {expect} from "@playwright/test";
 import {test} from "./fixtures/chat-probe";
 import {DRAFT, FLEET, MESSAGE, MODEL, REVIEW} from "@/tests/helpers/draft-fixtures";
 
-// Value: protects=the active save flap writes only a fleet and stays visible until confirmed;
-// fails_when=publication is restored or progress clears early; seam=real browser and native HTTP adapter; no_claim=live persistence.
-for (const motion of ["no-preference", "reduce"] as const) test(`Save and publish confirms one fleet save without opening Plugin publication (${motion})`, async ({page, chatProbe}, info) => {
+// Value: protects=the save flap writes only a fleet and stays visible until confirmed;
+// fails_when=the save repeats or progress clears early; seam=real browser and native HTTP adapter; no_claim=live persistence.
+for (const motion of ["no-preference", "reduce"] as const) test(`Save confirms one fleet save (${motion})`, async ({page, chatProbe}, info) => {
   const receipt = Promise.withResolvers<void>();
   const createdAt = new Date().toISOString();
   const writes: {path: string; body: unknown}[] = [];
@@ -27,9 +27,8 @@ for (const motion of ["no-preference", "reduce"] as const) test(`Save and publis
   try {
     await page.emulateMedia({reducedMotion: motion});
     await page.goto(`${chatProbe}?chatError=1&fleetSave=1`);
-    await expect(page.getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
     await expect(page.getByRole("button", {name: "Save fleet", exact: true})).toHaveCount(0);
-    await page.getByRole("button", {name: "Save and publish", exact: true}).evaluate((button: HTMLButtonElement) => {button.click();button.click();});
+    await page.getByRole("button", {name: "Save", exact: true}).evaluate((button: HTMLButtonElement) => {button.click();button.click();});
     const progress = page.getByRole("status", {name: "Saving setup", exact: true});
     await expect(progress.locator("[data-chat-spinner]")).toBeVisible();
     await expect(progress.locator("[data-chat-spinner]")).toHaveCSS("animation-name", motion === "reduce" ? "none" : "spin");
@@ -38,7 +37,7 @@ for (const motion of ["no-preference", "reduce"] as const) test(`Save and publis
       const rotation = await progress.locator("[data-chat-spinner]").evaluate(element => getComputedStyle(element).transform);
       await expect.poll(() => progress.locator("[data-chat-spinner]").evaluate(element => getComputedStyle(element).transform)).not.toBe(rotation);
     }
-    await expect(progress.locator("[data-chat-loading]")).toHaveText("Saving and publishing");
+    await expect(progress.locator("[data-chat-loading]")).toHaveText("Saving");
     await expect(progress).toContainText("2s");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Setup saved · v1", {exact: true})).toHaveCount(0);
@@ -77,7 +76,7 @@ test("an unconfirmed revision retries the original save and keeps the existing f
   });
   await page.goto(`${chatProbe}?chatError=1&fleetSave=1`);
   await page.getByRole("textbox").fill("Keep my unsent instruction");
-  await page.getByRole("button", {name: "Save and publish", exact: true}).click();
+  await page.getByRole("button", {name: "Save", exact: true}).click();
   await expect(page.getByText("Update not confirmed", {exact: true})).toBeVisible();
   await expect(page.getByText("Setup saved · v2", {exact: true})).toHaveCount(0);
   await page.getByRole("button", {name: "Retry", exact: true}).click();

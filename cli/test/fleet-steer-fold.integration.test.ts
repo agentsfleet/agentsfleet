@@ -5,30 +5,30 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { KIND_TURN_COMPLETE } from "../src/commands/fleet/steer-turns.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { exitToCliError } from "../src/lib/cli-error-render.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
-import { FLEET_ID, EVENT_ID, streamFrom, nullOutput, makeRecorder, makeLayer, eventStream } from "./helpers-fleet-steer.ts";
+import { FLEET_ID, TURN_ID, streamFrom, nullOutput, makeRecorder, makeLayer, eventStream } from "./helpers-fleet-steer.ts";
 
-const RUN_EVENT_ID = "0190d5c2-7e1a-7000-8000-00000000e00f";
+const RUN_TURN_ID = "0190d5c2-7e1a-7000-8000-00000000e00f";
 
 // The run reports: its own event completes first, then the folded message's,
 // answered by the same reply.
 const runCompletes = [
-  { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: RUN_EVENT_ID, status: EVENT_STATUS.PROCESSED } },
-  { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+  { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: RUN_TURN_ID, status: TURN_STATUS.PROCESSED } },
+  { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } },
 ] satisfies Parameters<StreamGetCallback>[0][];
 
 const placed = (disposition?: string, folded?: string) => <T>() =>
   ({
-    event_id: EVENT_ID,
+    turn_id: TURN_ID,
     ...(disposition === undefined ? {} : { disposition }),
-    ...(folded ? { folded_into_event_id: folded } : {}),
+    ...(folded ? { folded_into_turn_id: folded } : {}),
   }) as T;
 
 const ownCompletes = [
-  { id: null, type: KIND_EVENT_COMPLETE, data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } },
+  { id: null, type: KIND_TURN_COMPLETE, data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } },
 ] satisfies Parameters<StreamGetCallback>[0][];
 
 describe("steer — disposition", () => {
@@ -39,12 +39,12 @@ describe("steer — disposition", () => {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(runCompletes),
-      }).pipe(Effect.provide(makeLayer(rec, placed("folded", RUN_EVENT_ID)))),
+      }).pipe(Effect.provide(makeLayer(rec, placed("folded", RUN_TURN_ID)))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.stdout).toContain("added to the current run");
-    expect(rec.stdout.some((line) => line.includes(`event ${EVENT_ID}`))).toBe(true);
-    expect(rec.stdout.some((line) => line.includes(`event ${RUN_EVENT_ID}`))).toBe(false);
+    expect(rec.stdout.some((line) => line.includes(`turn ${TURN_ID}`))).toBe(true);
+    expect(rec.stdout.some((line) => line.includes(`turn ${RUN_TURN_ID}`))).toBe(false);
   });
 
   test("a queued send says it waits behind the current run", async () => {
@@ -67,14 +67,14 @@ describe("steer — disposition", () => {
         stdin: streamFrom([], false),
         stdout: nullOutput(),
         streamGet: eventStream(runCompletes),
-      }).pipe(Effect.provide(makeLayer(rec, placed("folded", RUN_EVENT_ID), true))),
+      }).pipe(Effect.provide(makeLayer(rec, placed("folded", RUN_TURN_ID), true))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     const json = rec.stdout.find((line) => line.startsWith("{"));
     const parsed = JSON.parse(json ?? "{}") as Record<string, unknown>;
     expect(parsed["disposition"]).toBe("folded");
-    expect(parsed["folded_into_event_id"]).toBe(RUN_EVENT_ID);
-    expect(parsed["event_id"]).toBe(EVENT_ID);
+    expect(parsed["folded_into_turn_id"]).toBe(RUN_TURN_ID);
+    expect(parsed["turn_id"]).toBe(TURN_ID);
   });
 
   test("a send the daemon says started carries that in --json", async () => {
@@ -90,7 +90,7 @@ describe("steer — disposition", () => {
     const json = rec.stdout.find((line) => line.startsWith("{"));
     const parsed = JSON.parse(json ?? "{}") as Record<string, unknown>;
     expect(parsed["disposition"]).toBe("started");
-    expect(parsed).not.toHaveProperty("folded_into_event_id");
+    expect(parsed).not.toHaveProperty("folded_into_turn_id");
   });
 
   test.each([["a started send", "started"], ["a daemon that sends no disposition", undefined]])(

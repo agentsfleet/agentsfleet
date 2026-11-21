@@ -8,7 +8,7 @@
 // `uniqueProviders(models)` over this same endpoint; the CLI derives the
 // accepted `--provider` set the same way, from the same bytes. A provider
 // reaches both surfaces by being seeded into the catalogue
-// (scripts/model-library-allowlist.json → the model_catalogue playbook), never
+// (rustd/crates/protocol/af_observability/src/semconv/model-library-allowlist.json → the model_catalogue playbook), never
 // by editing TypeScript.
 //
 // The catalogue is bearer-authed — it prices the platform's billing spine and
@@ -31,10 +31,9 @@ export type { LibraryModel };
 // past one page, which is exactly what the 103-provider seeding makes likely.
 const PAGE_LIMIT = 100;
 
-// A runaway `next_cursor` must not spin forever. 100 pages is 10,000 rows —
-// two orders of magnitude beyond any real catalogue, so hitting it means the
-// server is looping, not that the operator has a big catalogue.
-const MAX_PAGES = 100;
+// The walk ends when the server reports no next page. A cursor it already
+// followed would replay the same pages forever, so a repeat fails the read;
+// no page count does.
 const paginationError = (): ServerError => new ServerError({
   detail: "The model catalogue did not finish paging",
   suggestion: "retry; if this continues, check the daemon's catalogue cursor",
@@ -64,7 +63,7 @@ export const fetchCatalogue = (
     const cursors = new Set<string>();
     let cursor: string | undefined;
 
-    for (let page = 0; page < MAX_PAGES; page += 1) {
+    for (;;) {
       const params = new URLSearchParams({ [QUERY_LIMIT]: String(PAGE_LIMIT) });
       if (options.provider) params.set(QUERY_PROVIDER, options.provider);
       if (cursor) params.set(QUERY_STARTING_AFTER, cursor);
@@ -83,7 +82,6 @@ export const fetchCatalogue = (
       cursors.add(next);
       cursor = next;
     }
-    return yield* Effect.fail(paginationError());
   });
 
 /** Provider ids the catalogue actually serves, sorted, deduped. */

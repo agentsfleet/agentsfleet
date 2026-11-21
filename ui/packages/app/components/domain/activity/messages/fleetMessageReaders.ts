@@ -6,7 +6,7 @@ import { GROUP_META, RENDER_KIND_KEY } from "../../conversation/thread/useFleetT
 import { readNanos } from "@/lib/api/nanos";
 
 // The custom-metadata accessors a rendered message reads. Pure and JSX-free,
-// split out of `fleetMessageRenderers` at its length cap. `convertEvent`
+// split out of `fleetMessageRenderers` at its length cap. `convertTurn`
 // packs the durable row's fields into `metadata.custom`; these read them back
 // out with the tolerant defaults the renderer relies on (a missing or
 // wrong-typed field reads as empty/null, never throws).
@@ -23,8 +23,8 @@ export function readText(message: MessageState): string {
  *
  * Text, or any non-text part — an image-only append carries no `text` part and
  * is still a turn somebody sent. What this excludes is the turn whose body the
- * read never CARRIED: the events list selects no `request_json`
- * (`afd_events` history/statement/mod.rs), and a completion frame for a run the
+ * read never CARRIED: the turns list selects no `request_json`
+ * (`afd_turns` history/statement/mod.rs), and a completion frame for a run the
  * timeline never opened is rebuilt from exactly that shape, so rendering it as
  * an operator bubble would show an empty pill and claim somebody sent nothing.
  */

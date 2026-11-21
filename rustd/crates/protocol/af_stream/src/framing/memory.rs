@@ -1,6 +1,7 @@
 //! Validated deployment limits; wire frame limits remain fixed by the protocol version.
 
 use af_core::env::EnvSource;
+use af_wire::protocol::{CONTROL_MESSAGE_BYTES_MAX, MESSAGE_BYTES_MAX};
 use garde::{Unvalidated, Validate};
 use serde::{Deserialize, Serialize};
 
@@ -15,30 +16,40 @@ const MIB: usize = 1024 * 1024;
 pub const CONTROL_BUFFER_BYTES_ENV: &str = "AGENTSFLEET_RUNNER_CONTROL_BUFFER_BYTES";
 /// Total work, report and activity bytes for both directions across one daemon replica.
 pub const DATA_BUFFER_BYTES_ENV: &str = "AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES";
-const MIN_BYTES: usize = 12 * MIB;
-const MAX_BYTES: usize = 512 * MIB;
+// Each direction gets half a budget, and each half must hold one maximum frame
+// of its kind, or a frame that size would wait for room its pool never has.
+const CONTROL_MIN_MIB: usize = 12;
+const DATA_MIN_MIB: usize = 2 * MESSAGE_BYTES_MAX / MIB;
+const MAX_MIB: usize = 512;
+const CONTROL_MIN_BYTES: usize = CONTROL_MIN_MIB * MIB;
+const DATA_MIN_BYTES: usize = DATA_MIN_MIB * MIB;
+const MAX_BYTES: usize = MAX_MIB * MIB;
+const _: () = assert!(CONTROL_MIN_BYTES >= 2 * CONTROL_MESSAGE_BYTES_MAX);
+const _: () = assert!(DATA_MIN_BYTES >= 2 * MESSAGE_BYTES_MAX && DATA_MIN_BYTES <= MAX_BYTES);
 
 #[derive(Validate)]
+#[garde(context(usize as floor))]
 struct BufferBytes {
-    #[garde(range(min = MIN_BYTES, max = MAX_BYTES))]
+    #[garde(range(min = *floor, max = MAX_BYTES))]
     bytes: usize,
 }
 
 const DEFAULT_CONTROL_MIB: usize = 16;
-const DEFAULT_DATA_MIB: usize = 48;
+const DEFAULT_DATA_MIB: usize = DATA_MIN_MIB;
 // A default is a valid configuration, never a replacement for a failed parse.
-const _: () = assert!(DEFAULT_CONTROL_MIB >= 12 && DEFAULT_CONTROL_MIB <= 512);
-const _: () = assert!(DEFAULT_DATA_MIB >= 12 && DEFAULT_DATA_MIB <= 512);
+const _: () = assert!(DEFAULT_CONTROL_MIB >= CONTROL_MIN_MIB && DEFAULT_CONTROL_MIB <= MAX_MIB);
+const _: () = assert!(DEFAULT_DATA_MIB >= DATA_MIN_MIB && DEFAULT_DATA_MIB <= MAX_MIB);
 
 /// Raw settings can also be deserialized from a configuration document before validation.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct MemorySettings {
-    /// Both directions need room for a maximum frame and its transient copy.
-    #[garde(range(min = 12, max = 512))]
+    /// Both directions need room for a maximum control frame.
+    #[garde(range(min = CONTROL_MIN_MIB, max = MAX_MIB))]
     pub control_mib: usize,
-    /// The same minimum prevents a large valid report from waiting for an impossible reservation.
-    #[garde(range(min = 12, max = 512))]
+    /// Both directions need room for a maximum work or report frame, so a
+    /// large valid report never waits for an impossible reservation.
+    #[garde(range(min = DATA_MIN_MIB, max = MAX_MIB))]
     pub data_mib: usize,
 }
 
@@ -80,8 +91,10 @@ impl TryFrom<MemorySettings> for MemoryLimits {
 }
 
 impl MemoryLimits {
-    /// Smallest budget that can hold a maximum frame and its copy in each direction.
-    pub const MIN_BUFFER_BYTES: usize = MIN_BYTES;
+    /// Smallest control budget that holds a maximum control frame in each direction.
+    pub const MIN_CONTROL_BUFFER_BYTES: usize = CONTROL_MIN_BYTES;
+    /// Smallest data budget that holds a maximum work or report frame in each direction.
+    pub const MIN_DATA_BUFFER_BYTES: usize = DATA_MIN_BYTES;
     /// Largest supported frame-buffer budget across both directions.
     pub const MAX_BUFFER_BYTES: usize = MAX_BYTES;
 
@@ -96,12 +109,14 @@ impl MemoryLimits {
                 CONTROL_BUFFER_BYTES_ENV,
                 CONTROL_MEMORY_ENV,
                 DEFAULT_CONTROL_MIB,
+                CONTROL_MIN_BYTES,
             )?,
             data_bytes: read_bytes(
                 env,
                 DATA_BUFFER_BYTES_ENV,
                 DATA_MEMORY_ENV,
                 DEFAULT_DATA_MIB,
+                DATA_MIN_BYTES,
             )?,
         })
     }
@@ -110,17 +125,18 @@ impl MemoryLimits {
 fn read_bytes(
     env: &(impl EnvSource + ?Sized),
     byte_setting: &'static str,
-    legacy_setting: &'static str,
+    mib_setting: &'static str,
     fallback_mib: usize,
+    floor: usize,
 ) -> Result<usize> {
     let bytes = match env.get(byte_setting) {
         Some(raw) => raw.parse().map_err(|source| ErrorKind::MemorySetting {
             setting: byte_setting,
             source,
         })?,
-        None => read(env, legacy_setting, fallback_mib)?.saturating_mul(MIB),
+        None => read(env, mib_setting, fallback_mib)?.saturating_mul(MIB),
     };
-    let count = Unvalidated::new(BufferBytes { bytes }).validate()?;
+    let count = Unvalidated::new(BufferBytes { bytes }).validate_with(&floor)?;
     Ok(count.bytes)
 }
 
@@ -155,19 +171,20 @@ mod tests {
     /// Too little memory would wait forever for a reservation larger than its entire pool.
     #[test]
     fn impossible_or_excessive_memory_settings_are_refused() -> crate::Result<()> {
-        for value in [0, 11, 513, usize::MAX] {
+        // The data floor holds one 32 MiB frame in each direction.
+        for (control, data) in [(0, 0), (11, 63), (513, 513), (usize::MAX, usize::MAX)] {
             for (settings, field) in [
                 (
                     MemorySettings {
-                        control_mib: value,
-                        data_mib: 48,
+                        control_mib: control,
+                        data_mib: 64,
                     },
                     "control_mib",
                 ),
                 (
                     MemorySettings {
                         control_mib: 16,
-                        data_mib: value,
+                        data_mib: data,
                     },
                     "data_mib",
                 ),
@@ -189,16 +206,16 @@ mod tests {
         Ok(())
     }
 
-    /// An operator who omits the settings gets the documented 16 MiB and 48 MiB budgets.
+    /// An operator who omits the settings gets the documented 16 MiB and 64 MiB budgets.
     #[test]
     fn unset_settings_resolve_to_the_documented_defaults() -> crate::Result<()> {
         let settings = MemorySettings::default();
-        assert_eq!((settings.control_mib, settings.data_mib), (16, 48));
+        assert_eq!((settings.control_mib, settings.data_mib), (16, 64));
         let limits =
             MemoryLimits::from_env(&af_core::env::MapEnv::from_pairs([("UNRELATED", "1")]))?;
         assert_eq!(
             (limits.control_bytes, limits.data_bytes),
-            (16 * MIB, 48 * MIB)
+            (16 * MIB, 64 * MIB)
         );
         Ok(())
     }
@@ -242,12 +259,12 @@ mod byte_tests {
     fn buffer_settings_retain_the_exact_configured_byte_count() -> crate::Result<()> {
         let env = MapEnv::from_pairs([
             (CONTROL_BUFFER_BYTES_ENV, "16777216"),
-            (DATA_BUFFER_BYTES_ENV, "50331648"),
+            (DATA_BUFFER_BYTES_ENV, "150994945"),
             (super::CONTROL_MEMORY_ENV, "invalid"),
         ]);
         let limits = MemoryLimits::from_env(&env)?;
         assert_eq!(limits.control_bytes, 16_777_216);
-        assert_eq!(limits.data_bytes, 50_331_648);
+        assert_eq!(limits.data_bytes, 150_994_945);
         let (incoming, outgoing) = crate::Budget::duplex(limits);
         assert_eq!(
             incoming.available(af_wire::protocol::StreamKind::Control),
@@ -255,16 +272,23 @@ mod byte_tests {
         );
         assert_eq!(
             outgoing.available(af_wire::protocol::StreamKind::Work),
-            25_165_824
+            75_497_472
         );
         Ok(())
     }
 
     #[test]
-    fn byte_settings_refuse_impossible_and_overflowing_values() {
+    fn byte_settings_refuse_impossible_and_overflowing_values() -> crate::Result<()> {
         for value in ["0", "12582911", "536870913", "18446744073709551615", "bad"] {
             let env = MapEnv::from_pairs([(CONTROL_BUFFER_BYTES_ENV, value)]);
             assert!(MemoryLimits::from_env(&env).is_err(), "{value}");
         }
+        for value in ["12582912", "67108863", "536870913"] {
+            let env = MapEnv::from_pairs([(DATA_BUFFER_BYTES_ENV, value)]);
+            assert!(MemoryLimits::from_env(&env).is_err(), "{value}");
+        }
+        let floor = MapEnv::from_pairs([(DATA_BUFFER_BYTES_ENV, "67108864")]);
+        assert_eq!(MemoryLimits::from_env(&floor)?.data_bytes, 67_108_864);
+        Ok(())
     }
 }

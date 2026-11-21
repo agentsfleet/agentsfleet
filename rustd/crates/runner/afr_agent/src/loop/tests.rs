@@ -9,29 +9,29 @@ use std::time::Duration;
 
 use crate::ResultOutcome;
 use af_egress::testing::CountingMint;
-use af_providers::Message;
 use af_wire::activity::ActivityFrame;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use af_wire::tool_trace::ToolCallStatus;
 use afr_tools::catalog::{HTTP_REQUEST, UPDATE_PLAN};
-use afr_tools::{Catalog, Tool};
+use afr_tools::{Catalog, CatalogTool};
+use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
 
 use super::Loop;
 use super::finish::DETAIL_STOPPED;
 use crate::engine::{AgentEngine, AgentRun, Meter, RunOutput};
-use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
+use crate::fixture::{Canned, Frames, Script, call, payload, say, unbounded};
 use crate::testing::Discard;
 
-/// A loop hosting `tools`, every lease driven by `script`.
-pub(crate) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
+/// A loop hosting `tools`, every run driven by `script`.
+pub(crate) fn engine(tools: Vec<Box<CatalogTool>>, script: &Script) -> Loop {
     Loop::new(Catalog::new(tools), script.replay())
 }
 
-/// Runs `lease` on `engine` until it ends or `stop` is cancelled.
+/// Runs `run` on `engine` until it ends or `stop` is cancelled.
 pub(crate) async fn drive(
     engine: &Loop,
-    lease: &LeasePayload<'_>,
+    run: &RunPayload<'_>,
     stop: &CancellationToken,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let frames = Frames::default();
@@ -41,7 +41,7 @@ pub(crate) async fn drive(
         recovered_task: None,
         recovered_turn: None,
         prepared_task: None,
-        lease,
+        run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
@@ -87,13 +87,13 @@ const URL_ARG: &str = "url";
 async fn should_report_known_zero_tool_calls() {
     let script = Script::new([vec![say("Please provide the run URL.")]]);
     let engine = engine(Vec::new(), &script);
-    let lease = lease(&[], unbounded());
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let run = payload(&[], unbounded());
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, "Please provide the run URL.");
     assert_eq!(
         serde_json::json!(output.trace),
-        serde_json::json!({"calls": [], "omitted_call_count": 0})
+        serde_json::json!({"calls": []})
     );
     assert_eq!(serde_json::json!(output.records), serde_json::json!([]));
 }
@@ -116,9 +116,9 @@ async fn test_loop_runs_tool_calls_until_answer() {
         vec![say("the sum is 4")],
     ]);
     let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
-    let lease = lease(&[UPDATE_PLAN.name()], unbounded());
+    let run = payload(&[UPDATE_PLAN.name()], unbounded());
 
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+    let (output, _frames) = drive(&engine, &run, &CancellationToken::new()).await;
 
     assert_eq!(
         output.result.outcome,
@@ -174,7 +174,7 @@ async fn test_loop_emits_one_start_one_end_per_call() {
 
     let (output, frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], unbounded()),
+        &payload(&[UPDATE_PLAN.name()], unbounded()),
         &CancellationToken::new(),
     )
     .await;
@@ -222,14 +222,14 @@ async fn test_run_end_interrupts_open_calls_once() {
         ],
         &script,
     );
-    let lease = lease(&[UPDATE_PLAN.name(), "http_request"], unbounded());
+    let run = payload(&[UPDATE_PLAN.name(), "http_request"], unbounded());
     let stop = CancellationToken::new();
     let stopper = async {
         tokio::time::sleep(Duration::from_secs(1)).await;
         stop.cancel();
     };
 
-    let ((output, frames), ()) = tokio::join!(drive(&engine, &lease, &stop), stopper);
+    let ((output, frames), ()) = tokio::join!(drive(&engine, &run, &stop), stopper);
 
     assert_eq!(
         completions(&frames),
@@ -268,7 +268,7 @@ async fn test_run_end_interrupts_open_calls_once() {
 async fn a_dropped_run_still_closes_its_open_call_once() {
     let script = Script::new([vec![call("a", "http_request", serde_json::json!({}))]]);
     let engine = engine(vec![Canned::boxed(&HTTP_REQUEST, "")], &script);
-    let lease = lease(&["http_request"], unbounded());
+    let run = payload(&["http_request"], unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
     let stop = CancellationToken::new();
@@ -280,7 +280,7 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
         recovered_task: None,
         recovered_turn: None,
         prepared_task: None,
-        lease: &lease,
+        run: &run,
         memory: afr_memory::Seed::default(),
         executor: &executor,
         mint: &mint,

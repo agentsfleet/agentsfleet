@@ -18,8 +18,8 @@ use crate::{
 pub(super) struct Call {
     pub id: Uuid7,
     pub original_runner_id: Uuid7,
-    pub original_lease_id: Uuid7,
-    pub source_admission_id: Uuid7,
+    pub original_run_id: Uuid7,
+    pub source_turn_id: Uuid7,
     pub fleet_id: Uuid7,
     pub workspace_id: Uuid7,
     pub tenant_id: Uuid7,
@@ -65,7 +65,7 @@ pub(super) struct Payload {
 pub(super) enum Lookup<'a> {
     Id(&'a Uuid7),
     Operation {
-        lease: &'a Uuid7,
+        run: &'a Uuid7,
         operation: &'a Uuid7,
     },
     Assessment {
@@ -117,14 +117,14 @@ fn statement<'a>(
     sql: &'static str,
     lookup: Lookup<'a>,
 ) -> QueryAs<'a, Postgres, Call, PgArguments> {
-    let (id, lease, operation, key, attempt) = match lookup {
+    let (id, run, operation, key, attempt) = match lookup {
         Lookup::Id(id) => (Some(id), None, None, None, None),
-        Lookup::Operation { lease, operation } => (None, Some(lease), Some(operation), None, None),
+        Lookup::Operation { run, operation } => (None, Some(run), Some(operation), None, None),
         Lookup::Assessment { key, attempt } => (None, None, None, Some(key), Some(attempt)),
     };
     sqlx::query_as(sql)
         .bind(id)
-        .bind(lease)
+        .bind(run)
         .bind(operation)
         .bind(key)
         .bind(attempt)
@@ -159,9 +159,9 @@ impl Call {
             .map_err(|source| Error::from(ErrorKind::TaskState { source }))
     }
 
-    pub(super) fn owned_by(&self, lease: crate::task::TaskLease<'_>) -> bool {
-        self.original_runner_id == lease.runner_id.as_str()
-            && self.original_lease_id == lease.lease_id.as_str()
-            && u64::try_from(self.fencing_token).ok() == Some(lease.fencing_token)
+    pub(super) fn owned_by(&self, run: crate::task::TaskRun<'_>) -> bool {
+        self.original_runner_id == run.runner_id.as_str()
+            && self.original_run_id == run.run_id.as_str()
+            && u64::try_from(self.fencing_token).ok() == Some(run.fencing_token)
     }
 }

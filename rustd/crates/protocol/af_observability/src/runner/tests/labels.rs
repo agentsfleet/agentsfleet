@@ -6,7 +6,7 @@
 use crate::runner::{MAX_SERIES, OVERFLOW_RUNNER, RunnerMetrics, SDK_OVERFLOW_MARKER};
 
 // ---------------------------------------------------------------------------
-// Dimension 3.2 — the spelling admission produces.
+// The spelling admission produces.
 // ---------------------------------------------------------------------------
 
 /// A runner with a series of its own is attributed to itself.

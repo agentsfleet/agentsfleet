@@ -1,4 +1,4 @@
-//! Safe-boundary application and source-message reply obligations are separate.
+//! Safe-boundary application and source-message reply deliveries are separate.
 
 use super::DecisionTaskVersion;
 use garde::Validate;
@@ -34,7 +34,7 @@ impl TaskInputMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskInputReceiptInput {
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Stable acknowledgement identity.
@@ -42,7 +42,7 @@ pub struct TaskInputReceiptInput {
     pub operation_id: String,
     /// Accepted native source, never an invented reply destination.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
-    pub source_admission_id: String,
+    pub source_turn_id: String,
     /// Complete immutable interpretation identity.
     #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]{64}$"))]
     pub plan_digest: String,

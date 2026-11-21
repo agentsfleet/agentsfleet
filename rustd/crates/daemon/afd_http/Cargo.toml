@@ -26,7 +26,7 @@ hex.workspace = true
 afd_admin.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
-afd_authoring.workspace = true
+afd_setup.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
 afd_connector.workspace = true
@@ -34,22 +34,18 @@ afd_cron.workspace = true
 afd_ingress.workspace = true
 af_core.workspace = true
 af_crypto.workspace = true
-afd_events.workspace = true
+afd_turns.workspace = true
 afd_db.workspace = true
 afd_fleet.workspace = true
 afd_fleet_lifecycle.workspace = true
 afd_fleet_ops.workspace = true
 af_fleet_runtime.workspace = true
-afd_identity.workspace = true
-# The invite email the invite routes send through, behind `services::InviteMail`.
-afd_mail.workspace = true
-# Fleet memory, behind `services::FleetMemories` and the lease plane's verbs.
+# The text ceiling every text-carrying body is sized from.
+af_validate.workspace = true
+# Fleet memory's errors, refused through `handler::Refusable`.
 afd_memory.workspace = true
-# The interim message poster, behind `Services::interjector`.
-afd_outbound.workspace = true
 af_observability.workspace = true
 afd_runner.workspace = true
-afd_sse.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true
@@ -81,7 +77,7 @@ utoipa = { workspace = true, optional = true }
 # The ledger a harness binds to its own pool and queue, for the same reason
 # the two below carry the feature: a suite builds the real thing, never a
 # second one shaped like it.
-afd_admission = { workspace = true, features = ["test-util"] }
+afd_turns = { workspace = true, features = ["test-util"] }
 # The refusing bus the ledger above notifies through.
 afd_bus = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }

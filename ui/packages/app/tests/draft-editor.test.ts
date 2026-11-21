@@ -12,7 +12,7 @@ const draft = {...DRAFT, linked_fleet_id: FLEET_ID,
   review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};
 const conversation = (id = DRAFT_ID, state = DRAFT_STATE.editing as string) => ({draft: {...draft, id, state},
   messages: [MESSAGE], messages_starting_after: null, truncated: false});
-const activity = (id: string) => ({event_id: id, event_type: "activity", status: "recorded",
+const activity = (id: string) => ({turn_id: id, event_type: "activity", status: "recorded",
   request_json: JSON.stringify({kind: "setup_saved", revision: "1"}), created_at: MESSAGE.created_at});
 const page = () => ({fleet: FLEET_DETAIL, conversations: [conversation()], activities: {items: [activity("saved")], next_cursor: null as string | null}, next_cursor: null as string | null});
 beforeEach(() => fixture.mount());
@@ -21,14 +21,14 @@ afterEach(() => fixture.dispose());
 // Value: one browser read loads setup without walking all old message pages.
 it("opens one bounded editor resource and seeds its recent message cursor", async () => {
   const recent = Array.from({length: 25}, (_, index) => ({...MESSAGE, sequence: String(index + 26)}));
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...page(),
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response({...page(),
     conversations: [{...conversation(), messages: recent, messages_starting_after: "recent-boundary", truncated: true}]})
     : path.endsWith("/messages") ? response({items: recent, next_cursor: null}) : undefined;
   const client = await fixture.ready();
   const before = fixture.calls.length;
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
-  expect(fixture.calls.slice(before).map(call => call.path)).toEqual([expect.stringContaining("/authoring-context")]);
+  expect(fixture.calls.slice(before).map(call => call.path)).toEqual([expect.stringContaining("/setup-context")]);
   expect(client.getSnapshot()).toMatchObject({draft: {id: DRAFT_ID}, messages: recent, truncated: true});
   await client.retry();
   const read = fixture.calls.findLast(call => call.path.includes("/drafts/") && call.path.endsWith("/messages"));
@@ -38,7 +38,7 @@ it("opens one bounded editor resource and seeds its recent message cursor", asyn
 });
 
 it("loads older creator conversations only on demand without replacing the current proposal", async () => {
-  fixture.override = ({path, search}) => path.endsWith("/authoring-context") ? response(new URLSearchParams(search).has("starting_after")
+  fixture.override = ({path, search}) => path.endsWith("/setup-context") ? response(new URLSearchParams(search).has("starting_after")
     ? {...page(), conversations: [conversation(OLD, DRAFT_STATE.closed)]} : {...page(), next_cursor: "older-chats"}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
@@ -54,21 +54,21 @@ it("loads older creator conversations only on demand without replacing the curre
 });
 
 it("pages filtered receipts without dropping already visible receipts", async () => {
-  fixture.override = ({path}) => path.endsWith("/authoring-context") ? response({...page(), activities: {items: [activity("new")], next_cursor: "older-receipts"}})
+  fixture.override = ({path}) => path.endsWith("/setup-context") ? response({...page(), activities: {items: [activity("new")], next_cursor: "older-receipts"}})
     : path.endsWith("/messages") ? response({items: [activity("old")], next_cursor: null}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
   await client.refreshFleetSetup();
   const first = client.getSnapshot().activities?.[0];
   await client.loadEarlierConversations();
-  expect(client.getSnapshot().activities?.map(item => item.event_id)).toEqual(["new", "old"]);
+  expect(client.getSnapshot().activities?.map(item => item.turn_id)).toEqual(["new", "old"]);
   expect(client.getSnapshot().activities?.[0]).toBe(first);
   expect(new URLSearchParams(fixture.calls.at(-1)?.search).get("event_type")).toBe("activity");
   expect(new URLSearchParams(fixture.calls.at(-1)?.search).get("starting_after")).toBe("older-receipts");
 });
 
 it("keeps the current proposal and cursor after an older history read fails", async () => {
-  fixture.override = ({path, search}) => path.endsWith("/authoring-context") ? new URLSearchParams(search).has("starting_after")
+  fixture.override = ({path, search}) => path.endsWith("/setup-context") ? new URLSearchParams(search).has("starting_after")
     ? response({}, 503) : response({...page(), next_cursor: "retry-cursor"}) : undefined;
   const client = await fixture.ready();
   client.fresh({kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"});
@@ -97,7 +97,7 @@ it.each([null, FLEET_DETAIL])("does not request history without a continuation (
 
 it("merges unfinished older chats while retaining the current proposal and previously loaded rows", async () => {
   const earlier = "0199a801-1000-7000-8000-000000000009";
-  fixture.override = ({path, search}) => path.endsWith("/authoring-context") ? response(new URLSearchParams(search).has("starting_after")
+  fixture.override = ({path, search}) => path.endsWith("/setup-context") ? response(new URLSearchParams(search).has("starting_after")
     ? {...page(), conversations: [conversation(OLD, DRAFT_STATE.editing), conversation(earlier, DRAFT_STATE.closed), conversation(DRAFT_ID)]}
     : {...page(), conversations: [conversation(), conversation(earlier, DRAFT_STATE.closed)], next_cursor: "older"}) : undefined;
   const client = await fixture.ready();

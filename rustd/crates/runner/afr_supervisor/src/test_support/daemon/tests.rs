@@ -46,9 +46,9 @@ async fn should_record_non_string_panics_without_losing_the_response() {
 #[tokio::test]
 async fn should_reject_an_unexpected_request_and_fail_the_owning_test() {
     let (api, calls) = fake(crate::test_support::daemon(|_| None));
-    let failure = api.send(call(Verb::AuthoringModel)).await.unwrap_err();
+    let failure = api.send(call(Verb::TaskInputs)).await.unwrap_err();
     assert!(
-        failure.to_string().contains("authoring_model call (500)"),
+        failure.to_string().contains("task_inputs call (500)"),
         "{failure}"
     );
     let panic = catch_unwind(AssertUnwindSafe(|| drop(calls))).unwrap_err();
@@ -65,9 +65,9 @@ async fn should_keep_intentional_failures_out_of_the_internal_failure_record() {
 }
 
 #[tokio::test(start_paused = true)]
-#[should_panic(expected = "waiting for lease report")]
+#[should_panic(expected = "waiting for run report")]
 async fn should_name_the_stuck_operation_when_the_bound_expires() {
-    bounded("lease report", std::future::pending::<()>()).await;
+    bounded("run report", std::future::pending::<()>()).await;
 }
 
 #[tokio::test(start_paused = true)]

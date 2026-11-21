@@ -25,7 +25,7 @@ pub struct TaskEffectInput {
     /// Stable identity; a lost acknowledgement must reuse this operation.
     #[garde(length(bytes, min = 36, max = 36), pattern(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"))]
     pub operation_id: String,
-    /// Current slot fence.
+    /// Current thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current selected task and generation.
@@ -104,7 +104,7 @@ pub struct TaskEffect {
 #[derive(Debug, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskEffectsQuery {
-    /// Current lease fence.
+    /// Current run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Selected current task.
@@ -133,12 +133,12 @@ pub struct TaskEffectsPage {
     pub next_cursor: Option<String>,
 }
 
-/// Current lease proof for an individual publication read.
+/// Current run proof for an individual publication read.
 #[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskEffectQuery {
-    /// Current fleet-slot fence.
+    /// Current fleet-thread fence.
     #[garde(skip)]
     pub fencing_token: u64,
 }

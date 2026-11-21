@@ -8,7 +8,7 @@ impl Error {
     pub const fn task_current_state(&self) -> Option<&'static str> {
         match &self.inner.kind {
             ErrorKind::TaskControlConflict { state }
-            | ErrorKind::TaskControlAdmission { state, .. }
+            | ErrorKind::TaskControlTurn { state, .. }
             | ErrorKind::TaskMutation { state, .. } => Some(state.as_str()),
             ErrorKind::TaskStorageSigning { .. }
             | ErrorKind::TaskStorageSigningParameters { .. }
@@ -23,7 +23,7 @@ impl Error {
             | ErrorKind::DecisionDeadline { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
@@ -34,7 +34,7 @@ impl Error {
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -53,14 +53,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -90,20 +88,20 @@ impl Error {
             | ErrorKind::DecisionDeadline { .. }
             | ErrorKind::TaskReadTimeout { .. }
             | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
+            | ErrorKind::TurnWrite { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
+            | ErrorKind::TaskControlTurn { .. }
             | ErrorKind::TaskMutation { .. }
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -122,14 +120,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured

@@ -57,7 +57,7 @@ impl Server {
         let worker = tokio::spawn(async move {
             loop {
                 let accepted = tokio::select! {
-                    () = async { let _ = (&mut stopped).await; } => break,
+                    _ = &mut stopped => break,
                     accepted = socket.accept() => accepted,
                 };
                 let (socket, _) = accepted.expect("native reader connects");

@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use super::StreamKind;
 use crate::fold::FoldResponse;
-use crate::lease::TaggedLease;
 use crate::report::{RenewResponse, ReportResponse};
+use crate::run::TaggedRun;
 use crate::runner::HeartbeatResponse;
 
 /// A domain answer or a classified refusal, without optional success fields.
@@ -33,13 +33,13 @@ pub enum Answer<'a, T> {
     },
 }
 
-/// An independent answer for each lease in a renewal batch.
+/// An independent answer for each run in a renewal batch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RenewalAnswer<'a> {
-    /// Lease to which this answer and usage acknowledgement apply.
+    /// Run to which this answer and usage acknowledgement apply.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
+    pub run_id: Cow<'a, str>,
     /// Complete renewal response or refusal.
     #[serde(borrow)]
     pub answer: Answer<'a, RenewResponse>,
@@ -48,13 +48,7 @@ pub struct RenewalAnswer<'a> {
 /// Every daemon message on the runner session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum Down<
-    'a,
-    C = serde_json::Value,
-    D = serde_json::Value,
-    O = serde_json::Value,
-    I = serde_json::Value,
-> {
+pub enum Down<'a> {
     /// The runner records both owners before allowing the durable change.
     Prepared {
         /// Identifier of the opening hello.
@@ -66,7 +60,7 @@ pub enum Down<
         #[serde(borrow)]
         previous_connection_id: Option<Cow<'a, str>>,
     },
-    /// The connection owns this runner and has rebuilt its live leases.
+    /// The connection owns this runner and has rebuilt its live runs.
     Welcome {
         /// Identifier of the opening hello.
         request_id: NonZeroU64,
@@ -77,16 +71,16 @@ pub enum Down<
         heartbeat_interval_ms: u32,
     },
     /// A committed operator change pushes policy without inventing a request id.
-    Assignment {
+    Policy {
         /// Current complete heartbeat policy, capability verdict and hold releases.
         #[serde(borrow)]
         response: HeartbeatResponse<'a>,
     },
-    /// Work issued under the runner's available capacity.
-    Offer {
-        /// Fleet or authoring work, with its existing payload.
+    /// A run assigned under the runner's available capacity.
+    Run {
+        /// A fleet's event or a setup draft's message, with its payload.
         #[serde(borrow)]
-        lease: TaggedLease<'a, C>,
+        run: TaggedRun<'a>,
     },
     /// Current policy, capability verdict and held-sandbox releases.
     Heartbeat {
@@ -105,97 +99,75 @@ pub enum Down<
     Renewed {
         /// Identifier of the renewal batch.
         request_id: NonZeroU64,
-        /// Lease-specific deadlines, usage acknowledgements or refusals.
+        /// Run-specific deadlines, usage acknowledgements or refusals.
         #[serde(borrow)]
-        leases: Vec<RenewalAnswer<'a>>,
-    },
-    /// Result or classified refusal for one authoring dispatch.
-    AuthoringModelResult {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::ModelResult<D, O, I>>,
-    },
-    /// Durable receipt for an authoring proposal or progress submission.
-    AuthoringActivityAck {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::ActivityAccepted>,
-    },
-    /// The confirmed authoring deadline or its classified refusal.
-    AuthoringRenewed {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::Renewed>,
-    },
-    /// Existing authoring settlement state after its Postgres transaction.
-    AuthoringReportAck {
-        /// Session-local correlation identifier.
-        request_id: NonZeroU64,
-        /// Authoring lease whose fence and ownership scope this exchange.
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        #[serde(borrow)]
-        /// Complete response or a registered, classified refusal.
-        answer: Answer<'a, crate::authoring::Reported>,
+        runs: Vec<RenewalAnswer<'a>>,
     },
     /// The report settled, repeated its saved result, or was refused.
     ReportAck {
         /// Identifier of this transmission of the pending report.
         request_id: NonZeroU64,
-        /// Lease whose pending in-memory report this answer acknowledges.
+        /// Run whose pending in-memory report this answer acknowledges.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Full report response or classified refusal.
         #[serde(borrow)]
         answer: Answer<'a, ReportResponse>,
     },
-    /// Pending input claimed under the requesting lease's fence.
+    /// Pending input assigned under the requesting run's fence.
     Folded {
         /// Identifier of the folds request.
         request_id: NonZeroU64,
-        /// Lease whose input inbox receives this answer.
+        /// Run whose input inbox receives this answer.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        /// Claimed inputs or classified refusal.
+        run_id: Cow<'a, str>,
+        /// Assigned inputs or classified refusal.
         #[serde(borrow)]
         answer: Answer<'a, FoldResponse<'a>>,
+    },
+    /// A setup run's draft context, or why the run may not read it.
+    ContextLoaded {
+        /// Identifier of the context-load request.
+        request_id: NonZeroU64,
+        /// Run whose read this answers.
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        /// The stored context, or a classified refusal.
+        #[serde(borrow)]
+        answer: Answer<'a, crate::context::ContextLoadResponse>,
+    },
+    /// A setup run's context save, stored or refused.
+    ContextSaved {
+        /// Identifier of the context-save request.
+        request_id: NonZeroU64,
+        /// Run whose save this answers.
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        /// The stored version, or a classified refusal.
+        #[serde(borrow)]
+        answer: Answer<'a, crate::context::ContextSaveResponse>,
     },
     /// Exact ordinary checkpoint command result; all correlation fields are echoed.
     TurnCheckpoint {
         /// Transport request identity.
         request_id: NonZeroU64,
-        /// Ordinary lease that authorized this command.
+        /// Ordinary run that authorized this command.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         /// Stable identity retained when an acknowledgement is lost.
-        operation_id: crate::lease::TurnId,
+        operation_id: crate::run::CheckpointOperationId,
         /// Echoed even for refusals, so another operation cannot satisfy this request.
-        kind: crate::lease::TurnCheckpointKind,
+        kind: crate::run::TurnCheckpointKind,
         /// Full response or safe registered refusal.
         #[serde(borrow)]
-        answer: Answer<'a, crate::lease::TurnCheckpointResponse>,
+        answer: Answer<'a, crate::run::TurnCheckpointResponse>,
     },
-    /// Stop the named running lease.
+    /// Stop the named running run.
     Cancel {
-        /// Lease whose interrupt token must be cancelled.
+        /// Run whose interrupt token must be cancelled.
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        /// Why this lease no longer has authority.
+        run_id: Cow<'a, str>,
+        /// Why this run no longer has authority.
         #[serde(borrow)]
         error_code: Cow<'a, str>,
     },
@@ -207,31 +179,28 @@ pub enum Down<
     },
 }
 
-impl<C, D, O, I> Down<'_, C, D, O, I> {
+impl Down<'_> {
     /// The response follows its request's kind; unsolicited control stays separate.
     #[must_use]
     pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::ReportAck { .. }
-            | Self::AuthoringReportAck { .. }
-            | Self::TurnCheckpoint { .. } => StreamKind::Reports,
-            Self::Offer { .. }
+            Self::ReportAck { .. } | Self::TurnCheckpoint { .. } => StreamKind::Reports,
+            Self::Run { .. }
             | Self::Folded { .. }
-            | Self::AuthoringModelResult { .. }
-            | Self::AuthoringActivityAck { .. } => StreamKind::Work,
+            | Self::ContextLoaded { .. }
+            | Self::ContextSaved { .. } => StreamKind::Work,
             Self::Welcome { .. }
             | Self::Prepared { .. }
-            | Self::Assignment { .. }
+            | Self::Policy { .. }
             | Self::Heartbeat { .. }
             | Self::Pong { .. }
             | Self::Renewed { .. }
-            | Self::AuthoringRenewed { .. }
             | Self::Cancel { .. }
             | Self::GoAway { .. } => StreamKind::Control,
         }
     }
 
-    /// Unsolicited offers, cancellation and drain create no pending request.
+    /// Unsolicited assignments, cancellation and drain create no pending request.
     #[must_use]
     pub const fn request_id(&self) -> Option<NonZeroU64> {
         match self {
@@ -240,17 +209,14 @@ impl<C, D, O, I> Down<'_, C, D, O, I> {
             | Self::Heartbeat { request_id, .. }
             | Self::Pong { request_id }
             | Self::Renewed { request_id, .. }
-            | Self::AuthoringModelResult { request_id, .. }
-            | Self::AuthoringActivityAck { request_id, .. }
-            | Self::AuthoringRenewed { request_id, .. }
-            | Self::AuthoringReportAck { request_id, .. }
             | Self::ReportAck { request_id, .. }
             | Self::TurnCheckpoint { request_id, .. }
+            | Self::ContextLoaded { request_id, .. }
+            | Self::ContextSaved { request_id, .. }
             | Self::Folded { request_id, .. } => Some(*request_id),
-            Self::Offer { .. }
-            | Self::Assignment { .. }
-            | Self::Cancel { .. }
-            | Self::GoAway { .. } => None,
+            Self::Run { .. } | Self::Policy { .. } | Self::Cancel { .. } | Self::GoAway { .. } => {
+                None
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-//! The platform key cache answers only for the witnesses a claim read, ends
+//! The platform key cache answers only for the witnesses an assignment read, ends
 //! with the price window it matched and with its time limit, and a tenant's
 //! own model reference is read every time.
 //!
@@ -125,8 +125,8 @@ impl Lane {
         .expect("the platform default seeds");
     }
 
-    /// What the platform read observes now: the witnesses a claim reads beside
-    /// the slot are the same expression (proved against the real claim in the
+    /// What the platform read observes now: the witnesses an assignment reads beside
+    /// the thread are the same expression (proved against the real assignment in the
     /// fleet crate's suite).
     async fn observed(&self) -> Observed {
         self.providers
@@ -189,8 +189,8 @@ impl Lane {
         .expect("the price window closes");
     }
 
-    /// A lease's resolution of `reference`, as the claim path asks for it.
-    async fn lease(&self, reference: &str) -> String {
+    /// A run's resolution of `reference`, as the assignment path asks for it.
+    async fn run(&self, reference: &str) -> String {
         let observed = self.observed().await;
         self.providers
             .resolve_observed(&self.tenant, reference, Some(&observed.key))

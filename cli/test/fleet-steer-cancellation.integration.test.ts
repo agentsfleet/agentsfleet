@@ -12,7 +12,7 @@ test("steer preserves a native message refusal without another send", async () =
   const config = cliConfigFromValuesLayer({apiUrl: "https://api.test.local", fetchImpl: async (_url, init) => {
     expect(init?.method).toBe("POST");
     posts++;
-    return Response.json({error_code: "UZ-AUTHOR-001", detail: "message refused"}, {status: 403});
+    return Response.json({error_code: "UZ-SETUP-001", detail: "message refused"}, {status: 403});
   }});
   const result = await Effect.runPromiseExit(
     steerEffectFromArgs(FLEET_ID, "investigate", {}, {
@@ -21,7 +21,7 @@ test("steer preserves a native message refusal without another send", async () =
   );
   const error = Exit.isFailure(result) ? Option.getOrNull(Cause.findErrorOption(result.cause)) : null;
   expect(error).toBeInstanceOf(ServerError);
-  expect(error).toMatchObject({status: 403, code: "UZ-AUTHOR-001", detail: "message refused"});
+  expect(error).toMatchObject({status: 403, code: "UZ-SETUP-001", detail: "message refused"});
   expect(posts).toBe(1);
 });
 

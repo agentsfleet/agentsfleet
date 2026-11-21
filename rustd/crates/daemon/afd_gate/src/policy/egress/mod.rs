@@ -1,4 +1,4 @@
-//! A repository binding translated into provider-neutral lease rules.
+//! A repository binding translated into provider-neutral run rules.
 //!
 //! # Why a binding becomes an ALLOW-LIST of exact requests
 //!
@@ -33,13 +33,13 @@ pub const API_HOST: &str = "api.github.com";
 /// The credential admitted at that host.
 pub const CREDENTIAL_GITHUB: &str = "github";
 
-/// Why a write binding names no branch for its lease to write on.
-pub const DETAIL_NO_REPAIR_BRANCH: &str = "a write binding needs the branch its lease authorised";
+/// Why a write binding names no branch for its run to write on.
+pub const DETAIL_NO_REPAIR_BRANCH: &str = "a write binding needs the branch its run authorised";
 
 /// Why a write binding names none, or several, where the locked rules bound one.
 pub const DETAIL_NOT_EXACTLY_ONE_REPOSITORY: &str = "a write binding bounds exactly one repository";
 
-/// The rules a lease's repository binding authorises.
+/// The rules a run's repository binding authorises.
 ///
 /// One origin policy, for [`API_HOST`], carrying every admitted request. A read
 /// binding contributes two rules per repository; a write binding adds five more

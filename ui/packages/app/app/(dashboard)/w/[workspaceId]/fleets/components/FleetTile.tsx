@@ -26,12 +26,12 @@ import { agentDisplayName } from "@/lib/fleets/agent-label";
 import {
   deriveTileLiveness,
   fleetRowState,
-  formatTileEvents,
+  formatTileTurns,
   formatTileSpend,
   latestTileCounter,
   tileShouldStream,
   TILE_CATCHING_UP_EYEBROW,
-  TILE_EVENTS_SUFFIX,
+  TILE_TURNS_SUFFIX,
   TILE_NOT_LIVE_EYEBROW,
   TILE_NOT_LIVE_TOOLTIP,
   TILE_SPEND_SUFFIX,
@@ -40,7 +40,7 @@ import {
 
 type Props = { fleet: Fleet; workspaceId: string };
 
-export const FLEET_WAITING_COPY = "Waiting for the next event.";
+export const FLEET_WAITING_COPY = "Waiting for the next turn.";
 export const FLEET_NO_LIVE_ACTIVITY_COPY = "No live activity.";
 export const MANAGE_FLEET_LABEL = "Manage fleet";
 
@@ -225,11 +225,11 @@ function TileMetrics({ fleet, counters }: { fleet: Fleet; counters?: TileCounter
   // A drained tile has no stream, and a live one has not yet been told where
   // the fleet stands; both show what the server rendered.
   const spent = latestTileCounter(fleet.budget_used_nanos, counters?.spentNanos);
-  const processed = latestTileCounter(fleet.events_processed, counters?.eventsProcessed);
+  const processed = latestTileCounter(fleet.events_processed, counters?.turnsProcessed);
   return (
     <div className="flex items-center justify-between font-sans text-xs text-muted-foreground tabular-nums">
       <span><span className="font-mono">{formatTileSpend(spent)}</span> {TILE_SPEND_SUFFIX}</span>
-      <span><span className="font-mono">{formatTileEvents(processed)}</span> {TILE_EVENTS_SUFFIX}</span>
+      <span><span className="font-mono">{formatTileTurns(processed)}</span> {TILE_TURNS_SUFFIX}</span>
       <Time value={new Date(fleet.updated_at)} format="relative" tooltip={false} className="tabular-nums" />
     </div>
   );

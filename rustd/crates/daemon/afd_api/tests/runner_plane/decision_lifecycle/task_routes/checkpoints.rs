@@ -11,7 +11,7 @@ use super::{Fixture, call, foreign_and_stale, path, problem, success};
 
 pub(super) async fn exercise(fixture: &Fixture, task: &Value) {
     let route = path(fixture, "checkpoints");
-    let input = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_id(),
+    let input = json!({"fencing_token":fixture.run.fence,"operation_id":mint_id(),
         "task":task,"mode":"incremental","base_id":null,"commit_oid":null,
         "format_version":1,"toolbox_digest":"3".repeat(64),"page_count":1,
         "upload_budget_bytes":0,"logical_bytes":0,"entry_count":0});
@@ -68,7 +68,7 @@ async fn register_and_refuse_bad_upload(fixture: &Fixture, task: &Value, origina
             .as_str()
             .expect("second capture")
     );
-    let registration = json!({"fencing_token":fixture.lease.fence,"task":task,
+    let registration = json!({"fencing_token":fixture.run.fence,"task":task,
         "pin_id":plan.pointer("/pin/id").expect("response field exists"),"objects":[{"sha256":sha256_hex(b"x"),"size":1,"kind":"file"}]});
     let objects = call(
         fixture,
@@ -123,7 +123,7 @@ async fn renew_pin(fixture: &Fixture, task: &Value, route: &str, plan: &Value) {
         .expect("response field exists")
         .as_str()
         .expect("writer pin");
-    let renewal = json!({"fencing_token":fixture.lease.fence,"task":task,
+    let renewal = json!({"fencing_token":fixture.run.fence,"task":task,
         "resource_version":plan.pointer("/pin/resource_version").expect("response field exists")});
     let renewed = call(
         fixture,
@@ -179,7 +179,7 @@ async fn write_page(
         .as_str()
         .expect("allocated page");
     let page_route = format!("{route}/pages/{page}");
-    let write = json!({"fencing_token":fixture.lease.fence,"task":task,"pin_id":pin,
+    let write = json!({"fencing_token":fixture.run.fence,"task":task,"pin_id":pin,
         "digest":digest,"contents":contents});
     for _ in 0..2 {
         let stored = call(fixture, Method::PUT, &page_route, &write, StatusCode::OK).await;
@@ -213,7 +213,7 @@ async fn commit(fixture: &Fixture, task: &Value, route: &str, plan: &Value, dige
         .expect("response field exists")
         .as_str()
         .expect("allocated page");
-    let commit = json!({"fencing_token":fixture.lease.fence,"task":task,"pin_id":pin,
+    let commit = json!({"fencing_token":fixture.run.fence,"task":task,"pin_id":pin,
         "manifest_root":checkpoint_digest::manifest_root([(page,digest)]),
         "history_digest":checkpoint_digest::history_root([]),"covered_input_sequence":0,
         "effect_watermark":0});
@@ -252,7 +252,7 @@ async fn restore(
         .as_str()
         .expect("allocated page");
     let page_route = format!("{route}/pages/{page}");
-    let restore = json!({"fencing_token":fixture.lease.fence,"task":task,
+    let restore = json!({"fencing_token":fixture.run.fence,"task":task,
         "purpose":"restore","pin_id":null,"object_ids":[]});
     let restored = call(
         fixture,
@@ -279,7 +279,7 @@ async fn restore(
         .expect("response field exists")
         .as_str()
         .expect("restore pin");
-    let query = format!("fencing_token={}&pin_id={reader}", fixture.lease.fence);
+    let query = format!("fencing_token={}&pin_id={reader}", fixture.run.fence);
     let read = success(
         fixture,
         Method::GET,
@@ -307,7 +307,7 @@ async fn refuse_upload(
     plan: &Value,
     objects: &Value,
 ) {
-    let upload = json!({"fencing_token":fixture.lease.fence,"task":task,
+    let upload = json!({"fencing_token":fixture.run.fence,"task":task,
         "pin_id":plan.pointer("/pin/id").expect("response field exists"),"objects":[{"object_id":objects.pointer("/items/0/object_id").expect("response field exists"),
         "ciphertext_sha256":"a".repeat(64),"ciphertext_length":18}]});
     // One plaintext byte requires exactly 17 ciphertext bytes; refuse before signing or I/O.

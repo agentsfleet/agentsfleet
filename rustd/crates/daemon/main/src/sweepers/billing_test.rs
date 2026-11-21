@@ -4,14 +4,14 @@ use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::unreachable_db;
 
-use afd_fleet::lease::billing_sweep::LinesSwept;
+use afd_fleet::run::billing_sweep::LinesSwept;
 
 use std::cell::Cell;
 
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    DRAIN_PASSES, FAILED, LAP_TICKS, REFUSED, drain, drains, lap, log_moved, restarts, sweep_leases,
+    DRAIN_PASSES, FAILED, LAP_TICKS, REFUSED, drain, drains, lap, log_moved, restarts, sweep_runs,
 };
 
 /// The read position survives every tick of a lap and is cleared on the
@@ -69,7 +69,7 @@ async fn a_tick_runs_passes_until_one_leaves_nothing_waiting() {
 /// tick.
 #[tokio::test]
 async fn a_tick_stops_at_the_drain_cap() {
-    let ran = drain(|| async { true }, &CancellationToken::new(), DRAIN_PASSES).await;
+    let ran = drain(async || true, &CancellationToken::new(), DRAIN_PASSES).await;
     assert_eq!(ran, DRAIN_PASSES);
 }
 
@@ -154,15 +154,15 @@ fn a_partial_pass_waits_for_the_tick() {
     assert!(!drains(&partial));
 }
 
-/// A lease pass whose datastore is gone says it is waiting, under the
+/// A run pass whose datastore is gone says it is waiting, under the
 /// outage's code, and returns for the next tick rather than ending the task.
 #[tokio::test]
-async fn a_lease_pass_with_no_datastore_waits_for_it() {
+async fn a_run_pass_with_no_datastore_waits_for_it() {
     let database = unreachable_db();
     let biller = crate::billing::biller(database.clone(), af_observability::Analytics::silent());
     let capture = Capture::install();
 
-    sweep_leases(&database, biller.as_ref(), &std::sync::Mutex::new(None)).await;
+    sweep_runs(&database, biller.as_ref(), &std::sync::Mutex::new(None)).await;
 
     assert_eq!(
         capture.only(FAILED).field("error_code"),

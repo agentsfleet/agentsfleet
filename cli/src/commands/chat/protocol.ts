@@ -50,13 +50,13 @@ export const AcceptedSchema = Schema.Struct({
 });
 export const DraftSchema = Schema.Struct({
   id: Schema.String, state: Schema.Literals(Object.values(DRAFT_STATE)), title: Schema.String,
-  etag: Schema.String, authoring_model_ref: Schema.String, cancelled_through: decimal,
+  etag: Schema.String, setup_model_ref: Schema.String,
   candidate: Schema.optionalKey(CandidateSchema), review: Schema.optionalKey(ReviewSchema),
   linked_fleet_id: Schema.optionalKey(Schema.String), accepted: Schema.optionalKey(AcceptedSchema),
 });
 export const CreatedSchema = Schema.Struct({...DraftSchema.fields, accepted: AcceptedSchema});
 export const MessageSchema = Schema.Struct({
-  sequence: decimal, operation_id: Schema.String, role: Schema.Literals(Object.values(MESSAGE_ROLE)),
+  turn_id: identifier, sequence: decimal, operation_id: Schema.String, role: Schema.Literals(Object.values(MESSAGE_ROLE)),
   state: Schema.Literals(Object.values(MESSAGE_STATE)), text: Schema.optionalKey(Schema.String),
   created_at: instant, failure: Schema.optionalKey(Schema.Struct({
     reason: Schema.String, error_code: Schema.String, recovery_action: Schema.String,
@@ -76,9 +76,6 @@ export const FleetSchema = Schema.Struct({
   setup_etag: Schema.String, setup_revision: decimal, setup_revision_id: Schema.String,
   setup: Schema.Struct({state: Schema.String, checks: Schema.Array(check)}),
   start: object, schedules: Schema.Array(ScheduleSchema),
-});
-export const PublishedSchema = Schema.Struct({
-  plugin_id: identifier, revision_id: identifier, head_revision_id: identifier, etag: Schema.String,
 });
 export const AppliedSchema = Schema.Struct({
   fleet_id: Schema.String, setup_revision: decimal, setup_etag: Schema.String, etag: Schema.String,

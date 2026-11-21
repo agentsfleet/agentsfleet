@@ -19,7 +19,7 @@ use afd_ingress::Ingress;
 use super::*;
 
 impl Fleet {
-    /// Runs lease decision routes over a fully configured native task owner.
+    /// Runs run decision routes over a fully configured native task owner.
     pub(crate) fn with_tasks(mut self, tasks: afd_fleet::task::Tasks) -> Self {
         self.tasks = tasks;
         self
@@ -67,7 +67,7 @@ impl Fleet {
 
     /// Runs approval decisions over `database`, notifying through `bus`.
     pub(crate) fn with_approval_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        let ledger = fleet::admissions(&database, &bus);
+        let ledger = fleet::turns(&database, &bus);
         self.approvals = Inbox::new(database, bus, ledger);
         self
     }
@@ -110,21 +110,21 @@ impl Fleet {
 
     /// Runs native setup and purge over a live database, notifying through `bus`.
     pub(crate) fn with_fleet_queue(self, database: Db, bus: afd_bus::Handle) -> Self {
-        self.with_fleet_queue_budgets(database, bus, afd_admission::Budgets::default())
+        self.with_fleet_queue_budgets(database, bus, afd_turns::Budgets::default())
     }
 
-    /// Refuses real admissions under explicit small ceilings, without stubbing the ledger.
+    /// Refuses real turns under explicit small ceilings, without stubbing the ledger.
     pub(crate) fn with_fleet_queue_budgets(
         mut self,
         database: Db,
         bus: afd_bus::Handle,
-        budgets: afd_admission::Budgets,
+        budgets: afd_turns::Budgets,
     ) -> Self {
         self.secrets = self.secrets.with_activity_streams(bus.clone());
         self.memories = self.memories.with_activity_streams(bus.clone());
-        self.creations = afd_authoring::Creations::new(
-            self.authoring_setup.clone(),
-            afd_admission::Admissions::for_tests(database.clone(), bus).with_budgets(budgets),
+        self.creations = afd_setup::Creations::new(
+            self.setup.clone(),
+            afd_turns::Turns::for_tests(database.clone(), bus).with_budgets(budgets),
         );
         self.fleets = Fleets::new(database);
         self
@@ -144,10 +144,10 @@ impl Fleet {
     /// Runs the signed-ingress routes over a live database and `bus`.
     ///
     /// Resolve bindings and secrets through production stores, then commit the
-    /// admission. The bus receives the notification after acceptance.
+    /// turn. The bus receives the notification after acceptance.
     pub(crate) fn with_live_ingress(mut self, database: Db, bus: afd_bus::Handle) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        let ledger = afd_admission::Admissions::for_tests(database.clone(), bus);
+        let ledger = afd_turns::Turns::for_tests(database.clone(), bus);
         self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
             database.clone(),
             SecretVault::new(database, kek, Entropy::new()),
@@ -158,11 +158,11 @@ impl Fleet {
 
     /// Admit a verified schedule fire to the live ledger and notify through `bus`.
     pub(crate) fn with_live_fire(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        let ledger = afd_admission::Admissions::for_tests(database.clone(), bus);
+        let ledger = afd_turns::Turns::for_tests(database.clone(), bus);
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
-                std::sync::Arc::new(QStash::fixed(
+                Arc::new(QStash::fixed(
                     reqwest::Client::new(),
                     af_crypto::secret::SecretString::new(String::new()),
                     SCHEDULE_DESTINATION.to_owned(),
@@ -177,7 +177,7 @@ impl Fleet {
 
     /// Admit fleet messages to the live ledger and send wake notifications.
     pub(crate) fn with_steering_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
-        self.steering = Steer::new(afd_admission::Admissions::for_tests(database, bus));
+        self.steering = Steer::new(afd_turns::Turns::for_tests(database, bus));
         self
     }
 
@@ -198,17 +198,17 @@ impl Fleet {
         self
     }
 
-    /// A lease plane whose memory verbs and mint answer `refusal`, for a case
+    /// A run plane whose memory verbs and mint answer `refusal`, for a case
     /// that proves how those routes render it.
-    pub(crate) fn with_lease_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
-        self.leases = NoWork::refusing(refusal);
+    pub(crate) fn with_run_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
+        self.runs = NoWork::refusing(refusal);
         self
     }
 
-    /// A lease plane whose mint succeeds with `token`, for the case that
+    /// A run plane whose mint succeeds with `token`, for the case that
     /// proves the route writes it into the body and nowhere else.
-    pub(crate) fn with_lease_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {
-        self.leases = NoWork::minting(token, expires_at);
+    pub(crate) fn with_run_minting(mut self, token: &'static str, expires_at: Timestamp) -> Self {
+        self.runs = NoWork::minting(token, expires_at);
         self
     }
 
@@ -265,10 +265,10 @@ impl Fleet {
         &self.capabilities
     }
 
-    /// The lease plane's poll log, shared with the router this fleet builds,
+    /// The run plane's poll log, shared with the router this fleet builds,
     /// so a case taken before `router` reads what the handler handed it.
-    pub(crate) fn lease_plane(&self) -> NoWork {
-        self.leases.clone()
+    pub(crate) fn run_plane(&self) -> NoWork {
+        self.runs.clone()
     }
 
     /// The live fleet store, for a stream fixture that changes rows directly.

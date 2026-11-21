@@ -3,9 +3,9 @@
 import { z } from "zod";
 
 export const SETUP_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
-const RESOURCE = {models: "models", drafts: "drafts", fleets: "fleets", plugins: "plugins"} as const;
-const SUFFIX = {tasks: "tasks", messages: "messages", cancellations: "cancellations", events: "events", stream: "stream",
-  revisions: "revisions", schedules: "schedules", sync: "sync", authoringContext: "authoring-context"} as const;
+const RESOURCE = {models: "models", drafts: "drafts", fleets: "fleets"} as const;
+const SUFFIX = {tasks: "tasks", messages: "messages", turns: "turns", stream: "stream",
+  revisions: "revisions", schedules: "schedules", sync: "sync", setupContext: "setup-context"} as const;
 const PAGE = ["limit", "starting_after"] as const;
 const uuid = z.uuidv7();
 /** `bodyless`: a POST action that takes no body, so the proxy forwards none and asks for no JSON media type. */
@@ -24,14 +24,15 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
     return {stream: false, query: [...PAGE, "purpose"]};
   }
   if (resource === RESOURCE.drafts) return draft(parts, method);
-  if (resource === RESOURCE.plugins) return plugin(parts, method);
   if (resource !== RESOURCE.fleets) return undefined;
   if (parts.length === 1 && method === SETUP_METHOD.get) return FLEET_LIST;
   if (parts.length === 1 && method === SETUP_METHOD.post) return ORDINARY;
   if (!uuid.safeParse(id).success) return undefined;
   if (parts.length === 2 && [SETUP_METHOD.get, SETUP_METHOD.patch].some((allowed) => allowed === method)) return ORDINARY;
   if (parts.length === 4 && child === SUFFIX.tasks && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
-  if (parts.length === 3 && child === SUFFIX.authoringContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};
+  // Stop: a turn's status PATCH (`FleetRoute::Turn`).
+  if (parts.length === 4 && child === SUFFIX.turns && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
+  if (parts.length === 3 && child === SUFFIX.setupContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};
   if (parts.length === 3 && child === SUFFIX.revisions && method === SETUP_METHOD.post) return ORDINARY;
   if (parts.length === 4 && child === SUFFIX.schedules && uuid.safeParse(member).success
     && [SETUP_METHOD.get, SETUP_METHOD.patch, SETUP_METHOD.delete].some((allowed) => allowed === method)) return ORDINARY;
@@ -53,26 +54,8 @@ function draft(parts: readonly string[], method: string): MatchedRoute | undefin
     if (method === SETUP_METHOD.get) return PAGED;
     return method === SETUP_METHOD.post ? ORDINARY : undefined;
   }
-  if (parts.length === 3 && child === SUFFIX.cancellations && method === SETUP_METHOD.post) return ORDINARY;
-  if (parts.length === 4 && child === SUFFIX.events && tail === SUFFIX.stream && method === SETUP_METHOD.get) return {stream: true, query: []};
+  if (parts.length === 4 && child === SUFFIX.turns && tail === SUFFIX.stream && method === SETUP_METHOD.get) return {stream: true, query: []};
+  // Stop: a draft turn's status PATCH (`WorkspaceRoute::DraftTurn`).
+  if (parts.length === 4 && child === SUFFIX.turns && uuid.safeParse(tail).success && method === SETUP_METHOD.patch) return ORDINARY;
   return undefined;
-}
-
-function plugin(parts: readonly string[], method: string): MatchedRoute | undefined {
-  const [, id, child, revision] = parts;
-  if (parts.length === 1) {
-    if (method === SETUP_METHOD.get) return PAGED;
-    return method === SETUP_METHOD.post ? ORDINARY : undefined;
-  }
-  if (!uuid.safeParse(id).success) return undefined;
-  if (parts.length === 2) {
-    if (method === SETUP_METHOD.get) return {stream: false, query: ["revision_id"]};
-    return method === SETUP_METHOD.delete ? ORDINARY : undefined;
-  }
-  if (child !== SUFFIX.revisions) return undefined;
-  if (parts.length === 3) {
-    if (method === SETUP_METHOD.get) return PAGED;
-    return method === SETUP_METHOD.post ? ORDINARY : undefined;
-  }
-  return parts.length === 4 && uuid.safeParse(revision).success && method === SETUP_METHOD.get ? ORDINARY : undefined;
 }

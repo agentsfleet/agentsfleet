@@ -4,15 +4,15 @@ use super::{record, row::Effect};
 use crate::{
     Result,
     error::{query, rejected},
-    task::{TaskLease, TaskRefusal, Tasks, github::Reconciled, guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, github::Reconciled, guard, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskEffect, TaskEffectsPage, TaskEffectsQuery};
 
-pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<TaskEffect> {
-    let mut effect = load(tasks, lease, id).await?;
-    if effect.state == "prepared" && super::recover::abandon(tasks, lease, &effect).await? {
-        effect = load(tasks, lease, id).await?;
+pub(super) async fn one(tasks: &Tasks, run: TaskRun<'_>, id: &Uuid7) -> Result<TaskEffect> {
+    let mut effect = load(tasks, run, id).await?;
+    if effect.state == "prepared" && super::recover::abandon(tasks, run, &effect).await? {
+        effect = load(tasks, run, id).await?;
     }
     if matches!(effect.state.as_str(), "issued" | "unknown") {
         let github = tasks
@@ -21,7 +21,7 @@ pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Resu
             .as_ref()
             .ok_or(TaskRefusal::InvalidTarget)?;
         let session = github
-            .read_session(lease, &effect.target()?.repository)
+            .read_session(run, &effect.target()?.repository)
             .await?;
         match session
             .reconcile(
@@ -34,7 +34,7 @@ pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Resu
         {
             Reconciled::Confirmed(commit) => {
                 record::confirm(tasks, &effect, &commit).await?;
-                return load(tasks, lease, id).await?.wire();
+                return load(tasks, run, id).await?.wire();
             }
             Reconciled::Unknown => {}
         }
@@ -42,10 +42,10 @@ pub(super) async fn one(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Resu
     effect.wire()
 }
 
-async fn load(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<Effect> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+async fn load(tasks: &Tasks, run: TaskRun<'_>, id: &Uuid7) -> Result<Effect> {
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     let effect = sqlx::query_as(include_str!("sql/read.sql"))
         .bind(id)
         .bind(&current.fleet_id)
@@ -64,7 +64,7 @@ async fn load(tasks: &Tasks, lease: TaskLease<'_>, id: &Uuid7) -> Result<Effect>
 
 pub(super) async fn list(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<TaskEffectsQuery>,
 ) -> Result<TaskEffectsPage> {
     let after = input
@@ -79,14 +79,14 @@ pub(super) async fn list(
     }
     let watermark = i64::try_from(input.ordinal_after)
         .map_err(|_overflow| rejected("Invalid effect watermark"))?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::lease(&mut tx, lease).await?;
+    let current = guard::run(&mut tx, run).await?;
     if current.task_id.as_ref().map(Uuid7::as_str) != Some(input.task_id.as_str()) {
         return Err(TaskRefusal::NotFound.into());
     }
     let mut effects: Vec<Effect> = sqlx::query_as(include_str!("sql/list.sql"))
-        .bind(crate::task::guard::wire(&input.task_id)?)
+        .bind(guard::wire(&input.task_id)?)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(after.max(watermark))

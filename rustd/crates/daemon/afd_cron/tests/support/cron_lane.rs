@@ -104,7 +104,7 @@ impl CronLane {
     ///
     /// Every fence case starts here rather than from `create`, and the reason is
     /// worth naming because it cost a full lane run to find: a freshly created
-    /// schedule is already claimed by its creator, with a live lease. "Claim an
+    /// schedule is already claimed by its creator, with a live run. "Claim an
     /// unheld row" is not reachable from a bare create at the same instant, so a
     /// suite that tried it was not testing a contended claim — it was testing
     /// the born-held state and reading the answer as a failure.
@@ -165,12 +165,12 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// The admission ledger every fire in this suite writes through.
+    /// The turn ledger every fire in this suite writes through.
     ///
     /// Built from the lane's own pool and its bus, so a test names what it is
     /// exercising rather than restating how a ledger is assembled.
-    pub(crate) fn admissions(&self) -> afd_admission::Admissions {
-        afd_admission::Admissions::for_tests(self.database.clone(), self.bus.clone())
+    pub(crate) fn turns(&self) -> afd_turns::Turns {
+        afd_turns::Turns::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// One connection on the lane, for the direct reads a case needs.
@@ -181,24 +181,24 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// Pushes a claim's lease into the past, as an abandoned syncer leaves it.
+    /// Pushes a claim's run into the past, as an abandoned syncer leaves it.
     ///
-    /// A test cannot wait out `SYNC_LEASE` — thirty seconds per case would be
+    /// A test cannot wait out `SYNC_RUN` — thirty seconds per case would be
     /// the slowest suite in the lane — and sleeping would prove only that the
     /// clock advances. Moving the stored deadline a millisecond behind the
     /// database's clock is the same state a died syncer leaves behind, reached
     /// in one statement.
-    pub(crate) async fn expire_lease(&self, schedule: &Uuid7) {
+    pub(crate) async fn expire_run(&self, schedule: &Uuid7) {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.schedules \
-             SET sync_lease_expires_at = clock_timestamp() - interval '1 millisecond' \
+             SET sync_run_expires_at = clock_timestamp() - interval '1 millisecond' \
              WHERE id = $1",
         )
         .bind(schedule)
         .execute(&mut *connection)
         .await
-        .expect("expiring a lease");
+        .expect("expiring a run");
     }
 
     /// Moves a `once` schedule's instant to a minute before the row's last

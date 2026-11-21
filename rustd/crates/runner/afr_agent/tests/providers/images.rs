@@ -13,7 +13,7 @@ use afr_tools::catalog::IMAGE;
 use serde_json::json;
 
 use super::support::wires::Wire;
-use super::support::{Fake, engine_hosting, lease, run_with};
+use super::support::{Fake, engine_hosting, payload, run_with};
 use super::{ANSWER, CALL_ID};
 
 /// The screenshot the image suite's workspace holds, forty kibibytes of PNG.
@@ -22,15 +22,32 @@ const SHOT_BYTES: usize = 40 * 1024;
 /// How long the suite waits on the executor before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
 
+/// A real `format` image, 64 by 64, padded with zeros past its end marker to
+/// `length` when that is longer: decoders stop at the marker.
+pub(crate) fn real_image(format: image::ImageFormat, length: usize) -> Vec<u8> {
+    let picture = image::RgbImage::from_pixel(64, 64, image::Rgb([200, 80, 40]));
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(picture)
+        .write_to(&mut bytes, format)
+        .unwrap();
+    let mut bytes = bytes.into_inner();
+    if format == image::ImageFormat::Png && length > bytes.len() {
+        bytes.resize(length, 0);
+    }
+    bytes
+}
+
 /// A real executor served over a scratch workspace holding [`SHOT`].
 async fn workspace_with_shot() -> (tempfile::TempDir, afr_executor::Client) {
     let scratch = tempfile::tempdir().unwrap();
     let socket = scratch.path().join("executor.sock");
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
-    let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-    png.resize(SHOT_BYTES, 0);
-    std::fs::write(root.join(SHOT), png).unwrap();
+    std::fs::write(
+        root.join(SHOT),
+        real_image(image::ImageFormat::Png, SHOT_BYTES),
+    )
+    .unwrap();
     tokio::spawn(async move { afr_executor::serve(&socket, &root).await });
     let client =
         afr_executor::Client::connect_within(&scratch.path().join("executor.sock"), PATIENCE)
@@ -54,9 +71,9 @@ async fn test_image_attaches_to_next_turn() {
             wire.answer(ANSWER),
         ])
         .await;
-        let leased = lease(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
+        let assigned = payload(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
 
-        let (output, _frames) = run_with(&hosting(&fake), &leased, Some(&client)).await;
+        let (output, _frames) = run_with(&hosting(&fake), &assigned, Some(&client)).await;
 
         assert!(
             matches!(output.result.outcome, ResultOutcome::Completed(_)),
@@ -95,9 +112,9 @@ async fn an_image_call_on_the_chat_wire_is_refused_before_any_read() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
+    let assigned = payload(&wire.provider(), &[IMAGE.name()], "look at the screenshot");
 
-    let (output, _frames) = run_with(&hosting(&fake), &leased, Some(&client)).await;
+    let (output, _frames) = run_with(&hosting(&fake), &assigned, Some(&client)).await;
 
     let trace = output.trace.unwrap();
     assert_eq!(trace.calls[0].status, ToolCallStatus::Failed);

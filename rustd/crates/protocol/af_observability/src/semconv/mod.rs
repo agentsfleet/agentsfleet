@@ -7,7 +7,7 @@
 //! # What is here, and what deliberately is not
 //!
 //! Keys and the closed values a key is spelled WITH. Not family names — those
-//! live in `docs/metrics.census.tsv`, which is the single source of truth for
+//! live in `metrics/census.tsv`, which is the single source of truth for
 //! the export, and a second copy here would be a second thing to drift.
 //!
 //! Codes and attributes are still added as the milestone that emits them
@@ -52,7 +52,7 @@ pub const ATTR_HTTP_REQUEST_METHOD: &str = "http.request.method";
 /// The matched route TEMPLATE — never a concrete path.
 ///
 /// This is the low-cardinality half of the contract. A real path carries
-/// workspace, fleet and lease identifiers, so exporting one would put tenant
+/// workspace, fleet and run identifiers, so exporting one would put tenant
 /// identity into span attributes AND give the backend a distinct route value
 /// per request, which is the same thing as having no route dimension at all.
 pub const ATTR_HTTP_ROUTE: &str = "http.route";
@@ -114,12 +114,12 @@ pub const ATTR_WORKSPACE_ID: &str = "agentsfleet.workspace.id";
 pub const ATTR_TENANT_ID: &str = "agentsfleet.tenant.id";
 
 /// The event a run executed.
-pub const ATTR_EVENT_ID: &str = "agentsfleet.event.id";
+pub const ATTR_TURN_ID: &str = "agentsfleet.turn.id";
 
-/// Event creation to lease issue, both instants on the lease row.
+/// Event creation to run issue, both instants on the run row.
 pub const ATTR_DELIVERY_QUEUE_WAIT_MS: &str = "agentsfleet.delivery.queue_wait_ms";
 
-/// The runner's memory read, when the lease carried no window.
+/// The runner's memory read, when the run carried no window.
 pub const ATTR_DELIVERY_MEMORY_MS: &str = "agentsfleet.delivery.memory_ms";
 
 /// The model's turns, as the runner measured them.
@@ -134,7 +134,7 @@ pub const ATTR_DELIVERY_SANDBOX_WAIT_MS: &str = "agentsfleet.delivery.sandbox_wa
 /// The runner's hold-or-destroy up to the start of its report post.
 pub const ATTR_DELIVERY_SETTLE_MS: &str = "agentsfleet.delivery.settle_ms";
 
-/// The report's receipt to the `event_complete` publish, on this daemon.
+/// The report's receipt to the `turn_complete` publish, on this daemon.
 pub const ATTR_DELIVERY_COMPLETE_MS: &str = "agentsfleet.delivery.complete_ms";
 
 /// Which direction a token count is: prompt, or completion.
@@ -165,7 +165,7 @@ pub const DELIVERY_SPAN_KEYS: &[&str] = &[
     ATTR_EXECUTION_POSTURE,
     ATTR_WORKSPACE_ID,
     ATTR_TENANT_ID,
-    ATTR_EVENT_ID,
+    ATTR_TURN_ID,
     ATTR_DELIVERY_QUEUE_WAIT_MS,
     ATTR_DELIVERY_MEMORY_MS,
     ATTR_DELIVERY_MODEL_MS,
@@ -218,25 +218,17 @@ pub const LABEL_STAGE: &str = "stage";
 /// Which lifecycle status a fleet count is about.
 pub const LABEL_STATUS: &str = "status";
 
-/// Which side of the platform boundary a failed run fell on.
-///
-/// Carried only by the failing half of a family: a successful run has no fault,
-/// so the label is absent rather than written with a third "none" value. A
-/// `{fault!="workload"}` matcher therefore selects successes and platform
-/// failures together, which is exactly the objective's valid-event set.
-pub const LABEL_FAULT: &str = "fault";
-
 /// Which kind of thing a count is split by, where one family counts two
-/// causes of the same event — a run started fresh or by reclaim.
+/// causes of the same event — a run started fresh or by reassignment.
 pub const LABEL_KIND: &str = "kind";
 
-/// Which of the lease path's in-process caches a lookup asked.
+/// Which of the run path's in-process caches a lookup asked.
 pub const LABEL_CACHE: &str = "cache";
 
 /// Which committed automatic quarantine transition a runner count records.
 pub const LABEL_CHANGE: &str = "change";
 
-/// Which product's work a billing count is about: a fleet lease or a setup
+/// Which product's work a billing count is about: a fleet run or a setup
 /// chat attempt.
 pub const LABEL_WORK_TYPE: &str = "work_type";
 
@@ -271,7 +263,6 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_STAGE,
     LABEL_STATUS,
     LABEL_KIND,
-    LABEL_FAULT,
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,
     LABEL_CACHE,

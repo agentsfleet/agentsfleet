@@ -195,7 +195,7 @@ describe("group nodes print help that survives a pipe", () => {
 
 describe("JSON mode emits the machine envelope", () => {
   it("a rejected invocation answers with a parseable error envelope", async () => {
-    const result = await runFleetctl(["--json", "fleet", "events"], { env: env() });
+    const result = await runFleetctl(["--json", "fleet", "turns"], { env: env() });
     assert.equal(result.code, EXIT_VALIDATION);
     const parsed = JSON.parse(result.stderr.trim()) as {
       error?: { code?: string; message?: string };

@@ -43,7 +43,7 @@ jobs:
       - name: Install root dependencies
         run: bun install --frozen-lockfile
       - name: Run app + design-system + agentsfleet lint gate
-        run: make lint-apps-designsystem-cli
+        run: make lint-app lint-design-system lint-cli
 
   lint-agentsfleet-sh:
     runs-on: ubuntu-latest

@@ -1,6 +1,6 @@
 //! Where a key set comes from, behind a seam.
 //!
-//! The seam exists so Dimension 4.2's hardest claim — *a key-id miss triggers
+//! The seam exists so the key cache's hardest claim — *a key-id miss triggers
 //! EXACTLY ONE refresh* — is a counter a test reads, not a behaviour inferred
 //! from network traces. It also lets the whole verifier run against pinned
 //! key-set fixtures with no network at all.
@@ -62,7 +62,7 @@ impl StaticKeySet {
 
     /// How many times the document has been read.
     ///
-    /// The number Dimension 4.2 asserts on: a key-id miss must move this by
+    /// The number the key cache's tests assert on: a key-id miss must move this by
     /// exactly one, however many requests race into the miss together.
     #[must_use]
     pub fn fetches(&self) -> usize {

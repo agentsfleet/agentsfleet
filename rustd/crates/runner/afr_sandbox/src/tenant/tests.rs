@@ -174,7 +174,7 @@ fn the_entry_refuses_a_link_it_does_not_hold_alone() {
     }
 }
 
-/// A leaf file the engine cannot open refuses the lease naming that file, so
+/// A leaf file the engine cannot open refuses the run naming that file, so
 /// the operator reads which of the two the kernel would not give, and how:
 /// `cgroup.procs` is opened to write, `memory.events` to read.
 #[test]

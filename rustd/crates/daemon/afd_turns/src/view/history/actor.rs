@@ -1,0 +1,50 @@
+//! One actor's events in one fleet, newest first: the read behind a schedule's
+//! run list, where the actor is `cron:<schedule_id>`.
+
+use af_core::id::Uuid7;
+use jiff_sqlx::ToSqlx as _;
+
+use super::statement::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
+use super::{Cursor, History, MAX_LIMIT, TurnRow};
+use crate::view::error::{self, Result};
+
+/// What the read was doing, for the operator's log line.
+const CONTEXT_ACTOR_PAGE: &str = "read one actor's events in a fleet";
+
+impl History {
+    /// `actor`'s events in one fleet, newest first, matched exactly.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_workspace`].
+    pub async fn page_of_actor(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        actor: &str,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> Result<Vec<TurnRow>> {
+        let query = cursor.map_or_else(
+            || {
+                sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR)
+                    .bind(workspace)
+                    .bind(fleet)
+            },
+            |at| {
+                sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR_AFTER)
+                    .bind(workspace)
+                    .bind(fleet)
+                    .bind(at.created_at.to_sqlx())
+                    .bind(&at.turn_id)
+            },
+        );
+        let mut connection = self.database.acquire().await?;
+        let rows = query
+            .bind(actor)
+            .bind(limit.clamp(1, MAX_LIMIT))
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_ACTOR_PAGE))?;
+        rows.iter().map(TurnRow::read).collect()
+    }
+}

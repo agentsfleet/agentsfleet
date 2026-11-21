@@ -1,7 +1,7 @@
 /** A send whose answer never reached the page, the Claude.ai way: the row
  * leaves the thread, the text returns to the composer, and Resend delivers it
  * through the real steer route under the operation id it was first sent with
- * — so the daemon answers the first admission's event instead of running it
+ * — so the daemon answers the first turn instead of running it
  * twice. Proven in the same page, and after a reload. */
 import type { Page, Request, Route } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -25,17 +25,17 @@ const RESEND_LABEL = "Resend";
 const SEND_UNCONFIRMED = "Couldn't confirm this message was sent.";
 const POST = "POST";
 const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const AcceptedSchema = z.object({ event_id: z.uuidv7() });
+const AcceptedSchema = z.object({ turn_id: z.uuidv7() });
 const STORAGE_KEY_PREFIX = "agentsfleet:pending-sends";
 const KEY_SEPARATOR = ":";
 const STATE_SENDING = "sending";
 
-type Steers = { lostAnswers: number; operationIds: string[]; eventIds: string[] };
+type Steers = { lostAnswers: number; operationIds: string[]; turnIds: string[] };
 
 type ResendPage = { workspaceId: string; fleetId: string; href: string; message: string };
 
 // A seeded fleet, and every steer POST seen: each goes through to the
-// daemon, and its operation id and the event id the daemon answered are read
+// daemon, and its operation id and the turn id the daemon answered are read
 // off the wire. With `loseFirstAnswer`, the first steer is admitted but its
 // answer never reaches the page — the acknowledgement lost on the way back.
 async function withResendPage(
@@ -47,7 +47,7 @@ async function withResendPage(
   const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${FLEET_PREFIX}${crypto.randomUUID()}` });
   const href = workspaceHref(workspaceId, `fleets/${fleet.id}`);
   const message = `resend probe ${crypto.randomUUID().slice(0, 8)}`;
-  const steers: Steers = { lostAnswers: 0, operationIds: [], eventIds: [] };
+  const steers: Steers = { lostAnswers: 0, operationIds: [], turnIds: [] };
   const steerPath = steerMessagesUrl(workspaceId, fleet.id);
   await page.route((url) => url.pathname === steerPath, async (route) => {
     const request = route.request();
@@ -68,7 +68,7 @@ async function withResendPage(
 
 async function answerThrough(route: Route, steers: Steers, loseFirstAnswer: boolean): Promise<void> {
   const response = await route.fetch();
-  steers.eventIds.push(AcceptedSchema.parse(await response.json()).event_id);
+  steers.turnIds.push(AcceptedSchema.parse(await response.json()).turn_id);
   if (loseFirstAnswer && steers.lostAnswers === 0) {
     steers.lostAnswers += 1;
     return route.abort("failed");
@@ -120,13 +120,13 @@ test("test_failed_send_resend_journey", async ({ page }) => {
     await expect(composer.getByText(SEND_UNCONFIRMED)).toHaveCount(0);
     await expect(draft).toHaveValue("");
     // One operation, admitted once: Resend carried the first send's id, and
-    // the daemon answered it with the event it had already admitted. The
+    // the daemon answered it with the turn it had already admitted. The
     // checks above pass on the optimistic row, before that answer is back.
-    await expect.poll(() => steers.eventIds.length).toBe(2);
+    await expect.poll(() => steers.turnIds.length).toBe(2);
     const [firstOperation, resentOperation] = steers.operationIds;
     expect(firstOperation).toMatch(UUID_V7);
     expect(resentOperation).toBe(firstOperation);
-    const [admitted, answered] = steers.eventIds;
+    const [admitted, answered] = steers.turnIds;
     expect(admitted).toMatch(UUID_V7);
     expect(answered).toBe(admitted);
   });
@@ -138,7 +138,7 @@ test("test_reload_recovers_unconfirmed_send", async ({ page }) => {
     // it, and its ledger entry is still `sending` in storage when this document
     // loads.
     const operationId = v7();
-    const admitted = await clientFor(FIXTURE_KEY.regular).post<{ event_id: string }>(
+    const admitted = await clientFor(FIXTURE_KEY.regular).post<{ turn_id: string }>(
       `/v1/workspaces/${workspaceId}/fleets/${fleetId}/messages`,
       { message, operation_id: operationId },
     );
@@ -162,8 +162,8 @@ test("test_reload_recovers_unconfirmed_send", async ({ page }) => {
     await notices.getByRole("button", { name: RESEND_LABEL }).click();
     await expect(notices).toHaveCount(0);
     await expect(transcript.getByText(message, { exact: true })).toHaveCount(1);
-    await expect.poll(() => steers.eventIds.length).toBe(1);
+    await expect.poll(() => steers.turnIds.length).toBe(1);
     expect(steers.operationIds).toEqual([operationId]);
-    expect(steers.eventIds).toEqual([admitted.event_id]);
+    expect(steers.turnIds).toEqual([admitted.turn_id]);
   });
 });

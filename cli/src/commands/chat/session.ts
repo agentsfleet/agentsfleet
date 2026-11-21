@@ -3,19 +3,22 @@
 import { Effect } from "effect";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { CLI_ERROR_TAG, ValidationError, type NetworkError, type ServerError } from "../../errors/index.ts";
-import { DraftSchema, CreatedSchema, AcceptedSchema, MessagesSchema, type Draft, type MessagePage, type Review } from "./protocol.ts";
+import { DraftSchema, CreatedSchema, AcceptedSchema, MessagesSchema, MESSAGE_ROLE, MESSAGE_STATE, type Draft, type MessagePage, type Review } from "./protocol.ts";
 import { IF_MATCH, type Transport } from "./transport.ts";
 import { RetainedRequest } from "./retained-request.ts";
 
-export const DRAFT_SOURCE = {blank: "blank", fleet: "fleet", plugin: "plugin", definition: "definition"} as const;
+export const DRAFT_SOURCE = {blank: "blank", fleet: "fleet", definition: "definition"} as const;
 /** An operator-authored native Definition, forwarded whole for the daemon to validate. */
 export type DefinitionDocument = Readonly<Record<string, unknown>>;
 export type DraftSource =
   | { readonly kind: typeof DRAFT_SOURCE.blank }
   | { readonly kind: typeof DRAFT_SOURCE.fleet; readonly fleet_id: string; readonly setup_revision: string }
-  | { readonly kind: typeof DRAFT_SOURCE.plugin; readonly plugin_id: string; readonly revision_id: string }
   | { readonly kind: typeof DRAFT_SOURCE.definition; readonly definition: DefinitionDocument };
 export type Sent = { readonly draft_id: string; readonly sequence: string };
+/** The request states Stop still ends; any other has its answer. */
+const UNFINISHED: ReadonlySet<string> = new Set([MESSAGE_STATE.queued, MESSAGE_STATE.running]);
+/** The one status a turn's PATCH writes. */
+const STOPPED = {status: MESSAGE_STATE.cancelled} as const;
 type ReadError = ServerError | NetworkError | ValidationError;
 
 export class DraftSession {
@@ -63,7 +66,7 @@ export class DraftSession {
         Effect.tap((sent) => Effect.sync(() => { this.#sequence = sent.sequence; })),
       )
       : this.#transport.call({path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
-        body: {source: this.#source, authoring_model_ref: this.#model, message, operation_id: key}}, CreatedSchema).pipe(
+        body: {source: this.#source, setup_model_ref: this.#model, message, operation_id: key}}, CreatedSchema).pipe(
         Effect.tap((draft) => this.#remember(draft)),
         Effect.map((draft) => ({draft_id: draft.id, sequence: draft.accepted.sequence})),
         Effect.tap((sent) => Effect.sync(() => { this.#sequence = sent.sequence; })),
@@ -72,15 +75,15 @@ export class DraftSession {
   }
 
   /**
-   * Opens the draft from its source alone, before any message. A Definition,
-   * a pinned Plugin revision or a fleet's setup revision already carries a
-   * complete setup, so it can be reviewed at once. Shares the send's retained
+   * Opens the draft from its source alone, before any message. A Definition
+   * or a fleet's setup revision already carries a complete setup, so it can be
+   * reviewed at once. Shares the send's retained
    * identity: either one is the draft's first write.
    */
   create(): Effect.Effect<Sent, ReadError> {
     return this.#guard(this.#send.run({source: this.#source.kind}, (key) => this.#transport.call({
       path: this.#transport.drafts, method: HTTP_METHOD.post, retry: null,
-      body: {source: this.#source, authoring_model_ref: this.#model, operation_id: key}}, DraftSchema).pipe(
+      body: {source: this.#source, setup_model_ref: this.#model, operation_id: key}}, DraftSchema).pipe(
       Effect.tap((draft) => this.#remember(draft)),
       Effect.map((draft) => ({draft_id: draft.id, sequence: this.#sequence})),
     )));
@@ -88,7 +91,7 @@ export class DraftSession {
 
   retry(): Effect.Effect<Sent, ReadError> { return this.#guard(this.#send.retry()); }
 
-  patch(patch: {authoring_model_ref?: string; instance_name?: string}): Effect.Effect<Draft, ReadError> {
+  patch(patch: {setup_model_ref?: string; instance_name?: string}): Effect.Effect<Draft, ReadError> {
     return this.#guard(this.refresh().pipe(Effect.flatMap((draft) => this.#transport.call({
       path: this.path, method: HTTP_METHOD.patch, headers: {[IF_MATCH]: draft.etag}, body: patch, retry: null,
     }, DraftSchema)), Effect.tap((draft) => this.#remember(draft))));
@@ -114,11 +117,29 @@ export class DraftSession {
       : absent()));
   }
 
+  /** Stops every request this draft has not finished, each through its turn's PATCH. */
   stop(): Effect.Effect<void, ReadError> {
     return this.#guard(Effect.suspend<void, ReadError, never>(() => this.#id
-      ? this.#transport.empty({path: `${this.path}/cancellations`, method: HTTP_METHOD.post,
-        body: {through_sequence: this.#sequence}, retry: null})
+      ? this.#unfinished().pipe(Effect.flatMap((turns) =>
+        Effect.forEach(turns, (turn) => this.#stopTurn(turn), {discard: true})))
       : absent()));
+  }
+
+  /** The turns of every queued or running request, oldest first, across every page. */
+  #unfinished(cursor?: string, found: readonly string[] = []): Effect.Effect<readonly string[], ReadError> {
+    return this.page(cursor).pipe(Effect.flatMap((page) => {
+      const turns = [...found, ...page.items
+        .filter((message) => message.role === MESSAGE_ROLE.user && UNFINISHED.has(message.state))
+        .map((message) => message.turn_id)];
+      return page.next_cursor ? this.#unfinished(page.next_cursor, turns) : Effect.succeed(turns);
+    }));
+  }
+
+  /** A turn whose answer won the race answers 409; it is finished either way. */
+  #stopTurn(turn: string): Effect.Effect<void, ReadError> {
+    return this.#transport.empty({path: `${this.path}/turns/${turn}`, method: HTTP_METHOD.patch,
+      body: STOPPED, retry: null}).pipe(
+      Effect.catchIf((error) => error._tag === CLI_ERROR_TAG.server && error.status === 409, () => Effect.void));
   }
 
   remove(): Effect.Effect<void, ReadError> {

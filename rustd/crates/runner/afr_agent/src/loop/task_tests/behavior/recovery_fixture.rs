@@ -19,7 +19,7 @@ pub(super) struct Receipts {
 }
 
 #[async_trait::async_trait]
-impl LeaseVerbs for Receipts {
+impl RunVerbs for Receipts {
     async fn schedules(&self, _: ScheduleCall<'_>) -> Result<String, Unanswered> {
         Err(Unanswered::Unreachable)
     }
@@ -145,7 +145,7 @@ pub(super) fn receipts() -> Receipts {
 
 pub(super) fn accepted(item_id: &str, sequence: u64) -> TaskAcceptedInput {
     TaskAcceptedInput {
-        source_admission_id: PENDING.to_owned(),
+        source_turn_id: PENDING.to_owned(),
         plan_digest: "f".repeat(64),
         item_id: item_id.to_owned(),
         task: DecisionTaskVersion {
@@ -168,7 +168,7 @@ pub(super) async fn execute(
     recovered: Option<&crate::TaskRecovery>,
 ) -> crate::Result<crate::RunOutput> {
     let engine = super::super::super::tests::engine(vec![], script);
-    let lease = assigned_lease(&[], 16_384);
+    let this_run = assigned_run(&[], 16_384);
     let prepared = PreparedTask {
         execution_deadline: native.goals.inputs.execution_deadline,
         inputs: native.goals.inputs.clone(),
@@ -177,7 +177,7 @@ pub(super) async fn execute(
     engine
         .run(AgentRun {
             recovery: None,
-            lease: &lease,
+            run: &this_run,
             prepared_task: Some(&prepared),
             recovered_task: recovered,
             recovered_turn: None,

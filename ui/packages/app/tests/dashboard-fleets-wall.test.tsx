@@ -3,13 +3,13 @@ import type { ProfilerOnRenderCallback } from "react";
 import { act, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceStreamProvider } from "@/components/domain/conversation/stream/useWorkspaceStream";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import {
   activityFrame,
   CATCHING_UP_LABEL,
   completionFrame,
   CURRENT_LABEL,
-  eventRow,
+  turnRow,
   FakeEventSource,
   FEED_SHOWN_LABEL,
   FleetProbe,
@@ -48,7 +48,7 @@ describe("workspace fleet wall provider", () => {
     flushAnimationFrame();
 
     expect(FakeEventSource.instances).toHaveLength(1);
-    expect(source.url).toBe(`/live/v1/workspaces/${WORKSPACE_ID}/events/stream`);
+    expect(source.url).toBe(`/live/v1/workspaces/${WORKSPACE_ID}/turns/stream`);
     expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
     expect(view.getByTestId(FLEET_B).textContent).toContain(NO_FEED_LABEL);
   });
@@ -176,9 +176,9 @@ describe("workspace fleet wall provider", () => {
       ok: true,
       json: async () => ({
         items: [
-          eventRow(FLEET_A, "recovered_a"),
-          eventRow(FLEET_B, "recovered_b"),
-          eventRow("unsubscribed", "ignored"),
+          turnRow(FLEET_A, "recovered_a"),
+          turnRow(FLEET_B, "recovered_b"),
+          turnRow("unsubscribed", "ignored"),
         ],
         next_cursor: null,
       }),
@@ -201,7 +201,7 @@ describe("workspace fleet wall provider", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `/live/v1/workspaces/${WORKSPACE_ID}/events?limit=${BACKFILL_PAGE_LIMIT}`,
+      `/live/v1/workspaces/${WORKSPACE_ID}/turns?limit=${BACKFILL_PAGE_LIMIT}`,
     );
     expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
     expect(view.getByTestId(FLEET_B).textContent).toContain(FEED_SHOWN_LABEL);

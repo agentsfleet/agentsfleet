@@ -19,16 +19,17 @@ use std::path::PathBuf;
 
 use af_fleet_runtime::Definition;
 use af_fleet_runtime::definition::{
-    ConfigOp, DefinitionSchema, InstructionEdit, MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS,
+    ConfigOp, DefinitionSchema, InstructionEdit, MAX_DESCRIPTION_CHARS,
 };
+use af_validate::TEXT_MAX_CHARS;
 use serde_json::{Map, Value};
 use utoipa::{PartialSchema, ToSchema};
 
 use self::admits::Components;
-use crate::support::{definition_path, fixture};
+use crate::support::{definition_path, filled, fixture};
 
 /// The fixture tree the corpus suites read, relative to this crate.
-const CORPUS: &str = "../../../../tests/fixtures/fleets";
+const CORPUS: &str = "tests/fixtures/fleets";
 
 /// Every component a Definition and an edit batch publish, as a client reads them.
 fn components() -> Components {
@@ -63,15 +64,34 @@ fn definition_component() -> String {
     DefinitionSchema::name().into_owned()
 }
 
-/// Every first-party and probe setup in the corpus, by its relative path.
-fn corpus() -> Vec<String> {
+/// Every fleet in the corpus and every accepted parser case, each named and
+/// with its placeholders filled.
+fn corpus() -> Vec<(String, String)> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(CORPUS);
-    let mut found: Vec<String> = std::fs::read_dir(&root)
+    let mut found: Vec<(String, String)> = std::fs::read_dir(&root)
         .unwrap_or_else(|_missing| panic!("{} should be readable", root.display()))
         .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-        .filter(|slug| root.join(definition_path(slug)).is_file())
-        .map(|slug| definition_path(&slug))
+        .filter(|slug| root.join("..").join(definition_path(slug)).is_file())
+        .map(|slug| {
+            let relative = definition_path(&slug);
+            let text = fixture(&relative);
+            (relative, text)
+        })
         .collect();
+    // The accepted parser cases carry the shapes no fleet does: a cron with
+    // no timezone, a webhook with no repositories, and `tool_window: "auto"`
+    // with a templated model.
+    found.extend(
+        [
+            ("minimal", super::cases::MINIMAL),
+            ("full", super::cases::FULL),
+            (
+                "with_model_and_context",
+                super::cases::WITH_MODEL_AND_CONTEXT,
+            ),
+        ]
+        .map(|(name, text)| (format!("case {name}"), filled(text))),
+    );
     found.sort();
     found
 }
@@ -81,8 +101,7 @@ fn every_corpus_setup_is_accepted_by_the_parser_and_the_schema() {
     let components = components();
     let corpus = corpus();
     assert!(!corpus.is_empty(), "the corpus holds no setup to compare");
-    for relative in corpus {
-        let text = fixture(&relative);
+    for (relative, text) in corpus {
         if let Err(failure) = Definition::parse(&text) {
             panic!("the parser refuses {relative}: {failure}");
         }
@@ -187,7 +206,7 @@ fn both_texts_at_their_character_caps_are_accepted_by_both() {
     super::set(
         &mut document,
         "/instructions_md",
-        serde_json::json!("é".repeat(MAX_INSTRUCTIONS_CHARS)),
+        serde_json::json!("é".repeat(TEXT_MAX_CHARS)),
     );
     if let Err(failure) = Definition::parse(&document.to_string()) {
         panic!("the parser refuses texts at their caps: {failure}");

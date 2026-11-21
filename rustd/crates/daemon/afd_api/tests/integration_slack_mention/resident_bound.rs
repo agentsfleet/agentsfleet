@@ -61,7 +61,7 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
         bound(&fixture).await,
         (first.clone(), fixture.workspace().clone())
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
@@ -70,7 +70,7 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_archived_subscriber_owes_the_archived_notice_without_admission() {
+async fn an_archived_subscriber_owes_the_archived_notice_without_a_turn() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let carrier = fixture
@@ -93,7 +93,7 @@ async fn an_archived_subscriber_owes_the_archived_notice_without_admission() {
         deliver(&fixture.router(), &body).await.status(),
         StatusCode::OK
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
@@ -126,7 +126,7 @@ async fn an_archived_bound_carrier_drops_notices_even_with_active_subscribers() 
         answer.get("ignored").and_then(Value::as_str),
         Some("no_active_notice_carrier")
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
     assert!(owed(&fixture).await.is_empty());
     assert_eq!(bound(&fixture).await.0, archived.as_str());
     fixture.cleanup().await;

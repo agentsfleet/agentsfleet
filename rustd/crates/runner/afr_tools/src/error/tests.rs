@@ -1,6 +1,6 @@
 use super::{invalid_repository, shared_directory, unhosted};
 
-/// Only a refused lease names a tool; the two configuration failures name
+/// Only a refused run names a tool; the two configuration failures name
 /// none, so their log line carries no tool field.
 #[test]
 fn only_an_unhosted_tool_is_named() {

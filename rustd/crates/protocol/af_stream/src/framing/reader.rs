@@ -74,7 +74,7 @@ impl<R: AsyncRead + Unpin> Reader<R> {
     async fn frame(&mut self, mut prefix: [u8; 4], deadline: Instant) -> Result<OwnedFrame> {
         let [_, tail @ ..] = &mut prefix;
         self.input.read_exact(tail).await?;
-        let length = Length::prove(usize::try_from(u32::from_be_bytes(prefix))?)?;
+        let length = Length::prove(usize::try_from(u32::from_be_bytes(prefix))?, self.kind)?;
         let reservation = self
             .budget
             .reserve(self.kind, length.bytes, &self.stop, deadline)

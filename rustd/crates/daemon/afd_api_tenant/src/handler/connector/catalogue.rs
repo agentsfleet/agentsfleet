@@ -27,7 +27,7 @@ use axum::response::{IntoResponse as _, Response};
 use super::EVENT_READ;
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceConnectors as _};
+use crate::services::{TenantPlane, WorkspaceConnectors as _};
 
 /// One catalogue row, as the wire renders it.
 ///
@@ -79,7 +79,7 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
 ) -> Result<Response, Refusal> {

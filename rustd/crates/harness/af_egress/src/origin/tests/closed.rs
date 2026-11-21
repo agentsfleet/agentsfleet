@@ -224,7 +224,7 @@ fn should_not_blame_a_key_for_a_path_admits_refuses_before_any_rule() {
     );
 }
 
-/// One `POST /repos/acme/widgets/git/refs` rule as a lease carries it, locking
+/// One `POST /repos/acme/widgets/git/refs` rule as a run carries it, locking
 /// `ref`, with `permitted` spliced in as written on the wire.
 #[expect(
     clippy::expect_used,

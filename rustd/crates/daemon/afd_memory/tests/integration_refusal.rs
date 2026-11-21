@@ -8,6 +8,9 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::error::{
+    DETAIL_DATABASE_ERROR as DATABASE_ERROR, DETAIL_OPERATION_FAILED as OPERATION_FAILED,
+};
 use af_core::error_code::{
     INTERNAL_DB_QUERY, INTERNAL_DB_UNAVAILABLE, INTERNAL_OPERATION_FAILED, MEM_UNAVAILABLE,
 };
@@ -15,7 +18,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id, unreachable_db};
-use afd_memory::error::detail::{DATABASE_ERROR, LIST_FAILED, OPERATION_FAILED, ROLE_SWITCH};
+use afd_memory::error::detail::{LIST_FAILED, ROLE_SWITCH};
 use afd_memory::page::View;
 use afd_memory::{Memories, Owner, PgStore};
 

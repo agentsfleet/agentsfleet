@@ -107,7 +107,7 @@ fn turns_with_stream(status: u16, generation: Generation) -> Result<(Turns, Arc<
             model,
             settings,
             model_context_tokens: CONTEXT_TOKENS,
-            lease_id: "lease-count".into(),
+            run_id: "run-count".into(),
             provider: PROVIDER.into(),
             counting_key: SecretString::new(KEY.into()),
             counting_transport: transport,
@@ -118,7 +118,7 @@ fn turns_with_stream(status: u16, generation: Generation) -> Result<(Turns, Arc<
     ))
 }
 
-fn request(messages: &[crate::provider::Message]) -> Request<'_> {
+fn request(messages: &[guffbolt::Message]) -> Request<'_> {
     Request {
         model: MODEL,
         instructions: "private pinned state",
@@ -145,7 +145,7 @@ async fn configured_opening_budget_stops_truncated_unpaid_generations()
             af_inference::Timeouts::DEFAULT,
             crate::RetryPolicy::new(&settings),
         );
-        let messages = [crate::provider::Message::User("probe".into())];
+        let messages = [guffbolt::Message::User("probe".into())];
         let mut request = request(&messages);
         request.single_attempt = false;
         let chunks: Vec<_> = turns.stream(request).collect().await;
@@ -168,7 +168,7 @@ async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usag
     ));
     let (turns, physical) = turns(200)?;
     for text in ["private first source ", "private second source "] {
-        let messages = [crate::provider::Message::User(text.repeat(NEAR_CAPACITY))];
+        let messages = [guffbolt::Message::User(text.repeat(NEAR_CAPACITY))];
         let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(chunks.iter().all(Result::is_ok));
         assert!(
@@ -213,7 +213,7 @@ async fn refused_native_counts_never_open_a_paid_runtime_attempt()
 -> Result<(), Box<dyn std::error::Error>> {
     for status in [400, 401, 429, 500] {
         let (turns, physical) = turns(status)?;
-        let messages = [crate::provider::Message::User(
+        let messages = [guffbolt::Message::User(
             "private source ".repeat(NEAR_CAPACITY),
         )];
         let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
@@ -242,7 +242,7 @@ async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
     let (recorder, received) = Tally::new();
     scoped(recorder, async {
         let (turns, _physical) = turns_with_stream(200, Generation::Silent)?;
-        let messages = [crate::provider::Message::User("probe".into())];
+        let messages = [guffbolt::Message::User("probe".into())];
         let expired: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(expired.iter().any(Result::is_err));
         let cancelled = tokio::time::timeout(

@@ -16,23 +16,23 @@ use crate::profile::Profile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Lane {
-    /// What the system accepts, and where a steer costs.
-    Steer,
-    /// Leases per second, and the Postgres cost of each.
-    Lease,
+    /// What the system accepts, and where a message or webhook costs.
+    Intake,
+    /// Runs per second, and the Postgres cost of each.
+    Runs,
     /// The production poll with more requesters than connections: rate, pool
-    /// wait and hold time, and the lease invariants under that pressure.
-    #[serde(rename = "lease-saturation")]
-    LeaseSaturation,
-    /// Steers paced to busy fleets: how long a message waits for a lease.
-    #[serde(rename = "lease-burst")]
-    LeaseBurst,
+    /// wait and hold time, and the run invariants under that pressure.
+    #[serde(rename = "runs-saturation")]
+    RunsSaturation,
+    /// Messages paced to busy fleets: how long a message waits for a run.
+    #[serde(rename = "runs-burst")]
+    RunsBurst,
     /// What one delivery worker sustains, and what a slow destination costs.
-    Outbound,
+    Delivery,
     /// What an idle fleet costs when there are a million of them.
-    Cardinality,
-    /// What the live tail costs per frame and per stream.
-    Tail,
+    Idle,
+    /// What the live stream costs per frame and per stream.
+    Stream,
 }
 
 impl Lane {
@@ -41,26 +41,26 @@ impl Lane {
     /// The one list a binary iterates and the one a usage line is built from,
     /// so adding a lane is the enum arm and nothing else.
     pub const ALL: [Self; 7] = [
-        Self::Steer,
-        Self::Lease,
-        Self::LeaseSaturation,
-        Self::LeaseBurst,
-        Self::Outbound,
-        Self::Cardinality,
-        Self::Tail,
+        Self::Intake,
+        Self::Runs,
+        Self::RunsSaturation,
+        Self::RunsBurst,
+        Self::Delivery,
+        Self::Idle,
+        Self::Stream,
     ];
 
     /// The name this lane is written and asked for under.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Steer => "steer",
-            Self::Lease => "lease",
-            Self::LeaseSaturation => "lease-saturation",
-            Self::LeaseBurst => "lease-burst",
-            Self::Outbound => "outbound",
-            Self::Cardinality => "cardinality",
-            Self::Tail => "tail",
+            Self::Intake => "intake",
+            Self::Runs => "runs",
+            Self::RunsSaturation => "runs-saturation",
+            Self::RunsBurst => "runs-burst",
+            Self::Delivery => "delivery",
+            Self::Idle => "idle",
+            Self::Stream => "stream",
         }
     }
 
@@ -95,4 +95,4 @@ impl core::str::FromStr for Lane {
 
 /// How the lane names are spelled, for the refusal an unknown one raises.
 const LANE_USAGE: &str =
-    "expected one of steer, lease, lease-saturation, lease-burst, outbound, cardinality, tail";
+    "expected one of intake, runs, runs-saturation, runs-burst, delivery, idle, stream";

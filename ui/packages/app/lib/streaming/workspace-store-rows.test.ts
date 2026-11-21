@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BackfillOutcome } from "@/lib/streaming/fleet-stream-backfill";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
-import { MAX_LIVE_EVENTS } from "@/lib/streaming/fleet-stream-cap";
+import { FRAME_KIND } from "@/lib/api/turns-types";
+import { MAX_LIVE_TURNS } from "@/lib/streaming/fleet-stream-cap";
 import {
   BLANK_FEED,
   chunk,
@@ -30,12 +30,12 @@ const FLEET_B = "fleet_b";
 const STRANGER = "fleet_stranger";
 const STANDING = { events_processed: 3, budget_used_nanos: "900000000" };
 const MOVED = { events_processed: 4, budget_used_nanos: "900000000" };
-const OVERFLOW = MAX_LIVE_EVENTS + 50;
+const OVERFLOW = MAX_LIVE_TURNS + 50;
 // The first row the cap keeps once OVERFLOW settled rows have landed.
-const FIRST_KEPT = OVERFLOW - MAX_LIVE_EVENTS;
+const FIRST_KEPT = OVERFLOW - MAX_LIVE_TURNS;
 const MID_RUN_FRAMES = 10;
 const TOOL = "search_repo";
-const EVENT = "e1";
+const TURN = "e1";
 const UNSEEN = "e_unseen";
 
 let store: WorkspaceStore;
@@ -54,13 +54,13 @@ describe("a tile hears only what it shows", () => {
   it("a chunk or tool call for a row the wall holds notifies no tile and keeps its snapshot", () => {
     const listener = vi.fn();
     store.subscribe(FLEET_A, listener);
-    push(FLEET_A, received(FLEET_A, EVENT));
+    push(FLEET_A, received(FLEET_A, TURN));
     flushFrame();
     expect(listener).toHaveBeenCalledTimes(1);
     const shown = store.snapshot(FLEET_A);
     for (let index = 0; index < MID_RUN_FRAMES; index += 1) {
-      push(FLEET_A, chunk(FLEET_A, EVENT, `word ${index} `));
-      push(FLEET_A, toolStarted(FLEET_A, EVENT, TOOL));
+      push(FLEET_A, chunk(FLEET_A, TURN, `word ${index} `));
+      push(FLEET_A, toolStarted(FLEET_A, TURN, TOOL));
     }
     flushFrame();
     expect(listener).toHaveBeenCalledTimes(1);
@@ -69,31 +69,31 @@ describe("a tile hears only what it shows", () => {
   });
 
   it("a chunk for a row the wall never saw opens it, so the feed reads as it always did", () => {
-    push(FLEET_A, received(FLEET_A, EVENT));
+    push(FLEET_A, received(FLEET_A, TURN));
     expect(store.snapshot(FLEET_A).feed).toBe(TRIGGER_FEED);
     push(FLEET_A, chunk(FLEET_A, UNSEEN));
     expect(store.snapshot(FLEET_A).feed).toBe(BLANK_FEED);
   });
 
   it("a tool call for a row the wall never saw opens nothing", () => {
-    push(FLEET_A, received(FLEET_A, EVENT));
+    push(FLEET_A, received(FLEET_A, TURN));
     const shown = store.snapshot(FLEET_A);
     push(FLEET_A, toolStarted(FLEET_A, UNSEEN, TOOL));
     expect(store.snapshot(FLEET_A)).toBe(shown);
   });
 
   it("a completion that moves neither the feed nor the counters keeps the snapshot; one that moves them does not", () => {
-    push(FLEET_A, received(FLEET_A, EVENT, STANDING));
+    push(FLEET_A, received(FLEET_A, TURN, STANDING));
     const shown = store.snapshot(FLEET_A);
-    push(FLEET_A, completed(FLEET_A, EVENT, STANDING));
+    push(FLEET_A, completed(FLEET_A, TURN, STANDING));
     expect(store.snapshot(FLEET_A)).toBe(shown);
-    push(FLEET_A, completed(FLEET_A, EVENT, MOVED));
+    push(FLEET_A, completed(FLEET_A, TURN, MOVED));
     expect(store.snapshot(FLEET_A)).not.toBe(shown);
-    expect(store.snapshot(FLEET_A).counters?.eventsProcessed).toBe(MOVED.events_processed);
+    expect(store.snapshot(FLEET_A).counters?.turnsProcessed).toBe(MOVED.events_processed);
   });
 
   it("a greeting still reaches every tile", () => {
-    push(FLEET_A, received(FLEET_A, EVENT));
+    push(FLEET_A, received(FLEET_A, TURN));
     const shown = store.snapshot(FLEET_A);
     greet({ kind: FRAME_KIND.HELLO, fleet_ids: [FLEET_A] });
     expect(store.snapshot(FLEET_A)).not.toBe(shown);
@@ -101,7 +101,7 @@ describe("a tile hears only what it shows", () => {
   });
 });
 
-describe("the event map stays bounded", () => {
+describe("the turn map stays bounded", () => {
   it("the_store_still_bounds_its_event_map_without_absorb", () => {
     // `absorb` was the only thing that ever emptied a fleet's rows; with it
     // gone the cap has to hold on the write itself. The window shows through
@@ -122,11 +122,11 @@ describe("the event map stays bounded", () => {
 
   it("a backfill that rejects is logged and leaves the fleet as it was", async () => {
     runWorkspaceBackfill.mockRejectedValue(new Error("network failed"));
-    push(FLEET_A, received(FLEET_A, EVENT, STANDING));
+    push(FLEET_A, received(FLEET_A, TURN, STANDING));
     reconnectBackfill();
     await vi.waitFor(() => expect(warnBackfillFailure).toHaveBeenCalledTimes(1));
     expect(store.snapshot(FLEET_A).feed).toBe(TRIGGER_FEED);
-    expect(store.snapshot(FLEET_A).counters?.eventsProcessed).toBe(STANDING.events_processed);
+    expect(store.snapshot(FLEET_A).counters?.turnsProcessed).toBe(STANDING.events_processed);
   });
 
   it("a backfill that lands after the store reconnected is dropped, catching up left standing", async () => {

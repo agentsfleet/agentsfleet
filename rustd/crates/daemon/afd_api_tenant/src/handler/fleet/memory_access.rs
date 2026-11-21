@@ -18,7 +18,7 @@ use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{FleetMemories as _, Services};
+use crate::services::{FleetMemories as _, TenantPlane};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -52,7 +52,7 @@ const DETAIL_MALFORMED: &str = "Malformed memory access body";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn set<D: Services>(
+pub(crate) async fn set<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

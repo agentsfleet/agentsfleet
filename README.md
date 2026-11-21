@@ -34,7 +34,7 @@ You write a fleet by describing the job in a private chat, in the app or with `a
 
 Already invited? [Sign in to the app](https://app.agentsfleet.net/sign-in). To request access, visit [Early access](https://agentsfleet.net/#pricing).
 
-The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4.4](https://bun.sh):
+The public command-line interface (CLI) package is waiting for release. Build the CLI from this repository with [Bun 1.4.5](https://bun.sh):
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git
@@ -54,26 +54,26 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 | Directory | What |
 |---|---|
-| `rustd/` | Rust workspace in five layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (`guffbolt` and the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates) and `daemon/` (the `agentsfleetd` control plane, `afd_*` crates). |
+| `rustd/` | Rust workspace in five layer folders under `crates/`: `foundation/` and `protocol/` (shared `af_*` crates), `harness/` (the shared model, secret and egress crates), `runner/` (the `agentsfleet-runner` execution daemon, `afr_*` crates) and `daemon/` (the `agentsfleetd` control plane, `afd_*` crates); beside them, `guffbolt/`, the standalone agent harness. |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [agentsfleet.net](https://agentsfleet.net) |
 | `ui/packages/design-system/` | Shared UI components |
 | `cli/` | Command-line interface (CLI) — install, manage agents, tail runs |
 | `public/openapi.json` | OpenAPI reference generated from the daemon's route and schema definitions |
-| `schema/` | Postgres migrations |
+| `rustd/crates/daemon/afd_db/schema/` | Postgres migrations |
 | `playbooks/` | First setup, deployment, verification, and operations |
 
 ---
 
 ## Built with
 
-- [`guffbolt`](rustd/crates/harness/guffbolt), the agent harness that runs every agent loop in `agentsfleet-runner`.
+- [`guffbolt`](rustd/guffbolt), the agent harness that runs every agent loop in `agentsfleet-runner`.
 
 ---
 
 ## Local development
 
-**Prerequisites:** [Rust 1.100.0](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, NATS, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.100.0](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, NATS, QStash) · [Bun ≥1.4.5](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 Rustup installs the pinned toolchain from `rustd/rust-toolchain.toml` on the first `cargo` run inside `rustd/`.
 

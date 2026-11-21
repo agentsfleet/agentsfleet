@@ -25,7 +25,7 @@ async fn ownership(case: &Case) {
     let sibling = case.sibling().await;
     let foreign = sibling
         .tasks
-        .bind(sibling.lease(), &sibling.plan("other-owner", 1))
+        .bind(sibling.run(), &sibling.plan("other-owner", 1))
         .await
         .expect("real foreign goal");
     let other = foreign
@@ -100,7 +100,7 @@ async fn refused(
     foreign: &str,
     before: &TaskSnapshot,
 ) {
-    let source_before = admission(fixture, &fixture.case.held.event_id).await;
+    let source_before = turn(fixture, &fixture.case.held.turn_id).await;
     for (version, expected) in [
         (None, error_code::TASK_INVALID_TARGET),
         (
@@ -125,13 +125,13 @@ async fn refused(
             .expect("well-formed refused association");
         let fault = fixture
             .tasks
-            .reserve_decision(fixture.case.lease(), &input)
+            .reserve_decision(fixture.case.run(), &input)
             .await
             .expect_err("current owner and generation are mandatory");
         assert_eq!(fault.code(), expected);
         assert_eq!(fixture.goal_snapshot(task).await, *before);
         assert_eq!(
-            admission(fixture, &fixture.case.held.event_id).await,
+            turn(fixture, &fixture.case.held.turn_id).await,
             source_before
         );
         assert_eq!(fixture.counts().await, (0, 0, 0));
@@ -143,29 +143,29 @@ async fn wrong_source(fixture: &Decisions<'_>, task: &DecisionTaskVersion, befor
     let source = fixture
         .case
         .source(
-            afd_admission::Producer::Steer,
-            &afd_events::steer_actor("goal-owner"),
+            afd_turns::Producer::Steer,
+            &afd_turns::view::steer_actor("goal-owner"),
         )
         .await;
-    let source_before = admission(fixture, &source).await;
+    let source_before = turn(fixture, &source).await;
     let mut input = (*fixture.goal_reservation(task)).clone();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
         .validate()
         .expect("distinct admitted source");
     let fault = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &input)
+        .reserve_decision(fixture.case.run(), &input)
         .await
-        .expect_err("another admission cannot own the goal assessment");
+        .expect_err("another turn cannot own the goal assessment");
     assert_eq!(fault.code(), error_code::TASK_INVALID_TARGET);
-    assert_eq!(admission(fixture, &source).await, source_before);
+    assert_eq!(turn(fixture, &source).await, source_before);
     assert_eq!(fixture.goal_snapshot(task).await, *before);
     assert_eq!(fixture.counts().await, (0, 0, 0));
 }
 
-async fn admission(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(a) FROM fleet.admissions a WHERE id=$1")
+async fn turn(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(a) FROM thread.turns a WHERE id=$1")
         .bind(source)
         .fetch_one(
             &mut *fixture
@@ -178,5 +178,5 @@ async fn admission(fixture: &Decisions<'_>, source: &Uuid7) -> Value {
                 .expect("source observer"),
         )
         .await
-        .expect("complete original admission")
+        .expect("complete original turn")
 }

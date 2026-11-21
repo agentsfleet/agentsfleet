@@ -27,7 +27,7 @@ pub struct CheckpointPlaintext {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointObjectsInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.
@@ -68,7 +68,7 @@ pub struct CheckpointUpload {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointUploadsInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.
@@ -90,7 +90,7 @@ pub struct CheckpointUploadsInput {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointAuthorizationInput {
-    /// Existing lease fence.
+    /// Existing run fence.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Current task version.

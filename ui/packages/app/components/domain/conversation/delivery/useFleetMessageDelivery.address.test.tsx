@@ -23,12 +23,12 @@ const HERE_NAME = "support-triage";
 const BOB = "0199a801-1000-7000-8000-0000000000b0";
 const BOB_NAME = "agentbob";
 const SUBJECT = "user_address";
-const EVENT_ID = "0199a801-1000-7000-8000-0000000000e0";
+const TURN_ID = "0199a801-1000-7000-8000-0000000000e0";
 const OPTIMISTIC_ROW = "optim-1";
 const LIST_ROUTE = `/live/v1/workspaces/${WORKSPACE}/fleets?`;
 const BOB_LOOKUP = `${LIST_ROUTE}name=agentbob`;
 const AT = "2026-11-19T00:00:00Z";
-const NO_EVENTS: never[] = [];
+const NO_TURNS: never[] = [];
 const NO_MESSAGES: ThreadMessageLike[] = [];
 
 const network = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
@@ -37,7 +37,7 @@ const network = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
 function daemon(lookup: (signal: AbortSignal | undefined) => Response | Promise<Response>): void {
   network.mockImplementation(async (url, init) => {
     if (url.startsWith(LIST_ROUTE)) return lookup(init?.signal ?? undefined);
-    if (url.endsWith("/messages") && init?.method === "POST") return Response.json({ status: "accepted", event_id: EVENT_ID, replayed: false }, { status: 202 });
+    if (url.endsWith("/messages") && init?.method === "POST") return Response.json({ status: "accepted", turn_id: TURN_ID, replayed: false }, { status: 202 });
     throw new Error(`Unexpected request: ${url}`);
   });
 }
@@ -76,7 +76,7 @@ function composer(): AssistantRuntime["thread"]["composer"] {
   const { result } = renderHook(() => {
     const runtime = useRef<AssistantRuntime | null>(null);
     const { delivery } = useChat(HERE, HERE_NAME, vi.fn(), paint());
-    const previews = useFleetUploadPreviews({ workspaceId: WORKSPACE, fleetId: HERE, subject: SUBJECT, events: NO_EVENTS, onNew: delivery.onNew, runtime });
+    const previews = useFleetUploadPreviews({ workspaceId: WORKSPACE, fleetId: HERE, subject: SUBJECT, turns: NO_TURNS, onNew: delivery.onNew, runtime });
     const thread = useExternalStoreRuntime({ messages: NO_MESSAGES, convertMessage: (entry: ThreadMessageLike) => entry,
       onNew: previews.onNew, adapters: { attachments: previews.attachments } });
     useEffect(() => { runtime.current = thread; }, [thread]);
@@ -161,7 +161,7 @@ describe("an addressed chat message", () => {
     await act(() => hook.result.current.delivery.onNew(message("@agentbob retry")));
     expect(lookups()).toEqual([]);
     expect(posts()).toEqual([{ url: messagesOf(BOB), body: { message: "retry", operation_id: expect.stringMatching(UUID_V7) } }]);
-    expect(stream.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, EVENT_ID, false, null);
+    expect(stream.reconcileOptimistic).toHaveBeenCalledExactlyOnceWith(OPTIMISTIC_ROW, TURN_ID, false, null);
     expect(stream.discardOptimistic).not.toHaveBeenCalled();
     expect(openFleet).not.toHaveBeenCalled();
   });

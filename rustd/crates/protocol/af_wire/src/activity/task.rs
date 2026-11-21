@@ -64,12 +64,12 @@ pub struct TaskActivity {
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     ))]
     pub task_id: Option<String>,
-    /// Exact original admission, when assessing human intent.
+    /// Exact original turn, when assessing human intent.
     #[garde(inner(
         length(bytes, min = 36, max = 36),
         pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     ))]
-    pub source_admission_id: Option<String>,
+    pub source_turn_id: Option<String>,
     /// Native operation category.
     #[garde(skip)]
     pub operation: TaskActivityOperation,
@@ -100,7 +100,7 @@ pub struct TaskActivity {
 
 /// Transfer facts, excluding speculative sends and repeated object references.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct TaskTransferBytes {
     /// Unique bytes verified after upload or authenticated download.

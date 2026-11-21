@@ -1,4 +1,4 @@
-//! Authoring shapes; requiredness is resolved after serde and garde succeed.
+//! The shapes a person writes; requiredness is resolved after serde and garde succeed.
 
 use std::collections::BTreeMap;
 

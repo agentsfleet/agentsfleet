@@ -12,10 +12,11 @@ use std::{borrow::Cow, sync::Arc};
 pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
+        setup: None,
         task,
-        lease_id: Cow::Borrowed(case.held.lease_key.as_str()),
-        event_id: Cow::Borrowed(case.held.event_id.as_str()),
-        fencing_token: case.lease().fencing_token,
+        run_id: Cow::Borrowed(case.held.run_key.as_str()),
+        turn_id: Cow::Borrowed(case.held.turn_id.as_str()),
+        fencing_token: case.run().fencing_token,
         outcome: Outcome::Processed,
         failure_reason: None,
         failure_detail: Cow::Borrowed(""),
@@ -28,7 +29,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(case.held.event_id.as_str()),
+            last_turn_id: Cow::Borrowed(case.held.turn_id.as_str()),
             last_response: Cow::Borrowed("ordinary session cursor"),
         },
         tool_calls: None,
@@ -40,7 +41,7 @@ pub(super) fn request(case: &Case, task: Option<TaskReport>) -> ReportRequest<'_
 async fn task(case: &Case, disposition: TaskDisposition) -> TaskReport {
     let bindings = case
         .tasks
-        .bind(case.lease(), &case.plan("report-goal", 1))
+        .bind(case.run(), &case.plan("report-goal", 1))
         .await
         .expect("accepted API-only task");
     let task_id = bindings
@@ -117,7 +118,7 @@ async fn native_blocked_report_settles_once_without_completion_claims() {
         let report = request(case, Some(task));
         assert!(
             case.tasks
-                .prepare_report(case.lease(), &report)
+                .prepare_report(case.run(), &report)
                 .await
                 .expect("native blocked evidence")
                 .is_some()
@@ -135,7 +136,7 @@ async fn missing_semantic_report_preserves_charges_and_blocks_unverified_complet
         let report = request(case, None);
         assert!(
             case.tasks
-                .prepare_report(case.lease(), &report)
+                .prepare_report(case.run(), &report)
                 .await
                 .expect("ordinary report")
                 .is_none()
@@ -154,7 +155,7 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
         let report = request(case, Some(task));
         assert!(
             case.tasks
-                .prepare_report(case.lease(), &report)
+                .prepare_report(case.run(), &report)
                 .await
                 .expect("continuation preparation")
                 .is_some()
@@ -168,16 +169,11 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
 async fn assert_accounted(case: &Case, task_id: &Uuid7, reason: &str) {
     let stored: (String, i64) = sqlx::query_as(
         "SELECT t.status_reason,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2) FROM fleet.tasks t WHERE t.id=$1",
-    ).bind(task_id).bind(&case.held.lease_key)
+    ).bind(task_id).bind(&case.held.run_key)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("financial observer"))
         .await.expect("task and measured charge committed together");
     assert_eq!(stored, (reason.to_owned(), 1));
-    assert!(
-        case.held
-            .fixtures
-            .admission_settled(&case.held.event_id)
-            .await
-    );
+    assert!(case.held.fixtures.turn_settled(&case.held.turn_id).await);
 }
 
 #[tokio::test]
@@ -195,7 +191,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
             let report = request(case, Some(refused));
             assert!(
                 case.tasks
-                    .prepare_report(case.lease(), &report)
+                    .prepare_report(case.run(), &report)
                     .await
                     .expect("semantic refusal leaves transport available")
                     .is_none()
@@ -208,13 +204,7 @@ async fn malformed_stale_and_unpaid_semantic_reports_never_prepare_a_permit() {
                 before
             );
         }
-        assert!(
-            !case
-                .held
-                .fixtures
-                .admission_settled(&case.held.event_id)
-                .await
-        );
+        assert!(!case.held.fixtures.turn_settled(&case.held.turn_id).await);
         assert_eq!(case.counts().await, (1, 1, 1));
     })
     .await;

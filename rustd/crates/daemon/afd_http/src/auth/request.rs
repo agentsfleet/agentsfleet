@@ -8,10 +8,10 @@ use afd_auth::Principal;
 use http::{header::AUTHORIZATION, request::Parts};
 
 use super::{Authenticator as _, guard::reject, plane_of};
-use crate::{route::RouteMeta, services::Services};
+use crate::{route::RouteMeta, services::Shared};
 
 /// None means the route is unguarded; Err is a complete, typed HTTP refusal.
-pub type AuthenticationResult = core::result::Result<Option<Principal>, crate::handler::Refusal>;
+pub type AuthenticationResult = Result<Option<Principal>, crate::handler::Refusal>;
 
 /// A route chooses its strategy once at mount time; no request path selects policy.
 pub trait RequestAuthentication: Clone + Send + Sync + std::fmt::Debug + 'static {
@@ -46,7 +46,7 @@ impl<D> Clone for BearerAuthentication<D> {
     }
 }
 
-impl<D: Services> RequestAuthentication for BearerAuthentication<D> {
+impl<D: Shared> RequestAuthentication for BearerAuthentication<D> {
     async fn authenticate(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let Some(plane) = plane_of(route.guard) else {
             return Ok(None);

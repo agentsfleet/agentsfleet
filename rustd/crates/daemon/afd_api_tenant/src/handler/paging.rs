@@ -13,7 +13,8 @@
 //! sentence.
 
 use af_core::error_code;
-use af_core::paging::{CEILING, Ceiling, QUERY_LIMIT};
+use af_core::paging::{CEILING, QUERY_LIMIT};
+use af_validate::Ceiling;
 use af_validate::Limit;
 
 use crate::handler::tenant::DETAIL_CATALOGUE_LIMIT;

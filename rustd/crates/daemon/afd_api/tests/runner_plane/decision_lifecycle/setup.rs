@@ -56,10 +56,9 @@ impl Owner {
             .insert(&mut *connection)
             .await
             .expect("owned coding price");
-        let policy: serde_json::Value = serde_json::from_str(include_str!(
-            "../../../../../../../tests/fixtures/fleets/goal-repair/decision-policy.json"
-        ))
-        .expect("shared owner policy");
+        let policy: serde_json::Value =
+            serde_json::from_str(af_fleet_runtime::test_util::DECISION_POLICY)
+                .expect("shared owner policy");
         let setup = FixtureSetup::new(&json!({"name":"pull-request-review", "x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"},"decision_policy":policy}}).to_string());
         FleetSeed::new(
             &self.fleet,

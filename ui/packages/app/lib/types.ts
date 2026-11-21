@@ -5,9 +5,6 @@
 import type { z } from "zod";
 import type { tenantModelEntrySchema, tenantPlatformDefaultSchema } from "./api/tenant-model-schemas";
 import type { NativeFleetDetail, NativeFleetSummary } from "./api/fleet-detail";
-import type { FleetTriggerSchema } from "./api/fleet-trigger";
-
-export type CommandClass = "safe" | "sensitive" | "critical";
 
 export type ApiError = {
   error: string;
@@ -23,8 +20,6 @@ export type ApiError = {
 // carries source + events; cron carries the raw schedule expression; mention
 // carries the chat provider and the one channel it answers in.
 export const AGENT_TRIGGER_TYPE = {webhook: "webhook", cron: "cron", mention: "mention"} as const;
-
-export type FleetTrigger = z.infer<typeof FleetTriggerSchema>;
 
 export type Fleet = NativeFleetSummary;
 
@@ -105,14 +100,8 @@ export const SECRET_FIELD = {
 // flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
 export const HTTPS_SCHEME_PREFIX = "https://" as const;
 
-// Runtime event costs and settled setup attempts share the tenant cost history.
-export type ChargeType = "receive" | "stage" | "authoring";
-
-export const CHARGE_TYPE = {
-  receive: "receive" as ChargeType,
-  stage: "stage" as ChargeType,
-  authoring: "authoring" as ChargeType,
-} as const;
+// Runtime turn costs and settled setup runs share the tenant cost history.
+export type ChargeType = "receive" | "stage" | "setup";
 
 export type TenantProvider = {
   mode: ProviderMode;
@@ -161,8 +150,8 @@ export type TenantBillingChargesResponse = {
     fleet_id: string | null;
     /** The saved fleet name; an unsaved setup chat has no fleet name. */
     fleet_name: string | null;
-    event_id: string | null;
-    authoring_attempt_id: string | null;
+    turn_id: string | null;
+    run_id: string | null;
     charge_type: ChargeType;
     posture: ProviderMode;
     model: string;

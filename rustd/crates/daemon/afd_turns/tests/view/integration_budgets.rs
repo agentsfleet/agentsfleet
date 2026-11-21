@@ -1,0 +1,139 @@
+//! A full datastore produces classified backpressure and no silent drop: a
+//! deployment holding its budget of unsettled turns refuses the producer
+//! with the capacity class and commits nothing. No per-fleet budget exists.
+//!
+//! The budgets are set small through `Turns::with_budgets`; the
+//! production numbers are compile-time assertions in `afd_turns::budget`
+//! and are not what this proves. What it proves is the refusal's shape, and
+//! that the row the refusal protects Postgres from is genuinely absent.
+//!
+//! Marked `#[ignore]` so `make test-unit-all` compiles and lints this without
+//! datastores; `make test-integration-rustd` runs it.
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::error_code;
+use af_wire::turn::TurnKind;
+use afd_turns::{Budgets, IncomingTurn, Key, Producer, Turns};
+
+use crate::support::TurnsLane;
+
+/// A delivery key no earlier run holds.
+///
+/// A repeated key is unique per producer, not per fleet, so a fixed name
+/// admitted by a run against a database the lane did not reset
+/// (`KEEP_TEST_STATE=1`) would read as already admitted. The lane's fleet is
+/// minted per run, so prefixing it keeps each run's keys its own.
+fn delivery(lane: &TurnsLane, name: &str) -> String {
+    format!("{}-{name}", lane.fleet)
+}
+
+/// One webhook turn for the lane's fleet, keyed by `delivery`.
+fn turn<'a>(lane: &'a TurnsLane, delivery: &'a str) -> IncomingTurn<'a> {
+    IncomingTurn {
+        producer: Producer::Webhook,
+        key: Key::Repeated(delivery),
+        fleet: &lane.fleet,
+        workspace: &lane.workspace,
+        actor: "webhook:budget",
+        event_type: TurnKind::Webhook,
+        request_json: r#"{"delivery":"budget"}"#,
+        reply: afd_turns::Reply::None,
+    }
+}
+
+/// How many ledger rows the lane's fleet holds.
+async fn rows_for(lane: &TurnsLane) -> i64 {
+    let mut connection = lane.connection().await;
+    sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the ledger answers")
+}
+
+/// The one shape every capacity refusal has: retryable to the caller,
+/// capacity to the operator.
+fn assert_capacity_refusal(refused: &afd_turns::Error) {
+    assert!(
+        refused.is_over_capacity(),
+        "not the capacity class: {refused}"
+    );
+    assert!(
+        refused.is_datastore_unavailable(),
+        "capacity must invite the retry an outage does: {refused}"
+    );
+    assert_eq!(refused.code(), error_code::INTERNAL_DB_UNAVAILABLE);
+}
+
+/// The deployment budget: unsettled rows.
+///
+/// The budget is a deployment-wide count that other suites in this lane can
+/// raise concurrently, so the refusal is proven with a budget of zero — under
+/// which nothing new is ever admitted — rather than by counting to a limit
+/// another test could cross first. The retry exception is proven beside it:
+/// work already admitted is answered its id however deep the backlog is.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() {
+    let lane = TurnsLane::open().await;
+    let open = lane.turns();
+    let admitted = open
+        .admit(turn(&lane, &delivery(&lane, "already-admitted")))
+        .await
+        .expect("admitted while the budget is open");
+
+    let spent = lane.turns().with_budgets(Budgets {
+        deployment_backlog: 0,
+    });
+    let before = rows_for(&lane).await;
+    let refused = spent
+        .admit(turn(&lane, &delivery(&lane, "new-work")))
+        .await
+        .expect_err("a spent deployment budget refuses new work");
+    assert_capacity_refusal(&refused);
+    assert_eq!(rows_for(&lane).await, before, "a refusal commits nothing");
+
+    let retried = spent
+        .admit(turn(&lane, &delivery(&lane, "already-admitted")))
+        .await
+        .expect("a retry of admitted work is answered whatever the budget");
+    assert!(retried.replayed, "the retry is recognised as one");
+    assert_eq!(
+        retried.stored.id, admitted.stored.id,
+        "and answered its original id"
+    );
+
+    lane.cleanup().await;
+}
+
+/// The ledger's own backlog figure: rows the queue has not confirmed, and
+/// how long the oldest has waited. Read whole, so it is a lower bound over
+/// what this test deferred.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn the_ledger_reports_its_unsettled_rows_and_the_age_of_the_oldest() {
+    let lane = TurnsLane::open().await;
+    // Notifications can fail without changing acceptance or backlog.
+    let deferring = Turns::for_tests(lane.database.clone(), afd_bus::test_util::unreachable());
+    deferring
+        .admit(turn(&lane, &delivery(&lane, "deferred")))
+        .await
+        .expect("the row commits whatever the bus does");
+
+    let backlog = lane.turns().backlog().await.expect("the ledger answers");
+    assert!(
+        backlog.rows >= 1,
+        "the deferred row is counted: {backlog:?}"
+    );
+    assert!(
+        backlog.oldest_age.is_some(),
+        "a non-empty backlog has an oldest row: {backlog:?}"
+    );
+
+    lane.cleanup().await;
+}

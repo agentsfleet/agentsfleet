@@ -65,13 +65,13 @@ async fn with_responder(fixture: Fixture) -> (Fixture, axum::Router) {
 /// The admitted event's body for `event_id`.
 async fn told(fixture: &Fixture, event_id: &str) -> Value {
     let admitted = fixture
-        .admission(&key(&fixture.team, event_id))
+        .turn(&key(&fixture.team, event_id))
         .await
         .expect("the mention was admitted");
     serde_json::from_str(&admitted.request_json).expect("the event body is JSON")
 }
 
-/// Dimension 4.1 — a thread of thirty messages is told as the announcement and
+/// A thread of thirty messages is told as the announcement and
 /// the latest nineteen replies, parent first and within the cap, and the event
 /// says the thread was cut.
 #[tokio::test]
@@ -128,7 +128,7 @@ async fn thread_context_keeps_parent_and_latest_replies() {
 /// How one case makes the read fail.
 type Arrange = fn(&FakeSlack, &str);
 
-/// Dimension 4.3 — a Slack that stalls, one that refuses and one that answers
+/// A Slack that stalls, one that refuses and one that answers
 /// 503 each still admit the mention, told why the thread is missing.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -176,7 +176,7 @@ async fn failed_reread_degrades_to_the_mention() {
     fixture.cleanup().await;
 }
 
-/// Dimension 4.4 — on a one-connection pool, a second mention is admitted while
+/// On a one-connection pool, a second mention is admitted while
 /// the first is still waiting on Slack, so the wait holds no connection.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

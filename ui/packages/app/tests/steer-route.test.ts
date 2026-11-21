@@ -7,8 +7,9 @@
 // a test set `Origin` and `Host`.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TEXT_BODY_LIMIT_BYTES } from "@/lib/api/body-limits";
 import { ApiError } from "@/lib/api/errors";
-import { STEER_MESSAGE_MAX_BYTES, steerMessagesUrl } from "@/lib/api/fleets-types";
+import { steerMessagesUrl } from "@/lib/api/fleets-types";
 import { ERROR_CODE } from "@/lib/errors";
 import nextConfig from "../next.config";
 
@@ -25,15 +26,13 @@ const FLEET = "fleet_1";
 const TOKEN = "api_jwt_token";
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
 const STEER = { message: "deploy the canary", operation_id: OPERATION_ID };
-const ACCEPTED = { status: "accepted", event_id: "1790573387481-566", replayed: false };
+const ACCEPTED = { status: "accepted", turn_id: "1790573387481-566", replayed: false };
 const JSON_TYPE = "application/json";
 // pin test: the statuses are the route's answers to the browser.
 const HTTP = { ACCEPTED: 202, BAD_REQUEST: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, CONFLICT: 409, TOO_LARGE: 413, NOT_JSON: 415, BAD_GATEWAY: 502 } as const;
 const PROBLEM_TYPE = "application/problem+json";
-// The daemon's longest operation id, in bytes.
-const OPERATION_ID_MAX_BYTES = 200;
-// A control character: JSON's widest escape, six bytes on the wire for one.
-const WIDEST_ESCAPE = "\u0001";
+// The ceiling the daemon holds a message to, in characters.
+const MESSAGE_CEILING_CHARS = 1_048_576;
 // What the stubbed mint and daemon take, in milliseconds.
 const AUTH_TAKES_MS = 12;
 const UPSTREAM_TAKES_MS = 40;
@@ -135,8 +134,8 @@ describe("steer route — what it refuses before minting", () => {
     await expectRefused(await post(untyped), HTTP.NOT_JSON);
   });
 
-  it("refuses a body larger than any steer, declared or streamed", async () => {
-    const tooLong = "x".repeat(STEER_MESSAGE_MAX_BYTES * 8);
+  it("refuses a body larger than the daemon reads, declared or streamed", async () => {
+    const tooLong = "x".repeat(TEXT_BODY_LIMIT_BYTES + 1);
     // Declared: refused on the header, before a byte of the body is read.
     const declared = steerRequest({ headers: { "Content-Length": String(tooLong.length) } });
     await expectRefused(await post(declared), HTTP.TOO_LARGE);
@@ -173,11 +172,21 @@ describe("steer route — what it passes on", () => {
     expect(steerFleetMock).toHaveBeenCalledExactlyOnceWith(WS, FLEET, STEER, TOKEN);
   });
 
-  it("takes the largest steer the daemon can: its longest message, every byte escaped, and its longest id", async () => {
+  it("takes a message at the daemon's ceiling and passes it on whole", async () => {
     steerFleetMock.mockResolvedValueOnce(ACCEPTED);
-    const widest = { message: WIDEST_ESCAPE.repeat(STEER_MESSAGE_MAX_BYTES), operation_id: WIDEST_ESCAPE.repeat(OPERATION_ID_MAX_BYTES) };
-    expect((await post(steerRequest({ body: JSON.stringify(widest) }))).status).toBe(HTTP.ACCEPTED);
-    expect(steerFleetMock).toHaveBeenCalledWith(WS, FLEET, widest, TOKEN);
+    const longest = { message: "x".repeat(MESSAGE_CEILING_CHARS), operation_id: OPERATION_ID };
+    expect((await post(steerRequest({ body: JSON.stringify(longest) }))).status).toBe(HTTP.ACCEPTED);
+    expect(steerFleetMock).toHaveBeenCalledWith(WS, FLEET, longest, TOKEN);
+  });
+
+  it("takes a body of exactly the daemon's limit", async () => {
+    steerFleetMock.mockResolvedValueOnce(ACCEPTED);
+    const envelope = JSON.stringify({ message: "", operation_id: OPERATION_ID }).length;
+    const exact = { message: "x".repeat(TEXT_BODY_LIMIT_BYTES - envelope), operation_id: OPERATION_ID };
+    const body = JSON.stringify(exact);
+    expect(body.length).toBe(TEXT_BODY_LIMIT_BYTES);
+    expect((await post(steerRequest({ body }))).status).toBe(HTTP.ACCEPTED);
+    expect(steerFleetMock).toHaveBeenCalledWith(WS, FLEET, exact, TOKEN);
   });
 
   it("passes the daemon's refusal through with its status, code and request id", async () => {

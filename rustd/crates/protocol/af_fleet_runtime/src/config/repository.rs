@@ -324,10 +324,14 @@ mod tests {
     /// Deserializes AND validates, so a schema-declared rule is in force here
     /// exactly as it is on the real path.
     fn parse(json: &str) -> Result<Option<RepositoryBinding>, Error> {
-        let mut authored: raw::Runtime =
-            serde_json::from_str(json).expect("test fixture is a runtime block");
+        let mut authored = authored(json);
         authored.validate()?;
         RepositoryBinding::parse(&mut authored)
+    }
+
+    /// The runtime block a fixture authors.
+    fn authored(json: &str) -> raw::Runtime {
+        serde_json::from_str(json).expect("test fixture is a runtime block")
     }
 
     #[test]

@@ -1,10 +1,10 @@
-//! Source identity is proved from native admissions, never model prose.
+//! Source identity is proved from native turns, never model prose.
 
 use af_core::id::Uuid7;
-use afd_admission::Producer;
+use afd_turns::Producer;
 use sqlx::PgConnection;
 
-use super::super::{PreparedPlan, TaskLease, TaskRefusal, guard::LeaseRow, sql};
+use super::super::{PreparedPlan, TaskRefusal, TaskRun, guard::RunRow, sql};
 use crate::error::{Result, query};
 
 #[derive(sqlx::FromRow)]
@@ -15,28 +15,28 @@ pub(in crate::task) struct Source {
     pub(in crate::task) request_json: String,
     pub(super) reply_provider: Option<String>,
     pub(super) reply_address: Option<String>,
-    input_claim_lease_id: Option<Uuid7>,
-    input_claim_fence: Option<i64>,
+    input_run_id: Option<Uuid7>,
+    input_fence: Option<i64>,
 }
 
 pub(in crate::task) async fn lock(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
-    current: &LeaseRow,
+    run: TaskRun<'_>,
+    current: &RunRow,
     plan: &PreparedPlan,
 ) -> Result<Source> {
-    let source = load(connection, current, &plan.source_admission_id).await?;
-    check_claim(&source, lease, current, &plan.source_admission_id)?;
+    let source = load(connection, current, &plan.source_turn_id).await?;
+    check_assignment(&source, run, current, &plan.source_turn_id)?;
     Ok(source)
 }
 
 pub(in crate::task) async fn load(
     connection: &mut PgConnection,
-    current: &LeaseRow,
-    admission: &af_core::id::Uuid7,
+    current: &RunRow,
+    turn: &Uuid7,
 ) -> Result<Source> {
     let source: Source = sqlx::query_as(sql::LOCK_SOURCE)
-        .bind(admission)
+        .bind(turn)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(afd_connector::Provider::Slack.id())
@@ -49,15 +49,15 @@ pub(in crate::task) async fn load(
     Ok(source)
 }
 
-pub(in crate::task) fn check_claim(
+pub(in crate::task) fn check_assignment(
     source: &Source,
-    lease: TaskLease<'_>,
-    current: &LeaseRow,
-    admission: &af_core::id::Uuid7,
+    run: TaskRun<'_>,
+    current: &RunRow,
+    turn: &Uuid7,
 ) -> Result<()> {
-    let owns_claim = source.input_claim_lease_id.as_ref() == Some(lease.lease_id)
-        && source.input_claim_fence == Some(current.fence);
-    if admission.as_str() != current.source_admission_id && !owns_claim {
+    let owns_assignment = source.input_run_id.as_ref() == Some(run.run_id)
+        && source.input_fence == Some(current.fence);
+    if turn.as_str() != current.source_turn_id && !owns_assignment {
         return Err(TaskRefusal::StaleState.into());
     }
     Ok(())
@@ -72,15 +72,15 @@ pub(in crate::task) fn check_human(source: &Source) -> Result<()> {
         };
     }
     if source.producer != Producer::Steer.as_str()
-        || !afd_events::is_steer_actor(&source.actor)
-        || source.actor == afd_events::ACTOR_MACHINE
+        || !afd_turns::view::is_steer_actor(&source.actor)
+        || source.actor == afd_turns::view::ACTOR_MACHINE
     {
         return Err(TaskRefusal::InvalidTarget.into());
     }
     Ok(())
 }
 
-pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) -> Result<()> {
+pub(super) fn check(source: &Source, current: &RunRow, plan: &PreparedPlan) -> Result<()> {
     check_human(source)?;
     if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(TaskRefusal::StaleState.into());
@@ -123,7 +123,7 @@ pub(in crate::task) fn message_for<'a>(
     body: &'a str,
 ) -> Result<std::borrow::Cow<'a, str>> {
     if producer != Producer::SlackMention.as_str() {
-        return Ok(af_wire::event::message_of(body));
+        return Ok(af_wire::turn::message_of(body));
     }
     let human: SlackPayload<'_> =
         serde_json::from_str(body).map_err(af_core::json::Unreadable::from)?;
@@ -136,7 +136,7 @@ pub(in crate::task) fn message_for<'a>(
     reason = "test: an unmet precondition should fail the test loudly"
 )]
 mod tests {
-    use afd_admission::Producer;
+    use afd_turns::Producer;
 
     use super::{Source, check_human};
 
@@ -148,8 +148,8 @@ mod tests {
             request_json: r#"{"message":"fix it"}"#.to_owned(),
             reply_provider: None,
             reply_address: None,
-            input_claim_lease_id: None,
-            input_claim_fence: None,
+            input_run_id: None,
+            input_fence: None,
         }
     }
 

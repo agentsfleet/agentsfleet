@@ -6,6 +6,7 @@
     reason = "valid fixture shape is a test precondition"
 )]
 
+mod cases;
 mod corpus;
 mod decision_policy;
 mod digest;

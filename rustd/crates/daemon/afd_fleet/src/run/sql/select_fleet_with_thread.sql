@@ -1,0 +1,11 @@
+SELECT f.workspace_id, r.definition::text, f.status,
+       r.runtime_model_ref, f.name, s.resume_context::text AS context_json, r.policy_semantics,
+       r.id AS revision_id, f.head_revision_id, t.generation AS task_generation,
+       current.definition::text AS current_definition
+FROM fleet.fleets f
+LEFT JOIN thread.turns a ON a.id = $2 AND a.thread_id = f.id AND a.workspace_id = f.workspace_id
+LEFT JOIN fleet.tasks t ON t.id = a.task_id AND t.fleet_id = f.id AND t.workspace_id = f.workspace_id
+LEFT JOIN fleet.revisions r ON r.id = COALESCE(t.accepted_revision_id, f.head_revision_id) AND r.fleet_id = f.id
+LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
+LEFT JOIN thread.threads s ON s.id = f.id
+WHERE f.id = $1

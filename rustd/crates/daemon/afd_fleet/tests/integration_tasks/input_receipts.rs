@@ -9,9 +9,9 @@ use super::fixture::{Case, exercise, id};
 fn receipt(case: &Case, bindings: &TaskBindings, mode: TaskInputMode) -> TaskInputReceiptInput {
     let item = bindings.items.first().expect("accepted item");
     TaskInputReceiptInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         operation_id: afd_db::test_util::mint_id().into(),
-        source_admission_id: case.held.event_id.clone().into(),
+        source_turn_id: case.held.turn_id.clone().into(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
         task: Some(DecisionTaskVersion {
@@ -35,13 +35,13 @@ async fn queued_item_receipt_preserves_original_answer_on_replay_and_conflict() 
     exercise(async |case| {
         let bindings = case
             .tasks
-            .bind(case.lease(), &case.plan(&"a".repeat(64), 1))
+            .bind(case.run(), &case.plan(&"a".repeat(64), 1))
             .await
             .expect("accepted task");
         let input = receipt(case, &bindings, TaskInputMode::Queued);
         let accepted = case
             .tasks
-            .accept_input(case.lease(), &valid(input.clone()))
+            .accept_input(case.run(), &valid(input.clone()))
             .await
             .expect("native queued acknowledgement");
         assert_eq!(accepted.mode, TaskInputMode::Queued);
@@ -49,7 +49,7 @@ async fn queued_item_receipt_preserves_original_answer_on_replay_and_conflict() 
         assert_eq!(accepted.covered_input_sequence, Some(0));
         let replayed = case
             .tasks
-            .accept_input(case.lease(), &valid(input.clone()))
+            .accept_input(case.run(), &valid(input.clone()))
             .await
             .expect("same acknowledgement replay");
         assert!(replayed.replayed);
@@ -82,14 +82,14 @@ async fn input_receipts_refuse_changed_identity_generation_and_mode_without_writ
     exercise(async |case| {
         let bindings = case
             .tasks
-            .bind(case.lease(), &case.plan(&"a".repeat(64), 1))
+            .bind(case.run(), &case.plan(&"a".repeat(64), 1))
             .await
             .expect("accepted task");
         let original = receipt(case, &bindings, TaskInputMode::Answered);
         for (input, code) in invalid_inputs(&original) {
             let error = case
                 .tasks
-                .accept_input(case.lease(), &valid(input))
+                .accept_input(case.run(), &valid(input))
                 .await
                 .expect_err("invalid acknowledgement is refused");
             assert_eq!(error.code(), code);
@@ -123,7 +123,7 @@ async fn conflicting_answer(case: &Case, input: &TaskInputReceiptInput) {
     };
     let refused = case
         .tasks
-        .accept_input(case.lease(), &valid(different))
+        .accept_input(case.run(), &valid(different))
         .await
         .expect_err("first answer remains authoritative");
     assert_eq!(refused.code(), error_code::TASK_REPLAY_CONFLICT);

@@ -70,10 +70,10 @@ pub(crate) enum ErrorKind {
         #[source]
         source: sqlx::Error,
     },
-    #[error("task continuation admission failed")]
-    Admission {
+    #[error("task continuation turn write failed")]
+    TurnWrite {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
     #[error("a stored task document is malformed")]
     TaskDocument {
@@ -98,10 +98,10 @@ pub(crate) enum ErrorKind {
         source: std::num::TryFromIntError,
     },
     #[error("the task continuation could not be admitted")]
-    TaskControlAdmission {
+    TaskControlTurn {
         state: af_wire::task::TaskState,
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
     #[error("the task mutation was refused")]
     TaskMutation {
@@ -117,11 +117,11 @@ pub(crate) enum ErrorKind {
     TaskRefused { reason: crate::task::TaskRefusal },
     #[error("{reason}")]
     TurnCheckpointRefused {
-        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+        reason: crate::run::turn_checkpoint::TurnCheckpointRefusal,
     },
     #[error("a turn checkpoint is invalid during {context}")]
     TurnCheckpointFailure {
-        reason: crate::lease::turn_checkpoint::TurnCheckpointRefusal,
+        reason: crate::run::turn_checkpoint::TurnCheckpointRefusal,
         context: &'static str,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
@@ -131,10 +131,10 @@ pub(crate) enum ErrorKind {
         #[source]
         source: af_context::Error,
     },
-    #[error("private authoring admission could not complete")]
-    Authoring {
+    #[error("the setup run could not complete")]
+    Setup {
         #[source]
-        source: afd_authoring::Error,
+        source: afd_setup::Error,
     },
     #[error("the datastore backing the runner plane would not answer")]
     Datastore {
@@ -142,7 +142,7 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
-    #[error("the runner host could not establish lease capacity")]
+    #[error("the runner host could not establish run capacity")]
     Runner {
         #[source]
         source: afd_runner::Error,
@@ -184,15 +184,15 @@ pub(crate) enum ErrorKind {
     #[error("the event store could not answer for the runner plane")]
     Events {
         #[source]
-        source: afd_events::Error,
+        source: afd_turns::view::Error,
     },
 
     /// The delivery ledger would not answer.
     ///
-    /// `afd_outbound` owns `fleet.obligations`, and the report path commits
-    /// an obligation through it inside its own transaction — so a failure there
+    /// `afd_outbound` owns `thread.deliveries`, and the report path commits
+    /// an delivery through it inside its own transaction — so a failure there
     /// is a failure of THIS transaction and has to reach the caller as one.
-    /// Distinct from [`Self::Datastore`] because the obligation is a PostgreSQL
+    /// Distinct from [`Self::Datastore`] because the delivery is a PostgreSQL
     /// row, not a queue entry, and the two fail for different reasons.
     #[error("the delivery ledger could not answer for the runner plane")]
     Outbound {
@@ -236,17 +236,14 @@ pub(crate) enum ErrorKind {
     #[error("the reporting holder's fence is behind the fleet's live sequence")]
     StaleFence,
 
-    #[error("no lease with that id belongs to the presenting runner")]
-    LeaseNotFound,
+    #[error("no run with that id belongs to the presenting runner")]
+    RunNotFound,
 
-    #[error("the lease is no longer this runner's to renew")]
-    LeaseLost,
+    #[error("the run is no longer this runner's to renew")]
+    RunLost,
 
-    #[error("the fleet was archived and this lease must stop")]
-    LeaseCancelled,
-
-    #[error("the lease reached the hard ceiling on one run's wall time")]
-    LeaseMaxRuntime,
+    #[error("the fleet was archived and this run must stop")]
+    RunCancelled,
 
     #[error("the tenant's credit pool cannot fund another slice of this run")]
     RenewalNoCredits,
@@ -254,11 +251,8 @@ pub(crate) enum ErrorKind {
     #[error("the fleet reached a spend ceiling its own author declared")]
     BudgetExhausted,
 
-    #[error("the leased event recorded no thread a message can go to")]
+    #[error("the held event recorded no thread a message can go to")]
     MessageNoChannel,
-
-    #[error("the lease already posted as many messages as one run may")]
-    MessageLimitReached,
 
     #[error("the fleet's secret values could not be gathered into a mask")]
     Scrub {

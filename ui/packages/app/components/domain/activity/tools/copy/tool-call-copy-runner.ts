@@ -1,11 +1,11 @@
 import type { JsonValue, ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
-import { DIFF_ROW, type DiffRow, type LineDiff } from "../diff/tool-call-diff";
+import { DIFF_ROW, type DiffRow } from "../diff/tool-call-diff";
 import { PLAN_STATUS, TOOL_BODY, TOOL_NAME, plainCopy, type PlanStatus, type PlanStep, type ToolCopy, type Verbs } from "../presentation/tool-call-shape";
-import { CLIP_MARK, clipMarked, compactArgs, firstLine, firstString, linesOf, mayBeClipped, pathArg, scalarArg, stringArg, workspacePath } from "../presentation/tool-call-text";
+import { CLIP_MARK, clipMarked, compactArgs, firstLine, firstString, linesOf, mayBeClipped, pathArg, scalarArg, stringArg } from "../presentation/tool-call-text";
 
 // The runner's tools beyond files, requests, memory and commands, as their
 // cells read. Argument names come from the runner: `afr_tools` for the tools
-// it hosts (pushover, update_plan), and the specs that will host the rest
+// it hosts (notify, update_plan), and the specs that will host the rest
 // (the sandbox tools, nested loops and runner verbs). Where a
 // spec names only a verb's body, the cell tries each spelling it knows and
 // otherwise shows the arguments as they came, never a guess.
@@ -13,7 +13,6 @@ import { CLIP_MARK, clipMarked, compactArgs, firstLine, firstString, linesOf, ma
 const VERBS = {
   NOTIFY: { running: "Notifying", done: "Notified" },
   PLAN: { running: "Updating plan", done: "Updated plan" },
-  EDIT: { running: "Editing", done: "Edited" },
   VIEW_IMAGE: { running: "Viewing image", done: "Viewed image" },
   OPEN: { running: "Opening", done: "Opened" },
   CLICK: { running: "Clicking", done: "Clicked" },
@@ -41,7 +40,6 @@ const ARG = {
   EXPLANATION: "explanation",
   STEP: "step",
   STATUS: "status",
-  PATCH: "patch",
   URL: "url",
   ACTION: "action",
   SELECTOR: "selector",
@@ -64,15 +62,13 @@ const PAGE = "page";
 const TERMINAL = "terminal";
 const GIT = "git";
 const SEPARATOR = " ";
-const PATCH_FILE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): /;
 const PATCH_FRAME = /^\*\*\* |^@@/;
 const PLAN_STATUSES: ReadonlySet<string> = new Set(Object.values(PLAN_STATUS));
 
 // A Map, not an object literal: a tool named `toString` must read as unknown.
 export const RUNNER_COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
-  [TOOL_NAME.PUSHOVER, (args) => plainCopy(VERBS.NOTIFY, firstLine(firstString(args, [ARG.TITLE, ARG.MESSAGE]) ?? ""))],
+  [TOOL_NAME.NOTIFY, (args) => plainCopy(VERBS.NOTIFY, firstLine(firstString(args, [ARG.TITLE, ARG.MESSAGE]) ?? ""))],
   [TOOL_NAME.UPDATE_PLAN, planCopy],
-  [TOOL_NAME.APPLY_PATCH, patchCopy],
   [TOOL_NAME.IMAGE, (args) => plainCopy(VERBS.VIEW_IMAGE, pathArg(args))],
   [TOOL_NAME.BROWSER_OPEN, (args) => plainCopy(VERBS.OPEN, clipMarked(stringArg(args, ARG.URL) ?? ""))],
   [TOOL_NAME.BROWSER, browserCopy],
@@ -92,42 +88,17 @@ export const RUNNER_COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = ne
 /** Tools a call makes with no arguments at all: no arguments is no loss. */
 export const TAKES_NO_ARGS: ReadonlySet<string> = new Set([TOOL_NAME.SCREENSHOT]);
 
-/** A patch's files and the lines it removes and adds, read from Codex's
- * patch grammar (`*** Update File:`, `@@`, then `-`, `+` and ` ` lines). */
-export function patchDiff(patch: string): { files: string[]; diff: LineDiff } {
-  const files: string[] = [];
-  const rows: DiffRow[] = [];
-  for (const line of linesOf(patch)) {
-    if (PATCH_FILE.test(line)) files.push(workspacePath(line.replace(PATCH_FILE, "")));
-    else if (!PATCH_FRAME.test(line)) rows.push(patchRow(line));
-  }
-  return {
-    files,
-    diff: {
-      rows,
-      added: rows.filter((row) => row.kind === DIFF_ROW.ADDED).length,
-      removed: rows.filter((row) => row.kind === DIFF_ROW.REMOVED).length,
-    },
-  };
+/** A patch's lines as rows, read from Codex's patch grammar (`*** Update
+ * File:`, `@@`, then `-`, `+` and ` ` lines), for a full read to show what
+ * the call asked for. Its files and counts are the recorded changes'. */
+export function patchRows(patch: string): DiffRow[] {
+  return linesOf(patch).filter((line) => !PATCH_FRAME.test(line)).map(patchRow);
 }
 
 function patchRow(line: string): DiffRow {
   if (line.startsWith("+")) return { kind: DIFF_ROW.ADDED, text: line.slice(1) };
   if (line.startsWith("-")) return { kind: DIFF_ROW.REMOVED, text: line.slice(1) };
   return { kind: DIFF_ROW.CONTEXT, text: line.startsWith(SEPARATOR) ? line.slice(1) : line };
-}
-
-function patchCopy(args: ToolArgs): ToolCopy {
-  const patch = stringArg(args, ARG.PATCH);
-  // No patch text, or none in the patch grammar: no counts to claim, so the
-  // arguments as they came.
-  if (patch === undefined) return plainCopy(VERBS.EDIT, compactArgs(args));
-  const { files, diff } = patchDiff(patch);
-  const target = files.join(", ");
-  // Cut at the leaf cap, a patch's counts and lines would be a part shown as the whole.
-  if (mayBeClipped(patch)) return { verbs: VERBS.EDIT, target: target.length > 0 ? `${target}${CLIP_MARK}` : "", body: { kind: TOOL_BODY.CLIPPED_EDIT } };
-  if (files.length === 0) return plainCopy(VERBS.EDIT, compactArgs(args));
-  return { verbs: VERBS.EDIT, target, body: { kind: TOOL_BODY.DIFF, diff } };
 }
 
 function planCopy(args: ToolArgs): ToolCopy {

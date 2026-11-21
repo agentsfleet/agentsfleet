@@ -79,7 +79,7 @@ fn failing_until(errno: i32, ok_on: usize, tries: &Cell<usize>) -> io::Result<us
 
 /// A device `LOOP_CTL_GET_FREE` just made may have no node yet, or one udev
 /// has not handed over: the open is made again until it is there. The kernel
-/// lane met the missing node while four leases started at once.
+/// lane met the missing node while four runs started at once.
 #[test]
 fn should_wait_out_a_node_udev_has_not_made_yet() {
     for errno in [libc::ENOENT, libc::EACCES] {
@@ -161,7 +161,7 @@ fn test_disk_reports_buffered_fallback() {
     );
 }
 
-/// Only the toolbox is attached read-only; a lease's disk takes writes.
+/// Only the toolbox is attached read-only; a run's disk takes writes.
 #[test]
 fn test_only_the_toolbox_is_attached_read_only() {
     assert_eq!(Access::ReadOnly.flags(), LO_FLAGS_READ_ONLY);

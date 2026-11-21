@@ -63,7 +63,7 @@ fn test_each_egress_refusal_keeps_its_sentence() {
         ),
         (
             EgressRefusal::TooManyAddresses(257),
-            "257 addresses, past the 256 a lease may reach",
+            "257 addresses, past the 256 a run may reach",
         ),
         (
             EgressRefusal::NoScope,
@@ -78,7 +78,7 @@ fn test_each_egress_refusal_keeps_its_sentence() {
         // pin test: literal is the contract
         assert_eq!(
             failure.detail(),
-            format!("the lease's egress was refused: {sentence}"),
+            format!("the run's egress was refused: {sentence}"),
             "{label}"
         );
         assert_eq!(failure.egress_refusal(), Some(&refusal));

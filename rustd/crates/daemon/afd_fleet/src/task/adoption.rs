@@ -11,7 +11,7 @@ use super::{
 use crate::{
     Result,
     error::{ErrorKind, query},
-    lease::Leases,
+    run::Runs,
 };
 
 const CONTEXT: &str = "adopt reviewed task goal";
@@ -23,7 +23,7 @@ struct Locked {
 
 #[derive(sqlx::FromRow)]
 struct Origin {
-    admission_id: Uuid7,
+    turn_id: Uuid7,
     reply_provider: Option<String>,
     reply_address: Option<String>,
     generation: i64,
@@ -58,10 +58,10 @@ pub(super) async fn apply(
     let changed = origin.accepted_revision_id != adoption.goal_revision_id.as_str();
     let wake = origin.wake(scope, task, eligible && changed)?;
     let prepared = match &wake {
-        Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
+        Some(wake) => Some(tasks.turns.prepare(wake.turn()).await?),
         None => None,
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let locked = lock(&mut tx, scope, task).await?;
     let current = read::on(&mut tx, scope, task).await?;
@@ -97,14 +97,14 @@ pub(super) async fn apply(
         update_goal(&mut tx, task, adoption, &current, &questions, eligible).await?;
         if eligible {
             let admitted = tasks
-                .admissions
+                .turns
                 .stage(&mut tx, prepared.ok_or(TaskRefusal::StaleState)?)
                 .await
-                .map_err(|source| ErrorKind::TaskControlAdmission {
+                .map_err(|source| ErrorKind::TaskControlTurn {
                     state: current.context.state,
                     source,
                 })?;
-            sqlx::query(sql::CONTROL_ADMISSION)
+            sqlx::query(sql::CONTROL_TURN)
                 .bind(task)
                 .bind(&admitted.stored.id)
                 .execute(&mut *tx)
@@ -169,16 +169,13 @@ async fn questions(
     if !reviewed {
         return Err(TaskRefusal::InvalidTarget.into());
     }
-    let config = Leases::stored_config_on(connection, &scope.fleet_id, Some(revision))
+    let config = Runs::stored_config_on(connection, &scope.fleet_id, Some(revision))
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
-    let original = Leases::stored_config_on(
-        connection,
-        &scope.fleet_id,
-        Some(&crate::task::guard::wire(previous)?),
-    )
-    .await?
-    .ok_or(TaskRefusal::InvalidTarget)?;
+    let original =
+        Runs::stored_config_on(connection, &scope.fleet_id, Some(&guard::wire(previous)?))
+            .await?
+            .ok_or(TaskRefusal::InvalidTarget)?;
     if !original.same_task_authority(&config) {
         return Err(TaskRefusal::InvalidTarget.into());
     }
@@ -228,7 +225,7 @@ async fn origin(
     adoption: &TaskAdoption,
 ) -> Result<Origin> {
     fetch::rows(
-        tasks.leases.pool(),
+        tasks.runs.pool(),
         sqlx::query_as(include_str!("sql/adoption_origin.sql"))
             .bind(task)
             .bind(&scope.fleet_id)
@@ -258,7 +255,7 @@ impl Origin {
                     row::counter(self.generation, "generation")?
                         .checked_add(1)
                         .ok_or(TaskRefusal::LimitExhausted)?,
-                    &self.admission_id,
+                    &self.turn_id,
                 )
                 .with_reply(
                     self.reply_provider.as_deref(),

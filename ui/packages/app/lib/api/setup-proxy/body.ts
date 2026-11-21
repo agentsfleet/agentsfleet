@@ -1,6 +1,7 @@
-// Incoming bodies stop at the daemon's native envelope limit, even without length.
+// Incoming bodies stop at the largest setup body the daemon reads, even without length.
 
-export const SETUP_BODY_LIMIT_BYTES = 128 * 1024;
+import { SETUP_BODY_LIMIT_BYTES } from "../body-limits";
+
 export const JSON_MEDIA_TYPE = "application/json";
 
 export function sameOrigin(request: Request): boolean {

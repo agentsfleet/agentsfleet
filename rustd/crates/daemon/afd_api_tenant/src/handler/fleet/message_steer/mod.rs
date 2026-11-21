@@ -5,8 +5,8 @@
 //!
 //! # One ledger statement decides the answer
 //!
-//! The handler reads no fleet and no status of its own. `afd_events::Steer`
-//! hands the message to the admission ledger, whose single statement decides
+//! The handler reads no fleet and no status of its own. `afd_turns::view::Steer`
+//! hands the message to the turn ledger, whose single statement decides
 //! ownership, a repeat of the caller's operation id, the fleet's status and
 //! the deployment ceiling together. A fleet this workspace does not hold is a
 //! 404 before any operation id is read, and a fleet that takes no work is a
@@ -19,7 +19,7 @@
 //! fleet was archived since, because the message is already on its
 //! way to run. The statement reads the key before it checks the status, and its
 //! own insert answers a repeat, so no lookup runs ahead of it
-//! (`afd_events::steer`).
+//! (`afd_turns::view::steer`).
 //!
 //! # The 202 says where the message went
 //!
@@ -33,11 +33,12 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::error_code;
-use af_validate::Sentences;
-use af_wire::event::{EventType, SteerAccepted, SteerRequest};
-use afd_api_wire::tail::TailFrame;
-use afd_events::Steered;
-use afd_events::disposition::{Placed, SteerDisposition};
+use af_validate::{Sentences, TEXT_TOO_LONG, nul_free};
+use af_wire::turn::SteerDisposition;
+use af_wire::turn::{SteerAccepted, SteerRequest, TurnKind};
+use afd_api_wire::tail::{FrameText, TailFrame};
+use afd_turns::view::Steered;
+use afd_turns::view::disposition::Placed;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -49,7 +50,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{FleetSteering, Services};
+use crate::services::{FleetSteering, TenantPlane};
 
 use super::detail::{FleetPath, parse_fleet_id};
 
@@ -69,12 +70,8 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
 /// The refusal an empty message earns.
 const DETAIL_MESSAGE_EMPTY: &str = "message must not be empty";
 
-/// The refusal a message past the bound, or holding NUL, earns.
-///
-/// One sentence names both rules: a caller told only the one it did not break
-/// would go looking at the wrong limit.
-const DETAIL_MESSAGE_INVALID: &str =
-    "message must not exceed 8192 bytes or contain a NUL character";
+/// The refusal a message holding NUL earns.
+const DETAIL_MESSAGE_NUL: &str = "message must not contain a NUL character";
 
 /// The refusal an unusable client operation identity earns.
 ///
@@ -87,12 +84,13 @@ const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to
 /// A refused steer's sentence by the field its report names.
 ///
 /// The operation id comes FIRST: a caller that sent a bad one and was told its
-/// message was empty would go looking at the wrong field. Both message
-/// refusals report the same path, so the table answers the invalid one and the
-/// handler tells an empty message apart by looking at it.
+/// message was empty would go looking at the wrong field. Every message
+/// refusal reports the same path, so the table answers the text ceiling's own
+/// sentence, and the handler tells an empty message and one holding NUL apart
+/// by looking at it.
 const SENTENCES: Sentences = Sentences::new(
     &[("operation_id", DETAIL_OPERATION_ID_INVALID)],
-    DETAIL_MESSAGE_INVALID,
+    TEXT_TOO_LONG,
 );
 
 /// The refusal a fleet this workspace does not hold earns.
@@ -132,7 +130,7 @@ const STATUS_ACCEPTED: &str = "accepted";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn steer<D: Services>(
+pub(crate) async fn steer<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -158,18 +156,20 @@ pub(crate) async fn steer<D: Services>(
         .await;
     clock.mark(SteerStage::Admit);
     let steered = appended.map_err(refuse_steer)?;
-    clock.identify(&steered.event_id, fleet.as_str());
+    clock.identify(&steered.turn_id, fleet.as_str());
     announce_admitted(steering, fleet.as_str(), &steered, &actor, &steer.message).await;
     clock.mark(SteerStage::Announce);
     let replayed = steered.replayed();
-    Ok(accepted(steered.event_id, replayed, steered.placed))
+    Ok(accepted(steered.turn_id, replayed, steered.placed))
 }
 
 /// Tells every screen on the fleet the message was accepted, before the 202.
 ///
-/// Once per message: a repeat carries no admission instant, because its first
+/// Once per message: a repeat carries no intake instant, because its first
 /// send announced it. Best-effort, like every tail frame — a queue that will
 /// not take it is logged by the publisher and the steer is still accepted.
+/// The frame carries the message kept to the tail batch; the turn holds it
+/// whole.
 async fn announce_admitted(
     steering: &impl FleetSteering,
     fleet: &str,
@@ -180,11 +180,13 @@ async fn announce_admitted(
     let Some(created_at) = steered.admitted_at else {
         return;
     };
-    let frame = TailFrame::EventAdmitted {
-        event_id: Cow::Borrowed(&steered.event_id),
+    let message = FrameText::within(message, afd_bus::TAIL_BATCH_BYTES);
+    let frame = TailFrame::TurnAdmitted {
+        turn_id: Cow::Borrowed(&steered.turn_id),
         actor: Cow::Borrowed(actor),
-        event_type: Cow::Borrowed(EventType::Chat.as_str()),
-        message: Cow::Borrowed(message),
+        event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
+        message: Cow::Borrowed(message.text),
+        message_trimmed: message.trimmed,
         created_at,
     };
     steering.announce(fleet, &frame).await;
@@ -229,7 +231,7 @@ const fn counted(replayed: bool, disposition: SteerDisposition) -> Option<SteerP
 
 /// The 202 a steer answers with, for a new message or a repeat alike: which of
 /// the two it is, and where the message went.
-fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
+fn accepted(turn_id: String, replayed: bool, placed: Placed) -> Response {
     if let Some(counted) = counted(replayed, placed.disposition) {
         af_observability::producers::fleet::fold::disposition(counted);
     }
@@ -237,10 +239,10 @@ fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
         StatusCode::ACCEPTED,
         Json(SteerAccepted {
             status: Cow::Borrowed(STATUS_ACCEPTED),
-            event_id: Cow::Owned(event_id),
+            turn_id: Cow::Owned(turn_id),
             replayed,
             disposition: placed.disposition,
-            folded_into_event_id: placed.folded_into_event_id.map(Cow::Owned),
+            folded_into_turn_id: placed.folded_into_turn_id.map(Cow::Owned),
         }),
     )
         .into_response()
@@ -250,7 +252,7 @@ fn accepted(event_id: String, replayed: bool, placed: Placed) -> Response {
 /// 404, a fleet that takes no work a 409 naming its status, a reused operation
 /// id a 409 naming the state the id is in; everything else renders as its plane
 /// decided.
-fn refuse_steer(error: afd_events::Error) -> Refusal {
+fn refuse_steer(error: afd_turns::view::Error) -> Refusal {
     if error.is_fleet_absent() {
         Refusal::coded(error_code::AGENTSFLEET_NOT_FOUND, DETAIL_FLEET_NOT_FOUND)
     } else if let Some(status) = error.not_runnable() {
@@ -276,9 +278,9 @@ fn actor_for(person: &afd_auth::principal::Person) -> String {
         // the whole point of a user-scoped credential is that a steer from a
         // terminal is attributable to one.
         PersonCredential::SessionToken { .. } | PersonCredential::CliCredential => {
-            afd_events::steer_actor(person.subject().as_str())
+            afd_turns::view::steer_actor(person.subject().as_str())
         }
-        PersonCredential::TenantApiKey => afd_events::ACTOR_MACHINE.to_owned(),
+        PersonCredential::TenantApiKey => afd_turns::view::ACTOR_MACHINE.to_owned(),
     }
 }
 
@@ -301,15 +303,20 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     let request: SteerRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
     if let Err(report) = request.validate() {
-        // Three sentences read back off one report, because they are three
-        // different mistakes to whoever has to fix them.
+        // Four sentences read back off one report, because they are four
+        // different mistakes to whoever has to fix them. The NUL rule is asked
+        // of the rule itself, so the two cannot disagree.
         let picked = SENTENCES.pick(&report);
-        let empty = picked == DETAIL_MESSAGE_INVALID && request.message.is_empty();
-        return Err(Refusal::malformed(if empty {
-            DETAIL_MESSAGE_EMPTY
+        let message = &request.message;
+        return Err(if picked != TEXT_TOO_LONG {
+            Refusal::malformed(picked)
+        } else if message.is_empty() {
+            Refusal::malformed(DETAIL_MESSAGE_EMPTY)
+        } else if nul_free(message, &()).is_err() {
+            Refusal::malformed(DETAIL_MESSAGE_NUL)
         } else {
-            picked
-        }));
+            Refusal::input_too_long()
+        });
     }
     Ok(request)
 }

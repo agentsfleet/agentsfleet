@@ -16,7 +16,7 @@ impl Harness<'_, '_> {
             .ok_or_else(unavailable)?
             .task_id
             .to_string();
-        let verbs = self.shared.lease.verbs;
+        let verbs = self.shared.run.verbs;
         // Each task has a cumulative publication limit. The bounded page walk
         // includes refused attempts as well as confirmations and uncertainties.
         for page_number in 0..64 {
@@ -67,7 +67,7 @@ impl Harness<'_, '_> {
                 if matches!(effect.state, TaskEffectState::Confirmed) {
                     self.confirmed_effect_watermark = effect.ordinal;
                 }
-                self.messages.push(af_providers::Message::User(
+                self.transcript.push(guffbolt::Message::User(
                     self.shared
                         .scrub
                         .clean(

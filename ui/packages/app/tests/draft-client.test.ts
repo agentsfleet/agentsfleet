@@ -1,11 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SetupUnavailable } from "@/lib/api/draft-request";
-import { DRAFT_STATE, MESSAGE_STATE } from "@/lib/api/draft-types";
+import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, PUBLICATION, REVIEW, SCHEDULE, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -15,11 +15,11 @@ afterEach(() => fixture.dispose());
 describe("private setup editing and recovery boundaries", () => {
   const edit = () => ({definition: structuredClone(REVIEW.effective.definition), instanceName: REVIEW.effective.instance_name});
 
-  it("changes the authoring model locally before creation and conditionally after creation", async () => {
+  it("changes the setup model locally before creation and conditionally after creation", async () => {
     const instance = await ready(); await instance.selectModel("model:second");
     expect(instance.getSnapshot().model).toBe("model:second"); expect(mutations()).toEqual([]);
     await instance.resume(DRAFT_ID); await instance.selectModel("model:third");
-    expect(mutations()[0]?.body).toEqual({authoring_model_ref: "model:third"});
+    expect(mutations()[0]?.body).toEqual({setup_model_ref: "model:third"});
     expect(mutations()[0]?.headers.get("If-Match")).toBe(DRAFT.etag);
     expect(instance.getSnapshot().model).toBe("model:third");
   });
@@ -44,7 +44,7 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toHaveLength(1);
   });
 
-  it("refuses preparation without a source or authoring model before creating a draft", async () => {
+  it("refuses preparation without a source or setup model before creating a draft", async () => {
     fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
     const instance = await ready();
     await expect(instance.prepareSave()).rejects.toMatchObject({status: 409});
@@ -85,11 +85,17 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toHaveLength(1);
   });
 
-  it.each(["", "   ", "\n\t", "x".repeat(32_769), "🌱".repeat(8_193)])("rejects invalid message input before creating an operation (%#)", async (text) => {
+  it.each(["", "   ", "\n\t"])("rejects invalid message input before creating an operation (%#)", async (text) => {
     const instance = await ready();
     await expect(instance.send(text)).rejects.toMatchObject({status: 400});
-    expect(instance.getSnapshot()).toMatchObject({pending: false, busy: false, error: "Messages must contain 1 to 32,768 bytes of text."});
+    expect(instance.getSnapshot()).toMatchObject({pending: false, busy: false, error: "Messages must contain text."});
     expect(mutations()).toEqual([]);
+  });
+
+  it.each(["x".repeat(32_769), "🌱".repeat(8_193)])("leaves a long message's length to the daemon and sends it whole (%#)", async (message) => {
+    const instance = await ready();
+    await instance.send(message);
+    expect(mutations()[0]?.body).toMatchObject({message});
   });
 
   it("preserves meaningful indentation and line breaks when admitting a message", async () => {
@@ -99,7 +105,7 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()[0]?.body).toMatchObject({message});
   });
 
-  it("requires an authoring model and an existing conversation for applicable actions", async () => {
+  it("requires a setup model and an existing conversation for applicable actions", async () => {
     fixture.override = ({path}) => path.endsWith("/models") ? response({items: [], next_cursor: null}) : undefined;
     const instance = await ready();
     await expect(instance.edit(edit())).rejects.toMatchObject({status: 400});
@@ -109,11 +115,9 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toEqual([]);
   });
 
-  it("refuses Apply without a linked fleet and append publication without a prior publication", async () => {
+  it("refuses Apply without a linked fleet", async () => {
     const instance = await ready(true); await instance.refreshSetup();
     await expect(instance.apply()).rejects.toMatchObject({status: 409});
-    await instance.refreshSetup();
-    await expect(instance.publish("recipe", true)).rejects.toMatchObject({status: 409});
     expect(mutations()).toEqual([]);
   });
 
@@ -129,10 +133,8 @@ describe("private setup editing and recovery boundaries", () => {
     expect(instance.getSnapshot()).toMatchObject({busy: false, pending: false});
   });
 
-  it("publishes a new entry and clears a deleted conversation", async () => {
-    const instance = await ready(true); await instance.refreshSetup(); await instance.publish("recipe", false);
-    expect(instance.getSnapshot().notice).toBe("Setup published.");
-    expect(mutations()[0]?.body).toEqual({draft_candidate_id: DRAFT.candidate?.id, label: "recipe"});
+  it("clears a deleted conversation", async () => {
+    const instance = await ready(true);
     fixture.override = ({method}) => method === "DELETE" ? response(null, 204) : undefined;
     await instance.remove();
     expect(instance.getSnapshot()).toMatchObject({draft: null, messages: []});
@@ -200,10 +202,10 @@ describe("private browser chat", () => {
       error: "This chat is no longer available. It may have been removed, or your access may have changed."});
     expect(mutations()).toEqual([]);
   });
-  it("ordinary first chat has one atomic identity and never saves or publishes", async () => {
+  it("ordinary first chat has one atomic identity and never saves", async () => {
     const instance = await ready(); await instance.send("Investigate failures");
     const sent = mutations(); expect(sent).toHaveLength(1);
-    expect(sent[0]?.body).toMatchObject({source: {kind: "blank"}, authoring_model_ref: MODEL_REF, message: "Investigate failures"});
+    expect(sent[0]?.body).toMatchObject({source: {kind: "blank"}, setup_model_ref: MODEL_REF, message: "Investigate failures"});
     expect(sent[0]?.headers.get("Idempotency-Key")).toBeNull(); expect(instance.getSnapshot().draft?.id).toBe(DRAFT_ID);
     expect(instance.getSnapshot().messages[0]?.text).toBe(MESSAGE.text);
   });
@@ -290,31 +292,26 @@ describe("private browser chat", () => {
     const instance = await ready(true);
     await expect(instance.refreshSetup()).rejects.toMatchObject({status: 409}); expect(mutations()).toEqual([]);
   });
-  it("retains a publication revision tag after a lost answer", async () => {
-    fixture.current = {...DRAFT, publication: {plugin_id: PUBLICATION.plugin_id, revision_id: PUBLICATION.revision_id, canonical_digest: "prior"}};
-    let attempted = false;
-    fixture.override = ({path, method}) => {
-      if (path.endsWith(`/plugins/${PUBLICATION.plugin_id}`)) return response({etag: '"original-plugin"'});
-      if (path.endsWith("/revisions") && method === "POST") {
-        if (!attempted) {attempted = true; return response({}, 503);} return response(PUBLICATION, 201);
-      }
-      return undefined;
-    };
-    const instance = await ready(true); await instance.refreshSetup();
-    await expect(instance.publish("Recipe", true)).rejects.toMatchObject({status: 503}); await instance.retry();
-    expect(mutations()[1]?.headers.get("If-Match")).toBe('"original-plugin"');
-    expect(mutations()[1]?.headers.get("Idempotency-Key")).toBe(mutations()[0]?.headers.get("Idempotency-Key"));
-    expect(calls.filter((call) => call.path.endsWith(`/plugins/${PUBLICATION.plugin_id}`))).toHaveLength(1);
-  });
   it("clears private data and cancels future I/O on disposal", async () => {
     const instance = await ready(true); instance.dispose(); const before = calls.length;
     expect(instance.getSnapshot().messages).toEqual([]); expect(instance.getSnapshot().draft).toBeNull();
     await expect(instance.send("must not send")).rejects.toMatchObject({status: 400}); expect(calls).toHaveLength(before);
   });
-  it("Stop uses the observed durable watermark and reconciles the terminal result", async () => {
+  it("Stop PATCHes each unfinished request's turn, oldest first, and a finished one's 409 is no failure", async () => {
+    const queued = "0199a801-1000-7000-8000-0000000000f2";
+    let stopped = false;
+    fixture.override = ({path, method}) => {
+      if (method === "PATCH") { stopped = true; return path.endsWith(queued) ? response({error_code: "UZ-AGT-021"}, 409) : response({sequence: "1", state: "cancelled"}); }
+      const state = stopped ? MESSAGE_STATE.cancelled : MESSAGE_STATE.running;
+      return path.endsWith("/messages") ? response({items: [{...MESSAGE, state}, {...MESSAGE, sequence: "2", turn_id: queued,
+        state: stopped ? MESSAGE_STATE.cancelled : MESSAGE_STATE.queued}], next_cursor: null}) : undefined;
+    };
     const instance = await ready(true);
-    fixture.override = ({path}) => path.endsWith("/cancellations") ? response({cancelled_through: MESSAGE.sequence, stopped: [{sequence: MESSAGE.sequence, state: MESSAGE_STATE.cancelled}]}) : undefined;
-    await instance.stop(); expect(mutations()[0]?.body).toEqual({through_sequence: MESSAGE.sequence});
+    await instance.stop();
+    const turns = `/live/v1/workspaces/${WORKSPACE}/drafts/${DRAFT_ID}/turns`;
+    expect(mutations().map((call) => [call.method, call.path, call.body])).toEqual([
+      ["PATCH", `${turns}/${TURN_ID}`, {status: "cancelled"}], ["PATCH", `${turns}/${queued}`, {status: "cancelled"}]]);
+    expect(instance.getSnapshot()).toMatchObject({error: null, pending: false});
   });
   it.each([false, true])("closes a deleted draft stream without restoring data (disposed: %s)", async (disposed) => {
     fixture.override = ({path}) => path.endsWith("/messages")

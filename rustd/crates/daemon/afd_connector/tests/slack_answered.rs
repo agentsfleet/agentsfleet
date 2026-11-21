@@ -31,7 +31,7 @@ fn thread() -> Thread {
 fn marker() -> AnswerMarker {
     AnswerMarker {
         fleet_id: "0195b4ba-8d3a-7a11-8abc-000000000003".to_owned(),
-        event_id: "1760000000001-0".to_owned(),
+        turn_id: "1760000000001-0".to_owned(),
         part: None,
     }
 }
@@ -110,7 +110,7 @@ async fn the_read_stops_at_the_marker() {
 #[tokio::test]
 async fn a_thread_without_this_answer_holds_nothing() {
     let other = AnswerMarker {
-        event_id: "1760000000002-0".to_owned(),
+        turn_id: "1760000000002-0".to_owned(),
         ..marker()
     };
     let fake = FakeSlack::in_order(vec![page(&answered(&other), false)]).await;

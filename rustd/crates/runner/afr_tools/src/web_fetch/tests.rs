@@ -1,22 +1,22 @@
 use std::sync::Arc;
 
 use af_egress::testing::{RecordingTransport, Sent, inbound};
+use guffbolt::ToolOutput;
 use serde_json::{Value, json};
 
-use super::{DEFAULT_MAX_CHARS, WebFetch};
+use super::DEFAULT_MAX_CHARS;
+use crate::catalog::{HTTP_REQUEST, WEB_FETCH};
 use crate::egress::SharedTransport;
-use crate::handler::Typed;
-use crate::http_request::HttpRequest;
-use crate::runtime::{ToolErrorCode, ToolOutput};
-use crate::testing::{MINTED, Run, call, replying};
+use crate::runtime::ToolErrorCode;
+use crate::testing::{MINTED, RunFixture, call, replying, sending};
 
 const PAGE: &str = "https://demo.es.example/docs";
 
 async fn fetch(transport: SharedTransport, arguments: Value) -> ToolOutput {
-    let run = Run::new(false);
-    let tool = Typed::boxed(WebFetch::new(transport));
-    let lease = run.lease();
-    call(tool.as_ref(), &lease, arguments).await
+    let run = RunFixture::new(false);
+    let tool = sending(&WEB_FETCH, transport);
+    let run = run.run();
+    call(&tool, &run, arguments).await
 }
 
 async fn fetched(arguments: Value) -> (ToolOutput, Vec<Sent>) {
@@ -32,14 +32,17 @@ async fn test_web_fetch_is_get_only_and_credential_free() {
         json!({"url": PAGE, "headers": {"Authorization": "${secrets.grafana.token}"}}),
     ] {
         let (output, sent) = fetched(refused).await;
-        assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::InvalidArguments.into())
+        );
         assert_eq!(sent, Vec::new());
     }
 
     let (output, sent) = fetched(json!({"url": "https://${secrets.grafana.host}/"})).await;
     assert_eq!(
         output.error_code,
-        Some(ToolErrorCode::CredentialPlacementNotAllowed)
+        Some(ToolErrorCode::CredentialPlacementNotAllowed.into())
     );
     assert_eq!(sent, Vec::new());
 
@@ -89,23 +92,23 @@ async fn should_read_a_page_as_its_text() {
 
 #[tokio::test]
 async fn should_mask_a_minted_token_a_page_spells_in_entities() {
-    let run = Run::new(false);
-    let lease = run.lease();
+    let run = RunFixture::new(false);
+    let run = run.run();
     let (minting, _sent) = replying(200, "ok");
-    let request = Typed::boxed(HttpRequest::new(minting));
+    let request = sending(&HTTP_REQUEST, minting);
     let read = json!({
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
-    assert_eq!(call(request.as_ref(), &lease, read).await.error_code, None);
+    assert_eq!(call(&request, &run, read).await.error_code, None);
     let (page, _sent) = RecordingTransport::answering(|_outbound| {
         let mut page = inbound(200, &format!("<p>&#103;{}</p>", &MINTED[1..]));
         page.content_type = Some("text/html".to_owned());
         Ok(page)
     });
-    let fetch = Typed::boxed(WebFetch::new(Arc::new(page)));
+    let fetch = sending(&WEB_FETCH, Arc::new(page));
 
-    let output = call(fetch.as_ref(), &lease, json!({"url": PAGE})).await;
+    let output = call(&fetch, &run, json!({"url": PAGE})).await;
 
     assert!(
         output.text.contains("«secret:github.token»"),

@@ -57,7 +57,7 @@ fn run_fails_at_boot_without_its_environment() {
 /// home opened, host probed — and stops before it contacts the daemon, saying
 /// why: a test host either cannot build a sandbox or has no release staged.
 #[test]
-fn run_stops_at_boot_on_a_host_it_cannot_lease_on() {
+fn run_stops_at_boot_on_a_host_it_cannot_run_on() {
     let home = tempfile::tempdir().expect("a storage home");
     let ran = run_with(home.path(), &[]);
 

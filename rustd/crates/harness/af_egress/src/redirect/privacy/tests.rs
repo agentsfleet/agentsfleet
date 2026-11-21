@@ -7,12 +7,17 @@ use crate::testing::{inbound, redirected};
 use crate::{Inbound, Result};
 
 fn read_response(raw: &str, response: &mut Inbound) -> Result<(), Stop> {
-    let base = Url::parse("https://api.github.com/folder/start").expect("URL");
+    let base = base();
     let mut chain = Chain::new(&base, Vec::new());
     assert!(chain.next(&mut redirected(302, &base, raw))?.is_some());
     assert!(chain.next(response)?.is_none());
     chain.finish();
     Ok(())
+}
+
+/// Where every redirect in these tests starts.
+fn base() -> Url {
+    Url::parse("https://api.github.com/folder/start").expect("URL")
 }
 
 #[test]

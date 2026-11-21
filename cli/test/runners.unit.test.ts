@@ -3,7 +3,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PlatformFixture, POLICY, RUNNER, RUNNER_ID } from "./helpers-platform.ts";
 
-const UUIDV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const TOKEN = "agt_r_" + "b".repeat(64);
 
 let fixture: PlatformFixture;
@@ -16,7 +15,7 @@ const register = (file: string) => fixture.run(
 );
 const created = () => Response.json({runner_id: RUNNER_ID, runner_token: TOKEN, assigned_policy: POLICY}, {status: 201});
 
-test("runners register saves the token and sends a key", async () => {
+test("runners register saves the token and sends no key", async () => {
   fixture.respond = created;
   const file = join(fixture.state, "runner-token");
   const result = await register(file);
@@ -26,20 +25,25 @@ test("runners register saves the token and sends a key", async () => {
   expect(result.stdout + result.stderr).not.toContain(TOKEN);
   expect(fixture.calls).toHaveLength(1);
   expect(fixture.calls[0]?.url.pathname).toBe("/v1/tenants/me/runners");
-  expect(fixture.calls[0]?.headers.get("idempotency-key") ?? "").toMatch(UUIDV7);
+  expect(fixture.calls[0]?.headers.get("idempotency-key")).toBeNull();
 });
 
-test("runners register replay suggests rotate-token", async () => {
-  fixture.respond = () => Response.json({runner_id: RUNNER_ID, assigned_policy: POLICY});
+test("a host registered before answers 409 and suggests rotate-token", async () => {
+  fixture.respond = () => Response.json(
+    {error_code: "UZ-RUN-033", detail: "this host is already registered", current_state: "registered"},
+    {status: 409, headers: {location: `/v1/tenants/me/runners/${RUNNER_ID}`}},
+  );
   const file = join(fixture.state, "runner-token");
   const result = await register(file);
   expect(result.code).toBe(3);
   expect(existsSync(file)).toBe(false);
-  expect(JSON.parse(result.stderr).error.suggestion).toContain(`agentsfleet runners rotate-token ${RUNNER_ID}`);
-  expect(JSON.parse(result.stderr).error.code).toBe("RUNNER_REGISTRATION_REPLAYED");
+  const error = JSON.parse(result.stderr).error;
+  expect(error.code).toBe("UZ-RUN-033");
+  expect(error.suggestion).toContain("agentsfleet runners rotate-token");
+  expect(fixture.calls).toHaveLength(1);
 });
 
-test("a dropped reply retries with the same key and saves the token once", async () => {
+test("a dropped reply retries and saves the token once", async () => {
   let attempt = 0;
   fixture.respond = () => {
     attempt += 1;
@@ -51,9 +55,6 @@ test("a dropped reply retries with the same key and saves the token once", async
   const result = await register(file);
   expect(result.code).toBe(0);
   expect(fixture.calls).toHaveLength(2);
-  const keys = fixture.calls.map((call) => call.headers.get("idempotency-key"));
-  expect(keys[0]).toMatch(UUIDV7);
-  expect(keys[1]).toBe(keys[0]);
   expect(readFileSync(file, "utf8")).toBe(`${TOKEN}\n`);
 });
 

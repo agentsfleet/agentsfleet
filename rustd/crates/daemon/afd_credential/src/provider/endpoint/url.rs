@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn the_ssrf_ranges_are_refused_before_a_lease_exists() {
+    fn the_ssrf_ranges_are_refused_before_a_run_exists() {
         for refused in [
             "https://127.0.0.1/v1",
             "https://10.1.2.3/v1",

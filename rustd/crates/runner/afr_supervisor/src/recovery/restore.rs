@@ -17,7 +17,7 @@ pub(crate) struct Restore<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) transfers: &'a Transfers,
     pub(crate) permit: Option<&'a afr_agent::FileRecoveryPermit>,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
     pub(crate) task: &'a TaskContext<'a>,
@@ -43,7 +43,7 @@ impl Restore<'_> {
         let response = self
             .plane
             .task_checkpoint_authorizations(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
@@ -77,7 +77,7 @@ impl Restore<'_> {
         let mut progress = super::progress::Progress::default();
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,
@@ -107,7 +107,7 @@ impl Restore<'_> {
             .to_string();
         super::activity::emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &activity,
             Operation::Restore,
@@ -124,7 +124,7 @@ impl Restore<'_> {
         };
         super::activity::emit(
             self.plane,
-            self.lease,
+            self.run,
             &self.task.task_id,
             &activity,
             Operation::Restore,
@@ -182,7 +182,7 @@ impl Restore<'_> {
         let response = self
             .plane
             .task_checkpoint_authorizations(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
@@ -196,7 +196,7 @@ impl Restore<'_> {
         let plan = self.checked_plan(&checkpoint, response)?;
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,

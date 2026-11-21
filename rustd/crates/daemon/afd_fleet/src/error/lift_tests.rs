@@ -27,7 +27,7 @@ fn lifted_stores() -> Result<[Error; 6], &'static str> {
         Error::from(afd_gate::Error::from(first_db_error()?)),
         Error::from(afd_credential::Error::from(first_db_error()?)),
         Error::from(afd_billing::Error::from(first_db_error()?)),
-        Error::from(afd_events::Error::from(first_db_error()?)),
+        Error::from(afd_turns::view::Error::from(first_db_error()?)),
         Error::from(afd_outbound::Error::from(first_db_error()?)),
     ])
 }
@@ -71,7 +71,7 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
 }
 
 /// A memory-store failure answers with the code, the sentence and the outage
-/// class `afd_memory` decided; the lease plane restates none of them.
+/// class `afd_memory` decided; the run plane restates none of them.
 #[test]
 fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(), &'static str> {
     let outage = afd_db::error::one_of_each_kind()
@@ -101,7 +101,7 @@ fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(),
 /// A vault failure answers with the code and the sentence the vault decided,
 /// through the credential plane: one conversion, no restating.
 ///
-/// The outage class is the credential family's, which the lease plane has never
+/// The outage class is the credential family's, which the run plane has never
 /// counted as a datastore outage (`classify/availability.rs`), so it is not
 /// compared here.
 #[test]
@@ -119,9 +119,9 @@ fn a_vault_failure_keeps_the_vault_crates_code_and_sentence() {
 
 /// A runner-host or setup-chat failure answers with the code, the sentence and
 /// the outage class its own crate decided, for every kind that crate has: the
-/// lease plane restates none of them.
+/// run plane restates none of them.
 #[test]
-fn runner_and_authoring_failures_keep_their_crates_classification() {
+fn runner_and_setup_failures_keep_their_crates_classification() {
     let runners = afd_runner::error::one_of_each_kind()
         .into_iter()
         .map(|(kind, runner)| {
@@ -132,10 +132,10 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
             );
             (kind, decided, Error::from(runner))
         });
-    let authoring = afd_db::error::one_of_each_kind()
+    let setups = afd_db::error::one_of_each_kind()
         .into_iter()
         .map(|(kind, database)| {
-            let setup = afd_authoring::Error::from(database);
+            let setup = afd_setup::Error::from(database);
             let decided = (
                 setup.code(),
                 setup.detail(),
@@ -145,7 +145,7 @@ fn runner_and_authoring_failures_keep_their_crates_classification() {
         });
 
     let mut outages = 0;
-    for (kind, decided, lifted) in runners.chain(authoring) {
+    for (kind, decided, lifted) in runners.chain(setups) {
         let read = (
             lifted.code(),
             lifted.detail(),

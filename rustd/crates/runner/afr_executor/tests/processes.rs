@@ -155,7 +155,7 @@ async fn a_process_starts_in_the_directory_it_names_and_sees_only_its_environmen
     std::fs::create_dir(harness.root.join("sub")).unwrap();
 
     let spawn = Spawn::program("sh")
-        .args(["-c", "pwd; echo $GREETING; echo ${HOME:-unset}"])
+        .args(["-c", "pwd; echo $GREETING; echo ${HOME-unset}"])
         .cwd("sub")
         .env("GREETING", "hej");
     let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
@@ -223,7 +223,7 @@ async fn test_a_hundred_processes_on_one_connection_each_hear_only_their_own_out
     let harness = start().await;
     let client = &harness.client;
 
-    let finished = futures_util::future::join_all((0..PROCESSES).map(|process| async move {
+    let finished = futures_util::future::join_all((0..PROCESSES).map(async |process| {
         let script = format!("yes p{process:03} | head -c {SAID}");
         let spawn = Spawn::program("sh").args(["-c", script.as_str()]);
         (process, finish(client.spawn(&spawn).await.unwrap()).await)

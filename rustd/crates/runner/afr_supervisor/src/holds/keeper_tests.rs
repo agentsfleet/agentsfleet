@@ -19,7 +19,7 @@ use futures_util::FutureExt as _;
 
 use super::EVENT_DESTROY_FAILED;
 use crate::holds::tests::{
-    FLEET_A, FLEET_B, LEASE, fleets, hold, holds, id, key, park, released, releases, sandbox,
+    FLEET_A, FLEET_B, RUN, fleets, hold, holds, id, key, park, released, releases, sandbox,
 };
 use crate::holds::{Holds, Parked, Release};
 use crate::test_support::{FakeEngine, bounded};
@@ -27,7 +27,7 @@ use crate::test_support::{FakeEngine, bounded};
 /// How long a test waits for something that should already have happened.
 const PROMPT: Duration = Duration::from_secs(1);
 
-/// A lease that asked for its fleet's hold and stopped waiting before the
+/// A run that asked for its fleet's hold and stopped waiting before the
 /// answer came leaves nobody to take the sandbox: it is destroyed as
 /// superseded, never dropped still running.
 #[tokio::test]
@@ -82,11 +82,11 @@ async fn test_saturation_that_releases_nothing_does_not_ring() {
     hold(&holds, &engine, FLEET_A).await;
 
     let _first = holds.occupy(crate::holds::Occupant::Fleet {
-        lease: id(FLEET_A),
+        run: id(FLEET_A),
         fleet: id(FLEET_A),
     });
     let _last = holds.occupy(crate::holds::Occupant::Fleet {
-        lease: id(FLEET_B),
+        run: id(FLEET_B),
         fleet: id(FLEET_B),
     });
     let left = fleets(&holds).await;
@@ -116,7 +116,7 @@ async fn test_after_shutdown_a_take_finds_nothing_and_a_discard_still_destroys()
 }
 
 /// A park is counted at once; a take is not, since whether the sandbox comes
-/// back is known only once it thaws and answers, which the lease counts.
+/// back is known only once it thaws and answers, which the run counts.
 #[tokio::test]
 async fn test_a_park_is_counted_and_a_take_is_not() {
     let engine = FakeEngine::default();
@@ -134,8 +134,8 @@ async fn test_a_park_is_counted_and_a_take_is_not() {
     assert_eq!(counted, [Recorded::SandboxHold(SandboxHold::Parked)]);
 }
 
-/// Once the runner takes no new lease the task ends every hold, and a sandbox
-/// parked after that is handed back to its lease rather than held: the
+/// Once the runner takes no new run the task ends every hold, and a sandbox
+/// parked after that is handed back to its run rather than held: the
 /// keeper destroys only the hold it ended.
 #[tokio::test]
 async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
@@ -170,7 +170,7 @@ async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
 }
 
 /// A runner with no workers holds nothing: the sandbox is handed back to its
-/// lease, its release counted as capped, and the keeper destroys nothing.
+/// run, its release counted as capped, and the keeper destroys nothing.
 #[tokio::test]
 async fn test_a_runner_with_no_workers_holds_nothing() {
     let capture = Capture::install();
@@ -243,7 +243,7 @@ async fn test_a_take_across_a_clock_jump_back_reads_as_no_time_held() {
     assert_eq!(taken.held, Duration::ZERO);
 }
 
-/// A lease that parked into a keeper with no room and stopped waiting before
+/// A run that parked into a keeper with no room and stopped waiting before
 /// the answer came leaves nobody to end the sandbox: the keeper tears it down
 /// once, its release counted as capped.
 #[tokio::test]
@@ -253,7 +253,7 @@ async fn test_a_refused_park_nobody_waits_for_is_torn_down() {
     let (holds, _clock) = holds(0);
     let parked = sandbox(&engine).await;
 
-    let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
+    let abandoned = holds.park(key(FLEET_A), id(RUN), parked).now_or_never();
     let left = fleets(&holds).await;
     bounded("the keeper's shutdown", holds.shutdown()).await;
 
@@ -263,7 +263,7 @@ async fn test_a_refused_park_nobody_waits_for_is_torn_down() {
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
 
-/// A lease that parked into a keeper with room and stopped waiting before
+/// A run that parked into a keeper with room and stopped waiting before
 /// the answer came: no report will name the hold, so the keeper ends it as
 /// superseded at once and tears it down once.
 #[tokio::test]
@@ -273,7 +273,7 @@ async fn test_a_held_park_nobody_waits_for_is_superseded() {
     let (holds, _clock) = holds(2);
     let parked = sandbox(&engine).await;
 
-    let abandoned = holds.park(key(FLEET_A), id(LEASE), parked).now_or_never();
+    let abandoned = holds.park(key(FLEET_A), id(RUN), parked).now_or_never();
     let left = fleets(&holds).await;
     bounded("the keeper's shutdown", holds.shutdown()).await;
 

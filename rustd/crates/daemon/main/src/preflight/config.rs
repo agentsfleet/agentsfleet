@@ -54,16 +54,13 @@ pub struct BootConfig {
     pub(super) frame_memory: af_stream::MemoryLimits,
     pub(super) runner_listener: super::runner_listener::RunnerListenerConfig,
     pub(super) posthog: Option<PostHogConfig>,
-    pub(super) otlp: Option<super::OtlpConfig>,
+    pub(super) otlp: Option<af_otlp::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
     #[cfg(feature = "test-util")]
     pub(super) exchanger: Option<std::sync::Arc<dyn afd_credential::credential::Exchanger>>,
     /// A test boot's connector vendor boundary; never an environment option.
     #[cfg(feature = "test-util")]
     pub(super) connector_endpoint: Option<String>,
-    /// A test boot's provider HTTP boundary; never an environment option.
-    #[cfg(feature = "test-util")]
-    pub(super) authoring_transport: Option<afd_authoring::Network>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -80,21 +77,6 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
-    /// Pins provider HTTP to the boundary owned by this integration test.
-    #[cfg(feature = "test-util")]
-    #[must_use]
-    pub fn with_authoring_transport(mut self, transport: afd_authoring::Network) -> Self {
-        self.authoring_transport = Some(transport);
-        self
-    }
-
-    /// The explicitly supplied provider boundary, if this is a test boot.
-    #[cfg(feature = "test-util")]
-    #[must_use]
-    pub fn authoring_transport(&self) -> Option<afd_authoring::Network> {
-        self.authoring_transport.clone()
-    }
-
     /// Private native listener settings, resolved before opening datastores.
     #[must_use]
     pub const fn runner_listener(&self) -> &super::runner_listener::RunnerListenerConfig {
@@ -151,7 +133,7 @@ impl BootConfig {
     /// every developer's environment and every test, and is why the absence is
     /// a value here rather than a refusal at boot.
     #[must_use]
-    pub const fn otlp(&self) -> Option<&super::OtlpConfig> {
+    pub const fn otlp(&self) -> Option<&af_otlp::OtlpConfig> {
         self.otlp.as_ref()
     }
 

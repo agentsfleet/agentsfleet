@@ -1,33 +1,34 @@
 import { applyTaskActivity } from "./fleet-stream-task-activity";
 import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
 import { instantMs, isInstant } from "@/lib/api/decode";
-import { type EventRow, type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type TurnRow, type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { readNanos } from "@/lib/api/nanos";
 import {
   ACTOR,
-  EVENT_STATUS,
+  TURN_STATUS,
   outcomeForCompletion,
   outcomeForStatus,
   roleFor,
   triggerBodyFor,
-} from "@/lib/events/event-summary";
+} from "@/lib/turns/turn-summary";
 import {
-  AGENTSFLEET_EVENT_STATUS,
+  AGENTSFLEET_TURN_STATUS,
   EMPTY_PAYLOAD,
   TERMINAL_STATUSES,
   closeReasoningSpan,
   figure,
-  rowToEvent,
-  sameEvent,
+  frameMessage,
+  rowToTurn,
+  sameTurn,
   text,
-  type FleetEvent,
-  type FleetEventStatus,
+  type FleetTurn,
+  type FleetTurnStatus,
 } from "./fleet-stream-row";
 import { applyToolFrame } from "./fleet-stream-tool-frames";
 import { applyContextProgress } from "./fleet-stream-context";
 import { interruptOpenCalls, settleTools } from "./fleet-stream-tool-trace";
-import { adoptInstant, applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
+import { adoptInstant, applyTurnAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
 // live frame folds into the timeline, and how a page of durable rows merges
@@ -36,7 +37,7 @@ import { adoptInstant, applyEventAdmitted, receivedUpdate, startWaiting } from "
 
 // The statuses the server writes on a row; a completion naming any other
 // spelling marks the turn done rather than leaving it working forever.
-const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(EVENT_STATUS));
+const SERVER_STATUSES: ReadonlySet<string> = new Set(Object.values(TURN_STATUS));
 
 export function parseLiveFrame(data: string): LiveFrame | null {
   try {
@@ -50,10 +51,10 @@ export function parseLiveFrame(data: string): LiveFrame | null {
 
 /** `nowMs` is the browser clock the reducers stamp spans with; tests inject it. */
 export function applyLiveFrame(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   frame: LiveFrame,
   nowMs: number = Date.now(),
-): FleetEvent[] {
+): FleetTurn[] {
   switch (frame.kind) {
     case FRAME_KIND.TASK_DECISION_STARTED:
     case FRAME_KIND.TASK_DECISION_COMPLETED:
@@ -61,14 +62,14 @@ export function applyLiveFrame(
       return applyTaskActivity(prev, frame);
     case FRAME_KIND.CONTEXT_PROGRESS:
       return applyContextProgress(prev, frame);
-    case FRAME_KIND.EVENT_ADMITTED:
-      return applyEventAdmitted(prev, frame);
-    case FRAME_KIND.EVENT_RECEIVED:
-      return applyEventReceived(prev, frame);
+    case FRAME_KIND.TURN_ADMITTED:
+      return applyTurnAdmitted(prev, frame);
+    case FRAME_KIND.TURN_RECEIVED:
+      return applyTurnReceived(prev, frame);
     case FRAME_KIND.CHUNK:
       return applyChunk(prev, frame);
-    case FRAME_KIND.EVENT_COMPLETE:
-      return applyEventComplete(prev, frame, nowMs);
+    case FRAME_KIND.TURN_COMPLETE:
+      return applyTurnComplete(prev, frame, nowMs);
     case FRAME_KIND.TOOL_CALL_STARTED:
     case FRAME_KIND.TOOL_CALL_PROGRESS:
     case FRAME_KIND.TOOL_CALL_COMPLETED:
@@ -84,15 +85,15 @@ export function applyLiveFrame(
 
 // ── internals ────────────────────────────────────────────────────────────
 
-function applyEventReceived(
-  prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_RECEIVED }>,
-): FleetEvent[] {
+function applyTurnReceived(
+  prev: FleetTurn[],
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_RECEIVED }>,
+): FleetTurn[] {
   // The daemon stamps the frame with the row's own instant; a frame without
   // one (a malformed payload) falls back to now rather than to an invalid
   // date, so the row still sorts and renders.
   const createdAt = instantMs(frame.created_at);
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   // A row the browser already holds — the operator's own steer, reconciled
   // to its identifier before the daemon opened it — keeps everything but its
@@ -105,40 +106,40 @@ function applyEventReceived(
     updated[index] = started;
     return adoptInstant(updated, index, started, createdAt);
   }
-  const message = text(frame.message);
+  const message = frameMessage(frame.message, frame.message_trimmed);
   return [
     ...prev,
     {
-      id: frame.event_id,
+      id: frame.turn_id,
       role: roleFor(frame.actor),
       actor: frame.actor,
       // A steer's frame carries what was typed. Any other frame carries no
-      // payload, so the trigger comes from the actor and the event type the
+      // payload, so the trigger comes from the actor and the turn kind the
       // daemon recorded: a webhook or cron trigger gets its own neutral
       // headline rather than a chat caption.
-      text: message.length > 0 ? message : triggerBodyFor({
+      ...(message.text.length > 0 ? message : { text: triggerBodyFor({
         actor: frame.actor,
         request_json: EMPTY_PAYLOAD,
         event_type: typeof frame.event_type === "string" ? frame.event_type : "",
-      }),
+      }) }),
       reply: "",
-      outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+      outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.RECEIVED),
       failureLabel: null,
       failureDetail: null,
       createdAt: createdAt === null ? new Date() : new Date(createdAt),
-      status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
+      status: AGENTSFLEET_TURN_STATUS.RECEIVED,
     },
   ];
 }
 
 function applyChunk(
-  prev: FleetEvent[],
+  prev: FleetTurn[],
   frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>,
-): FleetEvent[] {
+): FleetTurn[] {
   if (!["answer", "reasoning"].includes(frame.text_kind) || typeof frame.text !== "string") return prev;
   // Locate once and copy once, matching `applyToolStep` — a streaming reply
   // fires this per chunk, so a second full pass per frame is pure waste.
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   if (existing === undefined) {
     // A chunk with no prior trigger row: the fleet is replying to something the
@@ -147,16 +148,16 @@ function applyChunk(
     return [
       ...prev,
       {
-        id: frame.event_id,
+        id: frame.turn_id,
         role: "assistant",
         actor: ACTOR.FLEET,
         text: "",
         reply: frame.text,
-        outcome: outcomeForStatus(AGENTSFLEET_EVENT_STATUS.RECEIVED),
+        outcome: outcomeForStatus(AGENTSFLEET_TURN_STATUS.RECEIVED),
         failureLabel: null,
         failureDetail: null,
         createdAt: new Date(),
-        status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
+        status: AGENTSFLEET_TURN_STATUS.RECEIVED,
       },
     ];
   }
@@ -168,13 +169,13 @@ function applyChunk(
   return updated;
 }
 
-function applyEventComplete(
-  prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
+function applyTurnComplete(
+  prev: FleetTurn[],
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_COMPLETE }>,
   nowMs: number,
-): FleetEvent[] {
+): FleetTurn[] {
   // Locate once, copy once — same shape as `applyToolStep` and `applyChunk`.
-  const index = prev.findIndex((e) => e.id === frame.event_id);
+  const index = prev.findIndex((e) => e.id === frame.turn_id);
   const existing = prev[index];
   // A completion for a row the timeline never opened — a subscriber that
   // connected after the opening, a continued run whose row the resolve wrote,
@@ -214,23 +215,23 @@ function applyEventComplete(
 
 // The completion's status as a row status: a server spelling as sent, and
 // anything else — absent, malformed, unknown — as processed.
-function terminalStatus(value: unknown): FleetEventStatus {
+function terminalStatus(value: unknown): FleetTurnStatus {
   return typeof value === "string" && SERVER_STATUSES.has(value)
-    ? (value as FleetEventStatus)
-    : AGENTSFLEET_EVENT_STATUS.PROCESSED;
+    ? (value as FleetTurnStatus)
+    : AGENTSFLEET_TURN_STATUS.PROCESSED;
 }
 
-// A completion carrying enough of a row to open one: the fields `rowToEvent`
+// A completion carrying enough of a row to open one: the fields `rowToTurn`
 // reads that have no fallback. Anything short of that is not a row.
 function openFromCompletion(
-  prev: FleetEvent[],
-  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.EVENT_COMPLETE }>,
-): FleetEvent[] {
+  prev: FleetTurn[],
+  frame: Extract<LiveFrame, { kind: typeof FRAME_KIND.TURN_COMPLETE }>,
+): FleetTurn[] {
   if (typeof frame.actor !== "string" || !isInstant(frame.created_at)) return prev;
-  const row: EventRow = {
+  const row: TurnRow = {
     fleet_id: "",
     workspace_id: "",
-    event_id: frame.event_id,
+    turn_id: frame.turn_id,
     actor: frame.actor,
     event_type: text(frame.event_type),
     status: terminalStatus(frame.status),
@@ -238,27 +239,27 @@ function openFromCompletion(
     wall_ms: figure(frame.wall_ms),
     failure_label: text(frame.failure_label) || null,
     failure_detail: text(frame.failure_detail) || null,
-    resumes_event_id: typeof frame.resumes_event_id === "string" ? frame.resumes_event_id : null,
+    resumes_turn_id: typeof frame.resumes_turn_id === "string" ? frame.resumes_turn_id : null,
     created_at: frame.created_at,
     updated_at: isInstant(frame.updated_at) ? frame.updated_at : frame.created_at,
     cost_nanos: readNanos(frame.cost_nanos),
   };
-  return [...prev, rowToEvent(row)];
+  return [...prev, rowToTurn(row)];
 }
 
 // ── the merge ────────────────────────────────────────────────────────────
 
 export function mergeBackfill(
-  prev: FleetEvent[],
-  rows: EventRow[],
+  prev: FleetTurn[],
+  rows: TurnRow[],
   nowMs: number = Date.now(),
-): FleetEvent[] {
+): FleetTurn[] {
   const seen = new Set(prev.map((e) => e.id));
   // A terminal backfill row is authoritative over a live row with the same
-  // id for its STATUS and figures — an event that straddled an outage may sit
+  // id for its STATUS and figures — a turn that straddled an outage may sit
   // here as a partial chunk accumulation, and the durable row is the settled
-  // one. It is NOT authoritative for the bodies: the events LIST carries
-  // none (`afd_events` history/statement/mod.rs asserts the select omits
+  // one. It is NOT authoritative for the bodies: the turns LIST carries
+  // none (`afd_turns` history/statement/mod.rs asserts the select omits
   // `response_text`, and it omits `request_json` too), so taking the row
   // wholesale would blank a message the operator has already read. The live
   // text is kept for the same reason; the calls follow `settleTools`.
@@ -266,13 +267,13 @@ export function mergeBackfill(
   // waiting) never clobbers the live row: the stream is newer than the page.
   // The one exception moves forward only: a "received" row starts a live row
   // still waiting, whose received frame fell in the gap the page recovers.
-  const authoritative = new Map<string, EventRow>();
-  const progress = new Map(rows.map(row => [row.event_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
+  const authoritative = new Map<string, TurnRow>();
+  const progress = new Map(rows.map(row => [row.turn_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
   const started = new Set<string>();
   for (const r of rows) {
-    if (!seen.has(r.event_id)) continue;
-    if (TERMINAL_STATUSES.has(r.status)) authoritative.set(r.event_id, r);
-    else if (r.status === AGENTSFLEET_EVENT_STATUS.RECEIVED) started.add(r.event_id);
+    if (!seen.has(r.turn_id)) continue;
+    if (TERMINAL_STATUSES.has(r.status)) authoritative.set(r.turn_id, r);
+    else if (r.status === AGENTSFLEET_TURN_STATUS.RECEIVED) started.add(r.turn_id);
   }
   const kept = prev.map((e) => {
     const replacement = authoritative.get(e.id);
@@ -281,13 +282,15 @@ export function mergeBackfill(
       const taskActivity = mergeTaskActivity(e.taskActivity, progress.get(e.id));
       return taskActivity === running.taskActivity ? running : {...running, taskActivity};
     }
-    const reconciled = rowToEvent(replacement);
+    const reconciled = rowToTurn(replacement);
     // The reasoning span is the browser's own measure — no row carries it — so
     // it is kept, and a span still open closes here once: a terminal row is
     // the end of the turn, whether or not the answer's first word was seen.
+    // A saved text replaces a frame's head of it; a list row has none, so the
+    // head stays marked for the read that brings the whole.
     const withBodies = closeReasoningSpan({
       ...reconciled,
-      text: reconciled.text.length > 0 ? reconciled.text : e.text,
+      ...(reconciled.text.length > 0 ? {} : { text: e.text, textTrimmed: e.textTrimmed }),
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
       taskActivity: mergeTaskActivity(e.taskActivity, reconciled.taskActivity),
       runRestarted: e.runRestarted,
@@ -300,9 +303,9 @@ export function mergeBackfill(
     }, nowMs);
     const settled = settleTools(withBodies, e, "tool_calls" in replacement);
     // A page restating a row this thread already settled leaves its object alone.
-    return sameEvent(settled, e) ? e : settled;
+    return sameTurn(settled, e) ? e : settled;
   });
-  const fromBackfill = rows.filter((r) => !seen.has(r.event_id)).map(rowToEvent);
+  const fromBackfill = rows.filter((r) => !seen.has(r.turn_id)).map(rowToTurn);
   // The client's clock can trail the server's. Keep locally submitted turns
   // at the visual tail until an opening or completion frame supplies the
   // server timestamp, even when the Server Action already acknowledged them.
@@ -314,7 +317,7 @@ export function mergeBackfill(
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
   // Nothing new, nothing moved: the same array, so no subscriber re-renders.
-  return merged.length === prev.length && merged.every((event, at) => event === prev[at]) ? prev : merged;
+  return merged.length === prev.length && merged.every((turn, at) => turn === prev[at]) ? prev : merged;
 }
 
 // The newest server-confirmed `created_at` across the rows, folded into the
@@ -324,7 +327,7 @@ export function mergeBackfill(
 // dropped frame could push past the rows it never saw.
 export function maxServerCreatedAt(
   current: number | null,
-  rows: EventRow[],
+  rows: TurnRow[],
 ): number | null {
   let max = current;
   for (const r of rows) {

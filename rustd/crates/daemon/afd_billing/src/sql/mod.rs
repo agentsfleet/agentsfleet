@@ -2,8 +2,8 @@
 //! tables a money decision reads.
 //!
 //! The wallet read, the rate reads and the tenant's charges pages. The rest of
-//! the money path sits beside its callers: the lease renewal and report
-//! statements in `afd_fleet/src/lease/sql/` log the usage lines, the ledger's
+//! the money path sits beside its callers: the run renewal and report
+//! statements in `afd_fleet/src/run/sql/` log the usage lines, the ledger's
 //! own statements in `ledger/sql/` settle them, and `INSERT_WALLET` in
 //! `afd_tenant` opens a wallet with its starter grant.
 //!
@@ -33,10 +33,10 @@ pub const SELECT_DECISION_PRICE_BOOK: &str = include_str!("select_decision_price
 /// The stored spellings of `billing.usage_lines.work_type` (RULE STS: the
 /// schema names none of them).
 pub mod work {
-    /// A fleet run's lease.
-    pub const FLEET_LEASE: &str = "fleet_lease";
-    /// A setup-chat attempt.
-    pub const AUTHORING_ATTEMPT: &str = "authoring_attempt";
+    /// A fleet run's run.
+    pub const FLEET_RUN: &str = "fleet_run";
+    /// A draft-owned setup run.
+    pub const SETUP_RUN: &str = "setup_run";
 }
 
 /// The charges page's spelling for a fleet run's usage. Never stored: a usage
@@ -63,7 +63,7 @@ pub mod posture {
 
 /// The charges page's spelling for a setup chat's settlement, beside the
 /// [`charge`] type a fleet run writes. Never stored: it names the source.
-pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
+pub const CHARGE_TYPE_SETUP: &str = "setup";
 
 /// The tenant's first charges page: newest first, no boundary.
 ///
@@ -76,8 +76,8 @@ pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
 /// `cached_input_token_count` is not selected: the charges response does not
 /// carry it.
 ///
-/// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_AUTHORING`] · `$4`
-/// [`work::FLEET_LEASE`] · `$5` [`charge::STAGE`].
+/// `$1` tenant · `$2` limit · `$3` [`CHARGE_TYPE_SETUP`] · `$4`
+/// [`work::FLEET_RUN`] · `$5` [`charge::STAGE`].
 pub(crate) const SELECT_TENANT_CHARGES_FIRST: &str =
     include_str!("select_tenant_charges_first.sql");
 

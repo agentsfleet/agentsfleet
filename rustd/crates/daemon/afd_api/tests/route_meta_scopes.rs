@@ -5,9 +5,9 @@
 //! Totality and the table's other facts are `route_meta_total.rs`.
 #![cfg(feature = "test-util")]
 
-use afd_api::route::{FleetRoute, TenantRoute, WorkspaceRoute};
-use afd_api::{Route, Scopes};
 use afd_auth::Scope;
+use afd_http::route::{FleetRoute, TenantRoute, WorkspaceRoute};
+use afd_http::route::{Route, Scopes};
 use http::Method;
 
 /// A read never costs more than the write beside it.
@@ -46,7 +46,7 @@ fn test_open_routes_carry_no_capability() {
         let meta = route.meta();
         // The layer's own definition of "no bearer to classify", so a guard
         // added later cannot slip past this invariant by omission.
-        let signature_authed = afd_api::auth::plane_of(meta.guard).is_none();
+        let signature_authed = afd_http::auth::plane_of(meta.guard).is_none();
         if signature_authed {
             assert!(
                 meta.scopes.required(&Method::GET).is_empty()
@@ -114,7 +114,7 @@ fn test_each_method_resolves_to_its_own_rung() {
     );
 
     // A fixed requirement ignores the method entirely.
-    let events = Route::Fleet(FleetRoute::Events).meta().scopes;
+    let events = Route::Fleet(FleetRoute::Turns).meta().scopes;
     for method in [Method::GET, Method::POST, Method::DELETE] {
         assert_eq!(events.required(&method), &[Scope::FleetRead]);
     }

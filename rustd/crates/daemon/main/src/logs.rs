@@ -31,15 +31,13 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::{Layer, Registry, reload};
 
-use crate::telemetry::Exports;
 use crate::tty::Rendering;
-
-pub use af_core::env::LOG_LEVEL_VAR;
+use af_otlp::Exports;
 
 /// Where a record goes when nobody chose.
 ///
 /// `info`, because the lines an incident needs — which routes mounted, which
-/// gate refused, which lease issued — are all `info`.
+/// gate refused, which run issued — are all `info`.
 pub const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 
 /// What the slot holds once an exporter exists.
@@ -152,8 +150,8 @@ mod tests {
     use super::{Attached, Signals};
     use af_otlp::Encoding;
 
-    use crate::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
-    use crate::telemetry::Exports;
+    use af_otlp::Exports;
+    use af_otlp::{OTEL_ENDPOINT_KNOB, OtlpConfig};
 
     /// A collector nothing is listening on, as `telemetry/tests.rs` spells it.
     ///

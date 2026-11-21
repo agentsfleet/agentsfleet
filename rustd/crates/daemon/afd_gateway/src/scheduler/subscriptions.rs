@@ -1,4 +1,4 @@
-//! Retry broker subscriptions without turning each retry into another database claim pass.
+//! Retry broker subscriptions without turning each retry into another database assignment pass.
 
 use crate::{Gateway, Operation, Result, error::ErrorKind};
 use af_core::error_code::{Coded as _, Logged};
@@ -48,7 +48,7 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
         // Use the configured probe cadence as the subscription-repair backoff ceiling too.
         retry = retry
             .saturating_mul(2)
-            .min(gateway.inner.dependencies.recovery.offer_fallback);
+            .min(gateway.inner.dependencies.recovery.assign_fallback);
     }
 }
 

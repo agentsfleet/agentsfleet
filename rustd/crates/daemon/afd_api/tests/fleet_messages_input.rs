@@ -177,7 +177,7 @@ async fn a_continuation_this_walk_did_not_issue_is_refused() {
 #[tokio::test]
 async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() -> af_core::error::Result<()>
 {
-    let issued = afd_events::Cursor::after(
+    let issued = afd_turns::view::Cursor::after(
         jiff::Timestamp::constant(1_700_000_000, 0),
         &Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")?,
     )

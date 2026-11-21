@@ -6,18 +6,19 @@
 use super::Loop;
 use crate::{
     AgentEngine as _, AgentRun, Meter,
-    fixture::{Canned, Frames, call, lease, say, spent, unbounded},
+    fixture::{Canned, Frames, call, payload, say, spent, unbounded},
     testing::Discard,
 };
-use af_providers::{Chunk, Connect, End, Message, Provider, Request};
+use af_providers::{Connect, Provider};
 use af_wire::{
     activity::ActivityFrame,
     context::{ContextProgress, ContextState},
-    lease::LeasePayload,
     policy::ExecutionPolicy,
+    run::RunPayload,
 };
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::{StreamExt as _, stream::BoxStream};
+use guffbolt::{Chunk, End, Message, Request};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
@@ -56,11 +57,13 @@ impl Connect for Model {
     fn admit(&self, _: &ExecutionPolicy<'_>) -> af_providers::Result<()> {
         Ok(())
     }
-    fn connect(&self, _: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
-impl Provider for Model {
+impl guffbolt::Model for Model {
+    type Error = af_providers::Error;
+
     fn measure(&self, request: Request<'_>) -> af_providers::Result<u64> {
         // The external scripted wire's framing: deterministic pressure after
         // complete tool pairs, independent of machine speed or reported usage.
@@ -130,7 +133,7 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, Meter) {
             failure,
         },
     );
-    let lease = compaction_lease();
+    let run = compaction_run();
     let meter = Meter::default();
     let frames = Frames::default();
     let output = engine
@@ -139,7 +142,7 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, Meter) {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -227,17 +230,17 @@ async fn unusable_summary_retains_known_charge_without_running_more_tools() {
     }
 }
 
-fn compaction_lease() -> af_wire::lease::LeasePayload<'static> {
-    let mut lease = lease(&[UPDATE_PLAN.name()], unbounded());
-    lease.lease_id = "01900000-0000-7000-8000-000000000001".into();
-    lease.policy.model_context_tokens = 10_000;
-    lease.policy.context.context_cap_tokens = 10_000;
-    lease.policy.context.stage_chunk_threshold = 0.90;
-    lease.policy.inference = Some(af_wire::inference::ModelInference {
+fn compaction_run() -> RunPayload<'static> {
+    let mut run = payload(&[UPDATE_PLAN.name()], unbounded());
+    run.run_id = "01900000-0000-7000-8000-000000000001".into();
+    run.policy.model_context_tokens = 10_000;
+    run.policy.context.context_cap_tokens = 10_000;
+    run.policy.context.stage_chunk_threshold = 0.90;
+    run.policy.inference = Some(af_wire::inference::ModelInference {
         api: af_wire::inference::InferenceApi::Chat,
         base_url: "https://models.example.com/v1".into(),
         dialect: None,
         max_output_tokens: 2_048,
     });
-    lease
+    run
 }

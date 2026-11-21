@@ -33,7 +33,7 @@ pub(super) async fn response(tasks: &Tasks, call: Call) -> Result<ReservedDecisi
 }
 
 async fn recorded(tasks: &Tasks, call: &Call) -> Result<Option<Box<DecisionRecorded>>> {
-    let payload = row::saved_payload(tasks.leases.pool(), &call.id).await?;
+    let payload = row::saved_payload(tasks.runs.pool(), &call.id).await?;
     let Some(payload) = payload else {
         return Ok(None);
     };

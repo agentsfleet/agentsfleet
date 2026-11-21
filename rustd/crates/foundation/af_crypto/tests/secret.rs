@@ -1,4 +1,4 @@
-//! Dimension 1.4 — key material redacts in every rendering and zeroes on drop.
+//! Key material redacts in every rendering and zeroes on drop.
 //!
 //! `M-PUBLIC-DEBUG` asks for exactly this file: sensitive types still implement
 //! `Debug`, but through a hand-written implementation whose redaction has a

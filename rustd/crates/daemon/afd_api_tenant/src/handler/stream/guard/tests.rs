@@ -242,6 +242,10 @@ async fn should_count_from_zero_again_after_an_admitted_answer() {
 /// The ceiling on unanswered checks ends the stream with no frame — an
 /// outage is not a revocation — and the closing is logged once, with the
 /// code and reason of the check that hit the ceiling.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn should_end_quietly_at_the_ceiling(answer: Answer, code: ErrorCode, reason: &str) {
     let capture = Capture::install();
     let mut stream = quiet(&[answer]);

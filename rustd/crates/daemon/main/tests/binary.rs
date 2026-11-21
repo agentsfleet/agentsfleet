@@ -39,9 +39,9 @@ fn run(knobs: &[(&str, &str)]) -> Output {
     let mut command = Command::new(DAEMON);
     for knob in [DATABASE_KNOB, KEK_KNOB]
         .into_iter()
-        .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
-        .chain(crate::support::BUS.map(|(name, _value)| name))
-        .chain(crate::support::IDENTITY_KNOBS)
+        .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, _value)| knob))
+        .chain(agentsfleetd::test_util::BUS.map(|(name, _value)| name))
+        .chain(agentsfleetd::test_util::IDENTITY_KNOBS)
         .chain([LISTEN_ADDR, TLS_CERT_FILE, TLS_KEY_FILE])
     {
         command.env_remove(knob);
@@ -57,7 +57,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
 fn test_boot_refuses_bad_kek() {
     for bad in [None, Some(""), Some("abcd"), Some("zz")] {
         let mut knobs = vec![(DATABASE_KNOB, GOOD_DATABASE)];
-        knobs.extend_from_slice(&crate::support::IDENTITY);
+        knobs.extend_from_slice(&agentsfleetd::test_util::IDENTITY);
         if let Some(value) = bad {
             knobs.push((KEK_KNOB, value));
         }
@@ -95,14 +95,14 @@ fn test_preflight_lists_missing() {
     assert!(!output.status.success(), "an empty environment cannot boot");
     for knob in [DATABASE_KNOB, KEK_KNOB]
         .into_iter()
-        .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
-        .chain(crate::support::BUS.map(|(name, _value)| name))
-        .chain(crate::support::IDENTITY.map(|(knob, _value)| knob))
+        .chain(agentsfleetd::test_util::SESSION_PEPPER.map(|(knob, _value)| knob))
+        .chain(agentsfleetd::test_util::BUS.map(|(name, _value)| name))
+        .chain(agentsfleetd::test_util::IDENTITY.map(|(knob, _value)| knob))
         .chain([TLS_CERT_FILE, TLS_KEY_FILE])
     {
         assert!(
             stderr.contains(knob),
-            "one run must name every unset knob; {knob} is absent from: {stderr}"
+            "one scene must name every unset knob; {knob} is absent from: {stderr}"
         );
     }
 }
@@ -115,10 +115,10 @@ fn test_preflight_lists_missing() {
 #[test]
 fn test_boot_announces_itself_when_the_environment_is_complete() {
     let mut knobs = vec![(DATABASE_KNOB, GOOD_DATABASE), (KEK_KNOB, GOOD_KEK)];
-    knobs.extend_from_slice(&crate::support::SESSION_PEPPER);
-    knobs.extend_from_slice(&crate::support::BUS);
-    knobs.extend_from_slice(&crate::support::IDENTITY);
-    knobs.extend(crate::support::runner_stream::environment());
+    knobs.extend_from_slice(&agentsfleetd::test_util::SESSION_PEPPER);
+    knobs.extend_from_slice(&agentsfleetd::test_util::BUS);
+    knobs.extend_from_slice(&agentsfleetd::test_util::IDENTITY);
+    knobs.extend(agentsfleetd::test_util::runner_stream::environment());
     let output = run(&knobs);
     let stdout = String::from_utf8_lossy(&output.stdout);
 

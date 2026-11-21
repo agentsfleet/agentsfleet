@@ -5,7 +5,7 @@ import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { SetupSession } from "../../src/commands/chat/setup-session.ts";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "../../src/commands/chat/protocol.ts";
 import { outputDouble } from "../helpers-output-double.ts";
-import { ACCEPTED, DRAFT, DRAFT_ID, REVIEW, FLEET, FLEET_ID, MODEL, MESSAGE, PRIVATE_TEXT, PUBLICATION, withApi } from "./fixture.ts";
+import { ACCEPTED, DRAFT, DRAFT_ID, REVIEW, FLEET, FLEET_ID, MODEL, MESSAGE, PRIVATE_TEXT, withApi } from "./fixture.ts";
 
 function capture() {
   const rendered: string[] = [];
@@ -13,7 +13,7 @@ function capture() {
   return {rendered, output: {...outputDouble(), info: emit, warn: emit, success: emit, printSection: emit}};
 }
 
-test("Save, Apply, and publication require a displayed review and ordinary chat performs none of them", async () => {
+test("Save and Apply require a displayed review and ordinary chat performs neither", async () => {
   const mutations: string[] = [];
   await withApi((request) => {
     const path = new URL(request.url).pathname;
@@ -27,7 +27,6 @@ test("Save, Apply, and publication require a displayed review and ordinary chat 
     const actions = new ChatActions(session, new SetupSession(transport), output, () => Effect.void);
     await Effect.runPromise(Effect.flip(actions.save()));
     await Effect.runPromise(Effect.flip(actions.apply()));
-    await Effect.runPromise(Effect.flip(actions.publish("Argo")));
     expect(mutations).toEqual([]);
     await Effect.runPromise(actions.message(PRIVATE_TEXT));
     expect(mutations).toHaveLength(1);
@@ -85,7 +84,7 @@ test("Apply uses the setup version matching the displayed improvement review", a
 test("a durable assistant failure is shown with its recovery action and remains unsuccessful", async () => {
   await withApi((request) => Response.json(new URL(request.url).pathname.endsWith("/messages")
     ? {items: [{...MESSAGE, state: MESSAGE_STATE.failed, failure: {
-      reason: "model_unavailable", error_code: "UZ-AUTHOR-004", recovery_action: "select_model_then_send",
+      reason: "model_unavailable", error_code: "UZ-SETUP-004", recovery_action: "select_model_then_send",
     }}], next_cursor: null} : {...DRAFT, accepted: ACCEPTED}), async (transport) => {
     const {output, rendered} = capture();
     const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}),
@@ -96,18 +95,3 @@ test("a durable assistant failure is shown with its recovery action and remains 
   });
 });
 
-test("publication is separate from Save and never creates a runtime instance", async () => {
-  const posts: string[] = [];
-  await withApi((request) => {
-    const path = new URL(request.url).pathname;
-    if (request.method === "POST") { posts.push(path); return Response.json(PUBLICATION); }
-    return Response.json(DRAFT);
-  }, async (transport) => {
-    const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT_ID),
-      new SetupSession(transport), capture().output, () => Effect.void);
-    await Effect.runPromise(actions.review());
-    await Effect.runPromise(actions.publish("Argo"));
-    expect(posts).toHaveLength(1);
-    expect(posts[0]).toEndWith("/plugins");
-  });
-});

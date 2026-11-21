@@ -31,7 +31,7 @@ fn settlement(payer: &Account, work: &WorkKey) -> afd_billing::biller::Settlemen
         attribution: afd_billing::biller::Attribution::Fleet {
             fleet: mint_id(),
             fleet_name: "recorded".to_owned(),
-            event_id: afd_db::test_util::mint_id(),
+            turn_id: mint_id(),
         },
         provider: "recorded".to_owned(),
         model: "recorded".to_owned(),
@@ -63,7 +63,7 @@ async fn settlements_are_kept_in_order() {
     let biller = RecordingBiller::new();
     let payer = payer();
     biller.fund(&payer.tenant, SECOND_FUNDING);
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let charged = settlement(&payer, &work);
     biller
         .settle(&charged)
@@ -77,7 +77,7 @@ async fn settlements_are_kept_in_order() {
 #[tokio::test]
 async fn an_observed_retry_charges_nothing_new() {
     let payer = payer();
-    let work = WorkKey::FleetLease(mint_id());
+    let work = WorkKey::FleetRun(mint_id());
     let charged = settlement(&payer, &work);
     let inner = Observed::new(
         {

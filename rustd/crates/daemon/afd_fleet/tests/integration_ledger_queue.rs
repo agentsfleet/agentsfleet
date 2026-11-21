@@ -1,4 +1,4 @@
-//! Ledger claims use real runtime-role transactions and a bus that never answers.
+//! Ledger assignments use real runtime-role transactions and a bus that never answers.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::{Acquired, Leases};
+use afd_fleet::run::{Acquired, Runs};
 use jiff_sqlx::ToSqlx as _;
 use sqlx::Connection as _;
 
@@ -20,22 +20,24 @@ mod delivery;
 mod ordering;
 mod parking;
 mod parking_commit;
-mod reclaim;
+mod reassignment;
 mod recovery_page;
 mod settlement;
 
 const WITHIN: Duration = Duration::from_secs(10);
-const INSERT: &str = "INSERT INTO fleet.admissions \
-    (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, \
-     request_json, event_created_at, created_at, updated_at) \
+const INSERT: &str = "INSERT INTO thread.turns \
+    (id, thread_id, workspace_id, producer, producer_key, payload_digest, actor, kind, status, \
+     request_json, created_at, updated_at) \
     VALUES ($1, $2, $3, $4, $1, 'fixture-digest', 'fixture:steer', \
-            $5, '{\"prompt\":\"fixture\"}', $6, $6, $6)";
-const PARK: &str = "UPDATE fleet.admissions SET parked_at = CASE WHEN $2 THEN now() END \
+            $5, $7, '{\"prompt\":\"fixture\"}', $6, $6)";
+const PARK: &str = "UPDATE thread.turns SET parked_at = CASE WHEN $2 THEN now() END \
     WHERE id = $1";
-const FINISH: &str = "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1";
-const STAMPS: &str = "SELECT a.lease_fence, s.fencing_token FROM fleet.admissions a \
-    LEFT JOIN runner.slots s ON s.fleet_id = a.fleet_id WHERE a.id = $1";
-const LOCK: &str = "SELECT id FROM fleet.admissions WHERE id = $1 FOR UPDATE";
+const FINISH: &str = "UPDATE thread.turns SET settled_at = now() WHERE id = $1";
+const STAMPS: &str = "SELECT a.run_fence, s.fencing_token FROM thread.turns a \
+    LEFT JOIN thread.threads s ON s.fleet_id = a.thread_id WHERE a.id = $1";
+const LOCK: &str = "SELECT id FROM thread.turns WHERE id = $1 FOR UPDATE";
+/// The fence a fleet's thread holds before its first assignment.
+const UNASSIGNED: Option<i64> = Some(0);
 
 async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
     let id = afd_db::test_util::mint_id();
@@ -43,9 +45,10 @@ async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7
         .bind(&id)
         .bind(fleet)
         .bind(workspace)
-        .bind(afd_admission::Producer::Steer.as_str())
-        .bind(af_wire::event::EventType::Chat.as_str())
+        .bind(afd_turns::Producer::Steer.as_str())
+        .bind(af_wire::turn::TurnKind::Chat.as_str())
         .bind(fixtures.enrolled_at().to_sqlx())
+        .bind(af_core::turn::status::QUEUED)
         .execute(
             &mut *fixtures
                 .database
@@ -69,27 +72,27 @@ async fn stamps(fixtures: &Fixtures, event: &Uuid7) -> (Option<i64>, Option<i64>
                 .expect("runtime connection"),
         )
         .await
-        .expect("queue and slot fences")
+        .expect("queue and thread fences")
 }
 
-async fn next(leases: &Leases, runner: &Uuid7) -> Option<Acquired> {
-    tokio::time::timeout(WITHIN, leases.select(runner, &[]))
+async fn next(runs: &Runs, runner: &Uuid7) -> Option<Acquired> {
+    tokio::time::timeout(WITHIN, runs.select(runner, &[]))
         .await
-        .expect("claim never waits on the admission head")
-        .expect("valid claim")
+        .expect("assignment never waits on the turn head")
+        .expect("valid assignment")
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_fleet_rows_lease_in_order_behind_a_park() {
+async fn test_fleet_rows_run_in_order_behind_a_park() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let mut events = Vec::new();
     for _ in 0..3 {
         events.push(enqueue(&fixtures, &fleet, &workspace).await);
     }
-    let head = events.first().expect("three admissions");
+    let head = events.first().expect("three turns");
     parking::seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures
         .database
@@ -103,10 +106,10 @@ async fn test_fleet_rows_lease_in_order_behind_a_park() {
         .await
         .expect("park head");
     assert!(
-        next(&leases, &runner).await.is_none(),
+        next(&runs, &runner).await.is_none(),
         "park holds later rows"
     );
-    assert_eq!(stamps(&fixtures, head).await, (None, None));
+    assert_eq!(stamps(&fixtures, head).await, (None, UNASSIGNED));
     sqlx::query(PARK)
         .bind(head)
         .bind(false)
@@ -114,40 +117,39 @@ async fn test_fleet_rows_lease_in_order_behind_a_park() {
         .await
         .expect("answer gate");
     for event in events {
-        let acquired = next(&leases, &runner).await.expect("unparked head");
-        assert_eq!(acquired.event_id, event);
-        finish(&leases, &mut connection, acquired).await;
+        let acquired = next(&runs, &runner).await.expect("unparked head");
+        assert_eq!(acquired.turn_id, event);
+        finish(&runs, &mut connection, acquired).await;
     }
     assert!(
-        next(&leases, &runner).await.is_none(),
+        next(&runs, &runner).await.is_none(),
         "settled rows stay out"
     );
     drop(connection);
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 
 /// Advance the ordering fixture; the benchmark separately drives real reports.
-async fn finish(leases: &Leases, connection: &mut sqlx::PgConnection, acquired: Acquired) {
+async fn finish(runs: &Runs, connection: &mut sqlx::PgConnection, acquired: Acquired) {
     sqlx::query(FINISH)
-        .bind(&acquired.event_id)
+        .bind(&acquired.turn_id)
         .execute(connection)
         .await
         .expect("fixture settled");
-    leases
-        .release(&acquired.fleet_id, acquired.fence)
+    runs.release(&acquired.fleet_id, acquired.fence)
         .await
-        .expect("slot free");
+        .expect("thread free");
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
+async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_thread() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
     let _later = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
+    let runs = fixtures.runs_with_dead_bus();
     let mut connection = fixtures
         .database
         .acquire()
@@ -159,101 +161,98 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
         .fetch_one(&mut *transaction)
         .await
         .expect("head locked");
-    assert!(next(&leases, &runner).await.is_none());
+    assert!(next(&runs, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &head).await,
-        (None, None),
-        "empty claim rolls the slot back"
+        (None, UNASSIGNED),
+        "empty assignment rolls the thread back"
     );
     transaction.rollback().await.expect("unlock head");
     assert_eq!(
-        next(&leases, &runner)
-            .await
-            .expect("head available")
-            .event_id,
+        next(&runs, &runner).await.expect("head available").turn_id,
         head
     );
     drop(connection);
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
+async fn test_assignment_decode_fault_rolls_back_both_the_fence_and_the_turn() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     // Postgres accepts this timestamp, while the application timestamp bridge
-    // refuses it. Failure occurs after slot and admission updates in the query.
+    // refuses it. Failure occurs after thread and turn updates in the query.
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("runtime connection");
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = 'infinity' WHERE id = $1")
+    sqlx::query("UPDATE thread.turns SET created_at = 'infinity' WHERE id = $1")
         .bind(&event)
         .execute(&mut *connection)
         .await
         .expect("inject decode failure");
-    let leases = fixtures.leases_with_dead_bus();
-    let refused = leases
+    let runs = fixtures.runs_with_dead_bus();
+    let refused = runs
         .select(&runner, &[])
         .await
-        .expect_err("invalid timestamp refuses claim");
+        .expect_err("invalid timestamp refuses assignment");
     assert!(
-        refused.to_string().contains("admissions ledger claim"),
+        refused.to_string().contains("turn ledger assignment"),
         "{refused}"
     );
-    assert_eq!(stamps(&fixtures, &event).await, (None, None));
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = $2 WHERE id = $1")
+    assert_eq!(stamps(&fixtures, &event).await, (None, UNASSIGNED));
+    sqlx::query("UPDATE thread.turns SET created_at = $2 WHERE id = $1")
         .bind(&event)
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(&mut *connection)
         .await
         .expect("remove injected fault");
-    let acquired = next(&leases, &runner)
+    let acquired = next(&runs, &runner)
         .await
-        .expect("no leaked lock or slot");
+        .expect("no leaked lock or thread");
     assert_eq!(acquired.fence.as_i64(), 1);
     assert_eq!(stamps(&fixtures, &event).await, (Some(1), Some(1)));
     drop(connection);
-    drop(leases);
+    drop(runs);
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_locked_slot_is_skipped_without_changing_the_admission() {
+async fn a_locked_thread_is_skipped_without_changing_the_turn() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let first = next(&leases, &runner).await.expect("first claim");
+    let runs = fixtures.runs_with_dead_bus();
+    let first = next(&runs, &runner).await.expect("first assignment");
     let mut connection = fixtures.database.acquire().await.expect("database");
     sqlx::query(
-        "UPDATE runner.slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1",
+        "UPDATE thread.threads SET run_expires_at = now()-interval '1 second' WHERE fleet_id=$1",
     )
     .bind(&fleet)
     .execute(&mut *connection)
     .await
-    .expect("expire slot");
+    .expect("expire thread");
     let mut lock = connection.begin().await.expect("lock transaction");
-    sqlx::query("SELECT fleet_id FROM runner.slots WHERE fleet_id=$1 FOR UPDATE")
+    sqlx::query("SELECT fleet_id FROM thread.threads WHERE fleet_id=$1 FOR UPDATE")
         .bind(&fleet)
         .execute(&mut *lock)
         .await
-        .expect("hold slot");
-    assert!(next(&leases, &runner).await.is_none());
+        .expect("hold thread");
+    assert!(next(&runs, &runner).await.is_none());
     assert_eq!(
         stamps(&fixtures, &event).await.0,
         Some(first.fence.as_i64())
     );
-    lock.rollback().await.expect("release slot");
+    lock.rollback().await.expect("release thread");
     assert!(
-        next(&leases, &runner)
+        next(&runs, &runner)
             .await
-            .expect("claim after release")
+            .expect("assignment after release")
             .fence
             > first.fence
     );

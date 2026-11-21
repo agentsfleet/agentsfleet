@@ -31,7 +31,7 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::{FreshSession, HumanIdentity};
 use crate::handler::Refusal;
-use crate::services::{Services, TerminalCredentials as _};
+use crate::services::{TenantPlane, TerminalCredentials as _};
 
 use super::DETAIL_MALFORMED_BODY;
 
@@ -70,7 +70,7 @@ const DETAIL_CREDENTIAL_ID: &str = "id must be a valid UUIDv7";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn mint<D: Services>(
+pub(crate) async fn mint<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: FreshSession,
     body: Bytes,
@@ -133,7 +133,7 @@ pub(crate) async fn mint<D: Services>(
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn revoke<D: Services>(
+pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: HumanIdentity,
     Path(credential_id): Path<String>,

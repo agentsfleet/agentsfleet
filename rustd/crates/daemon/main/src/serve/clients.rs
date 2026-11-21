@@ -5,8 +5,9 @@
 //! exchange take the slots a credential mint needs, and the delivery worker
 //! runs beside the plane rather than through it. The three that carry a
 //! vendor's credential are direct and bounded (`afd_identity::direct`); the
-//! scheduler's is bounded and honours an environment proxy, as its default
-//! client did. One that will not build refuses boot here, before a socket is
+//! storage client is direct and resolves through the address guard
+//! (`super::guarded`); the scheduler's is bounded and honours an environment
+//! proxy, as its default client did. One that will not build refuses boot here, before a socket is
 //! opened or a worker started, rather than standing in a default client.
 
 use crate::error::BootFailure;
@@ -14,9 +15,7 @@ use crate::error::BootFailure;
 /// Every outbound client boot hands on, one pool per surface.
 #[derive(Debug)]
 pub(super) struct Clients {
-    /// Scoped authoring calls have their own fixed-origin client and no retries.
-    pub(super) authoring: afd_authoring::Network,
-    /// Storage and GitHub retain their own timeout policy when inference changes.
+    /// Checkpoint storage and GitHub, behind the address guard.
     pub(super) storage: reqwest::Client,
     /// The credential broker's vendor token exchanges.
     pub(super) broker: reqwest::Client,
@@ -40,27 +39,14 @@ impl Clients {
         )
     }
 
-    /// Keeps storage settings independent from a customized inference pool.
-    pub(super) fn with_inference(
-        mut self,
-        timeouts: af_inference::Timeouts,
-    ) -> Result<Self, BootFailure> {
-        if timeouts != af_inference::Timeouts::DEFAULT {
-            self.authoring = afd_authoring::Network::configured(timeouts)?;
-        }
-        Ok(self)
-    }
-
     /// [`Self::open`] over the two builders, so a test can hand in one that
     /// refuses without breaking a real TLS backend.
     fn open_with(
         vendor: impl Fn() -> reqwest::Result<reqwest::Client>,
         schedule: impl FnOnce() -> reqwest::Result<reqwest::Client>,
     ) -> Result<Self, BootFailure> {
-        let authoring = afd_authoring::Network::new()?;
         Ok(Self {
-            storage: authoring.guarded_client(),
-            authoring,
+            storage: super::guarded::storage_client()?,
             broker: vendor()?,
             plane: vendor()?,
             outbound: vendor()?,

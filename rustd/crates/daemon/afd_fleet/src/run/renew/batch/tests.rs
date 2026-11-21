@@ -1,0 +1,282 @@
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
+)]
+
+use af_core::test_util::trace::Capture;
+use af_wire::report::RenewRequest;
+use tracing::Level;
+
+use super::rows::Found;
+use super::verdict::{Judged, Verdict, log_refused, refusal_of};
+use super::{FALLBACK_RENEWALS_IN_FLIGHT, Renewals, funds_due, in_order};
+use crate::run::test_dead;
+
+#[test]
+fn funds_are_checked_on_the_first_tick_then_every_third() {
+    let due: Vec<bool> = (0..7).map(funds_due).collect();
+    assert_eq!(due, [true, false, false, true, false, false, true]);
+}
+
+/// A row every check passed, extended with both rows moved.
+fn passing() -> Judged {
+    Judged {
+        run_id: test_dead::id(1),
+        found: true,
+        cancelled: Some(false),
+        fence_holds: Some(true),
+        priced_as_held: Some(true),
+        ceilings_current: Some(true),
+        over_budget: Some(false),
+        host_renews: Some(true),
+        admitted: Some(true),
+        has_task: Some(false),
+        extended_until: Some(jiff_sqlx::Timestamp::from(test_dead::AT)),
+        thread_moved: true,
+    }
+}
+
+#[test]
+fn a_row_every_check_passed_extends() {
+    assert_eq!(passing().verdict(), Verdict::Extended(test_dead::AT));
+}
+
+/// One failed check, and the verdict it must answer.
+type Case = (fn(&mut Judged), Verdict);
+
+#[test]
+fn each_failed_check_answers_as_the_per_run_path_would() {
+    let cases: [Case; 10] = [
+        (|row| row.found = false, Verdict::Lost),
+        (|row| row.has_task = Some(true), Verdict::Tasked),
+        (|row| row.host_renews = Some(false), Verdict::Lost),
+        (|row| row.admitted = None, Verdict::Lost),
+        (|row| row.cancelled = Some(true), Verdict::Cancelled),
+        (|row| row.fence_holds = Some(false), Verdict::Lost),
+        (|row| row.priced_as_held = Some(false), Verdict::Moved),
+        (|row| row.ceilings_current = Some(false), Verdict::Moved),
+        (|row| row.thread_moved = false, Verdict::Lost),
+        (|row| row.extended_until = None, Verdict::Lost),
+    ];
+    for (index, (fail, expected)) in cases.into_iter().enumerate() {
+        let mut row = passing();
+        fail(&mut row);
+        assert_eq!(row.verdict(), expected, "case {index}");
+    }
+}
+
+// Value: protects=a looping run ends on its fleet's budget, not a clock;
+// fails_when=the batch renews a fleet at its ceiling, or answers it as lost;
+// why_new=the 12-hour ceiling was the other thing that ended a looping run;
+// seam=none; no_claim=how spend is summed.
+#[test]
+fn a_run_over_its_budget_is_not_renewed() {
+    let mut row = passing();
+    row.over_budget = Some(true);
+    let verdict = row.verdict();
+    assert_eq!(verdict, Verdict::OverBudget);
+    assert_eq!(
+        refusal_of(&verdict).code(),
+        af_core::error_code::RUN_BUDGET_EXCEEDED,
+        "the runner is told the fleet's ceiling stopped it"
+    );
+}
+
+// Value: protects=a run of any age renews for one more lifetime; fails_when=a
+// renewal statement adds a span to the run's start again, which is how the
+// 12-hour ceiling clamped every grant; why_new=the ceiling is gone (M253_003
+// §8); seam=the statement text, which no unit lane can run; no_claim=the
+// integration lane's clock.
+#[test]
+fn a_run_past_twelve_hours_renews() {
+    // Each statement, and the parameter it binds the run lifetime to.
+    for (name, statement, lifetime) in [
+        ("renew_batch", crate::run::sql::renew::RENEW_BATCH, "$28"),
+        ("meter_run", crate::run::sql::meter::METER_RUN, "$5"),
+        ("extend_run", crate::run::sql::shared::EXTEND_RUN, "$5"),
+    ] {
+        let grant = statement
+            .split("AS capped")
+            .next()
+            .and_then(|head| head.rsplit("SELECT").next())
+            .expect("each renewal statement grants a capped deadline");
+        assert!(
+            grant.contains(&format!("checked_at + {lifetime}::interval")),
+            "{name} grants one run lifetime from now: {grant}"
+        );
+        assert!(
+            !statement.contains("created_at +"),
+            "{name} bounds a run by its age"
+        );
+    }
+    assert_eq!(
+        passing().verdict(),
+        Verdict::Extended(test_dead::AT),
+        "no check a renewal makes reads how long the run has run"
+    );
+}
+
+#[test]
+fn a_stopped_run_whose_turn_settled_is_cancelled_not_lost() {
+    let mut row = passing();
+    row.cancelled = Some(true);
+    row.admitted = Some(false);
+    assert_eq!(
+        row.verdict(),
+        Verdict::Cancelled,
+        "Stop settles the turn it marks; the runner must hear the mark"
+    );
+}
+
+#[test]
+fn a_cancelled_run_that_lost_its_fence_is_still_cancelled() {
+    let mut row = passing();
+    row.cancelled = Some(true);
+    row.fence_holds = Some(false);
+    assert_eq!(
+        row.verdict(),
+        Verdict::Cancelled,
+        "the Kill mark is the answer a runner acts on"
+    );
+}
+
+// A frame the batch cannot read leaves every run to the per-run path, so
+// in an outage each answers its own datastore fault, which the runner
+// retries, and none is answered lost.
+#[tokio::test]
+async fn a_frame_the_datastore_refuses_answers_every_run_retry() {
+    let _counted = test_dead::CACHE_LOOKUPS.lock().await;
+    let runs = vec![
+        (test_dead::id(1), RenewRequest::default()),
+        (test_dead::id(4), RenewRequest::default()),
+    ];
+    let answers = test_dead::plane()
+        .renew_batch(Renewals {
+            runner_id: &test_dead::id(9),
+            runs,
+            funds_due: true,
+            now: test_dead::AT,
+            kept: std::collections::HashMap::new(),
+        })
+        .await;
+    assert_eq!(answers.len(), 2);
+    for answer in answers {
+        let fault = answer.expect_err("no datastore, no renewal");
+        assert!(
+            fault.is_datastore_unavailable(),
+            "retried, never lost: {fault}"
+        );
+    }
+}
+
+/// A run row with a fleet and a run identifier that cannot be mistaken for
+/// each other.
+fn found() -> Found {
+    Found {
+        id: test_dead::id(1),
+        status: "active".to_owned(),
+        cancelled: false,
+        tenant_id: test_dead::id(2),
+        workspace_id: test_dead::id(3),
+        fleet_id: test_dead::id(4),
+        posture: "platform".to_owned(),
+        provider: "anthropic".to_owned(),
+        model: "claude-opus-5".to_owned(),
+        task_id: None,
+        created_at: test_dead::AT,
+        head_revision_id: None,
+        catalogue_version: 1,
+    }
+}
+
+/// A fleet at its ceiling is logged under the per-run path's own event, with
+/// the identifiers an operator greps for.
+#[test]
+fn a_fleet_at_its_ceiling_is_logged_as_a_budget_breach() {
+    let log = Capture::install();
+    let row = found();
+    let verdict = Verdict::OverBudget;
+
+    log_refused(&row, &verdict, &refusal_of(&verdict));
+
+    let line = log.only("renew_budget_breach");
+    assert_eq!(line.level, Level::WARN);
+    assert_eq!(line.field("fleet_id"), Some(row.fleet_id.as_str()));
+    assert_eq!(line.field("run_id"), Some(row.id.as_str()));
+    assert_eq!(
+        line.field("error_code"),
+        Some(refusal_of(&verdict).code().as_str())
+    );
+}
+
+/// The refusals the per-run path answers silently are named, each with the
+/// verdict that stopped the run.
+#[test]
+fn a_lost_or_cancelled_run_is_named_with_its_verdict() {
+    let row = found();
+    for (verdict, label) in [(Verdict::Lost, "lost"), (Verdict::Cancelled, "cancelled")] {
+        let log = Capture::install();
+        log_refused(&row, &verdict, &refusal_of(&verdict));
+
+        let line = log.only("renew_batch_refused");
+        assert_eq!(line.field("verdict"), Some(label));
+        assert_eq!(line.field("run_id"), Some(row.id.as_str()));
+        assert_eq!(line.field("fleet_id"), Some(row.fleet_id.as_str()));
+        assert_eq!(
+            line.field("error_code"),
+            Some(refusal_of(&verdict).code().as_str())
+        );
+    }
+}
+
+/// An extension, a rerun and the per-run path are not refusals, so they say
+/// nothing here.
+#[test]
+fn an_answer_that_is_not_a_refusal_logs_nothing() {
+    let log = Capture::install();
+    let row = found();
+    for verdict in [
+        Verdict::Extended(test_dead::AT),
+        Verdict::Moved,
+        Verdict::Tasked,
+    ] {
+        log_refused(&row, &verdict, &refusal_of(&verdict));
+    }
+    assert!(log.events().is_empty(), "{:?}", log.events());
+}
+
+/// The fallback walk runs its runs together, never more than the bound at
+/// once, and answers in the frame's order whichever finishes first.
+#[tokio::test]
+async fn the_fallback_walk_is_bounded_and_keeps_the_frames_order() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let runs = FALLBACK_RENEWALS_IN_FLIGHT * 3;
+    let running = Arc::new(AtomicUsize::new(0));
+    let widest = Arc::new(AtomicUsize::new(0));
+    let items: Vec<usize> = (0..runs).collect();
+
+    let answers = in_order(items.clone(), FALLBACK_RENEWALS_IN_FLIGHT, |item| {
+        let (running, widest) = (Arc::clone(&running), Arc::clone(&widest));
+        async move {
+            let together = running.fetch_add(1, Ordering::SeqCst) + 1;
+            widest.fetch_max(together, Ordering::SeqCst);
+            // Later runs finish sooner, so answers that followed completion
+            // would come back reversed.
+            for _ in 0..(runs - item) {
+                tokio::task::yield_now().await;
+            }
+            running.fetch_sub(1, Ordering::SeqCst);
+            item
+        }
+    })
+    .await;
+
+    assert_eq!(answers, items, "answers come back in the frame's order");
+    assert_eq!(
+        widest.load(Ordering::SeqCst),
+        FALLBACK_RENEWALS_IN_FLIGHT,
+        "the walk runs the bound together, and no more"
+    );
+}

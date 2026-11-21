@@ -1,12 +1,12 @@
-//! `/v1/runners/me/leases/{lease_id}/schedules` — a running fleet keeping its
+//! `/v1/runners/me/runs/{run_id}/schedules` — a running fleet keeping its
 //! own follow-ups on the daemon's schedule plane.
 //!
-//! # The fleet is the lease's
+//! # The fleet is the run's
 //!
-//! Every verb here proves the lease first (`afd_fleet::lease::Standing`) and
-//! acts on the fleet that lease runs. Nothing in a body or a query names a
+//! Every verb here proves the run first (`afd_fleet::run::Standing`) and
+//! acts on the fleet that run runs. Nothing in a body or a query names a
 //! fleet, so a runner cannot reach another fleet's schedules, and a holder a
-//! reclaim has superseded is refused before any schedule is read.
+//! reassignment has superseded is refused before any schedule is read.
 //!
 //! # A fleet reads every schedule and changes only its own
 //!
@@ -33,8 +33,8 @@ use af_wire::schedule_verb::{QUERY_FENCING_TOKEN, ScheduleCreateRequest};
 use afd_api_wire::schedule::Page;
 use afd_cron::model::DEFAULT_TIMEZONE;
 use afd_cron::{NewSchedule, Reconciled, Refused, Source, validate};
-use afd_fleet::lease::Standing;
-use afd_fleet::lease::write_fence::WriteFence;
+use afd_fleet::run::Standing;
+use afd_fleet::run::write_fence::WriteFence;
 use afd_http::handler::schedule::{checked, not_fleet_owned, not_found, refused, rendered};
 use afd_http::handler::{Refusal, parameter, parse_id, read_strict_body};
 use axum::Json;
@@ -44,7 +44,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
 use crate::auth::RunnerIdentity;
-use crate::services::{FleetSchedules as _, Leasing as _, Services};
+use crate::services::{FleetSchedules as _, RunPlane as _, RunnerPlane};
 
 /// The scoped event a schedules verb that failed is logged under.
 pub(super) const EVENT_FAILED: &str = "runner_schedules_failed";
@@ -58,15 +58,15 @@ const EVENT_REFUSED: &str = "fleet_schedule_refused";
 /// The refusal a body this verb cannot read earns.
 pub(super) const DETAIL_MALFORMED: &str = "Malformed schedules body";
 
-/// The refusal a lease path segment that is not an identifier earns: one
-/// spelling for every lease-addressed verb.
-pub(super) const DETAIL_LEASE_ID: &str = "lease_id must be a valid UUIDv7";
+/// The refusal a run path segment that is not an identifier earns: one
+/// spelling for every run-addressed verb.
+pub(super) const DETAIL_RUN_ID: &str = "run_id must be a valid UUIDv7";
 
 /// The refusal a schedule path segment that is not an identifier earns.
 const DETAIL_SCHEDULE_ID: &str = "schedule_id must be a valid UUIDv7";
 
 /// The refusal a read or a delete without its fence earns.
-pub(super) const DETAIL_FENCE: &str = "fencing_token must be the lease's fencing token";
+pub(super) const DETAIL_FENCE: &str = "fencing_token must be the run's fencing token";
 
 /// The view a create and an edit answer with.
 #[cfg(feature = "openapi")]
@@ -83,16 +83,16 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
     "request creates another schedule; `Idempotency-Key` is unsupported.",
 );
 
-/// Creates a schedule for the fleet the lease runs.
+/// Creates a schedule for the fleet the run runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::LEASE_SCHEDULES,
+    path = af_wire::paths::RUN_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_create_schedule",
     summary = "Create a schedule for the running fleet",
     description = CREATE_DESCRIPTION,
     request_body = ScheduleCreateRequest<'_>,
-    params(afd_http::openapi::path::Lease),
+    params(afd_http::openapi::path::Run),
     responses(
         (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -102,33 +102,33 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease_id): Path<String>,
+    Path(run_id): Path<String>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let request: ScheduleCreateRequest<'_> =
         read_strict_body(&body).map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED))?;
     let now = services.now();
-    let lease = standing(&*services, runner.id(), &lease_id, request.fencing_token).await?;
+    let run = standing(&*services, runner.id(), &run_id, request.fencing_token).await?;
     let timezone = request.timezone.as_deref().unwrap_or(DEFAULT_TIMEZONE);
     checked_for(
-        &lease,
+        &run,
         validate::Fields {
             expression: Some(&request.cron),
             timezone: Some(timezone),
             message: Some(&request.message),
         },
     )?;
-    let message = masked(&*services, &lease, &request.message).await?;
-    let guard = write_fence(runner.id(), &lease_id, request.fencing_token)?;
+    let message = masked(&*services, &run, &request.message).await?;
+    let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
     let created = services
         .schedules()
         .create_guarded(
-            &lease.workspace_id,
+            &run.workspace_id,
             NewSchedule {
-                fleet: &lease.fleet_id,
+                fleet: &run.fleet_id,
                 source: Source::Fleet,
                 provider_schedule_id: None,
                 cron: &request.cron,
@@ -141,17 +141,17 @@ pub(crate) async fn create<D: Services>(
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
-    let reconciled = created.map_err(refused_for(&lease))?;
+    let reconciled = created.map_err(refused_for(&run))?;
     if let Reconciled::Synced(schedule) | Reconciled::Failed(schedule) = &reconciled {
-        log_written(&lease, &schedule.schedule_id, EVENT_CREATED);
+        log_written(&run, &schedule.schedule_id, EVENT_CREATED);
     }
     rendered(reconciled, StatusCode::CREATED, now)
 }
 
-/// Lists every schedule of the fleet the lease runs.
+/// Lists every schedule of the fleet the run runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = af_wire::paths::LEASE_SCHEDULES,
+    path = af_wire::paths::RUN_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedules",
     summary = "List the running fleet's schedules",
@@ -160,7 +160,7 @@ pub(crate) async fn create<D: Services>(
         "user-created schedules, `trigger` for setup-defined schedules, or `fleet` for ",
         "fleet-created schedules. This runner can change only `fleet` schedules.",
     ),
-    params(afd_http::openapi::path::Lease, afd_http::openapi::query::Fence),
+    params(afd_http::openapi::path::Run, afd_http::openapi::query::Fence),
     responses(
         (status = 200, description = afd_http::openapi::OK, body = Page<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
@@ -169,17 +169,17 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path(lease_id): Path<String>,
+    Path(run_id): Path<String>,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let token = fence(query.as_deref())?;
-    let lease = standing(&*services, runner.id(), &lease_id, token).await?;
+    let run = standing(&*services, runner.id(), &run_id, token).await?;
     let schedules = services
         .schedules()
-        .list(&lease.workspace_id, &lease.fleet_id)
+        .list(&run.workspace_id, &run.fleet_id)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
     let now = services.now();
@@ -192,68 +192,64 @@ pub(crate) async fn list<D: Services>(
     .into_response())
 }
 
-/// Proves `lease_id` is `runner`'s live lease under `token`.
-pub(super) async fn standing<D: Services>(
+/// Proves `run_id` is `runner`'s live run under `token`.
+pub(super) async fn standing<D: RunnerPlane>(
     services: &D,
     runner: &Uuid7,
-    lease_id: &str,
+    run_id: &str,
     token: u64,
 ) -> Result<Standing, Refusal> {
     services
-        .leases()
-        .standing(runner, lease(lease_id)?, token)
+        .runs()
+        .standing(runner, run(run_id)?, token)
         .await
         .map_err(Refusal::at(EVENT_FAILED))
 }
 
-/// The lease a write under `lease_id` proves again, on the write's own
-/// transaction: [`standing`] lets go, and a reclaim can land before the write.
-pub(super) fn write_fence(
-    runner: &Uuid7,
-    lease_id: &str,
-    token: u64,
-) -> Result<WriteFence, Refusal> {
-    Ok(WriteFence::new(runner.clone(), lease(lease_id)?, token))
+/// The run a write under `run_id` proves again, on the write's own
+/// transaction: [`standing`] lets go, and a reassignment can land before the write.
+pub(super) fn write_fence(runner: &Uuid7, run_id: &str, token: u64) -> Result<WriteFence, Refusal> {
+    Ok(WriteFence::new(runner.clone(), run(run_id)?, token))
 }
 
-/// A refusal of a write the fleet asked for, logged against its lease.
-pub(super) fn refused_for(lease: &Standing) -> impl FnOnce(Refused) -> Refusal + '_ {
+/// A refusal of a write the fleet asked for, logged against its run.
+pub(super) fn refused_for(run: &Standing) -> impl FnOnce(Refused) -> Refusal + '_ {
     move |refusal| {
-        log_refused(lease, refusal.code());
+        log_refused(run, refusal.code());
         refused(refusal)
     }
 }
 
-/// The lease a path names.
-pub(super) fn lease(raw: &str) -> Result<Uuid7, Refusal> {
-    parse_id(raw, DETAIL_LEASE_ID)
+/// The run a path names.
+pub(super) fn run(raw: &str) -> Result<Uuid7, Refusal> {
+    parse_id(raw, DETAIL_RUN_ID)
 }
 
-/// `fields` checked, a refusal logged against the lease's fleet.
-pub(super) fn checked_for(lease: &Standing, fields: validate::Fields<'_>) -> Result<(), Refusal> {
-    checked(fields).inspect_err(|_invalid| log_refused(lease, error_code::INVALID_REQUEST))
+/// `fields` checked, a refusal logged against the run's fleet.
+pub(super) fn checked_for(run: &Standing, fields: validate::Fields<'_>) -> Result<(), Refusal> {
+    checked(fields).inspect_err(|_invalid| log_refused(run, error_code::INVALID_REQUEST))
 }
 
-/// `text` with the lease's fleet's declared secrets masked.
-pub(super) async fn masked<D: Services>(
+/// `text` with the run's fleet's declared secrets masked.
+pub(super) async fn masked<D: RunnerPlane>(
     services: &D,
-    lease: &Standing,
+    run: &Standing,
     text: &str,
 ) -> Result<String, Refusal> {
     services
-        .leases()
-        .masked(lease, text)
+        .runs()
+        .masked(run, text)
         .await
         .map_err(Refusal::at(EVENT_FAILED))
 }
 
 /// Logs a schedule the fleet wrote, under `event`; never its message.
-pub(super) fn log_written(lease: &Standing, schedule: &Uuid7, event: &'static str) {
+pub(super) fn log_written(run: &Standing, schedule: &Uuid7, event: &'static str) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let fleet_id = lease.fleet_id.as_str();
+    let fleet_id = run.fleet_id.as_str();
     let schedule_id = schedule.as_str();
-    let agentsfleet_event_id = lease.event_id.as_str();
-    tracing::info!(fleet_id, schedule_id, agentsfleet_event_id, event);
+    let agentsfleet_turn_id = run.turn_id.as_str();
+    tracing::info!(fleet_id, schedule_id, agentsfleet_turn_id, event);
 }
 
 /// The schedule a path names.
@@ -268,30 +264,30 @@ pub(super) fn fence(query: Option<&str>) -> Result<u64, Refusal> {
         .ok_or_else(|| Refusal::malformed(DETAIL_FENCE))
 }
 
-/// Refuses unless `schedule` is the lease's fleet's, and one the fleet made.
-pub(super) async fn fleet_owned<D: Services>(
+/// Refuses unless `schedule` is the run's fleet's, and one the fleet made.
+pub(super) async fn fleet_owned<D: RunnerPlane>(
     services: &D,
-    lease: &Standing,
+    run: &Standing,
     schedule: &Uuid7,
 ) -> Result<(), Refusal> {
     let found = services
         .schedules()
-        .one(&lease.workspace_id, &lease.fleet_id, schedule)
+        .one(&run.workspace_id, &run.fleet_id, schedule)
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
         .ok_or_else(not_found)?;
     if found.source == Source::Fleet {
         Ok(())
     } else {
-        log_refused(lease, error_code::SCHEDULE_NOT_FLEET_OWNED);
+        log_refused(run, error_code::SCHEDULE_NOT_FLEET_OWNED);
         Err(not_fleet_owned())
     }
 }
 
 /// Logs a refused schedule write by its code; never the body.
-pub(super) fn log_refused(lease: &Standing, code: ErrorCode) {
+pub(super) fn log_refused(run: &Standing, code: ErrorCode) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let fleet_id = lease.fleet_id.as_str();
+    let fleet_id = run.fleet_id.as_str();
     let error_code = code.as_str();
     tracing::info!(fleet_id, error_code, event = EVENT_REFUSED);
 }

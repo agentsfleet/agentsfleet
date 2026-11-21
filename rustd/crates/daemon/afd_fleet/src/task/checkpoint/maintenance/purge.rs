@@ -31,7 +31,7 @@ pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u
         attempted +=
             i64::try_from(purges.len()).map_err(|_overflow| TaskRefusal::LimitExhausted)?;
         let session = &session;
-        let mut work = stream::iter(purges.into_iter().map(|purge| async move {
+        let mut work = stream::iter(purges.into_iter().map(async |purge| {
             let result = async {
                 if purge.bucket_reference != storage.bucket_reference() {
                     return Err(TaskRefusal::StorageUnavailable.into());
@@ -63,7 +63,7 @@ pub(super) async fn run(tasks: &Tasks, storage: &R2CheckpointStore) -> Result<(u
 }
 
 async fn claim(tasks: &Tasks, limit: i64) -> Result<Vec<Purge>> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let purges = sqlx::query_as(include_str!("../sql/purge_claim.sql"))
         .bind(limit)
@@ -79,7 +79,7 @@ async fn claim(tasks: &Tasks, limit: i64) -> Result<Vec<Purge>> {
 }
 
 async fn acknowledge(tasks: &Tasks, purge: &Purge) -> Result<()> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // This order is shared with registration and verification. Missing owners need no recreated quota row.
     let _parent = super::lock(&mut tx, &purge.workspace_id).await?;

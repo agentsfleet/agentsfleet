@@ -15,7 +15,7 @@ categories.workspace = true
 
 [dependencies]
 afd_bus.workspace = true
-afd_events.workspace = true
+afd_turns.workspace = true
 # Instants are `jiff::Timestamp`; `TIMESTAMPTZ(3)` columns decode through jiff-sqlx.
 jiff.workspace = true
 jiff-sqlx.workspace = true
@@ -25,7 +25,7 @@ af_core = { workspace = true, features = ["sqlx"] }
 af_crypto.workspace = true
 # The pool the Postgres store and the grant reads run on.
 afd_db.workspace = true
-# The memory families a capture and a hydration window record.
+# The memory families a capture and a load window record.
 af_observability.workspace = true
 # The entry shape, its bounds and every budget, declared once for daemon and runner.
 afd_api_wire.workspace = true

@@ -18,9 +18,11 @@ use garde::{Unvalidated, Valid};
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 
+mod schedule;
 mod set;
 mod verifier;
 
+pub use self::schedule::{CronSchedule, check_schedule};
 pub(crate) use self::set::parse_set;
 pub use self::verifier::WebhookVerifier;
 
@@ -250,20 +252,7 @@ impl Trigger {
                 schedule,
                 timezone,
                 message,
-            } => Ok(Self::Cron(Cron {
-                schedule: schedule
-                    .filter(|value| !value.is_empty())
-                    .ok_or(Error::from(ErrorKind::InvalidTriggerSet {
-                        reason: REASON_NO_SCHEDULE,
-                    }))?
-                    .into(),
-                timezone: timezone
-                    .unwrap_or_else(|| DEFAULT_CRON_TIMEZONE.to_owned())
-                    .into(),
-                message: message
-                    .unwrap_or_else(|| DEFAULT_CRON_MESSAGE.to_owned())
-                    .into(),
-            })),
+            } => Cron::parse(schedule, timezone, message).map(Self::Cron),
             raw::Trigger::Mention { source, channels } => {
                 let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
                 let source = source

@@ -51,7 +51,7 @@ pub struct NoInbox;
 
 #[async_trait::async_trait]
 impl crate::Inbox for NoInbox {
-    async fn claim(&self, _after_sequence: i64) -> Vec<crate::Folded> {
+    async fn assign(&self, _after_sequence: i64) -> Vec<crate::Folded> {
         Vec::new()
     }
 }

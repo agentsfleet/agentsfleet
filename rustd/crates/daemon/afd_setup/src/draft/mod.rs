@@ -1,0 +1,115 @@
+//! Creator-scoped draft lifecycle; every operation owns one database transaction.
+
+mod create;
+mod list;
+mod patch;
+pub(crate) use patch::idle;
+pub(crate) mod read;
+
+use std::sync::Arc;
+
+use crate::{Result, error::raise::stored};
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_observability::Analytics;
+use afd_db::Db;
+use moka::future::Cache;
+use tokio::sync::Mutex;
+
+/// Eviction may split a local queue; the database lock still orders every write.
+const MAX_CACHED_SEND_GATES: u64 = 1024;
+
+/// Native private setup service, shared by browser and terminal chat.
+#[derive(Debug, Clone)]
+pub struct Drafts {
+    pub(crate) clock: af_core::timing::RunClock,
+    pub(crate) database: Db,
+    pub(crate) entropy: Entropy,
+    pub(crate) analytics: Analytics,
+    /// Clones share these content-free queues, so hot chats wait outside the
+    /// pool. They cache neither authorization nor a database ordering decision.
+    pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
+    /// Carries the hints a draft run needs after a commit: the wake that
+    /// assigns an accepted message, the Cancel a Stop or a deletion sends, and
+    /// a setup run's live answer. `None` publishes nothing; the 5 s probe
+    /// still finds the work.
+    pub(crate) bus: Option<afd_bus::Handle>,
+}
+
+impl Drafts {
+    /// Uses the deployment clock validated before startup.
+    #[must_use]
+    pub fn with_clock(mut self, clock: af_core::timing::RunClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// Shares the daemon's pool; private drafts hold no provider keys, and a
+    /// setup run's usage is billed at its report, as a fleet run's is.
+    ///
+    /// Reports no funnel step until [`Drafts::with_analytics`] names a reporter.
+    #[must_use]
+    pub fn new(database: Db, entropy: Entropy) -> Self {
+        Self {
+            clock: af_core::timing::RunClock::default(),
+            database,
+            entropy,
+            analytics: Analytics::silent(),
+            senders: Cache::new(MAX_CACHED_SEND_GATES),
+            bus: None,
+        }
+    }
+
+    /// Publishes this service's wake, Cancel and live-answer hints on `bus`.
+    #[must_use]
+    pub fn with_bus(mut self, bus: afd_bus::Handle) -> Self {
+        self.bus = Some(bus);
+        self
+    }
+
+    /// Hints, after the commit that queued a message on `draft`, that a draft
+    /// run may take it. One wake key names the owner, fleet or draft, by its
+    /// thread's id. Lossy: a lost hint costs one 5 s probe.
+    pub(crate) async fn wake_setup(&self, draft: &Uuid7) {
+        if let Some(bus) = &self.bus {
+            afd_bus::wake::publish(bus, draft.clone()).await;
+        }
+    }
+
+    /// Sends Cancel to each runner whose draft run a commit just killed or
+    /// deleted. A hint: the durable mark or the missing row refuses the
+    /// runner's next renewal either way.
+    pub(crate) async fn announce_cancelled(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
+        let Some(bus) = &self.bus else {
+            return;
+        };
+        let marked = cancelled
+            .into_iter()
+            .map(|(runner, run)| afd_turns::view::stop::Marked { runner, run });
+        afd_turns::view::stop::announce(bus, marked).await;
+    }
+
+    /// Reports the private-chat-to-fleet funnel steps to `analytics`. Every
+    /// service built over these drafts — setup, creations — shares it.
+    #[must_use]
+    pub fn with_analytics(self, analytics: Analytics) -> Self {
+        Self { analytics, ..self }
+    }
+
+    pub(crate) fn mint(&self, now: jiff::Timestamp) -> Result<Uuid7> {
+        Ok(self.entropy.uuid7(now)?)
+    }
+}
+
+pub(crate) fn etag(id: &Uuid7, version: i64) -> String {
+    af_core::etag::versioned(id, version)
+}
+
+pub(crate) fn value<T: serde::de::DeserializeOwned>(value: &str) -> Result<T> {
+    serde_json::from_str(value).map_err(stored)
+}
+
+/// A stored vocabulary word read as the enum that spells it.
+pub(crate) fn word<T: serde::de::DeserializeOwned>(word: &str) -> Result<T> {
+    serde_json::from_value(serde_json::Value::String(word.to_owned())).map_err(stored)
+}

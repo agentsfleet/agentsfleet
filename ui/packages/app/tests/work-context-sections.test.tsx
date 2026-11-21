@@ -36,11 +36,11 @@ function tool(over: Partial<FleetToolCall>): FleetToolCall {
 it("changes contain recorded writes, exclude reads and failed or unconfirmed mutations, and never render a diff", () => {
   const ignored = [tool({name: "file_read"}), tool({status: "failed"}), tool({status: "interrupted"}), tool({status: undefined}), tool({args: {path: 42}}), tool({args: {path: " "}}), tool({args: undefined})];
   expect(recordedChanges([evt(), evt({tools: ignored})])).toEqual([]);
-  const events = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
-  expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false}, {path: "src/test.ts", running: true}]);
-  const view = render(<WorkChanges events={[]} />);
+  const turns = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
+  expect(recordedChanges(turns)).toEqual([{path: "src/repair.ts", running: false}, {path: "src/test.ts", running: true}]);
+  const view = render(<WorkChanges turns={[]} />);
   expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
-  view.rerender(<WorkChanges events={events} />);
+  view.rerender(<WorkChanges turns={turns} />);
   fireEvent.click(screen.getByText("2 files"));
   const changes = within(screen.getByRole("dialog", {name: "Recorded changes"}));
   expect(changes.getByText("Write in progress")).toBeTruthy();
@@ -48,7 +48,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   expect(changes.getByText("src/test.ts")).toBeTruthy();
   expect(changes.getByText(/Publication and line totals are not available here/)).toBeTruthy();
   expect(screen.queryByRole("link")).toBeNull();
-  view.rerender(<WorkChanges events={[evt({tools: [tool({})]})]} />);
+  view.rerender(<WorkChanges turns={[evt({tools: [tool({})]})]} />);
   expect(screen.getByText("1 file")).toBeTruthy();
 });
 

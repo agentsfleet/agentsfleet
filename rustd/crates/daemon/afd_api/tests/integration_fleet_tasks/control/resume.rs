@@ -1,4 +1,4 @@
-//! Resume stays in the native admission queue and refuses foreign children.
+//! Resume stays in the native turn queue and refuses foreign children.
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::TestDatabase;
@@ -26,7 +26,7 @@ async fn task_resume_queues_one_continuation_and_refuses_foreign_children() {
     assert_eq!(
         queued(&fixture).await,
         1,
-        "retries and same-state requests cannot queue another lease"
+        "retries and same-state requests cannot queue another run"
     );
     foreign_control(&router, &fixture, &ready_tag).await;
     fixture.base.cleanup().await;
@@ -140,7 +140,7 @@ async fn task_resume_retains_exhausted_allowance_and_queues_nothing() {
         .acquire()
         .await
         .expect("exhaustion connection");
-    sqlx::query("UPDATE fleet.tasks SET used_leases=max_leases WHERE id=$1")
+    sqlx::query("UPDATE fleet.tasks SET used_runs=max_runs WHERE id=$1")
         .bind(&fixture.ids[2])
         .execute(&mut *connection)
         .await
@@ -186,7 +186,7 @@ async fn task_resume_policy_refusal_rolls_back_with_the_original_state() {
         .bind(&fixture.base.fleet)
         .execute(&mut *connection)
         .await
-        .expect("setup unavailable for new admissions");
+        .expect("setup unavailable for new turns");
     drop(connection);
     let response = patch(
         &router,
@@ -198,7 +198,7 @@ async fn task_resume_policy_refusal_rolls_back_with_the_original_state() {
     .await;
     assert_eq!(response.status(), StatusCode::CONFLICT);
     let body = json_body(response).await;
-    assert_eq!(body.get("error_code"), Some(&json!("UZ-AUTHOR-009")));
+    assert_eq!(body.get("error_code"), Some(&json!("UZ-SETUP-009")));
     assert_eq!(body.get("current_state"), Some(&json!("paused")));
     let (after, tag) = read_task(&router, &fixture, 2).await;
     assert_eq!(

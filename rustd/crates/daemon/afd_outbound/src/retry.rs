@@ -15,7 +15,7 @@
 //! Under a flat `200ms << attempt`, every worker that saw the same vendor
 //! outage retries in the same millisecond, and the recovering vendor is hit by
 //! the whole deployment at once — the retry storm that keeps it down. `backon`
-//! adds a random offset inside each delay, which is what Dimension 5.1's
+//! adds a random offset inside each delay, which is what the retry tests'
 //! "jittered" means.
 //!
 //! # The budget is small on purpose
@@ -33,7 +33,7 @@ use backon::ExponentialBuilder;
 use garde::Validate;
 use serde::Deserialize;
 
-/// Inline delivery attempts; a durable obligation remains claimable after exhaustion.
+/// Inline delivery attempts; a durable delivery remains claimable after exhaustion.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RetrySettings {
@@ -109,15 +109,3 @@ const FIRST_DELAY: Duration = Duration::from_millis(200);
 /// Two sleeps come to 600ms before jitter and under a second with it. Delivery
 /// is serial, so this wait is paid by every answer queued behind this one.
 const MAX_DELAY: Duration = Duration::from_millis(800);
-
-/// The schedule one delivery's attempts are spread over.
-///
-/// `max_times` is the number of RETRIES, so it is one fewer than the attempts:
-/// the first try is not a retry. Deriving it from [`DELIVERY_ATTEMPTS`] rather
-/// than writing `2` is what keeps the two from drifting — a count written down
-/// separately from the attempts can leave the last delay unreachable while a
-/// comment beside it promises one more try.
-#[must_use]
-pub const fn delivery_schedule() -> ExponentialBuilder {
-    RetryPolicy::DEFAULT.schedule()
-}

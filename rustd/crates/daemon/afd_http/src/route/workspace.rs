@@ -1,7 +1,7 @@
 //! Routes addressed by a workspace alone.
 //!
 //! The fleet-addressed half lives in [`super::fleet`]. What is left here is
-//! the workspace's own surface: its secrets, its event tail, its approval
+//! the workspace's own surface: its secrets, its turn tail, its approval
 //! inbox, and the preferences a person sets on it.
 
 use afd_auth::Scope;
@@ -15,7 +15,6 @@ const SECRET_READ: &[Scope] = &[Scope::SecretRead];
 const SECRET_WRITE: &[Scope] = &[Scope::SecretWrite];
 const APPROVAL_READ: &[Scope] = &[Scope::ApprovalRead];
 const APPROVAL_RESOLVE: &[Scope] = &[Scope::ApprovalResolve];
-const PLUGINS_WRITE: &[Scope] = &[Scope::PluginsWrite];
 
 /// A route addressed by workspace only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,28 +27,20 @@ pub enum WorkspaceRoute {
     Draft,
     /// Private user requests and assistant answers.
     DraftMessages,
-    /// Monotone private authoring Stop watermark.
-    DraftCancellations,
     /// Creator-private, currently authorized setup progress.
     DraftStream,
-    /// The workspace account's Plugins.
-    Plugin,
-    /// One reusable native entry.
-    PluginItem,
-    /// Immutable revisions of an entry.
-    PluginRevisions,
-    /// One pinned immutable revision.
-    PluginRevision,
+    /// One turn of a creator-private draft: stop it.
+    DraftTurn,
     /// The workspace's fleets.
     Fleets,
     /// The workspace's secrets.
     Secrets,
     /// One secret, by name.
     Secret,
-    /// The workspace's event history.
-    Events,
-    /// The workspace's live event stream.
-    EventsStream,
+    /// The workspace's turn history.
+    Turns,
+    /// The workspace's live turn stream.
+    TurnsStream,
     /// Onboarding state.
     Onboarding,
     /// One preference.
@@ -71,17 +62,13 @@ impl WorkspaceRoute {
         Self::Drafts,
         Self::Draft,
         Self::DraftMessages,
-        Self::DraftCancellations,
         Self::DraftStream,
-        Self::Plugin,
-        Self::PluginItem,
-        Self::PluginRevisions,
-        Self::PluginRevision,
+        Self::DraftTurn,
         Self::Fleets,
         Self::Secrets,
         Self::Secret,
-        Self::Events,
-        Self::EventsStream,
+        Self::Turns,
+        Self::TurnsStream,
         Self::Onboarding,
         Self::Preference,
         Self::Approvals,
@@ -101,23 +88,21 @@ impl WorkspaceRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::Models
-            | Self::Events
-            | Self::EventsStream
+            | Self::Turns
+            | Self::TurnsStream
             | Self::DraftStream
             | Self::Onboarding
             | Self::Approvals
             | Self::Approval
-            | Self::PluginRevision
             | Self::Members => &[Verb::Get],
             Self::Preference => &[Verb::Put],
-            Self::ApprovalResolve | Self::DraftCancellations => &[Verb::Post],
-            Self::Drafts | Self::DraftMessages => &[Verb::Get, Verb::Post],
-            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
-            Self::Plugin | Self::PluginRevisions | Self::Fleets | Self::Secrets => {
+            Self::ApprovalResolve => &[Verb::Post],
+            Self::Drafts | Self::DraftMessages | Self::Fleets | Self::Secrets => {
                 &[Verb::Get, Verb::Post]
             }
+            Self::Draft => &[Verb::Get, Verb::Patch, Verb::Delete],
+            Self::DraftTurn => &[Verb::Patch],
             Self::Secret => &[Verb::Put, Verb::Delete],
-            Self::PluginItem => &[Verb::Get, Verb::Delete],
         }
     }
 
@@ -131,20 +116,16 @@ impl WorkspaceRoute {
     /// rather than a wildcard, so a new route has to say which it is.
     const fn class(self) -> RouteClass {
         match self {
-            Self::DraftStream | Self::EventsStream => RouteClass::Stream,
+            Self::DraftStream | Self::TurnsStream => RouteClass::Stream,
             Self::Models
             | Self::Drafts
             | Self::Draft
             | Self::DraftMessages
-            | Self::DraftCancellations
-            | Self::Plugin
-            | Self::PluginItem
-            | Self::PluginRevisions
-            | Self::PluginRevision
+            | Self::DraftTurn
             | Self::Fleets
             | Self::Secrets
             | Self::Secret
-            | Self::Events
+            | Self::Turns
             | Self::Onboarding
             | Self::Preference
             | Self::Approvals
@@ -161,21 +142,13 @@ impl WorkspaceRoute {
             Self::Drafts => workspace_path!("/drafts"),
             Self::Draft => workspace_path!("/drafts/{draft_id}"),
             Self::DraftMessages => workspace_path!("/drafts/{draft_id}/messages"),
-            Self::DraftCancellations => workspace_path!("/drafts/{draft_id}/cancellations"),
-            Self::DraftStream => workspace_path!("/drafts/{draft_id}/events/stream"),
-            Self::Plugin => workspace_path!("/plugins"),
-            Self::PluginItem => workspace_path!("/plugins/{plugin_id}"),
-            Self::PluginRevisions => {
-                workspace_path!("/plugins/{plugin_id}/revisions")
-            }
-            Self::PluginRevision => {
-                workspace_path!("/plugins/{plugin_id}/revisions/{revision_id}")
-            }
+            Self::DraftStream => workspace_path!("/drafts/{draft_id}/turns/stream"),
+            Self::DraftTurn => workspace_path!("/drafts/{draft_id}/turns/{turn_id}"),
             Self::Fleets => workspace_path!("/fleets"),
             Self::Secrets => workspace_path!("/secrets"),
             Self::Secret => workspace_path!("/secrets/{name}"),
-            Self::Events => workspace_path!("/events"),
-            Self::EventsStream => workspace_path!("/events/stream"),
+            Self::Turns => workspace_path!("/turns"),
+            Self::TurnsStream => workspace_path!("/turns/stream"),
             Self::Onboarding => workspace_path!("/onboarding"),
             Self::Preference => workspace_path!("/preferences/{pref_key}"),
             Self::Approvals => workspace_path!("/approvals"),
@@ -198,19 +171,14 @@ impl WorkspaceRoute {
     /// own workspace state, and ownership is the check that matters.
     const fn scopes(self) -> Scopes {
         match self {
-            Self::Models
-            | Self::PluginRevision
-            | Self::Events
-            | Self::EventsStream
-            | Self::Members => Scopes::Always(FLEET_READ),
+            Self::Models | Self::Turns | Self::TurnsStream | Self::Members => {
+                Scopes::Always(FLEET_READ)
+            }
             Self::Drafts
             | Self::Draft
             | Self::DraftMessages
-            | Self::DraftCancellations
-            | Self::DraftStream => Scopes::Always(FLEET_WRITE),
-            Self::Plugin | Self::PluginItem | Self::PluginRevisions => {
-                Scopes::rw(FLEET_READ, PLUGINS_WRITE)
-            }
+            | Self::DraftStream
+            | Self::DraftTurn => Scopes::Always(FLEET_WRITE),
             Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),
             Self::Secret => Scopes::Always(SECRET_WRITE),

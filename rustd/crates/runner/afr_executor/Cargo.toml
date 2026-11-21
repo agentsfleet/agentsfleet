@@ -20,7 +20,7 @@ workspace = true
 # through: both ends treat the other as untrusted.
 af_core.workspace = true
 # The executor seam is `dyn`: the agent loop holds whichever engine's executor
-# the lease got, so the trait needs object-safe async methods.
+# the run got, so the trait needs object-safe async methods.
 async-trait.workspace = true
 # Output and file bytes ride the JSON-RPC lines as base64.
 base64.workspace = true

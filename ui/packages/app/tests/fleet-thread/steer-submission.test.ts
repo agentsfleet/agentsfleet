@@ -1,12 +1,11 @@
 import { SUBJECT, WS, ZID, appendMessage, capturedOnNew, mockStream, renderThread, postSteerMock, signedIn } from "./harness";
-import { ACCEPTED, OPERATION_ID, REFUSED, TOO_LONG_TEXT, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
+import { ACCEPTED, OPERATION_ID, REFUSED, UUID_V7, composerInput, heldRefusal, operationIdOf, send } from "./steer-helpers";
 import { SEND_LABEL } from "./steer-copy";
-import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { FleetThread } from "@/components/domain/conversation/thread/FleetThread";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import userEvent from "@testing-library/user-event";
 import { getPendingSends } from "@/lib/streaming/pending-sends";
 import { MintUnavailable } from "@/lib/streaming/operation-id";
@@ -48,7 +47,7 @@ describe("FleetThread — steer submission", () => {
     mockStream([]);
     // Two rapid sends: the first resolves slowly, the second quickly. Without
     // serialisation the fast one's HTTP request would land first and the server would
-    // assign it the earlier event id — "stop" before "deploy".
+    // assign it the earlier turn id — "stop" before "deploy".
     const order: string[] = [];
     let releaseFirst: (() => void) | null = null;
     postSteerMock.mockImplementationOnce(
@@ -181,22 +180,19 @@ describe("FleetThread — steer submission", () => {
     expect(operationIdOf(2)).not.toBe(operationIdOf(0));
   });
 
-  it("refuses a draft longer than the daemon takes before it is named or recorded, and says why", async () => {
+  it("sends a 64 KiB message whole, named and recorded, leaving its length to the daemon", async () => {
     const appendOptimistic = vi.fn();
     mockStream([], { appendOptimistic });
+    postSteerMock.mockResolvedValueOnce(ACCEPTED("evt_long"));
     renderThread();
-    const oversized = "a".repeat(STEER_MESSAGE_MAX_BYTES + 1);
-    fireEvent.change(composerInput(), { target: { value: oversized } });
-    // Send is disabled; Enter, which does not go through it, is refused too.
-    expect((screen.getByRole("button", { name: SEND_LABEL }) as HTMLButtonElement).disabled).toBe(true);
-    await act(async () => {
-      fireEvent.keyDown(composerInput(), { key: "Enter" });
-    });
-    await waitFor(() => expect(composerInput().value).toBe(oversized));
-    expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
-    expect(appendOptimistic).not.toHaveBeenCalled();
-    expect(postSteerMock).not.toHaveBeenCalled();
-    expect(getPendingSends({ subject: SUBJECT, workspaceId: WS, fleetId: ZID })).toEqual([]);
+    const long = "a".repeat(65_536);
+    fireEvent.change(composerInput(), { target: { value: long } });
+    expect((screen.getByRole("button", { name: SEND_LABEL }) as HTMLButtonElement).disabled, "no client-side limit holds Send back").toBe(false);
+    await send(long);
+    await waitFor(() => expect(postSteerMock).toHaveBeenCalledTimes(1));
+    expect(postSteerMock.mock.calls[0]?.[2]).toBe(long);
+    expect(operationIdOf(0)).toMatch(UUID_V7);
+    expect(appendOptimistic).toHaveBeenCalledTimes(1);
   });
 
   it("accepts a steer that completed before its HTTP response returned", async () => {

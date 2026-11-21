@@ -1,6 +1,6 @@
 //! The fleet rows a lane writes before a test runs.
 //!
-//! Native-shaped rows written in SQL: setup is `afd_authoring`'s to perform,
+//! Native-shaped rows written in SQL: setup is `afd_setup`'s to perform,
 //! and this crate only ever reads, counts and purges what setup wrote. Every
 //! row carries the resource version the conditional purge compares against.
 

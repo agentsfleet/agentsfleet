@@ -81,8 +81,8 @@ path = "tests/observability_suite.rs"
 # in `tests/` that no target names does not run, does not fail, and appears in
 # no count.
 [[test]]
-name = "runner_fault_label"
-path = "tests/runner_fault_label.rs"
+name = "capture_suite"
+path = "tests/capture_suite.rs"
 
 [[test]]
 name = "database_observations"

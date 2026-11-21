@@ -1,10 +1,8 @@
 //! Runtime effects retain the shared ordering and the run's real usage meter.
 use super::super::shared::Shared;
 use af_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
-use af_providers::{Message, Request};
+use guffbolt::{Message, Request, Step};
 use tracing::Instrument as _;
-
-mod progress;
 
 pub(super) async fn compact(
     shared: &Shared<'_>,
@@ -14,8 +12,8 @@ pub(super) async fn compact(
     visible: bool,
 ) -> af_context::Result<Checkpoint> {
     let mut trace =
-        af_context::Trace::start(shared.lease_id.into(), af_context::Host::Runtime, &task);
-    let mut progress = progress::Notifications::new(shared.events, &task, visible);
+        af_context::Trace::start(shared.run_id.into(), af_context::Host::Runtime, &task);
+    let mut progress = crate::events::compaction::Notifications::new(shared.events, &task, visible);
     let result = af_context::execute(
         task,
         &mut Model { shared, stop },
@@ -51,11 +49,12 @@ impl Summarizer for Model<'_, '_> {
                 max_output_tokens: Some(task.output_tokens),
                 single_attempt: true,
             };
-            let mut live = crate::events::Live::silent(self.shared.scrub, self.shared.started);
+            // A summary is private: nothing of it streams live, and only its
+            // spend is heard, by the run's meter.
             let turn = tokio::select! {
                 biased;
                 () = self.stop.cancelled() => return Err(af_context::Error::cancelled()),
-                turn = crate::turn::take(self.shared.provider.stream(request), &mut live, self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
+                step = Step::read(self.shared.provider.stream(request), self.shared.meter) => step.map_err(af_context::Error::boundary)?,
             };
             if turn.cut
                 || !turn.finished

@@ -10,7 +10,7 @@ mod write;
 
 use sqlx::types::Json;
 
-use super::{PreparedPlan, TaskBindings, TaskLease, Tasks, decision, guard, transaction};
+use super::{PreparedPlan, TaskBindings, TaskRun, Tasks, decision, guard, transaction};
 use crate::error::{Result, query};
 
 const CONTEXT: &str = "bind durable interpretation";
@@ -20,15 +20,15 @@ const CONTEXT: &str = "bind durable interpretation";
 #[cfg(any(test, feature = "test-util"))]
 pub(super) fn observed_bind<'a>(
     tasks: &'a Tasks,
-    lease: TaskLease<'a>,
+    run: TaskRun<'a>,
     plan: &'a PreparedPlan,
 ) -> super::TaskFuture<'a, TaskBindings> {
     use af_observability::metrics::label::task::{TaskOperation, TaskOutcome};
 
-    let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
+    let span = tracing::info_span!("task_bind", run_id = run.run_id.as_str());
     super::observe::traced(
         TaskOperation::Bind,
-        bind(tasks, lease, plan),
+        bind(tasks, run, plan),
         |bindings| {
             if bindings.replayed {
                 TaskOutcome::Replayed
@@ -42,18 +42,18 @@ pub(super) fn observed_bind<'a>(
 
 pub(super) async fn bind(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     plan: &PreparedPlan,
 ) -> Result<TaskBindings> {
-    if let Some(accepted) = existing(tasks, lease, plan).await? {
+    if let Some(accepted) = existing(tasks, run, plan).await? {
         return Ok(accepted);
     }
-    let scope = guard::lease_scope(tasks.leases.pool(), lease).await?;
+    let scope = guard::run_scope(tasks.runs.pool(), run).await?;
     let (identities, continuations) = prepare::identities(tasks, &scope, plan).await?;
-    let prepared = prepare_admissions(tasks, &continuations).await?;
+    let prepared = prepare_turns(tasks, &continuations).await?;
     let committed = commit::commit(
         tasks,
-        lease,
+        run,
         plan,
         &scope,
         identities,
@@ -67,25 +67,20 @@ pub(super) async fn bind(
                 wake.continuation.confirm(tasks).await;
             }
         }
-        announce(tasks, lease, &scope, &committed.bindings.items).await?;
+        announce(tasks, run, &scope, &committed.bindings.items).await?;
     }
     Ok(committed.bindings)
 }
 
-async fn prepare_admissions<'a>(
+async fn prepare_turns<'a>(
     tasks: &Tasks,
     continuations: &'a [Option<prepare::Wake>],
-) -> Result<Vec<Option<afd_admission::PreparedAdmission<'a>>>> {
+) -> Result<Vec<Option<afd_turns::PreparedTurn<'a>>>> {
     // Budget sampling precedes locks; staging uses the caller's transaction.
     let mut prepared = Vec::with_capacity(continuations.len());
     for wake in continuations {
         prepared.push(match wake {
-            Some(wake) => Some(
-                tasks
-                    .admissions
-                    .prepare(wake.continuation.admission())
-                    .await?,
-            ),
+            Some(wake) => Some(tasks.turns.prepare(wake.continuation.turn()).await?),
             None => None,
         });
     }
@@ -94,12 +89,12 @@ async fn prepare_admissions<'a>(
 
 pub(super) async fn existing(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     plan: &PreparedPlan,
 ) -> Result<Option<TaskBindings>> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = guard::replay_lease(&mut tx, lease).await?;
+    let current = guard::replay_run(&mut tx, run).await?;
     let saved = replay::read(&mut tx, &current, plan).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);
@@ -108,15 +103,15 @@ pub(super) async fn existing(
 
 async fn authorize(
     connection: &mut sqlx::PgConnection,
-    lease: TaskLease<'_>,
-    current: &guard::LeaseRow,
+    run: TaskRun<'_>,
+    current: &guard::RunRow,
     plan: &PreparedPlan,
     source: &source::Source,
 ) -> Result<()> {
     if let Some(authorization) = &plan.authorization {
-        decision::authorize::binding(connection, lease, authorization).await?;
+        decision::authorize::binding(connection, run, authorization).await?;
         sqlx::query(include_str!("sql/interpretation.sql"))
-            .bind(&plan.source_admission_id)
+            .bind(&plan.source_turn_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .bind(&current.tenant_id)
@@ -134,7 +129,7 @@ async fn authorize(
 
 async fn announce(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     scope: &super::TaskScope,
     identities: &[super::TaskBinding],
 ) -> Result<()> {
@@ -149,7 +144,7 @@ async fn announce(
         tracing::info!(
             event = "dt_transition",
             task_id = task.as_str(),
-            lease_id = lease.lease_id.as_str(),
+            run_id = run.run_id.as_str(),
             reason = "admitted"
         );
     }
@@ -158,12 +153,12 @@ async fn announce(
 
 async fn mark_interpreted(
     connection: &mut sqlx::PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     plan: &PreparedPlan,
 ) -> Result<()> {
     if plan.authorization.is_some() {
         sqlx::query(include_str!("sql/interpreted.sql"))
-            .bind(&plan.source_admission_id)
+            .bind(&plan.source_turn_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .execute(&mut *connection)

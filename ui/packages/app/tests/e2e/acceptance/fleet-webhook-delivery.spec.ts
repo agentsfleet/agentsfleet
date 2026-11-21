@@ -8,12 +8,12 @@ import { executionInstructions, WEBHOOK_EVENT_WORKFLOW_RUN, fixtureDefinition, w
  * delivery is signed with it and posted to the fleet's webhook route → the
  * daemon accepts it and names the event → the identical bytes are posted
  * again → the daemon reports a replay and names the SAME event → an online
- * runner leases the one event, and the fleet's history carries exactly one
+ * runner runs the one event, and the fleet's history carries exactly one
  * webhook row after both posts.
  *
- * The replay is byte-identical on purpose. The daemon keys its claim on the
+ * The replay is byte-identical on purpose. The daemon keys its turn on the
  * digest of the signed body, never on the delivery header, so a resender
- * cannot mint a fresh claim by varying a header GitHub does not sign. The
+ * cannot mint a fresh turn by varying a header GitHub does not sign. The
  * fleet-authored REVIEW half of this proof needs a real repository and the
  * GitHub App installed on it, which is a live pass beside this journey, not
  * a fixture this one can arrange.
@@ -22,21 +22,21 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
-import type { EventsPage } from "@/lib/api/events";
+import type { TurnsPage } from "@/lib/api/turns";
 
 import { saveFixtureFleet } from "./fixtures/native-setup";
 import { clientFor } from "./fixtures/api-client";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   anyRunnerLive,
-  classifyUnleased,
-  EVENT_STATUS,
+  classifyIdle,
+  TURN_STATUS,
   failWith,
 } from "./fixtures/execution";
 import { getDefaultWorkspaceId, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 
-// The plugin converges on one row per body; the fleet is named per run.
+// The fleet is named per run.
 const WEBHOOK_TEMPLATE = "fleet-webhook-delivery";
 const FLEET_PREFIX = "fleet-webhook-";
 // The workspace secret the trigger names. Not `github`: that name is the
@@ -57,6 +57,10 @@ const CAPTURED_DELIVERY = path.join(
   "..",
   "..",
   "..",
+  "rustd",
+  "crates",
+  "daemon",
+  "afd_api_ingress",
   "tests",
   "fixtures",
   "webhooks",
@@ -70,11 +74,11 @@ const HEADER_SIGNATURE = "x-hub-signature-256";
 const SIGNATURE_PREFIX = "sha256=";
 const HMAC_ALGORITHM = "sha256";
 
-const EVENT_TYPE_WEBHOOK = "webhook";
+const TURN_KIND_WEBHOOK = "webhook";
 const HTTP_ACCEPTED = 202;
-// Delivery → lease → durable row rides the queue and the heartbeat cadence,
-// the same budget the other lease-crossing journeys carry.
-const EVENT_ROW_TIMEOUT_MS = 120_000;
+// Delivery → run → durable row rides the queue and the heartbeat cadence,
+// the same budget the other run-crossing journeys carry.
+const TURN_ROW_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 2_000;
 // Long enough for a second delivery to have become a second row if the
 // replay had not been suppressed; short enough not to be a wait. Derived
@@ -85,7 +89,7 @@ const REPLAY_GRACE_MS = POLL_INTERVAL_MS * REPLAY_GRACE_POLLS;
 const JOURNEY_TIMEOUT_MS = 240_000;
 
 interface Accepted {
-  event_id: string;
+  turn_id: string;
   replayed: boolean;
 }
 
@@ -113,11 +117,11 @@ async function deliver(webhookUrl: string, body: Uint8Array, secret: string, del
   return { status: response.status, body: JSON.parse(text) as Accepted };
 }
 
-async function webhookEvents(workspaceId: string, fleetId: string) {
-  const page = await clientFor(FIXTURE_KEY.regular).get<EventsPage>(
-    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/events`,
+async function webhookTurns(workspaceId: string, fleetId: string) {
+  const page = await clientFor(FIXTURE_KEY.regular).get<TurnsPage>(
+    `/v1/workspaces/${workspaceId}/fleets/${fleetId}/turns`,
   );
-  return page.items.filter((item) => item.event_type === EVENT_TYPE_WEBHOOK);
+  return page.items.filter((item) => item.event_type === TURN_KIND_WEBHOOK);
 }
 
 /** The workspace signing secret and saved fleet a delivery needs. */
@@ -143,11 +147,11 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
 /**
  * Waits for a runner to take the event, or reports why nobody did.
  *
- * NO row exists until a runner leases the event. The ingress writes nothing to
- * `fleet.events` — it admits the delivery to the admissions ledger and answers
+ * NO row exists until a runner runs the event. The ingress writes nothing to
+ * the history — it admits the delivery as a queued turn and answers
  * 202, and the row is
- * written by the lease (`afd_ingress::deliver`, module note: "the row appears
- * when the runner leases the event, and a daemon that inserted one at ingress
+ * written by the run (`afd_ingress::deliver`, module note: "the row appears
+ * when the runner runs the event, and a daemon that inserted one at ingress
  * would be racing its own runner to describe the same event").
  *
  * This function read the opposite until Sep 8, 2026, and the cost was the
@@ -158,23 +162,23 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
  * a wait that runs out reaches the classifier below, which is the sentence
  * this journey exists to print (RULE ECL).
  */
-async function awaitLease(workspaceId: string, fleetId: string): Promise<void> {
-  const leased = await expect
+async function awaitRun(workspaceId: string, fleetId: string): Promise<void> {
+  const held = await expect
     .poll(
       async () => {
-        const [current] = await webhookEvents(workspaceId, fleetId);
-        return current?.status ?? EVENT_STATUS.received;
+        const [current] = await webhookTurns(workspaceId, fleetId);
+        return current?.status ?? TURN_STATUS.received;
       },
-      { timeout: EVENT_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
+      { timeout: TURN_ROW_TIMEOUT_MS, intervals: [POLL_INTERVAL_MS] },
     )
-    .not.toBe(EVENT_STATUS.received)
+    .not.toBe(TURN_STATUS.received)
     .then(() => true)
     .catch(() => false);
-  if (!leased) {
-    // A delivery nobody leased is the runner fleet's fault when none is live
+  if (!held) {
+    // A delivery nobody held is the runner fleet's fault when none is live
     // and the product's when one is — the same split every other
-    // lease-crossing journey reports, rather than a bare timeout.
-    failWith(classifyUnleased(await anyRunnerLive()));
+    // run-crossing journey reports, rather than a bare timeout.
+    failWith(classifyIdle(await anyRunnerLive()));
   }
 }
 
@@ -200,24 +204,24 @@ test.describe("fleet webhook delivery", () => {
     const first = await deliver(webhookUrl, body, secret, delivery);
     expect(first.status, JSON.stringify(first.body)).toBe(HTTP_ACCEPTED);
     expect(first.body.replayed).toBe(false);
-    expect(first.body.event_id.length).toBeGreaterThan(0);
+    expect(first.body.turn_id.length).toBeGreaterThan(0);
 
     // ── The exact replay, reported as one and naming the same event ──
     const replay = await deliver(webhookUrl, body, secret, delivery);
     expect(replay.status, JSON.stringify(replay.body)).toBe(HTTP_ACCEPTED);
     expect(replay.body.replayed).toBe(true);
-    expect(replay.body.event_id).toBe(first.body.event_id);
+    expect(replay.body.turn_id).toBe(first.body.turn_id);
 
     // ── One durable event, once a runner has taken it ──
-    await awaitLease(workspaceId, fleetId);
+    await awaitRun(workspaceId, fleetId);
 
     // The replay had its chance to become a second row across the grace above
-    // plus the whole lease wait; a count taken now is what proves it did not.
+    // plus the whole run wait; a count taken now is what proves it did not.
     await new Promise((resolve) => setTimeout(resolve, REPLAY_GRACE_MS));
-    const rows = await webhookEvents(workspaceId, fleetId);
+    const rows = await webhookTurns(workspaceId, fleetId);
     expect(rows, "the replay added no second event").toHaveLength(1);
     const [row] = rows;
-    expect(row?.event_id).toBe(first.body.event_id);
-    expect(row?.status).not.toBe(EVENT_STATUS.gateBlocked);
+    expect(row?.turn_id).toBe(first.body.turn_id);
+    expect(row?.status).not.toBe(TURN_STATUS.gateBlocked);
   });
 });

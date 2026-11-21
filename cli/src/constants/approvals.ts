@@ -60,4 +60,3 @@ export const GATE_QUERY = {
 // The daemon caps `limit` at 200 and defaults to 50; asking for the cap is
 // fewer round trips for the same answer.
 export const GATE_PAGE_LIMIT = 200;
-export const GATE_MAX_PAGES = 50;

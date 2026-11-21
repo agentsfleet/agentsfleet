@@ -1,0 +1,247 @@
+//! Where a run's time went, logged on the line that ends it.
+//!
+//! ```text
+//!   memory ─► sandbox ─► model + tools ─► report
+//!             egress ─► prepare ─► checkout
+//!   └── each once, absent when it never started; wall_ms is the whole run ──┘
+//! ```
+//!
+//! Five segments tile the run: the memory load, the sandbox from sizing
+//! through repository checkout, the model's turns, the tools those
+//! turns called, and the settle from hold-or-destroy to the posted report.
+//! What they leave of the wall time is the admission, the turn assignment and
+//! the drain wait. The first token is inside the model's time and is logged
+//! beside them. A segment a run never reached is absent from the line, never zero:
+//! an operator reading `sandbox_ms=0` would take it for a held sandbox.
+//!
+//! Three parts split the sandbox segment and tile no more than it: the egress
+//! bind, the prepare that thaws a held sandbox or builds one, and the
+//! checkout. A held sandbox, or a run bound to no repository, checks nothing
+//! out, so that part is absent. The egress bind comes before the turn; the
+//! prepare and the checkout run beside the model's segment, so the segments
+//! tile the wall only when the build ends before the turn needs it. What the
+//! build held the turn up by is `sandbox_wait_ms`, absent when nothing waited.
+//!
+//! The same segments are written once onto the run's span when it concludes,
+//! under the `agentsfleet.runner.*_ms` keys, so a trace store reads them per
+//! event without the journal.
+
+use std::sync::{Mutex, PoisonError};
+use std::time::Duration;
+
+use af_core::clock::saturating_millis;
+use af_core::spelling::to_spelling;
+use af_observability::semconv::{
+    ATTR_RUNNER_CHECKOUT_MS, ATTR_RUNNER_EGRESS_MS, ATTR_RUNNER_FIRST_TOKEN_MS,
+    ATTR_RUNNER_MEMORY_MS, ATTR_RUNNER_MODEL_MS, ATTR_RUNNER_PREPARE_MS, ATTR_RUNNER_REPORT_MS,
+    ATTR_RUNNER_SANDBOX_MS, ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS,
+};
+use af_wire::report::RunSegments;
+use tokio::time::Instant;
+use tracing::Span;
+
+use super::{EVENT_COMPLETED, EVENT_FAILED, EVENT_STOPPED, Run};
+use crate::activity::RunTiming;
+use crate::report::Ending;
+
+/// The segments a stopwatch times; the model and its tools are read off the
+/// run's frames instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Segment {
+    Memory,
+    Sandbox,
+    /// Inside `Sandbox`: the run's egress resolved into what it may reach.
+    Egress,
+    /// Inside `Sandbox`: the fleet's held sandbox thawed, or a fresh one built.
+    Prepare,
+    /// Inside `Sandbox`: the bound repositories checked out.
+    Checkout,
+    Report,
+}
+
+/// How long each segment took, for those that ran.
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct Segments {
+    memory: Option<Duration>,
+    sandbox: Option<Duration>,
+    egress: Option<Duration>,
+    prepare: Option<Duration>,
+    checkout: Option<Duration>,
+    /// How long the turn's sandbox-side calls were held up by the build.
+    sandbox_wait: Option<Duration>,
+    model: Option<Duration>,
+    tools: Option<Duration>,
+    report: Option<Duration>,
+    first_token: Option<Duration>,
+}
+
+impl Segments {
+    /// Writes each segment that ran onto `span`, under its declared key; a
+    /// segment that never ran writes nothing, so the span never says zero.
+    pub(super) fn record(&self, span: &Span) {
+        let ran = [
+            (ATTR_RUNNER_MEMORY_MS, self.memory),
+            (ATTR_RUNNER_SANDBOX_MS, self.sandbox),
+            (ATTR_RUNNER_EGRESS_MS, self.egress),
+            (ATTR_RUNNER_PREPARE_MS, self.prepare),
+            (ATTR_RUNNER_CHECKOUT_MS, self.checkout),
+            (ATTR_RUNNER_SANDBOX_WAIT_MS, self.sandbox_wait),
+            (ATTR_RUNNER_MODEL_MS, self.model),
+            (ATTR_RUNNER_TOOLS_MS, self.tools),
+            (ATTR_RUNNER_REPORT_MS, self.report),
+            (ATTR_RUNNER_FIRST_TOKEN_MS, self.first_token),
+        ];
+        for (key, elapsed) in ran {
+            if let Some(elapsed) = elapsed {
+                span.record(key, saturating_millis(elapsed));
+            }
+        }
+    }
+}
+
+/// A run's segments as they finish, written from whichever step ends one.
+#[derive(Debug, Default)]
+pub(super) struct Timeline {
+    segments: Mutex<Segments>,
+}
+
+impl Timeline {
+    /// Starts timing `segment`; the watch records it when stopped or dropped.
+    pub(super) fn start(&self, segment: Segment) -> Stopwatch<'_> {
+        Stopwatch {
+            timeline: self,
+            segment,
+            started: Instant::now(),
+        }
+    }
+
+    /// The run's own timing: the model's time, its tools' and its first token.
+    pub(super) fn ran(&self, timing: RunTiming) {
+        let mut segments = self.lock();
+        segments.model = Some(timing.model());
+        segments.tools = Some(timing.tools);
+        segments.first_token = timing.first_chunk;
+    }
+
+    /// The segments a report carries to the daemon, with `settle` as the
+    /// settle's time so far: the daemon's span cannot see the runner's clock.
+    pub(super) fn reported(&self, settle: Duration) -> RunSegments {
+        let segments = self.lock();
+        RunSegments {
+            memory_ms: segments.memory.map(saturating_millis),
+            model_ms: segments.model.map(saturating_millis),
+            tools_ms: segments.tools.map(saturating_millis),
+            sandbox_wait_ms: segments.sandbox_wait.map(saturating_millis),
+            settle_ms: Some(saturating_millis(settle)),
+        }
+    }
+
+    /// How long the turn's sandbox-side calls waited for the build, when any
+    /// call did.
+    pub(super) fn waited(&self, held: Option<Duration>) {
+        self.lock().sandbox_wait = held;
+    }
+
+    fn set(&self, segment: Segment, elapsed: Duration) {
+        let mut segments = self.lock();
+        let slot = match segment {
+            Segment::Memory => &mut segments.memory,
+            Segment::Sandbox => &mut segments.sandbox,
+            Segment::Egress => &mut segments.egress,
+            Segment::Prepare => &mut segments.prepare,
+            Segment::Checkout => &mut segments.checkout,
+            Segment::Report => &mut segments.report,
+        };
+        *slot = Some(elapsed);
+        drop(segments);
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Segments> {
+        // Nothing panics while a segment is written, so the lock is never
+        // poisoned; a poisoned one would still carry every segment written.
+        self.segments.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// One segment being timed. Dropping it records the time so far, so a step
+/// that returns early still leaves its segment on the line, and stopping it
+/// is dropping it where the segment ends.
+#[derive(Debug)]
+pub(super) struct Stopwatch<'a> {
+    timeline: &'a Timeline,
+    segment: Segment,
+    started: Instant,
+}
+
+impl Stopwatch<'_> {
+    /// How long this segment has run so far.
+    pub(super) fn elapsed(&self) -> Duration {
+        self.started.elapsed()
+    }
+
+    /// The segment ends here.
+    pub(super) fn stop(self) {
+        drop(self);
+    }
+}
+
+impl Drop for Stopwatch<'_> {
+    fn drop(&mut self) {
+        self.timeline.set(self.segment, self.started.elapsed());
+    }
+}
+
+impl Run<'_> {
+    /// Logs how the run ended and where its time went, and writes the same
+    /// segments onto the run's span.
+    pub(super) fn conclude(&self, ending: &Ending) {
+        let run_id = self.ids.run.as_str();
+        let wall_ms = saturating_millis(self.started.elapsed());
+        let segments = *self.timeline.lock();
+        segments.record(&Span::current());
+        let memory_ms = segments.memory.map(saturating_millis);
+        let sandbox_ms = segments.sandbox.map(saturating_millis);
+        let egress_ms = segments.egress.map(saturating_millis);
+        let prepare_ms = segments.prepare.map(saturating_millis);
+        let checkout_ms = segments.checkout.map(saturating_millis);
+        let sandbox_wait_ms = segments.sandbox_wait.map(saturating_millis);
+        let model_ms = segments.model.map(saturating_millis);
+        let tools_ms = segments.tools.map(saturating_millis);
+        let report_ms = segments.report.map(saturating_millis);
+        let first_token_ms = segments.first_token.map(saturating_millis);
+        // A failure carries its class in the spelling the report carries, so
+        // the log and the report name it alike; a completion carries neither
+        // field, and tracing leaves a `None` off the line.
+        let (event, class, detail) = match ending {
+            Ending::Ran { .. } => (EVENT_COMPLETED, None, None),
+            Ending::Stopped { .. } => (EVENT_STOPPED, None, None),
+            Ending::Failed { class, detail } => (EVENT_FAILED, to_spelling(class), Some(*detail)),
+        };
+        let class = class.as_deref();
+        tracing::info!(
+            run_id,
+            class,
+            detail,
+            wall_ms,
+            memory_ms,
+            sandbox_ms,
+            egress_ms,
+            prepare_ms,
+            checkout_ms,
+            sandbox_wait_ms,
+            model_ms,
+            tools_ms,
+            report_ms,
+            first_token_ms,
+            event
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "tests/timing.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "tests/span_segments.rs"]
+mod span_tests;

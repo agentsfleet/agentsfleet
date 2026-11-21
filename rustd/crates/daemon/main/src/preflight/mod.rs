@@ -3,8 +3,8 @@
 //! # Why this collects rather than exits
 //!
 //! A boot that exits at each check in turn leaves an operator holding three
-//! unset knobs to fix one, restart, and learn about the second. Dimension 8.1
-//! asks for all of them in one output, and the shape that gets there is a
+//! unset knobs to fix one, restart, and learn about the second. An operator
+//! needs all of them in one output, and the shape that gets there is a
 //! function that RETURNS its faults instead of ending the process in the
 //! middle of one.
 //!
@@ -33,15 +33,11 @@ pub mod runner_listener;
 pub(crate) mod runtime;
 #[cfg(test)]
 mod runtime_tests;
-#[cfg(test)]
-mod stream_ceiling_tests;
 
 pub use self::checkpoint::CHECKPOINT_STORAGE_KNOB;
 pub use self::config::{BootConfig, IdentityConfig, PostHogConfig};
 pub use self::runtime::RuntimeSettings;
-pub use af_otlp::{
-    OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig,
-};
+use af_otlp::OtlpConfig;
 
 pub use self::knobs::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB,
@@ -262,8 +258,6 @@ impl Readings {
                 exchanger: None,
                 #[cfg(feature = "test-util")]
                 connector_endpoint: None,
-                #[cfg(feature = "test-util")]
-                authoring_transport: None,
             }),
             // Anything else: a knob that is missing or unusable, the identity
             // provider included. Every one of them has already pushed its own

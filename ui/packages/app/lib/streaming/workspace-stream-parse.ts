@@ -1,6 +1,6 @@
-import type { WorkspaceControlFrame, WorkspaceFrame, WorkspaceLiveFrame } from "@/lib/api/events";
+import type { WorkspaceControlFrame, WorkspaceFrame, WorkspaceLiveFrame } from "@/lib/api/turns";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 
 // Frame safety for the workspace stream: a frame whose `data` is not valid
 // JSON, is not an object, or has no string `kind` is DROPPED, as is a fleet

@@ -1,8 +1,8 @@
 //! Acquire or refresh bounded checkpoint transfers through the existing authenticated task owner.
 
-use crate::{auth::RunnerIdentity, services::Services};
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
 use af_wire::task::CheckpointAuthorizationInput;
-use afd_fleet::task::TaskLease;
+use afd_fleet::task::TaskRun;
 use afd_http::handler::{Refusal, parse_id};
 use axum::{
     Json,
@@ -14,10 +14,10 @@ use http::{StatusCode, header};
 use std::sync::Arc;
 
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = af_wire::paths::LEASE_TASK_CHECKPOINT_AUTHORIZATIONS, tag = afd_http::openapi::tag::RUNNERS,
+    post, path = af_wire::paths::RUN_TASK_CHECKPOINT_AUTHORIZATIONS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_checkpoint_authorize", summary = "Acquire or refresh bounded checkpoint transfers",
     description = "A restore request without object identities acquires a native reader pin and ordered manifest descriptors. Bounded refresh verifies acknowledged uploads or signs current scoped transfers.",
-    params(("lease_id" = String, Path, description = "Native lease UUIDv7."),
+    params(("run_id" = String, Path, description = "Native run UUIDv7."),
         ("checkpoint_id" = String, Path, description = "Native checkpoint UUIDv7.")), request_body = CheckpointAuthorizationInput,
     responses((status = 200, body = af_wire::task::CheckpointAuthorizations, description = "Native checkpoint result"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 404, description = afd_http::openapi::NOT_FOUND),
@@ -25,23 +25,23 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn handle<D: Services>(
+pub(crate) async fn handle<D: RunnerPlane>(
     State(services): State<Arc<D>>,
     RunnerIdentity(runner): RunnerIdentity,
-    Path((lease, checkpoint)): Path<(String, String)>,
+    Path((run, checkpoint)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    let lease_id = parse_id(&lease, "lease_id must be a UUIDv7")?;
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
     let checkpoint_id = parse_id(&checkpoint, "checkpoint_id must be a UUIDv7")?;
     let input: garde::Valid<CheckpointAuthorizationInput> = super::input(&body)?;
-    let lease = TaskLease {
+    let run = TaskRun {
         runner_id: runner.id(),
-        lease_id: &lease_id,
+        run_id: &run_id,
         fencing_token: input.fencing_token,
     };
     let result = services
         .tasks()
-        .checkpoint_authorizations(lease, &checkpoint_id, &input)
+        .checkpoint_authorizations(run, &checkpoint_id, &input)
         .await
         .map_err(Refusal::at(super::EVENT))?;
     let status = StatusCode::OK;

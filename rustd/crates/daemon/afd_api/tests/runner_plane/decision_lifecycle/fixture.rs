@@ -1,4 +1,4 @@
-//! Registered runners issue a real lease and share the router's native secret key.
+//! Registered runners issue a real run and share the router's native secret key.
 
 mod native_report;
 mod storage;
@@ -8,14 +8,13 @@ use std::borrow::Cow;
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
-    event::EventType,
     runner::{
         AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
         SandboxTier,
     },
     task::{DecisionAssessment, DecisionReservationInput},
+    turn::TurnKind,
 };
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_auth::scope::ScopeSet;
 use afd_db::{
     Db,
@@ -23,10 +22,11 @@ use afd_db::{
     test_util::{OwnedRows, TestDatabase, mint_id},
 };
 use afd_fleet::{
-    lease::{Billed, Leases},
+    run::{Billed, Runs},
     task::Tasks,
 };
 use afd_runner::Runners;
+use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
 use afd_vault::{Deleted, SecretBody, SecretName};
 use axum::Router;
 use serde_json::{json, value::RawValue};
@@ -40,7 +40,7 @@ pub(super) struct Runner {
     pub token: String,
 }
 
-pub(super) struct Lease {
+pub(super) struct Run {
     pub id: Uuid7,
     pub fence: u64,
     pub source: Uuid7,
@@ -52,7 +52,7 @@ pub(super) struct Fixture {
     pub owner: Owner,
     pub runner: Runner,
     pub other: Runner,
-    pub lease: Lease,
+    pub run: Run,
     pub key: String,
     pub model: DecisionModelFixture,
     cleanup: OwnedRows,
@@ -94,15 +94,15 @@ impl Fixture {
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let bus = harness::bus().await;
-        let admissions = Admissions::for_tests(database.clone(), bus.clone());
-        let leases = Leases::new(database.clone(), bus, Entropy::new());
-        let lease = acquire(&leases, &admissions, &owner, &runner).await;
+        let turns = Turns::for_tests(database.clone(), bus.clone());
+        let runs = Runs::new(database.clone(), bus, Entropy::new());
+        let run = acquire(&runs, &turns, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;
         let mut dependencies = harness::task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
         dependencies.storage = Some(storage::build(&database, &owner).await);
-        let tasks = Tasks::new(leases, admissions, dependencies);
+        let tasks = Tasks::new(runs, turns, dependencies);
         let router = harness::Fleet::live(
             database.clone(),
             "native_decision_http",
@@ -117,7 +117,7 @@ impl Fixture {
             owner,
             runner,
             other,
-            lease,
+            run,
             key,
             model,
             cleanup,
@@ -127,7 +127,7 @@ impl Fixture {
     }
 
     pub(super) fn collection(&self) -> String {
-        format!("/v1/runners/me/leases/{}/tasks/decisions", self.lease.id)
+        format!("/v1/runners/me/runs/{}/tasks/decisions", self.run.id)
     }
 
     pub(super) fn item(&self, call: &str) -> String {
@@ -137,8 +137,8 @@ impl Fixture {
     pub(super) fn reservation(&self) -> DecisionReservationInput {
         DecisionReservationInput {
             operation_id: mint_id().into(),
-            fencing_token: self.lease.fence,
-            source_admission_id: self.lease.source.to_string(),
+            fencing_token: self.run.fence,
+            source_turn_id: self.run.source.to_string(),
             assessment: DecisionAssessment::Message,
             task: None,
             retry_of: None,
@@ -215,23 +215,18 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
         .expect("exactly two registered runners")
 }
 
-async fn acquire(
-    leases: &Leases,
-    admissions: &Admissions,
-    owner: &Owner,
-    runner: &Runner,
-) -> Lease {
-    let admitted = admit(admissions, owner).await;
-    let acquired = leases
+async fn acquire(runs: &Runs, turns: &Turns, owner: &Owner, runner: &Runner) -> Run {
+    let admitted = admit(turns, owner).await;
+    let acquired = runs
         .select(&runner.id, &[])
         .await
-        .expect("native claim")
+        .expect("native assignment")
         .expect("owned work is runnable");
     assert_eq!(
-        (&acquired.fleet_id, &acquired.event_id),
+        (&acquired.fleet_id, &acquired.turn_id),
         (&owner.fleet, &admitted)
     );
-    let issued = leases
+    let issued = runs
         .issue(
             &runner.id,
             &acquired,
@@ -245,26 +240,26 @@ async fn acquire(
         )
         .await
         .expect("native issue")
-        .expect("fenced lease still owned");
+        .expect("fenced run still owned");
     assert!(issued.decision.is_some());
-    Lease {
-        id: issued.lease_id,
+    Run {
+        id: issued.run_id,
         fence: acquired.fence.as_u64(),
         source: admitted,
     }
 }
 
-async fn admit(admissions: &Admissions, owner: &Owner) -> Uuid7 {
+async fn admit(turns: &Turns, owner: &Owner) -> Uuid7 {
     let body = json!({"message":setup::MESSAGE}).to_string();
     let key = mint_id();
-    let admitted = admissions
-        .admit(Admission {
+    let admitted = turns
+        .admit(IncomingTurn {
             producer: Producer::Steer,
             key: Key::Repeated(key.as_str()),
             fleet: &owner.fleet,
             workspace: &owner.workspace,
-            actor: &afd_events::steer_actor("native_decision_http"),
-            event_type: EventType::Chat,
+            actor: &afd_turns::view::steer_actor("native_decision_http"),
+            event_type: TurnKind::Chat,
             request_json: &body,
             reply: Reply::None,
         })
@@ -289,7 +284,7 @@ async fn save_key(database: &Db, workspace: &Uuid7, key: &str) {
 
 async fn heartbeat(store: &Runners, runner: &Uuid7) {
     // Decision-enabled fleets require explicit durable-task support even
-    // before their human admission has been bound to a task.
+    // before their human turn has been bound to a task.
     let beat = store
         .heartbeat(
             runner,

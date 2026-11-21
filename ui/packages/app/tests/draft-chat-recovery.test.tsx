@@ -9,7 +9,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import { UNKNOWN_USAGE_REASON } from "@/lib/api/draft-recovery";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { ChatFixture, CHAT_PROPS } from "./workspace-chat/fixture";
-import { DRAFT, MESSAGE, MODEL, response } from "./helpers/draft-fixtures";
+import { DRAFT, MESSAGE, MODEL, TURN_ID, response } from "./helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 let client: DraftClient;
@@ -24,6 +24,10 @@ function Live({children}: {children?: ReactNode}) {
   return <DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}>{children}</DraftConversation>;
 }
 
+function isStop(path: string, init?: RequestInit): boolean {
+  return init?.method === "PATCH" && path.endsWith(`/drafts/${DRAFT.id}/turns/${TURN_ID}`);
+}
+
 function RuntimeStop() {
   const aui = useAui();
   return <Button onClick={() => { aui.thread.cancelRun(); }}>Cancel from assistant runtime</Button>;
@@ -35,39 +39,38 @@ it.each(["queued", "running"] as const)("chat_recovery_shows_stop_and_queued_sta
   const label = state === "queued" ? "Queued" : "Thinking";
   expect(screen.getByRole("status", {name: label})).toBeTruthy();
   expect(screen.queryByRole("status", {name: state === "queued" ? "Thinking" : "Queued"})).toBeNull();
-  expect(screen.getByRole("button", {name: "Stop authoring"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("button", {name: "Stop setup"})).toHaveProperty("disabled", false);
 });
 
 it("keeps the composer open after a failure whose usage is unaccounted, and offers no Stop", async () => {
   fixture.messages = [{...MESSAGE, role: "assistant", state: "failed", text: undefined,
-    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"}}];
+    failure: {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"}}];
   await client.resume(DRAFT.id); render(<Live />);
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
-  expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull();
+  expect(screen.queryByRole("button", {name: "Stop setup"})).toBeNull();
   expect(screen.getByRole("log").textContent).toContain("Usage is still being reconciled");
 });
 
 it.each([false, true])("stops queued work from the composer's Stop button (cancellation fails: %s)", async (fails) => {
   fixture.messages = [{...MESSAGE, state: "queued"}];
   const base = fixture.fetch.getMockImplementation()!;
-  const cancellations: unknown[] = [];
+  const stops: unknown[] = [];
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith("/cancellations")) {
-      if (typeof init?.body !== "string") throw new Error("Expected cancellation JSON");
-      cancellations.push(JSON.parse(init.body));
+    if (isStop(path, init)) {
+      if (typeof init?.body !== "string") throw new Error("Expected Stop JSON");
+      stops.push(JSON.parse(init.body));
       if (fails) return response({user_message: "Stop could not be saved."}, 503);
-      fixture.draft = {...fixture.draft, cancelled_through: "1"};
       fixture.messages = [{...MESSAGE, state: "cancelled"}];
-      return response({cancelled_through: "1", stopped: [{sequence: "1", state: "cancelled"}]});
+      return response({sequence: "1", state: "cancelled"});
     }
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<Live />);
-  fireEvent.click(screen.getByRole("button", {name: "Stop authoring"}));
-  await waitFor(() => expect(cancellations).toEqual([{through_sequence: "1"}]));
-  if (fails) await waitFor(() => expect(client.getSnapshot().error).toBe("Stop could not be saved."));
-  else await waitFor(() => expect(screen.queryByRole("button", {name: "Stop authoring"})).toBeNull());
+  fireEvent.click(screen.getByRole("button", {name: "Stop setup"}));
+  await waitFor(() => expect(stops).toEqual([{status: "cancelled"}]));
+  if (fails) await waitFor(() => expect(client.getSnapshot().error).toBe("Stop couldn’t be confirmed. Check the conversation, then try again."));
+  else await waitFor(() => expect(screen.queryByRole("button", {name: "Stop setup"})).toBeNull());
 });
 
 it("persists cancellation requested through the assistant runtime", async () => {
@@ -75,25 +78,24 @@ it("persists cancellation requested through the assistant runtime", async () => 
   const base = fixture.fetch.getMockImplementation()!;
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith("/cancellations")) {
-      if (typeof init?.body !== "string") throw new Error("Expected cancellation JSON");
-      expect(JSON.parse(init.body)).toEqual({through_sequence: "1"});
-      fixture.draft = {...fixture.draft, cancelled_through: "1"};
+    if (isStop(path, init)) {
+      if (typeof init?.body !== "string") throw new Error("Expected Stop JSON");
+      expect(JSON.parse(init.body)).toEqual({status: "cancelled"});
       fixture.messages = [{...MESSAGE, state: "cancelled"}];
-      return response({cancelled_through: "1", stopped: [{sequence: "1", state: "cancelled"}]});
+      return response({sequence: "1", state: "cancelled"});
     }
     return base(input, init);
   });
   await client.resume(DRAFT.id); render(<Live><RuntimeStop /></Live>);
   fireEvent.click(screen.getByRole("button", {name: "Cancel from assistant runtime"}));
-  await waitFor(() => expect(client.getSnapshot().draft?.cancelled_through).toBe("1"));
+  await waitFor(() => expect(client.getSnapshot().messages).toMatchObject([{state: "cancelled"}]));
   expect(screen.queryByRole("status", {name: "Thinking"})).toBeNull();
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER})).toHaveProperty("disabled", false);
 });
 
 it.each(["MiniMax M3.1 Flash (Free)", "GLM 5.3 Flash"])("displays the selected model's supplied label: %s", (label) => {
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), models: [{...MODEL, label}], model: MODEL.ref}} />);
-  expect(screen.getByRole("combobox", {name: "Authoring model"}).textContent).toBe(label);
+  expect(screen.getByRole("combobox", {name: "Setup model"}).textContent).toBe(label);
 });
 
 it("focuses New fleet ready for typing after its launcher was focused", async () => {
@@ -147,7 +149,7 @@ it("leaves model selection focused when conversation updates arrive", async () =
   await client.resume(DRAFT.id);
   const view = client.getSnapshot();
   const rendered = render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
-  const model = screen.getByRole("combobox", {name: "Authoring model"});
+  const model = screen.getByRole("combobox", {name: "Setup model"});
   model.focus();
   rendered.rerender(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={{...view, messages: [...view.messages]}} />);
   expect(document.activeElement).toBe(model);
@@ -171,13 +173,13 @@ it("leaves another control focused when a composer mounts or becomes ready", asy
 });
 
 it("retries an unaccounted turn by resending it, without a Stop", async () => {
-  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-AUTHOR-015", recovery_action: "retry_message"};
+  const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed", failure}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}];
   const base = fixture.fetch.getMockImplementation()!;
   const writes: string[] = [];
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith("/cancellations")) throw new Error("An unaccounted turn needs no cancellation");
+    if (isStop(path, init)) throw new Error("An unaccounted turn needs no Stop");
     if (path.endsWith("/messages") && init?.method === "POST") {
       writes.push("send");
       if (typeof init.body !== "string") throw new Error("Expected message JSON");
@@ -194,14 +196,14 @@ it("retries an unaccounted turn by resending it, without a Stop", async () => {
 });
 
 it("retries the failed turn's request instead of a newer message or composer text", async () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-AUTHOR-014", recovery_action: "retry_message"};
+  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   fixture.messages = [{...MESSAGE, state: "failed"}, {...MESSAGE, role: "assistant", state: "failed", text: undefined, failure},
     {...MESSAGE, sequence: "2", text: "A different request"}];
   const base = fixture.fetch.getMockImplementation()!;
   const sent: string[] = [];
   fixture.fetch.mockImplementation(async (input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith("/cancellations")) throw new Error("Known usage needs no cancellation");
+    if (isStop(path, init)) throw new Error("Known usage needs no Stop");
     if (path.endsWith("/messages") && init?.method === "POST") {
       if (typeof init.body !== "string") throw new Error("Expected message JSON");
       sent.push(JSON.parse(init.body).message);

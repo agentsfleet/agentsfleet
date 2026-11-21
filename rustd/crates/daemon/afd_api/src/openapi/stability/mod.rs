@@ -1,4 +1,4 @@
-//! Each response field's stability class, as `x-stability` (REST §9).
+//! Each response field's stability class, as `x-stability`, per the REST standard's stability rule.
 //!
 //! `utoipa` field extensions do not survive a reference-valued field. The
 //! table keeps field classes together and tests every declared property in
@@ -16,7 +16,7 @@ const STABILITY: &str = "x-stability";
 const BETA: &str = "beta";
 
 /// What a `beta` field's description says, so a reader of the rendered
-/// reference sees the class the extension carries (REST §9).
+/// reference sees the class the extension carries, per the REST standard's stability rule.
 const BETA_NOTE: &str = "Beta: this field may change shape before it is stable.";
 
 /// The response fields published `beta`: each schema, with its properties.
@@ -29,11 +29,16 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         "DefinitionNetwork",
         &["http_egress", "package_manager_domains"],
     ),
-    ("EventDetail", &["tool_calls"]),
+    ("TurnDetail", &["tool_calls"]),
     (
         "ToolCallDetail",
         &[
             "call_id",
+            // The item's words grow with the thread model's later kinds and
+            // its `running` status.
+            "kind",
+            "tool",
+            "status",
             "arguments",
             "truncated_arguments",
             "output",
@@ -44,20 +49,20 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     ("ToolCallRecordsStored", &["stored_count", "skipped_count"]),
     // The runner's schedules and messages verbs are new, and so is the Rust
     // runner that reads them; either may reshape what a reply carries.
-    ("ScheduleRun", &["event_id"]),
+    ("ScheduleRun", &["turn_id"]),
     ("MessagePosted", &["delivered"]),
     // A schedule's view gained who made it and whether it retires after one
     // fire. `source` grew a third value with the fleet as an author, and both
     // are read by that same new runner.
     ("View", &["source", "once"]),
-    // The memory window travels in native offers and may still change shape.
-    ("LeasePayload", &["memory"]),
+    // The memory window travels in native assignments and may still change shape.
+    ("RunPayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
-    ("SteerAccepted", &["disposition", "folded_into_event_id"]),
-    // A run claiming the messages its fleet receives is new, and so is the
-    // runner release that reads the claim.
+    ("SteerAccepted", &["disposition", "folded_into_turn_id"]),
+    // A run assigned the messages its fleet receives is new, and so is the
+    // runner release that reads the assignment.
     ("FoldResponse", &["inputs"]),
-    ("FoldedInput", &["event_id", "sequence", "text"]),
+    ("FoldedInput", &["turn_id", "sequence", "text"]),
     // The fleet-to-fleet verbs are new, and so is the runner release that
     // calls them; their replies may still reshape.
     (
@@ -71,11 +76,11 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "FleetEventItem",
+        "FleetTurnItem",
         &[
             "actor",
             "created_at",
-            "event_id",
+            "turn_id",
             "event_type",
             "failure_label",
             "request_excerpt",
@@ -83,9 +88,9 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
             "status",
         ],
     ),
-    ("FleetSteerAccepted", &["event_id", "replayed"]),
+    ("FleetSteerAccepted", &["turn_id", "replayed"]),
     ("FleetsPage", &["items", "next_cursor", "total"]),
-    ("FleetEventsPage", &["items", "next_cursor", "total"]),
+    ("FleetTurnsPage", &["items", "next_cursor", "total"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

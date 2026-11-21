@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { IN_ORDER, chunkOf, completionOf, markedSends } from "@/tests/helpers/send-marks-fixtures";
 import { WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { createEntry } from "./fleet-stream-entry";
-import type { FleetEvent } from "./fleet-stream-row";
+import type { FleetTurn } from "./fleet-stream-row";
 import { dispatchReplyFrame } from "./fleet-stream-reply-registry";
 import { SEND_MARK, SEND_MARKS_MAX, sendMarks } from "./send-marks";
 
 const OPERATION_ID = "0190a3b4-0000-7000-8000-000000000001";
-const EVENT_ID = "1790573387481-566";
+const TURN_ID = "1790573387481-566";
 
 afterEach(() => {
   performance.clearMarks();
@@ -18,11 +18,11 @@ afterEach(() => {
 describe("a send's marks through the live stream", () => {
   it("test_dispatched_frames_mark_an_accepted_send: the stream's own dispatch leaves the first-frame and completion marks", () => {
     sendMarks.mark(SEND_MARK.SEND, OPERATION_ID);
-    sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID);
+    sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, TURN_ID);
     const entry = createEntry(WS, []);
-    let events: FleetEvent[] = [];
-    const apply = vi.fn((next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); });
-    for (const frame of [chunkOf(EVENT_ID), completionOf(EVENT_ID)]) dispatchReplyFrame(entry, Z_A, frame, apply, () => true);
+    let turns: FleetTurn[] = [];
+    const apply = vi.fn((next: (prev: FleetTurn[]) => FleetTurn[]) => { turns = next(turns); });
+    for (const frame of [chunkOf(TURN_ID), completionOf(TURN_ID)]) dispatchReplyFrame(entry, Z_A, frame, apply, () => true);
     expect(markedSends()).toEqual(IN_ORDER.map((name) => [name, OPERATION_ID]));
   });
 
@@ -35,9 +35,9 @@ describe("a send's marks through the live stream", () => {
     expect(markedSends().map(([, id]) => id)).toEqual([`capped-op-${SEND_MARKS_MAX}`, `capped-op-${SEND_MARKS_MAX}`]);
   });
 
-  it("leaves no frame mark for a frame that names no event, or an event no send here was accepted under", () => {
+  it("leaves no frame mark for a frame that names no turn, or a turn no send here was accepted under", () => {
     sendMarks.frame({ kind: FRAME_KIND.HELLO, fleet_ids: [] });
-    sendMarks.frame({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "gate_1", event_id: null, status: "approved", resolved_by: "someone", pending_approvals: 0 });
+    sendMarks.frame({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "gate_1", turn_id: null, status: "approved", resolved_by: "someone", pending_approvals: 0 });
     sendMarks.frame(chunkOf("someone-elses-event"));
     sendMarks.frame(completionOf("someone-elses-event"));
     expect(markedSends()).toEqual([]);
@@ -48,26 +48,26 @@ describe("a send's marks through the live stream", () => {
       throw new TypeError("User Timing refused");
     });
     try {
-      expect(() => sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID)).not.toThrow();
+      expect(() => sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, TURN_ID)).not.toThrow();
     } finally {
       refuse.mockRestore();
     }
-    sendMarks.frame(chunkOf(EVENT_ID));
+    sendMarks.frame(chunkOf(TURN_ID));
     expect(markedSends()).toEqual([[SEND_MARK.FIRST_FRAME, OPERATION_ID]]);
   });
 
   it("test_a_refused_frame_mark_never_skips_the_chunk_write: the dispatch goes on to hear and write the chunk", () => {
-    sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID);
+    sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, TURN_ID);
     const entry = createEntry(WS, []);
     const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
       throw new TypeError("User Timing refused");
     });
     try {
-      expect(dispatchReplyFrame(entry, Z_A, chunkOf(EVENT_ID), vi.fn(), () => true)).toBe(true);
+      expect(dispatchReplyFrame(entry, Z_A, chunkOf(TURN_ID), vi.fn(), () => true)).toBe(true);
     } finally {
       refuse.mockRestore();
     }
-    expect(entry.replyHeard.has(EVENT_ID)).toBe(true);
-    expect(entry.replyStreams.has(EVENT_ID)).toBe(true);
+    expect(entry.replyHeard.has(TURN_ID)).toBe(true);
+    expect(entry.replyStreams.has(TURN_ID)).toBe(true);
   });
 });

@@ -21,7 +21,7 @@ impl Schedules {
         recipe: &Recipe,
         slot: i64,
         old: Option<&Stored>,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let (inherited, changed) = replace::inherited(
             old.and_then(|row| row.recipe.as_deref()),
             recipe,
@@ -44,7 +44,7 @@ impl Schedules {
             .await?;
         if !changed && old.is_some_and(|row| row.desired_status == written.desired_status.as_str())
         {
-            return Ok(afd_events::activity::Announcement::default());
+            return Ok(afd_turns::view::activity::Announcement::default());
         }
         Receipt {
             schedule: &written,

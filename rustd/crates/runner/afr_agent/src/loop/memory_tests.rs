@@ -8,16 +8,16 @@ use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use af_egress::testing::{CountingMint, RecordingTransport};
-use af_providers::Chunk;
 use af_wire::memory::MemoryDelta;
 use afr_tools::Catalog;
 use afr_tools::catalog::{MEMORY_LIST, MEMORY_STORE};
+use guffbolt::Chunk;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_CHECKPOINT_FAILED, Loop};
 use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, RunOutput};
-use crate::fixture::{Frames, Script, call, lease, say};
+use crate::fixture::{Frames, Script, call, payload, say};
 use crate::testing::{Discard, Recording};
 
 const HANGING_CHECKPOINT_BOUND: Duration = Duration::from_secs(60);
@@ -44,7 +44,7 @@ async fn the_memory_is_checkpointed_every_n_calls() {
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let every_two = json!({"tool_window": 0, "memory_checkpoint_every": 2,
         "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0});
-    let lease = lease(&[MEMORY_STORE.name()], every_two);
+    let run = payload(&[MEMORY_STORE.name()], every_two);
     let (checkpoint, pushed) = Recording::new();
     let frames = Frames::default();
     let sink = frames.sink();
@@ -55,7 +55,7 @@ async fn the_memory_is_checkpointed_every_n_calls() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -120,13 +120,13 @@ fn store_held() -> Chunk {
     )
 }
 
-/// Runs a lease that stores one entry and then answers, checkpointing after
+/// Runs a run that stores one entry and then answers, checkpointing after
 /// every call into `checkpoint`.
 async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
     let script = Script::new([vec![store_held()], vec![say("answered")]]);
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
-    let lease = lease(&[MEMORY_STORE.name()], every_call());
+    let run = payload(&[MEMORY_STORE.name()], every_call());
     let frames = Frames::default();
     let sink = frames.sink();
 
@@ -136,7 +136,7 @@ async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -166,7 +166,7 @@ async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
     assert_eq!(failed.level, tracing::Level::WARN);
     let code = af_providers::Error::refused(503).code();
     assert_eq!(failed.field("error_code"), Some(code.as_str()));
-    assert_eq!(failed.field("lease_id"), Some("lease-1"));
+    assert_eq!(failed.field("run_id"), Some("run-1"));
 }
 
 #[tokio::test]
@@ -192,11 +192,11 @@ async fn a_discarded_checkpoint_fails_nothing_and_leaves_the_final_push_whole() 
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
+async fn a_checkpoint_that_never_answers_does_not_outlive_the_run() {
     let script = Script::new([vec![store_held()], vec![say("never reached")]]);
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
-    let lease = lease(&[MEMORY_STORE.name()], every_call());
+    let run = payload(&[MEMORY_STORE.name()], every_call());
     let frames = Frames::default();
     let sink = frames.sink();
     let stop = CancellationToken::new();
@@ -213,7 +213,7 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,
@@ -239,7 +239,7 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
     let script = Script::new([list(), list(), vec![say("nothing stored")]]);
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
-    let lease = lease(&[MEMORY_LIST.name()], every_call());
+    let run = payload(&[MEMORY_LIST.name()], every_call());
     let (checkpoint, pushed) = Recording::new();
     let frames = Frames::default();
     let sink = frames.sink();
@@ -250,7 +250,7 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: &lease,
+            run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

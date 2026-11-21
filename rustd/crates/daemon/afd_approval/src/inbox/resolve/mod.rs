@@ -47,7 +47,7 @@ const CONTINUATION_ACTOR_PREFIX: &str = "continuation:";
 /// The body a continuation carries.
 ///
 /// Empty rather than a copy of the original request: the runner re-reads the
-/// blocked event's own body through `resumes_event_id`, and duplicating it here
+/// blocked event's own body through `resumes_turn_id`, and duplicating it here
 /// would make two rows that could disagree about what was asked.
 const CONTINUATION_BODY: &str = "{}";
 
@@ -137,9 +137,9 @@ impl Inbox {
         // remembers to do afterwards: an approval that landed without one is
         // a run a person unblocked and nothing restarted.
         let continuation = if resolved.status == status::APPROVED
-            && let Some(event_id) = resolved.event_id.clone()
+            && let Some(turn_id) = resolved.turn_id.clone()
         {
-            self.continue_from(&resolved, &event_id).await
+            self.continue_from(&resolved, &turn_id).await
         } else {
             // Resolution already cleared the durable park. Notify a waiting
             // poll that the original delivery is available again.
@@ -147,18 +147,18 @@ impl Inbox {
             Ok(None)
         };
         let counters =
-            afd_events::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
+            afd_turns::view::fleet_counters_best_effort(&self.database, &resolved.fleet_id).await;
         self.announce(Answer {
             fleet_id: &resolved.fleet_id,
             gate_id: resolved.gate_id.as_str(),
-            event_id: resolved.event_id.as_ref().map(Uuid7::as_str),
+            turn_id: resolved.turn_id.as_ref().map(Uuid7::as_str),
             status: &resolved.status,
             resolved_by: &resolved.resolved_by,
             pending_approvals,
             counters,
         })
         .await;
-        resolved.continuation_event_id = continuation?;
+        resolved.continuation_turn_id = continuation?;
         Ok(resolved)
     }
 
@@ -170,59 +170,60 @@ impl Inbox {
     /// Lands the event that resumes the run an approved gate had blocked.
     ///
     /// The blocked row is NEVER reopened. This is a new event carrying
-    /// `resumes_event_id`, so the history keeps both the run that was stopped
+    /// `resumes_turn_id`, so the history keeps both the run that was stopped
     /// and the run that followed from the answer — reopening the first would
     /// erase the fact that a person was ever asked.
     ///
-    /// Idempotent on the gate's ACTION: the admission is keyed by it, and
-    /// the row insert carries the `event_id` conflict arm, so a
+    /// Idempotent on the gate's ACTION: the turn is keyed by it, and
+    /// the row insert carries the `turn_id` conflict arm, so a
     /// retried resolve continues the run exactly once.
     ///
-    /// The row is announced on the fleet's tail as `event_received` when it
-    /// lands here, and only here: the lease verb announces the rows it
+    /// The row is announced on the fleet's tail as `turn_received` when it
+    /// lands here, and only here: the run verb announces the rows it
     /// writes, and this one is already there when the runner pulls it, so a
     /// watcher would otherwise never see the continued run open.
-    async fn continue_from(&self, resolved: &Resolved, event_id: &Uuid7) -> Result<Option<Uuid7>> {
-        let actor = format!("{CONTINUATION_ACTOR_PREFIX}{event_id}");
-        let kind = af_wire::event::EventType::Continuation.as_str();
+    async fn continue_from(&self, resolved: &Resolved, turn_id: &Uuid7) -> Result<Option<Uuid7>> {
+        let actor = format!("{CONTINUATION_ACTOR_PREFIX}{turn_id}");
+        let kind = af_wire::turn::TurnKind::Continuation.as_str();
         let admitted = self
-            .admissions
-            .admit(afd_admission::Admission {
-                producer: afd_admission::Producer::GateContinuation,
+            .turns
+            .admit(afd_turns::IncomingTurn {
+                producer: afd_turns::Producer::GateContinuation,
                 // The gate's ACTION, which a retried resolve repeats: two
                 // people answering one gate, or one person's retry, continue
                 // the run exactly once.
-                key: afd_admission::Key::Repeated(resolved.action_id.as_str()),
+                key: afd_turns::Key::Repeated(resolved.action_id.as_str()),
                 fleet: &resolved.fleet_id,
                 workspace: &resolved.workspace_id,
                 actor: actor.as_str(),
-                event_type: af_wire::event::EventType::Continuation,
+                event_type: af_wire::turn::TurnKind::Continuation,
                 request_json: CONTINUATION_BODY,
                 // The run a gate parked answers where it would have: a thread
                 // that asked before the gate still gets the answer after it.
-                reply: afd_admission::Reply::Inherit { event_id },
+                reply: afd_turns::Reply::Inherit { turn_id },
             })
             .await?;
 
         let (inserted, counters) = self
-            .insert_continuation(resolved, &admitted.stored.id, &actor, event_id)
+            .insert_continuation(resolved, &admitted.stored.id, &actor, turn_id)
             .await?;
         // Once, on the write that landed the row: a retried resolve finds it
-        // already there and announces nothing, as the lease verb does.
+        // already there and announces nothing, as the run verb does.
         if inserted {
-            let frame = TailFrame::EventReceived {
-                event_id: Cow::Borrowed(admitted.stored.id.as_str()),
+            let frame = TailFrame::TurnReceived {
+                turn_id: Cow::Borrowed(admitted.stored.id.as_str()),
                 actor: Cow::Borrowed(&actor),
                 event_type: Cow::Borrowed(kind),
-                // The admission's own instant, which the ledger stamped and
+                // The turn's own instant, which the ledger stamped and
                 // a thread page keys this event on.
                 created_at: admitted.stored.created_at,
                 // A continuation carries no typed words: a person's message
-                // is announced on its own admission.
+                // is announced on its own turn.
                 message: None,
+                message_trimmed: false,
                 counters,
             };
-            let subject = afd_bus::Subject::FleetTail(resolved.fleet_id.clone());
+            let subject = afd_bus::Subject::ThreadItems(resolved.fleet_id.clone());
             let publication = self.bus.publish_frame(&subject, &frame).await;
             afd_bus::observe_notification(&subject, publication);
         }
@@ -230,7 +231,7 @@ impl Inbox {
         Ok(Some(admitted.stored.id))
     }
 
-    /// Inserts the continuation row the admission keyed, answering whether
+    /// Inserts the continuation row the turn keyed, answering whether
     /// THIS call landed it and, when it did, the fleet's counters after it.
     ///
     /// Counters are read after the row landed, on the same connection: the
@@ -240,24 +241,25 @@ impl Inbox {
         resolved: &Resolved,
         stored_id: &Uuid7,
         actor: &str,
-        event_id: &Uuid7,
+        turn_id: &Uuid7,
     ) -> Result<(bool, Option<FleetCounters>)> {
         let mut connection = self.database.acquire().await?;
-        let landed = sqlx::query_as::<_, Landed>(afd_events::sql::INSERT_FLEET_EVENT)
+        let landed = sqlx::query_as::<_, Landed>(afd_turns::view::sql::INSERT_TURN)
             .bind(&resolved.fleet_id)
             .bind(stored_id)
             .bind(&resolved.workspace_id)
             .bind(actor)
-            .bind(af_wire::event::EventType::Continuation.as_str())
+            .bind(af_wire::turn::TurnKind::Continuation.as_str())
             .bind(sqlx::types::Json(serde_json::json!({})))
-            .bind(event_id)
-            .bind(af_core::event::status::RECEIVED)
+            .bind(turn_id)
+            .bind(af_core::turn::status::RECEIVED)
             .fetch_one(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_CONTINUE))?;
         let inserted = landed.inserted;
         let counters = if inserted {
-            afd_events::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id).await
+            afd_turns::view::fleet_counters_best_effort_on(&mut connection, &resolved.fleet_id)
+                .await
         } else {
             None
         };

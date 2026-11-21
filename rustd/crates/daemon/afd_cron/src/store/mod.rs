@@ -3,15 +3,15 @@
 //! # Every mutation leaves the row CLAIMED
 //!
 //! A create, an edit and a `:sync` all end with `sync_status = syncing`, a
-//! token, and a lease. That is not bookkeeping: the caller is expected to go and
+//! token, and a run. That is not bookkeeping: the caller is expected to go and
 //! talk to the external scheduler next, and the claim is what stops a second
 //! caller doing the same thing at the same time. The pair to every claim is a
 //! finalize, which releases the fence and records whether the push worked.
 //!
-//! A caller that claims and then dies leaves a lease that expires. The next
-//! claim takes the row because the fence predicate admits a lease in the past —
-//! which is why the lease exists rather than a plain "held" flag, and why a
-//! crashed syncer costs a lease window rather than a stuck schedule.
+//! A caller that claims and then dies leaves a run that expires. The next
+//! claim takes the row because the fence predicate admits a run in the past —
+//! which is why the run exists rather than a plain "held" flag, and why a
+//! crashed syncer costs a run window rather than a stuck schedule.
 //!
 //! # Absent is `Ok(None)`, not an error
 //!
@@ -59,7 +59,7 @@ const CONTEXT_WRITE: &str = "write a schedule";
 /// syncer killed mid-push does not strand a schedule for a person watching the
 /// list. Bound as an `interval` and added to `clock_timestamp()`, so the
 /// deadline is on the database's clock, the one the fence predicate reads.
-pub const SYNC_LEASE: Duration = Duration::from_secs(30);
+pub const SYNC_RUN: Duration = Duration::from_secs(30);
 
 /// The schedules table, over an already-connected pool.
 ///

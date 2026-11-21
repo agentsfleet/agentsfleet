@@ -4,7 +4,7 @@ use super::row::Effect;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, TaskScope, Tasks, execution, transaction},
+    task::{TaskRefusal, TaskRun, TaskScope, Tasks, execution, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::TaskEffectInput;
@@ -33,18 +33,18 @@ impl<'a> PublicationPermit<'a> {
 
 pub(super) async fn issue<'a>(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &'a garde::Valid<TaskEffectInput>,
     effect: &Effect,
     recovery: &super::super::github::recovery::Sealed,
 ) -> Result<PublicationPermit<'a>> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let owned = execution::load(&mut tx, lease, &input.task).await?;
+    let owned = execution::load(&mut tx, run, &input.task).await?;
     let deadline = owned
         .current
-        .lease_expires_at
-        .min(owned.current.slot_expires_at)
+        .run_expires_at
+        .min(owned.current.thread_expires_at)
         .min(owned.snapshot.context.expires_at);
     if deadline <= af_core::clock::now() {
         return Err(TaskRefusal::StaleState.into());
@@ -71,7 +71,7 @@ pub(super) async fn issue<'a>(
     {
         return Err(TaskRefusal::StaleState.into());
     }
-    let config = crate::lease::Leases::stored_config_on(&mut tx, &owned.current.fleet_id, None)
+    let config = crate::run::Runs::stored_config_on(&mut tx, &owned.current.fleet_id, None)
         .await?
         .ok_or(TaskRefusal::InvalidTarget)?;
     effect.target()?.within(&config)?;
@@ -112,7 +112,7 @@ pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Res
         fleet_id: effect.fleet_id.clone(),
         workspace_id: effect.workspace_id.clone(),
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let _parent: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE)
         .bind(&effect.fleet_id)
@@ -120,7 +120,7 @@ pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Res
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("protect any remaining publication parent"))?;
-    let _slot: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_SLOT)
+    let _thread: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_THREAD)
         .bind(&effect.fleet_id)
         .fetch_optional(&mut *tx)
         .await
@@ -180,7 +180,7 @@ pub(super) async fn unknown(tasks: &Tasks, effect: &Effect) -> Result<()> {
 }
 
 async fn state(tasks: &Tasks, effect: &Effect, state: &str, previous: &str) -> Result<()> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     sqlx::query(include_str!("sql/state.sql"))
         .bind(&effect.id)

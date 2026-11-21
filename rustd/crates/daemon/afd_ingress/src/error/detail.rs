@@ -7,14 +7,14 @@
 //! would read as two different bugs.
 
 /// The detail for a database that cannot be reached.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub(crate) use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The detail for a database that answered with an error.
-pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The detail for an operation that failed for any other reason.
 ///
 /// One sentence for the vault, the queue and an unreadable stored document
 /// alike — see [`super::Error::answer`] on why naming which of them failed
 /// would tell a sender about this deployment's state.
-pub use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
+pub(crate) use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;

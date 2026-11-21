@@ -34,7 +34,7 @@ pub(super) fn encode(
 }
 
 fn bounded_question(question: Value) -> Result<Value> {
-    if !af_wire::decision::serialized_within(&question, af_wire::decision::QUESTION_MAX_BYTES) {
+    if !af_validate::serialized_within(&question, af_wire::decision::QUESTION_MAX_BYTES) {
         return Err(ErrorKind::DecisionPreflight {
             reason: "an encoded decision question exceeds its byte bound",
         }

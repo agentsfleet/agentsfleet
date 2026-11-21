@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::admin::AdminState;
 use af_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
-/// Why the daemon has stopped offering new work to an operator-active host.
+/// Why the daemon has stopped assigning new work to an operator-active host.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -28,7 +28,7 @@ impl CordonReason {
 
 /// Automatic quarantine; operator status remains independently visible.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerCordon {
     /// Trigger that blocks new work.
     pub reason: CordonReason,
@@ -59,7 +59,7 @@ pub struct RunnerItem<'a> {
     pub sandbox_tier: Cow<'a, str>,
     /// Operator-controlled admission state.
     pub status: AdminState,
-    /// Runtime state derived from heartbeat and leases.
+    /// Runtime state derived from heartbeat and runs.
     pub liveness: RunnerLiveness,
     /// Placement labels.
     #[serde(borrow)]
@@ -98,7 +98,7 @@ pub struct RunnersResponse<'a> {
     pub next_cursor: Option<Cow<'a, str>>,
 }
 
-/// One runner with its live and lifetime counters.
+/// One runner with its live counters.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -106,18 +106,10 @@ pub struct RunnerDetail<'a> {
     /// The fields shared with the runner list, flattened on the wire.
     #[serde(flatten, borrow)]
     pub item: RunnerItem<'a>,
-    /// Live leases currently held.
-    pub active_lease_count: i64,
-    /// Fleets represented by live leases.
+    /// Live runs currently held.
+    pub active_run_count: i64,
+    /// Fleets represented by live runs.
     pub active_fleet_count: i64,
-    /// Lifetime acquired count.
-    pub leases_acquired: i64,
-    /// Lifetime successful count.
-    pub leases_succeeded: i64,
-    /// Lifetime failed count.
-    pub leases_failed: i64,
-    /// Lifetime expired count.
-    pub leases_expired: i64,
     /// Outstanding self-test request instant.
     #[serde(with = "af_wire::instant::option", default)]
     pub selftest_requested_at: Option<jiff::Timestamp>,
@@ -129,85 +121,87 @@ pub struct RunnerDetail<'a> {
     pub selftest: Option<SelftestReport<'a>>,
 }
 
-/// Server-derived outcome of one runner lease.
+/// Server-derived outcome of one runner run.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LeaseOutcome {
-    /// The lease remains held by this runner.
+pub enum RunOutcome {
+    /// The run remains held by this runner.
     Running,
-    /// Its Fleet event settled successfully.
+    /// Its fleet turn settled successfully.
     Succeeded,
-    /// Its Fleet event settled as a fleet error.
+    /// Its fleet turn settled as a fleet error.
     Failed,
-    /// This holder was superseded by a reclaim.
+    /// This holder was superseded by a reassignment.
     Expired,
+    /// A person stopped its turn, and the run reported stopped.
+    Stopped,
     /// Stored state cannot establish a terminal outcome.
     Unknown,
 }
 
-/// Whether the signed-in operator can open the lease's fleet.
+/// Whether the signed-in operator can open the run's fleet.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LeaseDestination {
+pub enum RunDestination {
     /// The fleet exists in the caller's own account.
     Available,
-    /// The fleet was purged; the lease is retained runner history.
+    /// The fleet was purged; the run is retained runner history.
     FleetDeleted,
     /// The fleet belongs to an account the caller is not acting in.
     NotPermitted,
 }
 
-/// Whether the lease was the event's first claim or a later reclaim.
+/// Whether the run was the turn's first assignment or a later reassignment.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum LeaseKind {
-    /// First claim of the Fleet event.
+pub enum RunKind {
+    /// First assignment of the fleet turn.
     Fresh,
-    /// Claim after an earlier holder expired.
-    Reclaim,
+    /// Assignment after an earlier holder expired.
+    Reassigned,
 }
 
-/// One lease in a runner's newest-first operator history.
+/// One run in a runner's newest-first operator history.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RunnerLeaseItem<'a> {
-    /// Lease identifier and external pagination cursor.
+pub struct RunnerRunItem<'a> {
+    /// Run identifier and external pagination cursor.
     #[serde(borrow)]
     pub id: Cow<'a, str>,
-    /// Fleet whose event was leased.
+    /// Fleet whose turn was held.
     #[serde(borrow)]
     pub fleet_id: Cow<'a, str>,
     /// Current display name, absent if the fleet row is gone.
     #[serde(borrow)]
     pub fleet_name: Option<Cow<'a, str>>,
     /// Whether the caller can open the fleet. Never inferred from the name.
-    pub destination: LeaseDestination,
-    /// Workspace owning the Fleet event.
+    pub destination: RunDestination,
+    /// Workspace owning the fleet turn.
     #[serde(borrow)]
     pub workspace_id: Cow<'a, str>,
-    /// Fleet event identifier.
+    /// Fleet turn identifier.
     #[serde(borrow)]
-    pub event_id: Cow<'a, str>,
-    /// Fleet event type, absent once the event row is gone.
+    pub turn_id: Cow<'a, str>,
+    /// Fleet turn type, absent once the turn row is gone.
     #[serde(borrow)]
     pub event_type: Option<Cow<'a, str>>,
-    /// Actor recorded on the Fleet event, absent once the event row is gone.
+    /// Actor recorded on the fleet turn, absent once the turn row is gone.
     #[serde(borrow)]
     pub actor: Option<Cow<'a, str>>,
     /// Server-derived closed outcome.
-    pub outcome: LeaseOutcome,
+    pub outcome: RunOutcome,
     /// Terminal failure classification, when one was stored.
     #[serde(borrow)]
     pub failure_label: Option<Cow<'a, str>>,
     /// Terminal failure explanation, when one was stored.
     #[serde(borrow)]
     pub failure_detail: Option<Cow<'a, str>>,
-    /// Whether this was the first claim or a reclaim.
-    pub kind: LeaseKind,
+    /// Whether this was the first assignment or a reassignment.
+    pub kind: RunKind,
     /// Monotonic holder generation.
     pub fencing_token: i64,
     /// The provider the run used.
@@ -229,8 +223,8 @@ pub struct RunnerLeaseItem<'a> {
     pub wall_ms: Option<i64>,
     /// Holder deadline.
     #[serde(with = "af_wire::instant")]
-    pub lease_expires_at: jiff::Timestamp,
-    /// Claim instant.
+    pub run_expires_at: jiff::Timestamp,
+    /// Assignment instant.
     #[serde(with = "af_wire::instant")]
     pub created_at: jiff::Timestamp,
 }
@@ -239,13 +233,13 @@ pub struct RunnerLeaseItem<'a> {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RunnerLeasesResponse<'a> {
+pub struct RunnerRunsResponse<'a> {
     /// Rows in newest-first order.
     #[serde(borrow)]
-    pub items: Vec<RunnerLeaseItem<'a>>,
+    pub items: Vec<RunnerRunItem<'a>>,
     /// Filtered total independent of the page boundary.
     pub total: i64,
-    /// Last lease identifier when another page may exist.
+    /// Last run identifier when another page may exist.
     #[serde(borrow)]
     pub next_cursor: Option<Cow<'a, str>>,
 }
@@ -259,21 +253,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runner_lease_page_has_the_exact_operator_wire_shape() {
-        let page = RunnerLeasesResponse {
-            items: vec![RunnerLeaseItem {
+    fn runner_run_page_has_the_exact_operator_wire_shape() {
+        let page = RunnerRunsResponse {
+            items: vec![RunnerRunItem {
                 id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010"),
                 fleet_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011"),
                 fleet_name: Some(Cow::Borrowed("Production")),
-                destination: LeaseDestination::Available,
+                destination: RunDestination::Available,
                 workspace_id: Cow::Borrowed("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012"),
-                event_id: Cow::Borrowed("1725000000000-0"),
+                turn_id: Cow::Borrowed("1725000000000-0"),
                 event_type: Some(Cow::Borrowed("chat")),
                 actor: Some(Cow::Borrowed("user:operator")),
-                outcome: LeaseOutcome::Failed,
+                outcome: RunOutcome::Failed,
                 failure_label: Some(Cow::Borrowed("provider_error")),
                 failure_detail: Some(Cow::Borrowed("upstream refused")),
-                kind: LeaseKind::Reclaim,
+                kind: RunKind::Reassigned,
                 fencing_token: 2,
                 provider: Cow::Borrowed("anthropic"),
                 model: Cow::Borrowed("claude-opus-4-1"),
@@ -282,7 +276,7 @@ mod tests {
                 metered_cached_tokens: 17,
                 metered_output_tokens: 29,
                 wall_ms: Some(1_250),
-                lease_expires_at: jiff::Timestamp::constant(1_725_000_030, 0),
+                run_expires_at: jiff::Timestamp::constant(1_725_000_030, 0),
                 created_at: jiff::Timestamp::constant(1_725_000_000, 0),
             }],
             total: 3,
@@ -298,13 +292,13 @@ mod tests {
                     "fleet_name": "Production",
                     "destination": "available",
                     "workspace_id": "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012",
-                    "event_id": "1725000000000-0",
+                    "turn_id": "1725000000000-0",
                     "event_type": "chat",
                     "actor": "user:operator",
                     "outcome": "failed",
                     "failure_label": "provider_error",
                     "failure_detail": "upstream refused",
-                    "kind": "reclaim",
+                    "kind": "reassigned",
                     "fencing_token": 2,
                     "provider": "anthropic",
                     "model": "claude-opus-4-1",
@@ -313,7 +307,7 @@ mod tests {
                     "metered_cached_tokens": 17,
                     "metered_output_tokens": 29,
                     "wall_ms": 1_250,
-                    "lease_expires_at":"2024-08-30T06:40:30Z",
+                    "run_expires_at":"2024-08-30T06:40:30Z",
                     "created_at":"2024-08-30T06:40:00Z"
                 }],
                 "total": 3,

@@ -18,7 +18,8 @@ use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
-    ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
+    ApiKeySeed, FleetSeed, SEEDED_TURN, TenantSeed, TestDatabase, TurnSeed, UserSeed,
+    WorkspaceSeed, mint_id,
 };
 use afd_vault::{SecretBody, SecretName};
 
@@ -181,11 +182,21 @@ impl Fixture {
     /// One pending gate on each fleet, differing in nothing but identifiers.
     async fn seed_gates(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
+        // Each gate held a run for a turn, which an approval's continuation resumes.
+        for (fleet, workspace, turn) in [
+            (&self.fleet, &self.workspace, &self.event),
+            (&self.other_fleet, &self.other_workspace, &self.other_event),
+        ] {
+            TurnSeed::new(fleet, workspace, turn, SEEDED_TURN)
+                .insert(&mut *connection)
+                .await
+                .expect("the gated turn seeds");
+        }
         sqlx::query(
             "INSERT INTO fleet.approval_gates \
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
-                detail, created_at, updated_at, event_id) \
+                detail, created_at, updated_at, turn_id) \
              VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
                      'pending', '', now(), now(), $5), \
@@ -250,15 +261,15 @@ impl Fixture {
 
     /// How many continuations resumed `event`.
     ///
-    /// Counted by `resumes_event_id` rather than over the fleet's whole
+    /// Counted by `resumes_turn_id` rather than over the fleet's whole
     /// history: a fleet accumulates events for reasons that have nothing to do
     /// with an approval, and a count over all of them would pass on the wrong
     /// row.
     pub(super) async fn continuations(&self, event: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT COUNT(*) FROM fleet.events \
-             WHERE resumes_event_id = $1 AND event_type = $2",
+            "SELECT COUNT(*) FROM thread.turns \
+             WHERE resumes_turn_id = $1 AND kind = $2 AND opened_at IS NOT NULL",
         )
         .bind(event)
         .bind(EVENT_CONTINUATION)

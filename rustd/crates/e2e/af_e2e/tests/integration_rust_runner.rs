@@ -1,0 +1,356 @@
+//! The Rust runner's wire, against the daemon that ships.
+//!
+//! The runner reads the daemon's replies leniently, so a daemon that grows a
+//! field never strands a runner built before it. The other direction stays
+//! closed: what a runner WRITES is refused when it names a key the daemon does
+//! not carry, because a runner believing something about the protocol that is
+//! not true must find out at the first request, not in production.
+//!
+//! Marked `#[ignore]` like the rest of the live-service suite; run by
+//! `make test-integration-rustd`.
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use afd_state::sql::{RUN_STATUS_ACTIVE, RUN_STATUS_REPORTED};
+use agentsfleetd::supervisor::Supervisor;
+
+use crate::e2e::scenario;
+use crate::tail::run;
+use crate::wire::report_body;
+
+#[path = "integration_rust_runner_overlap.rs"]
+mod overlap;
+#[path = "integration_rust_runner_tenant.rs"]
+mod tenant;
+
+/// A key no build of the daemon carries.
+const FUTURE: &str = "future";
+
+/// A report naming an unknown key is refused, and the run survives to take
+/// the correct one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_a_retired_report_route_cannot_settle_a_run() {
+    let mut supervisor = Supervisor::new();
+    let scene = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
+    let http = reqwest::Client::new();
+    let (run_id, fence) = run(&scene).await;
+    let mut body = report_body(&run_id, &scene.turn_id, fence);
+    let report = body.as_object_mut().expect("a report is a JSON object");
+    report.insert(FUTURE.to_owned(), serde_json::Value::from(1));
+
+    let refused = crate::wire::post(&http, &scene, "/v1/runners/me/reports", &body).await;
+    assert_eq!(
+        refused.status().as_u16(),
+        404,
+        "the retired report endpoint is absent"
+    );
+
+    body.as_object_mut()
+        .expect("a report is a JSON object")
+        .remove(FUTURE);
+    let accepted = crate::wire::report(&scene, &body).await;
+    assert!(accepted.is_ok(), "native report refused: {accepted:?}");
+
+    supervisor.shutdown().await;
+    scene.cleanup().await;
+}
+
+/// Every pull route the stream replaced answers 404 to an enrolled runner,
+/// even for a live run, while the runner's own row still answers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn the_retired_runner_routes_answer_404() {
+    let mut supervisor = Supervisor::new();
+    let scene = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
+    let http = reqwest::Client::new();
+    let (run_id, _) = run(&scene).await;
+    let retired = [
+        "/v1/runners/me/heartbeats".to_owned(),
+        "/v1/runners/me/runs".to_owned(),
+        format!("/v1/runners/me/runs/{run_id}/renew"),
+        format!("/v1/runners/me/runs/{run_id}/activity"),
+        format!("/v1/runners/me/runs/{run_id}/folds"),
+        "/v1/runners/me/reports".to_owned(),
+    ];
+    for path in &retired {
+        let answer = crate::wire::post(&http, &scene, path, &serde_json::json!({})).await;
+        assert_eq!(answer.status().as_u16(), 404, "POST {path} is retired");
+    }
+    let own = crate::wire::get(&http, &scene, "/v1/runners/me").await;
+    assert_eq!(
+        own.status().as_u16(),
+        200,
+        "the runner still reads its own row"
+    );
+
+    supervisor.shutdown().await;
+    scene.cleanup().await;
+}
+
+/// How long the runner is given to take, run and settle the seeded event.
+const SETTLE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// How often the run row is read while waiting for it to settle.
+const SETTLE_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// The newest run the fleet was issued, by status.
+const LATEST_RUN_STATUS: &str =
+    "SELECT status FROM thread.runs WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1";
+
+/// The content one fleet memory key holds.
+const REMEMBERED_CONTENT: &str =
+    "SELECT content FROM memory.entries WHERE fleet_id = $1 AND key = $2";
+
+/// The memory item the scripted run remembers and the push must carry.
+const REMEMBERED_KEY: &str = "rust-runner-roundtrip";
+
+/// The tool the scripted run calls.
+const TOOL: &str = "shell";
+
+/// What the scripted run says, streamed as its answer.
+const ANSWER: &str = "the scripted scene is done";
+
+/// A run, end to end, through the Rust runner: it heartbeats, takes the
+/// seeded event, runs a scripted turn whose tool call executes through the
+/// executor, streams its frames to the fleet's live tail, pushes memory,
+/// settles the report, and leaves no sandbox behind.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_rust_runner_run_roundtrip() {
+    let mut supervisor = Supervisor::new();
+    let scene = scenario(&mut supervisor).await;
+    allow_all_egress(&scene).await;
+    let mut tail = crate::tail::tail_of(&scene.fleet).await;
+    crate::tail::settle().await;
+    let home = tempfile::tempdir().expect("a storage home");
+    let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
+    let shutdown = tokio_util::sync::CancellationToken::new();
+    let engine = afr_sandbox::UnsandboxedEngine::new(sandboxes.path().to_owned())
+        .expect("a debug build permits the unsandboxed engine");
+    let runner = tokio::spawn(rust_runner(
+        &scene,
+        &scene.token,
+        home.path(),
+        (Box::new(engine), Box::new(scripted())),
+        shutdown.clone(),
+    ));
+
+    assert_settled(&scene).await;
+    assert_frames(&mut tail).await;
+    assert_memory_pushed(&scene).await;
+
+    shutdown.cancel();
+    runner
+        .await
+        .expect("the runner task joins")
+        .expect("the runner stops cleanly on shutdown");
+    let left = std::fs::read_dir(sandboxes.path())
+        .expect("the engine's sandbox base still exists")
+        .count();
+    assert_eq!(left, 0, "no sandbox outlives its run");
+    drop(tail);
+    supervisor.shutdown().await;
+    // Retired like every other scenario's fleet: left `active` with its run,
+    // the next daemon's expiry sweeper re-marks it and the scenarios after
+    // this one spend their poll budget on it (`e2e_retire`).
+    scene.cleanup().await;
+}
+
+/// The run is reported, and the event carries the scripted turn's outcome
+/// and answer — not merely a run that left `held`.
+async fn assert_settled(scene: &crate::e2e::Scenario) {
+    assert_eq!(
+        settled_status(scene).await.as_deref(),
+        Some(RUN_STATUS_REPORTED)
+    );
+    let status = crate::reads::event_column(scene, &scene.turn_id, "status").await;
+    assert_eq!(status.as_deref(), Some("processed"));
+    let answer = crate::reads::event_column(scene, &scene.turn_id, "answer_text").await;
+    assert_eq!(answer.as_deref(), Some(ANSWER));
+}
+
+/// Both tool-call frames and the answer chunk reached the fleet's live tail.
+async fn assert_frames(tail: &mut crate::tail::Tail) {
+    let kinds = frame_kinds(tail).await;
+    for kind in ["tool_call_started", "tool_call_completed", "chunk"] {
+        assert!(
+            kinds.iter().any(|seen| seen == kind),
+            "{kind} reached the tail: {kinds:?}"
+        );
+    }
+}
+
+/// The remembered item is in the fleet's durable memory, read from the store:
+/// the runner's own memory read is scoped to a live run, and this one is
+/// settled.
+async fn assert_memory_pushed(scene: &crate::e2e::Scenario) {
+    let mut connection = scene
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let content: Option<String> = sqlx::query_scalar(REMEMBERED_CONTENT)
+        .bind(&scene.fleet)
+        .bind(REMEMBERED_KEY)
+        .fetch_optional(&mut *connection)
+        .await
+        .expect("the memory table reads");
+    assert_eq!(
+        content.as_deref(),
+        Some(ANSWER),
+        "the remembered item was pushed"
+    );
+}
+
+/// Reassigns the seeded runner a policy with no egress control: this runner
+/// reports none yet, and the daemon rightly withholds runs from a host that
+/// cannot enforce what its assignment demands.
+pub(crate) async fn allow_all_egress(scene: &crate::e2e::Scenario) {
+    use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+    let policy = AssignedPolicy {
+        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        decision_model_id: None,
+        sandbox_tier: SandboxTier::LandlockFull,
+        network_policy: NetworkPolicy::AllowAll,
+        registry_allowlist: Vec::new(),
+        worker_count: 1,
+        extra_binds: Vec::new(),
+    };
+    afd_runner::Runners::new(
+        scene.booted.database.clone(),
+        af_crypto::entropy::Entropy::new(),
+    )
+    .platform()
+    .edit(
+        &scene.runner_id,
+        afd_runner::RunnerEdit {
+            assigned_policy: Some(&policy),
+            labels: None,
+        },
+        af_core::clock::now(),
+    )
+    .await
+    .expect("an operator may relax a runner's egress");
+}
+
+/// What a runner builds sandboxes with, and what runs its turns.
+type Engines = (
+    Box<dyn afr_sandbox::Engine>,
+    Box<dyn afr_agent::AgentEngine>,
+);
+
+/// The Rust runner's supervisor, pointed at the scenario's daemon as the runner
+/// `token` names, building with `engine` and running each turn on `agent`.
+fn rust_runner(
+    scene: &crate::e2e::Scenario,
+    token: &str,
+    home: &std::path::Path,
+    (engine, agent): Engines,
+    shutdown: tokio_util::sync::CancellationToken,
+) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
+    use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
+    let home = home.to_string_lossy().into_owned();
+    let origin = format!(
+        "https://localhost:{}",
+        scene.booted.runner_stream_address.port()
+    );
+    let root = agentsfleetd::test_util::runner_stream::root_file()
+        .to_string_lossy()
+        .into_owned();
+    let env = af_core::env::MapEnv::from_pairs([
+        (ENV_API_URL, scene.base.as_str()),
+        (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+        (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
+        (ENV_RUNNER_TOKEN, token),
+        (ENV_STORAGE_HOME, home.as_str()),
+    ]);
+    let (config, home) = afr_supervisor::boot(&env).expect("the scenario's env is valid");
+    async move { afr_supervisor::run(&config, home, engine, agent, capable(), shutdown).await }
+}
+
+/// A turn that runs one process, says one thing and remembers one item.
+fn scripted() -> afr_agent::scripted::ScriptedEngine {
+    use afr_agent::scripted::{ScriptedEngine, Step};
+    use std::borrow::Cow;
+    ScriptedEngine::new([
+        Step::Run {
+            tool: TOOL,
+            spawn: afr_executor::Spawn::program("echo").arg("hi"),
+        },
+        Step::Say(ANSWER.to_owned()),
+        Step::Remember(af_wire::memory::MemoryDelta {
+            key: Cow::Borrowed(REMEMBERED_KEY),
+            content: Cow::Borrowed(ANSWER),
+            category: Cow::Borrowed("core"),
+            visibility: af_wire::memory::Visibility::Fleet,
+        }),
+    ])
+}
+
+/// A host that can enforce everything the reassigned policy asks for.
+fn capable() -> afr_sandbox::HostProbe {
+    afr_sandbox::HostProbe {
+        landlock: true,
+        seccomp: true,
+        cgroup_controllers: afr_sandbox::REQUIRED_CONTROLLERS
+            .map(str::to_owned)
+            .to_vec(),
+        bubblewrap: true,
+        kvm: afr_sandbox::Kvm::Absent,
+        toolbox_filesystem: true,
+        workspace_direct_io: None,
+        egress: false,
+    }
+}
+
+/// The fleet's run status once it leaves `active`, or `None` past the deadline.
+///
+/// A run is born `active`, so a poll that stopped at the first row it saw
+/// passed only when the whole run fit between two reads.
+async fn settled_status(scene: &crate::e2e::Scenario) -> Option<String> {
+    let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
+    while tokio::time::Instant::now() < deadline {
+        let mut connection = scene
+            .booted
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection");
+        let status: Option<String> = sqlx::query_scalar(LATEST_RUN_STATUS)
+            .bind(&scene.fleet)
+            .fetch_optional(&mut *connection)
+            .await
+            .expect("the run table reads");
+        if status
+            .as_deref()
+            .is_some_and(|status| status != RUN_STATUS_ACTIVE)
+        {
+            return status;
+        }
+        tokio::time::sleep(SETTLE_POLL).await;
+    }
+    None
+}
+
+/// Every frame kind the tail carried, read until it falls quiet.
+async fn frame_kinds(tail: &mut crate::tail::Tail) -> Vec<String> {
+    let mut kinds = Vec::new();
+    while let Some(frame) = crate::tail::next_frame(tail).await {
+        if let Some(kind) = frame.get("kind").and_then(serde_json::Value::as_str) {
+            kinds.push(kind.to_owned());
+        }
+    }
+    kinds
+}

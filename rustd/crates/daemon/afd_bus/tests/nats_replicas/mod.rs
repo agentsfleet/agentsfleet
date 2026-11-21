@@ -1,5 +1,6 @@
-//! Two replicas on different nodes: the wake ring reaches both, and a runner
-//! command reaches only the runner it names.
+//! Two replicas on different nodes: the wake ring reaches both through the
+//! wildcard, which reads no other thread subject, and a runner command
+//! reaches only the runner it names.
 
 use std::{collections::BTreeSet, time::Duration};
 
@@ -27,7 +28,8 @@ async fn a_wake_reaches_each_replica_and_releases_its_listeners() -> TestResult 
     let expected: BTreeSet<_> = (0..24)
         .map(|index| Uuid7::parse(&format!("0195b4ba-8d3a-7000-8abc-{index:012x}")))
         .collect::<af_core::error::Result<_>>()?;
-    first.publish(&Subject::Wake(0), "malformed fleet").await?;
+    let malformed = Subject::ThreadWake(Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")?);
+    first.publish(&malformed, "malformed fleet").await?;
     receive(&first, &wakes, &expected).await?;
     stop.cancel();
     for workers in &mut listeners {
@@ -37,6 +39,33 @@ async fn a_wake_reaches_each_replica_and_releases_its_listeners() -> TestResult 
     }
     first.shutdown().await?;
     second.shutdown().await?;
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "needs live NATS: make test-integration-rustd"]
+async fn the_wake_wildcard_names_each_thread_and_never_reads_its_items() -> TestResult {
+    let (publishing, receiving) = replicas().await?;
+    let thread = Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000d001")?;
+    let woken = Subject::ThreadWake(thread.clone());
+    let mut wakes = receiving.subscribe_thread_wakes().await?;
+    settle(&publishing, &woken, &mut [&mut wakes]).await?;
+    publishing
+        .publish(&Subject::ThreadItems(thread.clone()), "items")
+        .await?;
+    publishing.publish(&woken, thread.as_str()).await?;
+    let Received::Message(message) = next(&mut wakes).await? else {
+        return Err("the wildcard did not receive the thread's wake".into());
+    };
+    assert_eq!(message.subject, woken, "the message names its own thread");
+    assert_eq!(
+        message.payload.as_str(),
+        thread.as_str(),
+        "the thread's items never reached the wake wildcard"
+    );
+    drop(wakes);
+    publishing.shutdown().await?;
+    receiving.shutdown().await?;
     Ok(())
 }
 
@@ -52,7 +81,7 @@ async fn a_runner_command_reaches_only_the_runner_it_names() -> TestResult {
     settle(&publishing, &addressed, &mut [&mut recipient]).await?;
     settle(&publishing, &unrelated, &mut [&mut other]).await?;
     let command = Command::Cancel {
-        lease_id: Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000c003")?,
+        run_id: Uuid7::parse("0195b4ba-8d3a-7000-8abc-00000000c003")?,
     };
     command.publish(&publishing, &runner).await?;
     let Received::Message(message) = next(&mut recipient).await? else {

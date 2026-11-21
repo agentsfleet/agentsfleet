@@ -1,4 +1,4 @@
-//! Dimension 1.1 and 3.3: the Postgres store, reached through `Memories`,
+//! The Postgres store, reached through `Memories`,
 //! keeps today's window, upsert, sweep and eviction, and skips a share from a
 //! fleet that may not publish.
 #![expect(
@@ -45,8 +45,8 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         )
         .await
         .expect("a re-capture");
-    let hydrated = memories.hydrate(&fleet).await.expect("a hydrate");
-    let keys: Vec<_> = hydrated
+    let loaded = memories.load(&fleet).await.expect("a load");
+    let keys: Vec<_> = loaded
         .memory
         .iter()
         .map(|entry| entry.key.as_ref())
@@ -63,7 +63,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     rest.sort_unstable();
     assert_eq!(rest, ["pinned", "scratch"], "{keys:?}");
     assert!(
-        hydrated.shared.is_empty() && !hydrated.publish,
+        loaded.shared.is_empty() && !loaded.publish,
         "no grant, no change"
     );
 
@@ -97,7 +97,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         capped.evicted, 2,
         "two rows past the cap of {MAX_ENTRIES_PER_FLEET}"
     );
-    let window = memories.hydrate(&fleet).await.expect("a hydrate");
+    let window = memories.load(&fleet).await.expect("a load");
     assert!(
         window.memory.iter().any(|entry| entry.key == "pinned"),
         "the pinned entry survives eviction"
@@ -127,8 +127,8 @@ async fn test_push_skips_an_unpublished_share() {
 
     assert_eq!((captured.stored, captured.skipped), (1, 1));
     assert_eq!(captured.unpublished, 1, "the skip is the share");
-    let hydrated = space.memories.hydrate(&fleet).await.expect("a hydrate");
-    let keys: Vec<_> = hydrated
+    let loaded = space.memories.load(&fleet).await.expect("a load");
+    let keys: Vec<_> = loaded
         .memory
         .iter()
         .map(|entry| entry.key.as_ref())

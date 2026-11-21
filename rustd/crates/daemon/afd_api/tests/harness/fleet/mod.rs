@@ -1,14 +1,14 @@
 //! Shared production-store setup for outage and live HTTP fixtures.
 
-mod authoring;
 mod clients;
+mod setup;
 
 use super::*;
 use clients::{connectors, interjector, logins, schedules};
 
-/// One durable ledger shared by this fixture's admission producers.
-pub(crate) fn admissions(database: &Db, bus: &afd_bus::Handle) -> afd_admission::Admissions {
-    afd_admission::Admissions::for_tests(database.clone(), bus.clone())
+/// One durable ledger shared by this fixture's turn producers.
+pub(crate) fn turns(database: &Db, bus: &afd_bus::Handle) -> afd_turns::Turns {
+    afd_turns::Turns::for_tests(database.clone(), bus.clone())
 }
 
 impl Fleet {
@@ -49,7 +49,7 @@ impl Fleet {
             capabilities,
             authenticator,
         } = Inputs::new(database);
-        let authoring = authoring::stores(&database, &ledger, &providers);
+        let built = setup::stores(&database, &ledger);
         Self {
             native: None,
             ready: ReadyInputs {
@@ -62,15 +62,14 @@ impl Fleet {
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
             runner_commands: bus.clone(),
-            runner_lease_history: RunnerLeaseHistory::new(database.clone()),
+            runner_run_history: RunnerRunHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
-            leases: NoWork::default(),
+            runs: NoWork::default(),
             tasks: tasks(&database, &bus, &ledger),
-            authoring: authoring.drafts,
-            authoring_setup: authoring.setup,
-            authoring_models: authoring.models,
-            creations: authoring.creations,
+            drafts: built.drafts,
+            setup: built.setup,
+            creations: built.creations,
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),
             api_keys: ApiKeys::new(database.clone(), Entropy::new()),
@@ -85,7 +84,7 @@ impl Fleet {
             signup_writeback: RecordingWriteback::accepting(),
             ingress: clients::ingress(&database, &ledger),
             schedules: schedules(&database, &ledger),
-            scheduler: super::fleet_credentials::fixed_scheduler(None),
+            scheduler: fleet_credentials::fixed_scheduler(None),
             platform_admin: None,
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,
@@ -110,7 +109,7 @@ impl Fleet {
 struct Inputs {
     database: Db,
     bus: afd_bus::Handle,
-    ledger: afd_admission::Admissions,
+    ledger: afd_turns::Turns,
     providers: HarnessProviders,
     mock_directory: MockDirectory,
     directory: Directory,
@@ -129,7 +128,7 @@ impl Inputs {
             MockVerifier::refusing(VerifyError::NotConfigured),
         );
         let bus = afd_bus::test_util::unreachable();
-        let ledger = admissions(&database, &bus);
+        let ledger = turns(&database, &bus);
         let providers = HarnessProviders::Live(Providers::new(
             database.clone(),
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),
@@ -151,10 +150,10 @@ impl Inputs {
 fn tasks(
     database: &Db,
     bus: &afd_bus::Handle,
-    ledger: &afd_admission::Admissions,
+    ledger: &afd_turns::Turns,
 ) -> afd_fleet::task::Tasks {
     afd_fleet::task::Tasks::new(
-        afd_fleet::lease::Leases::new(database.clone(), bus.clone(), Entropy::new()),
+        afd_fleet::run::Runs::new(database.clone(), bus.clone(), Entropy::new()),
         ledger.clone(),
         task_dependencies(database.clone()),
     )

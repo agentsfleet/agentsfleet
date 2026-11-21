@@ -1,4 +1,4 @@
-//! What a held lease does over time: the relay settling its lines, a claim
+//! What a held run does over time: the relay settling its lines, an assignment
 //! superseding its fence, and the meter's slices.
 
 use afd_billing::biller::{Biller as _, WorkKey};
@@ -8,28 +8,28 @@ use jiff::Timestamp;
 use super::{Held, Row, SLICE};
 
 impl Held {
-    /// What the billing relay does for this lease: charge every line it left
-    /// unsettled. Scoped to the lease, so a test on the shared database never
+    /// What the billing relay does for this run: charge every line it left
+    /// unsettled. Scoped to the run, so a test on the shared database never
     /// settles another test's lines.
     pub(crate) async fn relay(&self) {
         let database = &self.fixtures.database;
-        let work = WorkKey::FleetLease(self.lease_key.clone());
+        let work = WorkKey::FleetRun(self.run_key.clone());
         let unsettled = afd_billing::ledger::unsettled_work(
             &mut *database.acquire().await.expect("a pooled connection"),
             &work,
         )
         .await
-        .expect("the lease's lines read");
+        .expect("the run's lines read");
         for settlement in unsettled {
             LedgerBiller::on_system_clock(database.clone())
                 .settle(&settlement)
                 .await
-                .expect("the relay charges the lease's lines");
+                .expect("the relay charges the run's lines");
         }
     }
 
-    /// Moves the fleet's live sequence one past the held lease, as a won claim
-    /// does before it expires the prior lease, and answers the new sequence.
+    /// Moves the fleet's live sequence one past the held run, as a won assignment
+    /// does before it expires the prior run, and answers the new sequence.
     pub(crate) async fn supersede(&self) -> u64 {
         let mut connection = self
             .fixtures
@@ -38,7 +38,7 @@ impl Held {
             .await
             .expect("a pooled connection");
         let live: i64 = sqlx::query_scalar(
-            "UPDATE runner.slots SET fencing_token = fencing_token + 1
+            "UPDATE thread.threads SET fencing_token = fencing_token + 1
              WHERE fleet_id = $1 RETURNING fencing_token",
         )
         .bind(&self.fleet)
@@ -47,27 +47,27 @@ impl Held {
         .expect("the held fleet has an affinity row");
         assert!(
             live > self.fence.as_i64(),
-            "the sequence must outrank the held lease, or this test proves nothing"
+            "the sequence must outrank the held run, or this test proves nothing"
         );
         u64::try_from(live).expect("a sequence is never negative")
     }
 
-    /// Ages the lease's meter by one [`SLICE`], as a second of runtime would,
+    /// Ages the run's meter by one [`SLICE`], as a second of runtime would,
     /// and answers the stamp the next settle or renewal measures from.
     ///
     /// Settles and renewals meter up to the database's clock, so a test runs a
     /// slice by moving the meter's start back rather than by naming an instant.
     pub(crate) async fn run_a_slice(&self) -> Timestamp {
-        // The lease began a slice earlier too: its cursor never precedes its
+        // The run began a slice earlier too: its cursor never precedes its
         // start, because a runtime line is numbered by the milliseconds between
         // them.
         self.fixtures
-            .age(Row::Lease(&self.issued.lease_id), "created_at", SLICE)
+            .age(Row::Run(&self.issued.run_id), "created_at", SLICE)
             .await;
         self.fixtures
             .age(
-                Row::Lease(&self.issued.lease_id),
-                crate::lease_reads::COLUMN_LAST_METERED,
+                Row::Run(&self.issued.run_id),
+                crate::run_reads::COLUMN_LAST_METERED,
                 SLICE,
             )
             .await;

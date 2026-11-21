@@ -6,22 +6,22 @@ use sqlx::PgConnection;
 use super::{context::AssessedContext, ownership::NativeContext, prepare, row::Call};
 use crate::{
     Result,
-    task::{TaskLease, TaskRefusal, TaskSnapshot, guard},
+    task::{TaskRefusal, TaskRun, TaskSnapshot, guard},
 };
 
 pub(super) struct Verified {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub context: AssessedContext,
     pub task: Option<TaskSnapshot>,
 }
 
 pub(super) async fn on(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
     call: &Call,
 ) -> Result<Verified> {
-    let native = NativeContext::load(connection, lease, input).await?;
+    let native = NativeContext::load(connection, run, input).await?;
     let assignment = native
         .current
         .decision_snapshot

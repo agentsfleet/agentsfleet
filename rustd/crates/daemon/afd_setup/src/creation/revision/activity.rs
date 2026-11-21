@@ -1,0 +1,40 @@
+//! The saved revision and its model-change notice commit together.
+
+use super::super::{CONTEXT, stored::Stored};
+use crate::{Result, error::raise::query};
+use af_core::id::Uuid7;
+use serde_json::json;
+use sqlx::PgConnection;
+
+const ACTOR: &str = "config_reload";
+const MODEL_CHANGED: &str = "model_changed";
+
+pub(super) async fn record(
+    connection: &mut PgConnection,
+    row: &Stored,
+    model: Option<&str>,
+    revision: &Uuid7,
+    number: i64,
+) -> Result<()> {
+    if row.runtime_model_ref.as_deref() == model {
+        return Ok(());
+    }
+    let payload = json!({
+        "previous_model_ref": row.runtime_model_ref,
+        "model_ref": model,
+        "setup_revision": number.to_string(),
+    });
+    sqlx::query(afd_turns::view::sql::INSERT_TURN)
+        .bind(&row.id)
+        .bind(revision)
+        .bind(&row.workspace_id)
+        .bind(ACTOR)
+        .bind(MODEL_CHANGED)
+        .bind(sqlx::types::Json(payload))
+        .bind(None::<&Uuid7>)
+        .bind(af_core::turn::status::PROCESSED)
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    Ok(())
+}

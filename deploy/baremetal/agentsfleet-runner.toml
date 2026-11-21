@@ -20,9 +20,7 @@ daemon_max_attempts = 5
 # cancellation or their deadline, without a count limit.
 daemon_initial_backoff_ms = 250
 daemon_max_backoff_ms = 30_000
-# Batched lease renewal cadence; the daemon advertises the heartbeat interval.
+# Batched run renewal cadence; the daemon advertises the heartbeat interval.
 renewal_interval_ms = 5000
-authoring_renewal_interval_ms = 10_000
-authoring_renewal_retry_ms = 250
 # One shared admission pool per runner; optional captures skip when both slots are busy.
 max_concurrent_file_operations = 2

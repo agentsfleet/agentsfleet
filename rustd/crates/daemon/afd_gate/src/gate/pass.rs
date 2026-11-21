@@ -11,7 +11,7 @@
 //! carries that ordering as a pure function; this module is the I/O it composes.
 //!
 //! Cost: one lookup per event, ungated fleets included. It is bought on the
-//! path that issues a lease — a whole model run — so it does not register.
+//! path that issues a run — a whole model run — so it does not register.
 //!
 //! # The anomaly counter is reached only on a FIRST encounter
 //!
@@ -23,11 +23,11 @@
 //!
 //! # What the pass never does
 //!
-//! It writes no `fleet.events` row. Every outcome below is a decision the
-//! CALLER applies once — the same discipline [`Admission`](crate::lease::Admission)
-//! states for the money gates, and for the same reason: a refusal that forgot
-//! its row and one that wrote it twice are both unrepresentable when the value
-//! is the only thing that decides.
+//! It writes no `thread.turns` row. Every outcome below is a decision the
+//! CALLER applies once — the same discipline the run plane's money gates
+//! follow, for the same reason: a refusal that forgot its row and one that
+//! wrote it twice are both unrepresentable when the value is the only thing
+//! that decides.
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
@@ -107,14 +107,14 @@ pub struct Check<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being judged.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
     /// Its type, which the rules match as the TOOL.
     pub event_type: &'a str,
     /// Who raised it, which the rules match as the ACTION.
     pub actor: &'a str,
     /// Its body, as stored — the conditions' context when it parses.
     pub request_json: &'a str,
-    /// The config resolved for this lease.
+    /// The config resolved for this run.
     pub config: &'a FleetConfig,
 }
 
@@ -131,7 +131,7 @@ impl Gates {
         // ONE lookup, and all three states come out of it. `Unreadable` stays
         // distinct from `Absent` because collapsing them is unsafe in both
         // directions — see [`RefState`].
-        match self.recorded(request.fleet_id, request.event_id).await {
+        match self.recorded(request.fleet_id, request.turn_id).await {
             // A recorded gate decides, whatever the policy now says.
             Ok(Some(reference)) => self.resolve_recorded(&request, &reference).await,
             Ok(None) => {
@@ -142,13 +142,13 @@ impl Gates {
                 let fleet = request.fleet_id.as_str();
                 let Logged { error_code, reason } = fault.logged();
                 {
-                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                    let (event, fleet_id, agentsfleet_turn_id, message) = (
                         &EVENT_LOOKUP_UNREADABLE,
                         &fleet,
-                        &request.event_id,
+                        &request.turn_id,
                         format_args!("whether this event already holds a gate could not be read"),
                     );
-                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_turn_id, reason);
                 };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
@@ -172,13 +172,13 @@ impl Gates {
             Recorded::Unreadable(Logged { error_code, reason }) => {
                 let fleet = request.fleet_id.as_str();
                 {
-                    let (event, fleet_id, agentsfleet_event_id, message) = (
+                    let (event, fleet_id, agentsfleet_turn_id, message) = (
                         &EVENT_LOOKUP_UNREADABLE,
                         &fleet,
-                        &request.event_id,
+                        &request.turn_id,
                         format_args!("whether this event already holds a gate could not be read"),
                     );
-                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_event_id, reason);
+                    tracing::warn!(message, error_code, %event, %fleet_id, %agentsfleet_turn_id, reason);
                 };
                 self.judge_first_encounter(&request, RefState::Unreadable, now)
                     .await
@@ -198,7 +198,7 @@ impl Gates {
                     error_code,
                     event = %EVENT_DECISION_UNREADABLE,
                     fleet_id = %fleet,
-                    agentsfleet_event_id = %request.event_id,
+                    agentsfleet_turn_id = %request.turn_id,
                     reason,
                     "a recorded gate's decision could not be read; the event waits"
                 );

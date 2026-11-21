@@ -3,7 +3,7 @@
 use garde::Validate;
 use serde::Deserialize;
 
-/// Operational limits; lease expiry and the offline threshold have separate clocks.
+/// Operational limits; run expiry and the offline threshold have separate clocks.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct LivenessSettings {

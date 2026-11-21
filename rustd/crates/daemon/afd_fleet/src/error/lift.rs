@@ -9,7 +9,7 @@
 //!
 //! Each source lands in its own kind. Most are planes that moved to their own
 //! crate — billing, credentials, gates, memory, events, outbound —
-//! while the lease still speaks THIS crate's error, so their faults compose in
+//! while the run still speaks THIS crate's error, so their faults compose in
 //! with the code and sentence their own plane decided.
 //!
 //! Two foreign types are wrapped in more than one place, and the asymmetry is
@@ -33,8 +33,8 @@ af_core::error_lifts!(Error, ErrorKind:
     garde::Report => DecisionRequest,
     tokio::time::error::Elapsed => TaskReadTimeout,
     af_core::json::Unreadable => TaskDocument,
-    afd_admission::Error => Admission,
-    afd_authoring::Error => Authoring,
+    afd_turns::Error => TurnWrite,
+    afd_setup::Error => Setup,
     af_context::Error => Context,
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
@@ -42,7 +42,7 @@ af_core::error_lifts!(Error, ErrorKind:
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
     afd_memory::Error => Memory,
-    afd_events::Error => Events,
+    afd_turns::view::Error => Events,
     afd_outbound::Error => Outbound,
     af_core::error::Error => Mint,
     af_fleet_runtime::Error => ConfigUnreadable,

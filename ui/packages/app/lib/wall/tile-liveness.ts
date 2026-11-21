@@ -32,7 +32,7 @@ const DRAINED_STATUSES: ReadonlySet<string> = new Set([AGENTSFLEET_STATUS.ARCHIV
 // read. An archived fleet is `drained` and opens no stream at all; a
 // live fleet whose connection is up (or still opening) is `live`; a live fleet
 // whose connection is reconnecting, offline, or ended for lost access shows its
-// last event as a `snapshot` rather than going dark. If the connection recovers
+// last turn as a `snapshot` rather than going dark. If the connection recovers
 // this flips back to `live` on the next frame; a revoked one never does.
 export function deriveTileLiveness(
   status: string,
@@ -83,7 +83,7 @@ export const TILE_NOT_LIVE_TOOLTIP =
 export const TILE_CATCHING_UP_EYEBROW = "catching up";
 // Footer suffixes: figures carry their unit as a word, never an abbreviation.
 export const TILE_SPEND_SUFFIX = "spent";
-export const TILE_EVENTS_SUFFIX = "events";
+export const TILE_TURNS_SUFFIX = "turns";
 
 const CENTS_PER_USD = 100n;
 const NANOS_PER_CENT = BigInt(NANOS_PER_USD) / CENTS_PER_USD;
@@ -96,8 +96,8 @@ export function formatTileSpend(budgetUsedNanos: bigint): string {
   return `$${cents / CENTS_PER_USD}.${String(cents % CENTS_PER_USD).padStart(CENT_DIGITS, "0")}`;
 }
 
-export function formatTileEvents(eventsProcessed: bigint): string {
-  return String(eventsProcessed);
+export function formatTileTurns(turnsProcessed: bigint): string {
+  return String(turnsProcessed);
 }
 
 // Lifetime counters only increase; a retained stream snapshot cannot replace

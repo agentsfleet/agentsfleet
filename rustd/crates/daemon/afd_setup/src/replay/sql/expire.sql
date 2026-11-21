@@ -1,0 +1,3 @@
+DELETE FROM setup.replay_receipts
+ WHERE scope = $1 AND operation_id = $2
+   AND created_at <= statement_timestamp() - $3::interval

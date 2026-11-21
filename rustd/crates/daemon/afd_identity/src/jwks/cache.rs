@@ -127,7 +127,7 @@ impl<S: KeySetSource> KeyCache<S> {
 
     /// Fetches and installs a key set, or leaves the previous one in place.
     ///
-    /// Public so §7 can call it at boot: a key set this daemon cannot verify
+    /// Public so the daemon can call it at boot: a key set this daemon cannot verify
     /// against must refuse startup rather than 401 every session token while
     /// `agt_t` and `afc_` keep working.
     ///

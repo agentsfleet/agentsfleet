@@ -102,7 +102,8 @@ async fn platform_operator_rotates_runner_token_once() {
 
 fn enrolment() -> RegisterRequest<'static> {
     RegisterRequest {
-        host_id: Cow::Borrowed("rotate.fixture.test"),
+        // A host of its own: the platform registers each host once.
+        host_id: Cow::Owned(format!("rotate-{}.fixture.test", mint_id())),
         assigned_policy: AssignedPolicy {
             durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
@@ -156,7 +157,7 @@ impl Fixtures {
     async fn rotation_actor(&self, runner_id: &Uuid7) -> String {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
-            "SELECT metadata ->> 'actor_id' FROM runner.events \
+            "SELECT metadata ->> 'actor_id' FROM runner.history \
              WHERE runner_id = $1 AND event_type = 'runner_token_rotated'",
         )
         .bind(runner_id)

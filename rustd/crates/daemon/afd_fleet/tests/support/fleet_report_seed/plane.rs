@@ -8,7 +8,7 @@ use afd_credential::{
     provider::Providers,
     secrets::Registry,
 };
-use afd_fleet::lease::{LeaseService, Leases, usage::Pricing};
+use afd_fleet::run::{RunService, Runs, usage::Pricing};
 use afd_memory::Memories;
 use jiff::Timestamp;
 use std::sync::Arc;
@@ -28,51 +28,50 @@ use crate::support::Fixtures;
 ///
 /// It was thirty-two zero bytes while nothing here opened an envelope. The
 /// comment that recorded that said the gates "refuse before any credential is
-/// resolved", which stopped being true the moment a test drove the lease verb
+/// resolved", which stopped being true the moment a test drove the run verb
 /// past the event type.
 pub(crate) const FIXTURE_KEK_HEX: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 impl Fixtures {
-    /// Commits a terminal report of `lease_id` by itself, through the one
+    /// Commits a terminal report of `run_id` by itself, through the one
     /// report statement production runs, carrying `requests`.
     pub(crate) async fn commit_alone(
         &self,
-        leases: &Leases,
-        lease_id: &Uuid7,
+        runs: &Runs,
+        run_id: &Uuid7,
         runner: &Uuid7,
         requests: &[af_wire::usage::RequestUsage],
         at: Timestamp,
-    ) -> afd_fleet::lease::Committed {
-        let lease = leases
-            .load_for_report(lease_id, runner)
+    ) -> afd_fleet::run::Committed {
+        let run = runs
+            .load_for_report(run_id, runner)
             .await
-            .expect("the lease reads")
-            .expect("the lease is the runner's");
-        let pricing = self.pricing(lease_id).await;
+            .expect("the run reads")
+            .expect("the run is the runner's");
+        let pricing = self.pricing(run_id).await;
         let report = crate::report_commit::report(
-            lease_id,
+            run_id,
             runner,
-            &lease,
-            (lease_id, &pricing),
+            &run,
+            (run_id, &pricing),
             crate::report_commit::RESPONSE_ACCEPTED,
             at,
         );
-        leases
-            .commit_report(afd_fleet::lease::TerminalReport { requests, ..report })
+        runs.commit_report(afd_fleet::run::TerminalReport { requests, ..report })
             .await
             .expect("the report must reach the datastore")
     }
 
-    /// What the seeded fleet's lease is priced against: its posture, provider
-    /// and model, read from the catalogue as the lease path reads them.
-    pub(crate) async fn pricing(&self, lease_id: &Uuid7) -> Pricing {
+    /// What the seeded fleet's run is priced against: its posture, provider
+    /// and model, read from the catalogue as the run path reads them.
+    pub(crate) async fn pricing(&self, run_id: &Uuid7) -> Pricing {
         Pricing::load(
             &self.database,
             Posture::Platform,
             PROVIDER,
             MODEL,
-            lease_id.as_str(),
+            run_id.as_str(),
         )
         .await
     }
@@ -81,15 +80,15 @@ impl Fixtures {
         clippy::disallowed_methods,
         reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
     )]
-    pub(crate) fn plane(&self) -> LeaseService {
+    pub(crate) fn plane(&self) -> RunService {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
-        LeaseService {
+        RunService {
             task_reports: None,
-            turn_checkpoints: afd_fleet::lease::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
+            turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
                 &kek,
             )),
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
-            leases: self.leases(),
+            runs: self.runs(),
             gates: self.gates(),
             accounts: Accounts::new(self.database.clone()),
             biller: Arc::new(LedgerBiller::new(
@@ -99,11 +98,7 @@ impl Fixtures {
             )),
             memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),
-            vault: afd_vault::Vault::new(
-                self.database.clone(),
-                kek,
-                af_crypto::entropy::Entropy::new(),
-            ),
+            vault: afd_vault::Vault::new(self.database.clone(), kek, Entropy::new()),
             // `Registry::default()`, not a literal: the type is `#[non_exhaustive]`
             // so only the crate that owns it may name its fields — which is the
             // point of the attribute, and the reason the daemon builds one the
@@ -116,20 +111,22 @@ impl Fixtures {
                 Arc::new(Registry::default()),
                 Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
             )),
-            thread: Arc::new(afd_events::History::new(self.database.clone())),
+            thread: Arc::new(afd_fleet::run::history::Conversations::new(
+                self.database.clone(),
+            )),
         }
     }
 
     /// The same plane, over a bus that will not answer.
     ///
-    /// Live Postgres, dead bus. Every decision `LeaseService::activity_for_target` makes before
+    /// Live Postgres, dead bus. Every decision `RunService::activity_for_target` makes before
     /// the publish is a DATABASE read, so this is the composition that reaches
     /// the publish and fails only there — which is the whole claim the live
     /// tail makes about itself.
-    pub(crate) fn plane_with_dead_bus(&self) -> LeaseService {
-        LeaseService {
+    pub(crate) fn plane_with_dead_bus(&self) -> RunService {
+        RunService {
             task_reports: None,
-            leases: self.leases_with_dead_bus(),
+            runs: self.runs_with_dead_bus(),
             ..self.plane()
         }
     }

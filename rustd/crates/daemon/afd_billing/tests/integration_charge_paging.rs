@@ -6,7 +6,7 @@
 )]
 
 use af_core::id::Uuid7;
-use afd_billing::sql::CHARGE_TYPE_AUTHORING;
+use afd_billing::sql::CHARGE_TYPE_SETUP;
 use afd_billing::tenant::cursor::Boundary;
 use afd_billing::tenant::{self, Billing, ChargeRow};
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -35,7 +35,6 @@ async fn charge_pages_bound_usage_history_before_detail_joins() {
     let mut previous = 0;
     for size in HISTORY_SIZES {
         for owner in [&tenant, &foreign] {
-            fixture::attempts(&db, owner, previous + 1, size).await;
             fixture::lines(&db, owner, previous + 1, size).await;
         }
         sqlx::query("ANALYZE billing.usage_lines")
@@ -88,7 +87,7 @@ fn assert_page_rows(rows: &[ChargeRow], tenant: &Uuid7, size: i64, boundary: Opt
     assert_eq!(rows.len(), usize::try_from(PAGE).unwrap(), "{rows:#?}");
     for row in rows {
         assert_eq!(row.tenant_id, tenant.as_str(), "{row:#?}");
-        assert_eq!(row.charge_type, CHARGE_TYPE_AUTHORING, "{row:#?}");
+        assert_eq!(row.charge_type, CHARGE_TYPE_SETUP, "{row:#?}");
     }
     for (newer, older) in rows.iter().zip(rows.iter().skip(1)) {
         assert!(

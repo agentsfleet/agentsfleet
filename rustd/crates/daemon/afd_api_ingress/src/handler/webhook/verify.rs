@@ -27,7 +27,7 @@ use http::HeaderMap;
 
 use super::text;
 use crate::handler::Refusal;
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 
 /// The scoped event a failed resolution is logged under.
 pub(super) const EVENT_BINDING: &str = "webhook_binding_failed";
@@ -65,7 +65,7 @@ pub(crate) struct Verified {
 /// `UZ-WH-011` for one that arrived outside its window. Every internal failure —
 /// a datastore that would not answer, a stored document that no longer parses —
 /// is rendered from the ingress crate's own error rather than restated here.
-pub(crate) async fn verified<D: Services>(
+pub(crate) async fn verified<D: IngressPlane>(
     services: &Arc<D>,
     fleet: &Uuid7,
     source: &str,

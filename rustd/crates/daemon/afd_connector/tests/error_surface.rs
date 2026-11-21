@@ -33,13 +33,13 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        13,
+        14,
         "a kind was added or dropped without its sample"
     );
     grade(
         &samples,
         Expect {
-            with_source: 7,
+            with_source: 8,
             distinct_codes: 8,
         },
     );
@@ -48,9 +48,9 @@ fn the_error_surface_holds() {
 #[test]
 fn every_sentence_is_one_of_the_declared_details() {
     let declared = [
-        detail::DATABASE_UNAVAILABLE,
-        detail::DATABASE_ERROR,
-        detail::OPERATION_FAILED,
+        af_core::error::DETAIL_DATABASE_UNAVAILABLE,
+        af_core::error::DETAIL_DATABASE_ERROR,
+        af_core::error::DETAIL_OPERATION_FAILED,
         detail::VENDOR_UNREACHABLE,
         detail::EXCHANGE_FAILED,
         detail::INSTALLATION_OWNERSHIP,

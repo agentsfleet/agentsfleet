@@ -1,5 +1,5 @@
-//! Dimension 4.1: shared memory reaches only granted fleets, each entry naming
-//! its writer — through hydrate, recall and the operator page alike.
+//! Shared memory reaches only granted fleets, each entry naming
+//! its writer — through load, recall and the operator page alike.
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -50,9 +50,9 @@ async fn test_shared_memory_reaches_only_granted_fleets() {
 
     let granted = space
         .memories
-        .hydrate(&reader)
+        .load(&reader)
         .await
-        .expect("the reader's hydrate");
+        .expect("the reader's load");
     assert!(
         granted.memory.is_empty(),
         "the reader holds nothing of its own"
@@ -69,18 +69,18 @@ async fn test_shared_memory_reaches_only_granted_fleets() {
 
     let ungranted = space
         .memories
-        .hydrate(&stranger)
+        .load(&stranger)
         .await
-        .expect("the stranger's hydrate");
+        .expect("the stranger's load");
     assert!(
         ungranted.shared.is_empty(),
         "no read grant, no shared entry"
     );
     let own_view = space
         .memories
-        .hydrate(&writer)
+        .load(&writer)
         .await
-        .expect("the writer's hydrate");
+        .expect("the writer's load");
     assert!(
         own_view.publish && own_view.shared.is_empty(),
         "a writer reads only its own"

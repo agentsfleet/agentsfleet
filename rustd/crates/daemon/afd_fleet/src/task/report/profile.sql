@@ -1,6 +1,6 @@
 SELECT m.id FROM runner.decision_calls c
-JOIN runner.leases l ON l.id = c.original_lease_id AND l.runner_id = c.original_runner_id
-JOIN runner.slots s ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
+JOIN thread.runs l ON l.id = c.original_run_id AND l.runner_id = c.original_runner_id
+JOIN thread.threads s ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
 JOIN runner.runners r ON r.id = l.runner_id AND r.status = $4
 JOIN fleet.fleets f ON f.id = c.fleet_id AND f.workspace_id = c.workspace_id AND f.status = $5
 JOIN model.platform_models m ON m.id = c.platform_model_id AND m.decision_enabled

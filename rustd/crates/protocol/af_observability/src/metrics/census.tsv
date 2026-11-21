@@ -1,0 +1,148 @@
+# Daemon totals accumulate in the source process, before any shared collector.
+# The executable metric-family contract. Tab-separated; lines starting with #
+# are comments. One row per family the daemon exports over OTLP — the Rust
+# registry test include_str!s this file and grades the registry against it in
+# both directions. This file is the SINGLE source of truth for the export —
+# docs/architecture/observability.md points here and repeats none of it.
+# Transcribed from the retired daemon's registry declarations and now graded
+# against `rustd/crates/protocol/af_observability/src/metrics/declared/mod.rs`;
+# histogram bounds are in the family's declared unit (the old ms bounds are
+# already converted to seconds here, because the Rust side records f64 seconds
+# and deletes the scale concept).
+#
+# Columns:
+#   name         wire family name, byte-exact
+#   kind         counter | histogram | gauge
+#   number       u64 | f64
+#   unit         UCUM unit string, byte-exact
+#   temporality  delta | cumulative | -   (gauges carry no temporality)
+#   policy       fixed:<n> | runner:<n> | shared:cost. A `fixed` ceiling is
+#                the PRODUCT of the family's closed label sets and must be at
+#                least that: `every_declared_ceiling_admits_its_label_product`
+#                (af_observability) fails on a row that understates, because a
+#                ceiling below the real count makes the SDK fold live series
+#                into `otel.metric.overflow` — the backstop that must never fire.
+#   labels       comma-joined label keys, or -   (cost families additionally
+#                carry the evented attribute keys listed in the trailing
+#                # evented-attrs comment; runner families carry runner_id)
+#   bounds       comma-joined histogram bucket bounds in `unit`, or -
+#   policy       fixed:<max_series> | runner:<slots> | shared:cost
+#   live_read    yes | no   (yes → observable instrument fed by a snapshot)
+#   category     latency | traffic | errors | saturation | health (operator legend
+#                in docs/architecture/observability.md §Metric family census)
+#   watch_for    one line of operator guidance — what a change in this family means
+#
+name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
+agentsfleet_db_pool_connections	gauge	u64	{connection}	-	role,state	-	fixed:15	yes	saturation	actual open, idle, used, capacity and waiting readings by role
+agentsfleet_db_pool_acquire_duration_seconds	histogram	f64	s	cumulative	role,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:15	no	latency	whole connection acquisition including stall retry and cancellation
+agentsfleet_db_pool_checkout_pings_total	counter	u64	{ping}	cumulative	role	-	fixed:3	no	saturation	idle connections a checkout tested before handing out, by role: a connection used within PING_AFTER_IDLE goes out untested, so this moves only after a pool sat quiet
+agentsfleet_model_call_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120,300	shared:cost	no	latency	individual provider stream duration by model and outcome
+agentsfleet_model_first_token_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120	shared:cost	no	latency	first nonempty text; absent for a call with no text
+agentsfleet_model_limit_tokens	gauge	u64	{token}	-	gen_ai.request.model,gen_ai.provider.name,limit	-	shared:cost	yes	saturation	verified context and configured output limits; snapshots expire
+agentsfleet_model_route_capability	gauge	u64	1	-	gen_ai.request.model,gen_ai.provider.name,capability	-	shared:cost	yes	health	configured tools and image transport support; unknown stays absent
+agentsfleet_model_catalog_snapshot_age_seconds	gauge	u64	s	-	-	-	fixed:1	yes	health	age of the latest successful catalogue refresh
+agentsfleet_model_catalog_clipped	gauge	u64	1	-	-	-	fixed:1	yes	health	one when the catalogue exceeds its 256-model snapshot bound
+agentsfleet_schedule_fires_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	traffic	durable schedule turns by accepted or replayed outcome
+agentsfleet_schedule_callbacks_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	traffic	verified callback answers including skips failures and cancellation
+agentsfleet_schedule_callback_duration_seconds	histogram	f64	s	cumulative	outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:6	no	latency	verified callback handling by outcome
+agentsfleet_schedule_dispatch_lag_seconds	histogram	f64	s	cumulative	-	0.1,0.5,1,2,5,10,30,60,120,300,600	fixed:1	no	latency	newly admitted one-shot delay after its stored fire instant
+agentsfleet_schedule_syncs_total	counter	u64	1	cumulative	outcome	-	fixed:6	no	errors	completed reconciliation decisions; expired is a missed one-shot
+agentsfleet_bus_gaps_total	counter	u64	1	cumulative	cause	-	fixed:3	no	health	subscriptions told frames may be missing; a rising reconnect share means an unstable broker
+agentsfleet_outbound_claims_total	counter	u64	1	cumulative	via	-	fixed:2	no	health	delivery rows claimed for delivery; a rising scan share means lost pings
+agentsfleet_schedules	gauge	u64	{schedule}	-	state	-	fixed:7	yes	saturation	actual desired sync and overdue-one-shot counts
+gen_ai.invoke_agent.duration	histogram	f64	s	cumulative	gen_ai.request.model	0.1,0.2,0.4,0.8,1.6,3.2,6.4,12.8,25.6,51.2,102.4,204.8,409.6	shared:cost	no	latency	runner wall time per invocation
+agentsfleet.invoke_agent.token.usage	histogram	f64	{token}	cumulative	gen_ai.request.model	1,4,16,64,256,1024,4096,16384,65536,262144,1048576,4194304,16777216,67108864	shared:cost	no	traffic	token spend per invocation, by `gen_ai.token.type`
+agentsfleet.invoke_agent.cache_read.token.usage	histogram	f64	{token}	cumulative	gen_ai.request.model	1,4,16,64,256,1024,4096,16384,65536,262144,1048576,4194304,16777216,67108864	shared:cost	no	traffic	cache-read subset of input tokens
+agentsfleet.billing.credit.consumed	counter	u64	{nanocredit}	cumulative	gen_ai.request.model	-	shared:cost	no	traffic	nanocredit spend by charge class
+agentsfleet_billing_funds_check_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:6	no	traffic	funds checks by answer: covered, short, or unconfirmed when an outage admitted the work; a rising short share means tenants are running out
+agentsfleet_billing_settle_total	counter	u64	1	cumulative	work_type,outcome	-	fixed:6	no	errors	non-ok settlements wait for the sweeper; datastore_unavailable clears on its own, defect does not
+agentsfleet_billing_unpriced_tokens_total	counter	u64	{token}	cumulative	gen_ai.provider.name,gen_ai.request.model	-	shared:cost	no	errors	tokens charged nothing because the catalogue publishes no price for them
+agentsfleet_billing_sweeper_resettled_total	counter	u64	1	cumulative	work_type	-	fixed:2	no	health	work/provider/model/posture settlement groups the billing relay settled; it grows with every finished run, so read it as throughput
+agentsfleet_billing_unsettled_nanos	gauge	u64	{nanocredit}	-	work_type	-	fixed:2	no	saturation	usage logged and not yet charged, as the last relay pass read it
+agentsfleet_billing_unsettled_oldest_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled line; normally a few seconds, and past a minute means the relay is not landing settlements
+agentsfleet_api_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	any growth: requests shed at the cap
+agentsfleet_api_request_duration_seconds	histogram	f64	s	cumulative	http.route,http.request.method,status_class	0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:32768	no	latency	matched route latency until response headers; raw paths never exported
+agentsfleet_api_in_flight_requests	gauge	u64	{request}	-	-	-	fixed:1	no	saturation	approaching `api_max_in_flight_requests`
+agentsfleet_sse_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	streams refused at the cap
+agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation	approaching the stream cap
+agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
+agentsfleet_bus_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	NATS client reconnects; spikes mean broker instability
+agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
+agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:6	no	errors	telemetry loss counted at the source
+agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:1	no	health	model attribution gaps (never faked)
+agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
+agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
+agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
+agentsfleet_run_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the three below
+agentsfleet_run_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
+agentsfleet_run_history_bytes	histogram	f64	By	cumulative	-	0,1024,16384,65536,262144,1048576,4194304,16777216,33554432	fixed:1	no	traffic	bytes of earlier turns each chat run reads; a crowd at 33554432 means conversations outgrow the run frame
+agentsfleet_run_history_cuts_total	counter	u64	{run}	cumulative	reason	-	fixed:1	no	traffic	chat runs whose oldest turns were dropped so the assignment fits one run frame
+agentsfleet_run_held_assignments_total	counter	u64	{run}	cumulative	outcome	-	fixed:2	no	traffic	won assignments on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
+agentsfleet_run_cache_lookups_total	counter	u64	{lookup}	cumulative	cache,outcome	-	fixed:6	no	traffic	run-path cache lookups by cache and outcome: misses over lookups is how often a run still reads or parses what the cache holds; each cache is keyed by a version a statement in the same pass read
+agentsfleet_run_history_read_failures_total	counter	u64	{run}	cumulative	-	-	fixed:1	no	errors	chat runs issued without their turns because the thread read failed
+agentsfleet_steer_dispositions_total	counter	u64	{message}	cumulative	outcome	-	fixed:3	no	traffic	accepted steers by where they went: started means a run of its own, folded means a live run took it, queued means it waits its turn
+agentsfleet_run_folds_total	counter	u64	{message}	cumulative	outcome	-	fixed:2	no	traffic	messages live runs took from their fleets: assigned when an assignment took one, settled when a report answered it; assigned above settled means runs ended before reading what they took
+agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	fresh and reassigned run starts
+agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	cumulative	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:7	no	latency	event-to-assign, assign-to-first-chunk, event-to-first-chunk, run-to-first-chunk, assign-to-report, report-to-complete and event-to-complete latency; event_to_complete is the chat round trip
+agentsfleet_fleet_ready_wake_failures_total	counter	u64	1	cumulative	kind	-	fixed:2	no	errors	failed or timed-out publishes and lost notification channels; Postgres polling still discovers the work
+agentsfleet_runner_stream_connect_total	counter	u64	{connection}	cumulative	transport,outcome	-	fixed:20	no	health	every native connection attempt including HTTP/3 failure before HTTP/2 fallback
+agentsfleet_runner_stream_connect_seconds	histogram	f64	s	cumulative	transport,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:20	no	latency	native connection duration including name resolution verification and cancellation
+agentsfleet_runner_stream_operation_seconds	histogram	f64	s	cumulative	stage,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:70	no	latency	bounded reads writes openings handshakes memory waits and shutdowns
+agentsfleet_runner_stream_fallback_total	counter	u64	1	cumulative	reason	-	fixed:4	no	health	failed HTTP/3 attempts that permitted an HTTP/2 attempt
+agentsfleet_runner_stream_timeouts_total	counter	u64	1	cumulative	stage	-	fixed:7	no	errors	absolute deadline expiration by operation
+agentsfleet_runner_stream_native_rtt_seconds	histogram	f64	s	cumulative	transport	0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5	fixed:2	no	latency	actual active QUIC path round trip samples; unsupported HTTP/2 measurements remain absent
+agentsfleet_runner_stream_native_packets_total	counter	u64	{packet}	cumulative	outcome	-	fixed:3	no	health	QUIC sent lost and retransmission-carrying packet deltas across established connections
+agentsfleet_runner_stream_native_pto_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	QUIC probe timeouts across all paths on established connections
+agentsfleet_runner_stream_native_retransmitted_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	health	stream bytes sent again after transport loss
+agentsfleet_fleet_ready_wake_queue_events_total	counter	u64	1	cumulative	outcome	-	fixed:3	no	saturation	queued duplicate and evicted fleet reminders; the replica probe still discovers durable work
+agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
+agentsfleet_turns_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget turn intakes
+agentsfleet_turn_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled fleet turns, counted by the fleet census; use max across replicas
+agentsfleet_turn_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled fleet turn; absent when the census cannot read Postgres
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:4	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:4	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:2	no	traffic	response bytes per surface
+agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:2	no	traffic	rows served per surface
+agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
+agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
+agentsfleet_memory_load_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	load window fill
+agentsfleet_memory_load_dropped_entries_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	load overflow (entries)
+agentsfleet_memory_load_dropped_bytes_total	counter	u64	By	cumulative	-	-	fixed:1	no	errors	load overflow (bytes)
+agentsfleet_memory_cap_evictions_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	cap pressure on stored memory
+agentsfleet_memory_capture_truncated_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures clipped at the push byte budget
+agentsfleet_memory_capture_skipped_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	captures lost to validation
+agentsfleet_memory_search_zero_hits_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	searches finding nothing
+agentsfleet_process_resident_memory_bytes	gauge	u64	By	-	-	-	fixed:1	yes	saturation	process RSS
+agentsfleet_runner_failures_total	counter	u64	1	cumulative	runner_id,reason	-	runner:4096	no	errors	failure rate per reason
+agentsfleet_runner_failures_overflow_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	increments only past 4096 runner slots
+agentsfleet_runner_runs_total	counter	u64	1	cumulative	runner_id,outcome	-	runner:4096	no	traffic	runs acquired, succeeded, failed and expired per runner; a rising expired share is a runner dying mid-run
+agentsfleet_runner_last_seen_seconds	gauge	u64	s	-	runner_id	-	runner:4096	no	health	a runner going quiet
+agentsfleet_runner_active_runs	gauge	u64	{run}	-	runner_id	-	runner:4096	no	saturation	best-effort; self-heals on restart
+#
+# evented-attrs: the cost families' record API may additionally attach these
+# keys, bounded by the evented admission layer (never free-form):
+#   gen_ai.operation.name, gen_ai.provider.name, gen_ai.token.type,
+#   error.type, agentsfleet.execution.posture, agentsfleet.billing.charge.type
+#
+# shared:cost declares no series ceiling, and that is deliberate. Every label a
+# cost family carries is closed by construction: the evented attrs above are
+# enums, and gen_ai.request.model is a vendor-published list. The OpenTelemetry
+# SDK allocates per stream, so a cap here could only fire by folding a real
+# model's spend into an overflow bucket — losing the per-model cost attribution
+# these families exist to give.
+# The SDK's own 2000-per-stream default remains as a backstop that Dimension
+# 3.2 requires never to fire.
+#
+# runner:<n> is the exception, and the only one: runner_id is supplied by the
+# customer spinning up runners, so it is bounded by admission or not at all.
+agentsfleet_task_operations_total	counter	u64	1	cumulative	operation,outcome	-	fixed:275	no	errors	native task operations by bounded outcome; replays do not count as new task admissions
+agentsfleet_task_operation_seconds	histogram	f64	s	cumulative	operation,outcome	0.005,0.01,0.025,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:275	no	latency	native task operation latency including lock waits and refusals
+agentsfleet_task_decision_recovery_attempts_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	errors	completed unsent-reservation recovery attempts by bounded outcome; retries count as further attempts
+agentsfleet_task_decision_recovery_overdue_seconds	histogram	f64	s	cumulative	-	1,5,10,30,60,300,900,3600,21600,86400	fixed:1	no	latency	candidate age beyond the original issuance deadline at each completed recovery attempt
+agentsfleet_model_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name,gen_ai.token.type	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_model_cache_read_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_model_cache_write_tokens_total	counter	u64	{token}	cumulative	gen_ai.request.model,gen_ai.provider.name	-	shared:cost	no	traffic	provider-reported usage; cache is a subset of prompt and unknown stays absent
+agentsfleet_runner_report_answers_total	counter	u64	1	cumulative	outcome	-	fixed:2	no	traffic	successful report responses separated into first settlement and repeated acknowledgement
+agentsfleet_runner_stream_tls_handshakes_total	counter	u64	{handshake}	cumulative	transport,role,key_exchange,outcome	-	fixed:40	no	health	hybrid-only runner TLS decisions on connectors and acceptors; no unbounded identity labels
+agentsfleet_runner_cordon_changes_total	counter	u64	1	cumulative	change	-	fixed:2	no	health	committed automatic quarantine and healthy-return lift transitions

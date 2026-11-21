@@ -30,7 +30,7 @@ impl Session<'_> {
         let renewed = self
             .plane
             .task_checkpoint_pin(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &pin,
                 &CheckpointPinInput {
@@ -61,7 +61,7 @@ impl Session<'_> {
         let response = self
             .plane
             .task_checkpoint_objects_register(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointObjectsInput {
                     fencing_token: self.fence,
@@ -103,7 +103,7 @@ impl Session<'_> {
         let response = self
             .plane
             .task_checkpoint_uploads(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointUploadsInput {
                     fencing_token: self.fence,
@@ -130,7 +130,7 @@ impl Session<'_> {
         let verified = self
             .plane
             .task_checkpoint_authorizations(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
@@ -182,7 +182,7 @@ impl Session<'_> {
         let response = self
             .plane
             .task_checkpoint_authorizations(
-                self.lease,
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,

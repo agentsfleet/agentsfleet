@@ -8,9 +8,10 @@ use serde_json::json;
 
 use super::{DETAIL_FLEET_ID, FleetSteer};
 use crate::handler::Typed;
-use crate::runtime::{ToolErrorCode, ToolOutput};
-use crate::testing::{Asked, RecordingVerbs, STEERED_EVENT, call, lease_with};
+use crate::runtime::ToolErrorCode;
+use crate::testing::{Asked, RecordingVerbs, STEERED_EVENT, call, run_with};
 use crate::verbs::Unanswered;
+use guffbolt::ToolOutput;
 
 const TARGET: &str = "0190d5c2-7e1a-7000-8000-00000000f0f2";
 
@@ -20,14 +21,14 @@ async fn steered(
     arguments: serde_json::Value,
 ) -> (ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(String::new()), Ok(true)).steering(steered);
-    let lease = lease_with(&verbs);
-    let output = call(Typed::boxed(FleetSteer).as_ref(), &lease, arguments).await;
+    let run = run_with(&verbs);
+    let output = call(&*Typed::boxed(FleetSteer), &run, arguments).await;
     (output, verbs.asked())
 }
 
 fn accepted(replayed: bool) -> FleetSteerAccepted<'static> {
     FleetSteerAccepted {
-        event_id: Cow::Borrowed(STEERED_EVENT),
+        turn_id: Cow::Borrowed(STEERED_EVENT),
         replayed,
     }
 }
@@ -72,7 +73,10 @@ async fn a_fleet_id_that_is_not_one_is_refused_here() {
         json!({"fleet_id": "docs-bot", "text": "hello"}),
     )
     .await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     assert!(output.text.ends_with(DETAIL_FLEET_ID), "{}", output.text);
     assert!(asked.is_empty(), "{asked:?}");
 }
@@ -87,6 +91,9 @@ async fn a_refused_steer_names_its_code() {
         json!({"fleet_id": TARGET, "text": "hello"}),
     )
     .await;
-    assert_eq!(output.error_code, Some(ToolErrorCode::AgentsfleetdRefused));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::AgentsfleetdRefused.into())
+    );
     assert!(output.text.contains("UZ-AGT-018"), "{}", output.text);
 }

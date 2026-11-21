@@ -41,13 +41,15 @@ pub async fn log_lines<'e>(
         .iter()
         .map(|_line| Ok(entropy.uuid7(now)?))
         .collect::<Result<Vec<Uuid7>>>()?;
-    let (fleet, fleet_name, event_id, attempt) = match &settlement.attribution {
+    let (fleet, fleet_name, turn_id, run) = match &settlement.attribution {
         Attribution::Fleet {
             fleet,
             fleet_name,
-            event_id,
-        } => (Some(fleet), Some(fleet_name.as_str()), Some(event_id), None),
-        Attribution::SetupChat => (None, None, None, Some(settlement.work.id())),
+            turn_id,
+        } => (Some(fleet), Some(fleet_name.as_str()), Some(turn_id), None),
+        Attribution::SetupRun { message } => {
+            (None, None, Some(message), Some(settlement.work.id()))
+        }
     };
     let lines = &settlement.lines;
     let unpriced = lines
@@ -62,8 +64,8 @@ pub async fn log_lines<'e>(
         .bind(&settlement.payer.workspace)
         .bind(fleet)
         .bind(fleet_name)
-        .bind(event_id)
-        .bind(attempt)
+        .bind(turn_id)
+        .bind(run)
         .bind(&settlement.provider)
         .bind(&settlement.model)
         .bind(settlement.posture.as_str())
@@ -122,12 +124,12 @@ mod tests {
         let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
             .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"));
         let settlement = Settlement {
-            work: WorkKey::AuthoringAttempt(id.clone()),
+            work: WorkKey::SetupRun(id.clone()),
             payer: Account {
                 tenant: id.clone(),
-                workspace: id,
+                workspace: id.clone(),
             },
-            attribution: Attribution::SetupChat,
+            attribution: Attribution::SetupRun { message: id },
             provider: String::new(),
             model: String::new(),
             posture: Posture::Platform,

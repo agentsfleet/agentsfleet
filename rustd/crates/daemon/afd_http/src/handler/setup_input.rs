@@ -9,13 +9,26 @@ const INVALID: &str = "Setup input violates the supported shape or bounds";
 const KEY: &str = "idempotency-key";
 const KEY_REQUIRED: &str = "Send one Idempotency-Key containing a UUIDv7";
 
-/// Room a setup request takes beside its Definition: the operation id, the
+/// Room a request takes beside its text or Definition: the operation id, the
 /// source tag, edit paths and the JSON framing around them.
 const REQUEST_FIELDS_ALLOWANCE_BYTES: usize = 16 * 1024;
-/// The largest setup request body: a Definition at its cap plus the fields
-/// around it, so the envelope never refuses what the Definition parser admits.
+/// The largest body that carries one text.
+///
+/// The text at the ceiling, every character at the widest JSON escape a
+/// client may send (an astral character as a twelve-byte surrogate pair),
+/// plus the fields around it. A message typed into a running fleet, and a
+/// fleet's message to another, are read up to this, so the transport never
+/// refuses what the ceiling admits, and a text past the ceiling earns the
+/// ceiling's own refusal.
+pub const TEXT_BODY_BYTES_MAX: usize =
+    af_validate::TEXT_MAX_JSON_BYTES + REQUEST_FIELDS_ALLOWANCE_BYTES;
+/// The largest setup request body.
+///
+/// A draft created from a Definition at its caps, with a first message at the
+/// text ceiling, each escaped as widely as a client may, so the envelope never
+/// refuses what the Definition parser and the ceiling admit.
 pub const SETUP_BODY_BYTES_MAX: usize =
-    af_fleet_runtime::definition::MAX_DEFINITION_BYTES + REQUEST_FIELDS_ALLOWANCE_BYTES;
+    af_validate::DEFINITION_MAX_JSON_BYTES + TEXT_BODY_BYTES_MAX;
 
 #[derive(garde::Validate)]
 struct Envelope<'a> {
@@ -87,24 +100,31 @@ pub fn uuid(value: &str) -> Result<Uuid7, Refusal> {
 
 #[cfg(test)]
 mod tests {
-    use af_fleet_runtime::definition::{MAX_DESCRIPTION_CHARS, MAX_INSTRUCTIONS_CHARS};
+    use af_fleet_runtime::definition::MAX_DESCRIPTION_CHARS;
+    use af_validate::TEXT_MAX_CHARS;
     use serde_json::{Value, json};
 
-    use super::{SETUP_BODY_BYTES_MAX, body};
+    use super::{SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX, body};
 
-    /// A create-draft body whose Definition fills both texts at their caps in
-    /// the widest JSON encoding: every character a six-byte control escape.
+    /// The limits the app's setup and steer proxies read, shared as one file
+    /// both sides test against (`ui/packages/app/tests/body-limits.test.ts`).
+    const SHARED_LIMITS: &str = include_str!("../../tests/fixtures/body_limits.json");
+
+    /// A create-draft body whose Definition fills both texts at their caps,
+    /// with a first message at the text ceiling, all in the widest JSON
+    /// encoding: every character a six-byte control escape.
     fn maximal_create_body() -> Vec<u8> {
         let widest = |chars: usize| "\u{1}".repeat(chars);
         let definition = json!({
             "schema_version": 1,
             "description": widest(MAX_DESCRIPTION_CHARS),
-            "instructions_md": widest(MAX_INSTRUCTIONS_CHARS),
+            "instructions_md": widest(TEXT_MAX_CHARS),
             "config": {"name": "maximal"},
         });
         let request = json!({
             "operation_id": "01920000-0000-7000-8000-000000000001",
             "source": {"kind": "definition", "definition": definition},
+            "message": widest(TEXT_MAX_CHARS),
         });
         serde_json::to_vec(&request).unwrap_or_default()
     }
@@ -113,8 +133,8 @@ mod tests {
     fn a_maximal_valid_definition_fits_the_setup_envelope() {
         let bytes = maximal_create_body();
         assert!(
-            bytes.len() > af_wire::authoring::ENVELOPE_BYTES_MAX,
-            "the old cap refused this"
+            bytes.len() > af_wire::run::SETUP_DEFINITION_BYTES_MAX,
+            "a Definition's bound alone refuses this; the envelope adds the message"
         );
         assert!(bytes.len() <= SETUP_BODY_BYTES_MAX, "{} bytes", bytes.len());
         let parsed = body::<Value>(&bytes).map(|document| document.is_object());
@@ -123,6 +143,86 @@ mod tests {
             Some(true),
             "the maximal request parses as an object"
         );
+    }
+
+    /// A steer body whose message sits at the ceiling in the widest JSON
+    /// encoding, with an operation id at its own bound, fits the text body.
+    #[test]
+    fn a_widest_message_at_the_ceiling_fits_the_text_body() {
+        let request = json!({
+            "message": "\u{1}".repeat(TEXT_MAX_CHARS),
+            "operation_id": "\u{1}".repeat(200),
+        });
+        let bytes = serde_json::to_vec(&request).unwrap_or_default();
+        assert!(bytes.len() > 6 * 1024 * 1024, "{} bytes", bytes.len());
+        assert!(bytes.len() <= TEXT_BODY_BYTES_MAX, "{} bytes", bytes.len());
+    }
+
+    /// The daemon's two body limits are the ones the app's proxies read: the
+    /// shared file states them, and both sides assert against it.
+    #[test]
+    fn the_body_limits_are_the_ones_the_app_proxies_read() {
+        let shared: Value = serde_json::from_str(SHARED_LIMITS).unwrap_or_default();
+        assert_eq!(
+            shared.get("setup_body_bytes_max").and_then(Value::as_u64),
+            u64::try_from(SETUP_BODY_BYTES_MAX).ok()
+        );
+        assert_eq!(
+            shared.get("text_body_bytes_max").and_then(Value::as_u64),
+            u64::try_from(TEXT_BODY_BYTES_MAX).ok()
+        );
+        assert_eq!(
+            (SETUP_BODY_BYTES_MAX, TEXT_BODY_BYTES_MAX),
+            (25_640_960, 12_599_296)
+        );
+    }
+
+    /// `count` astral characters, each as the twelve-byte surrogate-pair
+    /// escape a client may send, inside a JSON string's quotes.
+    fn astral(count: usize) -> String {
+        format!("\"{}\"", r"\uD83D\uDE00".repeat(count))
+    }
+
+    /// A message one character past the ceiling, every character an escaped
+    /// astral one, still fits the text body, so the route answers it with the
+    /// ceiling's refusal rather than the transport's: the message's own bound
+    /// is what refuses it.
+    #[test]
+    fn a_message_past_the_ceiling_at_a_clients_widest_escape_meets_the_ceiling()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let operation = "\u{1}".repeat(200);
+        let sent = format!(
+            r#"{{"message":{},"operation_id":{}}}"#,
+            astral(TEXT_MAX_CHARS + 1),
+            serde_json::to_string(&operation).unwrap_or_default(),
+        );
+        assert!(sent.len() <= TEXT_BODY_BYTES_MAX, "{} bytes", sent.len());
+        let request: af_wire::turn::SteerRequest<'_> = serde_json::from_str(&sent)?;
+        let refused = garde::Validate::validate(&request).err();
+        assert!(
+            refused
+                .is_some_and(|report| report.iter().any(|(path, _)| path.to_string() == "message")),
+            "the message's own bound refuses it"
+        );
+        let at_ceiling = format!(r#"{{"message":{}}}"#, astral(TEXT_MAX_CHARS));
+        let request: af_wire::turn::SteerRequest<'_> = serde_json::from_str(&at_ceiling)?;
+        garde::Validate::validate(&request)?;
+        Ok(())
+    }
+
+    /// A create-draft body with both Definition texts and the message at their
+    /// caps, every character an escaped astral one, fits the setup envelope.
+    #[test]
+    fn a_maximal_create_body_at_a_clients_widest_escape_fits_the_envelope() {
+        let sent = format!(
+            r#"{{"operation_id":"01920000-0000-7000-8000-000000000001","source":{{"kind":"definition","definition":{{"schema_version":1,"description":{},"instructions_md":{},"config":{{"name":"maximal"}}}}}},"message":{}}}"#,
+            astral(MAX_DESCRIPTION_CHARS),
+            astral(TEXT_MAX_CHARS),
+            astral(TEXT_MAX_CHARS),
+        );
+        assert!(sent.len() > 24 * 1024 * 1024, "{} bytes", sent.len());
+        let parsed = body::<Value>(sent.as_bytes()).map(|document| document.is_object());
+        assert_eq!(parsed.ok(), Some(true), "{} bytes", sent.len());
     }
 
     #[test]

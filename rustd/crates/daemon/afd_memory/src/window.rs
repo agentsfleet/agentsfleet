@@ -5,11 +5,11 @@
 //!
 //! # The rule, in full
 //!
-//! Rows arrive newest-first. Every `core` entry that fits the budget hydrates
+//! Rows arrive newest-first. Every `core` entry that fits the budget loads
 //! before any non-core entry is considered; whatever budget survives fills with
 //! the newest non-core entries. Each tier takes a PREFIX of its own order — the
 //! first entry that overflows ends that tier, so an older, smaller entry never
-//! slips in behind a rejected newer one. A non-empty input always hydrates at
+//! slips in behind a rejected newer one. A non-empty input always loads at
 //! least one entry, even if that entry alone busts the budget.
 //!
 //! # Why this is short
@@ -40,7 +40,7 @@ pub fn total_bytes(entries: &[MemoryDelta<'_>]) -> usize {
     entries.iter().map(MemoryDelta::bytes).sum()
 }
 
-/// Whether an entry hydrates ahead of recency.
+/// Whether an entry loads ahead of recency.
 fn is_pinned(entry: &MemoryDelta<'_>) -> bool {
     // Anything unrecognised is windowed. Custom categories are expected — the
     // column carries no CHECK — and the default must be the safe one: an
@@ -56,7 +56,7 @@ fn is_pinned(entry: &MemoryDelta<'_>) -> bool {
 /// small old entry being admitted past a rejected large new one.
 ///
 /// `head` grants the first entry a pass regardless of size. That is the
-/// never-hydrate-nothing rule, and expressing it as `max` rather than as a flag
+/// never-load-nothing rule, and expressing it as `max` rather than as a flag
 /// threaded through the loop is why there is no loop.
 fn fits(sizes: impl Iterator<Item = usize>, budget: usize, head: bool) -> usize {
     let mut sizes = sizes.peekable();
@@ -78,33 +78,33 @@ fn fits(sizes: impl Iterator<Item = usize>, budget: usize, head: bool) -> usize 
 /// How many leading entries of a newest-first run fit `budget`.
 ///
 /// The shared tier's rule: the same prefix [`fits`] takes, with no head
-/// privilege — a workspace's shared memory hydrating nothing is an ordinary
+/// privilege — a workspace's shared memory loading nothing is an ordinary
 /// answer, never one a run could mistake for its own fleet learning nothing.
 #[must_use]
 pub fn prefix_within(sizes: impl Iterator<Item = usize>, budget: usize) -> usize {
     fits(sizes, budget, false)
 }
 
-/// A hydration window: what the run is seeded with, and what stays behind.
+/// A load window: what the run is seeded with, and what stays behind.
 ///
 /// Both halves are owned, so "the dropped set" is a value a caller reads
 /// directly, with no slice layout to depend on.
 #[derive(Debug)]
 pub struct Window<'a> {
-    /// The entries that hydrate, in their original recency order.
+    /// The entries that load, in their original recency order.
     pub kept: Vec<MemoryDelta<'a>>,
-    /// The entries that stay durable in Postgres, unhydrated.
+    /// The entries that stay durable in Postgres, not loaded.
     pub dropped: Vec<MemoryDelta<'a>>,
 }
 
-/// Split `entries` into the hydration window and the tail left behind.
+/// Split `entries` into the load window and the tail left behind.
 ///
 /// `entries` must arrive newest-first — the statement orders them, and the
 /// prefix semantics are meaningless otherwise.
 #[must_use]
 pub fn select(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
     let window = select_counted(entries, budget);
-    af_observability::producers::memory::hydration_window(
+    af_observability::producers::memory::load_window(
         counted(window.kept.len()),
         counted(window.dropped.len()),
         counted(total_bytes(&window.dropped)),
@@ -136,7 +136,7 @@ fn select_counted(entries: Vec<MemoryDelta<'_>>, budget: usize) -> Window<'_> {
     // Saturating: a pinned tier that filled the budget leaves the windowed tier
     // nothing, and a head entry that alone busted it leaves less than nothing.
     let windowed_budget = budget.saturating_sub(pinned_bytes);
-    // The pinned head already satisfies never-hydrate-nothing, so the windowed
+    // The pinned head already satisfies never-load-nothing, so the windowed
     // tier gets head privilege only when there is no pinned entry at all.
     let windowed_count = fits(sizes(false), windowed_budget, pinned_count == 0);
 
@@ -205,7 +205,7 @@ mod tests {
             .collect()
     }
 
-    /// Core entries hydrate before any non-core entry is considered.
+    /// Core entries load before any non-core entry is considered.
     ///
     /// The rule the whole tier split exists for: `old-core` is the OLDEST entry
     /// here and still outranks two newer conversation entries, because pinning
@@ -223,7 +223,7 @@ mod tests {
         );
         assert!(
             kept.contains(&"old-core".to_owned()),
-            "the oldest core entry hydrates ahead of newer chat: {kept:?}"
+            "the oldest core entry loads ahead of newer chat: {kept:?}"
         );
         assert_eq!(
             kept.len(),
@@ -255,13 +255,13 @@ mod tests {
         );
     }
 
-    /// A non-empty set always hydrates something, even past the budget.
+    /// A non-empty set always loads something, even past the budget.
     ///
     /// A run seeded with nothing looks identical to a fleet that has learned
     /// nothing, and the two must not be confusable — so one oversized entry is
     /// admitted rather than yielding an empty window.
     #[test]
-    fn test_one_oversized_entry_still_hydrates() {
+    fn test_one_oversized_entry_still_loads() {
         let huge = entry("enormous", BUDGET * 4, "conversation");
         assert!(
             huge.bytes() > BUDGET,
@@ -271,13 +271,13 @@ mod tests {
         assert_eq!(
             kept_keys(single, BUDGET),
             vec!["enormous".to_owned()],
-            "a fleet that remembers one huge thing hydrates it rather than nothing"
+            "a fleet that remembers one huge thing loads it rather than nothing"
         );
     }
 
     /// Nothing in, nothing out — and no panic on the head rule.
     #[test]
-    fn test_an_empty_set_hydrates_nothing() {
+    fn test_an_empty_set_loads_nothing() {
         let window = select(Vec::new(), BUDGET);
         assert!(window.kept.is_empty(), "no entries, no window");
         assert_eq!(

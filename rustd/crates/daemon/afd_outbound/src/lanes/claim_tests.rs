@@ -5,7 +5,7 @@ use std::future::pending;
 use std::time::Duration;
 
 use super::hold_claim;
-use crate::obligation::{CLAIM_RENEW, CLAIM_TTL};
+use crate::delivery::{CLAIM_RENEW, CLAIM_TTL};
 
 #[tokio::test(start_paused = true)]
 async fn a_renewal_that_never_answers_gives_the_claim_up_before_it_lapses() {
@@ -50,7 +50,7 @@ async fn a_landed_renewal_extends_from_when_it_was_sent() {
 #[tokio::test(start_paused = true)]
 async fn a_renewal_another_holder_refused_ends_at_once() {
     let started = tokio::time::Instant::now();
-    let lost = hold_claim(CLAIM_RENEW, || async { Ok(false) }).await;
+    let lost = hold_claim(CLAIM_RENEW, async || Ok(false)).await;
     assert_eq!(lost, "renew");
     assert_eq!(started.elapsed(), CLAIM_RENEW);
 }

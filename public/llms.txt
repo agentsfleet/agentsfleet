@@ -19,8 +19,8 @@ A tripped gate archives the fleet; approving a setup grant retries setup without
 - apply_fleet_revision: POST  /v1/workspaces/{workspace_id}/fleets/{fleet_id}/revisions   # apply a reviewed setup improvement
 - delete_fleet:        DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}     # hard-purge in any status
 - post_fleet_message:  POST   /v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages   # steer / chat
-- list_fleet_events:   GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events
-- stream_fleet_events: GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream
+- list_fleet_turns:    GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns
+- stream_fleet_turns:  GET    /v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream
 - ingest_connector_webhook: POST /v1/ingress/{provider}
 - ingest_qstash_schedule: POST /v1/ingress/qstash/schedules
 - receive_source_webhook: POST /v1/webhooks/{fleet_id}/{source}   # the URL Save returns per webhook trigger
@@ -29,7 +29,6 @@ A tripped gate archives the fleet; approving a setup grant retries setup without
 - get_tenant_billing_report: GET /v1/tenants/me/billing/reports/current
 - get_model_library:      GET /v1/models    # paged; ?limit=&starting_after=&q=&provider= — ETag/If-None-Match
 - list_tenant_model_entries: GET /v1/tenants/me/models   # paged; the tenant's own model registry
-- list_workspace_plugins:     GET /v1/workspaces/{workspace_id}/plugins   # paged account-owned Plugins
 
 Every list above is a bounded keyset page: read `next_cursor` and follow it.
 A client that reads only the first page silently loses everything past it.
@@ -42,8 +41,8 @@ The QStash schedule ingress uses QStash delivery signatures instead of a bearer 
 A Fleet is a long-lived, event-driven autonomous worker scoped to a workspace.
 Events reach it from its triggers (signed webhooks at
 `POST /v1/webhooks/{fleet_id}/{source}`, including Svix-signed sources, schedules and chat mentions) and from
-steer messages. Each accepted event is committed to `fleet.admissions`.
-The control plane (`agentsfleetd`) claims queued admissions and leases them to a
+steer messages. Each accepted turn is committed to `thread.turns`.
+The control plane (`agentsfleetd`) claims queued admissions and runs them to a
 host-resident `agentsfleet-runner`. The runner runs the Fleet's loop, which can call tools, update state,
 and emit further events. Operators steer or kill running Fleets through the
 control-plane endpoints above.

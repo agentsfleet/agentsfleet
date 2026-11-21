@@ -34,7 +34,7 @@ use super::landing::connected;
 use super::{EVENT_WRITE, provider_of, state_secret, unconfigured};
 use crate::auth::{Acting, PersonIdentity};
 use crate::handler::{BrokenEscape, Refusal, decoded_parameter};
-use crate::services::{Services, WorkspaceConnectors as _, WorkspaceOwnership as _};
+use crate::services::{TenantPlane, WorkspaceConnectors as _, WorkspaceOwnership as _};
 
 /// The scoped event a refused callback is logged under.
 const EVENT_REFUSED: &str = "connector_callback_refused";
@@ -122,7 +122,7 @@ const REASON_SLOT_SPENT: &str = "state_slot_spent";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn complete<D: Services>(
+pub(crate) async fn complete<D: TenantPlane>(
     State(services): State<Arc<D>>,
     Acting(principal): Acting,
     person: PersonIdentity,

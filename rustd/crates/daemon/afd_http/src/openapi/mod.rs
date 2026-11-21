@@ -11,7 +11,7 @@
 //!
 //! So the shared half lives here and the per-route half stays at the
 //! annotation. A description that is genuinely about ONE route — what a 409
-//! means for schedules, what a 412 means for a Plugin entry — is written
+//! means for schedules, what a 412 means for a fleet setup — is written
 //! there, where it can say something a shared sentence could not.
 //!
 //! # Why this module is in the substrate
@@ -112,7 +112,7 @@ pub const DELIVERY: &str = "The provider's original event body; requires a valid
 /// An annotation lists what is particular to its route, then this, so the
 /// shared sentences are written once.
 #[cfg(feature = "openapi")]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct GuardedFailures;
 
 #[cfg(feature = "openapi")]
@@ -190,8 +190,6 @@ pub mod tag {
     pub const WEBHOOKS: &str = "Webhooks";
     /// The approval inbox.
     pub const APPROVALS: &str = "Approvals";
-    /// Account-owned reusable fleet setups.
-    pub const PLUGIN: &str = "Plugins";
     /// The priced model catalogue.
     pub const MODEL_LIBRARY: &str = "Model Library";
 }

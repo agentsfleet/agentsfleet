@@ -4,11 +4,13 @@ use std::error::Error as _;
 
 use af_core::error_code::{self, ErrorCode};
 
+use af_core::error::DETAIL_DATABASE_ERROR;
+
 use super::{
-    DETAIL_BUDGET_EXHAUSTED, DETAIL_DATABASE_ERROR, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
-    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
-    DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
+    DETAIL_BUDGET_EXHAUSTED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
+    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
+    DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE,
+    DETAIL_VAULT_DATA_INVALID, Error,
 };
 
 struct Expected {
@@ -21,7 +23,7 @@ struct Expected {
 }
 
 #[test]
-fn lease_and_memory_refusals_have_stable_wire_classification() {
+fn run_and_memory_refusals_have_stable_wire_classification() {
     let errors = [
         expected(
             super::stale_fence(),
@@ -29,28 +31,19 @@ fn lease_and_memory_refusals_have_stable_wire_classification() {
             DETAIL_STALE_FENCE,
         ),
         expected(
-            super::lease_not_found(),
-            error_code::RUN_LEASE_NOT_FOUND,
-            DETAIL_LEASE_NOT_FOUND,
+            super::run_not_found(),
+            error_code::RUN_NOT_FOUND,
+            DETAIL_RUN_NOT_FOUND,
         ),
+        expected(super::run_lost(), error_code::RUN_LOST, DETAIL_RUN_LOST),
         expected(
-            super::lease_lost(),
-            error_code::RUN_LEASE_LOST,
-            DETAIL_LEASE_LOST,
-        ),
-        expected(
-            super::lease_cancelled(),
-            error_code::RUN_LEASE_CANCELLED,
-            super::DETAIL_LEASE_CANCELLED,
-        ),
-        expected(
-            super::lease_max_runtime(),
-            error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
-            DETAIL_LEASE_MAX_RUNTIME,
+            super::run_cancelled(),
+            error_code::RUN_CANCELLED,
+            super::DETAIL_RUN_CANCELLED,
         ),
         expected(
             super::renewal_no_credits(),
-            error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
+            error_code::RUN_RENEWAL_NO_CREDITS,
             DETAIL_RENEWAL_NO_CREDITS,
         ),
         expected(
@@ -114,19 +107,14 @@ fn mint_refusals() -> [Expected; 7] {
     ]
 }
 
-/// The two message refusals, and the corrupt sequence that answers as a row
+/// The message refusal, and the corrupt sequence that answers as a row
 /// fault.
-fn message_refusals() -> [Expected; 3] {
+fn message_refusals() -> [Expected; 2] {
     [
         expected(
             super::message_no_channel(),
             error_code::MESSAGE_NO_CHANNEL,
             super::DETAIL_MESSAGE_NO_CHANNEL,
-        ),
-        expected(
-            super::message_limit_reached(),
-            error_code::MESSAGE_LIMIT_REACHED,
-            super::DETAIL_MESSAGE_LIMIT,
         ),
         expected(
             super::sequence_corrupt(),
@@ -147,7 +135,7 @@ fn contextual_errors_retain_context_and_sources() -> Result<(), &'static str> {
     rejected.rejected = true;
 
     let mut query = expected(
-        super::query("loading lease")(sqlx::Error::Protocol("fixture query".into())),
+        super::query("loading run")(sqlx::Error::Protocol("fixture query".into())),
         error_code::INTERNAL_DB_QUERY,
         DETAIL_DATABASE_ERROR,
     );
@@ -226,7 +214,7 @@ fn assert_error(expected: &Expected) {
 fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
     let missing = Error::from(super::ErrorKind::SetupUnavailable);
 
-    assert_eq!(missing.code(), error_code::AUTHORING_POLICY);
+    assert_eq!(missing.code(), error_code::SETUP_POLICY);
     // pin test: literal is the contract
     assert_eq!(
         missing.detail(),

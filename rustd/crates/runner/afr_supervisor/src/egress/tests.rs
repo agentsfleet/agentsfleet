@@ -1,5 +1,5 @@
-//! The lease's egress: which hosts are merged, how each policy maps to a
-//! network, and why a host that cannot be admitted refuses the lease.
+//! The run's egress: which hosts are merged, how each policy maps to a
+//! network, and why a host that cannot be admitted refuses the run.
 
 #![expect(
     clippy::unwrap_used,
@@ -25,7 +25,7 @@ const B: &str = "b.example";
 const C: &str = "c.example";
 /// A host the resolver answers with IPv6 alone.
 const V6_ONLY: &str = "v6.example";
-/// A host the resolver answers with more addresses than a lease may reach.
+/// A host the resolver answers with more addresses than a run may reach.
 const CROWDED: &str = "crowded.example";
 /// A host the resolver has never heard of.
 const UNKNOWN: &str = "unknown.example";
@@ -180,7 +180,7 @@ async fn a_closed_egress_reaches_nothing() {
 /// the third carrying the engine's reason; each is logged under the internal
 /// code a runner failure is read by.
 #[tokio::test]
-async fn test_egress_setup_failures_refuse_the_lease() {
+async fn test_egress_setup_failures_refuse_the_run() {
     let resolver = resolver();
     let refused = |host: &'static str| {
         let resolver = &resolver;
@@ -207,7 +207,7 @@ async fn test_egress_setup_failures_refuse_the_lease() {
         ),
         (
             &crowded,
-            "the lease's egress allowlist was refused".to_owned(),
+            "the run's egress allowlist was refused".to_owned(),
         ),
     ];
     for (failure, reason) in expected {
@@ -239,7 +239,7 @@ async fn test_a_refused_allowlist_is_told_without_its_code() {
 /// no fleet may reach, IPv6 spellings and a blocked answer beside a public one
 /// included. The refusal names the host, never the address.
 #[tokio::test]
-async fn test_a_fleet_host_at_a_blocked_address_refuses_the_lease() {
+async fn test_a_fleet_host_at_a_blocked_address_refuses_the_run() {
     let resolver = blocking_resolver();
     let cases = [
         (METADATA, IpAddr::V4(METADATA_ADDRESS)),
@@ -269,7 +269,7 @@ async fn test_a_fleet_host_at_a_blocked_address_refuses_the_lease() {
 
 /// An address literal in `network.allow`, bracketed IPv6 and an IPv4-mapped
 /// spelling included, is judged as the address it is: the host's resolver
-/// parses it offline, and the lease is refused as blocked rather than as a
+/// parses it offline, and the run is refused as blocked rather than as a
 /// host that would not resolve.
 #[tokio::test]
 async fn test_an_address_literal_in_network_allow_is_judged_as_an_address() {
@@ -303,7 +303,7 @@ async fn test_a_registry_host_at_a_private_address_is_admitted() {
 }
 
 /// One rule holds a name to its whole answer on both egress paths: a host
-/// answering a public and a private address refuses the lease that names it
+/// answering a public and a private address refuses the run that names it
 /// before its sandbox is built, and is refused again when `http_request`'s
 /// guarded client looks it up.
 #[tokio::test]

@@ -9,7 +9,7 @@
 use posthog_rs::Event;
 use sha2::{Digest as _, Sha256};
 
-use super::{AuthoringStep, Telemetry};
+use super::{SetupStep, Telemetry};
 
 /// The workspace an event happened in.
 const KEY_WORKSPACE_ID: &str = "workspace_id";
@@ -20,8 +20,8 @@ const KEY_TENANT_ID: &str = "tenant_id";
 /// The fleet an event is about.
 const KEY_FLEET_ID: &str = "fleet_id";
 
-/// The stream entry the run was leased from.
-const KEY_EVENT_ID: &str = "event_id";
+/// The stream entry the run was held from.
+const KEY_TURN_ID: &str = "turn_id";
 
 /// The request this daemon answered, for joining a log line to a funnel step.
 const KEY_REQUEST_ID: &str = "request_id";
@@ -45,12 +45,6 @@ const KEY_REPLY: &str = "reply";
 const KEY_DRAFT_ID: &str = "draft_id";
 /// The terminal state an accepted message reached.
 const KEY_STATE: &str = "state";
-/// The Plugin entry a publication committed to.
-const KEY_PLUGIN_ID: &str = "plugin_id";
-/// The revision a publication committed.
-const KEY_REVISION_ID: &str = "revision_id";
-/// Whether a publication was an entry's first or a later revision.
-const KEY_KIND: &str = "kind";
 /// `PostHog`'s own deduplication key.
 ///
 /// Not ours to rename: ingestion drops a second event carrying an `$insert_id`
@@ -148,19 +142,19 @@ impl Telemetry {
             Self::FleetTriggered {
                 workspace_id,
                 fleet_id,
-                event_id,
+                turn_id,
                 source,
                 ..
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_EVENT_ID, event_id.as_str().into());
+                put(KEY_TURN_ID, turn_id.as_str().into());
                 put("source", source.as_str().into());
             }
             Self::FleetCompleted {
                 workspace_id,
                 fleet_id,
-                event_id,
+                turn_id,
                 tokens,
                 wall_ms,
                 exit_status,
@@ -169,12 +163,12 @@ impl Telemetry {
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
-                put(KEY_EVENT_ID, event_id.as_str().into());
+                put(KEY_TURN_ID, turn_id.as_str().into());
                 put("tokens", (*tokens).into());
                 put("wall_ms", (*wall_ms).into());
                 put("exit_status", exit_status.as_str().into());
                 put("time_to_first_token_ms", (*time_to_first_token_ms).into());
-                put(KEY_INSERT_ID, insert_id(fleet_id, event_id).into());
+                put(KEY_INSERT_ID, insert_id(fleet_id, turn_id).into());
             }
             Self::SignupBootstrapped {
                 tenant_id,
@@ -209,7 +203,7 @@ impl Telemetry {
                     put(KEY_REPLY, reply.into());
                 }
             }
-            Self::Authoring {
+            Self::Setup {
                 workspace_id, step, ..
             } => {
                 put(KEY_WORKSPACE_ID, workspace_id.as_str().into());
@@ -219,7 +213,7 @@ impl Telemetry {
     }
 }
 
-impl AuthoringStep {
+impl SetupStep {
     /// The step's own keys: identifiers as text, words as written. Nothing
     /// else is a field, so nothing else can be written.
     fn describe(&self, put: &mut impl FnMut(&'static str, serde_json::Value)) {
@@ -231,15 +225,6 @@ impl AuthoringStep {
             }
             Self::SetupFinished { fleet_id } | Self::SetupCancelled { fleet_id } => {
                 put(KEY_FLEET_ID, fleet_id.as_str().into());
-            }
-            Self::PluginPublished {
-                plugin_id,
-                revision_id,
-                kind,
-            } => {
-                put(KEY_PLUGIN_ID, plugin_id.as_str().into());
-                put(KEY_REVISION_ID, revision_id.as_str().into());
-                put(KEY_KIND, (*kind).into());
             }
         }
     }
@@ -263,10 +248,10 @@ impl super::InviteEmailOutcome {
 /// failure is dropped by ingestion instead of doubling the run count. The pair
 /// is what identifies a run: one fleet's event ids are unique to it, and the
 /// fleet is what makes the key unique across the deployment.
-fn insert_id(fleet_id: &str, event_id: &str) -> String {
+fn insert_id(fleet_id: &str, turn_id: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(fleet_id.as_bytes());
     hasher.update(HASH_SEPARATOR);
-    hasher.update(event_id.as_bytes());
+    hasher.update(turn_id.as_bytes());
     hex::encode(hasher.finalize())
 }

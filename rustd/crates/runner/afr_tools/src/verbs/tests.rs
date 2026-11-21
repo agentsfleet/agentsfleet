@@ -2,13 +2,13 @@
 
 use af_core::error_code::{self, ErrorCode};
 
-use super::{CLOSED, LeaseVerbs as _, ScheduleCall, Unanswered, answered};
+use super::{CLOSED, RunVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;
 
-/// The five codes a model acts on differently each name their own tool error.
+/// The four codes a model acts on differently each name their own tool error.
 #[test]
 fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
-    let cases: [(ErrorCode, ToolErrorCode); 5] = [
+    let cases: [(ErrorCode, ToolErrorCode); 4] = [
         (
             error_code::SCHEDULE_CAP_REACHED,
             ToolErrorCode::ScheduleCapReached,
@@ -24,10 +24,6 @@ fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
         (
             error_code::MESSAGE_NO_CHANNEL,
             ToolErrorCode::MessageNoChannel,
-        ),
-        (
-            error_code::MESSAGE_LIMIT_REACHED,
-            ToolErrorCode::MessageLimitReached,
         ),
     ];
     for (code, tool) in cases {
@@ -77,7 +73,10 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     let refused = answered(Err(Unanswered::Refused(Some(
         error_code::MESSAGE_NO_CHANNEL,
     ))));
-    assert_eq!(refused.error_code, Some(ToolErrorCode::MessageNoChannel));
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::MessageNoChannel.into())
+    );
     assert!(
         refused.text.starts_with("[message_no_channel] UZ-RUN-019"),
         "{}",
@@ -85,7 +84,7 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     );
 }
 
-/// A lease with nothing behind it says so for every verb.
+/// A run with nothing behind it says so for every verb.
 #[tokio::test]
 async fn closed_verbs_answer_nothing() {
     assert_eq!(
@@ -121,7 +120,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     assert_eq!(CLOSED.task_inputs(inputs).await.err(), refused);
     let bindings = TaskBindingsInput {
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         accepted_revision_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: ID.to_owned(),
@@ -131,7 +130,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     let receipt = TaskInputReceiptInput {
         fencing_token: 1,
         operation_id: ID.to_owned(),
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         item_id: ID.to_owned(),
         task: None,
@@ -142,7 +141,7 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
     let decision = DecisionReservationInput {
         operation_id: ID.to_owned(),
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         assessment: DecisionAssessment::Message,
         task: Some(task_version()),
         retry_of: None,

@@ -9,7 +9,7 @@ mod result;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-pub use af_validate::serialized_within;
+pub(crate) use af_validate::serialized_within;
 pub use answer::answer_matches;
 pub use assignment::DecisionAssignment;
 pub use config::{
@@ -20,8 +20,6 @@ pub(crate) use question::state_bound;
 pub use question::{ChoiceOption, DecisionQuestion, DecisionRequest, NamedQuestion, NoulCriteria};
 pub use result::{DecisionAnswer, DecisionInvalid, DecisionOutcome, DecisionResult, DecisionUsage};
 
-/// Maximum serialized evidence supplied to one decision.
-pub const STATE_MAX_BYTES: usize = 16 * 1024;
 /// Maximum typed questions in one physical request.
 pub const QUESTIONS_MAX: usize = 8;
 /// Maximum compiled question, including all native candidate options.
@@ -92,7 +90,7 @@ impl DecisionCapabilities {
     }
 }
 
-/// Non-secret catalogue metadata frozen for a lease's selected decision model.
+/// Non-secret catalogue metadata frozen for a run's selected decision model.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]

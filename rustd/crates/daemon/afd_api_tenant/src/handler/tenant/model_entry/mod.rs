@@ -58,7 +58,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantModelEntries as _};
+use crate::services::{TenantModelEntries as _, TenantPlane};
 
 // A query string this daemon cannot decode has no refusal on this surface:
 // `RawQuery` hands over the raw text and `parameter` cannot fail. One fewer
@@ -160,7 +160,7 @@ impl StructCursor for Cursor {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
@@ -181,7 +181,7 @@ const SURFACE: Surface = Surface::TenantModels;
 
 /// [`list`] without the outcome recording, so there is one place the answer is
 /// produced and one place it is classified.
-async fn read_registry<D: Services>(
+async fn read_registry<D: TenantPlane>(
     services: &Arc<D>,
     identity: &PersonIdentity,
     query: Option<String>,

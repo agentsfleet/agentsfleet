@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { PlanStatus, PlanStep, ToolBodyKind, ToolBodyOf, ToolCopy } from "./presentation/tool-call-shape";
 import { PLAN_STATUS, TOOL_BODY } from "./presentation/tool-call-shape";
-import { DiffRows, RailRow, ShowAll, CLIPPED_EDIT_NOTE, OUTPUT_RAIL } from "./FleetToolCallBody";
+import { ChangedFiles, RailRow, OUTPUT_RAIL } from "./FleetToolCallBody";
 
 type InputContext = {onShowAll: (() => void) | undefined};
 type InputRenderers = {[K in ToolBodyKind]: (body: ToolBodyOf<K>, context: InputContext) => ReactNode};
@@ -20,9 +20,8 @@ const INPUT_RENDERERS: Readonly<InputRenderers> = Object.freeze({
   // Generic tools already show their recorded JSON input in ToolCallDetails.
   [TOOL_BODY.OUTPUT]: NO_INPUT,
   [TOOL_BODY.COMMAND]: NO_INPUT,
-  [TOOL_BODY.DIFF]: body => <DiffRows diff={body.diff} />,
+  [TOOL_BODY.CHANGES]: body => <ChangedFiles changes={body.changes} />,
   [TOOL_BODY.PLAN]: body => <PlanSteps explanation={body.explanation} steps={body.steps} />,
-  [TOOL_BODY.CLIPPED_EDIT]: (_body, context) => <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={context.onShowAll} /></RailRow>,
 });
 
 /** Input describes the requested action; its renderer never establishes success. */

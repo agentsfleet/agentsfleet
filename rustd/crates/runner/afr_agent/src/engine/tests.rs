@@ -3,19 +3,19 @@ use af_wire::activity::ActivityFrame;
 use tokio_util::sync::CancellationToken;
 
 use super::{AgentRun, Meter};
-use crate::fixture::{API_KEY, GITHUB_TOKEN, lease, unbounded};
+use crate::fixture::{API_KEY, GITHUB_TOKEN, payload, unbounded};
 use crate::testing::Discard;
 
 #[test]
-fn a_run_debugs_without_the_leases_secrets() {
-    let lease = lease(&[], unbounded());
+fn a_run_debugs_without_the_runs_secrets() {
+    let this_run = payload(&[], unbounded());
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
         recovery: None,
         recovered_task: None,
         recovered_turn: None,
         prepared_task: None,
-        lease: &lease,
+        run: &this_run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
         mint: &CountingMint::never(),
@@ -29,11 +29,11 @@ fn a_run_debugs_without_the_leases_secrets() {
 
     let rendered = format!("{run:?}");
 
-    assert!(rendered.contains(&*lease.lease_id), "{rendered}");
+    assert!(rendered.contains(&*this_run.run_id), "{rendered}");
     for secret in [API_KEY, GITHUB_TOKEN] {
         assert!(
             !rendered.contains(secret),
-            "a lease secret must never render: {rendered}"
+            "a this_run secret must never render: {rendered}"
         );
     }
 }
@@ -41,7 +41,7 @@ fn a_run_debugs_without_the_leases_secrets() {
 const CACHE_WRITE_FIVE_MINUTE_TOKENS: u32 = 60;
 
 /// One provider turn's usage.
-const TURN: af_providers::Usage = af_providers::Usage {
+const TURN: guffbolt::Usage = guffbolt::Usage {
     input: 30,
     cached_input: 10,
     cache_write: 0,
@@ -78,26 +78,18 @@ fn a_meter_numbers_its_requests_and_forgets_only_what_was_recorded() {
     );
 }
 
-/// A request body never carries more than the wire allows; the rest waits
-/// for the next renewal, and the backlog still counts it.
+/// A request body carries every line the daemon has not recorded, and a
+/// recorded line leaves it.
 #[test]
-fn a_meter_sends_at_most_one_bodys_worth() {
+fn a_meter_sends_every_unrecorded_line() {
     let meter = Meter::default();
-    for _ in 0..=af_wire::usage::LINES_MAX {
+    for _ in 0..1_100 {
         meter.add(TURN);
     }
-    assert_eq!(meter.unrecorded().0.len(), af_wire::usage::LINES_MAX);
-    assert_eq!(
-        meter.backlog(),
-        af_wire::usage::LINES_MAX + 1,
-        "the backlog counts past one body"
-    );
-    meter.recorded_through(u32::try_from(af_wire::usage::LINES_MAX).unwrap_or(u32::MAX) - 1);
-    assert_eq!(
-        meter.unrecorded().0.len(),
-        1,
-        "the one past the cap goes next"
-    );
+    assert_eq!(meter.unrecorded().0.len(), 1_100);
+    assert_eq!(meter.backlog(), 1_100);
+    meter.recorded_through(1_098);
+    assert_eq!(meter.unrecorded().0.len(), 1, "only the newest is left");
     assert_eq!(meter.backlog(), 1);
 }
 
@@ -108,7 +100,7 @@ fn a_meter_sends_at_most_one_bodys_worth() {
 fn a_meter_line_carries_cache_writes_by_lifetime() {
     let at = af_core::clock::now();
     let meter = Meter::new(std::sync::Arc::new(af_core::clock::FixedClock::at(at)));
-    let writing = af_providers::Usage {
+    let writing = guffbolt::Usage {
         input: 500,
         cached_input: 400,
         cache_write: 5,

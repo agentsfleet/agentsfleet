@@ -14,47 +14,11 @@ use utoipa::openapi::RefOr;
 use utoipa::openapi::schema::Schema;
 use utoipa::{PartialSchema, ToSchema};
 
-use super::{
-    ConfigOp, InstructionEdit, MAX_CONFIG_OPS, MAX_INSTRUCTION_EDITS, MAX_INSTRUCTION_OFFSET,
-    MAX_INSTRUCTIONS_CHARS, MAX_POINTER_CHARS,
-};
+use super::{ConfigOp, InstructionEdit, MAX_INSTRUCTION_OFFSET, MAX_POINTER_CHARS};
 use crate::openapi::{self, Bound, Published, Text};
 
 /// The fewest characters a JSON Pointer carries.
 const NOT_EMPTY: usize = 1;
-
-/// The key a request carries its configuration operations under.
-const CONFIG_OPS: &str = "config_ops";
-
-/// The key a request carries its instruction edits under.
-const INSTRUCTION_EDITS: &str = "instruction_edits";
-
-/// Publishes the batch sizes `EditBatch` validates on the two edit lists of
-/// `T`, the component whose `schema` is being narrowed.
-///
-/// A request that carries an edit batch inside its own keys, such as the
-/// drawer's draft patch, calls this on its schema, so the published counts
-/// are the constants the validator reads rather than a second spelling.
-pub fn narrow_edit_batch<T: ToSchema>(schema: &mut RefOr<Schema>) {
-    openapi::narrow(schema, &edit_batch(T::name));
-}
-
-/// The two edit lists' counts, on the component `component` names.
-fn edit_batch(component: fn() -> Cow<'static, str>) -> Published {
-    let list = |max| Bound::List {
-        min: 0,
-        max,
-        entry: None,
-    };
-    Published {
-        component,
-        closed: false,
-        bounds: vec![
-            (CONFIG_OPS, list(MAX_CONFIG_OPS)),
-            (INSTRUCTION_EDITS, list(MAX_INSTRUCTION_EDITS)),
-        ],
-    }
-}
 
 /// One JSON Patch operation on the setup: `add`, `replace` or `remove`.
 #[derive(utoipa::ToSchema)]
@@ -126,7 +90,10 @@ fn instruction_edit() -> Published {
         bounds: vec![
             ("start_byte", offset.clone()),
             ("end_byte", offset),
-            ("text", Bound::Text(Text::chars(0, MAX_INSTRUCTIONS_CHARS))),
+            (
+                "text",
+                Bound::Text(Text::chars(0, af_validate::TEXT_MAX_CHARS)),
+            ),
         ],
     }
 }

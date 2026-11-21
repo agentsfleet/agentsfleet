@@ -3,11 +3,11 @@
 use super::probe_ticks;
 use crate::scheduler::Probe;
 use crate::{
+    connection::{AssignOutcome, ConnectionHandle, PassRequest},
     registry::{Registration, Registry},
     scheduler::notifications,
-    session::{ClaimRequest, OfferOutcome, SessionHandle},
 };
-use af_core::{id::Uuid7, timing::OFFER_FALLBACK_TICK};
+use af_core::{id::Uuid7, timing::ASSIGN_FALLBACK_TICK};
 use afd_bus::wake::Wake;
 use std::sync::{
     Arc,
@@ -20,7 +20,7 @@ type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sy
 
 struct ReplicaFixture {
     registry: Arc<Registry>,
-    requests: Vec<mpsc::Receiver<ClaimRequest>>,
+    requests: Vec<mpsc::Receiver<PassRequest>>,
     registrations: Vec<Registration>,
 }
 
@@ -31,9 +31,9 @@ impl ReplicaFixture {
         let mut registrations = Vec::new();
         for number in 1..=50 {
             let id = Uuid7::parse(&format!("019f0000-0000-7000-8000-{number:012x}"))?;
-            let (session, claims) = SessionHandle::fixture_with_claims(id.clone(), id);
-            registrations.push(registry.register_fixture(&session)?);
-            requests.push(claims);
+            let (connection, passes) = ConnectionHandle::fixture_with_passes(id.clone(), id);
+            registrations.push(registry.register_fixture(&connection)?);
+            requests.push(passes);
         }
         Ok(Self {
             registry,
@@ -55,7 +55,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
         let registry = Arc::clone(&fixture.registry);
         let stop = stop.clone();
         async move {
-            notifications(&registry, &wake, 8, stop, |_| async {
+            notifications(&registry, &wake, 8, stop, async |_| {
                 Ok(Probe::Waiting(std::collections::HashSet::new()))
             })
             .await
@@ -63,7 +63,7 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
     });
     tokio::task::yield_now().await;
     for expected in 1..=3 {
-        tokio::time::advance(OFFER_FALLBACK_TICK).await;
+        tokio::time::advance(ASSIGN_FALLBACK_TICK).await;
         observed.changed().await?;
         assert_eq!(*observed.borrow_and_update(), expected);
     }
@@ -74,19 +74,18 @@ async fn the_fallback_tick_probes_once_per_replica() -> TestResult {
             .all(|requests| matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)))
     );
     pending.store(true, Ordering::SeqCst);
-    tokio::time::advance(OFFER_FALLBACK_TICK).await;
+    tokio::time::advance(ASSIGN_FALLBACK_TICK).await;
     observed.changed().await?;
     assert_eq!(*observed.borrow_and_update(), 4);
-    let replies = futures_util::future::try_join_all(fixture.requests.iter_mut().map(
-        |requests| async move {
+    let replies =
+        futures_util::future::try_join_all(fixture.requests.iter_mut().map(async |requests| {
             let answer = requests.recv().await.ok_or("fallback pass lost a host")?;
             answer
                 .reply
-                .send(OfferOutcome::Empty)
+                .send(AssignOutcome::Empty)
                 .map_err(|unsent| format!("fallback pass lost its empty answer {unsent:?}"))
-        },
-    ));
-    let answered = tokio::time::timeout(OFFER_FALLBACK_TICK, replies).await??;
+        }));
+    let answered = tokio::time::timeout(ASSIGN_FALLBACK_TICK, replies).await??;
     assert_eq!(answered.len(), 50);
     stop.cancel();
     clock.await?;
@@ -102,15 +101,10 @@ fn start_clock(
     calls: watch::Sender<usize>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        probe_ticks(
-            &wake,
-            &stop,
-            af_core::timing::OFFER_FALLBACK_TICK,
-            || async {
-                calls.send_modify(|count| *count += 1);
-                Ok(pending.load(Ordering::SeqCst))
-            },
-        )
+        probe_ticks(&wake, &stop, ASSIGN_FALLBACK_TICK, async || {
+            calls.send_modify(|count| *count += 1);
+            Ok(pending.load(Ordering::SeqCst))
+        })
         .await;
     })
 }

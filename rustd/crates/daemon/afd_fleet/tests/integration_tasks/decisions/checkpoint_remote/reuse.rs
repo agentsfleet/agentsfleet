@@ -17,7 +17,7 @@ pub(super) async fn verify(
 ) {
     let plan = tasks
         .plan_checkpoint(
-            case.lease(),
+            case.run(),
             &valid(input(
                 task,
                 case,
@@ -30,10 +30,10 @@ pub(super) async fn verify(
         .expect("zero-upload incremental capture");
     let reused = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(CheckpointObjectsInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 pin_id: plan.pin.id,
                 objects: vec![object.plaintext.clone()],

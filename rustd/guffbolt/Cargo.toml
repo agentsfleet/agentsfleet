@@ -1,0 +1,105 @@
+[package]
+name = "guffbolt"
+description = "An agent harness: the loop of model calls and tool calls over a conversation the embedder keeps, with a context-window hook, typed tools, run extensions and sub-agents."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme = "README.md"
+# What crates.io lists the harness under; the workspace's keywords name
+# agentsfleet.
+keywords = ["agent", "llm", "ai", "harness", "tool-calling"]
+categories = ["asynchronous"]
+
+[lints]
+workspace = true
+
+[features]
+# The generic tools: commands and sessions, files and patches, the web,
+# memory, schedules, a line to the conversation, a notification, subagents,
+# MCP servers, asking the person, deferred tools and the clock. Each takes the
+# backend it calls when `tools::ToolsBuilder` builds it, with host-process
+# defaults for a standalone harness.
+tools = [
+    "dep:html2text",
+    "dep:image",
+    "dep:jiff",
+    "dep:philiprehberger-cron-parser",
+    "dep:regex",
+    "dep:reqwest",
+    "dep:rmcp",
+    "dep:rustix",
+    "dep:schemars",
+    "dep:url",
+    "tokio/fs",
+    "tokio/io-util",
+    "tokio/net",
+    "tokio/process",
+    "tokio/rt",
+]
+
+[dependencies]
+# An image a call read, shared by the output and the result that carries it,
+# and serialized with the conversation.
+bytes = { workspace = true, features = ["serde"] }
+# A model step streams as a `futures` stream of chunks.
+futures-util.workspace = true
+# An embedder saves the transcript and the loop's progress through these.
+serde = { workspace = true, features = ["derive"] }
+# A call's arguments, a tool's parameters and a provider's replay record are
+# JSON.
+serde_json.workspace = true
+# A run's time budget, and `select!`, which races each model call and each
+# tool call against the loop's stop. A run's children are started, watched,
+# messaged and paused through its channels.
+tokio = { workspace = true, features = ["macros", "sync", "time"] }
+# The token a loop is stopped by.
+tokio-util.workspace = true
+# The loop's own records, at `debug`: every step is a hot path (LOG-HOT). An
+# observer's span is what a model call and a tool call run in.
+tracing.workspace = true
+# `web_fetch` reads a page's text, never its markup.
+html2text = { workspace = true, optional = true }
+# `image` decodes a picture and scales one longer than 2,048 px on a side down
+# to fit before the model sees it.
+image = { workspace = true, optional = true }
+# `current_time` writes the instant as RFC 3339, in UTC; `schedule` reads a
+# moment, and `LocalScheduler` reads an expression in its zone and keeps each
+# job's next moment.
+jiff = { workspace = true, optional = true }
+# `LocalScheduler` finds an expression's next moment. Zero dependencies; the
+# same grammar and version the workspace checks a schedule with.
+philiprehberger-cron-parser = { version = "0.3.0", optional = true }
+# `grep`'s pattern, and the glob `find` and `grep` match a path against.
+regex = { workspace = true, optional = true }
+# The local outbound default sends the web tools' requests, and an MCP server
+# over streamable HTTP is reached through the same client.
+reqwest = { workspace = true, optional = true }
+# The MCP client: a server's tools and resources, over stdio or HTTP.
+rmcp = { workspace = true, optional = true }
+# A typed tool's parameters are the JSON Schema of the type its arguments
+# parse into.
+schemars = { workspace = true, optional = true }
+# Whether a URL's host is an address literal, which never reaches a lookup
+# and so is judged where the URL is admitted.
+url = { workspace = true, optional = true }
+
+# `LocalEnv` on a Unix host: a process's whole group killed on a stop or a
+# timeout, and the pseudo-terminal a process asks for.
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, optional = true, features = ["pty", "termios"] }
+
+[dev-dependencies]
+# A fake HTTPS server stands in for a public host: rcgen issues its
+# certificate and tokio-rustls serves it over rustls, on the aws-lc-rs
+# provider reqwest already links.
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+# A directory `LocalScheduler` keeps its jobs in, gone when the case ends.
+tempfile.workspace = true
+# `start_paused`, so a budget runs out at once and a test never waits on it;
+# a socket a fake server listens on.
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "test-util", "time"] }

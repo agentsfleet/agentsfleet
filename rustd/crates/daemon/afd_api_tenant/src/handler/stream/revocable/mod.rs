@@ -27,7 +27,7 @@ use afd_sse::Frame;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
-use crate::services::{Services, WorkspaceOwnership as _};
+use crate::services::{TenantPlane, WorkspaceOwnership as _};
 
 /// How long a re-check may hold the stream's frames.
 ///
@@ -97,7 +97,7 @@ impl<D> Membership<D> {
     }
 }
 
-impl<D: Services> Recheck for Membership<D> {
+impl<D: TenantPlane> Recheck for Membership<D> {
     type Error = afd_tenant::Error;
 
     async fn admitted(&self) -> afd_tenant::Result<bool> {

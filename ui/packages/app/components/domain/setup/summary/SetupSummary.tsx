@@ -9,13 +9,13 @@ import { GitBranchIcon, InfoIcon, KeyIcon } from "@phosphor-icons/react/ssr";
 import { setupRequirements } from "@/lib/setup-requirements";
 import { formatDollars } from "@/lib/money";
 
-type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string; sourceLabel?: string;
+type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string;
   ready?: boolean; scheduleRecovery?: ReactNode; disabled?: boolean;
   onNetworkChange?: (change: SetupNetworkChange) => void; onManage?: (kind: "repositories" | "credentials") => void};
 
 const PACKAGE_MANAGER_DOMAINS_HELP = "Allow standard package registries while public internet access is restricted.";
 
-export function SetupSummary({definition, requirements, modelLabel, sourceLabel, ready, scheduleRecovery, disabled, onNetworkChange, onManage}: Props) {
+export function SetupSummary({definition, requirements, modelLabel, ready, scheduleRecovery, disabled, onNetworkChange, onManage}: Props) {
   const id = useId();
   if (!definition && !requirements && !ready) return <p className="text-label leading-label text-muted-foreground">Your setup will appear here as you chat.</p>;
   const setup = setupRequirements(definition, requirements);
@@ -33,7 +33,6 @@ export function SetupSummary({definition, requirements, modelLabel, sourceLabel,
       <Meta label="Spending limit">{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
     </dl>
     {scheduleRecovery}
-    {sourceLabel ? <p className="text-eyebrow leading-eyebrow text-text-dim">From {sourceLabel}</p> : null}
     <SummarySection title="Repositories" action={onManage ? <Manage kind="repositories" disabled={disabled} onClick={() => onManage("repositories")} /> : undefined}>
       {selected(setup?.repositories, "No repositories selected", "repositories")}
       <p className="text-eyebrow leading-eyebrow text-muted-foreground"><span className="mr-sm text-text-dim">Tools</span>{setup ? setup.tools.length ? setup.tools.join(", ") : "None selected" : "Not reviewed"}</p>

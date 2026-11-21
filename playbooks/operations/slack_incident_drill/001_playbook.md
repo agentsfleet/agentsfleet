@@ -91,12 +91,12 @@ That observation is not a standing grant.
    for pair in "ci-responder:$responder_json" "ci-repairer:$repairer_json"; do
      jq --arg channel '<CHANNEL_ID>' \
        '.config["x-agentsfleet"].triggers += [{type: "mention", source: "slack", channels: [$channel]}]' \
-       "tests/fixtures/fleets/${pair%%:*}/definition.json" > "${pair#*:}"
+       "rustd/crates/protocol/af_fleet_runtime/tests/fixtures/fleets/${pair%%:*}/definition.json" > "${pair#*:}"
    done
    ```
 
 3. Open a private review draft for each.
-   `<MODEL_REF>` is an authoring model the workspace owner enabled; a Definition draft makes no authoring call.
+   `<MODEL_REF>` is a setup model the workspace owner enabled; a Definition draft makes no setup model call.
 
    ```bash
    agentsfleet --api <API_BASE> chat --definition "$responder_json" --model <MODEL_REF> \

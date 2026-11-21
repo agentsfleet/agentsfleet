@@ -1,11 +1,11 @@
-//! A lessee over the fakes, for every suite that runs a lease.
+//! A lessee over the fakes, for every suite that runs a run.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
 use af_egress::Resolve;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
 use afr_executor::Unavailable;
@@ -22,13 +22,13 @@ use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;
-use crate::lease_loop::Lessee;
+use crate::run_loop::Lessee;
 use crate::storage_home::StorageHome;
 use crate::test_util::Healthy;
 use crate::turns::FleetTurns;
 use crate::workspace_clone::Mirrors;
 
-/// Where a rig's repositories are served from, under its root, so no lease
+/// Where a rig's repositories are served from, under its root, so no run
 /// test ever reaches the network.
 const ORIGINS: &str = "origins";
 
@@ -68,7 +68,7 @@ impl Rig {
         Self::build(answer, engine, agent, holds, FakeResolver::default())
     }
 
-    /// [`Rig::new`], resolving each lease's egress through `resolver`.
+    /// [`Rig::new`], resolving each run's egress through `resolver`.
     pub(crate) fn resolving(
         answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
         engine: FakeEngine,
@@ -169,16 +169,16 @@ impl Rig {
         }
     }
 
-    /// Runs one lease under a fresh turn coordinator, reaching nothing.
-    pub(crate) async fn run(&self, lease: &LeasePayload<'_>) -> crate::Result<()> {
-        self.run_under(lease, &Egress::closed()).await
+    /// Runs one run under a fresh turn coordinator, reaching nothing.
+    pub(crate) async fn run(&self, run: &RunPayload<'_>) -> crate::Result<()> {
+        self.run_under(run, &Egress::closed()).await
     }
 
-    /// Runs one lease under a fresh turn coordinator, reaching what `egress`
+    /// Runs one run under a fresh turn coordinator, reaching what `egress`
     /// admits.
     pub(crate) async fn run_under(
         &self,
-        lease: &LeasePayload<'_>,
+        run: &RunPayload<'_>,
         egress: &Egress,
     ) -> crate::Result<()> {
         let (turns, coordinator) = FleetTurns::start();
@@ -186,7 +186,7 @@ impl Rig {
         bounded(
             "Rig::run_under / lessee.run",
             self.lessee
-                .run(&turns, lease, egress, CancellationToken::new()),
+                .run(&turns, run, egress, CancellationToken::new()),
         )
         .await
     }
@@ -228,15 +228,16 @@ pub(crate) fn daemon(
     let replies: std::collections::HashMap<_, _> = [
         Verb::Heartbeat,
         Verb::Renew,
-        Verb::Hydrate,
+        Verb::Load,
         Verb::Capture,
         Verb::Recall,
-        Verb::Records,
+        Verb::Items,
         Verb::Me,
-        Verb::Activity,
+        Verb::Progress,
         Verb::Report,
         Verb::Folds,
         Verb::TurnCheckpoint,
+        Verb::ContextLoad,
     ]
     .into_iter()
     .map(|verb| {
@@ -269,7 +270,7 @@ fn acknowledge_report(call: &Call) -> Answer {
             hold: request
                 .held_until
                 .map(|expires_at| af_wire::report::AcceptedHold {
-                    lease_id: request.lease_id.to_string(),
+                    run_id: request.run_id.to_string(),
                     fencing_token: request.fencing_token,
                     expires_at,
                 }),

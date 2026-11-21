@@ -15,7 +15,7 @@ const BOT_USER: &str = "U0BOTAF01";
 fn marker() -> AnswerMarker {
     AnswerMarker {
         fleet_id: "0195b4ba-8d3a-7a11-8abc-000000000003".to_owned(),
-        event_id: "1760000000001-0".to_owned(),
+        turn_id: "1760000000001-0".to_owned(),
         part: None,
     }
 }
@@ -45,9 +45,9 @@ fn a_posted_stamp_reads_back_as_its_own_answer() {
 fn only_the_same_answer_counts() {
     let marker = marker();
     let others = [
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","event_id":"1760000000002-0"}}}"#,
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000009","event_id":"1760000000001-0"}}}"#,
-        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"task_created","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","event_id":"1760000000001-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","turn_id":"1760000000002-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"agentsfleet_answer","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000009","turn_id":"1760000000001-0"}}}"#,
+        r#"{"ts":"1","user":"U0BOTAF01","metadata":{"event_type":"task_created","event_payload":{"fleet_id":"0195b4ba-8d3a-7a11-8abc-000000000003","turn_id":"1760000000001-0"}}}"#,
         r#"{"ts":"1","user":"U0BOTAF01","text":"a person's reply"}"#,
     ];
     for other in others {
@@ -102,14 +102,14 @@ fn the_check_reads_from_just_before_the_question() {
     }
 }
 
-/// The lease a fixture interim line was said under.
-const LEASE: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
+/// The run a fixture interim line was said under.
+const RUN: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
 
-/// Interim line `line` of `lease`, for the fixture event.
-fn line(lease: &str, line: u32) -> AnswerMarker {
+/// Interim line `line` of `run`, for the fixture event.
+fn line(run: &str, line: u32) -> AnswerMarker {
     AnswerMarker {
         part: Some(Part {
-            lease_id: lease.to_owned(),
+            run_id: run.to_owned(),
             line,
         }),
         ..marker()
@@ -129,7 +129,7 @@ fn stamped(marker: &AnswerMarker) -> (String, Posted) {
 /// hold the answer, and a repeat of the answer still posts it.
 #[test]
 fn test_interim_marker_is_not_the_answer() {
-    let interim = line(LEASE, 1);
+    let interim = line(RUN, 1);
     let (stamp, message) = stamped(&interim);
 
     assert!(
@@ -144,17 +144,17 @@ fn test_interim_marker_is_not_the_answer() {
     assert!(!stamp.contains(ANSWER_EVENT_TYPE), "{stamp}");
 }
 
-/// A reclaimed lease numbers its lines from one again: its first line is not
-/// the dead lease's first, so a repeat of it is never skipped as posted.
+/// A reassigned run numbers its lines from one again: its first line is not
+/// the dead run's first, so a repeat of it is never skipped as posted.
 #[test]
-fn test_reclaimed_lease_line_is_not_the_dead_lease_line() {
-    let (_, dead) = stamped(&line(LEASE, 1));
-    let reclaimed = line("0195b4ba-8d3a-7a11-8abc-0000000000bb", 1);
+fn test_reassigned_run_line_is_not_the_dead_run_line() {
+    let (_, dead) = stamped(&line(RUN, 1));
+    let reassigned = line("0195b4ba-8d3a-7a11-8abc-0000000000bb", 1);
 
-    assert!(!dead.carries(&reclaimed, BOT_USER));
+    assert!(!dead.carries(&reassigned, BOT_USER));
     assert!(
-        !dead.carries(&line(LEASE, 2), BOT_USER),
-        "another line of one lease"
+        !dead.carries(&line(RUN, 2), BOT_USER),
+        "another line of one run"
     );
 }
 

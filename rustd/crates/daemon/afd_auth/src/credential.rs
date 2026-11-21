@@ -75,7 +75,7 @@ pub const TENANT_API_KEY_PREFIX: &str = "agt_t";
 /// The marker a credential minted by `agentsfleet login` carries.
 pub const CLI_CREDENTIAL_PREFIX: &str = "afc_";
 /// The runner wire's token prefix, the one the runner presents.
-pub use af_wire::paths::RUNNER_TOKEN_PREFIX;
+pub(crate) use af_wire::paths::RUNNER_TOKEN_PREFIX;
 
 /// Marker → class.
 ///

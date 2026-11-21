@@ -20,11 +20,11 @@ impl ControlPlane {
     /// Native input reads do not acknowledge or consume any message.
     pub(crate) async fn task_inputs(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         query: &TaskInputsQuery,
     ) -> Result<TaskInputsResponse<'static>> {
         let path = queried(
-            path(paths::LEASE_TASK_INPUTS, lease),
+            path(paths::RUN_TASK_INPUTS, run),
             query.fencing_token,
             |encoded| {
                 encoded.append_pair("limit", &query.limit.to_string());
@@ -46,13 +46,13 @@ impl ControlPlane {
     /// One complete interpretation, replayed only by its native receipt identity.
     pub(crate) async fn task_bindings(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         input: &TaskBindingsInput,
     ) -> Result<TaskBindingsResponse<'static>> {
         Ok(self
             .send_json(
                 Verb::TaskBindings,
-                path(paths::LEASE_TASK_BINDINGS, lease),
+                path(paths::RUN_TASK_BINDINGS, run),
                 input,
             )
             .await?
@@ -63,12 +63,12 @@ impl ControlPlane {
     /// The native recorder distinguishes application, queueing and answered text.
     pub(crate) async fn task_input_receipt(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         input: &TaskInputReceiptInput,
     ) -> Result<TaskInputReceiptResult> {
         self.send_json(
             Verb::TaskInputReceipt,
-            path(paths::LEASE_TASK_INPUT_RECEIPTS, lease),
+            path(paths::RUN_TASK_INPUT_RECEIPTS, run),
             input,
         )
         .await?
@@ -78,12 +78,12 @@ impl ControlPlane {
     /// Keep dispatch bytes in the existing wiping response owner until consumed.
     pub(crate) async fn task_decision_reserve(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         input: &DecisionReservationInput,
     ) -> Result<Body> {
         self.send_json(
             Verb::TaskDecisionReserve,
-            path(paths::LEASE_TASK_DECISIONS, lease),
+            path(paths::RUN_TASK_DECISIONS, run),
             input,
         )
         .await
@@ -92,11 +92,11 @@ impl ControlPlane {
     /// Original-owner receipt recording is valid independently of task execution.
     pub(crate) async fn task_decision_record(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         call: &Uuid7,
         input: &DecisionReceiptInput,
     ) -> Result<DecisionReceiptResult> {
-        let path = member(paths::LEASE_TASK_DECISION, lease, "{call_id}", call);
+        let path = member(paths::RUN_TASK_DECISION, run, "{call_id}", call);
         self.send_json(Verb::TaskDecisionRecord, path, input)
             .await?
             .decode()
@@ -105,12 +105,12 @@ impl ControlPlane {
     /// A physical publication has one native operation identity and no hidden retry.
     pub(crate) async fn task_publish(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         input: &TaskEffectInput,
     ) -> Result<TaskEffect> {
         self.send_json(
             Verb::TaskEffectPublish,
-            path(paths::LEASE_TASK_EFFECTS, lease),
+            path(paths::RUN_TASK_EFFECTS, run),
             input,
         )
         .await?
@@ -120,11 +120,11 @@ impl ControlPlane {
     /// Recover saved native effects rather than repeating a lost mutation.
     pub(crate) async fn task_effects(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         query: &TaskEffectsQuery,
     ) -> Result<TaskEffectsPage> {
         let path = queried(
-            path(paths::LEASE_TASK_EFFECTS, lease),
+            path(paths::RUN_TASK_EFFECTS, run),
             query.fencing_token,
             |encoded| {
                 encoded.append_pair("task_id", &query.task_id);
@@ -141,12 +141,12 @@ impl ControlPlane {
     /// A known native identity can be reconciled without another write.
     pub(crate) async fn task_effect(
         &self,
-        lease: &Uuid7,
+        run: &Uuid7,
         effect: &Uuid7,
         fence: u64,
     ) -> Result<TaskEffect> {
         let path = queried(
-            member(paths::LEASE_TASK_EFFECT, lease, "{effect_id}", effect),
+            member(paths::RUN_TASK_EFFECT, run, "{effect_id}", effect),
             fence,
             |_| {},
         );
@@ -154,12 +154,12 @@ impl ControlPlane {
     }
 }
 
-fn path(template: &str, lease: &Uuid7) -> Cow<'static, str> {
-    Cow::Owned(template.replace("{lease_id}", lease.as_str()))
+fn path(template: &str, run: &Uuid7) -> Cow<'static, str> {
+    Cow::Owned(template.replace("{run_id}", run.as_str()))
 }
 
-fn member(template: &str, lease: &Uuid7, parameter: &str, id: &Uuid7) -> Cow<'static, str> {
-    Cow::Owned(path(template, lease).replace(parameter, id.as_str()))
+fn member(template: &str, run: &Uuid7, parameter: &str, id: &Uuid7) -> Cow<'static, str> {
+    Cow::Owned(path(template, run).replace(parameter, id.as_str()))
 }
 
 fn queried(

@@ -27,12 +27,12 @@
 use crate::report_seed;
 use std::borrow::Cow;
 
-use af_core::event::label;
 use af_core::id::Uuid7;
+use af_core::turn::label;
 use af_observability::test_util::Capture;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
-use afd_fleet::lease::Ended;
-use afd_fleet::lease::admit::Refusal;
+use afd_fleet::run::Ended;
+use afd_fleet::run::admit::Refusal;
 
 use self::report_seed::held;
 
@@ -41,8 +41,8 @@ mod history_bounds;
 #[path = "integration_activity_publish/task_history.rs"]
 mod task_history;
 
-/// How long the backdated lease still has to run, so the stages read as live.
-const LEASE_LEFT: std::time::Duration = std::time::Duration::from_secs(60);
+/// How long the backdated run still has to run, so the stages read as live.
+const RUN_LEFT: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::rows::{LAPSE, Row};
 
 /// The text the forwarded frame carries. Never read back — the bus it would
@@ -57,17 +57,17 @@ const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
 /// another's before-and-after window.
 static DELIVERY_STAGES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// An active lease's first marked frame records all three receipt/runtime stages.
+/// An active run's first marked frame records all three receipt/runtime stages.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_first_chunk_records_active_lease_stages() {
+async fn test_first_chunk_records_active_run_stages() {
     let _stages = DELIVERY_STAGES.lock().await;
     let capture = Capture::install();
     let run = held().await;
-    backdate_lease(&run).await;
+    backdate_run(&run).await;
 
     let stages = [
-        "lease_to_first_chunk",
+        "run_to_first_chunk",
         "event_to_first_chunk",
         "run_to_first_chunk",
     ];
@@ -79,7 +79,7 @@ async fn test_first_chunk_records_active_lease_stages() {
         .plane()
         .activity_for_target(
             &run.runner,
-            &run.issued.lease_id,
+            &run.issued.run_id,
             &run.activity_target().await,
             &[chunk()],
         )
@@ -89,7 +89,7 @@ async fn test_first_chunk_records_active_lease_stages() {
         assert_eq!(
             capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]),
             *baseline + 1,
-            "the active lease records exactly one {stage} sample"
+            "the active run records exactly one {stage} sample"
         );
     }
     let expired = assert_expired_not_timed(&capture, stages, before).await;
@@ -99,7 +99,7 @@ async fn test_first_chunk_records_active_lease_stages() {
 
 /// An unreachable bus does not fail the verb.
 ///
-/// The runner is told the frames were RECEIVED, because they were: the lease
+/// The runner is told the frames were RECEIVED, because they were: the run
 /// resolved, the runner owns it, and everything after that is telemetry. What
 /// happened to the frames afterwards is the daemon's problem and is accounted
 /// in its log, not on the runner's wire.
@@ -113,7 +113,7 @@ async fn test_activity_publish_bus_down() {
     let forwarded = plane
         .activity_for_target(
             &run.runner,
-            &run.issued.lease_id,
+            &run.issued.run_id,
             &run.activity_target().await,
             &[chunk()],
         )
@@ -134,7 +134,7 @@ async fn test_activity_publish_bus_down() {
 /// wrote; announcing that closing on a bus that will not take it must cost
 /// the tail one frame and the verb nothing — the row stands, and the client's
 /// reconnect backfill carries it. A panic or a hang here would turn a telemetry
-/// outage into a lease verb that never answers its runner.
+/// outage into a run verb that never answers its runner.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
@@ -142,7 +142,7 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
     let plane = run.fixtures.plane_with_dead_bus();
 
     let ended = plane
-        .leases
+        .runs
         .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
         .await
         .expect("the refusal writes over live Postgres whatever the bus does");
@@ -150,17 +150,17 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
         Ended::Now(closed) => closed,
         Ended::Already => unreachable!("a held run's row is still open"),
     };
-    assert_eq!(closed.row.status, af_core::event::status::GATE_BLOCKED);
+    assert_eq!(closed.row.status, af_core::turn::status::GATE_BLOCKED);
 
     // Returns, rather than erroring or hanging: the bus is asked once and its
     // refusal is accounted in the log, not on the verb.
-    let publication = plane.leases.publish_completion(&closed, None).await;
+    let publication = plane.runs.publish_completion(&closed, None).await;
     assert!(
         publication.is_err(),
         "the unavailable bus must remain an explicit publication error"
     );
     afd_bus::observe_notification(
-        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+        &afd_bus::Subject::ThreadItems(closed.row.fleet_id.clone()),
         publication,
     );
 }
@@ -182,7 +182,7 @@ async fn test_a_closing_counts_the_fleets_pending_gates() {
     let ended = run
         .fixtures
         .plane()
-        .leases
+        .runs
         .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
         .await
         .expect("the refusal writes over live Postgres");
@@ -218,7 +218,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
         "INSERT INTO fleet.approval_gates
            (id, fleet_id, workspace_id, action_id, tool_name, action_name,
             gate_type, proposed_action, evidence, blast_radius, expires_at,
-            resolved_by, status, detail, created_at, updated_at, event_id)
+            resolved_by, status, detail, created_at, updated_at, turn_id)
          VALUES ($1, $2, $3, $4, 'git', 'push',
                  'repository_write', 'open a pull request', '{}'::jsonb,
                  'one repository', now(), '', $5, '', now(), now(), $6)",
@@ -228,7 +228,7 @@ async fn seed_gate(run: &report_seed::Held, status: &str) {
     .bind(&workspace)
     .bind(afd_db::test_util::mint_id())
     .bind(status)
-    .bind(&run.event_id)
+    .bind(&run.turn_id)
     .execute(&mut *connection)
     .await
     .expect("the gate row must insert");
@@ -255,26 +255,17 @@ async fn assert_expired_not_timed(
     // Lapsed: its deadline is now behind the clock the activity target reads.
     expired
         .fixtures
-        .age(
-            Row::Lease(&expired.issued.lease_id),
-            "lease_expires_at",
-            LAPSE,
-        )
+        .age(Row::Run(&expired.issued.run_id), "run_expires_at", LAPSE)
         .await;
     let target = expired.activity_target().await;
     assert!(
         !target.timing_eligible,
-        "the lapsed lease is not eligible for timing"
+        "the lapsed run is not eligible for timing"
     );
     expired
         .fixtures
         .plane()
-        .activity_for_target(
-            &expired.runner,
-            &expired.issued.lease_id,
-            &target,
-            &[chunk()],
-        )
+        .activity_for_target(&expired.runner, &expired.issued.run_id, &target, &[chunk()])
         .await
         .expect("an expired holder can still publish a cosmetic frame");
     for (stage, baseline) in stages.into_iter().zip(before) {
@@ -287,7 +278,7 @@ async fn assert_expired_not_timed(
     expired
 }
 
-async fn backdate_lease(run: &report_seed::Held) {
+async fn backdate_run(run: &report_seed::Held) {
     let mut connection = run
         .fixtures
         .database
@@ -295,18 +286,18 @@ async fn backdate_lease(run: &report_seed::Held) {
         .await
         .expect("database connection");
     sqlx::query(
-        "UPDATE runner.leases
+        "UPDATE thread.runs
          SET created_at = clock_timestamp() - $2::interval,
-             event_created_at = clock_timestamp() - $3::interval,
-             lease_expires_at = clock_timestamp() + $4::interval
+             turn_created_at = clock_timestamp() - $3::interval,
+             run_expires_at = clock_timestamp() + $4::interval
          WHERE id = $1",
     )
-    .bind(&run.issued.lease_id)
+    .bind(&run.issued.run_id)
     .bind(std::time::Duration::from_millis(100))
     .bind(std::time::Duration::from_millis(200))
-    .bind(LEASE_LEFT)
+    .bind(RUN_LEFT)
     .execute(&mut *connection)
     .await
-    .expect("lease timings are current");
+    .expect("run timings are current");
     drop(connection);
 }

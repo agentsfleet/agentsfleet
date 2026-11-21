@@ -6,13 +6,13 @@
 
 use afd_db::Db;
 
-use crate::obligation::{self, AbandonReason, Claimed};
+use crate::delivery::{self, AbandonReason, Claimed};
 
-/// Logged when an answer is given up on — once per obligation.
+/// Logged when an answer is given up on — once per delivery.
 const EVENT_ABANDONED: &str = "outbound_delivery_abandoned";
 
 /// Logged when the abandon stamp could not be written.
-const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
+const EVENT_ABANDON_FAILED: &str = "outbound_delivery_abandon_failed";
 
 /// Stamps a claimed job's row abandoned and announces it — only when THIS call
 /// stamped it, so an answer already given up on says nothing twice.
@@ -20,7 +20,7 @@ const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 /// A stamp that fails is reported and nothing else: the claim lapses and the
 /// row is offered again, the at-least-once direction rather than a lost answer.
 pub(crate) async fn delivery(database: &Db, job: &Claimed, reason: AbandonReason) {
-    match obligation::abandon(database, job).await {
+    match delivery::abandon(database, job).await {
         Ok(Some(attempt_count)) => Abandoned {
             provider: &job.outgoing.provider,
             fleet_id: job.outgoing.fleet_id.as_str(),
@@ -67,9 +67,9 @@ impl Abandoned<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::obligation::Outgoing;
+    use crate::delivery::Outgoing;
 
-    /// Dimension 4.4 — what an abandonment announces carries the connector, the
+    /// What an abandonment announces carries the connector, the
     /// fleet, the reason and the count, and neither the answer nor the address.
     ///
     /// The job below carries both, and the announcement is built from the same
@@ -85,7 +85,7 @@ mod tests {
                     .to_owned(),
                 workspace_id: afd_db::test_util::mint_id(),
                 fleet_id: afd_db::test_util::mint_id(),
-                event_id: afd_db::test_util::mint_id(),
+                turn_id: afd_db::test_util::mint_id(),
                 answer: "the private answer text".to_owned(),
             },
         };

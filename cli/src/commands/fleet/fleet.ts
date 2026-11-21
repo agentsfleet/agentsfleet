@@ -1,6 +1,6 @@
-// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/events/
+// Fleet CLI top-level command Effects — status / activate / archive / delete. Creation and improvement use terminal chat; list/logs/turns/
 // steer/secret leaves live in sibling files (fleet_list.ts,
-// fleet_logs.ts, fleet_events.ts, fleet_steer.ts, fleet_secret.ts).
+// fleet_logs.ts, fleet_turns.ts, fleet_steer.ts, fleet_secret.ts).
 //
 // Each command yields services from the MainLayer (CliConfig, Output,
 // HttpClient, Credentials, Workspaces, Analytics) and emits one of the
@@ -51,7 +51,7 @@ const printFleetRows = (
     yield* output.printKeyValue({
       Name: z.name,
       Status: z.status,
-      Events: z.events_processed,
+      Turns: z.events_processed,
       Budget: formatDollars(z.budget_used_nanos),
       Waiting: waiting,
     });

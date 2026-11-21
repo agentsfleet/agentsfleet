@@ -123,8 +123,8 @@ describe("--help bodies use angle-bracket metavar convention", () => {
   const cases: ReadonlyArray<HelpCase> = [
     ["agentsfleet fleet list --help",                 ["fleet", "list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
     ["agentsfleet fleet logs --help",                 ["fleet", "logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
-    ["agentsfleet fleet events --help",               ["fleet", "events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
-    ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--plugin <id>", "--review-digest <digest>"]],
+    ["agentsfleet fleet turns --help",               ["fleet", "turns", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
+    ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--fleet <id>", "--review-digest <digest>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token-name <label>"]],
     ["agentsfleet usage show --help",         ["usage", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["agentsfleet models use --help",  ["models", "use", "--help"], ["--secret <name>", "--model <name>"]],
@@ -148,17 +148,14 @@ describe("validators reject invalid values with clear error stem", () => {
   type ValidatorCase = readonly [string, ReadonlyArray<string>, RegExp];
   // A refused value reaches stderr as `Invalid value for flag --X: "Y".
   // Expected: <stem>` and exits 4, the validation code. The STEM is what is
-  // pinned here: it is the rule the operator has to satisfy, and the three a
-  // single flag can produce — below the floor, above the cap, not an integer
-  // — have to read as one family rather than three unrelated sentences.
+  // pinned here: it is the rule the operator has to satisfy, and the two a
+  // single flag can produce — below the floor, not an integer — have to read
+  // as one family. How large a value may be is the server's call, so no
+  // ceiling is refused here.
   const cases: ReadonlyArray<ValidatorCase> = [
-    // Bounded-integer refusals.
+    // Positive-integer refusals.
     ["list --limit 0",        ["fleet", "list", "--limit", "0"],          /must be ≥ 1/],
     ["list --limit abc",      ["fleet", "list", "--limit", "abc"],        /must be an integer/],
-    ["list --limit 9999",     ["fleet", "list", "--limit", "9999"],       /must be ≤ 200/],
-    ["billing show --limit 9999", ["usage", "show", "--limit", "9999"], /must be ≤ 100/],
-    ["logs --limit 9999",     ["fleet", "logs", "--limit", "9999"],       /must be ≤ 500/],
-    ["events <id> --limit 9999", ["fleet", "events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // Identifier refusals (uuidv7 enforced).
     ["list --workspace not-a-uuid",      ["fleet", "list", "--workspace", "not-a-uuid"],    /uuidv7 format/],
   ];
@@ -202,26 +199,26 @@ describe("option values flow end-to-end into the wire request", () => {
     assert.match(hit.url, /[?&]starting_after=abc123(&|$)/);
   });
 
-  it("fleet logs <id> --limit 50 → GET .../fleets/<id>/events?limit=50", async () => {
+  it("fleet logs <id> --limit 50 → GET .../fleets/<id>/turns?limit=50", async () => {
     clear();
     const result = await runFleetctl(["fleet", "logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
-    const hit = captured.find((c) => c.url.includes(`/fleets/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-fleet events GET captured: ${JSON.stringify(captured)}`);
+    const hit = captured.find((c) => c.url.includes(`/fleets/${FIXTURE_UUIDV7}/turns`));
+    assert.ok(hit, `no per-fleet turns GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=50(&|$)/);
   });
 
-  it("events <id> --limit 100 --since 2h --actor 'steer:*' → GET ...events?actor=&since=&limit=", async () => {
+  it("fleet turns <id> --limit 100 --since 2h --actor 'steer:*' → GET .../turns?actor=&since=&limit=", async () => {
     clear();
     const result = await runFleetctl(
-      ["fleet", "events", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],
+      ["fleet", "turns", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
-    const hit = captured.find((c) => c.url.includes(`/fleets/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-fleet events GET captured: ${JSON.stringify(captured)}`);
+    const hit = captured.find((c) => c.url.includes(`/fleets/${FIXTURE_UUIDV7}/turns`));
+    assert.ok(hit, `no per-fleet turns GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=100(&|$)/);
     assert.match(hit.url, /[?&]since=2h(&|$)/);
     assert.match(hit.url, /[?&]actor=steer(%3A|:)\*/);

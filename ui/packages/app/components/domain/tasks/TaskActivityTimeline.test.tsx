@@ -5,7 +5,7 @@ import { TaskActivityTimeline } from "./TaskActivityTimeline";
 afterEach(cleanup);
 
 it("renders expandable public progress and labels an interrupted ending honestly", () => {
-  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_admission_id: null,
+  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_turn_id: null,
     operation: "goal", phase: "starting", provider: "openai", model: "selected-model", completed: 0, total: null};
   const {container, rerender} = render(<TaskActivityTimeline running={false}
     value={{items: [{kind: "task_decision_started", progress}], truncated: true}} />);
@@ -18,7 +18,7 @@ it("renders expandable public progress and labels an interrupted ending honestly
 });
 
 it("keeps pending, failed and uncertain assessment visible while routine completion moves into details", () => {
-  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_admission_id: null,
+  const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", task_id: null, source_turn_id: null,
     operation: "goal", phase: "recorded", provider: null, model: null, completed: 1, total: 1};
   const history = (phase: string) => ({items: [{kind: "task_decision_completed", progress: {...progress, phase}}], truncated: false});
   const view = render(<TaskActivityTimeline value={history("recorded")} running={false} attentionOnly />);

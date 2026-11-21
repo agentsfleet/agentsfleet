@@ -1,4 +1,4 @@
-//! One lease's workspace: a sparse ext4 image, loop-mounted in-process, sized
+//! One run's workspace: a sparse ext4 image, loop-mounted in-process, sized
 //! to its limit.
 //!
 //! A block image rather than a quota on the host's file system, so it works on
@@ -7,7 +7,7 @@
 //! directories, `workspace/` and `tmp/`, bound at `/workspace` and `/tmp`
 //! inside the sandbox: both draw on the one limit, so a full `/tmp` answers
 //! `ENOSPC` like a full workspace, where a tmpfs would hold its pages against
-//! the lease's memory until its last process is gone; and `mke2fs`'s
+//! the run's memory until its last process is gone; and `mke2fs`'s
 //! `lost+found` stays out of `/workspace`.
 
 use std::fs::{self, DirBuilder, Permissions};
@@ -25,9 +25,9 @@ use crate::host::HostTools;
 #[cfg(target_os = "linux")]
 use crate::toolbox::loop_device::{self, Access};
 
-/// The image's file name inside the lease's directory.
+/// The image's file name inside the run's directory.
 const IMAGE_NAME: &str = "workspace.img";
-/// Where the image is mounted inside the lease's directory.
+/// Where the image is mounted inside the run's directory.
 const MOUNT_DIR: &str = "workspace";
 /// Why a workspace disk cannot be built off Linux.
 #[cfg(not(target_os = "linux"))]
@@ -120,7 +120,7 @@ impl WorkspaceDisk {
         bytes: u64,
         owner: (u32, u32),
     ) -> Result<Caching> {
-        // Readable by root alone: the raw image is every file the lease wrote.
+        // Readable by root alone: the raw image is every file the run wrote.
         fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -130,7 +130,7 @@ impl WorkspaceDisk {
         tools.format_ext4(&self.image, owner).await?;
         fs::create_dir(&self.mount_point)?;
         let (mount, disk) = (tools.mount, self.paths());
-        // Off the async runtime: the lease's build shares its task with the
+        // Off the async runtime: the run's build shares its task with the
         // model's stream, and an ioctl must not stall it.
         let mounted = tokio::task::spawn_blocking(move || {
             mount(&disk.image, &disk.mount_point).map(|caching| Mounted {

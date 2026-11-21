@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.60.2",
+  "orly_version": "0.60.4",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -37,6 +37,13 @@
         "test-integration-rustd"
       ]
     ],
+    "burst.unit": [
+      [
+        "make",
+        "-k",
+        "test-unit-all"
+      ]
+    ],
     "burst.acceptance": [
       [
         "bash",
@@ -58,6 +65,71 @@
       "README.md",
       "public/openapi/"
     ]
+  },
+  "reuse": {
+    "verify.lint": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "-c",
+          "cd rustd && cargo --version && rustc --version && cargo clippy --version"
+        ],
+        [
+          "cargo-shear",
+          "--version"
+        ],
+        [
+          "shellcheck",
+          "--version"
+        ],
+        [
+          "actionlint",
+          "--version"
+        ],
+        [
+          "bun",
+          "--version"
+        ],
+        [
+          "python3",
+          "--version"
+        ]
+      ],
+      "inputs": []
+    },
+    "verify.unit": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "-c",
+          "cd rustd && cargo --version && rustc --version"
+        ],
+        [
+          "bun",
+          "--version"
+        ],
+        [
+          "node",
+          "--version"
+        ]
+      ],
+      "inputs": []
+    },
+    "verify.version": {
+      "hermetic": true,
+      "max_age_ms": 86400000,
+      "toolchain": [
+        [
+          "bash",
+          "--version"
+        ]
+      ],
+      "inputs": []
+    }
   },
   "burst": {
     "setup": [

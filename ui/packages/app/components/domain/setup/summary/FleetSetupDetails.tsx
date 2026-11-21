@@ -39,7 +39,7 @@ export function FleetSetupDetails({review, definition: savedDefinition, name, re
       <summary className="min-h-11 cursor-pointer rounded-control p-md font-medium focus-visible:outline-2 focus-visible:outline-ring sm:min-h-9 pointer-coarse:min-h-11">Instructions</summary>
       <div className="px-lg pb-lg">
       {definition?.instructions_md ? <FleetMarkdownDynamic>{definition.instructions_md}</FleetMarkdownDynamic>
-        : <p className="text-sm text-muted-foreground">Add instructions before saving or publishing.</p>}
+        : <p className="text-sm text-muted-foreground">Add instructions before saving.</p>}
       </div>
     </details>
     {review ? <SetupChecks checks={review.readiness} label="Current readiness" /> : null}

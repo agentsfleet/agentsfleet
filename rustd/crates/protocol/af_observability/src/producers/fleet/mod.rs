@@ -1,16 +1,16 @@
 //! What the runner plane, the sweepers and the account paths record.
 //!
 //! The handles are claimed here and the recording functions are split by the
-//! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, lease-poll,
-//! readiness and retention paths — each of which is one or two call sites.
+//! path that calls them: [`runner`] is the per-runner table's, and what is left here is the account, run-poll
+//! and readiness paths — each of which is one or two call sites.
 
-pub mod admission;
 pub mod cache;
 pub mod census;
 pub mod fold;
 pub mod history;
 pub mod hold;
 pub mod runner;
+pub mod turn;
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
@@ -32,26 +32,26 @@ use crate::semconv;
 /// difference rather than for the failure.
 pub(super) const UNMODELLED_REASON: &str = "unknown";
 
-/// Unsettled admissions counted by the fleet census.
-static ADMISSION_BACKLOG: Observed = Observed::new();
+/// Unsettled fleet turns counted by the fleet census.
+static TURN_BACKLOG: Observed = Observed::new();
 
 /// How long the oldest of them had waited, in seconds.
-static ADMISSION_OLDEST: Observed = Observed::new();
+static TURN_BACKLOG_OLDEST: Observed = Observed::new();
 
 /// Publishes the unsettled backlog counted by a completed census pass.
 ///
 /// Both readings together, because they describe one backlog: rows without
 /// an age cannot say whether the sweeper is keeping up. An empty backlog
 /// publishes zero rows and zero age, which is a measurement, not a gap.
-pub fn admission_backlog_observed(rows: u64, oldest_age_seconds: u64) {
-    ADMISSION_BACKLOG.publish(rows);
-    ADMISSION_OLDEST.publish(oldest_age_seconds);
+pub fn turn_backlog_observed(rows: u64, oldest_age_seconds: u64) {
+    TURN_BACKLOG.publish(rows);
+    TURN_BACKLOG_OLDEST.publish(oldest_age_seconds);
 }
 
 /// Withdraw a failed census reading rather than publishing an invented zero.
-pub fn admission_backlog_withdrawn() {
-    ADMISSION_BACKLOG.withdraw();
-    ADMISSION_OLDEST.withdraw();
+pub fn turn_backlog_withdrawn() {
+    TURN_BACKLOG.withdraw();
+    TURN_BACKLOG_OLDEST.withdraw();
 }
 
 /// The instruments the runner plane and the sweepers record through.
@@ -61,26 +61,24 @@ pub struct Handles {
     signup_bootstrapped: Counter<u64>,
     signup_replayed: Counter<u64>,
     signup_failed: Counter<u64>,
-    lease_polls: Counter<u64>,
-    lease_candidates: Counter<u64>,
+    run_polls: Counter<u64>,
+    run_candidates: Counter<u64>,
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
-    held_claims: Counter<u64>,
+    held_assignments: Counter<u64>,
     cache_lookups: Counter<u64>,
     steer_dispositions: Counter<u64>,
-    lease_folds: Counter<u64>,
+    run_folds: Counter<u64>,
     runs_started: Counter<u64>,
     cordon_changes: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
     report_answers: Counter<u64>,
-    retention_swept: Counter<u64>,
-    retention_failures: Counter<u64>,
-    admissions: Counter<u64>,
+    turns: Counter<u64>,
     runner_failures: Counter<u64>,
     runner_failures_overflow: Counter<u64>,
-    runner_executions: Counter<u64>,
+    runner_runs: Counter<u64>,
     /// The bounded per-runner table both the counters and the two runner
     /// gauges read.
     ///
@@ -105,31 +103,28 @@ impl Handles {
             signup_bootstrapped: instruments.counter_u64(&declared::SIGNUP_BOOTSTRAPPED_TOTAL)?,
             signup_replayed: instruments.counter_u64(&declared::SIGNUP_REPLAYED_TOTAL)?,
             signup_failed: instruments.counter_u64(&declared::SIGNUP_FAILED_TOTAL)?,
-            lease_polls: instruments.counter_u64(&declared::LEASE_POLLS_TOTAL)?,
-            lease_candidates: instruments
-                .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
-            history_bytes: instruments.histogram_f64(&declared::LEASE_HISTORY_BYTES)?,
-            history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
+            run_polls: instruments.counter_u64(&declared::RUN_POLLS_TOTAL)?,
+            run_candidates: instruments
+                .counter_u64(&declared::RUN_POLL_CANDIDATES_SCANNED_TOTAL)?,
+            history_bytes: instruments.histogram_f64(&declared::RUN_HISTORY_BYTES)?,
+            history_cuts: instruments.counter_u64(&declared::RUN_HISTORY_CUTS_TOTAL)?,
             history_read_failures: instruments
-                .counter_u64(&declared::LEASE_HISTORY_READ_FAILURES_TOTAL)?,
-            held_claims: instruments.counter_u64(&declared::LEASE_HELD_CLAIMS_TOTAL)?,
-            cache_lookups: instruments.counter_u64(&declared::LEASE_CACHE_LOOKUPS_TOTAL)?,
+                .counter_u64(&declared::RUN_HISTORY_READ_FAILURES_TOTAL)?,
+            held_assignments: instruments.counter_u64(&declared::RUN_HELD_ASSIGNMENTS_TOTAL)?,
+            cache_lookups: instruments.counter_u64(&declared::RUN_CACHE_LOOKUPS_TOTAL)?,
             steer_dispositions: instruments.counter_u64(&declared::STEER_DISPOSITIONS_TOTAL)?,
-            lease_folds: instruments.counter_u64(&declared::LEASE_FOLDS_TOTAL)?,
+            run_folds: instruments.counter_u64(&declared::RUN_FOLDS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             cordon_changes: instruments.counter_u64(&declared::RUNNER_CORDON_CHANGES_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             report_answers: instruments.counter_u64(&declared::RUNNER_REPORT_ANSWERS_TOTAL)?,
-            retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
-            retention_failures: instruments
-                .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
-            admissions: instruments.counter_u64(&declared::ADMISSIONS_TOTAL)?,
+            turns: instruments.counter_u64(&declared::TURNS_TOTAL)?,
             runner_failures: instruments.counter_u64(&declared::RUNNER_FAILURES_TOTAL)?,
             runner_failures_overflow: instruments
                 .counter_u64(&declared::RUNNER_FAILURES_OVERFLOW_TOTAL)?,
-            runner_executions: instruments.counter_u64(&declared::RUNNER_EXECUTIONS_TOTAL)?,
+            runner_runs: instruments.counter_u64(&declared::RUNNER_RUNS_TOTAL)?,
         };
         Self::observe_gauges(instruments, &runners)?;
         Ok(handles)
@@ -146,10 +141,10 @@ impl Handles {
     /// Whatever [`Instruments`] refuses — see [`super::install`].
     fn observe_gauges(instruments: &Instruments, runners: &Arc<RunnerMetrics>) -> Result<()> {
         instruments.gauge_u64(&declared::FLEETS, census::fleet_census_readings)?;
-        instruments.gauge_u64(&declared::ADMISSION_BACKLOG, unlabelled(&ADMISSION_BACKLOG))?;
+        instruments.gauge_u64(&declared::TURN_BACKLOG, unlabelled(&TURN_BACKLOG))?;
         instruments.gauge_u64(
-            &declared::ADMISSION_BACKLOG_OLDEST_AGE_SECONDS,
-            unlabelled(&ADMISSION_OLDEST),
+            &declared::TURN_BACKLOG_OLDEST_AGE_SECONDS,
+            unlabelled(&TURN_BACKLOG_OLDEST),
         )?;
 
         let seen = Arc::clone(runners);
@@ -157,9 +152,9 @@ impl Handles {
             seen.last_seen_readings()
         })?;
 
-        let leased = Arc::clone(runners);
-        instruments.gauge_u64(&declared::RUNNER_ACTIVE_LEASES, move || {
-            leased.active_lease_readings()
+        let held = Arc::clone(runners);
+        instruments.gauge_u64(&declared::RUNNER_ACTIVE_RUNS, move || {
+            held.active_run_readings()
         })?;
         Ok(())
     }
@@ -195,23 +190,20 @@ pub fn signup_failed(reason: SignupFailure) {
     }
 }
 
-/// Records one finished lease poll and the fleets it examined.
+/// Records one finished run poll and the fleets it examined.
 ///
 /// Both counters move together, on every exit path, because candidates per
 /// poll is the number worth reading. Statement cost is not counted here: a
 /// poll's statements run in several crates, so the bench reads them from
 /// `pg_stat_statements` instead.
-pub fn lease_polled(candidates_scanned: u64) {
+pub fn run_polled(candidates_scanned: u64) {
     if let Some(producers) = installed() {
-        producers.fleet.lease_polls.add(1, &[]);
-        producers
-            .fleet
-            .lease_candidates
-            .add(candidates_scanned, &[]);
+        producers.fleet.run_polls.add(1, &[]);
+        producers.fleet.run_candidates.add(candidates_scanned, &[]);
     }
 }
 
-/// Records one run started: a lease granted, fresh or by reclaim.
+/// Records one run started: a run granted, fresh or by reassignment.
 ///
 /// Called at the one grant point, on the `Some` it returns. A poll that found
 /// nothing leasable records nothing, because nothing started.
@@ -235,7 +227,7 @@ pub fn delivery_stage(stage: DeliveryStage, elapsed: core::time::Duration) {
     }
 }
 
-/// Records a wake ring (`af.wake.<shard>`) that failed to publish, or a gap a
+/// Records a wake ring (`af.thread.<id>.wake`) that failed to publish, or a gap a
 /// replica's wake subscription reported. The work behind it is never lost: the
 /// next Postgres probe still finds it.
 pub fn ready_wake_failed(wake: ReadyWake) {
@@ -244,20 +236,6 @@ pub fn ready_wake_failed(wake: ReadyWake) {
             .fleet
             .ready_wake_failures
             .add(1, &[KeyValue::new(semconv::LABEL_KIND, wake.as_str())]);
-    }
-}
-
-/// Records what one retention pass deleted.
-pub fn retention_swept(rows: u64) {
-    if let Some(producers) = installed() {
-        producers.fleet.retention_swept.add(rows, &[]);
-    }
-}
-
-/// Records a retention pass that did not finish.
-pub fn retention_failed() {
-    if let Some(producers) = installed() {
-        producers.fleet.retention_failures.add(1, &[]);
     }
 }
 

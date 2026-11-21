@@ -86,7 +86,7 @@ async fn a_limit_that_is_not_a_number_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_LIMIT_NOT_NUMERIC,
+            afd_api_tenant::tenant::DETAIL_LIMIT_NOT_NUMERIC,
             "a sign or a fraction is not a count on either daemon"
         );
     }

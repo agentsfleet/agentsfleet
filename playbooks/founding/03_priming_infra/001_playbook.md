@@ -106,7 +106,7 @@ The NATS `api-url` is the cluster seed on Fly's private network: `nats://agentsf
 The daemon and every NATS node read this one credential; there is no second, root-level NATS credential.
 
 Never apply schema files by hand.
-The migration runner applies `schema/*.sql` in order during deployment, starting with `schema/20261108120000_schemas.sql`.
+The migration runner applies `rustd/crates/daemon/afd_db/schema/*.sql` in order during deployment, starting with `rustd/crates/daemon/afd_db/schema/20261108120000_schemas.sql`.
 
 ### 3. Create Cloudflare tunnels
 

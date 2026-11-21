@@ -35,7 +35,7 @@ pub const TARGET_VARIABLE: &str = "BENCH_TARGET";
 const PARAMETER_FLOOR: u64 = 1;
 
 /// The longest simulated turn any profile drives: a minute of renewals and
-/// activity per lease already outlasts every drain window.
+/// activity per run already outlasts every drain window.
 const TURN_CEILING: Duration = Duration::from_secs(60);
 
 /// The most steers a second one fleet receives in a burst: five times the
@@ -127,7 +127,7 @@ pub enum Profile {
 pub enum Parameter {
     /// How many fleets the run creates or reads.
     Fleets,
-    /// How many concurrent runners poll for a lease.
+    /// How many concurrent runners poll for a run.
     Runners,
     /// How many delivery jobs the run queues.
     Jobs,

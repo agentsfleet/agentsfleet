@@ -5,9 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use af_egress::testing::CountingMint;
-use af_providers::Message;
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 use afr_tools::catalog::HTTP_REQUEST;
+use guffbolt::Message;
 use tokio_util::sync::CancellationToken;
 
 use crate::engine::{AgentEngine as _, AgentRun, Meter, RunOutput};
@@ -21,22 +21,22 @@ pub(super) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// An inbox whose messages arrive on cue: each is claimable from the claim
+/// An inbox whose messages arrive on cue: each is assignable from the assignment
 /// whose index (from 0) it names on, the way a person's send lands between
 /// two model calls.
 #[derive(Debug, Default)]
 pub(super) struct Arriving {
     scheduled: Mutex<Vec<(usize, Folded)>>,
-    claims: AtomicUsize,
+    assignments: AtomicUsize,
     asked: Mutex<Vec<i64>>,
 }
 
 impl Arriving {
-    pub(super) fn on_claim(&self, claim: usize, sequence: i64, text: &str) {
+    pub(super) fn on_assignment(&self, assignment: usize, sequence: i64, text: &str) {
         locked(&self.scheduled).push((
-            claim,
+            assignment,
             Folded {
-                event_id: format!("019f0000-0000-7000-8000-{sequence:012}"),
+                turn_id: format!("019f0000-0000-7000-8000-{sequence:012}"),
                 sequence,
                 text: text.to_owned(),
             },
@@ -50,12 +50,12 @@ impl Arriving {
 
 #[async_trait::async_trait]
 impl Inbox for Arriving {
-    async fn claim(&self, after_sequence: i64) -> Vec<Folded> {
-        let claim = self.claims.fetch_add(1, Ordering::Relaxed);
+    async fn assign(&self, after_sequence: i64) -> Vec<Folded> {
+        let assignment = self.assignments.fetch_add(1, Ordering::Relaxed);
         locked(&self.asked).push(after_sequence);
         let mut ready: Vec<Folded> = locked(&self.scheduled)
             .iter()
-            .filter(|(on, folded)| *on <= claim && folded.sequence > after_sequence)
+            .filter(|(on, folded)| *on <= assignment && folded.sequence > after_sequence)
             .map(|(_, folded)| folded.clone())
             .collect();
         ready.sort_by_key(|folded| folded.sequence);
@@ -63,19 +63,19 @@ impl Inbox for Arriving {
     }
 }
 
-/// An inbox that answers the same message to its first claims, whatever the
+/// An inbox that answers the same message to its first assignments, whatever the
 /// cursor they ask from: a daemon that lost track of what it had handed out.
 #[derive(Debug)]
 pub(super) struct Replaying {
     pub(super) message: Folded,
     pub(super) replays: usize,
-    pub(super) claims: AtomicUsize,
+    pub(super) assignments: AtomicUsize,
 }
 
 #[async_trait::async_trait]
 impl Inbox for Replaying {
-    async fn claim(&self, _after_sequence: i64) -> Vec<Folded> {
-        if self.claims.fetch_add(1, Ordering::Relaxed) < self.replays {
+    async fn assign(&self, _after_sequence: i64) -> Vec<Folded> {
+        if self.assignments.fetch_add(1, Ordering::Relaxed) < self.replays {
             vec![self.message.clone()]
         } else {
             Vec::new()
@@ -83,7 +83,7 @@ impl Inbox for Replaying {
     }
 }
 
-/// An inbox whose claim is still being answered when the lease stops.
+/// An inbox whose assignment is still being answered when the run stops.
 #[derive(Debug)]
 pub(super) struct Interrupted {
     pub(super) stop: CancellationToken,
@@ -91,11 +91,11 @@ pub(super) struct Interrupted {
 
 #[async_trait::async_trait]
 impl Inbox for Interrupted {
-    async fn claim(&self, _after_sequence: i64) -> Vec<Folded> {
+    async fn assign(&self, _after_sequence: i64) -> Vec<Folded> {
         self.stop.cancel();
         tokio::task::yield_now().await;
         vec![Folded {
-            event_id: "019f0000-0000-7000-8000-000000000003".to_owned(),
+            turn_id: "019f0000-0000-7000-8000-000000000003".to_owned(),
             sequence: 3,
             text: "too late".to_owned(),
         }]
@@ -104,7 +104,7 @@ impl Inbox for Interrupted {
 
 pub(super) async fn run_with(
     script: &Script,
-    payload: &LeasePayload<'_>,
+    payload: &RunPayload<'_>,
     inbox: &dyn Inbox,
     stop: &CancellationToken,
 ) -> crate::Result<RunOutput> {
@@ -115,7 +115,7 @@ pub(super) async fn run_with(
             recovered_task: None,
             recovered_turn: None,
             prepared_task: None,
-            lease: payload,
+            run: payload,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
                 afr_executor::Unavailable::NoSandbox,

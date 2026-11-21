@@ -165,7 +165,7 @@ fn a_recovery_request_survives_unrelated_locality_hints()
 }
 
 #[test]
-fn an_old_claim_cannot_clear_a_newer_recovery_generation()
+fn an_old_assignment_cannot_clear_a_newer_recovery_generation()
 -> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let wake = Wake::default();
     wake.recheck();

@@ -1,77 +1,13 @@
-# =============================================================================
-# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + NATS
-# =============================================================================
-# M175 §6 deleted `make/test-integration.mk` with the retired daemon's gating.
-# The datastores did not go away with it: `make/test-infra.mk` survived, because
-# it is the disposable-environment half — what boots, where it listens, and how
-# state is reset. This file is the lane that consumes it for the Rust port.
-#
-# Named `test-integration-rustd` rather than reclaiming the freed
-# `test-integration`: that name meant the retired daemon's suite for two years,
-# and a target that silently inherits a retired meaning is how a green run gets read
-# as a claim it never made.
-#
-# Three things in the recipe are load-bearing and easy to "simplify" away:
-#
-#   1. The Python wrapper OWNS the child process. This recipe runs under
-#      /bin/sh, which is dash on the CI runner, and dash has no `pipefail`.
-#      Piping through `tee` would report tee's status; writing Cargo's status to
-#      a side file instead made disk exhaustion replace the original failure.
-#      The wrapper streams and tallies output while retaining the child's status
-#      in memory, so neither shell feature nor writable diagnostic file decides
-#      whether the lane passed.
-#   2. The lane fails when the suite reports ZERO passing tests. A selection
-#      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
-#      "everything passed" by exit status alone — the retired lane learned this
-#      the expensive way (it ran green for a week against a dead port).
-#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas first, while
-#      `KEEP_TEST_STATE=1` keeps the inner loop fast. CI never sets that escape
-#      hatch.
-#   4. The service settings are NOT passed on the command line. `test-infra.mk`
-#      exports `TEST_DATABASE_URL` and `TEST_NATS_URL`,
-#      and the suites read those names directly. This file used to resolve a URL
-#      through a shell macro and hand it to cargo under a fourth, `AFD_`-prefixed
-#      name; the rename bought nothing and cost a reader two files to answer
-#      "where does this URL come from".
-#   5. The recipe `cd`s into rustd/ rather than passing `--manifest-path`.
-#      rustup selects a toolchain from the WORKING DIRECTORY, not from the
-#      manifest, so `--manifest-path` builds the workspace with whatever
-#      toolchain the machine defaults to — on the CI runner that is the image's
-#      `stable`, not the version `rustd/rust-toolchain.toml` pins, and it moves
-#      under us whenever the image is rebuilt. `make test-unit-rustd` has
-#      always done it this way; this lane learned it the expensive way, on a
-#      red CI run.
-
+# The Rust lanes against live Postgres + NATS (make/test-infra.mk). Recipes `cd`
+# into rustd/ rather than pass `--manifest-path`: rustup picks the toolchain from
+# the working directory, and the pinned one is in rustd/rust-toolchain.toml.
 .PHONY: test-integration-rustd test-coverage-rustd test-coverage-rustd-merge rustd-coverage-shards _migrate-test-db
 
-# The schema, applied ONCE for the whole lane.
-#
-# `$(TEST_STATE_DEP)` drops the schemas and says "migrations will rebuild on
-# next step". This is that step, and it is the step the port had been skipping:
-# every test built a database of its own and applied all forty-seven
-# `schema/*.sql` files into it, which at a hundred and forty-three tests is
-# about six thousand seven hundred migration applications to produce one schema
-# a hundred and forty-three times. That was the whole of the lane's runtime.
-#
-# The retired harness never did this. Its rule was one line — "Runs against the
-# LIVE test database. Never creates temp tables." — and a hundred and forty-five
-# integration files honoured it. `afd_db::test_util::TestDatabase::shared` is
-# that rule restored; see that module on what replaces the isolation.
-#
-# Through the daemon's own `migrate` subcommand rather than a bespoke recipe, so
-# the lane applies the schema the way a deployment does — including the ledger,
-# the advisory lock, and the refusal to run against a version this binary does
-# not know. A second path to the same schema is a second thing to drift.
-#
-# The reset is this step's own prerequisite, not a sibling a caller lists
-# beside it: `make -j` orders only what depends on what, so two siblings run
-# together and the reset can drop the schema the migration is applying.
-# Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
-# The API pool's login, created after the migration that creates `api_runtime`:
-# the provider's `--inherited-roles api_runtime`, spelled in plain Postgres.
-# Idempotent; roles are cluster-wide and outlive the schema reset. The two
-# bounds equal `afd_db::login`'s constants, which
-# `the_api_login_runs_under_the_intake_bounds` reads back.
+# The schema, once per lane, through the daemon's own `migrate`, so it applies
+# the way a deployment does. The reset is its prerequisite, not a sibling, so
+# `make -j` cannot run the two at once.
+# The API login is idempotent (roles outlive the reset); its bounds equal
+# afd_db::login's constants, which `the_api_login_runs_under_the_intake_bounds` reads back.
 define _api_login
 docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -c \
   "DO \$$\$$ BEGIN CREATE ROLE $(TEST_DATABASE_API_LOGIN) LOGIN PASSWORD '$(TEST_DATABASE_API_LOGIN)' IN ROLE api_runtime; EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL; END \$$\$$" \
@@ -91,34 +27,13 @@ _migrate-test-db: $(TEST_STATE_DEP)
 	@echo "✓ [infra] Schema applied"
 	@$(_api_login)
 
-# Integration tests are marked `#[ignore]` in the source and run ONLY here, via
-# `--ignored`. That is the cargo-native gate and it costs nothing at unit time:
-# `make test-unit-rustd` still COMPILES every one of them (so they are type-
-# checked and linted like the rest), lists them as ignored, and runs none —
-# which is what keeps live Postgres off the fast lane. Each ignore reason names
-# this target, so a developer who runs one directly is told where it belongs.
-# afd_bench is a measuring instrument with separate manual bench-* targets.
-# Its sampled datastore counters are not deterministic integration assertions.
-# Keep it out of both datastore gates; retain the zero-tests guard for the
-# actual service integration suite.
-
-# ONE guard, both lanes — $(call _rust_lane,<tally-name>,<label>,<command...>)
+# Integration tests are `#[ignore]`d and run only here, with `--ignored`;
+# test-unit-rustd still compiles and lints them. afd_bench is excluded: its
+# sampled counters are measurements, not assertions.
 #
-# Two ways a Rust lane reports success it did not earn, and this closes both:
-#
-#   1. The child failed and the pipe swallowed it. `tee` is the last command in
-#      the pipeline, so `$$?` is tee's status, not cargo's. `bash -o pipefail`
-#      is what makes the pipeline carry the child's failure instead — and it is
-#      spelled `bash` explicitly because make runs recipes under `/bin/sh`,
-#      which is dash on the Continuous Integration image and has no pipefail.
-#   2. Nothing ran. A `--ignored` selection matching nothing exits 0 and prints
-#      `0 passed`, which reads exactly like a pass. So the passing counts are
-#      summed across every `test result:` line and a zero total is a failure,
-#      whatever the exit status said.
-#
-# The tally file is a diagnostic convenience. Losing it may cost a developer an
-# artifact; it can never cost the exit status, which is read from the pipeline
-# rather than from anything written to disk.
+# $(call _rust_lane,<tally>,<label>,<command>) closes two false passes:
+# `bash -o pipefail` keeps cargo's status through `tee` (/bin/sh is dash in CI),
+# and zero passed tests fails, since a selection matching nothing exits 0.
 define _rust_lane
 mkdir -p "$(CURDIR)/.tmp"; \
 tally="$(CURDIR)/.tmp/$(1)"; \
@@ -137,19 +52,8 @@ else \
 fi
 endef
 
-# The wrapper merges the command's stderr into stdout itself. Its diagnostic log
-# is best-effort: losing that file may lose a convenience artifact, never the
-# child's exit status or the passing-test count.
-# The modules that must own the cluster while they run, as one filter both
-# invocations share: the parallel lane skips them, the second runs only them,
-# and neither can drift from the other.
-#
-# A test earns a place here by acting on the cluster every sibling shares.
-# `integration_bus_exclusive` stops a real NATS node, which drops every
-# sibling's client on it.
-#
-# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so
-# deleting every module here fails the lane rather than silently passing.
+# Modules that need the cluster to themselves (`integration_bus_exclusive` stops
+# a NATS node), run apart; both invocations share this one filter.
 EXCLUSIVE_FILTER := integration_bus_exclusive
 EXCLUSIVE_SKIP := $(addprefix --skip ,$(EXCLUSIVE_FILTER))
 
@@ -157,214 +61,84 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@cd $(RUSTD_DIR) && cargo build --locked --all-features -p agentsfleet_runner --bin agentsfleet-recovery-fixture
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --locked --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored $(EXCLUSIVE_SKIP))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
-	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --locked --workspace --exclude afd_bench --all-features --test "*" --no-fail-fast -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
-# The ONE invocation that executes both tiers, and therefore the one that
-# measures them.
-#
-# The line floor this lane enforces, and the reason it is not 100.
-#
-# The repository's committed contract is 100% and remains the target; the spec
-# carrying this work says so itself ("an implementation checkpoint while the
-# committed 100% contract remains authoritative"). What this is is a RATCHET:
-# a floor set to the coverage already achieved, so the lane can go green on
-# work that did not regress while the remaining gap is closed by later
-# milestones.
-#
-# 96 comes from a measured 96.0219% -- 25,224 of 26,269 lines, 1,045 missed
-# across 153 files, the largest being afd_fleet (231), afd_gate (100) and
-# afd_credential (95). That reading is from an earlier run and the floor was
-# set from it deliberately rather than by re-measuring, on the user's call.
-#
-# A ratchet only moves UP. Lowering this number to make a red lane green is
-# the thing it exists to prevent: raise it whenever a run beats it, and never
-# reduce it without recording why, here.
-# History, each move on Indy's call:
-#   96 -> 97   (2026-08-31) to meet the last Pull Request's reading.
-#   97 -> 98   (2026-09-02) set ahead of the code; never achieved (97.2041%).
-#   98 -> 97   (2026-09-02) returned to the measurement, not below it.
-#   97 -> 97.5 (2026-09-19) on 97.6994%, 41,362 of 42,336 lines.
-#   97.5 -> 99.5 (2026-10-20) on 99.5863%, 72,214 of 72,514 lines, PR #778's
-#   merge run. The margin is about 62 lines: a change that leaves an uncovered
-#   path covers it, which is the point.
-#   99.5 -> 98.5 (2026-11-06) on Indy's M236 closeout instruction:
-#   "overall Rust gate at 99%? if that is possible? or 98.5%". Exact-head
-#   CI measured 98.5561%, 97,948 of 99,383 lines, on 9499b0552.
-#   98.5 -> 98 (2026-11-08) on Indy's instruction: "if it fails again move the
-#   coverage down to 98 on the safer side and push". PR #817 changes no Rust and
-#   twice measured under the floor, 98.4981% and 98.4991% of 101,407 lines.
-# `scripts/rustd_coverage.py` compares in exact decimals, so a half point is
-# enforced rather than rounded. The 100% contract in the header remains the goal.
+# A ratchet toward 100%: raise it when a run beats it, lower it only on Indy's
+# word, recorded here. 98 since Nov 08, 2026: "if it fails again move the
+# coverage down to 98 on the safer side and push". The judge compares exact
+# decimals, so a fraction is enforced, not rounded.
 RUSTD_COVERAGE_FLOOR ?= 98
 
-# Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
-#
-# `crates/*/*/src/test_util.rs`, or `test_util/mod.rs` where the module has
-# children, is fixture code compiled only under the `test-util` feature --
-# `TestDatabase::shared` and the two like it. The lane measures with
-# `--all-features`, so it was being graded as production surface:
-# 143 lines, of which the suites happen to cover 127.
-#
-# That is the whole reason this is a MEASUREMENT fix and not a coverage win.
-# Removing those lines removes 127 covered ones with them, so the number moves
-# 97.1717% -> 97.2041% and the gap to the floor goes 308 lines -> 295. Nothing
-# here is a shortcut to 98; it is only the denominator no longer counting
-# fixtures as shipped code.
-#
-# Deleting the files instead was measured and rejected: 74 files and 117 call
-# sites reach them, including every suite that depends on the shared-database
-# contract this file's header describes.
-#
-# FILE granularity is all `--ignore-filename-regex` has, so this is exactly the
-# three whole-file modules. The `#[cfg(feature = "test-util")]` helpers that sit
-# INSIDE otherwise-production files -- af_crypto's entropy seams, afd_db's
-# migration and pool helpers, and a dozen more -- are still counted, because a
-# filename filter cannot see a block. The exclusion is therefore partial by
-# construction, and that is recorded here rather than discovered later by
-# someone reconciling two numbers.
-#
-# The bench crate leaves the DENOMINATOR too, on Indy's call (2026-09-07):
-# "the afd_bench/ crate must be ignored from codecov and the coverage we
-# conduct, that is just an optional crate to measure bench and no where used
-# in production". `crates/daemon/afd_bench` is a measuring instrument -- five lane
-# binaries and the harness they share -- with no consumer in the workspace
-# (`rustd/Cargo.toml` lists it as a member; nothing depends on it) and no path
-# into a shipped binary. Its tests still RUN in this lane, so the lanes stay
-# proven; their lines are no longer graded as production surface. On PR #667
-# the crate's five `main`s and their shared preamble were 111 of the 167 unhit
-# lines behind a 90.8% patch grade against the 97 floor. codecov.yml ignores
-# the same path, so the two gates read one denominator.
-#
-# The toolbox's kernel-lane files (`adopt`, `loop_device`, `admit`,
-# `kernel_mounter`) are graded. Pull Request (PR) #732 excused them on
-# 2026-10-06, when no lane that executes them reached this grade; b184c27f7
-# then merged `make test-coverage-runner-kernel`'s report into it, and
-# excluding them threw that lane's measurement away. Dropped on Indy's call
-# (2026-10-15, M227).
+# Out of the denominator, on Indy's calls: whole-file test_util modules (fixture
+# code; a filename filter cannot see in-file `#[cfg]` helpers, which still count)
+# and afd_bench, a measuring instrument nothing ships. codecov.yml ignores the
+# same paths. afd_bench's tests still run.
 RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 
-# The floor's verdict, carrying the number that decided it, decided ONCE.
-#
-# The lane runs as shards (below), and a shard's report covers only the tests it
-# ran, so the floor cannot be read off any one of them. `scripts/rustd_coverage.py`
-# merges the shards' lcov files line by line and grades the union. The same
-# script grades a local unsharded run, so Continuous Integration and a developer
-# read one judge.
-#
-# It replaces `cargo llvm-cov report --summary-only --fail-under-lines`, which can
-# only grade a profile it holds; the merge job holds lcov files, not profiles.
-# The two read the same numbers: LCOV's `LF:`/`LH:` records are llvm-cov's line
-# denominator and numerator (verified equal on a probe crate, 2/5 = 40.00% both
-# ways), and the script compares in exact decimals, so the floor is enforced rather
-# than rounded. A red run prints the missed lines by crate, the answer to
-# "where" that used to cost a second instrumented run.
-#
-# The judge grades the PATCH as well: the Rust lines this branch adds, against
-# `RUSTD_PATCH_FLOOR`, which is codecov.yml's `rust-afd` patch target and moves
-# with it. Codecov grades the same merged report; grading it here too means the
-# lane's verdict names the unhit lines itself instead of waiting on a status
-# nobody requires. The base is where this branch left `origin/main`;
-# Continuous Integration passes the pull request's base explicitly. An empty
-# base skips the patch grade (a checkout with no `origin/main` to measure from).
-#
-# Indy replaced the separate touched-file floor on Nov 06, 2026:
-# "Use aggregate gates only". The required grades are overall and patch;
-# the report still identifies missed lines without a per-file veto.
-# Indy reset patch coverage on Nov 06, 2026: "95% or what ever you have done"
-# so subsequent milestones can raise it from verified work. CI measured
-# 94.3990%, 21,000 of 22,246 changed lines, on 9499b0552; 94% is the floor.
-# Indy raised it on Nov 08, 2026: "move the coverage from 94 to 97.5", on
-# #816's measured 97.6744%, 2,184 of 2,236 changed lines.
-# Indy lowered it on Nov 10, 2026: "move the gate to downwards", "since i want
-# to test", "to 95%", "i want the CI gate to pass too", on #819's measured
-# 95.9156%, 11,859 of 12,364 changed lines.
-# codecov.yml uses the same patch and overall Rust floors; TypeScript stays 100%.
+# A shard reports only the tests it ran, so scripts/rustd_coverage.py merges the
+# shards' lcov files and grades the union once; a local unsharded run uses the
+# same judge. It also grades the patch, the lines this branch adds, against
+# codecov.yml's `rust-afd` target; an empty base skips that.
+# 95 since Nov 10, 2026, on Indy's "to 95%".
 RUSTD_PATCH_FLOOR ?= 95
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
+# guffbolt, the published harness, holds a floor of its own beside the global
+# one, over its own lines of the union.
+RUSTD_GUFFBOLT_FLOOR ?= 99
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
+  --crate-floor guffbolt=$(RUSTD_GUFFBOLT_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
-# Each shard owns its Postgres and NATS,
-# measured in parallel and graded together by `test-coverage-rustd-merge`.
-#
-#   runner     the Rust runner's crates, plus the daemon suite's
-#              `integration_rust_runner::` modules: the runner against a live
-#              daemon. A runner leases any fleet whose required tags it carries,
-#              so on the shared lane it was offered every fleet the other
-#              scenarios had left behind; on its own datastores it is offered its own.
-#   daemon     `agentsfleetd`, minus the runner and native-stream modules.
-#   stream     the native-stream scenarios from the daemon suite.
-#   api        the API and fleet crates, whose live-service suites dominate
-#              the remaining test time when they share substrate's runner.
-#   substrate  every other crate: the workspace minus the packages above.
-#
-# The partition is total by construction. `substrate` is defined by exclusion,
-# so a crate added later lands there without an edit. `daemon` skips exactly
-# the filters `runner` and `stream` select. No test can fall between shards, and a filter
-# that matches nothing fails its invocation through `_rust_lane`'s zero-tests
-# guard rather than passing empty.
-#
-# `RUSTD_SHARD` names one shard, which writes `lcov-<shard>.info` and its `.rev`
-# sidecar and grades nothing. Unset, it is every shard, run in sequence into one
-# profile and graded: the local full measurement, through the invocations
-# Continuous Integration makes. Any other subset is refused, because grading a
-# partial union is the failure this layout exists to rule out.
-RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agentsfleet_runner
-RUSTD_DAEMON_PACKAGES := agentsfleetd
-RUSTD_API_PACKAGES := afd_api afd_fleet
-RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
-RUSTD_STREAM_IN_DAEMON := integration_runner_stream::
-RUSTD_SHARDS := runner daemon stream api substrate
+# Each shard owns its Postgres and NATS; test-coverage-rustd-merge grades them.
+# A shard is a layer group, named by folder globs under rustd/ as the unit
+# shards are (make/test-unit.mk), so a crate is measured in the shard of the
+# folder it sits in:
+#   foundation  the foundation/ and protocol/ layers
+#   harness     the harness/ layer
+#   runner      the runner/ layer
+#   daemon-api  the daemon/ layer's two heaviest suites: afd_api* and afd_fleet*
+#   daemon      the rest of the daemon/ layer, then the suites that need the
+#               cluster alone (afd_bus holds them)
+#   e2e         the daemon-and-runner suites (af_e2e)
+#   guffbolt    the published harness, graded at RUSTD_GUFFBOLT_FLOOR too
+# afd_bench is measured by no shard: its sampled counters are measurements,
+# not assertions, and RUSTD_COVERAGE_IGNORE keeps its lines out of the floor.
+# af_e2e's tests/layers.rs proves every member lands in exactly one shard or in
+# RUSTD_COVER_SKIP, and a filter matching nothing fails the lane.
+# RUSTD_SHARD names one shard, which writes lcov-<shard>.info and grades
+# nothing; unset runs every shard and grades. Any other subset is refused.
+RUSTD_COVER_FOUNDATION_DIRS := crates/foundation/* crates/protocol/*
+RUSTD_COVER_HARNESS_DIRS := crates/harness/*
+RUSTD_COVER_RUNNER_DIRS := crates/runner/*
+RUSTD_COVER_DAEMON_API_DIRS := crates/daemon/afd_api* crates/daemon/afd_fleet*
+RUSTD_COVER_DAEMON_DIRS := crates/daemon/afd_ad* crates/daemon/afd_app* crates/daemon/afd_au* crates/daemon/afd_b* crates/daemon/afd_c* crates/daemon/afd_d* crates/daemon/afd_g* crates/daemon/afd_h* crates/daemon/afd_i* crates/daemon/afd_m* crates/daemon/afd_o* crates/daemon/afd_r* crates/daemon/afd_s* crates/daemon/afd_t* crates/daemon/afd_v* crates/daemon/main
+RUSTD_COVER_E2E_DIRS := crates/e2e/*
+RUSTD_COVER_GUFFBOLT_DIRS := guffbolt
+RUSTD_COVER_SKIP := afd_bench
+RUSTD_SHARDS := foundation harness runner daemon-api daemon e2e guffbolt
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
-# Every report the floor is graded over: the shards, and the kernel lane's
-# (`test-coverage-runner-kernel`, make/test-unit.mk), which needs root and a
-# real kernel rather than datastores and so is not a shard.
+# Plus the kernel lane's report (test-coverage-runner-kernel): not a shard,
+# because it needs root and a real kernel.
 RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
-_RUSTD_COVER := cargo llvm-cov --locked --no-report --all-features
+_RUSTD_COVER := cargo llvm-cov --locked --no-report --all-features --no-fail-fast
 _rustd_packages = $(foreach package,$(1),-p $(package))
-_RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES) $(RUSTD_API_PACKAGES),--exclude $(package))
+# The packages of shard $(1): its folders' crates, less the skipped ones.
+_rustd_shard = $(filter-out $(RUSTD_COVER_SKIP),$(call _rustd_dirs,$(RUSTD_COVER_$(1)_DIRS)))
+# $(call _rustd_shard_lane,<NAME>,<shard>,<label>): one shard's crates, every
+# test run once with the ignored ones included.
+_rustd_shard_lane = $(call _rust_lane,rustd-coverage-$(2).log,[rustd] coverage: $(3),$(_RUSTD_COVER) $(call _rustd_packages,$(call _rustd_shard,$(1))) -- --include-ignored $(4))
 _RUSTD_SHARD_UNKNOWN := $(filter-out $(RUSTD_SHARDS),$(RUSTD_SHARD))
 _RUSTD_SHARD_ALL := $(if $(filter-out $(RUSTD_SHARD),$(RUSTD_SHARDS)),,yes)
 _RUSTD_SHARD_ONE := $(if $(filter 1,$(words $(RUSTD_SHARD))),yes,)
 _RUSTD_SHARD_LCOV := $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).info
 
-# `cargo llvm-cov` reports only what actually ran. The integration tests are
-# `#[ignore]`d, so a unit-only measurement sees every pool, stream and migrator
-# line as uncovered — the code is exercised, just not by the run holding the
-# instrument. Measuring here, with `--include-ignored`, puts the instrument
-# where the datastores are. That is the milestone's stated route: reach the
-# number, do not move the bar.
-#
-# Every test still runs ONCE: each lands in exactly one shard. Instrumenting the
-# run the lane was already making is what keeps a full verification from
-# executing every live-service test twice on two runners — the mistake the
-# retired build graph made and then fixed. The lane migrates after the reset
-# through `cargo llvm-cov run --no-report`, so the migrator's lines are measured
-# and the daemon is built once, instrumented.
-#
-# `--no-report` on every pass is what carries the migrator's profile into the
-# test runs: it is cargo-llvm-cov's accumulate mode, which skips the implicit
-# clean and leaves the profraw for a later `report` to merge. The explicit
-# `cargo llvm-cov clean --workspace` above is therefore the only clean, and it
-# runs once, before any pass. `--no-clean` is NOT the way to spell this —
-# cargo-llvm-cov refuses the pair outright ("error: --no-report may not be used
-# together with --no-clean"), because --no-report already implies it. Verified
-# on a probe crate: a `run --no-report` covering one function then a
-# `--no-report` test pass covering another reported both (40% -> 60%), so
-# nothing is lost by dropping it.
-#
-# The exclusive hub suite gets the cluster to itself here too. The single
-# `--include-ignored` invocation this replaces ran it beside every other suite,
-# the one thing `EXCLUSIVE_FILTER` says it must never do.
-# Each step reports its own time: the migrate line its build and run, Cargo's
-# "Finished `test` profile" line the test build, `_rust_lane` the build and the
-# tests together, and the render line the report. The migrate build cannot
-# share the test build's dependencies: tests turn on dev-dependency features
-# (`tokio`'s `process` and `test-util` among them), so every crate above
-# `tokio` builds twice. Measured Nov 08, 2026 with `cargo tree -e features`.
+# `--include-ignored` puts the instrument where the datastores are; every test
+# still runs once. Migrating through `cargo llvm-cov run --no-report` measures
+# the migrator too. `--no-report` is accumulate mode, so the explicit `clean`
+# runs once, first; cargo-llvm-cov refuses `--no-clean` beside it.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores (RUSTD_SHARD=<one> for a Continuous Integration shard)
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@$(if $(_RUSTD_SHARD_UNKNOWN),echo "✗ [rustd] unknown RUSTD_SHARD: $(_RUSTD_SHARD_UNKNOWN) (known: $(RUSTD_SHARDS))"; exit 1,true)
@@ -378,29 +152,36 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }; \
 	echo "✓ [infra] Instrumented schema applied ($$(( $$(date +%s) - started ))s, its build included)"
 	@$(_api_login)
+ifneq ($(filter foundation,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard foundation: the foundation and protocol layers..."; \
+	$(call _rustd_shard_lane,FOUNDATION,foundation,foundation and protocol)
+endif
+ifneq ($(filter harness,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard harness: the harness layer..."; \
+	$(call _rustd_shard_lane,HARNESS,harness,harness)
+endif
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
-	$(call _rust_lane,rustd-coverage-runner.log,[rustd] coverage: runner crates,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_RUNNER_PACKAGES)) -- --include-ignored); \
-	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
+	@echo "→ [rustd] Shard runner: the runner layer..."; \
+	$(call _rustd_shard_lane,RUNNER,runner,runner)
+endif
+ifneq ($(filter daemon-api,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard daemon-api: the daemon layer's API and fleet suites..."; \
+	$(call _rustd_shard_lane,DAEMON_API,daemon-api,daemon API and fleet)
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard daemon: the daemon layer, then the suites that need the cluster alone..."; \
+	$(call _rustd_shard_lane,DAEMON,daemon,daemon,$(EXCLUSIVE_SKIP)); \
+	$(call _rust_lane,rustd-coverage-daemon-exclusive.log,[rustd] coverage: daemon (exclusive),$(_RUSTD_COVER) $(call _rustd_packages,$(call _rustd_shard,DAEMON)) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+endif
+ifneq ($(filter e2e,$(RUSTD_SHARD)),)
 	@cd $(RUSTD_DIR) && cargo llvm-cov run --locked --all-features --no-report \
 	  -p agentsfleet_runner --bin agentsfleet-recovery-fixture -- --help
-	@echo "→ [rustd] Shard daemon: agentsfleetd without runner and native-stream modules..."; \
-	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON) --skip $(RUSTD_STREAM_IN_DAEMON))
+	@echo "→ [rustd] Shard e2e: the runner driven against the daemon..."; \
+	$(call _rustd_shard_lane,E2E,e2e,daemon and runner)
 endif
-ifneq ($(filter stream,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard stream: native runner sessions against the daemon..."; \
-	$(call _rust_lane,rustd-coverage-stream.log,[rustd] coverage: native runner streams,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_STREAM_IN_DAEMON))
-endif
-ifneq ($(filter api,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard api: the API and fleet suites..."; \
-	$(call _rust_lane,rustd-coverage-api.log,[rustd] coverage: API and fleet,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_API_PACKAGES)) -- --include-ignored)
-endif
-ifneq ($(filter substrate,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard substrate: the remaining crates, then the suites that need the cluster alone..."; \
-	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored $(EXCLUSIVE_SKIP)); \
-	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+ifneq ($(filter guffbolt,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard guffbolt: the published harness..."; \
+	$(call _rustd_shard_lane,GUFFBOLT,guffbolt,guffbolt)
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@echo "→ [rustd] Rendering the run's profile, then grading the floor..."; \
@@ -419,9 +200,8 @@ else
 	@echo "✓ [rustd] shard $(RUSTD_SHARD) measured: $(_RUSTD_SHARD_LCOV)"
 endif
 
-# The floor, graded once over every shard's report. Continuous Integration's
-# merge job is the caller; a shard missing, or measured at another commit than
-# this checkout, is refused rather than graded as a smaller lane.
+# The floor over every shard's report, for CI's merge job; a missing shard, or
+# one measured at another commit, is refused.
 test-coverage-rustd-merge:  ## Grade the Rust line floor once over every shard's lcov report
 	@$(_RUSTD_COVERAGE_JUDGE) --revision "$$(git rev-parse HEAD)" --out $(RUSTD_DIR)/lcov.info \
 	  $(foreach report,$(RUSTD_COVERAGE_REPORTS),$(RUSTD_DIR)/lcov-$(report).info)

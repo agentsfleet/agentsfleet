@@ -13,7 +13,7 @@ use super::{Error, ErrorKind};
 // through [`query`] and [`stored_json`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_admission::Error => Admission,
+    afd_turns::Error => TurnWrite,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => Identifier,
 );
@@ -93,14 +93,6 @@ pub(crate) fn stored_json(
     }
 }
 
-/// Reports a parsed registration request that would not serialise.
-pub(crate) fn undigestible(source: serde_json::Error) -> Error {
-    ErrorKind::RequestDigest {
-        source: af_core::json::Unreadable::from(source),
-    }
-    .into()
-}
-
 /// Reports an authenticated runner whose row has since disappeared.
 pub(crate) fn runner_vanished() -> Error {
     ErrorKind::RunnerVanished.into()
@@ -111,14 +103,14 @@ pub(crate) fn runner_not_revoked() -> Error {
     ErrorKind::RunnerNotRevoked.into()
 }
 
-/// Refuses deleting a runner that still holds a live or unbilled lease.
-pub(crate) fn runner_still_leased() -> Error {
-    ErrorKind::RunnerStillLeased.into()
+/// Refuses deleting a runner that still holds a live or unbilled run.
+pub(crate) fn runner_still_running() -> Error {
+    ErrorKind::RunnerStillRunning.into()
 }
 
-/// Refuses a registration key reused for a different request.
-pub(crate) fn registration_key_reused() -> Error {
-    ErrorKind::RegistrationKeyReused.into()
+/// Refuses a second registration of a host its owner already registered.
+pub(crate) fn host_registered(runner_id: af_core::id::Uuid7) -> Error {
+    ErrorKind::HostRegistered { runner_id }.into()
 }
 
 /// Refuses a platform caller minting a tenant runner's token.
@@ -132,11 +124,11 @@ pub(crate) fn tenant_managed() -> Error {
 /// sample is a change in THIS file, next to the kind.
 ///
 /// # Panics
-/// When the admission plane stops declaring the outage kind this lifts. That
+/// When the turns crate stops declaring the outage kind this lifts. That
 /// is a change in that crate's contract rather than a runtime condition, and
 /// stopping here names it at the sample rather than at whichever assertion
 /// happens to read the wrong value first — the reasoning
-/// `afd_admission::error::one_of_each_kind` states for its own preconditions.
+/// `afd_turns::error::one_of_each_kind` states for its own preconditions.
 #[cfg(feature = "test-util")]
 #[must_use]
 #[expect(
@@ -153,14 +145,16 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("runner vanished", runner_vanished()),
         ("runner not found", runner_not_found()),
         ("runner not revoked", runner_not_revoked()),
-        ("runner still leased", runner_still_leased()),
-        ("registration key reused", registration_key_reused()),
+        ("runner still held", runner_still_running()),
+        (
+            "host registered",
+            host_registered(
+                af_core::id::Uuid7::parse("0199a801-1000-7000-8000-000000000001")
+                    .expect("valid fixture"),
+            ),
+        ),
         ("tenant managed", tenant_managed()),
         ("selftest refused", selftest_refused()),
-        (
-            "request digest",
-            undigestible(serde_json::from_str::<()>("x").expect_err("invalid fixture")),
-        ),
         ("admin state malformed", admin_state_malformed()),
         (
             "assignment malformed",
@@ -171,6 +165,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "decision model identifier",
             decision_model_id(af_core::id::Uuid7::parse("malformed").expect_err("invalid fixture")),
         ),
+        // The one sample answering "The runner operation could not be
+        // completed": an internal failure, never the caller's input.
+        (
+            "identifier",
+            Error::from(af_core::id::Uuid7::parse("malformed").expect_err("invalid fixture")),
+        ),
         (
             "datastore",
             afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into(),
@@ -180,12 +180,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         // than restated here, so a sample is the only way that delegation is
         // ever executed.
         (
-            "admission",
-            afd_admission::error::one_of_each_kind()
+            "turns",
+            afd_turns::error::one_of_each_kind()
                 .into_iter()
                 .find(|(kind, _error)| *kind == "datastore")
                 .map(|(_kind, error)| Error::from(error))
-                .expect("the admission sample declares an outage kind"),
+                .expect("the turns sample declares an outage kind"),
         ),
     ]
 }

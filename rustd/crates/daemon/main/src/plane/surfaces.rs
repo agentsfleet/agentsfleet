@@ -1,4 +1,4 @@
-//! The serving plane's three configured surfaces: authoring, the outbound
+//! The serving plane's three configured surfaces: setup, the outbound
 //! family that dials vendors, and device-flow login.
 //!
 //! Each takes something [`PlaneParts`](super::PlaneParts) carries by value — a
@@ -11,54 +11,36 @@ use std::sync::Arc;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use afd_admission::Admissions;
-use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_tenant::session::Sessions as Logins;
+use afd_turns::Turns;
 
 use super::config::{LoginConfig, ScheduleConfig};
 use super::{config, platform};
 
-/// The authoring drafts, the setup over them, the model calls they make, and
-/// the creations that admit a finished draft.
+/// The setup drafts, the setup over them, and the creations that admit a
+/// finished draft. Setup's model calls are the runner's, so none is built
+/// here.
 #[derive(Debug)]
-pub(super) struct Authoring {
-    pub(super) drafts: afd_authoring::Drafts,
-    pub(super) setup: afd_authoring::Setup,
-    pub(super) creations: afd_authoring::Creations,
-    pub(super) models: afd_authoring::ModelCalls,
+pub(super) struct SetupStores {
+    pub(super) drafts: afd_setup::Drafts,
+    pub(super) setup: afd_setup::Setup,
+    pub(super) creations: afd_setup::Creations,
 }
 
-/// Builds the authoring surfaces over `drafts`, each over the one before it.
+/// Builds the setup surfaces over `drafts`, each over the one before it.
 ///
-/// `drafts` already carries the pool, the biller and the analytics reporter,
-/// so every surface below reports its funnel steps and moves money the same
-/// way. The setup wraps the drafts, the model calls wrap the drafts and the
-/// shared provider store, and the creations wrap the setup and the shared
-/// admissions ledger — so the order below is the dependency order, not a
-/// preference.
-pub(super) fn authoring(
-    drafts: afd_authoring::Drafts,
-    kek: &Arc<Kek>,
-    providers: &Providers,
-    admissions: &Admissions,
-    transport: afd_authoring::Network,
-    decisions: Option<&af_core::id::Uuid7>,
-) -> Authoring {
-    let setup = afd_authoring::Setup::new(drafts.clone(), Arc::clone(kek));
-    let decision_client = transport.guarded_client();
-    let mut models =
-        afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
-            .with_progress(admissions.streams());
-    if let Some(admin) = decisions {
-        models = models.with_decisions(admin.clone(), decision_client);
-    }
-    let creations = afd_authoring::Creations::new(setup.clone(), admissions.clone());
-    Authoring {
+/// `drafts` already carries the pool and the analytics reporter, so every
+/// surface below reports its funnel steps the same way. The setup wraps the
+/// drafts, and the creations wrap the setup and the shared turns ledger — so
+/// the order below is the dependency order, not a preference.
+pub(super) fn setup(drafts: afd_setup::Drafts, kek: &Arc<Kek>, turns: &Turns) -> SetupStores {
+    let setup = afd_setup::Setup::new(drafts.clone(), Arc::clone(kek));
+    let creations = afd_setup::Creations::new(setup.clone(), turns.clone());
+    SetupStores {
         drafts,
         setup,
         creations,
-        models,
     }
 }
 
@@ -66,7 +48,7 @@ pub(super) fn authoring(
 /// scheduler, the connect flow, and the interim message poster.
 #[derive(Debug)]
 pub(super) struct Outbound {
-    pub(super) schedules: afd_api::SchedulePlane,
+    pub(super) schedules: afd_http::services::SchedulePlane,
     /// The scheduler the fire route verifies through, and a chat save
     /// registers its trigger schedules through.
     pub(super) scheduler: Arc<dyn afd_cron::Scheduler>,
@@ -82,7 +64,7 @@ pub(super) struct Outbound {
 pub(super) struct OutboundParts {
     pub(super) schedule: ScheduleConfig,
     pub(super) admin: Option<af_core::id::Uuid7>,
-    pub(super) admissions: Admissions,
+    pub(super) turns: Turns,
     pub(super) vendor_client: reqwest::Client,
     pub(super) slack_api_base: String,
 }
@@ -104,13 +86,13 @@ pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> O
     let OutboundParts {
         schedule,
         admin,
-        admissions,
+        turns,
         vendor_client,
         slack_api_base,
     } = parts;
     let upstream = platform::qstash(database, kek, admin, schedule);
-    let bus = admissions.streams();
-    let schedules = config::schedule_plane(database, Arc::clone(&upstream), admissions);
+    let bus = turns.streams();
+    let schedules = config::schedule_plane(database, Arc::clone(&upstream), turns);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
     let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
     Outbound {

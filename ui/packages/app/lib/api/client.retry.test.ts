@@ -38,16 +38,16 @@ const NOOP_RANDOM = () => 0; // deterministic jitter
 
 describe("requestWithRetry — happy path", () => {
   it("returns body on first 200, fires onAttempt(terminal=true) once", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { event_id: "evt_1" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { turn_id: "evt_1" }));
     const onAttempt = vi.fn();
     const onRetry = vi.fn();
-    const result = await requestWithRetry<{ event_id: string }>(
+    const result = await requestWithRetry<{ turn_id: string }>(
       "/v1/whatever",
       { method: "POST" },
       "tok",
       { onAttempt, onRetry, sleepImpl: NOOP_SLEEP, randomFn: NOOP_RANDOM },
     );
-    expect(result.event_id).toBe("evt_1");
+    expect(result.turn_id).toBe("evt_1");
     expect(onRetry).not.toHaveBeenCalled();
     expect(onAttempt).toHaveBeenCalledTimes(1);
     expect(onAttempt.mock.calls[0]?.[0]).toMatchObject({

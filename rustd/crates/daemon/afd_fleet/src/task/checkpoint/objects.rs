@@ -6,7 +6,7 @@ use crate::task::storage::registration::NewObject;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, guard as task_guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, guard as task_guard, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{
@@ -17,17 +17,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub(in crate::task) async fn register(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointObjectsInput>,
 ) -> Result<CheckpointObjectsPage> {
     let storage = guard::storage(tasks)?;
     let pin = task_guard::id(&input.pin_id, "pin_id")?;
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (_owned, plan, pin) = guard::owned(
         &mut tx,
-        lease,
+        run,
         &input.task,
         checkpoint,
         &pin,
@@ -86,7 +86,7 @@ async fn allocate(
 ) -> Result<(Uuid7, Vec<String>)> {
     identity::quota(connection, &plan.workspace_id).await?;
     let identity = identity::load(
-        &tasks.leases,
+        &tasks.runs,
         storage,
         connection,
         &plan.workspace_id,
@@ -159,7 +159,7 @@ async fn reserve(
     {
         return Err(TaskRefusal::LimitExhausted.into());
     }
-    let reserved = sqlx::query(include_str!("sql/quota_reserve.sql"))
+    let reserved = sqlx::query(super::QUOTA_RESERVE)
         .bind(&plan.workspace_id)
         .bind(new_bytes)
         .bind(super::WORKSPACE_BYTES)
@@ -170,11 +170,11 @@ async fn reserve(
         return Err(TaskRefusal::LimitExhausted.into());
     }
     if !new.is_empty() {
-        sqlx::query(include_str!("sql/objects_insert.sql"))
+        sqlx::query(super::OBJECTS_INSERT)
             .bind(Json(new))
             .bind(&plan.workspace_id)
             .bind(&plan.id)
-            .bind(&plan.owner_lease_id)
+            .bind(&plan.owner_run_id)
             .bind(plan.owner_fence)
             .bind(storage.bucket_reference())
             .bind(super::ORPHAN_SECONDS)
@@ -203,7 +203,7 @@ fn prepare(
     content: &str,
 ) -> Result<NewObject> {
     crate::task::storage::registration::prepare(
-        &tasks.leases,
+        &tasks.runs,
         storage,
         crate::task::storage::registration::Registration {
             workspace,

@@ -19,8 +19,8 @@ import {
   wsFleetsPath,
   wsFleetPath,
   wsFleetMessagesPath,
-  wsFleetEventsPath,
-  wsFleetEventsStreamPath,
+  wsFleetTurnsPath,
+  wsFleetTurnsStreamPath,
   wsSecretsPath,
   wsSecretPath,
   wsGrantsListPath,
@@ -169,11 +169,11 @@ test("path helpers URL-encode workspace id and fleet id components", () => {
   expect(wsFleetMessagesPath(ws, z)).toBe(
     "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/messages",
   );
-  expect(wsFleetEventsPath(ws, z)).toBe(
-    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events",
+  expect(wsFleetTurnsPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/turns",
   );
-  expect(wsFleetEventsStreamPath(ws, z)).toBe(
-    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/events/stream",
+  expect(wsFleetTurnsStreamPath(ws, z)).toBe(
+    "/v1/workspaces/ws%2Fwith%20slash/fleets/agt%20spaces/turns/stream",
   );
   expect(wsSecretsPath(ws)).toBe("/v1/workspaces/ws%2Fwith%20slash/secrets");
   expect(wsSecretPath(ws, "github_token")).toBe(

@@ -24,11 +24,11 @@ pub(super) async fn run(case: &Case) {
     );
     request.upload_budget_bytes = 20;
     let plan = tasks
-        .plan_checkpoint(case.lease(), &valid(request.clone()))
+        .plan_checkpoint(case.run(), &valid(request.clone()))
         .await
         .expect("plan");
     let register = CheckpointObjectsInput {
-        fencing_token: case.lease().fencing_token,
+        fencing_token: case.run().fencing_token,
         task: task.clone(),
         pin_id: plan.pin.id.clone(),
         objects: vec![CheckpointPlaintext {
@@ -42,7 +42,7 @@ pub(super) async fn run(case: &Case) {
     let mut changed = request;
     changed.logical_bytes = 1;
     let failure = tasks
-        .plan_checkpoint(case.lease(), &valid(changed))
+        .plan_checkpoint(case.run(), &valid(changed))
         .await
         .expect_err("operation cannot change content");
     assert_eq!(failure.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -58,7 +58,7 @@ async fn replay(
 ) {
     let first = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(register.clone()),
         )
@@ -74,7 +74,7 @@ async fn replay(
     );
     let replay = tasks
         .register_checkpoint_objects(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(register.clone()),
         )
@@ -101,7 +101,7 @@ async fn refuse_batches(
             .clone(),
     );
     let failure = tasks
-        .register_checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &valid(duplicate))
+        .register_checkpoint_objects(case.run(), &id(&plan.checkpoint_id), &valid(duplicate))
         .await
         .expect_err("one physical content identity per batch");
     assert_eq!(failure.code(), error_code::TASK_REPLAY_CONFLICT);
@@ -112,7 +112,7 @@ async fn refuse_batches(
         .expect("registered object")
         .sha256 = "b".repeat(64);
     let failure = tasks
-        .register_checkpoint_objects(case.lease(), &id(&plan.checkpoint_id), &valid(over_budget))
+        .register_checkpoint_objects(case.run(), &id(&plan.checkpoint_id), &valid(over_budget))
         .await
         .expect_err("second object exceeds exact allowance");
     assert_eq!(failure.code(), error_code::TASK_LIMIT_EXHAUSTED);

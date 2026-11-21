@@ -1,0 +1,57 @@
+-- The facts a steer's disposition is named from: whether a run of the fleet
+-- is live and of which kind, whether the steer is in that run's conversation,
+-- and whether a message the run's assignment stops at stands ahead of it. Read
+-- after the steer's turn committed and outside the fleet lock, so a send
+-- that races a run's start or end can read it one step late; the label is
+-- advisory.
+--
+-- A steer names no reply, so its conversation is the unaddressed one. With no
+-- live run, any earlier unsettled message waits ahead of it. With one, the
+-- message in the way is assign_inputs.sql's barrier: in that conversation,
+-- after the run's own, parked, task-bound or sent by no person. Every message
+-- between the run's own and the steer is looked at, so a barrier anywhere in
+-- the backlog is found.
+--
+-- $1 fleet · $2 the steer's turn · $3 active run status ·
+-- $4 steer producer · $5 machine actor · $6 person actor pattern
+WITH message AS MATERIALIZED (
+    SELECT a.thread_id AS fleet_id, a.sequence
+    FROM thread.turns a
+    WHERE a.id = $2 AND a.thread_id = $1
+), live_run AS MATERIALIZED (
+    SELECT l.task_id IS NOT NULL AS durable_task,
+           head.sequence AS head_sequence,
+           head.reply_provider IS NULL AND head.reply_address IS NULL AS unaddressed,
+           l.turn_id AS run_turn_id
+    FROM message m
+    JOIN thread.threads s ON s.fleet_id = m.fleet_id
+    JOIN thread.runs l
+      ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
+     AND l.fencing_token = s.fencing_token AND l.status = $3
+    -- An admitted turn: a run on a history-only receipt has no conversation.
+    JOIN thread.turns head ON head.id = l.turn_id AND head.thread_id = l.fleet_id
+     AND head.producer IS NOT NULL
+    WHERE s.run_expires_at > statement_timestamp()
+)
+SELECT r.run_turn_id,
+       COALESCE(r.durable_task, false) AS run_durable_task,
+       COALESCE(r.unaddressed, false) AS same_conversation,
+       CASE WHEN r.run_turn_id IS NULL THEN EXISTS (
+                SELECT 1 FROM thread.turns a
+                WHERE a.thread_id = m.fleet_id AND a.settled_at IS NULL
+                  AND a.sequence < m.sequence)
+            ELSE EXISTS (
+                SELECT 1 FROM (
+                    SELECT a.parked_at, a.task_id, a.producer, a.actor
+                    FROM thread.turns a
+                    WHERE a.thread_id = m.fleet_id
+                      AND a.reply_provider IS NULL AND a.reply_address IS NULL
+                      AND a.settled_at IS NULL
+                      AND a.sequence > r.head_sequence AND a.sequence < m.sequence
+                ) ahead
+                WHERE NOT (ahead.parked_at IS NULL AND ahead.task_id IS NULL
+                           AND ahead.producer = $4 AND ahead.actor <> $5
+                           AND ahead.actor LIKE $6))
+       END AS earlier_waiting
+FROM message m
+LEFT JOIN live_run r ON true

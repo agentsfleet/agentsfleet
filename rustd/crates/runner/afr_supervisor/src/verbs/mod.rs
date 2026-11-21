@@ -1,29 +1,31 @@
-//! The `agentsfleetd` verbs one lease's tools reach, fenced by that lease.
+//! The `agentsfleetd` verbs one run's tools reach, fenced by that run.
 //!
-//! The supervisor holds the lease's id and fencing token; a tool holds
+//! The supervisor holds the run's id and fencing token; a tool holds
 //! neither. Every call is one attempt: a schedule create is not idempotent and
 //! a line that landed and lost its answer would post twice, so the model, not
-//! a retry loop, decides whether to try again.
+//! a retry loop, decides whether to try again. The context verbs are the
+//! exception: a read changes nothing and a save is a compare-and-swap on the
+//! version it names, so `client::context` retries both.
 
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_wire::message_verb::MessagePosted;
 use af_wire::steer_verb::FleetSteerAccepted;
-use afr_agent::{ScheduleCall, Unanswered};
 use afr_tools::FleetsCall;
+use afr_tools::{ScheduleCall, Unanswered};
 
 use crate::client::ControlPlane;
 
 mod decision;
 pub(crate) use decision::PendingDecisions;
 
-/// The verbs of one held lease, over the control plane, each call carrying
-/// the lease's fence: [`afr_agent::LeaseVerbs`] as the supervisor serves it.
+/// The verbs of one held run, over the control plane, each call carrying
+/// the run's fence: [`afr_tools::RunVerbs`] as the supervisor serves it.
 #[derive(Debug)]
 pub(crate) struct FencedVerbs<'a> {
     plane: &'a ControlPlane,
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
     fencing_token: u64,
     halt: &'a crate::halt::Halt,
     stop: &'a tokio_util::sync::CancellationToken,
@@ -31,10 +33,10 @@ pub(crate) struct FencedVerbs<'a> {
 }
 
 impl<'a> FencedVerbs<'a> {
-    /// The verbs of `lease_id`, fenced by `fencing_token`, through `plane`.
+    /// The verbs of `run_id`, fenced by `fencing_token`, through `plane`.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
-        lease_id: &'a Uuid7,
+        run_id: &'a Uuid7,
         fencing_token: u64,
         halt: &'a crate::halt::Halt,
         stop: &'a tokio_util::sync::CancellationToken,
@@ -42,7 +44,7 @@ impl<'a> FencedVerbs<'a> {
     ) -> Self {
         Self {
             plane,
-            lease_id,
+            run_id,
             fencing_token,
             halt,
             stop,
@@ -52,7 +54,7 @@ impl<'a> FencedVerbs<'a> {
 }
 
 #[async_trait::async_trait]
-impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
+impl afr_tools::RunVerbs for FencedVerbs<'_> {
     async fn task_decision(
         &self,
         input: af_wire::task::DecisionReservationInput,
@@ -64,7 +66,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
 
     async fn fleets(&self, call: FleetsCall<'_>) -> Result<String, Unanswered> {
         self.plane
-            .fleets(self.lease_id, self.fencing_token, call)
+            .fleets(self.run_id, self.fencing_token, call)
             .await
             .map(|body| body.text())
             .map_err(|failure| unanswered(&failure))
@@ -77,12 +79,12 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<FleetSteerAccepted<'static>, Unanswered> {
         let body = self
             .plane
-            .fleet_steer(self.lease_id, self.fencing_token, fleet, text)
+            .fleet_steer(self.run_id, self.fencing_token, fleet, text)
             .await
             .map_err(|failure| unanswered(&failure))?;
         body.decode::<FleetSteerAccepted<'_>>()
             .map(|accepted| FleetSteerAccepted {
-                event_id: Cow::Owned(accepted.event_id.into_owned()),
+                turn_id: Cow::Owned(accepted.turn_id.into_owned()),
                 replayed: accepted.replayed,
             })
             .map_err(|failure| unanswered(&failure))
@@ -90,7 +92,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
 
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered> {
         self.plane
-            .schedules(self.lease_id, self.fencing_token, call)
+            .schedules(self.run_id, self.fencing_token, call)
             .await
             .map(|body| body.text())
             .map_err(|failure| unanswered(&failure))
@@ -99,7 +101,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     async fn message(&self, text: &str) -> Result<bool, Unanswered> {
         let body = self
             .plane
-            .message(self.lease_id, self.fencing_token, text)
+            .message(self.run_id, self.fencing_token, text)
             .await
             .map_err(|failure| unanswered(&failure))?;
         body.decode::<MessagePosted>()
@@ -113,7 +115,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<af_wire::task::TaskInputsResponse<'static>, Unanswered> {
         query.fencing_token = self.fencing_token;
         self.plane
-            .task_inputs(self.lease_id, &query)
+            .task_inputs(self.run_id, &query)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -124,7 +126,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<af_wire::task::TaskBindingsResponse<'static>, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_bindings(self.lease_id, &input)
+            .task_bindings(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -135,7 +137,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<af_wire::task::TaskInputReceiptResult, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_input_receipt(self.lease_id, &input)
+            .task_input_receipt(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -146,7 +148,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<af_wire::task::TaskEffect, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_publish(self.lease_id, &input)
+            .task_publish(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -158,7 +160,7 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
             Unanswered::Refused(Some(failure.code()))
         })?;
         self.plane
-            .task_effect(self.lease_id, &id, self.fencing_token)
+            .task_effect(self.run_id, &id, self.fencing_token)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -169,7 +171,29 @@ impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
         query.fencing_token = self.fencing_token;
         self.plane
-            .task_effects(self.lease_id, &query)
+            .task_effects(self.run_id, &query)
+            .await
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    async fn context_load(&self) -> Result<af_wire::context::ContextLoadResponse, Unanswered> {
+        self.plane
+            .context_load(self.run_id, self.fencing_token)
+            .await
+            .map_err(|failure| unanswered(&failure))
+    }
+
+    /// The run's own fence rides every save, whatever the loop named.
+    async fn context_save(
+        &self,
+        request: af_wire::context::ContextSaveRequest,
+    ) -> Result<af_wire::context::ContextSaveResponse, Unanswered> {
+        let request = af_wire::context::ContextSaveRequest {
+            fencing_token: self.fencing_token,
+            ..request
+        };
+        self.plane
+            .context_save(self.run_id, &request)
             .await
             .map_err(|failure| unanswered(&failure))
     }
@@ -189,14 +213,14 @@ mod tests;
 
 #[async_trait::async_trait]
 impl afr_agent::Inbox for FencedVerbs<'_> {
-    async fn claim(&self, after_sequence: i64) -> Vec<afr_agent::Folded> {
-        // The loop drops this future when the lease stops, so a stopped run's
-        // last claim leaves this record alone.
-        let event = EVENT_FOLD_CLAIM_STARTED;
+    async fn assign(&self, after_sequence: i64) -> Vec<afr_agent::Folded> {
+        // The loop drops this future when the run stops, so a stopped run's
+        // last assignment leaves this record alone.
+        let event = EVENT_FOLD_ASSIGNMENT_STARTED;
         tracing::debug!(after_sequence, event);
-        let claimed: crate::Result<Vec<afr_agent::Folded>> = self
+        let assigned: crate::Result<Vec<afr_agent::Folded>> = self
             .plane
-            .folds(self.lease_id, self.fencing_token, after_sequence)
+            .folds(self.run_id, self.fencing_token, after_sequence)
             .await
             .and_then(|body| {
                 body.decode::<af_wire::fold::FoldResponse<'_>>()
@@ -205,32 +229,36 @@ impl afr_agent::Inbox for FencedVerbs<'_> {
                             .inputs
                             .into_iter()
                             .map(|input| afr_agent::Folded {
-                                event_id: input.event_id.into_owned(),
+                                turn_id: input.turn_id.into_owned(),
                                 sequence: input.sequence,
                                 text: input.text.into_owned(),
                             })
                             .collect()
                     })
             });
-        match claimed {
+        match assigned {
             Ok(folded) => {
-                let (count, event) = (folded.len(), EVENT_FOLD_CLAIM_COMPLETED);
-                tracing::debug!(after_sequence, claimed = count, event);
+                let (count, event) = (folded.len(), EVENT_FOLD_ASSIGNMENT_COMPLETED);
+                tracing::debug!(after_sequence, assigned = count, event);
                 folded
             }
             Err(failure) => {
-                // The next claim asks from the same place, so nothing is lost.
+                // The next assignment asks from the same place, so nothing is lost.
                 let error_code = failure.code().as_str();
-                tracing::warn!(event = EVENT_FOLD_CLAIM_FAILED, error_code, after_sequence);
+                tracing::warn!(
+                    event = EVENT_FOLD_ASSIGNMENT_FAILED,
+                    error_code,
+                    after_sequence
+                );
                 Vec::new()
             }
         }
     }
 }
 
-/// A claim of the messages the fleet received while the run works was sent.
-const EVENT_FOLD_CLAIM_STARTED: &str = "fold_claim_started";
-/// A claim was answered, with however many messages.
-const EVENT_FOLD_CLAIM_COMPLETED: &str = "fold_claim_completed";
-/// A claim went unanswered.
-const EVENT_FOLD_CLAIM_FAILED: &str = "fold_claim_failed";
+/// An assignment of the messages the fleet received while the run works was asked for.
+const EVENT_FOLD_ASSIGNMENT_STARTED: &str = "fold_assignment_started";
+/// An assignment was answered, with however many messages.
+const EVENT_FOLD_ASSIGNMENT_COMPLETED: &str = "fold_assignment_completed";
+/// An assignment went unanswered.
+const EVENT_FOLD_ASSIGNMENT_FAILED: &str = "fold_assignment_failed";

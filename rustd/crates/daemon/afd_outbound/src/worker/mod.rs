@@ -3,7 +3,7 @@
 //! depends on a ping arriving.
 //!
 //! ```text
-//!   report commits ──► af.outbound.wake (lossy) ─┐
+//!   report commits ──► af.delivery.wake (lossy) ─┐
 //!                                                 ├─► claim lane heads ─► lanes
 //!   every CLAIM_PASS ─────────────────────────────┘        (FOR UPDATE SKIP LOCKED)
 //! ```
@@ -31,8 +31,8 @@ use afd_bus::{Handle, Subject, Subscription};
 use afd_db::Db;
 use tokio_util::sync::CancellationToken;
 
+use crate::delivery;
 use crate::lanes::Lanes;
-use crate::obligation;
 use crate::poster::{Deliver, Posters};
 
 /// How often a replica claims without being pinged, by default.
@@ -79,7 +79,7 @@ impl<S: Deliver + 'static> Worker<S> {
             posters,
             entropy,
             pass: CLAIM_PASS,
-            renew: obligation::CLAIM_RENEW,
+            renew: delivery::CLAIM_RENEW,
             retries: crate::retry::RetryPolicy::DEFAULT,
         }
     }
@@ -100,11 +100,11 @@ impl<S: Deliver + 'static> Worker<S> {
     }
 
     /// Replaces how often a delivery renews its claim, capped at
-    /// [`obligation::CLAIM_RENEW_MAX`] so a configured interval cannot let a
+    /// [`delivery::CLAIM_RENEW_MAX`] so a configured interval cannot let a
     /// claim lapse between two renewals.
     #[must_use]
     pub fn with_claim_renew(mut self, renew: Duration) -> Self {
-        self.renew = renew.min(obligation::CLAIM_RENEW_MAX);
+        self.renew = renew.min(delivery::CLAIM_RENEW_MAX);
         self
     }
 
@@ -120,7 +120,7 @@ impl<S: Deliver + 'static> Worker<S> {
             retries,
         } = self;
         let mut wake = bus
-            .subscribe(&Subject::OutboundWake)
+            .subscribe(&Subject::DeliveryWake)
             .await
             .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
             .ok();
@@ -170,7 +170,7 @@ async fn claim_once<S: Deliver + 'static>(
     let token = entropy.uuid7(af_core::clock::now())?;
     // The room is at most the lanes' ceiling, a handful.
     let limit = i64::try_from(room).unwrap_or(i64::MAX);
-    let claimed = obligation::claim(database, limit, &token).await?;
+    let claimed = delivery::claim(database, limit, &token).await?;
     let count = claimed.len();
     {
         let (via, claimed, event) = (&via_label, &count, &EVENT_CLAIM_COMPLETED);

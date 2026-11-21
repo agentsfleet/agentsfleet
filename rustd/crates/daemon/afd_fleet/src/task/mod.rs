@@ -1,6 +1,6 @@
-//! Durable objective ownership within the existing admission and lease path.
+//! Durable objective ownership within the existing turn and run path.
 //!
-//! The store owns native rows and transitions. Its pool remains the lease
+//! The store owns native rows and transitions. Its pool remains the run
 //! store's private pool, and task work never introduces a competing queue.
 
 mod admit;
@@ -19,7 +19,6 @@ mod guard;
 mod implementation;
 mod input_receipt;
 mod inputs;
-pub(crate) mod lease;
 mod lifecycle;
 mod list;
 mod observe;
@@ -29,6 +28,7 @@ mod read;
 mod refusal;
 mod report;
 mod row;
+pub(crate) mod run;
 mod sql;
 pub mod storage;
 #[cfg(feature = "test-util")]
@@ -41,7 +41,7 @@ mod waits;
 use af_core::id::Uuid7;
 use af_observability::metrics::label::task::{TaskOperation, TaskOutcome};
 
-use crate::{Result, lease::Leases};
+use crate::{Result, run::Runs};
 
 /// Canonical setup lookup path shared by task guards, queue queries and their measurements.
 pub const DECISION_POLICY_PATH: &[&str] = &["config", "x-agentsfleet", "decision_policy"];
@@ -58,8 +58,8 @@ pub use refusal::TaskRefusal;
 pub use types::{
     CheckpointMaintenance, CheckpointMaintenanceCursor, DecisionMaintenance,
     DecisionMaintenanceCursor, EffectMaintenance, PreparedPlan, PreparedTask, TaskAdoption,
-    TaskAfter, TaskBinding, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope,
-    TaskSnapshot, TaskSummary,
+    TaskAfter, TaskBinding, TaskBindings, TaskControl, TaskPage, TaskRun, TaskScope, TaskSnapshot,
+    TaskSummary,
 };
 
 pub use lifecycle::{TaskFuture, TaskLifecycle};
@@ -68,13 +68,13 @@ pub(crate) use waits::ReadPermit;
 pub use waits::{CompletionScope, VerifiedCompletion, WaitMaintenance};
 pub(crate) async fn settle_report(
     connection: &mut sqlx::PgConnection,
-    lease: &Uuid7,
+    run: &Uuid7,
     runner: &Uuid7,
     settlement: Option<TaskSettlement<'_>>,
 ) -> Result<Option<&'static str>> {
     observe::measure(
         TaskOperation::ReportCommit,
-        report::apply(connection, lease, runner, settlement),
+        report::apply(connection, run, runner, settlement),
         |notice| {
             if notice.is_none() {
                 TaskOutcome::Accepted
@@ -89,22 +89,18 @@ pub(crate) async fn settle_report(
 /// Task data and native dependencies; behavior is implemented by the trait.
 #[derive(Debug, Clone)]
 pub struct Tasks {
-    leases: Leases,
-    admissions: afd_admission::Admissions,
+    runs: Runs,
+    turns: afd_turns::Turns,
     dependencies: TaskDependencies,
 }
 
 impl Tasks {
-    /// Uses the same database, entropy and lease authority as the fleet plane.
+    /// Uses the same database, entropy and run authority as the fleet plane.
     #[must_use]
-    pub const fn new(
-        leases: Leases,
-        admissions: afd_admission::Admissions,
-        dependencies: TaskDependencies,
-    ) -> Self {
+    pub const fn new(runs: Runs, turns: afd_turns::Turns, dependencies: TaskDependencies) -> Self {
         Self {
-            leases,
-            admissions,
+            runs,
+            turns,
             dependencies,
         }
     }
@@ -114,8 +110,8 @@ impl Tasks {
             task_id: std::borrow::Cow::Borrowed(task_id.as_str()),
             resource_version: version,
         };
-        let subject = afd_bus::Subject::FleetTail(scope.fleet_id.clone());
-        let publication = self.leases.streams().publish_frame(&subject, &frame).await;
+        let subject = afd_bus::Subject::ThreadItems(scope.fleet_id.clone());
+        let publication = self.runs.streams().publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
     }
 }

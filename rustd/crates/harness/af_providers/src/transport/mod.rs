@@ -17,7 +17,7 @@ use crate::retry::{self, Retrying};
 
 /// The log line a retried send writes.
 const EVENT_RETRY: &str = "provider_retry";
-/// One lease's transport: the shared client, and whose sends it is making.
+/// One run's transport: the shared client, and whose sends it is making.
 #[derive(Clone)]
 pub(crate) struct Transport {
     client: reqwest::Client,
@@ -27,7 +27,7 @@ pub(crate) struct Transport {
 
 /// Whose sends a transport makes, for its retry line and its retry count.
 struct Whose {
-    lease_id: Box<str>,
+    run_id: Box<str>,
     provider: Box<str>,
     /// The provider as the retry family labels it.
     label: Provider,
@@ -50,17 +50,17 @@ fn logged(provider: &str) -> Box<str> {
 impl fmt::Debug for Transport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Transport")
-            .field("lease_id", &self.whose.lease_id)
+            .field("run_id", &self.whose.run_id)
             .field("provider", &self.whose.provider)
             .finish_non_exhaustive()
     }
 }
 
 impl Transport {
-    /// Lease `lease_id`'s transport to `provider`, over `client`.
-    pub(crate) fn new(client: reqwest::Client, lease_id: &str, provider: &str) -> Self {
+    /// Run `run_id`'s transport to `provider`, over `client`.
+    pub(crate) fn new(client: reqwest::Client, run_id: &str, provider: &str) -> Self {
         let whose = Whose {
-            lease_id: lease_id.into(),
+            run_id: run_id.into(),
             provider: logged(provider),
             label: Provider::of(provider),
         };
@@ -109,7 +109,7 @@ impl Transport {
     /// Logs and counts a send about to be retried.
     fn retrying(&self, retry: Retrying) {
         observe::retry(self.whose.label, RetryReason::of_status(retry.status));
-        let lease_id = &*self.whose.lease_id;
+        let run_id = &*self.whose.run_id;
         let provider = &*self.whose.provider;
         let status = retry.status;
         let attempt = retry.attempt;
@@ -117,7 +117,7 @@ impl Transport {
         let event = EVENT_RETRY;
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(
-            lease_id, provider, status, attempt, wait_ms, event, error_code
+            run_id, provider, status, attempt, wait_ms, event, error_code
         );
     }
 }

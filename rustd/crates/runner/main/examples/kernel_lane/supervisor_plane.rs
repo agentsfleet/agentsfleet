@@ -1,0 +1,229 @@
+//! Fake external daemon endpoints, with the real runner HTTP client and codec.
+//!
+//! These observations prove runner requests, not daemon datastore effects.
+
+use std::sync::{Arc, mpsc};
+use std::time::Duration;
+
+use af_wire::paths::{RUNNER_CREDENTIALS_MINT, RUNNER_STREAM, SCHEDULE_RUNS_SUFFIX};
+use af_wire::policy::{RepositoryAccess, RepositoryBinding};
+use af_wire::run::RunPayload;
+use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+use af_wire::schedule_verb::ScheduleRun;
+use afr_supervisor::test_util::{FENCING, FLEET_ID, Healthy, RUN_ID, RUN_JSON};
+use axum::extract::State;
+use axum::http::{Method, StatusCode, Uri};
+use axum::{Json, Router};
+use libtest_mimic::Failed;
+use serde_json::{Value, json};
+use tokio::sync::{Mutex, Notify};
+
+use crate::supervisor_model::{INSTRUCTIONS, STEER};
+
+/// A fixture credential; never a real integration credential.
+pub(crate) const TOKEN: &str = "kernel-fixture-credential";
+pub(crate) const GRAFANA: &str = "grafana.example.test";
+pub(crate) const SCHEDULE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+pub(crate) const SCHEDULE_TURN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
+const WORKSPACE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
+/// How long the fixture grants a run and a minted credential for.
+const GRANTED_FOR: Duration = Duration::from_secs(60);
+pub(crate) const PROVIDER_TOKEN: &str = "provider-fixture-credential";
+pub(crate) const RUNNER_TOKEN: &str = "agt_r_kernel_fixture";
+/// Output allowance keeps the scripted model reachable through physical-window preflight.
+const MODEL_OUTPUT_TOKENS: u32 = 4_096;
+
+#[derive(Debug)]
+pub(crate) struct Received {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) body: Value,
+}
+
+#[derive(Debug)]
+struct Plane {
+    healthy: Healthy,
+    calls: mpsc::Sender<Received>,
+    fail_mutations: bool,
+    recovery: Option<Mutex<crate::supervisor_recovery::Archive>>,
+}
+
+pub(crate) struct Server {
+    pub(crate) url: String,
+    pub(crate) reported: Arc<Notify>,
+    pub(crate) calls: mpsc::Receiver<Received>,
+    listener: afr_supervisor::test_util::Listener,
+    pub(crate) native: afr_supervisor::test_util::NativeDaemon,
+}
+
+impl Server {
+    pub(crate) async fn start(
+        tools: &[&str],
+        repository: bool,
+        fail: bool,
+        recovery: Option<crate::supervisor_recovery::Config>,
+    ) -> Result<Self, Failed> {
+        let (calls, received) = mpsc::channel();
+        let reported = Arc::new(Notify::new());
+        let granted_until = af_core::clock::after(af_core::clock::now(), GRANTED_FOR);
+        let healthy = Healthy {
+            assigned: AssignedPolicy {
+                durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                decision_model_id: None,
+                sandbox_tier: SandboxTier::LandlockFull,
+                network_policy: NetworkPolicy::DenyAllEgress,
+                registry_allowlist: Vec::new(),
+                worker_count: 1,
+                extra_binds: Vec::new(),
+            },
+            interval_ms: 50,
+            granted_until,
+        };
+        let sent = calls.clone();
+        let completed = Arc::clone(&reported);
+        let native = afr_supervisor::test_util::NativeDaemon::serve(
+            healthy.clone(),
+            run(tools, repository, granted_until, recovery.as_ref())?,
+            move |frame| {
+                let sent = sent.clone();
+                let completed = Arc::clone(&completed);
+                async move {
+                    let report = frame.get("type").and_then(Value::as_str) == Some("report");
+                    sent.send(Received {
+                        method: "STREAM".into(),
+                        path: RUNNER_STREAM.into(),
+                        body: frame,
+                    })
+                    .unwrap_or_else(|_| unreachable!("the trial retains its native transcript"));
+                    if report {
+                        completed.notify_one();
+                    }
+                }
+            },
+        )
+        .await?;
+        let plane = Arc::new(Plane {
+            healthy,
+            calls,
+            fail_mutations: fail,
+            recovery: recovery
+                .map(crate::supervisor_recovery::Archive::new)
+                .map(Mutex::new),
+        });
+        let app = Router::new().fallback(reply).with_state(plane);
+        let listener = afr_supervisor::test_util::Listener::serve(app).await?;
+        Ok(Self {
+            url: listener.url.clone(),
+            reported,
+            calls: received,
+            listener,
+            native,
+        })
+    }
+
+    pub(crate) async fn stop(&mut self) -> Result<(), Failed> {
+        self.listener.stop().await?;
+        self.native.close().await?;
+        Ok(())
+    }
+}
+
+async fn reply(
+    State(plane): State<Arc<Plane>>,
+    method: Method,
+    uri: Uri,
+    body: Option<Json<Value>>,
+) -> (StatusCode, Json<Value>) {
+    let path = uri.path();
+    let body = body.map_or(Value::Null, |Json(value)| value);
+    plane
+        .calls
+        .send(Received {
+            method: method.to_string(),
+            path: path.to_owned(),
+            body: body.clone(),
+        })
+        .unwrap_or_else(|_| unreachable!("the trial retains its HTTP transcript"));
+    if path.contains("/tasks/")
+        && let Some(recovery) = &plane.recovery
+    {
+        let response = recovery.lock().await.reply(&method, &uri, body);
+        return match response {
+            Ok(value) => (StatusCode::OK, Json(value)),
+            Err(failure) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"fixture_error":format!("{failure:?}")})),
+            ),
+        };
+    }
+    let mutation = path.ends_with("/schedules") || path.ends_with("/messages");
+    if mutation && plane.fail_mutations {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "fixture unavailable" })),
+        );
+    }
+    (StatusCode::OK, Json(response(&plane, &method, path)))
+}
+
+fn response(plane: &Plane, method: &Method, path: &str) -> Value {
+    match path {
+        RUNNER_CREDENTIALS_MINT => {
+            json!(af_wire::credentials::MintCredentialResponse {
+                token: TOKEN.into(),
+                expires_at: plane.healthy.granted_until
+            })
+        }
+        _ if path.ends_with("/messages") => json!({ "delivered": true }),
+        _ if path.ends_with("/schedules") => json!({ "schedule_id": SCHEDULE_ID }),
+        _ if path.ends_with(&format!("/{SCHEDULE_RUNS_SUFFIX}")) => json!(ScheduleRun {
+            turn_id: SCHEDULE_TURN_ID.into()
+        }),
+        _ if path.ends_with("/recall") => json!({
+            "memory": [{ "key": "prior", "content": "earlier fleet finding", "category": "core" }],
+            "shared": []
+        }),
+        _ => plane.healthy.reply(method.as_str(), path),
+    }
+}
+
+fn run(
+    tools: &[&str],
+    repository: bool,
+    expires: jiff::Timestamp,
+    recovery: Option<&crate::supervisor_recovery::Config>,
+) -> Result<Value, Failed> {
+    let mut run: RunPayload<'_> = serde_json::from_str(RUN_JSON)?;
+    run.run_id = RUN_ID.into();
+    run.run_expires_at = expires;
+    run.fencing_token = FENCING;
+    run.event.fleet_id = FLEET_ID.into();
+    run.event.workspace_id = WORKSPACE_ID.into();
+    run.event.actor = "steer:user".into();
+    run.event.request_json = json!({ "message": STEER }).to_string().into();
+    run.instructions = INSTRUCTIONS.into();
+    run.policy.tools = tools.iter().map(|name| (*name).to_owned().into()).collect();
+    run.policy.context.tool_window = 32;
+    run.policy.context.context_cap_tokens = 65_536;
+    run.policy.model_context_tokens = run.policy.context.context_cap_tokens;
+    if let Some(inference) = &mut run.policy.inference {
+        inference.max_output_tokens = MODEL_OUTPUT_TOKENS;
+    }
+    run.policy.api_key = PROVIDER_TOKEN.into();
+    run.policy.network_policy.allow = vec![GRAFANA.into(), "other.example.test".into()];
+    run.policy.secrets_map = Some(json!({ "grafana": { "host": GRAFANA, "token": TOKEN } }));
+    if repository {
+        run.policy.repository_binding = Some(RepositoryBinding {
+            repositories: vec!["acme/widget".into()],
+            access: RepositoryAccess::Write,
+            base_branch: "main".into(),
+        });
+    }
+    if recovery.is_some() {
+        crate::supervisor_recovery::Config::configure(&mut run)?;
+    }
+    // Assignments use the daemon's tagged run encoding.
+    Ok(serde_json::to_value(af_wire::run::TaggedRun::Fleet(
+        Box::new(run),
+    ))?)
+}

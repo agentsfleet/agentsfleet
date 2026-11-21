@@ -93,7 +93,7 @@ async fn a_new_schedule_is_already_held_by_the_caller_that_will_push_it() {
         "the creator holds it, or a syncer could push a schedule the creating \
          request has not finished writing"
     );
-    assert!(created.sync_lease_expires_at.is_some());
+    assert!(created.sync_run_expires_at.is_some());
 }
 
 // ── The three bounds ─────────────────────────────────────────────────────────

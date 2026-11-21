@@ -16,7 +16,7 @@ mod integration_model_seed;
 mod integration_tasks;
 mod integration_turn_checkpoints;
 mod issue_lifecycle;
-mod lease_renewal;
+mod run_renewal;
 
 #[path = "support/fleet_setup.rs"]
 mod setup;
@@ -25,8 +25,6 @@ mod setup;
 mod billing_lines;
 #[path = "support/fleet_faulty_biller.rs"]
 mod faulty_biller;
-#[path = "support/fleet_lease_reads.rs"]
-mod lease_reads;
 #[path = "support/fleet_queue.rs"]
 mod queue;
 #[path = "support/fleet_recovery_seed.rs"]
@@ -41,7 +39,9 @@ mod report_seed;
 mod requests;
 #[path = "support/fleet_rows.rs"]
 mod rows;
-#[path = "support/fleet_lease_seed.rs"]
+#[path = "support/fleet_run_reads.rs"]
+mod run_reads;
+#[path = "support/fleet_run_seed.rs"]
 mod seed;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
@@ -52,65 +52,29 @@ mod view_heartbeat;
 
 #[path = "integration_activity_publish.rs"]
 mod integration_activity_publish;
+#[path = "integration_assignment_delivery.rs"]
+mod integration_assignment_delivery;
 #[path = "integration_billing_relay.rs"]
 mod integration_billing_relay;
 #[path = "integration_billing_sweep.rs"]
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]
 mod integration_billing_sweep_faults;
-#[path = "integration_claim_delivery.rs"]
-mod integration_claim_delivery;
 mod integration_credential_mint;
-#[path = "integration_delivery_lookup.rs"]
-mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
 mod integration_held_sandbox;
 #[path = "integration_issue_host.rs"]
 mod integration_issue_host;
-#[path = "integration_lease_affinity.rs"]
-mod integration_lease_affinity;
-#[path = "integration_lease_assign.rs"]
-mod integration_lease_assign;
-#[path = "integration_lease_billing_races.rs"]
-mod integration_lease_billing_races;
-#[path = "integration_lease_block.rs"]
-mod integration_lease_block;
-#[path = "integration_lease_caches.rs"]
-mod integration_lease_caches;
-#[path = "integration_lease_claim_race.rs"]
-mod integration_lease_claim_race;
-#[path = "integration_lease_edges.rs"]
-mod integration_lease_edges;
-#[path = "integration_lease_expiry_lock.rs"]
-mod integration_lease_expiry_lock;
-#[path = "integration_lease_fairness.rs"]
-mod integration_lease_fairness;
-mod integration_lease_folds;
-mod integration_lease_gates;
-#[path = "integration_lease_history.rs"]
-mod integration_lease_history;
-#[path = "integration_lease_issue.rs"]
-mod integration_lease_issue;
-#[path = "integration_lease_issue_lock_wait.rs"]
-mod integration_lease_issue_lock_wait;
-#[path = "integration_lease_issue_refusals.rs"]
-mod integration_lease_issue_refusals;
-#[path = "integration_lease_plan.rs"]
-mod integration_lease_plan;
-#[path = "integration_lease_started.rs"]
-mod integration_lease_started;
-#[path = "integration_lease_usage_flush.rs"]
-mod integration_lease_usage_flush;
-#[path = "integration_lease_verbs.rs"]
-mod integration_lease_verbs;
+#[path = "integration_item_retention.rs"]
+mod integration_item_retention;
 mod integration_ledger_queue;
 #[path = "integration_ledger_reads.rs"]
 mod integration_ledger_reads;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
-#[path = "integration_memory_hydrate_order.rs"]
-mod integration_memory_hydrate_order;
+#[path = "integration_memory_load_order.rs"]
+mod integration_memory_load_order;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]
@@ -135,6 +99,8 @@ mod integration_reply_destination;
 mod integration_report_commit;
 #[path = "integration_report_fence.rs"]
 mod integration_report_fence;
+#[path = "integration_report_items.rs"]
+mod integration_report_items;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;
@@ -144,6 +110,42 @@ mod integration_report_pricing;
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
+#[path = "integration_run_affinity.rs"]
+mod integration_run_affinity;
+#[path = "integration_run_assign.rs"]
+mod integration_run_assign;
+#[path = "integration_run_assignment_race.rs"]
+mod integration_run_assignment_race;
+#[path = "integration_run_billing_races.rs"]
+mod integration_run_billing_races;
+#[path = "integration_run_block.rs"]
+mod integration_run_block;
+#[path = "integration_run_caches.rs"]
+mod integration_run_caches;
+#[path = "integration_run_edges.rs"]
+mod integration_run_edges;
+#[path = "integration_run_expiry_lock.rs"]
+mod integration_run_expiry_lock;
+#[path = "integration_run_fairness.rs"]
+mod integration_run_fairness;
+mod integration_run_folds;
+mod integration_run_gates;
+#[path = "integration_run_history.rs"]
+mod integration_run_history;
+#[path = "integration_run_issue.rs"]
+mod integration_run_issue;
+#[path = "integration_run_issue_lock_wait.rs"]
+mod integration_run_issue_lock_wait;
+#[path = "integration_run_issue_refusals.rs"]
+mod integration_run_issue_refusals;
+#[path = "integration_run_plan.rs"]
+mod integration_run_plan;
+#[path = "integration_run_release.rs"]
+mod integration_run_release;
+#[path = "integration_run_started.rs"]
+mod integration_run_started;
+#[path = "integration_run_verbs.rs"]
+mod integration_run_verbs;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;
@@ -159,6 +161,7 @@ mod integration_runner_tenant;
 mod integration_runner_views;
 #[path = "integration_runner_views_malformed.rs"]
 mod integration_runner_views_malformed;
+mod integration_statements;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
 #[path = "integration_tenant_placement/mod.rs"]
@@ -171,8 +174,8 @@ mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]
 mod verdict_matrix;
 
-#[path = "integration_lease_issue_capacity.rs"]
-mod integration_lease_issue_capacity;
+#[path = "integration_run_issue_capacity.rs"]
+mod integration_run_issue_capacity;
 
 #[path = "integration_memory_capture_race.rs"]
 mod integration_memory_capture_race;

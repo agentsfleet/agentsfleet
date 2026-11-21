@@ -3,7 +3,7 @@ mod fixture;
 mod model;
 mod server;
 
-use super::{CALL, FENCING, FencedVerbs, Host, LEASE_ID};
+use super::{CALL, FENCING, FencedVerbs, Host, RUN_ID};
 use afr_agent::AgentEngine as _;
 use std::sync::atomic::Ordering;
 
@@ -26,10 +26,10 @@ async fn real_decision_client_preflight_is_receipted_before_root_can_use_it() {
 async fn exercise(mode: &'static str) {
     let mut server = server::Server::start(mode).await;
     let host = Host::new();
-    let lease_id = af_core::id::Uuid7::parse(LEASE_ID).unwrap();
+    let run_id = af_core::id::Uuid7::parse(RUN_ID).unwrap();
     let verbs = FencedVerbs::new(
         &server.plane,
-        &lease_id,
+        &run_id,
         FENCING,
         &host.halt,
         &host.stop,
@@ -37,14 +37,14 @@ async fn exercise(mode: &'static str) {
     );
     let model = model::Model::default();
     let engine = afr_agent::Loop::new(afr_tools::Catalog::new(vec![]), model.clone());
-    let lease = fixture::lease();
+    let run = fixture::payload();
     let inputs = fixture::inputs();
     let prepared = afr_agent::PreparedTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
         allow_actions: true,
     };
-    let output = execute(&engine, &lease, &prepared, &verbs, &host).await;
+    let output = execute(&engine, &run, &prepared, &verbs, &host).await;
     assert_stopped(&output, &model);
     server.assert_calls().await;
     server.stop();
@@ -71,7 +71,7 @@ fn assert_stopped(output: &afr_agent::RunOutput, model: &model::Model) {
 
 async fn execute(
     engine: &afr_agent::Loop,
-    lease: &af_wire::lease::LeasePayload<'_>,
+    run: &af_wire::run::RunPayload<'_>,
     prepared: &afr_agent::PreparedTask,
     verbs: &FencedVerbs<'_>,
     host: &Host,
@@ -79,7 +79,7 @@ async fn execute(
     engine
         .run(afr_agent::AgentRun {
             recovery: None,
-            lease,
+            run,
             prepared_task: Some(prepared),
             recovered_task: None,
             recovered_turn: None,

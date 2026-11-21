@@ -1,8 +1,8 @@
-//! The writes a runner's lease guards.
+//! The writes a runner's run guards.
 //!
-//! A fleet changes its own schedules under the lease it runs. A reclaim can
-//! take that lease between the handler's standing check and the write, and an
-//! old holder resumed after it would still write. These take the lease as an
+//! A fleet changes its own schedules under the run it runs. A reassignment can
+//! take that run between the handler's standing check and the write, and an
+//! old holder resumed after it would still write. These take the run as an
 //! [`afd_db::Precondition`] and prove it on the write's own transaction; one
 //! that no longer holds is [`Refused::Unheld`], and nothing is written.
 

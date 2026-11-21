@@ -8,17 +8,13 @@ WITH locked AS MATERIALIZED (
   WHERE r.id = $1 AND r.status = $3::text
     AND EXISTS (SELECT 1 FROM locked)
     AND NOT EXISTS (
-      SELECT 1 FROM runner.leases l
+      SELECT 1 FROM thread.runs l
       WHERE l.runner_id = r.id AND l.status = $4::text
-        AND l.lease_expires_at > (SELECT at FROM instant)
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM authoring.attempts a WHERE a.runner_id = r.id AND a.status = $4::text
-        AND a.lease_expires_at > (SELECT at FROM instant)
+        AND l.run_expires_at > (SELECT at FROM instant)
     )
   RETURNING r.id
 ), inserted AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $5, id, $6::text,
          jsonb_build_object($7::text, $3::text, $8::text, $2::text), NULL, now()
   FROM updated

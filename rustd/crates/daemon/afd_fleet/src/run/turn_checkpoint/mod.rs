@@ -1,0 +1,51 @@
+//! Event-owned recovery uses ordinary run authority, independently of native tasks.
+
+mod allocation;
+mod commit;
+mod files;
+mod folds;
+mod guard;
+mod head;
+mod maintenance;
+mod manifest;
+mod objects;
+mod pages;
+mod pins;
+mod plan;
+mod refusal;
+mod restore;
+mod root;
+mod row;
+mod signing;
+mod store;
+mod transaction;
+mod transfer;
+
+use af_core::id::Uuid7;
+
+pub use refusal::TurnCheckpointRefusal;
+pub use store::TurnCheckpoints;
+
+/// Presented ownership; only the locked guard proves the current connection and fence.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnRun<'a> {
+    /// Authenticated physical runner.
+    pub runner_id: &'a Uuid7,
+    /// Existing ordinary run; this path never allocates another thread.
+    pub run_id: &'a Uuid7,
+    /// Current run and thread must both equal this fence.
+    pub fencing_token: u64,
+}
+
+const TRANSFER_SECONDS: i32 = 15 * 60;
+const PIN_SECONDS: i32 = 2 * 60;
+const READY_GENERATIONS: i64 = 2;
+const WRITER: &str = "writer";
+const READER: &str = "reader";
+
+#[cfg(test)]
+mod guard_tests;
+#[cfg(test)]
+mod refusal_tests;
+#[cfg(test)]
+mod root_tests;

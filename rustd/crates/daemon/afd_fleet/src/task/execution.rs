@@ -1,6 +1,6 @@
 //! One live execution proof shared by task publications and recovery mutations.
 
-use super::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, guard, read, sql};
+use super::{TaskRefusal, TaskRun, TaskScope, TaskSnapshot, guard, read, sql};
 use crate::{Result, error::query};
 use af_core::clock;
 use af_core::id::Uuid7;
@@ -8,23 +8,23 @@ use af_wire::task::{DecisionTaskVersion, TaskState};
 use sqlx::PgConnection;
 
 pub(super) struct Owned {
-    pub current: guard::LeaseRow,
+    pub current: guard::RunRow,
     pub scope: TaskScope,
     pub snapshot: TaskSnapshot,
 }
 
 pub(super) async fn load(
     connection: &mut PgConnection,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     expected: &DecisionTaskVersion,
 ) -> Result<Owned> {
-    let current = guard::lease(connection, lease).await?;
+    let current = guard::run(connection, run).await?;
     on_current(connection, current, expected).await
 }
 
 pub(super) async fn on_current(
     connection: &mut PgConnection,
-    current: guard::LeaseRow,
+    current: guard::RunRow,
     expected: &DecisionTaskVersion,
 ) -> Result<Owned> {
     if current.task_id.as_ref().map(Uuid7::as_str) != Some(expected.task_id.as_str()) {
@@ -39,9 +39,9 @@ pub(super) async fn on_current(
 
 pub(super) async fn attached(
     connection: &mut PgConnection,
-    current: guard::LeaseRow,
+    current: guard::RunRow,
 ) -> Result<Owned> {
-    if current.fleet_status != crate::lease::sql::FLEET_STATUS_ACTIVE {
+    if current.fleet_status != crate::run::sql::FLEET_STATUS_ACTIVE {
         return Err(TaskRefusal::StaleState.into());
     }
     let scope = TaskScope {

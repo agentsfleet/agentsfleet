@@ -5,7 +5,7 @@ SELECT t.id, t.originating_task_item_id AS originating_item_id, t.target::text,
        c.generation AS checkpoint_generation, t.effect_cursor,
        t.confirmed_effect_watermark, t.max_model_nanos, t.used_model_nanos,
        t.reserved_model_nanos, t.max_running_nanos, t.used_running_nanos,
-       t.max_leases, t.used_leases, t.max_publications, t.used_publications,
+       t.max_runs, t.used_runs, t.max_publications, t.used_publications,
        t.max_decision_calls, t.used_decision_calls, t.max_fallback_reads,
        t.used_fallback_reads, t.expires_at,
        CASE WHEN w.id IS NULL THEN NULL ELSE jsonb_build_object(

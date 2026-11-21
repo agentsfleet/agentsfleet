@@ -7,7 +7,7 @@
 //!
 //! # Which code, and why none is new
 //!
-//! A refused lease is read by an operator on the host's journal, never by a
+//! A refused run is read by an operator on the host's journal, never by a
 //! tenant, so it reuses the registry's code for a fleet whose configuration
 //! cannot run, the way the rest of the runner reuses codes
 //! (`docs/RUST_ERROR_STANDARD.md`). The log line's `event` says which refusal.
@@ -22,7 +22,7 @@ af_core::error_shell!(
 /// Every way the catalog refuses.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// The lease's policy names a tool this runner cannot host.
+    /// The run's policy names a tool this runner cannot host.
     #[error("the policy names a tool this runner cannot host: {name}")]
     Unhosted {
         /// The tool's name, as the policy spells it.
@@ -63,7 +63,7 @@ impl Error {
         }
     }
 
-    /// The tool a refused lease named, for its log line.
+    /// The tool a refused run named, for its log line.
     #[must_use]
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {

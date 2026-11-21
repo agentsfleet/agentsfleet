@@ -18,7 +18,7 @@ use tracing::Instrument as _;
 pub(in crate::task) async fn maintain(tasks: &Tasks) -> Result<WaitMaintenance> {
     super::cleanup::maintain(tasks).await?;
     super::fanout::maintain(tasks).await?;
-    let mut connection = tasks.leases.pool().acquire().await?;
+    let mut connection = tasks.runs.pool().acquire().await?;
     let candidates: Vec<Candidate> = sqlx::query_as(include_str!("sql/due.sql"))
         .bind(TaskState::Waiting.as_str())
         .bind(CANDIDATES)
@@ -26,7 +26,7 @@ pub(in crate::task) async fn maintain(tasks: &Tasks) -> Result<WaitMaintenance> 
         .await
         .map_err(query("select bounded exact-head wait candidates"))?;
     drop(connection);
-    let mut ready = stream::iter(candidates.into_iter().map(|candidate| async move {
+    let mut ready = stream::iter(candidates.into_iter().map(async |candidate| {
         let Some(claimed) = claim::claim(tasks, &candidate).await? else {
             return Ok(None);
         };

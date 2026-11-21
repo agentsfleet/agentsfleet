@@ -1,7 +1,7 @@
 //! The billing relay: the task that settles logged usage. Renewals and reports
 //! log their usage lines and return; every 5 s this task settles those lines
 //! through the daemon's [`Biller`]. The expiry sweeper bills the
-//! last slice of a lease that ended unreported, and its lines settle here.
+//! last slice of a run that ended unreported, and its lines settle here.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,7 +9,7 @@ use std::time::Duration;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
 use afd_db::Db;
-use afd_fleet::lease::billing_sweep::LinesSwept;
+use afd_fleet::run::billing_sweep::LinesSwept;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -84,7 +84,7 @@ pub(super) fn spawn(
             }
             lap(&mut ticks, &resume, lap_ticks);
             drain(
-                || sweep_leases(&database, biller.as_ref(), &resume),
+                || sweep_runs(&database, biller.as_ref(), &resume),
                 &stop,
                 settings.max_drain_passes,
             )
@@ -112,20 +112,15 @@ async fn drain<F: Future<Output = bool>>(
     }
 }
 
-/// One pass over fleet leases from where the last one stopped, logged at both
+/// One pass over fleet runs from where the last one stopped, logged at both
 /// ends. Answers whether to run again at once.
-async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
+async fn sweep_runs(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
     {
-        let (event, pass, message) = (
-            &STARTED,
-            &"leases",
-            format_args!("billing relay pass starts"),
-        );
+        let (event, pass, message) = (&STARTED, &"runs", format_args!("billing relay pass starts"));
         tracing::debug!(message, event, pass);
     };
     let after = resume.lock().map_or(None, |at| at.clone());
-    let swept =
-        afd_fleet::lease::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
+    let swept = afd_fleet::run::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
     match swept {
         Ok(swept) => {
             if let Ok(mut at) = resume.lock() {
@@ -171,7 +166,7 @@ const fn drains(swept: &LinesSwept) -> bool {
     swept.full
 }
 
-/// Logs a lease pass's end. Every pass is one iteration of a 5 s poll, so its
+/// Logs a run pass's end. Every pass is one iteration of a 5 s poll, so its
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
 fn log_moved(swept: &LinesSwept) {
@@ -191,7 +186,7 @@ fn log_moved(swept: &LinesSwept) {
     {
         let (event, pass, resettled, settle_failures, message) = (
             &COMPLETED,
-            &"leases",
+            &"runs",
             &swept.resettled,
             &swept.settle_failures,
             format_args!("billing relay pass finished"),

@@ -15,7 +15,7 @@
 
 use crate::openapi_contract::{SCHEMA_PREFIX, document};
 
-/// The lease's egress rules and the runner's posture are two schemas.
+/// The run's egress rules and the runner's posture are two schemas.
 ///
 /// Both Rust types are named `NetworkPolicy`, and utoipa keys components by
 /// name alone. Without the aliases the document would say a run's egress rules
@@ -78,8 +78,8 @@ fn media_types(document: &serde_json::Value, path: &str) -> Option<Vec<String>> 
 fn test_the_streams_publish_under_their_own_media_type() {
     let document = document();
     for path in [
-        "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/events/stream",
-        "/v1/workspaces/{workspace_id}/events/stream",
+        "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/stream",
+        "/v1/workspaces/{workspace_id}/turns/stream",
     ] {
         assert_eq!(
             media_types(&document, path),

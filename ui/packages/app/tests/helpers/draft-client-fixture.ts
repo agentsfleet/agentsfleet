@@ -3,7 +3,7 @@ import type { Draft, Fleet } from "@/lib/api/draft-types";
 import { vi } from "vitest";
 import { DraftClient } from "@/lib/api/drafts";
 import { FakeEventSource } from "./fake-event-source";
-import { ACCEPTED, APP_ORIGIN, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, response } from "./draft-fixtures";
+import { ACCEPTED, APP_ORIGIN, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL, WORKSPACE, response } from "./draft-fixtures";
 
 type Call = {readonly path: string; readonly search: string; readonly method: string; readonly body: unknown; readonly headers: Headers};
 type Override = (call: Call) => Response | undefined | Promise<Response | undefined>;
@@ -23,7 +23,7 @@ export class DraftClientFixture {
       const call = {path, search: url.search, method: init?.method ?? "GET", body: init?.body ? JSON.parse(typeof init.body === "string" ? init.body : "null") : undefined, headers: new Headers(init?.headers)};
       this.calls.push(call);
       const custom = await this.override(call); if (custom) return custom;
-      if (path.endsWith("/authoring-context")) return response({fleet: this.fleet, conversations: [],
+      if (path.endsWith("/setup-context")) return response({fleet: this.fleet, conversations: [],
         activities: {items: [], next_cursor: null}, next_cursor: null});
       if (path.endsWith("/models")) return response({items: [MODEL], next_cursor: null});
       if (path.endsWith("/drafts") && call.method === "GET") return response({items: [], next_cursor: null});
@@ -34,7 +34,6 @@ export class DraftClientFixture {
       if (path.endsWith(`/drafts/${DRAFT_ID}`)) return response(this.current);
       if (path.endsWith("/fleets") && call.method === "POST") return response(FLEET, 201);
       if (path.endsWith(`/fleets/${FLEET_ID}`)) return response(this.fleet);
-      if (path.endsWith("/plugins") && call.method === "POST") return response(PUBLICATION, 201);
       throw new Error(`Unexpected fixture request ${call.method} ${path}`);
     }));
   }

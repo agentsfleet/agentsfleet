@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { parseWorkspaceFrame } from "./workspace-stream-parse";
 
 const FLEET_A = "z_a";
 
 function frame(fleetId: string): string {
-  return JSON.stringify({ fleet_id: fleetId, kind: "event_received", event_id: "e1", actor: "a" });
+  return JSON.stringify({ fleet_id: fleetId, kind: "turn_received", turn_id: "e1", actor: "a" });
 }
 
 describe("parseWorkspaceFrame", () => {

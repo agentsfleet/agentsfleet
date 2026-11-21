@@ -1,4 +1,4 @@
-//! Intent charges share the slot that protects the next physical issuance.
+//! Intent charges share the thread that protects the next physical issuance.
 
 use std::time::Duration;
 
@@ -10,7 +10,7 @@ use tokio::time::{interval, timeout};
 
 use super::{
     super::fixture::{Case, GOALS, exercise},
-    fixture::{Decisions, known, lock_slot, request},
+    fixture::{Decisions, known, lock_thread, request},
 };
 
 #[tokio::test]
@@ -35,13 +35,16 @@ async fn ordered(case: &Case) {
         .database
         .acquire()
         .await
-        .expect("issuance slot owner");
-    let mut blocker = connection.begin().await.expect("issuance slot transaction");
-    let pid = lock_slot(&mut blocker, case).await;
+        .expect("issuance thread owner");
+    let mut blocker = connection
+        .begin()
+        .await
+        .expect("issuance thread transaction");
+    let pid = lock_thread(&mut blocker, case).await;
     let unblock = async {
-        waiting_on_slot(&fixture, pid).await;
+        waiting_on_thread(&fixture, pid).await;
         assert_eq!(fixture.counts().await, (1, 1, 0));
-        blocker.rollback().await.expect("release issuance slot");
+        blocker.rollback().await.expect("release issuance thread");
     };
     let (recorded, ()) = tokio::join!(fixture.record(call, receipt), unblock);
     assert_eq!(
@@ -67,7 +70,7 @@ async fn ordered(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
-async fn waiting_on_slot(fixture: &Decisions<'_>, pid: i32) {
+async fn waiting_on_thread(fixture: &Decisions<'_>, pid: i32) {
     let observed = async {
         let mut ticks = interval(Duration::from_millis(10));
         loop {
@@ -95,7 +98,7 @@ async fn waiting_on_slot(fixture: &Decisions<'_>, pid: i32) {
     };
     timeout(Duration::from_secs(2), observed)
         .await
-        .expect("intent receipt must wait for issuance's slot");
+        .expect("intent receipt must wait for issuance's thread");
 }
 
 async fn next_physical_call_is_blocked(fixture: &Decisions<'_>) {
@@ -111,7 +114,7 @@ async fn next_physical_call_is_blocked(fixture: &Decisions<'_>) {
     );
     let refused = fixture
         .tasks
-        .reserve_decision(fixture.case.lease(), &input)
+        .reserve_decision(fixture.case.run(), &input)
         .await
         .expect_err("a fresh physical intent cannot bypass its durable actual overage");
     assert_eq!(refused.code(), error_code::TASK_LIMIT_EXHAUSTED);

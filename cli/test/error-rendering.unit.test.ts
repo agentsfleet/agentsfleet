@@ -13,11 +13,11 @@ import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
-const DETAIL = "Plugin entry is not owned by this workspace";
+const DETAIL = "Integration grant is not owned by this fleet";
 const USER_MESSAGE =
-  "That Plugin entry belongs to another workspace, so this workspace cannot remove it.";
-const TITLE = "Plugin entry not owned";
-const REFUSAL_CODE = "UZ-AUTHOR-001";
+  "That integration grant belongs to another fleet, so this fleet cannot revoke it.";
+const TITLE = "Integration grant not owned";
+const REFUSAL_CODE = "UZ-SETUP-001";
 
 describe("readProblemDetails — the two refusal strings", () => {
   test("carries both when the daemon sends both", () => {
@@ -61,14 +61,15 @@ describe("readProblemDetails — the two refusal strings", () => {
 
 describe("rendered failure — which string reaches the terminal", () => {
   const WS_ID = "01900000-0000-7000-8000-00000067e210";
-  const PLUGIN_ID = "01900000-0000-7000-8000-00000011b111";
-  const PLUGIN = `/v1/workspaces/${WS_ID}/plugins/${PLUGIN_ID}`;
+  const FLEET_ID = "01900000-0000-7000-8000-00000011b110";
+  const GRANT_ID = "01900000-0000-7000-8000-00000011b111";
+  const GRANT = `/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/integration-grants/${GRANT_ID}`;
 
   const scope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
     withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_err" }, fn);
 
   const refuseWith = (status: number, body: Record<string, unknown>): MockRoutes => ({
-    [`DELETE ${PLUGIN}`]: () => jsonResponse(status, body),
+    [`DELETE ${GRANT}`]: () => jsonResponse(status, body),
   });
 
   const removeAndReadStderr = async (routes: MockRoutes): Promise<{ code: number; text: string }> => {
@@ -76,7 +77,7 @@ describe("rendered failure — which string reaches the terminal", () => {
     await withMockApi(routes, async (apiUrl) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["plugins", "delete", PLUGIN_ID], {
+      const code = await runCli(["fleet", "grants", "revoke", GRANT_ID, "--fleet", FLEET_ID], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),

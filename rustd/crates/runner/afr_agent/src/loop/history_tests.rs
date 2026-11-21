@@ -4,48 +4,52 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_providers::{Message, Replay};
-use af_wire::event::message_of;
-use af_wire::lease::{LeasePayload, Turn};
-use afr_tools::catalog::DELEGATE;
+use af_wire::run::{EarlierCall, RunPayload, Turn};
+use af_wire::tool_detail::ItemStatus;
+use af_wire::turn::message_of;
+use afr_tools::catalog::UPDATE_PLAN;
+use guffbolt::agents::{SPAWN_AGENT, WAIT_AGENT};
+use guffbolt::{Message, Replay};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::fixture::{GITHUB_TOKEN, Script, call, clean, lease, say, unbounded};
+use crate::fixture::{Canned, GITHUB_TOKEN, Script, call, clean, payload, say, unbounded};
 use crate::harness::tests::{drive, engine};
 use crate::prompt::Prompt;
 
 /// What the fleet was asked before, and what it answered.
 const ASKED: &str = "which tests failed?";
 const ANSWERED: &str = "two: a and b";
-/// The current event's message, as the fixture lease carries it.
+/// The current event's message, as the fixture run carries it.
 const CURRENT: &str = "triage the failed run";
-/// The task the root delegates, which opens its child's conversation.
+/// The task the root hands a child, which opens the child's conversation.
 const DELEGATED: &str = "read the build log";
 
-/// The fixture lease, carrying `turns` as its earlier history.
-fn with_history(turns: &[(&str, &str)]) -> LeasePayload<'static> {
-    let mut lease = lease(&[], unbounded());
-    lease.history = turns
-        .iter()
-        .map(|(message, answer)| Turn {
+/// The fixture run, carrying `turns` as its earlier history.
+fn with_history(turns: &[(&str, &str)]) -> RunPayload<'static> {
+    let mut run = payload(&[], unbounded());
+    run.history = (1..)
+        .zip(turns)
+        .map(|(sequence, (message, answer))| Turn {
+            sequence,
             message: (*message).to_owned().into(),
+            calls: Vec::new(),
             answer: (*answer).to_owned().into(),
         })
         .collect();
-    lease
+    run
 }
 
-/// The first request a lease's run sends.
-async fn first_request(lease: &LeasePayload<'_>) -> crate::fixture::Sent {
+/// The first request a run's run sends.
+async fn first_request(run: &RunPayload<'_>) -> crate::fixture::Sent {
     let script = Script::new([vec![say("done")]]);
     let engine = engine(Vec::new(), &script);
-    drive(&engine, lease, &CancellationToken::new()).await;
+    drive(&engine, run, &CancellationToken::new()).await;
     script.sent().remove(0)
 }
 
 /// The turns lead the conversation, ahead of the current message, and leave
-/// the system prompt as a lease without them has it.
+/// the system prompt as a run without them has it.
 #[tokio::test]
 async fn test_history_leads_the_conversation() {
     let with = first_request(&with_history(&[(ASKED, ANSWERED)])).await;
@@ -98,9 +102,9 @@ fn test_history_message_matches_its_first_reading() {
         r#"{"message":"fix the second one","ref":"main"}"#,
         r#"{"ref":"main"}"#,
     ] {
-        let mut lease = lease(&[], unbounded());
-        lease.event.request_json = request.into();
-        assert_eq!(Prompt::new(&lease).message, message_of(request));
+        let mut run = payload(&[], unbounded());
+        run.event.request_json = request.into();
+        assert_eq!(Prompt::new(&run).message, message_of(request));
     }
 }
 
@@ -143,19 +147,24 @@ async fn test_cache_tokens_recorded_on_the_chat_span() {
 }
 
 /// Every request of a run files the provider's prompt cache under the
-/// lease's fleet, a delegated child's as well as the root's, so a follow-up
-/// and every child of the fleet read the one cache.
+/// run's fleet, a spawned child's as well as the root's, so a follow-up and
+/// every child of the fleet read the one cache.
 #[tokio::test]
 async fn test_every_request_keys_the_cache_by_the_fleet() {
     let script = Script::new([
-        vec![call("p1", DELEGATE.name(), json!({"task": DELEGATED}))],
+        vec![call(
+            "p1",
+            SPAWN_AGENT,
+            json!({"message": DELEGATED, "fork_turns": "none"}),
+        )],
+        vec![call("p2", WAIT_AGENT, json!({"target": 1}))],
         vec![say("done")],
     ])
     .with_child(DELEGATED, [vec![say("read")]]);
-    let engine = engine(afr_tools::nested::tools(), &script);
-    let lease = lease(&[DELEGATE.name()], unbounded());
+    let engine = engine(Vec::new(), &script);
+    let run = payload(&[SPAWN_AGENT, WAIT_AGENT], unbounded());
 
-    drive(&engine, &lease, &CancellationToken::new()).await;
+    drive(&engine, &run, &CancellationToken::new()).await;
 
     let sent = script.sent();
     let child = sent.iter().filter(|request| {
@@ -163,19 +172,19 @@ async fn test_every_request_keys_the_cache_by_the_fleet() {
     });
     assert_eq!(
         (sent.len(), child.count()),
-        (3, 1),
-        "two root turns and the child's one"
+        (4, 1),
+        "three root turns and the child's one"
     );
     for request in &sent {
-        assert_eq!(request.cache_key, lease.event.fleet_id, "{request:?}");
+        assert_eq!(request.cache_key, run.event.fleet_id, "{request:?}");
     }
 }
 
-/// A follow-up's first request repeats the previous lease's, through that
-/// lease's message: the same system prompt, the same tools, and the earlier
+/// A follow-up's first request repeats the previous run's, through that
+/// run's message: the same system prompt, the same tools, and the earlier
 /// message as it was sent, so the provider's cache can serve it.
 #[tokio::test]
-async fn test_history_prefix_is_byte_identical_across_leases() {
+async fn test_history_prefix_is_byte_identical_across_runs() {
     let first = first_request(&with_history(&[])).await;
     let mut follow_up = with_history(&[(CURRENT, ANSWERED)]);
     follow_up.event.request_json = r#"{"message":"fix the second one"}"#.into();
@@ -190,7 +199,7 @@ async fn test_history_prefix_is_byte_identical_across_leases() {
     );
 }
 
-/// A write-bound lease keeps its trusted repair context in the system prompt
+/// A write-bound run keeps its trusted repair context in the system prompt
 /// and out of every message, earlier turns included.
 #[tokio::test]
 async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
@@ -202,13 +211,13 @@ async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
 
     const REPOSITORY: &str = "agentsfleet/linkwarden";
     const HEADING: &str = "## Trusted repair context";
-    let mut lease = with_history(&[(ASKED, ANSWERED)]);
-    lease.policy.repository_binding = Some(RepositoryBinding {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    run.policy.repository_binding = Some(RepositoryBinding {
         repositories: vec![REPOSITORY.into()],
         access: RepositoryAccess::Write,
         base_branch: "dev".into(),
     });
-    lease.policy.http_origin_policies = vec![HttpOriginPolicy {
+    run.policy.http_origin_policies = vec![HttpOriginPolicy {
         host: "api.github.com".into(),
         credential_names: vec!["github".into()],
         requests: vec![HttpRequestRule {
@@ -224,11 +233,119 @@ async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
         }],
     }];
 
-    let sent = first_request(&lease).await;
+    let sent = first_request(&run).await;
 
     assert!(sent.instructions.contains(HEADING), "{}", sent.instructions);
     assert!(
         !format!("{:?}", sent.messages).contains(HEADING),
         "no message carries the repair context"
+    );
+}
+
+/// One call an earlier turn's run made, as the daemon carries it.
+fn earlier_call(number: u64, output: &str) -> EarlierCall<'static> {
+    EarlierCall {
+        call_id: format!("3:{number}").into(),
+        tool: UPDATE_PLAN.name().into(),
+        arguments: serde_json::Map::from_iter([("step".to_owned(), json!(number))]),
+        output: output.to_owned().into(),
+        status: ItemStatus::Succeeded,
+    }
+}
+
+/// The first request a run offered `update_plan` sends.
+async fn first_request_with_a_tool(run: &RunPayload<'_>) -> crate::fixture::Sent {
+    let script = Script::new([vec![say("done")]]);
+    let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "planned")], &script);
+    drive(&engine, run, &CancellationToken::new()).await;
+    script.sent().remove(0)
+}
+
+/// An earlier turn's calls lead the conversation in the order its run made
+/// them, each as the step that called it and the result it read, between
+/// what was asked and what was answered, so the follow-up sees them as the
+/// earlier run did.
+#[tokio::test]
+async fn test_earlier_calls_open_the_conversation_in_order() {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    run.policy.tools = vec![UPDATE_PLAN.name().into()];
+    run.history[0].calls = vec![earlier_call(1, "plan one"), earlier_call(2, "plan two")];
+
+    let sent = first_request_with_a_tool(&run).await;
+
+    let step = |number: u64| Message::Assistant {
+        text: String::new(),
+        calls: vec![guffbolt::Call {
+            id: format!("earlier_3_{number}"),
+            name: UPDATE_PLAN.name().to_owned(),
+            arguments: json!({ "step": number }),
+        }],
+        replay: Replay::default(),
+    };
+    let result = |number: u64, output: &str| Message::ToolResult {
+        call_id: format!("earlier_3_{number}"),
+        output: output.to_owned(),
+        image: None,
+    };
+    assert_eq!(
+        sent.messages,
+        [
+            Message::User(ASKED.to_owned()),
+            step(1),
+            result(1, "plan one"),
+            step(2),
+            result(2, "plan two"),
+            Message::Assistant {
+                text: ANSWERED.to_owned(),
+                calls: Vec::new(),
+                replay: Replay::default(),
+            },
+            Message::User(CURRENT.to_owned()),
+        ]
+    );
+}
+
+/// A secret an earlier call took or returned is scrubbed as the current
+/// message's would be.
+#[tokio::test]
+async fn test_earlier_calls_are_scrubbed() {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    run.policy.tools = vec![UPDATE_PLAN.name().into()];
+    let mut call = earlier_call(1, &format!("read {GITHUB_TOKEN}"));
+    call.arguments
+        .insert("token".to_owned(), json!(GITHUB_TOKEN));
+    run.history[0].calls = vec![call];
+
+    let sent = first_request_with_a_tool(&run).await;
+
+    let rendered = format!("{:?}", sent.messages);
+    assert!(!rendered.contains(GITHUB_TOKEN), "{rendered}");
+    assert!(
+        matches!(&sent.messages[2], Message::ToolResult { output, .. } if *output == clean(&format!("read {GITHUB_TOKEN}")).into_inner()),
+        "{rendered}"
+    );
+}
+
+/// A run offered no tool reads an earlier turn as what was asked and what
+/// was answered: a provider refuses tool calls in a request that declares no
+/// tools.
+#[tokio::test]
+async fn test_a_run_offered_no_tool_leaves_earlier_calls_out() {
+    let mut run = with_history(&[(ASKED, ANSWERED)]);
+    run.history[0].calls = vec![earlier_call(1, "plan one")];
+
+    let sent = first_request(&run).await;
+
+    assert_eq!(
+        sent.messages,
+        [
+            Message::User(ASKED.to_owned()),
+            Message::Assistant {
+                text: ANSWERED.to_owned(),
+                calls: Vec::new(),
+                replay: Replay::default(),
+            },
+            Message::User(CURRENT.to_owned()),
+        ]
     );
 }

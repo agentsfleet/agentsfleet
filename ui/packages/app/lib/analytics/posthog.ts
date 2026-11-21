@@ -71,7 +71,7 @@ let analyticsEnabled = false;
 let analyticsConfigured = false;
 let posthogClient: PostHogLike | null = null;
 let initialization: Promise<void> | null = null;
-const identityGate = new AnalyticsIdentityGate(() => { pendingContext = null; pendingEvents = []; });
+const identityGate = new AnalyticsIdentityGate(() => { pendingContext = null; pendingTurns = []; });
 let identifiedUserId: string | null = null;
 // Identity work that raced the PostHog client load.
 let pendingIdentify: { id: string; email?: string | null } | null = null;
@@ -82,7 +82,7 @@ let groupedWorkspaceId: string | null = null;
 let pendingContext: AnalyticsContext | null = null;
 // Distinct events queue in arrival order and stay bounded if loading stalls.
 const MAX_PENDING_EVENTS = 20;
-let pendingEvents: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
+let pendingTurns: Array<{ event: string; payload: Record<string, AnalyticsValue> }> = [];
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (value == null || value === "") return fallback;
@@ -151,7 +151,7 @@ function captureOrQueue(event: string, payload: Record<string, AnalyticsValue>):
     posthogClient.capture(event, payload);
     return;
   }
-  if (pendingEvents.length < MAX_PENDING_EVENTS) pendingEvents.push({ event, payload });
+  if (pendingTurns.length < MAX_PENDING_EVENTS) pendingTurns.push({ event, payload });
 }
 
 // The committed bootstrap owns identity; unresolved or cancelled effects hold telemetry.
@@ -213,9 +213,9 @@ function flushPending(): void {
   pendingContext = null;
   if (queuedContext !== null) setAnalyticsContext(queuedContext);
   // Reset discards events from the prior session; remaining events follow context.
-  const queuedEvents = pendingEvents;
-  pendingEvents = [];
-  for (const queued of queuedEvents) posthogClient.capture(queued.event, queued.payload);
+  const queuedTurns = pendingTurns;
+  pendingTurns = [];
+  for (const queued of queuedTurns) posthogClient.capture(queued.event, queued.payload);
 }
 
 export function identifyAnalyticsUser(user: { id: string; email?: string | null }): void {
@@ -283,7 +283,7 @@ export function resetAnalyticsIdentity(): void {
   pendingContext = null;
   // Drop any product events buffered against the prior session — they must not
   // stitch onto the next (anonymous or other) identity.
-  pendingEvents = [];
+  pendingTurns = [];
   if (analyticsConfigured && posthogClient === null) {
     // posthog-js is still loading (or its import failed — the next load
     // retries): keep the marker and let initAnalytics complete the reset.

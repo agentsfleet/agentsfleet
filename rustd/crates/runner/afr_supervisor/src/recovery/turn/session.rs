@@ -10,9 +10,9 @@ use super::NativeTurn;
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointRef, TurnCheckpointResponse as Response,
-        TurnId, TurnScope,
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnScope,
     },
     task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
 };
@@ -42,7 +42,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             reference,
             pin,
             workspace: Uuid7::parse(&scope.workspace_id.0)?,
-            namespace: format!("turn:{}", scope.event_id.0),
+            namespace: format!("turn:{}", scope.turn_id.0),
             transfers: native.transfers.clone(),
             stop,
         })
@@ -123,7 +123,7 @@ impl<'a, 'native> TurnSession<'a, 'native> {
             .command(Action::Authorize {
                 checkpoint: self.reference.clone(),
                 purpose,
-                object_ids: ids.iter().cloned().map(TurnId).collect(),
+                object_ids: ids.iter().cloned().map(CheckpointOperationId).collect(),
             })
             .await?
         else {

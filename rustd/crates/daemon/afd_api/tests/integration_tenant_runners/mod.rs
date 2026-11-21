@@ -182,26 +182,20 @@ fn body(host: &str, labels: &str, durable: bool) -> String {
     )
 }
 
-async fn register(caller: &Caller, key: &str, body: &str) -> http::Response<axum::body::Body> {
-    send_with_headers(
+async fn register(caller: &Caller, body: &str) -> http::Response<axum::body::Body> {
+    send(
         &caller.router,
         Method::POST,
         TENANT_RUNNERS,
         Some(&caller.token),
         body,
-        &[(IDEMPOTENCY_KEY, key)],
     )
     .await
 }
 
 /// Registers one runner for `caller` and answers its id and token.
 async fn registered(caller: &Caller, host: &str) -> (Uuid7, String) {
-    let created = register(
-        caller,
-        mint_id().as_str(),
-        &body(host, r#""tenant""#, false),
-    )
-    .await;
+    let created = register(caller, &body(host, r#""tenant""#, false)).await;
     assert_eq!(created.status(), StatusCode::CREATED);
     let created = json_body(created).await;
     (

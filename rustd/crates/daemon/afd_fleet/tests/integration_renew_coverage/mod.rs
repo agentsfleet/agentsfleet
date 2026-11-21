@@ -15,9 +15,9 @@ const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"trigg
 
 /// The status an archive leaves on the fleet row.
 ///
-/// `Leases::installed` answers `Ok(None)` for it, as for every status that is
+/// `Runs::installed` answers `Ok(None)` for it, as for every status that is
 /// not `active`. The renewal's ceiling read must not: the cases below archive a
-/// fleet while its run holds a lease and renew that lease.
+/// fleet while its run holds a run and renew that run.
 const FLEET_ARCHIVED: &str = "archived";
 
 async fn set_fleet_config(held: &Held, config: &str) {
@@ -50,7 +50,7 @@ async fn exhaust_fleet_budget(held: &Held) {
     sqlx::query(
         "INSERT INTO billing.usage_lines \
            (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
-            event_id, provider, model, posture, requested_at, input_token_count, \
+            turn_id, provider, model, posture, requested_at, input_token_count, \
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
             charged_nanos, created_at, updated_at) \
@@ -60,8 +60,8 @@ async fn exhaust_fleet_budget(held: &Held) {
            FROM fleet.fleets f WHERE f.id = $4",
     )
     .bind(afd_db::test_util::mint_id())
-    .bind(afd_billing::sql::work::FLEET_LEASE)
-    .bind(&held.event_id)
+    .bind(afd_billing::sql::work::FLEET_RUN)
+    .bind(&held.turn_id)
     .bind(&held.fleet)
     .bind(af_wire::usage::LineKind::Model.as_str())
     .execute(&mut *connection)
@@ -93,7 +93,7 @@ async fn archive_fleet(held: &Held) {
 async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = &held.issued.lease_id;
+    let run_id = &held.issued.run_id;
 
     // The wallet and fleet ceiling are independent gates. Give the latter
     // explicit room so this assertion can prove only the absent-wallet arm;
@@ -101,20 +101,20 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     remove_wallet(&held).await;
     plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect("an absent wallet remains the documented fail-open case");
 
     exhaust_fleet_budget(&held).await;
     let exhausted = plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect_err("a live ceiling at equality refuses the renewal");
     assert_eq!(exhausted.code(), error_code::RUN_BUDGET_EXCEEDED);
 
     make_budget_unreadable(&held).await;
     let malformed = plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect_err("an unreadable stored ceiling fails closed");
     assert_eq!(malformed.code(), error_code::RUN_BUDGET_EXCEEDED);
@@ -133,18 +133,18 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
 async fn a_fleet_archived_mid_run_keeps_its_breached_ceiling() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = &held.issued.lease_id;
+    let run_id = &held.issued.run_id;
 
     exhaust_fleet_budget(&held).await;
     let refused = plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect_err("the breached ceiling refuses while the fleet is still active");
     assert_eq!(refused.code(), error_code::RUN_BUDGET_EXCEEDED);
 
     archive_fleet(&held).await;
     let still_refused = plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect_err("an archive does not lift the ceiling of the run in flight");
     assert_eq!(still_refused.code(), error_code::RUN_BUDGET_EXCEEDED);
@@ -153,19 +153,19 @@ async fn a_fleet_archived_mid_run_keeps_its_breached_ceiling() {
     held.fixtures.cleanup().await;
 }
 
-/// An archive never cancels a run that still has room: the lease in flight renews.
+/// An archive never cancels a run that still has room: the run in flight renews.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_fleet_archived_mid_run_with_room_still_renews() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = &held.issued.lease_id;
+    let run_id = &held.issued.run_id;
 
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     archive_fleet(&held).await;
     plane
-        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .renew(&held.runner, run_id, RenewRequest::default(), held.now)
         .await
         .expect("a archived fleet's run with room left keeps renewing");
 

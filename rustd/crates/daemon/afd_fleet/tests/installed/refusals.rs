@@ -16,12 +16,12 @@ async fn missing_native_revision_is_permanent_even_if_old_projection_exists() {
         .await
         .expect("deselect the native revision");
     let failure = fixtures
-        .leases()
+        .runs()
         .installed(&held.fleet)
         .await
         .expect_err("no native authority");
     assert!(failure.is_config_permanent());
-    assert_eq!(failure.code(), af_core::error_code::AUTHORING_POLICY);
+    assert_eq!(failure.code(), af_core::error_code::SETUP_POLICY);
 }
 
 #[tokio::test]
@@ -35,7 +35,7 @@ async fn malformed_native_definition_refuses_instead_of_using_a_valid_projection
         .append_head(&held.fleet, "{}", "malformed", POLICY_SEMANTICS, model)
         .await;
     let failure = fixtures
-        .leases()
+        .runs()
         .installed(&held.fleet)
         .await
         .expect_err("invalid Definition");
@@ -57,7 +57,7 @@ async fn old_policy_or_missing_model_cannot_execute() {
             .await;
         assert!(
             fixtures
-                .leases()
+                .runs()
                 .installed(&held.fleet)
                 .await
                 .expect_err("setup must be re-reviewed")

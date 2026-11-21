@@ -52,10 +52,10 @@ fn fleet_and_setup_filters_select_their_work() {
         input.request.filter.fleet.map(String::from).as_deref(),
         Some(FLEET)
     );
-    assert_eq!(input.request.filter.work_type, Some(work::FLEET_LEASE));
+    assert_eq!(input.request.filter.work_type, Some(work::FLEET_RUN));
     assert_eq!(
         parsed("activity_type=setup").request.filter.work_type,
-        Some(work::AUTHORING_ATTEMPT)
+        Some(work::SETUP_RUN)
     );
 }
 

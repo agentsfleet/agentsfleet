@@ -21,7 +21,7 @@ fn refusals_distinguish_missing_runners_from_bad_cursors() {
     assert_error(
         &cursor,
         error_code::INVALID_REQUEST,
-        super::super::runner_leases::DETAIL_BAD_CURSOR,
+        super::super::runner_runs::DETAIL_BAD_CURSOR,
         false,
     );
     assert!(cursor.source().is_none());
@@ -29,7 +29,7 @@ fn refusals_distinguish_missing_runners_from_bad_cursors() {
 
 #[test]
 fn database_context_keeps_the_driver_cause() {
-    let query = super::query("listing runner leases")(sqlx::Error::Protocol(
+    let query = super::query("listing runner runs")(sqlx::Error::Protocol(
         "fixture projection query".into(),
     ));
     assert_error(

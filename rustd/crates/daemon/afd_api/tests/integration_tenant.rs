@@ -74,7 +74,7 @@ async fn mint_key(router: &axum::Router, token: &str) -> String {
     let listed = json_body(send(router, Method::GET, "/v1/api-keys", Some(token), "").await).await;
     let row = listed
         .get("items")
-        .and_then(serde_json::Value::as_array)
+        .and_then(Value::as_array)
         .expect("a key list carries items")
         .iter()
         .find(|row| text(row, "id") == text(&minted, "id"))

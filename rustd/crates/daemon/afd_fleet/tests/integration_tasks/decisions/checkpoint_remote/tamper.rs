@@ -26,10 +26,10 @@ pub(super) async fn refuse(
     };
     let failure = tasks
         .checkpoint_authorizations(
-            case.lease(),
+            case.run(),
             &id(&plan.checkpoint_id),
             &valid(CheckpointAuthorizationInput {
-                fencing_token: case.lease().fencing_token,
+                fencing_token: case.run().fencing_token,
                 task: task.clone(),
                 purpose: CheckpointTransferPurpose::Upload,
                 pin_id: Some(plan.pin.id.clone()),

@@ -19,7 +19,7 @@ use super::{
 use crate::{
     Result,
     error::{query, stale_fence},
-    task::{TaskLease, TaskRefusal, Tasks, guard, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, guard, transaction},
 };
 
 pub(super) enum Allocation {
@@ -29,23 +29,23 @@ pub(super) enum Allocation {
 
 pub(super) async fn allocate(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &garde::Valid<DecisionReservationInput>,
 ) -> Result<Allocation> {
-    if input.fencing_token != lease.fencing_token {
+    if input.fencing_token != run.fencing_token {
         return Err(stale_fence());
     }
     let request = Reservation {
         tasks,
-        lease,
+        run,
         input,
         operation: guard::wire(&input.operation_id)?,
         digest: digest(input)?,
     };
-    if let Some(call) = row::peek(tasks.leases.pool(), request.operation()).await? {
+    if let Some(call) = row::peek(tasks.runs.pool(), request.operation()).await? {
         return request.replay(call);
     }
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let result = request.on(&mut connection).await;
     transaction::recycle(connection);
     result
@@ -53,7 +53,7 @@ pub(super) async fn allocate(
 
 struct Reservation<'a> {
     tasks: &'a Tasks,
-    lease: TaskLease<'a>,
+    run: TaskRun<'a>,
     input: &'a garde::Valid<DecisionReservationInput>,
     operation: Uuid7,
     digest: String,
@@ -62,13 +62,13 @@ struct Reservation<'a> {
 impl Reservation<'_> {
     fn operation(&self) -> Lookup<'_> {
         Lookup::Operation {
-            lease: self.lease.lease_id,
+            run: self.run.run_id,
             operation: &self.operation,
         }
     }
 
     fn replay(&self, call: Call) -> Result<Allocation> {
-        if !call.owned_by(self.lease) {
+        if !call.owned_by(self.run) {
             return Err(stale_fence());
         }
         replay_matches(&call, self.input, &self.digest, true)?;
@@ -77,15 +77,15 @@ impl Reservation<'_> {
 
     async fn on(&self, connection: &mut PgConnection) -> Result<Allocation> {
         let mut tx = transaction::begin(connection).await?;
-        let current = guard::lease(&mut tx, self.lease).await?;
-        // A peer may have committed while this request waited for the slot.
+        let current = guard::run(&mut tx, self.run).await?;
+        // A peer may have committed while this request waited for the thread lock.
         if let Some(call) = row::find(&mut tx, self.operation()).await? {
             return self.replay(call);
         }
         block_profile_switch(&mut tx, &current, self.input).await?;
-        let call_id = self.tasks.leases.entropy().uuid7(clock::now())?;
-        let assessment_id = self.tasks.leases.entropy().uuid7(clock::now())?;
-        let (prepared, quote) = prepare::on(&mut tx, self.lease, self.input, &call_id).await?;
+        let call_id = self.tasks.runs.entropy().uuid7(clock::now())?;
+        let assessment_id = self.tasks.runs.entropy().uuid7(clock::now())?;
+        let (prepared, quote) = prepare::on(&mut tx, self.run, self.input, &call_id).await?;
         let key = prepared.context.key()?;
         let attempt = Attempt::resolve(
             &mut tx,
@@ -115,7 +115,7 @@ impl Reservation<'_> {
             tx.commit()
                 .await
                 .map_err(query("commit saved decision reservation lookup"))?;
-            return if call.owned_by(self.lease) {
+            return if call.owned_by(self.run) {
                 classify(call)
             } else {
                 Ok(Allocation::Existing(call))
@@ -123,7 +123,7 @@ impl Reservation<'_> {
         }
         self.admit(&mut tx, &prepared).await?;
         Intent {
-            lease: self.lease,
+            run: self.run,
             input: self.input,
             id: &call_id,
             prepared: &prepared,
@@ -178,7 +178,7 @@ fn replay_matches(
 ) -> Result<()> {
     if call.request_digest != digest
         || call.retry_of_decision_call_id.as_ref().map(Uuid7::as_str) != input.retry_of.as_deref()
-        || (operation && call.source_admission_id != input.source_admission_id)
+        || (operation && call.source_turn_id != input.source_turn_id)
     {
         return Err(TaskRefusal::ReplayConflict.into());
     }
@@ -186,8 +186,8 @@ fn replay_matches(
 }
 
 fn digest(input: &DecisionReservationInput) -> Result<String> {
-    let source = (input.assessment.purpose() == DecisionPurpose::Intent)
-        .then_some(&input.source_admission_id);
+    let source =
+        (input.assessment.purpose() == DecisionPurpose::Intent).then_some(&input.source_turn_id);
     let bytes = serde_json::to_vec(&(source, &input.assessment, &input.task, &input.evidence))
         .map_err(af_core::json::Unreadable::from)?;
     Ok(af_core::etag::sha256_hex(&bytes))
@@ -195,7 +195,7 @@ fn digest(input: &DecisionReservationInput) -> Result<String> {
 
 async fn block_profile_switch(
     connection: &mut PgConnection,
-    current: &guard::LeaseRow,
+    current: &guard::RunRow,
     input: &DecisionReservationInput,
 ) -> Result<()> {
     let assignment = current
@@ -203,7 +203,7 @@ async fn block_profile_switch(
         .as_ref()
         .ok_or(TaskRefusal::DecisionUnavailable)?;
     let subject = context::subject(
-        &input.source_admission_id,
+        &input.source_turn_id,
         &input.assessment,
         current
             .task_id
@@ -215,7 +215,7 @@ async fn block_profile_switch(
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(format!("{subject}/%"))
-        .bind(crate::task::guard::wire(&assignment.0.revision_id)?)
+        .bind(guard::wire(&assignment.0.revision_id)?)
         .fetch_one(connection)
         .await
         .map_err(query(

@@ -2,7 +2,7 @@
 
 import type { Definition, Fleet, Schedule } from "@/lib/api/draft-types";
 import { Button, Section } from "@agentsfleet/design-system";
-import { saveDoneText } from "@/lib/events/fleet-activity";
+import { saveDoneText } from "@/lib/turns/fleet-activity";
 import { setupRecovery } from "@/lib/api/schedule-status";
 import { SetupChecks } from "./SetupChecks";
 import { ScheduleSync } from "../../schedules/ScheduleSync";

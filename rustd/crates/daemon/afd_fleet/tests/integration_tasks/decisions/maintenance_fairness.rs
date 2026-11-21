@@ -11,16 +11,20 @@ use tokio::time::timeout;
 
 use super::{
     super::fixture::{Case, exercise},
-    fixture::{Decisions, lock_slot},
+    fixture::{Decisions, lock_thread},
     maintenance::{due, state, unissued},
 };
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_held_oldest_slot_does_not_starve_a_later_fleet() {
+async fn a_held_oldest_thread_does_not_starve_a_later_fleet() {
     exercise(later_fleet).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn later_fleet(case: &Case) {
     let other = case.sibling().await;
     let oldest = Decisions::create(case).await;
@@ -63,6 +67,10 @@ async fn later_fleet(case: &Case) {
     other.held.fixtures.cleanup().await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn held_pass(
     fixture: &Decisions<'_>,
     later: &Decisions<'_>,
@@ -80,7 +88,7 @@ async fn held_pass(
         .begin()
         .await
         .expect("in-flight native operation");
-    let _pid = lock_slot(&mut blocker, fixture.case).await;
+    let _pid = lock_thread(&mut blocker, fixture.case).await;
     let capture = Capture::install();
     let swept = timeout(
         Duration::from_secs(1),
@@ -99,7 +107,7 @@ async fn held_pass(
     blocker
         .rollback()
         .await
-        .expect("release still-held oldest slot");
+        .expect("release still-held oldest thread");
     arriving
 }
 
@@ -171,6 +179,10 @@ async fn malformed_oldest_state_is_retained_while_later_work_recovers_and_wrap_r
     exercise(malformed).await;
 }
 
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn malformed(case: &Case) {
     let fixture = Decisions::create(case).await;
     let first = unissued(
@@ -260,21 +272,21 @@ fn failed_diagnostics(capture: &Capture) {
 }
 
 pub(super) async fn extra_unissued(fixture: &Decisions<'_>) -> Uuid7 {
-    let source = fixture.case.claimed_source().await;
+    let source = fixture.case.assigned_source().await;
     let mut input: DecisionReservationInput = fixture
         .reservation(DecisionAssessment::Message, None)
         .into_inner();
-    input.source_admission_id = source.to_string();
+    input.source_turn_id = source.to_string();
     let input = garde::Unvalidated::new(input)
         .validate()
-        .expect("distinct claimed human source");
+        .expect("distinct assigned human source");
     let call = unissued(fixture, &input).await;
     // Input settlement remains separate work. Seed its completed-source state
     // so this financial fixture preserves FIFO ordering.
-    let finished = sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_claim_lease_id=$2 AND input_claim_fence=$3 AND settled_at IS NULL")
-        .bind(source).bind(&fixture.case.held.lease_key).bind(fixture.case.held.fence.as_i64())
+    let finished = sqlx::query("UPDATE thread.turns SET settled_at=clock_timestamp(),parked_at=NULL,updated_at=clock_timestamp() WHERE id=$1 AND input_run_id=$2 AND input_fence=$3 AND settled_at IS NULL")
+        .bind(source).bind(&fixture.case.held.run_key).bind(fixture.case.held.fence.as_i64())
         .execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("owned completed input"))
-        .await.expect("preceding claimed input finishes before the next source");
+        .await.expect("preceding assigned input finishes before the next source");
     assert_eq!(finished.rows_affected(), 1);
     call
 }

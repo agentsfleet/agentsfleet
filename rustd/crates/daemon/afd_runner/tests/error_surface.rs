@@ -8,7 +8,7 @@
 //! # What this crate has that the others do not
 //!
 //! Seven codes across the sampled kinds, because a caller here DOES discriminate — a
-//! runner that vanished, one that is still leased and one refused for its host id
+//! runner that vanished, one that is still held and one refused for its host id
 //! are three different things to answer with.
 //!
 //! Every count below was MEASURED against the sample set, not chosen. Each is a
@@ -22,7 +22,7 @@ use af_core::test_util::error_surface::{Expect, grade, grade_sentences};
 use afd_runner::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 6;
+const WITH_SOURCE: usize = 5;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 10;
 

@@ -28,8 +28,8 @@ use super::tests::{BASE, Fixture, NAME, ORIGINS, OWNER, REPOSITORY, SCOPE, TOKEN
 use super::{Fetched, Mirrors, Request};
 use crate::test_support::head;
 
-/// The lease each test checks out for first.
-const FIRST_LEASE: &str = "lease_1";
+/// The run each test checks out for first.
+const FIRST_RUN: &str = "run_1";
 /// The status line a CGI program writes in place of HTTP's.
 const CGI_STATUS: &str = "Status";
 /// Where the CGI program's headers end and its body begins.
@@ -159,8 +159,8 @@ async fn the_fetch_presents_the_token_as_basic_credentials() {
     let root = fixture.root.path().join(ORIGINS);
     let (url, seen) = origin(root, credentials(TOKEN)).await;
     let mirrors = Mirrors::new(fixture.root.path().join("http"), url);
-    let first = fixture.workspace(FIRST_LEASE);
-    let second = fixture.workspace("lease_2");
+    let first = fixture.workspace(FIRST_RUN);
+    let second = fixture.workspace("run_2");
 
     let cloned = check_out(&fixture, &mirrors, &first).await.unwrap();
     let fetched = check_out(&fixture, &mirrors, &second).await.unwrap();
@@ -185,7 +185,7 @@ async fn a_token_the_origin_refuses_fails_the_fetch() {
     let (url, seen) = origin(root, credentials("ghs_someOtherToken")).await;
     let mirrors = Mirrors::new(fixture.root.path().join("http"), url);
 
-    let refused = check_out(&fixture, &mirrors, &fixture.workspace(FIRST_LEASE))
+    let refused = check_out(&fixture, &mirrors, &fixture.workspace(FIRST_RUN))
         .await
         .unwrap_err();
 

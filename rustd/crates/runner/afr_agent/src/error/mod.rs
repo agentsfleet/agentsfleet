@@ -11,7 +11,7 @@
 use af_core::error_code::{self, Coded, ErrorCode};
 
 mod raise;
-pub(crate) use raise::{recovery_invalid, recovery_source};
+pub(crate) use raise::{recovery_invalid, recovery_source, setup_assignment};
 
 af_core::error_shell!(
     /// An agent-engine failure, with the backtrace of where it was raised.
@@ -113,13 +113,28 @@ pub(crate) enum ErrorKind {
         source: af_secrets::Error,
     },
 
-    /// The catalog refused the lease's tools.
-    #[error("the lease's tools were refused")]
+    /// The catalog refused the run's tools.
+    #[error("the run's tools were refused")]
     Tools {
         /// The catalog's refusal, naming the tool.
         #[from]
         source: afr_tools::Error,
     },
+
+    /// A setup run's draft context could not be read or saved through the
+    /// daemon's fenced context verb.
+    #[error("the setup run's draft context could not be read or saved")]
+    SetupContext {
+        /// The verb's registry code, kept from its own failure.
+        code: ErrorCode,
+        /// The verb's failure.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// A setup run's assignment lacks what a setup run is built from.
+    #[error("the setup run's assignment is unusable: {reason}")]
+    SetupAssignment { reason: &'static str },
 }
 
 /// The one alias every signature in this crate spells.
@@ -131,6 +146,16 @@ impl Error {
     #[must_use]
     pub fn checkpoint(failure: impl Coded + Send + Sync + 'static) -> Self {
         Self::from(ErrorKind::Checkpoint {
+            code: failure.code(),
+            source: Box::new(failure),
+        })
+    }
+
+    /// A setup run's context verb that failed, for `failure`, which keeps
+    /// its own registry code.
+    #[must_use]
+    pub fn setup_context(failure: impl Coded + Send + Sync + 'static) -> Self {
+        Self::from(ErrorKind::SetupContext {
             code: failure.code(),
             source: Box::new(failure),
         })
@@ -158,13 +183,14 @@ impl Error {
             ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            ErrorKind::Checkpoint { code, .. } => *code,
+            ErrorKind::Checkpoint { code, .. } | ErrorKind::SetupContext { code, .. } => *code,
+            ErrorKind::SetupAssignment { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Provider { source } => source.code(),
             ErrorKind::Tools { source } => source.code(),
         }
     }
 
-    /// What a refused lease named that this engine cannot host, for its log
+    /// What a refused run named that this engine cannot host, for its log
     /// line; none for a failure that refused nothing.
     #[must_use]
     pub fn unhosted(&self) -> Option<Unhosted<'_>> {
@@ -180,14 +206,17 @@ impl Error {
             | ErrorKind::TaskContext { .. } => None,
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
-            ErrorKind::Checkpoint { .. } | ErrorKind::Scrub { .. } => None,
+            ErrorKind::Checkpoint { .. }
+            | ErrorKind::Scrub { .. }
+            | ErrorKind::SetupContext { .. }
+            | ErrorKind::SetupAssignment { .. } => None,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => None,
         }
     }
 }
 
-/// What a refused lease named that the engine cannot host.
+/// What a refused run named that the engine cannot host.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Unhosted<'a> {
     /// A tool with no handler in the catalog.

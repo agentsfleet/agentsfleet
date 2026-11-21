@@ -3,7 +3,7 @@
 //! A funds check is one read: the balance less every line the payer logged
 //! and was not yet charged for. It runs under the API login's lock and
 //! statement bounds (`afd_db::login`), so a read stuck behind a lock gives up
-//! unanswered rather than holding the lease path. Charging stamps the lines
+//! unanswered rather than holding the run path. Charging stamps the lines
 //! first and debits the wallet last, so the wallet row is locked only from the
 //! debit to the commit.
 

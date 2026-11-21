@@ -4,12 +4,12 @@ use af_fleet_runtime::FleetConfig;
 use af_wire::decision::NamedQuestion;
 use af_wire::task::{TaskBindingsInput, TaskInputAction, TaskProposedItem, TaskRequestedTarget};
 
-use super::super::{PreparedItem, PreparedTask, TaskLease, TaskRefusal, Tasks, guard};
+use super::super::{PreparedItem, PreparedTask, TaskRefusal, TaskRun, Tasks, guard};
 use crate::Result;
 
 pub(super) async fn prepare(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     input: &TaskBindingsInput,
     objectives: Vec<&str>,
     config: &FleetConfig,
@@ -19,7 +19,7 @@ pub(super) async fn prepare(
     for (item, objective) in input.items.iter().zip(objectives) {
         let proposed = &item.proposed;
         items.push(if proposed.action == TaskInputAction::NewWork {
-            new_task(tasks, lease, proposed, objective, config, questions).await?
+            new_task(tasks, run, proposed, objective, config, questions).await?
         } else {
             PreparedItem::Existing {
                 source_span: proposed.source_start..proposed.source_end,
@@ -38,7 +38,7 @@ pub(super) async fn prepare(
 
 async fn new_task(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     proposed: &TaskProposedItem,
     objective: &str,
     config: &FleetConfig,
@@ -46,7 +46,7 @@ async fn new_task(
 ) -> Result<PreparedItem> {
     let target = target(
         tasks,
-        lease,
+        run,
         proposed.target.as_ref().ok_or(TaskRefusal::InvalidTarget)?,
         config,
         objective,
@@ -71,7 +71,7 @@ async fn new_task(
 
 async fn target(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     target: &TaskRequestedTarget,
     config: &FleetConfig,
     objective: &str,
@@ -101,7 +101,7 @@ async fn target(
                 .ok_or(TaskRefusal::InvalidTarget)?;
             serde_json::to_value(
                 github
-                    .prepare(lease, config, repository, *number, objective)
+                    .prepare(run, config, repository, *number, objective)
                     .await?,
             )
             .map_err(|source| af_core::json::Unreadable::from(source).into())

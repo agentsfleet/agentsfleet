@@ -31,7 +31,7 @@
 //! beside [`now`] — and that needs no seam at all, because the decision under
 //! test takes the instant as an argument. Reach for [`Clock`] only where a
 //! long-lived owner reads the clock repeatedly: a JWKS cache deciding whether
-//! its entry is stale, a sweeper deciding which leases have expired.
+//! its entry is stale, a sweeper deciding which runs have expired.
 //!
 //! A timestamp a statement stores is not read here at all. Lifecycle stamps
 //! are the database's `now()` and deadlines its `clock_timestamp()`

@@ -1,6 +1,6 @@
 //! A daemon and a collector for the binary's own suite, on loopback.
 //!
-//! The daemon grants one lease, then none, and answers every other runner
+//! The daemon grants one run, then none, and answers every other runner
 //! verb as a healthy daemon would, through `afr_supervisor`'s own healthy
 //! daemon. It hands back each report the binary posts. The collector keeps
 //! every OTLP/JSON document the binary exports.
@@ -14,10 +14,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::clock::{after, now};
-use af_wire::lease::LeaseKind;
+use af_wire::run::RunKind;
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
-pub(crate) use afr_supervisor::test_util::{FENCING, LEASE_ID};
-use afr_supervisor::test_util::{FLEET_ID, Healthy, LEASE_JSON};
+pub(crate) use afr_supervisor::test_util::{FENCING, RUN_ID};
+use afr_supervisor::test_util::{FLEET_ID, Healthy, RUN_JSON};
 use axum::http::header;
 use serde_json::Value;
 use tokio::sync::mpsc;
@@ -26,7 +26,7 @@ use tokio::sync::mpsc;
 /// the turn reaches the real loop and its provider, and fails there without
 /// a packet leaving the host.
 const UNRESOLVABLE_MODEL: &str = "custom:https://model.invalid/v1";
-/// How far ahead the lease and each renewal are granted.
+/// How far ahead the run and each renewal are granted.
 const GRANTED_FOR: Duration = Duration::from_secs(120);
 /// The media type every reply carries.
 const JSON: &str = "application/json";
@@ -58,7 +58,7 @@ impl FakeDaemon {
     }
 
     /// Serves on a free loopback port and keeps each report it is sent, but
-    /// never answers one: the lease that posted it stays in flight.
+    /// never answers one: the run that posted it stays in flight.
     pub(crate) async fn stalling_reports() -> Self {
         Self::serve(NetworkPolicy::AllowAll, &[], Reports::Stalled).await
     }
@@ -87,7 +87,7 @@ impl FakeDaemon {
                 granted_until: granted_until(),
                 ..healthy.as_ref().clone()
             },
-            lease(),
+            payload(),
             move |frame| {
                 let sent = sent.clone();
                 async move {
@@ -146,16 +146,16 @@ enum Reports {
     Stalled,
 }
 
-/// The fixture lease, tagged as fleet work for this suite's fleet, granted from
+/// The fixture run, tagged as fleet work for this suite's fleet, granted from
 /// now, naming a model that never resolves.
-fn lease() -> Value {
-    let mut lease: Value = serde_json::from_str(LEASE_JSON).expect("the fixture lease parses");
-    lease["kind"] = LeaseKind::Fleet.as_str().into();
-    lease["lease_id"] = LEASE_ID.into();
-    lease["lease_expires_at"] = granted_until().to_string().into();
-    lease["event"]["fleet_id"] = FLEET_ID.into();
-    lease["policy"]["provider"] = UNRESOLVABLE_MODEL.into();
-    lease
+fn payload() -> Value {
+    let mut run: Value = serde_json::from_str(RUN_JSON).expect("the fixture run parses");
+    run["kind"] = RunKind::Fleet.as_str().into();
+    run["run_id"] = RUN_ID.into();
+    run["run_expires_at"] = granted_until().to_string().into();
+    run["event"]["fleet_id"] = FLEET_ID.into();
+    run["policy"]["provider"] = UNRESOLVABLE_MODEL.into();
+    run
 }
 
 /// [`GRANTED_FOR`] from now.

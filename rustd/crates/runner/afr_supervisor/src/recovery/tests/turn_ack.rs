@@ -1,9 +1,10 @@
 //! A lost commit reply is reconciled against the exact pending generation.
 
 use super::*;
-use af_wire::lease::{
-    TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointPlan, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnResume, TurnScope, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
+    TurnCheckpointPlan, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
+    TurnScope, TurnWorkspace,
 };
 use afr_agent::TurnSnapshot;
 use zeroize::Zeroizing;
@@ -13,9 +14,9 @@ async fn losing_every_commit_ack_does_not_permanently_stall_later_captures() -> 
     let ledger = Arc::new(Mutex::new(Ledger::default()));
     let remote = Arc::clone(&ledger);
     let (plane, mut calls) = plane(move |call| remote.lock().unwrap().respond(body(call)));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = crate::recovery::Transfers::new()?;
-    let mut native = super::super::NativeTurn::new(&plane, &lease, FENCE, &transfers);
+    let mut native = super::super::NativeTurn::new(&plane, &run, FENCE, &transfers);
     let stop = tokio_util::sync::CancellationToken::new();
     assert!(
         native
@@ -44,9 +45,9 @@ async fn a_refused_commit_requires_exact_abandonment_before_another_capture() ->
     }));
     let remote = Arc::clone(&ledger);
     let (plane, _calls) = plane(move |call| remote.lock().unwrap().respond(body(call)));
-    let lease = Uuid7::parse(ID)?;
+    let run = Uuid7::parse(ID)?;
     let transfers = crate::recovery::Transfers::new()?;
-    let mut native = super::super::NativeTurn::new(&plane, &lease, FENCE, &transfers);
+    let mut native = super::super::NativeTurn::new(&plane, &run, FENCE, &transfers);
     let stop = tokio_util::sync::CancellationToken::new();
     assert!(
         native
@@ -115,10 +116,10 @@ fn drained(calls: &mut Calls) -> Vec<Call> {
 fn snapshot() -> TurnSnapshot {
     TurnSnapshot {
         scope: TurnScope {
-            workspace_id: TurnId(ID.to_owned()),
-            fleet_id: TurnId(ID.to_owned()),
-            event_id: TurnId(ID.to_owned()),
-            setup_revision_id: TurnId(ID.to_owned()),
+            workspace_id: CheckpointOperationId(ID.to_owned()),
+            fleet_id: CheckpointOperationId(ID.to_owned()),
+            turn_id: CheckpointOperationId(ID.to_owned()),
+            setup_revision_id: CheckpointOperationId(ID.to_owned()),
             workspace: TurnWorkspace::ApiOnly,
         },
         previous: None,
@@ -132,7 +133,7 @@ struct Ledger {
     plan: Option<TurnCheckpointPlan>,
     allocated: u64,
     commit_reply: CommitReply,
-    commit_operations: Vec<TurnId>,
+    commit_operations: Vec<CheckpointOperationId>,
     allow_abandon: bool,
     abandonments: Vec<TurnCheckpointRef>,
 }
@@ -168,7 +169,7 @@ impl Ledger {
                 manifest_root,
                 folds,
             } => {
-                assert_eq!(folds, Vec::<af_wire::lease::FoldRef>::new());
+                assert_eq!(folds, Vec::<af_wire::run::FoldRef>::new());
                 assert_eq!(checkpoint, self.pending_ref());
                 self.commit_operations.push(request.operation_id);
                 if matches!(self.commit_reply, CommitReply::Conflict) {
@@ -205,7 +206,7 @@ impl Ledger {
         let plan = self.plan.as_ref().unwrap();
         TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         }
     }
 
@@ -221,19 +222,19 @@ impl Ledger {
         }
     }
 
-    fn begin(&mut self, begin: af_wire::lease::TurnCheckpointBegin) -> Answer {
+    fn begin(&mut self, begin: af_wire::run::TurnCheckpointBegin) -> Answer {
         if begin.expected_head != self.head.as_ref().map(|head| head.checkpoint_id.clone()) {
             return Self::conflict();
         }
         self.allocated += 1;
         let deadline = clock::after(clock::now(), Duration::from_mins(15));
         let plan = TurnCheckpointPlan {
-            checkpoint_id: TurnId(format!(
+            checkpoint_id: CheckpointOperationId(format!(
                 "019f0000-0000-7000-8000-{:012}",
                 self.allocated + 10
             )),
             generation: self.allocated,
-            format_version: af_wire::lease::TURN_CHECKPOINT_FORMAT,
+            format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
             scope: snapshot().scope,
             expected_head: begin.expected_head,
             page_ids: Vec::new(),

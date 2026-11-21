@@ -9,19 +9,20 @@ use af_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 use serde_json::json;
 
-use super::Shell;
-use crate::handler::Typed;
-use crate::lease::Lease;
-use crate::runtime::{Tool, ToolErrorCode};
-use crate::sandbox::oneshot::{EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX};
+use crate::catalog::{Entry, SHELL};
+use crate::run::Run;
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
+use guffbolt::tools::process::oneshot::{
+    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_DEFAULT, TIMEOUT_MAX,
+};
 
 /// Two sleeps in one process group, the shell waiting on the second.
 const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
 
-fn shell() -> Box<dyn Tool> {
-    Typed::boxed(Shell)
+fn shell() -> &'static Entry {
+    &SHELL
 }
 
 /// The one spawn `executor` was asked for.
@@ -37,9 +38,9 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("hi\n", 3)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "echo hi; exit 3"}),
     )
     .await;
@@ -78,9 +79,9 @@ async fn should_answer_with_the_output_alone_when_the_command_succeeds() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("ok\n", 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "true"}),
     )
     .await;
@@ -94,11 +95,11 @@ async fn should_answer_with_the_output_alone_when_the_command_succeeds() {
 async fn should_hold_the_timeout_the_model_names_under_the_ceiling() {
     let executor =
         ScriptedExecutor::new([ScriptedProcess::exits("", 0), ScriptedProcess::exits("", 0)]);
-    let lease = Lease::default();
+    let run = Run::default();
 
-    for timeout_ms in [1_500, 86_400_000] {
+    for timeout_ms in [1_500_u64, 3_000_000_000] {
         let arguments = json!({"command": "true", "timeout_ms": timeout_ms});
-        call_in(&*shell(), &executor, &lease, arguments).await;
+        call_in(shell(), &executor, &run, arguments).await;
     }
 
     let limits: Vec<_> = executor.spawned().iter().map(Spawn::time_limit).collect();
@@ -114,21 +115,21 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
     let executor = ScriptedExecutor::new([ScriptedProcess::ends("started\n", Ending::TimedOut)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": SLEEP_TWICE, "timeout_ms": 500}),
     )
     .await;
 
     assert_eq!(output.text, "started\nProcess timed out after 500 ms");
-    assert_eq!(output.error_code, Some(ToolErrorCode::TimedOut));
+    assert_eq!(output.error_code, Some(ToolErrorCode::TimedOut.into()));
     assert_eq!(output.exit_code, None);
     let logged = capture.only(EVENT_TIMED_OUT);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(logged.field("timeout_ms"), Some("500"));
     assert_eq!(logged.field("error_code"), Some("timed_out"));
-    assert!(logged.field("lease_id").is_some(), "{logged:?}");
+    assert!(logged.field("run_id").is_some(), "{logged:?}");
 }
 
 #[tokio::test]
@@ -138,20 +139,20 @@ async fn test_oom_ending_reads_out_of_memory() {
         ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "python3 -c 'bytearray(8 << 30)'"}),
     )
     .await;
 
     assert_eq!(output.text, "allocating\nProcess killed: out of memory");
-    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory.into()));
     assert_eq!(output.exit_code, Some(137));
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(logged.field("error_code"), Some("out_of_memory"));
-    assert!(logged.field("lease_id").is_some(), "{logged:?}");
+    assert!(logged.field("run_id").is_some(), "{logged:?}");
     assert!(
         logged
             .fields
@@ -167,16 +168,10 @@ async fn should_report_a_signal_and_a_lost_ending() {
         ScriptedProcess::ends("", Ending::Signaled(9)),
         ScriptedProcess::vanishes("partial"),
     ]);
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let killed = call_in(
-        &*shell(),
-        &executor,
-        &lease,
-        json!({"command": "kill -9 $$"}),
-    )
-    .await;
-    let lost = call_in(&*shell(), &executor, &lease, json!({"command": "sleep 1"})).await;
+    let killed = call_in(shell(), &executor, &run, json!({"command": "kill -9 $$"})).await;
+    let lost = call_in(shell(), &executor, &run, json!({"command": "sleep 1"})).await;
 
     assert_eq!(killed.text, "Process killed by signal 9");
     assert_eq!(killed.exit_code, Some(137));
@@ -185,7 +180,7 @@ async fn should_report_a_signal_and_a_lost_ending() {
         lost.text,
         "partial\nProcess interrupted before its ending arrived"
     );
-    assert_eq!(lost.error_code, Some(ToolErrorCode::Interrupted));
+    assert_eq!(lost.error_code, Some(ToolErrorCode::Interrupted.into()));
     assert_eq!(lost.exit_code, None);
 }
 
@@ -195,9 +190,9 @@ async fn should_cut_a_long_output_to_the_model_budget() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits(&long, 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "yes x | head -c 50000"}),
     )
     .await;
@@ -210,22 +205,25 @@ async fn should_cut_a_long_output_to_the_model_budget() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
-    let lease = Lease::default();
+    let run = Run::default();
 
-    let unsandboxed = call(&*shell(), &lease, json!({"command": "true"})).await;
+    let unsandboxed = call(shell(), &run, json!({"command": "true"})).await;
     let refused = call_in(
-        &*shell(),
+        shell(),
         &ScriptedExecutor::new([]),
-        &lease,
+        &run,
         json!({"command": "true"}),
     )
     .await;
 
     assert_eq!(
         unsandboxed.text,
-        "[sandbox_unavailable] this call has no sandbox to run in"
+        "[sandbox_unavailable] runs in the sandbox, and this run has none"
     );
-    assert_eq!(refused.error_code, Some(ToolErrorCode::SandboxUnavailable));
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::SandboxUnavailable.into())
+    );
     assert!(
         refused.text.ends_with(": no scripted process left"),
         "the executor's own words, not this host's code: {}",
@@ -239,14 +237,17 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("", 0)]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "true", "cwd": "/"}),
     )
     .await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
     let spawned = executor.spawned();
     assert!(spawned.is_empty(), "{spawned:?}");
 }
@@ -259,9 +260,9 @@ async fn should_say_the_output_was_still_open_after_the_output() {
         ScriptedExecutor::new([ScriptedProcess::ends_abandoned("ok\n", Ending::Exited(0))]);
 
     let output = call_in(
-        &*shell(),
+        shell(),
         &executor,
-        &Lease::default(),
+        &Run::default(),
         json!({"command": "true"}),
     )
     .await;

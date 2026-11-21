@@ -1,7 +1,7 @@
 import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME } from "@/lib/turns/turn-summary";
 import { REPLY_ACTIONS_TEST_ID } from "@/components/domain/activity/replies/FleetReplyActions";
 
 // The reply as assistant-ui message parts, rendered through the real runtime:

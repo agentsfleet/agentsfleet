@@ -49,6 +49,13 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::INPUT_TOO_LONG,
+        status: 400,
+        title: "Input too long",
+        hint: "Shorten the text to at most 1,048,576 characters.",
+        user_message: Some("Input exceeds the maximum length of 1,048,576 characters."),
+    },
+    Problem {
         code: error_code::VAULT_DATA_INVALID,
         status: 400,
         title: "Secret data must be a non-empty JSON object",
@@ -186,7 +193,7 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::SCHEDULE_SYNCING,
         status: 409,
         title: "Schedule update busy",
-        hint: "Another schedule mutation holds the synchronization lease. Retry after the reported delay.",
+        hint: "Another schedule mutation holds the synchronization run. Retry after the reported delay.",
         user_message: None,
     },
     Problem {

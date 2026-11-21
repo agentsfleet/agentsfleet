@@ -3,9 +3,9 @@
 //! [`policy`](super::policy) is the read direction: it takes what a row stores
 //! and resolves an assignment from it. This module is its counterpart, and the
 //! two are separate files because they fail differently. A wrong decode voids
-//! an assignment and the host refuses to lease, loudly. A wrong spelling writes
+//! an assignment and the host refuses to run, loudly. A wrong spelling writes
 //! a row that every future decode reads as garbage, silently, and nothing
-//! notices until a fleet stops leasing.
+//! notices until a fleet stops running.
 //!
 //! The round-trip tests below are what hold the pair honest: every variant this
 //! module writes is parsed back through `policy::parse_wire` and must land on

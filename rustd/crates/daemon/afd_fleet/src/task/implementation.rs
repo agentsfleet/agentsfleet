@@ -3,7 +3,7 @@
 use super::{
     CheckpointMaintenance, CheckpointMaintenanceCursor, DecisionMaintenance,
     DecisionMaintenanceCursor, EffectMaintenance, ReservedDecision, TaskAdoption, TaskAfter,
-    TaskControl, TaskFuture as Reply, TaskLease, TaskLifecycle, TaskPage, TaskScope, TaskSnapshot,
+    TaskControl, TaskFuture as Reply, TaskLifecycle, TaskPage, TaskRun, TaskScope, TaskSnapshot,
     Tasks, VerifiedCompletion, WaitMaintenance, adoption, bindings, checkpoint, control, decision,
     effects, input_receipt, inputs, list, observe, read, waits,
 };
@@ -39,118 +39,112 @@ impl TaskLifecycle for Tasks {
     }
     fn plan_checkpoint<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::CheckpointPlanInput>,
     ) -> Reply<'a, wire::CheckpointPlan> {
         observe::trace(
             TaskOperation::CheckpointPlan,
-            checkpoint::create(self, lease, input),
-            tracing::info_span!("plan_checkpoint", lease_id = lease.lease_id.as_str()),
+            checkpoint::create(self, run, input),
+            tracing::info_span!("plan_checkpoint", run_id = run.run_id.as_str()),
         )
     }
     fn write_checkpoint_page<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         page: &'a Uuid7,
         input: &'a Valid<wire::CheckpointPageInput>,
     ) -> Reply<'a, wire::CheckpointPage> {
         observe::trace(
             TaskOperation::CheckpointPage,
-            checkpoint::write(self, lease, checkpoint, page, input),
-            tracing::info_span!("write_checkpoint_page", lease_id = lease.lease_id.as_str()),
+            checkpoint::write(self, run, checkpoint, page, input),
+            tracing::info_span!("write_checkpoint_page", run_id = run.run_id.as_str()),
         )
     }
     fn checkpoint_page<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         page: &'a Uuid7,
         input: &'a Valid<wire::CheckpointReadQuery>,
     ) -> Reply<'a, wire::CheckpointPage> {
         observe::trace(
             TaskOperation::CheckpointPage,
-            checkpoint::read(self, lease, checkpoint, page, input),
-            tracing::info_span!("checkpoint_page", lease_id = lease.lease_id.as_str()),
+            checkpoint::read(self, run, checkpoint, page, input),
+            tracing::info_span!("checkpoint_page", run_id = run.run_id.as_str()),
         )
     }
     fn register_checkpoint_objects<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         input: &'a Valid<wire::CheckpointObjectsInput>,
     ) -> Reply<'a, wire::CheckpointObjectsPage> {
         observe::trace(
             TaskOperation::CheckpointRegister,
-            checkpoint::register(self, lease, checkpoint, input),
-            tracing::info_span!(
-                "register_checkpoint_objects",
-                lease_id = lease.lease_id.as_str()
-            ),
+            checkpoint::register(self, run, checkpoint, input),
+            tracing::info_span!("register_checkpoint_objects", run_id = run.run_id.as_str()),
         )
     }
     fn checkpoint_uploads<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         input: &'a Valid<wire::CheckpointUploadsInput>,
     ) -> Reply<'a, wire::CheckpointObjectsPage> {
         observe::trace(
             TaskOperation::CheckpointTransfer,
-            checkpoint::uploads(self, lease, checkpoint, input),
-            tracing::info_span!("checkpoint_uploads", lease_id = lease.lease_id.as_str()),
+            checkpoint::uploads(self, run, checkpoint, input),
+            tracing::info_span!("checkpoint_uploads", run_id = run.run_id.as_str()),
         )
     }
     fn checkpoint_authorizations<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         input: &'a Valid<wire::CheckpointAuthorizationInput>,
     ) -> Reply<'a, wire::CheckpointAuthorizations> {
         observe::trace(
             TaskOperation::CheckpointTransfer,
-            checkpoint::authorize(self, lease, checkpoint, input),
-            tracing::info_span!(
-                "checkpoint_authorizations",
-                lease_id = lease.lease_id.as_str()
-            ),
+            checkpoint::authorize(self, run, checkpoint, input),
+            tracing::info_span!("checkpoint_authorizations", run_id = run.run_id.as_str()),
         )
     }
     fn checkpoint_objects<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         input: &'a Valid<wire::CheckpointReadQuery>,
     ) -> Reply<'a, wire::CheckpointObjectsPage> {
         observe::trace(
             TaskOperation::CheckpointTransfer,
-            checkpoint::list(self, lease, checkpoint, input),
-            tracing::info_span!("checkpoint_objects", lease_id = lease.lease_id.as_str()),
+            checkpoint::list(self, run, checkpoint, input),
+            tracing::info_span!("checkpoint_objects", run_id = run.run_id.as_str()),
         )
     }
     fn renew_checkpoint_pin<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         pin: &'a Uuid7,
         input: &'a Valid<wire::CheckpointPinInput>,
     ) -> Reply<'a, wire::CheckpointPin> {
         observe::trace(
             TaskOperation::CheckpointPin,
-            checkpoint::renew(self, lease, checkpoint, pin, input),
-            tracing::info_span!("renew_checkpoint_pin", lease_id = lease.lease_id.as_str()),
+            checkpoint::renew(self, run, checkpoint, pin, input),
+            tracing::info_span!("renew_checkpoint_pin", run_id = run.run_id.as_str()),
         )
     }
     fn commit_checkpoint<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         checkpoint: &'a Uuid7,
         input: &'a Valid<wire::CheckpointCommitInput>,
     ) -> Reply<'a, wire::CheckpointPlan> {
         observe::trace(
             TaskOperation::CheckpointCommit,
-            checkpoint::publish(self, lease, checkpoint, input),
-            tracing::info_span!("commit_checkpoint", lease_id = lease.lease_id.as_str()),
+            checkpoint::publish(self, run, checkpoint, input),
+            tracing::info_span!("commit_checkpoint", run_id = run.run_id.as_str()),
         )
     }
     fn maintain_effects(&self) -> Reply<'_, EffectMaintenance> {
@@ -158,55 +152,55 @@ impl TaskLifecycle for Tasks {
     }
     fn accept_input<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::TaskInputReceiptInput>,
     ) -> Reply<'a, wire::TaskInputReceiptResult> {
         observe::call(
             TaskOperation::InputReceipt,
-            input_receipt::accept(self, lease, input),
+            input_receipt::accept(self, run, input),
         )
     }
     fn interpret<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::TaskBindingsInput>,
     ) -> Reply<'a, wire::TaskBindingsResponse<'static>> {
-        let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
+        let span = tracing::info_span!("task_bind", run_id = run.run_id.as_str());
         observe::traced(
             TaskOperation::Bind,
-            bindings::accept(self, lease, input),
+            bindings::accept(self, run, input),
             |_bindings| TaskOutcome::Accepted,
             span,
         )
     }
     fn publish_effect<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::TaskEffectInput>,
     ) -> Reply<'a, (wire::TaskEffect, bool)> {
         observe::call(
             TaskOperation::EffectPublish,
-            effects::publish(self, lease, input),
+            effects::publish(self, run, input),
         )
     }
 
-    fn effect<'a>(&'a self, lease: TaskLease<'a>, id: &'a Uuid7) -> Reply<'a, wire::TaskEffect> {
-        observe::call(TaskOperation::EffectRead, effects::one(self, lease, id))
+    fn effect<'a>(&'a self, run: TaskRun<'a>, id: &'a Uuid7) -> Reply<'a, wire::TaskEffect> {
+        observe::call(TaskOperation::EffectRead, effects::one(self, run, id))
     }
 
     fn effects<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::TaskEffectsQuery>,
     ) -> Reply<'a, wire::TaskEffectsPage> {
-        observe::call(TaskOperation::EffectRead, effects::list(self, lease, input))
+        observe::call(TaskOperation::EffectRead, effects::list(self, run, input))
     }
     fn inputs<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::TaskInputsQuery>,
     ) -> Reply<'a, wire::TaskInputsResponse<'static>> {
-        observe::call(TaskOperation::Read, inputs::read(self, lease, input))
+        observe::call(TaskOperation::Read, inputs::read(self, run, input))
     }
 
     fn adopt_goal<'a>(
@@ -244,17 +238,17 @@ impl TaskLifecycle for Tasks {
     }
     fn reserve_decision<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         input: &'a Valid<wire::DecisionReservationInput>,
     ) -> Reply<'a, ReservedDecision> {
         let span = tracing::info_span!(
             "task_decision_reserve",
-            lease_id = lease.lease_id.as_str(),
-            source_admission_id = input.source_admission_id.as_str()
+            run_id = run.run_id.as_str(),
+            source_turn_id = input.source_turn_id.as_str()
         );
         observe::traced(
             TaskOperation::DecisionReserve,
-            decision::reserve(self, lease, input),
+            decision::reserve(self, run, input),
             |result| {
                 if result.issued {
                     TaskOutcome::Accepted
@@ -268,18 +262,18 @@ impl TaskLifecycle for Tasks {
 
     fn record_decision<'a>(
         &'a self,
-        lease: TaskLease<'a>,
+        run: TaskRun<'a>,
         call: &'a Uuid7,
         input: &'a Valid<wire::DecisionReceiptInput>,
     ) -> Reply<'a, wire::DecisionReceiptResult> {
         let span = tracing::info_span!(
             "task_decision_record",
-            lease_id = lease.lease_id.as_str(),
+            run_id = run.run_id.as_str(),
             decision_call_id = call.as_str()
         );
         observe::traced(
             TaskOperation::DecisionRecord,
-            decision::record(self, lease, call, input),
+            decision::record(self, run, call, input),
             |result| {
                 if result.replayed {
                     TaskOutcome::Replayed
@@ -305,8 +299,8 @@ impl TaskLifecycle for Tasks {
     }
 
     #[cfg(any(test, feature = "test-util"))]
-    fn bind<'a>(&'a self, lease: TaskLease<'a>, plan: &'a PreparedPlan) -> Reply<'a, TaskBindings> {
-        admit::observed_bind(self, lease, plan)
+    fn bind<'a>(&'a self, run: TaskRun<'a>, plan: &'a PreparedPlan) -> Reply<'a, TaskBindings> {
+        admit::observed_bind(self, run, plan)
     }
 
     fn read<'a>(&'a self, scope: &'a TaskScope, task_id: &'a Uuid7) -> Reply<'a, TaskSnapshot> {

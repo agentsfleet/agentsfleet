@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { authMock } from "../helpers/dashboard-mocks";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
-import type { SenderName } from "@/lib/events/sender-names";
+import type { SenderName } from "@/lib/turns/sender-names";
 
 const VIEWER = "user_viewer";
 const WORKSPACE_ID = "ws_1";

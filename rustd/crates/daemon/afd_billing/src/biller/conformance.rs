@@ -40,7 +40,7 @@ where
 }
 
 fn work() -> WorkKey {
-    WorkKey::FleetLease(afd_db::test_util::mint_id())
+    WorkKey::FleetRun(afd_db::test_util::mint_id())
 }
 
 fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {
@@ -82,7 +82,7 @@ fn settlement(work: &WorkKey, payer: &Account, lines: Vec<RatedLine>) -> Settlem
         attribution: Attribution::Fleet {
             fleet: afd_db::test_util::mint_id(),
             fleet_name: NAMED.to_owned(),
-            event_id: afd_db::test_util::mint_id(),
+            turn_id: afd_db::test_util::mint_id(),
         },
         provider: NAMED.to_owned(),
         model: NAMED.to_owned(),

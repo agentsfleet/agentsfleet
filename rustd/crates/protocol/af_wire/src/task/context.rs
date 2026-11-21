@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{TaskLimits, TaskState, TaskUsage};
 
-/// Context for a task-bound lease; ordinary leases omit this owner.
+/// Context for a task-bound run; ordinary runs omit this owner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskContext<'a> {
@@ -16,7 +16,7 @@ pub struct TaskContext<'a> {
     /// Immutable source item required for attributable task effects.
     #[serde(borrow)]
     pub originating_item_id: Cow<'a, str>,
-    /// Exact target selected by native admission, never changed by recovered notes.
+    /// Exact target selected by the native turn, never changed by recovered notes.
     pub target: super::TaskTarget,
     /// Generation the next semantic transition must assess.
     pub generation: u64,

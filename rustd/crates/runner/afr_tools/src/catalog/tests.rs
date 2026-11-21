@@ -5,6 +5,8 @@
 
 use std::collections::BTreeSet;
 
+use guffbolt::agents::TOOLS;
+
 use super::*;
 use crate::stub::Stub;
 
@@ -17,8 +19,8 @@ fn catalog() -> Catalog {
     ])
 }
 
-fn names<'a>(selection: &'a Selection<'_>) -> Vec<&'a str> {
-    selection.tools().map(Tool::name).collect()
+fn names(selection: &Selection<'_>) -> Vec<&'static str> {
+    selection.offered().map(Offered::name).collect()
 }
 
 #[test]
@@ -28,14 +30,14 @@ fn test_catalog_offers_policy_tools() {
     let selection = catalog.select(&["http_request", "memory_recall"]).unwrap();
 
     assert_eq!(names(&selection), ["http_request", "memory_recall"]);
-    for tool in selection.tools() {
-        let schema = tool.schema();
+    for name in names(&selection) {
+        let spec = selection.tool(name).unwrap().spec();
+        assert_eq!(spec.name, name);
         assert_eq!(
-            schema.description(),
-            tool.name(),
+            spec.description, name,
             "each handler carries its own schema"
         );
-        assert_eq!(schema.parameters()["type"], "object");
+        assert_eq!(spec.parameters["type"], "object");
     }
     assert!(
         selection.tool("update_plan").is_none(),
@@ -43,16 +45,19 @@ fn test_catalog_offers_policy_tools() {
     );
 }
 
+/// A published tool no run builds, such as a fleet tool, needs its handler.
 #[test]
 fn a_tool_without_a_handler_refuses_the_selection() {
-    let failure = catalog().select(&["http_request", "browser"]).unwrap_err();
+    let failure = catalog()
+        .select(&["http_request", "fleet_steer"])
+        .unwrap_err();
 
-    assert_eq!(failure.unhosted_tool(), Some("browser"));
+    assert_eq!(failure.unhosted_tool(), Some("fleet_steer"));
     assert_eq!(
         failure.code(),
         af_core::error_code::AGENTSFLEET_INVALID_CONFIG
     );
-    assert!(failure.to_string().contains("browser"));
+    assert!(failure.to_string().contains("fleet_steer"));
 }
 
 #[test]
@@ -82,10 +87,10 @@ fn should_refuse_a_name_that_is_not_exactly_a_published_one() {
 #[test]
 fn should_name_the_first_unhosted_tool_when_several_are() {
     let failure = catalog()
-        .select(&["update_plan", "browser", "shell"])
+        .select(&["update_plan", "fleet_steer", "fleet_activity"])
         .unwrap_err();
 
-    assert_eq!(failure.unhosted_tool(), Some("browser"));
+    assert_eq!(failure.unhosted_tool(), Some("fleet_steer"));
 }
 
 #[test]
@@ -169,8 +174,9 @@ fn an_entry_reads_back_the_name_and_runtime_it_was_built_with() {
     assert_eq!(entry.runtime(), Runtime::Sandbox);
 }
 
-/// The schedule and message tools are hosted, so a lease naming any of them
-/// runs rather than being refused; none needs a sandbox.
+/// The schedule and message tools are built by each run over its verbs, so a
+/// run naming any of them runs rather than being refused; none needs a
+/// sandbox.
 #[test]
 fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
     let (transport, _sent) = crate::testing::replying(200, "");
@@ -190,44 +196,24 @@ fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
     assert!(!selection.needs_sandbox());
 }
 
-/// A child's selection is its parent's narrowed to the names it asked for,
-/// hosted entries included, and the first name the parent lacks refuses it.
+/// `guffbolt`'s subagent tools are offered under `guffbolt`'s own names,
+/// which this catalog publishes nowhere, and run beside the loop.
 #[test]
-fn a_selection_narrows_to_names_it_offers_and_refuses_one_it_does_not() {
-    let catalog = catalog();
-    let parent = catalog
-        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
-        .unwrap();
+fn guffbolts_subagent_tools_are_offered_by_their_own_names() {
+    let catalog = Catalog::new(Vec::new());
+    let selection = catalog.select(&TOOLS).unwrap();
 
-    let narrowed = parent
-        .narrowed(&[WEB_SEARCH.name(), FILE_READ.name(), FILE_READ.name()])
-        .unwrap();
-    let asked = [FILE_READ.name(), SHELL.name(), HTTP_REQUEST.name()];
-    let refused = parent.narrowed(&asked);
-
-    assert_eq!(names(&narrowed), [FILE_READ.name()]);
-    assert_eq!(narrowed.hosted(), [&WEB_SEARCH]);
-    assert_eq!(refused.err(), Some(SHELL.name()), "the first name not held");
-}
-
-/// Dropping entries leaves the rest, handlers and hosted alike.
-#[test]
-fn a_selection_without_entries_keeps_the_rest() {
-    let catalog = catalog();
-    let parent = catalog
-        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
-        .unwrap();
-
-    let without = parent.without(&[&UPDATE_PLAN, &WEB_SEARCH]);
-
-    assert_eq!(names(&without), [FILE_READ.name()]);
-    let hosted = without.hosted();
-    assert!(hosted.is_empty(), "{hosted:?}");
-    assert_eq!(names(&parent).len(), 2, "the parent is untouched");
+    assert_eq!(names(&selection), TOOLS);
+    for offered in selection.offered() {
+        assert!(matches!(offered, Offered::Built(_)), "{offered:?}");
+        assert_eq!(offered.runtime(), Runtime::Supervisor);
+        assert_eq!(published(offered.name()), None);
+    }
+    assert!(!selection.needs_sandbox());
 }
 
 /// Every published entry a handler serves is hosted, so a policy naming any
-/// of them is admitted; one left out of `hosted` would refuse every lease
+/// of them is admitted; one left out of `hosted` would refuse every run
 /// naming it at admission, which is how a tool goes dark.
 #[test]
 fn every_published_handler_entry_is_hosted() {
@@ -256,7 +242,7 @@ fn every_published_handler_entry_is_hosted() {
     );
 }
 
-/// The two fleet tools are offered only to a lease whose
+/// The two fleet tools are offered only to a run whose
 /// policy names them, and both are hosted here.
 #[test]
 fn fleet_tools_are_offered_only_when_declared() {
@@ -272,5 +258,59 @@ fn fleet_tools_are_offered_only_when_declared() {
         .unwrap();
     assert!(with.offers("fleet_steer"));
     assert!(with.offers("fleet_activity"));
-    assert_eq!(PUBLISHED.len(), 41);
+    assert_eq!(PUBLISHED.len(), 35);
+}
+
+/// A tool a run builds over its own backends is offered with no handler, and
+/// a handler the catalog hosts under its name is offered in its place.
+#[test]
+fn a_backed_tool_is_offered_without_a_handler_unless_one_is_hosted() {
+    let (empty, stubbed) = (Catalog::new(Vec::new()), catalog());
+    let built = empty
+        .select(&[NOTIFY.name(), MEMORY_RECALL.name()])
+        .unwrap();
+    let hosted = stubbed.select(&[MEMORY_RECALL.name()]).unwrap();
+
+    let built: Vec<Offered<'_>> = built.offered().collect();
+    assert!(
+        matches!(built.as_slice(), [Offered::Backed(first), Offered::Backed(second)]
+            if **first == NOTIFY && **second == MEMORY_RECALL),
+        "{built:?}"
+    );
+    let hosted: Vec<Offered<'_>> = hosted.offered().collect();
+    assert!(
+        matches!(hosted.as_slice(), [Offered::Handler(entry, _)] if **entry == MEMORY_RECALL),
+        "{hosted:?}"
+    );
+}
+
+/// A run notifies through `notify`; the vendor's name is no tool a policy
+/// may name.
+#[test]
+fn notify_is_published_and_pushover_is_not() {
+    assert_eq!(published("notify"), Some(&NOTIFY));
+    assert_eq!(published("pushover"), None);
+    let refused = Catalog::new(Vec::new()).select(&["pushover"]).unwrap_err();
+    assert_eq!(refused.unhosted_tool(), Some("pushover"));
+}
+
+/// Every backed entry is published, runs beside the loop or in the sandbox,
+/// and is built by a run that names it.
+#[test]
+fn every_backed_entry_is_published_and_built_by_its_run() {
+    let run = crate::run::Run::default();
+    let slot = crate::testing::no_sandbox();
+    let backends = crate::Backends::new(&run, &slot, None);
+    let names: Vec<&str> = BACKED.iter().map(|entry| entry.name()).collect();
+    let tools = backends.tools(&names).unwrap();
+
+    for entry in BACKED {
+        assert_eq!(published(entry.name()), Some(entry));
+        assert_ne!(entry.runtime(), Runtime::Provider, "{}", entry.name());
+        assert!(
+            tools.tool(entry.name()).is_some(),
+            "{} is built",
+            entry.name()
+        );
+    }
 }

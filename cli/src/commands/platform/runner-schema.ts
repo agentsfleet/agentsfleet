@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import {CordonReason, BindMode, LeaseDestination, LeaseKind, LeaseOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxTier} from "./runner-vocabulary.ts";
+import {CordonReason, BindMode, RunDestination, RunKind, RunOutcome, RunnerEventType, RunnerLiveness, RunnerNetworkPolicy, RunnerState, SandboxTier} from "./runner-vocabulary.ts";
 import { instant } from "../../lib/instant.ts";
 
 const text = Schema.String.check(Schema.isMinLength(1));
@@ -38,8 +38,7 @@ const selftest = Schema.Struct({
   all_ok: Schema.Boolean, sandbox_tier: Schema.Enum(SandboxTier), network_policy: Schema.Enum(RunnerNetworkPolicy),
 });
 export const RunnerDetailSchema = Schema.Struct({...runner.fields,
-  active_lease_count: count, active_fleet_count: count, leases_acquired: count,
-  leases_succeeded: count, leases_failed: count, leases_expired: count,
+  active_run_count: count, active_fleet_count: count,
   selftest_requested_at: Schema.NullOr(instant), selftest_completed_at: Schema.NullOr(instant), selftest: Schema.NullOr(selftest),
 });
 export const RunnerMutationSchema = Schema.Struct({
@@ -50,18 +49,17 @@ export const RunnerMutationSchema = Schema.Struct({
 export const RunnerRegisteredSchema = Schema.Struct({runner_id: text, runner_token: text, assigned_policy: RunnerPolicySchema});
 export const RunnerRotatedSchema = Schema.Struct({id: text, runner_token: text});
 /** A tenant registration retried with its first key and body: the runner, never its token. */
-export const RegistrationReplaySchema = Schema.Struct({runner_id: text, assigned_policy: RunnerPolicySchema});
-export const RunnerEventsSchema = Schema.Struct({
+export const RunnerHistoryPageSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({id: text, runner_id: text, event_type: Schema.Enum(RunnerEventType), occurred_at: instant, metadata: Schema.Unknown})),
   total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),
 });
-export const RunnerLeasesSchema = Schema.Struct({
+export const RunnerRunsSchema = Schema.Struct({
   items: Schema.Array(Schema.Struct({
     id: text, fleet_id: text, fleet_name: Schema.NullOr(Schema.String), workspace_id: text,
-    destination: Schema.Enum(LeaseDestination), event_id: text, event_type: Schema.NullOr(Schema.String), actor: Schema.NullOr(Schema.String),
-    outcome: Schema.Enum(LeaseOutcome), kind: Schema.Enum(LeaseKind), failure_label: Schema.NullOr(Schema.String), failure_detail: Schema.NullOr(Schema.String),
+    destination: Schema.Enum(RunDestination), turn_id: text, event_type: Schema.NullOr(Schema.String), actor: Schema.NullOr(Schema.String),
+    outcome: Schema.Enum(RunOutcome), kind: Schema.Enum(RunKind), failure_label: Schema.NullOr(Schema.String), failure_detail: Schema.NullOr(Schema.String),
     fencing_token: count, provider: text, model: text, posture: text,
     metered_input_tokens: count, metered_cached_tokens: count, metered_output_tokens: count,
-    wall_ms: Schema.NullOr(count), lease_expires_at: instant, created_at: instant,
+    wall_ms: Schema.NullOr(count), run_expires_at: instant, created_at: instant,
   })), total: Schema.NullOr(count), next_cursor: Schema.NullOr(text),
 });

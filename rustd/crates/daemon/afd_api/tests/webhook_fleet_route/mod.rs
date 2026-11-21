@@ -35,12 +35,10 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A failed run — the delivery that wakes a fleet.
-const RUN_FAILURE: &str =
-    include_str!("../../../../../../tests/fixtures/webhooks/github_run_failure.json");
+const RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE;
 
 /// The same run, green — a real delivery this daemon deliberately drops.
-const RUN_SUCCESS: &str =
-    include_str!("../../../../../../tests/fixtures/webhooks/github_run_success.json");
+const RUN_SUCCESS: &str = afd_api_ingress::test_util::GITHUB_RUN_SUCCESS;
 
 /// The event kind both run fixtures are.
 const EVENT_WORKFLOW_RUN: &str = "workflow_run";
@@ -163,7 +161,7 @@ async fn a_signed_failed_run_wakes_the_fleet_and_answers_the_events_id() {
         "a webhook wake names the provider and no person"
     );
     assert!(
-        field(&document, "event_id")
+        field(&document, "turn_id")
             .as_str()
             .is_some_and(|id| !id.is_empty()),
         "the response carries the stream id an operator searches history by: \
@@ -217,8 +215,8 @@ async fn a_redelivery_repeats_the_first_claim_and_reports_that_it_did() {
     let second = json_body(second).await;
 
     assert_eq!(
-        field(&second, "event_id"),
-        field(&first, "event_id"),
+        field(&second, "turn_id"),
+        field(&first, "turn_id"),
         "a sender comparing two responses must see the same event both times"
     );
     assert_eq!(

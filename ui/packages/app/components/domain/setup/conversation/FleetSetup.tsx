@@ -5,7 +5,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { Button, Section } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, saveDoneText } from "@/lib/turns/fleet-activity";
 import { setupRecovery } from "@/lib/api/schedule-status";
 import { SetupChecks } from "../summary/SetupChecks";
 import { SetupQuestions } from "../summary/SetupQuestions";
@@ -35,7 +35,7 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
     {questions ? <SetupQuestions definition={questions} label={questionLabel(Boolean(proposed), revision)} heading={saveHeading ? "h3" : "h2"} /> : null}
     <p className="text-label text-muted-foreground">{editing ? "Keep chatting. Save changes when you’re ready."
       : revision ? "You can keep chatting here to change the setup."
-      : "Keep chatting to refine it. Save and publish when you’re ready."}</p>
+      : "Keep chatting to refine it. Save when you’re ready."}</p>
     {continueSetup || retryStart ? <Button className="w-fit" variant="link" size="sm" disabled={view.busy} onClick={() => {void client.retry().catch(() => undefined);}}>{retryStart ? "Retry first run" : "Finish setup"}</Button> : null}
   </Section>;
 }

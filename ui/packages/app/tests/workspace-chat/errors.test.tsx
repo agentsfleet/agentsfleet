@@ -47,19 +47,27 @@ it("reloads unavailable unfinished setups from their own recovery action without
 });
 
 
-it("shows an oversized message refusal inside the chat without creating a draft", async () => {
+it("sends a long message whole and shows the daemon's refusal inside the chat", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const ceiling = "Input exceeds the maximum length of 1,048,576 characters.";
+  const refused = {error_code: "UZ-REQ-004", detail: ceiling, user_message: ceiling};
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST"
+    ? Promise.resolve(response(refused, 400)) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
-  fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
+  const long = "🌱".repeat(8_193);
+  fireEvent.change(input, {target: {value: long}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
-  expect((await screen.findByRole("alert")).textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
-  fireEvent.change(input, {target: {value: "Review the callback regression"}});
-  fireEvent.click(screen.getByRole("button", {name: "Dismiss error notice"}));
-  expect(screen.getByRole("alert").textContent).toContain("Messages must contain 1 to 32,768 bytes of text.");
-  expect(input).toHaveProperty("value", "Review the callback regression");
-  expect(fixture.writes()).toEqual([]);
+  expect((await screen.findByRole("alert")).textContent).toContain(refused.user_message);
+  const posts = fixture.fetch.mock.calls.filter(([input, init]) =>
+    typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST");
+  expect(posts, "the app sends the long message once, whole").toHaveLength(1);
+  const body = posts[0]?.[1]?.body;
+  if (typeof body !== "string") throw new Error("the draft POST carries a JSON string body");
+  expect(JSON.parse(body)).toMatchObject({message: long});
 });
 
 it("identifies a failed chat-history read without claiming a missing model", async () => {
@@ -75,7 +83,7 @@ it("identifies a failed chat-history read without claiming a missing model", asy
 });
 
 
-it("offers model settings when a successful list confirms there are no authoring models", async () => {
+it("offers model settings when a successful list confirms there are no setup models", async () => {
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
@@ -91,7 +99,7 @@ it("explains configured but ineligible models and prevents an empty model menu",
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
-    ? Promise.resolve(response({items: [{...MODEL, eligibility: {authoring: false, runtime: true}}], next_cursor: null})) : base(input, init));
+    ? Promise.resolve(response({items: [{...MODEL, eligibility: {setup: false, runtime: true}}], next_cursor: null})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("status", {name: "Setup status"})).textContent).toContain("No chat model available");
   expect(screen.queryByRole("alert")).toBeNull();
@@ -125,7 +133,7 @@ it("reopens the current fleet setup after an initial read fails without creating
   const unavailable = "Current setup is temporarily unavailable";
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}/authoring-context`)) {
+    if (path.endsWith(`/fleets/${FLEET_ID}/setup-context`)) {
       reads += 1;
       return Promise.resolve(reads === 1 ? response({user_message: unavailable}, 503) : response({fleet: FLEET_DETAIL,
         conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null}));
@@ -151,7 +159,7 @@ it("loads the new saved revision when the same fleet source changes in place", a
   let current = FLEET_DETAIL;
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return path.endsWith(`/fleets/${FLEET_ID}/authoring-context`) ? Promise.resolve(response({fleet: current,
+    return path.endsWith(`/fleets/${FLEET_ID}/setup-context`) ? Promise.resolve(response({fleet: current,
       conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null})) : base(input, init);
   });
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);

@@ -27,7 +27,7 @@ const CHUNK: &str = r#"{"kind":"chunk","text":"hi"}"#;
 /// `payload` as the hub hands it to every reader of its channel.
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
-        subject: Subject::FleetTail(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
+        subject: Subject::ThreadItems(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
         payload: Arc::new(payload.to_owned()),
     })
 }
@@ -37,8 +37,8 @@ fn published(payload: &str) -> Arc<Message> {
 fn should_name_the_frame_after_the_payloads_leading_kind() {
     assert_eq!(kind_of(CHUNK), Some("chunk"));
     assert_eq!(
-        kind_of(r#"{"kind":"event_received","event_id":"x"}"#),
-        Some("event_received")
+        kind_of(r#"{"kind":"turn_received","turn_id":"x"}"#),
+        Some("turn_received")
     );
 }
 
@@ -50,7 +50,7 @@ fn should_name_the_frame_after_the_payloads_leading_kind() {
 #[test]
 fn should_read_no_kind_from_anywhere_but_the_leading_field() {
     for payload in [
-        r#"{"event_id":"x","kind":"chunk"}"#,
+        r#"{"turn_id":"x","kind":"chunk"}"#,
         r#"{"text":"\"kind\":\"fake\""}"#,
         r#"{"kind":""}"#,
         "{}",
@@ -254,7 +254,7 @@ fn should_refuse_a_kind_that_would_break_the_event_line() {
     }
 }
 
-/// Dimension 5.4, the frame's half: an activity frame and a wall frame built
+/// The frame's half: an activity frame and a wall frame built
 /// for three viewers all point at the one payload the hub dispatched, and
 /// only the tag's head is the wall frame's own.
 #[test]

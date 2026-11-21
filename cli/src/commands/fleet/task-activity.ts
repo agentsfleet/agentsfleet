@@ -2,7 +2,6 @@ import { stripVTControlCharacters } from "node:util";
 import { Option, Schema } from "effect";
 import { isRecord, isString } from "../../lib/guards.ts";
 
-const TEXT_LIMIT = 8192;
 const label = Schema.String.check(Schema.isMaxLength(256));
 const count = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0 && value <= 200_000));
 const byteCount = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0 && value <= 68_719_476_736));
@@ -21,13 +20,12 @@ const KINDS: ReadonlySet<string> = new Set(["task_decision_started", "task_decis
 const RANK = {starting: 0, preparing: 0, scanning: 1, uploading: 2, verifying: 3, restoring: 4,
   unavailable: 5, failed: 5, recorded: 6, saved: 6, restored: 6} as const;
 
-/** Untrusted output is plain terminal text, with an explicit bounded preview. */
+/** Untrusted output is plain terminal text, shown whole: the server bounds what it sends. */
 export function activityText(text: string): string {
-  const safe = stripVTControlCharacters(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, "");
-  return safe.length > TEXT_LIMIT ? `${safe.slice(0, TEXT_LIMIT)}\n… output truncated` : safe;
+  return stripVTControlCharacters(text).replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, "");
 }
 
-/** One event's replay ownership; duplicate polls do not repeat confirmed stages. */
+/** One turn's replay ownership; duplicate polls do not repeat confirmed stages. */
 export class ActivityPrinter {
   readonly #seen = new Map<string, string>();
   readonly #latest = new Map<string, typeof Progress.Type>();

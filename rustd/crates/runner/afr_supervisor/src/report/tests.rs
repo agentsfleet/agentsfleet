@@ -3,11 +3,11 @@ use std::time::Duration;
 use af_wire::report::{FailureClass, Outcome};
 use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 
-use af_providers::Usage;
 use afr_agent::Meter;
+use guffbolt::Usage;
 
 use super::{Ending, narrow, report};
-use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};
+use crate::test_support::{FENCING, FLEET_ID, RUN_ID, answer, payload};
 
 /// Each request line's fresh input, cached input and output.
 fn requests(report: &af_wire::report::ReportRequest<'_>) -> Vec<(u32, u32, u32)> {
@@ -41,14 +41,14 @@ fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
 
 #[test]
 fn a_completed_run_reports_its_answer_tokens_and_timings() {
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let ending = Ending::Ran {
         output: Box::new(answer()),
         first_chunk: Some(Duration::from_millis(120)),
     };
 
     let report = report(
-        &lease,
+        &run,
         &ending,
         &spent(3, 1, 4),
         Duration::from_secs(2),
@@ -61,7 +61,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
     assert_eq!(report.fencing_token, FENCING);
     assert_eq!(report.response_text, "done");
     assert_eq!(report.checkpoint.last_response, "done");
-    assert_eq!(report.checkpoint.last_event_id, lease.event.event_id);
+    assert_eq!(report.checkpoint.last_turn_id, run.event.turn_id);
     assert_eq!(report.tokens, 8, "the result's total, for the history");
     assert_eq!(
         requests(&report),
@@ -74,7 +74,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
 
 #[test]
 fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let mut output = answer();
     output.result = ExecutionResult {
         outcome: ResultOutcome::Failed(Failure {
@@ -88,14 +88,7 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         first_chunk: None,
     };
 
-    let report = report(
-        &lease,
-        &ending,
-        &Meter::default(),
-        Duration::ZERO,
-        None,
-        None,
-    );
+    let report = report(&run, &ending, &Meter::default(), Duration::ZERO, None, None);
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
@@ -105,14 +98,14 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
 
 #[test]
 fn a_run_that_never_finished_still_reports_what_it_spent() {
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let ending = Ending::Failed {
         class: FailureClass::RunnerCrash,
         detail: "the engine broke mid-run",
     };
 
     let report = report(
-        &lease,
+        &run,
         &ending,
         &spent(7, 2, 3),
         Duration::from_millis(5),
@@ -134,14 +127,14 @@ fn a_run_that_never_finished_still_reports_what_it_spent() {
 
 #[test]
 fn a_run_that_never_started_reports_zero_usage() {
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let ending = Ending::Failed {
         class: FailureClass::StartupPosture,
         detail: "no sandbox",
     };
 
     let report = report(
-        &lease,
+        &run,
         &ending,
         &Meter::default(),
         Duration::from_millis(5),
@@ -163,14 +156,14 @@ fn a_count_past_the_wire_width_saturates() {
 
 #[test]
 fn a_finished_run_bills_its_requests_and_reports_its_result_total() {
-    let lease = lease(LEASE_ID, FLEET_ID);
+    let run = payload(RUN_ID, FLEET_ID);
     let ending = Ending::Ran {
         output: Box::new(answer()),
         first_chunk: None,
     };
 
     let report = report(
-        &lease,
+        &run,
         &ending,
         &spent(100, 50, 25),
         Duration::ZERO,
@@ -202,7 +195,7 @@ fn ran_through(sequence: i64) -> Ending {
 /// The folded-through sequence a report of `ending` carries.
 fn folded_through(ending: &Ending) -> Option<i64> {
     report(
-        &lease(LEASE_ID, FLEET_ID),
+        &payload(RUN_ID, FLEET_ID),
         ending,
         &Meter::default(),
         Duration::ZERO,
@@ -248,4 +241,66 @@ fn a_run_that_never_finished_reports_no_message_read() {
     };
 
     assert_eq!(folded_through(&never), None);
+}
+
+#[test]
+fn a_stopped_run_reports_stopped_with_its_tokens_and_no_answer() {
+    let run = payload(RUN_ID, FLEET_ID);
+    let ran = Ending::Ran {
+        output: Box::new(answer()),
+        first_chunk: Some(Duration::from_millis(120)),
+    };
+    let ending = ran.stopped();
+
+    let report = report(
+        &run,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::Stopped);
+    assert_eq!(report.failure_reason, None);
+    assert_eq!(report.failure_detail, "");
+    assert_eq!(report.response_text, "", "a stopped turn gets no answer");
+    assert_eq!(report.checkpoint.last_response, "");
+    assert_eq!(report.tokens, answer().result.token_count);
+    assert_eq!(report.task, None);
+    assert_eq!(report.folded_through_sequence, None);
+    assert_eq!(report.telemetry.time_to_first_token_ms, 120);
+}
+
+#[test]
+fn a_run_stopped_before_it_answered_bills_what_the_meter_saw() {
+    let run = payload(RUN_ID, FLEET_ID);
+    let ending = Ending::Failed {
+        class: FailureClass::RenewalTerminate,
+        detail: "the daemon ended the run while it ran",
+    }
+    .stopped();
+
+    let report = report(
+        &run,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::Stopped);
+    assert_eq!(report.tokens, 8);
+    assert_eq!(requests(&report), vec![(3, 1, 4)]);
+    assert_eq!(
+        ending.clone().stopped(),
+        ending,
+        "stopping twice changes nothing"
+    );
+    assert_eq!(
+        ending.clone().cut(FailureClass::RenewalTerminate, "cut"),
+        ending,
+        "a cut after a Stop leaves it stopped"
+    );
 }

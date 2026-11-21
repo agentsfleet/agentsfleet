@@ -10,12 +10,12 @@
 //! # Why here and not in the billing crate
 //!
 //! Two crates need the factor and neither should depend on the other for it.
-//! `afd_billing` prices a lease; `afd_tenant` opens an account with a balance.
+//! `afd_billing` prices a run; `afd_tenant` opens an account with a balance.
 //! Making the second depend on the first would pull a datastore, a credential
 //! store and the fleet runtime behind one integer. Both already depend on this
 //! crate, so declaring it here costs no edge in the dependency graph — the same
-//! reason [`crate::timing`] holds the lease clock instead of the crate that
-//! issues leases.
+//! reason [`crate::timing`] holds the run clock instead of the crate that
+//! issues runs.
 
 /// Nanos in one US dollar.
 ///

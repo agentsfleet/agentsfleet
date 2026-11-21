@@ -46,7 +46,7 @@ impl Drop for Stopped {
     fn drop(&mut self) {
         if !self.up {
             // The test already failed; a restart error here adds nothing.
-            let _ = control(&format!("up -d --wait {VICTIM}"));
+            drop(control(&format!("up -d --wait {VICTIM}")));
         }
     }
 }
@@ -239,7 +239,7 @@ fn unannounced_holes(seen: &[Received]) -> Vec<(u32, u32)> {
 fn a_hole_counts_only_without_a_signal_before_it() {
     let frame = |n: u32| {
         Received::Message(std::sync::Arc::new(afd_bus::Message {
-            subject: Subject::OutboundWake,
+            subject: Subject::DeliveryWake,
             payload: std::sync::Arc::new(n.to_string()),
         }))
     };

@@ -18,8 +18,8 @@ The [certificate guide](../../playbooks/operations/runner_stream_tls/001_playboo
 
 ## Why it exists
 
-The daemon pushes work to available workers, so idle workers send no lease requests.
-One authenticated session carries both fleet runs and authoring operations.
+The daemon pushes work to available workers, so idle workers send no run requests.
+One authenticated connection carries both fleet runs and setup operations.
 The browser setup chat keeps its existing API and user authentication.
 
 ## How it behaves
@@ -111,6 +111,8 @@ Cloudflare is not required.
 
 ### One session and two transports
 
+The heading keeps its old words so links to it stay stable. The session is the runner's connection.
+
 Both transports require Transport Layer Security (TLS) 1.3 and `X25519MLKEM768` hybrid key exchange.
 Classical-only peers are refused, including during fallback.
 Certificate signatures remain conventional; handshake keys need no vault entry.
@@ -119,7 +121,7 @@ Network failures and bounded transport timeouts permit fallback.
 Certificate, credential, protocol and policy refusals fail closed.
 An explicit HTTP CONNECT proxy selects HTTP/2; HTTP/3 never bypasses that policy.
 
-A healthy HTTP/2 session stays on HTTP/2.
+A healthy HTTP/2 connection stays on HTTP/2.
 The runner tries HTTP/3 again during a later permitted connection setup, after recent UDP failure history allows another attempt.
 There is no periodic transport upgrade or hot switch.
 
@@ -129,7 +131,7 @@ If neither carrier connects, no new history starts, so a daemon restart alone do
 ### Recovery and availability
 
 Reconnect rebuilds live work from Postgres.
-Each running lease keeps its last confirmed expiry and stops when that deadline expires.
+Each running run keeps its last confirmed expiry and stops when that deadline expires.
 A reconnect or report retry cannot extend that deadline.
 
 Fleet work starts stopping nine seconds before expiry.
@@ -137,32 +139,32 @@ This leaves time to stop the engine and reap its processes.
 
 | Timing | Value | Meaning |
 |---|---|---|
-| Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the session |
+| Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the connection |
 | Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
-| Renewal | Every 5 seconds | One frame names every live lease on the host; each answer has its own 5-second deadline |
-| Lease grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
-| Offline threshold | 105 seconds | Three missed lease lifetimes mark the host offline |
+| Renewal | Every 5 seconds | One frame names every live run on the host; each answer has its own 5-second deadline |
+| Run grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
+| Offline threshold | 105 seconds | Three missed run lifetimes mark the host offline |
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
-| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short sessions retain retry history |
-| Stable reset | 60 seconds | A stable session resets reconnect backoff |
+| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short connections retain retry history |
+| Stable reset | 60 seconds | A stable connection resets reconnect backoff |
 | UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
 | Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
 [Timing constants](../../rustd/crates/foundation/af_core/src/timing/mod.rs) assert the renewal and recovery relationship.
-Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
+Repeated outages can exceed the recovery window; confirmed run expiry still stops the running run.
 Reconnect starts renewal immediately; it never waits for the next periodic tick.
 
 An archive or delete saves cancellation before sending its notification.
 Renewal and reconnect read that saved decision if the notification is lost.
 Revocation and token rotation fence new grants before an old socket detects the change.
 
-During drain, the daemon stops offers, answers accepted requests, then sends `go_away` and closes the session.
+During drain, the daemon stops assigning runs, answers accepted requests, then sends `go_away` and closes the connection.
 The runner reconnects with its pending results still in memory.
 
 ### Ownership during reconnect
 
 One database marker identifies the current connection owner.
-Preparation and confirmation compare the previous owner and credential under the host lock before a new session becomes authoritative.
+Preparation and confirmation compare the previous owner and credential under the host lock before a new connection becomes authoritative.
 The marker survives network disconnects.
 
 A fresh process using the same token can replace an older process.
@@ -175,7 +177,7 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 | [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the intended runner's current token; re-register if necessary |
 | [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Administrative state blocks access | Check cordon, drain or revocation; re-enroll when required |
 | [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
-| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that lease and report its final result |
+| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was archived or deleted | Stop that run and report its final result |
 | [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
 | [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reachability of the stream URL |
 
@@ -195,59 +197,72 @@ The runner writes no report spool and replays no files from an earlier process.
 
 ### First model call
 
-A lease carries `inputs_waiting`, which the claim sets when its conversation holds a later unsettled admission.
-A run whose lease says false skips the fold ask before its first model call. The field is required: a lease without it is refused.
+A run carries `inputs_waiting`, which the assignment sets when its conversation holds a later unsettled turn.
+A run whose payload says false skips the fold ask before its first model call. The field is required: a run without it is refused.
 
-The ask after every answer is unconditional, so a message landing after the claim folds into the next model call.
+The ask after every answer is unconditional, so a message landing after the assignment folds into the next model call.
 
 A run keeps its compaction summary in its own state. It mints every branch it writes, so a load could only answer nothing, and nothing outside the run reads a summary.
 The runner sends no context checkpoint and the daemon serves no context route.
 
-### Authoring operations on the native session
+### Setup operations on the native session
 
-Authoring model calls, proposals, renewals and completion share the authenticated runner session.
-The daemon checks the current connection owner and credential at each authority boundary.
-Model credentials and saved results remain in the daemon.
+A setup turn is a run on the common run path: a `Down::Run` whose payload's owner names the draft.
+It renews and reports as a fleet run does, and its report carries the proposal the run kept.
 
-An accepted physical provider call stays tracked after disconnect so known usage can reach Postgres.
-A fenced result retains that usage while withholding private text.
-Uncertain physical model calls are never automatically redispatched.
+It reads and saves the draft's compacted context with `context_load` and `context_save` on the work stream, under its fence.
+The runner makes every model call; the daemon makes none.
+
+The protocol is `agentsfleet.runner.v4` alone.
+A runner that names any other version is refused at hello with `UZ-RUN-023`, so it owns no connection and is assigned no run.
 
 ### Session protocol
 
-The session authenticates once, then binds four independently bounded streams to the same physical connection.
-Control stays available while reports, model results or activity are waiting.
-Wrong-stream messages, unknown fields and conflicting session bindings are refused.
+The heading keeps its old words so links to it stay stable.
+
+The connection authenticates once, then binds four independently bounded streams to the same physical connection.
+Control stays available while reports or activity are waiting.
+Wrong-stream messages, unknown fields and conflicting connection bindings are refused.
 
 Each stream is a duplex `POST /v1/runners/me/stream` on the same physical connection.
-The control stream authenticates and confirms ownership; secondary streams bind to that confirmed session.
+The control stream authenticates and confirms ownership; secondary streams bind to that confirmed connection.
 
 | Kind | Carries |
 |---|---|
 | `control` | Opening, credits, heartbeat, ping, renewals, cancellation and drain |
-| `work` | Offers, folded input, authoring model calls and proposals |
-| `reports` | Fleet and authoring completion with matching acknowledgements |
+| `work` | Runs (`Down::Run`), folded input, and a setup run's context load and save |
+| `reports` | Fleet and setup completion with matching acknowledgements |
 | `activity` | Fleet progress without application acknowledgements |
 
 Messages use a four-byte big-endian length followed by UTF-8 JSON.
-Session-local request identifiers correlate answers; cancellation and disconnect remove waiting callers, so late answers cannot reach another request.
+Connection-local request identifiers correlate answers; cancellation and disconnect remove waiting callers, so late answers cannot reach another request.
 
 The [wire types](../../rustd/crates/protocol/af_wire/src/protocol/mod.rs) define messages and bounds.
-The [gateway](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) and [runner](../../rustd/crates/runner/afr_supervisor/src/downlink/mod.rs) own task cleanup and session state.
+The [gateway](../../rustd/crates/daemon/afd_gateway/src/connection/mod.rs) and [runner](../../rustd/crates/runner/afr_supervisor/src/downlink/mod.rs) own task cleanup and connection state.
 
 #### Memory configuration
 
 | Setting | Default | Bounds |
 |---|---|---|
 | `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 48 MiB per replica | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 fleet identifiers | 1–65,536 identifiers |
+| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 64 MiB per replica | 64–512 MiB |
+| `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 thread identifiers | 1–65,536 identifiers |
 
 Receive and send pools are separate; each receives half the configured totals.
 Invalid values refuse startup before allocation.
 
-Accepted offers use a separate allowance of up to 128 MiB for 64 leases, so workers holding offers cannot block report acknowledgements.
-The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
+The data budget can also be set in bytes, as `runner.stream.data.max_buffered_bytes` or `AGENTSFLEET_RUNNER_DATA_BUFFER_BYTES`.
+Its floor is 67,108,864 bytes, so each direction holds one maximum frame (`af_stream/src/framing/memory.rs`).
+
+Work, report and progress frames carry at most 32 MiB (`af_wire::protocol::MESSAGE_BYTES_MAX`).
+Control frames carry the opening, heartbeats, renewals, cancellation and small replies, at most 2 MiB each (`CONTROL_MESSAGE_BYTES_MAX`).
+A frame is charged to its stream's pool at its measured length, with no second reservation for serialization (`af_stream/src/framing/writer.rs`).
+
+Accepted runs use a separate allowance of one maximum frame for each of 64 runs, so workers holding runs cannot block report acknowledgements.
+The frame ceilings and the 256 pending-request limit are fixed protocol bounds.
+
+A run whose assignment would pass the frame is not sent. The daemon measures it first and fails its turn at assignment with `frame_too_large` and `UZ-RUN-032`, so it neither lapses nor is reassigned (`afd_gateway/src/connection/unframed.rs`).
+A fleet's message to another stores its words once, in `message`.
 
 ### Observability
 

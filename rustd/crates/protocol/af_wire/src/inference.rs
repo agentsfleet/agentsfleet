@@ -1,4 +1,4 @@
-//! Non-secret inference settings persisted with a model and pinned on its lease.
+//! Non-secret inference settings persisted with a model and pinned on its run.
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};

@@ -162,15 +162,18 @@ fn rejected_plans() -> Vec<(f64, String, &'static str, &'static str)> {
 }
 
 fn assert_single_binding(native: &IntakeNative) -> crate::Result<()> {
-    let bindings = native.bindings.lock().expect("fixture mutex is unpoisoned");
+    let bindings = native
+        .bindings
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(bindings.len(), 1);
     let binding = bindings.first().ok_or_else(crate::decision::unavailable)?;
-    assert_eq!(binding.source_admission_id, SOURCE);
+    assert_eq!(binding.source_turn_id, SOURCE);
     assert_eq!(binding.accepted_revision_id, SOURCE);
     let decisions = native
         .decisions
         .lock()
-        .expect("fixture mutex is unpoisoned");
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert_eq!(
         binding.message_decision_call_id,
         decisions

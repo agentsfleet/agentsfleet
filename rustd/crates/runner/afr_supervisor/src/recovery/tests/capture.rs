@@ -19,7 +19,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
     let saved = Capture {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        lease: &identity,
+        run: &identity,
         workspace: &identity,
         fence: FENCE,
         task: &task,
@@ -35,7 +35,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
     )
     .await?;
     let requests = drain(&mut calls).await;
-    assert_captured_boundary(&requests, &state, &saved);
+    assert_captured_boundary(&requests, &state, &saved)?;
     assert_eq!(
         fs::read(workspace.path().join("repo/first"))?,
         b"same bytes"
@@ -53,7 +53,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     let error = Capture {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        lease: &identity,
+        run: &identity,
         workspace: &identity,
         fence: FENCE,
         task: &task,
@@ -67,7 +67,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     .unwrap_err();
     config_failure(&error, "checkpoint capture was cancelled");
     let requests = drain(&mut calls).await;
-    assert!(requests.iter().all(|call| call.verb == Verb::Activity));
+    assert!(requests.iter().all(|call| call.verb == Verb::Progress));
     assert_eq!(phases(&requests), ["preparing", "failed"]);
     Ok(())
 }
@@ -84,7 +84,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     let saved = Capture {
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
-        lease: &identity,
+        run: &identity,
         workspace: &identity,
         fence: FENCE,
         task: &task,
@@ -101,7 +101,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     assert_eq!(
         requests
             .iter()
-            .filter(|call| call.verb != Verb::Activity)
+            .filter(|call| call.verb != Verb::Progress)
             .map(|call| call.verb)
             .collect::<Vec<_>>(),
         [Verb::TaskCheckpointPlan]
@@ -129,7 +129,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         let error = Capture {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -186,7 +186,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
         let error = Capture {
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -216,10 +216,15 @@ fn assert_captured_boundary(
     requests: &[Call],
     state: &Arc<Mutex<Archive>>,
     saved: &CheckpointPlan,
-) {
+) -> crate::Result<()> {
     assert_registered(requests);
-    let state = state.lock().unwrap();
-    let page = state.pages.get(PAGE).unwrap();
+    let state = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let page = state
+        .pages
+        .get(PAGE)
+        .ok_or_else(|| crate::error::config("the capture uploaded no page"))?;
     let files: Vec<_> = page
         .entries
         .iter()
@@ -230,8 +235,8 @@ fn assert_captured_boundary(
         .collect();
     assert_eq!(files.len(), 2);
     assert_eq!(
-        files.first().unwrap().objects,
-        files.get(1).unwrap().objects
+        files.first().map(|file| &file.objects),
+        files.get(1).map(|file| &file.objects)
     );
     assert_eq!(files.first().unwrap().size, 10);
     assert_eq!(page.history_objects.len(), 1);
@@ -247,6 +252,7 @@ fn assert_captured_boundary(
     assert_eq!(saved.covered_input_sequence, 3);
     assert_eq!(saved.effect_watermark, 2);
     assert_eq!(phases(requests).last().map(String::as_str), Some("saved"));
+    Ok(())
 }
 
 fn registration_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {

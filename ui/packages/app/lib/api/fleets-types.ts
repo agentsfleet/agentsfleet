@@ -21,7 +21,7 @@ export const AGENTSFLEET_STATUS = {
 export type FleetStatus = typeof AGENTSFLEET_STATUS[keyof typeof AGENTSFLEET_STATUS];
 
 // The body of `POST /v1/workspaces/{ws}/fleets/{id}/messages`. Mirrors
-// `af_wire::event::SteerRequest`. `operation_id` is required here although
+// `af_wire::turn::SteerRequest`. `operation_id` is required here although
 // the daemon accepts its absence: the dashboard always has an operation to
 // name, and a send without one would run twice on a retried socket drop.
 export type SteerRequest = {
@@ -29,54 +29,28 @@ export type SteerRequest = {
   operation_id: string;
 };
 
-// The 202 a steer is answered with. Mirrors `af_wire::event::SteerAccepted`:
+// The 202 a steer is answered with. Mirrors `af_wire::turn::SteerAccepted`:
 // `replayed` is true when an earlier send of the same operation id already
-// admitted the message, so `event_id` is that send's event and may have run.
+// admitted the message, so `turn_id` is that send's turn and may have run.
 export type SteerAccepted = {
   status: string;
-  event_id: string;
+  turn_id: string;
   replayed: boolean;
   // Where the message went. `folded`: the fleet's live run took it, and
-  // `folded_into_event_id` names that run; the message's own event gets the
+  // `folded_into_turn_id` names that run; the message's own turn gets the
   // run's reply when that run reports. A daemon that predates the field sends
   // neither, and `postSteer` reads that as `started` and no run.
   disposition: SteerDisposition;
-  folded_into_event_id: string | null;
+  folded_into_turn_id: string | null;
 };
 
-/** Mirrors `af_wire::event::SteerDisposition`. */
+/** Mirrors `af_wire::turn::SteerDisposition`. */
 export const STEER_DISPOSITION = {
   STARTED: "started",
   FOLDED: "folded",
   QUEUED: "queued",
 } as const;
 export type SteerDisposition = (typeof STEER_DISPOSITION)[keyof typeof STEER_DISPOSITION];
-
-/** The longest message a steer may carry, in UTF-8 bytes. Mirrors
- * `af_wire::event::STEER_MESSAGE_MAX_BYTES`; the daemon refuses one byte more. */
-export const STEER_MESSAGE_MAX_BYTES = 8192;
-
-const UTF8 = new TextEncoder();
-// UTF-8 spends one to three bytes per UTF-16 unit (a surrogate pair's four
-// bytes are two per unit), so most drafts are settled by their length alone.
-const MAX_UTF8_BYTES_PER_UNIT = 3;
-// A draft's size matters from nine tenths of the limit: near enough to count,
-// far enough to be read before Send stops working.
-const COUNT_FROM_SHARE = 0.9;
-const COUNT_FROM_BYTES = Math.ceil(STEER_MESSAGE_MAX_BYTES * COUNT_FROM_SHARE);
-
-/** `text`'s size in UTF-8 bytes once it is within reach of the limit; null
- * below that, which most drafts settle by their length without encoding. */
-export function steerBytesNearLimit(text: string): number | null {
-  if (text.length * MAX_UTF8_BYTES_PER_UNIT < COUNT_FROM_BYTES) return null;
-  const bytes = UTF8.encode(text).length;
-  return bytes < COUNT_FROM_BYTES ? null : bytes;
-}
-
-/** Whether a size `steerBytesNearLimit` measured is more than the daemon takes. */
-export function overSteerLimit(bytes: number | null): boolean {
-  return bytes !== null && bytes > STEER_MESSAGE_MAX_BYTES;
-}
 
 /** The same-origin route a browser steer is POSTed to: it mints the bearer the
  * browser does not hold (`app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages`). */

@@ -3,14 +3,16 @@
 mod process;
 
 use super::Harness;
-use af_providers::ToolSpec;
+use crate::router::Lent;
 use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
 use afr_executor::Spawn;
-use afr_tools::{Schema, ToolErrorCode, ToolOutput};
+use afr_tools::{SandboxEnv, ToolErrorCode};
+use guffbolt::tools::Schema;
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
 
-pub(super) const NAME: &str = "propose_change";
+const NAME: &str = "propose_change";
 /// The sandbox program used for both pre-validation and post-validation capture.
 const CANDIDATE_SCRIPT: &str = include_str!("candidate.py");
 static SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
@@ -37,11 +39,29 @@ struct Candidate {
     changes: Vec<TaskFileChange>,
 }
 
-pub(super) fn spec() -> ToolSpec<'static> {
-    ToolSpec {
-        name: NAME,
-        description: SCHEMA.description(),
-        parameters: SCHEMA.parameters(),
+/// `propose_change` as a loop holds it. The root of a task that may publish
+/// offers it; every other loop holds it unoffered, so a call the model makes
+/// anyway reads why publication is unavailable rather than that no such tool
+/// exists.
+#[derive(Debug)]
+pub(super) struct Propose;
+
+impl Describe for Propose {
+    fn spec(&self) -> ToolSpec<'_> {
+        SCHEMA.spec(NAME)
+    }
+}
+
+impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Propose {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: Lent<'call, 's, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        Lent<'call, 's, 'run>: 'a,
+    {
+        Box::pin(cx.harness.publish_task(arguments))
     }
 }
 
@@ -82,8 +102,7 @@ fn invalid(arguments: &serde_json::Value) -> Result<Invocation, ToolOutput> {
 impl Harness<'_, '_> {
     pub(super) fn publication_allowed(&self) -> bool {
         self.depth == 0
-            && (self.selection.tool("shell").is_some()
-                || self.selection.tool("exec_command").is_some())
+            && (self.selection.offers("shell") || self.selection.offers("exec_command"))
             && self.task.as_ref().is_some_and(|prepared| {
                 prepared.allow_actions
                     && prepared
@@ -94,7 +113,7 @@ impl Harness<'_, '_> {
             })
     }
 
-    pub(super) async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
+    async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
         match self.publication(arguments).await {
             Ok(output) | Err(output) => output,
         }
@@ -113,7 +132,7 @@ impl Harness<'_, '_> {
             .registry
             .list()
             .iter()
-            .any(|child| child.status.as_str() == "running")
+            .any(|child| child.status == guffbolt::agents::Kind::Running)
         {
             return Err(refused(
                 "Wait for child agents to finish before validating and publishing.",
@@ -125,7 +144,14 @@ impl Harness<'_, '_> {
             .peek()
             .ok_or_else(|| refused("Publication requires the task workspace."))?;
         // No background session may keep editing while this root validates.
-        if self.shared.lease.sessions.close_all(executor).await > 0 {
+        if self
+            .shared
+            .run
+            .sessions
+            .close_all(&SandboxEnv::new(executor))
+            .await
+            > 0
+        {
             return Err(refused(
                 "Open commands were stopped. Review their output, then request validation again.",
             ));
@@ -137,7 +163,7 @@ impl Harness<'_, '_> {
             .ok_or_else(|| refused("Native task identity is absent."))?;
         let effects = self
             .shared
-            .lease
+            .run
             .verbs
             .task_effects(af_wire::task::TaskEffectsQuery {
                 fencing_token: self.shared.fencing_token,
@@ -219,7 +245,7 @@ impl Harness<'_, '_> {
                 source,
             )
         })?;
-        let effect = self.shared.lease.verbs.task_publish(request).await
+        let effect = self.shared.run.verbs.task_publish(request).await
             .map_err(|source| failed(ToolErrorCode::AgentsfleetdRefused, "Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt.", crate::decision::native(source)))?;
         Ok(effect)
     }

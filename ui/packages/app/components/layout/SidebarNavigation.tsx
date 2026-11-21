@@ -6,7 +6,7 @@ import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
 import { SIDEBAR_COLUMN, useShellSidebarCollapsed } from "./shell-sidebar-state";
 import { NavSection } from "./SidebarNavigationSections";
-import { primaryNavigation, resolveActiveHref, resolveHref } from "./sidebar-navigation-data";
+import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigation-data";
 
 import { Suspense, useEffect } from "react";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
@@ -64,7 +64,7 @@ export function DesktopSidebarNavigation({
 }
 
 export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate, workspaces = [], billing }: SidebarNavigationProps) {
-  const entries = primaryNavigation();
+  const entries = PRIMARY_NAV;
   const activeHref = resolveActiveHref(entries.map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <TooltipProvider><Nav aria-label="Primary" className="flex h-full min-h-0 flex-col gap-lg py-lg">

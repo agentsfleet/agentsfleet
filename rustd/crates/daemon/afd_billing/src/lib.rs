@@ -1,4 +1,4 @@
-//! What a lease costs, what a tenant has, and what a fleet has already spent.
+//! What a run costs, what a tenant has, and what a fleet has already spent.
 //!
 //! # Why this is a module and not three
 //!
@@ -20,7 +20,7 @@
 //! do when we cannot reach the datastore to find out*. Those are separated
 //! here — a read answers a value or an [`Error`](crate::Error), and the
 //! fail-open or fail-closed POSTURE belongs to the caller in
-//! `afd_fleet::lease::admit`, declared once per gate beside its name rather
+//! `afd_fleet::run::admit`, declared once per gate beside its name rather
 //! than decided at each error arm.
 //!
 //! Splitting "we read nothing" into distinct causes is what lets the decision
@@ -52,8 +52,7 @@ pub mod wallet;
 pub use self::budget::{Spend, Verdict};
 pub use self::error::{Error, Result};
 pub use self::nanos::{
-    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, NANOS_PER_USD, Nanos,
-    RUN_NANOS_PER_SEC,
+    ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, RUN_NANOS_PER_SEC,
 };
 pub use self::rates::Posture;
 pub use self::store::Accounts;

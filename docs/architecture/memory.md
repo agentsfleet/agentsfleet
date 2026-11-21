@@ -10,16 +10,16 @@ The deep load/capture transport lives in `runner_fleet.md`; the categories, sele
 
 ## 1. Scope: written by one fleet, shared with the workspace only by grant
 
-Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**. The identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and stored it with `visibility: workspace`.
+Every memory row belongs to **one fleet**, its writer, and to that fleet's **workspace**. The identity is `(workspace_id, fleet_id, key)`, held by the unique `(key, fleet_id)` because a fleet has one workspace. A row is fleet-visible unless its writer held the publish grant and its `memory_store` call named `visibility: shared`.
 
 A fleet holding the read grant then loads and recalls such a row, naming the writer. No fleet overwrites or forgets another's row. Both grants are a workspace setting on the fleet, false by default ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 
 | Fact | Where it's enforced |
 |---|---|
-| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/20261108124700_memory_entries.sql` |
+| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql` |
 | Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `afd_memory`: `Memories`, the Postgres store (`PgStore`), and the grants |
-| The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
-| `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::hydrate` / `Plane::capture`, which refuse a runner holding no live lease on that fleet |
+| The grants are read and set as the api role on `fleet.fleets`, never by the store | `rustd/crates/daemon/afd_db/schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
+| `fleet_id` is **server-derived from the run**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::load` / `Plane::capture`, which refuse a runner holding no live run on that fleet |
 | Private rows remain writer-scoped; granted readers can read other fleets' workspace-visible rows, but cannot overwrite or forget them | shared-memory grants + workspace predicate + the `(key, fleet_id)` key |
 
 > [!NOTE]
@@ -27,11 +27,11 @@ A fleet holding the read grant then loads and recalls such a row, naming the wri
 
 ## 2. Isolation: a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the `memory_runtime` Postgres role, with zero grants outside that schema (`schema/20261108120100_roles_and_privileges.sql`).
+Memory lives in its own `memory` schema behind the `memory_runtime` Postgres role, with zero grants outside that schema (`rustd/crates/daemon/afd_db/schema/20261108120100_roles_and_privileges.sql`).
 `api_runtime` takes it with `SET LOCAL ROLE memory_runtime` inside each memory transaction.
 Postgres restores the role at commit or rollback (`afd_memory`'s Postgres store).
 
-`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory (`schema/20261108124700_memory_entries.sql`).
+`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory (`rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql`).
 Postgres checks the foreign key and cascade with the table owner's authority.
 That grants `memory_runtime` no access to `fleet.fleets`.
 
@@ -44,7 +44,7 @@ Two layers, deliberately split:
 
 - **Durable** — the `fleet_id`-keyed rows in `memory.entries` (Postgres), the default backend. This is what survives, and Postgres is the only store. A second store, and the flip that migrates a workspace onto it, come with the first vendor store ([`runner_fleet.md`](./runner_fleet.md) §"Memory backends and scope").
 
-- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at lease start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
+- **Ephemeral** — the *compute*. Each run holds its memory in the runner's supervisor, seeded at run start and pushed, fenced, before the report. It is gone when the run ends ([`runner_execution.md`](./runner_execution.md#crates)).
 
 Continuity is the load/capture loop bridging the two. `GET /v1/runners/me/memory/{fleet_id}` seeds the run at its start; `POST` captures deltas back at run end (fencing-verified, like `/reports`). Transport detail: [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity".
 
@@ -58,7 +58,7 @@ Memory belongs to a configured fleet and its permitted scope, rather than a Slac
 Mentions routed to that fleet can use saved facts only when its tools and grants permit memory capture and recall.
 A shared fleet identifier alone proves neither operation.
 
-The runner reads or saves memory only under the current lease fence.
+The runner reads or saves memory only under the current run fence.
 [Slack routing](scenarios/slack-incident-responder.md#4-routing-a-mention) selects configured fleets; an unconfigured channel never creates a memory-owning fallback fleet.
 Historical stored fleets and their memory remain unchanged.
 
@@ -77,14 +77,14 @@ The prompt builder does not insert the entire store into each model request.
 The model reads entries through its allowed `memory_recall` and `memory_list` tools; returned content enters the conversation as tool output.
 
 The implemented scopes are fleet-private and workspace-shared. There is no account-wide memory scope in `memory.entries` or the runner's loading path.
-Private setup chat uses its own conversation history and checkpoint; its authoring tool set does not expose the runtime memory tools.
+Private setup chat uses its own conversation history and checkpoint; its setup tool set does not expose the runtime memory tools.
 
 ## 7. Two checkpoint mechanisms
 
 | Mechanism | Trigger and content | Next run or request |
 |---|---|---|
 | Semantic memory capture | After every five completed tool calls by default, push pending `memory_store` changes; push again before the final report | A later run of the same fleet loads saved entries into its tool store; granted readers also load workspace-shared entries |
-| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `memory.context_checkpoints` | Preparation uses the owned draft checkpoint (a run keeps its own in memory), original source checks and retained conversation suffix |
+| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `memory.context_checkpoints` | Preparation uses the thread's checkpoint, a draft's or a fleet chat's (any other run keeps its own in memory), original source checks and retained conversation suffix |
 
 Semantic capture skips empty changes and makes no summary model call.
 A failed mid-run push is logged; final capture retries before reporting, as described in [runner transport](runner_fleet.md#memory-continuity-durable-fleet-memory-rides-the-trusted-plane).
@@ -97,8 +97,8 @@ See [conversation compaction](context_lifecycle.md) for summary generation, toke
 
 | Concern | Owner |
 |---|---|
-| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `schema/20261108124700_memory_entries.sql` |
+| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `rustd/crates/daemon/afd_db/schema/20261108124700_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
-| Runner load/capture endpoints (lease-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
+| Runner load/capture endpoints (run-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
 | Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |
-| A run's memory, seeded at lease start and pushed before the report | `afr_memory`'s `Hydrated` store |
+| A run's memory, seeded at run start and pushed before the report | `afr_memory`'s `Loaded` store |

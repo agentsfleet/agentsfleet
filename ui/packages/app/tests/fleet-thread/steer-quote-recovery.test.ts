@@ -1,6 +1,5 @@
 import { mockStream, ev, renderThread, postSteerMock } from "./harness";
-import { ACCEPTED, SEND_LABEL, RESEND_LABEL, SEND_UNCONFIRMED_TEXT, TOO_LONG_TEXT, composerInput, operationIdOf, send } from "./steer-helpers";
-import { STEER_MESSAGE_MAX_BYTES } from "@/lib/api/fleets-types";
+import { ACCEPTED, SEND_LABEL, RESEND_LABEL, SEND_UNCONFIRMED_TEXT, composerInput, operationIdOf, send } from "./steer-helpers";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { expect, it } from "vitest";
 
@@ -40,17 +39,16 @@ it("clears the matching quote and text together when an unresolved message is re
   expect(screen.getByRole("button", {name: SEND_LABEL}).hasAttribute("disabled")).toBe(true);
 });
 
-it("includes the quote in the send limit and explains refusal before submission", () => {
-  quote("x".repeat(STEER_MESSAGE_MAX_BYTES));
-  fireEvent.change(composerInput(), {target: {value: "Check this"}});
-  expect(screen.getByText(TOO_LONG_TEXT)).toBeTruthy();
-  const button = screen.getByRole("button", {name: SEND_LABEL});
-  expect(button.hasAttribute("disabled")).toBe(true);
-  fireEvent.click(button);
-  expect(postSteerMock).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", {name: "Remove quote"}));
-  expect(screen.queryByText(TOO_LONG_TEXT)).toBeNull();
-  expect(button.hasAttribute("disabled")).toBe(false);
+it("sends a long quote and its reply whole, leaving the length to the daemon", async () => {
+  // 64 KiB of quote, eight times what the composer once refused.
+  const long = "x".repeat(65_536);
+  postSteerMock.mockResolvedValueOnce(ACCEPTED("long"));
+  quote(long);
+  fireEvent.change(composerInput(), { target: { value: "Check this" } });
+  expect(screen.getByRole("button", {name: SEND_LABEL}).hasAttribute("disabled"), "no client-side limit holds Send back").toBe(false);
+  await send("Check this");
+  await waitFor(() => expect(postSteerMock).toHaveBeenCalledTimes(1));
+  expect(postSteerMock.mock.calls[0]?.[2]).toBe(`> ${long}\n\nCheck this`);
 });
 
 it("preserves a newer quote and draft when an earlier quoted send fails", async () => {

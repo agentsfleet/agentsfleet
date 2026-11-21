@@ -38,7 +38,7 @@ async fn a_named_fleet_takes_the_mention_over_its_neighbour() {
     assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
 
     let admitted = fixture
-        .admission(&key(&fixture.team, "EvNamed01"))
+        .turn(&key(&fixture.team, "EvNamed01"))
         .await
         .expect("the named mention was admitted");
     assert_eq!(admitted.fleet, triage.as_str(), "the name picks the fleet");
@@ -94,7 +94,7 @@ async fn mention_routes_by_the_saved_fleet_name() {
     )
     .await;
     let admitted = fixture
-        .admission(&key(&fixture.team, "EvSaved01"))
+        .turn(&key(&fixture.team, "EvSaved01"))
         .await
         .expect("the mention by saved name was admitted");
     assert_eq!(admitted.fleet, repairer.as_str());
@@ -108,12 +108,12 @@ async fn mention_routes_by_the_saved_fleet_name() {
     mention_said(&fixture, &router, "EvDefined01", "ci-repairer open the fix").await;
     assert!(
         fixture
-            .admission(&key(&fixture.team, "EvDefined01"))
+            .turn(&key(&fixture.team, "EvDefined01"))
             .await
             .is_none(),
         "the definition's name is not an address"
     );
-    let owed = super::notice::owed(&fixture).await;
+    let owed = notice::owed(&fixture).await;
     assert_eq!(owed.len(), 1, "{owed:?}");
     assert!(
         owed[0].answer.contains("ci-dev-repairer"),
@@ -154,12 +154,12 @@ async fn mention_cannot_address_a_fleet_outside_the_channel() {
     assert_eq!(deliver(&router, &body).await.status(), StatusCode::OK);
     assert!(
         fixture
-            .admission(&key(&fixture.team, "EvOutside01"))
+            .turn(&key(&fixture.team, "EvOutside01"))
             .await
             .is_none(),
         "an unattached fleet is not reached by its name"
     );
-    assert_eq!(fixture.admissions().await, 0);
+    assert_eq!(fixture.turns().await, 0);
 
     fixture.cleanup().await;
 }

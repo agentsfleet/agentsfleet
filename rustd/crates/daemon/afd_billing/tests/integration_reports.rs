@@ -175,7 +175,7 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
         ])
     );
     request.filter.fleet = None;
-    request.filter.work_type = Some(work::AUTHORING_ATTEMPT);
+    request.filter.work_type = Some(work::SETUP_RUN);
     let setup = f.billing.report(&f.tenant, &request).await.unwrap();
     let summary = fixture::summary(&setup);
     assert_eq!(

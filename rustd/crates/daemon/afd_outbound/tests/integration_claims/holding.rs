@@ -3,7 +3,7 @@
 
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::mint_id;
-use afd_outbound::obligation;
+use afd_outbound::delivery;
 use afd_outbound::{IN_FLIGHT_DELIVERIES, Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -24,7 +24,7 @@ async fn a_holder_whose_row_was_retaken_before_its_cycle_posts_nothing() -> Resu
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "retaken while waiting").await;
-    let claimed = obligation::claim(&ledger.database, 8, &mint_id())
+    let claimed = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim");
     let [job] = claimed.as_slice() else {
@@ -67,7 +67,7 @@ async fn the_opening_count_extends_a_claim_nobody_retook() -> Result<(), &'stati
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "lapsed unretaken").await;
-    let claimed = obligation::claim(&ledger.database, 8, &mint_id())
+    let claimed = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim");
     let [job] = claimed.as_slice() else {
@@ -75,17 +75,17 @@ async fn the_opening_count_extends_a_claim_nobody_retook() -> Result<(), &'stati
     };
     sql(
         &ledger.database,
-        "UPDATE fleet.obligations SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
+        "UPDATE thread.deliveries SET claim_expires_at = now() - interval '1 second' WHERE id = $1",
         &[&job.id],
     )
     .await;
 
-    let counted = obligation::count_attempt(&ledger.database, job)
+    let counted = delivery::count_attempt(&ledger.database, job)
         .await
         .expect("the count runs");
 
     assert_eq!(counted, Some(1), "the holder's token still matches");
-    let retake = obligation::claim(&ledger.database, 8, &mint_id())
+    let retake = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("a retaking claim");
     assert!(retake.is_empty(), "the counted claim is live again");
@@ -114,15 +114,15 @@ async fn a_worker_claims_only_what_its_lanes_can_start() -> Result<(), &'static 
     let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     until(|| held.iter().all(|event| poster.attempts_of(event) == 1)).await;
-    let replica = obligation::claim(&ledger.database, 8, &mint_id())
+    let replica = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("another replica's claim");
     let [spare_row] = replica.as_slice() else {
         return Err("the row beyond the slots is left for another replica");
     };
-    assert_eq!(spare_row.outgoing.event_id, spare);
+    assert_eq!(spare_row.outgoing.turn_id, spare);
     assert!(
-        obligation::stamp_delivered(&ledger.database, spare_row)
+        delivery::stamp_delivered(&ledger.database, spare_row)
             .await
             .expect("the other replica stamps"),
         "the other replica holds the row"

@@ -3,8 +3,8 @@ INSERT INTO fleet.tasks
    title, objective, questions, goal_digest, target, status, resource_version,
    generation, stop_generation, input_sequence, covered_input_sequence,
    effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos,
-   reserved_model_nanos, max_running_nanos, used_running_nanos, max_leases,
-   used_leases, max_publications, used_publications, max_decision_calls,
+   reserved_model_nanos, max_running_nanos, used_running_nanos, max_runs,
+   used_runs, max_publications, used_publications, max_decision_calls,
    used_decision_calls, max_fallback_reads, used_fallback_reads,
    expires_at, terminal_at, created_at, updated_at)
 SELECT $1, f.id, f.workspace_id, f.tenant_id, $3, f.head_revision_id,

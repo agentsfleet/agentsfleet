@@ -125,8 +125,8 @@ fn identifier(text: &str) -> Result<Uuid7, Refusal> {
 fn work_type(kind: Option<&str>) -> Result<Option<&'static str>, Refusal> {
     match kind {
         None => Ok(None),
-        Some(BILLING_ACTIVITY_RUNTIME) => Ok(Some(work::FLEET_LEASE)),
-        Some(BILLING_ACTIVITY_SETUP) => Ok(Some(work::AUTHORING_ATTEMPT)),
+        Some(BILLING_ACTIVITY_RUNTIME) => Ok(Some(work::FLEET_RUN)),
+        Some(BILLING_ACTIVITY_SETUP) => Ok(Some(work::SETUP_RUN)),
         Some(_) => Err(Refusal::malformed(DETAIL_QUERY)),
     }
 }

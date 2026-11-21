@@ -38,7 +38,7 @@ pub(super) struct Plan {
     pub history_digest: Option<String>,
     pub covered_input_sequence: i64,
     pub effect_watermark: i64,
-    pub owner_lease_id: Uuid7,
+    pub owner_run_id: Uuid7,
     pub owner_fence: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub expires_at: jiff::Timestamp,
@@ -138,7 +138,7 @@ impl Plan {
 pub(super) struct Pin {
     pub id: Uuid7,
     pub kind: String,
-    pub owner_lease_id: Uuid7,
+    pub owner_run_id: Uuid7,
     pub owner_fence: i64,
     pub task_generation: i64,
     pub stop_generation: i64,

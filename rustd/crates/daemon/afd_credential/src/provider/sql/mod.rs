@@ -61,7 +61,7 @@ pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sq
 /// still comes back, to be refused as corrupt rather than read as absent.
 ///
 /// Read LIVE on every resolution, never from the tenant's own row. That is
-/// what makes an admin repointing the default take effect on the next lease for
+/// what makes an admin repointing the default take effect on the next run for
 /// every platform-mode tenant, with no redeploy and no per-tenant write.
 pub const SELECT_ACTIVE_PLATFORM_DEFAULT: &str = include_str!("select_active_platform_default.sql");
 

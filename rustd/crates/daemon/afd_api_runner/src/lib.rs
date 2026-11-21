@@ -2,13 +2,15 @@
 //!
 //! The stream, self-record, credential, memory, message, schedule, fleet steer,
 //! fleets, tool-call, decision and task handlers live here so host protocol
-//! changes compile independently. Heartbeats, leases, renewals, activity and reports
+//! changes compile independently. Heartbeats, runs, renewals, activity and reports
 //! travel on the stream.
 
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{auth, envelope, request_id, route, services};
+use afd_http::{auth, route};
+
+pub mod services;
 
 pub(crate) mod handler;
 
@@ -18,13 +20,16 @@ pub mod openapi;
 
 use std::sync::Arc;
 
+use af_wire::protocol::MESSAGE_BYTES_MAX;
+use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, get, patch, post};
 use handler::runner::task_checkpoints as checkpoints;
 use route::RunnerRoute;
-use services::Services;
+use services::RunnerPlane;
 
 /// Selects the handler for a runner speaking for itself.
-pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
+pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
         RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
@@ -46,10 +51,13 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::TaskEffect => get(handler::runner::task_effects::read::<D>),
         RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
         RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),
-        RunnerRoute::MemoryHydrate => get(handler::runner::memory::hydrate::<D>),
+        RunnerRoute::MemoryLoad => get(handler::runner::memory::load::<D>),
         RunnerRoute::MemoryCapture => post(handler::runner::memory::capture::<D>),
         RunnerRoute::MemoryRecall => post(handler::runner::memory::recall::<D>),
-        RunnerRoute::ToolCalls => post(handler::runner::tool_call::handle::<D>),
+        // A post of full tool records is bounded by the runner frame alone,
+        // past axum's 2 MiB default: no field, event or post cap applies.
+        RunnerRoute::Items => post(handler::runner::tool_call::handle::<D>)
+            .layer(DefaultBodyLimit::max(MESSAGE_BYTES_MAX)),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),
         RunnerRoute::Schedules => {
             get(handler::runner::schedule::list::<D>).post(handler::runner::schedule::create::<D>)
@@ -59,8 +67,11 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
-        RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>),
+        // A fleet's message to another carries text up to the one ceiling,
+        // past axum's 2 MiB default once escaped.
+        RunnerRoute::Steers => post(handler::runner::fleet_steer::handle::<D>)
+            .layer(DefaultBodyLimit::max(TEXT_BODY_BYTES_MAX)),
         RunnerRoute::Fleets => get(handler::runner::fleets::list::<D>),
-        RunnerRoute::FleetEvents => get(handler::runner::fleets::events::<D>),
+        RunnerRoute::FleetTurns => get(handler::runner::fleets::events::<D>),
     }
 }

@@ -25,13 +25,13 @@ pub(super) fn spawn(
         control,
         work,
         reports,
-        activity,
+        progress,
     } = connected;
     write_pipes(
         control.writer,
         work.writer,
         reports.writer,
-        activity.writer,
+        progress.writer,
         receivers,
         stop,
         workers,
@@ -48,7 +48,7 @@ pub(super) fn spawn(
     for (kind, pipe) in [
         (StreamKind::Work, work.reader),
         (StreamKind::Reports, reports.reader),
-        (StreamKind::Activity, activity.reader),
+        (StreamKind::Progress, progress.reader),
     ] {
         track(workers, read(pipe, kind, frames.clone(), stop.clone()));
     }
@@ -59,7 +59,7 @@ fn write_pipes(
     control: tokio::io::DuplexStream,
     work: tokio::io::DuplexStream,
     reports: tokio::io::DuplexStream,
-    activity: tokio::io::DuplexStream,
+    progress: tokio::io::DuplexStream,
     receivers: Receivers,
     stop: &CancellationToken,
     workers: &mut JoinSet<Result<()>>,
@@ -69,7 +69,7 @@ fn write_pipes(
         control: ordinary,
         work: work_rx,
         reports: reports_rx,
-        activity: activity_rx,
+        progress: progress_rx,
     } = receivers;
     track(
         workers,
@@ -77,7 +77,7 @@ fn write_pipes(
     );
     track(workers, writer::run(work, work_rx, stop.clone()));
     track(workers, writer::run(reports, reports_rx, stop.clone()));
-    track(workers, writer::run(activity, activity_rx, stop.clone()));
+    track(workers, writer::run(progress, progress_rx, stop.clone()));
 }
 
 async fn read(

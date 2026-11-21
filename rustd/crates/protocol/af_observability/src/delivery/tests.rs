@@ -1,4 +1,4 @@
-//! Dimension 1.2 — the delivery span says what happened, and when it happened.
+//! The delivery span says what happened, and when it happened.
 
 #![expect(
     clippy::expect_used,
@@ -73,7 +73,7 @@ fn delivery() -> Delivery<'static> {
         tenant_id: "01936f00-0000-7000-8000-000000007e11",
         workspace_id: "01936f00-0000-7000-8000-000000005402",
         fleet_id: "01936f00-0000-7000-8000-0000000f1ee7",
-        event_id: "01936f00-0000-7000-8000-00000000e7e1",
+        turn_id: "01936f00-0000-7000-8000-00000000e7e1",
         posture: "self_managed",
         provider: "Anthropic",
         model: "claude-fable-5-1",
@@ -336,7 +336,7 @@ fn every_attribute_carries_the_field_it_is_named_for() {
         (semconv::ATTR_USAGE_OUTPUT_TOKENS, "512"),
         (semconv::ATTR_EXECUTION_POSTURE, delivery.posture),
         (semconv::ATTR_WORKSPACE_ID, delivery.workspace_id),
-        (semconv::ATTR_EVENT_ID, delivery.event_id),
+        (semconv::ATTR_TURN_ID, delivery.turn_id),
         (semconv::ATTR_REQUEST_MODEL, delivery.model),
     ] {
         assert_eq!(

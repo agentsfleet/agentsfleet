@@ -1,4 +1,4 @@
-//! The Postgres store's reads: the hydration input, recall, and the operator
+//! The Postgres store's reads: the load input, recall, and the operator
 //! page.
 
 use af_wire::memory::MAX_ENTRIES_PER_FLEET;
@@ -15,7 +15,7 @@ use crate::sql;
 const CONTEXT_LIST: &str = "memory list";
 const CONTEXT_RECALL: &str = "memory recall";
 
-/// The most shared rows one hydrate reads before the window spends its budget:
+/// The most shared rows one load reads before the window spends its budget:
 /// one fleet's cap, so a workspace of many publishers costs one fleet's read.
 fn shared_scan_limit() -> i64 {
     i64::try_from(MAX_ENTRIES_PER_FLEET).unwrap_or(i64::MAX)

@@ -66,6 +66,11 @@ facts.
   `Error`, its backtrace, its `[CODE]` `Display` and its self-skipping
   `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
   alias is written by hand, so a reader can see it without expanding a macro.
+- **No invented limits.** A cap on content, count, size or time exists only when a model
+  provider, a transport, the operating system or Postgres forces it, or Indy named its number;
+  otherwise match Codex and Pi, and where neither caps something, cap nothing (Indy, Nov 21,
+  2026). Name the forcing limit beside the constant. A bound on untrusted input is the text
+  ceiling or the frame, never a smaller invented number.
 - **Bounds on untrusted input are declared with `garde`** on the type they
   guard, per HTTP-GARDE and HTTP-VALID in [the HTTP standard](standards/domains/http.md); never a
   hand-written length, range or charset check. Rules garde lacks, the route
@@ -87,13 +92,25 @@ The standards in `.orly/standards/` name things generically. In this
 repository:
 
 - **Crates:** each crate sits in one layer folder under `rustd/crates/`:
-  `foundation/`, `protocol/`, `harness/`, `runner/` or `daemon/`. It depends
-  on its own layer or a lower one, and `runner/` and `daemon/` never on each
-  other (`rustd/Cargo.toml`). Shared crates are `af_*`, daemon-only `afd_*`,
-  runner-only `afr_*`. A layer's binary sits in `main/` (`daemon/main` is
-  `agentsfleetd`, `runner/main` is `agentsfleet_runner`); every other folder
-  is its crate's name.
-- **SQL:** schema files are `schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
+  `foundation/`, `protocol/`, `harness/`, `runner/`, `daemon/` or `e2e/`. It
+  depends on its own layer or a lower one, `runner/` and `daemon/` never on
+  each other, and nothing on `e2e/`, in normal, build and dev tables alike
+  (`rustd/Cargo.toml`). `e2e/` holds test-only crates that may depend on every
+  layer: `af_e2e` drives the runner against `agentsfleetd`. Shared and `e2e/`
+  crates are `af_*`, daemon-only `afd_*`, runner-only `afr_*`. A layer's
+  binary sits in `main/` (`daemon/main` is `agentsfleetd`, `runner/main` is
+  `agentsfleet_runner`); every other folder is its crate's name.
+  `af_e2e/tests/layers.rs` enforces these rules from the manifests.
+  `rustd/guffbolt` is the one crate outside `rustd/crates/`: a standalone
+  published crate that depends on no workspace crate, so it packages alone.
+- **Until the first production deploy, nothing is backward compatible.** The
+  daemon, runner, app and CLI ship from one commit, so the runner protocol has
+  one `VERSION` and a hello naming any other is refused; a wire, API, config or
+  schema change edits in place, with no alias, shim, second version or
+  migration path; and the dev database is torn down when a milestone merges,
+  never migrated forward (Indy, Nov 20, 2026).
+- **SQL:** schema files are
+  `rustd/crates/daemon/afd_db/schema/<UTC yyyymmddHHMMSS>_<schema>_<table>.sql`, one
   per table, holding its whole `CREATE` — every column, constraint, index, grant,
   function and trigger. The only `ALTER` is a foreign key that closes a cycle, in
   the later table's file. Until the first production deploy a change to a table
@@ -122,7 +139,7 @@ repository:
   `--no-banner`, never edited by hand.
 - **Auth:** `afd_auth`, `afd_credential`, `ui/packages/app/lib/auth/**` and the
   device-session statements in `afd_tenant/src/sql/session/`.
-- **Events:** test helpers come from the `afd_events` `test-util` feature.
+- **Events:** test helpers come from the `afd_turns` `test-util` feature.
 
 ## Running lanes here
 

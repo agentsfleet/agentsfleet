@@ -44,7 +44,7 @@ async fn lost_publication_acknowledgement_is_reconciled_read_only_or_retains_unc
             );
             server.push(history(&json!([])));
             let (receipt, replayed) = tasks
-                .publish_effect(case.lease(), &input)
+                .publish_effect(case.run(), &input)
                 .await
                 .expect("issued effect remains discoverable");
             assert!(!replayed);
@@ -58,7 +58,7 @@ async fn lost_publication_acknowledgement_is_reconciled_read_only_or_retains_unc
             reconcile(case, &tasks, &server, &receipt, outcome).await;
             if matches!(outcome, Outcome::Confirmed) {
                 let (again, replayed) = tasks
-                    .publish_effect(case.lease(), &input)
+                    .publish_effect(case.run(), &input)
                     .await
                     .expect("terminal receipt replay");
                 assert!(replayed);

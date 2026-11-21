@@ -31,7 +31,7 @@ pub(super) struct Answer<'a> {
     /// The gate's row identifier.
     pub gate_id: &'a str,
     /// The event the gate held, or none for a gate raised outside a run.
-    pub event_id: Option<&'a str>,
+    pub turn_id: Option<&'a str>,
     /// Where the gate now stands.
     pub status: &'a str,
     /// Who answered — a person, or the sweeper.
@@ -50,13 +50,13 @@ impl Inbox {
     pub(super) async fn announce(&self, answer: Answer<'_>) {
         let frame = TailFrame::GateResolved {
             gate_id: Cow::Borrowed(answer.gate_id),
-            event_id: answer.event_id.map(Cow::Borrowed),
+            turn_id: answer.turn_id.map(Cow::Borrowed),
             status: Cow::Borrowed(answer.status),
             resolved_by: Cow::Borrowed(answer.resolved_by),
             pending_approvals: answer.pending_approvals,
             counters: answer.counters,
         };
-        let subject = afd_bus::Subject::FleetTail(answer.fleet_id.clone());
+        let subject = afd_bus::Subject::ThreadItems(answer.fleet_id.clone());
         let publication = self.bus.publish_frame(&subject, &frame).await;
         afd_bus::observe_notification(&subject, publication);
     }

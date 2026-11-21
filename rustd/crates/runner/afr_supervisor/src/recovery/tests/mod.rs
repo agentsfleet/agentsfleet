@@ -137,7 +137,7 @@ impl Archive {
 
     fn respond(&mut self, call: &Call) -> Answer {
         match call.verb {
-            Verb::Activity => json(&serde_json::json!({})),
+            Verb::Progress => json(&serde_json::json!({})),
             Verb::TaskCheckpointPlan => self.planned(call),
             Verb::TaskCheckpointObjectsRegister => self.registered(call),
             Verb::TaskCheckpointPageWrite => self.written(call),
@@ -149,7 +149,7 @@ impl Archive {
             _ => Answer::Fail(crate::error::config("unexpected recovery request")),
         }
     }
-    fn planned(&mut self, call: &Call) -> Answer {
+    fn planned(&self, call: &Call) -> Answer {
         let input: CheckpointPlanInput = body(call);
         assert_eq!(input.fencing_token, FENCE);
         assert_eq!(input.task.generation, 7);
@@ -207,8 +207,8 @@ impl Archive {
         assert_eq!(input.fencing_token, FENCE);
         assert_eq!(input.pin_id, ID);
         assert_eq!(
-            input.manifest_root,
-            root(PAGE, self.pages.get(PAGE).unwrap())
+            Some(&input.manifest_root),
+            self.pages.get(PAGE).map(|page| root(PAGE, page)).as_ref()
         );
         self.plan.manifest_root = Some(input.manifest_root);
         self.plan.history_digest = Some(input.history_digest);
@@ -235,13 +235,13 @@ impl Archive {
         })
     }
 
-    fn authorized(&mut self, call: &Call) -> Answer {
+    fn authorized(&self, call: &Call) -> Answer {
         let input: CheckpointAuthorizationInput = body(call);
         assert_eq!(input.fencing_token, FENCE);
         let objects = input
             .object_ids
             .iter()
-            .map(|id| serde_json::from_value(self.objects.get(id).unwrap().clone()).unwrap())
+            .map(|id| serde_json::from_value(self.objects.get(id).cloned().unwrap()).unwrap())
             .collect();
         json(&CheckpointAuthorizations {
             plan: self.plan.clone(),
@@ -249,7 +249,7 @@ impl Archive {
         })
     }
 
-    fn read_page(&mut self, call: &Call) -> Answer {
+    fn read_page(&self, call: &Call) -> Answer {
         let id = call
             .path
             .split('?')
@@ -259,7 +259,7 @@ impl Archive {
             .next()
             .unwrap();
         assert!(call.path.contains("fencing_token=31"));
-        json(self.pages.get(id).unwrap())
+        self.pages.get(id).map(json).unwrap()
     }
 
     fn renewed(&mut self, _call: &Call) -> Answer {
@@ -288,7 +288,7 @@ async fn drain(calls: &mut Calls) -> Vec<Call> {
         let mut observed = Vec::new();
         loop {
             let call = calls.recv().await.unwrap();
-            let done = if call.verb == Verb::Activity {
+            let done = if call.verb == Verb::Progress {
                 let value: serde_json::Value = body(&call);
                 matches!(
                     value
@@ -320,7 +320,7 @@ fn config_failure(error: &crate::Error, expected: &str) {
 fn phases(calls: &[Call]) -> Vec<String> {
     calls
         .iter()
-        .filter(|call| call.verb == Verb::Activity)
+        .filter(|call| call.verb == Verb::Progress)
         .map(|call| {
             let value: serde_json::Value = body(call);
             value

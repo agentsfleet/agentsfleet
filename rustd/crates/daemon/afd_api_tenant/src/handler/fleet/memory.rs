@@ -37,7 +37,7 @@ use http::{StatusCode, Uri};
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::services::{FleetMemories as _, Services};
+use crate::services::{FleetMemories as _, TenantPlane};
 
 use super::detail::{FleetPath, parse_fleet_id};
 use super::memory_request::{Read, memory_key, row_id};
@@ -76,7 +76,7 @@ const EVENT_SEARCH_ZERO_HIT: &str = "memory_search_zero_hit";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -135,7 +135,7 @@ fn log_zero_hit(zero_hit: bool, fleet: &af_core::id::Uuid7) {
 /// `DELETE /v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}`.
 ///
 /// The operator's correction path: a fleet learned a convention wrong, and the
-/// entry has to go before the next hydrate seeds it into another run.
+/// entry has to go before the next load seeds it into another run.
 ///
 /// Takes the raw [`Uri`] rather than the key as a `Path` segment, and that is a
 /// refusal being preserved rather than a preference — see
@@ -163,7 +163,7 @@ fn log_zero_hit(zero_hit: bool, fleet: &af_core::id::Uuid7) {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn forget<D: Services>(
+pub(crate) async fn forget<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,

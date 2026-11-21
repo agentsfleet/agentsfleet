@@ -177,7 +177,10 @@ impl Journal {
 
 impl io::Write for Journal {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(buf);
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -215,8 +218,8 @@ fn a_quiet_log_level_quiets_the_journal_and_never_the_spans() {
     });
 
     tracing::subscriber::with_default(subscriber, || {
-        let lease = tracing::info_span!("runner.lease");
-        let _entered = lease.enter();
+        let run = tracing::info_span!("runner.run");
+        let _entered = run.enter();
         tracing::info!(event = "an_info_line");
         tracing::error!(event = "an_error_line");
     });
@@ -224,7 +227,7 @@ fn a_quiet_log_level_quiets_the_journal_and_never_the_spans() {
     assert_eq!(
         seen.load(Ordering::SeqCst),
         1,
-        "the span layer saw the lease at `error`"
+        "the span layer saw the run at `error`"
     );
     let text = journal.text();
     assert!(

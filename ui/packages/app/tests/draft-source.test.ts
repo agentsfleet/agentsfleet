@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sourcePreview } from "@/lib/api/draft-source";
-import { FLEET_DETAIL, FLEET_ID, PLUGIN, PLUGIN_CARD, REVISION_ID, REVIEW, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { FLEET_DETAIL, FLEET_ID, REVISION_ID, REVIEW, WORKSPACE, response } from "./helpers/draft-fixtures";
 
 const BASE = `/live/v1/workspaces/${WORKSPACE}`;
 const signal = (): AbortSignal => new AbortController().signal;
@@ -22,19 +22,5 @@ describe("read-only setup inspection before draft creation", () => {
   it.each([{...FLEET_DETAIL, setup_revision: "2"}, {...FLEET_DETAIL, id: REVISION_ID}])("refuses a changed Improve source", async (answer) => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(answer)));
     await expect(sourcePreview(BASE, {kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}, signal())).rejects.toMatchObject({status: 409});
-  });
-  it("Plugin inspection uses the selected historical revision, independent of current head", async () => {
-    const answer = {...PLUGIN, card: {...PLUGIN_CARD, head_revision_id: FLEET_ID}};
-    const fetch = vi.fn().mockResolvedValue(response(answer)); vi.stubGlobal("fetch", fetch);
-    expect(await sourcePreview(BASE, {kind: "plugin", plugin_id: PLUGIN_CARD.id, revision_id: REVISION_ID}, signal())).toMatchObject({definition: PLUGIN.head.definition, revision: REVISION_ID});
-    expect(String(fetch.mock.calls[0]?.[0])).toContain(`revision_id=${REVISION_ID}`);
-  });
-  it.each([
-    {...PLUGIN, head: {...PLUGIN.head, id: FLEET_ID}},
-    {...PLUGIN, head: {...PLUGIN.head, plugin_id: FLEET_ID}},
-    {...PLUGIN, card: {...PLUGIN_CARD, id: FLEET_ID}},
-  ])("refuses a mismatched Plugin inspection", async (answer) => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response(answer)));
-    await expect(sourcePreview(BASE, {kind: "plugin", plugin_id: PLUGIN_CARD.id, revision_id: REVISION_ID}, signal())).rejects.toMatchObject({status: 409});
   });
 });

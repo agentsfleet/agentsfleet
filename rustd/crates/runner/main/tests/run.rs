@@ -1,10 +1,10 @@
 //! `run` end to end, as the binary itself: pointed at a fake daemon, it takes
-//! one lease through the real agent loop and settles it, and with a collector
-//! configured it exports that lease's trace under this host's identity.
+//! one run through the real agent loop and settles it, and with a collector
+//! configured it exports that run's trace under this host's identity.
 //!
 //! The binary runs `--unsandboxed`, which only a debug build accepts, so this
 //! suite is debug-only; the sandbox itself is the kernel lane's to prove. The
-//! lease names a model under a domain that never resolves, so its turn reaches
+//! run names a model under a domain that never resolves, so its turn reaches
 //! the real provider and fails there, and the report is a run that ended, not
 //! one refused before it started.
 #![expect(
@@ -19,23 +19,23 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use af_observability::semconv::{ATTR_LEASE_ID, RESOURCE_SERVICE_INSTANCE_ID, SPAN_RUNNER_LEASE};
+use af_observability::semconv::{ATTR_RUN_ID, RESOURCE_SERVICE_INSTANCE_ID, SPAN_RUNNER_RUN};
 use af_otlp::config::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB};
 use af_otlp::resource::INSTANCE_ID_KNOB;
 use serde_json::Value;
 
 use af_wire::runner::NetworkPolicy;
 
-use crate::fake_daemon::{FENCING, FakeCollector, FakeDaemon, LEASE_ID};
+use crate::fake_daemon::{FENCING, FakeCollector, FakeDaemon, RUN_ID};
 use crate::support::{RUN_FAILED, Runner};
 
-/// How long one lease is given to settle.
+/// How long one run is given to settle.
 const SETTLE_WITHIN: Duration = Duration::from_secs(60);
 /// How long the binary is given to stop once told to, as systemd tells it.
 const STOP_WITHIN: Duration = Duration::from_secs(30);
 /// How often a stopping binary is checked.
 const POLL: Duration = Duration::from_millis(50);
-/// The class of a lease refused before its turn ran.
+/// The class of a run refused before its turn ran.
 const STARTUP_POSTURE: &str = "startup_posture";
 /// The encoding the fake collector reads.
 const JSON_PROTOCOL: &str = "http/json";
@@ -46,10 +46,10 @@ const INSTANCE: &str = "host-a";
 /// A registry every host resolves offline, so the allowlist binds without
 /// the network.
 const LOCAL_REGISTRY: &str = "localhost";
-/// What a lease whose egress would not bind logs.
+/// What a run whose egress would not bind logs.
 const EGRESS_REFUSED: &str = "egress_bind_refused";
 
-/// One run of the binary through one lease.
+/// One run of the binary through one run.
 struct Ran {
     status: ExitStatus,
     stderr: String,
@@ -58,7 +58,7 @@ struct Ran {
 
 /// Starts `run --unsandboxed` against `daemon` with `extra` in its
 /// environment, waits for its report, then stops it with SIGTERM.
-fn run_one_lease(
+fn run_one_run(
     runtime: &tokio::runtime::Runtime,
     daemon: &mut FakeDaemon,
     extra: &[(&str, &str)],
@@ -79,7 +79,7 @@ fn run_one_lease(
     }
 }
 
-/// A storage home under /tmp, short: each lease's executor socket is made
+/// A storage home under /tmp, short: each run's executor socket is made
 /// beneath it, and a Unix socket's path is capped near a hundred bytes.
 fn storage_home() -> tempfile::TempDir {
     tempfile::Builder::new()
@@ -163,16 +163,16 @@ fn attribute<'a>(holder: &'a Value, key: &str) -> Option<&'a str> {
         .as_str()
 }
 
-/// The same lease with a collector configured: its root span reaches the
-/// collector naming the lease, under the instance identity the systemd unit
+/// The same run with a collector configured: its root span reaches the
+/// collector naming the run, under the instance identity the systemd unit
 /// sets, so each host publishes its own series.
 #[test]
-fn test_runner_binary_exports_its_lease_trace() {
+fn test_runner_binary_exports_its_run_trace() {
     let runtime = runtime();
     let mut daemon = runtime.block_on(FakeDaemon::start());
     let collector = runtime.block_on(FakeCollector::start());
 
-    let ran = run_one_lease(
+    let ran = run_one_run(
         &runtime,
         &mut daemon,
         &[
@@ -189,18 +189,18 @@ fn test_runner_binary_exports_its_lease_trace() {
         .filter_map(|export| export["resourceSpans"].as_array().cloned())
         .flatten()
         .collect();
-    let lease = resources.iter().find_map(|resource| {
+    let run = resources.iter().find_map(|resource| {
         resource["scopeSpans"]
             .as_array()?
             .iter()
             .filter_map(|scope| scope["spans"].as_array())
             .flatten()
-            .find(|span| span["name"] == SPAN_RUNNER_LEASE)
+            .find(|span| span["name"] == SPAN_RUNNER_RUN)
             .map(|span| (resource, span))
     });
     let (resource, root) =
-        lease.unwrap_or_else(|| panic!("no lease span reached the collector: {}", ran.stderr));
-    assert_eq!(attribute(root, ATTR_LEASE_ID), Some(LEASE_ID), "{root}");
+        run.unwrap_or_else(|| panic!("no run span reached the collector: {}", ran.stderr));
+    assert_eq!(attribute(root, ATTR_RUN_ID), Some(RUN_ID), "{root}");
     assert_eq!(
         attribute(&resource["resource"], RESOURCE_SERVICE_INSTANCE_ID),
         Some(INSTANCE),
@@ -208,13 +208,13 @@ fn test_runner_binary_exports_its_lease_trace() {
     );
 }
 
-/// The built binary settles a lease under each egress posture the daemon
-/// assigns: the lease is admitted, its turn runs on the agent loop, one report
-/// settles it under the lease's fencing token, the allowlist binds through the
+/// The built binary settles a run under each egress posture the daemon
+/// assigns: the run is admitted, its turn runs on the agent loop, one report
+/// settles it under the run's fencing token, the allowlist binds through the
 /// host's resolver, and the binary stops cleanly with nothing logged as a
 /// failure.
 #[test]
-fn test_runner_binary_runs_a_lease_per_policy() {
+fn test_runner_binary_runs_a_run_per_policy() {
     let runtime = runtime();
     for (policy, registry) in [
         (NetworkPolicy::AllowAll, &[][..]),
@@ -223,21 +223,17 @@ fn test_runner_binary_runs_a_lease_per_policy() {
     ] {
         let mut daemon = runtime.block_on(FakeDaemon::assigning(policy, registry));
 
-        let ran = run_one_lease(&runtime, &mut daemon, &[]);
+        let ran = run_one_run(&runtime, &mut daemon, &[]);
 
-        assert_eq!(
-            ran.report["lease_id"], LEASE_ID,
-            "{policy:?}: {}",
-            ran.report
-        );
+        assert_eq!(ran.report["run_id"], RUN_ID, "{policy:?}: {}", ran.report);
         assert_eq!(
             ran.report["fencing_token"], FENCING,
-            "{policy:?}: the report echoes the lease's fencing token: {}",
+            "{policy:?}: the report echoes the run's fencing token: {}",
             ran.report
         );
         assert_ne!(
             ran.report["failure_reason"], STARTUP_POSTURE,
-            "{policy:?}: the lease was admitted and its turn ran: {}",
+            "{policy:?}: the run was admitted and its turn ran: {}",
             ran.report
         );
         assert!(
@@ -262,10 +258,10 @@ fn test_runner_binary_runs_a_lease_per_policy() {
 /// What the runner logs when a second signal ends the drain the first began.
 const STOP_FORCED: &str = "runner_stop_forced";
 
-/// A second SIGTERM stops the binary while a drain is still waiting on a lease
+/// A second SIGTERM stops the binary while a drain is still waiting on a run
 /// in flight, and says so.
 ///
-/// The daemon keeps the lease's report and never answers it, so the first
+/// The daemon keeps the run's report and never answers it, so the first
 /// signal's drain cannot finish on its own. SIGTERM is sent again every
 /// [`POLL`] until the binary exits, because a signal sent before the binary
 /// listens for the second one is not counted.
@@ -294,7 +290,7 @@ fn a_second_signal_stops_a_drain_the_first_began() {
 
     assert!(
         reported.is_some(),
-        "the lease never posted its report: {stderr}"
+        "the run never posted its report: {stderr}"
     );
     assert!(status.success(), "{status:?}: {stderr}");
     assert!(stderr.contains(STOP_FORCED), "{stderr}");

@@ -1,7 +1,7 @@
 //! A healthy daemon, as this crate's own suites fake it.
 //!
 //! A suite outside the crate fakes the same one from here (`M-TEST-UTIL`):
-//! the fixture lease, the identifiers it carries, and the reply a healthy
+//! the fixture run, the identifiers it carries, and the reply a healthy
 //! daemon gives each route.
 
 #[cfg(feature = "test-util")]
@@ -15,10 +15,11 @@ pub use session::Session;
 
 use std::borrow::Cow;
 
+use af_wire::context::ContextLoadResponse;
 use af_wire::fold::FoldResponse;
-use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
+use af_wire::memory::{MemoryCaptureResponse, MemoryLoadResponse, MemoryRecallResponse};
 use af_wire::paths::{
-    LEASE_TOOL_CALLS_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
+    RUN_ITEMS_SUFFIX, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_RUNS, RUNNER_SELF,
 };
 use af_wire::report::{RenewResponse, ReportResponse};
 use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
@@ -28,15 +29,17 @@ use serde_json::Value;
 
 use crate::client::Verb;
 
-/// The lease every suite is granted, with its identifiers left for the suite
+/// The run every suite is granted, with its identifiers left for the suite
 /// to fill.
-pub const LEASE_JSON: &str = include_str!("../test_support/lease.json");
-/// A canonical lease identifier.
-pub const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
+pub const RUN_JSON: &str = include_str!("../test_support/run.json");
+/// A canonical run identifier.
+pub const RUN_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 /// A canonical fleet identifier.
 pub const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-/// The fencing token the fixture lease carries.
+/// The fencing token the fixture run carries.
 pub const FENCING: u64 = 504;
+/// The scope a healthy daemon assigns a setup run's draft context.
+pub const DRAFT_SCOPE: &str = "draft:01890a5d-ac96-774b-bcce-b302099a8058";
 /// The id a healthy daemon names this runner by.
 pub const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
 /// The host a healthy daemon has this runner on.
@@ -52,7 +55,7 @@ const ACTIVE: &str = "active";
 pub struct Healthy {
     /// The assignment every beat carries.
     pub assigned: AssignedPolicy<'static>,
-    /// How often to beat and to ask for a lease again, in milliseconds.
+    /// How often to beat and to ask for a run again, in milliseconds.
     pub interval_ms: u32,
     /// When a renewal is granted until.
     pub granted_until: jiff::Timestamp,
@@ -70,14 +73,9 @@ impl Healthy {
     /// own.
     pub(crate) fn to(&self, verb: Option<Verb>) -> Value {
         match verb {
-            // Authoring fixtures must provide their attempt-bound receipts.
+            // Durable-task fixtures supply their native receipts explicitly.
             Some(
-                Verb::AuthoringModel
-                | Verb::AuthoringActivity
-                | Verb::AuthoringRenew
-                | Verb::AuthoringReport
-                // Durable-task fixtures also supply their native receipts explicitly.
-                | Verb::TaskInputs
+                Verb::TaskInputs
                 | Verb::TaskBindings
                 | Verb::TaskInputReceipt
                 | Verb::TaskDecisionReserve
@@ -94,12 +92,20 @@ impl Healthy {
                 | Verb::TaskCheckpointAuthorizations
                 | Verb::TaskCheckpointPin
                 | Verb::TurnCheckpoint
+                // A setup run's save names a version only its fixture knows.
+                | Verb::ContextSave
                 // The native opening is a stream, never an HTTP fixture route.
                 | Verb::Open,
             ) => Value::Null,
+            // A healthy daemon whose draft has no saved context yet.
+            Some(Verb::ContextLoad) => value(&ContextLoadResponse {
+                scope: DRAFT_SCOPE.to_owned(),
+                resource_version: 0,
+                checkpoint: None,
+            }),
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Renew) => self.renewed(),
-            Some(Verb::Hydrate) => value(&MemoryHydrateResponse {
+            Some(Verb::Load) => value(&MemoryLoadResponse {
                 memory: Vec::new(),
                 shared: Vec::new(),
                 publish: false,
@@ -112,7 +118,7 @@ impl Healthy {
                 memory: Vec::new(),
                 shared: Vec::new(),
             }),
-            Some(Verb::Records) => value(&ToolCallRecordsStored {
+            Some(Verb::Items) => value(&ToolCallRecordsStored {
                 stored_count: 1,
                 skipped_count: 0,
             }),
@@ -120,7 +126,7 @@ impl Healthy {
             // A healthy daemon with no message waiting for the run.
             Some(Verb::Folds) => value(&FoldResponse::default()),
             Some(
-                Verb::Activity
+                Verb::Progress
                 | Verb::Report
                 | Verb::Mint
                 | Verb::ScheduleCreate
@@ -131,7 +137,7 @@ impl Healthy {
                 | Verb::ScheduleRuns
                 | Verb::Message
                 | Verb::FleetList
-                | Verb::FleetEvents
+                | Verb::FleetTurns
                 | Verb::FleetSteer,
             )
             | None => value(&ReportResponse { ok: true, hold: None }),
@@ -141,7 +147,7 @@ impl Healthy {
     /// A renewal: the instant this daemon granted, with nothing recorded.
     fn renewed(&self) -> Value {
         value(&RenewResponse {
-            lease_expires_at: self.granted_until,
+            run_expires_at: self.granted_until,
             recorded_through: None,
         })
     }
@@ -184,17 +190,17 @@ impl Healthy {
 /// answers with a reply of its own; none for a route it only acknowledges.
 fn routed(method: &str, path: &str) -> Option<Verb> {
     let path = path.split_once('?').map_or(path, |(path, _query)| path);
-    let leased = path
-        .strip_prefix(RUNNER_LEASES)
+    let held = path
+        .strip_prefix(RUNNER_RUNS)
         .and_then(|rest| rest.strip_prefix('/'))
         .and_then(|rest| rest.split_once('/'))
-        .map(|(_lease, suffix)| suffix);
+        .map(|(_run, suffix)| suffix);
     let memory = path.starts_with(RUNNER_MEMORY);
-    match (path, leased) {
+    match (path, held) {
         (RUNNER_SELF, _) => Some(Verb::Me),
-        (_, Some(LEASE_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
+        (_, Some(RUN_ITEMS_SUFFIX)) => Some(Verb::Items),
         _ if memory && path.ends_with(RUNNER_MEMORY_RECALL_SUFFIX) => Some(Verb::Recall),
-        _ if memory && method == GET => Some(Verb::Hydrate),
+        _ if memory && method == GET => Some(Verb::Load),
         _ if memory => Some(Verb::Capture),
         _ => None,
     }

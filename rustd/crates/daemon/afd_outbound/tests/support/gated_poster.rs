@@ -48,7 +48,7 @@ impl Gated {
         gate
     }
 
-    /// The `event_id`s delivered so far, in order.
+    /// The `turn_id`s delivered so far, in order.
     pub(crate) fn delivered(&self) -> Vec<Uuid7> {
         self.inner
             .delivered
@@ -75,7 +75,7 @@ impl Deliver for Gated {
             .gates
             .get(&job.workspace_id)
             .map(|gate| Arc::clone(&gate));
-        let event_id = job.event_id.clone();
+        let turn_id = job.turn_id.clone();
         let inner = Arc::clone(&self.inner);
         async move {
             let now = inner.in_flight.fetch_add(1, Ordering::AcqRel) + 1;
@@ -88,7 +88,7 @@ impl Deliver for Gated {
                 .delivered
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .push(event_id);
+                .push(turn_id);
             inner.in_flight.fetch_sub(1, Ordering::AcqRel);
             Verdict::Delivered
         }

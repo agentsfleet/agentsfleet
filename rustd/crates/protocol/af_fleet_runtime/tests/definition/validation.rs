@@ -1,10 +1,8 @@
 //! Failure boundaries reject ambiguous setup and preserve the input on failure.
 
-use af_fleet_runtime::definition::{
-    MAX_DEFINITION_BYTES, MAX_DESCRIPTION_CHARS, MAX_INITIAL_INSTRUCTIONS_CHARS,
-    MAX_INSTRUCTIONS_CHARS,
-};
+use af_fleet_runtime::definition::{MAX_DEFINITION_BYTES, MAX_DESCRIPTION_CHARS};
 use af_fleet_runtime::{Definition, FleetConfig};
+use af_validate::TEXT_MAX_CHARS;
 use serde_json::{Value, json};
 
 use super::{parse, set, value};
@@ -98,26 +96,6 @@ fn test_definition_empty_editing_is_valid_but_save_is_blocked() {
         .expect("the complete fixture can be saved");
 }
 
-/// Two-byte characters, so the allowance holds only if it counts characters.
-#[test]
-fn a_first_generation_may_not_exceed_its_smaller_instruction_allowance() {
-    let with_instructions = |chars: usize| {
-        let mut input = value();
-        set(&mut input, "/instructions_md", json!("é".repeat(chars)));
-        parse(&input)
-    };
-    with_instructions(MAX_INITIAL_INSTRUCTIONS_CHARS)
-        .validate_initial_generation()
-        .expect("instructions at the allowance are a valid first generation");
-    let over = with_instructions(MAX_INITIAL_INSTRUCTIONS_CHARS + 1);
-    let refusal = over
-        .validate_initial_generation()
-        .expect_err("one character over the allowance is refused");
-    assert!(refusal.to_string().contains(OUT_OF_BOUNDS), "{refusal}");
-    over.validate_for_save()
-        .expect("the same instructions are within the bound a later edit keeps");
-}
-
 /// Instructions are bounded in characters: a cap of two-byte characters is
 /// twice the cap in bytes, so reverting to a byte bound refuses it.
 #[test]
@@ -126,13 +104,13 @@ fn test_definition_text_limits_are_characters_and_the_envelope_is_bytes() {
     set(
         &mut input,
         "/instructions_md",
-        json!("é".repeat(MAX_INSTRUCTIONS_CHARS)),
+        json!("é".repeat(TEXT_MAX_CHARS)),
     );
     Definition::parse(&input.to_string()).expect("instructions at the character limit parse");
     set(
         &mut input,
         "/instructions_md",
-        json!("é".repeat(MAX_INSTRUCTIONS_CHARS + 1)),
+        json!("é".repeat(TEXT_MAX_CHARS + 1)),
     );
     let refusal =
         Definition::parse(&input.to_string()).expect_err("one character over the limit is refused");
@@ -142,6 +120,30 @@ fn test_definition_text_limits_are_characters_and_the_envelope_is_bytes() {
     let refusal = Definition::parse(&" ".repeat(MAX_DEFINITION_BYTES + 1))
         .expect_err("an envelope over the byte limit is refused");
     assert!(refusal.to_string().contains(OUT_OF_BOUNDS), "{refusal}");
+}
+
+/// Instructions past the old 32,768-character bound parse, pass the Save
+/// check and come back whole: 100,000 characters sits under the one text
+/// ceiling, so only the model's context window bounds them from here.
+#[test]
+fn instructions_over_32k_characters_save() {
+    let mut input = value();
+    set(
+        &mut input,
+        "/instructions_md",
+        json!("Answer the on-call page. ".repeat(4_000)),
+    );
+    let definition =
+        Definition::parse(&input.to_string()).expect("100,000 characters of instructions parse");
+    definition
+        .validate_for_save()
+        .expect("100,000 characters of instructions can be saved");
+    assert_eq!(definition.instructions_md().chars().count(), 100_000);
+    let stored = serde_json::to_string(&definition).expect("a parsed setup serializes");
+    assert_eq!(
+        Definition::parse(&stored).expect("the stored setup parses again"),
+        definition
+    );
 }
 
 /// The envelope never refuses what the text bounds admit: both texts at their
@@ -158,7 +160,7 @@ fn the_envelope_admits_both_texts_at_their_caps_in_the_widest_encoding() {
     set(
         &mut input,
         "/instructions_md",
-        json!(widest.to_string().repeat(MAX_INSTRUCTIONS_CHARS)),
+        json!(widest.to_string().repeat(TEXT_MAX_CHARS)),
     );
     Definition::parse(&input.to_string()).expect("both texts at their caps parse");
 }

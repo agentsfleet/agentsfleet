@@ -8,7 +8,7 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, Tasks, guard as task_guard, row::counter, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, guard as task_guard, row::counter, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{
@@ -32,13 +32,13 @@ struct History {
 
 pub(in crate::task) async fn publish(
     tasks: &Tasks,
-    lease: TaskLease<'_>,
+    run: TaskRun<'_>,
     checkpoint: &Uuid7,
     input: &garde::Valid<CheckpointCommitInput>,
 ) -> Result<CheckpointPlan> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let current = task_guard::lease(&mut tx, lease).await?;
+    let current = task_guard::run(&mut tx, run).await?;
     let task = current
         .task_id
         .clone()
@@ -70,7 +70,7 @@ pub(in crate::task) async fn publish(
     }
     let (owned, plan, pin) = guard::owned(
         &mut tx,
-        lease,
+        run,
         &input.task,
         checkpoint,
         &task_guard::id(&input.pin_id, "pin_id")?,

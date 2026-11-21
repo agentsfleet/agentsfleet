@@ -43,7 +43,7 @@ async fn stream_failures_and_recovery_emit_correlated_telemetry() -> Result<(), 
 async fn observed_recovery() -> Result<(), Failure> {
     let observer = Observer::start().await?;
     let mut daemon =
-        crate::test_util::NativeDaemon::serve_idle(crate::test_support::healthy(), |_| async {})
+        crate::test_util::NativeDaemon::serve_idle(crate::test_support::healthy(), async |_| {})
             .await?;
     let backend = daemon
         .url
@@ -51,7 +51,7 @@ async fn observed_recovery() -> Result<(), Failure> {
         .port_u16()
         .ok_or("native port missing")?;
     let relay = Relay::start(backend).await?;
-    let (handle, downlink, _offers) = Downlink::new(&configured(&daemon, &relay)?)?;
+    let (handle, downlink, _assignments) = Downlink::new(&configured(&daemon, &relay)?)?;
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let subscriber = observer.subscriber();

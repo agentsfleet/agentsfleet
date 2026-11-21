@@ -1,4 +1,4 @@
-//! Dimensions 7.2 and 7.5 — the boot window, and an inventory that cannot drift.
+//! The boot window, and an inventory that cannot drift.
 //!
 //! Every wait is a handshake. `test_boot_window_sigterm` in particular must not
 //! be a race: the signal is made to have ALREADY arrived before the server is
@@ -14,7 +14,7 @@ use agentsfleetd::inventory::{
 };
 use agentsfleetd::supervisor::Supervisor;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// Spawns a supervised task that records having observed its cancellation.
 ///
@@ -24,14 +24,14 @@ use crate::support::install_subscriber;
 fn spawn_observer(supervisor: &mut Supervisor, name: &'static str) -> Arc<AtomicBool> {
     let observed = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&observed);
-    supervisor.spawn(name, move |token| async move {
+    supervisor.spawn(name, async move |token| {
         token.cancelled().await;
         flag.store(true, Ordering::SeqCst);
     });
     observed
 }
 
-/// Dimension 7.2 — a signal during boot stops the daemon, and says it was one.
+/// A signal during boot stops the daemon, and says it was one.
 ///
 /// The signal future is already resolved when `run` polls it, so there is
 /// nothing to race: the daemon must report `Signalled` even though the server
@@ -110,7 +110,7 @@ async fn test_a_server_that_stops_on_its_own_is_named_and_torn_down() {
     );
     assert!(
         !outcome.is_clean(),
-        "a server that fell over is not a clean run, however clean the join was"
+        "a server that fell over is not a clean scene, however clean the join was"
     );
 }
 
@@ -165,7 +165,7 @@ fn test_the_daemon_supervises_what_it_claims() {
 async fn test_a_daemon_reports_its_inventory_before_running() {
     let mut supervisor = Supervisor::new();
     for task in BACKGROUND_TASKS {
-        supervisor.spawn(task, |token| async move { token.cancelled().await });
+        supervisor.spawn(task, async |token| token.cancelled().await);
     }
 
     let daemon = Daemon::new(supervisor);

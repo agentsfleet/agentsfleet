@@ -42,9 +42,10 @@ pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
 pub(crate) const NOTIFY_EXITED: &str = "process/exited";
 
-/// The longest line either end reads. A write of a file is the largest
-/// message, and this caps it before base64 expands it by a third.
-pub(crate) const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+/// The longest line either end reads: Codex's exec-server frame. A write of a
+/// file is the largest message, and this caps it before base64 expands it by
+/// a third.
+pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 /// What ends every message on the wire.
 pub(crate) const DELIMITER: u8 = b'\n';
 /// The most a single read answers with, so the reply fits in one frame. A
@@ -64,9 +65,9 @@ pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
 /// refusal's message and a decode failure's echo of the value it choked on
 /// both come from the socket, which the executor shares with tenant code,
 /// and the sentence reaches a model's context through every handler's
-/// failure path (`afr_tools::sandbox::unavailable`,
-/// `afr_tools::sandbox::files::failed`): one cap at the rendering bounds all
-/// of them. Four kibibytes is one `PATH_MAX`, so a sentence quoting a path is
+/// failure path (`afr_tools::SandboxEnv` hands it to `guffbolt`'s
+/// `tools::process::unavailable` and `tools::files::failed`): one cap at the
+/// rendering bounds all of them. Four kibibytes is one `PATH_MAX`, so a sentence quoting a path is
 /// kept whole.
 pub(crate) const WIRE_MESSAGE_MAX_BYTES: usize = 4096;
 

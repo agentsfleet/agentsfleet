@@ -27,7 +27,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
     let Some(github) = tasks.dependencies.github.as_ref() else {
         return Ok(EffectMaintenance::default());
     };
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let rows: Vec<Claimed> = sqlx::query_as(include_str!("sql/claim_recovery.sql"))
         .bind(crate::task::row::sql_counter(
@@ -43,7 +43,7 @@ pub(super) async fn sweep(tasks: &Tasks) -> Result<EffectMaintenance> {
         .map_err(query("commit evidence-read claims before network"))?;
     transaction::recycle(connection);
     let mut result = EffectMaintenance::default();
-    let mut reads = stream::iter(rows.into_iter().map(|row| async move {
+    let mut reads = stream::iter(rows.into_iter().map(async |row| {
         let id = row.effect.id.clone();
         let outcome = if row.recovery.expires_at <= af_core::clock::now() {
             expire(tasks, &row.effect).await.map(|()| Outcome::Expired)
@@ -100,7 +100,7 @@ enum Outcome {
 }
 
 async fn expire(tasks: &Tasks, effect: &Effect) -> Result<()> {
-    let mut connection = transaction::acquire(tasks.leases.pool()).await?;
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // State precedes recovery-row deletion, as it does in confirmation.
     sqlx::query(include_str!("sql/expire_recovery.sql"))

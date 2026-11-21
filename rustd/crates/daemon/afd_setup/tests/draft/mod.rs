@@ -1,0 +1,60 @@
+//! Every database proof owns its people, workspace, models and private rows.
+
+#![expect(
+    clippy::expect_used,
+    reason = "fixture preconditions fail the proof loudly"
+)]
+
+mod cleanup;
+mod contention;
+mod context;
+mod creation;
+mod edits;
+mod fixture;
+mod fleet_context;
+mod funnel;
+mod listing;
+mod locks;
+mod maintenance;
+mod messages;
+mod model_keys;
+mod model_metadata;
+mod model_tools;
+mod observe;
+mod privacy;
+mod races;
+use afd_db::test_util::refusal;
+mod replay;
+mod review;
+mod seed;
+mod sending;
+mod switching;
+mod window;
+
+use af_core::id::Uuid7;
+use af_core::money::NANOS_PER_USD;
+use af_fleet_runtime::Definition;
+use serde_json::json;
+
+/// What a funded fixture wallet holds: a thousand dollars, past any reservation
+/// a fixture turn or activation can make.
+const FUNDED_NANOS: i64 = 1_000 * NANOS_PER_USD;
+
+fn mint() -> Uuid7 {
+    afd_db::test_util::mint_id()
+}
+
+fn definition() -> Definition {
+    serde_json::from_value(json!({
+        "schema_version": 1,
+        "description": "Explain failures.",
+        "instructions_md": "Investigate failures.\n",
+        "config": {"name": "checkout-watch", "x-agentsfleet": {
+            "triggers": [],
+            "tools": [], "credentials": [], "network": {"allow": []},
+            "gates": {"timeout_ms": 60000, "rules": []},
+            "budget": {"daily_nanos": NANOS_PER_USD.to_string()}
+        }}
+    }))
+    .expect("native setup passes the shared validator")
+}

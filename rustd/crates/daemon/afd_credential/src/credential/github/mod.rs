@@ -243,7 +243,7 @@ const FIELD_INSTALLATION_ID: &str = "installation_id";
 /// The installation a stored GitHub handle names, if it names one readably.
 ///
 /// The one reader of that field. The exchange mints for what this returns,
-/// and the lease plane checks the workspace owns the same installation before
+/// and the run plane checks the workspace owns the same installation before
 /// any exchange runs — read in two places, a handle could pass the check as one
 /// installation and be minted as another.
 #[must_use]

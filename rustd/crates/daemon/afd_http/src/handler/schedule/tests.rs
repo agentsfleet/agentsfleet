@@ -36,7 +36,7 @@ fn schedule() -> Schedule {
         sync_status: SyncStatus::Synced,
         resource_version: 1,
         sync_token: None,
-        sync_lease_expires_at: None,
+        sync_run_expires_at: None,
         last_error: None,
         created_at: MADE_AT,
         updated_at: MADE_AT,

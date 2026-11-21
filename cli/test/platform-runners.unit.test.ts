@@ -15,22 +15,30 @@ test("lists an operator page with the API's paging names", async () => {
   expect(fixture.calls[0]?.url.search).toBe(`?limit=100&starting_after=${RUNNER_ID}`);
 });
 
-test.each(["0", "101", "1.5", "many"])("refuses an unsupported runner page size %s before HTTP", async (limit) => {
+test.each(["0", "1.5", "many"])("refuses a runner page size %s that is not a positive integer before HTTP", async (limit) => {
   const result = await fixture.run(["runners", "list", "--limit", limit, "--json"]);
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT");
   expect(fixture.calls).toEqual([]);
 });
 
+test("sends a runner page size past the retired 100 cap for the API to judge", async () => {
+  fixture.respond = () => Response.json({error_code: "UZ-REQ-001", user_message: "limit is above this route's ceiling"}, {status: 400});
+  const result = await fixture.run(["runners", "list", "--limit", "101", "--json"]);
+  expect(fixture.calls[0]?.url.search).toBe("?limit=101");
+  expect(result.code).not.toBe(0);
+  expect(JSON.parse(result.stderr).error).toMatchObject({code: "UZ-REQ-001", message: "limit is above this route's ceiling"});
+});
+
 test("reads runner policy and counters without a workspace context", async () => {
   fixture.respond = () => Response.json(RUNNER_DETAIL);
   const result = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
-  expect(result.code).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({id: RUNNER_ID, active_lease_count: 0, assigned_policy: POLICY});
+  expect(result.code).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({id: RUNNER_ID, active_run_count: 0, assigned_policy: POLICY});
 });
 
 test("converts a relative event window to a wire instant", async () => {
   fixture.respond = () => Response.json({items: [], total: null, next_cursor: null});
   const before = Date.now();
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--since", "2h", "--event-type", "runner_online", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--since", "2h", "--event-type", "runner_online", "--json"]);
   expect(result.code).toBe(0);
   const since = fixture.calls[0]?.url.searchParams.get("since") ?? "";
   expect(since).toMatch(/^\d{4}-\d\d-\d\dT.*Z$/u);
@@ -40,25 +48,25 @@ test("converts a relative event window to a wire instant", async () => {
 });
 
 test.each(["nonsense", "2026-02-30T00:00:00Z", "2026-11-10T24:00:00Z", "-2h", "2h30m"])("refuses invalid --since %s without a request", async (since) => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, `--since=${since}`, "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, `--since=${since}`, "--json"]);
   expect(result.code).toBe(4); expect(result.stderr).toContain("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });
 
 test("refuses reversed event bounds before HTTP", async () => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--since", "2026-11-10T01:00:00Z", "--until", "2026-11-10T00:00:00Z", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--since", "2026-11-10T01:00:00Z", "--until", "2026-11-10T00:00:00Z", "--json"]);
   expect(result.code).toBe(4); expect(result.stderr).toContain("--until must be at or after --since"); expect(fixture.calls).toEqual([]);
 });
 
 test("refuses an unknown runner event type before HTTP", async () => {
-  const result = await fixture.run(["runners", "events", RUNNER_ID, "--event-type", "invented_event", "--json"]);
+  const result = await fixture.run(["runners", "history", RUNNER_ID, "--event-type", "invented_event", "--json"]);
   expect(result.code).toBe(4);
   expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT");
   expect(fixture.calls).toEqual([]);
 });
 
-test("passes workspace and fleet lease filters under their wire names", async () => {
+test("passes workspace and fleet run filters under their wire names", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
-  const result = await fixture.run(["runners", "leases", RUNNER_ID, "--workspace", WORKSPACE_ID, "--fleet", "Support triage", "--json"]);
+  const result = await fixture.run(["runners", "runs", RUNNER_ID, "--workspace", WORKSPACE_ID, "--fleet", "Support triage", "--json"]);
   expect(result.code).toBe(0);
   expect(fixture.calls[0]?.url.searchParams.get("workspace_id")).toBe(WORKSPACE_ID);
   expect(fixture.calls[0]?.url.searchParams.get("fleet")).toBe("Support triage");
@@ -110,15 +118,30 @@ test("rejects an unknown runner state instead of presenting a successful read", 
   expect(result.code).not.toBe(0); expect(result.stderr).toContain("supported API shape"); expect(result.stdout).toBe("");
 });
 
-test.each(["register", "rotate-token"])("never replays %s after a committed request loses its reply", async command => {
+// A replayed rotation would mint a second token and kill the first. A replayed
+// registration cannot make a second runner: the host registers once.
+test("never replays rotate-token after a committed request loses its reply", async () => {
   let commits = 0;
   fixture.respond = () => {commits += 1; throw Object.assign(new TypeError("Connection reset after commit"), {code: "ECONNRESET"});};
   const file = join(fixture.state, "lost-reply-token");
-  const args = command === "register" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
-  const result = await fixture.run(["runners", command, ...args, "--token-out", file, "--json"], JSON.stringify(POLICY));
+  const result = await fixture.run(["runners", "rotate-token", RUNNER_ID, "--token-out", file, "--json"]);
   expect(result.code).toBe(2); expect(JSON.parse(result.stderr).error.code).toBe("NetworkError");
   expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);
   expect(existsSync(file)).toBe(false); expect(result.stdout).toBe("");
+});
+
+test("a platform host registered before answers 409 and names the platform group", async () => {
+  fixture.respond = () => Response.json(
+    {error_code: "UZ-RUN-033", detail: "this host is already registered", current_state: "registered"},
+    {status: 409, headers: {location: `/v1/admin/runners/${RUNNER_ID}`}},
+  );
+  const file = join(fixture.state, "registered-token");
+  const result = await fixture.run(["runners", "register", "--host-id", "build-host", "--policy", "-", "--token-out", file, "--json"], JSON.stringify(POLICY));
+  expect(result.code).toBe(3); expect(existsSync(file)).toBe(false);
+  const error = JSON.parse(result.stderr).error;
+  expect(error.code).toBe("UZ-RUN-033");
+  expect(error.suggestion).toContain("agentsfleet platform runners rotate-token");
+  expect(fixture.calls).toHaveLength(1);
 });
 
 
@@ -130,7 +153,7 @@ test("platform runners shows automatic cordon and lift events", async () => {
   expect(JSON.parse(shown.stdout)).toMatchObject({status: "active", cordon});
   fixture.respond = () => Response.json({items: [{id: RUNNER_ID, runner_id: RUNNER_ID,
     event_type: "runner_uncordoned", occurred_at: cordon.cordoned_at, metadata: {reason: cordon.reason}}], total: 1, next_cursor: null});
-  const events = await fixture.run(["runners", "events", RUNNER_ID, "--event-type", "runner_uncordoned", "--json"]);
+  const events = await fixture.run(["runners", "history", RUNNER_ID, "--event-type", "runner_uncordoned", "--json"]);
   expect(events.code).toBe(0);
   expect(JSON.parse(events.stdout).items[0].event_type).toBe("runner_uncordoned");
 });
@@ -156,7 +179,7 @@ test("runner text shows quarantine independently of policy state", async () => {
 
 test("platform runners still call the admin path", async () => {
   fixture.respond = () => Response.json({items: [], total: 0, next_cursor: null});
-  for (const verb of [["list"], ["show", RUNNER_ID], ["events", RUNNER_ID], ["leases", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
+  for (const verb of [["list"], ["show", RUNNER_ID], ["history", RUNNER_ID], ["runs", RUNNER_ID], ["cordon", RUNNER_ID], ["drain", RUNNER_ID]]) {
     fixture.calls.length = 0;
     await fixture.run(["runners", ...verb, "--json"]);
     expect(fixture.calls[0]?.url.pathname.startsWith("/v1/admin/runners")).toBe(true);

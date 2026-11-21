@@ -24,6 +24,8 @@ af_crypto.workspace = true
 # The stream text kinds the live tail carries, and the failure classes a
 # report names.
 af_wire.workspace = true
+# `serialized_within`, the byte bound a recovered history or decision is held to.
+af_validate.workspace = true
 # The guard every outbound client carries: the resolver that refuses a
 # private address, no proxy, no redirect. A tenant's custom: endpoint meets it,
 # and the same blocked ranges judge an address literal it names.
@@ -34,9 +36,12 @@ backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
 # A tool result's image rides the wire as base64.
 base64.workspace = true
-bytes = { workspace = true, features = ["serde"] }
+bytes.workspace = true
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
+# The harness's tool vocabulary: the spec a tool is offered under, and the
+# image a call's result carries.
+guffbolt.workspace = true
 # The request and response types rig's HTTP seam speaks.
 http.workspace = true
 # `Retry-After` in its HTTP-date form.

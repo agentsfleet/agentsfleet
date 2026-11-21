@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import {
   __resetWorkspaceRegistryForTests,

@@ -1,19 +1,19 @@
 "use client";
 
-import type { EventRow } from "@/lib/api/events";
-import type { RunFigures } from "@/lib/events/run-summary";
+import type { TurnRow } from "@/lib/api/turns";
+import type { RunFigures } from "@/lib/turns/run-summary";
 import { useCallback, useSyncExternalStore } from "react";
 import { readNanos } from "@/lib/api/nanos";
 import { formatBalance } from "@/lib/money";
 import { useOptionalFleetStreams } from "../../conversation/stream/FleetStreamProvider";
-import { CONNECTION_STATUS } from "../../conversation/stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "../../conversation/stream/useFleetTurnStream";
 
-const NO_EVENTS: EventRow[] = [];
+const NO_TURNS: TurnRow[] = [];
 
 /** Reuses the thread's run figures; an unreported cost stays absent. */
 export function FleetRunCost({workspaceId, fleetId, initial = null}: {workspaceId: string; fleetId: string; initial?: RunFigures | null}) {
   const streams = useOptionalFleetStreams();
-  const subscribe = useCallback((listener: () => void) => streams?.subscribe(workspaceId, fleetId, NO_EVENTS, listener) ?? (() => {}), [streams, workspaceId, fleetId]);
+  const subscribe = useCallback((listener: () => void) => streams?.subscribe(workspaceId, fleetId, NO_TURNS, listener) ?? (() => {}), [streams, workspaceId, fleetId]);
   const snapshot = useCallback(() => {
     const value = streams?.getSnapshot(fleetId);
     return value?.connectionStatus === CONNECTION_STATUS.REVOKED ? null : value?.latest ?? initial;

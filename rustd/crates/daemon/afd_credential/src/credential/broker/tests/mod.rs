@@ -171,7 +171,7 @@ fn ask<'a>(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_cold_callers_cost_exactly_one_upstream_mint() {
-    // Dimension 4.5, and the reason the broker single-flights: two cold misses
+    // The reason the broker single-flights: two cold misses
     // on a ROTATING provider both post the same refresh token, and a provider
     // with reuse detection then revokes the whole family. The latency
     // is what guarantees the contenders overlap rather than queueing.
@@ -216,7 +216,7 @@ async fn a_second_ask_is_served_from_the_cache() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_refusal_is_handed_to_every_waiter_and_cached_by_none() {
-    // The negative half of Dimension 4.5: a bad minute at a vendor must not
+    // The negative half of single-flighting: a bad minute at a vendor must not
     // become a cached minute of refusals, and the retry that follows must
     // actually reach the vendor.
     for (refusal, expected) in [
@@ -253,7 +253,7 @@ async fn a_refusal_is_handed_to_every_waiter_and_cached_by_none() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_rotation_reaches_the_caller_that_caused_it_and_nobody_else() {
-    // The write-back obligation: these providers invalidate the posted refresh
+    // The write-back delivery: these providers invalidate the posted refresh
     // token the moment they issue a successor, so exactly one caller may — and
     // must — persist the replacement. A cache HIT performed no exchange and
     // rotated nothing; reporting one would have a second caller write a value

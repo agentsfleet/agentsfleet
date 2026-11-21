@@ -55,7 +55,7 @@ fn delayed_capture(run: &Held) -> tokio::task::JoinHandle<afd_fleet::Result<afd_
     tokio::spawn({
         let (plane, runner, fleet) = (run.fixtures.plane(), run.runner.clone(), run.fleet.clone());
         let request = MemoryPushRequest {
-            lease_id: Cow::Owned(run.issued.lease_id.to_string()),
+            run_id: Cow::Owned(run.issued.run_id.to_string()),
             fencing_token: run.fence.as_u64(),
             memory: vec![entry("stale", Visibility::Workspace)],
         };
@@ -74,7 +74,7 @@ async fn change_authority(
     supersede: bool,
 ) {
     if supersede {
-        sqlx::query("UPDATE runner.slots SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
+        sqlx::query("UPDATE thread.threads SET fencing_token=fencing_token+1 WHERE fleet_id=$1")
             .bind(&run.fleet)
             .execute(&mut *connection)
             .await
@@ -108,7 +108,7 @@ async fn assert_capture(
             result.expect_err("old fence refused").code(),
             error_code::RUN_STALE_FENCING_TOKEN
         );
-        let stored = memories.hydrate(&run.fleet).await.expect("memory");
+        let stored = memories.load(&run.fleet).await.expect("memory");
         assert_eq!(stored.memory.len(), 1);
         assert_eq!(
             stored.memory.first().expect("one entry").content,
@@ -119,7 +119,7 @@ async fn assert_capture(
         assert_eq!((stored.stored, stored.unpublished), (0, 1));
         assert!(
             memories
-                .hydrate(&run.fleet)
+                .load(&run.fleet)
                 .await
                 .expect("memory")
                 .memory

@@ -6,17 +6,16 @@
     reason = "test fixture: a fixture that cannot be built is a broken test"
 )]
 
-use std::cell::RefCell;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use af_providers::{Call, Chunk, Connect, End, Message, Provider, Request, Usage};
-use af_wire::activity::StreamTextKind;
-use af_wire::lease::LeasePayload;
+use af_providers::{Connect, Provider};
 use af_wire::policy::ExecutionPolicy;
+use af_wire::run::RunPayload;
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
+use guffbolt::{Call, Chunk, End, Message, Model, Request, TextKind, Usage};
 
 use super::RECEIVER_HELD;
 
@@ -57,11 +56,14 @@ struct Turns {
 
 /// A scripted model the test drives and reads back. The loop gets a
 /// [`Replay`]; the requests it sends come back over a channel.
+///
+/// Both halves sit behind a lock so a test may hold `&Script` across an
+/// `.await` and its future stays `Send`.
 #[derive(Debug)]
 pub(crate) struct Script {
     replay: Replay,
-    received: mpsc::Receiver<Sent>,
-    seen: RefCell<Vec<Sent>>,
+    received: Mutex<mpsc::Receiver<Sent>>,
+    seen: Mutex<Vec<Sent>>,
 }
 
 impl Script {
@@ -96,23 +98,6 @@ impl Script {
         self.with_child_turns(task, turns.collect())
     }
 
-    /// The same model, whose child on `task` streams `chunks` once, then
-    /// fails with `failure()`.
-    pub(crate) fn with_failing_child(
-        self,
-        task: &str,
-        chunks: Vec<Chunk>,
-        failure: fn() -> af_providers::Error,
-    ) -> Self {
-        self.with_child_turns(
-            task,
-            vec![Turn {
-                chunks,
-                failure: Some(failure),
-            }],
-        )
-    }
-
     fn with_child_turns(mut self, task: &str, turns: Vec<Turn>) -> Self {
         let children = Arc::get_mut(&mut self.replay.children)
             .expect("children are scripted before the model is handed out");
@@ -145,8 +130,8 @@ impl Script {
                 sent,
                 images: true,
             },
-            received,
-            seen: RefCell::default(),
+            received: Mutex::new(received),
+            seen: Mutex::default(),
         }
     }
 
@@ -157,8 +142,10 @@ impl Script {
 
     /// Every request sent so far.
     pub(crate) fn sent(&self) -> Vec<Sent> {
-        self.seen.borrow_mut().extend(self.received.try_iter());
-        self.seen.borrow().clone()
+        let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        let received = self.received.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.extend(received.try_iter());
+        seen.clone()
     }
 }
 
@@ -178,12 +165,12 @@ impl Connect for Replay {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _run: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Ok(Box::new(self.clone()))
     }
 }
 
-/// A model no lease can reach: admitted, then refused at connect with `404`.
+/// A model no run can reach: admitted, then refused at connect with `404`.
 #[derive(Debug)]
 pub(crate) struct Unreachable;
 
@@ -195,12 +182,18 @@ impl Connect for Unreachable {
         Ok(())
     }
 
-    fn connect(&self, _lease: &LeasePayload<'_>) -> af_providers::Result<Box<dyn Provider>> {
+    fn connect(&self, _run: &RunPayload<'_>) -> af_providers::Result<Box<Provider>> {
         Err(af_providers::Error::refused(UNREACHABLE_STATUS))
     }
 }
 
-impl Provider for Replay {
+impl Model for Replay {
+    type Error = af_providers::Error;
+
+    fn measure(&self, request: Request<'_>) -> af_providers::Result<u64> {
+        af_providers::testing::measure(request)
+    }
+
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, af_providers::Result<Chunk>> {
         let sent = Sent {
             tools: request
@@ -253,7 +246,7 @@ pub(crate) fn call(id: &str, name: &str, arguments: serde_json::Value) -> Chunk 
 /// Answer text.
 pub(crate) fn say(text: &str) -> Chunk {
     Chunk::Text {
-        kind: StreamTextKind::Answer,
+        kind: TextKind::Answer,
         text: text.to_owned(),
     }
 }

@@ -2,9 +2,9 @@
 //!
 //! The rows a write changes and the rows that say whether the caller may still
 //! write them can belong to different crates: a fleet's schedules are
-//! `afd_cron`'s, and the lease that lets a runner change them is `afd_fleet`'s.
-//! Checking the lease first and writing afterwards leaves a window in which a
-//! reclaim lands between the two. Run on the write's own transaction, the check
+//! `afd_cron`'s, and the run that lets a runner change them is `afd_fleet`'s.
+//! Checking the run first and writing afterwards leaves a window in which a
+//! reassignment lands between the two. Run on the write's own transaction, the check
 //! takes its lock there and keeps it until the write commits.
 
 use std::pin::Pin;

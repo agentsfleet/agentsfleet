@@ -1,6 +1,6 @@
 # The release the integration lane and the local stack run (docker-compose.yml). A bus whose deployed version drifts from the tested
 # one is a bus nobody has tested.
-FROM nats:2.15.2-alpine
+FROM nats:2.15.3-alpine
 
 # One credential per environment (Indy, M244 §8): the node takes its user and
 # password from the same `nats-<env>/api-url` item the daemon dials with, so a

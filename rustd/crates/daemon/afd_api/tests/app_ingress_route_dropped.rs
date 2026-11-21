@@ -28,8 +28,7 @@ use http::StatusCode;
 use serde_json::Value;
 
 /// The same run as [`APP_RUN_FAILURE`], green.
-const APP_RUN_SUCCESS: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_success.json");
+const APP_RUN_SUCCESS: &str = afd_api_ingress::test_util::GITHUB_RUN_SUCCESS;
 
 /// A terminal production deployment, as an App sends it.
 ///
@@ -39,8 +38,7 @@ const APP_RUN_SUCCESS: &str =
 /// installation this deployment's scripted lookup answers for, and a repository
 /// a subscriber could match. The payload is here to be classified, and the
 /// point of the test is that classification has nowhere to send it.
-const APP_DEPLOYMENT_STATUS: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_deployment_status_app.json");
+const APP_DEPLOYMENT_STATUS: &str = afd_api_ingress::test_util::GITHUB_DEPLOYMENT_STATUS_APP;
 
 /// The kind a production deployment result is.
 ///

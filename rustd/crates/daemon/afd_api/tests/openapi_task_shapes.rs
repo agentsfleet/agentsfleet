@@ -99,7 +99,7 @@ fn checkpoint_plan_creation_and_replay_publish_the_same_response_shape() {
     let document = document();
     let responses = document
         .get("paths")
-        .and_then(|paths| paths.get("/v1/runners/me/leases/{lease_id}/tasks/checkpoints"))
+        .and_then(|paths| paths.get("/v1/runners/me/runs/{run_id}/tasks/checkpoints"))
         .and_then(|path| path.get("post"))
         .and_then(|operation| operation.get("responses"))
         .expect("checkpoint plan responses");
