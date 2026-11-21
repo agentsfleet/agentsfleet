@@ -137,7 +137,6 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `status` | `TEXT` | no | `leases.status` | `active`, `reported`, `expired`, `stopped` |
 | `posture`, `provider`, `model` | `TEXT` | no | `leases` | what the run is allowed and which model it uses |
 | `run_expires_at` | `TIMESTAMPTZ(3)` | no | `lease_expires_at` | renewal deadline |
-| `max_runtime_seconds` | `INTEGER` | no | `leases` | hard cap |
 | `last_metered_at` | `TIMESTAMPTZ(3)` | no | `leases` | metering cursor |
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
 | `posted_message_count` | `INTEGER` | no | `leases` | numbers the run's interim lines; no cap |

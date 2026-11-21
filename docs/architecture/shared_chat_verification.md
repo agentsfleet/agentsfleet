@@ -169,7 +169,7 @@ flowchart TD
 |---|---|
 | `ChatConnection.start/retry/close` | Setup and fleet adapters supply events, readers and callbacks; the connection owns EventSource, deadlines, reconnects and cleanup |
 | `ReplyStream.write/markGap/finish/dispose` | Both adapters enforce stream order and recover authoritative final text after gaps |
-| `DraftReplies.accept/reconcile/clear` | Validate private frame identity and bounds; reject late frames and clear previews after durable completion |
+| `DraftReplies.accept/reconcile/clear` | Validate private frame identity and shape, trusting the daemon's size bound (`afd_bus::DRAFT_FRAME_BYTES`); reject late frames and clear previews after durable completion |
 | `DraftClient` | Own message sends, optimistic messages, private reads, setup changes and explicit saves |
 | `FleetStreams` | Own runtime streams within the mounted account, workspace and signed-in subject |
 | `ChatThread` | Own the shared scroll viewport and reachable composer footer |

@@ -99,7 +99,7 @@ The drawer supplies native edits with `If-Match`; runner proposals name both can
 
 The model instead proposes `append {text}` or `replace {old_text,text}` instruction edits. `af_fleet_runtime::setup` resolves exact text against the run's base candidate and converts unique matches into native byte ranges. Missing or ambiguous matches become typed refusals; the model never counts Unicode bytes.
 
-The runner returns a refused proposal to the model as the tool result, and the model may correct it in the same run. The loop has no cap of its own; the setup run's 300-second runtime bounds it (`afd_setup::limits::SETUP_RUNTIME`). Usage remains charged for observed calls, including refused proposals.
+The runner returns a refused proposal to the model as the tool result, and the model may correct it in the same run. The loop has no cap of its own; the payer's balance at each renewal and a person's Stop bound it, as they bound a fleet run. Usage remains charged for observed calls, including refused proposals.
 
 An accepted edit retains the model's conversational answer. A tool-only reply continues with its accepted receipt within the same allowance; the runner supplies no stock review reminder. Questions can be answered without proposing another edit.
 

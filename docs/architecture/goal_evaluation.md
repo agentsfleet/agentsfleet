@@ -40,7 +40,7 @@ One object-safe `DecisionEvaluator` trait exposes one bounded asynchronous `eval
 `DecisionClient` owns its frozen profile and credential; agent-facing calls cannot select or receive provider keys.
 Use existing boxed-future conventions; no plugin registry, provider discovery service or second agent loop is needed.
 
-`DecisionRequest` carries purpose, bounded state and reviewed questions; trusted generation/evidence bindings remain outside model-controlled answers.
+`DecisionRequest` carries purpose, state and reviewed questions, bounded together by the decision model's input limit; trusted generation/evidence bindings remain outside model-controlled answers.
 
 `DecisionResult` carries typed answers, the reported model and physical usage.
 The native reservation binds these results to the frozen provider/profile revision and assessed evidence.
@@ -235,9 +235,10 @@ Native decision requests compile the accepted policy and complete task/source st
 Task adoption and the root decision loop have source implementations.
 
 Restored history is authenticated task data; current native adopted criteria control the next assessment.
-Large complete groups use the existing context owner and a bounded semantic summary,
-with the complete-group digest retained. Summaries cannot satisfy native publication
-or exact-head validation checks.
+
+A completed action group is sent whole first (`afr_agent/src/loop/task_evidence.rs`).
+Only when `agentsfleetd` refuses it as larger than the decision model's `input_max_bytes` (`UZ-REQ-002`, before any reservation) does the runner send one semantic summary of it.
+Summaries cannot satisfy native publication or exact-head validation checks.
 
 `DecisionPolicy` resolves `RoutingQuestions` and `CompletionQuestions` through the existing serde/garde parser.
 Each role requires its exact native criterion keys; all wording and criterion text are owner-editable.
@@ -361,7 +362,7 @@ Missing usage after an uncertain request cannot be treated as free.
 Retain uncertain call accounting and stop at the configured reservation ceiling until settlement can resolve it.
 Timeouts, unsupported responses and provider failure never default to success or permission.
 
-The following proposed values fix timeout, retry, state-size and threshold policy for implementation signoff.
+The following proposed values fix timeout, retry, request-size and threshold policy for implementation signoff.
 Tests must include alias changes, uncertain routing, mixed requests, prompt injection, stale decisions and missing evidence.
 No live provider acceptance is claimed by documentation review.
 
@@ -404,7 +405,7 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 
 | Bound | Proposed value |
 |---|---|
-| State | 16 KiB serialized UTF-8 JSON, including complete newest message and bounded trusted summaries. |
+| State | No bound of its own: text, an object or an array. State and questions together must fit the profile's `input_max_bytes`, at most 24,576 bytes; past it the daemon refuses with `UZ-REQ-002` before reserving. |
 | Questions | At most eight; authored questions stay within 1 KiB each. Each compiled question permits 16 KiB for the complete native option set; no images, long-context header or external assets. |
 | Response | At most 64 KiB; exact question-key coverage and known options required. |
 | Call deadline | Three-second connect timeout; 12 seconds per physical request; 30 seconds total per logical decision. |
@@ -413,7 +414,7 @@ Tests cover exactly 0.30/0.70 and values immediately on either side, including h
 | Reservation | USD 0.02 for each physical call, separately held before sending; cumulative task/turn bounds still apply. |
 | Initial reviewed rate | 42 nanodollars per input token, zero per output token, matching the inspected TypeSafe price of USD 0.042 per million input tokens. |
 
-Do not truncate the newest message or silently omit an eligible candidate to fit the state budget.
+Do not truncate the newest message or silently omit an eligible candidate to fit the model's input limit.
 If bounded native summaries cannot fit, clarify or request narrower work without making a target decision.
 At most 16 unfinished tasks bounds normal association candidates; all descriptors remain untrusted semantic hints until native ownership checks pass.
 

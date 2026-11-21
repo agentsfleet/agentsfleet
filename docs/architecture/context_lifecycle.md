@@ -128,10 +128,11 @@ Missing usage produces no fabricated zero; prompts, credentials, URLs and reques
 
 ## Checkpoint ownership and storage
 
-The additive `memory.context_checkpoints` table holds setup-chat working state, separate from semantic memory and immutable fleet revisions.
-A row belongs to its private draft.
+The additive `memory.context_checkpoints` table holds a conversation's working state, one row per thread, separate from semantic memory and immutable fleet revisions.
+A row belongs to its thread's owner: a private setup draft, or a fleet's chat.
 
-A run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
+A fleet chat's run loads its thread's row through the fenced `context_load` verb, opens on the summary in place of the turns it covers, and saves the next summary through `context_save` whenever its in-run compaction covers earlier turns whole.
+Any other run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
 
 Checkpoint restoration checks model/inference identity, trusted pinned-state identity, source coverage, source digest and generation.
 

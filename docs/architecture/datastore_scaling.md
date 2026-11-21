@@ -60,7 +60,10 @@ An unset or malformed `NATS_URL` refuses boot as `UZ-STARTUP-001`.
 
 Boot refuses, as `UZ-STARTUP-004`, a seed that does not answer within five seconds.
 It also refuses a server reporting JetStream, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
-The largest frame is 128 KiB: the tail's 64 KiB batch plus 64 KiB of envelope.
+
+The largest frame is the setup draft frame, 960 KiB (`afd_bus::DRAFT_FRAME_BYTES`).
+That is NATS's default 1 MiB `max_payload`, which no server here overrides, less a 64 KiB envelope.
+The tail's 64 KiB batch plus 64 KiB of envelope fits under it.
 
 The deploy workflows bring the NATS app up before the daemon.
 `scripts/ensure_fly_app.sh` waits until every NATS machine passes its `/healthz` check, so a daemon never deploys against a bus that refuses it.

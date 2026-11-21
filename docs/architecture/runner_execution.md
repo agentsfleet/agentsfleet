@@ -32,7 +32,7 @@ A setup run carries the pinned model's key and no runtime credentials, repositor
 
 A refused proposal returns its kind and reason to the model as the tool result (`afr_tools/src/setup/mod.rs`). The model may correct it in the same run, and the refusal writes no candidate. A correction is one more model call inside the same run.
 
-The proposal loop has no call cap. The run's 300-second maximum runtime bounds it (`afd_setup::limits::SETUP_RUNTIME`), and the daemon refuses a renewal past that runtime.
+The proposal loop has no call cap, and the run has no runtime ceiling. It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it (`afd_setup`'s `limits.rs`).
 
 The run reports the last proposal it kept, on the base it started from. A run that ends without an answer fails its message and writes no candidate. Save remains a separate human action.
 
@@ -162,18 +162,12 @@ See [results and billing](runner_protocol.md#results-and-billing) for saved ackn
 
 A renewal the daemon refuses, or a runner told to stop, cuts the run. The cut keeps the tokens and memory the run handed back, and reports why the run ended (`afr_supervisor/src/run_loop/mod.rs`).
 
-**Usage rides renewals and the report, at most 512 lines a body.** Both carry provider requests the daemon has not yet recorded. Each request is one line, oldest first, capped at 512 (`af_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`).
+**Usage rides renewals and the report, every unrecorded line in each.** Both carry the provider requests the daemon has not yet recorded, one line per request, oldest first, with no count cap (`Meter::unrecorded` in `afr_agent/src/engine/meter.rs`).
 
-The runner caps each batch at the wire limit.
-Each renewal answer acknowledges recorded lines through `recorded_through`; the report carries the remaining lines.
+Each renewal answer acknowledges recorded lines through `recorded_through`, and the runner forgets only those.
+The report carries every line still unrecorded, so no backlog is renewed away first. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
 
 [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
-
-**A backlog past one body is renewed away before the report.** Failed renewals or a request burst can leave over 512 unrecorded lines.
-
-Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded.
-
-A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
 
 ## Crates
 
@@ -261,9 +255,9 @@ The existing four-transfer window and checkpoint wire ceilings remain compiled b
 
 The model key rides the one header its wire names. Everything the model is sent passes the secret scrub first: the instructions, the turn's message and the model's own earlier turns.
 
-A chat run also carries the fleet's thread before its turn: up to eight finished turns within 64 KiB. The rows are the ones the dashboard thread shows.
+A chat run also carries the fleet's thread before its turn: every finished turn, each with the tool calls its run made (`thread.items`). No count or byte cap applies; an assignment that would not fit the 32 MiB run frame drops its oldest turns and logs `run_history_cut_to_frame`. The model's window is the in-run compaction's.
 
-The loop sends each turn as a user and an assistant turn ahead of the new message, through the same scrub. Webhook, cron and continuation runs carry none.
+The loop sends each turn as what was asked, each earlier call as the assistant step that made it and its tool result, and what was answered, ahead of the new message, through the same scrub. A run offered no tool leaves the calls out, since a provider refuses tool calls in a request that declares no tools. A fresh fleet chat opens on its thread's saved summary in place of the turns it covers, and saves the next one as its compactions cover earlier turns ([context lifecycle](context_lifecycle.md)). Webhook, cron and continuation runs carry none.
 
 The trusted repair context stays in the system prompt, and no turn enters it. A conversation repeats its prefix run after run. So the Messages wire marks the tools and the system prompt for caching at the five-minute default.
 
@@ -309,14 +303,14 @@ The harness also carries tools this runner does not offer yet: an MCP client (`m
 | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | supervisor, `guffbolt::tools::memory` over the fleet's backend as the memory store | the loaded store and the fenced push |
 | `update_plan` | supervisor, `guffbolt::tools::plan` | nothing |
 | `message` | supervisor, through a runner verb, to the turn's thread | the messages verb |
-| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts |
+| `fleet_activity` | supervisor, through a runner verb | the fleets verb: the workspace's fleets, and one fleet's turns with 1 KiB excerpts, 25 a read unless asked and at most 100 |
 | `fleet_steer` | supervisor, through a runner verb, as a chat message on another fleet in the workspace | the steers verb: the target answers in the sender's thread and reads a first line naming the sender; never the sending fleet |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
 | `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent`, `interrupt_agent` | supervisor, `guffbolt::tools::agents` over the run's `guffbolt::agents::Agents`; `guffbolt` drives each child beside the turn | depth 2 and six open per run, as Codex allows (`afr_agent/src/loop/shared.rs`) |
-| `shell`, `exec_command`, `write_stdin` | sandbox, `guffbolt::tools::process` through the executor as `SandboxEnv` | `shell`: one process on pipes, its group killed at its timeout; `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per run. Every byte of output is forwarded as it arrives, behind a bounded queue a flooding process waits on, and drained for a bounded grace once the leader ends; what a call has not read is kept as a 512 KiB head and tail, the middle counted, and each call drains it. A call says when the output was still open at the end, a gap's marker sits where it fell, a write to a process gone by then says it was not delivered and answers its ending, or runs on until it lands, and a write the process would not take says so and runs on; the executor's own sentence stays on the host, and whatever an executor failure says to a model is rendered to at most 4 KiB (`WIRE_MESSAGE_MAX_BYTES`), a refusal's message and a result that would not decode alike, since the socket's other end is not trusted with the length of what a model reads |
+| `shell`, `exec_command`, `write_stdin` | sandbox, `guffbolt::tools::process` through the executor as `SandboxEnv` | `shell`: one process on pipes, its group killed at its timeout, 10 seconds unless the model names one and at most 2,147,483,647 ms, about 24.8 days (`guffbolt/src/tools/process/oneshot.rs`); `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per run. Every byte of output is forwarded as it arrives, behind a bounded queue a flooding process waits on, and drained for a bounded grace once the leader ends; what a call has not read is kept as a 512 KiB head and tail, the middle counted, and each call drains it. A call says when the output was still open at the end, a gap's marker sits where it fell, a write to a process gone by then says it was not delivered and answers its ending, or runs on until it lands, and a write the process would not take says so and runs on; the executor's own sentence stays on the host, and whatever an executor failure says to a model is rendered to at most 4 KiB (`WIRE_MESSAGE_MAX_BYTES`), a refusal's message and a result that would not decode alike, since the socket's other end is not trusted with the length of what a model reads |
 | `git` | sandbox, `guffbolt::tools::process::Git`, on a clone the supervisor made on the host side | the token it was fetched with stays in the supervisor; the push is `propose_change` |
 | `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, `guffbolt::tools::files` through the executor's file calls | `/workspace`; `file_read` pages by line, `offset` and `limit`, and is cut to the same 10,000-token budget as a command's output |
-| `image` | `guffbolt::tools::files::ImageTool` reads the file through the executor and attaches it to the next model turn | a provider that takes images |
+| `image` | `guffbolt::tools::files::ImageTool` reads the file through the executor and attaches it to the next model turn; a picture longer than 2,048 px on a side is scaled to fit (Triangle filter, as Codex does) | a provider that takes images; a source file of at most 8 MiB and a shown image of at most 5 MiB (`guffbolt/src/tools/files/image.rs`) |
 | `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes, as the environment's browser (`guffbolt::tools::env::Browser`); `SandboxEnv` on the bubblewrap engine has none, so each answers with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
 
 ### Subagents

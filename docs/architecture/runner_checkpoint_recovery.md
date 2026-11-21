@@ -53,9 +53,9 @@ The task policy caps new admissions and interpretation sizes.
 New tasks save their configured allowances in the existing task-limit columns.
 Lowering admission caps preserves committed receipts, saved allowances and existing task candidates.
 
-Setup runs read no deployment setting.
-Each setup run saves a 300-second maximum runtime, the constant `afd_setup::limits::SETUP_RUNTIME`, and that runtime bounds its proposal loop.
-It bounds model work; it adds no deadline for a person to answer or approve.
+Setup runs read no deployment setting of their own.
+A setup run has no runtime ceiling; it renews as a fleet run does, until the payer's balance or a person's Stop ends it (`afd_setup`'s `limits.rs`).
+Nothing adds a deadline for a person to answer or approve.
 
 A daemon file that still names `[inference]` or `[authoring.turn]` refuses startup (`daemon/main/src/config/policies.rs`).
 
@@ -142,23 +142,21 @@ The deployment clock controls grants, renewals, heartbeat cadence, host quaranti
 The run lifetime defaults to 35 seconds.
 An omitted offline threshold retains three run lifetimes.
 
-Each new run saves its maximum runtime in PostgreSQL.
-Renewals and task binding receipts use that saved cap, even after a deployment profile changes.
-The compiled twelve-hour ceiling remains the outer safety bound.
+A run has no maximum runtime, and none is saved with it.
+Each grant is one run lifetime; the fleet's budget, the tenant's balance or a person's Stop ends a looping run.
+A durable task's run keeps its own saved execution deadline, and a renewal past it answers `UZ-RUN-011`.
 
 | Setting | Default | Checked relationship |
 | --- | ---: | --- |
-| `runner.run.ttl_seconds` | 35 seconds | More than 32 seconds and less than the chosen maximum runtime |
-| `runner.run.max_runtime_seconds` | 43,200 seconds | Greater than the run lifetime and no more than twelve hours |
+| `runner.run.ttl_seconds` | 35 seconds | More than 32 seconds; at most one hour, 3,600 seconds |
 | `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; two intervals remain shorter than the offline threshold |
-| `runner.health.offline_after_seconds` | Three run lifetimes | At least one run lifetime; at most 129,600 seconds |
+| `runner.health.offline_after_seconds` | Three run lifetimes | At least one run lifetime; at most three hours, 10,800 seconds |
 | `runner.health.healthy_before_uncordon_seconds` | 30 seconds | Greater than one heartbeat interval and shorter than the offline threshold |
-| `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through twelve hours |
+| `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through one day, 86,400 seconds |
 
-Startup
-requires a value greater than the existing 32-second renewal/reconnect budget
-and below the twelve-hour runtime ceiling. The recovery probe interval must
-be positive and shorter than the run lifetime.
+Startup requires a run lifetime greater than the existing 32-second renewal/reconnect budget and at most one hour (`af_core`'s `timing/run.rs`).
+A daemon file that still names `runner.run.max_runtime_seconds` refuses startup.
+The recovery probe interval must be positive and shorter than the run lifetime.
 
 The configuration extension is under verification. Source inspection and
 focused checks are recorded in the [review ledger](../v2/reviews/m247-review-ledger.md#proposed-agentsfleetd-deployment-configuration).

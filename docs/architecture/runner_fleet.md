@@ -18,7 +18,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Run expiry backstop | `RUN_TTL` = 35 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible assignment re-runs an expired thread with a higher fencing token | §Failure recovery model |
-| Max run duration | `MAX_RUNTIME` hard cap | `/renew` extends to `min(now+RUN_TTL, created_at+MAX_RUNTIME)` | §Per-run renewal |
+| Max run duration | none | `/renew` extends to `now+RUN_TTL` at any age; the fleet's budget, the tenant's balance or a person's Stop ends a looping run, and a durable task's own deadline shortens the grant | §Per-run renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the run | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the run reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
@@ -54,7 +54,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
-- The three-run cap counts every run a turn was issued, whatever ended it. Three runs lost in a runner outage end the turn too, and a webhook turn has no replay (§Failure recovery model).
+- The three-run cap counts every run a turn was issued, whatever ended it. Three runs lost in a runner outage end the turn too, and a webhook turn has no replay (§Failure recovery model). Only a run whose frame never left the daemon is deleted on release and does not count.
 
 - Sandbox tiers are not egress policy. No tier substitutes for the egress model (§Sandbox tiers).
 
@@ -148,7 +148,7 @@ A runner's work becomes eligible when its thread's run expires. The next assign 
 | Report response lost | The same runner retries and receives the stored outcome. | A repeated report adds no usage line or delivery. |
 | Sandbox setup fails | The runner reports `fleet_error` as `startup_posture`. | Work never runs without the assigned sandbox. |
 
-A live runner renews through the fenced `/renew` route. Renewal remains credit-gated and bounded by `MAX_RUNTIME`.
+A live runner renews through the fenced `/renew` route. Renewal is gated on credits and the fleet's budget, and a run renews at any age.
 A runner that stops renewing loses its thread at the database deadline.
 
 The replacement keeps the turn and reads its committed recovery descriptor.
@@ -165,7 +165,7 @@ A native renewal batch extends active runs every five seconds. Each run carries 
 
 The runner asks engines to stop nine seconds before its last confirmed deadline.
 This leaves time to stop and reap their processes before another runner can reclaim work.
-Renewal atomically extends **both** the run row and the thread row under a fence and the hard cap:
+Renewal atomically extends **both** the run row and the thread row under a fence:
 
 ```text
  run issued                                every RENEWAL_TICK (5 s) tick
@@ -176,10 +176,11 @@ Renewal atomically extends **both** the run row and the thread row under a fence
                                                v
    server, in ONE fenced atomic statement:
      . still the fencing holder?  no -> 409 run_lost  -> runner cuts the run
+     . Stop marked?               yes -> 409 run_cancelled -> stop + report
      . credits cover the run?     no -> 402 no_credits  -> stop
-     . past created_at+MAX_RUNTIME? yes -> 409 max_runtime -> stop + report
+     . fleet budget left?         no -> 402 budget_exceeded -> stop + report
      . else -> extend run_expires_at AND thread.run_expires_at to
-               min(now+RUN_TTL, created_at+MAX_RUNTIME); bump last_seen_at
+               now+RUN_TTL, at any age; bump last_seen_at
 
    The tick renews whatever the run is doing, so a long model call with
    no output still renews. A runner that died ticks no more, and its run
@@ -187,6 +188,8 @@ Renewal atomically extends **both** the run row and the thread row under a fence
    (heartbeat, drainer and worker pool run joined), so a busy host still
    beats and lapse detection never reassigns a live long-runner's own run.
 ```
+
+No clock ends a run. A looping run stops when its fleet's budget or its tenant's balance refuses a renewal, or when a person presses Stop. A durable task's run is granted no further than its task's deadline and running allowance; a renewal past them answers `UZ-RUN-011` (`meter_run.sql` in `afd_fleet`).
 
 A transient renewal failure retries on the next tick. At the last granted deadline, the runner stops and another runner can reclaim unsettled work. Fences reject stale durable writes; external effects keep their own retry and idempotency limits.
 
@@ -854,7 +857,7 @@ That message is a barrier, and nothing after it folds. The model call in flight 
 
 - **Archive** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: archived` (`agentsfleet fleet archive`) sets `status=archived` and stops issuing runs. It cancels setup grants, marks live runs `cancel_requested_at` and sends each runner a Cancel (`afd_setup`'s creation patch). History stays readable, and archive is terminal.
 
-- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the turn that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a run in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME`.
+- **Gate trip** — a tripped anomaly rule archives the fleet (`afd_gate`'s gate archive), and the turn that tripped it ends as `fleet_archived`. A matching gate rule never archives; it always asks a person. It writes only the status: a run in flight runs to its own end or to its fleet's budget ceiling.
 
 - **Delete** — `DELETE` on the fleet (`agentsfleet fleet delete`) removes it in any status. It first does what archive does to live work (`afd_setup`'s creation release), then purges the rows. A runner that reads the Cancel after its run row is gone stops at its next renewal, which answers `RUN_NOT_FOUND`.
 
@@ -1211,12 +1214,12 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Bound | Value | Enforcement |
 |---|---|---|
 | Input per model call | Selected model's physical window | guffbolt's window hook compacts the oldest turns when the window fills. |
-| Wall time per run | 300 seconds | `afd_setup::limits::SETUP_RUNTIME`, the run's `max_runtime_seconds`. The proposal loop has no other cap. |
-| Funds bound | 300 seconds of runtime, plus output for 8 calls on the platform's key | `afd_setup::limits::MODEL_CALLS_MAX`; the assignment's gate checks it, and sets nothing aside. |
+| Wall time per run | None | A setup run renews as a fleet run does; the payer's balance at a renewal or a person's Stop ends it. The proposal loop has no cap. |
+| Funds bound | One run lifetime of runtime, the run's first slice | `afd_setup`'s `setup_run/model.rs`; the assignment's gate checks it and sets nothing aside, and every renewal checks the balance again. |
 | Runs per message | `af_core::limits::EVENT_RUNS_MAX` (3) | A lapsed run is reassigned at the next fence and reruns the message from the start. Past the limit, the message fails. |
 | Instructions | 1,048,576 characters | The one text ceiling, `af_validate::TEXT_MAX_CHARS`, independently of tokenizer counts. |
 | Proposal in a report | 6,553,600 bytes | `af_validate::DEFINITION_MAX_BYTES`, the bound the Definition parser applies. |
-| Answer preview chunk | 4 KiB | `afd_setup`'s `setup_run/progress.rs`. |
+| Answer preview chunk | 163,157 bytes, about 159 KiB | `afd_setup`'s `setup_run/progress.rs`: the 960 KiB draft frame (`afd_bus::DRAFT_FRAME_BYTES`) less a 4 KiB envelope, over six bytes per escaped character. A longer chunk is skipped. |
 
 Original history remains creator-private and is read in bounded pages. [Conversation compaction](context_lifecycle.md) retains working notes without a fixed 64-message or 32,768-token conversation allowance.
 
@@ -1233,7 +1236,7 @@ The model may ask clarifying questions. It cannot grant access, Save, call arbit
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
 | Draft turns and candidates | Creator-private setup domain | Draft deletion removes private rows and its runs. |
-| The draft's compacted context | Setup domain, `memory.context_checkpoints` | Removed with the draft by foreign key. |
+| The draft's compacted context | Setup domain, `memory.context_checkpoints` keyed by the draft's thread | Removed with the draft's thread by foreign key. |
 | Pending setup report | Supervisor worker | Retained only in memory. Process loss discards it. |
 | Usage lines | Billing domain | Content-free; retained independently of the draft. |
 | Provider logs and infrastructure snapshots | Their service owners | Follow their own retention; draft deletion cannot promise physical removal from these systems. |

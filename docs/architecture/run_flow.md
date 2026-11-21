@@ -143,7 +143,7 @@ Each fleet run follows these steps:
 4. Restore and validate a supplied checkpoint, then adopt covered folds before model or tools.
 5. Request folded inputs before model calls, skipping the first ask when the run says none waits, and send bounded activity over the native connection.
 6. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
-7. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
+7. Send the report with every usage line no renewal recorded, memory, timing segments and folded-input progress.
 8. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
 
 The daemon captures reported memory under the run fence before the settlement transaction.
@@ -345,7 +345,7 @@ A recall reads up to `RECALL_LIMIT_MAX = 50` entries past the window (`af_wire`'
 
 The second review knows the first only if its instructions have it read the existing reviews or recall what it stored.
 
-A chat run also carries the thread's last eight finished turns. A webhook run like this one carries none (`afd_fleet`'s run answer).
+A chat run also carries every finished turn of the thread, with each turn's tool calls. A webhook run like this one carries none (`afd_fleet`'s run answer).
 
 A fleet with a sandbox tool continues in its held sandbox when the hold is still live and its key matches. This fleet has no sandbox, so it never holds one.
 
@@ -374,9 +374,9 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
-- Timers in `af_core`: runs last 35 seconds and renewals run every 5 seconds.
-  A run lasts at most 12 hours, and a runner counts as offline after 105 seconds.
-  Heartbeats run every 10 seconds; a sandbox hold lasts 10 minutes.
+- Timers in `af_core`: a grant lasts 35 seconds and renewals run every 5 seconds.
+  A run renews at any age; its fleet's budget, its tenant's balance or a person's Stop ends it.
+  Heartbeats run every 10 seconds, a runner counts as offline after 105 seconds, and a sandbox hold lasts 10 minutes.
 
 - Assignment and intake: at most 64 candidate fleets per assign pass; no per-fleet turn cap.
   [Queue limits](./datastore_scaling.md#the-turns-ledger-is-the-queue) describe the sampled deployment budget.

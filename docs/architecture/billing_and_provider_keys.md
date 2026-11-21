@@ -107,7 +107,7 @@ Models and billing resolve from `Owned.tenant`, the workspace owner's account, n
 
 Model disable, wallet absence, membership removal and policy-marker drift fail closed. A refused assignment records the message's bounded failure.
 
-**Bound.** A setup run's bound is 300 seconds of runtime fees (`afd_setup::limits::SETUP_RUNTIME`). On the platform's key it adds the model's output allowance for eight model calls, each rounded up (`afd_setup::limits::MODEL_CALLS_MAX`). `afd_setup`'s `setup_run::model::bound` computes it. It is the amount the assignment checks for, not money set aside.
+**Bound.** A setup run must fund its first slice, one run lifetime of runtime fees, as a fleet run must (`afd_setup`'s `setup_run::model::first_slice`). It is the amount the assignment checks for, not money set aside. No whole-run estimate exists, because the balance check at every renewal ends a runaway.
 
 **Assignment.** The gate reads the owner's balance less the lines the relay has not yet charged (`afd_billing::ledger::balance`). It reads on the assignment's own transaction and refuses a run whose bound it cannot cover. A tenant with no wallet is refused.
 
@@ -253,13 +253,13 @@ The runner reserves and records intent and goal calls through these routes; the 
 
 A renewal's answer names `recorded_through`, the highest line it recorded, and the runner forgets only those. A lost answer or an unreadable body therefore re-sends its lines instead of losing them.
 
-One body carries at most 512 lines (`af_wire::usage::LINES_MAX`), a cap a renewal and the report share. The runner sends its oldest 512 unrecorded lines in each. Before its report, a runner holding more than 512 renews them away in full bodies (`afr_supervisor`'s renew flush).
+Each renewal and the report carry every line the daemon has not recorded, oldest first, with no count cap (`afr_agent`'s `Meter::unrecorded`). A renewal rides the 2 MiB control frame and the report the 32 MiB run frame, so the frame is the only bound.
 
-If a renewal fails mid-flush, the lines past the report's 512 are logged as `usage_lines_unflushed` and never billed. The two paths answer a broken body differently:
+The two paths answer a broken body differently:
 
 | Body | Renewal | Report |
 |---|---|---|
-| Will not parse, more than 512 lines, or a line numbered in the daemon's range | 200, the run extended and no line recorded; logged `renew_body_parse_failed` under `UZ-RUN-013`, and the runner sends the lines again | 400 `UZ-REQ-001`; `detail` names the bound (`requests must carry at most 512 lines`, `requests[].seq must be at most 2147483647`) or says `Malformed report body` |
+| Will not parse, or a line numbered in the daemon's range | 200, the run extended and no line recorded; logged `renew_body_parse_failed` under `UZ-RUN-013`, and the runner sends the lines again | 400 `UZ-REQ-001`; `detail` names the bound (`requests[].seq must be at most 2147483647`) or says `Malformed report body` |
 | Carries the retired cumulative totals `input_tokens`, `cached_input_tokens` or `output_tokens` | 400 `UZ-RUN-013`, the run not extended; `detail` names the field | 400 `UZ-REQ-001`; `detail` names the field |
 
 A runner still sending cumulative totals can never have a line recorded, so its renewal is refused rather than extended. Renewing would only run it unbilled to a report refused for the same field.

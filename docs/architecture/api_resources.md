@@ -180,7 +180,7 @@ An idle `instance_name` draft selection chooses the validated instance slug inde
 
 `ConfigOp = {op:"add"|"replace",path,value} | {op:"remove",path}` permits `/config` descendants and replacement of `/description`. Identity, manifest and receipt fields are unwritable.
 
-`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch allows 64 configuration operations and 32 instruction edits, with 1,048,576 replacement characters total. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
+`InstructionEdit = {start_byte,end_byte,text}` uses UTF-8 byte offsets against the exact candidate. A batch has no operation or edit count; its replacement text totals at most 1,048,576 characters. Invalid paths, overlapping ranges, invalid boundaries or invalid final setup reject the entire batch.
 
 The serialized Definition or edit batch is bounded at 6,400 KiB. A setup HTTP body may hold that Definition and a first message at the text ceiling. Each is counted at the widest escape a client may send, 12 bytes for an escaped astral character, so the body may be 25,640,960 bytes (`SETUP_BODY_BYTES_MAX`).
 
@@ -227,7 +227,7 @@ Title is a human display name, independent of validated definition slugs. Runtim
 | # | Method and resource | Exact input / preconditions | Success output | Specific failures |
 |---|---|---|---|---|
 | E1 | GET F/setup-context | No body; fleet:write; optional starting_after for older creator conversations | 200 `{fleet,conversations[],activities:{items,total:null,next_cursor},next_cursor}`; private, no-store | HIDDEN, AUTH, INPUT, CURSOR, DEPENDENCY |
-| E2 | GET F/messages | Existing paging; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and queued turns | INPUT, CURSOR, AUTH, DEPENDENCY |
+| E2 | GET F/messages | limit default 25/max 100, a page at most 512 KiB with the newest item always included, starting_after; optional event_type, 1..64 bytes without NUL; fleet:read | 200 existing message page, filtered before limit; `event_type=activity` excludes runtime bodies and queued turns | INPUT, CURSOR, AUTH, DEPENDENCY |
 
 E1 returns at most three creator-private conversations, each with at most 25 recent message rows, plus 25 shared activity receipts. Runtime request bodies are excluded.
 
@@ -290,7 +290,10 @@ No private content enters workspace or operator streams.
 
 Preview `message.delta` frames contain `{draft_id,sequence,stream_id,stream_seq,stream_start,text_kind:"answer",text}`.
 `sequence` is a decimal string; `stream_seq` counts within one run, and a reassigned turn starts a new stream.
-Answer text is at most 4,096 UTF-8 bytes; the serialized payload is bounded at 8,192 bytes.
+
+Answer text is at most 163,157 UTF-8 bytes, about 159 KiB (`afd_setup`'s `DELTA_BYTES`), and the daemon skips a longer chunk.
+The serialized frame is at most 983,040 bytes, 960 KiB (`afd_bus::DRAFT_FRAME_BYTES`), which is NATS's default 1 MiB payload less a 64 KiB envelope.
+The app and CLI check a frame's shape only and trust the daemon's size bound.
 
 Reasoning and tool arguments never enter the private preview.
 `draft.resync` carries `{}` after a subscription gap and requests a durable read, without another model request.
@@ -312,11 +315,11 @@ The daemon assigns fleet and setup runs when the host advertises capacity.
 Both kinds count against the same daemon-enforced worker limit.
 Heartbeats, renewal batches, activity, folded inputs and reports use that connection.
 
-Fleet renewal and report messages carry at most 512 provider usage records (`af_wire::usage::LINES_MAX`).
+Fleet renewal and report messages carry every provider usage record the daemon has not yet recorded, oldest first, with no count cap.
 Each renewal answer includes its run's `recorded_through` acknowledgement.
 The report carries the remaining records and uses its original run identity when retried.
 
-The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_ASSIGNMENT_MAX`).
+The native `folds` request carries `fencing_token` and `after_sequence`. Its reply holds every pending input, oldest first, cut to one frame; the next fold returns the rest.
 Only a successful report settles inputs through its `folded_through_sequence`.
 
 A setup turn rides the same connection as a fleet turn; [setup runs](#setup-runs) below covers its payload and report.
@@ -329,20 +332,23 @@ The [runner guide](runner_protocol.md#setup-operations-on-the-native-session) ow
 The run payload's `owner` is `{kind:"draft",draft_id}`, and its `setup` part is `SetupWork`.
 The message rides `event.request_json`, and earlier answered turns ride `history`.
 
-`SetupWork={sequence,candidate?:{id,revision,definition},save_requested,tool,history_sequences?}`.
+`SetupWork={sequence,candidate?:{id,revision,definition},save_requested,tool}`. Each `history` turn carries its own `sequence`, which a saved context's watermark counts in.
 `tool` is the `propose_setup` definition, and its description is also the run's instructions.
 
 The run's policy offers one tool, `propose_setup`, and the runner prepares no sandbox for it.
 The run carries the pinned model's key, as a fleet run does, and no runtime credentials, memory or repository.
 A tenant's runner is never assigned a turn on the platform model, whose key the run would carry.
 
-Assignment checks that the pinned model takes tool calls and that the payer's balance covers one run.
+Assignment checks that the pinned model takes tool calls and that the payer's balance covers one run lifetime of runtime.
 Nothing is reserved; renewals and the report log the run's usage lines.
 A refused model or balance fails the message as `model_unavailable` or `insufficient_balance`.
 
-A setup run's maximum runtime is 300 seconds (`afd_setup::limits::SETUP_RUNTIME`).
+A setup run has no runtime ceiling.
+It renews as a fleet run does, until the payer's balance at a renewal or a person's Stop ends it.
+
 A lapsed run is reassigned at the next fence, and the message reruns from its start.
 A turn gets at most three runs (`af_core::limits::EVENT_RUNS_MAX`); when all three lapse, the message fails as `provider_usage_unknown`.
+A run whose frame never left the daemon is deleted when it is released, so it does not count toward the three.
 
 `propose_setup` takes `{kind:"initialize",definition}` before a candidate exists.
 After that it takes `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops,instruction_edits}`.
@@ -350,7 +356,7 @@ Each instruction edit adds text or replaces exact text, never a byte offset.
 
 The runner applies each call in memory with `af_fleet_runtime::setup`'s rules, which the daemon applies again at report.
 A refused call returns `[kind] sentence` to the model as the tool result, and the model may try again in the same run.
-The proposal loop has no cap of its own; the 300-second runtime bounds it.
+The proposal loop has no cap of its own; the payer's balance at each renewal and a person's Stop bound it.
 
 The refusal kinds are `invalid_arguments`, `instructions_missing`, `instructions_ambiguous`, `stale_candidate` and `edit_not_requested`.
 A later edit applies to the setup the run last kept, on the same base.
@@ -372,11 +378,11 @@ A report below the run's current fence is refused with `UZ-RUN-005` and writes n
 A replayed report finds its run settled and writes nothing a second time.
 
 The run loads and saves the draft's compacted context with `context_load` and `context_save`, under its fence.
-A save is a compare-and-swap on `resource_version` over the draft's `memory.context_checkpoints` row.
+A save is a compare-and-swap on `resource_version` over the thread's `memory.context_checkpoints` row. A fleet chat's run loads and saves its fleet's thread the same way.
 A superseded run's save is refused with `UZ-RUN-005`, and the row stays as it was.
 
 The runner streams answer chunks on the run's activity verb, as a fleet run does.
-The daemon rechecks the run, its message and the creator's access. It then republishes each chunk as a `message.delta` frame of at most 4,096 bytes.
+The daemon rechecks the run, its message and the creator's access. It then republishes each chunk as a `message.delta` frame within the 960 KiB draft frame, skipping a chunk past about 159 KiB.
 
 Compaction progress reaches the same private stream as `context.progress`.
 

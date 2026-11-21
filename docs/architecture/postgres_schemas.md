@@ -342,7 +342,7 @@ that reads them (rule 7).
 |---|---|
 | `vault.secrets` | One encrypted secret per (workspace, key_name), with a plain projection |
 | `memory.entries` | A fleet's durable memory, behind role `memory_runtime` |
-| `memory.context_checkpoints` | Private working notes owned by a setup draft; deleted with the draft |
+| `memory.context_checkpoints` | Private working notes, one row per thread: a setup draft's or a fleet chat's; deleted with the thread's owner |
 
 ## Settled while implementing
 
