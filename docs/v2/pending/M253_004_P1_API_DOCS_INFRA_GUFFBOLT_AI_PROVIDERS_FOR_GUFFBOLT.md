@@ -1,0 +1,414 @@
+<!--
+SPEC AUTHORING RULES (the one comment that survives):
+- The spec standard (spec.md) holds every rule. Each tpl: comment names the
+  rules that govern its section; delete it once the section is filled.
+- Body order is the implementing agent's read order.
+- No time or effort estimates, owners or implementation dates (SPEC-ESTIMATE).
+-->
+
+# M253_004: guffbolt-ai gives guffbolt its own providers, so a plain chat needs no embedder model code
+
+**Prototype:** v2.0.0
+
+**Milestone:** M253
+
+**Workstream:** 004
+
+**Date:** Nov 21, 2026
+
+**Status:** PENDING
+
+**Priority:** P1, guffbolt is published for others to build on, and today nobody can run it without writing a provider
+
+**Categories:** API, DOCS, INFRA
+
+**Batch:** B4, after M253_003
+
+**Depends on:** M253_002, which made guffbolt a standalone crate; M253_003, whose §8 set the limits rule this crate inherits and which edits the same provider crates
+
+**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 21, 2026) from Indy's decision of Nov 21, 2026
+
+**Canonical architecture:** `docs/architecture/runner_execution.md` §Crates; this spec adds `guffbolt-ai` beside `guffbolt` there
+
+---
+
+## Overview
+
+**Goal (testable):** A 16-line program streams a MiniMax answer through `guffbolt::Chat` on a `guffbolt-ai` model read from `MINIMAX_API_KEY`.
+
+**Problem:**
+- **guffbolt cannot talk to a model.** A user implements `Model` by hand. The README's plain chat runs from `rustd/guffbolt/README.md:46` to `:215`, and its model is a stub (`README.md:93-120`).
+- **The real providers are agentsfleet's.** Every wire lives in `af_inference` and `af_providers`, which depend on `af_wire`, `af_egress`, `af_crypto` and `af_observability` (`af_providers/Cargo.toml`).
+- **pi already solved this shape.** `pi-agent-core` depends on `pi-ai` (`pi/packages/agent/package.json:26`). Its Quick Start is one provider registration and one `new Agent` (`pi/packages/agent/README.md:13-39`).
+
+**Solution summary:**
+- **A sibling crate.** `rustd/guffbolt-ai` holds the provider-facing types, the wires, the provider factories and a static model catalogue. It depends on no `af_*` crate and not on `guffbolt`.
+- **guffbolt depends on it.** guffbolt re-exports the moved types, so every existing `guffbolt::…` path still compiles.
+- **A ready chat.** `guffbolt::Chat` is a `Conversation` over any `Model`, as pi's `Agent` is over `streamFn`.
+- **agentsfleet becomes an adapter.** `af_providers` builds a `guffbolt-ai` route from the run's saved `ModelInference`, injects the egress transport, and keeps its telemetry and codes. `af_inference` is deleted.
+
+**Design flow:**
+1. **Register.** The user builds `Models::new().with(providers::minimax())`. The factory carries the provider id, the Anthropic Messages wire, the base `https://api.minimax.io/anthropic`, the key variable `MINIMAX_API_KEY` and its catalogue rows.
+2. **Connect.** `models.connect("minimax", id)` finds the row, reads the key from the process environment, and builds a `Route`. The route is the API, base URL, rig dialect, output limit and context window. `Connected` holds the route, the key and the default transport.
+3. **Chat.** `Chat::new(model, instructions).prompt(text)` pushes the message and calls `guffbolt::drive` with `Plain`.
+4. **Call.** Each step calls `Model::measure`, then `Model::stream`. The wire encodes the request through rig, sends it through the `Send` transport, and decodes the stream into `Chunk`s.
+5. **Answer.** The loop keeps the step in its `Transcript` and returns `Ending::Answered(text)`.
+6. **agentsfleet.** The runner's `Connector::connect` maps `ExecutionPolicy` to a `Route` with `Route::new`, passes its guarded transport and the run's key, and wraps `Connected` in `af_providers::Turns`.
+
+## PR Intent & comprehension handshake
+
+- **PR title (eventual):** feat(m253): guffbolt-ai, the providers guffbolt runs on
+- **Intent (one sentence):** Someone who adds `guffbolt` and `guffbolt-ai` to a project chats with a hosted model in a few lines, and agentsfleet runs exactly as before.
+- **Authoring handshake:**
+  - **What Indy asked for:** guffbolt "self sufficient", built the way pi-agent-core runs on pi-ai, as "Sibling crate, as pi-ai". Bounds stay only "if it has a reason".
+  - **ASSUMPTIONS I'M MAKING:**
+    1. **Types follow the dependency.** guffbolt depends on guffbolt-ai, so the types a provider reads and writes move down, and guffbolt re-exports them.
+    2. **rig stays.** rig-core `=0.47.0` stays the wire engine inside guffbolt-ai, optional behind the `wire` feature (Q1).
+    3. **No behaviour change for agentsfleet.** Every bound, retry, timeout and log line a run sees today keeps its value. Moved tests keep their assertions.
+    4. **Key-based providers only.** OAuth, Bedrock and Vertex sign-in are out of scope.
+    5. **`Chat` is in scope.** Without it, the 16-line goal cannot hold (Q7).
+- **Implementer handshake:** recorded in the Pull Request Session Notes at PLAN, before any edit (SPEC-HANDSHAKE).
+
+## Implementing agent — read these first
+
+1. `rustd/guffbolt/src/model.rs` — the seam that moves: `Model`, `Request`, `Chunk`, `End`, `Hosted`, `TextKind`, `Usage`.
+2. `rustd/crates/harness/af_inference/src/lib.rs` — `Configured`: route checks (`:64-108`) and the rig wire per dialect (`:159-178`), the generic half of `Route`.
+3. `rustd/crates/harness/af_providers/src/turn/mod.rs` — `Turns`, today's `impl Model` (`:188-207`), and the reopen rule.
+4. `/Users/kishore/Projects/oss/js/pi/packages/ai/README.md` — Quick Start (`:108-241`), provider factories (`:249-265`), `builtinModels` (`:267-277`), environment keys (`:488-532`).
+5. `docs/RUST_ERROR_STANDARD.md` — the `guffbolt` row (`:161`): a standalone crate hand-writes one error type per surface.
+
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `rustd/guffbolt-ai/Cargo.toml` | CREATE | the crate, `version.workspace = true` as guffbolt (Q4), features per provider |
+| `rustd/guffbolt-ai/README.md` | CREATE | Quick Start, providers, catalogue, transport; doctests |
+| `rustd/guffbolt-ai/src/lib.rs`, `src/types/**` | CREATE | the seam types moved from guffbolt |
+| `rustd/guffbolt-ai/src/wire/**` | CREATE | route, request, stream, reopen, usage, image, replay, count, budget, document, json, logs, retry, timeouts, transport |
+| `rustd/guffbolt-ai/src/error.rs` | CREATE | the crate's one hand-written error type and its `Result` |
+| `rustd/guffbolt-ai/src/models/**`, `src/providers/**` | CREATE | `Models`, `Provider`, `Spec`, key reading, one factory per provider |
+| `rustd/guffbolt-ai/catalog/*.json` | CREATE | one catalogue file per provider, read with `include_str!` |
+| `rustd/guffbolt-ai/src/testing/**`, `tests/**` | CREATE | the fake TLS provider behind `test-util`; the moved and new suites |
+| `rustd/guffbolt/Cargo.toml` | EDIT | depends on `guffbolt-ai` with default features off |
+| `rustd/guffbolt/src/lib.rs` | EDIT | re-exports the moved types; exports `Chat` |
+| `rustd/guffbolt/src/model.rs` | DELETE | its types live in guffbolt-ai |
+| `rustd/guffbolt/src/transcript/mod.rs`, `src/tool/mod.rs`, `src/tool/output.rs` | EDIT | `Call`, `Message`, `Replay`, `ToolSpec`, `Image`, `ImageKind` leave; `CallRef`, `Transcript`, tools and outputs stay |
+| `rustd/guffbolt/src/chat/**` | CREATE | `Chat`, the ready `Conversation` |
+| `rustd/guffbolt/README.md` | EDIT | the MiniMax chat first; the hand-written `Model` becomes "Your own provider" |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | the member and its dependency entry; `af_inference` removed; the layer note at `:18-21` names both standalone crates; the rig note at `:624-631` names no other harness |
+| `rustd/crates/harness/af_inference/**` | DELETE | generic modules moved; agentsfleet remainder folded into `af_providers` (Q3) |
+| `rustd/crates/harness/af_providers/**` | EDIT | the adapter over guffbolt-ai; generic modules and their tests leave |
+| `rustd/crates/harness/af_providers/src/settings/**` | CREATE | `ModelInference` to `Route`, endpoint policy, decision checks, startup timeout and retry settings, `log_filter` re-export |
+| `rustd/crates/daemon/afd_admin/{Cargo.toml,src/model_validation.rs,src/error/mod.rs,src/error/tests.rs}` | EDIT | validate through `af_providers::settings` |
+| `rustd/crates/daemon/afd_credential/{Cargo.toml,src/provider/eligibility.rs,src/provider/registered/mod.rs}` | EDIT | same |
+| `rustd/crates/daemon/main/{Cargo.toml,src/logs.rs,src/serve/observations.rs}` | EDIT | same; images from the mapped `Api` |
+| `rustd/crates/runner/main/{Cargo.toml,src/main.rs,src/host.rs,src/config/mod.rs,src/config/tests.rs}` | EDIT | timeouts and the log filter from `af_providers::settings` |
+| `rustd/crates/runner/afr_agent/{Cargo.toml,tests/providers/**}` | EDIT | imports; `ends.rs` names `af_wire::protocol::MESSAGE_BYTES_MAX` |
+| `rustd/crates/protocol/af_wire/src/inference.rs`, `tests/inference_images.rs` | EDIT, DELETE | `carries_images` leaves for guffbolt-ai's `Api` |
+| `rustd/crates/e2e/af_e2e/tests/layers.rs` | EDIT | no daemon crate names `Connect` or `Connector` |
+| `make/quality.mk` | EDIT | the standalone publish dry run covers both crates |
+| `make/test-integration-rustd.mk`, `scripts/rustd_coverage.py`, `scripts/rustd_coverage_test.py` | EDIT | guffbolt-ai joins the guffbolt shard and its floor |
+| `codecov.yml` | EDIT | the new path; a CI config edit, so Indy approves it in the PR |
+| `docs/RUST_ERROR_STANDARD.md` | EDIT | a `guffbolt-ai` row; the `af_inference` and response-bound rows go |
+| `docs/architecture/{runner_execution,billing_and_provider_keys,context_lifecycle,runner_checkpoint_recovery,shared_chat_verification,README}.md` | EDIT | crate names; `billing_and_provider_keys.md:628` still says rig 0.46.0 |
+| `docs/v2/pending/M253_004_P1_API_DOCS_INFRA_GUFFBOLT_AI_PROVIDERS_FOR_GUFFBOLT.md` | CREATE | this spec, moved to `active/` then `done/` |
+| `~/Projects/docs` changelog | EDIT, other repository | the entry for the new crate, on its own branch after merge |
+
+**Word-boundary hits of `af_inference` outside `docs/v2`, from a repository-wide search:**
+- **Production:** `af_providers/src/{turn/mod.rs,turn/progress.rs,connect/mod.rs,error/mod.rs,error/raise.rs,transport/mod.rs,testing/mod.rs}`, `afd_admin/src/{error/mod.rs,model_validation.rs}`, `afd_credential/src/provider/{eligibility.rs,registered/mod.rs}`, `daemon/main/src/{logs.rs,serve/observations.rs}`, `runner/main/src/{main.rs,host.rs,config/mod.rs}`, seven `Cargo.toml` files.
+- **Tests:** `af_providers/src/{turn/tests.rs,transport/tests.rs,error/tests.rs}`, `afd_admin/src/error/tests.rs`, `runner/main/src/config/tests.rs`, `afr_agent/tests/providers/{privacy,logging,limits,limits_flow,ends}.rs`.
+- **Docs:** the six architecture pages above and `docs/RUST_ERROR_STANDARD.md`.
+- **Same spelling, other meaning:** `af_wire::decision::REPLY_MAX_BYTES` (64 KiB, `af_wire/src/decision/mod.rs:29`) is the decision reply bound and stays.
+
+## Applicable Rules
+
+- **`languages/rust.md`** — ERR-RS, RS-FROM, RS-MAPERR, RS-SOURCE; guffbolt-ai follows guffbolt's hand-written shape, and `af_providers` lifts its error with `error_lifts!`
+- **`.orly/LOCAL.md`** — No invented limits; Code names no other harness (moved comments at `af_providers/src/turn/mod.rs:9-13` and `request/mod.rs:5-8` cite IronClaw and are rewritten to state the fact); garde stays on agentsfleet's startup settings
+- **`code.md`**, **`tests.md`** — a negative test per failure mode; moved tests keep their assertions
+- **`domains/logging.md`** — the moved stream keeps its content-free records; no key, URL path or prompt in a log line
+- **`domains/auth.md`** — the key reaches only its named host; agentsfleet's key still comes from the run's policy, never the environment
+- **`docs.md`** — both READMEs and the architecture pages in short sentences
+
+## Applicable Gates
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| `make lint-all` (clippy, rustfmt, cargo shear, standalone publish dry run) | yes | guffbolt-ai lists no unused dependency, and its dry run builds from crates.io only |
+| `make test-unit-all` | yes | moved suites, the new suites and the README doctests |
+| `make test-integration-rustd` | yes | the runner and daemon suites prove agentsfleet is unchanged |
+| coverage floor (`RUSTD_GUFFBOLT_FLOOR`) | yes | guffbolt-ai is graded beside guffbolt |
+| `docs.language` | yes | changed pages in short sentences |
+| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes | `Route` splits from its wires as `af_inference/src/lib.rs` (283 lines) already nears the cap |
+
+## Prior-Art / Reference Implementations
+
+- **Reference:** `pi/packages/ai` at `ee6f36496`. Mirror the shape. A provider is a factory with its id, wire, base URL, key variable and catalogue (`src/providers/minimax.ts:6-15`). `Models` holds providers and answers `getModel(provider, id)` (`src/models.ts:266-280`), and `builtinModels()` registers every one (`src/providers/all.ts:186`). pi-ai owns `Message`, `Context`, `Tool`, `Usage` and `Model`, and pi-agent-core imports them (`pi/packages/agent/src/types.ts:1-16`).
+  - **Diverge:** Rust features replace pi's per-provider imports. Wires stay rig's, where pi writes its own (`src/api/anthropic-messages.ts`, `openai-completions.ts`, `openai-responses.ts`, `google-generative-ai.ts`). Catalogue rows are checked in, where pi generates them from models.dev (`catalog/README.md:3-8`).
+- **Reference:** `pi/packages/agent/README.md:13-39` — `new Agent({ initialState: { systemPrompt, model }, streamFn: models.streamSimple })`, then `agent.prompt("Hello!")`. `guffbolt::Chat` mirrors it.
+- **Reference:** `rustd/crates/harness/af_inference` and `af_providers` — the code that moves, with its tests.
+
+## Sections (implementation slices)
+
+### §1 — guffbolt-ai owns the provider-facing types, and guffbolt re-exports them
+
+`rustd/guffbolt-ai` joins the workspace beside `rustd/guffbolt`. It depends on no workspace crate. Its default build compiles the types alone, on `serde`, `serde_json`, `bytes` and `futures-util`.
+
+These move unchanged in shape, serde form and docs:
+- **From `guffbolt/src/model.rs`:** the `Model` trait, `Request`, `Chunk`, `End`, `Hosted`, `TextKind` and `Usage`.
+- **From `guffbolt/src/transcript/mod.rs`:** `Call`, `Message` and `Replay`.
+- **From `guffbolt/src/tool/mod.rs` and `tool/output.rs`:** `ToolSpec`, `Image` and `ImageKind`.
+
+`CallRef`, `Transcript`, `Describe`, `Tool`, `Tools`, `ToolOutput` and `ErrorCode` stay in guffbolt, because only the loop reads them. guffbolt's `lib.rs:98-104` re-exports the moved names from guffbolt-ai.
+
+**Implementation default:** the `Model` trait moves too. A third-party provider crate then implements it with guffbolt-ai alone, as a pi provider needs only pi-ai.
+
+- **Dimension 1.1** — guffbolt's paths still resolve → Test `guffbolt_reexports_every_seam_type` (unit, guffbolt): the README doctests and a test naming each of the 13 moved types by its `guffbolt::` path. Expected: compiles and passes.
+- **Dimension 1.2** — a saved conversation still reads → Test `a_drive_state_saved_before_the_move_resumes` (unit, guffbolt): a `DriveState` JSON fixture written before the move, with an assistant replay and an image result. Expected: deserializes and round-trips byte-equal.
+- **Dimension 1.3** — the types build without a wire → Test `the_default_build_links_no_wire` (unit, guffbolt-ai): its own `Cargo.toml`, read with `include_str!`. Expected: `rig-core`, `reqwest` and `tiktoken-rs` are optional, and only `wire` or `reqwest` turns them on.
+- **Dimension 1.4** — the crate stands alone → Test the `guffbolt standalone` step of `make lint-rustd` (unit): the publish dry run of guffbolt-ai, then guffbolt. Expected: both build from crates.io only `[?]`.
+
+### §2 — The wires move into guffbolt-ai behind the `wire` feature
+
+The generic code of both crates moves with its tests, names unchanged. Each module's target:
+
+| Module today | Kind | Target |
+|---|---|---|
+| `af_inference` `Configured` checks and wire choice (`lib.rs:41-280`) | GENERIC, split | `guffbolt_ai::Route`; the garde check, `provider_endpoint` and `accepts_endpoint` stay in `af_providers::settings` |
+| `af_inference` `budget.rs`, `count/**`, `document.rs`, `json.rs`, `stream.rs` | GENERIC | `guffbolt_ai::wire` |
+| `af_inference` `stream/trace.rs` | split | the observation hook moves; its `model_turn_*` lines with registry codes stay as `af_providers`' observer |
+| `af_inference` `timeouts.rs` | split | `Timeouts` moves; garde `TimeoutSettings` stays in `af_providers::settings` |
+| `af_inference` `transport.rs` | GENERIC | `guffbolt_ai::transport`; `REPLY_MAX_BYTES` becomes an option (§2 bounds) |
+| `af_inference` `logs/mod.rs` | GENERIC | `guffbolt_ai::log_filter`, behind feature `log-filter`; only the crate pinning rig keeps rig's module list true |
+| `af_inference` `endpoint.rs`, `error.rs` codes | AGENTSFLEET | `af_providers::settings` and `af_providers::error` |
+| `af_providers` `request/**`, `usage/**`, `image_input.rs`, `turn/progress.rs`, the reopen rule in `turn/mod.rs` | GENERIC | `guffbolt_ai::wire` |
+| `af_providers` `retry/**` | split | the loop and defaults move; garde `RetrySettings` stays |
+| `af_providers` `testing/tls.rs` | GENERIC | `guffbolt_ai::testing`, behind `test-util` |
+| `af_providers` `connect/**`, `transport/**`, `observe/**`, `error/**`, `decision/**`, `provider.rs`, `testing/{scripted,observed}.rs` | AGENTSFLEET | stay |
+
+`guffbolt_ai::transport::Send` is the transport seam, renamed from `af_inference::transport::SendRequest`. It takes an `http::Request<Bytes>` and answers a streamed `http::Response`, never rig's types, so a rig upgrade does not break an embedder's transport. A send the embedder's guard refused answers `SendError::Refused`, which no retry or reopen repeats.
+
+The default transport is a `reqwest` client behind feature `reqwest`. It follows no redirect, because the key must reach only the host the route names.
+
+**Bounds, each with its reason or none:**
+- **Reply size:** guffbolt-ai has no reply bound of its own. A search of `pi/packages/ai/src` found no response-byte cap, and Codex's hits for one are tool-call results. `Connected::with_reply_bound` takes one, and agentsfleet passes `af_wire::protocol::MESSAGE_BYTES_MAX` (32 MiB, `af_wire/src/protocol/mod.rs:29`), the runner frame.
+- **Stream idle:** 300 s by default, Codex's `DEFAULT_STREAM_IDLE_TIMEOUT_MS` (`codex-rs/model-provider-info/src/lib.rs:73`).
+- **Connect:** none of its own. Codex and pi set a connect timeout only for websockets (`model-provider-info/src/lib.rs:78`, `pi/packages/ai/src/types.ts:271`), so the operating system's applies. agentsfleet keeps its 10 s startup setting.
+- **Retries:** 3 attempts and 3 openings, as the SDKs' 2 retries (`pi/packages/ai/src/types.ts:207-210`). A `Retry-After` past 60 s ends the turn, as pi's `maxRetryDelayMs` (`types.ts:212-218`).
+- **Count call:** `COUNT_TIMEOUT` (10 s) and `COUNT_REPLY_BYTES` (16 KiB) (`af_inference/src/count/native.rs:12-13`) move unchanged, so runs behave as before (Q5).
+
+- **Dimension 2.1** — the moved suites pass → Test the `af_inference` and `af_providers` generic suites (integration, fake TLS provider, unit lane), names and assertions unchanged. Expected: every one passes under guffbolt-ai.
+- **Dimension 2.2** — no reply bound unless asked → Test `with_no_bound_a_reply_past_32_mib_is_read` (integration): a 33 MiB streamed reply. Expected: the turn ends answered.
+- **Dimension 2.3** — the embedder's bound holds → Test `a_reply_past_the_bound_the_embedder_set_is_refused` (integration): bound 1 MiB, reply 1 MiB + 1 event. Expected: `Error::is_reply_too_large()`, the turn not reopened.
+- **Dimension 2.4** — no redirect carries the key → Test `a_redirect_is_not_followed_with_the_key` (integration): the provider answers 307 to a second listener. Expected: the turn fails with status 307, and the second listener sees no request.
+- **Dimension 2.5** — a refused host is not retried → Test `a_send_the_guard_refused_is_not_retried` (unit): a transport answering `SendError::Refused`. Expected: one send, the error kept.
+- **Dimension 2.6** — a long wait is not slept → Test `a_retry_after_past_sixty_seconds_ends_the_turn` (integration, paused clock): 429 with `Retry-After: 120`. Expected: one send, and the turn ends with status 429.
+- **Dimension 2.7** — a silent provider ends → Test `a_silent_provider_ends_at_the_idle_timeout` (integration, paused clock): headers, then silence. Expected: a deadline failure at 300 s.
+
+### §3 — Providers, keys and a static catalogue
+
+`guffbolt_ai::Models` is a collection of `Provider`s. `Models::new().with(provider)` registers one, `Models::builtin()` registers every provider compiled in, and `get(provider, id)` answers the catalogue row.
+
+`connect(provider, id)` reads the key from the provider's variable, and `connect_with_key` takes one. `Route::new(api, base_url, dialect, max_output_tokens, context_tokens)` builds a model with no catalogue row, as agentsfleet does.
+
+A `Spec` row holds the id, context window, maximum output tokens, and whether results may carry images. Each row is data in `catalog/<provider>.json`. The first rows come from rig 0.47's bundled catalogue (`rig-core-0.47.0/src/catalog/models.json`), which gives MiniMax-M3.1-Flash a 1,000,000-token window and 524,288 output tokens (Q2).
+
+| Feature | Factory | Wire and rig dialect | Base URL | Key variable |
+|---|---|---|---|---|
+| `anthropic` | `providers::anthropic()` | Messages, `anthropic` | `https://api.anthropic.com` | `ANTHROPIC_API_KEY` |
+| `openai` | `providers::openai()` | Responses, `openai` | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
+| `gemini` | `providers::gemini()` | Gemini native | `https://generativelanguage.googleapis.com` | `GEMINI_API_KEY` |
+| `ollama` | `providers::ollama()` | Ollama native | `http://localhost:11434` | `OLLAMA_API_KEY`, optional |
+| `openrouter` | `providers::openrouter()` | Chat, `openrouter` | rig's `OPENROUTER` | `OPENROUTER_API_KEY` |
+| `fireworks` | `providers::fireworks()` | Chat, gateway | `https://api.fireworks.ai/inference/v1` `[?]` | `FIREWORKS_API_KEY` |
+| `minimax` | `providers::minimax()` | Messages, `minimax` | `https://api.minimax.io/anthropic` | `MINIMAX_API_KEY` |
+| `deepseek`, `groq`, `mistral`, `xai`, `together` | one each | Chat, rig's dialect of that name | rig's | `DEEPSEEK_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `TOGETHER_API_KEY` |
+
+Every provider feature turns on `wire`. Feature `all` turns on every provider. rig-core 0.47 has no per-provider features (its `Cargo.toml` lists `derive`, `rustls`, `reqwest` and a few others), so a provider feature compiles out only our factory and its rows.
+
+af_inference reaches every rig dialect today through a saved dialect name; `Route::new` keeps that. pi adds Cerebras, Baseten, NVIDIA, Vercel AI Gateway, Cloudflare, Bedrock, Vertex, Copilot and OAuth providers; none is in this spec (Q6).
+
+- **Dimension 3.1** — a registered provider answers → Test `a_chat_on_minimax_answers_through_the_messages_wire` (integration, fake TLS provider): the minimax factory pointed at the fake host with `with_base_url`. Expected: `POST /v1/messages` with `x-api-key` (rig's gateway auth, `anthropic/wire.rs:141,464`), and the answer streamed back.
+- **Dimension 3.2** — a missing key names its variable → Test `connect_without_the_key_names_its_variable` (unit): `MINIMAX_API_KEY` unset. Expected: an error whose text names `MINIMAX_API_KEY` and holds no value.
+- **Dimension 3.3** — an unknown model is refused → Test `an_unknown_model_id_is_refused_with_its_provider` (unit): `connect("minimax", "no-such-model")`. Expected: an error naming both, and no request sent.
+- **Dimension 3.4** — an unregistered provider is refused → Test `an_unregistered_provider_is_refused` (unit): `Models::new().connect("minimax", …)`. Expected: an error naming `minimax`.
+- **Dimension 3.5** — the catalogue holds together → Test `every_catalogue_row_parses_and_fits` (unit): every compiled-in file. Expected: each row parses, its output limit is at most its window, and no id repeats within a provider.
+- **Dimension 3.6** — a row's image flag reaches the loop → Test `accepts_images_follows_the_row_and_the_wire` (unit): MiniMax-M3.1-Flash on Messages, and a Chat route. Expected: true, then false.
+
+### §4 — `guffbolt::Chat` runs a plain chat in a few lines
+
+`Chat` is a `Conversation` over any `M: Model`. It holds the model, the instructions, an optional `Tools` set lent nothing, a `Transcript`, a stop token and an inbox. `prompt(text)` joins the text and drives the loop with `Plain`. A chat that needs more, such as a lent context or an observer, writes its own `Conversation` as today.
+
+The target user code, which both READMEs carry as a `no_run` doctest:
+
+```rust
+use guffbolt::{Chat, Ending};
+use guffbolt_ai::{Models, providers};
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), guffbolt_ai::Error> {
+    // MINIMAX_API_KEY is read from the environment.
+    let models = Models::new().with(providers::minimax());
+    let model = models.connect("minimax", "MiniMax-M3.1-Flash")?;
+
+    let mut chat = Chat::new(model, "Answer in one sentence.");
+    match chat.prompt("Which crate parses TOML in Rust?").await {
+        Ending::Answered(text) => println!("{text}"),
+        Ending::Failed(why) => eprintln!("the model failed: {why}"),
+        Ending::Stopped | Ending::Waiting(_) => {}
+    }
+    Ok(())
+}
+```
+
+The id is `MiniMax-M3.1-Flash`, rig's catalogue name; a plain `MiniMax-M3.1` is `[?]`.
+
+- **Dimension 4.1** — a chat answers → Test `a_chat_answers_one_prompt` (unit, guffbolt): a scripted `Model` answering "toml". Expected: `Ending::Answered("toml")`, and the transcript holds both messages.
+- **Dimension 4.2** — a chat runs its tools → Test `a_chat_runs_a_tool_and_answers_with_its_output` (unit): a model that calls `note`, then answers. Expected: the tool ran once, and the answer follows its result.
+- **Dimension 4.3** — a model failure ends the chat → Test `a_chat_whose_model_fails_ends_failed` (unit): a model whose stream errs. Expected: `Ending::Failed` carrying that error.
+- **Dimension 4.4** — the README program runs on the real path → Test `the_minimax_example_answers_against_a_fake_provider` (e2e, subprocess): `cargo run --example minimax_chat` with a fake TLS provider and its base URL passed as an argument. Expected: exit 0 and the fake's answer on stdout.
+- **Dimension 4.5** — live MiniMax answers → Test `live_minimax_chat` (manual): Indy runs `examples/minimax_chat` with his `MINIMAX_API_KEY`. Expected: one sentence printed; the command and its output land in the PR Session Notes.
+
+### §5 — agentsfleet runs on guffbolt-ai with no behaviour change
+
+`af_providers` becomes the adapter. `Connector::connect` (`connect/mod.rs:108-124`) maps `af_wire::InferenceApi` to `guffbolt_ai::Api` in one `match`. It builds `Route::new` from the run's `ModelInference` and context window, then calls `connect_with_key` with the policy's key and its guarded `Transport`. The reply bound is `MESSAGE_BYTES_MAX`.
+
+`Turns` wraps `Connected` and implements `guffbolt::Model<Error = af_providers::Error>`. It maps errors to registry codes, records `af_observability` measurements and writes the `run_id` log lines. The billing meter in `afr_agent` reads `Chunk::Usage` as before.
+
+**Implementation default:** `af_inference` is deleted and its agentsfleet remainder becomes `af_providers::settings`. One crate then owns what a saved `ModelInference` means. The daemon's three users switch to it, and `layers.rs` proves they name no `Connect` (Q3).
+
+`af_wire::InferenceApi::carries_images` goes. guffbolt-ai's `Api` is the one source, and `af_wire/tests/inference_images.rs` moves there.
+
+- **Dimension 5.1** — runs are unchanged → Test the `afr_agent` `tests/providers` suite and the `af_e2e` suites (integration, `make test-integration-rustd`), assertions unchanged. Expected: every one passes.
+- **Dimension 5.2** — the runner frame bounds a reply → Test `a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once` (integration, `afr_agent/tests/providers/ends.rs:111`, its import renamed only): a reply one event past 32 MiB. Expected: the failure detail names 33554432, and the request went once.
+- **Dimension 5.3** — a guarded host stays refused → Test `should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted` (unit, `af_providers/src/error/tests.rs:215`), plus `a_send_the_guard_refused_is_not_retried` through the adapter. Expected: the fleet's configuration error naming the provider, after one send.
+- **Dimension 5.4** — the daemon makes no model call → Test `no_daemon_crate_names_the_connector` (unit, `af_e2e/tests/layers.rs`): every `daemon/` source file. Expected: no `af_providers::Connect`, `Connector` or `Turns`.
+- **Dimension 5.5** — saved settings still validate → Test the `afd_admin` `model_validation` and `afd_credential` eligibility suites (unit), assertions unchanged. Expected: an `http://` base, an unknown dialect and an output past the window are refused as before.
+- **Dimension 5.6** — moved code names no harness → Test `no_provider_source_names_another_harness` (unit, guffbolt-ai): its sources and `af_providers`'. Expected: no `IronClaw`, `ironclaw_llm`, `codex-rs`, `pi-ai` or `pi-agent-core`.
+
+### §6 — The pages describe two standalone crates
+
+`runner_execution.md` §Crates names `guffbolt-ai` beside `guffbolt`, both outside every layer. `af_providers` is the adapter, and `af_inference` is gone. `docs/RUST_ERROR_STANDARD.md` gains a `guffbolt-ai` row: one hand-written `Error` with its `Result`, because the crate cannot call `error_shell!`. The guffbolt README leads with the MiniMax chat.
+
+- **Dimension 6.1** — the READMEs compile → Test the guffbolt and guffbolt-ai README doctests (unit, `make test-unit-all`). Expected: pass.
+- **Dimension 6.2** — no page names the deleted crate → Test the R3 search. Expected: no output.
+
+## Interfaces
+
+- **guffbolt (unchanged paths):** every name in `guffbolt/src/lib.rs:95-105` still resolves. New: `guffbolt::Chat<M>` with `new(model, instructions)`, `with_tools(tools)`, `prompt(text) -> Ending<M::Error>` and `stop()`.
+- **guffbolt-ai types:** `Model`, `Request`, `Chunk`, `End`, `Hosted`, `TextKind`, `Usage`, `Call`, `Message`, `Replay`, `ToolSpec`, `Image`, `ImageKind`.
+- **guffbolt-ai models:** `Models::{new, builtin, with, get, connect, connect_with_key}`, `Provider` with `with_base_url`, `Spec { id, context_tokens, max_output_tokens, images }`, `providers::<name>()` per feature.
+- **guffbolt-ai wire:** `Api { Chat, Responses, Messages, Gemini, Ollama }` with `carries_images`, `Route::new`, `Route::supports_tools`, `Route::host`, `Connected` implementing `Model`, `Connected::{with_transport, with_reply_bound, with_retry, with_timeouts, with_observer}`, `transport::{Send, SendError}`, `Retry`, `Timeouts`, `log_filter`, `Error`, `Result`.
+- **Features:** default none; `wire`; `reqwest` (default transport); one per provider; `all`; `log-filter`; `test-util`.
+
+## Failure Modes
+
+| Mode | Kind | Cause | Handling (response and what the caller observes) | Test |
+|------|------|-------|--------------------------------------------------|------|
+| Missing key | auth failure | the provider's variable is unset | `connect` fails naming the variable, no value | `connect_without_the_key_names_its_variable` |
+| Unknown model | malformed input | an id no row holds | refused before any request | `an_unknown_model_id_is_refused_with_its_provider` |
+| Unregistered provider | malformed input | its feature is off or it was never added | refused naming the provider | `an_unregistered_provider_is_refused` |
+| Rate limited | exceeded quota | 429 with a long `Retry-After` | not slept; the turn ends with 429 | `a_retry_after_past_sixty_seconds_ends_the_turn` |
+| Silent provider | timeout | no event for 300 s | a deadline failure | `a_silent_provider_ends_at_the_idle_timeout` |
+| Redirect | security | the provider answers 3xx | not followed; the key goes nowhere else | `a_redirect_is_not_followed_with_the_key` |
+| Guard refusal | security | the embedder's transport refuses the host | one send, not retried; agentsfleet names the policy | `a_send_the_guard_refused_is_not_retried`, `should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted` |
+| Oversize reply | capacity | a reply past the embedder's bound | refused, not reopened | `a_reply_past_the_bound_the_embedder_set_is_refused`, `a_reply_past_the_cap_ends_the_run_as_the_fleets_error_and_is_sent_once` |
+| Model failure in a chat | dependency unavailable | the stream errs | `Ending::Failed` with the error | `a_chat_whose_model_fails_ends_failed` |
+| Old checkpoint | replay | a `DriveState` saved before the move | reads and resumes | `a_drive_state_saved_before_the_move_resumes` |
+| Bad catalogue row | malformed input | output past window, or a repeated id | the unit lane fails | `every_catalogue_row_parses_and_fits` |
+| Daemon gains a model call | security | a daemon crate names the connector | the layer test fails | `no_daemon_crate_names_the_connector` |
+
+## Invariants
+
+1. guffbolt-ai depends on no workspace crate — `cargo publish --dry-run` in `make lint-rustd` builds it from crates.io alone, and fails on any path dependency.
+2. guffbolt's default build links no wire — guffbolt depends on guffbolt-ai with `default-features = false`, the wire crates are optional, and Dimension 1.3 reads the manifest.
+3. The key reaches only the route's host — the default transport's client is built with `redirect::Policy::none()`, and Dimension 2.4 proves it.
+4. No daemon crate drives a model — `af_e2e/tests/layers.rs` fails on a daemon source naming `Connect`, `Connector` or `Turns`.
+
+## Metrics & Observability
+
+N/A: no product or operator signal changes. The provider metric families and the `model_turn_*`, `provider_retry` and `provider_turn_reopened` lines keep their names and fields, now written by `af_providers`' observer. The existing `af_providers` `observe/tests.rs` suite proves it unchanged.
+
+## Acceptance Rubric (single scoring surface)
+
+| # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
+|---|--------------------------------|---------------------|----------|----------|-----------------|
+| R1 | guffbolt-ai and guffbolt build alone from crates.io (§1) | `make lint-rustd` | exit 0, with the standalone dry run for both crates | P0 | |
+| R2 | A plain chat on MiniMax answers through the public API (§3, §4) | `make test-unit-all` | `a_chat_on_minimax_answers_through_the_messages_wire` and `the_minimax_example_answers_against_a_fake_provider` pass | P0 | |
+| R3 | No reference to the deleted crate remains (§5, §6) | `git grep -n -w af_inference -- . ':!docs/v2'` | no output | P0 | |
+| R4 | guffbolt's public paths are unchanged (§1) | `make test-unit-all` | `guffbolt_reexports_every_seam_type` and the guffbolt README doctests pass | P0 | |
+| R5 | agentsfleet runs are unchanged (§5) | `make test-integration-rustd` | exit 0 | P0 | |
+| R6 | No bound without a reason (§2) | `make test-unit-all` | `with_no_bound_a_reply_past_32_mib_is_read` passes | P1 | |
+| R7 | Moved code names no other harness (§5) | `git grep -n -i -E "ironclaw|codex-rs|pi-ai|pi-agent-core" -- rustd/guffbolt-ai rustd/crates/harness/af_providers rustd/Cargo.toml` | no output | P1 | |
+| R8 | Live MiniMax answers (§4) | manual: Dimension 4.5 | the output in the PR Session Notes | P1 | |
+| S1 | Lint | `make lint-all` | exit 0 | P0 | |
+| S2 | Unit lanes | `make test-unit-all` | exit 0 | P0 | |
+| S3 | Integration lane | `make test-integration-rustd` | exit 0 | P0 | |
+| S4 | Version | `make check-version` | exit 0 | P0 | |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+
+## Dead Code Sweep
+
+| Deleted file or symbol | Verify | Expected |
+|------------------------|--------|----------|
+| `af_inference` | `git grep -n -w af_inference -- . ':!docs/v2'` | no output |
+| `SendRequest` | `git grep -n -w SendRequest -- rustd` | no output |
+| `carries_images` on `af_wire::inference::InferenceApi` | `git grep -n -w carries_images -- rustd/crates/protocol` | no output |
+| `rustd/guffbolt/src/model.rs` | `git grep -n "mod model;" -- rustd/guffbolt/src/lib.rs` | no output |
+
+## Out of Scope
+
+- OAuth, Bedrock, Vertex and Copilot sign-in: not planned in this spec (Q6).
+- guffbolt-ai's own wire code in place of rig: Q1.
+- A catalogue refresh tool: a new script needs Indy's sign-off, so rows are edited by hand.
+- Publishing both crates to crates.io: a release, which waits for Indy's ask.
+- Image generation and classifier models, which pi-ai also serves: not planned.
+
+---
+
+## Product Clarity (authoring record)
+
+1. **Successful user moment** — A Rust developer adds two dependencies, sets `MINIMAX_API_KEY`, runs the 16-line program, and reads MiniMax's answer.
+2. **Preserved user behaviour** — Every `guffbolt::` path compiles. A hand-written `Model` still works. Every agentsfleet run, bound, retry and log line is unchanged.
+3. **Optimal-way check** — The most direct route moves code that already passes into a crate with no agentsfleet dependency. The gap is `Chat` and the catalogue, which nothing has today.
+4. **Rebuild-vs-iterate** — Iterate: the wires are proven, and moving them keeps their tests. Rewriting them off rig is Q1, not this spec.
+5. **What we build** — guffbolt-ai: types, wires, the transport seam, `Models`, factories and catalogue rows; `guffbolt::Chat`; `af_providers` as the adapter.
+6. **What we do NOT build** — OAuth sign-in, a catalogue fetcher, cost estimates per call (agentsfleet prices from its own catalogue), and image or classifier models.
+7. **Fit with existing features** — It compounds with M253_002's standalone guffbolt. The run path it must not destabilize is the runner's `Connector::connect`.
+8. **Surface order** — Library first; no CLI or UI surface changes.
+9. **Dashboard restraint** — No UI change.
+10. **Confused-user next step** — The error names the missing variable, the unknown id or the unregistered provider. The README lists every provider, feature and key.
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** types (§1), wires (§2), providers (§3), chat (§4), the adapter (§5), pages (§6). Each lands green on its own, in that order.
+- **Alternatives considered:**
+  - **Providers inside guffbolt behind features.** Indy chose the sibling crate, and a provider crate could not then implement `Model` without the loop.
+  - **guffbolt-ai depends on guffbolt.** Then guffbolt cannot ship a ready chat over a real provider without a cycle; rejected.
+  - **Keep the types in guffbolt, implement `Model` there for guffbolt-ai's model.** guffbolt-ai would need guffbolt's `Request` to encode one, a cycle; rejected.
+- **Patch-vs-refactor verdict:** a **refactor** because code moves across crates while behaviour holds.
+
+## Discovery (consult log)
+
+- **Consults** — Indy's words, quoted:
+  - > Owner (Indy, Nov 21, 2026): "we must move the guffbolt to be self sufficient. Can you refer how pi-core is invoked from the ~/Projects/oss/js/pi/ so we know how to deal with this" — context: the request; pi read at `ee6f36496`.
+  - > Owner (Indy, Nov 21, 2026): "Sibling crate, as pi-ai" — context: his answer to "How should guffbolt become self-sufficient, the way pi-agent-core works on top of pi-ai?" A crate `guffbolt-ai` holds providers and a model catalogue, and `guffbolt` depends on it.
+  - > Owner (Indy, Nov 21, 2026): "I need bounds if it has a reason" — context: §2's bounds. Each one names its forcing limit or its Codex or pi source, and the reply bound is the embedder's.
+- **Agent defaults, listed in the PR for Indy:** the `Model` trait moves (§1); the transport seam speaks `http` types (§2); no reply bound by default (§2); `Chat` lends tools nothing (§4); `af_inference` folds into `af_providers` (§5).
+- **Open questions for the owner:**
+  - **Q1, the wire engine.** Recommend rig `=0.47.0` behind `wire`: both crates already pass on it, and it carries the dialect tables, tool-call assembly and reasoning replay. Alternative: our own wires per API, as pi writes them.
+  - **Q2, catalogue data.** Recommend checked-in rows seeded from rig's catalogue, so a wire change keeps them. Alternative: read `rig_core::catalog` at run time.
+  - **Q3, af_inference's remainder.** Recommend folding it into `af_providers::settings`, with the layer test keeping the daemon off the connector. Alternative: keep a slim settings-only `af_inference`.
+  - **Q4, the version.** guffbolt takes the workspace version (`guffbolt/Cargo.toml:4`, `0.78.0` at `rustd/Cargo.toml:111`). Recommend the same; alternative: both crates get their own.
+  - **Q5, the count bounds.** `COUNT_TIMEOUT` and `COUNT_REPLY_BYTES` move unchanged. pi-ai calls no count endpoint, so the rule says cap nothing; dropping them changes agentsfleet runs.
+  - **Q6, the first providers.** Recommend the twelve key-based providers in §3; pi's others wait.
+  - **Q7, `Chat` in this spec.** Recommend yes: without it the shortest MiniMax chat is the README's 170 lines.
+- **Unverified (`[?]`):**
+  - `cargo publish -p guffbolt-ai -p guffbolt --dry-run` verifies guffbolt against an unpublished guffbolt-ai. Running it settles it.
+  - Fireworks' Chat path. rig 0.47 has no Fireworks dialect, and pi uses `https://api.fireworks.ai/inference` (`pi/packages/ai/src/providers/fireworks.ts:11`). Fireworks' API docs settle the `/v1` suffix.
+  - A model id `MiniMax-M3.1`. rig's catalogue lists `MiniMax-M3` and `MiniMax-M3.1-Flash` only; MiniMax's model list settles it.
+  - Whether Codex calls a token-count endpoint. A search hit `codex-rs/ext/goal/src/accounting.rs` and `login/src/auth/manager.rs`, unread.
+  - The crates.io name `guffbolt-ai` is free.
+  - M253_004 was not checked against a freshly fetched `origin/main` (SPEC-NUM); this draft ran no `git fetch`.
+- **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
+- **Open blockers** — Q1 to Q7 and the `[?]` items above.
+- **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
