@@ -5,7 +5,7 @@ import { MS_PER_SECOND, SECONDS_PER_MINUTE } from "@/lib/utils";
 
 const LOCALE = "en-US";
 const COUNT_FORMAT = new Intl.NumberFormat(LOCALE);
-// Codex's `format_tokens_compact`: "12.4K".
+// A compact count: "12.4K".
 const COMPACT_COUNT_FORMAT = new Intl.NumberFormat(LOCALE, { notation: "compact", maximumFractionDigits: 1 });
 // One narrow unit formatter per unit rather than Intl.DurationFormat, which the
 // browsers this app supports (Firefox before 136, Chrome before 129) and Node

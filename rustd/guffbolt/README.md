@@ -225,7 +225,7 @@ Cancel the token `stop` returns to stop the loop. `guffbolt` races each model ca
 
 ## Fitting the window
 
-Before every model call, `guffbolt` asks your conversation for that call's `Window`, the way pi runs `transformContext`. A window holds the messages the call sends and the most the call may write. The default `window` sends the whole transcript.
+Before every model call, `guffbolt` asks your conversation for that call's `Window`. A window holds the messages the call sends and the most the call may write. The default `window` sends the whole transcript.
 
 Override `window` to keep a long conversation inside the model's context. Measure a request with `Model::measure`, then summarize or drop the oldest messages, and keep each tool call with its results. Your `request` sends the window's messages and its output limit.
 
@@ -353,7 +353,7 @@ A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `
 
 ## Sub-agents
 
-Subagents are `guffbolt`'s own. Turn them on with `ToolsBuilder::with_agents`, and the run offers seven tools, named as Codex names its multi-agent tools: `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A child is another loop of the run with its own transcript. It starts from its parent's history before its task: all of it by default, none of it, or its last turns, as `fork_turns` says, taking Codex's values `all`, `none` or a number. It holds its parent's tools or the subset named. A child at the depth cap holds none of the seven, and `Caps` bound how many are open at once.
+Subagents are `guffbolt`'s own. Turn them on with `ToolsBuilder::with_agents`, and the run offers seven tools: `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A child is another loop of the run with its own transcript. It starts from its parent's history before its task: all of it by default, none of it, or its last turns, as `fork_turns` says: `all`, `none` or a number. It holds its parent's tools or the subset named. A child at the depth cap holds none of the seven, and `Caps` bound how many are open at once.
 
 `guffbolt` drives every child itself. Implement `Raise`, and its `child` hands back the conversation each of a child's turns runs over: your model, observer, request and tools, holding the `Seat`'s transcript and answering its stop. You hear a child the way you hear the root, through that conversation's observer. A finished child goes idle and keeps its transcript, so `followup_task` runs it again with its history. It stays open until `close_agent` closes it or the loop ends.
 
@@ -559,7 +559,7 @@ async fn answered<C: Conversation>(
 
 ## The `tools` feature
 
-The `tools` feature adds tools that work on a machine, on the network, with memory, with schedules, and with the people a run works for. A backend is what a tool calls to do its work, and each tool takes its backend when it is built, as pi's tools take their operations. `Tools::builder()` builds the set a loop holds: give it each backend with a `with_*` setter, add tools of your own with `with_tool`, and `build` the tools a startup `ToolsConfig` names.
+The `tools` feature adds tools that work on a machine, on the network, with memory, with schedules, and with the people a run works for. A backend is what a tool calls to do its work, and each tool takes its backend when it is built. `Tools::builder()` builds the set a loop holds: give it each backend with a `with_*` setter, add tools of your own with `with_tool`, and `build` the tools a startup `ToolsConfig` names.
 
 ```toml
 [dependencies]
@@ -578,7 +578,7 @@ guffbolt = { git = "https://github.com/agentsfleet/agentsfleet", features = ["to
 | `Agents` | `with_agents` | `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent`, `interrupt_agent` | `Agents`: a run's children, under its `Caps` |
 | none | | `update_plan`, `ask_user`, `current_time`, `sleep` | |
 
-A `ToolsConfig` lists tool names, and a single `*` matches a family, such as `mcp__docs__*` for a server's tools, the way pi's `--tools read,grep,'mcp__radius__*'` does. A name whose backend you did not give stops `build` with `MissingBackend`, naming the tool and the backend, before any step runs. A pattern offers only what the builder can build, so `*` alone offers everything you gave a backend for.
+A `ToolsConfig` lists tool names, and a single `*` matches a family, such as `mcp__docs__*` for a server's tools. A name whose backend you did not give stops `build` with `MissingBackend`, naming the tool and the backend, before any step runs. A pattern offers only what the builder can build, so `*` alone offers everything you gave a backend for.
 
 `with_repository` names the directory `git` runs in, and `with_image_input` says whether the model's wire takes the picture `image` reads. A tool is a `Handler`: its arguments are a type, and the model is told that type's JSON Schema. `Typed` makes a handler a `Tool` lent a `tools::Context` per call, which carries only the call's `CallRef`, the run's id and the wake. A backend that acts outside the process derives its idempotency key from that `CallRef`, so a retried call keeps it. `Local` holds the local environment, sessions, network and memory, and `Local::builder` starts a builder over them.
 
