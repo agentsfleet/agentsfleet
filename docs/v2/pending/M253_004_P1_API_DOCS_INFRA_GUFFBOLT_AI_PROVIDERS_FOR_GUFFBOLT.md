@@ -220,7 +220,7 @@ A `Spec` row holds the id, context window, maximum output tokens, and whether re
 | `gemini` | `providers::gemini()` | Gemini native | `https://generativelanguage.googleapis.com` | `GEMINI_API_KEY` |
 | `ollama` | `providers::ollama()` | Ollama native | `http://localhost:11434` | `OLLAMA_API_KEY`, optional |
 | `openrouter` | `providers::openrouter()` | Chat, `openrouter` | rig's `OPENROUTER` | `OPENROUTER_API_KEY` |
-| `fireworks` | `providers::fireworks()` | Chat, gateway | `https://api.fireworks.ai/inference/v1` `[?]` | `FIREWORKS_API_KEY` |
+| `fireworks` | `providers::fireworks()` | Chat, gateway | `https://api.fireworks.ai/inference/v1` | `FIREWORKS_API_KEY` |
 | `minimax` | `providers::minimax()` | Messages, `minimax` | `https://api.minimax.io/anthropic` | `MINIMAX_API_KEY` |
 | `deepseek`, `groq`, `mistral`, `xai`, `together` | one each | Chat, rig's dialect of that name | rig's | `DEEPSEEK_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `XAI_API_KEY`, `TOGETHER_API_KEY` |
 
@@ -261,7 +261,7 @@ async fn main() -> Result<(), guffbolt_ai::Error> {
 }
 ```
 
-The id is `MiniMax-M3.1-Flash`, rig's catalogue name; a plain `MiniMax-M3.1` is `[?]`.
+The id is `MiniMax-M3.1-Flash`, MiniMax's own name (platform.minimax.io text-generation guide); there is no plain `MiniMax-M3.1`.
 
 - **Dimension 4.1** — a chat answers → Test `a_chat_answers_one_prompt` (unit, guffbolt): a scripted `Model` answering "toml". Expected: `Ending::Answered("toml")`, and the transcript holds both messages.
 - **Dimension 4.2** — a chat runs its tools → Test `a_chat_runs_a_tool_and_answers_with_its_output` (unit): a model that calls `note`, then answers. Expected: the tool ran once, and the answer follows its result.
@@ -416,15 +416,17 @@ N/A: no product or operator signal changes. The provider metric families and the
   - **Q5, the count bounds.** `COUNT_TIMEOUT` and `COUNT_REPLY_BYTES` move unchanged. pi-ai calls no count endpoint, so the rule says cap nothing; dropping them changes agentsfleet runs.
   - **Q6, the first providers.** Recommend the twelve key-based providers in §3; pi's others wait.
   - **Q7, `Chat` in this spec.** Recommend yes: without it the shortest MiniMax chat is the README's 170 lines.
+- **Settled (Nov 22, 2026):**
+  - Fireworks' Chat base is `https://api.fireworks.ai/inference/v1`; the Anthropic-style base drops `/v1` (docs.fireworks.ai/tools-sdks/openai-compatibility).
+  - MiniMax's model id is `MiniMax-M3.1-Flash`; there is no plain `MiniMax-M3.1` (platform.minimax.io/docs/guides/text-generation).
+  - `guffbolt-ai` and `guffbolt` are free on crates.io (`GET /api/v1/crates/<name>` → 404 for both).
+  - M253_004 is free on a fetched `origin/main` (`git ls-tree` → 0 hits).
 - **Unverified (`[?]`):**
-  - `cargo publish -p guffbolt-ai -p guffbolt --dry-run` verifies guffbolt against an unpublished guffbolt-ai. Running it settles it.
-  - Fireworks' Chat path. rig 0.47 has no Fireworks dialect, and pi uses `https://api.fireworks.ai/inference` (`pi/packages/ai/src/providers/fireworks.ts:11`). Fireworks' API docs settle the `/v1` suffix.
-  - A model id `MiniMax-M3.1`. rig's catalogue lists `MiniMax-M3` and `MiniMax-M3.1-Flash` only; MiniMax's model list settles it.
-  - Whether Codex calls a token-count endpoint. A search hit `codex-rs/ext/goal/src/accounting.rs` and `login/src/auth/manager.rs`, unread.
-  - The crates.io name `guffbolt-ai` is free.
-  - M253_004 was not checked against a freshly fetched `origin/main` (SPEC-NUM); this draft ran no `git fetch`.
+  - `cargo publish -p guffbolt-ai -p guffbolt --dry-run` verifies guffbolt against an unpublished guffbolt-ai. §1's Dimension 1.4 runs it.
+  - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
-- **Open blockers** — the `[?]` items above; Q1 to Q7 are answered ("Take all seven").
+- > Owner (Indy, Nov 22, 2026), on §7's Linux-only acceptance run: "Yes, one E2E run at the end (Recommended)" — context: one `orly burst acceptance --provider e2e` after §1–§9 and `make test-integration-rustd` are green, the machine deleted when the run ends.
+- **Open blockers** — none; the two `[?]` left are settled by running §1 and block nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
 
