@@ -871,7 +871,11 @@ Waiting for requests…</pre></div>`+previewNote('This is a sample process, not 
     }dialog('Mention in your message',`<p>Choose a source for this fleet.</p><div class="modal-options"><button class="secondary" data-action="insert-source">${icon('folder-simple')}platform-images</button></div>`);break;
     case 'insert-source':$('#modal').close();insertText('@platform-images');break;
     case 'models':modelPicker();break;
-    case 'retry-models':appState.models[appState.view]='MiniMax M3.1 Flash';showView(appState.view,true);break;
+    case 'retry-models':
+      appState.models[appState.view]='MiniMax M3.1 Flash';
+      showView(appState.view);
+      $('#message')?.focus({preventScroll:true});
+      break;
     case 'model-default':case 'model-economy':appState.models[appState.view]=action==='model-default'?'Default model':'Economy model';$('#modal').close();showView(appState.view);break;
     case 'quote':insertText('> '+(appState.view==='chief'?'Bob confirmed receipt of the morning handoff.':appState.view==='bob'?'I sent the receipt to @chief-of-staff.':appState.view==='activity'?'The changes are ready.':appState.view==='failure'?'The health check hasn’t run.':appState.view==='scheduled'?'Next check at '+scheduleFor().wake+' UTC.':'The runner update is ready.')+'\n\n');break;
     case 'copy-reply':{const text=b.closest('.assistant-turn')?.innerText||'';navigator.clipboard?.writeText(text).then(()=>{b.setAttribute('aria-label','Response copied');b.title='Copied';}).catch(()=>dialog('Copy response',`<p>Select and copy this text.</p><pre>${esc(text)}</pre>`));break;}
