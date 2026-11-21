@@ -7,8 +7,12 @@ use af_core::id::Uuid7;
 use af_wire::context::ContextProgress;
 use serde::{Deserialize, Serialize};
 
-/// Maximum private answer bytes in one preview frame.
-pub(crate) const DELTA_BYTES: usize = 4096;
+/// The room a delta's fields other than its text take in one frame.
+const DELTA_ENVELOPE_BYTES: usize = 4096;
+
+/// Maximum private answer bytes in one preview frame: the draft frame less its
+/// envelope, over the six bytes one character can escape to in JSON.
+pub(crate) const DELTA_BYTES: usize = (afd_bus::DRAFT_FRAME_BYTES - DELTA_ENVELOPE_BYTES) / 6;
 /// Private answer event name, shared by the publisher and HTTP adapter.
 pub const DELTA_EVENT: &str = "message.delta";
 /// Compaction progress event name, shared by the publisher and HTTP adapter.

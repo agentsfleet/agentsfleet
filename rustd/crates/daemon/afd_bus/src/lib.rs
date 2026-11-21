@@ -27,7 +27,11 @@ pub use subscription::{Message, Received, Subscription};
 pub const TAIL_BATCH_BYTES: usize = 64 * 1024;
 
 /// The draft stream's largest frame, declared here for the same reason.
-pub const DRAFT_FRAME_BYTES: usize = 32 * 1024;
+///
+/// NATS's default `max_payload` (1 MiB, which no server here overrides) less a
+/// 64 KiB envelope, so a setup answer's live update is never skipped for its
+/// size.
+pub const DRAFT_FRAME_BYTES: usize = 1024 * 1024 - 64 * 1024;
 
 /// Boot selects one adapter; callers never inspect or downcast it.
 #[async_trait]

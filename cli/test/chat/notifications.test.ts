@@ -38,16 +38,10 @@ test("split CRLF frames ignore unchanged notices, accept a changed state and rel
   expect(released).toBe(true);
 });
 
-test("stream deletion prevents private reconciliation and an oversized frame is discarded", async () => {
+test("stream deletion prevents private reconciliation", async () => {
   const deleted = await Effect.runPromise(Effect.flip(waitNotice({url: "http://stream.test", token: TOKEN,
     sequence: "1", state: "queued", fetchImpl: async () => new Response('event: draft.deleted\ndata: {}\n\n')})));
   expect(deleted.status).toBe(404);
-  let released = false;
-  await Effect.runPromise(waitNotice({url: "http://stream.test", token: TOKEN, sequence: "1", state: "queued",
-    fetchImpl: async () => new Response(new ReadableStream({start(controller) {
-      controller.enqueue(new Uint8Array(65_537)); // pin test: one byte beyond the public frame bound
-    }, cancel() { released = true; }}))}));
-  expect(released).toBe(true);
 });
 
 test("should leave reconciliation to the durable read when the stream cannot connect", async () => {

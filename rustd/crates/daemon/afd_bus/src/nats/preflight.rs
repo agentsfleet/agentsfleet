@@ -10,7 +10,11 @@ use crate::{DRAFT_FRAME_BYTES, TAIL_BATCH_BYTES};
 const ENVELOPE_BYTES: usize = 64 * 1024;
 
 /// The smallest `max_payload` every publisher's frame fits under.
-pub(super) const LARGEST_FRAME_BYTES: usize = TAIL_BATCH_BYTES + ENVELOPE_BYTES;
+pub(super) const LARGEST_FRAME_BYTES: usize = if TAIL_BATCH_BYTES + ENVELOPE_BYTES > DRAFT_FRAME_BYTES {
+    TAIL_BATCH_BYTES + ENVELOPE_BYTES
+} else {
+    DRAFT_FRAME_BYTES
+};
 
 const _: () = assert!(LARGEST_FRAME_BYTES >= TAIL_BATCH_BYTES);
 const _: () = assert!(LARGEST_FRAME_BYTES >= DRAFT_FRAME_BYTES);

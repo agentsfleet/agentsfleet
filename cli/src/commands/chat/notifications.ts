@@ -6,7 +6,6 @@ import type { FetchImpl } from "../../lib/http.ts";
 import { parseSseFrame } from "../../lib/sse.ts";
 
 const STREAM_WAIT_MS = 2_000;
-const FRAME_LIMIT_BYTES = 64 * 1024;
 const FRAME_SEPARATOR = "\n\n";
 const DELETED_EVENT = "draft.deleted";
 const ACCESS_STATUSES = new Set([401, 403, 404, 410]);
@@ -57,8 +56,6 @@ async function consume(body: ReadableStream<Uint8Array>, input: NoticeInput): Pr
     while (true) {
       const {value, done} = await reader.read();
       if (done) return;
-      // Refuse before decoding or accumulating an oversized transport chunk.
-      if (value.byteLength + buffered.length > FRAME_LIMIT_BYTES) return;
       buffered = (buffered + decoder.decode(value, {stream: true})).replaceAll("\r\n", "\n");
       let boundary = buffered.indexOf(FRAME_SEPARATOR);
       while (boundary !== -1) {
