@@ -18,7 +18,6 @@ use std::fmt;
 use af_core::error_code::{self, ErrorCode};
 use af_wire::report::FailureClass;
 use rig_core::ProviderError;
-use rig_core::message::EmptyToolName;
 
 pub(crate) mod raise;
 
@@ -130,28 +129,25 @@ pub(crate) enum ErrorKind {
         provider: String,
     },
 
-    /// The conversation holds a result that answers no call before it.
-    #[error("the conversation cannot be sent: the result for call {call_id} answers no call")]
-    Unsendable {
-        /// The id the result names.
-        call_id: String,
-    },
-
-    /// The conversation holds a call with no tool name.
-    #[error("the conversation cannot be sent: call {call_id} names no tool")]
-    Unnamed {
-        /// The call's id.
-        call_id: String,
-        /// rig's reason.
-        #[source]
-        source: EmptyToolName,
-    },
+    /// The conversation cannot be sent as it stands: a result answers no
+    /// call, a call names no tool, or a turn's record will not read. The
+    /// words are the wire's.
+    #[error(transparent)]
+    Conversation { source: guffbolt_ai::Error },
 
     /// Persisted model settings could not be admitted.
     #[error("the selected model's inference settings are invalid")]
     Configuration {
         #[source]
         source: af_inference::Error,
+    },
+
+    /// The route the settings name cannot carry this turn: its input leaves
+    /// the window no room, or the wire cannot encode it.
+    #[error("the selected model's inference settings are invalid")]
+    Route {
+        #[source]
+        source: guffbolt_ai::Error,
     },
 
     /// The HTTP client could not be built.
@@ -187,9 +183,9 @@ impl Error {
             | ErrorKind::Wire { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Configuration { .. }
+            | ErrorKind::Route { .. }
             | ErrorKind::Client { .. } => None,
         }
     }
@@ -217,9 +213,9 @@ impl Error {
             | ErrorKind::Wire { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Configuration { .. }
+            | ErrorKind::Route { .. }
             | ErrorKind::Client { .. } => None,
         }
     }
@@ -233,6 +229,7 @@ impl Error {
                 | ErrorKind::DecisionBuild { .. }
                 | ErrorKind::DecisionPreflight { .. }
                 | ErrorKind::Configuration { .. }
+                | ErrorKind::Route { .. }
         )
     }
 
@@ -277,7 +274,8 @@ impl Error {
             | ErrorKind::DecisionPreflight { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
-            | ErrorKind::Configuration { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
+            | ErrorKind::Configuration { .. }
+            | ErrorKind::Route { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
             ErrorKind::DecisionOversize
             | ErrorKind::DecisionStatus { .. }
             | ErrorKind::Refused { .. }
@@ -286,8 +284,7 @@ impl Error {
             | ErrorKind::Silent { .. }
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
@@ -312,8 +309,8 @@ impl Error {
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
             | ErrorKind::Configuration { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Route { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }
@@ -337,8 +334,8 @@ impl Error {
             | ErrorKind::Oversize { .. }
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Configuration { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Route { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Wire { .. }
             | ErrorKind::Client { .. } => None,
         }

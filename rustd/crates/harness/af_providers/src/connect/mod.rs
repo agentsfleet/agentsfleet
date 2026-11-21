@@ -1,14 +1,17 @@
 //! Runtime routes come from the selected model's persisted run settings.
 
 use std::fmt;
+use std::sync::Arc;
 
 use af_wire::policy::ExecutionPolicy;
 use af_wire::run::RunPayload;
+use guffbolt_ai::wire::Connected;
 
 use crate::error::{Result, raise};
 use crate::provider::Provider;
-use crate::transport::Transport;
+use crate::transport::guarded;
 use crate::turn::Turns;
+use crate::turn::observer::RunObserver;
 use af_inference::Configured;
 
 /// What reaches the model a run names.
@@ -40,7 +43,8 @@ pub trait Connect: Send + Sync + fmt::Debug {
 ///
 /// A cheap handle: cloning it shares the client's connection pool. The client
 /// follows no redirect, so a turn reaches the host its route names and no
-/// other, with the key on it.
+/// other, with the key on it. A reply is bounded by the runner frame
+/// ([`REPLY_MAX_BYTES`](af_inference::transport::REPLY_MAX_BYTES)).
 #[derive(Debug, Clone)]
 pub struct Connector {
     client: reqwest::Client,
@@ -92,7 +96,7 @@ impl Connector {
     }
 }
 
-fn configured<'a>(policy: &'a ExecutionPolicy<'_>) -> Result<Configured<'a>> {
+fn configured(policy: &ExecutionPolicy<'_>) -> Result<Configured> {
     let settings = policy
         .inference
         .as_ref()
@@ -107,20 +111,20 @@ impl Connect for Connector {
 
     fn connect(&self, run: &RunPayload<'_>) -> Result<Box<Provider>> {
         let policy = &run.policy;
-        let route = configured(policy)?;
-        let settings = policy
-            .inference
-            .as_ref()
-            .ok_or_else(|| raise::unhosted(&policy.provider))?;
+        let route = configured(policy)?.into_route();
         let run_id = run.run_id.as_ref();
-        let transport =
-            Transport::new(self.client.clone(), run_id, &policy.provider).with_retry(self.retries);
-        let counting_transport = transport.clone().once().http();
-        let model = route.model(&policy.context.model, &policy.api_key, transport.http());
-        Ok(Box::new(
-            Turns::new(model, settings, policy, run_id, counting_transport)
-                .with_settings(self.timeouts, self.retries),
-        ))
+        let observer = RunObserver::new(run_id, &policy.provider);
+        let connected = Connected::new(
+            route,
+            &policy.context.model,
+            &policy.api_key,
+            guarded(self.client.clone()),
+        )
+        .with_retry(self.retries.wire())
+        .with_timeouts(self.timeouts.wire())
+        .with_reply_bound(af_inference::transport::REPLY_MAX_BYTES)
+        .with_observer(Arc::new(observer));
+        Ok(Box::new(Turns::new(connected, run_id, &policy.provider)))
     }
 }
 

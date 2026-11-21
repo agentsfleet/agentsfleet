@@ -159,34 +159,44 @@ fn should_name_a_reply_the_wire_could_not_read_the_fleets_error_with_its_cause()
 
 #[tokio::test]
 async fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
-    use af_inference::transport::{HttpTransport, REPLY_MAX_BYTES, SendRequest};
     use bytes::Bytes;
-    use futures_util::future::BoxFuture;
-    use rig_http::HttpClientExt as _;
-    #[derive(Debug)]
+    use futures_util::StreamExt as _;
+    use guffbolt::Model as _;
+    use guffbolt_ai::wire::transport::{Send, Sent};
+    use guffbolt_ai::wire::{Api, Connected, Route};
+    /// The bound a turn here is held to.
+    const BOUND: usize = 16;
     struct Oversized;
-    impl SendRequest for Oversized {
-        fn send(
-            &self,
-            _: http::Request<Bytes>,
-        ) -> BoxFuture<'static, rig_http::Result<rig_http::StreamingResponse>> {
-            Box::pin(async {
-                Ok(http::Response::new(
-                    Box::pin(futures_util::stream::iter([Ok(Bytes::from(vec![
-                        b'x';
-                        REPLY_MAX_BYTES
-                            + 1
-                    ]))])) as rig_http::BoxedStream,
-                ))
-            })
+    impl Send for Oversized {
+        fn send(&self, _: http::Request<Bytes>) -> Sent {
+            let body = futures_util::stream::iter([Ok(Bytes::from(vec![b':'; BOUND + 1]))]);
+            let response = http::Response::builder()
+                .header(http::header::CONTENT_TYPE, "text/event-stream")
+                .body(body.boxed())
+                .unwrap();
+            Box::pin(async { Ok(response) })
         }
     }
-    let response = HttpTransport::new(std::sync::Arc::new(Oversized))
-        .send(http::Request::new(Bytes::new()))
-        .await
+    let route = Route::new(Api::Chat, "https://model.example/v1", None, 37, 128_000).unwrap();
+    let connected = Connected::new(route, "m", "k", Oversized).with_reply_bound(BOUND);
+    let messages = [guffbolt::Message::User("hello".into())];
+    let request = guffbolt::Request {
+        model: "m",
+        instructions: "",
+        messages: &messages,
+        tools: &[],
+        hosted: &[],
+        cache_key: "",
+        max_output_tokens: None,
+        single_attempt: false,
+    };
+    let chunks: Vec<_> = connected.stream(request).collect().await;
+    let failure = chunks
+        .into_iter()
+        .find_map(Result::err)
+        .unwrap()
+        .into_provider_failure()
         .unwrap();
-    let source = response.into_body().await.unwrap_err();
-    let failure = ProviderError::from_transport_error(source);
     let reset = ProviderError::from_transport_error(rig_http::Error::transient(
         std::io::Error::other("reset"),
     ));

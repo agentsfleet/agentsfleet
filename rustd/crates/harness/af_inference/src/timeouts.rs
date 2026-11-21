@@ -1,8 +1,13 @@
-//! Physical provider deadlines shared by daemon and runner configuration.
+//! Physical provider deadlines shared by daemon and runner configuration:
+//! the connect bound agentsfleet's guarded client takes, beside the
+//! deadlines a turn is read under.
 
 use garde::Validate;
 use serde::Deserialize;
 use std::time::Duration;
+
+/// Shared connection establishment bound for guarded physical senders.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Startup settings; caller cancellation and earlier absolute deadlines still win.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
@@ -19,8 +24,10 @@ pub struct TimeoutSettings {
 impl Default for TimeoutSettings {
     fn default() -> Self {
         Self {
-            connect_timeout_seconds: super::stream::CONNECT_TIMEOUT.as_secs(),
-            stream_idle_timeout_seconds: super::stream::READ_TIMEOUT.as_secs(),
+            connect_timeout_seconds: CONNECT_TIMEOUT.as_secs(),
+            stream_idle_timeout_seconds: guffbolt_ai::wire::Timeouts::DEFAULT
+                .stream_idle()
+                .as_secs(),
         }
     }
 }
@@ -29,9 +36,7 @@ impl Default for TimeoutSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timeouts {
     connect: Duration,
-    stream_idle: Duration,
-    count: Duration,
-    count_reply_bytes: usize,
+    wire: guffbolt_ai::wire::Timeouts,
 }
 
 impl Default for Timeouts {
@@ -43,10 +48,8 @@ impl Default for Timeouts {
 impl Timeouts {
     /// Existing defaults also support constant client construction.
     pub const DEFAULT: Self = Self {
-        connect: super::stream::CONNECT_TIMEOUT,
-        stream_idle: super::stream::READ_TIMEOUT,
-        count: super::count::COUNT_TIMEOUT,
-        count_reply_bytes: super::count::COUNT_REPLY_BYTES,
+        connect: CONNECT_TIMEOUT,
+        wire: guffbolt_ai::wire::Timeouts::DEFAULT,
     };
 
     /// Accepts only settings whose positive, finite bounds were checked.
@@ -54,8 +57,8 @@ impl Timeouts {
     pub fn new(settings: &garde::Valid<TimeoutSettings>) -> Self {
         Self {
             connect: Duration::from_secs(settings.connect_timeout_seconds),
-            stream_idle: Duration::from_secs(settings.stream_idle_timeout_seconds),
-            ..Self::DEFAULT
+            wire: guffbolt_ai::wire::Timeouts::DEFAULT
+                .with_stream_idle(Duration::from_secs(settings.stream_idle_timeout_seconds)),
         }
     }
 
@@ -63,21 +66,20 @@ impl Timeouts {
     /// its reply at most `reply_bytes`.
     #[must_use]
     pub const fn with_count(mut self, count: Duration, reply_bytes: usize) -> Self {
-        self.count = count;
-        self.count_reply_bytes = reply_bytes;
+        self.wire = self.wire.with_count(count, reply_bytes);
         self
     }
 
     /// How long a native token count may take.
     #[must_use]
     pub const fn count(self) -> Duration {
-        self.count
+        self.wire.count()
     }
 
     /// The largest native token-count reply accepted, in bytes.
     #[must_use]
     pub const fn count_reply_bytes(self) -> usize {
-        self.count_reply_bytes
+        self.wire.count_reply_bytes()
     }
 
     /// Physical connection establishment limit.
@@ -89,6 +91,12 @@ impl Timeouts {
     /// Provider stream and socket inactivity limit.
     #[must_use]
     pub const fn stream_idle(self) -> Duration {
-        self.stream_idle
+        self.wire.stream_idle()
+    }
+
+    /// The deadlines a turn is read under.
+    #[must_use]
+    pub const fn wire(self) -> guffbolt_ai::wire::Timeouts {
+        self.wire
     }
 }

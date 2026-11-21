@@ -207,13 +207,13 @@ The default transport is a `reqwest` client behind feature `reqwest`. It follows
 - **Retries:** 3 attempts and 3 openings, as the SDKs' 2 retries (`pi/packages/ai/src/types.ts:207-210`). A `Retry-After` past 60 s ends the turn, as pi's `maxRetryDelayMs` (`types.ts:212-218`).
 - **Count call:** `COUNT_TIMEOUT` (10 s) and `COUNT_REPLY_BYTES` (16 KiB) (`af_inference/src/count/native.rs:12-13`) move unchanged, so runs behave as before (Q5).
 
-- **Dimension 2.1** — the moved suites pass → Test the `af_inference` and `af_providers` generic suites (integration, fake TLS provider, unit lane), names and assertions unchanged. Expected: every one passes under guffbolt-ai.
-- **Dimension 2.2** — no reply bound unless asked → Test `with_no_bound_a_reply_past_32_mib_is_read` (integration): a 33 MiB streamed reply. Expected: the turn ends answered.
-- **Dimension 2.3** — the embedder's bound holds → Test `a_reply_past_the_bound_the_embedder_set_is_refused` (integration): bound 1 MiB, reply 1 MiB + 1 event. Expected: `Error::is_reply_too_large()`, the turn not reopened.
-- **Dimension 2.4** — no redirect carries the key → Test `a_redirect_is_not_followed_with_the_key` (integration): the provider answers 307 to a second listener. Expected: the turn fails with status 307, and the second listener sees no request.
-- **Dimension 2.5** — a refused host is not retried → Test `a_send_the_guard_refused_is_not_retried` (unit): a transport answering `SendError::Refused`. Expected: one send, the error kept.
-- **Dimension 2.6** — a long wait is not slept → Test `a_retry_after_past_sixty_seconds_ends_the_turn` (integration, paused clock): 429 with `Retry-After: 120`. Expected: one send, and the turn ends with status 429.
-- **Dimension 2.7** — a silent provider ends → Test `a_silent_provider_ends_at_the_idle_timeout` (integration, paused clock): headers, then silence. Expected: a deadline failure at 300 s.
+- **Dimension 2.1** — the moved suites pass → Test the `af_inference` and `af_providers` generic suites (integration, fake TLS provider, unit lane), names and assertions unchanged. Expected: every one passes under guffbolt-ai. — DONE
+- **Dimension 2.2** — no reply bound unless asked → Test `with_no_bound_a_reply_past_32_mib_is_read` (integration): a 33 MiB streamed reply. Expected: the turn ends answered. — DONE
+- **Dimension 2.3** — the embedder's bound holds → Test `a_reply_past_the_bound_the_embedder_set_is_refused` (integration): bound 1 MiB, reply 1 MiB + 1 event. Expected: `Error::is_reply_too_large()`, the turn not reopened. — DONE
+- **Dimension 2.4** — no redirect carries the key → Test `a_redirect_is_not_followed_with_the_key` (integration): the provider answers 307 to a second listener. Expected: the turn fails with status 307, and the second listener sees no request. — DONE
+- **Dimension 2.5** — a refused host is not retried → Test `a_send_the_guard_refused_is_not_retried` (unit): a transport answering `SendError::Refused`. Expected: one send, the error kept. — DONE
+- **Dimension 2.6** — a long wait is not slept → Test `a_retry_after_past_sixty_seconds_ends_the_turn` (integration, paused clock): 429 with `Retry-After: 120`. Expected: one send, and the turn ends with status 429. — DONE
+- **Dimension 2.7** — a silent provider ends → Test `a_silent_provider_ends_at_the_idle_timeout` (integration, paused clock): headers, then silence. Expected: a deadline failure at 300 s. — DONE
 
 ### §3 — Providers, keys and a static catalogue
 
@@ -433,6 +433,11 @@ N/A: no product or operator signal changes. The provider metric families and the
   - `cargo publish -p guffbolt-ai -p guffbolt --dry-run --allow-dirty --locked` exits 0 with guffbolt-ai unpublished. Cargo packages guffbolt-ai, verifies it, then unpacks it into a local registry (`target/package/tmp-registry`) and verifies guffbolt against that copy. guffbolt's dependency is a path plus `version = "0.78.0"`, declared as `[workspace.dependencies.guffbolt-ai]` so `make sync-version` moves the version with the workspace's. The `guffbolt standalone` step of `make lint-rustd` runs this two-crate dry run.
   - §1 adds no `guffbolt_ai::Error`: the moved types have no fallible function. The hand-written `Error` and its `Result` land with §2's first fallible one.
   - M253_004 is free on a fetched `origin/main` (`git ls-tree` → 0 hits).
+- **Settled while building §2 (Nov 22, 2026):**
+  - The wires log nothing. `guffbolt_ai::wire::Observer` hears a turn's start, first text, end, input calibration, each retry and each reopening; `af_providers`' `RunObserver` writes the `model_turn_*`, `model_input_calibration`, `provider_retry` and `provider_turn_reopened` lines and the measurements, fields unchanged.
+  - `af_inference` is a shim until §5: `Configured` (garde, `provider_endpoint`, `accepts_endpoint`) over `guffbolt_ai::wire::Route`, `Timeouts` (agentsfleet's 10 s connect beside the wire's `Timeouts`), `TimeoutSettings`, and `transport::REPLY_MAX_BYTES` = `af_wire::protocol::MESSAGE_BYTES_MAX`, so `runner/main` builds unchanged.
+  - `af_providers::RetryPolicy` wraps `guffbolt_ai::wire::Retry`; `Connector::connect` builds a `Connected` over its guarded client (`Reqwest::refusing(af_egress::blocked_address)`) with the frame as its reply bound, and `Turns` maps its failures to the same kinds, codes and classes.
+  - `estimate`, `context_document` and `retry_after` are public in `guffbolt_ai::wire`: the scripted model, the context index and the decision client use them.
 - **Unverified (`[?]`):**
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.

@@ -2,10 +2,12 @@
 //! (`docs/architecture/runner_execution.md` §Crates).
 //!
 //! A [`Connect`] picks the route a run's policy names and builds its
-//! [`Provider`]. rig speaks every wire; the runner owns which providers a
-//! run may reach, the transport under rig (one HTTP client, no redirect,
-//! bounded retry) and the turn's chunks. The model key lives only here, in
-//! the supervisor: no provider runs inside a sandbox.
+//! [`Provider`]. `guffbolt_ai::wire` speaks every wire over rig, retries a
+//! send and streams the turn's chunks; the runner owns which providers a run
+//! may reach, the guarded client under the wire (one HTTP client, no
+//! redirect), the reply bound, and how a failure is reported and logged. The
+//! model key lives only here, in the supervisor: no provider runs inside a
+//! sandbox.
 
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
@@ -17,16 +19,12 @@ pub mod observe;
 pub mod testing;
 
 mod connect;
-mod image_input;
 mod provider;
-mod request;
 mod retry;
 mod transport;
 mod turn;
-mod usage;
 
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
-pub use self::provider::Provider;
+pub use self::provider::{Provider, context_document};
 pub use self::retry::settings::{RetryPolicy, RetrySettings};
-pub use request::context_document;

@@ -1,6 +1,7 @@
 //! Independent limits for physical sends and eligible stream reopenings.
 
 use garde::Validate;
+use guffbolt_ai::wire::Retry;
 use serde::Deserialize;
 use std::time::Duration;
 
@@ -33,14 +34,10 @@ impl Default for RetrySettings {
     }
 }
 
-/// Checked settings shared by all run providers on one runner.
+/// Checked settings shared by all run providers on one runner: the wire's
+/// retry, built from settings startup proved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RetryPolicy {
-    pub(super) attempts: usize,
-    pub(crate) openings: usize,
-    pub(super) backoff: Duration,
-    pub(super) wait_ceiling: Duration,
-}
+pub struct RetryPolicy(Retry);
 
 impl Default for RetryPolicy {
     fn default() -> Self {
@@ -50,21 +47,23 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     /// Preserves the existing three sends and three eligible openings.
-    pub const DEFAULT: Self = Self {
-        attempts: 3,
-        openings: 3,
-        backoff: Duration::from_secs(1),
-        wait_ceiling: Duration::from_secs(60),
-    };
+    pub const DEFAULT: Self = Self(Retry::DEFAULT);
 
     /// Constructs the policy after startup validation.
     #[must_use]
     pub fn new(settings: &garde::Valid<RetrySettings>) -> Self {
-        Self {
-            attempts: settings.max_attempts,
-            openings: settings.max_stream_open_attempts,
-            backoff: Duration::from_millis(settings.initial_backoff_ms),
-            wait_ceiling: Duration::from_secs(settings.max_retry_after_seconds),
-        }
+        Self(
+            Retry::DEFAULT
+                .with_attempts(settings.max_attempts)
+                .with_openings(settings.max_stream_open_attempts)
+                .with_backoff(Duration::from_millis(settings.initial_backoff_ms))
+                .with_wait_ceiling(Duration::from_secs(settings.max_retry_after_seconds)),
+        )
+    }
+
+    /// The retry the wire sends and opens each turn under.
+    #[must_use]
+    pub const fn wire(self) -> Retry {
+        self.0
     }
 }

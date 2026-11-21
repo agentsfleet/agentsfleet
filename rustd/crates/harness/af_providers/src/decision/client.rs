@@ -9,11 +9,11 @@ use futures_util::{TryStreamExt as _, future::BoxFuture};
 use garde::Valid;
 
 use super::{DecisionEvaluator, document, preflight, wire};
-use crate::retry::retry_after;
 use crate::{
     Result,
     error::{Error, ErrorKind, raise},
 };
+use guffbolt_ai::wire::retry_after;
 
 /// Initial connect bound for a physical decision call.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);

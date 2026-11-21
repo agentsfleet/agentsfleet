@@ -6,11 +6,19 @@
 //! function-calling shape, so the loop never knows which provider it drives.
 //! The one provider-owned value the loop carries is a turn's
 //! [`Replay`](guffbolt::Replay): the turn's own assistant message as rig
-//! records it, which this crate writes at a turn's end and reads back when
-//! the next request carries it.
+//! records it, which `guffbolt_ai::wire` writes at a turn's end and reads
+//! back when the next request carries it.
 
 use crate::error::Error;
 
 /// A model provider a run drives: what [`Connect`](crate::Connect) hands
 /// back, and what the loop streams each turn from.
 pub type Provider = dyn guffbolt::Model<Error = Error>;
+
+/// Encode one complete source group as quoted data, including opaque replay.
+///
+/// # Errors
+/// A tool result lacks its assistant call, or the group cannot be encoded.
+pub fn context_document(messages: &[guffbolt::Message]) -> crate::Result<String> {
+    guffbolt_ai::wire::context_document(messages).map_err(crate::error::raise::wire)
+}

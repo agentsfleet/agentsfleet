@@ -4,7 +4,6 @@
 use garde::Validate as _;
 use std::error::Error as StdError;
 
-use rig_core::message::EmptyToolName;
 use rig_core::{ProviderError, ProviderResponseError};
 
 use super::{Error, ErrorKind};
@@ -52,21 +51,14 @@ pub(crate) fn configuration(source: af_inference::Error) -> Error {
     Error::from(ErrorKind::Configuration { source })
 }
 
-/// The conversation cannot be sent: the result for `call_id` answers no call
-/// before it.
-pub(crate) fn unsendable(call_id: &str) -> Error {
-    Error::from(ErrorKind::Unsendable {
-        call_id: call_id.to_owned(),
-    })
-}
-
-/// The conversation cannot be sent: call `call_id` names no tool, for
-/// `source`.
-pub(crate) fn unnamed(call_id: &str, source: EmptyToolName) -> Error {
-    Error::from(ErrorKind::Unnamed {
-        call_id: call_id.to_owned(),
-        source,
-    })
+/// A wire failure that is not the provider's: the conversation cannot be
+/// sent as it stands, or the route cannot carry the turn.
+pub(crate) fn wire(source: guffbolt_ai::Error) -> Error {
+    if source.is_unsendable() {
+        Error::from(ErrorKind::Conversation { source })
+    } else {
+        Error::from(ErrorKind::Route { source })
+    }
 }
 
 /// `failure`, as rig reported it, as the kind a report names: a status the
@@ -120,8 +112,8 @@ pub(crate) fn oversize(failure: &ProviderError) -> bool {
     };
     let first: &(dyn StdError + 'static) = &**transport;
     std::iter::successors(Some(first), |&error| error.source())
-        .filter_map(|error| error.downcast_ref::<af_inference::Error>())
-        .any(af_inference::Error::is_oversize)
+        .filter_map(|error| error.downcast_ref::<guffbolt_ai::Error>())
+        .any(guffbolt_ai::Error::is_reply_too_large)
 }
 
 /// The provider's own name for `failure`, when it gave one that reads as a

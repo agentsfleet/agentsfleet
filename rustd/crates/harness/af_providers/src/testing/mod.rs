@@ -8,7 +8,7 @@ pub mod observed;
 #[cfg(feature = "test-util")]
 pub mod scripted;
 #[cfg(feature = "test-util")]
-pub mod tls;
+pub use guffbolt_ai::testing::tls;
 
 pub use self::observed::{Observed, Scoped, Tally, scoped};
 
@@ -21,9 +21,5 @@ use guffbolt::Request;
 /// # Errors
 /// The request cannot be encoded.
 pub fn measure(request: Request<'_>) -> crate::Result<u64> {
-    let body = crate::request::request(af_wire::inference::InferenceApi::Chat, &request)?;
-    let text = serde_json::to_string(&body)?;
-    let tokens = af_inference::input_tokens(request.model, &text)
-        .saturating_add(body.chat_history.len().saturating_mul(32));
-    Ok(u64::try_from(tokens).unwrap_or(u64::MAX))
+    guffbolt_ai::wire::estimate(request).map_err(crate::error::raise::wire)
 }
