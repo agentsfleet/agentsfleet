@@ -19,7 +19,7 @@ const CORPUS: &str = "tests/fixtures/fleets";
 /// The file each first-party fleet directory holds its native setup in.
 const DEFINITION_FILE: &str = "definition.json";
 
-/// The placeholder the `platform-ops` and `steer-probe` setups carry in place
+/// The placeholder `definition/with_model_and_context.json` carries in place
 /// of a runtime model, quoted as the JSON string it stands in.
 const MODEL_PLACEHOLDER: &str = "{{model}}";
 
@@ -38,14 +38,10 @@ pub(crate) const TOOL_HTTP_REQUEST: &str = "http_request";
 
 /// One slug per first-party fleet, and the slug IS the identity: it names the
 /// fixture directory and the `config.name` its Definition declares.
-pub(crate) const FIRST_PARTY: [&str; 9] = [
+pub(crate) const FIRST_PARTY: [&str; 5] = [
+    "runner-link-watch",
     "github-pr-reviewer",
-    "security-reviewer",
-    "zoho-sprint-daily-summarizer",
-    "zoho-recruiter-daily-summarizer",
-    "incident-responder",
     "incident-repairer",
-    "incident-verifier",
     "ci-responder",
     "ci-repairer",
 ];

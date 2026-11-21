@@ -86,14 +86,14 @@ fn an_auto_tool_window_resolves_to_the_zero_sentinel() {
 /// The declarative-schedule fleet carries its cron fields and no local timer.
 #[test]
 fn the_declarative_schedule_definition_carries_its_cron_fields() {
-    let parsed = definition(&definition_path("zoho-sprint-daily-summarizer"));
+    let parsed = definition(&definition_path("runner-link-watch"));
 
     let [Trigger::Cron(cron)] = parsed.runtime().triggers() else {
-        panic!("the summarizer declares exactly one cron trigger");
+        panic!("the link watch declares exactly one cron trigger");
     };
-    assert_eq!(&*cron.schedule, "0 9 * * *");
-    assert_eq!(&*cron.timezone, "Asia/Kolkata");
-    assert_eq!(&*cron.message, "Summarize today's Zoho Sprints activity");
+    assert_eq!(&*cron.schedule, "7 * * * *");
+    assert_eq!(&*cron.timezone, "UTC");
+    assert_eq!(&*cron.message, "Hourly runner link check");
 }
 
 /// A configuration whose single gate rule declares `kind`.

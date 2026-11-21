@@ -12,7 +12,7 @@
 use af_fleet_runtime::config::{HttpEgress, Reach};
 use af_fleet_runtime::{CredentialName, Definition};
 
-use crate::support::{FIRST_PARTY, MODEL_VALUE, definition, definition_path, fixture, raw_fixture};
+use crate::support::{FIRST_PARTY, definition, definition_path, fixture, raw_fixture};
 
 /// What one corpus document must answer, named by the sentence a reviewer
 /// reads rather than a crate-private kind.
@@ -87,21 +87,11 @@ fn every_first_party_definition_agrees_with_its_directory_name() {
     }
 }
 
-/// The templated setups parse once their placeholders are filled.
-#[test]
-fn the_templated_definitions_parse_once_their_placeholders_are_filled() {
-    for slug in ["platform-ops", "steer-probe"] {
-        let parsed = definition(&definition_path(slug));
-
-        assert_eq!(parsed.runtime().model(), Some(MODEL_VALUE), "{slug}");
-    }
-}
-
 /// The raw templated document does NOT parse, which is what makes the
 /// substitution above load-bearing rather than decorative.
 #[test]
 fn an_unsubstituted_template_is_refused() {
-    let raw = raw_fixture(&definition_path("steer-probe"));
+    let raw = raw_fixture("definition/with_model_and_context.json");
 
     assert!(
         Definition::parse(&raw).is_err(),

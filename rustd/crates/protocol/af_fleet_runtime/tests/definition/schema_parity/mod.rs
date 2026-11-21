@@ -73,6 +73,12 @@ fn corpus() -> Vec<String> {
         .filter(|slug| root.join(definition_path(slug)).is_file())
         .map(|slug| definition_path(&slug))
         .collect();
+    // The accepted per-setting files carry the shapes no fleet does: a
+    // cron with no timezone, a webhook with no repositories, and
+    // `tool_window: "auto"` with a templated model.
+    found.extend(
+        ["minimal", "full", "with_model_and_context"].map(|name| format!("definition/{name}.json")),
+    );
     found.sort();
     found
 }
