@@ -42,7 +42,7 @@ pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
 pub(crate) const NOTIFY_EXITED: &str = "process/exited";
 
-/// The longest line either end reads: Codex's exec-server frame. A write of a
+/// The longest line either end reads: 64 MiB. A write of a
 /// file is the largest message, and this caps it before base64 expands it by
 /// a third.
 pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;

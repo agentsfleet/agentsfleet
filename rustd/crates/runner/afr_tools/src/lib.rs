@@ -1,7 +1,7 @@
 //! The tool catalog: every tool the published tools page names, the runtime
 //! each executes in, and the handlers this runner hosts.
 //!
-//! The runner is the harness in Codex's shape: a run's
+//! The runner is the harness: a run's
 //! `ExecutionPolicy.tools` selects which tools the model is offered, the model
 //! picks by function calling, and the router in `afr_agent` runs each handler
 //! where its [`Runtime`] says (`docs/architecture/runner_execution.md` §"Tool

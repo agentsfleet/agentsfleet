@@ -1,5 +1,5 @@
 //! `ls`, `find` and `grep`: looking around the working directory without changing
-//! it, in the shape of pi's tools (`coding-agent/src/core/tools/`).
+//! it.
 //!
 //! All three read through the environment's file calls, never a spawned
 //! `find` or `rg`, so they work wherever the file tools do and start no
@@ -23,9 +23,9 @@ use crate::tools::{Context, Handler, code};
 
 pub use self::grep::{Grep, Lines};
 
-/// The entries `ls` answers with when the model names no limit: pi's.
+/// The entries `ls` answers with when the model names no limit.
 const LS_DEFAULT: usize = 500;
-/// The paths `find` answers with when the model names no limit: pi's.
+/// The paths `find` answers with when the model names no limit.
 const FIND_DEFAULT: usize = 1000;
 /// The most entries one walk visits, so a call over a vast tree ends.
 pub const WALK_MAX: usize = 20_000;

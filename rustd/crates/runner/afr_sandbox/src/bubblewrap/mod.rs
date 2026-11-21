@@ -1,9 +1,8 @@
 //! The bubblewrap command line one run's sandbox starts with.
 //!
 //! Pure: what is mounted where, which namespaces are new, and what the process
-//! inside may not keep. Codex's `linux-sandbox` launches bubblewrap the same
-//! way; this one adds `--disable-userns` and `--clearenv`, and hardens further
-//! from the inside (`crate::harden`).
+//! inside may not keep. It passes `--disable-userns` and `--clearenv`, and
+//! hardens further from the inside (`crate::harden`).
 //!
 //! # What the binds allow
 //!

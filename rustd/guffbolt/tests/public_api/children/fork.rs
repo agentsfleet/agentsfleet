@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// `fork_turns` takes Codex's values: `none` keeps none of the parent's
+/// `fork_turns` takes three values: `none` keeps none of the parent's
 /// turns, `all` (and its absence) keeps every one, and a number keeps the
 /// parent's last that many.
 #[tokio::test]
@@ -79,7 +79,7 @@ async fn fork_turns_none_all_and_a_number_start_from_that_much_history() {
 /// A `fork_turns` that is neither `none`, `all`, blank nor a whole number of
 /// turns from 1 is refused, and no child starts.
 #[tokio::test]
-async fn fork_turns_that_is_no_value_codex_takes_is_refused() {
+async fn fork_turns_that_is_no_value_it_takes_is_refused() {
     let (agents, requests) = Agents::new(CAPS);
     let tools = seven(&agents);
     let script = Script::default().plays(
@@ -119,10 +119,10 @@ async fn fork_turns_that_is_no_value_codex_takes_is_refused() {
     assert_eq!(family.agents.list(), Vec::new(), "no child started");
 }
 
-/// `fork_turns` read as Codex reads it: trimmed, blank as `all`, either word
+/// `fork_turns` parsed: trimmed, blank as `all`, either word
 /// in any case, or a whole number of turns from 1.
 #[test]
-fn fork_parse_reads_codexs_values_and_nothing_else() {
+fn fork_parse_reads_none_all_or_a_number_and_nothing_else() {
     use std::num::NonZeroUsize;
 
     use guffbolt::agents::Fork;

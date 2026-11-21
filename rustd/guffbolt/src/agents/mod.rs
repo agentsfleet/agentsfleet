@@ -25,8 +25,8 @@
 //! it.
 //!
 //! The seven tools that start and steer children are the harness's own,
-//! built with [`crate::tools::ToolsBuilder::with_agents`] and named as Codex
-//! names its multi-agent tools. Each answers with an order the loop runs in
+//! built with [`crate::tools::ToolsBuilder::with_agents`] and named as models
+//! are trained to call them. Each answers with an order the loop runs in
 //! the calling loop's place, so a child's spawn is that child's own.
 //!
 //! A [`Pause`] proves the children quiet, for an embedder that saves a run:

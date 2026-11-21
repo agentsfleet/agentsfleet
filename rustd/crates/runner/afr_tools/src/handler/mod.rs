@@ -3,8 +3,7 @@
 //! The model is told the JSON Schema of [`Handler::Arguments`] and a call's
 //! arguments parse into it, so what the model is told and what the handler
 //! reads cannot drift, and an argument the type does not name refuses the call
-//! (`#[serde(deny_unknown_fields)]`), the way Codex's tools parse theirs
-//! (`codex-rs/protocol/src/plan_tool.rs`). [`Typed`] is the one place a call
+//! (`#[serde(deny_unknown_fields)]`). [`Typed`] is the one place a call
 //! is parsed, for every handler.
 
 use std::fmt;

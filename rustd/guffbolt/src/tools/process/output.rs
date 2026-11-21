@@ -9,8 +9,8 @@
 //! output that does not carries one marker counting every byte not shown. A
 //! process whose output was still open when it ended says so before its
 //! status. The status line comes last so the thread's `output_head`
-//! stays the command's own first lines, and it is worded as Codex words it,
-//! so a model trained on Codex's harness reads it unprompted.
+//! stays the command's own first lines, and it is worded as models are
+//! trained to read it.
 
 use tokio::time::Instant;
 
@@ -18,10 +18,9 @@ use crate::tool::ErrorCode;
 use crate::tools::code;
 use crate::tools::env::{EDGE_BYTES, Ending, Process, ProcessEvent};
 
-/// The bytes one token is taken to cover: Codex's estimate.
+/// The bytes one token is taken to cover.
 const BYTES_PER_TOKEN: usize = 4;
-/// The tokens of output a call reads back when the model names no budget:
-/// Codex's `DEFAULT_MAX_OUTPUT_TOKENS`.
+/// The tokens of output a call reads back when the model names no budget.
 const OUTPUT_TOKENS_DEFAULT: usize = 10_000;
 /// How a process that exited reads.
 const EXITED: &str = "Process exited with code";
@@ -40,8 +39,7 @@ const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 const ABANDONED: &str =
     "... the process ended with its output still open; what was written after is not shown ...";
 /// The most tokens a call reads back, whatever the model asks: the two edges
-/// a call can hold, at four bytes a token; Codex's
-/// `UNIFIED_EXEC_OUTPUT_MAX_TOKENS`.
+/// a call can hold, at four bytes a token.
 const OUTPUT_TOKENS_MAX: usize = (2 * EDGE_BYTES).div_euclid(BYTES_PER_TOKEN);
 
 /// A process's output as it arrived, whichever stream carried it, and the

@@ -3,7 +3,7 @@
 use super::*;
 
 #[test]
-fn the_subagent_tools_are_guffbolts_and_named_as_codex_names_them() {
+fn the_subagent_tools_are_guffbolts_and_named_as_models_call_them() {
     let (agents, _requests) = Agents::new(CAPS);
     let built: Tools<ContextTool<'_>> = tools(&agents);
 

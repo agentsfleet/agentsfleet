@@ -5,9 +5,8 @@
 //! and a session the model reads once a minute would stall the rest. So the
 //! link feeds a process's output into a bounded store of what is unread
 //! (`edges`) and goes on; the caller reads it at its own pace, and output it
-//! fell too far behind on is dropped from the middle and counted. Codex keeps
-//! the same bound on its client (`exec-server/src/client.rs`, a 1 MiB retained
-//! history per process).
+//! fell too far behind on is dropped from the middle and counted; the store
+//! keeps at most 1 MiB per process.
 
 use std::fmt;
 use std::iter;

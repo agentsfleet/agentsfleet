@@ -2,9 +2,8 @@
 //!
 //! The loop keeps every message in the [`Transcript`](crate::Transcript) and
 //! knows nothing of a model's window. Before each model call it asks the
-//! embedder for that call's [`Window`], the way pi runs `transformContext`
-//! before each call: the transcript as it is, or a copy that fits, with what
-//! no longer fits summarized or dropped. A window lives for one call, so
+//! embedder for that call's [`Window`]: the transcript as it is, or a copy
+//! that fits, with what no longer fits summarized or dropped. A window lives for one call, so
 //! fitting it never edits what the loop keeps.
 
 use crate::transcript::Message;

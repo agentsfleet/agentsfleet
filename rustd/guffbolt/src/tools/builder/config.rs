@@ -1,5 +1,5 @@
 //! The startup config: which tools a run offers, by name or by a pattern
-//! with one `*`, the way pi's `--tools read,grep,'mcp__radius__*'` names them.
+//! with one `*`, as `read,grep,mcp__radius__*` names them.
 
 use std::fmt;
 

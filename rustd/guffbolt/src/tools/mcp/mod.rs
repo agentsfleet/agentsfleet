@@ -1,6 +1,6 @@
 //! A Model Context Protocol (MCP) client: a server's tools offered to the
 //! model as the run's own, and its resources listed and read, over the
-//! official SDK (`rmcp`), the way Codex and pi reach a server.
+//! official SDK (`rmcp`).
 //!
 //! ```text
 //!  Server::stdio(name, env, spawn) ── a process through the run's Env
@@ -53,7 +53,7 @@ pub const PREFIX: &str = "mcp__";
 const SEPARATOR: &str = "__";
 /// The longest name a provider's function wire takes.
 const NAME_MAX: usize = 64;
-/// How long one request to a server may take: Codex's MCP tool timeout.
+/// How long one request to a server may take.
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(300);
 /// What the outbound hook names an MCP connection's tool as.
 const TOOL: &str = "mcp";

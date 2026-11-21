@@ -21,14 +21,14 @@
 //! is for, where its tools run and what the model may read stay with the
 //! embedder. Input reaches the model at one place, the top of every step, and
 //! once more after an answer: a message that arrives while the model writes
-//! its answer is read before the loop ends, the way Codex continues a step
-//! while input is pending. A model call in flight is never cut short for new
-//! input; the call after it reads it.
+//! its answer is read before the loop ends: a step continues while input is
+//! pending. A model call in flight is never cut short for new input; the call
+//! after it reads it.
 //!
-//! The embedder fits each model call's [`Window`] before the call is made, the
-//! way pi runs `transformContext`: the whole transcript, or a copy compacted to
-//! fit ([`Conversation::window`]). The loop keeps every message in the
-//! [`Transcript`], so fitting a window never loses one.
+//! The embedder fits each model call's [`Window`] before the call is made:
+//! the whole transcript, or a copy compacted to fit ([`Conversation::window`]).
+//! The loop keeps every message in the [`Transcript`], so fitting a window
+//! never loses one.
 //!
 //! The loop makes each model call itself: it sends the embedder's
 //! [`Request`] to its [`Model`], reads the stream into a [`Step`] while the

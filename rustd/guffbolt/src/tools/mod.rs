@@ -28,7 +28,7 @@
 //! ```
 //!
 //! A backend is what a tool calls to do its work. Each tool takes its backend
-//! when it is built, as pi's tools take their operations, so no registry is
+//! when it is built, so no registry is
 //! looked up at call time: [`Env`] for commands and files, [`Sessions`] for
 //! the processes kept across calls, [`Outbound`] for the network,
 //! [`MemoryStore`] for memory, [`Scheduler`] for schedules, [`Channel`] for a
@@ -122,9 +122,9 @@ pub struct Context<'a> {
 ///
 /// The model is told the JSON Schema of [`Handler::Arguments`] and a call's
 /// arguments parse into it, so an argument the type does not name refuses
-/// the call (`#[serde(deny_unknown_fields)]`), the way Codex's tools parse
-/// theirs. [`Typed`] is the one place a call is parsed. An implementation
-/// writes `run` as an `async fn`; its future must be `Send`.
+/// the call (`#[serde(deny_unknown_fields)]`). [`Typed`] is the one place a
+/// call is parsed. An implementation writes `run` as an `async fn`; its future
+/// must be `Send`.
 pub trait Handler: Send + Sync + fmt::Debug {
     /// The name the model calls it by.
     const NAME: &'static str;

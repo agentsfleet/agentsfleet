@@ -17,10 +17,9 @@ use crate::tools::code;
 use crate::tools::env::{Ending, Env, Process, Spawn};
 use crate::tools::files::failed;
 
-/// How long a command runs when the model names no timeout: Codex's
-/// `DEFAULT_EXEC_COMMAND_TIMEOUT_MS`.
+/// How long a command runs when the model names no timeout.
 pub const TIMEOUT_DEFAULT: Duration = Duration::from_secs(10);
-/// The longest a command runs, whatever the model asks: Pi's ceiling,
+/// The longest a command runs, whatever the model asks:
 /// 2^31 - 1 milliseconds, about 24.8 days. It is no working limit; it keeps
 /// a deadline from overflowing `Instant`.
 pub const TIMEOUT_MAX: Duration = Duration::from_millis(2_147_483_647);

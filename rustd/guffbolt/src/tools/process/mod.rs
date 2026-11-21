@@ -2,8 +2,7 @@
 //! starts one on the host itself.
 //!
 //! `shell` runs one command to its end; `exec_command` starts a process the
-//! model drives across calls and `write_stdin` feeds it, in the shape of
-//! Codex's unified exec (`codex-rs/core/src/unified_exec/`). What the three
+//! model drives across calls and `write_stdin` feeds it. What the three
 //! share lives here and beside them: the shell and the environment every
 //! command starts with, how output and endings read (`output`), a command
 //! run to its end (`oneshot`) and the processes a run keeps open
@@ -32,10 +31,10 @@ const SHELL_COMMAND_FLAG: &str = "-c";
 const UTF8_LOCALE: &str = "C.UTF-8";
 /// The pager every command is given: one that never waits for a reader.
 const NO_PAGER: &str = "cat";
-/// The variables every command starts with: Codex's `UNIFIED_EXEC_ENV`.
+/// The variables every command starts with.
 ///
-/// Its own marker is left out. No pager waits on a terminal nobody reads,
-/// and no colour code reaches the model.
+/// No pager waits on a terminal nobody reads, and no colour code reaches the
+/// model.
 pub const COMMAND_ENV: [(&str, &str); 9] = [
     ("NO_COLOR", "1"),
     ("TERM", "dumb"),

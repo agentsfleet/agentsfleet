@@ -1,5 +1,4 @@
-//! `current_time` and `sleep`: reading the time and waiting on it, Codex's
-//! clock tools (`core/src/tools/handlers/current_time.rs`, `sleep.rs`).
+//! `current_time` and `sleep`: reading the time and waiting on it.
 //!
 //! A sleep wakes early when new input reaches the run: the embedder pokes
 //! the run's [`Wake`] as it queues a message, and the model reads that it
@@ -17,8 +16,7 @@ use crate::tool::ToolOutput;
 use crate::tools::process::saturating_millis;
 use crate::tools::{Context, Handler, NoArguments};
 
-/// The longest a sleep waits, whatever the model asks: twelve hours, Codex's
-/// `MAX_SLEEP_DURATION_MS`.
+/// The longest a sleep waits, whatever the model asks: twelve hours.
 pub const SLEEP_MAX: Duration = Duration::from_hours(12);
 
 /// What a run pokes when new input reaches it, so a sleeping call wakes.

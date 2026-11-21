@@ -3,8 +3,7 @@
 //!
 //! The executor forwards every byte a process writes, and a build, a test run
 //! or `yes` writes them faster than a model reads. So the reading side keeps
-//! what is unread in two edges, Codex's split
-//! (`core/src/unified_exec/head_tail_buffer.rs`): the head keeps the oldest
+//! what is unread in two edges: the head keeps the oldest
 //! unread bytes, the tail the newest, and what falls between is counted, never
 //! held. A reader that keeps up never loses a byte. Once the head is read, the
 //! count of what fell between comes next, then the tail, which becomes the new
@@ -19,8 +18,7 @@ use bytes::{Buf as _, Bytes};
 use crate::api::Stream;
 
 /// How much of each edge a process keeps unread: 512 KiB of head and of
-/// tail, the 1 MiB Codex keeps per process
-/// (`exec-server/src/client.rs`, `PROCESS_EVENT_RETAINED_BYTES`).
+/// tail, 1 MiB per process.
 pub const EDGE_BYTES: usize = 512 * 1024;
 
 /// The most bytes before the tail's first character that can belong to one

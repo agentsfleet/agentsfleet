@@ -1,20 +1,16 @@
 //! `image`: a file the model looks at on its next step.
 //!
-//! Codex's `view_image` (`codex-rs/core/src/tools/handlers/view_image.rs`)
-//! reads the file and answers the call with image content. Here the bytes
-//! stay out of the call's text, which the thread and the trace keep, and ride
-//! the output for the loop to attach to this call's result; what the model
-//! and the thread read is the path, the kind and the byte count. A wire that
-//! cannot be shown an image refuses the call before any read, and a file that
-//! is not one of the four kinds the wires take, or does not decode as the one
-//! it begins as, is refused after it.
+//! The file's bytes stay out of the call's text, which the thread and the
+//! trace keep, and ride the output for the loop to attach to this call's
+//! result; what the model and the thread read is the path, the kind and the
+//! byte count. A wire that cannot be shown an image refuses the call before
+//! any read, and a file that is not one of the four kinds the wires take, or
+//! does not decode as the one it begins as, is refused after it.
 //!
 //! A picture longer than [`IMAGE_MAX_DIMENSION`] on either side is scaled to
-//! fit and written again, as Codex's `codex-utils-image` does
-//! (`resize_for_prompt` and `encode_image` in `codex-rs/utils/image/src/lib.rs`):
-//! the aspect ratio kept, the triangle filter, a PNG, JPEG or WebP in its own
-//! kind and a GIF as a PNG, with its RGB color profile and its EXIF data. One
-//! that already fits is passed on as the file holds it. A file is read whole
+//! fit and written again: the aspect ratio kept, the triangle filter, a PNG,
+//! JPEG or WebP in its own kind and a GIF as a PNG, with its RGB color profile
+//! and its EXIF data. One that already fits is passed on as the file holds it. A file is read whole
 //! or refused, so one longer than one read carries ([`MAX_READ_BYTES`]) is
 //! not scaled. [`IMAGE_MAX_BYTES`] bounds what the model is shown, so a
 //! picture still heavier once scaled is refused.
@@ -43,7 +39,7 @@ use crate::tools::{Context, Handler, code};
 /// picture after any scaling.
 pub const IMAGE_MAX_BYTES: u64 = 5 * 1024 * 1024;
 /// The longest side, in pixels, of a picture the model is shown; a longer one
-/// is scaled to fit. Codex's `MAX_DIMENSION` (`codex-rs/utils/image/src/lib.rs`).
+/// is scaled to fit.
 pub const IMAGE_MAX_DIMENSION: u32 = 2048;
 /// How a PNG begins.
 pub const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
@@ -58,7 +54,7 @@ const WEBP_MAGIC: &[u8] = b"WEBP";
 const WEBP_MAGIC_AT: usize = 8;
 /// What a call reads back when the model's wire takes no image.
 const NO_IMAGE_INPUT: &str = "this model's wire takes no image in a tool result";
-/// The quality a scaled JPEG is written at: Codex's.
+/// The quality a scaled JPEG is written at.
 const JPEG_QUALITY: u8 = 85;
 /// Where an ICC profile names its data's color space.
 const ICC_COLOR_SPACE: core::ops::Range<usize> = 16..20;
@@ -191,9 +187,9 @@ impl core::fmt::Display for Scaled {
     }
 }
 
-/// What a re-encoded picture carries over from its file, as Codex's
-/// `ImageMetadata` does: the color profile and the EXIF data, which holds the
-/// orientation. Nothing else a format keeps is copied.
+/// What a re-encoded picture carries over from its file: the color profile
+/// and the EXIF data, which holds the orientation. Nothing else a format
+/// keeps is copied.
 struct Metadata {
     icc_profile: Option<Vec<u8>>,
     exif: Option<Vec<u8>>,
@@ -276,8 +272,8 @@ fn fitted(path: &str, kind: ImageKind, data: Bytes) -> Result<Shown, ToolOutput>
     })
 }
 
-/// `image`, written as `kind`: a JPEG at Codex's quality, a WebP lossless,
-/// a PNG as eight-bit RGBA, as Codex's `encode_image` writes each.
+/// `image`, written as `kind`: a JPEG at `JPEG_QUALITY`, a WebP lossless,
+/// a PNG as eight-bit RGBA.
 fn encoded(
     image: &DynamicImage,
     kind: ImageKind,
@@ -317,8 +313,7 @@ fn encoded(
 }
 
 /// The kind a scaled `kind` picture is written as: its own, but a GIF, which
-/// decodes to its first frame and is written as a PNG, as Codex's
-/// `encode_image` writes it.
+/// decodes to its first frame and is written as a PNG.
 const fn written_as(kind: ImageKind) -> ImageKind {
     match kind {
         ImageKind::Gif => ImageKind::Png,

@@ -163,7 +163,7 @@ async fn should_leave_every_session_open_under_the_cap() {
     assert!(killed.is_empty(), "{killed:?}");
 }
 
-/// At the cap, Codex's choice: the least recently used session that already
+/// At the cap, the least recently used session that already
 /// ended goes first, ahead of an older one still running, and is not killed.
 #[tokio::test]
 async fn should_make_room_by_forgetting_the_oldest_ended_session() {

@@ -8,11 +8,10 @@
 //!  loop_ended
 //! ```
 //!
-//! These are pi's agent events, and the begin and end Codex pairs with every
-//! dispatch. The loop opens, runs and ends each tool call itself, so a call
-//! ends exactly once on every path. One that never answers, because the loop
-//! was stopped while it ran or the loop's own future was dropped, ends
-//! [`CallOutcome::Interrupted`].
+//! Every dispatch pairs a start with an end. The loop opens, runs and ends
+//! each tool call itself, so a call ends exactly once on every path. One that
+//! never answers, because the loop was stopped while it ran or the loop's own
+//! future was dropped, ends [`CallOutcome::Interrupted`].
 
 use std::time::Duration;
 

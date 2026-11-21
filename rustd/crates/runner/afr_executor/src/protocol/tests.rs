@@ -93,7 +93,7 @@ fn an_exit_without_output_abandoned_decodes_as_not_abandoned() {
     assert_eq!(exited.process_id, 7);
 }
 
-/// A frame past the old 16 MiB is read whole under Codex's 64 MiB exec-server
+/// A frame past the old 16 MiB is read whole under the 64 MiB
 /// frame, and one past the frame is refused, through the codec the executor
 /// serves with.
 #[test]

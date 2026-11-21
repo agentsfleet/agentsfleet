@@ -1,5 +1,4 @@
-//! `tool_search`: tools the model is not offered until it looks for them,
-//! Codex's deferred loading (`core/src/tools/handlers/tool_search.rs`).
+//! `tool_search`: tools the model is not offered until it looks for them.
 //!
 //! A run with many tools, such as every tool of several MCP servers, holds
 //! most of them unoffered ([`crate::Tools::hold`]) and keeps their names and

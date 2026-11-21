@@ -189,7 +189,7 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
 }
 
 /// Past the cap a new session opens, and the least recently used one is
-/// killed to make room, as Codex does.
+/// killed to make room.
 #[tokio::test(start_paused = true)]
 async fn test_exec_command_makes_room_past_the_session_cap() {
     let executor =

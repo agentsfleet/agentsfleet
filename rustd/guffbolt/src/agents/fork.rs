@@ -80,7 +80,7 @@ mod tests {
         assert_eq!(forked(&[said("alone")], Fork::All), Vec::<Message>::new());
     }
 
-    /// `fork_turns` reads as Codex reads it: `all` when blank, `none` and
+    /// `fork_turns` reads as `all` when blank, `none` and
     /// `all` in any case, or a number of turns from 1.
     #[test]
     fn fork_turns_reads_none_all_or_a_number_of_turns() {

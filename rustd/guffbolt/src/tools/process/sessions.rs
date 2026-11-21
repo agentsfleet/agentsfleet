@@ -10,12 +10,11 @@
 //! session leaves by, and only by the path that removed it, so the pair is
 //! complete and single by construction.
 //!
-//! At the cap a new session makes room as Codex's `prune_processes_if_needed`
-//! does: the least recently used session that already ended goes, else the
-//! least recently used one still running is killed, and the most recently
-//! used few are never chosen. A session a call is reading is never chosen
-//! either. A session's place is held from before its process starts, so two
-//! calls starting at once cannot both pass the cap.
+//! At the cap a new session makes room: the least recently used session that
+//! already ended goes, else the least recently used one still running is
+//! killed, and the most recently used few are never chosen. A session a call
+//! is reading is never chosen either. A session's place is held from before
+//! its process starts, so two calls starting at once cannot both pass the cap.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -25,11 +24,9 @@ use tokio::sync::Mutex as Held;
 use super::output::Collected;
 use crate::tools::env::{Ending, Env, Process, ProcessId};
 
-/// The most sessions one run keeps open: Codex's
-/// `MAX_UNIFIED_EXEC_PROCESSES`.
+/// The most sessions one run keeps open.
 pub const SESSIONS_PER_RUN_MAX: usize = 64;
-/// How many of the most recently used sessions room is never made from:
-/// Codex's eight.
+/// How many of the most recently used sessions room is never made from.
 pub const SESSIONS_PROTECTED: usize = 8;
 /// The event a session opening logs under.
 pub const EVENT_STARTED: &str = "exec_session_started";

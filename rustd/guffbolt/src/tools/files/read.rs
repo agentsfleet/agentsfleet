@@ -1,7 +1,7 @@
 //! `file_read`: a window of a file's lines, cut to the model's output budget.
 //!
 //! A read starts at line `offset` (the first when absent) and carries at most
-//! `limit` lines (2,000 when absent, the default Codex's `read_file` had),
+//! `limit` lines (2,000 when absent),
 //! never more bytes than a command's output reads back. A read that stops
 //! before the file ends says on its last line where the next one starts, so a
 //! model pages a large file instead of taking it whole into its window. The

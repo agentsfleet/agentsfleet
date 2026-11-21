@@ -5,10 +5,10 @@ import { lineRows, type DiffRow } from "../diff/tool-call-diff";
 import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME, plainCopy, type ToolCopy, type Verbs } from "../presentation/tool-call-shape";
 import { CLIP_MARK, clipMarked, compactArgs, linesOf, mayBeClipped, outputLines, pathArg, stringArg } from "../presentation/tool-call-text";
 
-// What a tool call says in the thread, the way Codex's transcript says it: a
+// What a tool call says in the thread: a
 // verb that is `-ing` while the call runs and past tense once it returns, the
 // thing it touched, and what came back. Verbs come from the tool's name
-// because hosted tools take structured arguments; Codex parses a shell line.
+// because hosted tools take structured arguments, not a shell line.
 // Pure: a call's name, arguments and outcome in, words out. Files, requests,
 // memory and commands are here; every other runner tool reads in
 // `tool-call-copy-runner`. An edit's files and line counts are the ones the
@@ -81,8 +81,8 @@ const COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
 ]);
 
 /** A call's verbs, target and body. An edit names the `changes` the runner
- * recorded for it. A tool this map does not know reads as Codex reads any
- * dynamic tool: `Called name(arguments)`. */
+ * recorded for it. A tool this map does not know reads as
+ * `Called name(arguments)`. */
 export function toolCopy(name: string, args: ToolArgs | undefined, changes: readonly FileChange[] = []): ToolCopy {
   const edit = EDITS.get(name);
   if (edit !== undefined) return editCopy(edit, name, args, changes);
@@ -105,7 +105,7 @@ export function cellState(hasResult: boolean, status: ToolCallStatus | undefined
  * the rows show even when no line was left out (a long single line). */
 export type OutputPreview = { rows: readonly string[]; hiddenLines: number; note: string | null; cut: boolean };
 
-/** Codex's preview: the first rows of output, then how many lines it left
+/** The preview: the first rows of output, then how many lines it left
  * out. With no rows, a note says whether there was nothing or nothing kept:
  * only a call that returned and said how can claim it printed nothing. */
 export function outputPreview(

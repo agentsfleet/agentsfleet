@@ -71,7 +71,7 @@ async fn apply_patch_applies_later_hunks_to_what_earlier_ones_left() {
     assert_eq!(desk.text("f.txt").as_deref(), Some("A\nB\n"));
 }
 
-/// Codex reads a patch wrapped in a heredoc, which one model writes, and a
+/// A patch wrapped in a heredoc, which one model writes, is read, and a
 /// file's own line endings survive an update.
 #[tokio::test]
 async fn apply_patch_reads_a_heredoc_and_keeps_a_files_line_endings() {

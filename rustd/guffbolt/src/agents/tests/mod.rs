@@ -58,7 +58,7 @@ fn the_caps_refuse_a_child_past_the_open_count() {
     );
 }
 
-/// Codex's `DEFAULT_AGENT_MAX_THREADS`: six open, and a seventh is refused.
+/// Six open; a seventh is refused.
 #[test]
 fn a_seventh_open_subagent_is_refused() {
     let (agents, _requests) = Agents::new(Caps { depth: 2, open: 6 });

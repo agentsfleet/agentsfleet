@@ -2,7 +2,7 @@ import { diffLines, type Change } from "diff";
 
 import { linesOf } from "../presentation/tool-call-text";
 
-// An edit's text as Codex draws it: the lines it removed and added, with the
+// An edit's text as a diff: the lines it removed and added, with the
 // lines they share between, for a full read to show what the call asked for.
 // jsdiff builds the rows from the edit's own arguments; how many lines the
 // edit changed is the runner's recorded count, never these rows'.

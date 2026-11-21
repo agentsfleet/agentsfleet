@@ -64,13 +64,12 @@ const CONTEXT_FINISHED: &str = "read a fleet's finished turns";
 /// The page a caller gets when they name no size.
 pub const DEFAULT_LIMIT: i64 = 50;
 
-/// The page a caller of the message thread gets when they name no size: Codex's
-/// `THREAD_TURNS_DEFAULT_LIMIT`.
+/// The page a caller of the message thread gets when they name no size.
 pub const THREAD_DEFAULT_LIMIT: i64 = 25;
 
-/// The largest message-thread page this surface will build: Codex's
-/// `THREAD_TURNS_MAX_LIMIT`. Every row carries a trigger payload and an agent's
-/// full answer, so the page is also cut to its byte budget.
+/// The largest message-thread page this surface will build. Every row
+/// carries a trigger payload and an agent's full answer, so the page is also
+/// cut to its byte budget.
 pub const THREAD_MAX_LIMIT: i64 = 100;
 
 /// The largest page this surface will build.

@@ -38,7 +38,7 @@ pub struct Spawn {
     pub fork: Fork,
 }
 
-/// How much of its parent's history a child starts from, as Codex's
+/// How much of its parent's history a child starts from, as
 /// `fork_turns` names it: `all`, `none`, or a number of turns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fork {
@@ -51,7 +51,7 @@ pub enum Fork {
 }
 
 impl Fork {
-    /// `fork_turns` as the model wrote it, read the way Codex reads it:
+    /// `fork_turns` as the model wrote it, parsed:
     /// trimmed, `all` when blank, `none` and `all` in any case, or a
     /// number of turns from 1. `None` for anything else, which the call
     /// refuses.

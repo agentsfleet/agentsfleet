@@ -14,7 +14,7 @@ import { HEADERS } from "./fleet-tool-calls.fixtures";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { row } from "@/tests/helpers/fleet-stream-fixtures";
 
-// Each call renders as Codex's cell: a status bullet, a verb and its target,
+// Each call renders as a cell: a status bullet, a verb and its target,
 // dim figures, and what came back under a rail. Rendered through the thread,
 // so the parts the cells read are the ones the converter builds.
 
@@ -174,7 +174,7 @@ describe("FleetThread — tool cells", () => {
     expect(cells()[0]!.textContent).not.toContain("└");
   });
 
-  it("test_command_cell_renders_like_codex", () => {
+  it("test_command_cell_renders_first_lines_and_exit_code", () => {
     const four = "echo one\necho two\necho three\necho four";
     renderCalls([
       call({ name: TOOL_NAME.EXEC_COMMAND, args: { cmd: four }, status: FAILED, exitCode: 2, outputHead: "boom", outputLineCount: 1 }),

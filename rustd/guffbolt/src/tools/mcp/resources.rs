@@ -1,6 +1,5 @@
 //! `list_mcp_resources`, `list_mcp_resource_templates` and
-//! `read_mcp_resource`: what the run's MCP servers hold besides tools, in
-//! Codex's shape (`core/src/tools/handlers/mcp_resource.rs`).
+//! `read_mcp_resource`: what the run's MCP servers hold besides tools.
 
 use std::sync::Arc;
 

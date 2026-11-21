@@ -42,9 +42,7 @@ const FIELD_METHOD_OR_ID: &str = "method or id";
 
 /// Either message the executor sends, read in one pass: a notification names
 /// a method, an answer names the call it answers and carries a result or an
-/// error. Codex reads its peer the same way
-/// (`codex-rs/exec-server-protocol/src/rpc.rs`), where trying one envelope
-/// and then the other would scan every answer twice.
+/// error. Trying one envelope and then the other would scan every answer twice.
 #[derive(Deserialize)]
 struct Incoming<'a> {
     #[serde(borrow, default)]

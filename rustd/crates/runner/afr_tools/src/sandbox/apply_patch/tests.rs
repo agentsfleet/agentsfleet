@@ -60,7 +60,7 @@ pub(super) async fn planted() -> Live {
 }
 
 #[tokio::test]
-async fn test_apply_patch_applies_codex_grammar() {
+async fn test_apply_patch_applies_the_patch_grammar() {
     let live = planted().await;
 
     let applied = apply(&live, EACH_KIND).await;

@@ -2,10 +2,9 @@
 //! chat message, a message typed into a running fleet, a fleet's
 //! instructions.
 //!
-//! Codex's server keeps the same number (`MAX_USER_INPUT_TEXT_CHARS = 1 << 20`
-//! in `codex-rs/protocol/src/user_input.rs`) and refuses past it with the same
-//! sentence. Below it, the limit a person meets is the model's context window,
-//! which every model call already checks. Each field declares it with garde,
+//! Past it a text is refused with [`TEXT_TOO_LONG`]. Below it, the limit a
+//! person meets is the model's context window, which every model call already
+//! checks. Each field declares it with garde,
 //! `length(chars, max = TEXT_MAX_CHARS)`, beside the field's own rules.
 
 /// The most characters one text may hold, counted as `char`s: the unit a
@@ -41,7 +40,7 @@ mod tests {
     use super::{TEXT_MAX_CHARS, TEXT_MAX_JSON_BYTES, TEXT_TOO_LONG};
 
     #[test]
-    fn the_ceiling_is_codexs_and_its_refusal_names_it() {
+    fn the_ceiling_is_1_048_576_chars_and_its_refusal_names_it() {
         assert_eq!(TEXT_MAX_CHARS, 1_048_576);
         assert_eq!(
             TEXT_TOO_LONG,

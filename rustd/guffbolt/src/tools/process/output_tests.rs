@@ -204,7 +204,7 @@ fn should_budget_four_bytes_a_token() {
 }
 
 #[test]
-fn should_word_each_ending_as_codex_does() {
+fn should_word_each_ending_as_models_read_it() {
     // pin test: literal is the contract
     assert_eq!(status(Ending::Exited(3)), "Process exited with code 3");
     assert_eq!(status(Ending::Signaled(9)), "Process killed by signal 9");

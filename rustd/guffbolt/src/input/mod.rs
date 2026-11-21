@@ -5,7 +5,7 @@
 //! note's transcript, a document's text, a video's transcript or an image's
 //! description. Until an embedder reads a kind it installs [`Unread`], and the
 //! part reaches the model as a note naming it, never dropped without a word.
-//! The kinds follow Codex's `UserInput` (text, image, audio), with video and
+//! The kinds are text, image and audio, with video and
 //! documents beside them.
 
 use std::fmt;

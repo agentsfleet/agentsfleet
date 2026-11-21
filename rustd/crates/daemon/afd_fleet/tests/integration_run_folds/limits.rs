@@ -69,7 +69,7 @@ async fn test_a_durable_task_run_is_assigned_nothing() -> Checked {
 }
 
 /// A burst is assigned whole: every message the run has not read, oldest
-/// first, as Codex reads all pending input at its next step; nothing is left
+/// first, read together at its next step; nothing is left
 /// for a second assignment.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

@@ -12,7 +12,7 @@
 //! The harness knows no document. The embedder's [`Document`] names the
 //! tool, tells the model its parameters and decides every proposal, and a
 //! refused one reaches the model as the call's result so it can correct it in
-//! the same run, the way Codex's `apply_patch` hands back a patch that does
+//! the same run, as `apply_patch` hands back a patch that does
 //! not apply. Nothing caps the corrections: the run's own budget does.
 
 use std::fmt;

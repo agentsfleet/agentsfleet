@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// `fork_turns` takes Codex's values: a number keeps the parent's last that
+/// `fork_turns` takes three values: a number keeps the parent's last that
 /// many turns, `all`, the default, keeps every turn, and `none` keeps none.
 #[tokio::test]
 async fn spawn_agent_with_fork_turns_starts_from_the_parents_last_turns() {

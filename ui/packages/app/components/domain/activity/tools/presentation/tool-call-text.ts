@@ -93,7 +93,7 @@ export function firstLine(text: string): string {
   return mayBeClipped(text) || first.length < text.trimEnd().length ? `${first}${CLIP_MARK}` : first;
 }
 
-/** Arguments as they came, compact and bounded: Codex's `name(arguments)`. */
+/** Arguments as they came, compact and bounded: `name(arguments)`. */
 export function compactArgs(args: ToolArgs): string {
   return `(${truncate(JSON.stringify(args), COMPACT_ARGS_MAX_CHARS)})`;
 }

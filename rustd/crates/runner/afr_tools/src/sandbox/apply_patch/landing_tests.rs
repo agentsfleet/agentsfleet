@@ -105,7 +105,7 @@ async fn a_move_whose_delete_is_refused_keeps_both_files_and_a_retry_heals_it() 
     live.stop().await;
 }
 
-/// Two hunks on one file land one after the other, as Codex applies them:
+/// Two hunks on one file land one after the other:
 /// the second starts from what the first left, so neither change is lost.
 #[tokio::test]
 async fn two_update_hunks_on_one_file_both_land() {

@@ -1,8 +1,7 @@
 //! `update_plan`: the model's plan steps, recorded as a call the thread
 //! renders.
 //!
-//! The arguments are Codex's (`codex-rs/protocol/src/plan_tool.rs`), so a
-//! model trained on Codex's harness writes them unprompted. The answer lists
+//! The arguments are shaped as models are trained to write them. The answer lists
 //! every step with its status, which is what the thread shows.
 
 use schemars::JsonSchema;

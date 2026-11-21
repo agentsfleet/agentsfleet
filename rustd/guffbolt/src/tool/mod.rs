@@ -2,10 +2,10 @@
 //!
 //! A tool tells the model what it is without any call's context
 //! ([`Describe`]) and runs a call with the context its embedder lends it
-//! ([`Tool`]), the split Codex draws between a tool's spec and its
-//! `ToolExecutor<Invocation>`. [`Tools`] is the set one loop holds: it looks a
-//! call up by name and answers a name it holds no tool for with the harness's
-//! own refusal, so no embedder writes that sentence twice.
+//! ([`Tool`]), a tool's spec kept apart from its executor. [`Tools`] is the
+//! set one loop holds: it looks a call up by name and answers a name it holds
+//! no tool for with the harness's own refusal, so no embedder writes that
+//! sentence twice.
 
 mod output;
 
@@ -84,8 +84,7 @@ impl<Cx, T: Tool<Cx> + ?Sized> Tool<Cx> for Box<T> {
 /// `T` is the embedder's tool object type, such as
 /// `dyn for<'call> Tool<&'call Loop>`. An unoffered tool is never named to
 /// the model, and a call the model makes to it anyway still reaches it, so
-/// the tool answers in its own words why it is unavailable: Codex's hidden
-/// exposure.
+/// the tool answers in its own words why it is unavailable.
 pub struct Tools<T: ?Sized> {
     offered: Vec<Box<T>>,
     unoffered: Vec<Box<T>>,

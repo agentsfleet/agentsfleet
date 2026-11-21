@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// A patch that does not parse in Codex's grammar is refused in its words,
+/// A patch that does not parse in the patch grammar is refused in its words,
 /// and changes no file.
 #[tokio::test]
 async fn apply_patch_refuses_a_patch_that_does_not_parse() {

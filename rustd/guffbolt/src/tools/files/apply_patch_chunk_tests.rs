@@ -1,8 +1,8 @@
-//! The chunk matching Codex's parser does, on text alone.
+//! The chunk matching the vendored parser does, on text alone.
 
 use std::path::PathBuf;
 
-use super::codex::{ApplyPatchError, Hunk, ParseError, UpdateFileChunk, parse_patch, updated};
+use super::grammar::{ApplyPatchError, Hunk, ParseError, UpdateFileChunk, parse_patch, updated};
 
 /// `original` with the one update hunk of `patch` applied: the contents and
 /// the lines added and removed, or why the chunks did not apply. Every patch

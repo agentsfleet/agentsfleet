@@ -10,9 +10,9 @@ use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::files::{Answer, settled};
 use crate::tools::{Context, Handler, code};
 
-/// The matches `grep` answers with when the model names no limit: pi's.
+/// The matches `grep` answers with when the model names no limit.
 const GREP_DEFAULT: usize = 100;
-/// The most characters of one matching line `grep` shows: pi's.
+/// The most characters of one matching line `grep` shows.
 const LINE_MAX: usize = 500;
 
 /// `grep`'s arguments.

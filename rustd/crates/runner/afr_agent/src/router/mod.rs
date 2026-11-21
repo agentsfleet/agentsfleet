@@ -86,8 +86,7 @@ impl<'s, 'run> Router<'s, 'run> {
 
 /// A catalog handler, or a tool the run built over its backends, as a loop
 /// runs it: lent the run's state, and its executor only when the handler's
-/// published entry runs in the sandbox, the way Codex's
-/// `ExtensionToolAdapter` lends an extension tool its turn.
+/// published entry runs in the sandbox.
 #[derive(Debug)]
 pub(crate) struct Routed<'s> {
     handler: &'s RunTool<'s>,

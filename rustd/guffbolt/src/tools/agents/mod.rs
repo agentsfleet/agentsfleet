@@ -1,16 +1,15 @@
-//! The subagent tools, named as Codex names its multi-agent tools.
-//!
+//! The subagent tools, named as models are trained to call them:
 //! `spawn_agent`, `send_input`, `followup_task`, `wait_agent`,
-//! `list_agents`, `close_agent` and `interrupt_agent` follow
-//! `codex-rs/core/src/tools/handlers/multi_agents_spec.rs`. Each is built
-//! over a run's [`Agents`] with [`crate::tools::ToolsBuilder::with_agents`],
-//! parses its arguments, and answers with an order the loop runs in the
-//! calling loop's place ([`crate::agents`]). A child is another loop of the
-//! run over its own transcript: it starts from its parent's history, all of
-//! it, none of it or its last turns, as `fork_turns` says (Codex's values,
-//! `multi_agents_v2/spawn.rs`), holds its parent's tools or the subset named,
-//! and goes idle when its turn ends, keeping its transcript for a follow-up
-//! task until it is closed or the loop ends.
+//! `list_agents`, `close_agent` and `interrupt_agent`.
+//!
+//! Each is built over a run's [`Agents`] with
+//! [`crate::tools::ToolsBuilder::with_agents`], parses its arguments, and
+//! answers with an order the loop runs in the calling loop's place
+//! ([`crate::agents`]). A child is another loop of the run over its own
+//! transcript: it starts from its parent's history, all of it, none of it or
+//! its last turns, as `fork_turns` says, holds its parent's tools or the
+//! subset named, and goes idle when its turn ends, keeping its transcript for
+//! a follow-up task until it is closed or the loop ends.
 
 use std::future::{Ready, ready};
 use std::time::Duration;
@@ -25,9 +24,9 @@ use crate::agents::{
 use crate::tool::ToolOutput;
 use crate::tools::{Context, Handler, NoArguments, code};
 
-/// How long a wait lasts when the model names no timeout: Codex's.
+/// How long a wait lasts when the model names no timeout.
 const WAIT_DEFAULT: Duration = Duration::from_secs(30);
-/// The longest wait: Codex's hour. Zero is allowed, to only look.
+/// The longest wait: an hour. Zero is allowed, to only look.
 const WAIT_MAX: Duration = Duration::from_hours(1);
 /// What a `fork_turns` the tool cannot read answers.
 const FORK_TURNS: &str = "fork_turns must be `none`, `all` or a number of turns";

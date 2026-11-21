@@ -88,7 +88,7 @@ export const RUNNER_COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = ne
 /** Tools a call makes with no arguments at all: no arguments is no loss. */
 export const TAKES_NO_ARGS: ReadonlySet<string> = new Set([TOOL_NAME.SCREENSHOT]);
 
-/** A patch's lines as rows, read from Codex's patch grammar (`*** Update
+/** A patch's lines as rows, read from the patch grammar (`*** Update
  * File:`, `@@`, then `-`, `+` and ` ` lines), for a full read to show what
  * the call asked for. Its files and counts are the recorded changes'. */
 export function patchRows(patch: string): DiffRow[] {
@@ -141,7 +141,7 @@ function gitCopy(args: ToolArgs): ToolCopy {
   return { verbs: VERBS.RUN, target: [GIT, ...words].join(SEPARATOR), body: { kind: TOOL_BODY.OUTPUT } };
 }
 
-// Codex's background terminal: writing keys to a running command, or, with
+// A background terminal: writing keys to a running command, or, with
 // none, waiting on it.
 function stdinCopy(args: ToolArgs): ToolCopy {
   const session = scalarArg(args, ARG.SESSION);

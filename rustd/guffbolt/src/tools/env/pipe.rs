@@ -1,8 +1,8 @@
 //! What a process said that its reader has not read yet, for an environment
 //! with no channel of its own: its first and last edge.
 //!
-//! The feeding side never waits on the reader. Output lands in two edges,
-//! Codex's split (`core/src/unified_exec/head_tail_buffer.rs`): the head
+//! The feeding side never waits on the reader. Output lands in two edges:
+//! the head
 //! keeps the oldest unread bytes, the tail the newest, and what falls between
 //! is counted, never held. Once the head is read, the count of what fell
 //! between comes next, then the tail, which becomes the new head. Cuts are

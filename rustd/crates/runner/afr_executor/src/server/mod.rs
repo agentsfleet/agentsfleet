@@ -38,8 +38,7 @@ use crate::error::Result;
 pub const WORKSPACE_ROOT: &str = "/workspace";
 /// Output lines that may wait for the writer, across every process on the
 /// connection: 64 pipe reads, about 1 MiB of output. Past it a process's
-/// output waits, as Codex's exec-server waits on its bounded notification
-/// queue (`exec-server/src/local_process.rs`, `NOTIFICATION_CHANNEL_CAPACITY`).
+/// output waits.
 const OUTPUT_LINES_IN_FLIGHT: usize = 64;
 
 /// The executor took its socket and waits for the supervisor.

@@ -1,20 +1,20 @@
-//! `apply_patch`: Codex's patch grammar, applied through the environment's
+//! `apply_patch`: the patch grammar, applied through the environment's
 //! file calls.
 //!
-//! The parser and the chunk matching are Codex's own, copied at a pinned
+//! The parser and the chunk matching are vendored, copied at a pinned
 //! commit (`../../../vendor/apply_patch/NOTICE`). What is ours: the path gate on
 //! every hunk, the reads and writes through the environment, and each file's
 //! lines added and removed (`super::changes`). Every hunk is read and computed before the first
-//! write, each from what the hunks before it leave, as Codex applies them one
-//! after another: a patch with a hunk that does not apply changes nothing.
+//! write, each from what the hunks before it leave, applied one after
+//! another: a patch with a hunk that does not apply changes nothing.
 //! That check knows a file by the path a hunk spells, and a link inside the
 //! working directory gives one file a second spelling, so an update lands by reading
-//! its file again and applying its chunks to what is there, as Codex lands
-//! each hunk. A write the environment refuses partway, or an update that no
-//! longer applies to the file it lands on, is reported, and the hunks before
-//! it stay landed. A hunk whose result is longer than one read carries is
-//! refused as it is planned: landing re-reads a file whole, so a later hunk on
-//! a file an earlier one grew past the cap would leave the patch half landed.
+//! its file again and applying its chunks to what is there. A write the
+//! environment refuses partway, or an update that no longer applies to the
+//! file it lands on, is reported, and the hunks before it stay landed. A hunk
+//! whose result is longer than one read carries is refused as it is planned:
+//! landing re-reads a file whole, so a later hunk on a file an earlier one
+//! grew past the cap would leave the patch half landed.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -30,12 +30,11 @@ use crate::tools::env::{Env, MAX_READ_BYTES};
 use crate::tools::{Context, Handler, code};
 
 #[path = "../../../vendor/apply_patch/mod.rs"]
-mod codex;
+mod grammar;
 
-use self::codex::{Hunk, UpdateFileChunk};
+use self::grammar::{Hunk, UpdateFileChunk};
 
-/// How the answer starts: Codex's words, so a model trained on its harness
-/// reads them unprompted.
+/// How the answer starts, worded as models are trained to read it.
 const UPDATED: &str = "Success. Updated the following files:";
 /// How each file is listed: added, modified, deleted.
 const ADDED: char = 'A';
@@ -160,7 +159,7 @@ impl Handler for ApplyPatch<'_> {
 }
 
 async fn apply(env: &dyn Env, patch: &str) -> Answer {
-    let hunks = codex::parse_patch(patch).map_err(invalid)?;
+    let hunks = grammar::parse_patch(patch).map_err(invalid)?;
     if hunks.is_empty() {
         return Err(invalid("the patch changes no file"));
     }
@@ -218,7 +217,7 @@ async fn plan<'hunk>(
                 .transpose()?
                 .filter(|to| key(to) != key(path));
             let original = overlay.text(env, path).await?;
-            let updated = codex::updated(path, &original, chunks).map_err(invalid)?;
+            let updated = grammar::updated(path, &original, chunks).map_err(invalid)?;
             fits(moved_to.unwrap_or(path), &updated.contents)?;
             overlay.update(path, moved_to, &updated.contents);
             Ok(Planned::Update {
@@ -262,7 +261,7 @@ async fn land(env: &dyn Env, planned: &Planned<'_>) -> Result<(), ToolOutput> {
             ..
         } => {
             let now = whole(env, path).await?;
-            let updated = codex::updated(path, &now, chunks).map_err(invalid)?;
+            let updated = grammar::updated(path, &now, chunks).map_err(invalid)?;
             // Planning held each spelling under the cap; two spellings of one
             // file, a link and its target, can still cross it together here.
             fits(moved_to.unwrap_or(path), &updated.contents)?;
@@ -290,7 +289,7 @@ async fn delete(env: &dyn Env, path: &str) -> Result<(), ToolOutput> {
         .map_err(|failure| failed(&failure))
 }
 
-/// What the model reads back: Codex's summary, then each file's lines added
+/// What the model reads back: the summary, then each file's lines added
 /// and removed, a file several hunks touched counted once.
 fn summary(planned: &[Planned<'_>]) -> String {
     let mut text = UPDATED.to_owned();

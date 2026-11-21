@@ -10,7 +10,7 @@
 -- messages.
 --
 -- It reads every unsettled message of the conversation after the cursor, oldest first,
--- through idx_turns_thread_id_reply_sequence_unsettled, as Codex reads all pending input at
+-- through idx_turns_thread_id_reply_sequence_unsettled, so a run reads all pending input at
 -- its next step. The cursor ($5) is the run's own record of what it read: an assignment
 -- starts after it, and the reply is cut to one frame, so the next takes the rest.
 --

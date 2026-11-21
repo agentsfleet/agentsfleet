@@ -1,6 +1,6 @@
 //! `exec_command` and `write_stdin`: a process the model keeps across calls.
 //!
-//! Codex's unified exec, on the environment: `exec_command` starts `sh -c cmd`
+//! Both run on the environment: `exec_command` starts `sh -c cmd`
 //! and answers what arrived before its yield passed, leaving the process open
 //! in the run's [`Sessions`] under the id the environment gave it; `write_stdin`
 //! queues bytes to that process and yields the same way. A process that ended
@@ -23,14 +23,14 @@ use crate::tools::env::{Ending, Env, ProcessId, Spawn};
 use crate::tools::files::failed;
 use crate::tools::{Context, Handler, code};
 
-/// The shortest a call waits for output: Codex's `MIN_YIELD_TIME_MS`.
+/// The shortest a call waits for output.
 pub const YIELD_MIN: Duration = Duration::from_millis(250);
-/// The longest a call waits for output: Codex's `MAX_YIELD_TIME_MS`.
+/// The longest a call waits for output.
 pub const YIELD_MAX: Duration = Duration::from_secs(30);
 /// How long a call waits when the model names no yield.
 pub const YIELD_DEFAULT: Duration = Duration::from_secs(10);
 /// The shortest an empty write waits, so polling a session is never a busy
-/// loop: Codex's `MIN_EMPTY_YIELD_TIME_MS`.
+/// loop.
 pub const EMPTY_WRITE_YIELD_MIN: Duration = Duration::from_secs(5);
 /// What a call naming no open session reads back after its id.
 const NOT_OPEN: &str = "is not an open session";
