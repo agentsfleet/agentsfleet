@@ -106,7 +106,8 @@ rustix = { workspace = true, optional = true, features = ["pty", "termios"] }
 [dev-dependencies]
 # `examples/minimax_chat` connects through the `minimax` factory; the suite
 # that runs it serves the fake provider's Messages answer over axum.
-guffbolt-ai = { workspace = true, features = ["minimax", "test-util"] }
+# `examples/fireworks_live` connects through `fireworks`, run by hand only.
+guffbolt-ai = { workspace = true, features = ["minimax", "fireworks", "test-util"] }
 axum.workspace = true
 # A fake HTTPS server stands in for a public host: rcgen issues its
 # certificate and tokio-rustls serves it over rustls, on the aws-lc-rs

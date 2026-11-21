@@ -96,6 +96,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/guffbolt/src/transcript/mod.rs`, `src/tool/mod.rs`, `src/tool/output.rs` | EDIT | `Call`, `Message`, `Replay`, `ToolSpec`, `Image`, `ImageKind` leave; `CallRef`, `Transcript`, tools and outputs stay |
 | `rustd/guffbolt/src/chat/**` | CREATE | `Chat`, the ready `Conversation` |
 | `rustd/guffbolt/examples/minimax_chat.rs`, `rustd/guffbolt/tests/public_api/{main,example}.rs` | CREATE, EDIT | the README program, and 4.4's suite running it |
+| `rustd/guffbolt/examples/fireworks_live.rs` | CREATE | §13's live Fireworks run, by hand only; `guffbolt-ai`'s dev feature `fireworks` |
 | `rustd/guffbolt/README.md` | EDIT | the MiniMax chat first; the hand-written `Model` becomes "Your own provider" |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | the member and its dependency entry; `af_inference` removed; the layer note at `:18-21` names both standalone crates; the rig note at `:624-631` names no other harness |
 | `rustd/crates/harness/af_inference/**` | DELETE | generic modules moved; agentsfleet remainder folded into `af_providers` (Q3) |
@@ -108,7 +109,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/crates/runner/afr_agent/{Cargo.toml,tests/providers/**}` | EDIT | imports; `ends.rs` names `af_wire::protocol::MESSAGE_BYTES_MAX` |
 | `rustd/crates/protocol/af_wire/src/inference.rs`, `tests/inference_images.rs` | EDIT, DELETE | `carries_images` leaves for guffbolt-ai's `Api` |
 | `.ast-grep/rules/rust/{rust-daemon-no-connector,rust-provider-no-harness-name}.yml`, `.ast-grep/rule-tests/*-test.yml` | CREATE | no daemon crate names `Connect` or `Connector`; provider code names no harness (lints, as tests may not read the repository) |
-| `make/quality.mk` | EDIT | the standalone publish dry run covers both crates |
+| `make/quality.mk` | EDIT | the standalone publish dry run covers both crates; `lint-rustd` fails if a workflow or make recipe names the Fireworks live example |
 | `make/test-integration-rustd.mk`, `scripts/rustd_coverage.py`, `scripts/rustd_coverage_test.py` | EDIT | guffbolt-ai joins the guffbolt shard and its floor |
 | `codecov.yml` | EDIT | the new path; a CI config edit, so Indy approves it in the PR |
 | `docs/RUST_ERROR_STANDARD.md` | EDIT | a `guffbolt-ai` row; the `af_inference` and response-bound rows go |
@@ -487,6 +488,7 @@ N/A: no product or operator signal changes. The provider metric families and the
 - > Owner (Indy, Nov 22, 2026), on CI workflow edits overnight: "Yes, coverage/test lines only (Recommended)" — context: `.github/workflows/**` lines that pass the coverage floors or select tests (keeping the manual live tests out of CI) may change; deploy jobs, secrets, permissions and triggers may not; every edit is listed in the morning summary.
 - > Owner (Indy, Nov 22, 2026): "donot send any keys or spill any keys in the PR" and "run gitleaks prior to push the PR" — context: before every push, `gitleaks detect` runs over the commits being pushed and must report no leaks; no key, token, vault path or key-derived value goes into a commit, a PR body, a PR comment, a log pasted in the PR or a test fixture.
 - > Owner (Indy, Nov 22, 2026), on §14's "all the files > 99%": "Files the PR touches (Recommended)" — context: the judge's existing `--per-file-floor` (his Oct 15 rule) turns on at 99 for every `.rs` file the branch adds, edits or moves; project and patch floors go to 99; guffbolt-ai is graded as its own crate.
+- **§13 live run (Nov 22, 2026):** two manual runs of `fireworks_live` on Fireworks' GLM 5.3 Flash passed every step; the recorded tally is $0.000289100 of the $2.00 stop. Command, answers and spend are under Dimension 13.1.
 - **Open blockers** — none; the one `[?]` left blocks nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
@@ -523,9 +525,16 @@ Re-read how agentsfleet's runner (`afr_tools`, `afr_supervisor`, `af_providers`)
 `#[ignore]`d live tests prove guffbolt-ai alone and guffbolt over guffbolt-ai on a real Fireworks model: one chat, one streamed reply, one tool call round trip, one token-usage read. The key is `FIREWORKS_API_KEY` from the machine environment file; it is never printed. They run by hand only, on the cheapest Fireworks chat model, with a running spend tally from the provider's reported usage that stops the run at $2.
 
 - > Owner (Indy, Nov 22, 2026): "yes donot add any live tests of fireworks into the CI" — the live tests are `#[ignore]`d with a reason naming the manual run, no CI job or `--include-ignored` lane runs them, and no CI secret holds the Fireworks key.
-- The coverage lane runs `--all-features --include-ignored`, so `#[ignore]` alone would put the live tests in CI. They live as a cargo example, `cargo run --example fireworks_live -p guffbolt-ai`, which no test lane runs.
-- Dimension 13.2 — never in CI → Test `no_ci_lane_runs_the_fireworks_live_tests` (unit): no test target, workflow or make recipe runs the `fireworks_live` example, and the tests read the key only at run time. Expected: none found.
-- Dimension 13.1 — live proof → Test `a_fireworks_chat_round_trips_through_guffbolt_ai` and `guffbolt_runs_a_tool_call_on_fireworks` (live, manual). Expected: both pass; the recorded spend in Discovery is under $2.
+- The coverage lane runs `--all-features --include-ignored`, so `#[ignore]` alone would put the live tests in CI. They live as a cargo example, `cargo run --example fireworks_live -p guffbolt`, which no test lane runs. It sits in guffbolt, not guffbolt-ai: one program proves guffbolt-ai alone and guffbolt over it, and guffbolt-ai cannot depend on guffbolt.
+- Dimension 13.2 — DONE → Test `no_ci_lane_runs_the_fireworks_live_tests` (unit): no test target, workflow or make recipe runs the `fireworks_live` example, and the tests read the key only at run time. Expected: none found. — the test is a `lint-rustd` line in `make/quality.mk`, `grep -rnwE 'fireworks[_]live' .github/workflows make Makefile`, failing on any hit; a scratch `.mk` naming `--example fireworks_live` is hit, the tree is not. A Rust test would read repository files, so the check is lint.
+- Dimension 13.1 — DONE → Test `a_fireworks_chat_round_trips_through_guffbolt_ai` and `guffbolt_runs_a_tool_call_on_fireworks` (live, manual). Expected: both pass; the recorded spend in Discovery is under $2. — both are steps of `rustd/guffbolt/examples/fireworks_live.rs`, run by hand on Nov 22, 2026: `FIREWORKS_API_KEY=… cargo run -q --locked -p guffbolt --example fireworks_live`.
+  - Model `accounts/fireworks/models/glm-5p3-flash`, added with `Provider::with_spec`. `GET /v1/accounts/fireworks/models/glm-5p3-flash` reports `contextLength` 1048576, `supportsTools` and `supportsImageInput`, and no output limit; its model page names none either, so the context window is the output ceiling.
+  - Spend is priced from the page's serverless table, $0.15 per million input and $0.50 per million output tokens; every prompt token is priced as input, so the tally reads high. `$2.00` is the run's safety stop, not a product cap.
+  - Step 1, guffbolt-ai alone: `Model::stream` sent the chunks `"Red"`, `","`, `" yellow"`, `","`, `" blue"`, then the end, 94 reasoning bytes, `cut: false`.
+  - Step 2, usage: `Chunk::Usage` read input 27, output 26, total 53.
+  - Step 3, `Chat`: "Which planet is closest to the Sun?" answered "Mercury is the planet closest to the Sun."
+  - Step 4, the tool round trip: the model called `add({"a":4817,"b":2396})` once and answered "4817 plus 2396 equals **7213**."
+  - Spend: the first run's tally was $0.000153050, the second's $0.000136050 (its output trimmed, the model unchanged), $0.000289100 in all.
 
 ### §14 — Rust coverage 99% overall, per file and per patch (Indy, Nov 22, 2026)
 

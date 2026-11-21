@@ -66,7 +66,15 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear + guffbo
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] guffbolt standalone" -- cargo publish -p guffbolt-ai -p guffbolt --dry-run --allow-dirty --locked
 	@# guffbolt-ai's default build links only the four crates its types are written
 	@# in; every wire crate waits behind a feature (M253_004 Dimension 1.3).
+	@# The Fireworks live example spends money on a real key, so it runs by hand
+	@# only: no workflow or make recipe names it (M253_004 Dimension 13.2,
+	@# no_ci_lane_runs_the_fireworks_live_tests). `[_]` keeps this line unmatched.
+	@! grep -rnwE 'fireworks[_]live' .github/workflows make Makefile || { echo "a CI lane runs the Fireworks live example"; exit 1; }
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] guffbolt-ai default build" -- sh -c 'extra=$$(cargo tree -q --locked -p guffbolt-ai -e normal --no-default-features --depth 1 --prefix none --format "{p}" | tail -n +2 | cut -d" " -f1 | sort -u | grep -vxE "bytes|futures-util|serde|serde_json"); test -z "$$extra" || { echo "guffbolt-ai default build links: $$extra"; exit 1; }'
+	@# agentsfleet reaches rig only through guffbolt-ai: no other crate links
+	@# rig-core but af_observability, whose provider labels are read from rig's
+	@# registry. Dev-dependencies are a suite's (M253_004 Dimension 12.1).
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rig only through guffbolt-ai" -- sh -c 'extra=$$(cargo tree -q --locked --workspace --all-features --target all -e normal,build -i rig-core --depth 1 --prefix none --format "{p}" | tail -n +2 | cut -d" " -f1 | sort -u | grep -vxE "guffbolt-ai|af_observability"); test -z "$$extra" || { echo "rig-core linked directly by: $$extra"; exit 1; }'
 
 SHELLCHECK ?= shellcheck
 
