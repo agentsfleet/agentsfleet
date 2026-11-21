@@ -204,29 +204,36 @@ Carried from M253_001, by the owner's instruction. They run once on E2E Networks
 
 ### §7 — The daemon runs no sweeper
 
-Every background sweeper goes. A fact that changed only because time passed is checked when something reads or claims it, and work a sweeper finished is done on the event that owes it. `sweeper:retention` went in M253_002 §14.
+Every timed loop goes. A fact that changed only because time passed is checked when something reads or claims it; work a loop finished is done on the event that owes it; and the three jobs that need a clock book a one-shot QStash wake-up, the scheduler that already fires cron triggers (`afd_cron/src/qstash/`). A wake-up is booked before its row commits, so a failed commit leaves a callback that finds nothing; the callback reads Postgres and does nothing when the work is done. One pass at daemon boot covers a crash. `sweeper:retention` went in M253_002 §14.
 
-| Sweeper today | What replaces it |
+```
+ event ──► book QStash "POST /ingress/wake {job} at T" ──► commit the row
+ QStash at T ──► any replica ──► read the row ──► done: no-op │ owed: do it, book the next
+ daemon boot ──► one pass over owed work
+```
+
+| Loop today | What replaces it |
 |---|---|
-| `sweeper:liveness` | nothing: the runner's heartbeat writes `last_seen_at` (`afd_runner/src/heartbeat/cordon.rs:72`), assignment skips a silent runner (`assign_turn_head.sql:44`), and the view derives offline (`afd_runner/src/view/decode.rs:254`); `drained` is derived at read |
-| `sweeper:fleet-census` | the gauges are read in the existing metrics export |
-| `sweeper:setup` | nothing: closed drafts and replay receipts are kept until a retention policy is chosen; a receipt past its window already reads as new (`afd_setup/src/replay/mod.rs:163`) |
-| `sweeper:billing` | the report's transaction settles its own usage lines through the Postgres ledger; an expired unissued decision call is recorded when its task is next claimed |
-| `sweeper:expiry` | the assignment that takes over a lapsed run bills that run's last slice in the same transaction; a Stop bills it too |
-| `sweeper:tasks` | wall and run limits are checked at assignment; a GitHub completion fans out in its webhook handler; a wait reads CI status when its task is claimed or read; an uncertain effect is reconciled when its task is claimed |
-| `sweeper:task-storage` | capturing a generation deletes the ones past the newest three; a task's checkpoints are deleted when it ends; a turn's checkpoints when it settles |
-| `connector:outbound` 30 s pass | one pass at daemon boot, then the bus ping; a retry waits in the worker |
+| `sweeper:liveness` | the heartbeat statement (`heartbeat_with_transition_history.sql`) cordons an `active` runner returning after the offline window and writes `runner_offline` and `runner_cordoned`; the capacity locks refuse a host not seen within the window; the view derives `drained` from `draining` with no live run, and the `runner_drained` event goes |
+| `sweeper:fleet-census` | nothing: its three gauges go |
+| `sweeper:setup` | its bounded purge runs at boot and when a draft closes or is created |
+| `sweeper:billing` | the transaction that logs usage lines settles them before it commits, debiting wallets in tenant order; an expired unissued decision call is released by the next reserve or run issue under the task lock |
+| `sweeper:expiry` | nothing: a dead run's last slice, at most `RUN_TTL` at the runtime rate, is not billed; the runner delete guard checks only for a live run |
+| `sweeper:tasks` | completion cleanup and fanout run in the webhook; an expired task reads `exhausted` and is written so at read or claim; retention treats `LEAST(terminal_at, expires_at)` as terminal; an uncertain effect is reconciled inline and on the `pull_request` webhook; a wait books QStash checks at 60, 120, 240 and 300 s |
+| `sweeper:task-storage` | the newest-three trim runs at checkpoint commit; an unreferenced object books its R2 delete after its upload window, and a failed delete books again; turn checkpoints book their 7-day deletion at settle |
+| `connector:outbound` 30 s pass | a delivery that fails books QStash for its `next_attempt_at`; a Slack notice pings on owe; boot claims what is owed |
 | `runner_stream_scheduler` recovery probe | an idle runner's heartbeat asks for waiting work |
 
-- **Dimension 7.1** — no sweeper is started → Test `the_daemon_starts_no_sweeper` (unit): the supervised task names at boot. Expected: none starts with `sweeper:`, and no `[maintenance.*]` key is accepted.
-- **Dimension 7.2** — a silent runner gets no work → Test `a_silent_runner_is_skipped_and_reads_offline` (integration): `last_seen_at` past the offline window. Expected: no assignment, and the runner reads `offline`.
+- **Dimension 7.1** — no timed loop is started → Test `the_daemon_starts_no_sweeper` (unit): the supervised task names at boot. Expected: none starts with `sweeper:`, no `connector:outbound` pass, no recovery probe, and no `[maintenance.*]` key is accepted.
+- **Dimension 7.2** — a returning silent runner is cordoned → Test `a_runner_back_after_the_offline_window_is_cordoned` (integration): `last_seen_at` past the window, then one heartbeat. Expected: `cordon_reason` set, `runner_offline` and `runner_cordoned` written, no assignment until the cordon lifts. Negative test `a_runner_never_seen_takes_no_work_before_its_first_beat`.
 - **Dimension 7.3** — a report pays for itself → Test `a_report_settles_its_usage_in_its_transaction` (integration): one report. Expected: the lines are settled and the wallet is debited when the report commits. Negative test `a_report_whose_settlement_fails_writes_nothing`.
-- **Dimension 7.4** — a dead run's last slice is billed → Test `a_takeover_bills_the_lapsed_runs_last_slice` (integration): a run lapses and another runner takes the turn. Expected: one usage line for the lapsed slice, settled.
+- **Dimension 7.4** — a dead runner can be deleted → Test `a_runner_whose_run_lapsed_unbilled_is_deleted` (integration). Expected: deleted.
 - **Dimension 7.5** — a lost wake does not strand work → Test `an_idle_runners_heartbeat_is_assigned_waiting_work` (integration): queued work with no bus wake. Expected: the next heartbeat assigns it.
-- **Dimension 7.6** — an undelivered answer is sent at boot → Test `an_undelivered_answer_is_sent_at_boot` (integration): a delivery owed before a restart. Expected: one post after boot.
-- **Dimension 7.7** — task limits hold without a sweep → Test `a_task_past_its_wall_limit_is_exhausted_at_claim` (integration): a task past its wall limit. Expected: not assigned, and `exhausted` with `TASK_LIMIT_EXHAUSTED`.
-- **Dimension 7.8** — a CI completion wakes its wait → Test `a_ci_completion_webhook_wakes_its_wait` (integration): one GitHub completion. Expected: the matching wait is signalled in the webhook's request. Negative test `a_missed_webhook_is_read_when_the_task_is_claimed`.
-- **Dimension 7.9** — checkpoint storage is freed on its event → Test `a_fourth_generation_deletes_the_oldest` (integration): four captures. Expected: three remain, and the quota drops by the deleted bytes. Test `an_ended_tasks_checkpoints_are_deleted` (integration).
+- **Dimension 7.6** — a failed Slack post is retried by its wake-up → Test `a_failed_delivery_books_and_honours_its_wake_up` (integration, local QStash): Slack answers 503 three times, then 200. Expected: one QStash booking at `next_attempt_at`, and the callback posts once. Negative test `a_wake_up_for_a_delivered_answer_does_nothing`.
+- **Dimension 7.7** — a missed CI webhook still wakes its wait → Test `a_wait_with_no_webhook_is_woken_by_its_check` (integration, local QStash). Expected: the check reads GitHub and stages the turn. Negative test `a_check_after_the_webhook_does_nothing`.
+- **Dimension 7.8** — task limits hold without a sweep → Test `a_task_past_its_wall_limit_is_exhausted_at_claim` (integration). Expected: not assigned, and `exhausted` with `TASK_LIMIT_EXHAUSTED`.
+- **Dimension 7.9** — R2 storage is freed by its wake-up → Test `a_fourth_generation_deletes_the_oldest` (integration): four captures. Expected: three remain. Test `an_orphaned_object_is_deleted_by_its_wake_up` (integration, local QStash). Expected: the R2 delete runs after the upload window and the quota drops by its bytes.
+- **Dimension 7.10** — a booking that cannot reach QStash is caught at boot → Test `owed_work_with_no_booking_runs_at_boot` (integration). Expected: the boot pass runs it once.
 
 ### §8 — Our limits match Codex and Pi
 
@@ -371,5 +378,7 @@ Unchanged: the 1M message, the body sizes, shell output and listing budgets, the
   - > Owner (Indy, Nov 21, 2026): "first let indy signoff" — context: no cap changes until he has read the inventory of every limit (`/tmp/m247-review/limits-inventory.md`) and the Codex/Pi comparison (`/tmp/m247-review/limits-codex-pi-guffbolt.md`).
   - > Owner (Indy, Nov 21, 2026): "Change the limits of us, i am leaning towards a combination of Codex and Pi" and then "I am approving the above + the earlier" — context: the caps proposal (`/tmp/m247-review/caps-removal-proposal.md`) and the ranked knockoff list: delete the history caps and save the fleet summary; carry earlier tool calls; resize images; delete setup 300 s, `MODEL_CALLS_MAX`, the 12 h ceiling, `MAX_CRON_LEN`, the shell max, the per-run subagent cap and the report-only caps; sleep 12 h, MCP 300 s, 6 open subagents, executor frame 64 MiB, thread page 25/100. Unchanged: the control frame, the 8 MiB read, NATS, `HOLDS_MAX`, and every row the Codex/Pi survey did not cover. To be built as §8.
   - > Owner (Indy, Nov 21, 2026): "yes signedoff approved" — context: the final per-section table of removed caps; §8 is approved. §7 is a separate sign-off.
-- **Open blockers** — §7 waits for Indy's sign-off on its design before any code.
+  - > Owner (Indy, Nov 21, 2026): "I agree on the removals. But i want ot debate each one, example  sweeper:expiry - i feel this runner cordon and drain will handle this? we dont want to overengineer here at the start." — context: §7. `sweeper:expiry` goes; a dead run's last slice (at most 35 s, $0.0035) is not billed.
+  - > Owner (Indy, Nov 21, 2026): "If we use with JETSTREAM on can this work?" and "ultrathink to see how we can remove all of the sweepers?" then "QStash wake-ups (Recommended)" — context: §7's design. JetStream stays off; the three clock jobs book one-shot QStash wake-ups.
+- **Open blockers** — none. Unverified at sign-off: QStash's per-message price and its plan's longest delay against the 7-day turn-checkpoint deletion.
 - **Deferrals and transfers** — none.
