@@ -15,10 +15,11 @@ use crate::wire::observe::FailureCause;
 use crate::wire::recorder::{Recorder, Seen};
 use crate::wire::transport::{Body, Send, SendError, Sent};
 use crate::wire::{Api, Retry, Route};
-use crate::{Chunk, Message, Model as _, Request, TextKind};
+use crate::{Chunk, Message, Model as _, Request};
 
 #[cfg(feature = "reqwest")]
 mod bounds;
+mod model_id;
 
 const CONTEXT_TOKENS: u32 = 1024;
 /// Repetitions that put a short phrase past the native-count threshold: about
@@ -42,6 +43,8 @@ enum Generation {
 /// A Responses provider and its count endpoint, recording each path sent.
 struct Physical {
     paths: Mutex<Vec<String>>,
+    /// The `model` each request's body named.
+    models: Mutex<Vec<String>>,
     status: u16,
     generation: Generation,
 }
@@ -50,6 +53,13 @@ impl Send for Physical {
     fn send(&self, request: http::Request<Bytes>) -> Sent {
         let path = request.uri().path().to_owned();
         self.paths.lock().unwrap().push(path.clone());
+        let body: serde_json::Value = serde_json::from_slice(request.body()).unwrap();
+        self.models.lock().unwrap().push(
+            body.get("model")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+        );
         let status = self.status;
         let silent = self.generation == Generation::Silent;
         let truncated = self.generation == Generation::Truncated;
@@ -105,6 +115,7 @@ fn turns_with_stream(
     .unwrap();
     let physical = Arc::new(Physical {
         paths: Mutex::default(),
+        models: Mutex::default(),
         status,
         generation,
     });
@@ -249,13 +260,15 @@ fn a_measure_counts_the_routes_own_wire() {
     );
 }
 
-/// The answer text a turn streamed.
+/// The answer text a turn streamed; only the suites over the default transport
+/// read it.
+#[cfg(feature = "reqwest")]
 fn answered(chunks: &[crate::Result<Chunk>]) -> String {
     chunks
         .iter()
         .filter_map(|chunk| match chunk {
             Ok(Chunk::Text {
-                kind: TextKind::Answer,
+                kind: crate::TextKind::Answer,
                 text,
             }) => Some(text.as_str()),
             _ => None,

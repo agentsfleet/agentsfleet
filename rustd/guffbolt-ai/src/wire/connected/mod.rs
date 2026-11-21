@@ -44,6 +44,7 @@ pub struct Connected {
     retry: Retry,
     timeouts: Timeouts,
     observer: Option<Arc<dyn Observer>>,
+    images: bool,
 }
 
 /// The provider's key, never printed.
@@ -73,6 +74,7 @@ impl Connected {
             retry: Retry::DEFAULT,
             timeouts: Timeouts::DEFAULT,
             observer: None,
+            images: true,
         }
     }
 
@@ -109,6 +111,15 @@ impl Connected {
     #[must_use]
     pub fn with_observer(mut self, observer: Arc<dyn Observer>) -> Self {
         self.observer = Some(observer);
+        self
+    }
+
+    /// The same model, its results' images offered only when `images`: a
+    /// catalogue row says whether the model reads them, and the route's
+    /// [`Api`](super::Api) whether its wire carries them.
+    #[cfg(feature = "reqwest")]
+    pub(crate) const fn with_images(mut self, images: bool) -> Self {
+        self.images = images;
         self
     }
 
@@ -152,6 +163,16 @@ impl Connected {
             .map_err(|failure| Error::provider(*failure))
     }
 
+    /// `request` for the model this was connected to. A loop's request may
+    /// name no model, as one over any [`Model`] knows no id, so the id the
+    /// turn is counted, bounded and sent as is always the connected one.
+    fn own<'a>(&'a self, request: Request<'a>) -> Request<'a> {
+        Request {
+            model: &self.model,
+            ..request
+        }
+    }
+
     /// Tells the observer a turn is opened again after `failure`.
     fn reopened(&self, attempt: usize, failure: ProviderError) {
         if let Some(observer) = &self.observer {
@@ -164,16 +185,18 @@ impl Model for Connected {
     type Error = Error;
 
     fn measure(&self, request: Request<'_>) -> Result<u64> {
+        let request = self.own(request);
         let body = request::request(self.route.api(), &request)?;
         self.route.measure_input(request.model, &body)
     }
 
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>> {
+        let request = self.own(request);
         stream::unfold(Pass::Opening(1), move |pass| pass.next(self, request)).boxed()
     }
 
     fn accepts_images(&self) -> bool {
-        self.route.api().carries_images()
+        self.images && self.route.api().carries_images()
     }
 }
 

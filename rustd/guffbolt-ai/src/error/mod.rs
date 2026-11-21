@@ -107,6 +107,33 @@ pub(crate) enum ErrorKind {
         #[source]
         source: serde_json::Error,
     },
+    /// No provider of that id was added to the collection.
+    #[cfg(feature = "reqwest")]
+    #[error("provider {provider} is not registered")]
+    Unregistered { provider: Box<str> },
+    /// The provider's catalogue holds no row of that id.
+    #[cfg(feature = "reqwest")]
+    #[error("provider {provider} has no model {model}")]
+    UnknownModel { provider: Box<str>, model: Box<str> },
+    /// The variable the provider's key is read from is unset or empty.
+    #[cfg(feature = "reqwest")]
+    #[error("the provider's key is missing: set {variable}")]
+    MissingKey { variable: &'static str },
+    /// A compiled-in catalogue file is not the rows it should hold.
+    #[cfg(feature = "reqwest")]
+    #[error("the model catalogue of provider {provider} cannot be read")]
+    Catalog {
+        provider: Box<str>,
+        #[source]
+        source: serde_json::Error,
+    },
+    /// The default transport's client could not be built.
+    #[cfg(feature = "reqwest")]
+    #[error("the default transport cannot be built")]
+    Client {
+        #[source]
+        source: reqwest::Error,
+    },
 }
 
 /// A provider failure in words: its status when it answered with one.
@@ -198,7 +225,8 @@ impl Error {
     }
 
     /// Whether the request or the route is unusable as given: a caller's
-    /// error, decided before or without the provider.
+    /// error, decided before or without the provider. A provider not
+    /// registered, a model its catalogue lacks and a key not set are three.
     #[must_use]
     pub fn is_invalid_request(&self) -> bool {
         matches!(
@@ -217,7 +245,29 @@ impl Error {
                 | ErrorKind::CountUnsupported
                 | ErrorKind::KeyPath { .. }
                 | ErrorKind::KeyUri { .. }
+        ) || self.is_unfound()
+    }
+
+    /// Whether a lookup in [`Models`](crate::Models) found no provider, no
+    /// model or no key.
+    #[cfg(feature = "reqwest")]
+    const fn is_unfound(&self) -> bool {
+        matches!(
+            *self.0,
+            ErrorKind::Unregistered { .. }
+                | ErrorKind::UnknownModel { .. }
+                | ErrorKind::MissingKey { .. }
         )
+    }
+
+    /// Without a `Models` collection, no lookup fails.
+    #[cfg(not(feature = "reqwest"))]
+    #[expect(
+        clippy::unused_self,
+        reason = "the same call as the lookup build's, which reads the kind"
+    )]
+    const fn is_unfound(&self) -> bool {
+        false
     }
 
     /// The wire library's own failure, for an embedder that classifies it
@@ -287,80 +337,7 @@ pub(crate) fn refused(failure: &ProviderError) -> bool {
     walks(failure, is_refusal)
 }
 
-impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, f)
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl std::error::Error for Error {
-    // The kind is this error's own text, so its source is the kind's.
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        std::error::Error::source(&*self.0)
-    }
-}
-
-impl From<ErrorKind> for Error {
-    fn from(kind: ErrorKind) -> Self {
-        Self(Box::new(kind))
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(source: serde_json::Error) -> Self {
-        Self::from(ErrorKind::Document { source })
-    }
-}
-
-impl From<rig_core::error::EncodeError> for Error {
-    fn from(source: rig_core::error::EncodeError) -> Self {
-        Self::from(ErrorKind::Encode { source })
-    }
-}
-
-impl From<ProviderError> for Error {
-    fn from(source: ProviderError) -> Self {
-        Self::from(ErrorKind::Request { source })
-    }
-}
-
-impl From<url::ParseError> for Error {
-    fn from(source: url::ParseError) -> Self {
-        Self::from(ErrorKind::Url { source })
-    }
-}
-
-impl From<http::uri::InvalidUri> for Error {
-    fn from(source: http::uri::InvalidUri) -> Self {
-        Self::from(ErrorKind::KeyPath { source })
-    }
-}
-
-impl From<http::uri::InvalidUriParts> for Error {
-    fn from(source: http::uri::InvalidUriParts) -> Self {
-        Self::from(ErrorKind::KeyUri { source })
-    }
-}
-
-impl From<rig_core::http_client::Error> for Error {
-    fn from(source: rig_core::http_client::Error) -> Self {
-        Self::from(ErrorKind::CountTransport { source })
-    }
-}
-
-impl From<Error> for ProviderError {
-    fn from(source: Error) -> Self {
-        // Retryable, as a transport's own failure was before rig split
-        // transient from permanent.
-        Self::from_transport_error(rig_core::http_client::Error::transient(source))
-    }
-}
+mod impls;
 
 #[cfg(test)]
 mod tests;

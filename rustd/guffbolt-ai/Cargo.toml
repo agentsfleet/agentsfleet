@@ -35,6 +35,35 @@ wire = [
 ]
 # The default transport: a `reqwest` client that follows no redirect.
 reqwest = ["wire", "dep:reqwest"]
+# One feature per provider: its factory and its catalogue rows. A provider
+# connects over the default transport, so each turns on `wire` and `reqwest`.
+anthropic = ["wire", "reqwest"]
+openai = ["wire", "reqwest"]
+gemini = ["wire", "reqwest"]
+ollama = ["wire", "reqwest"]
+openrouter = ["wire", "reqwest"]
+fireworks = ["wire", "reqwest"]
+minimax = ["wire", "reqwest"]
+deepseek = ["wire", "reqwest"]
+groq = ["wire", "reqwest"]
+mistral = ["wire", "reqwest"]
+xai = ["wire", "reqwest"]
+together = ["wire", "reqwest"]
+# Every provider.
+all = [
+    "anthropic",
+    "openai",
+    "gemini",
+    "ollama",
+    "openrouter",
+    "fireworks",
+    "minimax",
+    "deepseek",
+    "groq",
+    "mistral",
+    "xai",
+    "together",
+]
 # What a process driving the wires logs of rig's own lines.
 log-filter = ["dep:tracing-subscriber"]
 # A fake provider's TLS listener and a client trusting it, for an embedder's
@@ -100,3 +129,8 @@ rig-core = { workspace = true, features = ["test-utils"] }
 tracing.workspace = true
 # `start_paused`, and the sockets the fake providers listen on.
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util"] }
+
+# A MiniMax turn through the public API, against a fake provider over TLS.
+[[test]]
+name = "minimax"
+required-features = ["minimax", "test-util"]

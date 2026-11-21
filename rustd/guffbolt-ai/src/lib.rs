@@ -20,6 +20,11 @@
 //! the embedder may replace. Feature `reqwest` adds the default transport,
 //! `log-filter` the filter that keeps rig's own lines quiet, and `test-util`
 //! a fake provider's TLS listener.
+//!
+//! A feature per provider adds its factory in [`providers`] and its
+//! catalogue rows; `all` adds every one. [`Models`] holds the providers a
+//! program registered and connects a model by provider and id, its key read
+//! from the provider's variable.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
@@ -29,6 +34,10 @@ mod types;
 mod error;
 #[cfg(feature = "log-filter")]
 mod logs;
+#[cfg(feature = "reqwest")]
+mod models;
+#[cfg(feature = "reqwest")]
+pub mod providers;
 #[cfg(feature = "test-util")]
 pub mod testing;
 #[cfg(feature = "wire")]
@@ -43,3 +52,5 @@ pub use self::types::{
 pub use self::error::{Error, Result};
 #[cfg(feature = "log-filter")]
 pub use self::logs::log_filter;
+#[cfg(feature = "reqwest")]
+pub use self::models::{Models, Provider, Spec};

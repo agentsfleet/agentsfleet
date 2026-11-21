@@ -1,0 +1,4 @@
+[
+  {"id": "MiniMax-M3", "context_tokens": 1000000, "max_output_tokens": 524288, "images": true},
+  {"id": "MiniMax-M3.1-Flash", "context_tokens": 1000000, "max_output_tokens": 524288, "images": true}
+]

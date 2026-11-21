@@ -238,12 +238,12 @@ Every provider feature turns on `wire`. Feature `all` turns on every provider. r
 
 af_inference reaches every rig dialect today through a saved dialect name; `Route::new` keeps that. pi adds Cerebras, Baseten, NVIDIA, Vercel AI Gateway, Cloudflare, Bedrock, Vertex, Copilot and OAuth providers; none is in this spec (Q6).
 
-- **Dimension 3.1** — a registered provider answers → Test `a_chat_on_minimax_answers_through_the_messages_wire` (integration, fake TLS provider): the minimax factory pointed at the fake host with `with_base_url`. Expected: `POST /v1/messages` with `x-api-key` (rig's gateway auth, `anthropic/wire.rs:141,464`), and the answer streamed back.
-- **Dimension 3.2** — a missing key names its variable → Test `connect_without_the_key_names_its_variable` (unit): `MINIMAX_API_KEY` unset. Expected: an error whose text names `MINIMAX_API_KEY` and holds no value.
-- **Dimension 3.3** — an unknown model is refused → Test `an_unknown_model_id_is_refused_with_its_provider` (unit): `connect("minimax", "no-such-model")`. Expected: an error naming both, and no request sent.
-- **Dimension 3.4** — an unregistered provider is refused → Test `an_unregistered_provider_is_refused` (unit): `Models::new().connect("minimax", …)`. Expected: an error naming `minimax`.
-- **Dimension 3.5** — the catalogue holds together → Test `every_catalogue_row_parses_and_fits` (unit): every compiled-in file. Expected: each row parses, its output limit is at most its window, and no id repeats within a provider.
-- **Dimension 3.6** — a row's image flag reaches the loop → Test `accepts_images_follows_the_row_and_the_wire` (unit): MiniMax-M3.1-Flash on Messages, and a Chat route. Expected: true, then false.
+- **Dimension 3.1** — a registered provider answers → Test `a_chat_on_minimax_answers_through_the_messages_wire` (integration, fake TLS provider): the minimax factory pointed at the fake host with `with_base_url`. Expected: `POST /v1/messages` with `x-api-key` (rig's gateway auth, `anthropic/wire.rs:141,464`), and the answer streamed back. — DONE
+- **Dimension 3.2** — a missing key names its variable → Test `connect_without_the_key_names_its_variable` (unit): `MINIMAX_API_KEY` unset. Expected: an error whose text names `MINIMAX_API_KEY` and holds no value. — DONE
+- **Dimension 3.3** — an unknown model is refused → Test `an_unknown_model_id_is_refused_with_its_provider` (unit): `connect("minimax", "no-such-model")`. Expected: an error naming both, and no request sent. — DONE
+- **Dimension 3.4** — an unregistered provider is refused → Test `an_unregistered_provider_is_refused` (unit): `Models::new().connect("minimax", …)`. Expected: an error naming `minimax`. — DONE
+- **Dimension 3.5** — the catalogue holds together → Test `every_catalogue_row_parses_and_fits` (unit): every compiled-in file. Expected: each row parses, its output limit is at most its window, and no id repeats within a provider. — DONE
+- **Dimension 3.6** — a row's image flag reaches the loop → Test `accepts_images_follows_the_row_and_the_wire` (unit): MiniMax-M3.1-Flash on Messages, and a Chat route. Expected: true, then false. — DONE
 
 ### §4 — `guffbolt::Chat` runs a plain chat in a few lines
 
@@ -444,6 +444,13 @@ N/A: no product or operator signal changes. The provider metric families and the
   - The loop calls the chat's model as `dyn Model<Error = ChatFailure<M::Error>>`, over a private wrapper that lifts the model's error, so no wrapper type joins the public API.
   - `Chat` keeps its `DriveState`: each prompt's ending answers that prompt alone, calls number after earlier prompts, and a prompt sent while a question waits is its answer.
   - `Chat::request` sends `Request::model` empty, because `Model` names no id. `Connected` counts input with `request.model` (`guffbolt-ai/src/wire/connected/mod.rs:138,143,168`), so §3 has `Connected` count with its own id before 4.4 runs.
+- **Settled while building §3 (Nov 22, 2026):**
+  - Each provider feature turns on `wire` and `reqwest`: `connect` answers a `Connected` on the default transport, so a provider without `reqwest` could not connect. `Models`, `Provider`, `Spec` and `providers` compile under `reqwest`.
+  - The catalogue rows are rig-core 0.47's tool-calling models with a context window and an output limit, deprecated ones left out: 470 rows over 11 files. rig has no Fireworks rows, so `catalog/fireworks.json` is empty and `Provider::with_spec(Spec)` adds a model; a row added in place of a catalogue row replaces it.
+  - Base URLs and key variables are read from rig's dialect constants where rig names them; Ollama's and Fireworks' are written out, as rig keeps Ollama's private and has no Fireworks dialect.
+  - `connect` finds the provider, then the row, then reads the key, so an unknown provider or model is refused whatever the environment holds. An empty variable is no key.
+  - `Connected` counts, measures and sends as the id it was connected to, whatever `Request::model` names: test `a_request_naming_no_model_is_counted_and_sent_as_the_connected_one`.
+  - `Connected::accepts_images` is the row's `images` and the `Api`'s `carries_images`; `Connected::new` keeps the `Api` alone, as before.
 - **Unverified (`[?]`):**
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.

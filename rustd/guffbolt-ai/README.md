@@ -16,3 +16,42 @@ provider implements:
 guffbolt depends on this crate and re-exports every type under its own path.
 A provider crate implements `Model` with this crate alone. A loop drives it
 with guffbolt.
+
+## Providers
+
+Each provider is a feature. Feature `all` turns on every one.
+
+| Feature | Wire | Key variable |
+|---|---|---|
+| `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` |
+| `openai` | OpenAI Responses | `OPENAI_API_KEY` |
+| `gemini` | Gemini `GenerateContent` | `GEMINI_API_KEY` |
+| `ollama` | Ollama chat | `OLLAMA_API_KEY`, optional |
+| `openrouter` | Chat completions | `OPENROUTER_API_KEY` |
+| `fireworks` | Chat completions | `FIREWORKS_API_KEY` |
+| `minimax` | Anthropic Messages | `MINIMAX_API_KEY` |
+| `deepseek` | Chat completions | `DEEPSEEK_API_KEY` |
+| `groq` | Chat completions | `GROQ_API_KEY` |
+| `mistral` | Chat completions | `MISTRAL_API_KEY` |
+| `xai` | Chat completions | `XAI_API_KEY` |
+| `together` | Chat completions | `TOGETHER_API_KEY` |
+
+`Models::new().with(providers::minimax())` registers one provider.
+`Models::builtin()` registers every provider the build has.
+`connect(provider, id)` reads the key from the provider's variable.
+`connect_with_key` takes the key instead.
+A missing key fails with the variable's name and never its value.
+
+## Catalogue
+
+Each provider's models are rows in `catalog/<provider>.json`, compiled in.
+A row holds the model id, its context window, its output limit, and whether
+it reads images. The rows come from rig-core 0.47's bundled catalogue. They
+hold the tool-calling models with both limits, and no deprecated ones.
+rig has no Fireworks rows, so `Provider::with_spec` adds a Fireworks model.
+
+## Transport
+
+A connected model sends through the default `reqwest` client. That client
+follows no redirect, so the key reaches only the provider's host.
+`Connected::with_transport` replaces it with your own `Send`.
