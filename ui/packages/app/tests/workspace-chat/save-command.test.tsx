@@ -11,7 +11,7 @@ import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 const SAVED = {...FLEET, setup_revision: "3", status: "active", setup: {state: "ready", checks: []}};
 const SAVE = "Save";
 const SAVING = "Saving";
-const ACKNOWLEDGEMENT = "Setup saved · v3";
+const ACKNOWLEDGEMENT = "Saved setup";
 const MESSAGES = "/messages";
 const FLEETS = "/fleets";
 

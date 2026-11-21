@@ -76,7 +76,7 @@ describe("private chat Save", () => {
     expect(fixture.saveAttempts).toBe(0);
     await setup();
     await saveInChat();
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     expect(fixture.saveAttempts).toBe(1);
     expect(chatRouter.push).not.toHaveBeenCalled();
     await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
@@ -98,7 +98,7 @@ describe("private chat Save", () => {
     expect(screen.getByRole("alert", {name: "Chat recovery"}).textContent).toContain("The request could not be confirmed. Retry the same operation.");
     expect(fixture.writes()).toHaveLength(writes);
     fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     const attempts = fixture.writes().filter((call) => call.path.endsWith("/messages"));
     expect(attempts).toHaveLength(2);
     expect(attempts[1]?.body).toEqual(attempts[0]?.body);
@@ -110,7 +110,7 @@ describe("private chat Save", () => {
     await setup();
     fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
     expect(screen.queryByRole("dialog")).toBeNull();
-    await screen.findByRole("heading", {name: "Setup saved · v1"});
+    await screen.findByRole("heading", {name: "Saved setup"});
     expect(fixture.calls.some(call => /plugins|fleet-librar/.test(call.path))).toBe(false);
     expect(fixture.saveAttempts).toBe(1);
     expect(fixture.writes().find(call => call.path.endsWith("/fleets"))?.body).toMatchObject({name: "repairer", start: {kind: "none"}});

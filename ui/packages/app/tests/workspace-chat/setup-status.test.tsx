@@ -66,7 +66,7 @@ it("shows only outstanding actions under the saved revision and clears them when
   expect(screen.queryByText("Model")).toBeNull();
   expect(screen.getByRole("link", {name: "Review access rules"}).getAttribute("href")).toBe("/settings/access");
   view.rerender(<SetupProgress {...props} fleet={{...fleet, setup: {state: "ready", checks: checks.map(check => ({...check, state: "ready"}))}}} />);
-  expect(screen.getByRole("region", {name: "Saved fleet setup"}).textContent).toBe("Setup saved · v1");
+  expect(screen.getByRole("region", {name: "Saved fleet setup"}).textContent).toBe("Saved setup");
   expect(screen.queryByRole("list")).toBeNull();
 });
 
@@ -87,7 +87,7 @@ it("omits saved readiness disclosure when the fleet has no recorded checks", () 
   render(<SetupProgress fleet={{...FLEET, setup: {state: "ready", checks: []}}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={vi.fn()} busy={false} />);
   expect(screen.queryByRole("button", {name: "What needs attention"})).toBeNull();
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
-  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Saved setup"})).toBeTruthy();
 });
 
 it("calls an active fleet ready only when every schedule is registered, and retries the rest", () => {
@@ -97,10 +97,10 @@ it("calls an active fleet ready only when every schedule is registered, and retr
   const unconfirmed = {...PENDING_SCHEDULE, schedule_id: "sched-wait", last_error: null};
   const active = {...FLEET, status: "active", setup: {state: "ready", checks: []}};
   const view = render(<SetupProgress fleet={{...active, schedules: [synced]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
-  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Saved setup"})).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Retry registration"})).toBeNull();
   view.rerender(<SetupProgress fleet={{...active, schedules: [synced, failed, unconfirmed]}} workspace={WORKSPACE} onContinue={vi.fn()} onRetrySchedule={retry} busy={false} />);
-  expect(screen.getByRole("heading", {name: "Setup saved · v1"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Saved setup"})).toBeTruthy();
   expect(screen.getByText("Scheduler refused. Will retry on the next sync.")).toBeTruthy();
   expect(screen.getByText("Scheduler sync has not been confirmed.")).toBeTruthy();
   const buttons = screen.getAllByRole("button", {name: "Retry registration"});

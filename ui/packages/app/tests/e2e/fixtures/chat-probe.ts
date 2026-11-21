@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { test as base } from "@playwright/test";
 import { applicationCss } from "./fleet-output-browser-assets";
 import { summary, detail } from "@/tests/helpers/task-reads";
+import { FLEET_DETAIL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 import { visualTaskDetail, visualTaskPage } from "./refresh-visual-data";
 
@@ -15,13 +16,22 @@ export const test = base.extend<object, {chatProbe: string}>({
       {cwd: appRoot, maxBuffer: 4_000_000, timeout: 20_000});
     const css = await applicationCss(appRoot);
     const server = http.createServer((request, response) => {
-      if (request.url === "/probe.js") {
+      const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+      const source = new URL(request.headers.referer ?? "http://localhost");
+      const base = `/live/v1/workspaces/${WORKSPACE}`;
+      if (source.searchParams.has("visual") && request.method === "GET" && (pathname === `${base}/fleets` || pathname === `${base}/drafts`)) {
+        const phase = source.searchParams.get("state");
+        const name = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : "Release watch";
+        const items = pathname === `${base}/drafts` ? [] : [{...FLEET_DETAIL, name, status: "active", description: null}];
+        response.writeHead(200, {"content-type": "application/json"});
+        response.end(JSON.stringify({items, total: null, next_cursor: null}));
+      } else if (request.url === "/probe.js") {
         response.writeHead(200, {"content-type": "text/javascript"}); response.end(built.stdout);
       } else if (request.url?.includes("/tasks")) {
         const referer = new URL(request.headers.referer ?? "http://localhost");
         if (referer.searchParams.has("visual")) {
           const selected = referer.searchParams.get("state");
-          const scenario = selected === "empty" || selected === "completed" || selected === "error" ? selected : "running";
+          const scenario = selected === "activity" || selected === "empty" || selected === "completed" || selected === "error" ? selected : "running";
           const started = Date.now();
           response.writeHead(200, {"content-type": "application/json"});
           response.end(JSON.stringify(request.url.includes("?limit=") ? visualTaskPage(scenario, started) : visualTaskDetail(scenario, started)));

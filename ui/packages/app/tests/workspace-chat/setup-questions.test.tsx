@@ -83,13 +83,13 @@ it("shows proposed and saved questions in the primary setup screen using the mat
   };
   try {
     const rendered = render(<FleetSetup client={client} view={view} workspace={WORKSPACE} />);
-    expect(screen.getByText("Proposed questions · saved setup R7")).toBeTruthy();
+    expect(screen.getByText("Proposed questions")).toBeTruthy();
     expect(screen.getByText(`1. ${QUESTION}`)).toBeTruthy();
     expect(screen.getByText(changed)).toBeTruthy();
     expect(screen.queryByText(YES)).toBeNull();
     rendered.rerender(<FleetSetup client={client} view={{...view, draft: null}} workspace={WORKSPACE} />);
-    expect(screen.getByText("Questions in saved setup R7")).toBeTruthy();
-    expect(screen.queryByText("Proposed questions · saved setup R7")).toBeNull();
+    expect(screen.getByText("Saved questions")).toBeTruthy();
+    expect(screen.queryByText("Proposed questions")).toBeNull();
     expect(screen.getByText(`1. ${QUESTION}`)).toBeTruthy();
     expect(screen.getByText(YES)).toBeTruthy();
     expect(screen.queryByText(changed)).toBeNull();

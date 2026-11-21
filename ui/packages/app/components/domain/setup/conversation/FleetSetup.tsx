@@ -5,7 +5,7 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { Button, Section } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, SAVED_SETUP_LABEL } from "@/lib/events/fleet-activity";
 import { setupRecovery } from "@/lib/api/schedule-status";
 import { SetupChecks } from "../summary/SetupChecks";
 import { SetupQuestions } from "../summary/SetupQuestions";
@@ -28,10 +28,10 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
     return activity && (activity.kind === ACTIVITY_KIND.setupSaved || activity.kind === ACTIVITY_KIND.setupReady) && activity.revision === revision;
   });
   // The save heading is the page's `h2`; without it the questions take that level, so no heading skips one.
-  const saveHeading = revision && !recorded ? saveDoneText(revision) : null;
+  const saveHeading = revision && !recorded ? SAVED_SETUP_LABEL : null;
   return <Section className="ph-no-capture ph-no-record my-md gap-sm py-xs" aria-label="Fleet setup">
     {saveHeading ? <h2 className="text-label font-medium text-muted-foreground">{saveHeading}</h2> : null}
-    {checks.length ? <SetupChecks issuesOnly={Boolean(revision) && !editing} checks={checks} label="Configuration readiness" workspace={workspace} definition={definition} onRefresh={() => client.refreshFleetSetup(true)} /> : null}
+    {checks.length ? <SetupChecks issuesOnly checks={checks} label="Configuration readiness" workspace={workspace} definition={definition} onRefresh={() => client.refreshFleetSetup(true)} /> : null}
     {questions ? <SetupQuestions definition={questions} label={questionLabel(Boolean(proposed), revision)} heading={saveHeading ? "h3" : "h2"} /> : null}
     <p className="text-label text-muted-foreground">{editing ? "Keep chatting. Save changes when you’re ready."
       : revision ? "You can keep chatting here to change the setup."
@@ -42,5 +42,5 @@ export function FleetSetup({client, view, workspace}: {client: DraftClient; view
 
 function questionLabel(proposed: boolean, revision: string | undefined): string {
   if (!revision) return "Proposed questions · not saved";
-  return proposed ? `Proposed questions · saved setup R${revision}` : `Questions in saved setup R${revision}`;
+  return proposed ? "Proposed questions" : "Saved questions";
 }

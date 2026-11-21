@@ -221,7 +221,7 @@ test("a saved setup has one quiet receipt and incoming messages have readable de
   await page.emulateMedia({reducedMotion: "reduce"});
   await page.goto(`${chatProbe}?setup=1`);
   const receipt = page.getByRole("region", {name: "Saved fleet setup"});
-  await expect(receipt.getByRole("heading")).toHaveText("Setup saved · v2");
+  await expect(receipt.getByRole("heading")).toHaveText("Saved setup");
   await expect(receipt.getByRole("list")).toHaveCount(0);
   await expect(receipt.locator("svg")).toHaveCount(0);
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
@@ -304,7 +304,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await expect(taskList).toBeVisible();
     if (await taskList.getAttribute("aria-expanded") !== "true") await taskList.click();
     for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
-    await expect(panel.getByRole("heading", {name: "Outputs", exact: true})).toHaveCount(0);
+    await expect(panel.getByRole("heading", {name: "Output", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("region", {name: "Pull requests", exact: true})).toBeAttached();
     await expectSourceHierarchy(panel);

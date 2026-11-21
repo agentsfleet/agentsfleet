@@ -184,7 +184,7 @@ it("keeps native private saving separate from direct publication without startin
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   await act(async () => {await client.save().catch(() => undefined);});
-  await screen.findByRole("heading", {name: "Setup saved · v1"});
+  await screen.findByRole("heading", {name: "Saved setup"});
   expect(fixture.writes()).toHaveLength(1);
   expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
@@ -287,8 +287,11 @@ it("keeps a refused improvement editable and never claims another revision was s
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.endsWith("/revisions") ? Promise.resolve(response({user_message: "The saved fleet changed"}, 409)) : base(input, init);
   });
-  render(<LiveSetup />); await act(async () => {await client.apply().catch(() => undefined);});
+  render(<LiveSetup />);
+  const priorReceipts = screen.getAllByRole("heading", {name: "Saved setup"}).length;
+  await act(async () => {await client.apply().catch(() => undefined);});
   await screen.findByText("The saved fleet changed");
-  expect(screen.queryByRole("heading", {name: "Setup saved · v2"})).toBeNull();
+  expect(screen.getAllByRole("heading", {name: "Saved setup"})).toHaveLength(priorReceipts);
+  expect(client.getSnapshot().draft?.review?.effective.target_setup_revision).toBe("1");
   expect(client.getSnapshot().draft?.state).toBe(DRAFT_STATE.editing);
 });

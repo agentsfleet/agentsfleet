@@ -63,7 +63,8 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, o
     }
     return breaks;
   }, [events, entries]);
-  return {attachments, onNew: receive, entries, groupBreaks};
+  const files = useMemo(() => entries.flatMap(entry => (entry.message.attachments ?? []).map(({id, name}) => ({id, name}))), [entries]);
+  return {attachments, onNew: receive, entries, groupBreaks, files};
 }
 
 /** Insert receipts at their observed boundary without sorting or replacing durable rows. */

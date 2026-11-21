@@ -19,16 +19,16 @@ describe("FleetThread — empty state", () => {
 describe("FleetThread — header chrome", () => {
   it("keeps saved and ready receipts distinct when readiness is attached to the saved revision", () => {
     mockStream(["setup_saved", "setup_ready"].map((kind, index) => ev({id: kind, role: "system", actor: "system",
-      status: "recorded", text: kind === "setup_saved" ? "Setup saved · v3" : "Setup done · v3", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
+      status: "recorded", text: kind === "setup_saved" ? "Saved setup" : "Setup ready", createdAt: new Date(Date.UTC(2026, 4, 15, 9, index)),
       custom: {requestJson: JSON.stringify({kind, revision: "3"})}})));
-    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup saved · v3")}));
-    expect(screen.getAllByText("Setup saved · v3")).toHaveLength(1);
-    expect(screen.getByText("Setup done · v3")).toBeTruthy();
+    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Saved setup")}));
+    expect(screen.getAllByText("Saved setup")).toHaveLength(1);
+    expect(screen.getByText("Setup ready")).toBeTruthy();
   });
   it("shows the saved setup revision without treating it as a new run", () => {
     mockStream([]);
-    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup done · v3")}));
-    const setup = screen.getByRole("heading", {name: "Setup done · v3"});
+    render(cloneElement(threadElement(), {setupRevision: "3", setup: createElement("h2", null, "Setup ready")}));
+    const setup = screen.getByRole("heading", {name: "Setup ready"});
     expect(screen.getByRole("log").contains(setup)).toBe(true);
     expect(screen.queryByText("Saved v3")).toBeNull();
     expect(screen.queryByText("New runs use this setup. Edit setup to change it.")).toBeNull();

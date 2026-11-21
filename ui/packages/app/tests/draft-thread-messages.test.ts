@@ -20,7 +20,7 @@ it("retains historical and receipt rows while a current answer changes", () => {
   for (const id of ["earlier:1:user", "activity:saved"]) expect(next.find(row => row.id === id)).toBe(first.find(row => row.id === id));
   expect(next.find(row => row.id === "2:assistant")).not.toBe(first.find(row => row.id === "2:assistant"));
   const changed = project({...view, activities: [{...receipt, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupReady, revision: "1"})}]});
-  expect(changed.find(row => row.id === "activity:saved")).toMatchObject({content: [{text: "Setup done · v1"}]});
+  expect(changed.find(row => row.id === "activity:saved")).toMatchObject({content: [{text: "Setup ready"}]});
   expect(createDraftThreadProjection()(view).find(row => row.id === "activity:saved")).not.toBe(first.find(row => row.id === "activity:saved"));
 });
 
@@ -33,7 +33,7 @@ it("places a dated receipt before the undated answer to an optimistic request", 
     activities: [{event_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})}]});
   expect(rows.map(row => row.id)).toEqual([`pending:${operation}`, "activity:saved", `pending-answer:${operation}`]);
-  expect(rows[1]).toMatchObject({role: "system", content: [{type: "text", text: "Setup saved · v1"}]});
+  expect(rows[1]).toMatchObject({role: "system", content: [{type: "text", text: "Saved setup"}]});
   expect(rows[2]).toMatchObject({role: "assistant", status: {type: "running"}});
 });
 

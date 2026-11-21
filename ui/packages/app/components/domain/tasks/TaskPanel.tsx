@@ -5,7 +5,7 @@ import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
 import type { FleetTaskProps } from "./FleetTaskProvider";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section } from "@agentsfleet/design-system";
 import { CaretDownIcon, DotOutlineIcon, ClockIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { taskActivityLabel } from "@/lib/task-activity";
@@ -14,6 +14,8 @@ import { accessLost, confirmed } from "./use-task-read";
 import { FleetTaskProvider, useFleetTaskView } from "./FleetTaskProvider";
 import { workActivity } from "../conversation/summary/WorkActivity";
 import { WorkApprovals, WorkChanges, WorkOutputs, WorkSources } from "../conversation/summary/WorkContextSections";
+import { RunResources } from "../conversation/summary/RunResources";
+import { recordedRunResources } from "../conversation/summary/recorded-run-resources";
 import { WorkSection } from "../shared/summary/WorkSection";
 
 type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void; expandedTask: string; onExpand: (id: string) => void};
@@ -31,12 +33,14 @@ function CurrentWork() {
   const view = useFleetTaskView();
   const [workOpen, setWorkOpen] = useState(false);
   const [expandedTask, setExpandedTask] = useState("");
+  const events = view?.events ?? EMPTY_EVENTS;
+  const resources = useMemo(() => events.map(recordedRunResources), [events]);
   if (!view?.subject) return null;
-  const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read, approvals} = view;
+  const {workspaceId, fleetId, sources, files, read, approvals} = view;
   const page = read ? confirmed(read.resource) : null;
   const tasks = page?.items ?? EMPTY_TASKS;
   const needsAttention = tasks.some(task => task.status === "blocked" || task.status === "exhausted");
-  return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-md">
+  return <Section asChild className="block gap-0"><section data-current-work="" aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-md">
     {view.readOnly ? <WorkSection title="Status"><p className="text-label font-medium">Archived</p><p className="text-eyebrow text-muted-foreground">Permanently stopped. This fleet cannot resume.</p></WorkSection> : null}
     {!view.readOnly && (!read || !accessLost(read.resource)) ? <WorkApprovals approvals={approvals} scope={{workspaceId, fleetId, subject: view.subject, revision: view.approvalRevision ?? 0}} /> : null}
     {read ? <WorkReadStatus resource={read.resource} retry={read.retry} /> : <WorkLoading />}
@@ -47,9 +51,10 @@ function CurrentWork() {
         className="h-auto min-h-11 w-full justify-start whitespace-normal px-0 text-left summary:min-h-9" aria-expanded={workOpen && expandedTask === task.id}
         title="View task details" onClick={() => {setWorkOpen(true); setExpandedTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
-    <WorkChanges events={events} />
-    <WorkOutputs details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0} />
-    <WorkSources sources={sources} />
+    <WorkChanges events={events} repositories={view.changeRepositories} />
+    <WorkOutputs previews={[...new Set(resources.flatMap(run => run.previews))]} details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0} />
+    <RunResources rows={resources.flatMap(run => run.rows)} />
+    <WorkSources sources={sources} files={files} />
     {tasks.length ? <div className="border-t border-border pt-sm"><Accordion type="single" collapsible value={workOpen ? "tasks" : ""} onValueChange={value => setWorkOpen(value === "tasks")}><AccordionItem value="tasks" className="border-0">
       <AccordionTrigger className="min-h-11 gap-md py-sm text-label font-normal md:min-h-9"><span className="flex flex-1 items-center justify-between gap-md"><span className="inline-flex items-center gap-sm">Tasks{needsAttention ? <WarningIcon size={14} className="text-warning" aria-label="Needs attention" /> : null}</span><span className="text-eyebrow text-muted-foreground">{tasks.length}</span></span></AccordionTrigger>
       <AccordionContent><TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} expandedTask={expandedTask} onExpand={setExpandedTask} /></AccordionContent>

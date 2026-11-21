@@ -8,8 +8,7 @@ import { Button } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
-import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/events/fleet-activity";
+import { SAVED_SETUP_LABEL } from "@/lib/events/fleet-activity";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
 
@@ -52,8 +51,7 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undef
   if (dirty) return {label: "Unsaved setup changes", icon: PencilSimpleIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
-    const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
-    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckCircleIcon, confirmed: true};
+    return {label: SAVED_SETUP_LABEL, icon: CheckCircleIcon, confirmed: true};
   }
   if (showPublication && view.draft?.publication && view.draft.publication.canonical_digest === view.draft.candidate?.canonical_digest) return {label: "Setup published", icon: CheckCircleIcon, confirmed: true};
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};

@@ -54,7 +54,7 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
     MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},
   ]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
-  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Setup saved · v1" : "Setup done · v1");
+  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Saved setup" : "Setup ready");
   const checks = screen.getByText("Configuration readiness");
   const working = screen.getByRole("status", {name: "Thinking"});
   expect(saved.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -66,7 +66,7 @@ it("keeps saved setup actions inside the conversation history", () => {
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
-  const saved = screen.getByRole("heading", {name: "Setup saved · v1"});
+  const saved = screen.getByRole("heading", {name: "Saved setup"});
   expect(screen.getByRole("log").contains(saved)).toBe(true);
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
 });
@@ -81,7 +81,7 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
-    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Setup saved · v1"}))).toBe(true);
+    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Saved setup"}))).toBe(true);
   } else {
     expect(entrance).toBeTruthy();
     expect(suggestion).toBeTruthy();

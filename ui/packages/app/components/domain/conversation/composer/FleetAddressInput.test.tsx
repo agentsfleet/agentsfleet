@@ -74,14 +74,24 @@ it("preserves words on both sides of a selected mention", async () => {
   expect(screen.queryByRole("listbox")).toBeNull();
 });
 
-it("lets Enter submit normally when the open picker has no matching choice", async () => {
+it("opens suggestions only for a caret and leaves a selected range intact", async () => {
+  render(<Harness />);
+  const input = enter("Ask @bo");
+  await screen.findByRole("listbox");
+  input.setSelectionRange(0, input.value.length);
+  fireEvent.select(input);
+  expect(screen.queryByRole("listbox")).toBeNull();
+  expect(input.value).toBe("Ask @bo");
+});
+
+it("holds the draft when Enter has no recipient to select", async () => {
   const send = vi.fn<(message: AppendMessage) => Promise<void>>(async () => {});
   render(<Harness onNew={send} />);
-  const input = enter("@unknown");
+  const input = enter("Ask @unknown");
   await screen.findByText("No matching fleets.");
-  fireEvent.keyDown(input, {key: "Enter"});
-  await waitFor(() => expect(send).toHaveBeenCalledOnce());
-  expect(send.mock.calls[0]?.[0]).toMatchObject({content: [{type: "text", text: "@unknown"}]});
+  expect(fireEvent.keyDown(input, {key: "Enter"})).toBe(false);
+  expect(send).not.toHaveBeenCalled();
+  expect(input.value).toBe("Ask @unknown");
   expect(document.activeElement).toBe(input);
 });
 

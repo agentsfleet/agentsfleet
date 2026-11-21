@@ -3,6 +3,8 @@ import type { DefaultReplyContent as DefaultContent, ReplyContext } from "./flee
 import { MessagePrimitive, MessagePartPrimitive, groupPartByType } from "@assistant-ui/react";
 import { FleetMarkdown, FleetReplyMarkdown } from "../../shared/chat/FleetMarkdown";
 import { Waiting } from "./FleetReplyFigures";
+import { ACTIVITY_TRACE_PART } from "./fleet-activity-trace";
+import { FleetActivityTrace } from "./FleetActivityTrace";
 import { FleetThought } from "./FleetThought";
 import { FleetToolGroup } from "../tools/FleetToolGroup";
 import { FleetRegisteredTool } from "../tools/FleetToolRegistry";
@@ -29,6 +31,7 @@ export function renderReplyPart({part, children}: ReplyRenderInfo, reply: ReplyC
     case "text": return <ReplyText streaming={reply.running} plainText={reply.plainText} />;
     case "indicator": return reply.contextProgress || reply.content.some(item => item.type === "tool-call" && item.result === undefined)
       ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
+    case "data": return part.name === ACTIVITY_TRACE_PART ? <FleetActivityTrace data={part.data} /> : <DefaultReplyContent data={readDefaultReplyContent(part)} />;
     default: return <DefaultReplyContent data={readDefaultReplyContent(part)} />;
   }
 }

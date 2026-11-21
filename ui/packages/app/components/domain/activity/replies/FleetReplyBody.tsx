@@ -9,7 +9,7 @@ import { FleetReplyParts } from "./FleetReplyParts";
 import { FleetReplyActions } from "./FleetReplyActions";
 import { useRestartAnnouncement, useSettleAnnouncement } from "./FleetReplyAnnouncements";
 import { messageOutcome } from "../messages/fleetFailureCopy";
-import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readRestartAttempt, readRunRestarted, readSubmittedAtMs, readText } from "../messages/fleetMessageReaders";
+import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readRestartAttempt, readRunRestarted, readSubmittedAtMs } from "../messages/fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "../messages/fleetMessageStatus";
 import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "../../conversation/thread/useFleetThreadEntries";
@@ -39,7 +39,7 @@ export function FleetReply({
   const errored = status === STATUS_AGENT_ERROR;
   const running = message.status?.type === STATUS_RUNNING;
   const recovering = readReplyRecovering(message);
-  const answer = readText(message).trim();
+  const answer = message.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n\n").trim();
   const span = readReasoningSpan(message);
   const figures = readReplyFigures(message);
   const queued = readQueued(message);

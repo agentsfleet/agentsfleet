@@ -3,7 +3,7 @@ import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
-import { WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/conversation/summary/WorkContextSections";
+import { WorkApprovals, WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/conversation/summary/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
@@ -37,7 +37,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   const ignored = [tool({name: "file_read"}), tool({status: "failed"}), tool({status: "interrupted"}), tool({status: undefined}), tool({args: {path: 42}}), tool({args: {path: " "}}), tool({args: undefined})];
   expect(recordedChanges([evt(), evt({tools: ignored})])).toEqual([]);
   const events = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
-  expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false}, {path: "src/test.ts", running: true}]);
+  expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false, lines: {kind: "unknown"}}, {path: "src/test.ts", running: true, lines: {kind: "unknown"}}]);
   const view = render(<WorkChanges events={[]} />);
   expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
   view.rerender(<WorkChanges events={events} />);
@@ -46,7 +46,8 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   expect(changes.getByText("Write in progress")).toBeTruthy();
   expect(changes.getByText("src/repair.ts")).toBeTruthy();
   expect(changes.getByText("src/test.ts")).toBeTruthy();
-  expect(changes.getByText(/Publication and line totals are not available here/)).toBeTruthy();
+  expect(changes.getByText(/Counts describe recorded edits; repository diffs and publication may differ/)).toBeTruthy();
+  expect(changes.getAllByText("Line totals unavailable")).toHaveLength(3);
   expect(screen.queryByRole("link")).toBeNull();
   view.rerender(<WorkChanges events={[evt({tools: [tool({})]})]} />);
   expect(screen.getByText("1 file")).toBeTruthy();
@@ -60,7 +61,7 @@ it("related pull requests use saved target links without claiming they were publ
   const saved = {...value, context: {...value.context, target}};
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "ready", value: saved}], ["same-pr", {kind: "ready", value: saved}]])} />);
   expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link").getAttribute("href")).toBe(target.url);
-  expect(screen.queryByRole("region", {name: "Outputs"})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Output"})).toBeNull();
   expect(screen.getAllByRole("link")).toHaveLength(1);
   expect(screen.queryByText(/last confirmed/)).toBeNull();
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "failed", reason: "unreachable", previous: saved}]])} />);
@@ -79,7 +80,7 @@ it("lists a confirmed publication only as an output while retaining other relate
   render(<WorkOutputs details={new Map([
     ["published", {kind: "ready", value: published}], ["earlier", {kind: "ready", value: related}], ["other", {kind: "ready", value: other}],
   ])} />);
-  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link", {name: /^Pull request #123/})).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Output"})).getByRole("link", {name: /^Pull request #123/})).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link", {name: /^Pull request #124/})).toBeTruthy();
   expect(screen.getAllByRole("link")).toHaveLength(2);
 });
@@ -102,4 +103,19 @@ it("keeps multiple configured repositories behind one closed disclosure", () => 
   expect(disclosure?.parentElement?.getAttribute("open")).toBeNull();
   fireEvent.click(disclosure!);
   expect(screen.getByRole("link", {name: "c/d"}).getAttribute("href")).toBe("https://github.com/c/d");
+});
+
+it("retains attached source names without implying a configured repository", () => {
+  render(<WorkSources files={[{id: "brief", name: "launch-brief.md"}]} />);
+  fireEvent.click(screen.getByText("1 attached file"));
+  expect(screen.getByText("launch-brief.md")).toBeTruthy();
+  expect(screen.queryByText("No sources configured.")).toBeNull();
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("omits empty approval guidance and names the total when linking to the fleet", () => {
+  const view = render(<WorkApprovals />);
+  expect(screen.queryByRole("region")).toBeNull();
+  view.rerender(<WorkApprovals approvals={{count: 2, href: "/review"}} />);
+  expect(screen.getByRole("link", {name: "Open fleet with 2 pending approvals"}).getAttribute("href")).toBe("/review");
 });

@@ -1,3 +1,4 @@
+import {launchReviewEvent} from "./launch-review-activity";
 import {visualWakeupEvents} from "./refresh-wakeup-data";
 import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { TaskPage } from "@/lib/api/tasks";
@@ -11,7 +12,8 @@ export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 export function visualEvents(scenario: VisualScenario, started: number, includeCode = false): FleetEvent[] {
   if (scenario === "empty") return [];
   if (scenario === "wake-up") return visualWakeupEvents(started);
-  const completed = scenario === "completed" || scenario === "activity";
+  if (scenario === "activity") return [launchReviewEvent(started)];
+  const completed = scenario === "completed";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
@@ -37,7 +39,7 @@ export function visualEvents(scenario: VisualScenario, started: number, includeC
 }
 
 export function visualTaskPage(scenario: VisualScenario, started: number, parity = false): TaskPage {
-  return {items: scenario === "empty" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
+  return {items: scenario === "empty" || scenario === "activity" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
     title: parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
 }
 

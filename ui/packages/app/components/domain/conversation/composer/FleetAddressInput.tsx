@@ -38,7 +38,7 @@ export function FleetAddressInput(props: Props) {
     onFocus={() => picker.focus(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget)) picker.focus(false);}}>
     <ChatComposerInput {...props}
       aria-autocomplete="list" aria-controls={picker.open ? listId : undefined} aria-activedescendant={activeId}
-      onSelect={event => picker.caret(event.currentTarget.selectionEnd)} onChange={picker.change} />
+      onSelect={event => picker.caret(event.currentTarget)} onChange={picker.change} />
     {picker.open ? <DashboardPanel padding="none" className="absolute inset-x-0 bottom-full z-20 mb-sm max-h-[min(16rem,40dvh)] overflow-y-auto rounded-lg border border-border bg-popover p-sm text-foreground shadow-floating" ref={listRef}>
       <SectionLabel variant="navigation" className="block px-md py-sm">Workspace fleets</SectionLabel>
       <SuggestionList id={listId} label="Workspace fleets" active={picker.selected} onChoose={picker.choose}
@@ -84,10 +84,13 @@ function useFleetAddress({inputRef, disabled}: Props) {
     handleAddressKey(event, {open, inputRef, choices, selected, choose,
       dismiss: () => setDismissed(text), move: setIndex});
   }
-  function change(event: ChangeEvent<HTMLTextAreaElement>) {
-    setCaret(event.currentTarget.selectionEnd); setIndex(0); setDismissed(null);
+  function trackCaret(input: HTMLTextAreaElement) {
+    setCaret(input.selectionStart === input.selectionEnd ? input.selectionEnd : 0);
   }
-  return {open, page, choices, selected, collection, choose, keyDown, change, focus: setFocused, caret: setCaret};
+  function change(event: ChangeEvent<HTMLTextAreaElement>) {
+    trackCaret(event.currentTarget); setIndex(0); setDismissed(null);
+  }
+  return {open, page, choices, selected, collection, choose, keyDown, change, focus: setFocused, caret: trackCaret};
 }
 
 function handleAddressKey(event: KeyboardEvent<HTMLDivElement>, controls: KeyControls) {
@@ -100,9 +103,9 @@ function handleAddressKey(event: KeyboardEvent<HTMLDivElement>, controls: KeyCon
   if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault(); event.stopPropagation();
     move(choices.length ? (selected + (event.key === "ArrowDown" ? 1 : -1) + choices.length) % choices.length : 0);
-  } else if (event.key === "Enter" && !event.shiftKey && choice) {
+  } else if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault(); event.stopPropagation();
-    choose(choice.name);
+    if (choice) choose(choice.name);
   }
 }
 

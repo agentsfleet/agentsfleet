@@ -17,14 +17,14 @@ function saved(state: NonNullable<TaskDetail["publication"]>["state"], commit: s
 it.each(["prepared", "issued", "unknown", "refused"] as const)("keeps a %s publication under related pull requests", state => {
   render(<WorkOutputs details={new Map([[TASK_IDS[0], {kind: "ready", value: saved(state)}]])} />);
   expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link")).toHaveProperty("href", TARGET.url);
-  expect(screen.queryByRole("region", {name: "Outputs"})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Output"})).toBeNull();
 });
 
 it("requires the confirmed commit and matching PR before reporting a published output", () => {
   const view = render(<WorkOutputs details={new Map([[TASK_IDS[0], {kind: "ready", value: saved("confirmed", null)}]])} />);
   expect(screen.queryByText("Changes published")).toBeNull();
   view.rerender(<WorkOutputs details={new Map([[TASK_IDS[0], {kind: "ready", value: saved("confirmed")} ]])} />);
-  expect(within(screen.getByRole("region", {name: "Outputs"})).getByText("Changes published")).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Output"})).getByText("Changes published")).toBeTruthy();
   const changed = saved("confirmed");
   if (changed.publication) changed.publication.pull_request_url = "https://github.com/a/b/pull/124";
   view.rerender(<WorkOutputs details={new Map([[TASK_IDS[0], {kind: "ready", value: changed}]])} />);

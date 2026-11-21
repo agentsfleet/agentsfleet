@@ -30,7 +30,7 @@ function Flap({dirty = false, patch = {}}: {dirty?: boolean; patch?: Partial<Dra
 it("saves v1 through the fleet API with the same flap label and no Plugin requests", async () => {
   render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup saved · v1");
+  await screen.findByText("Saved setup");
   expect(fixture.writes()).toHaveLength(1);
   expect(fixture.writes()[0]).toMatchObject({path: expect.stringMatching(/\/fleets$/), method: "POST",
     body: {name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: "none"}}});
@@ -51,11 +51,11 @@ it("keeps seconds and the spinner visible until the fleet receipt arrives, despi
   expect(screen.getByText("Saving and publishing").getAttribute("data-chat-loading")).toBe("true");
   await act(async () => {vi.advanceTimersByTime(2_000);});
   expect(screen.getByText("2s")).toBeTruthy();
-  expect(screen.queryByText("Setup saved · v1")).toBeNull();
+  expect(screen.queryByText("Saved setup")).toBeNull();
   const writes = fixture.fetch.mock.calls.filter(([, init]) => init?.method === "POST");
   expect(writes).toHaveLength(1);
   await act(async () => {pending.resolve(await base(...writes[0]!));});
-  expect(screen.getByText("Setup saved · v1")).toBeTruthy();
+  expect(screen.getByText("Saved setup")).toBeTruthy();
   expect(fixture.publicationAttempts).toBe(0);
 });
 
@@ -63,7 +63,7 @@ it("retries an uncertain fleet save with the original key and body", async () =>
   fixture.failSave = true;render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
   fireEvent.click(await screen.findByRole("button", {name: "Retry save"}));
-  await screen.findByText("Setup saved · v1");
+  await screen.findByText("Saved setup");
   const writes = fixture.writes();expect(writes).toHaveLength(2);
   expect(writes[1]?.body).toEqual(writes[0]?.body);
   expect(writes[1]?.headers.get("Idempotency-Key")).toBe(writes[0]?.headers.get("Idempotency-Key"));
@@ -73,7 +73,7 @@ it("retries an uncertain fleet save with the original key and body", async () =>
 it("materializes a local definition and then saves it without a Plugin lookup", async () => {
   client.fresh({kind: "definition", definition: REVIEW.effective.definition});await client.refreshSetup();
   render(<Flap />);fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup saved · v1");
+  await screen.findByText("Saved setup");
   expect(fixture.writes().filter(call => call.path.endsWith("/drafts"))).toHaveLength(1);
   expect(fixture.saveAttempts).toBe(1);expect(fixture.publicationAttempts).toBe(0);
 });
@@ -93,7 +93,7 @@ it("updates an existing fleet to v2 without cloning it or publishing a Plugin", 
   });
   await client.resume(DRAFT.id);render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup saved · v2");
+  await screen.findByText("Saved setup");
   expect(writes).toBe(1);expect(fixture.saveAttempts).toBe(0);expect(fixture.publicationAttempts).toBe(0);
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toContain(FLEET_ID);
 });
@@ -132,7 +132,7 @@ it("preserves the server-created frozen model when the account default differs",
   expect(client.getSnapshot().preview?.definition.config["x-agentsfleet"]).not.toHaveProperty("model");
   expect(client.getSnapshot().model).not.toBe(frozen);
   render(<Flap />);fireEvent.click(screen.getByRole("button", {name: "Save and publish"}));
-  await screen.findByText("Setup saved · v2");
+  await screen.findByText("Saved setup");
   expect(appliedModel).toBe(frozen);
 });
 

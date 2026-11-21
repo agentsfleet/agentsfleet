@@ -88,7 +88,7 @@ export function FleetThread(props: FleetThreadProps) {
 }
 
 function OwnedFleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount, files} = useThreadRuntime(props);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
   const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
@@ -104,7 +104,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
+              <FleetTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
               <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
                 archived={props.archived}
                 eventsCount={stream.events.length + previewCount} connectionStatus={stream.connectionStatus}
@@ -166,5 +166,5 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount: previews.entries.length};
+  return {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount: previews.entries.length, files: previews.files};
 }
