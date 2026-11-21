@@ -15,7 +15,7 @@ export function RecordedChangesDialog({groups, children}: Props) {
       <DialogHeader><DialogTitle>Recorded changes</DialogTitle><DialogDescription>{running ? "Recorded writes, including work still in progress." : "Files with confirmed local writes."} Counts describe recorded edits; repository diffs and publication may differ.</DialogDescription></DialogHeader>
       <div className="space-y-lg">{groups.map(group => <DashboardPanel key={group.repository?.id ?? "unbound"} padding="none" className="overflow-hidden rounded-md bg-surface-deep">
         <div className="flex flex-wrap items-center gap-sm border-b border-border px-lg py-sm text-eyebrow text-muted-foreground">
-          <span title={group.repository?.fullName}>{group.label} · {group.changes.length} {group.changes.length === 1 ? "file" : "files"}</span>
+          <span title={group.repository?.fullName}>{group.label ? `${group.label} · ` : ""}{group.changes.length} {group.changes.length === 1 ? "file" : "files"}</span>
           <span className="ml-auto"><RecordedChangeCounts lines={group.lines} /></span>
         </div>
         <List variant="plain" className="space-y-md p-lg">{group.changes.map(change => <ListItem key={change.path} className="flex flex-wrap items-start gap-sm text-label">

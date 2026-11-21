@@ -5,6 +5,7 @@ import type {Schedule} from "@/lib/api/draft-types";
 import type {RunFigures} from "@/lib/events/run-summary";
 import {cn} from "@agentsfleet/design-system";
 import { useCallback, useSyncExternalStore } from "react";
+import { nextFleetWakeup } from "@/lib/api/schedule-status";
 import { useOptionalFleetStreams } from "../stream/FleetStreamProvider";
 import { CONNECTION_STATUS } from "../stream/useFleetEventStream";
 
@@ -29,5 +30,5 @@ export function FleetHeaderStatus({workspaceId, fleetId, initial, schedules = []
 function labelFor(approvals: number, run: RunFigures | null | undefined, schedules: readonly Schedule[]) {
   if (approvals > 0) return "Needs approval";
   if (run?.status === "fleet_error" || schedules.some(schedule => schedule.sync === "failed")) return "Needs attention";
-  return schedules.some(schedule => schedule.status === "active" && schedule.sync === "synced" && schedule.run_state === "scheduled" && schedule.next_run_at) ? "Scheduled" : null;
+  return nextFleetWakeup(schedules) ? "Scheduled" : null;
 }

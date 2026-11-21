@@ -9,7 +9,7 @@ import { saveFleetViaUI } from "./fixtures/install-ui";
 import { expectDetailArchived, expectSidebarFleetState, archiveFleet, captureLifecycleReview } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
-import { gotoWorkspace, workspaceEntryPattern, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 const FLOW_TIMEOUT_MS = 120_000;
@@ -80,8 +80,8 @@ test.describe("multi-workspace + fleet lifecycle", () => {
       .rejects.toMatchObject({status: 404});
     await captureLifecycleReview(page, info, "deleted");
     await page.getByRole("navigation", {name: "Primary", exact: true})
-      .getByRole("link", {name: "Your fleets", exact: true}).click();
-    await expect(page).toHaveURL(workspaceEntryPattern(secondary.id));
+      .locator("summary").filter({hasText: "Your Fleets"}).click();
+    await expect(page).toHaveURL(workspaceHref(secondary.id, "fleets/new"));
     await expect(page.locator(`a[href$="/fleets/${fleetId}"]`)).toHaveCount(0);
   });
 

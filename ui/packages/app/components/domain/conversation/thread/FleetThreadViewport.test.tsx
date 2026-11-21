@@ -107,7 +107,9 @@ describe("FleetThreadViewport scroll", () => {
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: LOG_PX, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(600);
-      // A settled reply laid out taller than its placeholder.
+      // A deferred row's anchor can move before the browser reports its new height.
+      frame.viewport.scrollTop = 550;
+      fireEvent.scroll(frame.viewport);
       frame.size.log = 1_300;
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: 1_300, behavior: "instant" });
@@ -120,6 +122,7 @@ describe("FleetThreadViewport scroll", () => {
       const frame = browser.frameOf(view);
       browser.layout(frame.log);
       frame.viewport.scrollTop = 200;
+      fireEvent.wheel(frame.viewport, {deltaY: -400});
       fireEvent.scroll(frame.viewport);
       fireEvent.click(view.getByRole("button", {name: "Jump to latest"}));
       browser.layout(frame.log);
@@ -128,6 +131,7 @@ describe("FleetThreadViewport scroll", () => {
       browser.layout(frame.log);
       expect(frame.viewport.scrollTop).toBe(900);
       frame.viewport.scrollTop = 620;
+      fireEvent.wheel(frame.viewport, {deltaY: -280});
       fireEvent.scroll(frame.viewport);
       frame.size.log = 1_400;
       browser.layout(frame.log);
@@ -155,7 +159,10 @@ describe("FleetThreadViewport scroll", () => {
     });
 
     it.each([
-      ["scrolls up", (frame: Frame) => { frame.viewport.scrollTop = 200; fireEvent.scroll(frame.viewport); }, 200],
+      ["scrolls up", (frame: Frame) => { fireEvent.wheel(frame.viewport, {deltaY: -400}); frame.viewport.scrollTop = 200; }, 200],
+      ["reads with the keyboard", (frame: Frame) => { fireEvent.keyDown(frame.viewport, {key: "PageUp"}); }, 600],
+      ["points at the transcript", (frame: Frame) => { fireEvent.pointerDown(frame.log); }, 600],
+      ["focuses the transcript", (frame: Frame) => { fireEvent.focusIn(frame.log); }, 600],
       ["types a draft", (frame: Frame) => { fireEvent.input(frame.composer, { target: { value: "Hold the rollout" } }); }, 600],
     ] as const)("stops landing once the reader %s", (_, act, held) => {
       const browser = stubBrowserLayout();
@@ -168,7 +175,7 @@ describe("FleetThreadViewport scroll", () => {
       expect(frame.viewport.scrollTop).toBe(held);
     });
 
-    it("keeps landing when the reader scrolls but stays at the latest turn", () => {
+    it("keeps landing through a scroll event at the latest turn", () => {
       const browser = stubBrowserLayout();
       const frame = browser.frameOf(render(<View messages={SETTLED_TURN} eventsCount={1} />));
       browser.layout(frame.log);

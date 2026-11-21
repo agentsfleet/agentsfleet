@@ -12,7 +12,7 @@ it("reports Saving until the accepted fleet response can be read", async () => {
   const gate = Promise.withResolvers<Response>();
   fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleets") ? gate.promise : undefined;
   const saving = client.save();
-  await vi.waitFor(() => expect(fixture.mutations()).toHaveLength(1));
+  await vi.waitFor(() => expect(fixture.mutations().filter(call => call.method === "POST")).toHaveLength(1));
   expect(client.getSnapshot()).toMatchObject({busy: true, setupAction: "saving", fleet: null});
   gate.resolve(response(FLEET, 201)); await saving;
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, setupAction: null, savedSetupRevision: "1", fleet: {id: FLEET.id}});

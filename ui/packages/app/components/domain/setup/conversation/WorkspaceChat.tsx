@@ -4,7 +4,6 @@ import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import Link from "next/link";
 import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
@@ -16,7 +15,6 @@ import { appliedNotice, isRunning } from "@/lib/api/draft-types";
 import { PUBLISHED_NOTICE } from "@/lib/api/draft-publication";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
-import { ChatErrorNotice } from "../../shared/chat/ChatErrorNotice";
 import { DraftChatHeading } from "./DraftChatHeading";
 import { AuthoringIntentContext, type AuthoringIntent } from "../AuthoringIntent";
 
@@ -60,30 +58,28 @@ function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props
     let disposed = false;
     const open = async (): Promise<void> => {
       const cached = draft ? cache.read(draft) : undefined;
-      setSession({kind: cached || current.getSnapshot().preview ? "ready" : "loading", client: current, reload: open});
-      const lists = current.initialize();
-      void lists.catch(ignore);
+      const opening = Boolean(draft || source) && !cached && !current.getSnapshot().preview;
+      setSession({kind: opening ? "loading" : "ready", client: current, reload: open});
+      void current.initialize().catch(ignore);
       try {
         if (draft) await current.resume(draft, cached);
         else if (source?.kind === SOURCE_KIND.fleet) await current.refreshFleetSetup();
         else if (source) await current.refreshSetup();
-        else await lists;
-      } finally {if (!disposed) setSession({kind: "ready", client: current, reload: open});}
+      } finally {if (!disposed && opening) setSession({kind: "ready", client: current, reload: open});}
     };
     void open().catch(ignore);
     return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
   }, [selection, cache]);
   const initialSourceRevision = selection.source?.kind === SOURCE_KIND.fleet ? selection.source.setup_revision : undefined;
   return session.kind === "starting" ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />
-    : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;
+    : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} draftId={draft} fleetPage={fleetPage} menuItems={menuItems} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;
 }
 
-function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
+function ChatSurface({client, source, draftId, initialSourceRevision, workspace, subject, opening, selected, reload, fleetPage, menuItems}: {source?: Source; draftId?: string; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const router = useRouter();
   const openFleet = useCallback(() => router.refresh(), [router]);
-  const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  useCommittedFleetNavigation(workspace, source, view, opening, fleetPage);
-  const [instructionsDirty, setInstructionsDirty] = useState(false);
+  const view = useSyncExternalStore(client.subscribe, client.getLayoutSnapshot, client.getLayoutSnapshot);
+  useFleetSetupUrl(workspace, source, draftId, view, opening, fleetPage);
   const handledSourceRevision = useRef(initialSourceRevision);
   const turnPending = chatRecovery(view).pending;
   useEffect(() => {
@@ -96,56 +92,48 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
   }, [client, source, opening, turnPending, view.busy, view.pending, view.error, view.draft, view.inaccessible, view.savedSetupRevision, view.preview]);
   useDraftSidebarBridge(client, view, workspace, subject, view.messages.some(isRunning));
   const unavailable = view.inaccessible || (selected && !view.draft && !view.preview);
-  const errorNotice = view.error ? <ChatError key={view.error} client={client} view={view} source={source} workspace={workspace} reload={reload} onStartOver={() => setInstructionsDirty(false)} /> : undefined;
+  const retry = async (): Promise<void> => {
+    const current = client.getSnapshot();
+    if (current.inaccessible) {window.location.reload();return;}
+    if (current.busy || chatRecovery(current).pending) return;
+    if (current.pending || current.draft || current.fleet) await client.retry();
+    else if (source?.kind === SOURCE_KIND.fleet) await client.refreshFleetSetup(false, true);
+    else await reload();
+  };
   return <div className="ph-no-capture ph-no-record flex min-h-0 flex-1 flex-col" data-fleet-authoring>
-    {unavailable ? errorNotice : null}
+    {unavailable && !opening && view.error ? <div role="alert" aria-label="Chat recovery" className="flex flex-wrap items-center gap-md px-xl py-md text-label">
+      <p className="text-destructive">{view.error}</p>
+      <Button size="compact" variant="link" disabled={view.busy} onClick={() => {void retry().catch(ignore);}}>{view.inaccessible ? "Reload" : "Retry"}</Button>
+    </div> : null}
     {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : unavailable ? null : <>
-    <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
-    <DraftConversation client={client} view={view} workspace={workspace} subject={subject} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} errorNotice={errorNotice} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} />
+    <DraftConversation client={client} view={view} workspace={workspace} subject={subject} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} onRequestRetry={retry} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       {view.fleet || view.draft?.candidate || view.preview ? <FleetSetup client={client} view={view} workspace={workspace} /> : null}
     </DraftConversation>
     </>}
   </div>;
 }
 
-function useCommittedFleetNavigation(workspace: string, source: Source | undefined, view: DraftView, opening: boolean, fleetPage?: boolean): void {
+function useFleetSetupUrl(workspace: string, source: Source | undefined, draftId: string | undefined, view: DraftView, opening: boolean, fleetPage?: boolean): void {
   const router = useRouter();
   const replaced = useRef<string | undefined>(undefined);
-  const baseline = useRef<{receipt: string | null} | null>(null);
-  const revision = view.savedSetupRevision;
+  const savedDraftId = view.draft?.id;
   useEffect(() => {
-    if (opening || view.busy || view.inaccessible) return;
-    const receipt = revision && view.fleet ? `${view.fleet.id}:${revision}` : null;
-    baseline.current ??= {receipt};
-    const committed = receipt && receipt !== baseline.current.receipt;
-    if (committed && view.fleet && revision) {
-      if (source?.kind === SOURCE_KIND.fleet && (view.fleet.id !== source.fleet_id || BigInt(revision) <= BigInt(source.setup_revision))) return;
-      if (replaced.current === receipt) return;
-      replaced.current = receipt;
-      if (fleetPage) router.refresh();
-      else router.replace(`/w/${workspace}/fleets/${view.fleet.id}`, {scroll: false});
-      return;
+    if (fleetPage || opening || view.busy || view.inaccessible || view.error) return;
+    let query: URLSearchParams;
+    if (source?.kind === SOURCE_KIND.fleet) {
+      const revision = view.savedSetupRevision ?? view.preview?.setupRevision;
+      if (!revision || view.fleet?.id !== source.fleet_id || BigInt(revision) <= BigInt(source.setup_revision)) return;
+      query = new URLSearchParams({fleet: source.fleet_id, setup_revision: revision});
+    } else {
+      if (source || draftId || !savedDraftId || !view.savedSetupRevision) return;
+      query = new URLSearchParams({draft: savedDraftId});
     }
-    // A read can rebase an editor URL; it never proves a new save.
-    const currentRevision = view.preview?.setupRevision;
-    if (fleetPage || view.error || !currentRevision || source?.kind !== SOURCE_KIND.fleet
-      || view.fleet?.id !== source.fleet_id || BigInt(currentRevision) <= BigInt(source.setup_revision)) return;
-    const query = new URLSearchParams({fleet: source.fleet_id, setup_revision: currentRevision});
     const url = `/w/${workspace}/fleets/new?${query}`;
-    if (replaced.current !== url) {replaced.current = url; router.replace(url, {scroll: false});}
-  }, [router, workspace, source, revision, opening, fleetPage, view.busy, view.inaccessible, view.error, view.fleet, view.preview]);
-}
-
-function ChatError({client, view, source, workspace, reload, onStartOver}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>; onStartOver: () => void}) {
-  return <ChatErrorNotice title={view.inaccessible ? "Chat is unavailable" : "We couldn’t complete that"} actions={<>
-        <Button size="compact" variant="link" className="text-muted-foreground underline underline-offset-4" disabled={view.busy} onClick={() => {
-          if (view.inaccessible) window.location.reload();
-          else void (view.draft || view.pending ? client.retry() : reload()).catch(ignore);
-        }}>{view.inaccessible ? "Reload" : "Retry"}</Button>
-        {!view.inaccessible && source?.kind === SOURCE_KIND.fleet ? <Button size="compact" variant="link" className="text-muted-foreground underline underline-offset-4" disabled={view.busy || view.pending || chatRecovery(view).pending} onClick={() => {
-          client.fresh(source); onStartOver(); void client.refreshFleetSetup(false, true).catch(ignore);
-        }}>Start over from current setup</Button> : null}
-        <Button size="compact" variant="link" className="text-muted-foreground underline underline-offset-4" asChild><Link href={`/w/${workspace}/fleets`}>Your fleets</Link></Button>
-    </>}>{view.error}</ChatErrorNotice>;
+    if (replaced.current === url) return;
+    replaced.current = url;
+    if (source) router.replace(url, {scroll: false});
+    else window.history.replaceState(null, "", url);
+  }, [router, workspace, source, draftId, opening, fleetPage, view.busy, view.inaccessible, view.error, view.fleet?.id, view.preview?.setupRevision, view.savedSetupRevision, savedDraftId]);
 }

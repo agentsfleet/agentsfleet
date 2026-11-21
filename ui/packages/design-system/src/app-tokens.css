@@ -21,6 +21,7 @@
   --lh-body-lg: 1.25rem;
   --lh-label: 1.25rem;
   --lh-eyebrow: 1rem;
+  --lh-summary-label: 1.125rem;
   --lh-heading: 1.5rem;
   --lh-display-md: 1.625rem;
   --lh-conversation: 1.25rem;
@@ -71,7 +72,6 @@
   --overlay: #0009;
   --elevation-dialog: 0 20px 80px #0006;
   --summary-width: 248px;
-  --setup-summary-width: 320px;
   --max-w-chat: 740px;
   --chat-input-height: 60px;
   --chat-inset: 32px;

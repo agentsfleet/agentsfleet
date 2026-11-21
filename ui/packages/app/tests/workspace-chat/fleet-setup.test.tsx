@@ -9,7 +9,7 @@ import { DraftConversation } from "@/components/domain/setup/conversation/DraftC
 import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { SetupPublication } from "@/components/domain/setup/publishing/SetupPublication";
 import { AuthoringIntentContext } from "@/components/domain/setup/AuthoringIntent";
-import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chatRouter } from "./fixture";
 import { DRAFT, FLEET, FLEET_ID, PLUGIN_CARD, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 
@@ -26,12 +26,10 @@ beforeEach(async () => {
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function LiveSetup({target}: {target?: string}) {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  const [dirty, setDirty] = useState(false);
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
-    <DraftChatHeading client={client} view={view} workspace={WORKSPACE} onDirtyChange={setDirty} />
+    <DraftChatHeading client={client} view={view} workspace={WORKSPACE} />
     <FleetSetup client={client} view={view} workspace={WORKSPACE} />
-    <AuthoringIntentContext.Provider value={{publicationTarget: target}}><SetupPublication client={client} view={view} workspace={WORKSPACE} dirty={dirty} /></AuthoringIntentContext.Provider>
-    {dirty ? <output>Manual changes pending</output> : null}</>;
+    <AuthoringIntentContext.Provider value={{publicationTarget: target}}><SetupPublication client={client} view={view} workspace={WORKSPACE} /></AuthoringIntentContext.Provider></>;
 }
 
 function SetupConversation() {
@@ -185,8 +183,8 @@ it("keeps native private saving separate from direct publication without startin
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   await act(async () => {await client.save().catch(() => undefined);});
   await screen.findByRole("heading", {name: "Saved setup"});
-  expect(fixture.writes()).toHaveLength(1);
-  expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
+  expect(fixture.writes().filter(call => call.method === "POST")).toHaveLength(1);
+  expect(fixture.writes().find(call => call.method === "POST")?.body).toMatchObject({review_digest: "review-with-tools", start: {kind: "none"}});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
 });
 
@@ -246,18 +244,6 @@ it("retains a refused next Plugin revision without claiming publication or chang
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(client.getSnapshot().draft?.publication?.revision_id).toBe(PUBLICATION.revision_id);
   expect(fixture.saveAttempts).toBe(0);
-});
-
-it("cancels manual editing without saving or exposing advanced run options", async () => {
-  render(<LiveSetup />); await chooseSetupAction("Instructions");
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Unsaved manual instructions"}});
-  expect(await screen.findByText("Manual changes pending")).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Save and publish", hidden: true})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Review and run options"})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(fixture.writes()).toEqual([]);
 });
 
 it("refuses saving a newer proposal that the person has not seen", async () => {

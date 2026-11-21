@@ -44,16 +44,17 @@ it("shows each fleet next to its private setup conversation and includes unfinis
   const fleet = await screen.findByRole("link", {name: active.name});
   expect(fleet.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
   expect(fleet.getAttribute("title")).toContain("active");
-  const icon = fleet.querySelector("svg");
-  expect(icon?.getAttribute("width")).toBe("16");
-  expect(icon?.getAttribute("aria-hidden")).toBe("true");
+  expect(fleet.querySelector("svg")).toBeNull();
   expect(within(fleet).getByText(active.name).classList.contains("text-pulse")).toBe(false);
   const neutral = screen.getByRole("link", {name: `${archived.name} Archived`});
   expect(within(neutral).getByText(archived.name).classList.contains("text-pulse")).toBe(false);
   expect(screen.getByRole("link", {name: DRAFT.title}).getAttribute("href")).toContain(DRAFT.id);
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
   expect(screen.queryByRole("link", {name: "Unfinished fleet edit"})).toBeNull();
-  expect(screen.getByRole("link", {name: `Edit ${active.name}`}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
+  const edit = screen.getByRole("link", {name: `Edit ${active.name}`});
+  expect(edit.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?draft=${EDIT_ID}`);
+  expect(edit.lastElementChild?.getAttribute("width")).toBe("14");
+  expect(edit.lastElementChild?.getAttribute("aria-hidden")).toBe("true");
   const trash = screen.getByRole("button", {name: `Permanently delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
   expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");
@@ -203,6 +204,22 @@ it("shows the live private setup, highlights selection and reuses its pagination
   expect(edit.getAttribute("data-active")).toBe("true");
   expect(edit.getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}/setup`);
   expect(calls.every(call => !call.path.includes("/drafts"))).toBe(true);
+});
+
+it("refreshes the fleet rail once when the current setup is saved", async () => {
+  const history = {workspace: WORKSPACE, subject: "owner", cards: [
+    {id: EDIT_ID, title: "Editing current instructions", detail: "", activity: "draft" as const},
+  ], fresh: null, remove: null, owner: null, locked: false, current: EDIT_ID, more: null, status: "ready" as const};
+  const count = () => calls.filter(call => call.path.endsWith("/fleets?limit=50")).length;
+  const onNavigate = vi.fn();
+  const view = render(<RecentFleetList workspace={WORKSPACE} onNavigate={onNavigate} history={history} />);
+  await screen.findByRole("link", {name: active.name});
+  expect(count()).toBe(1);
+  const saved = {...history, cards: [{...history.cards[0]!, linkedFleet: FLEET_ID, activity: "saved" as const}]};
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={onNavigate} history={saved} />);
+  await waitFor(() => expect(count()).toBe(2));
+  view.rerender(<RecentFleetList workspace={WORKSPACE} onNavigate={onNavigate} history={{...saved}} />);
+  expect(count()).toBe(2);
 });
 
 it("waits for private setups before showing the empty workspace message", async () => {

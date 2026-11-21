@@ -12,7 +12,7 @@ export type RecordedChangeRepository = {
 };
 export type RecordedChange = {path: string; running: boolean; lines: ChangeTotals; repository?: ChangeRepository};
 type Options = {includeRunning?: boolean; repositories?: readonly RecordedChangeRepository[]};
-export type ChangeGroup = {repository: ChangeRepository | undefined; label: string; changes: RecordedChange[]; lines: ChangeTotals};
+export type ChangeGroup = {repository: ChangeRepository | undefined; label: string | undefined; changes: RecordedChange[]; lines: ChangeTotals};
 
 const UNKNOWN: ChangeTotals = {kind: "unknown"};
 const EMPTY_REPOSITORIES: readonly RecordedChangeRepository[] = [];
@@ -42,7 +42,7 @@ export function groupRecordedChanges(changes: readonly RecordedChange[]): Change
   const groups = new Map<string | undefined, ChangeGroup>();
   for (const change of changes.toReversed()) {
     const id = change.repository?.id;
-    const group: ChangeGroup = groups.get(id) ?? {repository: change.repository, label: change.repository?.label ?? "Recorded files", changes: [], lines: UNKNOWN};
+    const group: ChangeGroup = groups.get(id) ?? {repository: change.repository, label: change.repository?.label, changes: [], lines: UNKNOWN};
     group.changes.unshift(change);
     groups.set(id, group);
   }

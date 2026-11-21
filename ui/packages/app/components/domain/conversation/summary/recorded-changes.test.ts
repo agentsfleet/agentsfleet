@@ -69,7 +69,7 @@ it("uses explicit event/path repository bindings without guessing from directory
   const changes = recordedChanges([evt({tools: [write()]}), evt({id: "other-event", tools: [write({args: {path: "docs/page.md"}})]})], {repositories});
   expect(changes.find(change => change.path === "web/page.ts")?.repository).toEqual(WEB);
   expect(changes.find(change => change.path === "docs/page.md")?.repository).toBeUndefined();
-  expect(groupRecordedChanges(changes).map(group => group.label)).toEqual(["web", "Recorded files"]);
+  expect(groupRecordedChanges(changes).map(group => group.label)).toEqual(["web", undefined]);
 });
 
 it("does not assign confirmed line receipts to a write that is still running", () => {

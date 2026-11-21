@@ -13,9 +13,9 @@ import { useAuthoringIntent } from "../AuthoringIntent";
 import { SetupStatusFlap } from "./SetupStatusFlap";
 import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
 
-type Props = {client: DraftClient; view: DraftView; workspace: string; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string};
+type Props = {client: DraftClient; view: DraftView; workspace: string; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string};
 
-export function SetupPublication({client, view, dirty, ...statusProps}: Props) {
+export function SetupPublication({client, view, ...statusProps}: Props) {
   const {publicationTarget} = useAuthoringIntent();
   const inFlight = useRef(false);
   const [preparing, setPreparing] = useState(false);
@@ -25,7 +25,7 @@ export function SetupPublication({client, view, dirty, ...statusProps}: Props) {
     : Boolean(view.preview);
   const label = view.draft?.review?.effective.instance_name ?? view.preview?.instanceName ?? "";
   const available = editable && !published && !view.inaccessible && !view.busy && !view.pending && !view.error
-    && Boolean(label.trim()) && !dirty && !chatRecovery(view).pending;
+    && Boolean(label.trim()) && !chatRecovery(view).pending;
   const publish = async (): Promise<void> => {
     if (inFlight.current) return;
     inFlight.current = true; setPreparing(true);
@@ -48,8 +48,9 @@ export function SetupPublication({client, view, dirty, ...statusProps}: Props) {
     </output>
   </div>;
   return available ? <div className="mb-sm flex flex-wrap items-center justify-center gap-md">
+    {statusProps.onRetry ? <SetupStatusFlap view={view} {...statusProps} /> : null}
     <Button variant="outline" className="rounded-full bg-card px-xl" onClick={() => {void publish();}}>Save and publish<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" /></Button>
     {view.fleet ? statusProps.onOpenFleet ? <Button variant="link" size="eyebrow" onClick={statusProps.onOpenFleet}>Open fleet</Button>
       : <Link className="text-eyebrow text-muted-foreground hover:underline" href={`/w/${statusProps.workspace}/fleets/${view.fleet.id}`}>Open fleet</Link> : null}
-  </div> : <SetupStatusFlap view={view} dirty={dirty} showPublication {...statusProps} />;
+  </div> : <SetupStatusFlap view={view} showPublication {...statusProps} />;
 }

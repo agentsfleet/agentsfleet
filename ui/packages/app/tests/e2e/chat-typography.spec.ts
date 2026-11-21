@@ -3,6 +3,15 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
+test("the chat row uses the design-system stream motion token", async ({page, chatProbe}) => {
+  await page.emulateMedia({reducedMotion: "no-preference"});
+  await page.goto(chatProbe);
+  const reply = page.locator('[data-role="assistant"]').first();
+  await expect(reply).toHaveCSS("transition-duration", "0.08s");
+  await page.evaluate(() => document.documentElement.style.setProperty("--motion-duration-stream", "200ms"));
+  await expect(reply).toHaveCSS("transition-duration", "0.2s");
+});
+
 test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
   for (const route of ["?loading=1", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
@@ -94,6 +103,39 @@ test("incoming progress never moves the draft or the reading position, and Jump 
 test("opens at the latest turn, lifts a sent turn to the top and holds it while the reply streams and the window resizes", async ({page, chatProbe}) => {
   const roomy = page.viewportSize();
   if (roomy === null) throw new Error("the project sets no viewport to resize from");
+  await page.addInitScript(() => {
+    const nativeObserver = ResizeObserver;
+    const mark = (name: string) => performance.mark(`chat-opening:${name}`);
+    window.ResizeObserver = class extends nativeObserver {
+      private observesLog = false;
+      constructor(callback: ResizeObserverCallback) {
+        super((entries, observer) => {
+          for (const entry of entries) {
+            if (entry.target.classList.contains("fleet-thread-log")) mark(`resize ${entry.contentRect.height}`);
+          }
+          callback(entries, observer);
+        });
+      }
+      observe(target: Element, options?: ResizeObserverOptions): void {
+        if (target.classList.contains("fleet-thread-log")) this.observesLog = true;
+        super.observe(target, options);
+      }
+      disconnect(): void {
+        if (this.observesLog) mark(`disconnect ${new Error().stack?.split("\n").slice(2, 4).join(" ")}`);
+        super.disconnect();
+      }
+    };
+    const scrollTo = Reflect.get(Element.prototype, "scrollTo") as Element["scrollTo"];
+    Element.prototype.scrollTo = new Proxy(scrollTo, {
+      apply(scrollTo, element, args) {
+        if (element instanceof Element && element.classList.contains("fleet-thread-viewport")) mark(`scrollTo ${args[0]?.top ?? args[1]}`);
+        return Reflect.apply(scrollTo, element, args);
+      },
+    });
+    window.addEventListener("scroll", event => {
+      if (event.target instanceof Element && event.target.classList.contains("fleet-thread-viewport")) mark("scroll");
+    }, {capture: true, passive: true});
+  });
   // A settled reply taller than its layout placeholder sits just above the newest turn.
   await page.goto(`${chatProbe}?scroll=1&tall=18`);
   const viewport = page.locator('[data-testid="fleet-thread-root"] [role="presentation"]');
@@ -102,7 +144,14 @@ test("opens at the latest turn, lifts a sent turn to the top and holds it while 
   const fromBottom = () => viewport.evaluate(element => element.scrollHeight - element.clientHeight - element.scrollTop);
   const scrollTop = () => viewport.evaluate(element => element.scrollTop);
   const painted = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await expect.poll(fromBottom).toBeLessThanOrEqual(1);
+  try {
+    await expect.poll(fromBottom).toBeLessThanOrEqual(1);
+  } catch (cause) {
+    const timeline = await page.evaluate(() => performance.getEntriesByType("mark")
+      .filter(mark => mark.name.startsWith("chat-opening:"))
+      .map(mark => `${Math.round(mark.startTime)}ms ${mark.name}`));
+    throw new Error(`Opening scroll timeline\n${timeline.join("\n")}`, {cause});
+  }
   await input.fill("Check the canary rollout.");
   await page.getByRole("button", {name: "Send", exact: true}).click();
   const sent = page.locator("[data-aui-top-anchor-user]");
@@ -388,7 +437,7 @@ test("setup Summary retains full inline phone content and room for policy labels
     await expect(summary).toBeVisible();
     const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
       scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
-    if (info.project.name === "chromium") expect(layout.width).toBe(320);
+    if (info.project.name === "chromium") expect(layout.width).toBe(248);
     else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
     const footer = page.getByTestId("fleet-chat-footer");
     expect(await footer.evaluate(node => {

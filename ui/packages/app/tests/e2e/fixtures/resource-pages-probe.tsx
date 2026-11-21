@@ -72,7 +72,7 @@ function EmptySetup() {
   useEffect(() => () => client.dispose(), [client]);
   const view = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col"><div data-fleet-authoring className="flex min-h-0 flex-1 flex-col">
-    <DraftChatHeading workspace={WORKSPACE} client={client} view={view} onDirtyChange={() => {}} />
+    <DraftChatHeading workspace={WORKSPACE} client={client} view={view} />
     <DraftConversation client={client} view={view} workspace={WORKSPACE} />
   </div></PageLayout>;
 }

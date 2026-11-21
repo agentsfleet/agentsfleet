@@ -279,11 +279,3 @@ export type WorkspaceControlFrame = WorkspaceHelloFrame | WorkspaceCatchingUpFra
 export type StreamTextKind = "answer" | "reasoning";
 
 export type LiveFrame = ActivityLiveFrame | WorkspaceControlFrame;
-
-// One multiplexed SSE frame from the workspace stream: a `LiveFrame` plus the
-// `fleet_id` the backend spliced in, so the wall demultiplexes each frame to
-// its tile. The backend guarantees the tag on every frame; a frame missing it
-// is malformed and dropped by the client (never routed to a wrong tile).
-export type WorkspaceLiveFrame = ActivityLiveFrame & { fleet_id: string };
-
-export type WorkspaceFrame = WorkspaceLiveFrame | WorkspaceControlFrame;

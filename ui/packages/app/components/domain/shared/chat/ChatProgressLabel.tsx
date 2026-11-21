@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { CircleNotchIcon } from "@phosphor-icons/react/ssr";
 import { MS_PER_SECOND } from "@/lib/utils";
 
+export const QUEUED_PROGRESS_LABEL = "On it";
+
 /** The live label stays accessible while only its visual clock ticks. */
 export function ChatProgressLabel({label, startedAtMs}: {label: string; startedAtMs?: number}) {
   const [observedAt] = useState(() => Date.now());

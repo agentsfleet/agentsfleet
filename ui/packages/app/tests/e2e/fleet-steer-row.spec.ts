@@ -18,7 +18,7 @@ test("fleet_thread_renders_a_fleet_steer_row", async ({page, chatProbe}) => {
   await expect(turn).toContainText(STEER_TEXT);
   // The pill a person's queued message shows, unchanged for a fleet's.
   const reply = page.locator('[data-role="assistant"]');
-  await expect(reply.getByRole("status", {name: "Queued"})).toBeVisible();
+  await expect(reply.getByRole("status", {name: "On it"})).toBeVisible();
   await expect(reply.getByRole("status", {name: "Working"})).toHaveCount(0);
   expect(errors).toEqual([]);
 });

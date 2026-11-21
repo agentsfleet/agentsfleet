@@ -6,6 +6,10 @@ import { DraftCardsSchema, ModelsSchema } from "./draft-types";
 import { losesAccess, setupRequest } from "./draft-request";
 import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
+type ListUpdates = {
+  ready: (list: DraftList, view: DraftListsView) => void;
+  failed: (list: DraftList, cause: unknown) => void;
+};
 
 // Stop a bounded search once chat has a choice; retain other configured models for setup review.
 const MAX_MODEL_PAGES_PER_LOAD = 4;
@@ -81,15 +85,14 @@ export class DraftLists {
     }
   }
 
-  async open(signal: AbortSignal): Promise<DraftListsView> {
+  async open(signal: AbortSignal, updates?: ListUpdates): Promise<DraftListsView> {
     this.clear();
-    const generation = this.#generation;
-    const [models, cards] = await Promise.all([this.#modelPage(null, signal), this.#cardPage(null, signal)]);
-    if (generation === this.#generation) {
-      this.#models = models.items; this.#modelCursor = models.next_cursor;
-      this.#cards = cards.items; this.#cardCursor = cards.next_cursor;
-    }
+    await Promise.all([this.first(DRAFT_LIST.models, signal, updates), this.first(DRAFT_LIST.chats, signal, updates)]);
     return this.view;
+  }
+
+  first(list: DraftList, signal: AbortSignal, updates?: ListUpdates): Promise<DraftListsView | null> {
+    return this.#append(list, null, this.#generation, signal, updates);
   }
 
   /** Resolves null when the list is complete or a reopen replaced the page this load continued. */
@@ -105,22 +108,26 @@ export class DraftLists {
     return load;
   }
 
-  async #append(list: DraftList, cursor: string, generation: number, signal: AbortSignal): Promise<DraftListsView | null> {
+  async #append(list: DraftList, cursor: string | null, generation: number, signal: AbortSignal, updates?: ListUpdates): Promise<DraftListsView | null> {
     try {
       if (list === DRAFT_LIST.models) {
         const page = await this.#modelPage(cursor, signal);
         if (generation !== this.#generation) return null;
-        this.#models = appendNew(this.#models, page.items, (model) => model.ref); this.#modelCursor = page.next_cursor;
+        this.#models = cursor === null ? page.items : appendNew(this.#models, page.items, (model) => model.ref);
+        this.#modelCursor = page.next_cursor;
       } else {
         const page = await this.#cardPage(cursor, signal);
         if (generation !== this.#generation) return null;
         this.#cards = appendNew(this.#cards, page.items.filter((card) => !this.#removed.has(card.id)), (card) => card.id); this.#cardCursor = page.next_cursor;
       }
-      return this.view;
     } catch (cause) {
       if (generation !== this.#generation) return null;
+      updates?.failed(list, cause);
       throw cause;
     }
+    const view = this.view;
+    updates?.ready(list, view);
+    return view;
   }
 
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {

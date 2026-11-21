@@ -8,7 +8,7 @@ import type {DraftSidebarState} from "./draft-sidebar-state";
 import {sidebarDrafts, CHAT_ACTIVITY, type SidebarDraft} from "@/lib/api/draft-summary";
 import Link from "next/link";
 import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
-import { NotePencilIcon, StackIcon, TrashIcon } from "@phosphor-icons/react/ssr";
+import { NotePencilIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { RecentCollection } from "@/lib/api/recent-collection";
@@ -33,7 +33,13 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
   const router = useRouter();
   const [selected, setSelected] = useState<NativeFleetSummary | null>(null);
   const previousPath = useRef(pathname);
+  const savedFleet = history?.cards.find(card => card.id === history.current && card.activity === CHAT_ACTIVITY.saved)?.linkedFleet;
+  const previousSave = useRef(savedFleet);
   useEffect(() => {if (previousPath.current !== pathname) {previousPath.current = pathname; void collection.load(); if (!history) void drafts.load();}}, [collection, drafts, history, pathname]);
+  useEffect(() => {
+    if (savedFleet && previousSave.current !== savedFleet) void collection.load();
+    previousSave.current = savedFleet;
+  }, [collection, savedFleet]);
   const removed = (id: string): void => {
     collection.remove(id); setSelected(null);
     if (pathname.includes(`/fleets/${id}`)) router.replace(`/w/${workspace}/fleets/new`);
@@ -41,10 +47,10 @@ function FleetItems({collection, drafts, history, workspace, onNavigate}: {histo
   };
   function setupLink(title: string, card?: SidebarDraft, fleetId?: string) {
     const href = card ? `/w/${workspace}/fleets/new?draft=${card.id}` : `/w/${workspace}/fleets/${fleetId}/setup`;
-    return <NavItem asChild key={href} active={pathname.endsWith("/fleets/new") && (card ? currentDraft === card.id : query.get("fleet") === fleetId)}
-      onClick={onNavigate} className="mb-xs min-w-0 gap-sm pl-xl text-label font-medium text-muted-foreground hover:bg-muted">
+    return <NavItem asChild key={href} appearance="list" active={pathname.endsWith("/fleets/new") && (card ? currentDraft === card.id : query.get("fleet") === fleetId)}
+      onClick={onNavigate} className="min-w-0 font-medium">
       <Link href={href} prefetch={false} title={card?.title ?? title}>
-        <NotePencilIcon size={16} aria-hidden="true" /><span className="truncate">{title}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span><NotePencilIcon size={14} className="shrink-0 text-text-dim" aria-hidden="true" />
       </Link>
     </NavItem>;
   }
@@ -71,12 +77,11 @@ function FleetRow({fleet, workspace, pathname, onNavigate, deleting, onDelete}: 
   fleet: NativeFleetSummary; workspace: string; pathname: string; onNavigate: () => void;
   deleting: boolean; onDelete: () => void;
 }) {
-  return <div className="group relative mb-xs">
-    <NavItem asChild active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="gap-sm px-3 py-xs pr-12 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground" onClick={onNavigate}>
+  return <div className="group relative">
+    <NavItem asChild appearance="list" active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="pr-12" onClick={onNavigate}>
       <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
-        <StackIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-label font-medium text-foreground">{fleet.name}</span>
-        {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="text-eyebrow text-muted-foreground">Archived</span> : null}
+        <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{fleet.name}</span>
+        {fleet.status === AGENTSFLEET_STATUS.ARCHIVED ? <span className="shrink-0 text-eyebrow text-text-dim">Archived</span> : null}
       </Link>
     </NavItem>
     <IconAction revealOnRowFocus variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={deleting}

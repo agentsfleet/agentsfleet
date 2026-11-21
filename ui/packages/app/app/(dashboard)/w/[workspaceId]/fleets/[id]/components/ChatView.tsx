@@ -16,6 +16,7 @@ type Props = {
   modelLabel?: string;
   setupRevision?: string;
   setup?: ReactNode;
+  setupSummary?: ReactNode;
   workspaceId: string;
   fleetId: string;
   senderLabel: string;
@@ -45,14 +46,16 @@ export function ChatView({
   initialSummary,
   approvalsHref,
   viewer,
-  senderNames, modelLabel, setupRevision, setup, sources, schedules,
+  senderNames, modelLabel, setupRevision, setup, setupSummary, sources, schedules,
 }: Props) {
   const summary = useFleetRunSummary(workspaceId, fleetId, initial, initialSummary);
+  const archived = summary.status === "archived";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-clip">
-      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision} setup={summary.status === "archived" ? undefined : setup}
-        archived={summary.status === "archived"}
+      <FleetThreadDynamic sources={sources} schedules={schedules} approvals={{count: summary.pendingApprovals, href: approvalsHref}} modelLabel={modelLabel} setupRevision={setupRevision}
+        setup={archived ? undefined : setup} setupSummary={archived ? undefined : setupSummary}
+        archived={archived}
         workspaceId={workspaceId}
         fleetId={fleetId}
         senderLabel={senderLabel}

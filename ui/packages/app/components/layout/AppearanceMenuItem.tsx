@@ -6,8 +6,8 @@ import { DropdownMenuItem } from "@agentsfleet/design-system";
 import { NAV_ICON_SIZE } from "./sidebar-navigation-data";
 
 export function AppearanceMenuItem() {
-  const {resolvedTheme, setTheme} = useTheme();
-  const light = resolvedTheme === "light";
+  const {theme, setTheme} = useTheme();
+  const light = theme === "light";
   const Icon = light ? SunIcon : MoonIcon;
   return <DropdownMenuItem className="gap-lg px-xl" onSelect={event => {event.preventDefault(); setTheme(light ? "dark" : "light");}}
     aria-label={`Appearance: switch to ${light ? "dark" : "light"}`}>

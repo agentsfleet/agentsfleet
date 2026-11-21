@@ -114,21 +114,3 @@ export function fleetEventDetailUrl(workspaceId: string, fleetId: string, eventI
 export function fleetToolCallUrl(workspaceId: string, fleetId: string, eventId: string, callId: string): string {
   return `${fleetEventDetailUrl(workspaceId, fleetId, eventId)}/tool-calls/${encodeURIComponent(callId)}`;
 }
-
-// Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
-// the Next Route Handler at app/live/.../events/stream/route.ts, which mints
-// the api-audience Bearer server-side. This is the wall's single connection —
-// it replaces the per-tile streamFleetEventsUrl fan-out.
-export function streamWorkspaceEventsUrl(workspaceId: string): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events/stream`;
-}
-
-// Same-origin URL for the workspace-scoped reconnect backfill list. The wall
-// recovers a gap by paging `fleet.events` for the whole workspace (or one
-// fleet via `fleet_id`), the same durable source the per-fleet client uses.
-export function backfillWorkspaceEventsUrl(
-  workspaceId: string,
-  opts?: Pick<EventsQuery, "cursor" | "since" | "limit" | "fleet_id">,
-): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/events${buildQuery(opts)}`;
-}

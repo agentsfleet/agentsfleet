@@ -83,7 +83,7 @@ function writeChunk(entry: Entry, frame: ChunkFrame, apply: ApplyEvents, isCurre
     const attempt = entry.replyAttempts.get(frame.event_id);
     decoder = new ReplyStream((delta) => {
       if (isCurrent() && entry.replyStreams.get(frame.event_id) === decoder
-        && entry.replyAttempts.get(frame.event_id) === attempt) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {});
+        && entry.replyAttempts.get(frame.event_id) === attempt) apply((prev) => applyReplyDelta(prev, frame.event_id, delta), {}, frame.event_id);
     });
     entry.replyStreams.set(frame.event_id, decoder);
   }

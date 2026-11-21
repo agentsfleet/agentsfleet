@@ -16,6 +16,8 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
   const referenceStarter = design.getByRole("button", {name:"Set up a Chief of Staff"});
   const logo = page.getByRole("link", {name:"agentsfleet home"}).locator("svg");
   const referenceLogo = design.locator(".rail .brand img");
+  const newFleet = page.getByRole("navigation", {name: "Primary"}).getByRole("link", {name: "New fleet", exact: true});
+  const referenceNewFleet = design.locator(".rail .new-fleet");
   const form = page.getByRole("form", {name:"Setup chat composer"});
   const caption = "No fleet selected. Start something new, or open your fleets from the rail.";
   await expect(heading).toBeVisible();
@@ -45,9 +47,11 @@ test("empty fleet has the reference reading scale, editable Chief of Staff examp
     const actualForm=await geometry(form), expectedForm=await geometry(design.locator(".empty-workspace .composer"));
     expect([actualForm.width,actualForm.radius]).toEqual([expectedForm.width,expectedForm.radius]);
     const logoBox=await geometry(logo), refMark=await geometry(referenceLogo);
-    const selected=await geometry(page.getByRole("navigation",{name:"Primary"}).getByRole("link",{name:"New fleet",exact:true}));
+    const selected=await geometry(newFleet);
     expect([logoBox.width,logoBox.height]).toEqual([selected.height,selected.height]);
     expect([logoBox.width,logoBox.height]).toEqual([refMark.width,refMark.height]);
+    await expect(newFleet).toHaveCSS("background-color", await referenceNewFleet.evaluate(node => getComputedStyle(node).backgroundColor));
+    await expect(newFleet).toHaveCSS("color", await referenceNewFleet.evaluate(node => getComputedStyle(node).color));
     await page.screenshot({path:info.outputPath("empty-app-"+theme+".png"),animations:"disabled",scale:"css"});
     await design.screenshot({path:info.outputPath("empty-reference-"+theme+".png"),animations:"disabled",scale:"css"});
   }

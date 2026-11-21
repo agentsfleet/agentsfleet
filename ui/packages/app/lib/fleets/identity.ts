@@ -1,14 +1,3 @@
-export type FleetSigilCell = { x: number; y: number };
-
-export type FleetIdentity = {
-  callsign: string;
-  hashHex: string;
-  cells: FleetSigilCell[];
-};
-
-const SIGIL_COLUMNS = 7;
-const SIGIL_ROWS = 7;
-const SIGIL_HALF_COLUMNS = 4;
 const IDENTITY_HASH_OFFSET = 2_166_136_261;
 const IDENTITY_HASH_PRIME = 16_777_619;
 const CALLSIGN_SUFFIX_LENGTH = 4;
@@ -61,21 +50,8 @@ function identityHash(seed: string): number {
   return hash;
 }
 
-function sigilCells(hash: number): FleetSigilCell[] {
-  const cells: FleetSigilCell[] = [];
-  for (let y = 0; y < SIGIL_ROWS; y += 1) {
-    for (let x = 0; x < SIGIL_HALF_COLUMNS; x += 1) {
-      const bit = y * SIGIL_HALF_COLUMNS + x;
-      if (((hash >>> bit) & 1) === 0) continue;
-      cells.push({ x, y });
-      const mirrorX = SIGIL_COLUMNS - x - 1;
-      if (mirrorX !== x) cells.push({ x: mirrorX, y });
-    }
-  }
-  return cells;
-}
-
-function callsignForHash(hash: number): string {
+export function fleetCallsign(fleetId: string): string {
+  const hash = identityHash(fleetId);
   const nameIndex = (hash >>> CALLSIGN_NAME_SHIFT) & CALLSIGN_NAME_MASK;
   // The five-bit mask guarantees an index inside the fixed 32-name table.
   // oxlint-disable-next-line typescript/no-non-null-assertion
@@ -86,13 +62,4 @@ function callsignForHash(hash: number): string {
     .padStart(CALLSIGN_SUFFIX_LENGTH, "0")
     .toUpperCase();
   return `${name}-${suffix}`;
-}
-
-export function deriveFleetIdentity(fleetId: string): FleetIdentity {
-  const hash = identityHash(fleetId);
-  return {
-    callsign: callsignForHash(hash),
-    hashHex: hash.toString(16),
-    cells: sigilCells(hash),
-  };
 }

@@ -1,6 +1,7 @@
 import { latestFigures, sameFigures, type FleetFacts } from "@/lib/events/run-summary";
 import { capEvents } from "./fleet-stream-cap";
 import type { Entry, FleetStreamSnapshot } from "./fleet-stream-entry";
+import { isPreviewCommand } from "./fleet-preview-command";
 import { mergeFacts } from "./fleet-stream-facts";
 import type { FleetEvent } from "./fleet-stream-row";
 
@@ -22,6 +23,7 @@ export function setEvents(
   entry: Entry,
   next: (prev: FleetEvent[]) => FleetEvent[],
   spoken: Partial<FleetFacts> = {},
+  replyEventId?: string,
 ): void {
   // The one choke point every mutation flows through: the cap and the strip's
   // `latest` live here once, a completion's facts fold into the same write, and
@@ -30,10 +32,14 @@ export function setEvents(
   const facts = spokenFacts(entry, spoken);
   if (events === entry.snapshot.events && facts.fleet === undefined) return;
   const latest = latestFigures(events);
+  const replying = replyEventId === undefined ? undefined : entry.snapshot.events.find(event => event.id === replyEventId);
+  // A preview link can arrive in a reply after its command records the URL.
+  const textOnly = replying && !replying.tools?.some(tool => tool.name === "exec_command" && isPreviewCommand(tool.args?.cmd));
   entry.snapshot = {
     ...entry.snapshot,
     ...facts,
     events,
+    workEvents: textOnly ? entry.snapshot.workEvents : events,
     latest: sameFigures(latest, entry.snapshot.latest) ? entry.snapshot.latest : latest,
   };
   notify(entry);

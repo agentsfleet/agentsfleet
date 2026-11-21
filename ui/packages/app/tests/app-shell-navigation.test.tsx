@@ -59,9 +59,13 @@ describe("conversation-first app navigation", () => {
   });
   it("keeps the expanded sidebar free of search and fleet recents", () => {
     mount();
-    expect(screen.getByRole("link", {name: "Your fleets"})).toBeTruthy();
+    expect(screen.getByText("Your Fleets").closest("summary")).toBeTruthy();
     expect(screen.queryByRole("textbox", {name: "Search all chats"})).toBeNull();
     expect(screen.queryByText("Recents")).toBeNull();
+  });
+  it("marks the current resource destination in the sidebar", () => {
+    render(<SidebarNavigation pathname="/w/ws_1/secrets" workspaceId={WORKSPACE.id} collapsed={false} onNavigate={vi.fn()} />);
+    expect(screen.getAllByRole("link", {name: "Secrets"})[0]?.getAttribute("data-active")).toBe("true");
   });
   it("opens New fleet and records account destinations", async () => {
     mount(); const user = userEvent.setup();
@@ -79,7 +83,7 @@ describe("conversation-first app navigation", () => {
   it("keeps fleet and resource destinations and moves settings off the canvas", () => {
     mount();
     expect(screen.getAllByRole("link", { name: "New fleet" })[0]!.getAttribute("href")).toBe("/w/ws_1/fleets/new");
-    expect(screen.getByRole("link", { name: "Your fleets" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("link", {name: "Your Fleets"})).toBeNull();
     expect(screen.queryByText("Activity")).toBeNull();
     expect(screen.queryByText("Workspace settings")).toBeNull();
     expect(screen.getByRole("button", { name: MENU }).closest("aside")).not.toBeNull();
@@ -110,8 +114,8 @@ describe("conversation-first app navigation", () => {
     mount();
     await userEvent.setup().click(screen.getByRole("button", {name: "Collapse navigation"}));
     expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
-    expect(screen.getByRole("link", {name: "Your fleets"}).textContent).toBe("");
-    expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Your Fleets"}).textContent).toBe("");
+    expect(screen.getByRole("button", {name: "Your Fleets"})).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
     expect(screen.queryByRole("link", {name: "Plugins"})).toBeNull();
     expect(screen.getByRole("button", {name: "Open navigation"}).getAttribute("aria-expanded")).toBe("false");
@@ -134,11 +138,11 @@ it("keeps history and credits reachable when navigation is expanded, and drops s
   const view = render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId="ws_1" collapsed={false}
     onNavigate={onNavigate} workspaces={[WORKSPACE]} billing={{balance_nanos: "3680000000", is_exhausted: false, exhausted_at: null, updated_at: "2026-11-11T00:00:00Z"}} />);
   expect(screen.getByRole("link", {name: /Credits \$3.68/}).getAttribute("href")).toBe("/settings/billing");
-  expect(screen.getByText("Fleets")).toBeTruthy();
+  expect(screen.getByText("Your Fleets")).toBeTruthy();
   await userEvent.setup().click(screen.getAllByRole("link", {name: "New fleet"})[0]!);
   expect(onNavigate).toHaveBeenCalledOnce();
   view.rerender(<SidebarNavigation pathname="/w/missing/fleets" workspaceId="missing" collapsed={false} onNavigate={onNavigate} workspaces={[WORKSPACE]} />);
-  expect(screen.queryByText("Fleets")).toBeNull();
+  expect(screen.queryByText("Your Fleets")).toBeNull();
   expect(screen.queryByRole("link", {name: /Credits/})).toBeNull();
 });
 

@@ -35,8 +35,8 @@ it("renders the approved web/docs example through the production flap, Summary a
   expect(within(flap).getByText("−3")).toBeTruthy();
   const summary = within(screen.getByRole("region", {name: "Changes"}));
   const [web, docs] = summary.getAllByRole("button");
-  expect(web?.textContent).toBe("web4 files+248−3");
-  expect(docs?.textContent).toBe("docs2 files+23");
+  expect(web?.textContent).toBe("4 files changedweb+248−3");
+  expect(docs?.textContent).toBe("2 files changeddocs+23");
   expect(screen.getAllByText("+248")).toHaveLength(1);
   expect(screen.getAllByText("+23")).toHaveLength(1);
   fireEvent.click(flap);
@@ -64,11 +64,11 @@ it("keeps a one-file receipt compact when line totals are unavailable", () => {
   const events = [evt({tools: [{name: "file_write", args: {path: "web/record.md"}, done: true, status: "succeeded", startedAtMs: 0, ms: 1}]})];
   state.view = {subject: "operator", events};
   render(<><ChangesStrip /><WorkChanges events={events} /></>);
-  expect(screen.getByRole("button", {name: "1 file changed"})).toBeTruthy();
-  expect(screen.getByText("Recorded files")).toBeTruthy();
+  expect(screen.getAllByRole("button", {name: "1 file changed"})).toHaveLength(2);
+  expect(screen.queryByText("Recorded files")).toBeNull();
   expect(screen.queryByText("web")).toBeNull();
   expect(screen.queryByText("Line totals unavailable")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "1 file changed"}));
+  fireEvent.click(within(screen.getByRole("region", {name: "Changes"})).getByRole("button", {name: "1 file changed"}));
   expect(within(screen.getByRole("dialog")).getAllByText("Line totals unavailable")).toHaveLength(2);
 });
 
