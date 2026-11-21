@@ -3,7 +3,7 @@ import { lazy, memo, Suspense, useMemo, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import { useFleetScope } from "../../conversation/stream/FleetScope";
 import { readToolResult } from "../replies/fleetReplyMessage";
-import { cellState, CELL_STATE, toolCopy } from "./copy/tool-call-copy";
+import { cellState, CELL_STATE, toolCopy, type CellState } from "./copy/tool-call-copy";
 import { ToolCallHeader } from "./FleetToolCallHeader";
 import { ToolCallDetails } from "./FleetToolCallDetails";
 import { TRIGGER_CLASS } from "./presentation/tool-call-presentation";
@@ -33,9 +33,7 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
   const outcome = readToolResult(result);
   const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
   const toolState = cellState(outcome !== undefined, outcome?.status, running);
-  const state = command && toolState === CELL_STATE.SUCCEEDED
-    ? outcome?.exitCode === undefined ? CELL_STATE.SETTLED : outcome.exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED
-    : toolState;
+  const state = command ? commandState(name, toolState, outcome?.exitCode) : toolState;
   // These bounded cards mount with the work group. Other tools keep their body behind the action disclosure.
   const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named) : undefined, [name, named]);
   const [shown, setShown] = useState(false);
@@ -77,3 +75,10 @@ export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, resu
       verb={name} target="" outcome={outcome} onClose={() => setShown(false)} /></Suspense> : null}
   </ListItem>;
 });
+
+function commandState(name: string, state: CellState, exitCode: number | undefined): CellState {
+  if (state !== CELL_STATE.SUCCEEDED) return state;
+  if (exitCode !== undefined) return exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED;
+  // shell runs to completion. exec_command can successfully return a live session.
+  return name === TOOL_NAME.SHELL ? state : CELL_STATE.SETTLED;
+}
