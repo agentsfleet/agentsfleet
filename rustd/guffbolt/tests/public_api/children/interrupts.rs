@@ -65,11 +65,7 @@ async fn interrupt_agent_ends_a_running_turn_and_the_child_stays_open() {
 /// the grandchild it started, which is still running.
 #[tokio::test]
 async fn an_interrupted_child_keeps_a_whole_transcript_and_closing_it_closes_its_children() {
-    let (agents, requests) = Agents::new(Caps {
-        depth: 3,
-        open: 3,
-        started: 3,
-    });
+    let (agents, requests) = Agents::new(Caps { depth: 3, open: 3 });
     let tools = seven(&agents);
     let script = Script::default()
         .plays(
@@ -155,11 +151,7 @@ async fn an_interrupted_child_keeps_a_whole_transcript_and_closing_it_closes_its
 /// every child it started, one closed already staying closed.
 #[tokio::test]
 async fn a_running_child_reads_a_followup_and_closing_it_closes_its_children() {
-    let (agents, requests) = Agents::new(Caps {
-        depth: 3,
-        open: 3,
-        started: 3,
-    });
+    let (agents, requests) = Agents::new(Caps { depth: 3, open: 3 });
     let tools = seven(&agents);
     let script = Script::default()
         .plays(

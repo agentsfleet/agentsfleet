@@ -18,8 +18,7 @@ use crate::tools::{Context, Handler};
 pub struct Command {
     /// The command, as `sh -c` runs it in the working directory.
     command: String,
-    /// How long it may run, in milliseconds: 10000 when absent, at most
-    /// 600000.
+    /// How long it may run, in milliseconds: 10000 when absent.
     #[serde(default)]
     timeout_ms: Option<u64>,
 }

@@ -6,11 +6,7 @@ use super::*;
 /// numbered; a child that asks is told it cannot, and its turn fails.
 #[tokio::test]
 async fn ask_user_waits_at_the_root_and_fails_a_childs_turn() {
-    let (agents, requests) = Agents::new(Caps {
-        depth: 2,
-        open: 1,
-        started: 1,
-    });
+    let (agents, requests) = Agents::new(Caps { depth: 2, open: 1 });
     let mut names: Vec<&str> = TOOLS.to_vec();
     names.push("ask_user");
     let tools = built(Tools::builder().with_agents(&agents), &names);
@@ -111,10 +107,10 @@ async fn current_time_reads_an_rfc_3339_instant_in_utc() {
     assert_eq!(refused.error_code, Some(code::INVALID_ARGUMENTS));
 }
 
-/// `sleep` waits as asked, never past ten minutes, and wakes at once when
+/// `sleep` waits as asked, never past twelve hours, and wakes at once when
 /// input arrived first. The clock is tokio's paused one, so no test waits.
 #[tokio::test(start_paused = true)]
-async fn sleep_waits_as_asked_capped_at_ten_minutes_and_wakes_for_input() {
+async fn sleep_waits_as_asked_capped_at_twelve_hours_and_wakes_for_input() {
     let tools = built(Tools::builder(), &["sleep"]);
     let wake = Wake::default();
 
@@ -131,7 +127,7 @@ async fn sleep_waits_as_asked_capped_at_ten_minutes_and_wakes_for_input() {
     let refused = run(&tools, "sleep", json!({"duration_ms": -1}), None).await;
 
     assert_eq!(slept.text, "Slept 1500 ms");
-    assert_eq!(capped.text, "Slept 600000 ms");
+    assert_eq!(capped.text, "Slept 43200000 ms");
     assert_eq!(woken_early.text, "Woke after 0 ms: a new message arrived");
     assert_eq!(refused.error_code, Some(code::INVALID_ARGUMENTS));
 }

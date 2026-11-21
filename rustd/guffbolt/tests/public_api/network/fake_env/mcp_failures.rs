@@ -81,7 +81,7 @@ async fn a_server_that_never_answers_fails_each_call_at_its_timeout() {
     )
     .await;
 
-    assert_eq!(called.text, "[mcp_failed] docs did not answer within 120s");
+    assert_eq!(called.text, "[mcp_failed] docs did not answer within 300s");
     assert_eq!(listed.text, "[mcp_failed] deadline has elapsed");
     assert_eq!(templates.text, "[mcp_failed] deadline has elapsed");
     assert_eq!(read.text, "[mcp_failed] deadline has elapsed");
@@ -97,7 +97,7 @@ async fn a_server_that_never_lists_its_tools_fails_at_the_timeout() {
 
     let refused = server.tools().await.expect_err("no listing came");
 
-    assert_eq!(refused.to_string(), "the server did not answer within 120s");
+    assert_eq!(refused.to_string(), "the server did not answer within 300s");
 }
 
 #[tokio::test]
@@ -131,7 +131,7 @@ async fn a_server_that_exits_mid_request_fails_the_request() {
 
     assert_ne!(
         refused.to_string(),
-        "the server did not answer within 120s",
+        "the server did not answer within 300s",
         "{refused:?}"
     );
 }

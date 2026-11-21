@@ -8,12 +8,8 @@ use super::{Agents, Caps, Census, Counted, Kind, Me, Refused, Status};
 use crate::drive::DriveState;
 use crate::transcript::{Message, Replay};
 
-/// The caps the cases run under: depth 2, two open, three started.
-const CAPS: Caps = Caps {
-    depth: 2,
-    open: 2,
-    started: 3,
-};
+/// The caps the cases run under: depth 2, two open.
+const CAPS: Caps = Caps { depth: 2, open: 2 };
 
 /// Reserves a child of `parent` over `message`, holding no tool.
 fn reserve(agents: &Agents, parent: Me, message: &str) -> Result<u64, Refused> {
@@ -35,7 +31,7 @@ fn kinds(agents: &Agents) -> Vec<Kind> {
 mod edges;
 
 #[test]
-fn the_caps_refuse_a_child_past_the_open_or_the_started_count() {
+fn the_caps_refuse_a_child_past_the_open_count() {
     let (agents, _requests) = Agents::new(CAPS);
 
     assert_eq!(reserve(&agents, Me::ROOT, "a"), Ok(1));
@@ -53,12 +49,37 @@ fn the_caps_refuse_a_child_past_the_open_or_the_started_count() {
     );
     assert_eq!(agents.close(1), Some(Kind::Done));
     assert_eq!(reserve(&agents, Me::ROOT, "c"), Ok(3));
-    assert_eq!(agents.close(3), Some(Kind::Running));
+    answer(&agents, 2, "b done", Vec::new());
+    assert_eq!(agents.close(2), Some(Kind::Done));
     assert_eq!(
         reserve(&agents, Me::ROOT, "d"),
-        Err(Refused::Capped),
-        "three were started"
+        Ok(4),
+        "a fourth start is no count past any cap"
     );
+}
+
+/// Codex's `DEFAULT_AGENT_MAX_THREADS`: six open, and a seventh is refused.
+#[test]
+fn a_seventh_open_subagent_is_refused() {
+    let (agents, _requests) = Agents::new(Caps { depth: 2, open: 6 });
+
+    for id in 1..=6 {
+        assert_eq!(reserve(&agents, Me::ROOT, "open"), Ok(id));
+    }
+
+    assert_eq!(reserve(&agents, Me::ROOT, "seventh"), Err(Refused::Capped));
+}
+
+/// No count of starts caps a run: each child closed frees its seat.
+#[test]
+fn a_run_starts_more_than_sixteen_subagents() {
+    let (agents, _requests) = Agents::new(CAPS);
+
+    for id in 1..=20 {
+        assert_eq!(reserve(&agents, Me::ROOT, "one more"), Ok(id));
+        answer(&agents, id, "done", Vec::new());
+        assert_eq!(agents.close(id), Some(Kind::Done));
+    }
 }
 
 #[test]

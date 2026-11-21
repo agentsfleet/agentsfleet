@@ -39,11 +39,7 @@ const NEVER: &str = "never";
 /// Longer than any case runs, so a loop that never ends fails its case.
 const GUARD: Duration = Duration::from_secs(3_600);
 /// The caps the cases run under.
-const CAPS: Caps = Caps {
-    depth: 1,
-    open: 1,
-    started: 1,
-};
+const CAPS: Caps = Caps { depth: 1, open: 1 };
 
 /// What a child's turn fails with; none does here.
 #[derive(Debug)]

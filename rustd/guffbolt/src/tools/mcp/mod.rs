@@ -53,8 +53,8 @@ pub const PREFIX: &str = "mcp__";
 const SEPARATOR: &str = "__";
 /// The longest name a provider's function wire takes.
 const NAME_MAX: usize = 64;
-/// How long one request to a server may take.
-pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
+/// How long one request to a server may take: Codex's MCP tool timeout.
+pub const CALL_TIMEOUT: Duration = Duration::from_secs(300);
 /// What the outbound hook names an MCP connection's tool as.
 const TOOL: &str = "mcp";
 

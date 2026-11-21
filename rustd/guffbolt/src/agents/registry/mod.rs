@@ -157,7 +157,7 @@ impl Agents {
     /// queues its first turn.
     ///
     /// # Errors
-    /// As many children are open, or were started, as the run's caps allow,
+    /// As many children are open as the run's caps allow,
     /// or the children are paused.
     pub(super) fn reserve(
         &self,
@@ -168,7 +168,7 @@ impl Agents {
     ) -> Result<u64, super::Refused> {
         let caps = self.0.caps;
         let mut book = self.book();
-        if self.paused() || book.open >= caps.open || book.started >= caps.started {
+        if self.paused() || book.open >= caps.open {
             return Err(super::Refused::Capped);
         }
         let life = book

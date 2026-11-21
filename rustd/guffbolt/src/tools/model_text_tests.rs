@@ -124,11 +124,7 @@ fn guffbolt_tool_specs_name_no_host_product() {
         "the check finds each host word it looks for"
     );
     let (local, fake) = (local(), Fake::answering(Ok(String::new())));
-    let (agents, _requests) = Agents::new(Caps {
-        depth: 2,
-        open: 4,
-        started: 16,
-    });
+    let (agents, _requests) = Agents::new(Caps { depth: 2, open: 4 });
     let tools = built_in(&local, &fake, &agents);
 
     let found: Vec<String> = tools

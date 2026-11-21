@@ -349,7 +349,7 @@ A tool answers with a `ToolOutput`: the text the model reads, an exit code, an `
 
 ## Sub-agents
 
-Subagents are `guffbolt`'s own. Turn them on with `ToolsBuilder::with_agents`, and the run offers seven tools, named as Codex names its multi-agent tools: `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A child is another loop of the run with its own transcript. It starts from its parent's history before its task: all of it by default, none of it, or its last turns, as `fork_turns` says, taking Codex's values `all`, `none` or a number. It holds its parent's tools or the subset named. A child at the depth cap holds none of the seven, and `Caps` bound how many are open at once and how many one run starts.
+Subagents are `guffbolt`'s own. Turn them on with `ToolsBuilder::with_agents`, and the run offers seven tools, named as Codex names its multi-agent tools: `spawn_agent`, `send_input`, `followup_task`, `wait_agent`, `list_agents`, `close_agent` and `interrupt_agent`. A child is another loop of the run with its own transcript. It starts from its parent's history before its task: all of it by default, none of it, or its last turns, as `fork_turns` says, taking Codex's values `all`, `none` or a number. It holds its parent's tools or the subset named. A child at the depth cap holds none of the seven, and `Caps` bound how many are open at once.
 
 `guffbolt` drives every child itself. Implement `Raise`, and its `child` hands back the conversation each of a child's turns runs over: your model, observer, request and tools, holding the `Seat`'s transcript and answering its stop. You hear a child the way you hear the root, through that conversation's observer. A finished child goes idle and keeps its transcript, so `followup_task` runs it again with its history. It stays open until `close_agent` closes it or the loop ends.
 
@@ -490,7 +490,7 @@ impl<'t> Raise for Run<'t> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     // A child of the root sits at the depth cap, so it holds none of the seven.
-    let (agents, requests) = Agents::new(Caps { depth: 1, open: 2, started: 4 });
+    let (agents, requests) = Agents::new(Caps { depth: 1, open: 2 });
     let config = ToolsConfig::new(["spawn_agent", "wait_agent"]).expect("two names");
     let tools = Tools::builder().with_agents(&agents).build(&config).expect("subagents are on");
     let run = Run { agents: agents.clone(), tools: &tools };

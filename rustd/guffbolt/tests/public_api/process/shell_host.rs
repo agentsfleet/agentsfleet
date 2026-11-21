@@ -166,7 +166,7 @@ async fn shell_runs_sh_c_under_the_timeout_asked_held_to_its_ceiling() {
     let _past = call(
         &tools,
         "shell",
-        json!({"command": "true", "timeout_ms": 9_999_999}),
+        json!({"command": "true", "timeout_ms": 3_000_000_000_u64}),
     )
     .await;
 
@@ -178,7 +178,7 @@ async fn shell_runs_sh_c_under_the_timeout_asked_held_to_its_ceiling() {
         [
             Some(Duration::from_millis(1500)),
             Some(Duration::from_secs(10)),
-            Some(Duration::from_secs(600))
+            Some(Duration::from_millis(2_147_483_647))
         ]
     );
     let first = spawned.first().expect("a spawn");

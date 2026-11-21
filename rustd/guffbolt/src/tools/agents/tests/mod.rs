@@ -30,11 +30,7 @@ mod resume;
 mod steering;
 
 /// The caps the cases run under, unless one says otherwise.
-const CAPS: Caps = Caps {
-    depth: 2,
-    open: 2,
-    started: 4,
-};
+const CAPS: Caps = Caps { depth: 2, open: 2 };
 
 fn user(text: &str) -> Message {
     Message::User(text.to_owned())

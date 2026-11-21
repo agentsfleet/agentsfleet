@@ -17,8 +17,9 @@ use crate::tool::ToolOutput;
 use crate::tools::process::saturating_millis;
 use crate::tools::{Context, Handler, NoArguments};
 
-/// The longest a sleep waits, whatever the model asks: ten minutes.
-pub const SLEEP_MAX: Duration = Duration::from_mins(10);
+/// The longest a sleep waits, whatever the model asks: twelve hours, Codex's
+/// `MAX_SLEEP_DURATION_MS`.
+pub const SLEEP_MAX: Duration = Duration::from_hours(12);
 
 /// What a run pokes when new input reaches it, so a sleeping call wakes.
 ///
@@ -62,7 +63,7 @@ impl Handler for CurrentTime {
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Nap {
-    /// How long to wait, in milliseconds, at most 600000; the wait ends
+    /// How long to wait, in milliseconds, at most 43200000; the wait ends
     /// early when a new message arrives.
     duration_ms: u64,
 }
@@ -73,7 +74,7 @@ pub struct Sleep;
 
 impl Handler for Sleep {
     const NAME: &'static str = "sleep";
-    const DESCRIPTION: &'static str = "Wait for duration_ms milliseconds, at most ten minutes, \
+    const DESCRIPTION: &'static str = "Wait for duration_ms milliseconds, at most twelve hours, \
         before going on; the wait ends early when a new message arrives, and says so.";
     type Arguments = Nap;
 

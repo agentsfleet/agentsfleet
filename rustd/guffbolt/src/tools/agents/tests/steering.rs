@@ -90,8 +90,8 @@ async fn close_agent_ends_an_idle_child_and_frees_its_seat() {
         [
             r#"{"agent_id":1}"#,
             r#"{"status":"done","answer":"did a"}"#,
-            "[child_cap_reached] as many children are open, or were started, as one run may; \
-             close one that is no longer needed",
+            "[child_cap_reached] as many children are open as one run may; close one that is no \
+             longer needed",
             r#"{"previous_status":"done"}"#,
             r#"[{"agent_id":1,"status":"closed","depth":1,"calls":0}]"#,
             r#"{"agent_id":2}"#,

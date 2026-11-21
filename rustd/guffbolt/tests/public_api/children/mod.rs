@@ -21,11 +21,7 @@ mod messages;
 mod seats;
 
 /// The caps the cases run under, unless one says otherwise.
-const CAPS: Caps = Caps {
-    depth: 2,
-    open: 2,
-    started: 4,
-};
+const CAPS: Caps = Caps { depth: 2, open: 2 };
 
 /// The seven subagent tools, and nothing else.
 fn seven(agents: &Agents) -> Tools<ContextTool<'_>> {

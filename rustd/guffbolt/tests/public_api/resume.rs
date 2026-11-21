@@ -11,11 +11,7 @@ use serde_json::json;
 use crate::family::{Chat, Family, ROOT, agent, answered, said, user};
 use crate::script::{Failure, Play, Script, call, results};
 
-const CAPS: Caps = Caps {
-    depth: 2,
-    open: 2,
-    started: 4,
-};
+const CAPS: Caps = Caps { depth: 2, open: 2 };
 
 fn seven(agents: &Agents) -> Tools<ContextTool<'_>> {
     let config = ToolsConfig::new(TOOLS).expect("seven names");
@@ -218,14 +214,7 @@ fn a_child_saved_running_is_restored_interrupted_and_a_closed_one_holds_no_seat(
         child.calls = 5;
     }
 
-    let (agents, _requests) = Agents::restored(
-        Caps {
-            depth: 2,
-            open: 1,
-            started: 4,
-        },
-        &state,
-    );
+    let (agents, _requests) = Agents::restored(Caps { depth: 2, open: 1 }, &state);
 
     assert_eq!(
         agents.list(),

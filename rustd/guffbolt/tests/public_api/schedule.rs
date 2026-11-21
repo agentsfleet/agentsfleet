@@ -14,11 +14,7 @@ use serde_json::{Value, json};
 use crate::family::{Family, ROOT, answered, at, user};
 use crate::script::{Play, Script, call, results};
 
-const CAPS: Caps = Caps {
-    depth: 1,
-    open: 1,
-    started: 1,
-};
+const CAPS: Caps = Caps { depth: 1, open: 1 };
 
 /// Jan 01, 2100, 00:00 UTC: later than any moment a daily job added today
 /// next fires at, so every such job is due.

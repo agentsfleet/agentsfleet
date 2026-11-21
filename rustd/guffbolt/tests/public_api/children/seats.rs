@@ -2,18 +2,14 @@
 
 use super::*;
 
-/// An idle child holds its seat until `close_agent` frees it; the run's
-/// `started` cap holds even once seats are free.
+/// An idle child holds its seat until `close_agent` frees it, and no count
+/// of starts binds once a seat is free.
 #[tokio::test]
-async fn close_agent_frees_a_seat_under_the_open_cap_and_started_still_binds() {
-    let (agents, requests) = Agents::new(Caps {
-        depth: 2,
-        open: 1,
-        started: 2,
-    });
+async fn close_agent_frees_a_seat_under_the_open_cap_and_no_start_count_binds() {
+    let (agents, requests) = Agents::new(Caps { depth: 2, open: 1 });
     let tools = seven(&agents);
-    let capped = "[child_cap_reached] as many children are open, or were started, as one run \
-                  may; close one that is no longer needed";
+    let capped = "[child_cap_reached] as many children are open as one run may; close one that is no \
+         longer needed";
     let script = Script::default()
         .plays(
             ROOT,
@@ -30,7 +26,8 @@ async fn close_agent_frees_a_seat_under_the_open_cap_and_started_still_binds() {
             ],
         )
         .plays(agent(1), [Play::Say("did a")])
-        .plays(agent(2), [Play::Say("did c")]);
+        .plays(agent(2), [Play::Say("did c")])
+        .plays(agent(3), [Play::Say("did d")]);
     let family = Family {
         agents: agents.clone(),
         script,
@@ -57,7 +54,7 @@ async fn close_agent_frees_a_seat_under_the_open_cap_and_started_still_binds() {
             r#"{"agent_id":2}"#,
             r#"{"status":"done","answer":"did c"}"#,
             r#"{"previous_status":"done"}"#,
-            capped,
+            r#"{"agent_id":3}"#,
         ]
     );
 }
@@ -171,7 +168,7 @@ async fn the_registry_reads_back_through_its_own_methods() {
     assert_eq!(Status::Failed("x".to_owned()).kind().to_string(), "failed");
     assert_eq!(
         format!("{agents:?}"),
-        "Agents { caps: Caps { depth: 2, open: 2, started: 4 }, open: 1, running: 0, started: 1, .. }"
+        "Agents { caps: Caps { depth: 2, open: 2 }, open: 1, running: 0, started: 1, .. }"
     );
     assert_eq!(
         format!("{children:?}"),

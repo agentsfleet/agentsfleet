@@ -92,8 +92,6 @@ pub struct Caps {
     /// How many children may be open at once: running, or idle with their
     /// transcript. A closed child frees its seat.
     pub open: usize,
-    /// How many children one run may start.
-    pub started: u64,
 }
 
 /// Where a child is.

@@ -17,11 +17,7 @@ use crate::script::{Play, Script, call, results};
 mod building;
 mod runs;
 
-const CAPS: Caps = Caps {
-    depth: 1,
-    open: 1,
-    started: 1,
-};
+const CAPS: Caps = Caps { depth: 1, open: 1 };
 
 /// A tool of the embedder's own, answering with the call's place.
 #[derive(Debug)]

@@ -53,11 +53,7 @@ fn a_subagent_tool_without_children_refuses_the_run() {
 #[test]
 fn a_run_with_children_builds_every_subagent_tool() {
     let (run, slot) = (Run::default(), no_sandbox());
-    let (agents, _requests) = Agents::new(Caps {
-        depth: 2,
-        open: 4,
-        started: 16,
-    });
+    let (agents, _requests) = Agents::new(Caps { depth: 2, open: 4 });
     let backends = Backends::new(&run, &slot, None).with_agents(&agents);
 
     let tools = backends.tools(&TOOLS).expect("the children are given");

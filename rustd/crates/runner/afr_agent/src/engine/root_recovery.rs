@@ -15,8 +15,6 @@ use crate::harness::shared::CAPS;
 
 // The complete ordinary native message is additionally capped at one MiB.
 const FOLD_REFS_MAX: usize = 16_384;
-/// The longest answer or detail a saved child carries back.
-const CHILD_TEXT_MAX_BYTES: usize = 65_536;
 
 #[derive(Default, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -123,16 +121,11 @@ fn check_children(census: &Census) -> Result<()> {
         .windows(2)
         .all(|pair| pair.first().map(|child| child.id) < pair.get(1).map(|child| child.id));
     let whole = census.children.iter().all(|child| {
-        let text = match &child.status {
-            Status::Done(text) | Status::Failed(text) => text.len(),
-            Status::Running => return false,
-            Status::Interrupted | Status::Closed => 0,
-        };
-        (1..=census.next).contains(&child.id)
+        !matches!(child.status, Status::Running)
+            && (1..=census.next).contains(&child.id)
             && (1..=CAPS.depth).contains(&child.depth)
-            && text <= CHILD_TEXT_MAX_BYTES
     });
-    if census.next != census.started || census.started != count || count > CAPS.started {
+    if census.next != census.started || census.started != count {
         return Err(recovery_invalid(
             "terminal child identifiers or counters are inconsistent",
         ));

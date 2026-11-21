@@ -97,7 +97,7 @@ async fn should_hold_the_timeout_the_model_names_under_the_ceiling() {
         ScriptedExecutor::new([ScriptedProcess::exits("", 0), ScriptedProcess::exits("", 0)]);
     let run = Run::default();
 
-    for timeout_ms in [1_500, 86_400_000] {
+    for timeout_ms in [1_500_u64, 3_000_000_000] {
         let arguments = json!({"command": "true", "timeout_ms": timeout_ms});
         call_in(shell(), &executor, &run, arguments).await;
     }

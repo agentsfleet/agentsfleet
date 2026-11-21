@@ -100,11 +100,7 @@ fn a_session_tool_names_the_sessions_it_lacks() {
 /// asks, down to the agent tools'.
 #[test]
 fn a_name_no_built_in_has_builds_nothing() {
-    let caps = crate::agents::Caps {
-        depth: 1,
-        open: 1,
-        started: 1,
-    };
+    let caps = crate::agents::Caps { depth: 1, open: 1 };
     let (agents, _requests) = crate::agents::Agents::new(caps);
     let given = super::super::Given {
         agents: Some(&agents),

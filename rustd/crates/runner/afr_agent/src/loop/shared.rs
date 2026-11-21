@@ -27,14 +27,10 @@ use super::Harness;
 use crate::engine::{AgentRun, Checkpoint, EventSink, Meter};
 use crate::ledger::Ledger;
 
-/// How far one run's children may go: two loops deep, four open at once,
-/// sixteen started (`docs/architecture/runner_execution.md` §"Tool
-/// catalog"). A restore checks a checkpoint's children against them too.
-pub(crate) const CAPS: Caps = Caps {
-    depth: 2,
-    open: 4,
-    started: 16,
-};
+/// How far one run's children may go: two loops deep, and six open at once,
+/// Codex's `DEFAULT_AGENT_MAX_THREADS`; a run may start any number over its
+/// life. A restore checks a checkpoint's children against them too.
+pub(crate) const CAPS: Caps = Caps { depth: 2, open: 6 };
 
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {

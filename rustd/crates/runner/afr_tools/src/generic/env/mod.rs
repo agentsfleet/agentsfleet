@@ -19,14 +19,14 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
-use afr_executor::timing::{CALL_DEADLINE, DRAIN_GRACE, KILL_GRACE};
+use afr_executor::timing::{DRAIN_GRACE, KILL_GRACE};
 use afr_executor::{Executor, WORKSPACE_ROOT};
 use bytes::Bytes;
 use guffbolt::tools::env::{
     Browser, DirEntry, Ending, EntryKind, Env, EnvError, EnvErrorKind, EnvFuture, Events,
     FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
 };
-use guffbolt::tools::process::oneshot::{TIMEOUT_DEFAULT, TIMEOUT_MAX};
+use guffbolt::tools::process::oneshot::TIMEOUT_DEFAULT;
 
 use crate::sandbox::{GIT_IDENTITY_EMAIL, GIT_IDENTITY_NAME};
 
@@ -41,13 +41,6 @@ const ENDING_GRACE: Duration = KILL_GRACE
     .saturating_add(REPLY_SLACK);
 const _: () = assert!(
     TIMEOUT_DEFAULT.saturating_add(ENDING_GRACE).as_nanos() < af_core::timing::RUN_TTL.as_nanos()
-);
-const _: () = assert!(
-    CALL_DEADLINE
-        .saturating_add(TIMEOUT_MAX)
-        .saturating_add(ENDING_GRACE)
-        .as_nanos()
-        < af_core::timing::MAX_RUNTIME.as_nanos()
 );
 const _: () = assert!(ENDING_GRACE.as_nanos() <= af_core::timing::ENGINE_STOP_GRACE.as_nanos());
 // The tools word their limits by the harness's figures, which must be the

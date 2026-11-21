@@ -49,8 +49,7 @@ pub struct Invocation {
     /// The arguments after `git`, one per element, such as
     /// `["log", "--oneline", "-5"]`.
     args: Vec<String>,
-    /// How long it may run, in milliseconds: 10000 when absent, at most
-    /// 600000.
+    /// How long it may run, in milliseconds: 10000 when absent.
     #[serde(default)]
     timeout_ms: Option<u64>,
 }

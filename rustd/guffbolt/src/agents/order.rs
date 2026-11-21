@@ -21,8 +21,8 @@ use crate::transcript::Message;
 /// What a child asking for a tool its parent lacks reads, after its name.
 const NOT_HELD: &str = "is not one of this run's tools";
 /// What a start past the run's caps reads.
-const CAP_REACHED: &str = "as many children are open, or were started, as one run may; close one \
-                           that is no longer needed";
+const CAP_REACHED: &str =
+    "as many children are open as one run may; close one that is no longer needed";
 /// The event a refused start logs under.
 const EVENT_REFUSED: &str = "agent_refused";
 
@@ -143,8 +143,8 @@ pub(crate) struct Caller<'a> {
 pub enum Refused {
     /// Its parent holds no tool by this name, so it may not either.
     NotHeld(String),
-    /// As many children are open, or were started, as the run's caps allow,
-    /// or the run's children are paused.
+    /// As many children are open as the run's caps allow, or the run's
+    /// children are paused.
     Capped,
 }
 
