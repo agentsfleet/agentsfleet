@@ -15,9 +15,8 @@ use af_wire::run::RunPayload;
 use afr_tools::setup::FleetSetup;
 use guffbolt::tools::propose::Propose;
 use guffbolt::{
-    Call, CallEnd, CallRef, Describe as _, Fitted, Input, Listen, Message, Observe, Request, Step,
-    StepEnd, StepOutcome, TextKind, Tool, ToolFuture, ToolOutput, ToolSpec, Transcript, Usage,
-    Window,
+    Call, CallEnd, CallRef, Fitted, Input, Listen, Message, Observe, Request, Step, StepEnd,
+    StepOutcome, TextKind, ToolFuture, ToolSpec, Tools, Transcript, Usage, Window,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::Span;
@@ -38,9 +37,9 @@ pub(super) struct Shared<'a> {
     pub(super) events: &'a dyn EventSink,
     pub(super) meter: &'a Meter,
     pub(super) stop: &'a CancellationToken,
-    /// `propose_setup`, the run's one tool; a clone the run reads what it
-    /// kept through.
-    pub(super) tool: &'a Propose<FleetSetup>,
+    /// The run's one tool, `propose_setup`; the run reads what it kept
+    /// through the clone it was built from.
+    pub(super) tools: Tools<Propose<FleetSetup>>,
 }
 
 impl Shared<'_> {
@@ -127,7 +126,7 @@ impl<'a> SetupLoop<'a> {
                 max_output_tokens: None,
             });
         };
-        let specs = [self.shared.tool.spec()];
+        let specs: Vec<_> = self.shared.tools.specs().collect();
         let output = self.shared.output_tokens();
         loop {
             let messages = self.saved.messages(self.transcript.messages())?;
@@ -233,7 +232,7 @@ impl guffbolt::Conversation for SetupLoop<'_> {
     }
 
     fn offered(&self) -> Vec<ToolSpec<'_>> {
-        vec![self.shared.tool.spec()]
+        self.shared.tools.specs().collect()
     }
 
     fn request<'r>(&'r self, window: &'r Window, tools: &'r [ToolSpec<'r>]) -> Request<'r> {
@@ -243,12 +242,7 @@ impl guffbolt::Conversation for SetupLoop<'_> {
 
     /// `propose_setup`, lent nothing; any other name was never offered.
     fn dispatch<'r>(&'r self, call: &'r Call, _call_ref: &'r CallRef) -> ToolFuture<'r> {
-        let tool = self.shared.tool;
-        if call.name == tool.name() {
-            Tool::<()>::call(tool, &call.arguments, ())
-        } else {
-            Box::pin(ready(ToolOutput::not_offered(&call.name)))
-        }
+        self.shared.tools.dispatch(&call.name, &call.arguments, ())
     }
 
     /// What the model wrote, as the transcript keeps it: scrubbed, so no

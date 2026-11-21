@@ -6,7 +6,7 @@ use std::error::Error as _;
 use rig_core::ProviderError;
 use rig_core::http_client as rig_http;
 
-use super::{Error, ErrorKind};
+use super::{Error, ErrorKind, Failure};
 use crate::wire::transport::SendError;
 
 /// rig's failure for a transport failure `source`.
@@ -48,11 +48,12 @@ fn a_destination_the_guard_refused_is_read_as_refused() {
 
     assert!(failure.is_refused());
     assert!(!failure.is_reply_too_large());
-    assert!(failure.provider_failure().is_some());
-    assert!(matches!(
-        failure.into_provider_failure(),
-        Ok(ProviderError::Http(_))
-    ));
+    assert_eq!(failure.failure(), Some(Failure::Lost));
+    assert!(
+        failure
+            .into_cause()
+            .is_ok_and(|cause| matches!(cause.downcast_ref(), Some(ProviderError::Http(_))))
+    );
 }
 
 #[test]
@@ -74,11 +75,43 @@ fn a_refusal_names_its_status_and_nothing_the_provider_wrote() {
 fn a_failure_that_is_not_the_providers_is_handed_back_unchanged() {
     let failure = Error::unsendable("call-1");
 
-    let back = failure.into_provider_failure().err();
+    assert_eq!(failure.failure(), None);
+    assert_eq!(failure.provider_code(), None);
+    let back = failure.into_cause().err();
 
     assert!(back.as_ref().is_some_and(Error::is_unsendable));
-    assert!(back.as_ref().and_then(Error::provider_failure).is_none());
     assert_eq!(back.as_ref().and_then(Error::status), None);
+}
+
+#[test]
+fn a_provider_failure_is_named_by_what_failed_and_the_providers_code() {
+    let answered = Error::provider(ProviderError::from_http_response(
+        http::StatusCode::BAD_REQUEST,
+        r#"{"error":{"code":"context_length_exceeded"}}"#,
+    ));
+    let ended = Error::provider(ProviderError::from_provider_body(
+        r#"{"error":{"type":"overloaded_error"}}"#,
+    ));
+
+    assert_eq!(answered.failure(), Some(Failure::Refused { status: 400 }));
+    assert_eq!(
+        answered.provider_code().as_deref(),
+        Some("context_length_exceeded")
+    );
+    assert_eq!(ended.failure(), Some(Failure::Ended));
+    assert_eq!(ended.provider_code().as_deref(), Some("overloaded_error"));
+    for (failure, kind) in [
+        (ProviderError::Truncated, Failure::Lost),
+        (ProviderError::Provider("diagnostic".into()), Failure::Ended),
+        (
+            ProviderError::Response("no choices".into()),
+            Failure::Unread,
+        ),
+    ] {
+        let failure = Error::provider(failure);
+        assert_eq!(failure.failure(), Some(kind));
+        assert_eq!(failure.provider_code(), None);
+    }
 }
 
 #[test]

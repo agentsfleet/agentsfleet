@@ -117,6 +117,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 | `rustd/guffbolt/src/tools/env/{mod.rs,search.rs,local/mod.rs,local/search.rs}`, `src/tools/files/listing/{mod.rs,grep.rs}`, `tests/public_api/{files,process,network}/**` | EDIT, CREATE | §9: `Env::search`; `LocalEnv`'s search; `find` and `grep` over it |
 | `rustd/crates/runner/afr_executor/{Cargo.toml,src/lib.rs,src/api/**,src/protocol/mod.rs,src/client/mod.rs,src/server/session.rs,src/server/session/search.rs,src/server/files/**,tests/search.rs,tests/executor_suite.rs}` | EDIT, CREATE | §9: `fs/search` |
 | `rustd/crates/runner/afr_tools/src/generic/env/{mod.rs,lazy.rs,search.rs,search_tests.rs}` | EDIT, CREATE | §9: the sandbox's `Env::search` sends `fs/search` |
+| `rustd/guffbolt-ai/src/{lib.rs,error/mod.rs,error/tests.rs,testing/mod.rs,testing/failure.rs}` | EDIT, CREATE | §12: `Error::failure`, `provider_code` and `into_cause` replace the rig-typed `into_provider_failure` and `provider_failure`; `testing::failure` builds a failed turn for an embedder's suites |
+| `rustd/crates/harness/af_providers/{Cargo.toml,src/error/{kind,raise,tests}.rs,src/turn/mod.rs,src/turn/observer/mod.rs}` | EDIT | §12: classify through guffbolt-ai's `Failure`, `is_refused` and `is_reply_too_large`; no normal `rig-core` dependency |
+| `rustd/crates/daemon/afd_fleet/{Cargo.toml,src/run/turn_checkpoint/root.rs}` | EDIT | §12: a checkpoint's driver is read as `guffbolt::DriveState` |
+| `rustd/crates/runner/afr_agent/src/{decision/interpretation.rs,setup/mod.rs,setup/conversation.rs}` | EDIT | §12: `Step::read` collects a decision's step; the setup run dispatches through `guffbolt::Tools` |
+| `.ast-grep/rules/rust/rust-one-agent-loop.yml`, `.ast-grep/rule-tests/rust-one-agent-loop-test.yml` | CREATE | §12: guffbolt's loop is entered only in `afr_agent`'s run loop and setup run |
 | `docs/v2/pending/M253_004_P1_API_DOCS_INFRA_GUFFBOLT_AI_PROVIDERS_FOR_GUFFBOLT.md` | CREATE | this spec, moved to `active/` then `done/` |
 | `~/Projects/docs` changelog | EDIT, other repository | the entry for the new crate, on its own branch after merge |
 
@@ -479,6 +484,14 @@ N/A: no product or operator signal changes. The provider metric families and the
   - Client: fits. `jsonrpsee-core`'s `async-client` takes any `TransportSenderT`/`TransportReceiverT` through `ClientBuilder::build_with_tokio(sender, receiver)` (`jsonrpsee-core-0.26.2/src/client/async_client/mod.rs:306`), so the two halves of the Unix socket can be line-framed under it. `process/output` and `process/exited` would arrive through `subscribe_to_method` (`client/mod.rs:148`), keyed by method rather than process. Demuxing by process and the head and tail bound per process stay ours.
   - Server: does not fit as a server. `jsonrpsee-server` speaks HTTP and WebSocket only: its listener is TCP (`jsonrpsee-server-0.26.2/src/server.rs:57,71`) and `serve(io, service)` runs hyper over a stream (`src/utils.rs:137`). `RpcModule::raw_json_request` (`jsonrpsee-core-0.26.2/src/server/rpc_module.rs:351`) answers one raw request with no transport, so it could replace the session's hand-written `route` while the line codec stays.
   - Recommend a follow-up: the client over `build_with_tokio`, and `RpcModule` on the executor behind the existing line codec. Unverified: whether `raw_json_request` keeps the rule that a spawn's answer is queued before its first output, and whether it bounds a response by the frame.
+- **Settled while building §12 (Nov 22, 2026):**
+  - `afd_fleet` reads a checkpoint's driver as `guffbolt::DriveState` through `answers()` and `completed_steps()`; its `Driver` mirror is gone. The refusals are unchanged, and the waiting question, newest mark and children now parse as guffbolt's types instead of riding opaque, so a malformed one is refused as `RUN_CHECKPOINT_INCOMPATIBLE` too.
+  - guffbolt-ai classifies a provider failure itself: `Error::failure() -> Option<Failure>` (`Refused { status }`, `Lost`, `Ended`, `Unread`, `#[non_exhaustive]`), `Error::provider_code()` (the provider's own code, unfiltered: `af_providers` keeps its garde name check) and `Error::into_cause()` (the cause boxed as `dyn Error`). `into_provider_failure` and `provider_failure` are deleted. `af_providers` keeps rig's failure as each kind's source, so `told()` and every log `reason` read as before.
+  - `af_providers` drops its normal `rig-core` dependency. It stays a dev-dependency: the label suite compares against rig's vendor registry, and the error suite downcasts a kind's cause to rig's failure. The suite builds failed turns with `guffbolt_ai::testing::failure`, which names no rig type.
+  - Unchanged and recorded: guffbolt-ai's `From<rig_core::ProviderError>`, `From<rig_core::error::EncodeError>`, `From<rig_core::http_client::Error>` impls and `From<Error> for ProviderError` are trait impls on public types, so they are public API that names rig. Only guffbolt-ai's own wires use them.
+  - A decision's step is read with `guffbolt::Step::read`. It reads a stream to its end where the hand loop stopped at the first call or cut end; usage after a call is now metered, and a call followed by a stream failure answers the failure's code instead of `unavailable`.
+  - The setup run holds its one tool in `guffbolt::Tools` and dispatches through `Tools::dispatch`; an unknown name answers the same `ToolOutput::not_offered`.
+  - Found, not fixed, as out of §12's scope: setup fits its window and compacts in `afr_agent/src/setup/conversation.rs` beside the loop's `loop/context/mod.rs` and `effects/`, and scrubs a step at `setup/conversation.rs` beside `loop/conversation.rs`. `afr_tools`' `ToolErrorCode` mirror (`runtime/mod.rs`) and its tool-name list (`catalog/`) wait for §10.
 - **Unverified (`[?]`):**
   - Whether Codex calls a token-count endpoint; Q5 settled the bounds either way, so it blocks nothing.
 - **Model reviews** — none yet; the EGM review runs before this spec leaves `pending/`.
@@ -518,7 +531,10 @@ Also review the runner↔executor JSON-RPC transport: it uses `jsonrpsee-types` 
 
 Re-read how agentsfleet's runner (`afr_tools`, `afr_supervisor`, `af_providers`) uses guffbolt after §1–§5, against how `pi/packages/coding-agent` uses `pi/packages/agent`. Every place agentsfleet re-implements loop, tool, event or provider behaviour guffbolt already has is moved onto guffbolt's public API, or the reason is recorded here. agentsfleet reaches guffbolt only through its public API.
 
-- Dimension 12.1 — one boundary → Test `agentsfleet_reaches_guffbolt_only_through_its_public_api` (unit): a dependency check finds no `guffbolt` item outside its published API used by agentsfleet crates, and no second agent loop. Expected: none.
+- Dimension 12.1 — DONE → one boundary → `agentsfleet_reaches_guffbolt_only_through_its_public_api`: no `guffbolt` item outside its published API used by agentsfleet crates, and no second agent loop. Expected: none. A test may not read the repository (`tests-rust-repo-read`), so two lint checks prove it:
+  - the ast-grep rule `rust-one-agent-loop` (`make lint-source`, rule tests beside it): no crate but `afr_agent`'s `loop/` and `setup/` names `guffbolt::drive`, `guffbolt::Chat` or `guffbolt::Conversation`;
+  - the `rig only through guffbolt-ai` step of `make lint-rustd`: `cargo tree -i rig-core` over normal and build edges finds no crate but `guffbolt-ai` and `af_observability`, whose provider labels read rig's registry (`af_observability/src/semconv/provider.rs:72`).
+  - The serde mirror of `DriveState` in `afd_fleet` is gone, so the compiler holds the daemon to guffbolt's public `DriveState`.
 
 ### §13 — Live tests on Fireworks, $2 at most (Indy, Nov 22, 2026)
 

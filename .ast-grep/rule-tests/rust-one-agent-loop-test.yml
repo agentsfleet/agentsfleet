@@ -1,0 +1,34 @@
+id: rust-one-agent-loop
+valid:
+  # guffbolt's public types, used without entering its loop.
+  - |
+    use guffbolt::{DriveState, Message, Step};
+  - |
+    async fn f() { let step = guffbolt::Step::read(stream, meter).await?; }
+  - |
+    impl guffbolt::Listen for Meter {}
+  # A comment naming the loop is not a call.
+  - |
+    // `guffbolt::drive` runs the turn
+    fn f() {}
+  # Another crate's item of the same name.
+  - |
+    use afd_setup::drive;
+  # A local function named `drive`.
+  - |
+    async fn f() { drive(&engine, &run, &stop).await; }
+invalid:
+  - |
+    async fn f() { guffbolt::drive(&mut chat, &mut Plain, &mut state).await; }
+  - |
+    use guffbolt::drive;
+  - |
+    use ::guffbolt::Chat;
+  - |
+    impl guffbolt::Conversation for Loop {}
+  - |
+    struct Held { chat: guffbolt::Chat<Model> }
+  - |
+    use guffbolt::{Message, drive};
+  - |
+    use guffbolt::{Conversation as _, Step};

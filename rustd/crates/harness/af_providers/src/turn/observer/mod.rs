@@ -158,7 +158,7 @@ impl Observer for RunObserver {
     fn reopened(&self, attempt: usize, failure: &guffbolt_ai::Error) {
         observe::retry(self.label, RetryReason::StreamReopened);
         let run_id = &*self.run_id;
-        let reason = failure.provider_failure().and_then(raise::code);
+        let reason = raise::code(failure);
         let event = EVENT_REOPENED;
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(run_id, attempt, reason, event, error_code);

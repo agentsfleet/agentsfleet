@@ -37,7 +37,7 @@ struct Proof {
     #[garde(skip)]
     messages: Vec<Box<RawValue>>,
     #[garde(skip)]
-    driver: Driver,
+    driver: guffbolt::DriveState,
     #[serde(rename = "memory")]
     #[garde(skip)]
     _memory: Box<RawValue>,
@@ -45,22 +45,6 @@ struct Proof {
     pinned: usize,
     #[garde(length(max = 16_384), dive)]
     folds: Vec<FoldRef>,
-}
-
-/// `guffbolt`'s `DriveState`: the answers and steps proved here, and the
-/// rest, which the runner's codec owns, carried opaque. The run's children
-/// ride inside it, absent when the run started none.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Driver {
-    answers: Vec<String>,
-    completed_steps: u64,
-    #[serde(default, rename = "waiting")]
-    _waiting: Option<Box<RawValue>>,
-    #[serde(default, rename = "newest")]
-    _newest: Option<Box<RawValue>>,
-    #[serde(default, rename = "children")]
-    _children: Option<Box<RawValue>>,
 }
 
 #[derive(Validate)]
@@ -92,13 +76,13 @@ pub(super) fn validate(
             pair.first().map(|fold| fold.sequence) >= pair.get(1).map(|fold| fold.sequence)
         })
         || saved.root.pinned > saved.root.messages.len()
-        || usize::try_from(saved.root.driver.completed_steps)
+        || usize::try_from(saved.root.driver.completed_steps())
             .ok()
             .is_none_or(|turns| turns > saved.root.messages.len())
         || saved
             .root
             .driver
-            .answers
+            .answers()
             .iter()
             .any(|answer| answer.trim().is_empty())
     {

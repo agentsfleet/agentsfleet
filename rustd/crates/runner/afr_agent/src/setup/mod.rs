@@ -40,7 +40,7 @@ use af_wire::context::{ContextLoadResponse, ContextSaveRequest, ContextSaveRespo
 use af_wire::run::{RunPayload, SetupProposal};
 use afr_tools::setup::{Candidate, FleetSetup};
 use guffbolt::tools::propose::Propose;
-use guffbolt::{DriveState, Ending, Plain};
+use guffbolt::{DriveState, Ending, Plain, Tools};
 use tokio_util::sync::CancellationToken;
 
 pub(crate) use self::store::usable;
@@ -153,7 +153,7 @@ pub(crate) async fn run(connect: &dyn Connect, setup: SetupRun<'_>) -> Result<Se
         events: setup.events,
         meter: setup.meter,
         stop: setup.stop,
-        tool: &tool,
+        tools: Tools::new(vec![Box::new(tool.clone())]),
     };
     let mut conversation = SetupLoop::new(shared, saved, opening);
     let ending = guffbolt::drive(&mut conversation, &mut Plain, &mut DriveState::default()).await;

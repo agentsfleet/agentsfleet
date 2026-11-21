@@ -56,6 +56,9 @@ bytes.workspace = true
 # run overlapped (`future::join`).
 futures-util.workspace = true
 af_context.workspace = true
+# A turn checkpoint's root holds the loop's `DriveState`, read through its
+# own type so the answers and steps proved here follow guffbolt's fields.
+guffbolt.workspace = true
 # The shared poll admits private setup through its production-domain owner.
 afd_setup.workspace = true
 # The thread a chat run reads its turns from is a trait object, so a read

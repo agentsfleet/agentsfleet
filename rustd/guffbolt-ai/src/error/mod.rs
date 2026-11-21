@@ -16,6 +16,26 @@ pub type Result<T, E = Error> = core::result::Result<T, E>;
 /// source.
 pub struct Error(Box<ErrorKind>);
 
+/// How the provider, or the transport under it, failed a turn
+/// ([`Error::failure`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Failure {
+    /// The provider answered with a status other than success.
+    Refused {
+        /// The HTTP status.
+        status: u16,
+    },
+    /// The connection dropped, or the reply was cut short, before the turn
+    /// ended.
+    Lost,
+    /// The provider ended the turn with an error of its own.
+    Ended,
+    /// The wire could not build the request, or read the reply as its wire
+    /// defines it.
+    Unread,
+}
+
 /// Every way a wire call fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
@@ -270,25 +290,47 @@ impl Error {
         false
     }
 
-    /// The wire library's own failure, for an embedder that classifies it
-    /// further; `Err` gives back any other failure unchanged.
-    ///
-    /// # Errors
-    /// The failure is not the provider's or its transport's.
-    pub fn into_provider_failure(self) -> Result<ProviderError, Self> {
-        match *self.0 {
-            ErrorKind::Provider { source } => Ok(source),
-            kind => Err(Self(Box::new(kind))),
+    /// How the provider, or the transport under it, failed the turn; `None`
+    /// for a failure that is neither's.
+    #[must_use]
+    pub fn failure(&self) -> Option<Failure> {
+        let ErrorKind::Provider { source } = self.kind() else {
+            return None;
+        };
+        if let Some(status) = status(source) {
+            return Some(Failure::Refused { status });
+        }
+        Some(match source {
+            ProviderError::Http(_) | ProviderError::Truncated => Failure::Lost,
+            ProviderError::Provider(_) => Failure::Ended,
+            _ if source.provider_response().is_some() => Failure::Ended,
+            _ => Failure::Unread,
+        })
+    }
+
+    /// The provider's own name for the failure, such as
+    /// `context_length_exceeded`, when its reply named one. It is the
+    /// provider's text: an embedder that reports it checks it reads as a name.
+    #[must_use]
+    pub fn provider_code(&self) -> Option<String> {
+        match self.kind() {
+            ErrorKind::Provider { source } => source
+                .provider_response()
+                .and_then(rig_core::ProviderResponseError::machine_code),
+            _ => None,
         }
     }
 
-    /// The wire library's own failure, when the provider or its transport
-    /// failed the turn.
-    #[must_use]
-    pub fn provider_failure(&self) -> Option<&ProviderError> {
-        match self.kind() {
-            ErrorKind::Provider { source } => Some(source),
-            _ => None,
+    /// The provider's or the transport's own failure beneath this one, for an
+    /// embedder that keeps it as the cause of its own error; `Err` gives back
+    /// any failure [`Error::failure`] names no kind of, unchanged.
+    ///
+    /// # Errors
+    /// The failure is not the provider's or its transport's.
+    pub fn into_cause(self) -> Result<Box<dyn std::error::Error + Send + Sync>, Self> {
+        match *self.0 {
+            ErrorKind::Provider { source } => Ok(Box::new(source)),
+            kind => Err(Self(Box::new(kind))),
         }
     }
 

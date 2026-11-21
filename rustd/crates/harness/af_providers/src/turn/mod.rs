@@ -48,11 +48,10 @@ impl Turns {
     /// `failure` as the kind a report names. An endpoint the client's guard
     /// refused is the policy's error, named as such, never a lost connection.
     fn failed(&self, failure: guffbolt_ai::Error) -> Error {
-        match failure.into_provider_failure() {
-            Ok(failure) if raise::blocked(&failure) => raise::blocked_endpoint(&self.provider),
-            Ok(failure) => raise::provider(failure),
-            Err(failure) => raise::wire(failure),
+        if failure.failure().is_some() && failure.is_refused() {
+            return raise::blocked_endpoint(&self.provider);
         }
+        raise::provider(failure)
     }
 }
 

@@ -891,6 +891,7 @@ dependencies = [
  "const_format",
  "futures-util",
  "garde",
+ "guffbolt",
  "hex",
  "http",
  "jiff 1.0.1",

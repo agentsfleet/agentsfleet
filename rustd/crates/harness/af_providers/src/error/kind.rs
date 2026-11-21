@@ -2,7 +2,8 @@
 
 use std::fmt;
 
-use rig_core::ProviderError;
+/// A provider's own failure, kept as the cause.
+pub(super) type Cause = Box<dyn std::error::Error + Send + Sync>;
 
 /// Every way a provider fails.
 #[derive(Debug, thiserror::Error)]
@@ -36,7 +37,7 @@ pub(crate) enum ErrorKind {
         code: Option<String>,
         /// The original library failure when the provider answered.
         #[source]
-        source: Option<ProviderError>,
+        source: Option<Cause>,
     },
 
     /// The connection was lost before the turn ended.
@@ -44,7 +45,7 @@ pub(crate) enum ErrorKind {
     Lost {
         /// The transport's reason.
         #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
+        source: Cause,
     },
 
     /// The provider ended the turn early with an error of its own.
@@ -54,7 +55,7 @@ pub(crate) enum ErrorKind {
         reason: String,
         /// The provider's typed failure, retained for the diagnostic chain.
         #[source]
-        source: ProviderError,
+        source: Cause,
     },
 
     /// The provider finished a turn that neither answered nor called a tool,
@@ -72,7 +73,7 @@ pub(crate) enum ErrorKind {
     Oversize {
         limit: usize,
         #[source]
-        source: ProviderError,
+        source: Cause,
     },
 
     /// A request or a streamed event was not the JSON its wire defines.
@@ -89,7 +90,7 @@ pub(crate) enum ErrorKind {
     Wire {
         /// The library's reason.
         #[source]
-        source: ProviderError,
+        source: Cause,
     },
 
     /// The selected model has no saved inference settings.

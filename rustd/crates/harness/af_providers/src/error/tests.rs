@@ -6,9 +6,9 @@
 use af_core::error_code;
 use af_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use af_wire::report::FailureClass;
+use guffbolt_ai::testing::failure;
 use http::StatusCode;
 use rig_core::ProviderError;
-use rig_core::http_client as rig_http;
 
 use super::{Error, raise};
 
@@ -46,7 +46,7 @@ fn should_name_a_silent_turn_as_the_fleets_error_and_say_when_it_was_cut() {
 #[test]
 fn should_class_a_lost_connection_and_an_early_end_as_transport_loss() {
     let lost = Error::lost(std::io::Error::other("reset"));
-    let ended = raise::ended("overloaded_error", ProviderError::Truncated);
+    let ended = raise::ended("overloaded_error", Box::new(ProviderError::Truncated));
 
     assert_eq!(lost.failure_class(), Some(FailureClass::TransportLoss));
     assert_eq!(ended.failure_class(), Some(FailureClass::TransportLoss));
@@ -67,9 +67,9 @@ fn should_refuse_an_unknown_provider_as_the_fleets_configuration() {
     assert_eq!(Error::refused(500).unhosted_provider(), None);
 }
 
-/// rig's reply for `status` with `body`, as its decoders preserve it.
-fn answered(status: u16, body: &str) -> ProviderError {
-    ProviderError::from_http_response(StatusCode::from_u16(status).unwrap(), body)
+/// The provider's reply of `status` with `body`, as the wire reports it.
+fn answered(status: u16, body: &str) -> guffbolt_ai::Error {
+    failure::answered(StatusCode::from_u16(status).unwrap(), body)
 }
 
 #[test]
@@ -117,13 +117,9 @@ fn should_carry_no_code_that_reads_as_a_message() {
 
 #[test]
 fn should_class_a_cut_reply_and_a_provider_error_mid_turn_as_transport_loss() {
-    let cut = raise::provider(ProviderError::Truncated);
-    let overloaded = raise::provider(ProviderError::from_provider_body(
-        r#"{"error":{"type":"overloaded_error"}}"#,
-    ));
-    let unnamed = raise::provider(ProviderError::Provider(
-        "the prompt said sk-live-secret".into(),
-    ));
+    let cut = raise::provider(failure::cut());
+    let overloaded = raise::provider(failure::ended(r#"{"error":{"type":"overloaded_error"}}"#));
+    let unnamed = raise::provider(failure::diagnosed("the prompt said sk-live-secret"));
 
     for lost in [&cut, &overloaded, &unnamed] {
         assert_eq!(lost.failure_class(), Some(FailureClass::TransportLoss));
@@ -148,7 +144,7 @@ fn should_class_a_cut_reply_and_a_provider_error_mid_turn_as_transport_loss() {
 
 #[test]
 fn should_name_a_reply_the_wire_could_not_read_the_fleets_error_with_its_cause() {
-    let unread = raise::provider(ProviderError::Response("no choices".into()));
+    let unread = raise::provider(failure::unanswered("no choices"));
 
     assert_eq!(unread.failure_class(), None);
     assert!(
@@ -191,19 +187,15 @@ async fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it()
         single_attempt: false,
     };
     let chunks: Vec<_> = connected.stream(request).collect().await;
-    let failure = chunks
-        .into_iter()
-        .find_map(Result::err)
-        .unwrap()
-        .into_provider_failure()
-        .unwrap();
-    let reset = ProviderError::from_transport_error(rig_http::Error::transient(
-        std::io::Error::other("reset"),
-    ));
+    let failure = chunks.into_iter().find_map(Result::err).unwrap();
+    let reset = failure::dropped(std::io::Error::other("reset"));
 
-    assert!(raise::oversize(&failure));
+    assert!(failure.is_reply_too_large());
     let oversized = raise::provider(failure);
-    assert!(!raise::oversize(&reset), "a reset is lost, not oversized");
+    assert!(
+        !reset.is_reply_too_large(),
+        "a reset is lost, not oversized"
+    );
     assert_eq!(oversized.failure_class(), None);
     assert_eq!(oversized.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert!(oversized.detail().contains("byte bound"));

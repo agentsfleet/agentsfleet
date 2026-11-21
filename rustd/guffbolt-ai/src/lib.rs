@@ -49,7 +49,7 @@ pub use self::types::{
 };
 
 #[cfg(feature = "wire")]
-pub use self::error::{Error, Result};
+pub use self::error::{Error, Failure, Result};
 #[cfg(feature = "log-filter")]
 pub use self::logs::log_filter;
 #[cfg(feature = "reqwest")]
