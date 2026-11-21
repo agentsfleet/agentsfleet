@@ -11,7 +11,7 @@ import { earlierConversations } from "./draft-editor";
 import { DraftHistory } from "./draft-history";
 import { DraftWatch } from "./draft-watch";
 import { DraftLists } from "./draft-lists";
-import { DRAFT_LIST, DRAFT_LIST_STATUS, defaultChatModel, type DraftList } from "./draft-list-types";
+import { DRAFT_LIST, DRAFT_LIST_STATUS, MODEL_LIST_RETRYING, defaultChatModel, type DraftList, type DraftListsView } from "./draft-list-types";
 import { EMPTY_DRAFT_VIEW as EMPTY, messagePatch, projectDraftView, type DraftIdentity, type DraftView, type DrawerEdit } from "./draft-state";
 import { createdDrawerPatch, dashboardToolPatch, drawerPatch } from "./draft-edits";
 import { applySavedSetup, continueSavedDraft, readFleetSetup, resumeSavedSetup, retrySavedSetup } from "./draft-continuation";
@@ -55,25 +55,39 @@ export class DraftClient {
     this.#requests.clear();
   }
   async initialize(): Promise<void> {
-    this.#update({listStatus: DRAFT_LIST_STATUS.loading, error: null});
-    const lists = await this.#lists.open(this.#owner.signal, {
-      modelsReady: ({models, moreModels}) => {
-        if (this.#snapshot.inaccessible) return;
-        this.#update({models, moreModels, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(models, this.#snapshot.model)});
-      },
-      failed: cause => {
-        if (losesAccess(cause)) {
-          this.#failed(cause, true);
-          return;
-        }
-        this.#update({listStatus: DRAFT_LIST_STATUS.unavailable});
-        if (cause instanceof SetupUnavailable && cause.list === DRAFT_LIST.models && !this.#snapshot.model) this.#failed(cause, true);
-      },
-    });
-    if (this.#snapshot.inaccessible) return;
-    this.#update({...lists, ...(this.#snapshot.draft ? this.#lists.updateDraft(this.#snapshot.draft) : {}),
-      listStatus: DRAFT_LIST_STATUS.ready, model: this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(lists.models, this.#snapshot.model)});
+    this.#update({listStatus: DRAFT_LIST_STATUS.loading, modelListStatus: DRAFT_LIST_STATUS.loading, error: null});
+    await this.#lists.open(this.#owner.signal, this.#listUpdates);
   }
+
+  async retryModels(): Promise<void> {
+    if (this.#snapshot.inaccessible || this.#snapshot.modelListStatus !== DRAFT_LIST_STATUS.unavailable) return;
+    this.#update({modelListStatus: MODEL_LIST_RETRYING});
+    await this.loadModels();
+  }
+
+  async loadModels(): Promise<void> {
+    await this.#lists.first(DRAFT_LIST.models, this.#owner.signal, this.#listUpdates);
+  }
+
+  readonly #listUpdates = {
+    ready: (list: DraftList, lists: DraftListsView) => {
+      if (list === DRAFT_LIST.models) {
+        const {models, moreModels} = lists;
+        const model = this.#snapshot.draft?.authoring_model_ref ?? defaultChatModel(models, this.#snapshot.model);
+        this.#update({models, moreModels, model, modelListStatus: DRAFT_LIST_STATUS.ready});
+      } else {
+        const {draft} = this.#snapshot;
+        const {cards, moreChats} = draft ? this.#lists.updateDraft(draft) : lists;
+        this.#update({cards, moreChats, listStatus: DRAFT_LIST_STATUS.ready});
+      }
+    },
+    failed: (list: DraftList, cause: unknown) => {
+      if (losesAccess(cause)) this.#failed(cause, true);
+      else if (list === DRAFT_LIST.models) this.#update({modelListStatus: DRAFT_LIST_STATUS.unavailable});
+      else this.#update({listStatus: DRAFT_LIST_STATUS.unavailable});
+    },
+  };
+
   /** The next page of models or chats. A failed page is the caller's to show inline; lost access clears every list. */
   async loadMore(list: DraftList): Promise<void> {
     if (this.#snapshot.inaccessible) return;
@@ -367,7 +381,7 @@ export class DraftClient {
     const error = setupErrorMessage(cause, opening);
     if (losesAccess(cause)) {
       this.#reset(); this.#lists.clear(); this.#requests.blockAccess();
-      this.#update({...EMPTY, listStatus: DRAFT_LIST_STATUS.unavailable, error});
+      this.#update({...EMPTY, listStatus: DRAFT_LIST_STATUS.unavailable, modelListStatus: DRAFT_LIST_STATUS.unavailable, error});
     } else this.#update({error});
   }
   #reset(): void {

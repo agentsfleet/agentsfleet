@@ -1,6 +1,6 @@
 import { test } from "./fixtures/chat-probe";
 import { expect } from "@playwright/test";
-import { FLEET_DETAIL, MODEL } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET_DETAIL, MODEL } from "@/tests/helpers/draft-fixtures";
 
 test("fleet Summary is inline and the composer keeps the approved horizontal alignment", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
@@ -127,36 +127,47 @@ test("saved setup has the same composer placement, flat header, summary and retu
   await expect(input).toHaveValue("Preserve the existing regression assertions");
 });
 
-test("chat load failures show one compact recovery action in the composer flap", async ({page, chatProbe}, info) => {
+test("a resumed setup retries model choices beside the picker on both appearances", async ({page, chatProbe}, info) => {
   const phone = info.project.name.includes("mobile");
   await page.setViewportSize({width: phone ? 390 : 1480, height: phone ? 844 : 900});
   let unavailable = true;
+  let historyReads = 0;
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.route("**/live/v1/workspaces/*/models?*", route => route.fulfill({status: unavailable ? 503 : 200,
     contentType: "application/json", body: JSON.stringify(unavailable ? {} : {items: [MODEL], next_cursor: null})}));
-  await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({status: 200,
-    contentType: "application/json", body: JSON.stringify({items: [], next_cursor: null})}));
+  await page.route("**/live/v1/workspaces/*/drafts?*", route => {
+    historyReads += 1;
+    return route.fulfill({json: {items: [], next_cursor: null}});
+  });
+  await page.route("**/live/v1/workspaces/*/fleets?*", route => route.fulfill({json: {items: [], next_cursor: null, total: null}}));
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}`, route => route.fulfill({json: DRAFT}));
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}/messages?*`, route => route.fulfill({json: {items: [], next_cursor: null}}));
   for (const theme of ["dark", "light"]) {
     unavailable = true;
-    await page.goto(`${chatProbe}?chatError=1`);
+    await page.goto(`${chatProbe}?chatError=1&fleetSave=1`);
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
-    const footer = page.getByTestId("fleet-chat-footer");
-    const message = footer.getByRole("alert");
-    await expect(message).toContainText("We couldn’t load your model choices. Try again in a moment.");
-    const flap = footer.getByRole("status", {name: "Setup status"});
-    await expect(flap).toContainText("Setup needs attention");
-    const retry = flap.getByRole("button", {name: "Retry", exact: true});
+    const composer = page.getByRole("form", {name: "Setup chat composer"});
+    const input = composer.getByRole("textbox");
+    const model = composer.getByRole("combobox", {name: "Authoring model"});
+    const message = composer.getByText("Couldn’t load models", {exact: true});
+    const retry = composer.getByRole("button", {name: "Retry models", exact: true});
+    await input.fill("Review the callback regression");
+    await expect(model).toBeDisabled();
+    await expect(message).toBeVisible();
     await expect(retry).toBeVisible();
-    await expect(page.getByRole("status", {name: "Chat error notice"})).toHaveCount(0);
+    await expect(page.getByText("Setup needs attention", {exact: true})).toHaveCount(0);
     await expect(page.getByText("No chat model yet", {exact: true})).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({path: info.outputPath(`chat-error-recovery-${theme}.png`), scale: "css", animations: "disabled"});
+    await page.screenshot({path: info.outputPath(`model-list-recovery-${theme}.png`), scale: "css", animations: "disabled"});
+    const before = historyReads;
     unavailable = false;
     await retry.click();
     await expect(message).toHaveCount(0);
-    await expect(page.getByRole("combobox", {name: "Authoring model"})).toBeEnabled();
-    await page.getByRole("textbox", {name: "What would you like your fleet to do?"}).fill("Review the callback regression");
-    await expect(page.getByRole("button", {name: "New fleet from message", exact: true})).toBeEnabled();
+    await expect(model).toBeEnabled();
+    await expect(input).toHaveValue("Review the callback regression");
+    await expect(input).toBeFocused();
+    await expect(composer.getByRole("button", {name: "Send message", exact: true})).toBeEnabled();
+    expect(historyReads).toBe(before);
   }
   expect(errors).toEqual([]);
 });

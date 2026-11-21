@@ -25,12 +25,45 @@ it("explains unavailable setup and keeps the reload action", async () => {
 it.each([503, 200])("retries a failed initial read with status %i without claiming the workspace has no models", async status => {
   fixture.fetch.mockResolvedValueOnce(response({}, status));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  await screen.findByText("We couldn’t load your model choices. Try again in a moment.");
-  expect(screen.getByRole("alert").closest('[data-testid="fleet-chat-footer"]')).toBeTruthy();
+  const composer = screen.getByRole("form", {name: "Setup chat composer"});
+  await within(composer).findByText("Couldn’t load models");
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByText(/Add a model to this workspace/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  fireEvent.click(within(composer).getByRole("button", {name: "Retry models"}));
+  await waitFor(() => expect(within(composer).getByRole("combobox", {name: "Authoring model"})).toHaveProperty("disabled", false));
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+// Value: protects=model recovery on a resumed draft; fails_when=the persisted model hides a failed choice list or retry reopens the chat;
+// why_new=blank setup does not have a persisted model; seam=the app's fetch fixture; no_claim=live model availability.
+it("retries only the model list on a resumed draft and keeps the unsent message", async () => {
+  const initialModels = Promise.withResolvers<Response>();
+  fixture.fetch.mockReturnValueOnce(initialModels.promise);
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
+  await waitFor(() => expect(input).toHaveProperty("disabled", false));
+  fireEvent.change(input, {target: {value: "Follow up on the deployment"}});
+  initialModels.resolve(response({}, 503));
+  const composer = screen.getByRole("form", {name: "Setup chat composer"});
+  const retry = await within(composer).findByRole("button", {name: "Retry models"});
+  const picker = within(composer).getByRole("combobox", {name: "Authoring model"});
+  expect(picker).toHaveProperty("disabled", true);
+  expect(screen.queryByText("Setup needs attention")).toBeNull();
+  const before = fixture.fetch.mock.calls.length;
+
+  fixture.fetch.mockResolvedValueOnce(response({}, 503));
+  fireEvent.click(retry);
+  await within(composer).findByText("Couldn’t load models");
+  fireEvent.click(retry);
+  await waitFor(() => expect(picker).toHaveProperty("disabled", false));
+
+  const reads = fixture.fetch.mock.calls.slice(before).map(([input]) => input);
+  expect(reads).toEqual([expect.stringContaining("/models?"), expect.stringContaining("/models?")]);
+  expect(input).toHaveProperty("value", "Follow up on the deployment");
+  expect(input).toHaveProperty("disabled", false);
+  expect(input).toBe(document.activeElement);
+  expect(within(composer).queryByRole("button", {name: "Retry models"})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
 });
 
@@ -43,6 +76,7 @@ it("reloads unavailable unfinished setups from their own recovery action without
   render(<DraftSidebarProvider><WorkspaceChat {...CHAT_PROPS} /></DraftSidebarProvider>);
   await screen.findByText(/Unfinished setups could not be loaded/);
   expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", {name: "Retry models"})).toBeNull();
   expect(screen.queryByText("No chat model yet")).toBeNull();
   const input = screen.getByRole("textbox", {name: "What would you like your fleet to do?"});
   fireEvent.change(input, {target: {value: "Review the nightly build"}});

@@ -13,7 +13,6 @@ import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { BrandMark, Button, PageTitle, cn } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
 import { chatRecovery, retryableDraftTurn } from "@/lib/api/draft-recovery";
-import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { CHAT_STARTERS } from "../chat-defaults";
 import { ChatComposer } from "../composer/ChatComposer";
 import { ChatThread } from "../../shared/chat/ChatThread";
@@ -45,7 +44,7 @@ export function DraftConversation({client, view, workspace, subject, children, u
     <DraftRuntime client={client} view={view} pending={recovery.pending}>
       <AuthoringPrompt hasMessages={hasMessages} />
       <SetupConversationLayout client={client} view={view} workspace={workspace} subject={subject}><ChatThread label="Fleet setup conversation" centered={empty}
-        footer={<>{view.error && !failedTurn ? <p role="alert" className="mx-auto mb-sm text-label text-destructive">{view.listStatus === DRAFT_LIST_STATUS.unavailable ? view.error : "Couldn’t complete this request"}</p> : null}
+        footer={<>{view.error && !failedTurn ? <p role="alert" className="mx-auto mb-sm text-label text-destructive">Couldn’t complete this request</p> : null}
           <ChatComposer empty={empty} client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} onRetry={retry} />
           {empty ? <><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} /><p className="mb-xl mt-5 text-center text-eyebrow leading-label text-text-dim">No fleet selected. Start something new, or open your fleets from the rail.</p>{unfinished}</> : null}</>}>
         <div role="log" aria-live="off" className={cn("mx-auto flex w-full max-w-chat flex-1 flex-col", !empty && "py-3xl")}>

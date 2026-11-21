@@ -133,10 +133,10 @@ it("retains both actions after saving the same published setup", () => {
   expect(screen.getAllByRole("link")).toHaveLength(2);
 });
 
-const READY = {...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready};
+const READY = {...EMPTY_DRAFT_VIEW, modelListStatus: DRAFT_LIST_STATUS.ready};
 
-it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", listStatus => {
-  const {container} = render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, listStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
+it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", modelListStatus => {
+  const {container} = render(<SetupStatusFlap showPublication view={{...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready, modelListStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
   expect(container.textContent).toBe("");
 });
 

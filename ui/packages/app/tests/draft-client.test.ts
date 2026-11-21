@@ -21,7 +21,7 @@ describe("private setup editing and recovery boundaries", () => {
     const instance = fixture.create();
     const initialized = instance.initialize();
     await vi.waitFor(() => expect(instance.getSnapshot().model).toBe(MODEL_REF));
-    expect(instance.getSnapshot().listStatus).toBe("loading");
+    expect(instance.getSnapshot()).toMatchObject({listStatus: "loading", modelListStatus: "ready"});
     sidebar.resolve(response({items: [], next_cursor: null}));
     await initialized;
     expect(instance.getSnapshot().listStatus).toBe("ready");
@@ -36,7 +36,7 @@ describe("private setup editing and recovery boundaries", () => {
     await instance.send("Create a private setup");
     sidebar.resolve(response({}, 503));
     await initialized;
-    expect(instance.getSnapshot()).toMatchObject({draft: DRAFT, listStatus: "unavailable", error: null});
+    expect(instance.getSnapshot()).toMatchObject({draft: DRAFT, listStatus: "unavailable", modelListStatus: "ready", error: null});
   });
 
   it("reuses default tools already applied when their response was lost before a chat Save", async () => {
@@ -69,7 +69,10 @@ describe("private setup editing and recovery boundaries", () => {
     await expect(instance.resume(DRAFT_ID)).rejects.toMatchObject({status: 403});
     sidebar.resolve(response({items: [], next_cursor: null}));
     await initialized;
-    expect(instance.getSnapshot()).toMatchObject({inaccessible: true, model: "", listStatus: "unavailable"});
+    expect(instance.getSnapshot()).toMatchObject({inaccessible: true, model: "", listStatus: "unavailable", modelListStatus: "unavailable"});
+    const before = calls.length;
+    await instance.retryModels();
+    expect(calls).toHaveLength(before);
   });
 
   it("updates a queued turn on its start signal and ignores repeats and unrelated sequences", async () => {

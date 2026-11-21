@@ -103,9 +103,14 @@ it("refuses a review that does not confirm the selected runtime model", async ()
 
 it("shows model loading failures without changing the saved model", async () => {
   const hook = renderHook(() => useFleetModel(MODEL_OWNER));
-  fixture.override = () => response({}, 503);
+  const normal = fixture.override;
+  fixture.override = call => call.path.endsWith("/models") ? response({}, 503) : normal(call);
   await act(async () => {await hook.result.current.load();});
-  expect(hook.result.current).toMatchObject({confirmed: null, error: "Models couldn’t be loaded. Try again.", loading: false});
+  expect(hook.result.current).toMatchObject({confirmed: null, error: "Models couldn’t be loaded. Try again.", loading: false, ready: false});
+  fixture.override = call => call.path.endsWith("/drafts") ? response({}, 503) : normal(call);
+  await act(async () => {await hook.result.current.load();});
+  expect(hook.result.current).toMatchObject({error: null, ready: true, models: [MODEL, RUNTIME_MODEL]});
+  expect(fixture.calls.filter(call => call.path.endsWith("/drafts"))).toHaveLength(0);
   expect(fixture.mutations()).toEqual([]);
 });
 
