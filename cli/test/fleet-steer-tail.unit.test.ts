@@ -1,5 +1,6 @@
 // Unit coverage for the steer event tail (openTurnTail): the pre-id buffer
-// (replay order, foreign/id-less drop, frame + byte bounds), the post-promote
+// (replay order, foreign/id-less drop, nothing dropped past the retired
+// frame and byte caps), the post-promote
 // live path, tail lifecycle on success / late error / abort, and the
 // subscription-ready gate. Split from fleet-steer-linecov.unit.test.ts when
 // that file crossed the size cap.
@@ -11,8 +12,6 @@ import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
   KIND_TURN_COMPLETE,
-  PRE_ID_BUFFER_MAX_BYTES,
-  PRE_ID_BUFFER_MAX_FRAMES,
   STATUS_COMPLETE,
   STATUS_SSE_DISCONNECTED,
   openTurnTail,
@@ -88,12 +87,15 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
     expect(rec.stdout.some((l) => l.includes("our words"))).toBe(true);
   });
 
-  test("test_pre_id_buffer_bounded", async () => {
-    // Frame-count bound: overflow drops oldest; the tail still completes.
+  test("test_pre_id_buffer_keeps_every_frame", async () => {
+    // 256 frames and 256 KiB were the retired buffer caps; past both, every
+    // early frame still replays and no drop notice is printed.
+    const RETIRED_FRAMES = 256;
+    const RETIRED_BYTES = 256 * 1024;
     const rec = makeRecorder();
     const overflowBy = 3;
     const frames = Array.from(
-      { length: PRE_ID_BUFFER_MAX_FRAMES + overflowBy },
+      { length: RETIRED_FRAMES + overflowBy },
       (_, i) => chunkFrame(TURN_ID, `line ${i}`),
     );
     frames.push(completeFrame(TURN_ID));
@@ -105,18 +107,15 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
       }).pipe(Effect.provide(makeLayer(rec))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(rec.stdout.some((l) => l.endsWith("line 0"))).toBe(false);
+    expect(rec.stdout.some((l) => l.endsWith("line 0"))).toBe(true);
     expect(
-      rec.stdout.some((l) => l.endsWith(`line ${PRE_ID_BUFFER_MAX_FRAMES + overflowBy - 1}`)),
+      rec.stdout.some((l) => l.endsWith(`line ${RETIRED_FRAMES + overflowBy - 1}`)),
     ).toBe(true);
-    // Truncation is never silent: the drop notice names the recovery command.
-    expect(rec.stdout.some((l) => l.includes("dropped live"))).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("dropped live"))).toBe(false);
 
-    // Byte bound: two half-cap frames exceed the byte cap; oldest drops.
-    // Multi-byte char pins byte semantics — each 💠 is 4 UTF-8 bytes but only
-    // 2 UTF-16 code units, so code-unit counting would never overflow here.
+    // Two frames that together pass the retired byte cap both replay.
     const rec2 = makeRecorder();
-    const half = "💠".repeat(PRE_ID_BUFFER_MAX_BYTES / 8);
+    const half = "💠".repeat(RETIRED_BYTES / 8);
     const exit2 = await Effect.runPromiseExit(
       steerEffectFromArgs(FLEET_ID, SINGLE_MESSAGE, {}, {
         stdin: streamFrom([], false),
@@ -129,9 +128,9 @@ describe("steer — pre-id frames buffer until the POST names the event", () => 
       }).pipe(Effect.provide(makeLayer(rec2))),
     );
     expect(Exit.isSuccess(exit2)).toBe(true);
-    expect(rec2.stdout.some((l) => l.includes("first-giant"))).toBe(false);
+    expect(rec2.stdout.some((l) => l.includes("first-giant"))).toBe(true);
     expect(rec2.stdout.some((l) => l.includes("second-giant"))).toBe(true);
-    expect(rec2.stdout.some((l) => l.includes("dropped live"))).toBe(true);
+    expect(rec2.stdout.some((l) => l.includes("dropped live"))).toBe(false);
   });
 });
 

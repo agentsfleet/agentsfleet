@@ -11,7 +11,6 @@ const key = Schema.Struct({provider: Schema.String, source_workspace_id: Schema.
 const keys = Schema.Struct({keys: Schema.Array(key)});
 const selected = Schema.Struct({provider: Schema.String, model: Schema.String, active: Schema.Boolean});
 const STDIN_DETAIL = "Pipe the provider API key into stdin when using --api-key-stdin";
-const KEY_MAX_BYTES = 64 * 1024;
 
 export const platformKeysList = Effect.fn("platform.keys.list")(function* () {
   const response = yield* decodePlatform(keys, yield* platformRequest({path: ADMIN_KEYS_PATH}));
@@ -28,7 +27,7 @@ export const platformKeysUse = Effect.fn("platform.keys.use")(function* (options
   if (options.apiKeyStdin) {
     const stdin = yield* Stdin;
     if (stdin.isTTY) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
-    const apiKey = (yield* stdin.readBounded(KEY_MAX_BYTES)).trim();
+    const apiKey = (yield* stdin.readAll()).trim();
     if (!apiKey) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
     yield* platformRequest({path: options.replace ? wsSecretPath(options.workspace, options.provider) : wsSecretsPath(options.workspace),
       method: options.replace ? HTTP_METHOD.put : HTTP_METHOD.post,

@@ -39,9 +39,6 @@ export interface ChatOptions {
 
 const USAGE = "agentsfleet chat [draft-id] --model <setup-model-ref>";
 const DECIMAL_REVISION = /^[1-9][0-9]*$/u;
-const BYTES_PER_KIB = 1024;
-/** `MAX_DEFINITION_BYTES` in rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs: longer Definition text is refused there. */
-export const MAX_DEFINITION_BYTES = 6_400 * BYTES_PER_KIB;
 const DEFINITION_HINT = "pass --definition a readable file holding one native Definition JSON object";
 
 export function chatEffect(options: ChatOptions) {
@@ -128,12 +125,11 @@ function source(options: ChatOptions, definition?: DefinitionDocument): DraftSou
   return {kind: DRAFT_SOURCE.blank};
 }
 
-// The file is read whole, so its size is checked before reading. Everything
-// else about the Definition is the daemon's to validate and name.
+// The file must hold one JSON object. Everything else about the Definition,
+// its size included, is the daemon's to validate and name.
 function readDefinition(path: string): Effect.Effect<DefinitionDocument, ValidationError> {
   return Effect.gen(function* () {
     const file = Bun.file(path);
-    if (file.size > MAX_DEFINITION_BYTES) return yield* Effect.fail(definitionError(path, `is ${file.size} bytes; a Definition is at most ${MAX_DEFINITION_BYTES}`));
     const text = yield* Effect.tryPromise({try: () => file.text(), catch: (cause) => definitionError(path, `cannot be read: ${reason(cause)}`)});
     const parsed = yield* Effect.try({try: (): unknown => JSON.parse(text), catch: (cause) => definitionError(path, `is not valid JSON: ${reason(cause)}`)});
     if (!isRecord(parsed) || Array.isArray(parsed)) return yield* Effect.fail(definitionError(path, "must hold one JSON object"));

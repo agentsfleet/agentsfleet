@@ -37,12 +37,6 @@ const MS_PER_SECOND = 1000 as const;
 export const KIND_CHUNK = "chunk" as const;
 export const KIND_TURN_COMPLETE = "turn_complete" as const;
 
-const BYTES_PER_KIB = 1024;
-// Pre-id buffer caps, sized to one POST round-trip of frames: until the 202
-// names the turn nothing can be filtered or rendered, so frames wait here.
-// Overflow drops oldest — the durable turn poll stays the recovery backstop.
-export const PRE_ID_BUFFER_MAX_FRAMES = 256;
-export const PRE_ID_BUFFER_MAX_BYTES = 256 * BYTES_PER_KIB;
 // Longest the POST will wait for the tail's subscription to be live. A tail
 // that can't open inside this window degrades to post-then-poll; the send is
 // never blocked on a broken stream.
@@ -129,51 +123,33 @@ export interface TurnTailHandle {
   readonly close: () => Promise<void>;
 }
 
-interface BufferedFrame {
-  readonly frame: SseFrame;
-  readonly bytes: number;
-}
-
 interface PreIdBuffer {
   readonly cb: StreamGetCallback;
   readonly promote: (filtered: StreamGetCallback) => boolean;
-  readonly droppedCount: () => number;
 }
 
 // Buffers every frame until the turn id is known, then hands the stream to a
 // filtered callback: buffered frames replay through it in arrival order, and
 // `promote` returns false when a replayed frame asks the stream to stop.
+// Nothing is dropped: the buffer lives for one POST round-trip, the time
+// until the 202 names the turn, so a frame count or byte cap would only cut
+// the opening of a reply.
 const makePreIdBuffer = (): PreIdBuffer => {
-  const entries: BufferedFrame[] = [];
-  let totalBytes = 0;
-  let droppedFrames = 0;
+  const entries: SseFrame[] = [];
   let live: StreamGetCallback | null = null;
   const cb: StreamGetCallback = (event) => {
     if (live) return live(event);
-    // Buffer.byteLength counts encoded bytes (not UTF-16 code units), keeping
-    // the cap honest for multi-byte chunk text.
-    const bytes = Buffer.byteLength(JSON.stringify(event));
-    entries.push({ frame: event, bytes });
-    totalBytes += bytes;
-    while (
-      entries.length > PRE_ID_BUFFER_MAX_FRAMES ||
-      totalBytes > PRE_ID_BUFFER_MAX_BYTES
-    ) {
-      const dropped = entries.shift();
-      if (!dropped) break;
-      totalBytes -= dropped.bytes;
-      droppedFrames += 1;
-    }
+    entries.push(event);
     return undefined;
   };
   const promote = (filtered: StreamGetCallback): boolean => {
     live = filtered;
-    for (const entry of entries.splice(0)) {
-      if (filtered(entry.frame) === false) return false;
+    for (const frame of entries.splice(0)) {
+      if (filtered(frame) === false) return false;
     }
     return true;
   };
-  return Object.freeze({ cb, promote, droppedCount: () => droppedFrames });
+  return Object.freeze({ cb, promote });
 };
 
 // Ready = headers accepted (subscription live) OR the stream settled (a
@@ -231,12 +207,6 @@ export const openTurnTail = (
         }),
       );
     const deliverTurnId = (id: string): void => {
-      // Overflow must never be silent: a truncated replay with a retained
-      // turn_complete would otherwise pass itself off as the whole reply.
-      const dropped = buffer.droppedCount();
-      if (dropped > 0) {
-        printLine(ui.dim(`${dropped} early frame(s) dropped live — full history: agentsfleet fleet turns ${fleetId}`));
-      }
       const filtered = makeFrameCallback({ printLine, turnId: id, presentation }, (next) => {
         outcome = next;
       });

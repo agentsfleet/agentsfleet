@@ -80,7 +80,8 @@ test("command output preserves failures, exit codes and bounded terminal-safe pr
   printer.frame("tool_call_completed", {...call, args_redacted: call.arguments, ms: call.duration_ms});
   expect(lines).toHaveLength(1);
   expect(activityText("\u001b]8;;evil\u0007spoof\u202e")).not.toMatch(/[\u001b\u0007\u202e]/u);
-  expect(activityText("x".repeat(9000))).toEndWith("… output truncated");
+  // 8,192 characters was the retired client cut; longer output is shown whole.
+  expect(activityText("x".repeat(9000))).toBe("x".repeat(9000));
   expect(printer.frame("tool_call_completed", {name: "shell"})).toBe(true);
   expect(lines.at(-1)).toContain("outcome unavailable");
   expect(printer.frame("other", {})).toBe(false);

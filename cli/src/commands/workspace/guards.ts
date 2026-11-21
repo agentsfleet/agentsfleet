@@ -63,7 +63,6 @@ const workspaceMissing = (overrideFlag?: string): ConfigError =>
         ? WORKSPACE_MISSING_SUGGESTION
         : `${WORKSPACE_MISSING_SUGGESTION}, or pass ${overrideFlag} <id>`,
   });
-const WORKSPACE_NAME_MAX_CODEPOINTS = 128;
 const ASCII_EDGE_WHITESPACE_PATTERN =
   /^[\u0009-\u000d\u0020]+|[\u0009-\u000d\u0020]+$/gu;
 const UNICODE_WHITESPACE_ONLY_PATTERN =
@@ -81,14 +80,6 @@ export const requireCreateName = (
     return Effect.fail(
       new ValidationError({
         detail: "workspace create requires <name>",
-        suggestion: `usage: ${WORKSPACE_CREATE_USAGE}`,
-      }),
-    );
-  }
-  if ([...trimmed].length > WORKSPACE_NAME_MAX_CODEPOINTS) {
-    return Effect.fail(
-      new ValidationError({
-        detail: `workspace name must be ${WORKSPACE_NAME_MAX_CODEPOINTS} characters or fewer`,
         suggestion: `usage: ${WORKSPACE_CREATE_USAGE}`,
       }),
     );

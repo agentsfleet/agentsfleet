@@ -125,7 +125,16 @@ test("refuses replacement without a piped key before making a request", async ()
   expect(result.code).toBe(4); expect(result.stderr).toContain("--replace requires --api-key-stdin"); expect(fixture.calls).toEqual([]);
 });
 
-test.each(["", " ", "x".repeat(65537)])("refuses an empty or oversized piped provider credential", async secret => {
+test.each(["", " "])("refuses an empty piped provider credential", async secret => {
   const result = await fixture.run(["keys", "use", "--provider", "example", "--workspace", WORKSPACE_ID, "--model", "reasoning-model", "--api-key-stdin", "--json"], secret);
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
+});
+
+test("sends a piped provider credential past the retired 64 KiB client cap to the server", async () => {
+  // 64 KiB + 1 was refused before any request; the server is now the judge.
+  const secret = "x".repeat(64 * 1024 + 1);
+  fixture.respond = call => call.method === "POST" ? new Response(null, {status: 204}) : Response.json({provider: "example", model: "reasoning-model", active: true});
+  const result = await fixture.run(["keys", "use", "--provider", "example", "--workspace", WORKSPACE_ID, "--model", "reasoning-model", "--api-key-stdin", "--json"], secret);
+  expect(result.code).toBe(0); expect(fixture.calls.map(call => call.method)).toEqual(["POST", "PUT"]);
+  expect(fixture.calls[0]?.body).toMatchObject({data: {api_key: secret}});
 });

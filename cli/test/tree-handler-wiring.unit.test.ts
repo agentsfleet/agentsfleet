@@ -57,10 +57,15 @@ describe("billing show is wired to its effect", () => {
     expect(code).not.toBe(EXIT_VALIDATION);
   });
 
-  test("its cap is its own, not the list cap", async () => {
-    const { code, err } = await invoke(["usage", "show", "--limit", "9999"]);
-    expect(code).toBe(EXIT_VALIDATION);
-    expect(err).toContain("must be ≤ 100");
+  test("a value past the retired 100 cap reaches the server", async () => {
+    await withAuthedStateDir({ workspaceId: WORKSPACE_ID }, () =>
+      withMockApi({}, async (apiUrl, calls) => {
+        const code = await runCli(["usage", "show", "--limit", "9999"], {
+          stdout: bufferStream().stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
+        });
+        expect(code).not.toBe(EXIT_VALIDATION);
+        expect(calls.map((call) => call.search)).toContain("?limit=9999");
+      }));
   });
 });
 

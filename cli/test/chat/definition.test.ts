@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCli } from "../../src/cli.ts";
 import { ChatActions } from "../../src/commands/chat/actions.ts";
-import { MAX_DEFINITION_BYTES } from "../../src/commands/chat/commands.ts";
 import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { SetupSession } from "../../src/commands/chat/setup-session.ts";
 import { HTTP_METHOD } from "../../src/constants/http-method.ts";
@@ -87,9 +86,18 @@ test("a first message travels with the Definition in one atomic creation", async
   });
 });
 
-test("the file bound is the daemon's Definition envelope bound", () => {
-  // pin test: literal is the contract — af_fleet_runtime's MAX_DEFINITION_BYTES, 6 × (32,768 + 1,048,576) + 65,536.
-  expect(MAX_DEFINITION_BYTES).toBe(6_553_600);
+// The 6,400 KiB file bound the terminal once copied from the daemon; the daemon is now the only judge.
+const RETIRED_DEFINITION_BYTES = 6_400 * 1024;
+
+test("a Definition file past the retired client bound is sent for the daemon to judge", async () => {
+  const large = await write("large.json", JSON.stringify(DEFINITION) + " ".repeat(RETIRED_DEFINITION_BYTES));
+  const calls: Call[] = [];
+  await withApi(async (request) => { await record(request, calls); return Response.json(DRAFT); }, async (_, origin) => {
+    const result = await invoke(origin, ["--definition", large, "--model", MODEL, "--no-input", "--review"]);
+    expect(result.code).toBe(0);
+    expect(calls[0]?.method).toBe(HTTP_METHOD.post);
+    expect(calls[0]?.body).toEqual({source: SOURCE, setup_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
+  });
 });
 
 const UNUSABLE: ReadonlyArray<readonly [string, () => Promise<string>, string]> = [
@@ -98,7 +106,6 @@ const UNUSABLE: ReadonlyArray<readonly [string, () => Promise<string>, string]> 
   ["malformed", () => write("broken.json", '{"schema_version": 1,'), "is not valid JSON"],
   ["array", () => write("array.json", "[]"), "must hold one JSON object"],
   ["null", () => write("null.json", "null"), "must hold one JSON object"],
-  ["oversized", () => write("large.json", " ".repeat(MAX_DEFINITION_BYTES + 1)), `at most ${MAX_DEFINITION_BYTES}`],
 ];
 
 for (const [label, make, detail] of UNUSABLE) {

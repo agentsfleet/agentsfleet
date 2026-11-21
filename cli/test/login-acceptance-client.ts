@@ -118,7 +118,7 @@ const makeConfig = (jsonMode: boolean): Layer.Layer<CliConfig> =>
 // flow runs — this suite is the full ECDH round trip, not the direct path.
 const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
   isTTY: true,
-  readBounded: () => Effect.die("Unexpected bounded input"),
+  readAll: () => Effect.die("Unexpected piped input"),
 });
 
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({

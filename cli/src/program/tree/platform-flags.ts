@@ -1,6 +1,6 @@
 import { Flag } from "effect/cli";
 
-import { boundedInt, METAVAR, requiredTextFlag, startingAfterFlag } from "./flags.ts";
+import { METAVAR, positiveInt, requiredTextFlag, startingAfterFlag } from "./flags.ts";
 
 // The scope each platform leaf needs, in the server's claim spelling. Help
 // shows a leaf only to a caller whose server-reported scopes include it; the
@@ -15,11 +15,9 @@ export const PLATFORM_SCOPE = {
   runnerWrite: "runner:write",
 } as const;
 
-const PAGE_MIN = 1;
-const PAGE_MAX = 100;
 export const platformPagingFlags = {
-  limit: boundedInt("limit", PAGE_MIN, PAGE_MAX).pipe(
-    Flag.withDescription("Page size supported by the API (1–100)"), Flag.optional,
+  limit: positiveInt("limit").pipe(
+    Flag.withDescription("Page size"), Flag.optional,
   ),
   startingAfter: startingAfterFlag,
 };

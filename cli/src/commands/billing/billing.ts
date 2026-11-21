@@ -26,7 +26,6 @@ const PURCHASE_FOOTER_LINE_2 =
 
 const BILLING_SHOWN = "Billing" as const;
 const DEFAULT_LIMIT = 10;
-const MAX_LIMIT = 100;
 const LIMIT_LITERAL = /^\d+$/;
 
 interface WorkSummary {
@@ -54,11 +53,12 @@ const parseLimit = (
 ): Effect.Effect<number, ValidationError> => {
   if (raw === undefined || raw === null) return Effect.succeed(DEFAULT_LIMIT);
   const n = typeof raw === "number" || LIMIT_LITERAL.test(raw) ? Number(raw) : Number.NaN;
-  if (!Number.isInteger(n) || n <= 0 || n > MAX_LIMIT) {
+  // Shape only: the server bounds its own page size and names it on refusal.
+  if (!Number.isInteger(n) || n <= 0) {
     return Effect.fail(
       new ValidationError({
-        detail: `--limit must be an integer between 1 and ${MAX_LIMIT}`,
-        suggestion: `pass --limit <1..${MAX_LIMIT}>`,
+        detail: "--limit must be a positive integer",
+        suggestion: "pass --limit <n>",
       }),
     );
   }

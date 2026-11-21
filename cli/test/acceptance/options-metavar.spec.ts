@@ -148,17 +148,14 @@ describe("validators reject invalid values with clear error stem", () => {
   type ValidatorCase = readonly [string, ReadonlyArray<string>, RegExp];
   // A refused value reaches stderr as `Invalid value for flag --X: "Y".
   // Expected: <stem>` and exits 4, the validation code. The STEM is what is
-  // pinned here: it is the rule the operator has to satisfy, and the three a
-  // single flag can produce — below the floor, above the cap, not an integer
-  // — have to read as one family rather than three unrelated sentences.
+  // pinned here: it is the rule the operator has to satisfy, and the two a
+  // single flag can produce — below the floor, not an integer — have to read
+  // as one family. How large a value may be is the server's call, so no
+  // ceiling is refused here.
   const cases: ReadonlyArray<ValidatorCase> = [
-    // Bounded-integer refusals.
+    // Positive-integer refusals.
     ["list --limit 0",        ["fleet", "list", "--limit", "0"],          /must be ≥ 1/],
     ["list --limit abc",      ["fleet", "list", "--limit", "abc"],        /must be an integer/],
-    ["list --limit 9999",     ["fleet", "list", "--limit", "9999"],       /must be ≤ 200/],
-    ["billing show --limit 9999", ["usage", "show", "--limit", "9999"], /must be ≤ 100/],
-    ["logs --limit 9999",     ["fleet", "logs", "--limit", "9999"],       /must be ≤ 500/],
-    ["turns <id> --limit 9999", ["fleet", "turns", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // Identifier refusals (uuidv7 enforced).
     ["list --workspace not-a-uuid",      ["fleet", "list", "--workspace", "not-a-uuid"],    /uuidv7 format/],
   ];

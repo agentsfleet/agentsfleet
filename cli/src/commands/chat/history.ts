@@ -8,7 +8,7 @@ import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { EMPTY_CELL, ago } from "../../output/index.ts";
 import { requireValidId, resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace/guards.ts";
 import { createTransport, IF_MATCH } from "./transport.ts";
-import { CHAT_TEXT_KIND, CHAT_PAGE_MAX, chatStatus, chatText, chatVersions, decodeChatPage, decodeChatTitle } from "./history-schema.ts";
+import { CHAT_TEXT_KIND, chatStatus, chatText, chatVersions, decodeChatPage, decodeChatTitle } from "./history-schema.ts";
 
 type WorkspaceOptions = {readonly workspace?: string | undefined};
 export type ChatListOptions = WorkspaceOptions & {
@@ -29,8 +29,8 @@ const historyTransport = Effect.fn("chat.history.transport")(function* (options:
 
 const listQuery = Effect.fn("chat.history.query")(function* (options: ChatListOptions) {
   const limit = options.limit ?? String(DEFAULT_LIMIT);
-  if (!/^\d+$/u.test(limit) || Number(limit) < 1 || Number(limit) > CHAT_PAGE_MAX) return yield* Effect.fail(new ValidationError({
-    detail: `--limit must be an integer between 1 and ${CHAT_PAGE_MAX}`, suggestion: LIST_USAGE,
+  if (!/^\d+$/u.test(limit) || Number(limit) < 1) return yield* Effect.fail(new ValidationError({
+    detail: "--limit must be a positive integer", suggestion: LIST_USAGE,
   }));
   const query = new URLSearchParams({limit});
   if (options.search !== undefined) query.set("q", yield* chatText(options.search, CHAT_TEXT_KIND.search));

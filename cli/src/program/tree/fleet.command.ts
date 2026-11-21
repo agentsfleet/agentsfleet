@@ -21,7 +21,7 @@ import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
 import { approvalsCommand, grantsCommand } from "./access.command.ts";
 import { scheduleCommand } from "./schedule.command.ts";
 import { memoryCommand } from "./memory.command.ts";
-import { actorFlag, cursorFlag, turnsLimitFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
+import { actorFlag, cursorFlag, fleetFlag, fleetIdArgument, fleetIdOptionalArgument, fleetIdOrNameArgument, listLimitFlag, messageArgument, opt, optNum, sinceFlag, startingAfterFlag, VERB, workspaceFlag } from "./flags.ts";
 
 
 const fleetShowCommand = Command.make(VERB.show, { fleetId: fleetIdArgument }).pipe(
@@ -69,7 +69,7 @@ const deleteCommand = Command.make(VERB.delete, { fleetId: fleetIdArgument }).pi
 const logsCommand = Command.make("logs", {
   fleetId: fleetIdOptionalArgument,
   fleet: fleetFlag,
-  limit: turnsLimitFlag,
+  limit: listLimitFlag,
   cursor: cursorFlag,
 }).pipe(
   Command.withDescription("Tail fleet activity"),
@@ -87,7 +87,7 @@ const turnsCommand = Command.make("turns", {
   actor: actorFlag,
   since: sinceFlag,
   cursor: cursorFlag,
-  limit: turnsLimitFlag,
+  limit: listLimitFlag,
 }).pipe(
   Command.withDescription("Page through historical turns"),
   guardedHandler(({ fleetId, actor, since, cursor, limit }) =>

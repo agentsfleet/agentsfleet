@@ -75,7 +75,6 @@ test.each([
   ["missing revision", {items: [{...ROW, setup_revision: undefined}], next_cursor: null}],
   ["numeric title", {items: [{...ROW, title: 4}], next_cursor: null}],
   ["invalid instant", {items: [{...ROW, updated_at: "2026-13-01T00:00:00Z"}], next_cursor: null}],
-  ["oversized page", {items: Array.from({length: 101}, () => ROW), next_cursor: null}],
 ])("refuses %s before text or JSON success", async (_label, body) => {
   for (const json of [false, true]) {
     const result = await run(["list", ...(json ? ["--json"] : [])], () => Response.json(body));
@@ -98,15 +97,13 @@ test("an empty page is explicit in text and intact in JSON", async () => {
 
 test.each([
   ["search blank", ["list", "--search", "   "]],
-  ["search long", ["list", "--search", "x".repeat(201)]],
   ["search NUL", ["list", "--search", "x\0y"]],
-  ["zero limit", ["list", "--limit", "0"]], ["over limit", ["list", "--limit", "101"]],
+  ["zero limit", ["list", "--limit", "0"]],
   ["decimal limit", ["list", "--limit", "1.5"]], ["text limit", ["list", "--limit", "all"]],
   ["empty cursor", ["list", "--cursor", ""]], ["unknown state", ["list", "--state", "draft"]],
   ["invalid fleet", ["list", "--fleet", "missing"]],
   ["invalid draft", ["rename", "missing", TITLE]],
   ["title blank", ["rename", DRAFT_ID, "  "]],
-  ["title long", ["rename", DRAFT_ID, "x".repeat(101)]],
   ["title NUL", ["rename", DRAFT_ID, "x\0y"]],
   ["delete invalid draft", ["delete", "missing"]],
 ] as const)("rejects %s without a request", async (_label, args) => {
@@ -115,7 +112,26 @@ test.each([
   expect(result.calls).toHaveLength(0);
 });
 
-test("Unicode bounds count characters and rename uses the freshly read tag", async () => {
+// The bounds the terminal once copied: 100 per page, 200 search characters, 100 title characters.
+const RETIRED_PAGE_MAX = 100;
+const RETIRED_SEARCH_MAX = 200;
+const RETIRED_TITLE_MAX = 100;
+
+test("values past the retired client bounds reach the server, and a larger page is shown", async () => {
+  const search = "x".repeat(RETIRED_SEARCH_MAX + 1);
+  const page = {items: Array.from({length: RETIRED_PAGE_MAX + 1}, () => ROW), next_cursor: null};
+  const listed = await run(["list", "--search", search, "--limit", String(RETIRED_PAGE_MAX + 1), "--json"], () => Response.json(page));
+  expect(listed.code).toBe(0);
+  expect(Object.fromEntries(new URLSearchParams(listed.calls[0]?.query))).toEqual({q: search, limit: String(RETIRED_PAGE_MAX + 1)});
+  expect(JSON.parse(listed.stdout).items).toHaveLength(RETIRED_PAGE_MAX + 1);
+  const title = "x".repeat(RETIRED_TITLE_MAX + 1);
+  const renamed = await run(["rename", DRAFT_ID, title], request =>
+    Response.json(request.method === "GET" ? DRAFT : {...DRAFT, title}));
+  expect(renamed.code).toBe(0);
+  expect(renamed.calls[1]?.body).toEqual({title});
+});
+
+test("rename trims the title and uses the freshly read tag", async () => {
   const title = "🚀".repeat(100);
   const changed = {...DRAFT, title, etag: '"draft-2"', extra: "preserved"};
   for (const json of [false, true]) {

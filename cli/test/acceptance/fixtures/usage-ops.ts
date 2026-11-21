@@ -21,7 +21,7 @@ const USAGE_SHOW = ["usage", "show"] as const;
 const JSON_FLAG = "--json" as const;
 const LIMIT_FLAG = "--limit" as const;
 const CURSOR_FLAG = "--cursor" as const;
-// The CLI's own ceiling on `--limit` (`MAX_LIMIT`, src/commands/billing/billing.ts).
+// A page size within the daemon's charges ceiling (`CHARGES_LIMIT_MAX`, afd_billing::tenant).
 const PAGE_ROWS = 100;
 // A thousand ledger rows newer than the run under test is far past what the
 // lane's other files bill while one test runs.
