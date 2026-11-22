@@ -829,6 +829,6 @@ M236 added [Durable Tasks](durable_tasks.md) beneath fleets while keeping this t
 The daemon saves a message before acknowledging it; the runner then uses [runner-assigned decision routing](goal_evaluation.md#intent-routing) under its run.
 Native code creates work or associates input only after current authority and target checks.
 
-A waiting Durable Task (DT) has a settled turn and a separate wait record.
+A waiting Durable Task (DT) has a settled turn and a wait kept on the task's own row.
 Another queued objective can use the fleet's thread; a matched completion creates one continuation turn.
 Neither model classification nor an R2 checkpoint replaces queue or ownership authority.

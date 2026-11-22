@@ -272,8 +272,8 @@ Message your fleet...
 ```
 
 Default rows show title, state, next dependency and confirmed result links.
-The existing task detail read joins its latest native wait through the
-task/generation index. A typed dependency snapshot carries the exact head,
+The existing task detail read takes the task's one wait from its own row
+(`fleet.durable_tasks.wait_*`). A typed dependency snapshot carries the exact head,
 recorded check results and wait-update time; it is included in the resource tag.
 
 This adds no endpoint or second polling owner. Clients label those checks as
@@ -314,7 +314,7 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `fleet.durable_tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.durable_task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique turn/ordinal; conflicting replay returns 409. |
 | `fleet.durable_task_inputs` | Task/item/sequence, accepted text and interpretation, answer state, applied-effect references. Unique task/item and task/sequence. |
-| `fleet.durable_task_waits` | Task/generation, arming run, expected head and the check results read when it was armed, consumption or cancellation. One current wait per task through a partial unique index. |
+| `fleet.durable_tasks` wait columns | Generation (`wait_sequence`), arming run, expected head, the check results read when it was armed, cancellation and update time. A task holds one wait; arming the next replaces the cancelled one, and a live wait is never replaced. |
 | `fleet.durable_task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
 | Proposed `durable_task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
 | `runner.checkpoints` | One checkpoint system for a durable task or an ordinary turn, exactly one owner (`num_nonnulls(turn_id, durable_task_id) = 1`). A task's row carries its generation, the task and stop generations it was planned under, mode, repository, optional base and commit, budgets, history digest, covered-input cursor, effect watermark, manifest root, format/toolbox, owner run and fence, and transfer deadline (`expires_at`); those task columns are present together or not at all. Unique owner/generation; one pending capture per owner. Only a ready incremental manifest can become the task recovery pointer (`durable_tasks.checkpoint_id`). |
@@ -324,8 +324,8 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `runner.checkpoint_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
 | `runner.checkpoint_object_refs` | Checkpoint/object or retained-base/object edges, exactly one owner; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
 | `runner.checkpoint_pins` | Capture-or-restore pin on one checkpoint: kind, owner run and fence, the task and stop generations a task pin was taken under (a turn pin carries its operation instead), renewable expiry bounded by its operation deadline. One live task pin per checkpoint and kind. |
-| `thread.replay_receipts` | Opaque checkpoint-plan retry receipts, scope `<workspace>:durable_task:<task>:checkpoint`, shared with turn allocations and setup operations. No foreign key; survives plan retention and owner deletion. |
-| Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
+| `thread.replay_receipts` | Opaque retry receipts: checkpoint plans, scope `<workspace>:durable_task:<task>:checkpoint`, and reviewed goal adoptions, scope `<workspace>:durable_task:<task>:adoption`, shared with turn allocations and setup operations through the same statements. No foreign key; survives plan retention and owner deletion. |
+| Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; a source turn's accepted plan and digest (`plan`, `plan_digest`), read with the turn's own message and sender; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
 Target changes require an authorized new objective or explicit reviewed adoption; model prose cannot mutate the binding.

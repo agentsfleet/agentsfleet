@@ -7,7 +7,7 @@ use af_wire::run::{
 };
 
 use super::{
-    TurnCheckpointRefusal, TurnRun, allocation,
+    Receipt, TurnCheckpointRefusal, TurnRun, allocation,
     guard::{self, TurnRunGuard},
     pins,
     row::Plan,
@@ -74,21 +74,14 @@ pub(super) fn shape(input: &TurnCheckpointBegin) -> Result<()> {
     Ok(())
 }
 
-/// A turn's allocation receipt: the plan the operation created and the request
-/// that created it. The scope names the turn, and [`Plan::load`] proves the plan
-/// is the turn's, so a receipt carries no owner columns.
-#[derive(sqlx::FromRow)]
-struct Receipt {
-    checkpoint_id: Uuid7,
-    request_digest: String,
-}
-
 async fn replay(
     owner: &mut TurnRunGuard<'_>,
     operation: &Uuid7,
     digest: &str,
 ) -> Result<Option<TurnCheckpointPlan>> {
-    let receipt: Option<Receipt> = sqlx::query_as(include_str!("sql/operation_replay.sql"))
+    // The scope names the turn, and [`Plan::load`] proves the plan is the
+    // turn's, so a receipt carries no owner columns.
+    let receipt: Option<Receipt> = sqlx::query_as(super::RECEIPT_REPLAY)
         .bind(super::receipt_scope(
             &owner.current.workspace_id,
             &owner.current.turn_id,
@@ -103,7 +96,7 @@ async fn replay(
     if receipt.request_digest != digest {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
-    let plan = Plan::load(owner, &receipt.checkpoint_id).await?;
+    let plan = Plan::load(owner, &receipt.resource_id).await?;
     if plan.expires_at <= owner.fresh().await? {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }

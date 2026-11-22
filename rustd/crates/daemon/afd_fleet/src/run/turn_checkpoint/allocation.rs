@@ -87,7 +87,7 @@ pub(super) async fn create(
         .take(usize::try_from(input.page_count).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .collect::<std::result::Result<Vec<_>, _>>()?;
     insert(owner, input, &id, generation, expected.as_ref(), &pages).await?;
-    sqlx::query(include_str!("sql/operation_insert.sql"))
+    sqlx::query(super::RECEIPT_INSERT)
         .bind(super::receipt_scope(
             &owner.current.workspace_id,
             &owner.current.turn_id,

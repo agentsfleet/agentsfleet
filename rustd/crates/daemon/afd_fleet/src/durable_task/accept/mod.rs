@@ -111,7 +111,6 @@ async fn authorize(
     run: DurableTaskRun<'_>,
     current: &guard::RunRow,
     plan: &PreparedPlan,
-    source: &source::Source,
 ) -> Result<()> {
     if let Some(authorization) = &plan.authorization {
         decision::authorize::binding(connection, run, authorization).await?;
@@ -119,12 +118,8 @@ async fn authorize(
             .bind(&plan.source_turn_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
-            .bind(&current.tenant_id)
-            .bind(&plan.digest)
-            .bind(source.message()?.as_ref())
             .bind(Json(authorization))
-            .bind(&source.actor)
-            .bind(&source.producer)
+            .bind(&plan.digest)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;

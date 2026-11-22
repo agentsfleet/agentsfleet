@@ -41,6 +41,12 @@ CREATE TABLE thread.turns (
     opened_at         TIMESTAMPTZ(3),
     parked_at         TIMESTAMPTZ(3),
     interpreted_at    TIMESTAMPTZ(3),
+    -- A durable task source's accepted plan and its digest, written once with the plan's items;
+    -- the message and the sender it was read from stay this turn's own `request_json`, `actor`
+    -- and `producer`. Read by the task input recovery (`afd_fleet/src/durable_task/sql/`) and
+    -- `fleet.durable_task_person_allowed`.
+    plan              JSONB,
+    plan_digest       TEXT,
     settled_at        TIMESTAMPTZ(3),
     durable_task_id           UUID,
     -- Frozen separately from the run fence, and kept when cleanup clears `durable_task_id`.
@@ -83,6 +89,7 @@ CREATE TABLE thread.turns (
         CHECK (num_nulls(producer, producer_key, payload_digest) IN (0, 3)),
     CONSTRAINT ck_turns_reply_both_or_neither
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
+    CONSTRAINT ck_turns_plan_both_or_neither CHECK ((plan IS NULL) = (plan_digest IS NULL)),
     CONSTRAINT ck_turns_durable_task_generation_positive CHECK (durable_task_generation > 0),
     CONSTRAINT ck_turns_durable_task_activity_sequence_nonnegative CHECK (durable_task_activity_sequence >= 0),
     -- jsonb_array_length rejects anything but an array; nothing caps how long one is.
@@ -170,5 +177,17 @@ CREATE TRIGGER trg_turns_count_opened
     AFTER UPDATE OF opened_at ON thread.turns
     FOR EACH ROW WHEN (OLD.opened_at IS NULL AND NEW.opened_at IS NOT NULL)
     EXECUTE FUNCTION thread.turns_count_opened();
+
+-- An accepted plan is immutable: a second write, even of the same plan, is refused.
+CREATE FUNCTION thread.turns_refuse_plan_change() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'a turn''s plan is written once';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_turns_refuse_plan_change
+    BEFORE UPDATE OF plan, plan_digest ON thread.turns
+    FOR EACH ROW WHEN (OLD.plan_digest IS NOT NULL)
+    EXECUTE FUNCTION thread.turns_refuse_plan_change();
 
 GRANT SELECT, INSERT, UPDATE ON thread.turns TO api_runtime;

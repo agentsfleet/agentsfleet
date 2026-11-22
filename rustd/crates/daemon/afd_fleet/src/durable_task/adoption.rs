@@ -11,10 +11,19 @@ use super::{
 use crate::{
     Result,
     error::{ErrorKind, query},
-    run::Runs,
+    run::{
+        Runs,
+        turn_checkpoint::{RECEIPT_INSERT, RECEIPT_REPLAY, Receipt},
+    },
 };
 
 const CONTEXT: &str = "adopt reviewed task goal";
+
+/// The `thread.replay_receipts` scope of a task's adoptions: one retry key per
+/// operation, naming the task it adopted, kept after the task is gone.
+fn receipt_scope(workspace: &Uuid7, task: &Uuid7) -> String {
+    format!("{workspace}:durable_task:{task}:adoption")
+}
 
 #[derive(sqlx::FromRow)]
 struct Locked {
@@ -112,12 +121,11 @@ pub(super) async fn apply(
                 .map_err(query(CONTEXT))?;
         }
     }
-    sqlx::query(include_str!("sql/adoption_receipt.sql"))
+    sqlx::query(RECEIPT_INSERT)
+        .bind(receipt_scope(&scope.workspace_id, task))
         .bind(&adoption.operation_id)
-        .bind(task)
-        .bind(&scope.fleet_id)
-        .bind(&scope.workspace_id)
         .bind(digest)
+        .bind(task)
         .execute(&mut *tx)
         .await
         .map_err(query(CONTEXT))?;
@@ -197,15 +205,16 @@ async fn replay(
     adoption: &DurableTaskAdoption,
     digest: &str,
 ) -> Result<bool> {
-    let saved: Option<String> = sqlx::query_scalar(include_str!("sql/adoption_replay.sql"))
-        .bind(task)
+    let saved: Option<Receipt> = sqlx::query_as(RECEIPT_REPLAY)
+        .bind(receipt_scope(&scope.workspace_id, task))
         .bind(&adoption.operation_id)
-        .bind(&scope.fleet_id)
-        .bind(&scope.workspace_id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;
-    if saved.as_deref().is_some_and(|saved| saved != digest) {
+    if saved
+        .as_ref()
+        .is_some_and(|saved| saved.request_digest != digest)
+    {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
     Ok(saved.is_some())
@@ -234,7 +243,8 @@ async fn origin(
             .bind(task)
             .bind(&scope.fleet_id)
             .bind(&scope.workspace_id)
-            .bind(&adoption.operation_id),
+            .bind(&adoption.operation_id)
+            .bind(receipt_scope(&scope.workspace_id, task)),
         None,
         CONTEXT,
     )

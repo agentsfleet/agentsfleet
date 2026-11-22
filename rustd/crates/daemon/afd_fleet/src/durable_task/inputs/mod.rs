@@ -40,7 +40,8 @@ struct InputRow {
     generation: i64,
     sequence: i64,
     action: String,
-    original_message: String,
+    source_producer: String,
+    source_request_json: String,
     accepted_text: String,
     interpretation: String,
     applied: bool,
@@ -153,7 +154,11 @@ impl TryFrom<InputRow> for DurableTaskAcceptedInput {
             },
             sequence: row::counter(item.sequence, "input sequence")?,
             action: row::action(&item.action)?,
-            original_message: item.original_message,
+            original_message: super::accept::source::message_for(
+                &item.source_producer,
+                &item.source_request_json,
+            )?
+            .into_owned(),
             accepted_text: item.accepted_text,
             interpretation: item.interpretation,
             applied: item.applied,

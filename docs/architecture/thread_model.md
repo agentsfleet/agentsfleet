@@ -80,6 +80,7 @@ A history-only receipt, such as an activity or a model change, is written opened
 | `run_fence`, `input_run_id`, `input_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the assignment that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
 | `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
 | `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
+| `plan`, `plan_digest` | `JSONB`, `TEXT` | yes, both or neither | the durable task interpretation table (M253) | the accepted durable task plan read from this turn, written once: `trg_turns_refuse_plan_change` refuses a second write. Its message and sender stay this turn's `request_json`, `actor` and `producer`, so the plan lives as long as the turn, which is until the fleet is purged |
 | `durable_task_id`, `durable_task_item_id`, `durable_task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(durable_task_id, thread_id, workspace_id)` to `fleet.durable_tasks` and `(durable_task_item_id, thread_id, workspace_id)` to `fleet.durable_task_items`, ON DELETE SET NULL on the id column, as today |
 | `durable_task_activity`, `durable_task_activity_sequence`, `durable_task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
 | `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `thread.replay_receipts` and the same key queues a new turn once it passes |
@@ -206,7 +207,7 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
 | `billing.usage_lines` | `event_id`, the setup attempt's id | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` is `fleet_run` or `setup_run` |
 | `runner.decision_calls` | `source_turn_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
-| `fleet.durable_task_items`, `fleet.durable_task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
+| `fleet.durable_task_items` | `admission_id` | `turn_id` (done). No FK: an item receipt outlives its source turn. The interpretation it pointed beside is now the turn's own `plan` and `plan_digest` (M253) |
 
 ## Bus subjects
 

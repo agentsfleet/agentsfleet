@@ -108,7 +108,7 @@ async fn refused(fixture: &Decisions<'_>, input: DurableTaskBindingsInput, code:
 }
 
 async fn interpretations(case: &Case) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM fleet.durable_task_interpretations WHERE turn_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE id=$1 AND plan IS NOT NULL")
         .bind(&case.held.turn_id)
         .fetch_one(
             &mut *case

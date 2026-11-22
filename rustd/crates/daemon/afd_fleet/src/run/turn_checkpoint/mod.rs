@@ -52,6 +52,25 @@ const READY_GENERATIONS: i64 = 2;
 pub(crate) fn receipt_scope(workspace: &Uuid7, turn: &Uuid7) -> String {
     format!("{workspace}:turn:{turn}:checkpoint")
 }
+
+/// Keeps one `thread.replay_receipts` key: `$1` scope, `$2` operation, `$3`
+/// request digest, `$4` what the first request made. A durable task's
+/// adoption keeps its retry key through the same statement.
+pub(crate) const RECEIPT_INSERT: &str = include_str!("sql/operation_insert.sql");
+
+/// Reads one `thread.replay_receipts` key into a [`Receipt`]: `$1` scope,
+/// `$2` operation.
+pub(crate) const RECEIPT_REPLAY: &str = include_str!("sql/operation_replay.sql");
+
+/// A retry key's answer: what the first request made, and that request's
+/// digest, which a retry must match.
+#[derive(sqlx::FromRow)]
+pub(crate) struct Receipt {
+    /// What the first request made.
+    pub(crate) resource_id: Uuid7,
+    /// The first request's digest.
+    pub(crate) request_digest: String,
+}
 const WRITER: &str = "writer";
 const READER: &str = "reader";
 

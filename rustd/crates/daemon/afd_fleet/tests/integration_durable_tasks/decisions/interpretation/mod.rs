@@ -119,21 +119,20 @@ async fn conversation(case: &Case) {
     assert!(replay.replayed);
     assert_eq!(replay.items, accepted.items);
     assert_eq!(case.counts().await, (0, 1, 1));
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.durable_task_interpretations WHERE turn_id=$1",
-    )
-    .bind(&case.held.turn_id)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE id=$1 AND plan IS NOT NULL")
+            .bind(&case.held.turn_id)
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("receipt observer"),
+            )
             .await
-            .expect("receipt observer"),
-    )
-    .await
-    .expect("one immutable interpretation");
+            .expect("one immutable interpretation");
     assert_eq!(count, 1);
     fixture.model.finish().await.expect("model cleanup");
 }

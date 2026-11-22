@@ -7,19 +7,15 @@ SELECT t.id, t.originating_durable_task_item_id AS originating_item_id, t.target
        t.max_running_nanos, t.used_running_nanos,
        t.max_runs, t.used_runs, t.max_publications, t.used_publications,
        t.max_decision_calls, t.used_decision_calls, t.expires_at,
-       CASE WHEN w.id IS NULL THEN NULL ELSE jsonb_build_object(
-           'active', w.cancelled_at IS NULL,
-           'head', w.expected_head, 'checks', w.checks, 'updated_at', w.updated_at)::text END AS dependency,
+       CASE WHEN t.wait_sequence IS NULL THEN NULL ELSE jsonb_build_object(
+           'active', t.wait_cancelled_at IS NULL,
+           'head', t.wait_expected_head, 'checks', t.wait_checks,
+           'updated_at', t.wait_updated_at)::text END AS dependency,
        publication.receipt::text AS publication,
        EXTRACT(EPOCH FROM (t.expires_at - t.created_at))::int4 AS wall_seconds
 FROM fleet.durable_tasks t
 JOIN fleet.revisions r ON r.id = t.accepted_revision_id AND r.fleet_id = t.fleet_id
 LEFT JOIN runner.checkpoints c ON c.id = t.checkpoint_id AND c.durable_task_id = t.id
-LEFT JOIN LATERAL (
-    SELECT id, expected_head, checks, updated_at, cancelled_at FROM fleet.durable_task_waits
-    WHERE durable_task_id = t.id AND fleet_id = t.fleet_id AND workspace_id = t.workspace_id
-    ORDER BY generation DESC LIMIT 1
-) w ON true
 LEFT JOIN LATERAL (
     SELECT jsonb_build_object('effect_id', e.id, 'ordinal', e.ordinal, 'state', s.status,
         'expected_head', e.expected_head, 'tested_tree', e.tested_tree, 'commit', s.commit_oid,

@@ -40,7 +40,7 @@ pub(super) async fn commit(
         });
     }
     source::check(&source, &current, plan)?;
-    authorize(&mut tx, run, &current, plan, &source).await?;
+    authorize(&mut tx, run, &current, plan).await?;
     let Written { bound, queued } = Writer {
         tasks,
         current: &current,

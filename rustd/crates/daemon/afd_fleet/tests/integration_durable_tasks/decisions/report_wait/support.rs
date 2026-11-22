@@ -153,7 +153,7 @@ pub(super) async fn checkpoint_row(case: &Case, checkpoint: &Uuid7) -> Value {
 }
 
 pub(super) async fn counts(case: &Case, task: &Uuid7) -> (i64, i64, i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM thread.turns WHERE durable_task_id=$1 AND producer='durable_task_continuation' AND settled_at IS NULL), (SELECT COALESCE(max(durable_task_generation),0) FROM thread.turns WHERE durable_task_id=$1 AND producer='durable_task_continuation' AND settled_at IS NULL), (SELECT count(*) FROM fleet.durable_task_waits WHERE durable_task_id=$1 AND cancelled_at IS NULL), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2), (SELECT count(*) FROM thread.turns WHERE thread_id=$3)")
+    sqlx::query_as("SELECT (SELECT count(*) FROM thread.turns WHERE durable_task_id=$1 AND producer='durable_task_continuation' AND settled_at IS NULL), (SELECT COALESCE(max(durable_task_generation),0) FROM thread.turns WHERE durable_task_id=$1 AND producer='durable_task_continuation' AND settled_at IS NULL), (SELECT count(*) FROM fleet.durable_tasks WHERE id=$1 AND wait_sequence IS NOT NULL AND wait_cancelled_at IS NULL), (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2), (SELECT count(*) FROM thread.turns WHERE thread_id=$3)")
         .bind(task).bind(&case.held.run_key).bind(&case.held.fleet)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("ledger observer"))
         .await.expect("native continuation, waits, accounting and turns")

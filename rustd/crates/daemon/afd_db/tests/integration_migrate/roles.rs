@@ -65,7 +65,7 @@ const READ_BUMP: &[Verb] = &[Verb::Select, Verb::Update];
 /// Every product table, the role that reaches it, and what that role may do, as
 /// the slots grant it. No row grants `TRUNCATE`. `connector.channels` grants
 /// UPDATE on its rebind columns only, which a whole-row probe does not reach.
-const GRANTS: [(&str, &str, &[Verb]); 60] = [
+const GRANTS: [(&str, &str, &[Verb]); 57] = [
     ("identity.tenants", "api_runtime", WRITE_ONCE),
     ("identity.workspaces", "api_runtime", WRITE_ONCE),
     ("identity.users", "api_runtime", WRITE_ONCE),
@@ -86,14 +86,8 @@ const GRANTS: [(&str, &str, &[Verb]); 60] = [
     ("fleet.durable_task_items", "api_runtime", WRITE_ONCE),
     ("fleet.durable_tasks", "api_runtime", READ_WRITE),
     ("fleet.durable_task_inputs", "api_runtime", WRITE_ONCE),
-    ("fleet.durable_task_adoptions", "api_runtime", APPEND_ONLY),
     ("fleet.durable_task_effects", "api_runtime", APPEND_ONLY),
     ("fleet.durable_task_effect_states", "api_runtime", KEPT),
-    (
-        "fleet.durable_task_interpretations",
-        "api_runtime",
-        WRITE_ONCE,
-    ),
     (
         "fleet.durable_task_effect_payloads",
         "api_runtime",
@@ -104,7 +98,6 @@ const GRANTS: [(&str, &str, &[Verb]); 60] = [
         "api_runtime",
         WRITE_ONCE,
     ),
-    ("fleet.durable_task_waits", "api_runtime", READ_WRITE),
     ("connector.integration_grants", "api_runtime", KEPT),
     ("connector.installs", "api_runtime", READ_WRITE),
     ("connector.person_links", "api_runtime", READ_WRITE),

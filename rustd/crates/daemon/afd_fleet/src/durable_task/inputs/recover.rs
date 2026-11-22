@@ -17,7 +17,8 @@ use std::collections::BTreeMap;
 struct InterpretationRow {
     source_turn_id: Uuid7,
     plan_digest: String,
-    message: String,
+    source_producer: String,
+    source_request_json: String,
     item_id: Uuid7,
     durable_task_id: Option<Uuid7>,
     generation: Option<i64>,
@@ -50,12 +51,15 @@ pub(super) async fn read(
             ))?;
     let mut interpretations: BTreeMap<Uuid7, DurableTaskAcceptedInterpretation> = BTreeMap::new();
     for item in rows {
+        let message = crate::durable_task::accept::source::message_for(
+            &item.source_producer,
+            &item.source_request_json,
+        )?;
         let start = usize::try_from(item.source_start)
             .map_err(|_overflow| DurableTaskRefusal::InputAmbiguous)?;
         let end = usize::try_from(item.source_end)
             .map_err(|_overflow| DurableTaskRefusal::InputAmbiguous)?;
-        let text = item
-            .message
+        let text = message
             .get(start..end)
             .ok_or(DurableTaskRefusal::InputAmbiguous)?
             .to_owned();
@@ -74,7 +78,7 @@ pub(super) async fn read(
             .or_insert_with(|| DurableTaskAcceptedInterpretation {
                 source_turn_id: item.source_turn_id.into(),
                 plan_digest: item.plan_digest,
-                message: item.message,
+                message: message.into_owned(),
                 items: Vec::new(),
             });
         accepted.items.push(DurableTaskRecoveredItem {

@@ -51,9 +51,22 @@ CREATE TABLE fleet.durable_tasks (
     -- NULL means no plan allocated yet; otherwise a monotonic cursor.
     checkpoint_sequence BIGINT CHECK (checkpoint_sequence >= 0),
     checkpoint_cleanup_at TIMESTAMPTZ(3),
-    -- Monotonic, so it survives deletion of old private waits.
-    wait_sequence BIGINT CHECK (wait_sequence >= 0)
+    -- The one exact-head wait, NULL until first armed: its monotonic generation, arming run, head,
+    -- checks read at arming and readback instant; `wait_cancelled_at` marks it cancelled. Arming
+    -- replaces a cancelled wait (`durable_task/waits/sql/`); `durable_task/sql/read.sql` reads it.
+    wait_sequence BIGINT CHECK (wait_sequence > 0),
+    wait_owner_run_id UUID,
+    wait_expected_head TEXT,
+    wait_checks JSONB,
+    wait_cancelled_at TIMESTAMPTZ(3),
+    wait_updated_at TIMESTAMPTZ(3),
+    CONSTRAINT ck_durable_tasks_wait_all_or_none CHECK (num_nulls(wait_sequence, wait_owner_run_id,
+        wait_expected_head, wait_checks, wait_updated_at) IN (0, 5)
+        AND (wait_cancelled_at IS NULL OR wait_sequence IS NOT NULL))
 );
+
+CREATE UNIQUE INDEX uq_durable_tasks_wait_owner_run_id ON fleet.durable_tasks (wait_owner_run_id)
+    WHERE wait_owner_run_id IS NOT NULL;
 
 CREATE INDEX idx_durable_tasks_fleet_unfinished ON fleet.durable_tasks (fleet_id, id)
     WHERE terminal_at IS NULL;

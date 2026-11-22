@@ -123,7 +123,6 @@ pub(crate) async fn apply(
     if state == DurableTaskState::Waiting {
         let plan = settlement.plan;
         waits::arm(
-            &plan.tasks,
             connection,
             &current.durable_task_id,
             &plan.run_id,
