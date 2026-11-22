@@ -70,8 +70,9 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 # coverage down to 98 on the safer side and push". The judge compares exact
 # decimals, so a fraction is enforced, not rounded. 99 since Nov 22, 2026: "The
 # coverage of rust code must be 99%, with all the files> 99% the patch coverage
-# 99%" (M253_004 §14).
-RUSTD_COVERAGE_FLOOR ?= 99
+# 99%" (M253_004 §14). 98 since Nov 22, 2026: "if you can't meet 99 make it
+# 98 we can always improve".
+RUSTD_COVERAGE_FLOOR ?= 98
 
 # Out of the denominator, on Indy's calls: whole-file test_util modules (fixture
 # code; a filename filter cannot see in-file `#[cfg]` helpers, which still count)
@@ -83,12 +84,14 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 # shards' lcov files and grades the union once; a local unsharded run uses the
 # same judge. It also grades the patch, the lines this branch adds, against
 # codecov.yml's `rust-afd` target; an empty base skips that.
-# 99 since Nov 22, 2026 (M253_004 §14), up from 95.
-RUSTD_PATCH_FLOOR ?= 99
+# 99 since Nov 22, 2026 (M253_004 §14), up from 95; 98 the same day ("if you
+# can't meet 99 make it 98 we can always improve").
+RUSTD_PATCH_FLOOR ?= 98
 # Every .rs file the branch adds, edits or moves holds this share of ALL its
 # lines, not only the changed ones: Indy's Oct 15, 2026 rule, "its 99% of the
-# rust git diff patch files", switched on Nov 22, 2026: "Files the PR touches".
-RUSTD_PER_FILE_FLOOR ?= 99
+# rust git diff patch files", switched on Nov 22, 2026: "Files the PR touches";
+# 98 the same day ("if you can't meet 99 make it 98 we can always improve").
+RUSTD_PER_FILE_FLOOR ?= 98
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 # guffbolt and guffbolt-ai, the published harness and its providers, hold a
 # floor of their own beside the global one, over their own lines of the union.

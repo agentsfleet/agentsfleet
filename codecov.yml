@@ -4,7 +4,7 @@ coverage:
       rust-afd:
         flags:
           - rust-afd
-        target: 99%
+        target: 98%
         threshold: 0%
         informational: false
       typescript:
@@ -26,15 +26,16 @@ coverage:
     # pass too"), on #819's measured 95.9156%.
     # Project and patch raised to 99% on Nov 22, 2026 (Indy: "The coverage of
     # rust code must be 99%, with all the files> 99% the patch coverage 99%",
-    # M253_004 §14). The per-file floor has no Codecov status; the local judge
-    # grades it (RUSTD_PER_FILE_FLOOR).
+    # M253_004 §14). Both lowered to 98% the same day (Indy: "if you can't meet
+    # 99 make it 98 we can always improve"). The per-file floor has no Codecov
+    # status; the local judge grades it (RUSTD_PER_FILE_FLOOR), also at 98.
     # RUSTD_PATCH_FLOOR and RUSTD_COVERAGE_FLOOR use the same values locally.
     # TypeScript remains at 100%; measurement paths and exclusions are unchanged.
     patch:
       rust-afd:
         flags:
           - rust-afd
-        target: 99%
+        target: 98%
         threshold: 0%
         informational: false
 
