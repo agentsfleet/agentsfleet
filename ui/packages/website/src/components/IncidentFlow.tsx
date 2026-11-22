@@ -57,7 +57,6 @@ export function IncidentFlow({
   return (
     <div className="relative">
       <figure
-        className="[overflow-anchor:none]"
         data-cycle={frame.cycle}
         onFocusCapture={onInspect}
         aria-label="Illustrated example investigation"

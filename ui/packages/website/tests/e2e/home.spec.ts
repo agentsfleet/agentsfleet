@@ -126,8 +126,12 @@ test("autoplay types, appends, pauses, and loops without changing the page scrol
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   const paused = await conversation.textContent();
   await page.clock.runFor(5000); expect(await conversation.textContent()).toBe(paused);
-  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const play = page.getByRole("button", { name: "Play", exact: true });
+  await expect(play).toBeFocused();
   const scroll = await page.evaluate(() => scrollY);
+  // A locator click can scroll the document to stabilize the animated control.
+  await page.keyboard.press("Enter");
+  await expect(example).toHaveAttribute("data-running", "true");
   await page.clock.runFor(createChatStory(DEFAULT_JOB).duration - 1100);
   await expect(conversation).toContainText(DEFAULT_JOB.report);
   await page.clock.runFor(300);
