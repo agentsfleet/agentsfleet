@@ -97,12 +97,12 @@ async fn a_delete_ends_setup_and_work_then_removes_the_fleet() -> TestResult {
         "its cards are closed"
     );
     assert_eq!(run_state(&c, &run).await, None, "its live run is gone");
-    let restored: (Option<Uuid7>, String) =
+    let closed: (Option<Uuid7>, String) =
         sqlx::query_as("SELECT fleet_id, status FROM setup.drafts WHERE id = $1")
             .bind(&draft)
             .fetch_one(&mut *c.base.connection().await)
             .await?;
-    assert_eq!(restored, (None, DraftState::Editing.as_str().to_owned()));
+    assert_eq!(closed, (None, DraftState::Closed.as_str().to_owned()));
     assert_cancel(&address, &run, &mut commands).await?;
     drop(commands);
     c.cleanup().await;

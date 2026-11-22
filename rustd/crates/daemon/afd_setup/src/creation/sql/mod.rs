@@ -70,11 +70,6 @@ pub(super) const CLOSE_DRAFTS: &str = include_str!("close_drafts.sql");
 /// `$1` fleet, `$2` workspace, `$3` status, `$4` name.
 pub(super) const UPDATE: &str = include_str!("update.sql");
 
-/// Returns an archived fleet's saving drafts to editing.
-///
-/// `$1` fleet, `$2` the editing status, `$3` the saving status.
-pub(super) const RESTORE: &str = include_str!("restore.sql");
-
 /// Mark every active fleet run before the archive transaction commits.
 pub(super) const CANCEL_RUNS: &str = include_str!("mark_runs_cancel_requested.sql");
 

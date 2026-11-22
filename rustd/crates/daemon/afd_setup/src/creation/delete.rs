@@ -2,23 +2,21 @@
 //! transaction.
 //!
 //! A delete takes a fleet in any status, so it can meet one that still holds
-//! setup grants, live runs and a saving draft. It ends the grants and runs as
-//! an archive does, returns the draft to editing where an archive closes it,
-//! and removes the row under one lock and one tag check, so a refused or
-//! failed delete changes nothing.
+//! setup grants, live runs and a saving draft. It ends all three as an archive
+//! does, closing the draft, and removes the row under one lock and one tag
+//! check, so a refused or failed delete changes nothing.
 
-use super::{CONTEXT, Creations, INSTALLING, etag, read, sql};
+use super::{CONTEXT, Creations, INSTALLING, etag, read};
 use crate::{
     Access, Result, access,
     error::{ErrorKind, raise::query},
-    types::DraftState,
 };
 use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
 impl Creations {
-    /// Ends `fleet`'s setup grants and live runs, returns its saving draft
-    /// to editing and deletes the fleet, all under the tag `expected`.
+    /// Ends `fleet`'s setup grants and live runs, closes its saving draft
+    /// and deletes the fleet, all under the tag `expected`.
     ///
     /// Runners hear their Cancel only after the commit, so no runner stops for
     /// a delete that rolled back. After it, the caller owes the fleet store's
@@ -37,13 +35,7 @@ impl Creations {
             return Err(ErrorKind::Stale { etag: current }.into());
         }
         let cancelled = self.cancel(&mut tx, fleet).await?;
-        sqlx::query(sql::RESTORE)
-            .bind(fleet)
-            .bind(DraftState::Editing.as_str())
-            .bind(DraftState::Saving.as_str())
-            .execute(&mut *tx)
-            .await
-            .map_err(query(CONTEXT))?;
+        super::activate::close_saved_drafts(&mut tx, fleet).await?;
         afd_fleet_lifecycle::delete_locked(&mut tx, access.workspace, fleet).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         self.announce_cancellations(cancelled).await;
