@@ -6,7 +6,7 @@ use af_wire::{
         DecisionQuestion, DecisionRequest, DecisionResult, DecisionUsage, NamedQuestion,
         answer_matches,
     },
-    task::{
+    durable_task::{
         DecisionAssessment, DecisionReceipt, DecisionReceiptInput, DecisionRecordDisposition,
         DecisionRecorded, DecisionReservationInput, DurableTaskContext, DurableTaskInputsResponse,
         DurableTaskLimits, DurableTaskState, DurableTaskUsage,
@@ -136,7 +136,7 @@ fn reservation(input: &DecisionReservationInput) -> Result<(), Failed> {
     crate::run::expect(
         input.source_turn_id == TASK
             && input
-                .task
+                .durable_task
                 .as_ref()
                 .is_some_and(|task| task.durable_task_id == TASK && task.generation == 1),
         "accepted goal task and source",

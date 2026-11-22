@@ -9,7 +9,7 @@ impl Archive {
             "verified real sandbox toolbox",
         )?;
         expect(
-            input.task.durable_task_id == TASK && input.task.generation == 1,
+            input.durable_task.durable_task_id == TASK && input.durable_task.generation == 1,
             "accepted task generation",
         )?;
         let id = identity(200 + self.plans.len());
@@ -71,7 +71,7 @@ impl Archive {
         let plan = self.selected()?;
         expect(input.pin_id == plan.pin.id, "commit native writer custody")?;
         expect(
-            input.task.durable_task_id == TASK && input.task.generation == 1,
+            input.durable_task.durable_task_id == TASK && input.durable_task.generation == 1,
             "commit accepted task version",
         )?;
         let mut digests = Vec::new();

@@ -6,7 +6,7 @@ use crate::{
     supervisor::{Case, Observed},
     supervisor_model::call,
 };
-use af_wire::{run::RunPayload, task::DurableTaskTarget};
+use af_wire::{durable_task::DurableTaskTarget, run::RunPayload};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 mod archive;
