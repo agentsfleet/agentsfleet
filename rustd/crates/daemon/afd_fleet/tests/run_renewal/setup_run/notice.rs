@@ -75,7 +75,7 @@ async fn a_setup_notice_reports_the_runs_usage() {
 }
 
 // Value: protects=a run nobody renews stops hiding its turn's usage; fails_when=the
-// notice treats every active run as live, whatever its lease; why_new=a lapsed active
+// notice treats every active run as live, whatever its expiry; why_new=a lapsed active
 // run hid usage until the sweep expired it; seam=the production assignment over live
 // Postgres, the run aged as a silent holder leaves it, read back through initial_view.
 #[tokio::test]
@@ -94,7 +94,7 @@ async fn a_lapsed_runs_usage_shows_as_unknown() {
     assert_eq!(lapsed.state, Some(MessageState::Running), "{lapsed:?}");
     let usage = lapsed
         .usage
-        .expect("a run past its lease is not live, so its usage shows");
+        .expect("a run past its expiry is not live, so its usage shows");
     assert_eq!(usage.knowledge, Knowledge::Unknown, "{usage:?}");
     assert_eq!(
         usage.input_tokens, None,

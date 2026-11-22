@@ -9,8 +9,7 @@ import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 // The runner's tools beyond files, requests and memory, drawn in the thread:
 // a plan as its checklist, a patch as the files and counts the runner
-// recorded, a hashed edit by its line, and the web and schedule lookups folded
-// with the other looks.
+// recorded, and the web and schedule lookups folded with the other looks.
 
 const STARTED_AT_MS = 1_000;
 const DONE_MS = 400;
@@ -32,7 +31,7 @@ function renderCalls(tools: FleetToolCall[]) {
 const cell = (name: string) => document.querySelector<HTMLElement>(`li[data-tool="${name}"]`)!;
 
 describe("FleetThread — runner tool cells", () => {
-  it("test_runner_cells_render_plan_patch_and_line", () => {
+  it("test_runner_cells_render_plan_and_patch", () => {
     renderCalls([call(TOOL_NAME.UPDATE_PLAN, {
       explanation: "One step left",
       plan: [{ step: "Read the logs", status: "completed" }, { step: "Open a PR", status: "in_progress" }, { step: "Tell the team", status: "pending" }],
@@ -75,14 +74,6 @@ describe("FleetThread — runner tool cells", () => {
     renderCalls([call(TOOL_NAME.APPLY_PATCH, patched)]);
     expect(cell(TOOL_NAME.APPLY_PATCH).querySelector("[data-changed-file]")).toBeNull();
     expect(cell(TOOL_NAME.APPLY_PATCH).textContent).not.toContain("+2");
-    cleanup();
-
-    // A hashed edit that names its line by tag carries no old text to diff.
-    renderCalls([call(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" })]);
-    const edit = cell(TOOL_NAME.FILE_EDIT_HASHED);
-    expect(edit.querySelector("[data-command-heading]")?.textContent).toBe("Edited file Success");
-    expect(edit.textContent).toContain('"path":"/workspace/a.md"');
-    expect(edit.querySelector("[data-diff]")).toBeNull();
     cleanup();
 
     // The web and schedule lookups change nothing, so they fold with the other looks.

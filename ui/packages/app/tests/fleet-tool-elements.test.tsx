@@ -9,7 +9,7 @@ it("keeps commands, reads, edits and a new tool readable inside one reply", () =
   const {container} = renderTools([
     {name: "exec_command", args: {cmd: "printf ready\nprintf checked"}, status: TOOL_CALL_STATUS.FAILED, outputHead: "permission denied", exitCode: 2},
     {name: "file_read", args: {path: "/workspace/app.ts"}, outputHead: "export const ready = true;"},
-    {name: "file_edit", args: {path: "/workspace/app.ts", old_text: "ready = false", new_text: "ready = true"},
+    {name: "file_edit", args: {path: "/workspace/app.ts", edits: [{old_text: "ready = false", new_text: "ready = true"}]},
       changes: [{path: "app.ts", added: 1, removed: 1}]},
     {name: "custom_release_report", args: {release: "秋"}, outputHead: "Release report recorded"},
   ]);
@@ -45,7 +45,7 @@ it("renders command and output markup as code and text without executing it", ()
 });
 
 it("does not claim success when the runner returns no outcome status", () => {
-  const {container} = renderTools([{name: "file_edit", args: {path: "a.ts", old_text: "old", new_text: "new"}, status: undefined}]);
+  const {container} = renderTools([{name: "file_edit", args: {path: "a.ts", edits: [{old_text: "old", new_text: "new"}]}, status: undefined}]);
   const cell = container.querySelector('[data-tool="file_edit"]');
   expect(cell?.getAttribute("data-state")).toBe("settled");
   expect(cell?.textContent).not.toContain("Success");

@@ -14,7 +14,7 @@
 
 use std::borrow::Cow;
 
-use super::{ApplyPatch, FileAppend, FileEdit, FileEditHashed, FileWrite};
+use super::{ApplyPatch, FileEdit, FileWrite};
 use crate::tools::Handler;
 use crate::tools::env::Env;
 
@@ -22,13 +22,7 @@ use crate::tools::env::Env;
 pub const HEADER: &str = "Lines changed:";
 
 /// The tools that edit files, each ending a successful answer with a report.
-pub const EDITS: [&str; 5] = [
-    FileWrite::NAME,
-    FileAppend::NAME,
-    FileEdit::NAME,
-    FileEditHashed::NAME,
-    ApplyPatch::NAME,
-];
+pub const EDITS: [&str; 3] = [FileWrite::NAME, FileEdit::NAME, ApplyPatch::NAME];
 
 /// One file an edit changed, and how.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,14 +86,6 @@ fn escaped(path: &str) -> Cow<'_, str> {
         }
     };
     Cow::Owned(path.chars().map(escape).collect())
-}
-
-/// What appending `added` to `before`, the text at `path`, changes: the lines
-/// `added` brings, and the last line of `before` it extends when that line
-/// has no line break yet.
-pub(crate) fn appended(path: &str, before: &str, added: &str) -> Change {
-    let open = before.rsplit_once('\n').map_or(before, |(_, last)| last);
-    Change::between(path, open, &format!("{open}{added}"))
 }
 
 /// `text` with the report of `changes` after it; `text` alone when nothing

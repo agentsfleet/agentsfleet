@@ -18,7 +18,6 @@ use tempfile::TempDir;
 mod apply_patch;
 mod apply_patch_refusals;
 mod grep;
-mod hashed;
 mod image;
 mod listing;
 mod path_gate;
@@ -97,16 +96,6 @@ async fn call(tools: &Tools<ContextTool<'_>>, name: &str, arguments: Value) -> T
 /// The code a failed call carries, by its spelling.
 fn code(output: &ToolOutput) -> Option<&'static str> {
     output.error_code.map(guffbolt::ErrorCode::as_str)
-}
-
-/// The tag a `file_read_hashed` answer gives line `number`, as `L<n>:<hhh>`.
-fn tag_of(read: &str, number: usize) -> String {
-    let prefix = format!("L{number}:");
-    read.lines()
-        .find(|line| line.starts_with(&prefix))
-        .and_then(|line| line.split_once('|'))
-        .map(|(tag, _text)| tag.to_owned())
-        .expect("the read tags the line")
 }
 
 /// A small tree: files at two depths, a dotfile, `.git`, and a link.

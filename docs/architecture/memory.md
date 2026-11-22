@@ -93,6 +93,31 @@ Child loops do not run the periodic capture counter.
 Conversation summaries remain separate from saved semantic entries and filesystem state.
 See [conversation compaction](context_lifecycle.md) for summary generation, token measurement, publication checks and the current progress-event gap.
 
+## 8. What a chat remembers, and what each table is for
+
+Four stores keep four different things. Each answers one question.
+
+| Store | The question it answers | Written by | Read by | Lives until |
+|---|---|---|---|---|
+| `thread.turns` | What was said in this chat? | Every message, as it arrives | Every run of the chat, at its start | The chat is deleted |
+| `thread.compactions` | What has a long chat been about? | A compaction, only when the chat outgrows the model's window | The next run of the same chat | Replaced by the next compaction |
+| `memory.entries` | What should this fleet remember across all its chats? | The model, on purpose, with `memory_store` | The model, with `memory_recall` | Deleted |
+| Turn checkpoints | How does a replacement run carry on mid-turn? | The runner, while a turn runs | A replacement run, if the first one dies | The turn finishes |
+
+A run reads its own chat back on every turn, so short chats need no compaction:
+
+```text
+turn 1    "I am Indy"          ─► thread.turns row 1
+turns 2–14 …                   ─► thread.turns rows 2–14
+turn 15   "who am i"
+  the run builds: instructions + tools + [compaction, if any] + turns 1–14 + "who am i"
+  no compaction was needed, so the model reads turn 1 itself ─► "You're Indy"
+```
+
+A setup draft's chat and a fleet's chat work the same way: each owns one thread.
+A new chat starts with an empty thread; only a fleet's `memory.entries` carries facts between chats.
+When a fleet's instructions or model change, the old compaction is not reused; the next run reads the turns themselves.
+
 ## Code pointers
 
 | Concern | Owner |

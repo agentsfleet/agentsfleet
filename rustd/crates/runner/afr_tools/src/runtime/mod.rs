@@ -117,8 +117,8 @@ pub enum ToolErrorCode {
     FileTooLarge,
     /// The text to replace is not in the file.
     TextNotFound,
-    /// A line tag no longer matches the file, or matches it more than once.
-    HashMismatch,
+    /// The text to replace is in the file more than once.
+    TextNotUnique,
     /// The patch does not parse, or a hunk's lines are not in the file.
     PatchInvalid,
     /// The file is not an image the wires take.
@@ -174,7 +174,7 @@ impl ToolErrorCode {
             Self::FileNotFound => code::FILE_NOT_FOUND.as_str(),
             Self::FileTooLarge => code::FILE_TOO_LARGE.as_str(),
             Self::TextNotFound => code::TEXT_NOT_FOUND.as_str(),
-            Self::HashMismatch => code::HASH_MISMATCH.as_str(),
+            Self::TextNotUnique => code::TEXT_NOT_UNIQUE.as_str(),
             Self::PatchInvalid => code::PATCH_INVALID.as_str(),
             Self::NotAnImage => code::NOT_AN_IMAGE.as_str(),
             Self::ImageInputUnavailable => code::IMAGE_INPUT_UNAVAILABLE.as_str(),

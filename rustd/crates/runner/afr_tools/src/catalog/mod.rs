@@ -100,18 +100,10 @@ pub const WRITE_STDIN: Entry = Entry::new("write_stdin", Runtime::Sandbox);
 pub const GIT: Entry = Entry::new("git", Runtime::Sandbox);
 /// Reads a file in `/workspace`.
 pub const FILE_READ: Entry = Entry::new("file_read", Runtime::Sandbox);
-/// Reads a file with line hashes.
-pub const FILE_READ_HASHED: Entry = Entry::new("file_read_hashed", Runtime::Sandbox);
 /// Writes a file.
 pub const FILE_WRITE: Entry = Entry::new("file_write", Runtime::Sandbox);
-/// Appends to a file.
-pub const FILE_APPEND: Entry = Entry::new("file_append", Runtime::Sandbox);
-/// Deletes a file.
-pub const FILE_DELETE: Entry = Entry::new("file_delete", Runtime::Sandbox);
-/// Replaces text in a file.
+/// Replaces texts in a file, each held there once.
 pub const FILE_EDIT: Entry = Entry::new("file_edit", Runtime::Sandbox);
-/// Replaces lines named by their hashes.
-pub const FILE_EDIT_HASHED: Entry = Entry::new("file_edit_hashed", Runtime::Sandbox);
 /// Applies a patch.
 pub const APPLY_PATCH: Entry = Entry::new("apply_patch", Runtime::Sandbox);
 /// An image file, read through the executor for the next model turn.
@@ -124,7 +116,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 36] = [
+pub const PUBLISHED: [&Entry; 32] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -150,12 +142,8 @@ pub const PUBLISHED: [&Entry; 36] = [
     &WRITE_STDIN,
     &GIT,
     &FILE_READ,
-    &FILE_READ_HASHED,
     &FILE_WRITE,
-    &FILE_APPEND,
-    &FILE_DELETE,
     &FILE_EDIT,
-    &FILE_EDIT_HASHED,
     &APPLY_PATCH,
     &IMAGE,
     &BROWSER,
@@ -166,7 +154,7 @@ pub const PUBLISHED: [&Entry; 36] = [
 /// Every published tool a run builds over its own backends when it starts:
 /// every tool of `guffbolt`'s this catalog publishes. The provider's
 /// `web_search` and this runner's own fleet tools are the rest.
-pub const BACKED: [&Entry; 33] = [
+pub const BACKED: [&Entry; 29] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &NOTIFY,
@@ -189,12 +177,8 @@ pub const BACKED: [&Entry; 33] = [
     &WRITE_STDIN,
     &GIT,
     &FILE_READ,
-    &FILE_READ_HASHED,
     &FILE_WRITE,
-    &FILE_APPEND,
-    &FILE_DELETE,
     &FILE_EDIT,
-    &FILE_EDIT_HASHED,
     &APPLY_PATCH,
     &IMAGE,
     &BROWSER,

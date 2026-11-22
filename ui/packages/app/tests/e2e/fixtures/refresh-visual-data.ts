@@ -2,7 +2,7 @@ import {visualWakeupTurns} from "./refresh-wakeup-data";
 import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskPage } from "@/lib/api/tasks";
 import { detail, summary, DURABLE_TASK_IDS } from "@/tests/helpers/task-reads";
-import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
+import { TOOL_CALL_STATUS, type ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 
 export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "wake-up", "error"] as const;
 export type VisualScenario = typeof VISUAL_SCENARIOS[number];
@@ -17,7 +17,7 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
     ...(completed ? [
       tool("file", "file_read", {path: "release.yaml"}, started),
-      {...tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+      {...tool("edit", "file_edit", {path: "release.yaml", edits: [{old_text: "ready: false", new_text: "ready: true"}]}, started),
         changes: [{path: "release.yaml", added: 1, removed: 1}]},
       tool("report", "custom_release_report", {release: "current"}, started),
       tool("manifest", "file_write", {path: "runner-image.yaml"}, started),
@@ -50,7 +50,7 @@ export function visualDurableTaskDetail(scenario: VisualScenario, started: numbe
       branch: "runner-refresh", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/agentsfleet/platform-images/pull/58", workflows: []} : saved.context.target}};
 }
 
-function tool(callId: string, name: string, args: Record<string, string>, started: number, running = false, failed = false): FleetToolCall {
+function tool(callId: string, name: string, args: ToolArgs, started: number, running = false, failed = false): FleetToolCall {
   return {callId, name, args, startedAtMs: started - 138_000, ms: running ? null : 2000, done: !running,
     ...(running ? {} : {status: failed ? TOOL_CALL_STATUS.FAILED : TOOL_CALL_STATUS.SUCCEEDED, outputHead: "Recorded example result", outputLineCount: 1})};
 }

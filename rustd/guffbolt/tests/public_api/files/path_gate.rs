@@ -20,7 +20,7 @@ async fn a_path_that_leaves_the_working_directory_is_refused_before_any_write() 
     .await;
     let absolute = call(
         &tools,
-        "file_append",
+        "file_write",
         json!({"path": "/etc/hosts", "content": "x"}),
     )
     .await;

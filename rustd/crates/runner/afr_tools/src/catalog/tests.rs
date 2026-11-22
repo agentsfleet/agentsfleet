@@ -67,6 +67,25 @@ fn an_unpublished_name_refuses_the_selection() {
     assert_eq!(failure.unhosted_tool(), Some("teleport"));
 }
 
+/// The file tools cut from the catalog are no names a fleet may hold: one
+/// naming any of them is refused as naming a tool no runner hosts.
+#[test]
+fn a_dropped_file_tool_refuses_the_selection_as_unhosted() {
+    let catalog = catalog();
+
+    for name in [
+        "file_read_hashed",
+        "file_edit_hashed",
+        "file_append",
+        "file_delete",
+    ] {
+        assert_eq!(published(name), None, "{name}");
+        let failure = catalog.select(&[FILE_READ.name(), name]).unwrap_err();
+
+        assert_eq!(failure.unhosted_tool(), Some(name));
+    }
+}
+
 #[test]
 fn should_refuse_a_name_that_is_not_exactly_a_published_one() {
     let catalog = catalog();
@@ -262,7 +281,7 @@ fn fleet_tools_are_offered_only_when_declared() {
         .unwrap();
     assert!(with.offers("fleet_steer"));
     assert!(with.offers("fleet_activity"));
-    assert_eq!(PUBLISHED.len(), 36);
+    assert_eq!(PUBLISHED.len(), 32);
 }
 
 /// A tool a run builds over its own backends is offered with no handler, and

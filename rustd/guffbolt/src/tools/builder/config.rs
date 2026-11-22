@@ -3,8 +3,29 @@
 
 use std::fmt;
 
+use crate::tools::Handler;
+use crate::tools::files::{ApplyPatch, FileEdit, FileRead, FileWrite, Find, Grep, Ls};
+use crate::tools::process::Shell;
+
 /// The one character a pattern may hold to match a family of names.
 const WILDCARD: char = '*';
+
+/// [`ToolsConfig::coding`]'s tools: read, write, edit and patch files, run a
+/// command, and look around. Each needs only the environment, so a builder
+/// given one builds them all.
+const CODING: [&str; 8] = [
+    FileRead::NAME,
+    FileWrite::NAME,
+    FileEdit::NAME,
+    ApplyPatch::NAME,
+    Shell::NAME,
+    Ls::NAME,
+    Find::NAME,
+    Grep::NAME,
+];
+/// [`ToolsConfig::read_only`]'s tools: read a file and look around, changing
+/// nothing.
+const READ_ONLY: [&str; 4] = [FileRead::NAME, Ls::NAME, Find::NAME, Grep::NAME];
 
 /// One entry of a config: a name, or a pattern with one `*`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +107,31 @@ impl ToolsConfig {
             .map(|entry| parsed(entry.as_ref()))
             .collect::<Result<_>>()?;
         Ok(Self { patterns })
+    }
+
+    /// The set a coding run starts with: `file_read`, `file_write`,
+    /// `file_edit`, `apply_patch`, `shell`, `ls`, `find` and `grep`. Every
+    /// one runs over the environment alone, so a builder given
+    /// [`with_env`](super::ToolsBuilder::with_env) builds it whole.
+    #[must_use]
+    pub fn coding() -> Self {
+        Self::named(&CODING)
+    }
+
+    /// The set that reads and changes nothing: `file_read`, `ls`, `find` and
+    /// `grep`, over the environment alone.
+    #[must_use]
+    pub fn read_only() -> Self {
+        Self::named(&READ_ONLY)
+    }
+
+    /// The config naming each of `names`, in order.
+    fn named(names: &[&str]) -> Self {
+        let patterns = names
+            .iter()
+            .map(|name| Pattern::Name((*name).to_owned()))
+            .collect();
+        Self { patterns }
     }
 
     /// Its entries, in order.

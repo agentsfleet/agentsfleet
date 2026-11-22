@@ -52,7 +52,7 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         (ToolErrorCode::FileNotFound, "file_not_found"),
         (ToolErrorCode::FileTooLarge, "file_too_large"),
         (ToolErrorCode::TextNotFound, "text_not_found"),
-        (ToolErrorCode::HashMismatch, "hash_mismatch"),
+        (ToolErrorCode::TextNotUnique, "text_not_unique"),
         (ToolErrorCode::PatchInvalid, "patch_invalid"),
         (ToolErrorCode::NotAnImage, "not_an_image"),
         (

@@ -1,4 +1,4 @@
-//! `file_write`, `file_append`, `file_delete` and `file_edit` on disk.
+//! `file_write` and `file_edit` on disk.
 
 use super::*;
 
@@ -73,136 +73,122 @@ async fn file_write_over_a_directory_fails_and_leaves_it() {
     assert!(desk.path("dir").is_dir(), "the directory is still there");
 }
 
-#[tokio::test]
-async fn file_append_makes_the_file_then_adds_to_its_end() {
-    let desk = Desk::new();
-    let tools = desk.tools(false);
-
-    let first = call(
-        &tools,
-        "file_append",
-        json!({"path": "logs/run.log", "content": "one\n"}),
-    )
-    .await;
-    let second = call(
-        &tools,
-        "file_append",
-        json!({"path": "logs/run.log", "content": "zwei \u{1F600}\n"}),
-    )
-    .await;
-    let refused = call(
-        &tools,
-        "file_append",
-        json!({"path": "../run.log", "content": "x"}),
-    )
-    .await;
-
-    assert_eq!(
-        first.text,
-        "Appended 4 bytes to logs/run.log\nLines changed:\n\"logs/run.log\" +1 -0"
-    );
-    assert_eq!(
-        second.text,
-        "Appended 10 bytes to logs/run.log\nLines changed:\n\"logs/run.log\" +1 -0"
-    );
-    assert_eq!(
-        refused.text,
-        format!("[path_not_allowed] ../run.log {LEAVES}")
-    );
-    assert_eq!(
-        desk.text("logs/run.log").as_deref(),
-        Some("one\nzwei \u{1F600}\n")
-    );
+/// `file_edit`'s arguments: `edits`, each replacing `old` with `new`.
+fn edits(path: &str, pairs: &[(&str, &str)]) -> Value {
+    let edits: Vec<Value> = pairs
+        .iter()
+        .map(|(old, new)| json!({"old_text": old, "new_text": new}))
+        .collect();
+    json!({"path": path, "edits": edits})
 }
 
-/// Text appended to a file whose last line has no line break joins that
-/// line, so the line counts as changed rather than one more added.
+/// Several edits land in one write, each where the file held its text, given
+/// in any order, and the answer counts them and the lines they changed.
 #[tokio::test]
-async fn file_append_counts_the_open_last_line_it_extends() {
+async fn file_edit_applies_several_edits_in_one_write_and_counts_the_change() {
     let desk = Desk::new();
-    desk.put("notes.txt", "one\ntwo");
-    let tools = desk.tools(false);
-
-    let output = call(
-        &tools,
-        "file_append",
-        json!({"path": "notes.txt", "content": " more\nthree\n"}),
-    )
-    .await;
-
-    assert_eq!(
-        output.text,
-        "Appended 12 bytes to notes.txt\nLines changed:\n\"notes.txt\" +2 -1"
-    );
-    assert_eq!(
-        desk.text("notes.txt").as_deref(),
-        Some("one\ntwo more\nthree\n")
-    );
-}
-
-#[tokio::test]
-async fn file_append_onto_a_directory_fails_in_the_systems_words() {
-    let desk = Desk::new();
-    std::fs::create_dir(desk.path("dir")).expect("made");
-    let tools = desk.tools(false);
-
-    let output = call(
-        &tools,
-        "file_append",
-        json!({"path": "dir", "content": "x"}),
-    )
-    .await;
-
-    assert_eq!(code(&output), Some("sandbox_unavailable"));
-}
-
-#[tokio::test]
-async fn file_delete_removes_a_file_and_refuses_what_is_not_one() {
-    let desk = Desk::new();
-    desk.put("gone.txt", "x");
-    std::fs::create_dir(desk.path("dir")).expect("made");
-    let tools = desk.tools(false);
-
-    let deleted = call(&tools, "file_delete", json!({"path": "gone.txt"})).await;
-    let again = call(&tools, "file_delete", json!({"path": "gone.txt"})).await;
-    let directory = call(&tools, "file_delete", json!({"path": "dir"})).await;
-    let outside = call(&tools, "file_delete", json!({"path": "../gone.txt"})).await;
-
-    assert_eq!(deleted.text, "Deleted gone.txt");
-    assert!(!desk.path("gone.txt").exists());
-    assert_eq!(code(&again), Some("file_not_found"));
-    assert_eq!(
-        directory.text,
-        "[sandbox_unavailable] dir is not a regular file"
-    );
-    assert!(desk.path("dir").is_dir(), "the directory stays");
-    assert_eq!(
-        outside.text,
-        format!("[path_not_allowed] ../gone.txt {LEAVES}")
-    );
-}
-
-#[tokio::test]
-async fn file_edit_replaces_the_first_occurrence_and_counts_the_change() {
-    let desk = Desk::new();
-    desk.put("e.txt", "keep\nx and x\nkeep\n");
+    desk.put("e.txt", "keep\nalpha\nmiddle\nbeta\nkeep\n");
     let tools = desk.tools(false);
 
     let output = call(
         &tools,
         "file_edit",
-        json!({"path": "e.txt", "old_text": "x", "new_text": "\u{00e9}t\u{00e9}"}),
+        edits(
+            "e.txt",
+            &[("beta", "\u{00e9}t\u{00e9}"), ("alpha", "ALPHA")],
+        ),
+    )
+    .await;
+    let one = call(&tools, "file_edit", edits("e.txt", &[("middle", "centre")])).await;
+
+    assert_eq!(
+        output.text,
+        "Applied 2 edits to e.txt\nLines changed:\n\"e.txt\" +2 -2"
+    );
+    assert_eq!(
+        one.text,
+        "Applied 1 edit to e.txt\nLines changed:\n\"e.txt\" +1 -1"
+    );
+    assert_eq!(
+        desk.text("e.txt").as_deref(),
+        Some("keep\nALPHA\ncentre\n\u{00e9}t\u{00e9}\nkeep\n")
+    );
+}
+
+/// Text the file holds more than once, overlapping itself too, is refused
+/// with the count, and the file stays as it was.
+#[tokio::test]
+async fn file_edit_refuses_text_the_file_holds_more_than_once() {
+    let desk = Desk::new();
+    desk.put("e.txt", "x and x\naaa\n");
+    let tools = desk.tools(false);
+
+    let twice = call(&tools, "file_edit", edits("e.txt", &[("x", "y")])).await;
+    let overlapping = call(&tools, "file_edit", edits("e.txt", &[("aa", "b")])).await;
+
+    assert_eq!(code(&twice), Some("text_not_unique"));
+    assert_eq!(
+        twice.text,
+        "[text_not_unique] edits[0].old_text occurs 2 times in e.txt; quote more of the text \
+         around it so it occurs once"
+    );
+    assert_eq!(code(&overlapping), Some("text_not_unique"));
+    assert!(
+        overlapping.text.contains("occurs 2 times"),
+        "{}",
+        overlapping.text
+    );
+    assert_eq!(desk.text("e.txt").as_deref(), Some("x and x\naaa\n"));
+}
+
+/// One edit that cannot land refuses the whole call: the edits before it are
+/// not written, an edit never matches text an earlier one wrote, and two
+/// edits over the same text overlap.
+#[tokio::test]
+async fn file_edit_writes_nothing_when_any_edit_fails() {
+    let desk = Desk::new();
+    desk.put("e.txt", "alpha\nbeta\n");
+    let tools = desk.tools(false);
+
+    let absent = call(
+        &tools,
+        "file_edit",
+        edits("e.txt", &[("alpha", "A"), ("omega", "O")]),
+    )
+    .await;
+    let ambiguous = call(
+        &tools,
+        "file_edit",
+        edits("e.txt", &[("beta", "B"), ("a", "_")]),
+    )
+    .await;
+    let chained = call(
+        &tools,
+        "file_edit",
+        edits("e.txt", &[("alpha", "gamma"), ("gamma", "delta")]),
+    )
+    .await;
+    let overlapping = call(
+        &tools,
+        "file_edit",
+        edits("e.txt", &[("beta", "B"), ("alpha\nbe", "A")]),
     )
     .await;
 
     assert_eq!(
-        output.text,
-        "Replaced 1 bytes with 5 bytes in e.txt\nLines changed:\n\"e.txt\" +1 -1"
+        absent.text,
+        "[text_not_found] e.txt does not contain edits[1].old_text"
+    );
+    assert_eq!(code(&ambiguous), Some("text_not_unique"));
+    assert_eq!(
+        chained.text,
+        "[text_not_found] e.txt does not contain edits[1].old_text"
     );
     assert_eq!(
-        desk.text("e.txt").as_deref(),
-        Some("keep\n\u{00e9}t\u{00e9} and x\nkeep\n")
+        overlapping.text,
+        "[invalid_arguments] edits[0] and edits[1] overlap in e.txt; merge them into one edit"
     );
+    assert_eq!(desk.text("e.txt").as_deref(), Some("alpha\nbeta\n"));
 }
 
 /// Each way an edit is refused leaves the file as it was.
@@ -213,8 +199,9 @@ async fn file_edit_refuses_what_it_cannot_edit_and_leaves_the_file() {
     desk.put("bin.dat", [0xff_u8, 0x00, 0xfe]);
     desk.put("big.txt", "y".repeat(ONE_READ + 1));
     let tools = desk.tools(false);
-    let edit = |path: &str, old: &str| json!({"path": path, "old_text": old, "new_text": "z"});
+    let edit = |path: &str, old: &str| edits(path, &[(old, "z")]);
 
+    let none = call(&tools, "file_edit", edits("e.txt", &[])).await;
     let empty = call(&tools, "file_edit", edit("e.txt", "")).await;
     let absent = call(&tools, "file_edit", edit("e.txt", "omega")).await;
     let binary = call(&tools, "file_edit", edit("bin.dat", "a")).await;
@@ -223,14 +210,27 @@ async fn file_edit_refuses_what_it_cannot_edit_and_leaves_the_file() {
     let unknown = call(
         &tools,
         "file_edit",
-        json!({"path": "e.txt", "old_text": "a", "new_txt": "z"}),
+        json!({"path": "e.txt", "edits": [{"old_text": "a", "new_txt": "z"}]}),
+    )
+    .await;
+    let flat = call(
+        &tools,
+        "file_edit",
+        json!({"path": "e.txt", "old_text": "a", "new_text": "z"}),
     )
     .await;
 
-    assert_eq!(empty.text, "[invalid_arguments] old_text must not be empty");
+    assert_eq!(
+        none.text,
+        "[invalid_arguments] edits must hold at least one edit"
+    );
+    assert_eq!(
+        empty.text,
+        "[invalid_arguments] edits[0].old_text must not be empty"
+    );
     assert_eq!(
         absent.text,
-        "[text_not_found] e.txt does not contain old_text"
+        "[text_not_found] e.txt does not contain edits[0].old_text"
     );
     assert_eq!(
         binary.text,
@@ -241,12 +241,14 @@ async fn file_edit_refuses_what_it_cannot_edit_and_leaves_the_file() {
         "[file_too_large] big.txt is longer than 8388608 bytes"
     );
     assert_eq!(code(&missing), Some("file_not_found"));
-    assert!(
-        unknown
-            .text
-            .starts_with("[invalid_arguments] unknown field `new_txt`"),
-        "{}",
-        unknown.text
-    );
+    for refused in [&unknown, &flat] {
+        assert!(
+            refused
+                .text
+                .starts_with("[invalid_arguments] unknown field"),
+            "{}",
+            refused.text
+        );
+    }
     assert_eq!(desk.text("e.txt").as_deref(), Some("alpha\n"));
 }

@@ -7,10 +7,7 @@ use crate::tools::agents::{
 use crate::tools::ask::AskUser;
 use crate::tools::browser::{Browse, BrowserOpen, Screenshot};
 use crate::tools::clock::{CurrentTime, Sleep};
-use crate::tools::files::{
-    ApplyPatch, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead, FileReadHashed,
-    FileWrite, Find, Grep, ImageTool, Ls,
-};
+use crate::tools::files::{ApplyPatch, FileEdit, FileRead, FileWrite, Find, Grep, ImageTool, Ls};
 use crate::tools::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStoreTool};
 use crate::tools::message::Message;
 use crate::tools::notify::NotifyTool;
@@ -35,18 +32,14 @@ const fn over(name: &'static str, needs: &'static [Backend]) -> BuiltIn {
 }
 
 /// Every built-in tool, in the order `*` offers them.
-pub(super) const TOOLS: [BuiltIn; 45] = [
+pub(super) const TOOLS: [BuiltIn; 41] = [
     over("shell", ENV),
     over("exec_command", SESSIONS),
     over("write_stdin", SESSIONS),
     over("git", ENV),
     over("file_read", ENV),
-    over("file_read_hashed", ENV),
     over("file_write", ENV),
-    over("file_append", ENV),
-    over("file_delete", ENV),
     over("file_edit", ENV),
-    over("file_edit_hashed", ENV),
     over("apply_patch", ENV),
     over("image", ENV),
     over("ls", ENV),
@@ -133,12 +126,8 @@ fn file_tool<'run>(name: &str, given: Given<'run>) -> Option<Box<ContextTool<'ru
         "file_read" => {
             boxed(FileRead::new(env).with_default_lines(given.limits.default_read_lines))
         }
-        "file_read_hashed" => boxed(FileReadHashed::new(env)),
         "file_write" => boxed(FileWrite::new(env)),
-        "file_append" => boxed(FileAppend::new(env)),
-        "file_delete" => boxed(FileDelete::new(env)),
         "file_edit" => boxed(FileEdit::new(env)),
-        "file_edit_hashed" => boxed(FileEditHashed::new(env)),
         "apply_patch" => boxed(ApplyPatch::new(env)),
         "ls" => boxed(Ls::new(env)),
         "find" => boxed(Find::new(env)),

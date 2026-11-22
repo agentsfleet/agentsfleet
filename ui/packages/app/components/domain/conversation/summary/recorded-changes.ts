@@ -2,7 +2,7 @@ import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../../activity/tools/presentation/tool-call-shape";
 
-const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_DELETE]);
+const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT]);
 
 export function recordedChanges(turns: readonly FleetTurn[], {includeRunning = true}: {includeRunning?: boolean} = {}): {path: string; running: boolean}[] {
   const paths = new Map<string, {path: string; running: boolean}>();

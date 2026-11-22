@@ -42,7 +42,7 @@ impl Layer {
 }
 
 /// The crates that sit beside `crates/` rather than in a layer: the harness
-/// and its provider side, a sibling crate as pi-ai is to pi (`M253_004` §1).
+/// and its provider side, which the harness depends on (`M253_004` §1).
 pub(crate) const STANDALONE: [&str; 2] = ["guffbolt", "guffbolt-ai"];
 
 /// Which table of a manifest an edge was declared in.

@@ -3,7 +3,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-//! The path gate every file tool, the hashed tools and `apply_patch` share.
+//! The path gate every file tool and `apply_patch` share.
 
 use guffbolt::ToolOutput;
 

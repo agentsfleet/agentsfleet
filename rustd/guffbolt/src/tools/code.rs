@@ -47,8 +47,9 @@ pub const FILE_NOT_FOUND: ErrorCode = ErrorCode::new("file_not_found");
 pub const FILE_TOO_LARGE: ErrorCode = ErrorCode::new("file_too_large");
 /// The text to replace is not in the file.
 pub const TEXT_NOT_FOUND: ErrorCode = ErrorCode::new("text_not_found");
-/// A line tag no longer matches the file, or matches it more than once.
-pub const HASH_MISMATCH: ErrorCode = ErrorCode::new("hash_mismatch");
+/// The text to replace is in the file more than once, so which one to
+/// replace is not known.
+pub const TEXT_NOT_UNIQUE: ErrorCode = ErrorCode::new("text_not_unique");
 /// The patch does not parse, or a hunk's lines are not in the file.
 pub const PATCH_INVALID: ErrorCode = ErrorCode::new("patch_invalid");
 /// The file is not an image the wires take.

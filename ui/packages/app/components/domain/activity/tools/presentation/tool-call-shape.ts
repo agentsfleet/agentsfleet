@@ -6,12 +6,8 @@ import type { FileChange } from "@/lib/streaming/fleet-stream-tool-trace";
 /** Tool names as `afr_tools::catalog` spells them. */
 export const TOOL_NAME = {
   FILE_READ: "file_read",
-  FILE_READ_HASHED: "file_read_hashed",
   FILE_WRITE: "file_write",
-  FILE_APPEND: "file_append",
-  FILE_DELETE: "file_delete",
   FILE_EDIT: "file_edit",
-  FILE_EDIT_HASHED: "file_edit_hashed",
   HTTP_REQUEST: "http_request",
   MEMORY_STORE: "memory_store",
   MEMORY_RECALL: "memory_recall",

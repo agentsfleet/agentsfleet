@@ -1,4 +1,4 @@
-import type { FileChange, ToolArgs, ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
+import type { FileChange, JsonValue, ToolArgs, ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { RUNNER_COPY, TAKES_NO_ARGS, patchRows } from "./tool-call-copy-runner";
 import { lineRows, type DiffRow } from "../diff/tool-call-diff";
@@ -35,8 +35,6 @@ export const OUTPUT_UNAVAILABLE = "(output unavailable)";
 
 const VERBS = {
   WRITE: { running: "Writing", done: "Wrote" },
-  APPEND: { running: "Appending", done: "Appended" },
-  DELETE: { running: "Deleting", done: "Deleted" },
   EDIT: { running: "Editing", done: "Edited" },
   REQUEST: { running: "Requesting", done: "Requested" },
   REMEMBER: { running: "Remembering", done: "Remembered" },
@@ -46,11 +44,9 @@ const VERBS = {
 } as const satisfies Record<string, Verbs>;
 
 const ARG = {
+  EDITS: "edits",
   OLD: "old_text",
   NEW: "new_text",
-  // A hashed edit names the line it changes by its Hashline tag (`L10:abc`).
-  ANCHOR: "target",
-  ANCHOR_END: "end_target",
   URL: "url",
   METHOD: "method",
   KEY: "key",
@@ -63,15 +59,12 @@ const ARG = {
 // words each says them in. A Map, so a tool named `toString` reads as unknown.
 const EDITS: ReadonlyMap<string, Verbs> = new Map<string, Verbs>([
   [TOOL_NAME.FILE_WRITE, VERBS.WRITE],
-  [TOOL_NAME.FILE_APPEND, VERBS.APPEND],
   [TOOL_NAME.FILE_EDIT, VERBS.EDIT],
-  [TOOL_NAME.FILE_EDIT_HASHED, VERBS.EDIT],
   [TOOL_NAME.APPLY_PATCH, VERBS.EDIT],
 ]);
 
 // A Map, not an object literal: a tool named `toString` must read as unknown.
 const COPY: ReadonlyMap<string, (args: ToolArgs) => ToolCopy> = new Map([
-  [TOOL_NAME.FILE_DELETE, (args) => plainCopy(VERBS.DELETE, pathArg(args))],
   [TOOL_NAME.HTTP_REQUEST, requestCopy],
   [TOOL_NAME.MEMORY_STORE, (args) => plainCopy(VERBS.REMEMBER, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
   [TOOL_NAME.MEMORY_FORGET, (args) => plainCopy(VERBS.FORGET, clipMarked(stringArg(args, ARG.KEY) ?? ""))],
@@ -131,14 +124,31 @@ export function moreLinesLabel(hidden: number): string {
 
 /** An edit's or a patch's whole text as rows, for a full read, which no leaf
  * cap has clipped; null for any other tool, or one whose arguments were not
- * kept or name no text to compare (a hashed edit by line tag). The rows are
- * what the call asked for; its counts are the recorded changes'. */
+ * kept or name no text to compare. An edit's replacements each match the
+ * original file once and never overlap, so their rows follow one another in
+ * the order the call listed them. The rows are what the call asked for; its
+ * counts are the recorded changes'. */
 export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | null {
   if (args === undefined) return null;
   if (name === TOOL_NAME.APPLY_PATCH) return patchRows(stringArg(args, ARG.PATCH) ?? "");
-  if (name !== TOOL_NAME.FILE_EDIT && name !== TOOL_NAME.FILE_EDIT_HASHED) return null;
-  const before = stringArg(args, ARG.OLD);
-  return before === undefined ? null : lineRows(before, stringArg(args, ARG.NEW) ?? "");
+  if (name !== TOOL_NAME.FILE_EDIT) return null;
+  const edits: JsonValue | undefined = args[ARG.EDITS];
+  // The runner refuses an edit with no replacements: it has nothing to draw.
+  if (!Array.isArray(edits) || edits.length === 0) return null;
+  const rows: DiffRow[] = [];
+  for (const edit of edits) {
+    const before = editArg(edit, ARG.OLD);
+    if (before === undefined) return null;
+    rows.push(...lineRows(before, editArg(edit, ARG.NEW) ?? ""));
+  }
+  return rows;
+}
+
+/** One replacement's string argument, or undefined when the replacement is
+ * not an object or the argument is absent or not a string. */
+function editArg(edit: JsonValue, key: string): string | undefined {
+  if (typeof edit !== "object" || edit === null || Array.isArray(edit)) return undefined;
+  return stringArg(edit as ToolArgs, key);
 }
 
 function requestCopy(args: ToolArgs): ToolCopy {
@@ -155,15 +165,7 @@ function editCopy(verbs: Verbs, name: string, args: ToolArgs | undefined, change
   }
   if (args === undefined) return plainCopy(verbs, ARGS_NOT_RECORDED);
   if (name === TOOL_NAME.APPLY_PATCH) return plainCopy(verbs, "");
-  // A hashed edit names its line by tag.
-  return plainCopy(verbs, `${pathArg(args)}${anchorOf(args)}`);
-}
-
-function anchorOf(args: ToolArgs): string {
-  const from = stringArg(args, ARG.ANCHOR);
-  if (from === undefined) return "";
-  const to = stringArg(args, ARG.ANCHOR_END);
-  return to === undefined ? ` at ${from}` : ` at ${from}–${to}`;
+  return plainCopy(verbs, pathArg(args));
 }
 
 function commandCopy(command: string | undefined): ToolCopy {

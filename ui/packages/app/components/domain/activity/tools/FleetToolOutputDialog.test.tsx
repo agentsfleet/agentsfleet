@@ -84,7 +84,7 @@ describe("FleetToolOutputDialog", () => {
 
   it("should draw a whole edit's lines with its recorded counts and say when the output was cut", async () => {
     const before = `${"x".repeat(300)}\nkeep`;
-    stubRead(200, { call_id: CALL_ID, arguments: { path: "big.md", old_text: before, new_text: "keep\nnew" }, output: "ok", truncated: true,
+    stubRead(200, { call_id: CALL_ID, arguments: { path: "big.md", edits: [{ old_text: before, new_text: "keep\nnew" }] }, output: "ok", truncated: true,
       changes: [{ path: "big.md", added: 24, removed: 8 }] });
     renderDialog({ name: TOOL_NAME.FILE_EDIT });
     await waitFor(() => expect(screen.getByText(OUTPUT_CUT_NOTE)).toBeTruthy());
@@ -95,7 +95,7 @@ describe("FleetToolOutputDialog", () => {
   });
 
   it("should count nothing from a whole edit's lines when the runner recorded no change", async () => {
-    stubRead(200, { call_id: CALL_ID, arguments: { path: "a.md", old_text: "old", new_text: "new" }, output: "ok" });
+    stubRead(200, { call_id: CALL_ID, arguments: { path: "a.md", edits: [{ old_text: "old", new_text: "new" }] }, output: "ok" });
     renderDialog({ name: TOOL_NAME.FILE_EDIT });
     await waitFor(() => expect(document.querySelectorAll("[data-diff]")).toHaveLength(2));
     expect(document.querySelector("[data-slot='code-diff']")?.textContent).not.toContain("+1");

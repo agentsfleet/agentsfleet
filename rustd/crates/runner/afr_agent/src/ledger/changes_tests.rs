@@ -143,23 +143,10 @@ fn a_report_naming_an_empty_path_is_dropped() {
 
 #[test]
 fn each_file_tool_that_edits_is_an_edit_and_every_other_tool_a_tool_call() {
-    for tool in [
-        "file_write",
-        "file_append",
-        "file_edit",
-        "file_edit_hashed",
-        "apply_patch",
-    ] {
+    for tool in ["file_write", "file_edit", "apply_patch"] {
         assert_eq!(kind(tool), ItemKind::Edit, "{tool}");
     }
-    for tool in [
-        "file_read",
-        "file_delete",
-        "shell",
-        "git",
-        "",
-        "APPLY_PATCH",
-    ] {
+    for tool in ["file_read", "shell", "git", "", "APPLY_PATCH"] {
         assert_eq!(kind(tool), ItemKind::ToolCall, "{tool}");
     }
 }

@@ -103,7 +103,7 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
     fixture.seed(Mapped::Nowhere).await;
     let router = fixture.router();
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let dropped = deliver(&router, &fixture.delivery(RUN_FAILURE_APP), APP_SECRET).await;
     let status = dropped.status();
     let document = json_body(dropped).await;
@@ -114,7 +114,7 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
         "{document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "an unmapped installation must wake nothing"
     );
@@ -141,7 +141,7 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
         "the fixture substitution must actually change the repository"
     );
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let dropped = deliver(&router, &elsewhere, APP_SECRET).await;
     let status = dropped.status();
     let document = json_body(dropped).await;
@@ -152,7 +152,7 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
         "{document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "a repository nobody subscribed to must wake nothing"
     );
@@ -170,7 +170,7 @@ async fn a_delivery_signed_with_the_wrong_secret_never_reaches_the_joins() {
     fixture.seed(Mapped::ToWorkspace).await;
     let router = fixture.router();
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let refused = deliver(&router, &fixture.delivery(RUN_FAILURE_APP), WRONG_SECRET).await;
     let status = refused.status();
     let document = json_body(refused).await;
@@ -185,7 +185,7 @@ async fn a_delivery_signed_with_the_wrong_secret_never_reaches_the_joins() {
          {document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "an unproven delivery must wake nothing"
     );

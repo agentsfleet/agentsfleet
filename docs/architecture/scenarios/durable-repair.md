@@ -4,10 +4,10 @@ Read this scenario to follow three hypothetical repairs through ordinary chat, s
 
 | Scope | Current status |
 |---|---|
-| Source | M236 contains native task, decision, publication, recovery, CLI and browser implementations. |
+| Source | M236 contains native durable task, decision, publication, recovery, CLI and browser implementations. |
 | Combined demonstration | Unfinished. The sequence below describes required observations, not a completed run. |
 | Live evidence | The [acceptance ledger](../../../playbooks/operations/acceptance/baselines/M236_001-autonomy.md) owns actual bindings, measurements and remaining proof. |
-| Authority | One reviewed fleet setup, explicit existing-PR targets, bounded task limits and configured notification destinations. |
+| Authority | One reviewed fleet setup, explicit existing-PR targets, bounded durable task limits and configured notification destinations. |
 | Exclusions | Fleet merge/deployment, arbitrary repository writes and an unreviewed monitoring-to-repair handoff. |
 
 ## Before the demonstration
@@ -20,7 +20,7 @@ Each PR needs an unchanged regression that exposes its assigned defect.
 The fleet needs current repository grants and reviewed permission to update each exact existing PR.
 The PR author may use Codex, Claude Code or another tool; authorship grants the fleet no authority.
 
-| Task name | Accepted objective | Target |
+| Durable task name | Accepted objective | Target |
 |---|---|---|
 | Import repair | Fix a missing-title import crash while retaining the existing fallback behavior. | PR X, same-repository branch, initial head A. |
 | Search repair | Remove pagination duplicates without weakening the regression. | PR Y and its distinct branch. |
@@ -56,11 +56,11 @@ Indy                    Fleet turn intake                Current fleet run
  |                                |                               | apply at safe boundary
 ```
 
-Indy names the work through its purpose or PR URL, without entering an internal task identifier.
+Indy names the work through its purpose or PR URL, without entering an internal durable task identifier.
 An ambiguous instruction such as “cancel that” requires clarification.
 A new request cannot inherit an older repair's publication authority.
 
-A2 creates two stable task items.
+A2 creates two stable durable task items.
 Replaying A2 must return those items instead of creating duplicate repairs.
 A3 changes the import method within the accepted objective; it grants no new repository access or completion criteria.
 
@@ -74,13 +74,13 @@ An explicit request for fresh status may read current evidence within the existi
 
 [Human input](../durable_tasks.md#human-input-while-work-runs) owns input claims, accepted receipts and safe boundaries.
 [Intent routing](../goal_evaluation.md#intent-routing) owns classification and uncertainty.
-Neither a sidebar selection nor a new chat mode supplies task authority.
+Neither a sidebar selection nor a new chat mode supplies durable task authority.
 
-## Publish, lose a worker and recover the same task
+## Publish, lose a worker and recover the same durable task
 
 The fleet runs one active run at a time.
-The [run flow](../run_flow.md) and [task scheduling](../durable_tasks.md#proposed-input-claims-and-scheduling) own serialization and fair switching.
-Waiting work releases the fleet's thread so another assigned task can run.
+The [run flow](../run_flow.md) and [durable task scheduling](../durable_tasks.md#proposed-input-claims-and-scheduling) own serialization and fair switching.
+Waiting work releases the fleet's thread so another assigned durable task can run.
 
 ```text
 Import run             Native publication          Saved state / GitHub
@@ -127,12 +127,12 @@ The replacement reconciles uncertain remote effects before resuming local work.
 
 Search and Export restore their own compatible state or start fresh checkouts.
 A shared fleet policy never makes Import's writable checkout theirs.
-API-only tasks need no mandatory checkout, and recovery grants no incidental GitHub access.
+API-only durable tasks need no mandatory checkout, and recovery grants no incidental GitHub access.
 
 ## Continue from exact-head checks
 
-A signed completion wakes the matching wait; no fallback read polls GitHub since M253_003.
-The wake requests fresh evidence; it does not certify success.
+Nothing wakes a wait on a GitHub run today. No fallback read polls GitHub since M253_003, and M253_004 removed the completion tables nothing read.
+A durable task that waits on a run stays waiting until its owner steps in. A webhook-driven wake is not built yet.
 [Event delivery](../durable_tasks.md#event-delivery) owns deadlines, duplicate handling and competing transitions.
 
 ```text
@@ -143,12 +143,12 @@ CI(Z1) event missed -> wait stays armed, no inference
 CI(D) passes -> Import continuation -> accepted goal + native proof -> done
 ```
 
-Each continuation rechecks current workspace access, repository grants, target identity and remaining task limits.
+Each continuation rechecks current workspace access, repository grants, target identity and remaining durable task limits.
 Duplicate events, old heads and replaced wait generations cannot complete newer work.
-A missed event costs no model call or restore; the wait stays armed until a signed event matches it or the task's deadline passes.
+A missed event costs no model call or restore; the wait stays armed until a signed event matches it or the durable task's deadline passes.
 
 Jev proposes a goal result against the accepted questions and current evidence.
-Native proof checks decide whether the task may finish.
+Native proof checks decide whether the durable task may finish.
 [Goal evaluation](../goal_evaluation.md#goal-evaluation) owns malformed, unavailable, contradictory and stale judgments.
 
 A pause, cancellation, deadline or revoked grant must prevent prohibited new effects and later restarts.
@@ -170,7 +170,7 @@ Existing schedule -> bounded Grafana observation
                                      |
                           human-approved PR repair scope
                                      |
-                          three-task repair sequence above
+                          three-durable-task repair sequence above
                                      |
                           separate human merge/deploy approval
                                      |
@@ -182,7 +182,7 @@ Existing schedule -> bounded Grafana observation
 ```
 
 The scheduled observer uses a configured Slack destination and stable incident correlation.
-Repeated failing observations must not create duplicate notices or repair tasks.
+Repeated failing observations must not create duplicate notices or repair durable tasks.
 Detection alone grants no permission to repair, and setup capability does not imply unlimited standing work approval.
 
 This scenario requires an authorized human to approve the repair scope.
@@ -199,19 +199,19 @@ Elasticsearch and a new scheduler are not prerequisites for this controlled Graf
 
 ## What Indy sees
 
-The source includes CLI decision/transfer progress and browser task readback.
+The source includes CLI decision/transfer progress and browser durable task readback.
 Their presence does not prove the combined live scenario.
 The acceptance ledger records verification status separately from screenshots and illustrative transcripts.
 
 | Surface | Expected observation |
 |---|---|
 | Ordinary chat | Brief action/results, saved status with freshness, natural-language steering and clarification only for ambiguous targets. |
-| PR badge | Standard pull-request icon and actual PR number, linked through one explicit native task identity. |
-| Durable tasks | Task purpose and recorded action or wait reason; accepted objective, criteria and controls behind a disclosure. |
-| Outputs | Native PR targets, including bounded history from saved task activity; local edits do not prove publication. |
+| PR badge | Standard pull-request icon and actual PR number, linked through one explicit native durable task identity. |
+| Durable tasks | Durable task purpose and recorded action or wait reason; accepted objective, criteria and controls behind a disclosure. |
+| Outputs | Native PR targets, including bounded history from saved durable task activity; local edits do not prove publication. |
 | Changes | Recorded file writes with expandable details; no new diff service. |
 | Sources | Saved fleet repository policy, without claiming fresh remote grants. |
-| CLI | Native task identity and decision/transfer observations through the existing attached turn stream. |
+| CLI | Native durable task identity and decision/transfer observations through the existing attached turn stream. |
 | Recovery | Restoration, uncertain publication readback and confirmed resumed work remain distinguishable. |
 
 A waiting summary can name the actual CI run and head when native evidence supplies them.
@@ -230,13 +230,13 @@ M236 completion depends on the [active acceptance ledger](../../../playbooks/ope
 
 | Proof | Evidence to retain |
 |---|---|
-| Three assigned repairs | Actual PR URLs, accepted objectives/questions, stable task identities and one active fleet run. |
+| Three assigned repairs | Actual PR URLs, accepted objectives/questions, stable durable task identities and one active fleet run. |
 | Conversation and steering | Greeting with a complete empty tool-call inventory; saved status; accepted A3; ambiguous-target clarification; duplicate A2 replay. |
 | Publication and recovery | Exact tested trees/heads, unknown E1 readback, worker replacement, compatible G1/G2 coverage and accepted-input replay. |
 | CI continuation | Signed, duplicate, stale, fast and missed completion cases; one effective wake; final current-head checks and unchanged regressions. |
 | Authority and limits | Human advancement, revoked grants, closed PRs, pause/cancel, deadlines and exhausted limits stop prohibited effects. |
 | Grafana and Slack | Quiet/failing/recovered windows, deployed revision, bounded queries, stable incident identity and configured destination receipts. |
-| User surfaces | Actual CLI capture and browser evidence for native task attribution, reconnection, readable progress, preserved drafts and stable scrolling. |
+| User surfaces | Actual CLI capture and browser evidence for native durable task attribution, reconnection, readable progress, preserved drafts and stable scrolling. |
 
 Mechanism pages own API collections, Rust interfaces, provider limits and checkpoint formats.
 This page owns their combined worked example and its remaining proof.

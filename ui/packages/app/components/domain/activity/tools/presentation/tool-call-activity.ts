@@ -58,9 +58,9 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
 function describe(name: string, args: ToolArgs | undefined): Description {
   const target = args === undefined ? ARGS_NOT_RECORDED : pathArg(args);
   switch (name) {
-    case TOOL_NAME.FILE_READ: case TOOL_NAME.FILE_READ_HASHED:
+    case TOOL_NAME.FILE_READ:
       return {running: "Reading file", done: "Read file", target, kind: "read"};
-    case TOOL_NAME.FILE_WRITE: case TOOL_NAME.FILE_APPEND: case TOOL_NAME.FILE_EDIT: case TOOL_NAME.FILE_EDIT_HASHED: case TOOL_NAME.FILE_DELETE:
+    case TOOL_NAME.FILE_WRITE: case TOOL_NAME.FILE_EDIT:
       return {...toolCopy(name, undefined).verbs, target, kind: "write"};
     case TOOL_NAME.APPLY_PATCH: return {running: "Editing files", done: "Edited files", target: "", kind: "write"};
     case TOOL_NAME.EXEC_COMMAND: case TOOL_NAME.SHELL:

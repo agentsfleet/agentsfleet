@@ -211,7 +211,10 @@ impl Desk {
 fn file_edit(old: &str) -> Call {
     Call {
         name: "file_edit".to_owned(),
-        arguments: serde_json::json!({"path": "src/a.rs", "old_text": old, "new_text": added()}),
+        arguments: serde_json::json!({
+            "path": "src/a.rs",
+            "edits": [{"old_text": old, "new_text": added()}],
+        }),
         ..planned()
     }
 }

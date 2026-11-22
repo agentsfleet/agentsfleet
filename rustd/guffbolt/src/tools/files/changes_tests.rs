@@ -1,6 +1,6 @@
 //! An edit's line counts and the report that carries them.
 
-use super::{Change, HEADER, appended, report, reported};
+use super::{Change, HEADER, report, reported};
 
 /// `count` numbered lines, each `prefix` then its number, joined.
 fn numbered(prefix: &str, count: usize) -> String {
@@ -158,27 +158,7 @@ fn a_reported_path_holds_no_control_character() {
     assert_eq!(reported(&forged), Vec::new(), "a raw line break is refused");
 }
 
-/// Appending counts against the file's open last line: text joined to a line
-/// with no line break changes it, and text after a line break only adds.
-#[test]
-fn an_append_counts_the_last_line_it_extends() {
-    assert_eq!(appended("f", "one\ntwo", "three\n"), change("f", 1, 1));
-    assert_eq!(appended("f", "one\ntwo", "\nthree\n"), change("f", 1, 0));
-    assert_eq!(appended("f", "one\n", "two\nthree\n"), change("f", 2, 0));
-    assert_eq!(appended("f", "", "one"), change("f", 1, 0));
-    assert_eq!(appended("f", "one", ""), change("f", 0, 0));
-}
-
 #[test]
 fn the_edit_tools_are_named_as_the_model_calls_them() {
-    assert_eq!(
-        super::EDITS,
-        [
-            "file_write",
-            "file_append",
-            "file_edit",
-            "file_edit_hashed",
-            "apply_patch"
-        ]
-    );
+    assert_eq!(super::EDITS, ["file_write", "file_edit", "apply_patch"]);
 }

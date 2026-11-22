@@ -171,7 +171,7 @@ An item lives as long as its turn. When its run row is deleted, as a runner's de
 
 ## thread.deliveries
 
-One row per answer owed to one destination. It replaces `fleet.obligations`.
+One row per answer owed to one destination.
 
 | Column | Type | Null | Came from | Why |
 |--------|------|------|-----------|-----|

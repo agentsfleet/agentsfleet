@@ -147,7 +147,7 @@ impl Fixture {
     /// The negative that makes "acknowledged and dropped" mean something: an
     /// acknowledgement is only correct while nothing acted on the delivery, and
     /// a status code cannot show that.
-    pub(super) async fn fleet_events(&self) -> i64 {
+    pub(super) async fn fleet_turns(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM thread.turns e \

@@ -3,10 +3,7 @@
 //! link out of the workspace is refused by the executor's handle inside it.
 
 use afr_sandbox::{Engine, Limits, SandboxRequest};
-use afr_tools::catalog::{
-    APPLY_PATCH, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_EDIT_HASHED, FILE_READ,
-    FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
-};
+use afr_tools::catalog::{APPLY_PATCH, FILE_EDIT, FILE_READ, FILE_WRITE, IMAGE, SHELL};
 use afr_tools::{Run, ToolErrorCode};
 use guffbolt::ToolOutput;
 use libtest_mimic::Failed;
@@ -20,14 +17,12 @@ use crate::tools::called;
 const PATH: &str = "path";
 const CONTENT: &str = "content";
 const COMMAND: &str = "command";
+const EDITS: &str = "edits";
 const OLD_TEXT: &str = "old_text";
 const NEW_TEXT: &str = "new_text";
-const TARGET: &str = "target";
 const PATCH_FIELD: &str = "patch";
 /// The file the trial works on.
 const TODO: &str = "notes/todo.txt";
-/// The line two tools in turn write as the file's second.
-const TWO: &str = "two";
 /// What the file holds once every tool has had its turn.
 const FINAL: &str = "one\nTWO\nthree\n";
 /// The image a trial writes, eight bytes of PNG, and where.
@@ -48,20 +43,18 @@ const PATCH: &str = concat!(
     "+TWO\n",
     "*** End Patch\n",
 );
+/// A patch that removes the file the first one added.
+const DELETE_EXTRA: &str = "*** Begin Patch\n*** Delete File: notes/extra.txt\n*** End Patch\n";
 
 /// One call, built from the answers before it.
 type Step = fn(&[ToolOutput]) -> (&'static str, Value);
 
 /// The tools the trials call: each one a run builds over the sandbox.
-const NAMES: [&str; 10] = [
+const NAMES: [&str; 6] = [
     SHELL.name(),
     FILE_READ.name(),
-    FILE_READ_HASHED.name(),
     FILE_WRITE.name(),
-    FILE_APPEND.name(),
-    FILE_DELETE.name(),
     FILE_EDIT.name(),
-    FILE_EDIT_HASHED.name(),
     APPLY_PATCH.name(),
     IMAGE.name(),
 ];
@@ -88,16 +81,6 @@ fn in_fresh_sandbox(lane: &Lane, run_id: &str, steps: &[Step]) -> Result<Vec<Too
     })
 }
 
-/// The tag of line `number` in the last `file_read_hashed` answer.
-fn tag_from(answers: &[ToolOutput], number: usize) -> String {
-    answers
-        .last()
-        .and_then(|read| read.text.lines().nth(number - 1))
-        .and_then(|line| line.split('|').next())
-        .unwrap_or_default()
-        .to_owned()
-}
-
 /// A trial that got other than `expected` answers.
 fn wrong_count(expected: usize, outputs: &[ToolOutput]) -> Failed {
     format!("{expected} answers, got {outputs:?}").into()
@@ -114,30 +97,29 @@ fn all_succeeded(outputs: &[ToolOutput]) -> Result<(), Failed> {
     Ok(())
 }
 
-/// Write, append, read, edit, the hashed pair and `apply_patch` each work
-/// the workspace from inside the sandbox, as its user, and a delete removes
-/// what they made.
+/// `file_edit`'s arguments on `path`, one edit for each `(old, new)` pair.
+fn edits(path: &str, pairs: &[(&str, &str)]) -> Value {
+    let edits: Vec<Value> = pairs
+        .iter()
+        .map(|(old, new)| json!({OLD_TEXT: old, NEW_TEXT: new}))
+        .collect();
+    json!({PATH: path, EDITS: edits})
+}
+
+/// Write, read, edit and `apply_patch` each work the workspace from inside
+/// the sandbox, as its user, and a patch's removal takes away what one added.
 pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
-    let steps: [Step; 12] = [
-        |_before| (FILE_WRITE.name(), json!({PATH: TODO, CONTENT: "one\n"})),
+    let steps: [Step; 9] = [
         |_before| {
             (
-                FILE_APPEND.name(),
-                json!({PATH: TODO, CONTENT: "2\nthree\n"}),
+                FILE_WRITE.name(),
+                json!({PATH: TODO, CONTENT: "one\n2\n3\n"}),
             )
         },
         |_before| {
             (
                 FILE_EDIT.name(),
-                json!({PATH: TODO, OLD_TEXT: "2", NEW_TEXT: TWO}),
-            )
-        },
-        |_before| (FILE_READ_HASHED.name(), json!({PATH: TODO})),
-        |before| {
-            let tag = tag_from(before, 2);
-            (
-                FILE_EDIT_HASHED.name(),
-                json!({PATH: TODO, TARGET: tag, NEW_TEXT: TWO}),
+                edits(TODO, &[("2", "two"), ("3", "three")]),
             )
         },
         |_before| (APPLY_PATCH.name(), json!({PATCH_FIELD: PATCH})),
@@ -145,17 +127,14 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
         |_before| (SHELL.name(), json!({COMMAND: OWNED})),
         |_before| (SHELL.name(), json!({COMMAND: WRITE_PNG})),
         |_before| (IMAGE.name(), json!({PATH: SHOT})),
-        |_before| (FILE_DELETE.name(), json!({PATH: "notes/extra.txt"})),
+        |_before| (APPLY_PATCH.name(), json!({PATCH_FIELD: DELETE_EXTRA})),
         |_before| (SHELL.name(), json!({COMMAND: "ls notes"})),
     ];
     let outputs = in_fresh_sandbox(lane, "files-inside", &steps)?;
     all_succeeded(&outputs)?;
     let [
         _write,
-        _append,
         _edit,
-        _hashed,
-        _rehashed,
         patched,
         read,
         owned,
@@ -208,17 +187,17 @@ pub(crate) fn file_tools_refuse_link_out(lane: &Lane) -> Result<(), Failed> {
                 json!({PATH: "link/planted", CONTENT: "x"}),
             )
         },
-        |_before| (FILE_DELETE.name(), json!({PATH: "../etc/passwd"})),
+        |_before| (FILE_EDIT.name(), edits("../etc/passwd", &[("root", "x")])),
     ];
     let outputs = in_fresh_sandbox(lane, "files-link-out", &steps)?;
-    let [linked, read, written, deleted] = outputs.as_slice() else {
+    let [linked, read, written, edited] = outputs.as_slice() else {
         return Err(wrong_count(steps.len(), &outputs));
     };
     expect(
         linked.text.trim() == "linked",
         format!("the link was made, got {linked:?}"),
     )?;
-    for refused in [read, written, deleted] {
+    for refused in [read, written, edited] {
         expect(
             refused.error_code == Some(ToolErrorCode::PathNotAllowed.into()),
             format!("path_not_allowed, got {refused:?}"),

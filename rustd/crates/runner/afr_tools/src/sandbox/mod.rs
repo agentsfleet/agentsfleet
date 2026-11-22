@@ -22,8 +22,6 @@ mod files;
 #[cfg(test)]
 mod git;
 #[cfg(test)]
-mod hashed;
-#[cfg(test)]
 mod image;
 #[cfg(test)]
 mod oneshot;

@@ -59,3 +59,36 @@ fn an_empty_config_offers_nothing() {
 
     assert_eq!(names(&tools), Vec::<String>::new());
 }
+
+/// Each default set offers exactly its tools, in its order, over the
+/// environment alone: a builder given nothing else builds it whole.
+#[test]
+fn each_default_set_offers_exactly_its_tools_over_the_environment() {
+    let root = tempfile::tempdir().expect("a scratch directory");
+    let env = crate::tools::LocalEnv::new(root.path()).expect("the directory exists");
+    let build = |config: &ToolsConfig| {
+        Tools::builder()
+            .with_env(&env)
+            .build(config)
+            .map(|tools| names(&tools))
+            .expect("the environment is all either set needs")
+    };
+
+    assert_eq!(
+        build(&ToolsConfig::coding()),
+        [
+            "file_read",
+            "file_write",
+            "file_edit",
+            "apply_patch",
+            "shell",
+            "ls",
+            "find",
+            "grep"
+        ]
+    );
+    assert_eq!(
+        build(&ToolsConfig::read_only()),
+        ["file_read", "ls", "find", "grep"]
+    );
+}

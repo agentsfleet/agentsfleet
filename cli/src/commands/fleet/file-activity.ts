@@ -2,7 +2,7 @@ import { isNumber, isRecord, isString } from "../../lib/guards.ts";
 import { activityText } from "./task-activity.ts";
 
 /** The tools whose recorded changes are an edit's files and line counts. */
-const EDIT_TOOLS: ReadonlySet<string> = new Set(["file_write", "file_append", "file_edit", "file_edit_hashed", "apply_patch"]);
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["file_write", "file_edit", "apply_patch"]);
 const SUCCEEDED = "succeeded";
 const MINUS = "−";
 

@@ -60,20 +60,14 @@ impl Env for ReadOnly {
     }
 }
 
-/// An edit, a tagged edit and a patch's removal the disk refuses each read
-/// the disk's refusal, and the file stays as it was.
+/// An edit and a patch's removal the disk refuses each read the disk's
+/// refusal, and the file stays as it was.
 #[tokio::test]
 async fn an_edit_or_a_removal_the_disk_refuses_reads_its_refusal() {
     let desk = Desk::new();
     desk.put("f.txt", "a\nb\n");
     let env = ReadOnly(LocalEnv::new(desk.path("")).expect("the directory exists"));
-    let config = ToolsConfig::new([
-        "file_edit",
-        "file_read_hashed",
-        "file_edit_hashed",
-        "apply_patch",
-    ])
-    .expect("four names");
+    let config = ToolsConfig::new(["file_edit", "apply_patch"]).expect("two names");
     let tools = Tools::builder()
         .with_env(&env)
         .build(&config)
@@ -82,14 +76,7 @@ async fn an_edit_or_a_removal_the_disk_refuses_reads_its_refusal() {
     let edited = call(
         &tools,
         "file_edit",
-        json!({"path": "f.txt", "old_text": "a", "new_text": "A"}),
-    )
-    .await;
-    let read = call(&tools, "file_read_hashed", json!({"path": "f.txt"})).await;
-    let hashed = call(
-        &tools,
-        "file_edit_hashed",
-        json!({"path": "f.txt", "target": tag_of(&read.text, 1), "new_text": "A"}),
+        json!({"path": "f.txt", "edits": [{"old_text": "a", "new_text": "A"}]}),
     )
     .await;
     let patched = call(
@@ -101,7 +88,6 @@ async fn an_edit_or_a_removal_the_disk_refuses_reads_its_refusal() {
 
     let refusal = format!("[sandbox_unavailable] {READ_ONLY}");
     assert_eq!(edited.text, refusal);
-    assert_eq!(hashed.text, refusal);
     assert_eq!(patched.text, refusal);
     assert_eq!(desk.text("f.txt").as_deref(), Some("a\nb\n"));
 }

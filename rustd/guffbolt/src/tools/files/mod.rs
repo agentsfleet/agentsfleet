@@ -1,9 +1,8 @@
 //! The file tools, over the environment's file calls.
 //!
-//! `file_write`, `file_append`, `file_delete` and `file_edit` live here;
-//! `file_read` pages in `read`, the hashed pair and `apply_patch` beside it,
-//! `image` shows the model a picture, and `ls`, `find` and `grep` look
-//! around. Each tool that changes a file's lines ends its answer with the
+//! `file_write` lives here; `file_read` pages in `read`, `file_edit`
+//! replaces texts in `edit`, `apply_patch` sits beside them, `image` shows
+//! the model a picture, and `ls`, `find` and `grep` look around. Each tool that changes a file's lines ends its answer with the
 //! lines it added and removed (`changes`).
 //!
 //! Every path is checked here before any call: `..` and an absolute path
@@ -26,14 +25,14 @@ use crate::tools::{Context, Handler, code};
 
 pub mod apply_patch;
 pub mod changes;
-pub mod hashed;
+pub mod edit;
 pub mod image;
 pub mod listing;
 pub mod read;
 
 pub use self::apply_patch::ApplyPatch;
 pub use self::changes::Change;
-pub use self::hashed::{FileEditHashed, FileReadHashed};
+pub use self::edit::FileEdit;
 pub use self::image::ImageTool;
 pub use self::listing::{Find, Grep, Ls};
 pub use self::read::FileRead;
@@ -129,15 +128,7 @@ pub(crate) async fn whole(env: &dyn Env, path: &str) -> Result<String, ToolOutpu
     })
 }
 
-/// `file_delete`'s arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Named {
-    /// The file, relative to the working directory.
-    path: String,
-}
-
-/// `file_write`'s and `file_append`'s arguments.
+/// `file_write`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Content {
@@ -146,18 +137,6 @@ pub struct Content {
     path: String,
     /// The text to write.
     content: String,
-}
-
-/// `file_edit`'s arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Replacement {
-    /// The file, relative to the working directory.
-    path: String,
-    /// The text to find; its first occurrence is replaced.
-    old_text: String,
-    /// What replaces it.
-    new_text: String,
 }
 
 backed! {
@@ -191,106 +170,4 @@ async fn write(env: &dyn Env, arguments: Content) -> Answer {
         &text,
         change.as_slice(),
     )))
-}
-
-backed! {
-    /// Adds to the end of a file.
-    FileAppend over Env
-}
-
-impl Handler for FileAppend<'_> {
-    const NAME: &'static str = "file_append";
-    const DESCRIPTION: &'static str = "Add text to the end of a file in the working directory, \
-        making the file when it does not exist.";
-    type Arguments = Content;
-
-    async fn run(&self, arguments: Content, _context: Context<'_>) -> ToolOutput {
-        settled(append(self.backend, arguments).await)
-    }
-}
-
-async fn append(env: &dyn Env, arguments: Content) -> Answer {
-    let path = inside(env, &arguments.path)?;
-    let bytes = arguments.content.len();
-    // Read before the append: text added to a last line with no line break
-    // changes that line. A file that cannot be read whole as text is added
-    // to uncounted, as a write over one is.
-    let extended = changes::before(env, path).await;
-    let change = extended.map(|before| changes::appended(path, &before, &arguments.content));
-    env.append_file(path, Bytes::from(arguments.content))
-        .await
-        .map_err(|failure| failed(&failure))?;
-    let text = format!("Appended {bytes} bytes to {path}");
-    Ok(ToolOutput::succeeded(changes::report(
-        &text,
-        change.as_slice(),
-    )))
-}
-
-backed! {
-    /// Removes a file.
-    FileDelete over Env
-}
-
-impl Handler for FileDelete<'_> {
-    const NAME: &'static str = "file_delete";
-    const DESCRIPTION: &'static str = "Delete a file in the working directory. Directories and \
-        links are not deleted.";
-    type Arguments = Named;
-
-    async fn run(&self, arguments: Named, _context: Context<'_>) -> ToolOutput {
-        settled(delete(self.backend, &arguments.path).await)
-    }
-}
-
-async fn delete(env: &dyn Env, path: &str) -> Answer {
-    let path = inside(env, path)?;
-    env.delete_file(path)
-        .await
-        .map_err(|failure| failed(&failure))?;
-    Ok(ToolOutput::succeeded(format!("Deleted {path}")))
-}
-
-backed! {
-    /// Replaces text in a file.
-    FileEdit over Env
-}
-
-impl Handler for FileEdit<'_> {
-    const NAME: &'static str = "file_edit";
-    const DESCRIPTION: &'static str = "Find text in a file in the working directory and \
-        replace its first occurrence. The file must be text and fit one read.";
-    type Arguments = Replacement;
-
-    async fn run(&self, arguments: Replacement, _context: Context<'_>) -> ToolOutput {
-        settled(edit(self.backend, &arguments).await)
-    }
-}
-
-async fn edit(env: &dyn Env, arguments: &Replacement) -> Answer {
-    let path = inside(env, &arguments.path)?;
-    if arguments.old_text.is_empty() {
-        return Err(ToolOutput::failed(
-            code::INVALID_ARGUMENTS,
-            "old_text must not be empty",
-        ));
-    }
-    let text = whole(env, path).await?;
-    if !text.contains(&arguments.old_text) {
-        return Err(ToolOutput::failed(
-            code::TEXT_NOT_FOUND,
-            &format!("{path} does not contain old_text"),
-        ));
-    }
-    let edited = text.replacen(&arguments.old_text, &arguments.new_text, 1);
-    let change = Change::between(path, &text, &edited);
-    env.write_file(path, Bytes::from(edited))
-        .await
-        .map_err(|failure| failed(&failure))?;
-    let text = format!(
-        "Replaced {} bytes with {} bytes in {path}",
-        arguments.old_text.len(),
-        arguments.new_text.len()
-    );
-    Ok(ToolOutput::succeeded(changes::report(&text, &[change])))
 }

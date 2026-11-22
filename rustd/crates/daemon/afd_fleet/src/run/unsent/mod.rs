@@ -3,8 +3,8 @@
 //!
 //! The gateway writes a run before it charges, records and hands over its
 //! frame. When one of those fails, the runner never heard of the run, and
-//! left alone it would hold its thread until its lease lapsed, then be
-//! billed the lease as runtime. Released here, the run ends expired with
+//! left alone it would hold its thread until the run expired, then be
+//! billed that time as runtime. Released here, the run ends expired with
 //! nothing to bill, its thread is freed, and the next assignment, on any
 //! runner, takes the same work at the next fence. A frame too large ever to
 //! send is not released: the gateway fails that run, since a retry would fail

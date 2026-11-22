@@ -7,7 +7,7 @@ test("a confirmed edit prints the files and counts the runner recorded", () => {
   const changes = [{path: "src/a.rs", added: 24, removed: 8}, {path: "README.md", added: 1, removed: 0}];
   expect(fileActivity("apply_patch", changes, "succeeded"))
     .toBe("Confirmed local edit · not a publication\nsrc/a.rs +24 −8\nREADME.md +1 −0");
-  for (const tool of ["file_write", "file_append", "file_edit", "file_edit_hashed"]) {
+  for (const tool of ["file_write", "file_edit"]) {
     expect(fileActivity(tool, changes, "succeeded")).toStartWith("Confirmed local edit");
   }
 });
@@ -34,7 +34,7 @@ test("an edit's arguments are never diffed into a preview", () => {
   const lines: string[] = [];
   const printer = new ToolActivityPrinter(line => lines.push(line));
   printer.frame("tool_call_completed", {name: "file_edit", status: "succeeded", call_id: "1",
-    args_redacted: {path: "x", old_text: "before", new_text: "after"}});
+    args_redacted: {path: "x", edits: [{old_text: "before", new_text: "after"}]}});
   expect(lines[0]).not.toContain("- before");
   expect(lines[0]).toContain('"old_text": "before"');
   printer.history({calls: [{call_id: "9:2", name: "file_edit", arguments: {path: "x"}, status: "succeeded", duration_ms: 3,

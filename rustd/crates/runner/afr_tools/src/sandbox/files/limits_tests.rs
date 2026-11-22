@@ -8,7 +8,7 @@
 use afr_executor::MAX_READ_BYTES;
 use serde_json::json;
 
-use super::tests::{NEW_TEXT, OLD_TEXT, PATH};
+use super::tests::{PATH, edit};
 use crate::catalog::{FILE_EDIT, FILE_READ};
 use crate::run::Run;
 use crate::runtime::ToolErrorCode;
@@ -39,7 +39,7 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
         offered(&selection, &FILE_EDIT),
         &live.client,
         &run,
-        json!({PATH: "big.txt", OLD_TEXT: "x", NEW_TEXT: "y"}),
+        edit("big.txt", "x", "y"),
     )
     .await;
     let past = call_in(
@@ -103,7 +103,7 @@ async fn a_file_that_is_not_text_is_read_lossily_and_refused_for_editing() {
         offered(&selection, &FILE_EDIT),
         &live.client,
         &run,
-        json!({PATH: "blob", OLD_TEXT: "a", NEW_TEXT: "b"}),
+        edit("blob", "a", "b"),
     )
     .await;
 

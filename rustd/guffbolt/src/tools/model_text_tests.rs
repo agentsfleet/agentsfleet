@@ -141,8 +141,8 @@ fn guffbolt_tool_specs_name_no_host_product() {
 
     assert_eq!(
         tools.len(),
-        49,
-        "the 45 built-ins, the seven subagent tools among them, tool_search and the three MCP \
+        45,
+        "the 41 built-ins, the seven subagent tools among them, tool_search and the three MCP \
          resource tools are each checked"
     );
     assert_eq!(

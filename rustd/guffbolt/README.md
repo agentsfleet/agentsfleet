@@ -522,7 +522,7 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 
 | Backend | Setter | Tools | Local default |
 |---|---|---|---|
-| `Env` | `with_env` | `shell`, `git`, `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
+| `Env` | `with_env` | `shell`, `git`, `file_read`, `file_write`, `file_edit`, `apply_patch`, `image`, `ls`, `find`, `grep`, `browser_open`, `browser`, `screenshot` | `LocalEnv`: this host's processes, the files under one directory |
 | `Env` and `Sessions` | `with_env`, `with_sessions` | `exec_command`, `write_stdin` | `Sessions`: the processes a run keeps open |
 | `Outbound` | `with_outbound` | `http_request`, `web_fetch`, MCP servers over HTTP | `LocalOutbound`: HTTPS only, to the public hosts an `Allowlist` names |
 | `MemoryStore` | `with_memory` | `memory_store`, `memory_recall`, `memory_list`, `memory_forget` | `LocalMemory`: one process's map |
@@ -533,6 +533,10 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 | none | | `update_plan`, `ask_user`, `current_time`, `sleep` | |
 
 A `ToolsConfig` lists tool names, and a single `*` matches a family, such as `memory_*` or `mcp__docs__*`. A name whose backend you did not give fails `build` with `MissingBackend`, naming both, before any step runs. A pattern offers only what the builder can build.
+
+Two sets come named. `ToolsConfig::coding()` offers `file_read`, `file_write`, `file_edit`, `apply_patch`, `shell`, `ls`, `find` and `grep`. `ToolsConfig::read_only()` offers `file_read`, `ls`, `find` and `grep`, and changes nothing. Both run over the environment alone, so a builder given `with_env` builds either whole.
+
+`file_edit` takes a `path` and `edits`, each an `old_text` and its `new_text`. Each `old_text` must match the file exactly and once, as it was before the call, and no two edits may overlap. Text the file lacks fails `[text_not_found]`, text it holds more than once fails `[text_not_unique]` with the count, and either leaves the file unwritten.
 
 `with_repository` names the directory `git` runs in. `with_image_input` says whether the model's wire takes the picture `image` reads. `Local` holds a local environment, sessions, network and memory, and `Local::builder` starts a builder over them.
 

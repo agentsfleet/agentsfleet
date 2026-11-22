@@ -122,8 +122,8 @@ describe("FleetThread — tool cells", () => {
   it("test_tool_cell_bullet_follows_status", () => {
     const failed = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, status: FAILED, outputHead: "denied" });
     renderCalls([
-      call({ name: TOOL_NAME.FILE_DELETE }), failed, call({ name: TOOL_NAME.FILE_DELETE, status: INTERRUPTED }),
-      call({ name: TOOL_NAME.FILE_DELETE, status: undefined }), running({ name: TOOL_NAME.FILE_DELETE }),
+      call({ name: TOOL_NAME.FILE_WRITE }), failed, call({ name: TOOL_NAME.FILE_WRITE, status: INTERRUPTED }),
+      call({ name: TOOL_NAME.FILE_WRITE, status: undefined }), running({ name: TOOL_NAME.FILE_WRITE }),
     ], RECEIVED);
     const [ok, bad, cut, unsaid, live] = cells();
     expect(bulletOf(ok!).getAttribute("class")).toContain("text-muted-foreground");
@@ -144,7 +144,7 @@ describe("FleetThread — tool cells", () => {
     const eight = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n");
     renderCalls([
       call({ name: TOOL_NAME.HTTP_REQUEST, callId: CALL_ID, outputHead: eight, outputLineCount: 8 }),
-      call({ name: TOOL_NAME.FILE_DELETE, outputHead: "one\ntwo\nthree", outputLineCount: 4 }),
+      call({ name: TOOL_NAME.FILE_WRITE, outputHead: "one\ntwo\nthree", outputLineCount: 4 }),
     ]);
     const [long, short] = cells();
     expect(long!.textContent).toContain("└line 1");
@@ -160,9 +160,9 @@ describe("FleetThread — tool cells", () => {
 
   it("test_tool_cell_names_empty_and_unknown_output", () => {
     renderCalls([
-      call({ name: TOOL_NAME.FILE_DELETE, outputHead: "", outputLineCount: 0 }),
-      call({ name: TOOL_NAME.FILE_DELETE, status: undefined }),
-      call({ name: TOOL_NAME.FILE_DELETE, status: INTERRUPTED }),
+      call({ name: TOOL_NAME.FILE_WRITE, outputHead: "", outputLineCount: 0 }),
+      call({ name: TOOL_NAME.FILE_WRITE, status: undefined }),
+      call({ name: TOOL_NAME.FILE_WRITE, status: INTERRUPTED }),
     ]);
     const [empty, unsaid, cut] = cells();
     expect(empty!.textContent).toContain(`└${EMPTY_OUTPUT}`);
@@ -170,7 +170,7 @@ describe("FleetThread — tool cells", () => {
     expect(cut!.textContent).toContain(`└${OUTPUT_UNAVAILABLE}`);
     // A running call shows no body yet.
     cleanup();
-    renderCalls([running({ name: TOOL_NAME.FILE_DELETE })], RECEIVED);
+    renderCalls([running({ name: TOOL_NAME.FILE_WRITE })], RECEIVED);
     expect(cells()[0]!.textContent).not.toContain("└");
   });
 
@@ -193,9 +193,9 @@ describe("FleetThread — tool cells", () => {
 
   it("test_edit_cell_renders_its_recorded_changes", () => {
     renderCalls([
-      call({ name: TOOL_NAME.FILE_EDIT, args: { path: "/workspace/deploy.yaml", old_text: "a\nb", new_text: "a\nc\nd" },
+      call({ name: TOOL_NAME.FILE_EDIT, args: { path: "/workspace/deploy.yaml", edits: [{ old_text: "a\nb", new_text: "a\nc\nd" }] },
         changes: [{ path: "deploy.yaml", added: 24, removed: 8 }] }),
-      call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
+      call({ name: TOOL_NAME.FILE_EDIT, args: { path: "big.md", edits: [{ old_text: "x".repeat(300), new_text: "y" }] }, callId: CALL_ID }),
     ]);
     const [edit, unrecorded] = cells();
     expect(headerOf(edit!)).toMatch(/^Edited file Success$/);
@@ -256,7 +256,7 @@ describe("FleetThread — tool cells", () => {
     const saved: SavedToolCall[] = [
       { call_id: "f1:0", name: TOOL_NAME.FILE_READ, arguments: { path: "/workspace/a.md" }, status: SUCCEEDED, output_head: "# A", output_line_count: 1, duration_ms: DONE_MS },
       { call_id: "f1:1", name: TOOL_NAME.HTTP_REQUEST, arguments: { method: "POST", url: "https://x" }, status: FAILED, output_head: "denied", output_line_count: 1, duration_ms: DONE_MS },
-      { call_id: "f1:2", name: TOOL_NAME.FILE_EDIT, arguments: { path: "d.yaml", old_text: "a\nb", new_text: "a\nc" }, status: SUCCEEDED, duration_ms: DONE_MS },
+      { call_id: "f1:2", name: TOOL_NAME.FILE_EDIT, arguments: { path: "d.yaml", edits: [{ old_text: "a\nb", new_text: "a\nc" }] }, status: SUCCEEDED, duration_ms: DONE_MS },
     ];
     const settled = { turn_id: "evt_reload", actor: "steer:user_abc", status: PROCESSED, response_text: "Done." };
     // Live: the same calls frame by frame through the reducer, then the turn settles.
@@ -317,7 +317,7 @@ describe("FleetThread — tool cells", () => {
   });
 
   it("test_failed_edit_shows_its_error", () => {
-    renderCalls([call({ name: TOOL_NAME.FILE_EDIT, status: FAILED, args: { path: "d.yaml", old_text: "a", new_text: "b" }, outputHead: "old_text not found", outputLineCount: 1 })]);
+    renderCalls([call({ name: TOOL_NAME.FILE_EDIT, status: FAILED, args: { path: "d.yaml", edits: [{ old_text: "a", new_text: "b" }] }, outputHead: "old_text not found", outputLineCount: 1 })]);
     const [edit] = cells();
     // A failed edit changed nothing, so it counts nothing; the error says it did not apply.
     expect(edit!.querySelector("[data-changed-file], [data-diff]")).toBeNull();
@@ -334,13 +334,13 @@ describe("FleetThread — tool cells", () => {
   });
 
   it("test_omitted_calls_render_count", () => {
-    renderCalls([call({ name: TOOL_NAME.FILE_DELETE })], PROCESSED, { omittedCallCount: 4 });
+    renderCalls([call({ name: TOOL_NAME.FILE_WRITE })], PROCESSED, { omittedCallCount: 4 });
     expect(screen.getByText("4 more calls not recorded")).toBeTruthy();
     cleanup();
-    renderCalls([call({ name: TOOL_NAME.FILE_DELETE })], PROCESSED, { omittedCallCount: 1 });
+    renderCalls([call({ name: TOOL_NAME.FILE_WRITE })], PROCESSED, { omittedCallCount: 1 });
     expect(screen.getByText("1 more call not recorded")).toBeTruthy();
     cleanup();
-    renderCalls([call({ name: TOOL_NAME.FILE_DELETE })]);
+    renderCalls([call({ name: TOOL_NAME.FILE_WRITE })]);
     expect(screen.queryByText(/more calls? not recorded/)).toBeNull();
   });
 });
