@@ -1,13 +1,13 @@
 //! The runner's outbound guard.
 //!
 //! A supervisor-side tool hands its request to the run's [`Egress`] as a
-//! [`Draft`]. It is admitted against the run's network policy and the
+//! [`Draft`]. It is checked against the run's network policy and the
 //! daemon's origin rules before any connection exists; its
 //! `${secrets.NAME.FIELD}` placeholders are put in place at send time, from the
 //! run's static secrets or a token minted once per run; and it leaves
 //! through a [`Transport`] whose resolver never answers a private address. Only
 //! this crate builds an [`Outbound`], so nothing reaches a transport without
-//! admission. What comes back is masked for every minted token before a tool
+//! the policy check. What comes back is masked for every minted token before a tool
 //! reads it (`docs/architecture/runner_fleet.md` §"Egress model: outbound is
 //! the only network surface").
 
@@ -20,20 +20,19 @@ pub mod fixture;
 #[cfg(any(test, feature = "test-util"))]
 pub mod testing;
 
-mod admission;
 mod allowlist;
 mod egress;
 mod mint;
 mod network;
 mod origin;
 mod placeholder;
+mod policy;
 pub mod redirect;
 mod refusal;
 mod resolve;
 mod transport;
 mod vault;
 
-pub use self::admission::{Draft, Placement};
 pub use self::allowlist::allowlist_host;
 pub use self::egress::Egress;
 pub use self::error::{Error, Result};
@@ -41,6 +40,7 @@ pub use self::mint::{Mint, Minted};
 pub use self::network::{
     Limits, Network, REQUEST_TIMEOUT, RESPONSE_MAX_BYTES, blocked_address, guarded, guarded_by,
 };
+pub use self::policy::{Draft, Placement};
 pub use self::refusal::Refusal;
 pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, blocked_literal, unblocked};
 pub use self::transport::{Inbound, Outbound, Transport};

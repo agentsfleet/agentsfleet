@@ -1,7 +1,7 @@
-//! The delivery half: what an assignment the gates admit becomes.
+//! The delivery half: what an assignment that passes its start check becomes.
 //!
 //! Split from [`super::pull`] at the seam the verb itself has. Everything up
-//! to admission is a sequence of REFUSALS — money, gates, spellings — and
+//! to the start check is a sequence of REFUSALS — money, gates, spellings — and
 //! everything after it is a construction. The two halves fail differently
 //! enough that reading them together obscures both: a refusal writes a
 //! terminal row and answers no-work, while a construction failure here means
@@ -21,7 +21,7 @@ use crate::error::Result;
 use crate::run::AssignedRun;
 use crate::run::answer::{EVENT_ASSIGNED, no_work};
 use crate::run::envelope::Acquired;
-use crate::run::pull::{AdmittedFleetWork, Assigned, RunService, Step};
+use crate::run::pull::{Assigned, CheckedFleetWork, RunService, Step};
 use af_core::turn::label;
 use af_wire::run::RunPayload;
 use afd_gate::policy::build::{self, Assembled};
@@ -36,7 +36,7 @@ impl RunService {
     pub(super) async fn deliver_with<T, F>(
         &self,
         runner_id: &Uuid7,
-        admitted: AdmittedFleetWork,
+        checked: CheckedFleetWork,
         now: Timestamp,
         began: Instant,
         emit: &mut F,
@@ -47,28 +47,26 @@ impl RunService {
     {
         let declared = afd_credential::secrets::declared(
             &self.vault,
-            &admitted.acquired.workspace_id,
-            &admitted.installed.credential_names(),
+            &checked.acquired.workspace_id,
+            &checked.installed.credential_names(),
             self.broker.connectors(),
         )
         .await?;
-        let branch = Self::repair_branch(
-            admitted.acquired.turn_id.as_str(),
-            &admitted.installed.config,
-        );
-        let granted = match admitted.granted.clone() {
+        let branch =
+            Self::repair_branch(checked.acquired.turn_id.as_str(), &checked.installed.config);
+        let granted = match checked.granted.clone() {
             Some(granted) => granted,
             None => {
                 self.gates
-                    .approved_integrations(&admitted.acquired.fleet_id)
+                    .approved_integrations(&checked.acquired.fleet_id)
                     .await?
             }
         };
 
         let policy = match build::assemble(
             build::Inputs {
-                config: &admitted.installed.config,
-                provider: &admitted.resolved,
+                config: &checked.installed.config,
+                provider: &checked.resolved,
                 declared: &declared,
                 repair_branch: branch.as_deref(),
                 windows: self.runs.limits().tool_windows,
@@ -81,7 +79,7 @@ impl RunService {
                 integration,
             }) => {
                 return self
-                    .ungranted(runner_id, &admitted.acquired, credential, integration, now)
+                    .ungranted(runner_id, &checked.acquired, credential, integration, now)
                     .await;
             }
             // A fleet author's mistake, not an operational fault: assembly reads
@@ -92,7 +90,7 @@ impl RunService {
                 let reason = misconfigured.detail();
                 return self
                     .refused(
-                        &admitted.acquired,
+                        &checked.acquired,
                         label::BINDING_UNENFORCEABLE,
                         runner_id,
                         reason,
@@ -101,7 +99,7 @@ impl RunService {
                     .map(|()| Step::Stop);
             }
         };
-        self.issue_ready(runner_id, &admitted, *policy, now, began, emit)
+        self.issue_ready(runner_id, &checked, *policy, now, began, emit)
             .await
     }
 

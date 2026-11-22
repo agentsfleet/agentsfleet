@@ -1,4 +1,4 @@
-use super::{Admission, Draft, Placement};
+use super::{Draft, EgressPolicy, Placement};
 use crate::error::raise;
 use crate::fixture::{BASE, BRANCH, ELASTIC_QUERY, GITHUB, Shown, policy, shown};
 use crate::refusal::Refusal;
@@ -21,17 +21,17 @@ pub(super) fn draft(
     }
 }
 
-/// The URL `draft` is admitted to under a policy with `read_only`, or why not.
-pub(super) fn admit(read_only: bool, draft: Draft) -> Result<String, Shown> {
+/// The URL `draft` is allowed to under a policy with `read_only`, or why not.
+pub(super) fn allow(read_only: bool, draft: Draft) -> Result<String, Shown> {
     let policy = policy(read_only);
-    Admission::new(&policy)
-        .admit(draft)
-        .map(|admitted| admitted.url.to_string())
+    EgressPolicy::new(&policy)
+        .allow(draft)
+        .map(|allowed| allowed.url.to_string())
         .map_err(|error| shown(&error))
 }
 
 pub(super) fn refused(read_only: bool, draft: Draft) -> Option<Shown> {
-    admit(read_only, draft).err()
+    allow(read_only, draft).err()
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn should_send_only_the_listed_methods_in_any_case() {
     let url = "https://api.github.com/repos/acme/widgets/pulls";
 
     assert_eq!(
-        admit(false, draft("get", url, &[], None)),
+        allow(false, draft("get", url, &[], None)),
         Ok(url.to_owned())
     );
     assert_eq!(
@@ -141,7 +141,7 @@ fn should_refuse_a_host_header_and_credentials_in_the_userinfo() {
 }
 
 #[test]
-fn should_refuse_a_request_no_origin_rule_admits() {
+fn should_refuse_a_request_no_origin_rule_allows() {
     assert_eq!(
         refused(
             false,
@@ -177,16 +177,16 @@ fn should_tell_the_model_which_key_a_closed_rule_refused() {
 }
 
 #[test]
-fn should_admit_under_read_only_reads_listed_query_posts_and_rule_admitted_posts() {
+fn should_allow_under_read_only_reads_listed_query_posts_and_rule_allowed_posts() {
     let refs = "https://api.github.com/repos/acme/widgets/git/refs";
     let locked = r#"{"ref":"refs/heads/agentsfleet-repair/run-41","sha":"abc"}"#;
 
     assert_eq!(
-        admit(true, draft("POST", ELASTIC_QUERY, &[], Some("{}"))),
+        allow(true, draft("POST", ELASTIC_QUERY, &[], Some("{}"))),
         Ok(ELASTIC_QUERY.to_owned())
     );
     assert_eq!(
-        admit(
+        allow(
             true,
             draft(
                 "POST",
@@ -198,7 +198,7 @@ fn should_admit_under_read_only_reads_listed_query_posts_and_rule_admitted_posts
         Ok(format!("{ELASTIC_QUERY}?format=json"))
     );
     assert_eq!(
-        admit(true, draft("POST", refs, &[], Some(locked))),
+        allow(true, draft("POST", refs, &[], Some(locked))),
         Ok(refs.to_owned())
     );
     for refused_post in [
@@ -249,16 +249,16 @@ fn should_refuse_a_placeholder_in_a_header_name() {
 }
 
 #[test]
-fn should_admit_a_read_under_read_only() {
+fn should_allow_a_read_under_read_only() {
     let github = "https://api.github.com/repos/acme/widgets/pulls";
     let elastic = "https://demo.es.example/index";
 
     assert_eq!(
-        admit(true, draft("GET", github, &[], None)),
+        allow(true, draft("GET", github, &[], None)),
         Ok(github.to_owned())
     );
     assert_eq!(
-        admit(true, draft("HEAD", elastic, &[], None)),
+        allow(true, draft("HEAD", elastic, &[], None)),
         Ok(elastic.to_owned())
     );
 }
@@ -276,8 +276,8 @@ fn should_refuse_an_allowlisted_v6_literal_in_a_private_range() {
         policy.network_policy.allow.push(host.into());
 
         let url = format!("https://{written}/admin");
-        let refusal = Admission::new(&policy)
-            .admit(draft("GET", &url, &[], None))
+        let refusal = EgressPolicy::new(&policy)
+            .allow(draft("GET", &url, &[], None))
             .err()
             .as_ref()
             .map(shown);

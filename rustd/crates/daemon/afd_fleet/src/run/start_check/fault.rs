@@ -21,7 +21,7 @@
 
 use af_core::error_code::{self, Coded, Logged};
 
-use crate::run::admit::{Declined, Transient};
+use crate::run::start_check::{Declined, Transient};
 
 /// What a gate's own failure decides.
 ///
@@ -31,10 +31,10 @@ use crate::run::admit::{Declined, Transient};
 /// split is RULE ECL held at the type level rather than in a comment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum OnFault {
-    /// Admit the event. The two MONEY gates take this posture: a metering
+    /// Start the event. The two MONEY gates take this posture: a metering
     /// outage must not halt every fleet on the platform, and a gate stricter
     /// than the platform's own credit pool would be an inconsistent guarantee.
-    Admit,
+    Start,
     /// Answer no-work. The delivery stays leasable and the next poll retries.
     Retry,
 }
@@ -51,7 +51,7 @@ pub(super) struct Gate {
 /// The tenant's credit pool. Fails OPEN.
 pub(super) const BALANCE: Gate = Gate {
     event: "run_balance_unavailable",
-    on_fault: OnFault::Admit,
+    on_fault: OnFault::Start,
 };
 
 /// The fleet's own declared ceiling. Fails OPEN, mirroring [`BALANCE`] — a
@@ -59,7 +59,7 @@ pub(super) const BALANCE: Gate = Gate {
 /// guarantee.
 pub(super) const BUDGET: Gate = Gate {
     event: "run_budget_unavailable",
-    on_fault: OnFault::Admit,
+    on_fault: OnFault::Start,
 };
 
 /// Resolving who pays. Fails to RETRY.
@@ -71,14 +71,14 @@ pub(super) const PAYER: Gate = Gate {
 impl Gate {
     /// Apply this gate's declared posture to a fault, logging it once.
     ///
-    /// `None` means the pass continues — which for [`OnFault::Admit`] IS the
+    /// `None` means the pass continues — which for [`OnFault::Start`] IS the
     /// fail-open decision, taken here rather than by a `catch` returning a bare
     /// `true` eight frames down.
     ///
     /// A caller at a [`OnFault::Retry`] gate knows this answers `Some` and
     /// spells that `absorb(&fault).ok_or(fault)`: one expression, and if the
-    /// posture is ever changed to `Admit` the gate propagates the error instead
-    /// of silently admitting — which is the right way for that edit to fail.
+    /// posture is ever changed to `Start` the gate propagates the error instead
+    /// of silently starting — which is the right way for that edit to fail.
     pub(super) fn absorb(self, fault: &impl Coded) -> Option<Declined> {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
@@ -89,7 +89,7 @@ impl Gate {
         } = fault.logged();
         let event = self.event;
         match self.on_fault {
-            OnFault::Admit => {
+            OnFault::Start => {
                 {
                     let (error_code, message) = (
                         &code,
@@ -121,7 +121,7 @@ impl Gate {
 #[cfg(test)]
 mod tests {
     use super::{BALANCE, BUDGET, OnFault, PAYER};
-    use crate::run::admit::{Declined, Transient};
+    use crate::run::start_check::{Declined, Transient};
     use std::collections::BTreeSet;
 
     /// A billing failure to absorb.
@@ -137,10 +137,10 @@ mod tests {
     #[test]
     fn the_two_money_gates_fail_open_and_the_payer_gate_does_not() {
         // The asymmetry stated as a test rather than left to a reader
-        // collecting `catch` sites: a metering outage admits, an unresolvable
+        // collecting `catch` sites: a metering outage starts, an unresolvable
         // payer does not.
-        assert_eq!(BALANCE.on_fault, OnFault::Admit);
-        assert_eq!(BUDGET.on_fault, OnFault::Admit);
+        assert_eq!(BALANCE.on_fault, OnFault::Start);
+        assert_eq!(BUDGET.on_fault, OnFault::Start);
         assert_eq!(PAYER.on_fault, OnFault::Retry);
     }
 

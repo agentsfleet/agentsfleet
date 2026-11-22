@@ -1,13 +1,13 @@
 //! The toolbox: a read-only EROFS image every run sees as its root.
 //!
-//! A host admits an image in the order `docs/architecture/runner_execution.md`
+//! A host verifies an image in the order `docs/architecture/runner_execution.md`
 //! §Toolbox gives: the release manifest's signature and facts
 //! ([`Release::verify`]); the image staged in a private directory, verified,
-//! synced and published with a rename ([`Toolboxes::admit`]); then the
+//! synced and published with a rename ([`Toolboxes::verify`]); then the
 //! published file opened once without following a link, checked to be a
 //! regular file of the manifest's length, hashed through that descriptor,
 //! attached read-only to a loop device from the same descriptor, and mounted
-//! `ro,nosuid,nodev` ([`Toolbox::admit`]). Nothing reopens the image by path
+//! `ro,nosuid,nodev` ([`Toolbox::verify`]). Nothing reopens the image by path
 //! after its hash is taken, so a file substituted at that path never reaches
 //! the kernel's file-system parser.
 
@@ -58,9 +58,9 @@ pub(crate) fn is_image_name(name: &str) -> bool {
 
 /// Where one host keeps its toolbox.
 ///
-/// The release a deploy stages, the images admitted from it, and where each
+/// The release a deploy stages, the images verified from it, and where each
 /// is mounted are three siblings, so nothing a deploy stages lands where an
-/// admitted image is published or mounted.
+/// verified image is published or mounted.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolboxHome {
     root: PathBuf,
@@ -86,26 +86,26 @@ impl ToolboxHome {
         Ok(home)
     }
 
-    /// Where a deploy stages the release this host admits at boot.
+    /// Where a deploy stages the release this host verifies at boot.
     #[must_use]
     pub fn incoming(&self) -> PathBuf {
         self.root.join(INCOMING)
     }
 
-    /// Where admitted images are published, each under its digest.
+    /// Where verified images are published, each under its digest.
     #[must_use]
     pub fn images(&self) -> PathBuf {
         self.root.join(IMAGES)
     }
 
-    /// Where each admitted image is mounted.
+    /// Where each verified image is mounted.
     #[must_use]
     pub fn mounts(&self) -> PathBuf {
         self.root.join(MOUNTS)
     }
 }
 
-/// An admitted toolbox, mounted read-only on the host. A sandbox holds the one
+/// A verified toolbox, mounted read-only on the host. A sandbox holds the one
 /// it runs on by keeping a clone of its `Arc` until it is destroyed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Toolbox {
@@ -135,7 +135,7 @@ impl Toolbox {
 }
 
 #[cfg(target_os = "linux")]
-mod admit;
+mod verify;
 
 #[cfg(test)]
 mod tests;

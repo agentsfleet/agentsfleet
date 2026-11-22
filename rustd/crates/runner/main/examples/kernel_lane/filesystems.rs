@@ -13,10 +13,10 @@ use afr_sandbox::{Caching, HostTools, ProbePaths, WorkspaceDisk, probe};
 use libtest_mimic::Failed;
 use rustix::mount::{MountFlags, UnmountFlags};
 
-use crate::admission::MOUNTINFO;
 use crate::lane::{Lane, SANDBOX_IDS, STATE_FREE_BYTES_MIN, STATE_PREFIX, short_of_disk};
 use crate::run::{expect, runtime};
 use crate::trials::{Body, SMALL_DISK};
+use crate::verify::MOUNTINFO;
 
 /// What the workspace disk leaves behind and what its build starts.
 pub(crate) const TRIALS: &[(&str, Body)] = &[

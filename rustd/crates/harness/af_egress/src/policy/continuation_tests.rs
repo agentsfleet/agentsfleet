@@ -1,14 +1,14 @@
-//! A read-only network admits only the exact, non-force repair update rule.
+//! A read-only network allows only the exact, non-force repair update rule.
 
 use af_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
-use super::{Admission, tests::draft};
+use super::{EgressPolicy, tests::draft};
 use crate::fixture::{ELASTIC_QUERY, policy};
 
 const PATH: &str = "/repos/acme/widgets/git/refs/heads/agentsfleet-repair/run-41";
 const BODY: &str = r#"{"force":false,"sha":"new-head"}"#;
 
-fn admitted(method: &str, path: &str, body: &str) -> bool {
+fn allowed(method: &str, path: &str, body: &str) -> bool {
     let mut policy = policy(true);
     let rule = HttpRequestRule {
         method: HttpMethod::Patch,
@@ -24,8 +24,8 @@ fn admitted(method: &str, path: &str, body: &str) -> bool {
     for origin in &mut policy.http_origin_policies {
         origin.requests.push(rule.clone());
     }
-    Admission::new(&policy)
-        .admit(draft(
+    EgressPolicy::new(&policy)
+        .allow(draft(
             method,
             &format!("https://api.github.com{path}"),
             &[],
@@ -36,8 +36,8 @@ fn admitted(method: &str, path: &str, body: &str) -> bool {
 
 #[test]
 fn only_the_exact_event_ref_can_be_updated_without_force() {
-    assert!(admitted("PATCH", PATH, BODY));
-    assert!(admitted("patch", PATH, BODY));
+    assert!(allowed("PATCH", PATH, BODY));
+    assert!(allowed("patch", PATH, BODY));
     for body in [
         r#"{"force":true,"sha":"new-head"}"#,
         r#"{"sha":"new-head"}"#,
@@ -46,7 +46,7 @@ fn only_the_exact_event_ref_can_be_updated_without_force() {
         r#"{"force":false,"force":true,"sha":"new-head"}"#,
         r#"{"force":false,"sha":"a","sha":"b"}"#,
     ] {
-        assert!(!admitted("PATCH", PATH, body), "{body}");
+        assert!(!allowed("PATCH", PATH, body), "{body}");
     }
 }
 
@@ -62,10 +62,10 @@ fn query_other_refs_and_method_substitutions_are_refused() {
         PATH.replace("run-41", "%2e%2e/main"),
         PATH.replace("heads/agentsfleet-repair", "heads%2Fagentsfleet-repair"),
     ] {
-        assert!(!admitted("PATCH", &path, BODY), "{path}");
+        assert!(!allowed("PATCH", &path, BODY), "{path}");
     }
     for method in ["POST", "PUT", "DELETE"] {
-        assert!(!admitted(method, PATH, BODY), "{method}");
+        assert!(!allowed(method, PATH, BODY), "{method}");
     }
 }
 
@@ -77,8 +77,8 @@ fn query_post_allowance_and_existing_write_rules_never_authorize_patch() {
         "https://api.github.com/repos/acme/widgets/git/refs",
     ] {
         assert!(
-            Admission::new(&policy)
-                .admit(draft("PATCH", url, &[], Some(BODY)))
+            EgressPolicy::new(&policy)
+                .allow(draft("PATCH", url, &[], Some(BODY)))
                 .is_err()
         );
     }

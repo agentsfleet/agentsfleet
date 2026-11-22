@@ -13,12 +13,12 @@ use af_core::id::Uuid7;
 use af_core::turn::label;
 
 use super::step::{Step, waited};
-use super::{AdmittedFleetWork, RunService};
+use super::{CheckedFleetWork, RunService};
 use crate::error::{Error, Result};
-use crate::run::admit::{Declined, Refusal};
 use crate::run::answer::{EVENT_ABANDONED, EVENT_REFUSED, no_work};
 use crate::run::envelope::Acquired;
 use crate::run::installed::Installed;
+use crate::run::start_check::{Declined, Refusal};
 use crate::run::turn::{DETAIL_RUNS_LAPSED, Delivery, Ended};
 
 /// The no-work reason for a fleet archived between selection and assignment.
@@ -78,7 +78,7 @@ impl RunService {
         acquired: &Acquired,
         declined: Declined,
         runner_id: &Uuid7,
-    ) -> Result<Step<AdmittedFleetWork>> {
+    ) -> Result<Step<CheckedFleetWork>> {
         match declined {
             Declined::Await(waiting) => Ok(waited(runner_id, waiting)),
             Declined::Refuse(refusal) => self

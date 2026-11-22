@@ -51,7 +51,7 @@ pub struct DurableTaskRun<'a> {
     pub fencing_token: u64,
 }
 
-/// An admitted objective after input validation and native target preflight.
+/// An accepted objective after input validation and native target preflight.
 ///
 /// Fields stay private to this owner. Raw model output cannot construct a
 /// prepared binding through the public native service interface.
@@ -90,7 +90,7 @@ pub struct DurableTaskBindings {
     pub replayed: bool,
 }
 
-/// Whether admission allocated this owner or recovered its existing identity.
+/// Whether acceptance allocated this owner or recovered its existing identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DurableTaskBinding {
     /// Stable identity of the interpreted source item.
@@ -172,7 +172,7 @@ pub struct DurableTaskSummary {
     pub generation: u64,
     /// Setup revision accepted by this objective.
     pub accepted_revision_id: Uuid7,
-    /// Admission instant used by the keyset boundary.
+    /// Acceptance instant used by the keyset boundary.
     pub created_at: jiff::Timestamp,
     /// Fixed cumulative wall deadline.
     pub expires_at: jiff::Timestamp,

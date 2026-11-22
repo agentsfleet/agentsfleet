@@ -2,7 +2,7 @@
 //! private staging directory, copied and hashed in one pass, synced, and
 //! published with one rename. A reader never sees a half-written image under a
 //! digest's name, and a runner killed mid-copy leaves only a partial file the
-//! next start sweeps away. Each copy has a file of its own, so two admissions
+//! next start sweeps away. Each copy has a file of its own, so two verifications
 //! of one release never write into the same one; the directory is one
 //! runner's, so the start's sweep takes no other runner's copy.
 

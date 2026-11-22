@@ -105,7 +105,7 @@ fn should_sweep_the_partial_copies_a_killed_run_left() {
     assert_eq!(sweep(dir.path()).unwrap(), 0);
 }
 
-/// Two admissions of one release copy into files of their own: a copy in
+/// Two verifications of one release copy into files of their own: a copy in
 /// flight under the digest is neither cut short nor removed by another.
 #[test]
 fn should_stage_beside_another_copy_of_the_same_release() {
@@ -118,13 +118,13 @@ fn should_stage_beside_another_copy_of_the_same_release() {
         .path()
         .join(STAGE_DIR)
         .join(format!("{}.partial", manifest.sha256()));
-    fs::write(&in_flight, b"another admission's copy so far").unwrap();
+    fs::write(&in_flight, b"another verification's copy so far").unwrap();
 
     stage(&manifest, &source, dir.path()).unwrap();
 
     assert_eq!(
         fs::read(&in_flight).unwrap(),
-        b"another admission's copy so far"
+        b"another verification's copy so far"
     );
     assert_eq!(staged(dir.path()).len(), 1, "only the other copy is left");
 }

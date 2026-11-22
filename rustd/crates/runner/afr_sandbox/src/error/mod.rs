@@ -58,7 +58,7 @@ pub(crate) enum ErrorKind {
         missing: &'static str,
     },
 
-    /// A toolbox release failed one of admission's checks, before anything
+    /// A toolbox release failed one of verification's checks, before anything
     /// of it was mounted.
     #[error("the toolbox release was refused ({refusal}): {detail}")]
     ToolboxRefused {
@@ -312,7 +312,7 @@ impl Error {
         }
     }
 
-    /// Which admission check a toolbox release failed, when that is the
+    /// Which verification check a toolbox release failed, when that is the
     /// failure.
     #[must_use]
     pub const fn toolbox_refusal(&self) -> Option<ToolboxRefusal> {

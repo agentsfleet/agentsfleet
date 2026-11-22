@@ -8,9 +8,9 @@ use std::path::Path;
 use afr_sandbox::{Engine as _, Killed, Limits, SandboxRequest, TENANT_LEAF};
 use libtest_mimic::Failed;
 
-use crate::admission::MOUNTINFO;
 use crate::lane::Lane;
 use crate::run::{expect, run as run_in, runtime, shell};
+use crate::verify::MOUNTINFO;
 
 /// The run whose sandbox is killed.
 const RUN: &str = "killed";

@@ -13,7 +13,7 @@ use crate::error::{Result, query};
 
 const CONTEXT: &str = "write durable task binding";
 
-pub(super) struct Admission<'a> {
+pub(super) struct Acceptance<'a> {
     pub source: &'a Source,
     pub active: bool,
     pub unfinished_max: u32,
@@ -51,9 +51,9 @@ pub(super) async fn task(
     plan: &PreparedPlan,
     item: &PreparedDurableTask,
     binding: &DurableTaskBinding,
-    admission: Admission<'_>,
+    acceptance: Acceptance<'_>,
 ) -> Result<()> {
-    let status = if admission.active {
+    let status = if acceptance.active {
         DurableTaskState::Running
     } else {
         DurableTaskState::Ready
@@ -81,13 +81,13 @@ pub(super) async fn task(
         .bind(item.limits.model_nanos)
         .bind(i64::from(item.limits.running_seconds) * 1_000_000_000)
         .bind(i64::from(item.limits.runs))
-        .bind(i32::from(admission.active))
+        .bind(i32::from(acceptance.active))
         .bind(i64::from(item.limits.publications))
         .bind(i64::from(item.limits.decision_calls))
-        .bind(&admission.source.reply_provider)
-        .bind(&admission.source.reply_address)
+        .bind(&acceptance.source.reply_provider)
+        .bind(&acceptance.source.reply_address)
         .bind(f64::from(item.limits.wall_seconds))
-        .bind(i64::from(admission.unfinished_max))
+        .bind(i64::from(acceptance.unfinished_max))
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?

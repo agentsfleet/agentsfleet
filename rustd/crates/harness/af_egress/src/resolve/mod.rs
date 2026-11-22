@@ -68,7 +68,7 @@ pub fn unblocked(addresses: Vec<IpAddr>) -> Result<Vec<IpAddr>, BlockedAddress> 
 /// Whether `url` names an address literal [`unblocked`] would refuse.
 ///
 /// A name answers `false`: it is judged by the resolver once it is dialled,
-/// whereas a literal never reaches a resolver, so whoever admits a URL asks
+/// whereas a literal never reaches a resolver, so whoever allows a URL asks
 /// this first. The caller keeps its own refusal.
 #[must_use]
 pub fn blocked_literal(url: &Url) -> bool {

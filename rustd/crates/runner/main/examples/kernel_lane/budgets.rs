@@ -87,9 +87,9 @@ pub(crate) fn start_budgets(lane: &Lane) -> Result<(), Failed> {
     })
 }
 
-/// The median time a host takes to admit the lane's image into a toolbox
+/// The median time a host takes to verify the lane's image into a toolbox
 /// directory of its own: staged (copied, hashed, synced, renamed), then
-/// admitted by descriptor (hashed again, attached, mounted).
+/// verified by descriptor (hashed again, attached, mounted).
 fn host_staging(lane: &Lane, cache: Cache) -> Result<Duration, Failed> {
     let mut taken = Vec::with_capacity(STAGINGS);
     for _ in 0..STAGINGS {
@@ -100,13 +100,13 @@ fn host_staging(lane: &Lane, cache: Cache) -> Result<Duration, Failed> {
             drop_caches()?;
         }
         let started = Instant::now();
-        let admitted = toolboxes.admit(&lane.manifest, lane.image.path())?;
+        let verified = toolboxes.verify(&lane.manifest, lane.image.path())?;
         taken.push(started.elapsed());
         expect(
-            admitted.digest() == lane.image.digest(),
-            format!("{} != {}", admitted.digest(), lane.image.digest()),
+            verified.digest() == lane.image.digest(),
+            format!("{} != {}", verified.digest(), lane.image.digest()),
         )?;
-        drop(admitted);
+        drop(verified);
         toolboxes.close()?;
     }
     taken.sort_unstable();

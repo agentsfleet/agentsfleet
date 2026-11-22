@@ -42,7 +42,7 @@ fn release(signer: &Signer, dir: &Path, n: u8) -> Release {
 /// and a half-written download are each refused, with its own code, before
 /// anything is mounted.
 #[test]
-fn test_toolbox_admission_refusals() {
+fn test_toolbox_verify_refusals() {
     let dir = tempfile::tempdir().unwrap();
     let (toolboxes, recorder) = open(dir.path());
     let (signer, stranger) = (Signer::new(), Signer::new());
@@ -52,7 +52,7 @@ fn test_toolbox_admission_refusals() {
     let staged = |download: Vec<u8>| {
         let source = dir.path().join("download");
         fs::write(&source, download).unwrap();
-        toolboxes.admit(&manifest, &source).err()
+        toolboxes.verify(&manifest, &source).err()
     };
     let mut half = image;
     half.iter_mut().skip(32).for_each(|byte| *byte = 0);
@@ -89,7 +89,7 @@ fn test_toolbox_admission_refusals() {
 }
 
 /// A held image is never unmounted, the current and previous
-/// are kept, and a runner killed mid-stage admits cleanly on restart.
+/// are kept, and a runner killed mid-stage verifies cleanly on restart.
 #[test]
 fn test_toolbox_holds_and_retention() {
     let dir = tempfile::tempdir().unwrap();
@@ -104,18 +104,18 @@ fn test_toolbox_holds_and_retention() {
         "the restart swept the killed run's stage"
     );
 
-    let first = toolboxes.admit(&one.manifest, &one.source).unwrap();
+    let first = toolboxes.verify(&one.manifest, &one.source).unwrap();
     let (run, slot) = (Arc::clone(&first), Arc::clone(&first));
     drop(first);
-    toolboxes.admit(&two.manifest, &two.source).unwrap();
-    toolboxes.admit(&three.manifest, &three.source).unwrap();
+    toolboxes.verify(&two.manifest, &two.source).unwrap();
+    toolboxes.verify(&three.manifest, &three.source).unwrap();
     drop(run);
     toolboxes.retain().unwrap();
     let held_by_the_slot = toolboxes.digests();
     drop(slot);
     let released = toolboxes.retain().unwrap();
     let after_retain = recorder.unmounted.lock().unwrap().clone();
-    toolboxes.admit(&four.manifest, &four.source).unwrap();
+    toolboxes.verify(&four.manifest, &four.source).unwrap();
 
     let digest = |release: &Release| release.manifest.sha256().to_owned();
     assert_eq!(
@@ -148,18 +148,18 @@ fn should_keep_an_image_whose_unmount_is_refused() {
     let signer = Signer::new();
     let [one, two, three] = [1, 2, 3].map(|n| release(&signer, dir.path(), n));
     let (toolboxes, recorder) = open(dir.path());
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
-    toolboxes.admit(&two.manifest, &two.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&two.manifest, &two.source).unwrap();
     recorder.refuse_unmounts.store(true, Ordering::SeqCst);
 
-    toolboxes.admit(&three.manifest, &three.source).unwrap();
+    toolboxes.verify(&three.manifest, &three.source).unwrap();
     let refused = toolboxes.retain().unwrap_err();
 
     assert_eq!(refused.toolbox_refusal(), None, "the unmount's refusal");
     assert_eq!(
         toolboxes.digests().len(),
         3,
-        "the new release is admitted, and nothing is forgotten"
+        "the new release is verified, and nothing is forgotten"
     );
     toolboxes.close().unwrap_err();
     assert_eq!(
@@ -174,21 +174,21 @@ fn should_keep_an_image_whose_unmount_is_refused() {
 }
 
 #[test]
-fn should_admit_a_published_image_without_staging_it_again() {
+fn should_verify_a_published_image_without_staging_it_again() {
     let dir = tempfile::tempdir().unwrap();
     let signer = Signer::new();
     let one = release(&signer, dir.path(), 1);
     let (toolboxes, recorder) = open(dir.path());
-    let first = toolboxes.admit(&one.manifest, &one.source).unwrap();
+    let first = toolboxes.verify(&one.manifest, &one.source).unwrap();
     fs::remove_file(&one.source).unwrap();
 
     let again = toolboxes
-        .admit(&one.manifest, &dir.path().join("gone"))
+        .verify(&one.manifest, &dir.path().join("gone"))
         .unwrap();
 
     assert!(
         Arc::ptr_eq(&first, &again),
-        "the admitted image, not a second"
+        "the verified image, not a second"
     );
     assert_eq!(recorder.mounted.lock().unwrap().len(), 1);
 }
@@ -200,8 +200,11 @@ fn should_release_an_image_already_removed_and_keep_one_it_cannot_remove() {
     let [one, two, three, four] = [1, 2, 3, 4].map(|n| release(&signer, dir.path(), n));
     let (toolboxes, recorder) = open(dir.path());
     let images = dir.path().join("images");
-    let held = [&one, &two, &three]
-        .map(|release| toolboxes.admit(&release.manifest, &release.source).unwrap());
+    let held = [&one, &two, &three].map(|release| {
+        toolboxes
+            .verify(&release.manifest, &release.source)
+            .unwrap()
+    });
     fs::remove_file(images.join(image_name(one.manifest.sha256()))).unwrap();
     let stuck = images.join(image_name(two.manifest.sha256()));
     fs::remove_file(&stuck).unwrap();
@@ -209,7 +212,7 @@ fn should_release_an_image_already_removed_and_keep_one_it_cannot_remove() {
     fs::write(stuck.join("in the way"), b"").unwrap();
     drop(held);
 
-    toolboxes.admit(&four.manifest, &four.source).unwrap();
+    toolboxes.verify(&four.manifest, &four.source).unwrap();
     let refused = toolboxes.retain().unwrap_err();
 
     assert_eq!(refused.toolbox_refusal(), None, "the removal's own failure");
@@ -225,20 +228,20 @@ fn should_release_an_image_already_removed_and_keep_one_it_cannot_remove() {
             three.manifest.sha256(),
             four.manifest.sha256()
         ],
-        "the one whose image would not go stays admitted"
+        "the one whose image would not go stays verified"
     );
 }
 
 /// A published image that is no longer the manifest's, rotted or edited in
 /// place, is removed and staged again from the download, once; it does not
-/// refuse every later admission of its release.
+/// refuse every later verification of its release.
 #[test]
 fn should_stage_again_a_published_image_that_is_not_the_manifests() {
     let dir = tempfile::tempdir().unwrap();
     let signer = Signer::new();
     let one = release(&signer, dir.path(), 1);
     let (toolboxes, recorder) = open(dir.path());
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
     toolboxes.close().unwrap();
     let published = dir
         .path()
@@ -246,7 +249,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
         .join(image_name(one.manifest.sha256()));
     edit_in_place(&published, vec![9_u8; 64]);
 
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
 
     assert_eq!(fs::read(&published).unwrap(), vec![1_u8; 64]);
     assert_eq!(recorder.mounted.lock().unwrap().len(), 2);
@@ -255,7 +258,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
     edit_in_place(&published, vec![9_u8; 64]);
     assert_eq!(
         toolboxes
-            .admit(&one.manifest, &one.source)
+            .verify(&one.manifest, &one.source)
             .unwrap_err()
             .toolbox_refusal(),
         Some(ToolboxRefusal::Digest),
@@ -266,18 +269,18 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
 /// A restart of the same release mounts the image the last start published,
 /// without its download: closing unmounts and keeps the file.
 #[test]
-fn should_admit_after_a_restart_without_copying_again() {
+fn should_verify_after_a_restart_without_copying_again() {
     let dir = tempfile::tempdir().unwrap();
     let signer = Signer::new();
     let one = release(&signer, dir.path(), 1);
     let (toolboxes, _recorder) = open(dir.path());
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
     toolboxes.close().unwrap();
     fs::remove_file(&one.source).unwrap();
 
     let (restarted, recorder) = open(dir.path());
     restarted
-        .admit(&one.manifest, &dir.path().join("gone"))
+        .verify(&one.manifest, &dir.path().join("gone"))
         .unwrap();
 
     assert_eq!(
@@ -288,26 +291,26 @@ fn should_admit_after_a_restart_without_copying_again() {
     assert_eq!(restarted.digests(), [one.manifest.sha256()]);
 }
 
-/// A start that admits a new release removes the image an earlier start kept
+/// A start that verifies a new release removes the image an earlier start kept
 /// for the old one, so kept files never pile up across deploys.
 #[test]
-fn should_remove_an_image_no_admitted_release_names() {
+fn should_remove_an_image_no_verified_release_names() {
     let dir = tempfile::tempdir().unwrap();
     let signer = Signer::new();
     let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
     let (toolboxes, _recorder) = open(dir.path());
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
     toolboxes.close().unwrap();
 
     let (restarted, _recorder) = open(dir.path());
-    restarted.admit(&two.manifest, &two.source).unwrap();
+    restarted.verify(&two.manifest, &two.source).unwrap();
 
     let images = dir.path().join("images");
     assert!(!images.join(image_name(one.manifest.sha256())).exists());
     assert!(images.join(image_name(two.manifest.sha256())).exists());
 }
 
-/// Images still admitted when a host's guard drops are unmounted, and one the
+/// Images still verified when a host's guard drops are unmounted, and one the
 /// kernel will not unmount is logged and left mounted.
 #[test]
 fn should_unmount_on_drop_and_log_an_image_that_stays() {
@@ -315,9 +318,9 @@ fn should_unmount_on_drop_and_log_an_image_that_stays() {
     let signer = Signer::new();
     let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
     let (closing, closed_by) = open(&dir.path().join("closing"));
-    closing.admit(&one.manifest, &one.source).unwrap();
+    closing.verify(&one.manifest, &one.source).unwrap();
     let (stuck, stuck_by) = open(&dir.path().join("stuck"));
-    stuck.admit(&two.manifest, &two.source).unwrap();
+    stuck.verify(&two.manifest, &two.source).unwrap();
     stuck_by.refuse_unmounts.store(true, Ordering::SeqCst);
     let capture = Capture::install();
 
@@ -345,7 +348,7 @@ fn should_unmount_once_when_the_guard_is_closed() {
     let signer = Signer::new();
     let one = release(&signer, dir.path(), 1);
     let (toolboxes, recorder) = open(dir.path());
-    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.verify(&one.manifest, &one.source).unwrap();
     let capture = Capture::install();
 
     MountedToolboxes::from(toolboxes).close().unwrap();

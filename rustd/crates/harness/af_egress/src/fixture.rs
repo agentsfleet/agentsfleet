@@ -1,8 +1,8 @@
-//! The policy every egress suite admits under, this crate's and the tools'.
+//! The policy every egress suite checks requests under, this crate's and the tools'.
 //!
 //! Shaped like the `ci-repairer` bundle's run: GitHub minted and bound by
 //! origin rules that lock the repair branch and the draft, Grafana and Elastic
-//! static with their own hosts, an Elastic query path `read_only` admits, and
+//! static with their own hosts, an Elastic query path `read_only` allows, and
 //! the Pushover credential its handler reads for itself. Built from the wire's
 //! own types, so a renamed field fails to compile rather than to parse.
 
@@ -44,7 +44,7 @@ pub const GRAFANA: &str = "demo-grafana.internal";
 pub const ELASTIC: &str = "demo.es.example";
 /// The Grafana token.
 pub const GRAFANA_TOKEN: &str = "glsa_live_token";
-/// The Elastic query path `read_only` admits a `POST` to.
+/// The Elastic query path `read_only` allows a `POST` to.
 pub const ELASTIC_QUERY: &str = "https://demo.es.example/_query";
 /// Pushover's host.
 pub const PUSHOVER: &str = "api.pushover.net";
@@ -55,7 +55,7 @@ pub const PUSHOVER_USER: &str = "po_user_key";
 
 /// The minted credential, and the integration it is minted for.
 const GITHUB_CREDENTIAL: &str = "github";
-/// An address literal the allowlist lists, which admission still refuses.
+/// An address literal the allowlist lists, which the egress policy still refuses.
 const LOOPBACK: &str = "127.0.0.1";
 
 /// The policy, with `read_only` as given.

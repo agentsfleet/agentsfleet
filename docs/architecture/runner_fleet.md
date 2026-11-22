@@ -940,7 +940,7 @@ A sandbox sees a mount namespace bubblewrap builds from a fixed set, in one orde
 
 | Inside | From | Mode |
 |---|---|---|
-| `/` | the admitted toolbox image's mount | read-only |
+| `/` | the verified toolbox image's mount | read-only |
 | `/proc`, `/dev` | a fresh `/proc` for the sandbox's process namespace, a minimal device tree | as bubblewrap mounts them |
 | `/dev/shm` | a private tmpfs, a quarter of the run's memory | read-write, `1777` |
 | `/tmp` | the workspace disk's `tmp/` directory | read-write |
@@ -1052,7 +1052,7 @@ The reviewed Definition and run carry `network.http_egress`, `package_manager_do
 
 Public mode permits public HTTPS destinations through HTTP tools. Both modes retain private/reserved address refusal, credential binding, repository/path restrictions and read-only rules.
 
-Every connection checks all returned addresses, including mixed public/private answers. Redirects repeat admission before connecting.
+Every connection checks all returned addresses, including mixed public/private answers. Redirects repeat the egress policy check before connecting.
 
 `http_egress` and `package_manager_domains` do not enlarge sandbox network access or change the runner's assigned policy.
 Existing `allow` entries can extend sandbox destinations when `read_only` is `false`, within that policy.
@@ -1062,23 +1062,23 @@ Dedicated UI controls remain future work.
 
 `http_request` follows 301, 302, 303, 307 and 308 only for a bodyless GET.
 
-The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same run's admission before each send (`afr_tools`' egress module and `af_egress`'s redirect module).
+The shared HTTP builder still disables automatic redirects. The tool composes continuations through the same run's egress policy check before each send (`afr_tools`' egress module and `af_egress`'s redirect module).
 
 HTTPS, reviewed destination scope, address and origin request rules remain authoritative at every hop.
 
 The guarded resolver checks every returned address at connection time.
 
-A call follows at most `[egress] max_redirects` redirects (3 by default) within one `request_timeout_seconds` deadline (30 seconds by default), including admission and credential minting. Each connect retains a `connect_timeout_seconds` ceiling (10 seconds by default) within that deadline.
+A call follows at most `[egress] max_redirects` redirects (3 by default) within one `request_timeout_seconds` deadline (30 seconds by default), including the egress policy check and credential minting. Each connect retains a `connect_timeout_seconds` ceiling (10 seconds by default) within that deadline.
 
 The pooled tool client disables implicit retries; inference retains its own policy. Intermediate response bodies are dropped unread. The final body retains the 1-MiB capture cap.
 
 The model receives truncation and lossy-decoding notices before any body text. A known-truncated body is omitted from the model response rather than spending context on an unusable prefix. Complete bodies keep their existing text.
 
-One bounded Location is resolved relative to the current URL. Both raw and resolved values pass an 8-KiB `garde` bound before their respective parsing or admission. Loop identity is the pinned URL library's serialized absolute URL with its fragment removed; a repeated identity stops before admission or send.
+One bounded Location is resolved relative to the current URL. Both raw and resolved values pass an 8-KiB `garde` bound before their respective parsing or egress policy check. Loop identity is the pinned URL library's serialized absolute URL with its fragment removed; a repeated identity stops before the egress policy check or send.
 
 Missing, duplicate, malformed or oversized targets stop safely.
 
-At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The run guard covers admission and minting, then releases before every transport wait.
+At the first origin change, including effective port, the chain permanently drops all modeled headers. Later hops cannot restore them or mint another credential. The run guard covers the egress policy check and minting, then releases before every transport wait.
 
 Private targets have no raw Debug or serialized projection. The model sees only a safe origin on a redirect refusal. Final response text and content type mask the finite known target spellings, including credential-like query values (`af_egress`'s redirect privacy module).
 

@@ -1,5 +1,5 @@
 //! Adoption: a toolbox mount a previous run left at a digest's directory is
-//! used only when it is the admitted image, mounted the way admission mounts
+//! used only when it is the verified image, mounted the way verification mounts
 //! it. A directory named after a digest proves nothing: an operator, a crashed
 //! runner or a tamperer could have put any file system there.
 
@@ -28,7 +28,7 @@ const EVENT_ADOPTED: &str = "sandbox_toolbox_adopted";
 const EVENT_FOREIGN_DETACHED: &str = "sandbox_toolbox_foreign_detached";
 
 /// Whether the mount at `root` is the image whose file is `image` (its device
-/// and inode); anything else mounted there is detached, so admission mounts
+/// and inode); anything else mounted there is detached, so verification mounts
 /// afresh. Sandboxes still using a detached mount keep it until they let go.
 pub(crate) fn adopt(root: &Path, image: (u64, u64)) -> Result<bool> {
     if !mounts::is_mount_root(root) {
@@ -51,7 +51,7 @@ pub(crate) fn adopt(root: &Path, image: (u64, u64)) -> Result<bool> {
     }
 }
 
-/// Why the mount at `root` is not the admitted image, if it is not.
+/// Why the mount at `root` is not the verified image, if it is not.
 fn mismatch(root: &Path, image: (u64, u64)) -> Result<Option<String>> {
     let canonical = fs::canonicalize(root)?;
     let mounts = MountInfos::from_buf_read(BufReader::new(File::open(MOUNTINFO)?))
@@ -99,7 +99,7 @@ fn mismatch(root: &Path, image: (u64, u64)) -> Result<Option<String>> {
     Ok(backing_mismatch(&backing, image))
 }
 
-/// Why a loop device attached as `backing` is not the admitted `image`
+/// Why a loop device attached as `backing` is not the verified `image`
 /// shown whole and read-only, if it is not.
 fn backing_mismatch(backing: &loop_device::Backing, image: (u64, u64)) -> Option<String> {
     let same_device = |encoded: u64, stat: u64| {

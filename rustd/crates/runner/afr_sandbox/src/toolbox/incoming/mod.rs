@@ -1,7 +1,7 @@
 //! The release a deploy staged for this host: one image, its release manifest
 //! and the manifest's signature side by side in one directory, as
 //! `deploy/baremetal/toolbox.sh` lays them out and `scripts/toolbox/build.sh`
-//! and cosign name them. The runner admits that release at boot.
+//! and cosign name them. The runner verifies that release at boot.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,17 +17,17 @@ pub const MANIFEST_SUFFIX: &str = ".json";
 pub const SIGNATURE_SUFFIX: &str = ".sig";
 
 impl<M: Mounter> Toolboxes<M> {
-    /// Admits the one release staged under `incoming`, its manifest checked by
+    /// Verifies the one release staged under `incoming`, its manifest checked by
     /// `release` before the image is read. Blocks: it reads the whole image.
     ///
     /// # Errors
     /// `incoming` holds no staged release or more than one, its manifest or
-    /// signature cannot be read, or admission refuses the release.
-    pub fn admit_incoming(&self, release: &Release, incoming: &Path) -> Result<Arc<Toolbox>> {
+    /// signature cannot be read, or verification refuses the release.
+    pub fn verify_incoming(&self, release: &Release, incoming: &Path) -> Result<Arc<Toolbox>> {
         let manifest = staged_manifest(incoming)?;
         let verified =
             release.verify(&fs::read(&manifest)?, &fs::read(signature_of(&manifest))?)?;
-        self.admit(&verified, &incoming.join(image_name(verified.sha256())))
+        self.verify(&verified, &incoming.join(image_name(verified.sha256())))
     }
 }
 

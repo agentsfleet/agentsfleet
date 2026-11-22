@@ -13,7 +13,7 @@
 | Hosts | Bare metal or a virtual machine (VM), multi-tenant from the first release |
 | Sandbox engine | bubblewrap (Landlock, seccomp, cgroup v2, a per-run network namespace except under `allow_all`) is the one engine built, `BubblewrapEngine`, and stays as the engine for development, Continuous Integration (CI) and hosts without `/dev/kvm`. Firecracker microVMs, for code-running runs from many tenants on hosts that expose `/dev/kvm`, are the target and are not built |
 | Sandbox network | The runner's assigned `network_policy`: `allow_all` shares the host's network namespace, `deny_all_egress` gives loopback only, and `allow_list_egress` joins the sandbox to the host by one virtual ethernet (veth) pair whose host-side nf_tables rules admit only the run's allowlist ([Runner Fleet](./runner_fleet.md) §Egress model) |
-| Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any run and admitted by descriptor. No container image is pulled or unpacked on the run path |
+| Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any run and verified by descriptor. No container image is pulled or unpacked on the run path |
 | Workspace disk | Per sandbox, a writable block image sized to the run's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
 | Warm slot | A sandbox already started before any run arrives: cgroup made, workspace disk mounted, executor idle. It serves one run. Built but unwired: only the kernel lane and tests start one (`afr_sandbox/src/warm_slots/mod.rs`) |
 | Held sandbox | The sandbox of a run that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next run for an idle window of ten minutes (`af_core::timing::SANDBOX_HOLD_IDLE`). Every other run's sandbox is destroyed when the run ends |
@@ -118,7 +118,7 @@ A session's process outlives the call that started it. So the run's end also kil
 
 ## One run, end to end
 
-`agentsfleet-runner run` probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`).
+`agentsfleet-runner run` probes the host, verifies the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`).
 The native connection, heartbeat policy and worker pool run together until shutdown (`afr_supervisor/src/lib.rs`).
 
 Idle workers wait for pushed runs while the current heartbeat policy permits work.
@@ -452,7 +452,7 @@ A host downloads it at install or by background reconciliation, never at run tim
 
 A 1 GiB image at 100 Mbit/s is about 86 seconds of transfer. That cost lands at host setup. Every byte a run needs is local before the host takes the run.
 
-**Admitted by descriptor.** A host becomes ready in this order:
+**Verified by descriptor.** A host becomes ready in this order:
 
 1. the release manifest is authenticated: architecture, length, digest, EROFS features, and the runner versions it serves;
 
@@ -468,9 +468,9 @@ The toolbox device stays buffered, though direct I/O kept the host from caching 
 
 Nothing reopens the image by path after its hash is taken. A file substituted at that path therefore never reaches the kernel's filesystem parser.
 
-A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the admitted file. A directory named after a digest proves nothing.
+A mount found at startup is adopted only when it is EROFS, mounted `ro,nosuid,nodev`, on a loop device backed by the verified file. A directory named after a digest proves nothing.
 
-Each run holds the image it runs on. Past the current and previous releases, an image nothing holds is unmounted at the next admission or retention pass. The startup sweep removes whatever an interrupted stage left.
+Each run holds the image it runs on. Past the current and previous releases, an image nothing holds is unmounted at the next verification or retention pass. The startup sweep removes whatever an interrupted stage left.
 
 Host root is inside the trust boundary. It controls the runner, the kernel and the mounts, and no integrity mechanism protects a tenant from it.
 
@@ -480,7 +480,7 @@ Python and Node remain available, and project dependencies install into the writ
 
 The existing signed release JSON records retained package versions, archive digests and copyright hashes. Its bounded compressed `package_metadata` preserves the final Debian status and package info records, including file lists, checksums and control files. The image commits to those records in `/etc/toolbox-inventory.sha256`.
 
-The build scanner verifies image identity and that commitment, reconstructs records in a temporary OverlayFS upper layer, and scans the complete view. The shipped image has no package database; runner admission keeps its existing signature, byte, digest, architecture and filesystem-feature checks (`scripts/toolbox/build.sh`, `.github/actions/build-toolbox/action.yml`).
+The build scanner verifies image identity and that commitment, reconstructs records in a temporary OverlayFS upper layer, and scans the complete view. The shipped image has no package database; toolbox verification keeps its existing signature, byte, digest, architecture and filesystem-feature checks (`scripts/toolbox/build.sh`, `.github/actions/build-toolbox/action.yml`).
 
 **Tools a fleet adds.** A self-contained tool ships as a prebuilt pack at `/opt/tools/<digest>`, mounted before the sandbox is made.
 
@@ -606,7 +606,7 @@ The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` n
 
 `run` defaults to bubblewrap; `run --engine bubblewrap` selects it explicitly, and unsupported engine names refuse argument parsing.
 
-Before probing or admitting a toolbox, `afr_sandbox::boot` enables those controllers in the delegated service root (`afr_sandbox/src/cgroup/delegated.rs`). `DelegateSubgroup=runner` keeps the runner in its own leaf so that the root can distribute controllers to run children.
+Before probing or verifying a toolbox, `afr_sandbox::boot` enables those controllers in the delegated service root (`afr_sandbox/src/cgroup/delegated.rs`). `DelegateSubgroup=runner` keeps the runner in its own leaf so that the root can distribute controllers to run children.
 
 Discovery refuses a process outside the expected `runner` subgroup. Activation writes only positive controller commands in that root; it never changes ancestors or moves processes. Unavailable controllers and kernel activation errors stop startup, with the original error cause preserved.
 
@@ -618,7 +618,7 @@ A new backend supplies startup policy and resources through these interfaces. No
 
 The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`runner/main/examples/kernel_lane/lane.rs`). Its delegation trials boot from disabled controllers (`runner/main/examples/kernel_lane/delegation.rs`). They prove restart, child limits, missing-controller refusal and a populated-root failure.
 
-`make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox admission after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
+`make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox verification after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
 
 ## Code walkthrough
 
@@ -630,7 +630,7 @@ Two facts frame the whole walk. Bubblewrap starts once per run, never once per t
 
 ### Part A: host boot, once per runner process
 
-`agentsfleet-runner run` checks the host and admits the toolbox before it dials the daemon. A host that fails any check exits with the reason and never runs a run unsandboxed.
+`agentsfleet-runner run` checks the host and verifies the toolbox before it dials the daemon. A host that fails any check exits with the reason and never runs a run unsandboxed.
 
 ```
 systemd ─► /usr/local/bin/agentsfleet-runner run
@@ -645,7 +645,7 @@ systemd ─► /usr/local/bin/agentsfleet-runner run
                │              ├─ probe               landlock, seccomp, bwrap, erofs, controllers
                │              ├─ validate            Requirements::missing ─► refuse boot
                │              └─ start               bubblewrap_engine/boot.rs
-               │                   ├─ Toolboxes::open + admit_incoming     see A.1
+               │                   ├─ Toolboxes::open + verify_incoming    see A.1
                │                   ├─ BubblewrapConfig::for_host           bubblewrap_engine/config.rs
                │                   │    entry_args ["sandbox"], host ids 65534, ready 10 s
                │                   └─ BubblewrapEngine::new                bubblewrap_engine/mod.rs
@@ -658,21 +658,21 @@ systemd ─► /usr/local/bin/agentsfleet-runner run
 
 The probe checks that `/usr/bin/bwrap` exists and is executable. It does not start a trial sandbox; the first run's `prepare` is the first real start.
 
-**A.1, toolbox admission.** It runs once per host, never per run.
+**A.1, toolbox verification.** It runs once per host, never per run.
 
 ```
-admit_incoming                                                toolbox/incoming/mod.rs
+verify_incoming                                               toolbox/incoming/mod.rs
   ─► Release::verify (signature over the manifest bytes)
   ─► stage, verify, sync, rename into images/
   ─► KernelMounter::mount                                      toolbox/kernel_mounter.rs
-  ─► Toolbox::admit_now                                        toolbox/admit.rs
+  ─► Toolbox::verify_now                                       toolbox/verify.rs
        open_image(O_NOFOLLOW)  ─► fstat: regular file, manifest length
        sha256 over that same descriptor
        adopt an existing mount only if it is this file, read-only     toolbox/adopt/mod.rs
        loop_device::attach(fd, ReadOnly): LOOP_CTL_GET_FREE ─► LOOP_CONFIGURE(ro, autoclear,
          buffered, 4096-byte blocks)
        mount /dev/loopN at <mounts>/<digest> as erofs, ro,nosuid,nodev
-       sandbox_toolbox_admission_completed names caching: buffered
+       sandbox_toolbox_verify_completed names caching: buffered
   ─► Arc<Toolbox> kept by the config; every sandbox clones the Arc
 ```
 

@@ -1,7 +1,7 @@
 use af_core::clock::FixedClock;
 
 use super::{REFRESH_MARGIN, Vault};
-use crate::admission::Admission;
+use crate::policy::EgressPolicy;
 use af_core::error_code::GH_MINT_FAILED;
 
 use crate::error::Error;
@@ -20,7 +20,10 @@ async fn should_fill_a_static_placeholder_from_secrets_map() {
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
 
     let filled = vault
-        .fill(Admission::new(&policy), "Bearer ${secrets.grafana.token}")
+        .fill(
+            EgressPolicy::new(&policy),
+            "Bearer ${secrets.grafana.token}",
+        )
         .await;
 
     assert_eq!(
@@ -35,13 +38,15 @@ async fn should_fill_a_static_placeholder_from_secrets_map() {
 #[tokio::test]
 async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     let policy = policy(false);
-    let admission = Admission::new(&policy);
+    let egress_policy = EgressPolicy::new(&policy);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, TOKEN_LIFETIME, clock.clone());
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
 
     for _call in 0..3 {
-        let filled = vault.fill(admission, "token ${secrets.github.token}").await;
+        let filled = vault
+            .fill(egress_policy, "token ${secrets.github.token}")
+            .await;
         assert_eq!(
             filled
                 .map(|secret| secret.expose().to_owned())
@@ -52,7 +57,9 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     assert_eq!(mint.asked(), 1);
 
     clock.advance(TOKEN_LIFETIME.saturating_sub(REFRESH_MARGIN));
-    let refilled = vault.fill(admission, "token ${secrets.github.token}").await;
+    let refilled = vault
+        .fill(egress_policy, "token ${secrets.github.token}")
+        .await;
 
     assert_eq!(
         refilled
@@ -76,7 +83,7 @@ async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
 
     let filled = vault
-        .fill(Admission::new(&policy), "${secrets.github.token}")
+        .fill(EgressPolicy::new(&policy), "${secrets.github.token}")
         .await;
 
     assert_eq!(
@@ -98,7 +105,7 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
 
     assert_eq!(vault.mask(&echoed), echoed);
     let filled = vault
-        .fill(Admission::new(&policy), "${secrets.github.token}")
+        .fill(EgressPolicy::new(&policy), "${secrets.github.token}")
         .await;
 
     assert_eq!(
@@ -118,7 +125,7 @@ async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
     let mut vault = Vault::new(RUN_ID, &mint, &clock);
 
     let filled = vault
-        .fill(Admission::new(&policy), "${secrets.github.password}")
+        .fill(EgressPolicy::new(&policy), "${secrets.github.password}")
         .await;
 
     assert_eq!(

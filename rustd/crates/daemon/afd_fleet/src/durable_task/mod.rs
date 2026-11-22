@@ -3,7 +3,7 @@
 //! The store owns native rows and transitions. Its pool remains the run
 //! store's private pool, and task work never introduces a competing queue.
 
-mod admit;
+mod accept;
 mod adoption;
 mod bindings;
 pub(crate) mod checkpoint;

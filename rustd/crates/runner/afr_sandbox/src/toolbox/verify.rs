@@ -1,4 +1,4 @@
-//! Admission by descriptor: the published image opened once, checked, hashed
+//! Verification by descriptor: the published image opened once, checked, hashed
 //! and attached through that one descriptor, then mounted.
 
 use std::fs::{self, File, OpenOptions};
@@ -22,15 +22,15 @@ use crate::workspace_disk::Caching;
 /// How much of an image one read takes while it is hashed: images run to
 /// gigabytes, and the hash reads through this buffer rather than its own.
 const HASH_BUFFER_BYTES: usize = 1024 * 1024;
-/// The event an admission's start is logged under.
-const EVENT_ADMISSION_STARTED: &str = "sandbox_toolbox_admission_started";
-/// The event a mounted, admitted toolbox is logged under.
-const EVENT_ADMISSION_COMPLETED: &str = "sandbox_toolbox_admission_completed";
-/// The event a toolbox that was not admitted is logged under.
-const EVENT_ADMISSION_FAILED: &str = "sandbox_toolbox_admission_failed";
+/// The event a verification's start is logged under.
+const EVENT_VERIFY_STARTED: &str = "sandbox_toolbox_verify_started";
+/// The event a mounted, verified toolbox is logged under.
+const EVENT_VERIFY_COMPLETED: &str = "sandbox_toolbox_verify_completed";
+/// The event a toolbox that was not verified is logged under.
+const EVENT_VERIFY_FAILED: &str = "sandbox_toolbox_verify_failed";
 
 impl Toolbox {
-    /// Admits the published image at `image`, which `manifest` names, and
+    /// Verifies the published image at `image`, which `manifest` names, and
     /// mounts it at `<mounts>/<digest>`: opened once without following a
     /// link, checked to be a regular file of the manifest's length, hashed
     /// through that descriptor, attached read-only to a loop device from the
@@ -40,22 +40,22 @@ impl Toolbox {
     /// # Errors
     /// A refusal naming the check the image failed, or a mount the kernel
     /// would not make; nothing stays mounted then.
-    pub async fn admit(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
+    pub async fn verify(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
         let (manifest, image, mounts) = (manifest.clone(), image.to_owned(), mounts.to_owned());
-        tokio::task::spawn_blocking(move || Self::admit_now(&manifest, &image, &mounts)).await?
+        tokio::task::spawn_blocking(move || Self::verify_now(&manifest, &image, &mounts)).await?
     }
 
-    /// [`Self::admit`], on the calling thread: it reads the whole image. The
-    /// admission's start and its end are logged here, so the registry's path
+    /// [`Self::verify`], on the calling thread: it reads the whole image. The
+    /// verification's start and its end are logged here, so the registry's path
     /// logs them as the async one does.
-    pub(crate) fn admit_now(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
+    pub(crate) fn verify_now(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
         let digest = manifest.sha256();
-        let event = EVENT_ADMISSION_STARTED;
+        let event = EVENT_VERIFY_STARTED;
         tracing::info!(digest, event);
         logged(digest, Self::mount_verified(manifest, image, mounts))
     }
 
-    /// The checks, the attach and the mount [`Self::admit_now`] logs around,
+    /// The checks, the attach and the mount [`Self::verify_now`] logs around,
     /// and how the attached device caches the image; none for a mount the
     /// last runner left, adopted as it is.
     fn mount_verified(
@@ -100,28 +100,28 @@ impl Toolbox {
     }
 }
 
-/// Logs how the admission of `digest` ended, with the caching its device took
+/// Logs how the verification of `digest` ended, with the caching its device took
 /// or the refusal and its reason, and hands back the toolbox.
 pub(super) fn logged(
     digest: &str,
-    admitted: Result<(Toolbox, Option<Caching>)>,
+    verified: Result<(Toolbox, Option<Caching>)>,
 ) -> Result<Toolbox> {
-    match &admitted {
+    match &verified {
         Ok((_toolbox, caching)) => {
             // Absent for a mount adopted from the last runner: this one
             // attached nothing, so it read no flags back.
             let caching = caching.map(Caching::as_str);
-            let event = EVENT_ADMISSION_COMPLETED;
+            let event = EVENT_VERIFY_COMPLETED;
             tracing::info!(digest, caching, event);
         }
         Err(error) => {
             let Logged { error_code, reason } = error.logged();
             let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
-            let event = EVENT_ADMISSION_FAILED;
+            let event = EVENT_VERIFY_FAILED;
             tracing::error!(digest, error_code, refusal, reason, event);
         }
     }
-    admitted.map(|(toolbox, _caching)| toolbox)
+    verified.map(|(toolbox, _caching)| toolbox)
 }
 
 /// `image`, opened for reading without following a link and without waiting

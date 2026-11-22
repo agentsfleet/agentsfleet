@@ -12,7 +12,6 @@ use afr_sandbox::{
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
-use crate::admission::{MOUNTINFO, adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::exhaustion::{
@@ -33,6 +32,7 @@ use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runt
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
+use crate::verify::{MOUNTINFO, adoption, path_swap};
 
 /// Workspace disk a limit trial fills past.
 pub(crate) const SMALL_DISK: u64 = 64 * 1024 * 1024;
@@ -89,7 +89,7 @@ const TRIALS: &[(&str, Body)] = &[
     ("test_toolbox_build_is_reproducible", reproducible),
     ("test_run_sees_toolbox_read_only", toolbox_read_only),
     ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
-    ("test_toolbox_admission_survives_path_swap", path_swap),
+    ("test_toolbox_verify_survives_path_swap", path_swap),
     ("test_toolbox_adoption_checks_identity", adoption),
     (
         "test_shell_runs_inside_the_sandbox_with_exit_code",

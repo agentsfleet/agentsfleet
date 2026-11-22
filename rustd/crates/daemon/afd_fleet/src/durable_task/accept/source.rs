@@ -177,9 +177,9 @@ mod tests {
     }
 
     // Value: protects=a Slack mention starts a durable task only when the
-    // workspace allows that person; fails_when=the mention arm admits every
+    // workspace allows that person; fails_when=the mention arm accepts every
     // mention or refuses every one; why_new=the Slack arm of the human check had
-    // no case; seam=the source check every task admission runs.
+    // no case; seam=the source check every task acceptance runs.
     #[test]
     fn a_slack_mention_counts_as_human_only_for_an_allowed_person() {
         let body = r#"{"human_message":"rerun the flaky check"}"#;
@@ -196,7 +196,7 @@ mod tests {
     // and a body without one is a fault, not an empty goal; fails_when=the
     // mention body is read as a steer's `message` or a malformed body reads as
     // empty text; why_new=the Slack arm of the message reader had no case;
-    // seam=the reader the admission and the input page both call.
+    // seam=the reader acceptance and the input page both call.
     #[test]
     fn a_slack_mention_reads_its_human_message_and_refuses_a_body_without_one() {
         let source = mention(true, r#"{"human_message":"Préserve the café title 🦉"}"#);

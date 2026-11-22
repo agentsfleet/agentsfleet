@@ -246,8 +246,11 @@ fn human_inputs(
                 accepted: recovered.remove(&source.id),
                 source_turn_id: source.id.into(),
                 sequence: row::counter(source.sequence, "input sequence")?,
-                message: super::admit::source::message_for(&source.producer, &source.request_json)?
-                    .into_owned(),
+                message: super::accept::source::message_for(
+                    &source.producer,
+                    &source.request_json,
+                )?
+                .into_owned(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -258,8 +261,8 @@ async fn current_message(
     connection: &mut sqlx::PgConnection,
     current: &guard::RunRow,
 ) -> Result<Option<String>> {
-    let source = super::admit::source::load(connection, current, &current.source_turn_id).await?;
-    let message = if super::admit::source::check_human(&source).is_ok() {
+    let source = super::accept::source::load(connection, current, &current.source_turn_id).await?;
+    let message = if super::accept::source::check_human(&source).is_ok() {
         Some(source.message()?.into_owned())
     } else {
         None

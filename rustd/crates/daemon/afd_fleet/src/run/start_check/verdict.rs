@@ -1,19 +1,19 @@
-//! What a gate answer means to the admission pass.
+//! What a gate answer means to the start check.
 //!
 //! A mapping in its own module for two reasons. It is a statement about THIS
 //! pass's vocabulary, so the gate does not have to know what a run does with
 //! its answer — and it is the one part of the pass whose whole behaviour is a
 //! total function over a small enum, which means it can be proven exhaustively
-//! without a datastore. Everything else in `admit` needs one.
+//! without a datastore. Everything else in `start_check` needs one.
 
-use crate::run::admit::{Admission, Refusal, Transient};
+use crate::run::start_check::{Refusal, StartCheck, Transient};
 use afd_gate::gate::{Refused, Verdict};
 
 /// The gate that could not be raised, for a transient's `at`.
 const GATE: &str = "approval_gate";
 
-impl Admission {
-    /// What a gate [`Verdict`] means for the admission pass.
+impl StartCheck {
+    /// What a gate [`Verdict`] means for the start check.
     ///
     /// `None` is the one answer that CONTINUES the pass — every other arm ends
     /// it — which is what lets the caller write `if let Some(stop) = …` beside
@@ -34,7 +34,7 @@ impl Admission {
 
 #[cfg(test)]
 mod tests {
-    use crate::run::admit::Admission;
+    use crate::run::start_check::StartCheck;
     use afd_gate::gate::{Refused, Verdict, Waiting};
 
     /// Every verdict the gate can answer, so the table below is walked in full
@@ -51,10 +51,10 @@ mod tests {
     #[test]
     fn only_a_passing_gate_continues_the_pass() {
         // The property the `Option` carries: exactly one verdict lets the run
-        // go on being admitted, and every other one stops it. An arm that
-        // answered `None` by mistake would admit an event a human refused.
+        // go on toward its start, and every other one stops it. An arm that
+        // answered `None` by mistake would start an event a human refused.
         for verdict in EVERY_VERDICT {
-            let stops = Admission::of_gate(verdict).is_some();
+            let stops = StartCheck::of_gate(verdict).is_some();
             assert_eq!(stops, verdict != Verdict::Pass, "{verdict:?}");
         }
     }
@@ -66,7 +66,7 @@ mod tests {
         // lapsed deadline writes none: the event waits for a late answer.
         let ends: Vec<_> = EVERY_VERDICT
             .into_iter()
-            .filter(|verdict| matches!(Admission::of_gate(*verdict), Some(Admission::Refuse(_))))
+            .filter(|verdict| matches!(StartCheck::of_gate(*verdict), Some(StartCheck::Refuse(_))))
             .collect();
 
         assert_eq!(ends, vec![Verdict::Refuse(Refused::Denied)]);
@@ -77,10 +77,10 @@ mod tests {
         // These strings are read by the webhook path, the steer path and the
         // dashboard, so a second spelling would silently stop matching.
         assert_eq!(
-            Admission::of_gate(Verdict::Refuse(Refused::Denied)),
-            Some(Admission::Refuse(crate::run::admit::Refusal::labelled(
-                af_core::turn::label::APPROVAL_DENIED
-            )))
+            StartCheck::of_gate(Verdict::Refuse(Refused::Denied)),
+            Some(StartCheck::Refuse(
+                crate::run::start_check::Refusal::labelled(af_core::turn::label::APPROVAL_DENIED)
+            ))
         );
     }
 
@@ -92,16 +92,16 @@ mod tests {
         // later "simplification" from collapsing them.
         for waiting in [Waiting::Parked, Waiting::Pending, Waiting::Unreadable] {
             assert_eq!(
-                Admission::of_gate(Verdict::Await(waiting)),
-                Some(Admission::Await(waiting)),
+                StartCheck::of_gate(Verdict::Await(waiting)),
+                Some(StartCheck::Await(waiting)),
                 "{waiting:?}"
             );
         }
         // And an unraisable gate IS a retry: nothing was decided, so the next
         // poll asks again.
         assert!(matches!(
-            Admission::of_gate(Verdict::Unavailable),
-            Some(Admission::Retry(_))
+            StartCheck::of_gate(Verdict::Unavailable),
+            Some(StartCheck::Retry(_))
         ));
     }
 }

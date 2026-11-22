@@ -220,7 +220,7 @@ The instructions' first step reads `repo` and `number` from exactly that digest 
 
 **Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools`' `http_request`).
 
-`Admission::admit` (`af_egress`) checks: method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`. The credential is bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate`'s egress policy).
+`EgressPolicy::allow` (`af_egress`) checks: method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`. The credential is bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate`'s egress policy).
 
 A read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/`.
 
@@ -251,7 +251,7 @@ A later turn cannot select an earlier event's draft through these rules.
 
 Compatible runners must precede runs carrying the new `patch` method; older readers reject it.
 
-The reviews path remains denied by `origin_admits` in `af_egress`'s admission module.
+The reviews path remains denied by `allows_origin` in `af_egress`'s policy module.
 The tool returns `ToolErrorCode::RequestPolicyNotAllowed`, with `[request_policy_not_allowed]` visible to the model.
 The run loop can continue after a refusal; the CI fleet instructions require stopping.
 
@@ -275,7 +275,7 @@ On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the rep
 
 Hard tool and secret policy stays in `policy`. The daemon compiles the egress rules from the binding alone (`afd_gate`'s policy build and egress modules). The runner evaluates them as written (`af_egress`'s admission).
 
-So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the admission.
+So writing "post the review" in the instructions (which the fixture already does) changes the model's intent, not the egress policy check.
 
 **A chat message uses the same intake path.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` creates its own `chat` turn (`afd_turns`'s steer module).
 

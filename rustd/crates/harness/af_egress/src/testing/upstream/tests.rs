@@ -5,9 +5,9 @@ use hyper::Method;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 use super::{Reply, Route, Upstream};
-use crate::admission::{Draft, Placement};
 use crate::egress::Egress;
 use crate::fixture::{GRAFANA, policy};
+use crate::policy::{Draft, Placement};
 use crate::refusal::Refusal;
 use crate::testing::CountingMint;
 use crate::transport::Transport as _;
@@ -24,7 +24,7 @@ async fn health(egress: &mut Egress<'_>) -> crate::Outbound {
             placement: Placement::Authorization,
         })
         .await
-        .expect("the fixture policy admits Grafana")
+        .expect("the fixture policy allows Grafana")
 }
 
 #[tokio::test]

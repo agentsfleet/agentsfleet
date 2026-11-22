@@ -150,7 +150,7 @@ The repairer targets one daemon-issued branch in `agentsfleet/linkwarden` and on
 Its turn-owned ref permits bounded corrections through PATCH with `force:false`.
 
 Other ref updates, merge, deletion and GraphQL remain refused.
-The runner rejects unmatched requests on ruled hosts (`origin_admits` in `af_egress/src/admission/mod.rs`), and its token has no workflow permission.
+The runner rejects unmatched requests on ruled hosts (`allows_origin` in `af_egress/src/policy/mod.rs`), and its token has no workflow permission.
 Write-bound fleets never receive unaddressed mentions.
 
 A branch push runs repository workflows, so the drill audits secret paths for `agentsfleet-repair/*` branches.

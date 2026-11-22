@@ -1,8 +1,8 @@
 //! The daemon's per-host request rules, evaluated as the daemon compiled them.
 //!
-//! A host with rules is reached only by a request one rule admits: the
+//! A host with rules is reached only by a request one rule allows: the
 //! method, the path exactly or by prefix, and every JSON field the rule locks.
-//! A rule that lists its permitted fields is closed: it admits no other
+//! A rule that lists its permitted fields is closed: it allows no other
 //! top-level key and no query string, so an unnamed parameter cannot widen
 //! what its locked fields bound.
 //! The rules are never re-derived here (`afd_gate::policy::egress` compiles
@@ -12,7 +12,7 @@
 //! Before any rule is read the path must be one the rules can be trusted
 //! with: on port 443, with no encoded dot, slash or backslash a server might
 //! decode into a traversal the rule never saw. A body whose top level repeats
-//! a key admits no locked field: serde keeps the last of two, an upstream may
+//! a key allows no locked field: serde keeps the last of two, an upstream may
 //! read the first, and the rule would have checked a value never sent.
 
 use af_wire::policy::{
@@ -50,7 +50,7 @@ pub(crate) fn closed_refusal(
     url: &Url,
     body: Option<&str>,
 ) -> Option<String> {
-    // A path `admits` refuses before reading any rule is no rule's to explain:
+    // A path `allows` refuses before reading any rule is no rule's to explain:
     // blaming a key or the query would send the model to fix the wrong thing.
     if !trusted_path(url) {
         return None;
@@ -58,7 +58,7 @@ pub(crate) fn closed_refusal(
     let path = url.path();
     let rule = origin.requests.iter().find(|rule| {
         *method == method_of(rule.method)
-            && path_admits(rule.path_match, &rule.path, path)
+            && path_allows(rule.path_match, &rule.path, path)
             && closed(rule)
     })?;
     if url.query().is_some() {
@@ -78,8 +78,8 @@ fn key_refused(key: &str) -> String {
     format!("it sends {key:?}, which this rule does not list")
 }
 
-/// Whether `origin`'s rules admit `method` at `url` carrying `body`.
-pub(crate) fn admits(
+/// Whether `origin`'s rules allow `method` at `url` carrying `body`.
+pub(crate) fn allows(
     origin: &HttpOriginPolicy<'_>,
     method: &Method,
     url: &Url,
@@ -98,7 +98,7 @@ pub(crate) fn admits(
     origin
         .requests
         .iter()
-        .any(|rule| rule_admits(rule, method, path, &sent))
+        .any(|rule| rule_allows(rule, method, path, &sent))
 }
 
 /// What a request carries beyond its method and path.
@@ -125,12 +125,12 @@ fn trusted_path(url: &Url) -> bool {
             .any(|segment| DOT_SEGMENTS.contains(&segment))
 }
 
-fn rule_admits(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &Sent<'_>) -> bool {
+fn rule_allows(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &Sent<'_>) -> bool {
     *method == method_of(rule.method)
-        && path_admits(rule.path_match, &rule.path, path)
+        && path_allows(rule.path_match, &rule.path, path)
         && rule.json_fields.iter().all(|locked| {
             sent.fields
-                .is_some_and(|fields| field_admits(locked, fields))
+                .is_some_and(|fields| field_allows(locked, fields))
         })
         && (!closed(rule) || sends_only_named(rule, sent))
 }
@@ -176,7 +176,7 @@ const fn method_of(method: HttpMethod) -> Method {
     }
 }
 
-fn path_admits(matching: HttpPathMatch, rule: &str, path: &str) -> bool {
+fn path_allows(matching: HttpPathMatch, rule: &str, path: &str) -> bool {
     match matching {
         HttpPathMatch::Exact => path == rule,
         HttpPathMatch::Prefix => path.starts_with(rule),
@@ -184,8 +184,8 @@ fn path_admits(matching: HttpPathMatch, rule: &str, path: &str) -> bool {
 }
 
 /// Whether the body's top-level field holds exactly the value `locked` names.
-/// A rule locking neither a string nor a boolean admits nothing.
-fn field_admits(locked: &HttpJsonFieldRule<'_>, fields: &Fields) -> bool {
+/// A rule locking neither a string nor a boolean allows nothing.
+fn field_allows(locked: &HttpJsonFieldRule<'_>, fields: &Fields) -> bool {
     let Some(value) = fields.0.get(locked.name.as_ref()) else {
         return false;
     };

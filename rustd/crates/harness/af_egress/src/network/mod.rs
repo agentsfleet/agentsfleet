@@ -6,7 +6,7 @@
 //! network is never reached; the check runs on each new connection's lookup,
 //! which also covers a name that changes its answer between calls. It follows
 //! no redirect and reads no proxy from the environment (either would send the
-//! request somewhere admission never saw), sends HTTPS only, gives up after a
+//! request somewhere the egress policy never saw), sends HTTPS only, gives up after a
 //! fixed time, and reads at most [`RESPONSE_MAX_BYTES`] of a response.
 //!
 //! The refusal holds for an allowlisted host too: a runner serves many tenants
@@ -312,5 +312,5 @@ impl Capped {
 mod tests;
 
 #[cfg(test)]
-#[path = "admission/tests.rs"]
+#[path = "policy/tests.rs"]
 mod public_scope_tests;

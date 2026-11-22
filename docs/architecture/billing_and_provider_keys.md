@@ -244,7 +244,7 @@ The runner reserves and records intent and goal calls through these routes; the 
 
 | Step | What moves | Where in `afd_fleet` |
 |---|---|---|
-| Assign | nothing; the balance and budget gates read (§5) | the run admit module |
+| Assign | nothing; the balance and budget gates read (§5) | the run start_check module |
 | Renew | on a checked tick, the payer's balance must fund one more floor; every tick logs and charges the slice | the run renew and coverage modules |
 | Report | the final slice is logged and charged in the report's transaction | the run report and settle modules |
 
@@ -374,7 +374,7 @@ The token component dominates a token-heavy run; the run fee dominates a long, q
 
 ## 5. The balance gate: code path
 
-`money_gates` in `afd_fleet`'s run admit module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is charged as it is logged (§3).
+`money_gates` in `afd_fleet`'s run start_check module runs the payer, balance and fleet-budget gates and charges nothing. Nothing is set aside; the run's usage is charged as it is logged (§3).
 
 ```mermaid
 flowchart TD

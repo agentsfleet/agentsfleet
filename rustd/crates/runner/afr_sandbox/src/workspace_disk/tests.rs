@@ -277,7 +277,7 @@ fn test_the_disk_is_laid_out_as_workspace_and_sticky_tmp() {
     assert!(disk.tmp().ends_with("workspace/tmp"));
 }
 
-/// Each caching names itself on the admission and disk logs.
+/// Each caching names itself on the verification and disk logs.
 #[test]
 fn test_each_caching_names_itself() {
     assert_eq!(Caching::Direct.as_str(), "direct");

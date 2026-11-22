@@ -1,7 +1,7 @@
 //! What leaves, what comes back, and the seam it crosses.
 //!
-//! An [`Outbound`] is built only by the run's `Egress`, after admission, so
-//! a [`Transport`] is handed nothing the policy did not admit. Production
+//! An [`Outbound`] is built only by the run's `Egress`, after the policy check, so
+//! a [`Transport`] is handed nothing the policy did not allow. Production
 //! sends through [`Network`](crate::Network); the tool suites hand in a
 //! recording fake, so they prove what reaches the wire without a socket.
 
@@ -13,7 +13,7 @@ use reqwest::{Method, Url};
 use crate::error::Result;
 use crate::redirect::Target;
 
-/// A request admitted and ready to leave, its credentials in place.
+/// A request allowed and ready to leave, its credentials in place.
 ///
 /// Its `Debug` names the method and the host only: the `Authorization`
 /// header holds a secret, and the body may.
@@ -26,7 +26,7 @@ pub struct Outbound {
 }
 
 impl Outbound {
-    /// Skip intermediate bodies for an admitted bodyless GET; no request changes.
+    /// Skip intermediate bodies for an allowed bodyless GET; no request changes.
     #[must_use]
     pub fn for_redirect_read(mut self) -> Self {
         self.discard_redirect_body = self.method == Method::GET && self.body.is_none();
@@ -106,7 +106,7 @@ impl fmt::Debug for Inbound {
     }
 }
 
-/// Where an admitted request is sent.
+/// Where an allowed request is sent.
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync + fmt::Debug {
     /// The bounds it holds every request to; a fake holds the defaults.

@@ -1,4 +1,4 @@
-//! Admission policy a deployment configures; unset, a knob limits nothing.
+//! Acceptance policy a deployment configures; unset, a knob limits nothing.
 
 mod defaults;
 mod interpretation;
@@ -14,7 +14,7 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct DurableTaskSettings {
-    /// Concurrent unfinished objectives admitted per fleet.
+    /// Concurrent unfinished objectives accepted per fleet.
     #[garde(range(min = 1))]
     pub max_unfinished_per_fleet: u32,
     /// Accepted inputs recovered beyond the saved incorporation cursor per read.

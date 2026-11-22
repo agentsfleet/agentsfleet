@@ -163,7 +163,7 @@ af_webhook = { path = "crates/protocol/af_webhook" }
 af_wire = { path = "crates/protocol/af_wire" }
 
 # --- harness: the model, secret and egress seams the agent harness drives
-# The runner's outbound guard: a request admitted against the run's network
+# The runner's outbound guard: a request allowed by the run's network
 # policy, its credentials placed at send time, no private address reached.
 af_egress = { path = "crates/harness/af_egress" }
 # guffbolt's `Model` over every provider wire, and what a saved model setting

@@ -46,7 +46,7 @@ const EROFS_FEATURES: [&str; 8] = [
 /// A SHA-256 in hexadecimal: sixty-four digits.
 const SHA256_HEX_LEN: usize = 64;
 
-/// What admission holds a release to: the key it must be signed with, and the
+/// What verification holds a release to: the key it must be signed with, and the
 /// architecture and runner version this host serves.
 #[derive(Debug, Clone)]
 pub struct Release {
@@ -147,10 +147,10 @@ impl Release {
     }
 }
 
-/// The facts of one release admission checks the image against.
+/// The facts of one release verification checks the image against.
 ///
 /// The manifest records more, every package, the vendored binaries, the
-/// snapshot and the builder, which the release keeps and admission does not
+/// snapshot and the builder, which the release keeps and verification does not
 /// read.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, garde::Validate)]
 pub struct Manifest {

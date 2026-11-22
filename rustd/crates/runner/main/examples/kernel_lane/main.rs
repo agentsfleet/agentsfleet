@@ -24,8 +24,6 @@
 )]
 
 #[cfg(target_os = "linux")]
-mod admission;
-#[cfg(target_os = "linux")]
 mod budgets;
 #[cfg(target_os = "linux")]
 mod confinement;
@@ -85,6 +83,8 @@ mod toolbox_size;
 mod tools;
 #[cfg(target_os = "linux")]
 mod trials;
+#[cfg(target_os = "linux")]
+mod verify;
 #[cfg(target_os = "linux")]
 use af_egress::testing::upstream;
 

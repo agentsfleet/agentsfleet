@@ -3,8 +3,8 @@
 
 use super::{CountingMint, RecordingTransport};
 use crate::{
-    admission::{Draft, Placement},
     egress::Egress,
+    policy::{Draft, Placement},
     transport::Transport as _,
 };
 use af_core::clock::FixedClock;

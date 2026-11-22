@@ -19,7 +19,7 @@
 use crate::seed;
 use crate::support;
 use af_core::id::Uuid7;
-use afd_fleet::run::admit::Refusal;
+use afd_fleet::run::start_check::Refusal;
 use afd_fleet::run::{Delivery, Ended};
 use sqlx::Row as _;
 

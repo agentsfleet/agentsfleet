@@ -10,7 +10,7 @@ use crate::run::RunService;
 /// Handles only; the task lifecycle owns behavior and introduces no dispatcher.
 #[derive(Debug, Clone)]
 pub struct DurableTaskDependencies {
-    /// Validated limits for new admissions; saved task allowances remain authoritative.
+    /// Validated limits for new acceptances; saved task allowances remain authoritative.
     pub policy: super::policy::DurableTaskPolicy,
     /// Deployment-owned Secrets workspace, never selected by fleet/model input.
     pub admin_workspace: Option<af_core::id::Uuid7>,

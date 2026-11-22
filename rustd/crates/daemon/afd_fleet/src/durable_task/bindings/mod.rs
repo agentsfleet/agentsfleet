@@ -1,7 +1,7 @@
 //! Production interpretation prepares remote targets outside the native bind transaction.
 
 use super::{
-    DurableTaskRefusal, DurableTaskRun, DurableTasks, PreparedPlan, admit, decision, guard,
+    DurableTaskRefusal, DurableTaskRun, DurableTasks, PreparedPlan, accept, decision, guard,
     transaction,
 };
 use crate::{Result, run::Runs};
@@ -29,7 +29,7 @@ pub(super) async fn accept(
         items: Vec::new(),
         authorization: Some((**input).clone()),
     };
-    if let Some(accepted) = admit::existing(tasks, run, &plan).await? {
+    if let Some(accepted) = accept::existing(tasks, run, &plan).await? {
         return Ok(response(accepted));
     }
     let (config, message) = source(tasks, run, &plan).await?;
@@ -42,7 +42,7 @@ pub(super) async fn accept(
         .interpretation(input, &message, policy)?;
     let questions = decision::compile::completion(policy)?;
     plan.items = preparation::prepare(tasks, run, input, objectives, &config, &questions).await?;
-    Ok(response(admit::bind(tasks, run, &plan).await?))
+    Ok(response(accept::bind(tasks, run, &plan).await?))
 }
 
 async fn source(
@@ -53,8 +53,8 @@ async fn source(
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::run(&mut tx, run).await?;
-    let source = admit::source::lock(&mut tx, run, &current, plan).await?;
-    admit::source::check_human(&source)?;
+    let source = accept::source::lock(&mut tx, run, &current, plan).await?;
+    accept::source::check_human(&source)?;
     if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(DurableTaskRefusal::StaleState.into());
     }

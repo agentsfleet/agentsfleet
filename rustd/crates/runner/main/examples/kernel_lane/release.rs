@@ -1,6 +1,6 @@
 //! The lane's own release: a signing key made per run standing in for the
 //! release key, manifests signed with it the way `cosign` signs, and images
-//! the lane makes for the admission trials.
+//! the lane makes for the verification trials.
 
 use std::fs;
 use std::io::{self, BufReader};

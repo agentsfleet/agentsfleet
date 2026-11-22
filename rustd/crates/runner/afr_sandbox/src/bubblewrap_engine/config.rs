@@ -45,7 +45,7 @@ pub struct BubblewrapConfig {
 }
 
 impl BubblewrapConfig {
-    /// What a runner host builds sandboxes from: its admitted `toolbox`, the
+    /// What a runner host builds sandboxes from: its verified `toolbox`, the
     /// cgroup delegated to it, `state_dir` for each run's directory, and
     /// `entry`, the runner binary every sandbox starts, paced as `tuning`
     /// says. The log level is the one `env` names.

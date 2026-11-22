@@ -11,8 +11,8 @@ use af_core::id::Uuid7;
 
 use afd_billing::biller::{Account, Biller};
 
-use crate::run::admit::fault::{BALANCE, BUDGET};
-use crate::run::admit::{Declined, Refusal, Request};
+use crate::run::start_check::fault::{BALANCE, BUDGET};
+use crate::run::start_check::{Declined, Refusal, Request};
 use afd_billing::Nanos;
 use afd_billing::budget::{self, Spend, Verdict};
 use afd_billing::rates::Estimate;
@@ -129,12 +129,12 @@ const EVENT_BUDGET_BREACH: &str = "run_budget_breach";
 /// debited, so what runs already in flight spent counts against it.
 ///
 /// Two reads, and BOTH are taken even when the first answers that the run
-/// cannot be priced. An unpriceable model costs zero to admit against, but the
+/// cannot be priced. An unpriceable model costs zero to start against, but the
 /// balance read is still what makes an exhausted pool refuse — skipping it
 /// because the estimate was zero would let a catalogue change silently disable
 /// the credit gate.
 ///
-/// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
+/// A tenant with no wallet row PASSES — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
 pub(super) async fn balance<F: error_code::Coded + Sync>(
     estimate: Result<Estimate, &F>,

@@ -32,7 +32,7 @@ use af_core::turn::label;
 use af_observability::test_util::Capture;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_fleet::run::Ended;
-use afd_fleet::run::admit::Refusal;
+use afd_fleet::run::start_check::Refusal;
 
 use self::report_seed::held;
 

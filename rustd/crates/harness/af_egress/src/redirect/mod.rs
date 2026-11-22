@@ -1,4 +1,4 @@
-//! One admitted GET chain; admission and transport remain owned by the caller.
+//! One allowed GET chain; the policy check and transport remain owned by the caller.
 
 use std::collections::BTreeSet;
 use std::time::Instant;
@@ -109,7 +109,7 @@ impl Chain {
         };
     }
 
-    /// Begin after the first request's admission, retaining only modeled
+    /// Begin after the first request's policy check, retaining only modeled
     /// headers, following at most `limits.max_redirects` before giving up and
     /// masking within `limits.mask_matcher_bytes`.
     #[must_use]
@@ -129,7 +129,7 @@ impl Chain {
         }
     }
 
-    /// Draft a continuation, which must pass the same run's admission before send.
+    /// Draft a continuation, which must pass the same run's egress policy before send.
     ///
     /// # Errors
     /// Returns a safe stopping reason for an invalid target, loop, exhausted

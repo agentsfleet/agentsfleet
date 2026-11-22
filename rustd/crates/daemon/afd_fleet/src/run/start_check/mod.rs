@@ -1,4 +1,4 @@
-//! The ordered admission pass: may this event run, and on whose money.
+//! The ordered start check: may this event run, and on whose money.
 //!
 //! # The three outcomes, and why they are a type
 //!
@@ -8,7 +8,7 @@
 //! exits do, four do not. The type carries none of it, so knowing which class
 //! an exit belongs to means reading that exit.
 //!
-//! Here they are [`Admission`], and the durable consequence is applied ONCE, by
+//! Here they are [`StartCheck`], and the durable consequence is applied ONCE, by
 //! the caller, as a function of the value. A refusal that forgot to write its
 //! row and a refusal that wrote it twice are both unrepresentable.
 //!
@@ -55,7 +55,7 @@ const EVENT_TENANT_UNRESOLVED: &str = "run_tenant_lookup_failed";
 /// the two ways that matter: whether the event can ever run again, and what an
 /// operator should do about it.
 ///
-/// [`Admission::Await`] is durably identical to [`Admission::Retry`] — no row,
+/// [`StartCheck::Await`] is durably identical to [`StartCheck::Retry`] — no row,
 /// delivery left leasable — and it is a separate arm anyway, because the two
 /// mean opposite things to whoever is watching. A retry says this daemon could
 /// not decide and will try again shortly. An await says it decided perfectly
@@ -63,9 +63,9 @@ const EVENT_TENANT_UNRESOLVED: &str = "run_tenant_lookup_failed";
 /// Collapsing them would put a queue waiting on people into the same graph as a
 /// datastore falling over.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Admission {
+pub enum StartCheck {
     /// Issue the run, billed as described.
-    Admit(Billed),
+    Start(Billed),
     /// End the event. A human must fix money or configuration before this work
     /// can run, so the caller writes the terminal row and acknowledges the
     /// delivery.
@@ -133,7 +133,7 @@ pub struct Request<'a> {
     pub workspace_id: &'a Uuid7,
     /// The fleet whose ceiling applies.
     pub fleet_id: &'a Uuid7,
-    /// The event being admitted.
+    /// The event being checked.
     pub turn_id: &'a Uuid7,
     /// The fleet's declared ceiling, from the config resolved this run.
     pub budget: Budget,
@@ -162,7 +162,7 @@ pub type Payer = core::result::Result<Option<Uuid7>, afd_billing::Error>;
 ///
 /// # Errors
 /// A read fault the payer gate's posture does not absorb — none today;
-/// `.ok_or_else` is what keeps a posture changed to `Admit` from admitting
+/// `.ok_or_else` is what keeps a posture changed to `Start` from starting
 /// an event it could not find a payer for.
 pub fn payer_gate(
     read: Payer,
@@ -194,7 +194,7 @@ pub async fn money_gates(
     payer: Payer,
     request: Request<'_>,
     now: jiff::Timestamp,
-) -> Result<Admission> {
+) -> Result<StartCheck> {
     let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
     let estimate = accounts
         .estimate(request.posture, request.provider, request.model, now)
@@ -224,7 +224,7 @@ pub async fn money_gates_with<
     request: Request<'_>,
     spend: core::result::Result<afd_billing::budget::Spend, &E>,
     estimate: core::result::Result<afd_billing::rates::Estimate, &F>,
-) -> Result<Admission> {
+) -> Result<StartCheck> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
         Err(stop) => return Ok(stop.into()),
@@ -237,7 +237,7 @@ pub async fn money_gates_with<
         return Ok(stop.into());
     }
 
-    Ok(Admission::Admit(Billed {
+    Ok(StartCheck::Start(Billed {
         tenant_id,
         posture: request.posture,
         provider: request.provider.into(),

@@ -80,10 +80,10 @@ async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
 // leaves the delivery leasable, writing nothing; fails_when=a retry is ended as a
 // refusal, which writes the terminal row this dead pool would refuse, or is
 // answered without naming the gate; why_new=the retry arm had no case;
-// seam=`ended`, the one place every declined admission lands.
+// seam=`ended`, the one place every declined start check lands.
 #[tokio::test]
 async fn a_gate_that_could_not_decide_answers_no_work_and_writes_nothing() {
-    use crate::run::admit::{Declined, Transient};
+    use crate::run::start_check::{Declined, Transient};
     use af_core::test_util::trace::Capture;
 
     let log = Capture::install();

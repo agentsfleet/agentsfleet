@@ -2,7 +2,7 @@
 //! and nowhere at all from a tool that carries none.
 
 use super::Placement;
-use super::tests::{admit, draft, misplaced, refused};
+use super::tests::{allow, draft, misplaced, refused};
 use crate::error::{Error, raise};
 use crate::fixture::{ELASTIC, GITHUB, GRAFANA, shown};
 use crate::refusal::Refusal;
@@ -10,7 +10,7 @@ use crate::refusal::Refusal;
 #[test]
 fn should_put_a_credentials_own_host_in_place_of_a_whole_host_placeholder() {
     assert_eq!(
-        admit(
+        allow(
             false,
             draft(
                 "GET",
@@ -35,7 +35,7 @@ fn should_send_a_static_credential_only_to_its_own_host() {
     let grafana = [("Authorization", "Bearer ${secrets.grafana.token}")];
 
     assert!(
-        admit(
+        allow(
             false,
             draft(
                 "GET",
@@ -88,7 +88,7 @@ fn should_send_a_minted_credential_only_where_an_origin_policy_names_it() {
     let github = [("Authorization", "Bearer ${secrets.github.token}")];
 
     assert!(
-        admit(
+        allow(
             false,
             draft(
                 "GET",
@@ -156,8 +156,8 @@ fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
 fn should_refuse_a_credential_with_no_string_field_as_absent() {
     let mut policy = crate::fixture::policy(false);
     policy.secrets_map = Some(serde_json::json!({"numbers": {"ttl": 30}}));
-    let refused = super::Admission::new(&policy)
-        .admit(draft(
+    let refused = super::EgressPolicy::new(&policy)
+        .allow(draft(
             "GET",
             "https://demo-grafana.internal/api/health",
             &[("Authorization", "${secrets.numbers.token}")],
@@ -228,8 +228,8 @@ fn should_refuse_a_secret_host_that_names_more_than_a_host() {
         grafana.insert("host".to_owned(), "demo-grafana.internal/smuggled".into());
     }
 
-    let refusal = super::Admission::new(&policy)
-        .admit(draft(
+    let refusal = super::EgressPolicy::new(&policy)
+        .allow(draft(
             "GET",
             "https://${secrets.grafana.host}/api",
             &[],

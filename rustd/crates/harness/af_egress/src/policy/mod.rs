@@ -35,7 +35,7 @@ const METHODS: [Method; 7] = [
     Method::OPTIONS,
 ];
 
-/// The methods `read_only` admits everywhere.
+/// The methods `read_only` allows everywhere.
 const READS: [Method; 2] = [Method::GET, Method::HEAD];
 
 /// The only scheme sent.
@@ -80,8 +80,8 @@ impl fmt::Debug for Draft {
     }
 }
 
-/// A request the policy admits, its placeholders not yet resolved.
-pub(crate) struct Admitted {
+/// A request the policy allows, its placeholders not yet resolved.
+pub(crate) struct Allowed {
     pub(crate) method: Method,
     pub(crate) url: Url,
     pub(crate) headers: Vec<(String, String)>,
@@ -90,15 +90,15 @@ pub(crate) struct Admitted {
 
 /// One run's network policy, read where each request consults it.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Admission<'p> {
+pub(crate) struct EgressPolicy<'p> {
     network: &'p NetworkPolicy<'p>,
     origins: &'p [HttpOriginPolicy<'p>],
     mintable: &'p [Mintable<'p>],
     statics: StaticSecrets<'p>,
 }
 
-impl<'p> Admission<'p> {
-    /// The admission `policy` describes.
+impl<'p> EgressPolicy<'p> {
+    /// The egress policy `policy` describes.
     pub(crate) fn new(policy: &'p ExecutionPolicy<'p>) -> Self {
         Self {
             network: &policy.network_policy,
@@ -138,8 +138,8 @@ impl<'p> Admission<'p> {
         }
     }
 
-    /// `draft`, admitted, or the first rule it breaks.
-    pub(crate) fn admit(self, draft: Draft) -> Result<Admitted> {
+    /// `draft`, allowed, or the first rule it breaks.
+    pub(crate) fn allow(self, draft: Draft) -> Result<Allowed> {
         let method = sendable(&draft.method)?;
         let url = self.locate(&draft.url, draft.placement)?;
         let host = url.host_str().unwrap_or_default();
@@ -149,9 +149,9 @@ impl<'p> Admission<'p> {
         credentials
             .into_iter()
             .try_for_each(|secret| self.bound(secret, host))?;
-        let matched = self.origin_admits(&method, &url, draft.body.as_deref())?;
-        self.read_only_admits(&method, &url, matched)?;
-        Ok(Admitted {
+        let matched = self.allows_origin(&method, &url, draft.body.as_deref())?;
+        self.allows_read_only(&method, &url, matched)?;
+        Ok(Allowed {
             method,
             url,
             headers: draft.headers,
@@ -247,13 +247,13 @@ impl<'p> Admission<'p> {
             .find(|origin| origin.host.eq_ignore_ascii_case(host))
     }
 
-    /// Whether a rule admitted the request: `false` for a host with no rules,
-    /// a refusal for a host whose rules admit nothing of this shape.
-    fn origin_admits(self, method: &Method, url: &Url, body: Option<&str>) -> Result<bool> {
+    /// Whether a rule allowed the request: `false` for a host with no rules,
+    /// a refusal for a host whose rules allow nothing of this shape.
+    fn allows_origin(self, method: &Method, url: &Url, body: Option<&str>) -> Result<bool> {
         let host = url.host_str().unwrap_or_default();
         match self.origin(host) {
             None => Ok(false),
-            Some(origin) if origin::admits(origin, method, url, body) => Ok(true),
+            Some(origin) if origin::allows(origin, method, url, body) => Ok(true),
             Some(origin) => Err(raise::request_policy_not_allowed(
                 host,
                 method.as_str(),
@@ -264,12 +264,12 @@ impl<'p> Admission<'p> {
     }
 
     /// Under `read_only`: reads, matched POST/PATCH rules, and listed query POSTs.
-    fn read_only_admits(self, method: &Method, url: &Url, matched: bool) -> Result<()> {
-        let admitted = !self.network.read_only
+    fn allows_read_only(self, method: &Method, url: &Url, matched: bool) -> Result<()> {
+        let allowed = !self.network.read_only
             || READS.contains(method)
             || (matched && (*method == Method::POST || *method == Method::PATCH))
             || (*method == Method::POST && self.read_post(url));
-        admitted
+        allowed
             .then_some(())
             .ok_or_else(|| raise::method_not_allowed(method.as_str()))
     }

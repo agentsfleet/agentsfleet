@@ -12,7 +12,7 @@ use super::{
 use crate::{
     Result,
     durable_task::{
-        DurableTaskRefusal, DurableTaskRun, DurableTaskScope, DurableTaskSnapshot, admit::source,
+        DurableTaskRefusal, DurableTaskRun, DurableTaskScope, DurableTaskSnapshot, accept::source,
         guard, read,
     },
     error::query,

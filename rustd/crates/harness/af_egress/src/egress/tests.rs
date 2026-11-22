@@ -2,12 +2,12 @@ use af_core::clock::FixedClock;
 use reqwest::header::AUTHORIZATION;
 
 use super::Egress;
-use crate::admission::{Draft, Placement};
 use crate::error::raise;
 use crate::fixture::{
     BASE, BRANCH, GITHUB, GRAFANA_TOKEN, PUSHOVER_TOKEN, PUSHOVER_USER, RUN_ID, START, Shown,
     TOKEN_LIFETIME, policy, shown,
 };
+use crate::policy::{Draft, Placement};
 use crate::testing::CountingMint;
 
 const MINTED: &str = "ghs_minted_token";
@@ -59,7 +59,7 @@ fn refused_post(url: &str) -> Shown {
 }
 
 #[tokio::test]
-async fn test_write_rules_admit_only_repair_branch() {
+async fn test_write_rules_allow_only_repair_branch() {
     let named = format!(r#"{{"ref":"refs/heads/{BRANCH}","sha":"abc"}}"#);
 
     assert_eq!(
@@ -113,7 +113,7 @@ async fn should_refuse_a_header_http_cannot_carry() {
 }
 
 #[tokio::test]
-async fn should_admit_nothing_through_a_closed_guard() {
+async fn should_allow_nothing_through_a_closed_guard() {
     let mut closed = crate::testing::closed();
 
     let refused = closed

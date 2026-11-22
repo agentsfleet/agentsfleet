@@ -186,7 +186,7 @@ constraint. Each is documented at its declaration (C4).
 | run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `wait_agent` |
 | child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf, held alone |
 | process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf, held alone |
-| admitted toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has admitted, oldest first | leaf, held alone |
+| verified toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has verified, oldest first | leaf, held alone |
 | run memory | `afr_tools`'s `Run::memory` (tokio) | the fleet's memory backend for one run | held for one read or write, never across a call |
 | run egress | `afr_tools`'s `Run::egress` (tokio) | the run's policy and the credentials it has minted | held to admit or mask, never across a send |
 | exec sessions | `afr_tools`'s `Sessions` | one run's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |

@@ -375,7 +375,7 @@ Read bindings receive contents read without Pull Request permissions; repair bin
 Actions/checks reads require installation permission; a missing permission returns 403 to the fleet.
 
 The shared HTTP client disables automatic redirects, but the tool supports guarded bodyless GET redirects.
-Each destination needs current policy admission; cross-origin modeled headers are stripped.
+Each destination needs a current egress policy check; cross-origin modeled headers are stripped.
 See [guarded downloads](runner_fleet.md#guarded-tool-downloads); implementation support alone does not prove a complete fleet-owned log read.
 
 ### Provider impact

@@ -7,9 +7,9 @@ use af_secrets::StaticSecrets;
 use af_wire::policy::ExecutionPolicy;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
-use crate::admission::{Admission, Draft};
 use crate::error::{Result, raise};
 use crate::mint::Mint;
+use crate::policy::{Draft, EgressPolicy};
 use crate::transport::Outbound;
 use crate::vault::Vault;
 
@@ -17,7 +17,7 @@ use crate::vault::Vault;
 #[derive(Debug)]
 pub struct Egress<'run> {
     run_id: &'run str,
-    admission: Admission<'run>,
+    policy: EgressPolicy<'run>,
     vault: Vault<'run>,
 }
 
@@ -33,25 +33,25 @@ impl<'run> Egress<'run> {
     ) -> Self {
         Self {
             run_id,
-            admission: Admission::new(policy),
+            policy: EgressPolicy::new(policy),
             vault: Vault::new(run_id, mint, clock),
         }
     }
 
-    /// `draft`, admitted and with its credentials in place, ready for a
+    /// `draft`, allowed and with its credentials in place, ready for a
     /// transport.
     ///
     /// # Errors
     /// The policy refuses the request, a placeholder names a secret the fleet
     /// lacks, or the daemon would not mint the credential it names.
     pub async fn prepare(&mut self, draft: Draft) -> Result<Outbound> {
-        let admitted = self.admission.admit(draft)?;
-        let headers = self.headers(admitted.headers).await?;
+        let allowed = self.policy.allow(draft)?;
+        let headers = self.headers(allowed.headers).await?;
         Ok(Outbound {
-            method: admitted.method,
-            url: admitted.url,
+            method: allowed.method,
+            url: allowed.url,
             headers,
-            body: admitted.body,
+            body: allowed.body,
             discard_redirect_body: false,
         })
     }
@@ -71,7 +71,7 @@ impl<'run> Egress<'run> {
     /// The run's static credentials, for a tool that reads its own.
     #[must_use]
     pub const fn statics(&self) -> StaticSecrets<'run> {
-        self.admission.statics()
+        self.policy.statics()
     }
 
     /// The written headers as HTTP carries them, `Authorization` filled in
@@ -83,7 +83,7 @@ impl<'run> Egress<'run> {
                 .map_err(|_invalid| raise::invalid_header(&name))?;
             let sensitive = header == AUTHORIZATION;
             let mut sent = if sensitive {
-                let filled = self.vault.fill(self.admission, &value).await?;
+                let filled = self.vault.fill(self.policy, &value).await?;
                 HeaderValue::from_str(filled.expose())
             } else {
                 HeaderValue::from_str(&value)

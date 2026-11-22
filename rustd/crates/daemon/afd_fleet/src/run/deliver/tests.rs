@@ -277,7 +277,7 @@ fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
 async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
     use crate::run::test_dead;
 
-    let admitted = super::AdmittedFleetWork {
+    let checked = super::CheckedFleetWork {
         acquired: test_dead::acquired_installed(),
         installed: crate::run::installed::Installed {
             workspace_id: test_dead::id(2),
@@ -297,7 +297,7 @@ async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
             None,
             af_crypto::secret::SecretString::new("sk-ant-not-a-real-key".to_owned()),
         ),
-        billed: crate::run::admit::Billed {
+        billed: crate::run::start_check::Billed {
             tenant_id: test_dead::id(3),
             posture: afd_billing::Posture::Platform,
             provider: "anthropic".into(),
@@ -310,7 +310,7 @@ async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
     let delivered = test_dead::plane()
         .deliver_with(
             &test_dead::id(9),
-            admitted,
+            checked,
             test_dead::AT,
             std::time::Instant::now(),
             &mut |_run, _metadata| emitted += 1,

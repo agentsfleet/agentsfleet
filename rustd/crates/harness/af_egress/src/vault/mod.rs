@@ -17,10 +17,10 @@ use std::time::Duration;
 use af_core::clock::{self, Clock};
 use af_secrets::{FIELD_TOKEN, Scrub, Secret};
 
-use crate::admission::Admission;
 use crate::error::{Result, raise};
 use crate::mint::{Mint, Minted};
 use crate::placeholder::{self, SecretRef};
+use crate::policy::EgressPolicy;
 
 /// How long before its expiry a minted token is minted again, so a request
 /// never leaves carrying a token the daemon is about to stop honouring.
@@ -58,20 +58,20 @@ impl<'run> Vault<'run> {
     }
 
     /// `template` with every placeholder replaced by its value, minting what
-    /// `admission` says is minted and is not yet held fresh.
+    /// `policy` says is minted and is not yet held fresh.
     pub(crate) async fn fill(
         &mut self,
-        admission: Admission<'_>,
+        policy: EgressPolicy<'_>,
         template: &str,
     ) -> Result<Secret> {
         let wanted = placeholder::parse(template).unwrap_or_default();
         for secret in &wanted {
-            if let Some(mintable) = admission.mints(secret.name) {
+            if let Some(mintable) = policy.mints(secret.name) {
                 self.hold(secret.name, &mintable.integration).await?;
             }
         }
-        let statics = admission.statics();
-        let value = |secret: SecretRef<'_>| match admission.mints(secret.name) {
+        let statics = policy.statics();
+        let value = |secret: SecretRef<'_>| match policy.mints(secret.name) {
             Some(_minted) if secret.field == FIELD_TOKEN => {
                 self.minted.get(secret.name).map(Minted::expose)
             }
@@ -79,7 +79,7 @@ impl<'run> Vault<'run> {
             None => statics.field(secret.name, secret.field),
         };
         if let Some(missing) = wanted.iter().find(|secret| value(**secret).is_none()) {
-            return Err(admission.unknown(*missing));
+            return Err(policy.unknown(*missing));
         }
         Ok(Secret::new(
             placeholder::substitute(template, value).into_owned(),

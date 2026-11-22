@@ -29,7 +29,7 @@ struct Held {
 }
 
 impl RunService {
-    /// Runs an assigned pass, marking the admission, the issue and the assignment's
+    /// Runs an assigned pass, marking the start check, the issue and the assignment's
     /// encoding on `clock`. The issue ends where `emit` is called, or where the
     /// delivery returns without calling it, so a refused assignment shows `issue`
     /// and no `encode`.
@@ -52,10 +52,10 @@ impl RunService {
             turn_id: acquired.turn_id.clone(),
         };
         clock.identify(held.turn_id.as_str(), held.fleet_id.as_str());
-        let admitted = self.admit_assigned(acquired, runner_id, now).await;
+        let checked = self.check_assigned(acquired, runner_id, now).await;
         clock.mark(AssignStage::Admit);
-        let pass = match admitted.map(Step::proceed) {
-            Ok(Ok(admitted)) => {
+        let pass = match checked.map(Step::proceed) {
+            Ok(Ok(checked)) => {
                 let delivered = {
                     let mut timed = |run: RunPayload<'_>, assigned: AssignedRun| {
                         clock.mark(AssignStage::Issue);
@@ -63,7 +63,7 @@ impl RunService {
                         clock.mark(AssignStage::Encode);
                         encoded
                     };
-                    self.deliver_with(runner_id, admitted, now, began, &mut timed)
+                    self.deliver_with(runner_id, checked, now, began, &mut timed)
                         .await
                 };
                 // The issue ends where `emit` is called. When it never is (a

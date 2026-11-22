@@ -17,7 +17,7 @@ fn workspace() -> Uuid7 {
 
 /// A workspace naming no tenant ends the event rather than retrying it.
 ///
-/// The distinction the whole [`super::Admission`] enum exists for: a broken
+/// The distinction the whole [`super::StartCheck`] enum exists for: a broken
 /// foreign key is not a datastore that will answer next time. Waiting does
 /// not fix it, and answering `Retry` would leave the delivery leasable
 /// forever — every poll re-reading the same missing row.
@@ -71,7 +71,7 @@ fn an_unowned_payer_is_declined_as_a_refusal() {
 }
 
 /// A payer read that failed retries under the payer gate's own name, rather
-/// than ending an event a later read would bill or admitting one nobody pays.
+/// than ending an event a later read would bill or starting one nobody pays.
 #[test]
 fn an_unread_payer_retries_under_the_payer_gate() {
     let fault: afd_billing::Error = afd_db::error::invalid_bool_knob("MIGRATE_ON_START").into();
@@ -93,7 +93,7 @@ fn an_unread_payer_retries_under_the_payer_gate() {
 )]
 async fn decided_on_a_dead_ledger(
     posture: afd_billing::rates::Posture,
-) -> (super::Admission, af_core::test_util::trace::Capture) {
+) -> (super::StartCheck, af_core::test_util::trace::Capture) {
     use af_core::test_util::trace::Capture;
     use af_fleet_runtime::FleetConfig;
 
@@ -130,17 +130,17 @@ async fn decided_on_a_dead_ledger(
 }
 
 /// Asserts the dead-ledger outcome: both read gates failed open under their own
-/// names and the run was admitted. Nothing is charged at admission, so no
+/// names and the run was started. Nothing is charged at the start check, so no
 /// write gate is left to end the pass; the run's usage is charged as its
 /// lines are logged.
 #[cfg(feature = "test-util")]
-fn assert_read_gates_fail_open_and_admit(
-    decided: &super::Admission,
+fn assert_read_gates_fail_open_and_start(
+    decided: &super::StartCheck,
     log: &af_core::test_util::trace::Capture,
 ) {
     assert!(
-        matches!(decided, super::Admission::Admit(_)),
-        "an unreadable ledger admits: {decided:?}"
+        matches!(decided, super::StartCheck::Start(_)),
+        "an unreadable ledger starts: {decided:?}"
     );
     for event in ["run_balance_unavailable", "run_budget_unavailable"] {
         let line = log.only(event).fields;
@@ -163,12 +163,12 @@ fn assert_read_gates_fail_open_and_admit(
 }
 
 /// With the ledger unreachable, the catalogue read fails first: both read gates
-/// fail open and the run is admitted.
+/// fail open and the run is started.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn an_unreadable_catalogue_and_budget_fail_open_and_admit() {
+async fn an_unreadable_catalogue_and_budget_fail_open_and_start() {
     let (decided, log) = decided_on_a_dead_ledger(afd_billing::rates::Posture::Platform).await;
-    assert_read_gates_fail_open_and_admit(&decided, &log);
+    assert_read_gates_fail_open_and_start(&decided, &log);
 }
 
 /// A self-managed key is priced without the catalogue, so the estimate
@@ -178,5 +178,5 @@ async fn an_unreadable_catalogue_and_budget_fail_open_and_admit() {
 #[tokio::test]
 async fn an_unreadable_balance_fails_open_like_an_unreadable_rate() {
     let (decided, log) = decided_on_a_dead_ledger(afd_billing::rates::Posture::SelfManaged).await;
-    assert_read_gates_fail_open_and_admit(&decided, &log);
+    assert_read_gates_fail_open_and_start(&decided, &log);
 }

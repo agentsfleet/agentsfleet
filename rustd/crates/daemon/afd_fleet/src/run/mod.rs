@@ -13,7 +13,6 @@
 //! where a file grew too long, so no module needs a re-export to stay findable.
 
 pub mod activity;
-pub mod admit;
 pub mod affinity;
 mod answer;
 pub mod assign;
@@ -51,6 +50,7 @@ pub mod scope;
 pub mod settle;
 pub mod sql;
 pub mod standing;
+pub mod start_check;
 pub mod store;
 #[cfg(all(test, feature = "test-util"))]
 mod test_dead;

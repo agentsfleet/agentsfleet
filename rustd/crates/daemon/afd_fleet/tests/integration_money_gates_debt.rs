@@ -12,7 +12,7 @@
 )]
 
 use afd_billing::Accounts;
-use afd_fleet::run::admit::{Admission, money_gates};
+use afd_fleet::run::start_check::{StartCheck, money_gates};
 
 use afd_db::test_util::mint_id;
 
@@ -23,13 +23,13 @@ use crate::support::Fixtures;
 /// What a tenant in debt owes, and then holds once it is repaid.
 const DEBT_NANOS: i64 = 50;
 
-/// A tenant in debt is refused at the balance gate, and admitted once its
+/// A tenant in debt is refused at the balance gate, and started once its
 /// balance is back above zero.
 ///
 /// A usage line takes its whole charge, so a balance can sit below zero. The
 /// model is unpriced, so the floor is zero: what refuses here is the debt
 /// alone, and a turn gate that clamped the balance at zero would cover a
-/// zero floor and admit a payer who owes money.
+/// zero floor and start a payer who owes money.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
@@ -53,7 +53,7 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     )
     .await
     .expect("a debt is a decision, not a fault");
-    let Admission::Refuse(refusal) = decided else {
+    let StartCheck::Refuse(refusal) = decided else {
         panic!("a tenant in debt must be refused, got {decided:?}");
     };
     assert_eq!(refusal.label, af_core::turn::label::BALANCE_EXHAUSTED);
@@ -67,10 +67,10 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
         fixtures.enrolled_at(),
     )
     .await
-    .expect("an admitted run is not a fault");
+    .expect("a started run is not a fault");
     assert!(
-        matches!(decided, Admission::Admit(_)),
-        "a repaid balance admits: {decided:?}"
+        matches!(decided, StartCheck::Start(_)),
+        "a repaid balance starts: {decided:?}"
     );
 
     fixtures.cleanup().await;

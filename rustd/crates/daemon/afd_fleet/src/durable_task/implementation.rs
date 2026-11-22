@@ -8,7 +8,7 @@ use super::{
     observe, read,
 };
 #[cfg(any(test, feature = "test-util"))]
-use super::{DurableTaskBindings, PreparedPlan, admit};
+use super::{DurableTaskBindings, PreparedPlan, accept};
 use af_core::id::Uuid7;
 use af_observability::metrics::label::durable_task::{DurableTaskOperation, DurableTaskOutcome};
 use af_wire::durable_task as wire;
@@ -284,7 +284,7 @@ impl DurableTaskLifecycle for DurableTasks {
         run: DurableTaskRun<'a>,
         plan: &'a PreparedPlan,
     ) -> Reply<'a, DurableTaskBindings> {
-        admit::observed_bind(self, run, plan)
+        accept::observed_bind(self, run, plan)
     }
 
     fn read<'a>(

@@ -68,7 +68,7 @@ pub(crate) fn cgroup_unsettled(path: &std::path::Path, state: &'static str) -> E
     .into()
 }
 
-/// Refuses a toolbox release whose `what` would not parse, failing admission's
+/// Refuses a toolbox release whose `what` would not parse, failing verification's
 /// `refusal` check, and keeps the parser's reason as the cause.
 pub(crate) fn toolbox_unreadable<E>(
     refusal: ToolboxRefusal,
@@ -87,7 +87,7 @@ where
     }
 }
 
-/// Refuses a toolbox release that failed admission's `refusal` check, saying
+/// Refuses a toolbox release that failed verification's `refusal` check, saying
 /// what the check found.
 pub(crate) fn toolbox_refused(refusal: ToolboxRefusal, detail: impl Into<String>) -> Error {
     ErrorKind::ToolboxRefused {

@@ -1,6 +1,6 @@
 [package]
 name = "af_egress"
-description = "The runner's outbound guard: a tool's request admitted against the run's network policy before any connection, its credentials put in place at send time, and sent where no private address is reached."
+description = "The runner's outbound guard: a tool's request checked against the run's network policy before any connection, its credentials put in place at send time, and sent where no private address is reached."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -23,7 +23,7 @@ af_wire.workspace = true
 # A minted token is a `Secret`; the run's static credentials are read through
 # `StaticSecrets`; a minted token joins the one masker, `Scrub`.
 af_secrets.workspace = true
-# Location values are bounded before parsing or admission.
+# Location values are bounded before parsing or the policy check.
 garde.workspace = true
 # When a minted token stops being honoured.
 jiff.workspace = true

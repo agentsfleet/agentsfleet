@@ -229,7 +229,7 @@ pub(crate) fn main() -> ExitCode {
 }
 
 /// Boots the lane the way a host boots: the image staged as a deploy stages
-/// it, its manifest checked against the lane's key, the image admitted by
+/// it, its manifest checked against the lane's key, the image verified by
 /// descriptor and the engine built over it, so the lane proves the boot
 /// production runs and not a second spelling of it.
 fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {

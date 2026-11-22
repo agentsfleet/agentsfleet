@@ -13,7 +13,7 @@ use crate::{
         AssignedRun, Billed, Issued, Target,
         answer::{Context, payload},
         history,
-        pull::{AdmittedFleetWork, Assigned, RunService, Step, assignment_lost},
+        pull::{Assigned, CheckedFleetWork, RunService, Step, assignment_lost},
     },
 };
 
@@ -21,7 +21,7 @@ impl RunService {
     pub(super) async fn issue_ready<T, F>(
         &self,
         runner: &Uuid7,
-        admitted: &AdmittedFleetWork,
+        checked: &CheckedFleetWork,
         policy: ExecutionPolicy<'_>,
         now: Timestamp,
         began: Instant,
@@ -35,52 +35,52 @@ impl RunService {
             .runs
             .issue_for_revision(
                 runner,
-                &admitted.acquired,
+                &checked.acquired,
                 Billed {
-                    tenant_id: &admitted.billed.tenant_id,
-                    posture: admitted.billed.posture.as_str(),
-                    provider: &admitted.billed.provider,
-                    model: &admitted.billed.model,
+                    tenant_id: &checked.billed.tenant_id,
+                    posture: checked.billed.posture.as_str(),
+                    provider: &checked.billed.provider,
+                    model: &checked.billed.model,
                 },
                 now,
-                admitted.installed.issue_revision.as_ref(),
+                checked.installed.issue_revision.as_ref(),
             )
             .await?
         else {
-            return Ok(assignment_lost(runner, &admitted.acquired));
+            return Ok(assignment_lost(runner, &checked.acquired));
         };
-        if admitted.acquired.kind == crate::run::Kind::Reassigned {
+        if checked.acquired.kind == crate::run::Kind::Reassigned {
             self.runs
-                .publish_restarted(&admitted.acquired, &issued)
+                .publish_restarted(&checked.acquired, &issued)
                 .await;
         }
         self.runs
             .latest()
             .observe(
-                &admitted.acquired.fleet_id,
-                admitted
+                &checked.acquired.fleet_id,
+                checked
                     .installed
                     .issue_revision
                     .as_ref()
                     .map(|proof| &proof.current),
-                admitted.acquired.opened.catalogue_version,
+                checked.acquired.opened.catalogue_version,
             )
             .await;
         af_observability::producers::fleet::runner::run_taken(runner.as_str());
         super::log_issued(
             runner,
             &issued.run_id,
-            &admitted.acquired,
+            &checked.acquired,
             super::queue_wait::issued_at(now, began),
         );
-        self.render_assignment(runner, admitted, policy, issued, emit)
+        self.render_assignment(runner, checked, policy, issued, emit)
             .await
     }
 
     async fn render_assignment<T, F>(
         &self,
         runner: &Uuid7,
-        admitted: &AdmittedFleetWork,
+        checked: &CheckedFleetWork,
         policy: ExecutionPolicy<'_>,
         issued: Issued,
         emit: &mut F,
@@ -94,7 +94,7 @@ impl RunService {
                 .turn_resume(super::super::turn_checkpoint::TurnRun {
                     runner_id: runner,
                     run_id: &issued.run_id,
-                    fencing_token: admitted.acquired.fence.as_u64(),
+                    fencing_token: checked.acquired.fence.as_u64(),
                 })
                 .await?
         } else {
@@ -103,26 +103,22 @@ impl RunService {
         let finished_calls = self
             .runs
             .finished_calls(
-                &admitted.acquired.fleet_id,
-                &admitted.acquired.turn_id,
+                &checked.acquired.fleet_id,
+                &checked.acquired.turn_id,
                 &issued.run_id,
             )
             .await?;
         let (history, memory) = future::join(
-            history::turns(
-                self.thread.as_ref(),
-                &admitted.acquired,
-                admitted.event_type,
-            ),
-            self.window_for(&admitted.acquired),
+            history::turns(self.thread.as_ref(), &checked.acquired, checked.event_type),
+            self.window_for(&checked.acquired),
         )
         .await;
-        let metadata = metadata(&issued, admitted);
+        let metadata = metadata(&issued, checked);
         let body = history::fit_frame(payload(
             &issued.run_id,
-            &admitted.acquired,
-            admitted.event_type,
-            &admitted.installed,
+            &checked.acquired,
+            checked.event_type,
+            &checked.installed,
             policy,
             Context {
                 history,
@@ -138,8 +134,8 @@ impl RunService {
     }
 }
 
-fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> AssignedRun {
-    let acquired = &admitted.acquired;
+fn metadata(issued: &Issued, checked: &CheckedFleetWork) -> AssignedRun {
+    let acquired = &checked.acquired;
     AssignedRun {
         run_id: issued.run_id.clone(),
         expires_at: issued.expires_at,
@@ -157,12 +153,12 @@ fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> AssignedRun {
         reported: issued.task.is_none().then(|| crate::run::Reported {
             fleet_id: acquired.fleet_id.clone(),
             workspace_id: acquired.workspace_id.clone(),
-            tenant_id: admitted.billed.tenant_id.clone(),
+            tenant_id: checked.billed.tenant_id.clone(),
             turn_id: acquired.turn_id.clone(),
             actor: acquired.actor.clone(),
-            posture: admitted.billed.posture.as_str().to_owned(),
-            provider: admitted.billed.provider.to_string(),
-            model: admitted.billed.model.to_string(),
+            posture: checked.billed.posture.as_str().to_owned(),
+            provider: checked.billed.provider.to_string(),
+            model: checked.billed.model.to_string(),
             fence: acquired.fence,
             run_created_at: issued.created_at,
             turn_created_at: acquired.turn_created_at,

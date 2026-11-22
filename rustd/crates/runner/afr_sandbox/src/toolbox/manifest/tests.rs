@@ -36,14 +36,14 @@ const APPROVED_FEATURES: [&str; 8] = [
     "dedupe",
 ];
 /// The key the fixture was signed under: a test key, never the release key,
-/// so the real image the fixture names is admitted by no host.
+/// so the real image the fixture names is verified by no host.
 const FIXTURE_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
 MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELVQWBgCxq2ODgOCaj/XkI/Vlvbjz
 NE5hNFWfWCzZc7dlzHFBosEsGA1965zFODW/81o74kL/hvsesQ2gmbWd8A==
 -----END PUBLIC KEY-----
 ";
 /// How a P-256 public key's DER opens, through the uncompressed point's
-/// marker: `id-ecPublicKey` on `prime256v1`, the one curve admission verifies
+/// marker: `id-ecPublicKey` on `prime256v1`, the one curve verification checks
 /// a release signature on.
 const P256_KEY_PREFIX: [u8; 27] = [
     0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
@@ -84,9 +84,9 @@ fn should_bind_external_inventory_to_the_signed_release_bytes() {
     image["package_metadata"] = json!("opaque bounded scanner evidence");
     let bytes = manifest_bytes(&image);
     let signature = signer.sign(&bytes);
-    let admitted = signer.release().verify(&bytes, &signature).unwrap();
-    assert_eq!(admitted.sha256(), sha256(IMAGE));
-    assert_eq!(admitted.length(), IMAGE.len() as u64);
+    let verified = signer.release().verify(&bytes, &signature).unwrap();
+    assert_eq!(verified.sha256(), sha256(IMAGE));
+    assert_eq!(verified.length(), IMAGE.len() as u64);
     image["package_metadata"] = json!("altered scanner evidence");
     assert_eq!(
         refusal(&signer.release(), &manifest_bytes(&image), &signature),
@@ -95,7 +95,7 @@ fn should_bind_external_inventory_to_the_signed_release_bytes() {
 }
 
 #[test]
-fn should_admit_each_approved_erofs_feature() {
+fn should_verify_each_approved_erofs_feature() {
     let signer = Signer::new();
     for features in APPROVED_FEATURES
         .map(|feature| vec![feature])
@@ -105,11 +105,11 @@ fn should_admit_each_approved_erofs_feature() {
         let mut image = facts(IMAGE);
         image["erofs_features"] = json!(features);
         let bytes = manifest_bytes(&image);
-        let admitted = signer
+        let verified = signer
             .release()
             .verify(&bytes, &signer.sign(&bytes))
             .unwrap();
-        assert_eq!(admitted.erofs_features, features);
+        assert_eq!(verified.erofs_features, features);
     }
 }
 

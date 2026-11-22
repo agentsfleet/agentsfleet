@@ -10,10 +10,12 @@ use af_wire::turn::TurnKind;
 use jiff::Timestamp;
 
 use crate::error::Result;
-use crate::run::admit::{Admission, Billed as Admitted, GateFacts, Request, money_gates_with};
 use crate::run::answer::no_work;
 use crate::run::envelope::{Acquired, HeadKind};
 use crate::run::installed::Installed;
+use crate::run::start_check::{
+    Billed as Started, GateFacts, Request, StartCheck, money_gates_with,
+};
 use crate::run::store::Runs;
 use af_core::turn::label;
 use afd_billing::Accounts;
@@ -94,7 +96,7 @@ pub struct RunService {
 }
 
 /// What the assignment and the gates settled, before the policy is built.
-pub(super) struct AdmittedFleetWork {
+pub(super) struct CheckedFleetWork {
     /// The work, and the fleet it belongs to.
     pub(super) acquired: Acquired,
     /// That fleet as installed.
@@ -104,7 +106,7 @@ pub(super) struct AdmittedFleetWork {
     /// The provider this run was billed against.
     pub(super) resolved: Resolved,
     /// What the money pass resolved.
-    pub(super) billed: Admitted,
+    pub(super) billed: Started,
     /// The standing integration grants the gates read returned, or `None`
     /// when that read failed and the policy reads them itself.
     pub(super) granted: Option<afd_gate::policy::grants::Grants>,
@@ -119,12 +121,12 @@ impl RunService {
     }
 
     /// Run gates after selection under the thread and turn fences.
-    async fn admit_assigned(
+    async fn check_assigned(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<AdmittedFleetWork>> {
+    ) -> Result<Step<CheckedFleetWork>> {
         let installed = match self
             .resolve_installed(&acquired, runner_id)
             .await?
@@ -164,14 +166,14 @@ impl RunService {
     }
 
     /// The event's type, its payer, its provider and every gate, over a row
-    /// the pass has opened: the run is admitted and billed, or the pass ends.
+    /// the pass has opened: the run passes its start check and is billed, or the pass ends.
     async fn billed(
         &self,
         acquired: Acquired,
         installed: Installed,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<AdmittedFleetWork>> {
+    ) -> Result<Step<CheckedFleetWork>> {
         let Some(event_type) = TurnKind::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
@@ -195,11 +197,11 @@ impl RunService {
             .await?;
         let facts = self.runs.gate_facts(&acquired).await;
         let gated = self.gated(&acquired, &installed, tenant, &resolved, &facts, now);
-        let billed = match gated.await?.admitted() {
+        let billed = match gated.await?.started() {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
-        Ok(Step::Go(AdmittedFleetWork {
+        Ok(Step::Go(CheckedFleetWork {
             acquired,
             installed,
             event_type,
@@ -214,7 +216,7 @@ impl RunService {
         &self,
         acquired: &Acquired,
         runner_id: &Uuid7,
-    ) -> Result<Step<AdmittedFleetWork>> {
+    ) -> Result<Step<CheckedFleetWork>> {
         self.runs.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
         let agentsfleet_turn_id = acquired.turn_id.as_str();
@@ -230,7 +232,7 @@ impl RunService {
     }
 
     /// The money gates over the tenant the payer gate found, then — once they
-    /// admit — the approval gate.
+    /// pass — the approval gate.
     async fn gated(
         &self,
         acquired: &Acquired,
@@ -239,7 +241,7 @@ impl RunService {
         resolved: &Resolved,
         facts: &GateFacts,
         now: Timestamp,
-    ) -> Result<Admission> {
+    ) -> Result<StartCheck> {
         let request = Request {
             workspace_id: &acquired.workspace_id,
             fleet_id: &acquired.fleet_id,
@@ -258,7 +260,7 @@ impl RunService {
             estimate.as_ref().copied().map_err(|fault| &**fault),
         )
         .await?;
-        if !matches!(money, Admission::Admit(_)) {
+        if !matches!(money, StartCheck::Start(_)) {
             return Ok(money);
         }
         Ok(self
@@ -290,14 +292,14 @@ impl RunService {
             .map_err(|fault| Arc::new(crate::Error::from(fault)))
     }
 
-    /// The approval gate, as an admission answer.
+    /// The approval gate, as a start-check answer.
     async fn judged(
         &self,
         acquired: &Acquired,
         installed: &Installed,
         facts: &GateFacts,
         now: Timestamp,
-    ) -> Option<Admission> {
+    ) -> Option<StartCheck> {
         let verdict = self
             .gates
             .judge(
@@ -314,6 +316,6 @@ impl RunService {
                 now,
             )
             .await;
-        Admission::of_gate(verdict)
+        StartCheck::of_gate(verdict)
     }
 }
