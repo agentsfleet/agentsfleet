@@ -37,7 +37,7 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
     let Some(producers) = installed() else {
         return;
     };
-    let label = producers.fleet.runners.admit(runner_id);
+    let label = producers.fleet.runners.track(runner_id);
     let reason = reason.map_or(UNMODELLED_REASON, class_label);
     producers.fleet.runner_failures.add(
         1,
@@ -57,7 +57,7 @@ pub fn failed(runner_id: &str, reason: Option<FailureClass>) {
 /// one counts nothing.
 pub fn runs(runner_id: &str, outcome: RunnerRun, count: u64) {
     if let Some(producers) = installed() {
-        let label = producers.fleet.runners.admit(runner_id);
+        let label = producers.fleet.runners.track(runner_id);
         producers.fleet.runner_runs.add(
             count,
             &[

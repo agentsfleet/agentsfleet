@@ -12,7 +12,7 @@ use crate::runner::RunnerMetrics;
 fn a_runner_gauge_reads_only_the_admitted_series() {
     let metrics = RunnerMetrics::default();
     let runner_id = runner(1);
-    let label = metrics.admit(&runner_id);
+    let label = metrics.track(&runner_id);
     assert_eq!(
         label, runner_id,
         "a table with room admits the runner itself"
@@ -51,7 +51,7 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
 #[test]
 fn a_runner_never_heard_from_publishes_no_last_seen_reading() {
     let metrics = RunnerMetrics::new();
-    let _label = metrics.admit(&runner(1));
+    let _label = metrics.track(&runner(1));
 
     assert!(
         metrics.last_seen_readings().is_empty(),
@@ -83,7 +83,7 @@ fn gauges_ignore_a_runner_that_has_not_acquired_a_series() {
 fn more_releases_than_runs_publishes_no_reading() {
     let metrics = RunnerMetrics::new();
     let runner_id = runner(1);
-    let _label = metrics.admit(&runner_id);
+    let _label = metrics.track(&runner_id);
 
     metrics.released(&runner_id);
 
@@ -102,8 +102,8 @@ fn more_releases_than_runs_publishes_no_reading() {
 fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
     let metrics = RunnerMetrics::new();
     let (first, second) = (runner(1), runner(2));
-    let _first = metrics.admit(&first);
-    let _second = metrics.admit(&second);
+    let _first = metrics.track(&first);
+    let _second = metrics.track(&second);
 
     metrics.held(&first);
     for _run in 0..3 {
@@ -146,14 +146,14 @@ fn a_reading_is_attributed_to_the_runner_it_was_read_from() {
 fn a_panicking_recorder_leaves_the_table_readable() {
     let metrics = Arc::new(RunnerMetrics::new());
     let first = runner(0);
-    metrics.admit(&first);
+    metrics.track(&first);
     metrics.held(&first);
 
     let panicking = Arc::clone(&metrics);
     let second = runner(1);
     let recorded = second;
     let panicked = std::thread::spawn(move || {
-        panicking.admit(&recorded);
+        panicking.track(&recorded);
         panicking.held(&recorded);
         // Ends by panicking, mid-way through recording. Spelled as a failing
         // parse rather than `panic!` because the workspace denies

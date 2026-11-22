@@ -129,7 +129,7 @@ pub struct RunnerMetrics {
     /// release looks a runner up here, so the table is read from every request
     /// task in the process at once, and admitting a new runner took a lock
     /// over the WHOLE table to insert one key. Nothing is ever removed, which
-    /// is why [`RunnerMetrics::admitted`] can stand in for its length.
+    /// is why [`RunnerMetrics::tracked`] can stand in for its length.
     series: DashMap<Box<str>, Arc<Counters>>,
     /// How many series have been handed out.
     ///
@@ -182,11 +182,11 @@ impl RunnerMetrics {
     /// having overflowed. A caller that recorded against the raw identifier
     /// instead would make the ceiling a suggestion, which is why the label is
     /// answered by the table rather than chosen by the caller.
-    pub fn admit<'id>(&self, runner_id: &'id str) -> &'id str {
+    pub fn track<'id>(&self, runner_id: &'id str) -> &'id str {
         if self.existing(runner_id).is_some() {
             return runner_id;
         }
-        if self.admit_new(runner_id).is_some() {
+        if self.track_new(runner_id).is_some() {
             return runner_id;
         }
         self.overflowed.fetch_add(1, Ordering::Relaxed);
@@ -271,7 +271,7 @@ impl RunnerMetrics {
     /// racing the SAME new runner produce one series; the seat taken below is
     /// what stops two threads racing DIFFERENT new runners from both taking
     /// the last one.
-    fn admit_new(&self, runner_id: &str) -> Option<Arc<Counters>> {
+    fn track_new(&self, runner_id: &str) -> Option<Arc<Counters>> {
         match self.series.entry(Box::from(runner_id)) {
             // Another thread admitted this very runner between the lookup in
             // `admit` and this line.
