@@ -130,3 +130,9 @@ impl Observer for Recorder {
         self.push(Seen::Reopened(attempt, failure.status()));
     }
 }
+
+/// An observer that writes none of its methods, so each answers with the
+/// trait's own.
+pub(crate) struct Unwritten;
+
+impl Observer for Unwritten {}

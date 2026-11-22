@@ -52,3 +52,51 @@ impl Requirements {
         }
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "fixed test fixtures fail loudly when their contract changes"
+)]
+mod tests {
+    use af_fleet_runtime::Definition;
+
+    use super::Requirements;
+
+    /// A setup whose block adds `binding` to the fixture's.
+    fn setup(binding: &serde_json::Value) -> Definition {
+        let mut block = serde_json::json!({
+            "triggers": [], "tools": [], "credentials": [], "network": {"allow": []},
+            "budget": {"daily_nanos": af_core::money::NANOS_PER_USD.to_string()}
+        });
+        if let (Some(block), Some(binding)) = (block.as_object_mut(), binding.as_object()) {
+            block.extend(binding.clone());
+        }
+        let json = serde_json::json!({
+            "schema_version": 1,
+            "description": "Reviews pull requests.",
+            "instructions_md": "Review.",
+            "config": {"name": "pull-request-review", "x-agentsfleet": block},
+        });
+        Definition::parse(&json.to_string()).expect("the fixture setup parses")
+    }
+
+    /// The repositories a review shows are the ones the setup binds its
+    /// credentials to, and none when it binds none.
+    #[test]
+    fn a_reviews_repositories_are_the_setups_binding() {
+        let bound = setup(&serde_json::json!({
+            "repositories": ["acme/checkout", "acme/billing"],
+            "repository_access": "read"
+        }));
+        assert_eq!(
+            Requirements::of(&bound).repositories,
+            ["acme/checkout", "acme/billing"]
+        );
+        let unbound = setup(&serde_json::json!({}));
+        assert_eq!(
+            Requirements::of(&unbound).repositories,
+            Vec::<String>::new()
+        );
+    }
+}

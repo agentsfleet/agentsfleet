@@ -17,8 +17,9 @@ use super::{answer, job};
 use crate::lanes::{Destination, Job, LANE_DEPTH, Lanes};
 use crate::poster::{Deliver, Posters, Verdict};
 
+/// A poster that answers every job delivered; the lane suites share it.
 #[derive(Debug)]
-struct UnusedPoster;
+pub(crate) struct UnusedPoster;
 
 impl Deliver for UnusedPoster {
     fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {

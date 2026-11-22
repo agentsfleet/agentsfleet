@@ -113,6 +113,14 @@ impl LocalEnv {
         Ok(full)
     }
 
+    /// Makes the directories `full`, a path `resolve` answered, is written
+    /// under. A path with no parent is the root itself, which is there.
+    async fn make_parent(&self, full: &Path) -> Result<()> {
+        tokio::fs::create_dir_all(full.parent().unwrap_or(&self.root))
+            .await
+            .map_err(|failure| failed(&failure))
+    }
+
     async fn start(&self, spawn: &Spawn) -> Result<Process> {
         let (program, args) = spawn
             .argv()
@@ -226,11 +234,7 @@ impl Env for LocalEnv {
     fn write_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
         Box::pin(async move {
             let full = self.resolve(path).await?;
-            if let Some(parent) = full.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|failure| failed(&failure))?;
-            }
+            self.make_parent(&full).await?;
             tokio::fs::write(&full, &data)
                 .await
                 .map_err(|failure| failed(&failure))
@@ -240,11 +244,7 @@ impl Env for LocalEnv {
     fn append_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
         Box::pin(async move {
             let full = self.resolve(path).await?;
-            if let Some(parent) = full.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|failure| failed(&failure))?;
-            }
+            self.make_parent(&full).await?;
             let mut file = tokio::fs::OpenOptions::new()
                 .create(true)
                 .append(true)

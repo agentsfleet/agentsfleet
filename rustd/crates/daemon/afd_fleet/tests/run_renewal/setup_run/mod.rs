@@ -31,6 +31,8 @@ mod progress;
 mod refused;
 mod released;
 mod renewal;
+mod renewal_refusals;
+mod report_refusals;
 mod saving;
 mod superseded;
 

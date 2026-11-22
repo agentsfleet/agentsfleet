@@ -148,9 +148,6 @@ async fn transfer(
     Ok(Some(CheckpointTransfer {
         url: authorization.url,
         headers: authorization.headers,
-        expires_at: clock::now()
-            .checked_add(lifetime)
-            .map_err(|_overflow| TurnCheckpointRefusal::Conflict)?
-            .min(batch.deadline),
+        expires_at: clock::after(clock::now(), lifetime).min(batch.deadline),
     }))
 }

@@ -235,4 +235,80 @@ mod tests {
             Some(http::StatusCode::PAYLOAD_TOO_LARGE)
         );
     }
+
+    /// The refusal as a caller reads it: status, registry code and sentence.
+    async fn problem(refusal: super::Refusal) -> (http::StatusCode, Value) {
+        let response = axum::response::IntoResponse::into_response(refusal);
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap_or_default();
+        (status, serde_json::from_slice(&bytes).unwrap_or_default())
+    }
+
+    fn headers(name: &'static str, values: &[&[u8]]) -> http::HeaderMap {
+        let mut headers = http::HeaderMap::new();
+        for value in values {
+            if let Ok(value) = http::HeaderValue::from_bytes(value) {
+                headers.append(name, value);
+            }
+        }
+        headers
+    }
+
+    #[tokio::test]
+    async fn a_repeated_or_unreadable_if_match_is_refused_and_one_tag_is_read()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for (values, detail) in [
+            (
+                &[b"\"a\"".as_slice(), b"\"b\""][..],
+                "Send one strong If-Match tag",
+            ),
+            (&[b"\"caf\xc3\xa9\"".as_slice()][..], super::INVALID),
+        ] {
+            let refused = super::expected(&headers("if-match", values)).err();
+            let (status, body) = problem(refused.ok_or("the tag was accepted")?).await;
+            assert_eq!(status, http::StatusCode::BAD_REQUEST);
+            assert_eq!(
+                body.get("error_code").and_then(Value::as_str),
+                Some("UZ-REQ-001")
+            );
+            assert_eq!(body.get("detail").and_then(Value::as_str), Some(detail));
+        }
+        let one = headers("if-match", &[b"\"a\""]);
+        assert_eq!(super::expected(&one).ok(), Some(Some("\"a\"")));
+        assert_eq!(super::expected(&http::HeaderMap::new()).ok(), Some(None));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_replay_key_must_be_one_readable_uuid7() -> Result<(), Box<dyn std::error::Error>> {
+        const KEY: &[u8] = b"01920000-0000-7000-8000-000000000001";
+        for values in [
+            &[KEY, KEY][..],
+            &[b"not-a-uuid".as_slice()][..],
+            &[b"01920000-0000-4000-8000-000000000001".as_slice()][..],
+            &[b"\xc3\xa9".as_slice()][..],
+            &[][..],
+        ] {
+            let refused = super::operation(&headers("idempotency-key", values)).err();
+            let (status, body) = problem(refused.ok_or("the key was accepted")?).await;
+            assert_eq!(status, http::StatusCode::BAD_REQUEST, "{values:?}");
+            assert_eq!(
+                body.get("error_code").and_then(Value::as_str),
+                Some("UZ-REQ-001")
+            );
+            assert_eq!(
+                body.get("detail").and_then(Value::as_str),
+                Some(super::KEY_REQUIRED),
+                "{values:?}"
+            );
+        }
+        let accepted = super::operation(&headers("idempotency-key", &[KEY])).ok();
+        assert_eq!(
+            accepted.as_ref().map(af_core::id::Uuid7::as_str),
+            Some("01920000-0000-7000-8000-000000000001")
+        );
+        Ok(())
+    }
 }

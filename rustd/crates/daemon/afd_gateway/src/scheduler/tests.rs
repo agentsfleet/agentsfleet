@@ -89,7 +89,7 @@ async fn rings_coalesce_into_one_assignment_pass() -> TestResult {
         "rings received during a pass form only one subsequent pass"
     );
     stop.cancel();
-    job.await??;
+    job.await?;
     Ok(())
 }
 

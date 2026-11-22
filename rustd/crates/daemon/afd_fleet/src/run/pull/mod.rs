@@ -10,9 +10,7 @@ use af_wire::turn::TurnKind;
 use jiff::Timestamp;
 
 use crate::error::Result;
-use crate::run::admit::{
-    Admission, Billed as Admitted, GateFacts, Request, money_gates_with, payer_gate,
-};
+use crate::run::admit::{Admission, Billed as Admitted, GateFacts, Request, money_gates_with};
 use crate::run::answer::no_work;
 use crate::run::envelope::{Acquired, HeadKind};
 use crate::run::installed::Installed;
@@ -184,12 +182,9 @@ impl RunService {
         };
 
         // The payer is the fleet row's tenant, which the assignment read: the
-        // provider resolves against it and the gates bill it.
-        let read = Ok(Some(acquired.opened.tenant_id.clone()));
-        let tenant = match payer_gate(read, &acquired.workspace_id)? {
-            Ok(tenant) => tenant,
-            Err(declined) => return self.ended(&acquired, declined, runner_id).await,
-        };
+        // provider resolves against it and the gates bill it. The payer gate
+        // runs inside `money_gates_with`, over this same found tenant.
+        let tenant = acquired.opened.tenant_id.clone();
         let resolved = self
             .providers
             .resolve_observed(

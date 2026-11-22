@@ -13,17 +13,25 @@ use super::{Account, Ask, Balance, Biller, Funds};
 use crate::error::billing_wallet_missing;
 use crate::{Nanos, Result};
 
-/// Every balance the biller holds, by tenant.
+/// One tenant's wallet.
+#[derive(Debug)]
+struct Wallet {
+    tenant: Uuid7,
+    balance: i64,
+    exhausted_at: Option<Timestamp>,
+}
+
+/// Every wallet the biller holds.
 #[derive(Debug, Default)]
 struct State {
-    tenants: Vec<Uuid7>,
-    balances: Vec<i64>,
-    exhausted_at: Vec<Option<Timestamp>>,
+    wallets: Vec<Wallet>,
 }
 
 impl State {
-    fn tenant(&self, tenant: &Uuid7) -> Option<usize> {
-        self.tenants.iter().position(|known| known == tenant)
+    fn wallet(&mut self, tenant: &Uuid7) -> Option<&mut Wallet> {
+        self.wallets
+            .iter_mut()
+            .find(|wallet| wallet.tenant == *tenant)
     }
 }
 
@@ -45,17 +53,15 @@ impl RecordingBiller {
     pub fn fund(&self, tenant: &Uuid7, balance: Nanos) {
         let mut state = self.lock();
         let ran_out = (balance.as_i64() <= 0).then(af_core::clock::now);
-        if let Some(index) = state.tenant(tenant) {
-            if let Some(slot) = state.balances.get_mut(index) {
-                *slot = balance.as_i64();
-            }
-            if let Some(since) = state.exhausted_at.get_mut(index) {
-                *since = ran_out.map(|now| since.unwrap_or(now));
-            }
+        if let Some(wallet) = state.wallet(tenant) {
+            wallet.balance = balance.as_i64();
+            wallet.exhausted_at = ran_out.map(|now| wallet.exhausted_at.unwrap_or(now));
         } else {
-            state.tenants.push(tenant.clone());
-            state.balances.push(balance.as_i64());
-            state.exhausted_at.push(ran_out);
+            state.wallets.push(Wallet {
+                tenant: tenant.clone(),
+                balance: balance.as_i64(),
+                exhausted_at: ran_out,
+            });
         }
     }
 
@@ -78,13 +84,56 @@ impl Biller for RecordingBiller {
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
-        let state = self.lock();
-        let index = state
-            .tenant(&payer.tenant)
+        let mut state = self.lock();
+        let wallet = state
+            .wallet(&payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
         Ok(Balance {
-            balance: Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default()),
-            exhausted_at: state.exhausted_at.get(index).copied().flatten(),
+            balance: Nanos::from_i64(wallet.balance),
+            exhausted_at: wallet.exhausted_at,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_core::id::{ENTROPY_LEN, Uuid7};
+
+    use super::RecordingBiller;
+    use crate::Nanos;
+    use crate::biller::{Account, Biller as _};
+
+    type Checked = Result<(), Box<dyn std::error::Error>>;
+
+    /// A second fund replaces the balance, and a wallet that ran out keeps
+    /// the instant it first did until it holds credit again.
+    #[tokio::test]
+    async fn refunding_a_wallet_replaces_its_balance_and_keeps_when_it_ran_out() -> Checked {
+        let tenant = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [2; ENTROPY_LEN])?;
+        let payer = Account {
+            tenant: tenant.clone(),
+            workspace: tenant.clone(),
+        };
+        let biller = RecordingBiller::new();
+        biller.fund(&tenant, Nanos::from_i64(500));
+        assert_eq!(biller.balance(&payer).await?.exhausted_at, None);
+
+        biller.fund(&tenant, Nanos::ZERO);
+        let ran_out = biller.balance(&payer).await?;
+        assert_eq!(ran_out.balance, Nanos::ZERO);
+        let since = ran_out.exhausted_at.ok_or("a spent wallet records when")?;
+
+        biller.fund(&tenant, Nanos::from_i64(-40));
+        let owing = biller.balance(&payer).await?;
+        assert_eq!(owing.balance, Nanos::from_i64(-40));
+        assert_eq!(owing.exhausted_at, Some(since), "still the first instant");
+
+        biller.fund(&tenant, Nanos::from_i64(75));
+        let funded = biller.balance(&payer).await?;
+        assert_eq!(
+            (funded.balance, funded.exhausted_at),
+            (Nanos::from_i64(75), None)
+        );
+        Ok(())
     }
 }

@@ -42,6 +42,12 @@ impl EnvStdio {
     }
 }
 
+/// The environment's failure for a message that would not serialize, caused
+/// by `failure`.
+fn unwritable(failure: serde_json::Error) -> EnvError {
+    EnvError::new(EnvErrorKind::Unavailable, UNWRITABLE).caused_by(failure)
+}
+
 impl Transport<RoleClient> for EnvStdio {
     type Error = EnvError;
 
@@ -55,12 +61,7 @@ impl Transport<RoleClient> for EnvStdio {
             line.push(NEWLINE);
             Bytes::from(line)
         });
-        async move {
-            let line = line.map_err(|failure| {
-                EnvError::new(EnvErrorKind::Unavailable, UNWRITABLE).caused_by(failure)
-            })?;
-            env.write(id, line).await
-        }
+        async move { env.write(id, line.map_err(unwritable)?).await }
     }
 
     async fn receive(&mut self) -> Option<RxJsonRpcMessage<RoleClient>> {
@@ -89,5 +90,31 @@ impl Transport<RoleClient> for EnvStdio {
 
     async fn close(&mut self) -> Result<(), Self::Error> {
         self.env.kill(self.process.id).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error as _;
+
+    use super::*;
+
+    #[test]
+    fn a_message_that_will_not_serialize_is_unavailable_with_its_cause() {
+        let failure = serde_json::from_str::<serde_json::Value>("{").err();
+
+        let refused = failure.map(unwritable);
+
+        assert_eq!(
+            refused
+                .as_ref()
+                .map(|refused| (refused.kind(), refused.message())),
+            Some((EnvErrorKind::Unavailable, UNWRITABLE))
+        );
+        assert!(refused.as_ref().is_some_and(|refused| {
+            refused
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<serde_json::Error>)
+        }));
     }
 }

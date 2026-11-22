@@ -110,7 +110,11 @@ fn test_prompt_carries_trusted_repair_context() {
 
 #[test]
 fn should_render_no_repair_context_without_a_ref_rule_for_the_bound_repository() {
-    for rules in [Vec::new(), vec![locked_ref(ELSEWHERE)]] {
+    let mut unpinned = locked_ref(REPOSITORY);
+    for field in &mut unpinned.json_fields {
+        field.string_value = None;
+    }
+    for rules in [Vec::new(), vec![locked_ref(ELSEWHERE)], vec![unpinned]] {
         let prompt = Prompt::new(&bound(RepositoryAccess::Write, rules));
 
         assert!(!prompt.instructions.contains(REPAIR_HEADING));

@@ -17,7 +17,7 @@ use http::StatusCode;
 use http::header::{HeaderMap, HeaderValue, RETRY_AFTER};
 
 use super::{Retried, Retry, Unanswered, retry_after};
-use crate::wire::recorder::{Recorder, Seen};
+use crate::wire::recorder::{Recorder, Seen, Unwritten};
 use crate::wire::transport::{Body, Send, SendError, Sent};
 
 const WAIT_CEILING: Duration = Retry::DEFAULT.wait_ceiling;
@@ -208,6 +208,32 @@ async fn configured_http_attempts_cap_physical_sends() {
             .count();
         assert_eq!(notified, attempts - 1);
     }
+}
+
+// Value: an embedder that writes no `retrying` still has its send retried.
+#[tokio::test(start_paused = true)]
+async fn a_send_is_retried_for_an_observer_that_writes_nothing() {
+    let physical = Arc::new(Answering {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        sends: AtomicUsize::new(0),
+    });
+    let retry = Retry::DEFAULT
+        .with_attempts(2)
+        .with_backoff(Duration::from_millis(1));
+    let retried = Retried::new(
+        Arc::<Answering>::clone(&physical),
+        retry,
+        Some(Arc::new(Unwritten)),
+    );
+
+    let response = retried
+        .send(http::Request::new(Bytes::new()))
+        .await
+        .ok()
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(physical.sends.load(Ordering::SeqCst), 2);
 }
 
 // Value: a single-attempt send never retries a possibly charged rejection.

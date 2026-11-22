@@ -10,10 +10,10 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::{
-    decision::{DecisionAnswer, DecisionOutcome, DecisionThreshold},
+    decision::{DecisionAnswer, DecisionThreshold},
     task::{DecisionAssessment, DecisionReceipt, TaskBindingsInput, TaskInputAction},
 };
-use sqlx::PgConnection;
+use sqlx::{PgConnection, types::Json};
 use std::collections::BTreeMap;
 
 pub(super) struct Answered {
@@ -32,23 +32,21 @@ pub(super) async fn load(
     if !call.owned_by(run) || !call.accounted || !call.issued {
         return Err(TaskRefusal::StaleState.into());
     }
-    let payload = row::payload(connection, id)
-        .await?
-        .ok_or(TaskRefusal::DecisionUnavailable)?;
-    let Some(receipt) = payload.result else {
+    // Only a provider's answers authorize: an erased payload, or a receipt that
+    // proved nothing was sent, leaves the decision unavailable.
+    let Some(row::Payload {
+        request,
+        result: Some(Json(DecisionReceipt::Provider { result })),
+    }) = row::payload(connection, id).await?
+    else {
         return Err(TaskRefusal::DecisionUnavailable.into());
     };
-    let DecisionReceipt::Provider { result } = receipt.0 else {
-        return Err(TaskRefusal::DecisionUnavailable.into());
+    let Some(answers) = semantic::answered(&call, &request.0, &result).cloned() else {
+        return Err(TaskRefusal::StaleState.into());
     };
-    if !semantic::answers_match(&call, &payload.request.0, &result)
-        || !semantic::current_on(connection, &call).await?
-    {
+    if !semantic::current_on(connection, &call).await? {
         return Err(TaskRefusal::StaleState.into());
     }
-    let DecisionOutcome::Answered { answers } = result.result else {
-        return Err(TaskRefusal::DecisionUnavailable.into());
-    };
     Ok(Answered { call, answers })
 }
 
@@ -187,13 +185,15 @@ pub(in crate::task) async fn goal(
     input: &af_wire::task::TaskReport,
     task: &af_wire::task::TaskContext<'_>,
 ) -> Result<()> {
-    use af_wire::task::TaskDisposition;
-    if input.disposition == TaskDisposition::Blocked {
-        return Ok(());
-    }
-    if input.disposition == TaskDisposition::Continue && input.decision_call_id.is_none() {
-        return Ok(());
-    }
+    use af_wire::{decision::GoalDecisionPolicy, task::TaskDisposition};
+    type Threshold = fn(&GoalDecisionPolicy) -> DecisionThreshold;
+    let (action, threshold): (&str, Threshold) = match input.disposition {
+        TaskDisposition::Blocked => return Ok(()),
+        TaskDisposition::Continue if input.decision_call_id.is_none() => return Ok(()),
+        TaskDisposition::Complete => ("DONE", |policy| policy.done),
+        TaskDisposition::Waiting => ("WAIT", |policy| policy.wait),
+        TaskDisposition::Continue => ("CONTINUE", |policy| policy.continue_action),
+    };
     let evaluated = load(
         connection,
         run,
@@ -214,13 +214,7 @@ pub(in crate::task) async fn goal(
         return Err(TaskRefusal::StaleState.into());
     }
     let policy = &evaluated.call.profile_snapshot.goal;
-    let (action, threshold) = match input.disposition {
-        TaskDisposition::Complete => ("DONE", policy.done),
-        TaskDisposition::Waiting => ("WAIT", policy.wait),
-        TaskDisposition::Continue => ("CONTINUE", policy.continue_action),
-        TaskDisposition::Blocked => return Ok(()),
-    };
-    if choice(&evaluated.answers, "next_action", threshold)? != action {
+    if choice(&evaluated.answers, "next_action", threshold(policy))? != action {
         return Err(TaskRefusal::InputAmbiguous.into());
     }
     if input.disposition == TaskDisposition::Complete

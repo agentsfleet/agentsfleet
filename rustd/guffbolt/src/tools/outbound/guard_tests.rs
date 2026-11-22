@@ -264,3 +264,13 @@ async fn the_system_lookup_answers_a_name_this_host_carries() {
         "{answered:?}"
     );
 }
+
+#[tokio::test]
+async fn reachable_admits_a_public_literal_without_a_lookup() {
+    let lookup = FixedLookup::default();
+
+    let admitted = reachable(&url("https://192.0.2.1/mcp"), &lookup).await;
+
+    assert_eq!(admitted, Ok(()));
+    assert_eq!(lookup.asked(), Vec::<String>::new());
+}

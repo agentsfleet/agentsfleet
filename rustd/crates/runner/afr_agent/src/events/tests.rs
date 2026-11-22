@@ -48,6 +48,20 @@ fn should_hold_a_secret_split_across_chunks_and_drop_its_head_at_the_end() {
 }
 
 #[test]
+fn should_stream_no_reasoning_once_it_is_hidden_and_still_stream_the_answer() {
+    let scrub = scrub();
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let mut live = Live::new(&sink, &scrub, Instant::now());
+    live.hide_reasoning();
+
+    live.text(TextKind::Reasoning, "private thought ");
+    live.text(TextKind::Answer, "answer ");
+
+    assert_eq!(chunks(&frames.taken()), [("answer ".to_owned(), 0)]);
+}
+
+#[test]
 fn should_send_nothing_for_a_chunk_held_whole() {
     let scrub = scrub();
     let frames = Frames::default();

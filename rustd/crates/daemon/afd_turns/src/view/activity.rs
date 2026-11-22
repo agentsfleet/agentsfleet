@@ -95,7 +95,7 @@ pub async fn record_on(
     fleet: &Uuid7,
     activity: FleetActivity<'_>,
 ) -> Result<Announcement, sqlx::Error> {
-    let inserted: bool = sqlx::query_scalar(crate::view::sql::INSERT_TURN)
+    sqlx::query(crate::view::sql::INSERT_TURN)
         .bind(fleet)
         .bind(None::<&Uuid7>)
         .bind(workspace)
@@ -104,14 +104,11 @@ pub async fn record_on(
         .bind(sqlx::types::Json(activity))
         .bind(None::<&Uuid7>)
         .bind(RECORDED)
-        .fetch_one(connection)
+        .execute(connection)
         .await?;
+    // A fresh identity never meets a conflict, so every write is a new receipt.
     Ok(Announcement {
-        fleets: if inserted {
-            vec![fleet.clone()]
-        } else {
-            Vec::new()
-        },
+        fleets: vec![fleet.clone()],
     })
 }
 

@@ -2,8 +2,8 @@
 
 use af_core::id::Uuid7;
 use af_wire::{
-    run::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
-    task::CheckpointTransferPurpose,
+    run::{TurnCheckpointRef, TurnCheckpointResponse},
+    task::{CheckpointPlaintext, CheckpointTransferPurpose},
 };
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
@@ -28,15 +28,9 @@ pub(super) async fn register(
     store: &TurnCheckpoints,
     runs: &Runs,
     presented: TurnRun<'_>,
-    request: &TurnCheckpointCommand,
+    checkpoint: &TurnCheckpointRef,
+    objects: &[CheckpointPlaintext],
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::Objects {
-        checkpoint,
-        objects,
-    } = &request.action
-    else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let storage = store.files()?;
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut custody = FileOwner::lock(
@@ -57,7 +51,7 @@ async fn register_content(
     custody: &mut FileOwner<'_>,
     runs: &Runs,
     storage: &crate::task::storage::R2CheckpointStore,
-    objects: &[af_wire::task::CheckpointPlaintext],
+    objects: &[CheckpointPlaintext],
 ) -> Result<Vec<af_wire::task::CheckpointObject>> {
     let format = i32::try_from(custody.plan.format_version)
         .map_err(|_overflow| TurnCheckpointRefusal::Incompatible)?;
@@ -104,7 +98,7 @@ fn missing(
     runs: &Runs,
     storage: &crate::task::storage::R2CheckpointStore,
     scope: Registration<'_>,
-    objects: &[af_wire::task::CheckpointPlaintext],
+    objects: &[CheckpointPlaintext],
     content: &[String],
     existing: &[StoredObject],
 ) -> Result<Vec<NewObject>> {
@@ -180,15 +174,14 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
     {
         return Err(TurnCheckpointRefusal::Limit.into());
     }
-    let reserved = sqlx::query(checkpoint::QUOTA_RESERVE)
+    // `lock_quota` upserted and holds this workspace's quota row, so the
+    // reservation always lands on it.
+    sqlx::query(checkpoint::QUOTA_RESERVE)
         .bind(&custody.owner.current.workspace_id)
         .bind(bytes)
         .execute(&mut *custody.owner.tx)
         .await
         .map_err(query("reserve shared turn storage quota"))?;
-    if reserved.rows_affected() != 1 {
-        return Err(TurnCheckpointRefusal::Limit.into());
-    }
     if !new.is_empty() {
         sqlx::query(checkpoint::OBJECTS_INSERT)
             .bind(Json(new))

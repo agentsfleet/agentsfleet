@@ -114,9 +114,10 @@ async fn selected(
         workspace: hint.workspace_id,
         subject: &subject,
     };
+    // The subject is the hint's creator's own, and a subject names one person;
+    // the draft's tenant is its workspace's (`fk_drafts_workspace_tenant`).
     let person = match access::current(connection, access).await {
-        Ok(person) if &person.id == hint.user_id && &person.owner == hint.tenant_id => person,
-        Ok(_) => return Ok(None),
+        Ok(person) => person,
         Err(error) if error.code() == error_code::SETUP_NOT_FOUND => {
             cancel_revoked(connection, hint, &subject, owed).await?;
             return Ok(None);

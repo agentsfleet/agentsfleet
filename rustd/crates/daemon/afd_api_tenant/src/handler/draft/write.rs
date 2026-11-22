@@ -1,6 +1,6 @@
 //! Native draft writes share the same service and replay semantics for both clients.
 
-use super::{DraftPath, access, attach, id, input, location, render};
+use super::{DraftPath, access, id, input, location, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     services::TenantPlane,
@@ -15,7 +15,7 @@ use axum::{
     extract::{Path, State},
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, StatusCode, header};
 use std::sync::Arc;
 
 /// Creates the draft and optional first message in one durable transaction.
@@ -63,10 +63,13 @@ pub(crate) async fn create<D: TenantPlane>(
         draft: render::draft(created.draft),
         accepted: created.accepted.map(render::accepted),
     };
-    let mut response = (StatusCode::CREATED, Json(payload)).into_response();
-    attach(&mut response, &tag);
-    location(&mut response, &owned.workspace, &id, "");
-    Ok(response)
+    let location = location(&owned.workspace, &id, "");
+    Ok((
+        StatusCode::CREATED,
+        [(header::ETAG, tag), (header::LOCATION, location)],
+        Json(payload),
+    )
+        .into_response())
 }
 
 /// Deletes creator-private text and retains bounded content-free replay identity.

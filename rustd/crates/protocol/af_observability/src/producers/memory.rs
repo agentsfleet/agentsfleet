@@ -32,8 +32,6 @@ pub struct Handles {
     push_failures: Counter<u64>,
     dropped_entries: Counter<u64>,
     dropped_bytes: Counter<u64>,
-    cap_evictions: Counter<u64>,
-    truncated: Counter<u64>,
     skipped: Counter<u64>,
     search_zero_hits: Counter<u64>,
 }
@@ -51,8 +49,6 @@ impl Handles {
             dropped_entries: instruments
                 .counter_u64(&declared::MEMORY_LOAD_DROPPED_ENTRIES_TOTAL)?,
             dropped_bytes: instruments.counter_u64(&declared::MEMORY_LOAD_DROPPED_BYTES_TOTAL)?,
-            cap_evictions: instruments.counter_u64(&declared::MEMORY_CAP_EVICTIONS_TOTAL)?,
-            truncated: instruments.counter_u64(&declared::MEMORY_CAPTURE_TRUNCATED_TOTAL)?,
             skipped: instruments.counter_u64(&declared::MEMORY_CAPTURE_SKIPPED_TOTAL)?,
             search_zero_hits: instruments.counter_u64(&declared::MEMORY_SEARCH_ZERO_HITS_TOTAL)?,
         };
@@ -121,24 +117,6 @@ pub fn load_dropped(entries: u64, bytes: u64) {
     if let Some(producers) = installed() {
         producers.memory.dropped_entries.add(entries, &[]);
         producers.memory.dropped_bytes.add(bytes, &[]);
-    }
-}
-
-/// Records entries a fleet's own ceiling evicted.
-pub fn cap_evicted(entries: u64) {
-    if let Some(producers) = installed() {
-        producers.memory.cap_evictions.add(entries, &[]);
-    }
-}
-
-/// Records captures stored shorter than they arrived.
-///
-/// A count rather than a call per entry: the batch size is the caller's, and
-/// one add is one atomic where a loop is one per entry under the SDK's
-/// aggregation lock.
-pub fn capture_truncated(entries: u64) {
-    if let Some(producers) = installed() {
-        producers.memory.truncated.add(entries, &[]);
     }
 }
 

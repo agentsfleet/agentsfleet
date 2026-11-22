@@ -128,6 +128,52 @@ async fn grep_refuses_a_pattern_or_path_it_cannot_use() {
     assert_eq!(empty.text, "");
 }
 
+/// A file the search may not open is passed over; the files it can read are
+/// still searched.
+#[cfg(unix)]
+#[tokio::test]
+async fn grep_passes_over_a_file_it_may_not_open() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let desk = Desk::new();
+    desk.put("open.txt", "TODO open\n");
+    desk.put("locked.txt", "TODO locked\n");
+    std::fs::set_permissions(
+        desk.path("locked.txt"),
+        std::fs::Permissions::from_mode(0o000),
+    )
+    .expect("locked");
+    let unreadable = std::fs::File::open(desk.path("locked.txt")).is_err();
+    let tools = desk.tools(false);
+
+    let found = call(&tools, "grep", json!({"pattern": "TODO"})).await;
+
+    assert!(unreadable, "the lane runs as a user the mode binds");
+    assert_eq!(found.text, "open.txt:1: TODO open");
+}
+
+/// A link under the root to a directory outside it is refused when the
+/// search follows it, as a path that names the outside is.
+#[cfg(unix)]
+#[tokio::test]
+async fn grep_refuses_a_link_that_leaves_the_root() {
+    let desk = Desk::new();
+    tree(&desk);
+    let outside = desk.path("").parent().map(std::path::Path::to_path_buf);
+    std::os::unix::fs::symlink(outside.expect("the root has a parent"), desk.path("out"))
+        .expect("linked");
+    let tools = desk.tools(false);
+
+    let followed = call(&tools, "grep", json!({"pattern": "x", "path": "out"})).await;
+
+    assert_eq!(
+        code(&followed),
+        Some("path_not_allowed"),
+        "{}",
+        followed.text
+    );
+}
+
 /// A file whose matching line is not text holds no line to show, a line
 /// ending `\r\n` reads without it and still ends where `$` holds, and a
 /// socket named alone holds nothing.

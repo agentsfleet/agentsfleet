@@ -166,4 +166,56 @@ mod tests {
         );
         check_human(&steer_from("steer:user_2abc")).expect("a person's steer may start a task");
     }
+
+    fn mention(allowed: bool, request_json: &str) -> Source {
+        Source {
+            producer: Producer::SlackMention.as_str().to_owned(),
+            slack_person_allowed: allowed,
+            request_json: request_json.to_owned(),
+            ..steer_from("slack:T0001:U0001")
+        }
+    }
+
+    // Value: protects=a Slack mention starts a durable task only when the
+    // workspace allows that person; fails_when=the mention arm admits every
+    // mention or refuses every one; why_new=the Slack arm of the human check had
+    // no case; seam=the source check every task admission runs.
+    #[test]
+    fn a_slack_mention_counts_as_human_only_for_an_allowed_person() {
+        let body = r#"{"human_message":"rerun the flaky check"}"#;
+        check_human(&mention(true, body)).expect("an allowed person's mention is human");
+        let refused = check_human(&mention(false, body))
+            .expect_err("a mention from a person the workspace has not allowed is refused");
+        assert_eq!(refused.code(), af_core::error_code::TASK_INVALID_TARGET);
+    }
+
+    // Value: protects=a Slack mention's task text is the person's own message,
+    // and a body without one is a fault, not an empty goal; fails_when=the
+    // mention body is read as a steer's `message` or a malformed body reads as
+    // empty text; why_new=the Slack arm of the message reader had no case;
+    // seam=the reader the admission and the input page both call.
+    #[test]
+    fn a_slack_mention_reads_its_human_message_and_refuses_a_body_without_one() {
+        let source = mention(true, r#"{"human_message":"Préserve the café title 🦉"}"#);
+        assert_eq!(
+            source.message().expect("a mention carries its message"),
+            "Préserve the café title 🦉"
+        );
+        for body in [r#"{"message":"a steer's field"}"#, "not json", ""] {
+            let unreadable = mention(true, body)
+                .message()
+                .expect_err("a mention body without its human message is refused");
+            assert_eq!(
+                unreadable.code(),
+                af_core::error_code::INTERNAL_DB_QUERY,
+                "{body:?}"
+            );
+        }
+        assert_eq!(
+            steer_from("steer:user_2abc")
+                .message()
+                .expect("a steer reads its message"),
+            "fix it"
+        );
+    }
 }

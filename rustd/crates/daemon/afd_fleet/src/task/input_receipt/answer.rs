@@ -39,8 +39,12 @@ pub(super) async fn finish(
     }
     let answer = rows.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
     let closed = complete_history(tasks, connection, current, input, &answer).await?;
-    let reply =
-        Runs::reply_destination(connection, &current.fleet_id, &input.source_turn_id).await?;
+    let reply = Runs::reply_destination(
+        connection,
+        &current.fleet_id,
+        &crate::task::guard::wire(&input.source_turn_id)?,
+    )
+    .await?;
     let owed = owe_reply(tasks, connection, current, input, &answer, reply.as_ref()).await?;
     sqlx::query(include_str!("sql/settle_source.sql"))
         .bind(crate::task::guard::wire(&input.source_turn_id)?)

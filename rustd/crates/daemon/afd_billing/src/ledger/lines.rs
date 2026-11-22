@@ -108,39 +108,128 @@ fn column<T>(lines: &[RatedLine], field: impl Fn(&RatedLine) -> T) -> Vec<T> {
 mod tests {
     use af_core::id::{ENTROPY_LEN, Uuid7};
     use af_crypto::entropy::Entropy;
+    use af_wire::usage::{LineKind, UsageLine};
     use jiff::Timestamp;
 
     use super::log_lines;
+    use crate::Nanos;
     use crate::biller::{Account, Attribution, Settlement, WorkKey};
+    use crate::error::ErrorKind;
+    use crate::price::RatedLine;
     use crate::rates::Posture;
+
+    type Checked = Result<(), Box<dyn std::error::Error>>;
 
     /// A server nothing listens on: a statement sent here fails to connect.
     const NOWHERE: &str = "postgres://nobody@127.0.0.1:1/nowhere";
 
-    /// A settlement with no lines writes nothing, so it never reaches the
-    /// datastore: against a server nothing listens on it still answers `Ok`.
-    #[tokio::test]
-    async fn a_settlement_with_no_lines_writes_nothing() {
-        let pool = sqlx::PgPool::connect_lazy(NOWHERE)
-            .unwrap_or_else(|_malformed| unreachable!("the fixture URL parses"));
-        let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
-            .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"));
-        let settlement = Settlement {
+    /// A setup run's settlement of `lines`, every identifier `id`.
+    fn settlement(id: &Uuid7, lines: Vec<RatedLine>) -> Settlement {
+        Settlement {
             work: WorkKey::SetupRun(id.clone()),
             payer: Account {
                 tenant: id.clone(),
                 workspace: id.clone(),
             },
-            attribution: Attribution::SetupRun { message: id },
+            attribution: Attribution::SetupRun {
+                message: id.clone(),
+            },
             provider: String::new(),
             model: String::new(),
             posture: Posture::Platform,
-            lines: Vec::new(),
-        };
-        let logged = log_lines(&pool, &Entropy::new(), Timestamp::UNIX_EPOCH, &settlement).await;
+            lines,
+        }
+    }
+
+    /// One model line carrying `unpriced_tokens`.
+    const fn line(unpriced_tokens: u64) -> RatedLine {
+        RatedLine {
+            usage: UsageLine {
+                kind: LineKind::Model,
+                seq: 1,
+                at: Timestamp::UNIX_EPOCH,
+                input_tokens: 10,
+                cached_input_tokens: 0,
+                cache_write_tokens: 0,
+                cache_write_5m_tokens: 0,
+                cache_write_1h_tokens: 0,
+                output_tokens: 5,
+                runtime_ms: 0,
+            },
+            price: None,
+            charged: Nanos::ZERO,
+            unpriced_tokens,
+        }
+    }
+
+    /// A settlement with no lines writes nothing, so it never reaches the
+    /// datastore: against a server nothing listens on it still answers `Ok`.
+    #[tokio::test]
+    async fn a_settlement_with_no_lines_writes_nothing() -> Checked {
+        let pool = sqlx::PgPool::connect_lazy(NOWHERE)?;
+        let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])?;
+        let logged = log_lines(
+            &pool,
+            &Entropy::new(),
+            Timestamp::UNIX_EPOCH,
+            &settlement(&id, Vec::new()),
+        )
+        .await;
         assert!(
             logged.is_ok(),
             "an empty settlement logs nothing: {logged:?}"
         );
+        Ok(())
+    }
+
+    /// A line whose row id cannot be minted is refused before any statement:
+    /// against a server nothing listens on, the refusal is the mint's.
+    #[tokio::test]
+    async fn a_line_whose_id_cannot_be_minted_is_refused_unsent() -> Checked {
+        let pool = sqlx::PgPool::connect_lazy(NOWHERE)?;
+        let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])?;
+        let (entropy, control) = Entropy::new_mocked();
+        control.fail_next();
+        let refused = log_lines(
+            &pool,
+            &entropy,
+            Timestamp::UNIX_EPOCH,
+            &settlement(&id, vec![line(0)]),
+        )
+        .await
+        .err()
+        .ok_or("an unminted line is refused")?;
+        assert!(
+            matches!(refused.kind(), ErrorKind::Entropy { .. }),
+            "{refused:?}"
+        );
+        assert_eq!(
+            refused.code(),
+            af_core::error_code::INTERNAL_OPERATION_FAILED
+        );
+        Ok(())
+    }
+
+    /// Unpriced tokens past the column's range are refused before any
+    /// statement, never wrapped into a negative count.
+    #[tokio::test]
+    async fn unpriced_tokens_past_the_column_range_are_refused_unsent() -> Checked {
+        let pool = sqlx::PgPool::connect_lazy(NOWHERE)?;
+        let id = Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])?;
+        let past = u64::try_from(i64::MAX)? + 1;
+        let refused = log_lines(
+            &pool,
+            &Entropy::new(),
+            Timestamp::UNIX_EPOCH,
+            &settlement(&id, vec![line(past)]),
+        )
+        .await
+        .err()
+        .ok_or("an overflowing count is refused")?;
+        assert!(
+            matches!(refused.kind(), ErrorKind::ChargeOverflow),
+            "{refused:?}"
+        );
+        Ok(())
     }
 }

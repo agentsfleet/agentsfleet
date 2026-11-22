@@ -33,30 +33,36 @@ const RESPONSES_GENERATION: &[&str] = &[
 ];
 const MESSAGES_GENERATION: &[&str] = &["max_tokens", "top_k", "stop_sequences"];
 
-pub(super) fn supported(route: &Route) -> bool {
+/// An API whose provider documents a count endpoint on its own origin.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Native {
+    Responses,
+    Messages,
+    Gemini,
+}
+
+/// The count endpoint `route` reaches on its provider's own origin, in that
+/// provider's own dialect; `None` for every other route.
+pub(super) fn native(route: &Route) -> Option<Native> {
     let settings = route.settings();
     let base = settings.base_url.trim_end_matches('/');
+    let dialect = settings.dialect.as_deref();
     match settings.api {
-        Api::Responses => {
-            base == "https://api.openai.com/v1"
-                && settings
-                    .dialect
-                    .as_deref()
-                    .is_none_or(|value| value == "openai")
+        Api::Responses => (base == "https://api.openai.com/v1"
+            && dialect.is_none_or(|value| value == "openai"))
+        .then_some(Native::Responses),
+        Api::Messages => (base == "https://api.anthropic.com/v1"
+            && dialect.is_none_or(|value| value == "anthropic"))
+        .then_some(Native::Messages),
+        Api::Gemini => {
+            (base == "https://generativelanguage.googleapis.com").then_some(Native::Gemini)
         }
-        Api::Messages => {
-            base == "https://api.anthropic.com/v1"
-                && settings
-                    .dialect
-                    .as_deref()
-                    .is_none_or(|value| value == "anthropic")
-        }
-        Api::Gemini => base == "https://generativelanguage.googleapis.com",
-        Api::Chat | Api::Ollama => false,
+        Api::Chat | Api::Ollama => None,
     }
 }
 
 pub(super) async fn count(
+    native: Native,
     route: &Route,
     model: &str,
     key: &str,
@@ -64,20 +70,21 @@ pub(super) async fn count(
     transport: &HttpTransport,
     control: &TurnControl,
 ) -> Result<u64> {
-    let request = request(route, model, key, body)?;
+    let request = request(native, route, model, key, body)?;
     let within = control.timeouts.count();
     let deadline =
         (Instant::now() + within).min(control.deadline.unwrap_or_else(|| Instant::now() + within));
     tokio::select! {
         biased;
         () = control.cancellation.cancelled() => Err(ErrorKind::StreamCancelled.into()),
-        counted = timeout_at(deadline, read(transport, request, route.api(), control.timeouts.count_reply_bytes())) => {
+        counted = timeout_at(deadline, read(transport, request, native, control.timeouts.count_reply_bytes())) => {
             counted.map_err(|_elapsed| ErrorKind::StreamDeadline)?
         }
     }
 }
 
 fn request(
+    native: Native,
     route: &Route,
     model: &str,
     key: &str,
@@ -87,7 +94,7 @@ fn request(
     let encoded = super::super::json::json_request(encoded.request)?;
     let (mut parts, bytes) = encoded.into_parts();
     let mut body: Value = serde_json::from_slice(&bytes)?;
-    let path = project(route.api(), model, &parts.uri, &mut body)?;
+    let path = project(native, model, &parts.uri, &mut body)?;
     let mut uri = parts.uri.into_parts();
     uri.path_and_query = Some(path.parse()?);
     parts.uri = http::Uri::from_parts(uri)?;
@@ -102,21 +109,20 @@ fn request(
     ))
 }
 
-fn project(api: Api, model: &str, uri: &http::Uri, body: &mut Value) -> Result<String> {
-    if matches!(api, Api::Responses | Api::Messages) {
-        remove(body, COMMON_GENERATION)?;
-    }
-    Ok(match api {
-        Api::Responses => {
+fn project(native: Native, model: &str, uri: &http::Uri, body: &mut Value) -> Result<String> {
+    Ok(match native {
+        Native::Responses => {
+            remove(body, COMMON_GENERATION)?;
             remove(body, RESPONSES_GENERATION)?;
             "/v1/responses/input_tokens".to_owned()
         }
-        Api::Messages => {
+        Native::Messages => {
+            remove(body, COMMON_GENERATION)?;
             super::messages::validate(body)?;
             remove(body, MESSAGES_GENERATION)?;
             "/v1/messages/count_tokens".to_owned()
         }
-        Api::Gemini => {
+        Native::Gemini => {
             let path = uri
                 .path()
                 .strip_suffix(":streamGenerateContent")
@@ -128,7 +134,6 @@ fn project(api: Api, model: &str, uri: &http::Uri, body: &mut Value) -> Result<S
             *body = json!({"generateContentRequest": body});
             format!("{path}:countTokens")
         }
-        Api::Chat | Api::Ollama => return Err(ErrorKind::CountReply.into()),
     })
 }
 
@@ -143,7 +148,7 @@ fn remove(body: &mut Value, excluded: &[&str]) -> Result<()> {
 async fn read(
     transport: &HttpTransport,
     request: http::Request<Bytes>,
-    api: Api,
+    native: Native,
     reply_bytes: usize,
 ) -> Result<u64> {
     let response = transport.send_streaming(request).await?;
@@ -163,7 +168,7 @@ async fn read(
     }
     let body: Value =
         serde_json::from_slice(&bytes).map_err(|source| ErrorKind::CountDocument { source })?;
-    let field = if api == Api::Gemini {
+    let field = if native == Native::Gemini {
         "totalTokens"
     } else {
         "input_tokens"

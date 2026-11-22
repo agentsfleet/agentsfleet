@@ -36,3 +36,25 @@ fn decomposition_preserves_utf8_boundaries_order_and_all_non_separator_text() ->
     );
     Ok(())
 }
+
+#[test]
+fn an_item_outside_its_declared_bounds_is_refused_before_its_offsets_are_read() {
+    let message = "hi  réparé";
+    let mut untitled = item(0, 12);
+    untitled.title = String::new();
+    let before = item(-1, 12);
+
+    for refused in [untitled, before] {
+        let failure = validate(&[refused], message, Multiplicity::Single).err();
+
+        assert_eq!(
+            failure.as_ref().map(crate::Error::code),
+            Some(af_core::error_code::INTERNAL_OPERATION_FAILED)
+        );
+        assert!(failure.is_some_and(|failure| {
+            failure
+                .to_string()
+                .contains("durable task boundary failed: task decision input or deadline")
+        }),);
+    }
+}

@@ -84,10 +84,11 @@ impl RunService {
                     .ungranted(runner_id, &admitted.acquired, credential, integration, now)
                     .await;
             }
-            // A fleet author's mistake, not an operational fault: nothing about
-            // the next poll will be different, so the event ends. Its detail is
-            // stored, never the `[CODE]` rendering.
-            Err(misconfigured) if misconfigured.is_rejected() => {
+            // A fleet author's mistake, not an operational fault: assembly reads
+            // nothing and refuses only a binding it cannot enforce, so nothing
+            // about the next poll will be different and the event ends. Its
+            // detail is stored, never the `[CODE]` rendering.
+            Err(misconfigured) => {
                 let reason = misconfigured.detail();
                 return self
                     .refused(
@@ -99,9 +100,6 @@ impl RunService {
                     .await
                     .map(|()| Step::Stop);
             }
-            // Anything else is a fault the next poll may not meet, so it is
-            // raised rather than ending the event for good.
-            Err(fault) => return Err(fault.into()),
         };
         self.issue_ready(runner_id, &admitted, *policy, now, began, emit)
             .await

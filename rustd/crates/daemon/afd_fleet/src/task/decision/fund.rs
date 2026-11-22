@@ -132,11 +132,11 @@ async fn proposed_on(connection: &mut PgConnection, task_run: TaskRun<'_>) -> Re
 }
 
 fn refused(task_run: TaskRun<'_>, reason: &'static str) -> crate::Error {
-    tracing::warn!(
-        event = "dt_decision_funding_refused",
-        run_id = task_run.run_id.as_str(),
-        reason
-    );
+    let run_id = task_run.run_id.as_str();
+    {
+        let event = &"dt_decision_funding_refused";
+        tracing::warn!(event, run_id, reason);
+    };
     TaskRefusal::DecisionUnavailable.into()
 }
 

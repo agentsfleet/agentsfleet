@@ -94,8 +94,11 @@ fn known(call: &Call, usage: DecisionUsage, uncached: u32, digest: &str) -> Resu
         Ok(rated) if rated.unpriced_tokens == 0 => rated,
         Ok(_) => return Ok(unpriced(call, usage, digest)),
         Err(fault) => {
-            tracing::warn!(event = "dt_decision_price_unavailable", decision_call_id = call.id.as_str(),
-                error_code = %fault.code(), reason = "charge_unrepresentable");
+            let (decision_call_id, error_code) = (call.id.as_str(), fault.code());
+            {
+                let (event, reason) = (&"dt_decision_price_unavailable", &"charge_unrepresentable");
+                tracing::warn!(event, decision_call_id, %error_code, reason);
+            };
             return Ok(unpriced(call, usage, digest));
         }
     };

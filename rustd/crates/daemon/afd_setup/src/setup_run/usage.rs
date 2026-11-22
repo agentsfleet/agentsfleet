@@ -65,9 +65,43 @@ fn runtime_nanos(runtime: Duration) -> Result<i64> {
 
 #[cfg(test)]
 mod tests {
+    use af_core::error_code;
     use af_wire::setup::Knowledge;
 
     use super::Metered;
+
+    /// A stored count no run can report, and a runtime whose charge overflows
+    /// the stored nanos, are refused rather than shown.
+    #[test]
+    #[expect(clippy::expect_used, reason = "each refusal fails the proof loudly")]
+    fn a_negative_token_count_and_an_unpriceable_runtime_are_refused() {
+        let known = Metered {
+            reported_runtime_ms: Some(1_000),
+            input_tokens: Some(-1),
+            output_tokens: Some(0),
+            provider_nanos: Some(0),
+            known: Some(true),
+        };
+        let negative = known.usage().map(|_| ()).expect_err("a negative count");
+        assert_eq!(negative.code(), error_code::SETUP_TOKEN);
+        let output = Metered {
+            input_tokens: Some(0),
+            output_tokens: Some(-5),
+            ..known
+        };
+        let negative = output.usage().map(|_| ()).expect_err("a negative count");
+        assert_eq!(negative.code(), error_code::SETUP_TOKEN);
+        let endless = Metered {
+            reported_runtime_ms: Some(i64::MAX),
+            output_tokens: Some(0),
+            ..output
+        };
+        let overflow = endless
+            .usage()
+            .map(|_| ())
+            .expect_err("an unpriceable runtime");
+        assert_eq!(overflow.code(), error_code::SETUP_BALANCE);
+    }
 
     /// A turn whose runs all reported shows their figures; one a lapsed run
     /// left unknown shows only its runtime charge.

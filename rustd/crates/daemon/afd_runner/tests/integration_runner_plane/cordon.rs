@@ -95,7 +95,15 @@ async fn test_automatic_lift_requires_continuous_valid_beats() {
             .is_some()
     );
     prove_elapsed(&fixture, owner.runner()).await;
+    let capture = af_core::test_util::trace::Capture::install();
     beat(&fixture, &owner).await;
+    let lifted = capture.only("runner_cordon_lifted");
+    assert_eq!(lifted.field("runner_id"), Some(owner.runner().as_str()));
+    assert_eq!(
+        lifted.field("reason"),
+        Some(CordonReason::MissedHeartbeats.as_str())
+    );
+    drop(capture);
     assert!(
         fixture
             .runners

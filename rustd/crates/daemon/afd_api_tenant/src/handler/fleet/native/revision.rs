@@ -1,6 +1,6 @@
 //! Apply accepts only the native domain's checked, replayable replacement.
 
-use super::{access, render::attach};
+use super::access;
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     handler::fleet::detail::FleetPath,
@@ -89,8 +89,10 @@ fn created(
         review_digest: applied.review_digest,
         schedules: crate::handler::schedule::views(schedules, now),
     };
-    let mut response = (StatusCode::CREATED, Json(value)).into_response();
-    attach(&mut response, header::ETAG, &tag);
-    attach(&mut response, header::LOCATION, location);
-    response
+    (
+        StatusCode::CREATED,
+        [(header::ETAG, tag), (header::LOCATION, location.to_owned())],
+        Json(value),
+    )
+        .into_response()
 }

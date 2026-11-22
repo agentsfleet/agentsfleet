@@ -119,66 +119,65 @@ mod tests {
     use af_wire::protocol;
     use http::{HeaderMap, HeaderValue};
 
+    type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
     const SESSION: &str = "019f0000-0000-7000-8000-000000000001";
 
-    fn headers(pairs: &[(&'static str, &'static [u8])]) -> HeaderMap {
+    fn headers(
+        pairs: &[(&'static str, &'static [u8])],
+    ) -> Result<HeaderMap, http::header::InvalidHeaderValue> {
         let mut map = HeaderMap::new();
         map.append(
             protocol::VERSION_HEADER,
             HeaderValue::from_static(protocol::VERSION),
         );
         for (name, value) in pairs {
-            if let Ok(value) = HeaderValue::from_bytes(value) {
-                map.append(*name, value);
-            }
+            map.append(*name, HeaderValue::from_bytes(value)?);
         }
-        map
+        Ok(map)
     }
 
     #[test]
-    fn control_carries_the_bearer_and_secondary_lanes_bind_the_connection() {
+    fn control_carries_the_bearer_and_secondary_lanes_bind_the_connection() -> TestResult {
         let control = StreamHeaders::try_from(&headers(&[
             (protocol::STREAM_KIND_HEADER, b"control"),
             ("authorization", b"Bearer agt_r_fixture"),
             (protocol::CONNECTION_HEADER, SESSION.as_bytes()),
-        ]));
-        let control = control.map_err(|error| error.to_string());
-        assert!(
-            matches!(&control, Ok(StreamHeaders::Control { previous: Some(_) })),
-            "{control:?}"
+        ])?)?;
+        assert_eq!(control.stream_kind(), StreamKind::Control);
+        assert_eq!(
+            control.connection().map(af_core::id::Uuid7::as_str),
+            Some(SESSION),
+            "a reconnecting control names the connection it replaces"
         );
+        let fresh = StreamHeaders::try_from(&headers(&[
+            (protocol::STREAM_KIND_HEADER, b"control"),
+            ("authorization", b"Bearer agt_r_fixture"),
+        ])?)?;
+        assert!(fresh.connection().is_none(), "{fresh:?}");
         for (kind, name) in [
             (StreamKind::Work, b"work".as_slice()),
             (StreamKind::Reports, b"reports"),
             (StreamKind::Progress, b"progress"),
         ] {
-            let mut map = headers(&[(protocol::CONNECTION_HEADER, SESSION.as_bytes())]);
-            map.append(
-                protocol::STREAM_KIND_HEADER,
-                HeaderValue::from_bytes(name).unwrap_or(HeaderValue::from_static("")),
-            );
-            let bound = StreamHeaders::try_from(&map).map_err(|error| error.to_string());
+            let mut map = headers(&[(protocol::CONNECTION_HEADER, SESSION.as_bytes())])?;
+            map.append(protocol::STREAM_KIND_HEADER, HeaderValue::from_bytes(name)?);
+            let bound = StreamHeaders::try_from(&map)?;
+            assert_eq!(bound.stream_kind(), kind);
             assert_eq!(
-                bound.as_ref().map(StreamHeaders::stream_kind).ok(),
-                Some(kind)
-            );
-            assert_eq!(
-                bound
-                    .as_ref()
-                    .ok()
-                    .and_then(StreamHeaders::connection)
-                    .map(af_core::id::Uuid7::as_str),
+                bound.connection().map(af_core::id::Uuid7::as_str),
                 Some(SESSION)
             );
         }
+        Ok(())
     }
 
     type Pairs<'a> = &'a [(&'static str, &'static [u8])];
     type Expected = fn(&ErrorKind) -> bool;
 
     #[test]
-    fn every_lane_binding_violation_is_refused_with_its_own_kind() {
-        let cases: [(Pairs<'_>, Expected); 5] = [
+    fn every_lane_binding_violation_is_refused_with_its_own_kind() -> TestResult {
+        let cases: [(Pairs<'_>, Expected); 7] = [
             (&[(protocol::STREAM_KIND_HEADER, b"control")], |kind| {
                 matches!(kind, ErrorKind::ControlBearerMissing)
             }),
@@ -209,14 +208,24 @@ mod tests {
                 ],
                 |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::CONNECTION_HEADER),
             ),
+            (
+                &[
+                    (protocol::STREAM_KIND_HEADER, b"work"),
+                    (protocol::CONNECTION_HEADER, b"not-a-connection"),
+                ],
+                |kind| matches!(kind, ErrorKind::ConnectionIdentifier { .. }),
+            ),
+            (&[(protocol::STREAM_KIND_HEADER, b"telemetry")], |kind| {
+                matches!(kind, ErrorKind::UnknownStream)
+            }),
         ];
         for (pairs, expected) in cases {
-            let refused = StreamHeaders::try_from(&headers(pairs));
+            let refused = StreamHeaders::try_from(&headers(pairs)?).err();
             assert!(
-                refused.as_ref().is_err_and(|error| expected(error.kind())),
-                "{:?}",
-                refused.map_err(|error| error.to_string())
+                refused.as_ref().is_some_and(|error| expected(error.kind())),
+                "{refused:?}"
             );
         }
+        Ok(())
     }
 }

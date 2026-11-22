@@ -173,4 +173,6 @@ async fn a_fleet_archived_mid_run_with_room_still_renews() {
     held.fixtures.cleanup().await;
 }
 
+mod batch;
 mod catalogue;
+mod refusals;

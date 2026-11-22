@@ -3,6 +3,7 @@
 use af_wire::task::{
     DecisionCallState, DecisionReceipt, DecisionRecorded, DecisionReservationResult,
 };
+use sqlx::types::Json;
 use zeroize::Zeroizing;
 
 use super::{
@@ -33,19 +34,17 @@ pub(super) async fn response(tasks: &Tasks, call: Call) -> Result<ReservedDecisi
 }
 
 async fn recorded(tasks: &Tasks, call: &Call) -> Result<Option<Box<DecisionRecorded>>> {
-    let payload = row::saved_payload(tasks.runs.pool(), &call.id).await?;
-    let Some(payload) = payload else {
+    // A known call's receipt is its provider's; an erased payload has none.
+    let Some(row::Payload {
+        request,
+        result: Some(Json(DecisionReceipt::Provider { result })),
+    }) = row::saved_payload(tasks.runs.pool(), &call.id).await?
+    else {
         return Ok(None);
     };
-    let Some(receipt) = payload.result else {
-        return Ok(None);
-    };
-    let DecisionReceipt::Provider { result } = receipt.0 else {
-        return Ok(None);
-    };
-    let disposition = semantic::disposition(tasks, call, &payload.request.0, &result).await;
+    let disposition = semantic::disposition(tasks, call, &request.0, &result).await;
     Ok(Some(Box::new(DecisionRecorded {
-        request: payload.request.0,
+        request: request.0,
         result,
         disposition,
     })))

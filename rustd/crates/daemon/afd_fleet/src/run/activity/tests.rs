@@ -62,6 +62,61 @@ fn live_task_frames_use_the_saved_counter_and_sequence() {
     assert_eq!(value["progress"]["completed"], 3);
 }
 
+// Value: protects=a live judgment's started and completed frames republish as
+// their saved records, and a frame that carries no task progress passes through
+// untouched; fails_when=a decision frame republishes as another kind, keeps the
+// runner's own sequence, or a tool frame is dropped; why_new=only transfer
+// progress was canonicalised under test; seam=`history::canonical`, which
+// `activity_for_target` publishes through.
+#[test]
+fn decision_frames_republish_as_their_saved_kind_and_other_frames_pass_through() {
+    use af_wire::activity::{
+        TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
+        TaskActivityRecord,
+    };
+    let live = |phase| TaskActivity {
+        activity_id: "019a42b0-0000-7000-8000-000000000456".to_owned(),
+        task_id: None,
+        source_turn_id: None,
+        operation: TaskActivityOperation::Goal,
+        phase,
+        provider: None,
+        model: None,
+        completed: 0,
+        total: None,
+        bytes: None,
+        sequence: Some(999_999),
+    };
+    let saved = |phase, sequence| TaskActivity {
+        sequence: Some(sequence),
+        ..live(phase)
+    };
+    let history = TaskActivityHistory {
+        items: vec![
+            TaskActivityRecord::TaskDecisionStarted(saved(TaskActivityPhase::Starting, 4)),
+            TaskActivityRecord::TaskDecisionCompleted(saved(TaskActivityPhase::Recorded, 5)),
+        ],
+        truncated: false,
+    };
+    let [tool, ..] = every_frame(RUNNER_CALL);
+    let frames = [
+        ActivityFrame::TaskDecisionStarted(live(TaskActivityPhase::Starting)),
+        tool.clone(),
+        ActivityFrame::TaskDecisionCompleted(live(TaskActivityPhase::Recorded)),
+    ];
+
+    let canonical = super::history::canonical(&frames, &history);
+
+    assert_eq!(
+        canonical,
+        vec![
+            ActivityFrame::TaskDecisionStarted(saved(TaskActivityPhase::Starting, 4)),
+            tool,
+            ActivityFrame::TaskDecisionCompleted(saved(TaskActivityPhase::Recorded, 5)),
+        ]
+    );
+}
+
 /// The fencing token the fixture run holds.
 const FENCE: i64 = 7;
 

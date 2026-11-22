@@ -107,6 +107,8 @@ struct Thread {
     refusal: Option<Unanswered>,
     /// Every save the run asked for, in order.
     saves: Mutex<Vec<ContextSaveRequest>>,
+    /// How many saves reached the thread, refused ones included.
+    asked: AtomicUsize,
 }
 
 impl Thread {
@@ -141,14 +143,18 @@ impl RunVerbs for Thread {
         Err(Unanswered::Unreachable)
     }
 
+    /// A thread with nothing loaded answers its refusal, or none at all.
     async fn context_load(&self) -> Result<ContextLoadResponse, Unanswered> {
-        self.loaded.clone().ok_or(Unanswered::Unreachable)
+        self.loaded
+            .clone()
+            .ok_or_else(|| self.refusal.unwrap_or(Unanswered::Unreachable))
     }
 
     async fn context_save(
         &self,
         request: ContextSaveRequest,
     ) -> Result<ContextSaveResponse, Unanswered> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
         if let Some(refusal) = self.refusal {
             return Err(refusal);
         }
@@ -386,18 +392,118 @@ async fn a_fleet_summary_at_a_superseded_fence_fails_the_run() {
 /// more.
 #[tokio::test]
 async fn a_refused_fleet_summary_leaves_the_run_answering() {
+    for refusal in [Unanswered::Refused(None), Unanswered::Unreachable] {
+        let run = chat(6);
+        let thread = Thread {
+            refusal: Some(refusal),
+            ..Thread::stored(0, None)
+        };
+        let model = Sized::default();
+
+        let output = drive(&model, &run, &thread).await;
+
+        assert_eq!(output.result.content, ANSWER, "{refusal:?}");
+        let saves = thread.saved();
+        assert!(saves.is_empty(), "{saves:?}");
+        assert_eq!(thread.asked.load(Ordering::SeqCst), 1, "{refusal:?}");
+    }
+}
+
+/// A load the daemon refused with its own code is a failed load: the run
+/// compacts in memory and saves nothing.
+#[tokio::test]
+async fn a_fleet_context_load_refused_with_a_code_saves_nothing() {
     let run = chat(6);
     let thread = Thread {
-        refusal: Some(Unanswered::Refused(None)),
-        ..Thread::stored(0, None)
+        refusal: Some(Unanswered::Refused(Some(
+            error_code::RUN_STALE_FENCING_TOKEN,
+        ))),
+        ..Thread::default()
     };
     let model = Sized::default();
 
     let output = drive(&model, &run, &thread).await;
 
     assert_eq!(output.result.content, ANSWER);
-    let saves = thread.saved();
-    assert!(saves.is_empty(), "{saves:?}");
+    assert_eq!(
+        thread.asked.load(Ordering::SeqCst),
+        0,
+        "no version to save over"
+    );
+    assert!(thread.saved().is_empty(), "{:?}", thread.saved());
+    assert_eq!(
+        model.summaries.load(Ordering::SeqCst),
+        1,
+        "it still compacts"
+    );
+}
+
+/// The thread's checkpoint, at generation one, covering through
+/// `covered_through` of `run`'s messages.
+fn notes(run: &RunPayload<'_>, covered_through: u64) -> af_context::Checkpoint {
+    let mut document = checkpoint(run, covered_through);
+    document["generation"] = json!(1);
+    serde_json::from_value(document).unwrap()
+}
+
+/// What a save is quoted from: two earlier turns, then the run's message.
+fn quoted() -> Vec<Message> {
+    ["message 1", "answer 1", "message 2", "answer 2", "now"]
+        .map(|text| Message::User(text.to_owned()))
+        .to_vec()
+}
+
+/// A loaded thread saves only what covers an earlier turn whole, refuses a
+/// placement past its messages, stops saving after a refused save, and
+/// prints its versions and none of its notes.
+#[tokio::test]
+async fn a_saved_thread_saves_only_whole_earlier_turns_and_stops_after_a_refusal() {
+    let run = chat(2);
+    let messages = quoted();
+    let stored = Thread::stored(0, None);
+    let mut saved = super::context::Saved::load(&stored, "run-1", "m".into(), "p".into())
+        .await
+        .unwrap();
+    saved.placed(1, 0..2);
+    saved.placed(2, 2..4);
+
+    let partial = saved.save(&stored, 3, &notes(&run, 1), &messages).await;
+    assert_eq!(partial.ok(), Some(()));
+    assert_eq!(
+        stored.asked.load(Ordering::SeqCst),
+        0,
+        "no turn was covered whole"
+    );
+    let printed = format!("{saved:?}");
+    assert!(printed.starts_with("Saved {"), "{printed}");
+    assert!(printed.contains("turns: 2"), "{printed}");
+    assert!(!printed.contains("message 1"), "{printed}");
+
+    let mut past = super::context::Saved::load(&stored, "run-1", "m".into(), "p".into())
+        .await
+        .unwrap();
+    past.placed(1, 0..9);
+    let refused = past.save(&stored, 3, &notes(&run, 9), &messages).await;
+    assert!(refused.is_err_and(|failure| failure.is_stale()));
+
+    let refusing = Thread {
+        refusal: Some(Unanswered::Refused(None)),
+        ..Thread::stored(0, None)
+    };
+    let mut stopped = super::context::Saved::load(&refusing, "run-1", "m".into(), "p".into())
+        .await
+        .unwrap();
+    stopped.placed(1, 0..2);
+    stopped.placed(2, 2..4);
+    for _ in 0..2 {
+        let kept = stopped.save(&refusing, 3, &notes(&run, 4), &messages).await;
+        assert_eq!(kept.ok(), Some(()));
+    }
+    assert_eq!(
+        refusing.asked.load(Ordering::SeqCst),
+        1,
+        "the second save sent nothing"
+    );
 }
 
 /// A run whose load went unanswered sends every turn and saves nothing: it

@@ -128,3 +128,68 @@ fn the_kind_is_the_text_and_its_source_the_cause() {
     );
     assert!(failure.is_some_and(|failure| format!("{failure:?}").contains("Unreadable")));
 }
+
+/// Whether `error` reads as `text`, is the caller's request error, and keeps
+/// a cause of type `T`.
+fn lifted_as<T: std::error::Error + 'static>(error: &Error, text: &str) -> bool {
+    error.to_string() == text
+        && error.is_invalid_request()
+        && error.failure().is_none()
+        && error.source().is_some_and(<dyn std::error::Error>::is::<T>)
+}
+
+#[test]
+fn a_document_that_will_not_decode_is_the_callers_request_error() {
+    let error = serde_json::from_str::<serde_json::Value>("{").map_err(Error::from);
+
+    assert!(error.is_err_and(|error| lifted_as::<serde_json::Error>(
+        &error,
+        "the provider document cannot be decoded"
+    )));
+}
+
+#[test]
+fn a_request_rig_cannot_encode_or_prepare_is_the_callers_request_error() {
+    let encode = Error::from(rig_core::error::EncodeError::request("no such option"));
+    let prepare = Error::from(ProviderError::request("no such option"));
+
+    assert!(lifted_as::<rig_core::error::EncodeError>(
+        &encode,
+        "inference request cannot be encoded"
+    ));
+    assert!(lifted_as::<ProviderError>(
+        &prepare,
+        "inference request is unsupported"
+    ));
+}
+
+#[test]
+fn an_endpoint_that_is_not_a_url_is_the_callers_request_error() {
+    let error = url::Url::parse("not a url").map_err(Error::from);
+
+    assert!(error.is_err_and(|error| lifted_as::<url::ParseError>(
+        &error,
+        "inference endpoint is not a valid URL"
+    )));
+}
+
+#[test]
+fn a_count_uri_that_will_not_rebuild_is_the_callers_request_error() {
+    let path = "/v1/\u{7f}"
+        .parse::<http::uri::PathAndQuery>()
+        .map_err(Error::from);
+    let mut parts = http::uri::Parts::default();
+    parts.scheme = Some(http::uri::Scheme::HTTPS);
+    let uri = http::Uri::from_parts(parts).map_err(Error::from);
+
+    assert!(path.is_err_and(|error| lifted_as::<http::uri::InvalidUri>(
+        &error,
+        "the count request line does not parse once its path is replaced"
+    )));
+    assert!(
+        uri.is_err_and(|error| lifted_as::<http::uri::InvalidUriParts>(
+            &error,
+            "the count request URI does not reassemble once its path is replaced"
+        ))
+    );
+}

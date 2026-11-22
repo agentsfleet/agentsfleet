@@ -255,3 +255,5 @@ mod memory;
 mod satellites;
 
 mod schedule_guard;
+
+mod task_bounds;

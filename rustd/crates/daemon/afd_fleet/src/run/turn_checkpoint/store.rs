@@ -83,24 +83,79 @@ impl TurnCheckpoints {
                     runs.begin_turn_checkpoint(presented, request).await?,
                 )))
             }
-            TurnCheckpointAction::Commit { .. } => {
-                commit::publish(self, runs, presented, request).await
+            TurnCheckpointAction::Commit {
+                checkpoint,
+                root,
+                manifest_root,
+                folds,
+            } => {
+                let body = commit::Publication {
+                    root,
+                    manifest: manifest_root,
+                    folds,
+                };
+                commit::publish(self, runs, presented, checkpoint, &body).await
             }
-            TurnCheckpointAction::Read { .. } => {
-                restore::read(self, runs, presented, request).await
+            TurnCheckpointAction::Read { descriptor } => {
+                restore::read(self, runs, presented, &request.operation_id, descriptor).await
             }
-            TurnCheckpointAction::Adopt { .. } => restore::adopt(runs, presented, request).await,
-            TurnCheckpointAction::PinRenew { .. }
-            | TurnCheckpointAction::PinRelease { .. }
-            | TurnCheckpointAction::Abandon { .. } => pins::update(runs, presented, request).await,
-            TurnCheckpointAction::Objects { .. } => {
-                objects::register(self, runs, presented, request).await
+            TurnCheckpointAction::Adopt { checkpoint } => {
+                restore::adopt(runs, presented, checkpoint).await
             }
-            TurnCheckpointAction::Uploads { .. } | TurnCheckpointAction::Authorize { .. } => {
-                transfer::execute(self, runs, presented, request).await
+            TurnCheckpointAction::PinRenew {
+                checkpoint,
+                resource_version,
+            } => {
+                pins::update(
+                    runs,
+                    presented,
+                    checkpoint,
+                    pins::Change::Renew(*resource_version),
+                )
+                .await
             }
-            TurnCheckpointAction::PageWrite { .. } => pages::write(runs, presented, request).await,
-            TurnCheckpointAction::PageRead { .. } => pages::read(runs, presented, request).await,
+            TurnCheckpointAction::PinRelease { checkpoint } => {
+                pins::update(runs, presented, checkpoint, pins::Change::Release).await
+            }
+            TurnCheckpointAction::Abandon { checkpoint } => {
+                pins::update(runs, presented, checkpoint, pins::Change::Abandon).await
+            }
+            TurnCheckpointAction::Objects {
+                checkpoint,
+                objects,
+            } => objects::register(self, runs, presented, checkpoint, objects).await,
+            TurnCheckpointAction::Uploads {
+                checkpoint,
+                objects,
+            } => {
+                let transfer = transfer::Transfer::Uploads(objects);
+                transfer::execute(self, runs, presented, checkpoint, transfer).await
+            }
+            TurnCheckpointAction::Authorize {
+                checkpoint,
+                purpose,
+                object_ids,
+            } => {
+                let transfer = transfer::Transfer::Authorize(*purpose, object_ids);
+                transfer::execute(self, runs, presented, checkpoint, transfer).await
+            }
+            TurnCheckpointAction::PageWrite {
+                checkpoint,
+                page_id,
+                digest,
+                contents,
+            } => {
+                let page = pages::Write {
+                    page_id,
+                    digest,
+                    contents,
+                };
+                pages::write(runs, presented, checkpoint, &page).await
+            }
+            TurnCheckpointAction::PageRead {
+                checkpoint,
+                page_id,
+            } => pages::read(runs, presented, checkpoint, page_id).await,
         }
     }
 }

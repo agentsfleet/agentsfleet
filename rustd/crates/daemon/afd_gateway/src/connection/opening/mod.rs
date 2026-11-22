@@ -3,6 +3,8 @@
 mod confirmation;
 mod control;
 mod request;
+#[cfg(test)]
+mod tests;
 
 use afd_auth::principal::Runner;
 use afd_runner::capacity::authority::Decision;

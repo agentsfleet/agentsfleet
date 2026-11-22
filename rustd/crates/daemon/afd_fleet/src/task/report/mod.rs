@@ -30,6 +30,7 @@ pub struct PreparedReport {
     tasks: Tasks,
     run_id: Uuid7,
     runner_id: Uuid7,
+    task_id: Uuid7,
     scope: TaskScope,
     snapshot: TaskSnapshot,
     input: TaskReport,
@@ -44,12 +45,12 @@ impl TaskReportOwner for Tasks {
         run: TaskRun<'a>,
         input: &'a ReportRequest<'a>,
     ) -> TaskFuture<'a, Option<PreparedReport>> {
-        if input.task.is_none() {
+        let Some(task) = &input.task else {
             return Box::pin(async { Ok(None) });
-        }
+        };
         Box::pin(super::observe::measure(
             af_observability::metrics::label::task::TaskOperation::ReportPrepare,
-            prepare::prepare(self, run, input),
+            prepare::prepare(self, run, task),
             |prepared| {
                 if prepared.is_some() {
                     af_observability::metrics::label::task::TaskOutcome::Accepted
@@ -78,10 +79,8 @@ impl PreparedReport {
         Ok(TaskSettlement { plan: self, turn })
     }
     pub(crate) async fn announce(&self) {
-        let Ok(id) = super::guard::id(&self.snapshot.context.task_id, "task_id") else {
-            return;
-        };
-        if let Ok(snapshot) = super::read::read(&self.tasks, &self.scope, &id).await {
+        let id = &self.task_id;
+        if let Ok(snapshot) = super::read::read(&self.tasks, &self.scope, id).await {
             if snapshot.context.state == af_wire::task::TaskState::Ready
                 && Some(snapshot.context.generation)
                     == self.snapshot.context.generation.checked_add(1)
@@ -90,7 +89,7 @@ impl PreparedReport {
                 wake.confirm(&self.tasks).await;
             }
             self.tasks
-                .publish_changed(&self.scope, &id, snapshot.resource_version)
+                .publish_changed(&self.scope, id, snapshot.resource_version)
                 .await;
         }
     }

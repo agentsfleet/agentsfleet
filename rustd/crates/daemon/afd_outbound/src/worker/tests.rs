@@ -236,3 +236,15 @@ async fn a_refused_draw_is_logged_by_the_loop() -> TestResult {
     failed.assert_uncoded_reason();
     Ok(())
 }
+
+/// A worker that never got a wake subscription waits on its scans alone: the
+/// ping it would have listened for never arrives.
+#[tokio::test]
+async fn a_worker_with_no_wake_never_reports_a_ping() {
+    let mut wake = None;
+
+    let waited = tokio::time::timeout(Duration::from_millis(50), pinged(&mut wake)).await;
+
+    assert!(waited.is_err(), "no subscription, no ping");
+    assert!(wake.is_none());
+}

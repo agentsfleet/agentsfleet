@@ -9,3 +9,6 @@ mod rows;
 
 #[path = "error_surface.rs"]
 mod error_surface;
+
+#[path = "placement_refusal.rs"]
+mod placement_refusal;

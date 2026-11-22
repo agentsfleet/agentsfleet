@@ -56,26 +56,15 @@ pub(super) async fn read(
             .get(start..end)
             .ok_or(TaskRefusal::InputAmbiguous)?
             .to_owned();
-        let action = serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
-            item.action.as_str(),
-        ))
-        .map_err(|source: serde::de::value::Error| {
-            crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
-        })?;
+        let action = row::action(&item.action)?;
         let binding = TaskItemBinding {
             item_id: item.item_id.into(),
-            task_generation: item
-                .generation
-                .map(|generation| row::counter(generation, "generation"))
-                .transpose()?,
+            task_generation: row::optional_counter(item.generation, "generation")?,
             applies_here: item.task_id == current.task_id
                 && item.state.as_deref() == Some(TaskState::Running.as_str()),
             task_id: item.task_id.map(String::from),
             action,
-            input_sequence: item
-                .input_sequence
-                .map(|sequence| row::counter(sequence, "input sequence"))
-                .transpose()?,
+            input_sequence: row::optional_counter(item.input_sequence, "input sequence")?,
         };
         let accepted = interpretations
             .entry(item.source_turn_id.clone())

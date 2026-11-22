@@ -3,7 +3,7 @@
 use super::*;
 
 type RecordedProbes = Arc<parking_lot::Mutex<Vec<Vec<Uuid7>>>>;
-type SchedulerJob = tokio::task::JoinHandle<crate::Result<()>>;
+type SchedulerJob = tokio::task::JoinHandle<()>;
 
 // Value: protects=an unassignable wake costs no discovery scan per connection;
 // fails_when=the pass runs before or without the pending probe; why_new=the
@@ -26,7 +26,7 @@ async fn a_wake_with_nothing_pending_asks_no_connection_to_assign() -> TestResul
                 probes.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 async { Ok(Probe::Nothing) }
             })
-            .await
+            .await;
         }
     });
     tokio::task::yield_now().await;
@@ -42,7 +42,7 @@ async fn a_wake_with_nothing_pending_asks_no_connection_to_assign() -> TestResul
         "one probe per wake"
     );
     stop.cancel();
-    job.await??;
+    job.await?;
     Ok(())
 }
 
@@ -64,7 +64,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
             notifications(&registry, &wake, 8, stop, async |_| {
                 Err(crate::Error::from(sqlx::Error::RowNotFound))
             })
-            .await
+            .await;
         }
     });
     tokio::task::yield_now().await;
@@ -76,7 +76,7 @@ async fn a_failed_probe_still_runs_the_pass() -> TestResult {
         .send(AssignOutcome::Empty)
         .map_err(|unsent| format!("the pass lost its answer {unsent:?}"))?;
     stop.cancel();
-    job.await??;
+    job.await?;
     Ok(())
 }
 
@@ -123,7 +123,7 @@ async fn a_pass_skips_the_runner_the_probe_names_idle() -> TestResult {
         "one probe per wake names every connected runner"
     );
     stop.cancel();
-    job.await??;
+    job.await?;
     Ok(())
 }
 
@@ -179,7 +179,7 @@ async fn a_wake_asks_the_one_runner_with_work_and_a_recovery_pass_asks_all_fifty
         "and does not probe"
     );
     stop.cancel();
-    job.await??;
+    job.await?;
     Ok(())
 }
 
@@ -220,7 +220,7 @@ fn recording_scheduler(
                 let named = named.clone();
                 async move { Ok(Probe::Waiting(HashSet::from([named]))) }
             })
-            .await
+            .await;
         }
     });
     (job, asked)
@@ -243,7 +243,7 @@ fn idle_scheduler(
                 let idle = idle.clone();
                 async move { Ok(Probe::Waiting(idle)) }
             })
-            .await
+            .await;
         }
     })
 }
@@ -267,5 +267,35 @@ async fn recovery_asks_every_connection(
     )
     .await??;
     assert_eq!(answered.len(), 50, "a recovery pass asks every connection");
+    Ok(())
+}
+
+// Value: protects=a pass whose assignment answer is lost never ends the
+// scheduler; fails_when=the pass error leaves the notification loop.
+#[tokio::test(start_paused = true)]
+async fn a_lost_assignment_answer_leaves_the_next_wake_scheduled() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let mut connection = ConnectionFixture::new(1)?;
+    let _registration = connection.register(&registry)?;
+    let wake = Wake::default();
+    let stop = CancellationToken::new();
+    let job = tokio::spawn({
+        let registry = Arc::clone(&registry);
+        let wake = wake.clone();
+        let stop = stop.clone();
+        async move { notifications(&registry, &wake, 8, stop, async |_| Ok(everyone())).await }
+    });
+    tokio::task::yield_now().await;
+    wake.ring(connection.handle.runner.clone());
+    drop(connection.request().await?);
+    wake.ring(connection.handle.runner.clone());
+    connection
+        .request()
+        .await?
+        .reply
+        .send(AssignOutcome::Empty)
+        .map_err(|unsent| format!("the second pass lost its answer {unsent:?}"))?;
+    stop.cancel();
+    job.await?;
     Ok(())
 }

@@ -108,15 +108,7 @@ async fn transition(
         if control == TaskControl::Resume && !locked.can_resume {
             return Err(TaskRefusal::LimitExhausted.into());
         }
-        update(
-            connection,
-            scope,
-            task_id,
-            locked.resource_version,
-            control,
-            previous,
-        )
-        .await?;
+        update(connection, scope, task_id, locked.resource_version, control).await?;
     }
     Ok((changed, previous))
 }
@@ -194,8 +186,8 @@ async fn update(
     task_id: &Uuid7,
     version: i64,
     control: TaskControl,
-    previous: TaskState,
 ) -> Result<()> {
+    // `transition` holds the row's lock, so the version it read is still current.
     sqlx::query_scalar::<_, Uuid7>(sql::CONTROL)
         .bind(task_id)
         .bind(&scope.fleet_id)
@@ -204,10 +196,9 @@ async fn update(
         .bind(i64::from(control != TaskControl::Resume))
         .bind(control == TaskControl::Cancel)
         .bind(version)
-        .fetch_optional(connection)
+        .fetch_one(connection)
         .await
-        .map_err(query(CONTEXT))?
-        .ok_or_else(|| conflict(previous))?;
+        .map_err(query(CONTEXT))?;
     Ok(())
 }
 

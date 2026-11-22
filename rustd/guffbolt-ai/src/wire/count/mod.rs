@@ -126,14 +126,14 @@ impl Route {
     /// `input` is `request`'s local measurement, already taken by the caller:
     /// with the `o200k_base` estimate a measurement is a full encoding pass, so
     /// none is repeated here.
-    #[must_use]
-    pub(crate) fn needs_native_count(&self, input: u64, request: &CompletionRequest) -> bool {
+    fn native_count(&self, input: u64, request: &CompletionRequest) -> Option<native::Native> {
         let output = request
             .max_tokens
             .unwrap_or_else(|| u64::from(self.max_output_tokens()));
-        native::supported(self)
-            && input.saturating_add(output).saturating_mul(100)
+        native::native(self).filter(|_| {
+            input.saturating_add(output).saturating_mul(100)
                 >= u64::from(self.context_tokens()).saturating_mul(CONFIRM_PERCENT)
+        })
     }
 
     /// Confirms near capacity through the caller's guarded transport and authorized credential.
@@ -152,8 +152,9 @@ impl Route {
         // The local count just taken decides, rather than a second encoding
         // pass over the same request.
         let mut count = self.input_count(model, request)?;
-        if self.needs_native_count(count.tokens, request) {
-            count.tokens = native::count(self, model, key, request, transport, control).await?;
+        if let Some(native) = self.native_count(count.tokens, request) {
+            count.tokens =
+                native::count(native, self, model, key, request, transport, control).await?;
             count.method = "provider_count";
         }
         Ok(count)

@@ -3,12 +3,13 @@
 use af_core::id::Uuid7;
 use af_wire::{
     decision::{
-        DecisionAssignment, DecisionOutcome, DecisionPurpose, DecisionRequest, DecisionResult,
-        answer_matches,
+        DecisionAnswer, DecisionAssignment, DecisionOutcome, DecisionPurpose, DecisionRequest,
+        DecisionResult, answer_matches,
     },
     task::DecisionRecordDisposition,
 };
 use sqlx::{PgConnection, types::Json};
+use std::collections::BTreeMap;
 
 use super::{
     context::{AssessedContext, TaskStamp},
@@ -34,29 +35,37 @@ pub(super) async fn disposition(
     request: &DecisionRequest,
     result: &DecisionResult,
 ) -> DecisionRecordDisposition {
-    if !call.accounted || !answers_match(call, request, result) {
+    if !call.accounted || answered(call, request, result).is_none() {
         return DecisionRecordDisposition::Unusable;
     }
     match current(tasks, call).await {
         Ok(true) => DecisionRecordDisposition::Current,
         Ok(false) => DecisionRecordDisposition::Stale,
         Err(fault) => {
-            tracing::warn!(event = "dt_decision_context_unavailable", decision_call_id = call.id.as_str(),
-                error_code = %fault.code(), reason = "semantic_lookup_failed");
+            let (decision_call_id, error_code) = (call.id.as_str(), fault.code());
+            {
+                let (event, reason) = (
+                    &"dt_decision_context_unavailable",
+                    &"semantic_lookup_failed",
+                );
+                tracing::warn!(event, decision_call_id, %error_code, reason);
+            };
             DecisionRecordDisposition::Unusable
         }
     }
 }
 
-pub(super) fn answers_match(
+/// `result`'s answers, when it answered every question `request` asked, in the
+/// question's kind, from a model `call` accepts, with known usage.
+pub(super) fn answered<'a>(
     call: &Call,
     request: &DecisionRequest,
-    result: &DecisionResult,
-) -> bool {
+    result: &'a DecisionResult,
+) -> Option<&'a BTreeMap<String, DecisionAnswer>> {
     let DecisionOutcome::Answered { answers } = &result.result else {
-        return false;
+        return None;
     };
-    result
+    let matched = result
         .usage
         .is_some_and(|usage| usage.uncached_input().is_some())
         && result.reported_model.as_ref().is_some_and(|model| {
@@ -71,7 +80,8 @@ pub(super) fn answers_match(
             answers
                 .get(&named.name)
                 .is_some_and(|answer| answer_matches(&named.question, answer))
-        })
+        });
+    matched.then_some(answers)
 }
 
 async fn current(tasks: &Tasks, call: &Call) -> Result<bool> {

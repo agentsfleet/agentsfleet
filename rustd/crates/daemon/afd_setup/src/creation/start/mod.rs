@@ -12,5 +12,4 @@ pub(super) use store::{key, payload, store};
 pub(super) enum Prepared<'a> {
     None,
     Ready(PreparedTurn<'a>),
-    Blocked(String),
 }

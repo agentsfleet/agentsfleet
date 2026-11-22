@@ -132,12 +132,9 @@ impl StoredRow {
         )?;
         let accepted = Accepted {
             context: frozen.context,
-            candidate_id: Uuid7::parse(
-                self.source_candidate_id
-                    .as_ref()
-                    .ok_or_else(|| absent("source_candidate_id"))?
-                    .as_str(),
-            )?,
+            candidate_id: self
+                .source_candidate_id
+                .ok_or_else(|| absent("source_candidate_id"))?,
             candidate_revision: frozen.candidate_revision,
             canonical_digest: self.canonical_digest,
             policy_semantics: self.policy_semantics,

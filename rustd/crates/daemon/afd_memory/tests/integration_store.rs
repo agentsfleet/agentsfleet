@@ -108,3 +108,54 @@ async fn test_push_skips_an_unpublished_share() {
     assert_eq!(keys, ["own"]);
     space.cleanup().await;
 }
+
+/// The store's own upsert writes every entry in one transaction and sweeps
+/// the expired scratch notes on a later write.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_the_store_upsert_writes_entries_and_sweeps_expired_scratch_notes() {
+    let space = Workspace::create().await;
+    let fleet = space.fleet("upserter", Grants::default()).await;
+    let store =
+        afd_memory::PgStore::new(space.database.clone(), af_crypto::entropy::Entropy::new());
+    let owner = afd_memory::Owner {
+        workspace: &space.id,
+        fleet: &fleet,
+    };
+    let pinned = delta("pinned", PINNED_CATEGORY, Visibility::Fleet);
+    let scratch = delta("scratch", DAILY, Visibility::Fleet);
+
+    let written = store
+        .upsert(owner, &[&pinned, &scratch], START_AT)
+        .await
+        .expect("an upsert for a fleet that exists");
+    assert_eq!(written.swept, 0, "nothing was old enough to sweep");
+    let mut keys: Vec<String> = store
+        .window(owner, false)
+        .await
+        .expect("a window")
+        .into_iter()
+        .map(|record| record.key)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["pinned", "scratch"]);
+
+    let later = af_core::clock::after(
+        START_AT,
+        DAILY_RETENTION + std::time::Duration::from_millis(1),
+    );
+    let swept = store
+        .upsert(owner, &[], later)
+        .await
+        .expect("an empty upsert");
+    assert_eq!(swept.swept, 1, "the expired scratch note is swept");
+    let kept: Vec<String> = store
+        .window(owner, false)
+        .await
+        .expect("a window")
+        .into_iter()
+        .map(|record| record.key)
+        .collect();
+    assert_eq!(kept, ["pinned"]);
+    space.cleanup().await;
+}

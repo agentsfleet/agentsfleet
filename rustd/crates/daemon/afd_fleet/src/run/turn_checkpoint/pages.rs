@@ -11,7 +11,7 @@ use super::{
 use crate::{Result, error::query, run::Runs};
 use af_core::id::Uuid7;
 use af_wire::{
-    run::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse},
+    run::{CheckpointOperationId, TurnCheckpointRef, TurnCheckpointResponse},
     task::{CheckpointEntry, CheckpointPage, CheckpointTransferPurpose},
 };
 use garde::Validate as _;
@@ -25,20 +25,25 @@ pub(super) struct Page {
     pub body: Option<Vec<u8>>,
 }
 
+/// One page a writer freezes: its preallocated identity, the digest it claims
+/// and the contents that digest covers.
+pub(super) struct Write<'a> {
+    pub page_id: &'a CheckpointOperationId,
+    pub digest: &'a str,
+    pub contents: &'a CheckpointPage,
+}
+
 pub(super) async fn write(
     runs: &Runs,
     presented: TurnRun<'_>,
-    request: &TurnCheckpointCommand,
+    checkpoint: &TurnCheckpointRef,
+    page: &Write<'_>,
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::PageWrite {
-        checkpoint,
+    let Write {
         page_id,
         digest,
         contents,
-    } = &request.action
-    else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
+    } = *page;
     let id = guard::id(page_id)?;
     let body = encoded_page(contents, digest)?;
     let mut connection = transaction::acquire(runs.pool()).await?;
@@ -56,7 +61,7 @@ pub(super) async fn write(
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
     match saved.body {
-        Some(saved) if saved != body || saved_digest(&saved) != *digest => {
+        Some(saved) if saved != body || saved_digest(&saved) != digest => {
             return Err(TurnCheckpointRefusal::Conflict.into());
         }
         Some(_) => {}
@@ -76,7 +81,7 @@ pub(super) async fn write(
     Ok(TurnCheckpointResponse::PageWritten(contents.clone()))
 }
 
-fn encoded_page(contents: &CheckpointPage, digest: &str) -> Result<Vec<u8>> {
+pub(super) fn encoded_page(contents: &CheckpointPage, digest: &str) -> Result<Vec<u8>> {
     let body = serde_json::to_vec(contents).map_err(af_core::json::Unreadable::from)?;
     if af_core::etag::sha256_hex(&body) != digest {
         return Err(TurnCheckpointRefusal::Incompatible.into());
@@ -87,15 +92,9 @@ fn encoded_page(contents: &CheckpointPage, digest: &str) -> Result<Vec<u8>> {
 pub(super) async fn read(
     runs: &Runs,
     presented: TurnRun<'_>,
-    request: &TurnCheckpointCommand,
+    checkpoint: &TurnCheckpointRef,
+    page_id: &CheckpointOperationId,
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::PageRead {
-        checkpoint,
-        page_id,
-    } = &request.action
-    else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut custody = FileOwner::lock(
         runs,
@@ -203,7 +202,7 @@ pub(super) async fn validate(
     Ok(())
 }
 
-fn sizes_match(page: &CheckpointPage, sizes: &BTreeMap<String, i64>) -> Result<()> {
+pub(super) fn sizes_match(page: &CheckpointPage, sizes: &BTreeMap<String, i64>) -> Result<()> {
     for entry in &page.entries {
         if let CheckpointEntry::File(file) = entry {
             let size = file

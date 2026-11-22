@@ -76,4 +76,37 @@ mod tests {
         }
         Ok(())
     }
+
+    /// Out-of-range retry and export settings refuse startup, naming their section.
+    #[test]
+    fn out_of_range_retry_and_export_settings_refuse_startup_by_section()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for (contents, section) in [
+            ("[outbound.retries]\nmax_attempts = 11", "outbound.retries"),
+            ("[outbound.retries]\nmax_attempts = 0", "outbound.retries"),
+            (
+                "[telemetry.otlp]\nmetrics_export_interval_seconds = 0",
+                "telemetry.otlp",
+            ),
+            (
+                "[telemetry.otlp]\ntrace_queue_capacity = 8\ntrace_batch_size = 9",
+                "telemetry.otlp",
+            ),
+        ] {
+            let mut file = tempfile::NamedTempFile::new()?;
+            write!(file, "{contents}")?;
+            let environment = MapEnv::default();
+            let refusal = ConfigBuilder::new(&environment)
+                .file(Some(file.path()))
+                .build()
+                .err()
+                .ok_or("an out-of-range setting was accepted")?;
+            assert_eq!(refusal.knobs(), [super::super::FILE_KNOB], "{contents}");
+            assert!(
+                refusal.to_string().contains(&format!("{section}: ")),
+                "{contents}: {refusal}"
+            );
+        }
+        Ok(())
+    }
 }

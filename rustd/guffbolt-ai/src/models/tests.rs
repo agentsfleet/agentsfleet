@@ -142,9 +142,13 @@ fn a_connected_model_takes_its_row_and_its_provider() {
 #[cfg(feature = "minimax")]
 #[test]
 fn a_provider_added_twice_is_the_later_one() {
-    let models = Models::new()
-        .with(providers::minimax())
-        .with(providers::minimax().with_base_url("https://proxy.example/anthropic"));
+    let proxied = providers::minimax().with_base_url("https://proxy.example/anthropic");
+    assert_eq!(
+        providers::minimax().base_url(),
+        "https://api.minimax.io/anthropic"
+    );
+    assert_eq!(proxied.base_url(), "https://proxy.example/anthropic");
+    let models = Models::new().with(providers::minimax()).with(proxied);
 
     let model = models.connect_with_key("minimax", FLASH, "k").unwrap();
 

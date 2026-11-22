@@ -78,12 +78,15 @@ impl Issuance<'_> {
         tx.commit()
             .await
             .map_err(query("commit funded physical decision issuance"))?;
-        tracing::info!(
-            event = "dt_decision_issued",
-            decision_call_id = self.call.id.as_str(),
-            assessment_id = self.call.assessment_id.as_str(),
-            attempt = self.call.attempt_number
+        let (decision_call_id, assessment_id, attempt) = (
+            self.call.id.as_str(),
+            self.call.assessment_id.as_str(),
+            self.call.attempt_number,
         );
+        {
+            let event = &"dt_decision_issued";
+            tracing::info!(event, decision_call_id, assessment_id, attempt);
+        };
         Ok(Emission::Dispatch(packet))
     }
 }

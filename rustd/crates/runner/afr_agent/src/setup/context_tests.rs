@@ -342,3 +342,85 @@ async fn a_failed_context_save_still_answers() -> TestResult {
     assert!(model.answered().is_some(), "the turn was never answered");
     Ok(())
 }
+
+#[tokio::test]
+async fn a_saved_checkpoint_that_does_not_parse_is_not_read() -> TestResult {
+    let script = Script::new([vec![say(ANSWER)]]);
+    let history = [
+        ("message one", "answer one", 1),
+        ("message two", "answer two", 2),
+    ];
+    let run = setup_payload(&history, 0, None);
+    let context = Context::stored(4, Some(json!({"format_version": 1, "summary": 7})));
+
+    let output = run_setup(&script.replay(), &run, &context).await?;
+
+    assert_eq!(output.result.outcome, ResultOutcome::Completed(Completed));
+    let first = script.sent().into_iter().next().ok_or("no model call")?;
+    let sent = texts(&first.messages);
+    assert!(
+        sent.iter().all(|text| !text.starts_with(SUMMARY_PREFIX)),
+        "{sent:?}"
+    );
+    assert!(sent.contains(&"message one"), "{sent:?}");
+    Ok(())
+}
+
+/// The store is a compare-and-set over the stored version: a commit that
+/// expects another refuses as stale, saves nothing and moves no version.
+#[tokio::test]
+async fn a_commit_over_a_version_the_store_does_not_hold_is_stale() -> TestResult {
+    use af_context::CheckpointStore as _;
+
+    let run = setup_payload(&FIVE, WINDOW, None);
+    let checkpoint: af_context::Checkpoint = serde_json::from_value(checkpoint(&run, None, 2))?;
+    let context = Context::stored(4, None);
+    let (mut saving, mut version) = (true, 4);
+    let mut store = super::store::Store {
+        context: &context,
+        fencing_token: FENCE,
+        saving: &mut saving,
+        version: &mut version,
+    };
+
+    let committed = store.commit(3, checkpoint).await;
+
+    assert!(committed.is_err_and(|failure| failure.is_stale()));
+    assert!(context.saved().is_empty(), "a stale commit saved");
+    assert_eq!((saving, version), (true, 4));
+    Ok(())
+}
+
+/// The planner keeps the newest two earlier turns whole, halves what it
+/// would compact until the request fits, and plans nothing when none fits or
+/// nothing is old enough; the draft's `Debug` names versions and counts only.
+#[tokio::test]
+async fn the_setup_planner_halves_until_a_request_fits_and_keeps_the_newest_turns() -> TestResult {
+    let run = setup_payload(&FIVE, WINDOW, None);
+    let scrub = af_secrets::Scrub::new(&run.policy)?;
+    let context = Context::stored(4, None);
+    let saved = super::context::Saved::load(&context, &run, &scrub).await;
+
+    let mut asked = Vec::new();
+    let halved = saved.compaction(1_000, |task| {
+        asked.push(task.groups.len());
+        Ok(task.groups.len() == 1)
+    })?;
+    let never = saved.compaction(1_000, |_task| Ok(false))?;
+
+    assert_eq!(asked, [3, 1]);
+    assert_eq!(halved.map(|task| task.groups.len()), Some(1));
+    assert!(never.is_none(), "nothing that fits is planned");
+    let printed = format!("{saved:?}");
+    assert!(printed.starts_with("Saved {"), "{printed}");
+    assert!(printed.contains("earlier: 5"), "{printed}");
+    assert!(!printed.contains("message one"), "{printed}");
+
+    let short = setup_payload(&FIVE[..2], WINDOW, None);
+    let recent = super::context::Saved::load(&context, &short, &scrub).await;
+    assert!(
+        recent.compaction(1_000, |_task| Ok(true))?.is_none(),
+        "two turns are kept whole"
+    );
+    Ok(())
+}

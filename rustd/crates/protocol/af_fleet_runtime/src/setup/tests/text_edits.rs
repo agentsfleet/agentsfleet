@@ -275,3 +275,21 @@ fn an_appended_rule_keeps_the_persons_quotes_and_every_prior_byte()
     );
     Ok(())
 }
+
+// Value: protects=the model hears why an ambiguous anchor was refused and how to fix it;
+// fails_when=the ambiguous refusal is logged or told under another refusal's name or sentence.
+#[test]
+fn an_ambiguous_anchor_is_named_and_tells_the_model_to_widen_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = definition("again again")?;
+    let proposed = suggestion(&json!([{"kind":"replace","old_text":"again","text":"once"}]))?;
+    let refused = native(proposed, Some(&head(&base, HEAD_REVISION)), None)
+        .err()
+        .ok_or("an ambiguous anchor is refused")?;
+    assert_eq!(refused.kind(), "instructions_ambiguous");
+    assert_eq!(
+        refused.feedback(),
+        "No changes were applied. The old_text matches more than one position in instructions_md. Include enough exact surrounding text to identify one position. Return a corrected propose_setup call."
+    );
+    Ok(())
+}

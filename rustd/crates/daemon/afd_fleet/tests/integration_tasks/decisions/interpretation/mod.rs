@@ -16,6 +16,7 @@ use super::{
     reply::known_result,
 };
 
+mod answers;
 mod policy;
 
 fn digest(input: &mut TaskBindingsInput) {

@@ -264,3 +264,39 @@ fn refused(candidate: &Value) {
         "refusal never echoes private question values"
     );
 }
+
+#[test]
+fn an_omitted_question_criteria_or_statement_id_is_refused_by_name() {
+    for (parent, key, field) in [
+        (
+            "/routing/intent",
+            "question",
+            "decision_policy.question.question",
+        ),
+        (
+            "/routing/intent",
+            "criteria",
+            "decision_policy.question.criteria",
+        ),
+        (
+            "/completion/statements/0",
+            "id",
+            "decision_policy.completion.statement.id",
+        ),
+    ] {
+        let mut candidate = document();
+        candidate
+            .pointer_mut(&format!("{POLICY_PATH}{parent}"))
+            .and_then(Value::as_object_mut)
+            .expect("fixture object")
+            .remove(key)
+            .expect("fixture field");
+        let failure = Definition::parse(&candidate.to_string())
+            .expect_err("an omitted required member is refused");
+        assert_eq!(failure.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+        assert!(
+            failure.to_string().contains(field),
+            "the refusal names {field}: {failure}"
+        );
+    }
+}

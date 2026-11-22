@@ -63,19 +63,18 @@ pub(super) async fn validate(
 pub(super) async fn adopt(owner: &mut TurnRunGuard<'_>, plan: &Plan) -> Result<Vec<FoldRef>> {
     let folds = plan.folds()?;
     let ids = validate(owner, &folds, None).await?;
-    let changed: Vec<Uuid7> = sqlx::query_scalar(include_str!("sql/adopt_folds.sql"))
+    // `validate` locked every covered row and proved it foldable at or below
+    // this fence, which are the statement's own conditions, so it moves all.
+    sqlx::query(include_str!("sql/adopt_folds.sql"))
         .bind(&ids)
         .bind(&owner.current.id)
         .bind(owner.current.fence)
         .bind(&owner.current.fleet_id)
         .bind(&owner.current.workspace_id)
-        .fetch_all(&mut *owner.tx)
+        .execute(&mut *owner.tx)
         .await
         .map_err(query(
             "adopt only authenticated checkpoint input membership",
         ))?;
-    if changed.len() != ids.len() {
-        return Err(TurnCheckpointRefusal::Conflict.into());
-    }
     Ok(folds)
 }

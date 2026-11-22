@@ -15,6 +15,10 @@ mod renewal;
 mod report;
 mod turn_checkpoint;
 
+#[cfg(all(test, feature = "test-util"))]
+#[path = "live_tests.rs"]
+mod tests;
+
 impl ConnectionServices {
     #[tracing::instrument(
         name = "runner_connection_dispatch",

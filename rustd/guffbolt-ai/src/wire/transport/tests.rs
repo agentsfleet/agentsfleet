@@ -178,3 +178,95 @@ async fn a_whole_reply_under_the_cap_is_read_whole_at_rigs_buffered_seam() {
 
     assert_eq!(body.len(), 2 * SERVED_CHUNK);
 }
+
+#[test]
+fn each_send_failure_says_what_failed_and_keeps_its_cause() {
+    let cause = || -> Cause { Box::new(std::io::Error::other("fixture cause")) };
+    for (failure, text) in [
+        (
+            SendError::Refused(cause()),
+            "the transport refused the destination",
+        ),
+        (
+            SendError::Unanswered(cause()),
+            "the request was not answered",
+        ),
+        (SendError::Failed(cause()), "the transport failed"),
+    ] {
+        assert_eq!(failure.to_string(), text);
+        assert!(
+            failure
+                .source()
+                .is_some_and(|source| source.to_string() == "fixture cause")
+        );
+    }
+}
+
+#[cfg(feature = "reqwest")]
+#[test]
+fn the_default_transport_prints_nothing_of_its_client() {
+    let transport = Reqwest::new().unwrap();
+
+    assert_eq!(format!("{transport:?}"), "Reqwest { .. }");
+}
+
+// Value: a request the client cannot even build is no unanswered send, so
+// nothing retries it.
+#[cfg(feature = "reqwest")]
+#[tokio::test]
+async fn a_request_the_client_cannot_build_fails_without_being_unanswered() {
+    let relative = Request::builder()
+        .uri("/v1/chat/completions")
+        .body(Bytes::new())
+        .unwrap();
+
+    let failure = Reqwest::new().unwrap().send(relative).await.err().unwrap();
+
+    assert!(matches!(failure, SendError::Failed(_)), "{failure:?}");
+    assert!(!failure.is_unanswered());
+    assert!(!failure.is_refused());
+}
+
+// Value: a reply cut short mid-body reaches the reader as the transport's
+// failure, with the client's own error beneath it.
+#[cfg(feature = "reqwest")]
+#[tokio::test]
+async fn a_reply_cut_mid_body_ends_its_stream_as_a_transport_failure() {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let served = tokio::spawn(async move {
+        let (mut stream, _peer) = listener.accept().await.unwrap();
+        let mut asked = Vec::new();
+        while !asked.ends_with(b"\r\n\r\n") {
+            let mut byte = [0; 1];
+            stream.read_exact(&mut byte).await.unwrap();
+            asked.extend_from_slice(&byte);
+        }
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 64\r\n\r\npartial")
+            .await
+            .unwrap();
+        stream.shutdown().await.unwrap();
+    });
+    let request = Request::builder()
+        .uri(format!("http://{address}/v1/chat/completions"))
+        .body(Bytes::new())
+        .unwrap();
+
+    let response = Reqwest::new().unwrap().send(request).await.unwrap();
+    let status = response.status();
+    let read: Vec<_> = response.into_body().collect().await;
+    served.await.unwrap();
+
+    assert_eq!(status, http::StatusCode::OK);
+    let failures: Vec<_> = read.into_iter().filter_map(Result::err).collect();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert!(failures.iter().all(|failure| {
+        matches!(failure, SendError::Failed(_))
+            && failure
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<::reqwest::Error>)
+    }));
+}

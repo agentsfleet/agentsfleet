@@ -4,7 +4,7 @@ use super::row::{Pin, Plan};
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, TaskRun, Tasks, execution},
+    task::{TaskRefusal, TaskRun, Tasks, execution, row::sql_counter},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{CheckpointTransferPurpose, DecisionTaskVersion};
@@ -57,12 +57,9 @@ pub(super) async fn with_execution(
         .ok_or(TaskRefusal::CheckpointIncompatible)?;
     if pin.owner_run_id != run.run_id.as_str()
         || pin.owner_fence != owned.current.fence
-        || pin.task_generation
-            != i64::try_from(owned.snapshot.context.generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?
+        || pin.task_generation != sql_counter(owned.snapshot.context.generation, "task generation")?
         || pin.stop_generation
-            != i64::try_from(owned.snapshot.context.stop_generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?
+            != sql_counter(owned.snapshot.context.stop_generation, "stop generation")?
         || pin.expires_at <= clock::now()
         || pin.operation_deadline <= clock::now()
         || pin.released

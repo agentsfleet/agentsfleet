@@ -84,7 +84,6 @@ pub(super) fn page<T, U>(value: types::Page<T>, render: impl FnMut(T) -> U) -> w
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,
-    clippy::panic,
     reason = "fixed test fixtures fail loudly when their contract changes"
 )]
 mod tests {
@@ -94,12 +93,15 @@ mod tests {
 
     use super::{card, message, types};
 
+    type Checked = Result<(), Box<dyn std::error::Error>>;
+
     /// A card at `revisions`: candidate and saved setup.
-    fn listed(revisions: (Option<i64>, Option<i64>)) -> types::DraftCard {
-        types::DraftCard {
+    fn listed(
+        revisions: (Option<i64>, Option<i64>),
+    ) -> Result<types::DraftCard, af_core::error::Error> {
+        Ok(types::DraftCard {
             continuation: String::new(),
-            id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")
-                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010")?,
             title: "Triage the inbox".to_owned(),
             state: types::DraftState::Editing,
             etag: "\"v1\"".to_owned(),
@@ -108,11 +110,11 @@ mod tests {
             expires_at: None,
             candidate_revision: revisions.0,
             setup_revision: revisions.1,
-        }
+        })
     }
 
     #[test]
-    fn a_card_lists_every_revision_summary_and_null_for_one_it_has_not_reached() {
+    fn a_card_lists_every_revision_summary_and_null_for_one_it_has_not_reached() -> Checked {
         for (revisions, expected) in [
             ((Some(3), Some(2)), [3.into(), 2.into()]),
             ((Some(1), None), [1.into(), serde_json::Value::Null]),
@@ -121,8 +123,7 @@ mod tests {
                 [serde_json::Value::Null, serde_json::Value::Null],
             ),
         ] {
-            let wire = serde_json::to_value(card(listed(revisions)))
-                .unwrap_or_else(|error| panic!("a card serializes: {error}"));
+            let wire = serde_json::to_value(card(listed(revisions)?))?;
             assert_eq!(
                 [
                     wire["candidate_revision"].clone(),
@@ -132,24 +133,23 @@ mod tests {
                 "each summary is present on every card, null until the chat reaches it"
             );
         }
+        Ok(())
     }
 
     /// A failed message's recovery reaches the wire as the domain derived it:
     /// the reason, its registry code and the action a client renders.
     #[test]
-    fn a_failed_message_carries_its_reason_code_and_recovery_onto_the_wire() {
+    fn a_failed_message_carries_its_reason_code_and_recovery_onto_the_wire() -> Checked {
         let failure = types::Failure::from(FailureReason::InsufficientBalance);
         let (code, action) = (failure.error_code, failure.recovery_action);
         let accepted = jiff::Timestamp::constant(1_760_000_000, 0);
 
         let rendered = message(types::Message {
-            turn_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012")
-                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            turn_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb012")?,
             save_requested: false,
             save_error_code: None,
             sequence: "7".to_owned(),
-            operation_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011")
-                .unwrap_or_else(|error| panic!("fixture id is canonical: {error}")),
+            operation_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011")?,
             role: "assistant",
             state: types::MessageState::Failed,
             text: None,
@@ -162,9 +162,10 @@ mod tests {
 
         let wire = rendered
             .failure
-            .unwrap_or_else(|| panic!("a failed message keeps its failure"));
+            .ok_or("a failed message keeps its failure")?;
         assert_eq!(wire.reason, FailureReason::InsufficientBalance);
         assert_eq!(wire.error_code, code.as_str());
         assert_eq!(wire.recovery_action, action);
+        Ok(())
     }
 }

@@ -1,6 +1,6 @@
 //! Live task observations use the same daemon-owned order as their saved row.
 
-use af_wire::activity::{ActivityFrame, TaskActivityHistory};
+use af_wire::activity::{ActivityFrame, TaskActivityHistory, TaskActivityRecord};
 
 pub(super) fn canonical<'a>(
     frames: &[ActivityFrame<'a>],
@@ -13,31 +13,25 @@ pub(super) fn canonical<'a>(
                 return Some(frame.clone());
             };
             let input = record.progress();
-            let saved = history
-                .items
-                .iter()
-                .find(|saved| {
-                    let progress = saved.progress();
-                    std::mem::discriminant(*saved) == std::mem::discriminant(&record)
-                        && progress.activity_id == input.activity_id
-                        && progress.operation == input.operation
-                        && progress.phase == input.phase
-                })?
-                .progress()
-                .clone();
-            Some(match frame {
-                ActivityFrame::TaskDecisionStarted(_) => ActivityFrame::TaskDecisionStarted(saved),
-                ActivityFrame::TaskDecisionCompleted(_) => {
+            let saved = history.items.iter().find(|saved| {
+                let progress = saved.progress();
+                std::mem::discriminant(*saved) == std::mem::discriminant(&record)
+                    && progress.activity_id == input.activity_id
+                    && progress.operation == input.operation
+                    && progress.phase == input.phase
+            })?;
+            // The saved record is the frame's own kind, so its variant names
+            // the frame it republishes as.
+            Some(match saved.clone() {
+                TaskActivityRecord::TaskDecisionStarted(saved) => {
+                    ActivityFrame::TaskDecisionStarted(saved)
+                }
+                TaskActivityRecord::TaskDecisionCompleted(saved) => {
                     ActivityFrame::TaskDecisionCompleted(saved)
                 }
-                ActivityFrame::TaskTransferProgress(_) => {
+                TaskActivityRecord::TaskTransferProgress(saved) => {
                     ActivityFrame::TaskTransferProgress(saved)
                 }
-                ActivityFrame::ContextProgress(_)
-                | ActivityFrame::ToolCallStarted(_)
-                | ActivityFrame::FleetResponseChunk(_)
-                | ActivityFrame::ToolCallCompleted(_)
-                | ActivityFrame::ToolCallProgress(_) => return None,
             })
         })
         .collect()

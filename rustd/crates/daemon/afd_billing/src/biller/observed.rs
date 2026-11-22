@@ -64,9 +64,8 @@ mod tests {
     /// `afd_billing` depends on the metrics crate, so the two cannot share a
     /// type; a dashboard joining a work type to its rows needs one spelling.
     #[test]
-    fn the_labels_spell_the_stored_values() {
-        let id = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
-            .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"));
+    fn the_labels_spell_the_stored_values() -> Result<(), Box<dyn std::error::Error>> {
+        let id = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])?;
         assert_eq!(
             work_type(&WorkKey::FleetRun(id.clone())).as_str(),
             sql::work::FLEET_RUN
@@ -75,5 +74,6 @@ mod tests {
             work_type(&WorkKey::SetupRun(id)).as_str(),
             sql::work::SETUP_RUN
         );
+        Ok(())
     }
 }

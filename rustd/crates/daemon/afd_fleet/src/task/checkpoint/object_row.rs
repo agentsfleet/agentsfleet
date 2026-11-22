@@ -3,7 +3,11 @@
 use super::row::Plan;
 use crate::{
     Result,
-    task::{TaskRefusal, storage::R2CheckpointStore},
+    task::{
+        TaskRefusal,
+        row::{counter, small_counter},
+        storage::R2CheckpointStore,
+    },
 };
 use af_core::id::Uuid7;
 use af_crypto::{
@@ -80,8 +84,7 @@ impl Object {
                 workspace_id: workspace,
                 repository: namespace,
                 object_id: &id,
-                format_version: u32::try_from(self.format_version)
-                    .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+                format_version: small_counter(self.format_version, "object format_version")?,
             },
         )?;
         Ok((
@@ -90,8 +93,7 @@ impl Object {
                 repository: namespace.to_owned(),
                 plaintext: CheckpointPlaintext {
                     sha256: self.plaintext_digest,
-                    size: u64::try_from(self.plaintext_size)
-                        .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+                    size: counter(self.plaintext_size, "object plaintext_size")?,
                     kind: self.kind,
                 },
                 status: if self.verified {
@@ -104,9 +106,8 @@ impl Object {
                 ciphertext_sha256: self.ciphertext_digest,
                 ciphertext_length: self
                     .ciphertext_length
-                    .map(u64::try_from)
-                    .transpose()
-                    .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+                    .map(|length| counter(length, "object ciphertext_length"))
+                    .transpose()?,
                 transfer: None,
             },
             key,
@@ -135,8 +136,7 @@ impl Object {
                 repository: namespace.to_owned(),
                 plaintext: CheckpointPlaintext {
                     sha256: self.plaintext_digest,
-                    size: u64::try_from(self.plaintext_size)
-                        .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+                    size: counter(self.plaintext_size, "object plaintext_size")?,
                     kind: self.kind,
                 },
                 status: CheckpointObjectStatus::Busy,

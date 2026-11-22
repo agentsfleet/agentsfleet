@@ -1,6 +1,6 @@
 //! Creator-only draft collection and current candidate reads.
 
-use super::{DraftPath, access, attach, id, render};
+use super::{DraftPath, access, id, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     services::TenantPlane,
@@ -14,6 +14,7 @@ use axum::{
     extract::{Path, Query, State, rejection::QueryRejection},
     response::{IntoResponse as _, Response},
 };
+use http::header;
 use std::sync::Arc;
 
 /// Lists only the authenticated creator's drafts in this workspace.
@@ -68,7 +69,5 @@ pub(crate) async fn one<D: TenantPlane>(
         .await
         .map_err(setup_refusal)?;
     let tag = draft.etag.clone();
-    let mut response = Json(render::draft(draft)).into_response();
-    attach(&mut response, &tag);
-    Ok(response)
+    Ok(([(header::ETAG, tag)], Json(render::draft(draft))).into_response())
 }

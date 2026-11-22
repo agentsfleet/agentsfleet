@@ -225,7 +225,20 @@ impl ConnectionHandle {
         runner: Uuid7,
         connection_id: Uuid7,
     ) -> (Arc<Self>, mpsc::Receiver<PassRequest>) {
-        let (commands, _) = mpsc::channel(1);
+        let (connection, requests, _commands) = Self::fixture_with_queues(runner, connection_id);
+        (connection, requests)
+    }
+
+    /// A connection whose pass requests and broker commands the test reads.
+    pub(crate) fn fixture_with_queues(
+        runner: Uuid7,
+        connection_id: Uuid7,
+    ) -> (
+        Arc<Self>,
+        mpsc::Receiver<PassRequest>,
+        mpsc::Receiver<afd_bus::Command>,
+    ) {
+        let (commands, received) = mpsc::channel(1);
         let (passes, requests) = mpsc::channel(1);
         let connection = Arc::new(Self {
             runner,
@@ -251,6 +264,6 @@ impl ConnectionHandle {
             rechecks: Notify::new(),
             commands,
         });
-        (connection, requests)
+        (connection, requests, received)
     }
 }

@@ -197,7 +197,6 @@ pub mod tag {
 #[cfg(all(test, feature = "openapi"))]
 mod tests {
     use utoipa::IntoResponses as _;
-    use utoipa::openapi::RefOr;
 
     use super::{
         FORBIDDEN, GuardedFailures, INTERNAL, TOO_MANY_REQUESTS, UNAUTHORIZED, UNAVAILABLE,
@@ -207,15 +206,21 @@ mod tests {
     // same words; fails_when=a status or sentence is dropped or reworded;
     // why_new=the shared type replaces 123 hand-written row sets; seam=none.
     #[test]
-    fn guarded_failures_are_the_five_shared_refusals() {
-        let described: Vec<(String, String)> = GuardedFailures::responses()
-            .into_iter()
-            .map(|(status, response)| match response {
-                RefOr::T(response) => (status, response.description),
-                // A reference has no inline sentence, so the comparison below fails on it.
-                RefOr::Ref(_) => (status, String::new()),
+    fn guarded_failures_are_the_five_shared_refusals() -> Result<(), serde_json::Error> {
+        // Read as the document renders them: a reference carries no inline
+        // `description`, so it compares as `null` and fails below.
+        let rendered = serde_json::to_value(GuardedFailures::responses())?;
+        let described: Vec<(String, serde_json::Value)> = ["401", "403", "429", "500", "503"]
+            .map(|status| {
+                let description = rendered
+                    .get(status)
+                    .and_then(|response| response.get("description"))
+                    .cloned()
+                    .unwrap_or_default();
+                (status.to_owned(), description)
             })
-            .collect();
+            .into();
+        assert_eq!(rendered.as_object().map(serde_json::Map::len), Some(5));
         let expected = [
             ("401", UNAUTHORIZED),
             ("403", FORBIDDEN),
@@ -223,7 +228,8 @@ mod tests {
             ("500", INTERNAL),
             ("503", UNAVAILABLE),
         ]
-        .map(|(status, description)| (status.to_owned(), description.to_owned()));
+        .map(|(status, description)| (status.to_owned(), serde_json::Value::from(description)));
         assert_eq!(described, expected);
+        Ok(())
     }
 }

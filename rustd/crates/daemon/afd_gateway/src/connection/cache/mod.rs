@@ -91,14 +91,13 @@ impl RunCache {
         if current.revision == revision {
             let mut records = snapshot.into_records();
             // A run's report facts never change after its assignment; the
-            // database row a rebuild reads does not carry them.
+            // database row a rebuild reads does not carry them, so they come
+            // from the record the assignment left.
             for (id, record) in &mut records {
-                if record.reported.is_none() {
-                    record.reported = current
-                        .records
-                        .get(id)
-                        .and_then(|kept| kept.reported.clone());
-                }
+                record.reported = current
+                    .records
+                    .get(id)
+                    .and_then(|kept| kept.reported.clone());
             }
             current.records = records;
         } else {

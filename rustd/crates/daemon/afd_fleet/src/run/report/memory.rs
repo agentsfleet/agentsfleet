@@ -36,7 +36,7 @@ impl RunService {
     /// A fence refusal was logged by the fence; anything else is logged here.
     pub(super) async fn capture_reported(
         &self,
-        runner_id: &Uuid7,
+        (runner_id, run_id): (&Uuid7, &Uuid7),
         run: &Reported,
         request: &ReportRequest<'_>,
         now: Timestamp,
@@ -47,15 +47,10 @@ impl RunService {
         // The row's token, as the settle is fenced on it: the report is this
         // runner's by the load, and a run the fleet has moved past writes
         // neither its memory nor its settle.
-        // The report was loaded by this id, so it parses; a value that does
-        // not names no run and has no memory to write.
-        let Ok(run_key) = Uuid7::parse(request.run_id.as_ref()) else {
-            return;
-        };
         let holder = Holder {
             runner_id,
             fleet_id: &run.fleet_id,
-            run_id: &run_key,
+            run_id,
             fencing_token: run.fence.as_u64(),
         };
         // Untimed: this capture is the report's own `capture` stage.
@@ -73,14 +68,14 @@ impl RunService {
         // wrote this memory, or one the settle will refuse in a moment.
         if failure.code() == af_core::error_code::RUN_NOT_FOUND {
             let fleet_id = run.fleet_id.as_str();
-            let run_id = request.run_id.as_ref();
+            let run_id = run_id.as_str();
             let event = EVENT_CAPTURE_SKIPPED;
             tracing::debug!(fleet_id, run_id, event);
             return;
         }
         let Logged { error_code, reason } = failure.logged();
         let fleet_id = run.fleet_id.as_str();
-        let run_id = request.run_id.as_ref();
+        let run_id = run_id.as_str();
         let event = EVENT_CAPTURE_FAILED;
         {
             let (message,) = (format_args!(

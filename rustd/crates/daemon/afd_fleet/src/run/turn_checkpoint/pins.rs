@@ -1,9 +1,7 @@
 //! A pin grants bounded custody only after live connection and run proof.
 
 use af_core::id::Uuid7;
-use af_wire::run::{
-    TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef, TurnCheckpointResponse,
-};
+use af_wire::run::{TurnCheckpointRef, TurnCheckpointResponse};
 use af_wire::task::CheckpointPin;
 
 use super::{
@@ -119,17 +117,16 @@ pub(super) async fn exact(
         .ok_or_else(|| TurnCheckpointRefusal::Conflict.into())
 }
 
+/// Releases `pin`, which every caller has locked and proved this run's own,
+/// so the statement always matches it.
 pub(super) async fn release(owner: &mut TurnRunGuard<'_>, pin: &Pin) -> Result<()> {
-    let changed = sqlx::query(include_str!("sql/pin_release.sql"))
+    sqlx::query(include_str!("sql/pin_release.sql"))
         .bind(&pin.id)
         .bind(&owner.current.id)
         .bind(owner.current.fence)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("release exact owned turn checkpoint pin"))?;
-    if changed.rows_affected() != 1 {
-        return Err(TurnCheckpointRefusal::Conflict.into());
-    }
     Ok(())
 }
 
@@ -170,24 +167,22 @@ pub(super) async fn reader(
     insert_on(owner, &id, checkpoint, deadline, super::READER, operation).await
 }
 
+/// What a custody update does to the pin it names.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Change {
+    /// Extend the pin from the resource version the caller last saw.
+    Renew(u64),
+    Release,
+    /// Give up a pending capture without moving the head.
+    Abandon,
+}
+
 pub(super) async fn update(
     runs: &Runs,
     run: TurnRun<'_>,
-    input: &garde::Valid<TurnCheckpointCommand>,
+    reference: &TurnCheckpointRef,
+    change: Change,
 ) -> Result<TurnCheckpointResponse> {
-    let (TurnCheckpointAction::PinRenew {
-        checkpoint: reference,
-        ..
-    }
-    | TurnCheckpointAction::PinRelease {
-        checkpoint: reference,
-    }
-    | TurnCheckpointAction::Abandon {
-        checkpoint: reference,
-    }) = &input.action
-    else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut owner = TurnRunGuard::lock(runs, &mut connection, run).await?;
     allocation::head(&mut owner).await?;
@@ -197,7 +192,7 @@ pub(super) async fn update(
     if !pin.belongs(&owner, super::WRITER) && !pin.belongs(&owner, super::READER) {
         return Err(TurnCheckpointRefusal::Conflict.into());
     }
-    let response = update_owned(&mut owner, &plan, pin, input).await?;
+    let response = update_owned(&mut owner, &plan, pin, change).await?;
     owner.commit().await?;
     transaction::recycle(connection);
     Ok(response)
@@ -249,27 +244,24 @@ async fn update_owned(
     owner: &mut TurnRunGuard<'_>,
     plan: &Plan,
     pin: Pin,
-    input: &garde::Valid<TurnCheckpointCommand>,
+    change: Change,
 ) -> Result<TurnCheckpointResponse> {
-    match &input.action {
-        TurnCheckpointAction::PinRenew {
-            resource_version, ..
-        } => {
+    match change {
+        Change::Renew(resource_version) => {
             if plan.abandoned || !pin.live(owner.fresh().await?) {
                 return Err(TurnCheckpointRefusal::Conflict.into());
             }
             Ok(TurnCheckpointResponse::PinRenewed(
-                renew(owner, pin, *resource_version).await?.wire(),
+                renew(owner, pin, resource_version).await?.wire(),
             ))
         }
-        TurnCheckpointAction::PinRelease { .. } => {
+        Change::Release => {
             release(owner, &pin).await?;
             Ok(TurnCheckpointResponse::PinReleased)
         }
-        TurnCheckpointAction::Abandon { .. } => {
+        Change::Abandon => {
             abandon(owner, plan, &pin).await?;
             Ok(TurnCheckpointResponse::Abandoned)
         }
-        _ => Err(TurnCheckpointRefusal::Incompatible.into()),
     }
 }

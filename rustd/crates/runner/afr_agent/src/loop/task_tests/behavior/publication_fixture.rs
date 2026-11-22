@@ -84,19 +84,22 @@ impl RunVerbs for Publisher {
 
 pub(super) fn publisher() -> Publisher {
     let mut goals = goals([evaluation("WAIT", Some(1.0), 0.0)]);
-    if let Some(task) = goals.inputs.current_task.as_mut() {
-        task.target = TaskTarget::ExistingPr {
-            repository: "example/project".to_owned(),
-            repository_id: 1,
-            number: 7,
-            branch: "repair".to_owned(),
-            base: "main".to_owned(),
-            head: "a".repeat(40),
-            tree: "d".repeat(40),
-            url: "https://github.com/example/project/pull/7".to_owned(),
-            workflows: vec![],
-        };
-    }
+    goals
+        .inputs
+        .current_task
+        .as_mut()
+        .expect("the goal fixture names a current task")
+        .target = TaskTarget::ExistingPr {
+        repository: "example/project".to_owned(),
+        repository_id: 1,
+        number: 7,
+        branch: "repair".to_owned(),
+        base: "main".to_owned(),
+        head: "a".repeat(40),
+        tree: "d".repeat(40),
+        url: "https://github.com/example/project/pull/7".to_owned(),
+        workflows: vec![],
+    };
     Publisher {
         goals,
         published: Mutex::new(vec![]),

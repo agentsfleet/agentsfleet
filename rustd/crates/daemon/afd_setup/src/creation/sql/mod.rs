@@ -60,11 +60,6 @@ pub(super) const INITIAL: &str = include_str!("initial.sql");
 /// `$1` fleet, `$2` the closed status, `$3` retention, `$4` the saving status.
 pub(super) const CLOSE_DRAFTS: &str = include_str!("close_drafts.sql");
 
-/// Closes one draft, starting its retention.
-///
-/// `$1` draft, `$2` the closed status, `$3` retention.
-pub(super) const CLOSE_DRAFT: &str = include_str!("close_draft.sql");
-
 /// `$1` fleet, `$2` workspace, `$3` status, `$4` name.
 pub(super) const UPDATE: &str = include_str!("update.sql");
 

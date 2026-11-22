@@ -74,6 +74,21 @@ fn a_bad_scoped_number_cannot_silently_use_the_shared_setting() -> TestResult {
 }
 
 #[test]
+fn a_bad_warm_floor_or_acquire_budget_refuses_naming_its_knob() -> TestResult {
+    for knob in ["DATABASE_MIN_POOL_SIZE", "DATABASE_ACQUIRE_TIMEOUT_MS"] {
+        let env = MapEnv::from_pairs([(knob, "private-invalid-value")]);
+        let failure = PoolSettings::resolve(&env, DbRole::Api, PoolOverrides::default())
+            .err()
+            .ok_or("an explicitly invalid knob must refuse")?;
+        assert!(failure.is_config(), "{knob}");
+        assert_eq!(failure.code().as_str(), "UZ-INTERNAL-001");
+        assert!(failure.to_string().contains(knob), "{knob}: {failure}");
+        assert!(!failure.to_string().contains("private-invalid-value"));
+    }
+    Ok(())
+}
+
+#[test]
 fn unsafe_floors_timeouts_and_lifetimes_refuse_with_their_field() -> TestResult {
     for (file, field) in INVALID_BUDGETS {
         let failure = PoolSettings::resolve(&MapEnv::default(), DbRole::Api, file)

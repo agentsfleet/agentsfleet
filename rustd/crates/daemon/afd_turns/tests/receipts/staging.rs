@@ -112,3 +112,35 @@ async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
     lane.cleanup().await;
     Ok(())
 }
+
+/// A repeated key staged again after its first stage committed is that
+/// stage's retry: the same row comes back and no second row is written.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_repeated_stage_replays_the_committed_row() -> Fallible {
+    let lane = Lane::seed().await?;
+    let turns = over_lane(&lane).await?;
+    let mut admitted = Vec::new();
+    for _ in 0..2 {
+        let prepared = turns.prepare(request(&lane)).await?;
+        let mut connection = lane.database.acquire().await?;
+        let mut tx = connection.begin().await?;
+        admitted.push(turns.stage(&mut tx, prepared).await?);
+        tx.commit().await?;
+    }
+    let [first, second] = admitted.as_slice() else {
+        return Err("two stages".into());
+    };
+    assert!(!first.replayed, "the first stage writes the row");
+    assert!(second.replayed, "the second stage is its retry");
+    assert_eq!(second.stored.id, first.stored.id);
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE producer IS NOT NULL AND thread_id = $1",
+    )
+    .bind(&lane.fleet)
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?;
+    assert_eq!(count, 1);
+    lane.cleanup().await;
+    Ok(())
+}

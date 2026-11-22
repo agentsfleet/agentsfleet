@@ -223,8 +223,8 @@ impl Runs {
         acquired: &Acquired,
         notice: &str,
     ) -> Result<Option<Uuid7>> {
-        let event = acquired.turn_id.as_str();
-        let Some(reply) = Self::reply_destination(connection, &acquired.fleet_id, event).await?
+        let Some(reply) =
+            Self::reply_destination(connection, &acquired.fleet_id, &acquired.turn_id).await?
         else {
             return Ok(None);
         };

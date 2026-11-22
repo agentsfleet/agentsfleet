@@ -50,8 +50,16 @@ const WRITER: &str = "writer";
 const READER: &str = "reader";
 
 #[cfg(test)]
+mod files_tests;
+#[cfg(test)]
 mod guard_tests;
+#[cfg(test)]
+mod objects_tests;
+#[cfg(test)]
+mod pages_tests;
 #[cfg(test)]
 mod refusal_tests;
 #[cfg(test)]
 mod root_tests;
+#[cfg(all(test, feature = "test-util"))]
+mod store_tests;

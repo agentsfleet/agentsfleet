@@ -64,14 +64,14 @@ impl Owed {
         message: Message<'_>,
         state: &'static str,
     ) -> Result<()> {
-        let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
+        // Every caller holds the creator's draft locked, and a creator's row
+        // takes their drafts with it, so the creator is still there.
+        let actor: String = sqlx::query_scalar(crate::sql::access::SUBJECT)
             .bind(message.creator)
-            .fetch_optional(connection)
+            .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
-        if let Some(actor) = subject {
-            self.finished_by(actor, message, state);
-        }
+        self.finished_by(actor, message, state);
         Ok(())
     }
 

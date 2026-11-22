@@ -29,6 +29,8 @@ pub(crate) struct Sent {
     /// The key the provider's prompt cache was asked to file the request
     /// under.
     pub(crate) cache_key: String,
+    /// The most output the request let the model write.
+    pub(crate) max_output_tokens: Option<u32>,
 }
 
 /// One scripted turn: the chunks it streams, then the failure it ends on.
@@ -205,6 +207,7 @@ impl Model for Replay {
             instructions: request.instructions.to_owned(),
             messages: request.messages.to_vec(),
             cache_key: request.cache_key.to_owned(),
+            max_output_tokens: request.max_output_tokens,
         };
         self.sent.send(sent).expect(RECEIVER_HELD);
         let turns = self.turns_for(request.messages.first());

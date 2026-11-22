@@ -66,3 +66,21 @@ pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Op
         } => (runner, Some(digest.as_str()), Some(connection)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_core::id::Uuid7;
+
+    use super::Guard;
+
+    /// An enrolled guard names its host; there is no credential to withhold.
+    #[test]
+    fn an_enrolled_guard_renders_its_host() -> af_core::error::Result<()> {
+        let runner = Uuid7::parse("0190d5c2-7e1a-7000-8000-00000000a001")?;
+        assert_eq!(
+            format!("{:?}", Guard::from(&runner)),
+            format!("Enrolled({runner:?})")
+        );
+        Ok(())
+    }
+}

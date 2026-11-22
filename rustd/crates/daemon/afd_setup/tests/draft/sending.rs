@@ -162,6 +162,14 @@ async fn a_message_cursor_of_another_kind_or_out_of_range_is_refused() {
             value: value.clone(),
             id: "1:2".into(),
         },
+        Cursor::Text {
+            value: value.clone(),
+            id: "one:0".into(),
+        },
+        Cursor::Text {
+            value: value.clone(),
+            id: "1:\u{1F600}".into(),
+        },
     ];
     for cursor in refused {
         let answer = f

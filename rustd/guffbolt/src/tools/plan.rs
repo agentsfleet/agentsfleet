@@ -6,7 +6,6 @@
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::tool::ToolOutput;
 use crate::tools::{Context, Handler};
@@ -72,8 +71,8 @@ impl Handler for UpdatePlan {
 
 /// `status` as the argument spells it.
 fn spelling(status: Status) -> String {
-    match serde_json::to_value(status) {
-        Ok(Value::String(spelled)) => spelled,
-        _not_a_word => String::new(),
-    }
+    serde_json::to_value(status)
+        .ok()
+        .and_then(|spelled| spelled.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }

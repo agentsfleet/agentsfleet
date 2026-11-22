@@ -27,6 +27,8 @@ pub(super) struct NativeContext {
 pub(super) struct Execution {
     pub snapshot: TaskSnapshot,
     pub generation: i64,
+    /// The task the run holds, as locked: the id the snapshot carries, typed.
+    pub task_id: Uuid7,
 }
 
 impl NativeContext {
@@ -128,6 +130,7 @@ pub(super) async fn execution(
             Ok(Some(Execution {
                 snapshot: task,
                 generation,
+                task_id: id.clone(),
             }))
         }
         _ => Err(TaskRefusal::StaleState.into()),

@@ -257,3 +257,42 @@ async fn a_setup_run_the_runner_stops_ends_and_reports_the_stop() {
     assert_ne!(report[OUTCOME], PROCESSED, "a stopped run is not processed");
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
 }
+
+/// A renewal refused for the run's cancel mark is the Stop a person sent:
+/// the setup run reports stopped, outranking the cut that ended it.
+#[tokio::test(start_paused = true)]
+async fn a_setup_run_the_daemon_stopped_reports_stopped_rather_than_cut() {
+    let mut rig = Rig::running(
+        daemon(|call| {
+            (call.verb == Verb::Renew).then(|| {
+                Answer::Fail(crate::error::refused(
+                    Verb::Renew,
+                    409,
+                    Some(af_core::error_code::RUN_CANCELLED),
+                ))
+            })
+        }),
+        FakeEngine::default(),
+        Setup {
+            kept: Some(answered()),
+            loads: Arc::default(),
+            waits: true,
+        },
+    );
+    let run = af_core::id::Uuid7::parse(RUN_ID).unwrap();
+    let assigned = rig.lessee.plane.stream.running.assign(run, false).unwrap();
+
+    bounded(
+        "Lessee::setup",
+        rig.lessee.setup(&draft_run(), assigned.stop.clone()),
+    )
+    .await
+    .unwrap();
+
+    let report = reported(&rig.calls());
+    assert_eq!(report[OUTCOME], "stopped");
+    assert_eq!(
+        report["response_text"], "",
+        "a stopped turn answers nothing"
+    );
+}

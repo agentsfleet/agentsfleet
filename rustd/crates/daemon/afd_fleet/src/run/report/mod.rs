@@ -182,7 +182,8 @@ impl RunService {
     ) -> Result<Committed> {
         // Boxed: the capture's state would otherwise ride inside every report
         // future, past the large-future bound, for a step most reports skip.
-        Box::pin(self.capture_reported(runner_id, run, request, now)).await;
+        let run_id = report.run_id;
+        Box::pin(self.capture_reported((runner_id, run_id), run, request, now)).await;
         clock.mark(ReportStage::Capture);
         let committed = self.runs.commit_report(report).await;
         clock.mark(ReportStage::Commit);

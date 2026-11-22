@@ -24,7 +24,6 @@ impl RunService {
         scope: &MintScope,
         integration: &str,
         now: Timestamp,
-        expected_installation: Option<u64>,
     ) -> Result<Minted> {
         // Resolved once, and it answers both questions that follow: whether
         // this connector is gated at all, and which family's refusal copy the
@@ -35,11 +34,6 @@ impl RunService {
         self.admit_mint(scope, integration, connector).await?;
 
         let handle = self.handle(scope, integration).await?;
-        if expected_installation.is_some_and(|expected| {
-            afd_credential::credential::github::installation(&handle) != Some(expected)
-        }) {
-            return Err(crate::task::TaskRefusal::InvalidTarget.into());
-        }
         self.admit_handle(scope, integration, &handle).await?;
         let outcome = self
             .broker

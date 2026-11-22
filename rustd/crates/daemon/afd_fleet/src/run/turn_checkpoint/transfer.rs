@@ -15,10 +15,7 @@ use crate::{
 };
 use af_core::id::Uuid7;
 use af_wire::{
-    run::{
-        CheckpointOperationId, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef,
-        TurnCheckpointResponse,
-    },
+    run::{CheckpointOperationId, TurnCheckpointRef, TurnCheckpointResponse},
     task::{CheckpointTransferPurpose, CheckpointUpload},
 };
 use serde::Serialize;
@@ -32,30 +29,27 @@ struct Descriptor<'a> {
     length: i64,
 }
 
+/// The two transfer verbs: uploads freeze the ciphertext the runner will send,
+/// and an authorization reads back or restores what is already stored.
+pub(super) enum Transfer<'a> {
+    Uploads(&'a [CheckpointUpload]),
+    Authorize(CheckpointTransferPurpose, &'a [CheckpointOperationId]),
+}
+
 pub(super) async fn execute(
     store: &TurnCheckpoints,
     runs: &Runs,
     presented: TurnRun<'_>,
-    request: &TurnCheckpointCommand,
+    reference: &TurnCheckpointRef,
+    transfer: Transfer<'_>,
 ) -> Result<TurnCheckpointResponse> {
-    let (reference, purpose, ids, verifying) = match &request.action {
-        TurnCheckpointAction::Uploads {
-            checkpoint,
-            objects: input,
-        } => {
-            let ids = upload_ids(input)?;
-            (checkpoint, CheckpointTransferPurpose::Upload, ids, false)
-        }
-        TurnCheckpointAction::Authorize {
-            checkpoint,
-            purpose,
-            object_ids,
-        } => (checkpoint, *purpose, objects::ids(object_ids)?, true),
-        _ => return Err(TurnCheckpointRefusal::Incompatible.into()),
+    let (purpose, ids, verifying) = match transfer {
+        Transfer::Uploads(input) => (CheckpointTransferPurpose::Upload, upload_ids(input)?, false),
+        Transfer::Authorize(purpose, object_ids) => (purpose, objects::ids(object_ids)?, true),
     };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut custody = FileOwner::lock(runs, &mut connection, presented, reference, purpose).await?;
-    freeze_uploads(&mut custody, request, &ids).await?;
+    freeze_uploads(&mut custody, &transfer, &ids).await?;
     let registered = objects::scoped(&mut custody, &ids).await?;
     objects::protect(&mut custody, &ids).await?;
     let pin = custody.pin.wire();
@@ -82,11 +76,11 @@ pub(super) async fn execute(
 
 async fn freeze_uploads(
     custody: &mut FileOwner<'_>,
-    request: &TurnCheckpointCommand,
+    transfer: &Transfer<'_>,
     ids: &[Uuid7],
 ) -> Result<()> {
     let registered = objects::scoped(custody, ids).await?;
-    if let TurnCheckpointAction::Uploads { objects: input, .. } = &request.action {
+    if let Transfer::Uploads(input) = transfer {
         freeze(custody, &registered, input).await?;
     }
     Ok(())
@@ -135,9 +129,6 @@ async fn freeze(
             digest: &descriptor.ciphertext_sha256,
             length,
         });
-    }
-    if by_id.len() != values.len() {
-        return Err(TurnCheckpointRefusal::Conflict.into());
     }
     sqlx::query(checkpoint::DESCRIPTORS)
         .bind(Json(values))

@@ -182,3 +182,43 @@ fn use_listed_task(native: &Replies) {
         generation: 4,
     }];
 }
+
+// Value: a source reply writes no more than the route's own output limit,
+// and never more than 4,096 tokens.
+#[tokio::test]
+async fn a_source_reply_writes_within_its_route_and_at_most_4096() -> crate::Result<()> {
+    for (limit, asked) in [(100, 100), (100_000, 4096)] {
+        let native = source(vec![item(ITEM, TaskInputAction::Conversation, false)]);
+        let script = Script::new([vec![say("Hello."), ended(false)]]);
+        let engine = super::super::super::tests::engine(vec![], &script);
+        let mut this_run = assigned_run(&[], 16_384);
+        this_run.policy.inference = Some(af_wire::inference::ModelInference {
+            api: af_wire::inference::InferenceApi::Messages,
+            base_url: "https://models.example.com/v1".into(),
+            dialect: None,
+            max_output_tokens: limit,
+        });
+        let inputs = native
+            .inputs
+            .lock()
+            .expect("fixture mutex is unpoisoned")
+            .clone();
+        let prepared = PreparedTask {
+            execution_deadline: inputs.execution_deadline,
+            inputs,
+            allow_actions: false,
+        };
+
+        let output = run(&engine, &this_run, &native, &prepared).await?;
+
+        assert_eq!(output.result.content, "Hello.");
+        assert_eq!(
+            script
+                .sent()
+                .first()
+                .and_then(|sent| sent.max_output_tokens),
+            Some(asked)
+        );
+    }
+    Ok(())
+}

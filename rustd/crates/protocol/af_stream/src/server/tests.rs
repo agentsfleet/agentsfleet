@@ -144,3 +144,13 @@ async fn should_not_redraw_for_an_error_other_than_address_in_use() -> TestResul
     assert_eq!(error.io_kind(), Some(io::ErrorKind::PermissionDenied));
     Ok(())
 }
+
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn a_bound_listener_renders_without_its_identity_or_sockets() -> TestResult {
+    let fixture = crate::test_util::IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let listener = super::Listener::bind(address(ANY_PORT), fixture.identity()).await?;
+    assert_eq!(format!("{listener:?}"), "Listener { .. }");
+    assert_eq!(listener.local_addr()?.ip(), Ipv4Addr::LOCALHOST);
+    Ok(())
+}

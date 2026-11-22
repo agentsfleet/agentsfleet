@@ -239,7 +239,7 @@ async fn download(
     Ok(())
 }
 
-async fn upload_bytes(
+pub(super) async fn upload_bytes(
     files: &Files,
     reference: &TurnCheckpointRef,
     object: &af_wire::task::CheckpointObject,

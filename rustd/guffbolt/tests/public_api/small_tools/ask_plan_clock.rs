@@ -132,3 +132,18 @@ async fn sleep_waits_as_asked_capped_at_its_limit_and_wakes_for_input() {
     assert_eq!(woken_early.text, "Woke after 0 ms: a new message arrived");
     assert_eq!(refused.error_code, Some(code::INVALID_ARGUMENTS));
 }
+
+/// A `sleep` built by default tells the model the default limit, twelve
+/// hours, as the one the builder makes does.
+#[test]
+fn a_default_sleep_tells_the_model_the_default_limit() {
+    let schema = Handler::schema(&guffbolt::tools::clock::Sleep::default());
+
+    assert!(
+        schema
+            .description()
+            .ends_with("It waits at most 43200000 milliseconds (12 hours)."),
+        "{}",
+        schema.description()
+    );
+}

@@ -60,3 +60,22 @@ impl Runs {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::run::test_dead;
+
+    // Value: protects=a fencing token no stored fence can equal releases nothing
+    // and costs no datastore round trip; fails_when=the token guard is dropped, so
+    // the release reaches the pool; why_new=no test sent an unrepresentable token;
+    // seam=`Runs::release_unsent` over a pool nobody answers on, which would refuse
+    // any acquire.
+    #[tokio::test]
+    async fn a_token_past_every_stored_fence_releases_nothing() {
+        let released = test_dead::runs()
+            .release_unsent(&test_dead::id(1), &test_dead::id(2), u64::MAX)
+            .await;
+
+        assert_eq!(released.ok(), Some(false));
+    }
+}

@@ -160,7 +160,6 @@ impl Connected {
         let streaming = HttpTransport::new(Arc::new(retried)).with_bound(self.reply_bound);
         let model = self.route.model(&self.model, &self.key.0, streaming);
         StreamTurn::open_counted(&self.route, &model, built, count, control)
-            .map_err(|failure| Error::provider(*failure))
     }
 
     /// `request` for the model this was connected to. A loop's request may

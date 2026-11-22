@@ -130,7 +130,7 @@ impl<'p> Workspace<'p> {
 impl fmt::Display for Workspace<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{WORKSPACE}")?;
-        for checkout in &self.0 {
+        self.0.iter().try_for_each(|checkout| {
             let branch = if checkout.base.is_empty() {
                 DEFAULT_BRANCH
             } else {
@@ -140,9 +140,8 @@ impl fmt::Display for Workspace<'_> {
                 f,
                 "\n{} is checked out at ./{} on {branch}, with origin set",
                 checkout.repository, checkout.name
-            )?;
-        }
-        Ok(())
+            )
+        })
     }
 }
 

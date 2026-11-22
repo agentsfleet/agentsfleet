@@ -149,10 +149,10 @@ mod tests {
 
     #[test]
     fn a_first_reprice_reruns_under_the_runs_own_facts() {
-        let Step::Reprice(facts) = next_step(ReportAnswer::Repriced(held()), false) else {
-            unreachable!("a first miss reruns");
-        };
-        assert_eq!(facts, held());
+        assert!(matches!(
+            next_step(ReportAnswer::Repriced(held()), false),
+            Step::Reprice(facts) if facts == held()
+        ));
     }
 
     #[test]

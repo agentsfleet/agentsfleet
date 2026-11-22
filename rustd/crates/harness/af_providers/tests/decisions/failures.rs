@@ -29,6 +29,10 @@ async fn physical_failures_are_bounded_and_never_retried_implicitly() {
         ),
         (Reply::Bytes(b"{".to_vec()), MeasuredOutcome::Malformed),
         (Reply::Broken, MeasuredOutcome::Unknown),
+        (
+            Reply::Cut(b"{\"result\":".to_vec()),
+            MeasuredOutcome::Unknown,
+        ),
         (Reply::Status(429, Some("1")), MeasuredOutcome::RateLimited),
         (Reply::Status(529, Some("1")), MeasuredOutcome::RateLimited),
         (

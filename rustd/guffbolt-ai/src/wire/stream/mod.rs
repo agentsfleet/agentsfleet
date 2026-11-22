@@ -119,43 +119,40 @@ impl StreamTurn {
         model: &DynModel<Completion>,
         request: CompletionRequest,
         control: TurnControl,
-    ) -> Result<Self, Box<ProviderError>> {
-        let count = configured
-            .input_count(
-                request
-                    .model
-                    .as_deref()
-                    .or_else(|| model.id())
-                    .unwrap_or_default(),
-                &request,
-            )
-            .map_err(|error| Box::new(ProviderError::from(error)))?;
+    ) -> Result<Self> {
+        let count = configured.input_count(
+            request
+                .model
+                .as_deref()
+                .or_else(|| model.id())
+                .unwrap_or_default(),
+            &request,
+        )?;
         Self::open_counted(configured, model, request, count, control)
     }
 
     /// Opens the unchanged request associated with a fresh measurement.
     ///
     /// # Errors
-    /// A changed request invalidates its count before the SDK can send it.
+    /// A changed request invalidates its count before the SDK can send it,
+    /// and rig's own refusal to start the reply is the provider's failure.
     pub(crate) fn open_counted(
         configured: &Route,
         model: &DynModel<Completion>,
         request: CompletionRequest,
         count: InputCount,
         control: TurnControl,
-    ) -> Result<Self, Box<ProviderError>> {
+    ) -> Result<Self> {
         let model_name = request
             .model
             .as_deref()
             .or_else(|| model.id())
             .unwrap_or_default();
-        configured
-            .verify_count(model_name, &request, &count)
-            .map_err(|error| Box::new(ProviderError::from(error)))?;
+        configured.verify_count(model_name, &request, &count)?;
         let recovery = Recovery::new(configured, model_name);
         let label: Box<str> = model_name.into();
         Ok(Self {
-            inner: Some(model.stream(request)?),
+            inner: Some(model.stream(request).map_err(Error::provider)?),
             recovery,
             trace: Some(TurnTrace::start(&label, control.observer.clone())),
             control,

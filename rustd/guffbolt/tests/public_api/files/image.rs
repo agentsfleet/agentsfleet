@@ -183,16 +183,94 @@ async fn a_scaled_image_keeps_its_kind_but_a_gif_becomes_a_png() {
 #[tokio::test]
 async fn an_image_that_does_not_decode_is_refused() {
     let desk = Desk::new();
-    desk.put("bad.png", b"\x89PNG\r\n\x1a\nnot a header, not pixels");
+    let files: [(&str, &[u8], &str); 4] = [
+        (
+            "bad.png",
+            b"\x89PNG\r\n\x1a\nnot a header, not pixels",
+            "PNG",
+        ),
+        ("bad.jpg", b"\xff\xd8\xffnot a header, not pixels", "JPEG"),
+        ("bad.gif", b"GIF8not a header, not pixels", "GIF"),
+        (
+            "bad.webp",
+            b"RIFF\x20\x00\x00\x00WEBPnot a chunk, not pixels",
+            "WebP",
+        ),
+    ];
+    for (path, bytes, _named) in files {
+        desk.put(path, bytes);
+    }
     let tools = desk.tools(true);
 
-    let output = call(&tools, "image", json!({"path": "bad.png"})).await;
+    for (path, _bytes, named) in files {
+        let output = call(&tools, "image", json!({"path": path})).await;
 
-    assert_eq!(
-        output.text,
-        "[not_an_image] bad.png does not decode as a PNG image"
+        assert_eq!(
+            output.text,
+            format!("[not_an_image] {path} does not decode as a {named} image")
+        );
+        assert_eq!(output.image, None, "{path}");
+    }
+}
+
+/// An ICC profile of `space`, the four bytes its header names its data's
+/// colour space with: a header and nothing else, which is all a decoder
+/// reads of it.
+fn profile(space: [u8; 4]) -> Vec<u8> {
+    let mut profile = vec![0; 128];
+    profile.splice(16..20, space);
+    profile
+}
+
+/// `pixels` as a PNG carrying `icc_profile` and `exif`.
+fn described(pixels: &RgbaImage, icc_profile: Vec<u8>, exif: Vec<u8>) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let (width, height) = pixels.dimensions();
+    let mut encoder = PngEncoder::new(&mut bytes);
+    encoder
+        .set_icc_profile(icc_profile)
+        .expect("PNG takes a profile");
+    encoder.set_exif_metadata(exif).expect("PNG takes EXIF");
+    encoder
+        .write_image(pixels.as_raw(), width, height, ExtendedColorType::Rgba8)
+        .expect("a PNG");
+    bytes
+}
+
+/// The ICC profile and EXIF data `bytes`, a PNG, carries.
+fn carried(bytes: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+    let mut decoder =
+        ::image::codecs::png::PngDecoder::new(std::io::Cursor::new(bytes)).expect("a PNG");
+    (
+        ::image::ImageDecoder::icc_profile(&mut decoder).expect("its profile reads"),
+        ::image::ImageDecoder::exif_metadata(&mut decoder).expect("its EXIF reads"),
+    )
+}
+
+/// A scaled picture keeps its EXIF, which holds its orientation, and an RGB
+/// colour profile; a profile of any other colour space no longer describes
+/// the RGBA pixels written, so it is dropped.
+#[tokio::test]
+async fn a_scaled_image_keeps_its_exif_and_only_an_rgb_profile() {
+    let desk = Desk::new();
+    let exif = b"MM\x00\x2a\x00\x00\x00\x08\x00\x00".to_vec();
+    let rgb = profile(*b"RGB ");
+    let pixels = picture(MAX_SIDE * 2, 8);
+    desk.put("rgb.png", described(&pixels, rgb.clone(), exif.clone()));
+    desk.put(
+        "gray.png",
+        described(&pixels, profile(*b"GRAY"), exif.clone()),
     );
-    assert_eq!(output.image, None);
+    let tools = desk.tools(true);
+
+    let kept = call(&tools, "image", json!({"path": "rgb.png"})).await;
+    let dropped = call(&tools, "image", json!({"path": "gray.png"})).await;
+
+    let kept = kept.image.expect("an image rides the output");
+    let dropped = dropped.image.expect("an image rides the output");
+    assert_eq!(dimensions(&kept.data, ImageFormat::Png), (MAX_SIDE, 4));
+    assert_eq!(carried(&kept.data), (Some(rgb), Some(exif.clone())));
+    assert_eq!(carried(&dropped.data), (None, Some(exif)));
 }
 
 /// The 5 MiB cap bounds what the model is shown: noise just over the bound,

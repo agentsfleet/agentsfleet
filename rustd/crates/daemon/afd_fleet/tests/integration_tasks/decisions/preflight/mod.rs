@@ -18,6 +18,7 @@ use af_wire::{
 };
 use afd_fleet::task::TaskLifecycle as _;
 use serde_json::Value;
+mod refusals;
 mod remote;
 mod storage;
 const MESSAGE: &str = "Repair https://github.com/example/linkwarden/pull/101";

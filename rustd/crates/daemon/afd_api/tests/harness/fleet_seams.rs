@@ -318,6 +318,12 @@ impl Fleet {
         )
     }
 
+    /// The production router, reading bodies of up to `max_request_body`
+    /// bytes, as a deployment that names a larger `[server]` bound does.
+    pub(crate) fn router_reading(self, max_request_body: usize) -> Router {
+        build(Arc::new(self), DEFAULT_MAX_IN_FLIGHT, max_request_body)
+    }
+
     /// An instance whose ingress ANSWERS, rather than refusing at an acquire.
     ///
     /// The one seam a signed-ingress suite has to arrange: every store in this

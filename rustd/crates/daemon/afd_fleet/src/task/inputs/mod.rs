@@ -53,6 +53,7 @@ pub(super) async fn read(
     input: &garde::Valid<TaskInputsQuery>,
 ) -> Result<TaskInputsResponse<'static>> {
     let after = cursor(input.starting_after.as_deref())?;
+    // A `u32` limit always fits a 64-bit `usize`; the policy batch caps it.
     let limit = usize::try_from(input.limit)
         .map_err(|_overflow| rejected("Invalid task input limit"))?
         .min(tasks.dependencies.policy.input_batch());
@@ -116,7 +117,7 @@ fn cursor(value: Option<&str>) -> Result<i64> {
 async fn accepted(
     connection: &mut sqlx::PgConnection,
     current: &guard::RunRow,
-    input: &TaskInputsQuery,
+    input: &garde::Valid<TaskInputsQuery>,
     batch: usize,
 ) -> Result<Vec<TaskAcceptedInput>> {
     let accepted: Vec<InputRow> = sqlx::query_as(include_str!("../sql/accepted_inputs.sql"))
@@ -125,13 +126,8 @@ async fn accepted(
         .bind(&current.workspace_id)
         // An unset batch knob is `usize::MAX`, which reads every input.
         .bind(i64::try_from(batch).unwrap_or(i64::MAX))
-        .bind(
-            input
-                .after_input_sequence
-                .map(i64::try_from)
-                .transpose()
-                .map_err(|_overflow| super::TaskRefusal::StaleState)?,
-        )
+        // `garde` bounds the cursor at `i64::MAX`, so the cast is exact.
+        .bind(input.after_input_sequence.map(u64::cast_signed))
         .fetch_all(&mut *connection)
         .await
         .map_err(query(
@@ -156,12 +152,7 @@ impl TryFrom<InputRow> for TaskAcceptedInput {
                 generation: row::counter(item.generation, "task generation")?,
             },
             sequence: row::counter(item.sequence, "input sequence")?,
-            action: serde::Deserialize::deserialize(serde::de::value::StrDeserializer::new(
-                item.action.as_str(),
-            ))
-            .map_err(|source: serde::de::value::Error| {
-                crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
-            })?,
+            action: row::action(&item.action)?,
             original_message: item.original_message,
             accepted_text: item.accepted_text,
             interpretation: item.interpretation,

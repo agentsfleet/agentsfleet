@@ -180,17 +180,11 @@ fn task_products() -> [(&'static str, usize); 2] {
     ]
 }
 
-fn billing_products() -> [(&'static str, usize); 2] {
-    [
-        (
-            billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SETTLE_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
-        ),
-    ]
+fn billing_products() -> [(&'static str, usize); 1] {
+    [(
+        billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
+        billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
+    )]
 }
 
 fn http_products() -> [(&'static str, usize); 2] {

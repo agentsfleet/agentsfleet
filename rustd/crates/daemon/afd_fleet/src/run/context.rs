@@ -42,8 +42,10 @@ impl std::fmt::Debug for ThreadContext {
 /// [`sql::context::SELECT_RUN_THREAD`]'s row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct RunThread {
-    fleet_id: Option<Uuid7>,
-    draft_id: Option<Uuid7>,
+    /// The fleet or the draft the run's thread belongs to.
+    owner_id: Uuid7,
+    /// Whether that owner is a fleet; otherwise it is a draft.
+    fleet_owned: bool,
     fencing_token: i64,
     status: String,
 }
@@ -78,10 +80,10 @@ impl RunService {
         {
             return Err(stale_fence());
         }
-        let owner = match (held.fleet_id, held.draft_id) {
-            (Some(fleet), _) => Owner::Fleet(fleet),
-            (None, Some(draft)) => Owner::Draft(draft),
-            (None, None) => return Err(run_not_found()),
+        let owner = if held.fleet_owned {
+            Owner::Fleet(held.owner_id)
+        } else {
+            Owner::Draft(held.owner_id)
         };
         let scope = owner.scope();
         // The id names a row only a first save inserts; a read never uses it.

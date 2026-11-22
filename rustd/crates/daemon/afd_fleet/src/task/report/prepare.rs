@@ -6,19 +6,13 @@ use crate::{
     error::query,
     task::{TaskRun, Tasks, continuation::Continuation, decision, execution, guard, transaction},
 };
-use af_wire::{
-    report::ReportRequest,
-    task::{TaskDisposition, TaskTarget},
-};
+use af_wire::task::{TaskDisposition, TaskReport, TaskTarget};
 
 pub(super) async fn prepare(
     tasks: &Tasks,
     run: TaskRun<'_>,
-    request: &ReportRequest<'_>,
+    input: &TaskReport,
 ) -> Result<Option<PreparedReport>> {
-    let Some(input) = &request.task else {
-        return Ok(None);
-    };
     if garde::Validate::validate(input).is_err() {
         return Ok(None);
     }
@@ -76,10 +70,12 @@ pub(super) async fn prepare(
                 .as_ref()
                 .zip(target.as_ref())
                 .is_some_and(|(status, target)| status.checks_finished(target));
+    // `execution::load` matched this id to the run's own task, so it parses.
+    let task_id = guard::id(&input.task.task_id, "task_id")?;
     let wake = if needs_continuation {
         Some(Continuation::new(
             &owned.scope,
-            &guard::id(&input.task.task_id, "task_id")?,
+            &task_id,
             owned
                 .snapshot
                 .context
@@ -95,6 +91,7 @@ pub(super) async fn prepare(
         tasks: tasks.clone(),
         run_id: run.run_id.clone(),
         runner_id: run.runner_id.clone(),
+        task_id,
         scope: owned.scope,
         snapshot: owned.snapshot,
         input: input.clone(),
@@ -107,7 +104,7 @@ pub(super) async fn prepare(
 async fn snapshot(
     tasks: &Tasks,
     run: TaskRun<'_>,
-    input: &af_wire::task::TaskReport,
+    input: &TaskReport,
 ) -> Result<(
     execution::Owned,
     af_core::id::Uuid7,

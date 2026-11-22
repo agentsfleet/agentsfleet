@@ -58,4 +58,4 @@ pub(super) fn publish(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

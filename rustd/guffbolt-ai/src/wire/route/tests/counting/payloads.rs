@@ -183,3 +183,32 @@ fn counted_stream_uses_the_requests_explicit_model_override() {
         assert!(physical.requests.lock().unwrap().is_empty());
     }
 }
+
+// Value: a count taken for one request never admits another; the stream
+// refuses it before anything is sent.
+#[test]
+fn a_counted_stream_refuses_a_count_taken_for_another_request() {
+    let settings = settings(InferenceApi::Chat);
+    let route = routed(&settings, LARGE_WINDOW).unwrap();
+    let count = route.input_count("model-next", &body()).unwrap();
+    let physical = physical(200, Some("{}"), false);
+    let model = route.model(
+        "model-next",
+        "private-credential",
+        HttpTransport::new(Arc::<Physical>::clone(&physical)),
+    );
+
+    let refused = crate::wire::stream::StreamTurn::open_counted(
+        &route,
+        &model,
+        body().max_tokens(36),
+        count,
+        TurnControl::default(),
+    )
+    .err()
+    .unwrap();
+
+    assert!(matches!(refused.kind(), ErrorKind::CountStale));
+    assert!(refused.is_invalid_request());
+    assert!(physical.requests.lock().unwrap().is_empty());
+}

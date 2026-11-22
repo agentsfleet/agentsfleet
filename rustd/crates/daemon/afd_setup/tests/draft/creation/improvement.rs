@@ -262,3 +262,62 @@ async fn an_apply_that_loses_its_key_to_a_lapsed_claim_writes_no_revision() {
     assert_eq!(read.expect("unchanged fleet").setup_revision, "1");
     c.cleanup().await;
 }
+
+/// Appends a copy of fleet `$1`'s head as revision `i64::MAX`, id `$2`, and
+/// moves the head to it.
+const LAST_REVISION: &str = "WITH head AS ( \
+         SELECT r.* FROM fleet.revisions r JOIN fleet.fleets f ON f.head_revision_id=r.id \
+         WHERE f.id=$1), \
+     appended AS ( \
+         INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest, \
+             policy_semantics,runtime_model_ref,review_digest,review_context, \
+             source_candidate_id,created_at) \
+         SELECT $2,fleet_id,9223372036854775807,definition,canonical_digest, \
+             policy_semantics,runtime_model_ref,review_digest,review_context, \
+             source_candidate_id,now() FROM head RETURNING id) \
+     UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM appended) WHERE id=$1";
+
+// Value: protects=a fleet at the last revision a revision number can hold
+// refuses the next one instead of overwriting its head; fails_when=the
+// revision count wraps or the overflow is a query fault; seam=
+// Creations::apply_revision over live Postgres and NATS.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_fleet_at_its_last_revision_number_refuses_the_next() {
+    let c = Case::create().await;
+    let saved = active(&c, "improve-exhausted").await;
+    sqlx::query(LAST_REVISION)
+        .bind(&saved.id)
+        .bind(mint())
+        .execute(&mut *c.base.connection().await)
+        .await
+        .expect("a head at the last revision number");
+    let last = c
+        .creations
+        .read(c.base.access(), &saved.id)
+        .await
+        .expect("the fleet reads at its last revision");
+    assert_eq!(last.setup_revision, i64::MAX.to_string());
+    let (_, apply) = improvement(&c, &last).await;
+    let refused = c
+        .creations
+        .apply_revision(
+            c.base.access(),
+            &saved.id,
+            Some(&last.setup_etag),
+            &mint(),
+            apply,
+            now(),
+        )
+        .await
+        .expect_err("no revision follows the last");
+    assert_eq!(refused.code(), error_code::INVALID_REQUEST);
+    assert_eq!(refused.detail(), "Setup revision is exhausted");
+    let read = c
+        .creations
+        .read(c.base.access(), &saved.id)
+        .await
+        .expect("the fleet still reads");
+    assert_eq!(read.setup_revision, i64::MAX.to_string());
+    c.cleanup().await;
+}

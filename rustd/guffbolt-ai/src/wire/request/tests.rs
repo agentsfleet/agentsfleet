@@ -287,6 +287,36 @@ fn should_refuse_a_call_that_names_no_tool() {
 }
 
 #[test]
+fn should_refuse_to_offer_a_function_that_has_no_name() {
+    let parameters = json!({"type": "object"});
+    let tools = [ToolSpec {
+        name: "",
+        description: TOOL,
+        parameters: &parameters,
+    }];
+    let messages = conversation();
+    let turn = Request {
+        model: MODEL,
+        instructions: INSTRUCTIONS,
+        messages: &messages,
+        tools: &tools,
+        hosted: &[],
+        cache_key: CACHE_KEY,
+        max_output_tokens: None,
+        single_attempt: false,
+    };
+
+    let refused = request(Wire::Responses, &turn).unwrap_err();
+
+    let empty = ToolName::new(String::new()).unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        crate::Error::unnamed("", empty).to_string()
+    );
+    assert!(refused.is_unsendable());
+}
+
+#[test]
 fn should_refuse_a_replay_it_cannot_read_rather_than_send_the_turn_without_it() {
     let messages = [
         Message::User(QUESTION.to_owned()),

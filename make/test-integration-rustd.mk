@@ -187,6 +187,12 @@ ifneq ($(filter e2e,$(RUSTD_SHARD)),)
 	$(call _rustd_shard_lane,E2E,e2e,daemon and runner)
 endif
 ifneq ($(filter guffbolt,$(RUSTD_SHARD)),)
+	@# llvm-cov runs `cargo test --tests`, which builds no example, so the suite
+	@# that runs examples/minimax_chat needs it built here, as the e2e shard
+	@# builds its fixture. A dummy key and a port that refuses the connection
+	@# end it on its failure branch, measured, with no network call.
+	@cd $(RUSTD_DIR) && MINIMAX_API_KEY=coverage cargo llvm-cov run --locked --all-features --no-report \
+	  -p guffbolt --example minimax_chat -- http://127.0.0.1:9
 	@echo "→ [rustd] Shard guffbolt: the published harness and its providers..."; \
 	$(call _rustd_shard_lane,GUFFBOLT,guffbolt,guffbolt and guffbolt-ai)
 endif

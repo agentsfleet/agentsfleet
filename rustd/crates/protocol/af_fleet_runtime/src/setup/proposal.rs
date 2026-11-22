@@ -130,12 +130,13 @@ pub(super) fn native(
             instruction_edits,
         } => {
             // Compared as a number, so a spelling of the head's revision with
-            // leading zeros names the head rather than a stale candidate.
-            let revision: u64 = base_candidate_revision
-                .parse()
-                .map_err(|_untrusted| Rejection::InvalidArguments)?;
+            // leading zeros names the head rather than a stale candidate. The
+            // bound proved at most 19 digits, which every `u64` parse takes.
             let base = head
-                .filter(|base| base.id == base_candidate_id && base.revision == revision)
+                .filter(|base| {
+                    base.id == base_candidate_id
+                        && base_candidate_revision.parse::<u64>() == Ok(base.revision)
+                })
                 .ok_or(Rejection::StaleCandidate)?;
             let instruction_edits =
                 instructions(base.definition.instructions_md(), instruction_edits, said)?;

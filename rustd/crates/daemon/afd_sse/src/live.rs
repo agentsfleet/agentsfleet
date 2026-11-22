@@ -10,7 +10,7 @@
 //! UI backfills from Postgres. Boot always connects a bus; suites build the
 //! detached surface to prove what a stream does without one.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use afd_bus::Handle;
 use futures_util::StreamExt as _;
@@ -174,21 +174,6 @@ impl Live {
     pub fn fan_in(&self) -> FanIn {
         FanIn::new(self.bus.clone())
     }
-
-    /// The frames a fan-in carrying `fleets` would produce, as one stream.
-    ///
-    /// The convenience the per-fleet route gets for free: a workspace whose
-    /// fleet set never changes for the life of the connection needs no refresh
-    /// tick, and a caller that DOES need one drives [`FanIn`] itself.
-    pub async fn multiplex_of(&self, fleets: &BTreeSet<String>) -> BoxStream<'static, Frame> {
-        let mut fan_in = self.fan_in();
-        fan_in.sync_to(fleets).await;
-        stream::unfold(fan_in, async move |mut fan_in| {
-            let frame = fan_in.next_frame().await;
-            Some((frame, fan_in))
-        })
-        .boxed()
-    }
 }
 
 #[cfg(test)]
@@ -198,7 +183,6 @@ mod tests {
         reason = "stream admission and pending futures are the invariants under test"
     )]
 
-    use std::collections::BTreeSet;
     use std::time::Duration;
 
     use futures_util::StreamExt as _;
@@ -230,12 +214,6 @@ mod tests {
             .await
             .expect_err("then a detached tail retries quietly");
 
-        let mut multiplex = live
-            .multiplex_of(&BTreeSet::from(["fleet-a".to_owned()]))
-            .await;
-        tokio::time::timeout(Duration::from_millis(1), multiplex.next())
-            .await
-            .expect_err("a detached fan-in must remain pending");
         drop(slot);
         assert_eq!(live.carrying(), 0);
     }

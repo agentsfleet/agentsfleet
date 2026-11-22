@@ -93,7 +93,6 @@ mod tests {
         reason = "a failed test precondition must stop the test"
     )]
 
-    use std::future::ready;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -102,20 +101,76 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use crate::delivery::{Claimed, Outgoing};
+    use crate::lanes::dispatch::tests::capacity::UnusedPoster;
     use crate::lanes::{Destination, LANE_DEPTH, Lanes};
-    use crate::poster::{Deliver, Posters, Verdict};
-
-    #[derive(Debug)]
-    struct UnusedPoster;
-
-    impl Deliver for UnusedPoster {
-        fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
-            ready(Verdict::Delivered)
-        }
-    }
+    use crate::poster::Posters;
 
     fn id(text: &str) -> Uuid7 {
         Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+    }
+
+    /// Lanes over a poster no test here reaches, and the destination of a
+    /// job for one Slack thread.
+    fn lanes_and_destination() -> (Lanes<UnusedPoster>, Destination) {
+        let lanes = Lanes::new(
+            Posters {
+                slack: UnusedPoster,
+            },
+            afd_db::test_util::unreachable_db(),
+            CancellationToken::new(),
+        );
+        let job = Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: afd_db::test_util::mint_id(),
+            outgoing: Outgoing {
+                provider: "slack".to_owned(),
+                destination: "thread".to_owned(),
+                workspace_id: id("0199a0b0-0002-7000-8000-000000000002"),
+                fleet_id: id("0199a0b0-0002-7000-8000-000000000003"),
+                turn_id: id("0199a0b0-0002-7000-8000-000000000004"),
+                answer: "answer".to_owned(),
+            },
+        };
+        let destination = Destination::of(&job);
+        (lanes, destination)
+    }
+
+    /// A queue whose every sender is gone has nothing more to take, and the
+    /// lane leaves the registration it no longer owns alone.
+    #[tokio::test]
+    async fn a_queue_with_no_senders_left_ends_the_lane() {
+        let (lanes, destination) = lanes_and_destination();
+        let (registered, _kept) = mpsc::channel(LANE_DEPTH);
+        lanes.inner.lanes.insert(destination.clone(), registered);
+        let (sender, mut receiver) = mpsc::channel(LANE_DEPTH);
+        drop(sender);
+
+        assert!(
+            lanes
+                .inner
+                .take_or_retire(&destination, &mut receiver)
+                .is_none()
+        );
+        assert!(
+            lanes.inner.lanes.contains_key(&destination),
+            "a disconnected queue removes no lane"
+        );
+    }
+
+    /// A lane whose registration is already gone retires without touching
+    /// the map: an earlier pass or a fresh lane owns the destination.
+    #[tokio::test]
+    async fn a_lane_already_unregistered_retires_without_a_second_removal() {
+        let (lanes, destination) = lanes_and_destination();
+        let (_sender, mut receiver) = mpsc::channel(LANE_DEPTH);
+
+        assert!(
+            lanes
+                .inner
+                .take_or_retire(&destination, &mut receiver)
+                .is_none()
+        );
+        assert!(!lanes.inner.lanes.contains_key(&destination));
     }
 
     /// A job published while the lane makes its retiring look is taken by

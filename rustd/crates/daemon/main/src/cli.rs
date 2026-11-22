@@ -115,13 +115,12 @@ where
     E: EnvSource + ?Sized + Sync,
     F: Future<Output = ()> + Send,
 {
-    #[cfg(feature = "openapi")]
-    if matches!(cli.command, Some(Command::Openapi)) {
-        return openapi();
-    }
     let port = match cli.command {
+        // The document needs no configuration, so it is printed before any is read.
+        #[cfg(feature = "openapi")]
+        Some(Command::Openapi) => return openapi(),
         Some(Command::Serve { port }) => port,
-        _ => None,
+        Some(Command::Migrate) | None => None,
     };
     let source = match crate::config::ConfigBuilder::new(env)
         .file(cli.config.as_deref())
@@ -149,12 +148,10 @@ where
             on_runtime(runtime, serve(&source, port, signal))
         }
         Some(&Command::Migrate) => on_runtime(runtime, migrate(&source)),
-        #[cfg(feature = "openapi")]
-        Some(&Command::Openapi) => openapi(),
         // No subcommand: preflight only. Useful as a container healthcheck and
         // as the thing an operator runs to find out what is missing before
-        // taking the trouble to start anything.
-        None => check(&source),
+        // taking the trouble to start anything. `openapi` returned above.
+        _ => check(&source),
     }
 }
 

@@ -184,3 +184,69 @@ fn capture_requires_plain_authority_a_frozen_setup_and_a_bounded_complete_root()
     }
     Ok(())
 }
+
+#[test]
+fn a_snapshot_prints_its_scope_and_size_and_none_of_its_history() -> crate::Result<()> {
+    let run = payload();
+    let snapshot = TurnSnapshot::capture(&run, TurnWorkspace::ApiOnly, None, root()?)?;
+
+    let printed = format!("{snapshot:?}");
+
+    assert!(printed.starts_with("TurnSnapshot {"), "{printed}");
+    assert!(
+        printed.contains(&format!("history_bytes: {}", snapshot.history.len())),
+        "{printed}"
+    );
+    assert!(!printed.contains("accepted answer A"), "{printed}");
+    Ok(())
+}
+
+#[test]
+fn a_previous_checkpoint_of_another_setup_is_not_extended() -> crate::Result<()> {
+    let (mut run, recovered) = fixture()?;
+    run.setup_revision_id = Some(id(9).0.into());
+
+    let refused = TurnSnapshot::capture(
+        &run,
+        TurnWorkspace::ApiOnly,
+        Some(recovered.descriptor),
+        root()?,
+    )
+    .err()
+    .ok_or_else(crate::decision::unavailable)?;
+
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+    );
+    assert!(
+        refused
+            .to_string()
+            .contains("previous checkpoint belongs to a different setup or workspace"),
+        "{refused}"
+    );
+    Ok(())
+}
+
+#[test]
+fn history_bytes_that_match_their_digest_but_do_not_decode_refuse() -> crate::Result<()> {
+    let (mut run, mut recovered) = fixture()?;
+    recovered.history = zeroize::Zeroizing::new(b"{\"format\":".to_vec());
+    recovered.descriptor.history_digest = af_core::etag::sha256_hex(&recovered.history);
+    run.turn_resume = Some(recovered.descriptor.clone());
+
+    let refused = recovered
+        .restore(&run, TurnWorkspace::ApiOnly, &crate::fixture::scrub())
+        .err()
+        .ok_or_else(crate::decision::unavailable)?;
+
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+    );
+    assert!(
+        refused.to_string().contains("ordinary private history"),
+        "{refused}"
+    );
+    Ok(())
+}

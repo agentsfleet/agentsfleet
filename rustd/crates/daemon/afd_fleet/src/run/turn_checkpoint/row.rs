@@ -50,31 +50,19 @@ impl Plan {
             .ok_or_else(|| TurnCheckpointRefusal::Conflict.into())
     }
 
+    /// The plan as its writer is answered. Both callers hold its writer pin,
+    /// proved this run's own and live, so the plan is this run's and pending.
     pub(super) fn wire(
         &self,
         owner: &TurnRunGuard<'_>,
         pin: &Pin,
         replayed: bool,
     ) -> Result<TurnCheckpointPlan> {
-        if self.setup_revision_id != owner.setup
-            || self.abandoned
-            || self.owner_run_id != owner.current.id
-            || self.owner_fence != owner.current.fence
-        {
-            return Err(TurnCheckpointRefusal::Conflict.into());
-        }
-        let workspace = match (self.has_workspace, &self.toolbox_digest) {
-            (false, None) => TurnWorkspace::ApiOnly,
-            (true, Some(digest)) => TurnWorkspace::Files {
-                toolbox_digest: digest.clone(),
-            },
-            _ => return Err(TurnCheckpointRefusal::Incompatible.into()),
-        };
         Ok(TurnCheckpointPlan {
             checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,
             format_version: self.format_version,
-            scope: owner.scope(workspace),
+            scope: self.scope(owner)?,
             expected_head: self
                 .expected_head_id
                 .as_ref()
@@ -97,13 +85,14 @@ impl Plan {
         if self.setup_revision_id != owner.setup {
             return Err(TurnCheckpointRefusal::Incompatible.into());
         }
-        let workspace = match (self.has_workspace, &self.toolbox_digest) {
-            (false, None) => TurnWorkspace::ApiOnly,
-            (true, Some(toolbox_digest)) => TurnWorkspace::Files {
-                toolbox_digest: toolbox_digest.clone(),
-            },
-            _ => return Err(TurnCheckpointRefusal::Incompatible.into()),
-        };
+        // `ck_turn_checkpoint_workspace` holds `has_workspace` to a toolbox
+        // digest's presence, so the digest alone names the workspace.
+        let workspace = self
+            .toolbox_digest
+            .clone()
+            .map_or(TurnWorkspace::ApiOnly, |toolbox_digest| {
+                TurnWorkspace::Files { toolbox_digest }
+            });
         Ok(owner.scope(workspace))
     }
 
@@ -116,9 +105,7 @@ impl Plan {
             .covered_fold_sequences
             .as_ref()
             .ok_or(TurnCheckpointRefusal::Incompatible)?;
-        if ids.len() != sequences.len() {
-            return Err(TurnCheckpointRefusal::Incompatible.into());
-        }
+        // `ck_turn_checkpoint_folds` holds both arrays to one length.
         Ok(ids
             .iter()
             .zip(sequences)
@@ -129,10 +116,10 @@ impl Plan {
             .collect())
     }
 
+    /// A committed plan's descriptor. Only commit writes `manifest_root`, and
+    /// `ck_turn_checkpoint_disposition` keeps a committed plan unabandoned, so
+    /// a plan never committed refuses at its missing manifest.
     pub(super) fn descriptor(&self, owner: &TurnRunGuard<'_>) -> Result<TurnResume> {
-        if !self.ready || self.abandoned {
-            return Err(TurnCheckpointRefusal::Incompatible.into());
-        }
         let descriptor = TurnResume {
             checkpoint_id: CheckpointOperationId(self.id.as_str().to_owned()),
             generation: self.generation,

@@ -88,3 +88,48 @@ impl CheckpointStore for Store {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_context::{Checkpoint, CheckpointStore as _};
+    use serde_json::json;
+
+    use super::Store;
+
+    /// A run's checkpoint at `generation`.
+    fn checkpoint(generation: u64) -> serde_json::Result<Checkpoint> {
+        serde_json::from_value(json!({
+            "format_version": 1,
+            "identity": {"scope": "run:019f0000-0000-7000-8000-0000000000a1",
+                "model": "m", "pinned": "p"},
+            "generation": generation,
+            "covered_through": 2,
+            "source_digest": "a".repeat(64),
+            "summary": {"goal": "a daily support check", "constraints": [], "decisions": [],
+                "completed": [], "remaining": [], "references": []},
+        }))
+    }
+
+    #[tokio::test]
+    async fn a_commit_at_the_runs_generation_advances_it() -> serde_json::Result<()> {
+        let mut store = Store { generation: 4 };
+
+        let committed = store.commit(4, checkpoint(5)?).await;
+
+        assert_eq!(committed.ok(), Some(()));
+        assert_eq!(store.generation, 5);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_commit_over_another_generation_is_stale_and_moves_nothing() -> serde_json::Result<()>
+    {
+        let mut store = Store { generation: 4 };
+
+        let committed = store.commit(3, checkpoint(5)?).await;
+
+        assert!(committed.is_err_and(|failure| failure.is_stale()));
+        assert_eq!(store.generation, 4);
+        Ok(())
+    }
+}

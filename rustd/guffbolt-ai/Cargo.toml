@@ -127,8 +127,9 @@ axum.workspace = true
 rig-core = { workspace = true, features = ["test-utils"] }
 # The levels the log filter's suite asks it about.
 tracing.workspace = true
-# `start_paused`, and the sockets the fake providers listen on.
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util"] }
+# `start_paused`, the sockets the fake providers listen on, and the reply a
+# TLS fake writes.
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "net", "time", "sync", "test-util", "io-util"] }
 
 # A MiniMax turn through the public API, against a fake provider over TLS.
 [[test]]

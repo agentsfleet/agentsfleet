@@ -741,7 +741,7 @@ A check against the wallet's balance is the one source of truth. The cost is bou
 
 **Budgets** are a separate `afd_billing::limits::fleet_spend` reader over `billing.usage_lines`, so a budget holds whichever biller answers the checks. It counts the fleet's own lines. Setup-chat lines name no fleet; whether a fleet's budget should count the setup chat that authored it is Indy's call.
 
-**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and records `agentsfleet_billing_funds_check_total` (`afd_billing/src/biller/observed.rs`). `agentsfleet_billing_settle_total`, `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` are still declared (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`), as is the `wallet_exhausted` product event, but nothing records them: their one producer was `settle`, which went with the relay.
+**Metrics.** `Observed<B>` wraps the biller where `agentsfleetd` builds it, outside the outage policy, and records `agentsfleet_billing_funds_check_total` (`afd_billing/src/biller/observed.rs`). `agentsfleet_billing_settle_total` is no longer declared. `agentsfleet_billing_unpriced_tokens_total` and `agentsfleet.billing.credit.consumed` are still declared (`rustd/crates/protocol/af_observability/src/metrics/census.tsv`), as is the `wallet_exhausted` product event, but nothing records them: their one producer was `settle`, which went with the relay.
 
 **Removed from the fleet path:** `Accounts`' money statements, the receive charge, and the pricing and debit inside the run metering statement. The base-tier-only price read, `slice_charge` and its round-down rule went too.
 

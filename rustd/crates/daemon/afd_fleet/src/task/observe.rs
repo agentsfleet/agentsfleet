@@ -109,3 +109,28 @@ pub(super) fn trace<'a, T: 'a>(
 ) -> super::TaskFuture<'a, T> {
     traced(operation, work, |_| TaskOutcome::Accepted, span)
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use super::failure;
+    use crate::{Error, error::ErrorKind};
+
+    // Value: protects=a GitHub cooldown is measured as an unavailable dependency,
+    // and an effect left uncertain without one as a conflict; fails_when=the
+    // cooldown guard is dropped and a rate limit reads as a conflict, or every
+    // uncertain effect reads as unavailable; why_new=the cooldown arm of the
+    // outcome had no case; seam=the classifier every measured operation uses.
+    #[test]
+    fn a_remote_cooldown_is_unavailable_and_an_uncertain_effect_a_conflict() {
+        let until = jiff::Timestamp::from_second(1_800_000_000).expect("a representable instant");
+        let cooldown = Error::from(ErrorKind::TaskRemoteCooldown { status: 429, until });
+        assert_eq!(failure(&cooldown).as_str(), "unavailable");
+        let uncertain = Error::from(ErrorKind::TaskRemoteStatus { status: 502 });
+        assert_eq!(uncertain.code(), af_core::error_code::TASK_EFFECT_UNCERTAIN);
+        assert_eq!(failure(&uncertain).as_str(), "conflict");
+    }
+}

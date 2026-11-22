@@ -14,7 +14,9 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, TaskRun, Tasks, execution, guard as task_guard, transaction},
+    task::{
+        TaskRefusal, TaskRun, Tasks, execution, guard as task_guard, row::sql_counter, transaction,
+    },
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{
@@ -70,8 +72,7 @@ pub(in crate::task) async fn uploads(
             .iter()
             .find(|object| object.id == input.object_id)
             .ok_or(TaskRefusal::NotFound)?;
-        let length = i64::try_from(input.ciphertext_length)
-            .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?;
+        let length = sql_counter(input.ciphertext_length, "ciphertext length")?;
         if object.tombstoned
             || !object.own(&plan) && !object.verified
             || length != object.accounted_bytes

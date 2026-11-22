@@ -146,3 +146,25 @@ async fn a_typed_handler_is_told_its_arguments_schema_and_refuses_what_breaks_it
         refused.text
     );
 }
+
+/// An argument description lands on the argument named; one naming an
+/// argument the schema lacks leaves it as it was.
+#[test]
+fn an_argument_description_lands_only_on_an_argument_the_schema_has() {
+    let plain = Schema::of::<Name>(Greet::DESCRIPTION);
+
+    let described = Schema::of::<Name>(Greet::DESCRIPTION)
+        .with_argument("name", "The person greeted, by name.".to_owned());
+    let unknown = Schema::of::<Name>(Greet::DESCRIPTION)
+        .with_argument("nickname", "Never offered.".to_owned());
+
+    assert_eq!(
+        at(described.parameters(), "/properties/name/description"),
+        "The person greeted, by name."
+    );
+    assert_eq!(
+        at(plain.parameters(), "/properties/name/description"),
+        "Who to greet."
+    );
+    assert_eq!(unknown.parameters(), plain.parameters());
+}

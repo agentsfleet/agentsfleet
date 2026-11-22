@@ -1,7 +1,7 @@
 //! Immutable content and its reviewed authority advance under the fleet row lock.
 
 use super::super::{
-    ACTIVE, CONTEXT, Creations, INSTALLING, PRIVATE_RETENTION,
+    CONTEXT, Creations, INSTALLING,
     reserve::{Head, insert_revision},
     source::Captured,
     sql,
@@ -40,15 +40,12 @@ impl Creations {
         };
         let mut announcement =
             insert_revision(connection, &row.id, &captured.candidate.definition, head).await?;
-        let status = if matches!(row.status.as_str(), ACTIVE | INSTALLING) {
-            INSTALLING
-        } else {
-            &row.status
-        };
+        // Both callers refuse an archived fleet under its lock, so a new revision
+        // always reinstalls it.
         sqlx::query(sql::ADVANCE)
             .bind(&row.id)
             .bind(revision)
-            .bind(status)
+            .bind(INSTALLING)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -71,40 +68,28 @@ impl Creations {
             number,
         )
         .await?;
-        settle_draft(connection, row, captured, status).await?;
+        link_draft(connection, row, captured).await?;
         Ok(announcement)
     }
 }
 
-/// The private draft's last word: linked as `saving` while the fleet installs,
-/// closed under the retention window otherwise.
-async fn settle_draft(
+/// The private draft's last word: linked as `saving` while the fleet installs.
+async fn link_draft(
     connection: &mut PgConnection,
     row: &Stored,
     captured: &Captured,
-    status: &str,
 ) -> Result<()> {
     let draft = &captured
         .draft
         .as_ref()
         .ok_or(crate::error::ErrorKind::Hidden)?
         .id;
-    if status == INSTALLING {
-        sqlx::query(sql::LINK)
-            .bind(draft)
-            .bind(&row.id)
-            .bind(DraftState::Saving.as_str())
-            .execute(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-    } else {
-        sqlx::query(sql::CLOSE_DRAFT)
-            .bind(draft)
-            .bind(DraftState::Closed.as_str())
-            .bind(PRIVATE_RETENTION)
-            .execute(connection)
-            .await
-            .map_err(query(CONTEXT))?;
-    }
+    sqlx::query(sql::LINK)
+        .bind(draft)
+        .bind(&row.id)
+        .bind(DraftState::Saving.as_str())
+        .execute(connection)
+        .await
+        .map_err(query(CONTEXT))?;
     Ok(())
 }

@@ -4,7 +4,7 @@ use super::{ARCHIVED, CONTEXT, Creations, read, reserve::Instance, revision, sou
 use crate::{
     Access, Result, candidate, draft,
     error::{ErrorKind, raise::query},
-    message, review,
+    review,
     types::{DraftState, MessageState, SaveOrigin, SourcePin, Start},
 };
 use af_core::{id::Uuid7, problem::Problem};
@@ -35,17 +35,14 @@ struct SavedTurn {
 }
 
 impl Creations {
+    /// Saves the head of the turn's draft, for a message that asked to save:
+    /// its `save_requested` is written once, at acceptance, and the report
+    /// reads it under the draft's lock before it calls this.
     pub(crate) async fn save_turn_on(
         &self,
         connection: &mut PgConnection,
         turn: SaveTurn<'_>,
     ) -> Result<Announcement> {
-        if !message::accepted(connection, &turn.draft.id, turn.sequence)
-            .await?
-            .save_requested
-        {
-            return Ok(Announcement::default());
-        }
         let mut savepoint = connection.begin().await.map_err(query(CONTEXT))?;
         match self.write_turn(&mut savepoint, &turn).await {
             Ok(announcement) => {

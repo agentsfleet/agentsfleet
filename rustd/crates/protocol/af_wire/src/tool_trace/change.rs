@@ -28,18 +28,6 @@ pub struct FileChange<'a> {
     pub removed: u64,
 }
 
-impl FileChange<'_> {
-    /// The same change, owning its path.
-    #[must_use]
-    pub fn into_owned(self) -> FileChange<'static> {
-        FileChange {
-            path: Cow::Owned(self.path.into_owned()),
-            added: self.added,
-            removed: self.removed,
-        }
-    }
-}
-
 /// Whether every path `changes` names is free of NUL, which no stored string
 /// may hold.
 #[must_use]

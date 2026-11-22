@@ -228,12 +228,22 @@ async fn block_profile_switch(
 }
 
 fn reserved(call: &Call, revision: &str) {
-    tracing::info!(
-        event = "dt_decision_reserved",
-        decision_call_id = call.id.as_str(),
-        assessment_id = call.assessment_id.as_str(),
-        attempt = call.attempt_number,
-        profile_revision = revision,
-        purpose = call.purpose.as_str()
+    let (decision_call_id, assessment_id, attempt, profile_revision, purpose) = (
+        call.id.as_str(),
+        call.assessment_id.as_str(),
+        call.attempt_number,
+        revision,
+        call.purpose.as_str(),
     );
+    {
+        let event = &"dt_decision_reserved";
+        tracing::info!(
+            event,
+            decision_call_id,
+            assessment_id,
+            attempt,
+            profile_revision,
+            purpose
+        );
+    };
 }

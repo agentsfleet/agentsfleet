@@ -51,20 +51,6 @@ pub(super) enum Verdict {
     Tasked,
 }
 
-impl Verdict {
-    /// How a refusal reads in a log record.
-    const fn label(&self) -> &'static str {
-        match self {
-            Self::Lost => "lost",
-            Self::Cancelled => "cancelled",
-            Self::OverBudget => "over_budget",
-            Self::Extended(_) => "extended",
-            Self::Moved => "moved",
-            Self::Tasked => "tasked",
-        }
-    }
-}
-
 impl Judged {
     /// The order of these tests is the per-run path's: a run that is not
     /// this runner's live holder is lost before anything else is asked of it.
@@ -122,7 +108,8 @@ pub(super) fn log_refused(row: &Found, verdict: &Verdict, refusal: &crate::Error
     let fleet = row.fleet_id.as_str();
     let run = row.id.as_str();
     let code = refusal.code().as_str();
-    match verdict {
+    // How the refusal reads in its log record.
+    let which = match verdict {
         Verdict::OverBudget => {
             let (fleet_id, run_id, error_code, event, message) = (
                 &fleet,
@@ -132,21 +119,19 @@ pub(super) fn log_refused(row: &Found, verdict: &Verdict, refusal: &crate::Error
                 format_args!("the fleet reached a ceiling its author declared; not renewed"),
             );
             tracing::warn!(message, fleet_id, run_id, error_code, event);
+            return;
         }
-        Verdict::Lost | Verdict::Cancelled => {
-            let which = verdict.label();
-            {
-                let (fleet_id, run_id, error_code, verdict, event, message) = (
-                    &fleet,
-                    &run,
-                    &code,
-                    &which,
-                    &EVENT_REFUSED,
-                    format_args!("the renewal was refused"),
-                );
-                tracing::info!(message, fleet_id, run_id, error_code, verdict, event);
-            };
-        }
-        Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => {}
-    }
+        Verdict::Lost => "lost",
+        Verdict::Cancelled => "cancelled",
+        Verdict::Extended(_) | Verdict::Moved | Verdict::Tasked => return,
+    };
+    let (fleet_id, run_id, error_code, verdict, event, message) = (
+        &fleet,
+        &run,
+        &code,
+        &which,
+        &EVENT_REFUSED,
+        format_args!("the renewal was refused"),
+    );
+    tracing::info!(message, fleet_id, run_id, error_code, verdict, event);
 }

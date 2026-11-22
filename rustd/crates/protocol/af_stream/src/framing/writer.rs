@@ -221,6 +221,12 @@ mod tests {
         use std::io::Write as _;
         let mut buffer = Buffer::exact(&Length::prove(4, StreamKind::Work)?);
         buffer.write_all(b"1234")?;
+        buffer.flush()?;
+        assert_eq!(
+            buffer.0.as_slice(),
+            b"1234",
+            "a flush neither emits nor clears the frame"
+        );
         let refused = buffer.write(b"5").err().ok_or(error::ErrorKind::Protocol)?;
         assert_eq!(refused.kind(), std::io::ErrorKind::InvalidData);
         assert_eq!(buffer.0.capacity(), 4);

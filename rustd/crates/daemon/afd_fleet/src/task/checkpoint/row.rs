@@ -3,7 +3,10 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, execution, row::counter},
+    task::{
+        TaskRefusal, execution,
+        row::{counter, small_counter, sql_counter},
+    },
 };
 use af_core::id::Uuid7;
 use af_wire::task::{CheckpointMode, CheckpointPin, CheckpointPlan, CheckpointTransferPurpose};
@@ -81,16 +84,13 @@ impl Plan {
     ) -> Result<()> {
         let version = counter(self.task_generation, "checkpoint task generation")?;
         if self.abandoned
-            || self.format_version
-                != i32::try_from(af_wire::task::CHECKPOINT_FORMAT)
-                    .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?
+            || u32::try_from(self.format_version).ok() != Some(af_wire::task::CHECKPOINT_FORMAT)
             || version > owned.snapshot.context.generation
             || purpose == CheckpointTransferPurpose::Upload
                 && (self.ready
                     || version != owned.snapshot.context.generation
                     || self.stop_generation
-                        != i64::try_from(owned.snapshot.context.stop_generation)
-                            .map_err(|_overflow| TaskRefusal::StaleState)?)
+                        != sql_counter(owned.snapshot.context.stop_generation, "stop generation")?)
             || purpose == CheckpointTransferPurpose::Restore && !self.ready
         {
             return Err(TaskRefusal::CheckpointIncompatible.into());
@@ -108,8 +108,7 @@ impl Plan {
             base_id: self.base_id.clone().map(String::from),
             mode: self.mode()?,
             repository: self.repository.clone(),
-            format_version: u32::try_from(self.format_version)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+            format_version: small_counter(self.format_version, "checkpoint format_version")?,
             toolbox_digest: self.toolbox_digest.clone(),
             page_ids: self.page_ids.iter().cloned().map(String::from).collect(),
             base_page_ids: self
@@ -161,3 +160,7 @@ impl Pin {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "row_tests.rs"]
+mod tests;

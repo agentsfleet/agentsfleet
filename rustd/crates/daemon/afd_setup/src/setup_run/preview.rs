@@ -44,7 +44,6 @@ struct Publishing {
     sequence: i64,
     workspace_id: Uuid7,
     oidc_subject: String,
-    user_id: Uuid7,
 }
 
 impl Drafts {
@@ -154,9 +153,9 @@ impl Drafts {
             workspace: &publishing.workspace_id,
             subject: &publishing.oidc_subject,
         };
+        // The subject is the creator's own, and a subject names one person.
         match access::current(&mut connection, access).await {
-            Ok(person) if person.id == publishing.user_id => Ok(Some(publishing)),
-            Ok(_) => Ok(None),
+            Ok(_creator) => Ok(Some(publishing)),
             // A creator who lost the workspace is hidden, as every private read hides them.
             Err(error) if error.code() == error_code::SETUP_NOT_FOUND => Ok(None),
             Err(error) => Err(error),

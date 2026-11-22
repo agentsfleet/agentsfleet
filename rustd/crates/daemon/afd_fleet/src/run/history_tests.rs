@@ -19,7 +19,7 @@ use serde_json::json;
 
 use super::{
     CallRow, EVENT_HISTORY_CUT, EVENT_HISTORY_UNAVAILABLE, FRAME_ENVELOPE_BYTES, FinishedTurn,
-    HISTORY_PAGE_TURNS, Thread, fit_frame, turns_before,
+    HISTORY_PAGE_TURNS, Thread, fit_frame, turn, turns_before,
 };
 
 /// The workspace, fleet and event every read here names.
@@ -198,6 +198,23 @@ async fn test_history_keeps_finished_turns_only() {
             (3, "third", "[the run failed: timeout_kill]"),
         ]
     );
+}
+
+// Value: protects=a row a thread read lets through while still running, queued
+// or refused at a gate never becomes a turn the model reads as answered;
+// fails_when=the unfinished arm answers a placeholder instead; why_new=every
+// thread under test filtered such rows before `turn` saw them; seam=`turn`, the
+// one conversion every thread read's rows take.
+#[test]
+fn an_unfinished_row_is_no_turn() {
+    for unfinished in ["queued", "running", "gate_blocked", "cancelled"] {
+        let made = vec![made(1, 1, 1, "shell", "ok")];
+        assert_eq!(
+            turn(row(1, unfinished, "first", Some("partial")), made),
+            None,
+            "{unfinished}"
+        );
+    }
 }
 
 /// Twenty finished turns of 20 KiB each, past every count and byte cap the

@@ -15,8 +15,6 @@ const CONTEXT: &str = "read editor conversation";
 /// Recent private messages and their current editable setup.
 #[derive(Debug)]
 pub struct Conversation {
-    pub(crate) continuation: String,
-    after_messages: Vec<String>,
     /// Creator-private current proposal and readiness.
     pub draft: Draft,
     /// At most 25 role rows, including the latest accepted turn.
@@ -25,14 +23,6 @@ pub struct Conversation {
     pub messages_starting_after: Option<String>,
     /// Older messages remain available through the full draft messages resource.
     pub truncated: bool,
-}
-
-impl Conversation {
-    /// Continuations for a paged response, in the same order as its rows.
-    #[must_use]
-    pub fn page_boundaries(&self) -> (&str, &[String]) {
-        (&self.continuation, &self.after_messages)
-    }
 }
 
 impl Setup {
@@ -51,13 +41,9 @@ impl Setup {
             starting_after: messages_starting_after.clone(),
         };
         let messages = page_on(&mut tx, access, &person.id, &locked, &request).await?;
-        let after_messages =
-            super::read::window_cursors(access, &person.id, &locked, &messages.items)?;
         let draft = self.review_draft_on(&mut tx, locked).await?;
         tx.commit().await.map_err(query(CONTEXT))?;
         Ok(Conversation {
-            continuation: String::new(),
-            after_messages,
             draft,
             messages: messages.items,
             truncated: messages_starting_after.is_some(),

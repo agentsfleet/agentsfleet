@@ -206,8 +206,6 @@ fn test_every_memory_producer_runs_its_body() {
     producers::memory::captured(5);
     producers::memory::push_failed();
     producers::memory::load_dropped(2, 512);
-    producers::memory::cap_evicted(1);
-    producers::memory::capture_truncated(4);
     producers::memory::capture_skipped(6);
     producers::memory::search_found_nothing();
 

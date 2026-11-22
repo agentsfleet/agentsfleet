@@ -101,16 +101,32 @@ fn invalid(arguments: &serde_json::Value) -> Result<Invocation, ToolOutput> {
 
 impl Harness<'_, '_> {
     pub(super) fn publication_allowed(&self) -> bool {
-        self.depth == 0
-            && (self.selection.offers("shell") || self.selection.offers("exec_command"))
-            && self.task.as_ref().is_some_and(|prepared| {
-                prepared.allow_actions
-                    && prepared
-                        .inputs
-                        .current_task
-                        .as_ref()
-                        .is_some_and(|task| matches!(task.target, TaskTarget::ExistingPr { .. }))
-            })
+        self.publishable().is_some()
+    }
+
+    /// The task this loop may publish for, and its pull request's
+    /// repository, head and tree: the root, offered a shell, of a task that
+    /// may act on an existing pull request.
+    fn publishable(&self) -> Option<(&af_wire::task::TaskContext<'static>, &str, &str, &str)> {
+        if self.depth != 0
+            || !(self.selection.offers("shell") || self.selection.offers("exec_command"))
+        {
+            return None;
+        }
+        let prepared = self
+            .task
+            .as_ref()
+            .filter(|prepared| prepared.allow_actions)?;
+        let task = prepared.inputs.current_task.as_ref()?;
+        match &task.target {
+            TaskTarget::ExistingPr {
+                repository,
+                head,
+                tree,
+                ..
+            } => Some((task, repository.as_str(), head.as_str(), tree.as_str())),
+            TaskTarget::ApiOnly => None,
+        }
     }
 
     async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
@@ -120,12 +136,12 @@ impl Harness<'_, '_> {
     }
 
     async fn publication(&self, arguments: &serde_json::Value) -> Result<ToolOutput, ToolOutput> {
-        if !self.publication_allowed() {
+        let Some((task, repository, head, tree)) = self.publishable() else {
             return Err(ToolOutput::failed(
                 ToolErrorCode::NotOffered,
                 "Publication is unavailable for this task.",
             ));
-        }
+        };
         let input = invalid(arguments)?;
         if self
             .shared
@@ -156,11 +172,6 @@ impl Harness<'_, '_> {
                 "Open commands were stopped. Review their output, then request validation again.",
             ));
         }
-        let task = self
-            .task
-            .as_ref()
-            .and_then(|prepared| prepared.inputs.current_task.as_ref())
-            .ok_or_else(|| refused("Native task identity is absent."))?;
         let effects = self
             .shared
             .run
@@ -185,15 +196,6 @@ impl Harness<'_, '_> {
                 "A previous publication must be reconciled at the next completed action boundary before another attempt.",
             ));
         }
-        let TaskTarget::ExistingPr {
-            repository,
-            head,
-            tree,
-            ..
-        } = &task.target
-        else {
-            return Err(refused("This task has no repository target."));
-        };
         let name = repository
             .split_once('/')
             .map(|(_, name)| name)

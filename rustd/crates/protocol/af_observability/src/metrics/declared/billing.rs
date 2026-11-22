@@ -1,9 +1,7 @@
-//! What the billing lifecycle did: funds checked, lines settled, tokens left
-//! unpriced, and what is still owed.
+//! What the billing lifecycle did: funds checked and tokens left unpriced.
 //!
-//! Recorded at one choke point, the biller every money path holds, so a check or a settlement is counted once whichever product path or
-//! relay pass made it. The two gauges are the billing relay's: it is the one
-//! reader that already scans the unsettled lines.
+//! Recorded at one choke point, the biller every money path holds, so a check
+//! is counted once whichever product path made it.
 
 use crate::metrics::family::{CounterKind, Declared};
 
@@ -12,12 +10,6 @@ use crate::metrics::family::{CounterKind, Declared};
 /// Labels: `work_type,outcome`.
 pub const BILLING_FUNDS_CHECK_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_billing_funds_check_total");
-
-/// Settlements by whether they landed.
-///
-/// Labels: `work_type,outcome`.
-pub const BILLING_SETTLE_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_billing_settle_total");
 
 /// Tokens a settlement carried with no published price.
 ///

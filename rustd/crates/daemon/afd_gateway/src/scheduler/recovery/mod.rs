@@ -15,7 +15,7 @@ pub(super) async fn notifications(
     wake: &Wake,
     assignments: usize,
     stop: &CancellationToken,
-) -> Result<()> {
+) {
     let mut generations = wake.generations();
     loop {
         let observed = generations.borrow_and_update().recovery();
@@ -30,8 +30,8 @@ pub(super) async fn notifications(
         }
         tokio::select! {
             biased;
-            () = stop.cancelled() => return Ok(()),
-            changed = generations.changed() => if changed.is_err() { return Ok(()); },
+            () = stop.cancelled() => return,
+            changed = generations.changed() => if changed.is_err() { return; },
         }
     }
 }

@@ -106,7 +106,7 @@ impl<D> RunnerStreamAuthentication<D> {
     #[must_use]
     pub fn new(services: Arc<D>) -> Self {
         Self {
-            bearer: BearerAuthentication::new(services),
+            bearer: BearerAuthentication::new(services, afd_auth::Plane::Runner),
         }
     }
 }
@@ -128,7 +128,7 @@ impl<D: Shared> RequestAuthentication for RunnerStreamAuthentication<D> {
             Ok(ConnectionCredentials::Bearer) => self.initial(parts, route).await,
             Ok(ConnectionCredentials::Bound { runner, kind }) => {
                 parts.extensions.insert(kind);
-                Ok(Some(Principal::Runner(runner)))
+                Ok(Principal::Runner(runner))
             }
             Err(refusal) => Err(refusal),
         }
@@ -138,24 +138,15 @@ impl<D: Shared> RequestAuthentication for RunnerStreamAuthentication<D> {
 impl<D: Shared> RunnerStreamAuthentication<D> {
     async fn initial(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
         let principal = self.bearer.authenticate(parts, route).await?;
-        if matches!(&principal, Some(Principal::Runner(_))) {
-            let refuse = || {
-                super::guard::reject(
-                    route,
-                    af_core::error_code::RUN_INVALID_RUNNER_TOKEN,
-                    "Present the enrolled runner credential on the control stream.",
-                    "runner_stream_credential_missing",
-                )
-            };
-            let header = parts
+        // The bearer above authenticated a runner from this very header, so it
+        // is present and parses; without the digest the opening refuses to bind.
+        if matches!(&principal, Principal::Runner(_))
+            && let Some(presented) = parts
                 .headers
                 .get(http::header::AUTHORIZATION)
-                .ok_or_else(refuse)?;
-            let header = header.to_str().map_err(|source| {
-                tracing::debug!(event = "runner_credential_header_unreadable", reason = %source);
-                refuse()
-            })?;
-            let presented = Presented::from_authorization(header).map_err(|_blank| refuse())?;
+                .and_then(|header| header.to_str().ok())
+                .and_then(|header| Presented::from_authorization(header).ok())
+        {
             parts
                 .extensions
                 .insert(AuthenticatedRunnerCredential(Digest::of(&presented)));

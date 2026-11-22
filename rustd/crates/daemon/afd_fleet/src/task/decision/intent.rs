@@ -65,12 +65,7 @@ impl Intent<'_> {
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)
             .bind(&prepared.current.tenant_id)
-            .bind(
-                self.goal()
-                    .map(|task| task.snapshot.context.task_id.as_ref())
-                    .map(crate::task::guard::wire)
-                    .transpose()?,
-            )
+            .bind(self.goal().map(|task| &task.task_id))
             .bind(generation)
             .bind(prepared.current.fence)
             .bind(crate::task::guard::wire(&self.input.operation_id)?)
@@ -113,12 +108,7 @@ impl Intent<'_> {
             .bind(&self.prepared.current.fleet_id)
             .bind(&self.prepared.current.workspace_id)
             .bind(&self.prepared.current.tenant_id)
-            .bind(
-                self.goal()
-                    .map(|task| task.snapshot.context.task_id.as_ref())
-                    .map(crate::task::guard::wire)
-                    .transpose()?,
-            )
+            .bind(self.goal().map(|task| &task.task_id))
             .bind(Json(self.attempt.request(&self.prepared.request)))
             .execute(connection)
             .await

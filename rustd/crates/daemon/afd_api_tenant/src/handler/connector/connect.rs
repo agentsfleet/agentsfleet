@@ -68,7 +68,7 @@ pub(crate) async fn start<D: TenantPlane>(
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(unconfigured());
     };
-    let secret = state_secret(&services).await?;
+    let secret = state_secret(&services, admin).await?;
     let redirect_uri = relay_uri(services.dashboard(), provider);
 
     let started = services

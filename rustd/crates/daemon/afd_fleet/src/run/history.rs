@@ -132,9 +132,7 @@ pub trait Thread: Send + Sync + Debug {
     ) -> crate::Result<Vec<CallRow>>;
 
     /// The finished turns one [`Self::finished_before`] read asks for.
-    fn page_turns(&self) -> i64 {
-        HISTORY_PAGE_TURNS
-    }
+    fn page_turns(&self) -> i64;
 }
 
 /// The fleet threads a chat run's history is read from, in Postgres.

@@ -129,3 +129,29 @@ fn value<T: std::str::FromStr>(
 fn refused(knob: &'static str, why: String) -> Refusal {
     Refusal::new(vec![Fault::Invalid { knob, why }])
 }
+
+#[cfg(test)]
+mod tests {
+    use af_core::{env::MapEnv, test_util::trace::Capture};
+
+    /// Boot announces the resolved run budgets once, as structured fields.
+    #[test]
+    fn the_loaded_configuration_is_announced_with_its_resolved_budgets()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let environment = MapEnv::from_pairs([
+            ("AGENTSFLEET_RUN_TTL_SECONDS", "40"),
+            ("AGENTSFLEET_RESUME_FROM_CHECKPOINT", "true"),
+            ("AGENTSFLEET_RECOVERY_CONCURRENT_ASSIGNMENTS", "3"),
+            ("AGENTSFLEET_MAX_IN_FLIGHT_REQUESTS", "17"),
+        ]);
+        let settings = super::read(&environment)?;
+        let capture = Capture::install();
+        settings.announce();
+        let event = capture.only("daemon_configuration_loaded");
+        assert_eq!(event.field("run_ttl_seconds"), Some("40"));
+        assert_eq!(event.field("resume_from_checkpoint"), Some("true"));
+        assert_eq!(event.field("max_concurrent_assignments"), Some("3"));
+        assert_eq!(event.field("max_in_flight_requests"), Some("17"));
+        Ok(())
+    }
+}

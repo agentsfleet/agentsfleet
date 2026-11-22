@@ -195,7 +195,8 @@ impl Intake<'_> {
         };
         let interpretation = serde_json::to_vec(&binding.interpretation())?;
         binding.plan_digest = af_core::etag::sha256_hex(&interpretation);
-        for (ordinal, item) in binding.items.iter_mut().enumerate() {
+        // `propose` admits four items at most, so every one has a `u8` ordinal.
+        for (ordinal, item) in (0..=u8::MAX).zip(binding.items.iter_mut()) {
             if count == routing::Multiplicity::Single {
                 routing::check(&evaluated, &item.proposed, &assignment.intent)?;
             } else {
@@ -205,9 +206,7 @@ impl Intake<'_> {
                         fencing_token: run.fencing_token,
                         source_turn_id: binding.source_turn_id.clone(),
                         assessment: DecisionAssessment::Item {
-                            ordinal: u8::try_from(ordinal).map_err(|source| {
-                                boundary("interpretation item ordinal", source)
-                            })?,
+                            ordinal,
                             interpretation_digest: binding.plan_digest.clone(),
                             source_start: item.proposed.source_start,
                             source_end: item.proposed.source_end,

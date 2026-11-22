@@ -13,7 +13,7 @@ use axum::{
     Json,
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderValue, StatusCode, header};
+use http::{StatusCode, header};
 use std::borrow::Cow;
 
 const EVENT_SCHEDULES: &str = "fleet_setup_schedules_read_failed";
@@ -32,12 +32,15 @@ pub(super) async fn response<D: TenantPlane>(
         .await
         .map_err(Refusal::at(EVENT_SCHEDULES))?;
     let payload = payload(services, saved, &schedules);
-    let mut response = (status, Json(payload)).into_response();
-    attach(&mut response, header::ETAG, &etag);
     if status == StatusCode::CREATED {
-        attach(&mut response, header::LOCATION, &location);
+        return Ok((
+            status,
+            [(header::ETAG, etag), (header::LOCATION, location)],
+            Json(payload),
+        )
+            .into_response());
     }
-    Ok(response)
+    Ok((status, [(header::ETAG, etag)], Json(payload)).into_response())
 }
 
 pub(super) type NativeFleet<'s> = FleetResponse<
@@ -97,14 +100,6 @@ fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<We
             Trigger::Cron(_) | Trigger::Mention(_) => None,
         })
         .collect()
-}
-
-/// Sets `name` when `value` is a legal header value; a value that is not is
-/// left off rather than failing a response that already succeeded.
-pub(super) fn attach(response: &mut Response, name: header::HeaderName, value: &str) {
-    if let Ok(value) = HeaderValue::from_str(value) {
-        response.headers_mut().insert(name, value);
-    }
 }
 
 #[cfg(test)]

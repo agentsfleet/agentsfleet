@@ -8,6 +8,17 @@ use af_core::error_code::{INVALID_REQUEST, SETUP_PRECONDITION, SETUP_STALE};
 use afd_setup::types::DraftPatch;
 use serde_json::json;
 
+/// Appends a copy of draft `$1`'s head at the last revision a candidate can
+/// hold, id `$2`: candidates are append-only, so the head cannot be renumbered.
+const LAST_REVISION: &str = "INSERT INTO setup.candidates \
+     (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
+     SELECT $2,c.draft_id,9223372036854775807,c.definition,c.canonical_digest,\
+     c.policy_semantics,now() \
+     FROM setup.candidates c JOIN setup.drafts d ON d.head_candidate_id=c.id \
+     WHERE d.id=$1";
+/// Moves draft `$1`'s head to candidate `$2`.
+const MOVE_HEAD: &str = "UPDATE setup.drafts SET head_candidate_id=$2 WHERE id=$1";
+
 fn patch(value: serde_json::Value) -> DraftPatch {
     serde_json::from_value(value).expect("typed patch")
 }
@@ -110,4 +121,67 @@ async fn assert_stale(
         .expect_err("old tag cannot overwrite replacement");
     assert_eq!(error.code(), SETUP_STALE);
     assert_eq!(error.etag(), Some(changed.etag.as_str()));
+}
+
+// Value: protects=an edit needs a candidate to edit, and a head whose revision
+// cannot advance refuses the edit rather than overwriting it;
+// fails_when=either refusal is dropped and the edit writes; seam=Drafts::patch
+// over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_edit_with_no_candidate_or_no_next_revision_is_refused() {
+    let f = Fixture::create().await;
+    let mut request = f.request(mint(), None);
+    request.source = afd_setup::types::Source::Blank;
+    let blank = f
+        .drafts
+        .create(f.access(), request, now())
+        .await
+        .expect("a blank chat")
+        .draft;
+    let model = || patch(json!({"runtime_model_ref": f.model}));
+    let refused = f
+        .drafts
+        .patch(f.access(), &blank.id, Some(&blank.etag), model(), now())
+        .await
+        .expect_err("nothing to edit");
+    assert_eq!(refused.code(), INVALID_REQUEST);
+    assert_eq!(
+        refused.detail(),
+        "initialize a candidate before editing its setup"
+    );
+
+    let headed = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("a chat with setup")
+        .draft;
+    let last = mint();
+    let mut connection = f.connection().await;
+    for statement in [LAST_REVISION, MOVE_HEAD] {
+        let written = sqlx::query(statement)
+            .bind(&headed.id)
+            .bind(&last)
+            .execute(&mut *connection)
+            .await
+            .expect("a head at the last revision");
+        assert_eq!(written.rows_affected(), 1);
+    }
+    drop(connection);
+    let refused = f
+        .drafts
+        .patch(f.access(), &headed.id, Some(&headed.etag), model(), now())
+        .await
+        .expect_err("no next revision");
+    assert_eq!(refused.code(), INVALID_REQUEST);
+    assert_eq!(refused.detail(), "candidate revision is exhausted");
+    let candidates: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM setup.candidates WHERE draft_id=$1")
+            .bind(&headed.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("candidate census");
+    assert_eq!(candidates, 2, "the refused edit wrote no candidate");
+    f.cleanup().await;
 }

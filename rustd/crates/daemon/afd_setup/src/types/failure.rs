@@ -54,6 +54,39 @@ mod tests {
 
     use super::{ACTION_REDUCE_CONTEXT, Failure};
 
+    /// Each reason a turn fails for names its own code and the one action
+    /// that repairs it.
+    #[test]
+    fn each_turn_failure_names_its_code_and_its_repair() {
+        for (reason, code, action) in [
+            (
+                FailureReason::InsufficientBalance,
+                error_code::SETUP_BALANCE,
+                "owner_billing",
+            ),
+            (
+                FailureReason::ModelUnavailable,
+                error_code::SETUP_MODEL,
+                "choose_setup_model",
+            ),
+            (
+                FailureReason::ProviderFailed,
+                error_code::SETUP_PROVIDER,
+                "retry_message",
+            ),
+            (
+                FailureReason::ProviderUsageUnknown,
+                error_code::SETUP_UNKNOWN,
+                "retry_message",
+            ),
+        ] {
+            let failure = Failure::from(reason);
+            assert_eq!(failure.reason, reason);
+            assert_eq!(failure.error_code, code, "{reason:?}");
+            assert_eq!(failure.recovery_action, action, "{reason:?}");
+        }
+    }
+
     /// The same message would not fit again, so the person is asked to
     /// shorten it, under the code the fleet path fails such a run with.
     #[test]

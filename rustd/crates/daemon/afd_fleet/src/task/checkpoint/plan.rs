@@ -174,37 +174,40 @@ async fn allocate(
         .bind(task)
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
-        .bind(i64::try_from(input.task.generation).map_err(|_overflow| TaskRefusal::StaleState)?)
+        .bind(sql_counter(
+            input.task.generation,
+            "checkpoint task generation",
+        )?)
         .bind(task_guard::wire(
             &owned.snapshot.context.accepted_revision_id,
         )?)
-        .bind(
-            i64::try_from(owned.snapshot.context.stop_generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?,
-        )
+        .bind(sql_counter(
+            owned.snapshot.context.stop_generation,
+            "checkpoint stop generation",
+        )?)
         .bind(task_guard::wire(&input.operation_id)?)
         .bind(digest)
         .bind(input.mode.as_str())
         .bind(repository)
         .bind(base.as_ref().map(|base| &base.id))
         .bind(commit)
-        .bind(
-            i32::try_from(input.format_version)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
-        )
+        .bind(sql_small_counter(
+            input.format_version,
+            "checkpoint format_version",
+        )?)
         .bind(&input.toolbox_digest)
         .bind(i32::try_from(pages.len()).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?)
         .bind(&pages)
-        .bind(
-            i64::try_from(input.upload_budget_bytes)
-                .map_err(|_overflow| TaskRefusal::LimitExhausted)?,
-        )
+        .bind(sql_counter(
+            input.upload_budget_bytes,
+            "checkpoint upload_budget_bytes",
+        )?)
         .bind(ready_base.map_or(
-            i64::try_from(input.logical_bytes).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+            sql_counter(input.logical_bytes, "checkpoint logical_bytes")?,
             |base| base.logical_bytes,
         ))
         .bind(ready_base.map_or(
-            i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
+            sql_small_counter(input.entry_count, "checkpoint entry_count")?,
             |base| base.entry_count,
         ))
         .bind(run.run_id)

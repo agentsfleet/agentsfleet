@@ -210,28 +210,51 @@ async fn complete_and_wait_reports_retain_native_goal_proof_and_private_history(
     Ok(())
 }
 
+/// The record `evaluation`, built by [`evaluation`], always carries.
+fn recorded(evaluation: &mut DecisionEvaluation) -> &mut DecisionRecorded {
+    evaluation
+        .recorded
+        .as_deref_mut()
+        .expect("the fixture's evaluation is recorded")
+}
+
 fn refused_goals() -> Vec<DecisionEvaluation> {
     let mut stale = evaluation("DONE", Some(1.0), 1.0);
-    if let Some(recorded) = stale.recorded.as_mut() {
-        recorded.disposition = DecisionRecordDisposition::Stale;
-    }
+    recorded(&mut stale).disposition = DecisionRecordDisposition::Stale;
     let mut unknown = evaluation("DONE", Some(1.0), 1.0);
     unknown.recorded = None;
     let mut refused = evaluation("DONE", Some(1.0), 1.0);
-    if let Some(recorded) = refused.recorded.as_mut() {
-        recorded.result.result = DecisionOutcome::Refused;
-    }
+    recorded(&mut refused).result.result = DecisionOutcome::Refused;
     let mut improbable = evaluation("DONE", Some(1.0), 1.0);
-    if let Some(recorded) = improbable.recorded.as_mut()
-        && let DecisionOutcome::Answered { answers } = &mut recorded.result.result
-        && let Some(DecisionAnswer::Choice { probabilities, .. }) = answers.get_mut("next_action")
-    {
-        probabilities.insert("DONE".to_owned(), 0.89);
-        probabilities.insert("CONTINUE".to_owned(), 0.11);
-    }
+    recorded(&mut improbable).result.result = DecisionOutcome::Answered {
+        answers: BTreeMap::from([
+            (
+                "next_action".to_owned(),
+                DecisionAnswer::Choice {
+                    choice: "DONE".to_owned(),
+                    confidence: Some(1.0),
+                    probabilities: BTreeMap::from([
+                        ("DONE".to_owned(), 0.89),
+                        ("WAIT".to_owned(), 0.0),
+                        ("CONTINUE".to_owned(), 0.11),
+                    ]),
+                },
+            ),
+            ("verified".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
+        ]),
+    };
+    let mut unchosen = evaluation("DONE", Some(1.0), 1.0);
+    recorded(&mut unchosen).result.result = DecisionOutcome::Answered {
+        answers: BTreeMap::from([
+            ("next_action".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
+            ("verified".to_owned(), DecisionAnswer::Noul { noul: 1.0 }),
+        ]),
+    };
     vec![
         evaluation("DONE", None, 1.0),
         evaluation("DONE", Some(0.89), 1.0),
+        evaluation("ESCALATE", Some(1.0), 1.0),
+        unchosen,
         evaluation("DONE", Some(1.0), 0.89),
         stale,
         unknown,

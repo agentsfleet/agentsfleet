@@ -100,3 +100,30 @@ fn a_corrupt_root_keeps_its_cause_and_hides_its_contents() {
         && fault.source().is_some()
         && !fault.to_string().contains(&bytes.history)));
 }
+
+// Value: protects=a saved prefix replays its folds in conversation order;
+// fails_when=the sequence-order clause is dropped from the root proof;
+// why_new=only duplicate fold turns had a case; seam=root::validate on a root
+// whose two distinct folds run backwards or repeat a sequence.
+#[test]
+fn folds_out_of_sequence_order_are_incompatible() -> crate::Result<()> {
+    const THIRD: &str = "01900000-0000-7000-8000-000000000003";
+    let scope = scope();
+    let fold = |turn: &str, sequence| FoldRef {
+        turn_id: CheckpointOperationId(turn.into()),
+        sequence,
+    };
+    let ordered = [fold(OTHER, 3), fold(THIRD, 4)];
+    root::validate(&saved(&scope, &ordered), &scope, &ordered, None)?;
+    for folds in [
+        [fold(OTHER, 4), fold(THIRD, 3)],
+        [fold(OTHER, 3), fold(THIRD, 3)],
+    ] {
+        assert!(
+            root::validate(&saved(&scope, &folds), &scope, &folds, None)
+                .is_err_and(|fault| fault.code() == error_code::RUN_CHECKPOINT_INCOMPATIBLE),
+            "{folds:?}"
+        );
+    }
+    Ok(())
+}

@@ -51,7 +51,8 @@ pub(super) struct ConfigToml {
 #[derive(Default, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Outbound {
-    #[garde(dive)]
+    /// Validated once, where `policies::read` turns it into the retry policy.
+    #[garde(skip)]
     pub retries: afd_outbound::retry::RetrySettings,
 }
 

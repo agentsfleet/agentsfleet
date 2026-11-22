@@ -75,3 +75,54 @@ async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
         "the write's failure is its sentence alone, its code the line's `error_code`: {reason}"
     );
 }
+
+// Value: protects=a gate that could not decide ends the pass with no work and
+// leaves the delivery leasable, writing nothing; fails_when=a retry is ended as a
+// refusal, which writes the terminal row this dead pool would refuse, or is
+// answered without naming the gate; why_new=the retry arm had no case;
+// seam=`ended`, the one place every declined admission lands.
+#[tokio::test]
+async fn a_gate_that_could_not_decide_answers_no_work_and_writes_nothing() {
+    use crate::run::admit::{Declined, Transient};
+    use af_core::test_util::trace::Capture;
+
+    let log = Capture::install();
+    let step = test_dead::plane()
+        .ended(
+            &test_dead::acquired(),
+            Declined::Retry(Transient {
+                at: "approval_gate",
+            }),
+            &test_dead::id(9),
+        )
+        .await
+        .expect("a retry is an answer, not a write");
+
+    assert!(matches!(step, super::step::Step::Stop));
+    let line = log.only(crate::run::answer::EVENT_NO_WORK);
+    assert_eq!(line.field("reason"), Some("approval_gate"));
+    assert_eq!(line.field("runner_id"), Some(test_dead::id(9).as_str()));
+}
+
+// Value: protects=an assignment whose fleet row reads as no longer active is
+// answered no work, and nothing is written for it; fails_when=the inactive
+// arm refuses the event, which writes the terminal row this dead pool would
+// refuse, or issues it; why_new=no test handed the pass an inactive fleet row;
+// seam=`resolve_installed` over datastores nobody answers on.
+#[tokio::test]
+async fn a_fleet_no_longer_active_is_answered_no_work() {
+    use af_core::test_util::trace::Capture;
+
+    let mut acquired = test_dead::acquired_installed();
+    "archived".clone_into(&mut acquired.opened.setup.status);
+    let log = Capture::install();
+
+    let step = test_dead::plane()
+        .resolve_installed(&acquired, &test_dead::id(9))
+        .await
+        .expect("an inactive fleet is an answer, not a write");
+
+    assert!(matches!(step, super::step::Step::Stop));
+    let line = log.only(crate::run::answer::EVENT_NO_WORK);
+    assert_eq!(line.field("reason"), Some(super::refuse::FLEET_ARCHIVED));
+}

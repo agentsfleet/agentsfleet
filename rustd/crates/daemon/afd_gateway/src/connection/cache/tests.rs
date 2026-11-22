@@ -156,3 +156,60 @@ fn a_full_host_of_live_runs_refuses_one_more() -> Result<()> {
     assert_eq!(cache.0.read().records.len(), RUNS_MAX);
     Ok(())
 }
+
+/// A refresh that lost the race still carries a durable cancel, but a run the
+/// connection already forgot stays forgotten: the cancel names nothing to mark.
+#[test]
+fn a_late_cancel_for_a_forgotten_run_leaves_it_forgotten() -> Result<()> {
+    let cache = RunCache::default();
+    let forgotten = assigned_run()?;
+    let kept = held(2, Timestamp::MAX)?;
+    let id = forgotten.run_id.clone();
+    cache.insert(forgotten.clone(), Timestamp::UNIX_EPOCH)?;
+    cache.insert(kept.clone(), Timestamp::UNIX_EPOCH)?;
+    let revision = cache.0.read().revision;
+    let mut cancelled = RunRecord::from(forgotten);
+    cancelled.cancelled = true;
+    let snapshot = RunSnapshot::from_records([cancelled, RunRecord::from(kept.clone())]);
+    cache.forget(&id);
+    cache.apply(snapshot, revision, std::slice::from_ref(&id));
+    let state = cache.0.read();
+    assert!(!state.records.contains_key(&id));
+    assert_eq!(
+        state
+            .records
+            .get(&kept.run_id)
+            .map(|record| record.cancelled),
+        Some(false)
+    );
+    Ok(())
+}
+
+/// A refresh no local update raced replaces the snapshot whole: a run it no
+/// longer lists lapses, a run it lists again takes the durable deadline.
+#[test]
+fn an_unraced_refresh_replaces_the_whole_snapshot() -> Result<()> {
+    let cache = RunCache::default();
+    let kept = held(1, Timestamp::UNIX_EPOCH)?;
+    let dropped = held(2, Timestamp::UNIX_EPOCH)?;
+    cache.insert(kept.clone(), Timestamp::UNIX_EPOCH)?;
+    cache.insert(dropped.clone(), Timestamp::UNIX_EPOCH)?;
+    let revision = cache.0.read().revision;
+    let mut renewed = RunRecord::from(kept.clone());
+    renewed.expires_at = Timestamp::MAX;
+    let added = held(3, Timestamp::MAX)?;
+    let snapshot = RunSnapshot::from_records([renewed, RunRecord::from(added.clone())]);
+    cache.apply(snapshot, revision, &[]);
+    let state = cache.0.read();
+    assert_eq!(state.records.len(), 2);
+    assert!(!state.records.contains_key(&dropped.run_id));
+    assert_eq!(
+        state
+            .records
+            .get(&kept.run_id)
+            .map(|record| record.expires_at),
+        Some(Timestamp::MAX)
+    );
+    assert!(state.records.contains_key(&added.run_id));
+    Ok(())
+}

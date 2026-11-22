@@ -32,6 +32,7 @@ use std::sync::Arc;
 // Aliased: this module has a `callback` of its own — the two HANDLERS — and the
 // crate's is where the URLs those handlers travel through are composed.
 use af_core::error_code;
+use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
 
 use super::Refusal;
@@ -67,10 +68,8 @@ pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
 /// strictly worse than refusing the connect.
 pub(crate) async fn state_secret<D: TenantPlane>(
     services: &Arc<D>,
+    admin: &Uuid7,
 ) -> Result<SecretBytes, Refusal> {
-    let Some(admin) = services.platform_admin_workspace() else {
-        return Err(unconfigured());
-    };
     services
         .ingress()
         .platform_secret(admin, APPROVAL_IDENTITY)

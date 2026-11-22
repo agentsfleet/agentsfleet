@@ -4,6 +4,9 @@ mod harness;
 
 mod build_stamp;
 
+#[path = "credential_header_text.rs"]
+mod credential_header_text;
+
 #[path = "header_limit.rs"]
 mod header_limit;
 #[path = "in_flight_ceiling.rs"]

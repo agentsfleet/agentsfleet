@@ -64,11 +64,6 @@ impl Limits {
     };
 }
 
-impl Default for Limits {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
 /// What the runner calls itself; GitHub refuses a request that names nothing.
 const USER_AGENT: &str = concat!("agentsfleet-runner/", env!("CARGO_PKG_VERSION"));
 

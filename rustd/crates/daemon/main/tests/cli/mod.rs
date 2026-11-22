@@ -38,12 +38,18 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// Enough for `preflight`, which validates knobs and opens nothing — which is
 /// exactly the boundary the no-subcommand check is supposed to stop at.
 fn parses_but_dead() -> MapEnv {
+    parses_but_dead_with(&[])
+}
+
+/// [`parses_but_dead`], with `extra` knobs set as well.
+fn parses_but_dead_with(extra: &[(&'static str, &'static str)]) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", DEAD_DATABASE),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
+        .chain(extra.iter().copied())
         // Required at boot, and — like everything else in this fixture —
         // resolved rather than used.
         .chain(agentsfleetd::test_util::SESSION_PEPPER)
@@ -267,6 +273,61 @@ fn test_only_a_clean_stop_is_success() {
         status_for(&fell_over),
         FAILURE,
         "a server that returned on its own was not asked to stop"
+    );
+}
+
+/// A `PORT` that is not a TCP port refuses `serve` before any runtime is built.
+///
+/// The counter is the proof: a fallback to the default port would go on to
+/// build the runtime and fail later, on the dead datastore, with the same status.
+#[test]
+fn test_an_unusable_port_variable_refuses_serve_before_a_runtime() {
+    static BUILT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    fn counted() -> std::io::Result<tokio::runtime::Runtime> {
+        BUILT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Err(std::io::Error::other("this suite builds no runtime"))
+    }
+    for raw in ["0", "65536", "eighty", ""] {
+        let status = run(
+            &parse(&["agentsfleetd", "serve"]),
+            &parses_but_dead_with(&[("PORT", raw)]),
+            counted,
+            std::future::ready(()),
+        );
+        assert_eq!(status, FAILURE, "PORT={raw:?}");
+    }
+    assert_eq!(
+        BUILT.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "every unusable PORT is refused before the serve runtime is built"
+    );
+    let status = run(
+        &parse(&["agentsfleetd", "serve"]),
+        &parses_but_dead_with(&[("PORT", "3100")]),
+        counted,
+        std::future::ready(()),
+    );
+    assert_eq!(status, FAILURE, "the fixture runtime refuses to build");
+    assert_eq!(
+        BUILT.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "a usable PORT reaches the runtime"
+    );
+}
+
+/// `serve` against a datastore that is not there exits as a failed boot.
+#[test]
+fn test_serve_refuses_a_database_that_will_not_answer() {
+    let status = run(
+        &parse(&["agentsfleetd", "serve", "--port", "3100"]),
+        &parses_but_dead(),
+        tokio::runtime::Runtime::new,
+        std::future::ready(()),
+    );
+
+    assert_eq!(
+        status, FAILURE,
+        "a boot that could not open Postgres exits 1"
     );
 }
 

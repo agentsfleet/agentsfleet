@@ -121,26 +121,6 @@ pub(super) fn recent_cursor(
     Ok((before > 0).then(|| cursor(&binding, before, 1)))
 }
 
-pub(super) fn window_cursors(
-    access: Access<'_>,
-    person: &Uuid7,
-    draft: &read::Locked,
-    messages: &[Message],
-) -> Result<Vec<String>> {
-    let binding = replay::digest(&(CURSOR_RESOURCE, access.workspace, person, &draft.id, 25_u32))?;
-    Ok(messages
-        .iter()
-        .map(|message| {
-            let ordinal = i32::from(message.role == ASSISTANT);
-            Cursor::Text {
-                value: binding.clone(),
-                id: format!("{}:{ordinal}", message.sequence),
-            }
-            .to_string()
-        })
-        .collect())
-}
-
 fn project(stored: Stored) -> Result<Message> {
     let user = stored.ordinal == 0;
     let state: MessageState = word(&stored.status)?;

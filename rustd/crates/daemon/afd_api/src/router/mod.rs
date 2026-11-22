@@ -271,16 +271,16 @@ fn authenticate_route<D: Serving>(
     dependencies: &Arc<D>,
 ) -> MethodRouter<Arc<D>> {
     use afd_http::auth::{BearerAuthentication, RunnerStreamAuthentication};
-    match (meta.guard, meta.class) {
-        (crate::route::Guard::RunnerBearer, RouteClass::Stream) => {
+    match (meta.guard, meta.class, plane_of(meta.guard)) {
+        (crate::route::Guard::RunnerBearer, RouteClass::Stream, _) => {
             let authentication = RunnerStreamAuthentication::new(Arc::clone(dependencies));
             handler.layer(from_fn_with_state(
                 Gate::new(authentication, meta),
                 prove::<RunnerStreamAuthentication<D>>,
             ))
         }
-        _ if plane_of(meta.guard).is_some() => {
-            let authentication = BearerAuthentication::new(Arc::clone(dependencies));
+        (_, _, Some(plane)) => {
+            let authentication = BearerAuthentication::new(Arc::clone(dependencies), plane);
             handler.layer(from_fn_with_state(
                 Gate::new(authentication, meta),
                 prove::<BearerAuthentication<D>>,

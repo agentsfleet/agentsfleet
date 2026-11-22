@@ -54,7 +54,21 @@ tower.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# The capture a test reads a failure's log line back through.
+af_core = { workspace = true, features = ["sqlx", "test-util"] }
 af_crypto.workspace = true
+# The services a gateway composes, for a gateway built the way boot builds it.
+afd_approval.workspace = true
+afd_billing.workspace = true
+afd_credential.workspace = true
+afd_gate.workspace = true
+afd_identity.workspace = true
+afd_memory.workspace = true
+afd_turns.workspace = true
+afd_vault.workspace = true
+# A pool nobody answers on, and a bus that fails or never answers.
+afd_bus = { workspace = true, features = ["test-util"] }
+afd_db = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]

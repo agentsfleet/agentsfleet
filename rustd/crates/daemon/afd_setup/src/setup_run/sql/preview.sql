@@ -3,7 +3,7 @@
 -- creator as the reader's subject.
 --
 -- $1 run · $2 runner · $3 active run status · $4 running message status
-SELECT d.id AS draft_id, m.sequence, d.workspace_id, u.oidc_subject, d.user_id
+SELECT d.id AS draft_id, m.sequence, d.workspace_id, u.oidc_subject
   FROM thread.runs l
   JOIN thread.threads s ON s.id = l.draft_id AND s.fencing_token = l.fencing_token
   JOIN thread.turns m ON m.id = l.turn_id AND m.thread_id = l.draft_id

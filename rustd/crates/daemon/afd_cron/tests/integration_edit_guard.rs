@@ -101,6 +101,7 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
         .expect_err("a schedule on its way out must not be edited back to life");
 
     assert_eq!(refused.detail(), DELETING);
+    assert_eq!(refused.current_state(), Some("deleting"));
     let stored = reread(&lane, &deleting).await;
     assert_eq!(stored.desired_status, DesiredStatus::Deleting);
     assert_eq!(stored.cron, "0 3 * * *");

@@ -54,6 +54,45 @@ async fn validated_unchanged_candidate_publishes_only_native_target_and_reconcil
     Ok(())
 }
 
+// Value: validation that passed but whose output the drain gave up on still
+// publishes, and its evidence says the output was cut.
+#[tokio::test]
+async fn passing_validation_with_truncated_output_publishes_and_says_so() -> crate::Result<()> {
+    let native = publisher();
+    let script = Script::new([vec![
+        call(
+            "publish",
+            "propose_change",
+            serde_json::json!({"validation": ["make", "test"], "timeout_seconds": 30}),
+        ),
+        ended(false),
+    ]]);
+    let executor = ScriptedExecutor::new([
+        ScriptedProcess::exits(&candidate(), 0),
+        ScriptedProcess::ends_abandoned("checks passed", afr_executor::Ending::Exited(0)),
+        ScriptedProcess::exits(&candidate(), 0),
+    ]);
+
+    publish(
+        &script,
+        &native,
+        &afr_executor::ExecutorSlot::ready(&executor),
+    )
+    .await?;
+
+    assert_eq!(
+        native
+            .published
+            .lock()
+            .expect("fixture mutex is unpoisoned")
+            .len(),
+        1
+    );
+    assert_evidence(&native, "checks passed")?;
+    assert_evidence(&native, "[output truncated]")?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn failed_incomplete_or_changed_validation_never_publishes() -> crate::Result<()> {
     for (processes, expected) in failed_validations() {

@@ -38,3 +38,23 @@ fn recovery_refusals_are_safe_nonpermanent_domain_answers() {
         assert!(fault.source().is_none());
     }
 }
+
+// Value: protects=a refusal's message is its public sentence and nothing else;
+// fails_when=Display quotes another field or drops the detail; why_new=the
+// rendered message had no case; seam=the fleet error's Display.
+#[test]
+fn a_refusal_renders_as_its_public_detail() {
+    for reason in [
+        TurnCheckpointRefusal::Incompatible,
+        TurnCheckpointRefusal::Conflict,
+        TurnCheckpointRefusal::Unavailable,
+        TurnCheckpointRefusal::Limit,
+    ] {
+        assert_eq!(reason.to_string(), reason.detail());
+        let rendered = crate::Error::from(reason).to_string();
+        assert!(
+            rendered.ends_with(reason.detail()) && rendered.contains(reason.code().as_str()),
+            "{rendered}"
+        );
+    }
+}

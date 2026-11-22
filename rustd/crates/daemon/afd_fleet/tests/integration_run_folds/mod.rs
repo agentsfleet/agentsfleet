@@ -14,4 +14,5 @@ mod conversations;
 mod limits;
 mod settles;
 mod support;
+mod terminal;
 mod waiting;

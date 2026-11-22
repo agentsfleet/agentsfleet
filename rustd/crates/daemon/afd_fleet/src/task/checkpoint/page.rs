@@ -48,9 +48,10 @@ pub(in crate::task) async fn write(
         CheckpointTransferPurpose::Upload,
     )
     .await?;
-    let position = usize::try_from(input.contents.page_number)
-        .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?;
-    if plan.page_ids.get(position) != Some(page) {
+    let position = plan.page_ids.iter().position(|id| id == page);
+    if position.and_then(|position| u32::try_from(position).ok())
+        != Some(input.contents.page_number)
+    {
         return Err(TaskRefusal::ReplayConflict.into());
     }
     let objects = validate(&mut tx, &plan, &input.contents).await?;
@@ -214,3 +215,7 @@ fn link(path: &str, target: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "page_tests.rs"]
+mod tests;

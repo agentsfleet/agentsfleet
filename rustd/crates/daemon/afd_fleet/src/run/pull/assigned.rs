@@ -22,16 +22,16 @@ impl RunService {
             serde_json::to_value(af_wire::run::TaggedRun::Fleet(Box::new(run)))
                 .map_err(af_core::json::Unreadable::from)
         };
-        Ok(self
-            .run_assigned_with(
-                acquired,
-                runner_id,
-                now,
-                std::time::Instant::now(),
-                &mut af_observability::verb_span::VerbClock::untimed(),
-                &mut encode,
-            )
-            .await?
-            .transpose()?)
+        self.run_assigned_with(
+            acquired,
+            runner_id,
+            now,
+            std::time::Instant::now(),
+            &mut af_observability::verb_span::VerbClock::untimed(),
+            &mut encode,
+        )
+        .await?
+        .transpose()
+        .map_err(crate::Error::from)
     }
 }

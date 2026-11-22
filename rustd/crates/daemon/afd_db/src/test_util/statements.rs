@@ -13,6 +13,10 @@
 //! counter's own reads and the `Migrator` pool's unlock on each checkin.
 //!
 //! No flush is needed: the extension counts a call as its statement ends.
+#![expect(
+    clippy::expect_used,
+    reason = "test support: a lane that cannot count statements fails its test loudly"
+)]
 
 use std::collections::BTreeMap;
 
@@ -46,7 +50,7 @@ pub async fn counted_database() -> (TestDatabase, Db) {
     Migrator::new()
         .run(&owner)
         .await
-        .unwrap_or_else(|failure| panic!("the counted database must migrate: {failure}"));
+        .expect("the counted database must migrate");
     install(&owner).await;
     (database, owner)
 }
@@ -58,15 +62,14 @@ pub async fn counted_database() -> (TestDatabase, Db) {
 /// When the extension will not install: the lane's Postgres was started
 /// without `pg_stat_statements` preloaded.
 pub async fn install(owner: &Db) {
-    let mut connection = owner.acquire().await.unwrap_or_else(|failure| {
-        panic!("the counted database must accept a connection: {failure}")
-    });
+    let mut connection = owner
+        .acquire()
+        .await
+        .expect("the counted database must accept a connection");
     sqlx::raw_sql(INSTALL)
         .execute(&mut *connection)
         .await
-        .unwrap_or_else(|failure| {
-            panic!("pg_stat_statements must install; is it preloaded? {failure}")
-        });
+        .expect("pg_stat_statements must install; is it preloaded?");
 }
 
 /// Calls and normalized text, by query id, at one instant.
@@ -78,13 +81,13 @@ impl Reading {
         let mut connection = owner
             .acquire()
             .await
-            .unwrap_or_else(|failure| panic!("the counter must reach its database: {failure}"));
+            .expect("the counter must reach its database");
         // The simple protocol, so the read prepares nothing of its own.
         let rows: Vec<(i64, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(READ))
             .persistent(false)
             .fetch_all(&mut *connection)
             .await
-            .unwrap_or_else(|failure| panic!("pg_stat_statements must answer: {failure}"));
+            .expect("pg_stat_statements must answer");
         Self(
             rows.into_iter()
                 .map(|(id, calls, query)| (id, (u64::try_from(calls).unwrap_or(0), query)))

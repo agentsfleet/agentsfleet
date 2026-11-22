@@ -337,4 +337,7 @@ mod quiet_tests;
 mod saved_tests;
 
 #[cfg(test)]
+mod recovery_boundary_tests;
+
+#[cfg(test)]
 mod finished_tests;

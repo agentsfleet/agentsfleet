@@ -144,3 +144,34 @@ async fn only_a_saved_cron_trigger_files_a_schedule() {
     assert_eq!(schedules, 1, "the webhook files none, the cron one");
     c.cleanup().await;
 }
+
+// Value: protects=a Save under a name another fleet in the workspace holds is
+// refused as that name's conflict and writes no second fleet; fails_when=the
+// unique violation surfaces as a query fault; seam=Creations::save over live
+// Postgres and NATS.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_save_under_a_name_the_workspace_holds_is_refused_as_taken() {
+    let c = Case::create().await;
+    let (_, first) = c.request("support-triage", Start::None).await;
+    c.save(&mint(), first).await;
+    let (draft, second) = c.request("support-triage", Start::None).await;
+    let refused = c
+        .creations
+        .save(c.base.access(), &mint(), second, now())
+        .await
+        .expect_err("the name is taken");
+    assert_eq!(refused.code(), error_code::AGENTSFLEET_NAME_EXISTS);
+    assert_eq!(refused.current_state(), Some("name_exists"));
+    assert_eq!(c.fleet_count().await, 1);
+    let read = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("the refused draft is still the creator's");
+    assert!(
+        read.linked_fleet_id.is_none(),
+        "the refused draft links no fleet"
+    );
+    c.cleanup().await;
+}

@@ -302,3 +302,7 @@ impl Opening<'_> {
 #[cfg(all(test, feature = "test-util"))]
 #[path = "connect_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-util"))]
+#[path = "opening_tests.rs"]
+mod opening_tests;

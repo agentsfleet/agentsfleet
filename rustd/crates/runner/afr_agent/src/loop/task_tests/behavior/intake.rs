@@ -195,3 +195,40 @@ fn assert_single_binding(native: &IntakeNative) -> crate::Result<()> {
     );
     Ok(())
 }
+
+// Value: the interpretation call writes no more than the route's own output
+// limit, and never more than 4,096 tokens.
+#[tokio::test]
+async fn the_interpretation_call_writes_within_its_route_and_at_most_4096() -> crate::Result<()> {
+    for (limit, asked) in [(100, 100), (100_000, 4096)] {
+        let plan = serde_json::json!([proposed("steer", Some(SOURCE), 0, 9)]).to_string();
+        let script = Script::new([vec![say(&plan), ended(false)]]);
+        let native = native("repair it", [route("steer", "task_1", 0.0)]);
+        let engine = super::super::super::tests::engine(vec![], &script);
+        let mut this_run = assigned_run(&[], 16_384);
+        this_run.policy.inference = Some(af_wire::inference::ModelInference {
+            api: af_wire::inference::InferenceApi::Messages,
+            base_url: "https://models.example.com/v1".into(),
+            dialect: None,
+            max_output_tokens: limit,
+        });
+
+        engine
+            .prepare_task(
+                &this_run,
+                &native,
+                &Meter::default(),
+                &tokio_util::sync::CancellationToken::new(),
+            )
+            .await?;
+
+        assert_eq!(
+            script
+                .sent()
+                .first()
+                .and_then(|sent| sent.max_output_tokens),
+            Some(asked)
+        );
+    }
+    Ok(())
+}

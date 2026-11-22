@@ -9,6 +9,7 @@ use super::{
 use af_context::{Checkpoint, CheckpointStore as _};
 use af_core::{error_code, id::Uuid7};
 use afd_setup::context::{Holder, Owner, Repository, identity, stored_fence};
+use afd_setup::setup_run::ContextSave;
 use afd_state::sql::{RUN_STATUS_ACTIVE, RUNNER_STATUS_ACTIVE};
 use serde_json::{Value, json};
 
@@ -161,4 +162,119 @@ fn a_fence_no_thread_can_hold_is_refused_as_stale() {
     let past = stored_fence(u64::MAX).expect_err("a fence past bigint");
     assert!(past.is_stale_fence());
     assert_eq!(past.code(), error_code::RUN_STALE_FENCING_TOKEN);
+}
+
+// Value: protects=a store opened only to read a thread's context never
+// writes one, so no save escapes its run's fence; fails_when=Repository::new
+// commits again; seam=afd_setup::context::Repository over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_store_opened_to_read_refuses_every_save() {
+    let f = Fixture::create().await;
+    let created = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("native create");
+    let draft = created.draft.id;
+    let mut connection = f.connection().await;
+    let mut store = Repository::new(&mut connection, Owner::Draft(draft.clone()), mint());
+    let shown = format!("{store:?}");
+    assert!(shown.starts_with("Repository { owner: Draft("), "{shown}");
+    assert!(shown.ends_with("holder: None, .. }"), "{shown}");
+    let refused = store
+        .commit(0, checkpoint(&draft, 1, "no run"))
+        .await
+        .expect_err("a read-only store's save");
+    assert!(refused.is_stale_fence(), "{refused:?}");
+    assert_eq!(refused.code(), error_code::RUN_STALE_FENCING_TOKEN);
+    assert_eq!(store.load().await.expect("the store reads"), None);
+    drop(connection);
+    f.cleanup().await;
+}
+
+// Value: protects=a live run's retried save of what already landed is
+// answered, while a save over a row that moved, or at a fence no thread can
+// hold, is refused; fails_when=the replay check is dropped, or a moved row
+// overwrites; seam=afd_setup::context::Repository over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_landed_save_is_answered_again_and_a_moved_row_is_stale() {
+    let f = Fixture::create().await;
+    let created = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("native create");
+    let draft = created.draft.id;
+    let [_, live] = superseded(&f, &draft).await;
+    let landed = checkpoint(&draft, 1, "fence two");
+    save(&f, &draft, &live, 2, 0, landed.clone())
+        .await
+        .expect("the live run saves its context");
+    save(&f, &draft, &live, 2, 0, landed)
+        .await
+        .expect("the same save again is the one that landed");
+    let moved = save(&f, &draft, &live, 2, 0, checkpoint(&draft, 1, "another"))
+        .await
+        .expect_err("a different save over the row that moved");
+    assert!(moved.is_stale(), "{moved:?}");
+    assert_eq!(moved.code(), af_context::Error::stale().code());
+    let past = save(
+        &f,
+        &draft,
+        &live,
+        u64::MAX,
+        1,
+        checkpoint(&draft, 2, "past"),
+    )
+    .await
+    .expect_err("a fence past bigint");
+    assert!(past.is_stale_fence(), "{past:?}");
+    let (version, document): (i64, Value) = sqlx::query_as(ROW)
+        .bind(&draft)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("the draft's context row");
+    assert_eq!(version, 1);
+    assert_eq!(
+        document.pointer("/summary/goal"),
+        Some(&Value::from("fence two"))
+    );
+    f.cleanup().await;
+}
+
+// Value: protects=a save naming a run its runner never held writes nothing;
+// fails_when=the thread lookup falls through to a store with no owner;
+// seam=Drafts::save_context over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_save_for_a_run_the_runner_never_held_is_refused_as_stale() {
+    let f = Fixture::create().await;
+    let created = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("native create");
+    let draft = created.draft.id;
+    let save = ContextSave {
+        run_id: mint(),
+        fence: 1,
+        resource_version: 0,
+        checkpoint: checkpoint(&draft, 1, "nobody's"),
+    };
+    let refused = f
+        .drafts
+        .save_context(&f.runner, save, now())
+        .await
+        .expect_err("a run this runner never held");
+    assert_eq!(refused.code(), error_code::RUN_STALE_FENCING_TOKEN);
+    let rows: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE thread_id=$1")
+            .bind(&draft)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("context census");
+    assert_eq!(rows, 0);
+    f.cleanup().await;
 }

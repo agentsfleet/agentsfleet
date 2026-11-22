@@ -156,3 +156,23 @@ fn should_redact_a_secrets_map_that_is_not_an_object() {
         assert!(rendered.contains("<redacted>"), "{rendered}");
     }
 }
+
+#[test]
+fn should_not_leak_a_draft_context_checkpoint_through_debug() {
+    let note = "the person's private conversation note";
+    let loaded = af_wire::context::ContextLoadResponse {
+        scope: "setup-draft-scope".to_owned(),
+        resource_version: 3,
+        checkpoint: Some(serde_json::json!({ "notes": [note] })),
+    };
+    let rendered = format!("{loaded:?}");
+    assert_eq!(
+        rendered,
+        "ContextLoadResponse { resource_version: 3, checkpoint: true, .. }"
+    );
+    let wire = serde_json::to_string(&loaded).unwrap();
+    assert!(
+        wire.contains(note),
+        "the run still receives its notes: {wire}"
+    );
+}

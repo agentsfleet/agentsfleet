@@ -91,12 +91,11 @@ async fn paid_ready(
             "check retained original-work and task/source decision overage",
         ))?;
     if overage {
-        tracing::warn!(
-            event = "dt_decision_blocked",
-            reason = "reservation_overage",
-            run_id = current.run_id.as_str(),
-            source_turn_id = context.source_turn_id.as_str()
-        );
+        let (run_id, source_turn_id) = (current.run_id.as_str(), context.source_turn_id.as_str());
+        {
+            let (event, reason) = (&"dt_decision_blocked", &"reservation_overage");
+            tracing::warn!(event, reason, run_id, source_turn_id);
+        };
         return Err(TaskRefusal::DecisionOverage.into());
     }
     Ok(())

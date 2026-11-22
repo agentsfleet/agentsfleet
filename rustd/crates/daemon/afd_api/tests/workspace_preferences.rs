@@ -169,3 +169,43 @@ async fn the_collection_is_not_a_route() {
         );
     }
 }
+
+/// A value past the one text ceiling is refused by its own code where the
+/// deployment's body bound admits it, and the ceiling itself is accepted as far
+/// as the store.
+#[tokio::test]
+async fn a_value_past_the_text_ceiling_is_refused_with_its_own_code() {
+    let router = Fleet::new()
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
+        .router_reading(4 * afd_http::body::MIB);
+    // Two quotes around the characters, so the body is the ceiling plus one.
+    let over = format!("\"{}\"", "a".repeat(af_validate::TEXT_MAX_CHARS - 1));
+    let response = harness::send(
+        &router,
+        Method::PUT,
+        &item(KNOWN_KEY),
+        Some(TENANT_KEY),
+        &over,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        code_of(response).await,
+        error_code::PREF_VALUE_TOO_LARGE.as_str()
+    );
+
+    let at = format!("\"{}\"", "\u{e9}".repeat(af_validate::TEXT_MAX_CHARS - 2));
+    let response = harness::send(
+        &router,
+        Method::PUT,
+        &item(KNOWN_KEY),
+        Some(TENANT_KEY),
+        &at,
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the ceiling counts characters, so a two-byte value at it reaches the store"
+    );
+}

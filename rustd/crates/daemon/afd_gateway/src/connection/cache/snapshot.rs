@@ -139,3 +139,75 @@ impl RunSnapshot {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! A rebuild's rows are either fleet work, a draft's turn, or refused whole.
+
+    use super::{LiveRunRow, RunSnapshot};
+    use crate::error::ErrorKind;
+    use af_core::id::Uuid7;
+    use jiff::Timestamp;
+
+    type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    fn id(index: u32) -> af_core::error::Result<Uuid7> {
+        Uuid7::parse(&format!("019a3c00-0000-7000-8000-{index:012x}"))
+    }
+
+    /// A run row with no fleet, no turn and no draft: half of no shape.
+    fn bare(run: Uuid7) -> LiveRunRow {
+        LiveRunRow {
+            run_id: run,
+            expires_at: Timestamp::MAX.into(),
+            fleet_id: None,
+            turn_id: None,
+            created_at: Timestamp::UNIX_EPOCH.into(),
+            turn_created_at: None,
+            fencing_token: 7,
+            cancelled: false,
+            draft_id: None,
+        }
+    }
+
+    #[test]
+    fn a_draft_run_names_its_draft_and_no_fleet_target() -> TestResult {
+        let run = id(1)?;
+        let draft = id(2)?;
+        let mut row = bare(run.clone());
+        row.draft_id = Some(draft.clone());
+        row.cancelled = true;
+        let snapshot = RunSnapshot::try_from(vec![row])?;
+        assert_eq!(snapshot.cancellations(), std::slice::from_ref(&run));
+        let records = snapshot.into_records();
+        let record = records.get(&run).ok_or("the draft run was dropped")?;
+        assert_eq!(record.draft.as_ref(), Some(&draft));
+        assert!(record.target.is_none());
+        assert_eq!(record.expires_at, Timestamp::MAX);
+        Ok(())
+    }
+
+    #[test]
+    fn a_row_with_part_of_a_fleet_target_refuses_the_whole_snapshot() -> TestResult {
+        let fleet = id(3)?;
+        let mut draft = bare(id(4)?);
+        draft.draft_id = Some(id(5)?);
+        let mut half = bare(id(6)?);
+        half.fleet_id = Some(fleet);
+        let refused = RunSnapshot::try_from(vec![draft, half]).err();
+        assert!(
+            refused
+                .as_ref()
+                .is_some_and(|error| matches!(error.kind(), ErrorKind::Protocol)),
+            "{refused:?}"
+        );
+        let orphan = RunSnapshot::try_from(vec![bare(id(7)?)]).err();
+        assert!(
+            orphan
+                .as_ref()
+                .is_some_and(|error| matches!(error.kind(), ErrorKind::Protocol)),
+            "{orphan:?}"
+        );
+        Ok(())
+    }
+}

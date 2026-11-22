@@ -1,2 +1,1 @@
-SELECT save_requested FROM thread.turns
- WHERE thread_id = $1 AND sequence = $2
+-- Unused: the save intent is read with the report's lock (setup_run/sql/lock_report.sql).

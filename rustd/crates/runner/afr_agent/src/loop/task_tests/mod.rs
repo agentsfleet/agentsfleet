@@ -241,11 +241,14 @@ async fn pending_conversation_reply_precedes_actions_even_when_a_later_source_pa
     assert!(native.answered.load(Ordering::Relaxed));
     let sent = script.sent();
     assert_eq!(sent.len(), 2);
-    let [reply, action] = sent.as_slice() else {
-        return Err(crate::decision::unavailable());
-    };
-    assert_eq!(reply.tools, Vec::<String>::new());
-    assert!(action.tools.iter().any(|name| name == tool.name()));
+    assert_eq!(
+        sent.first().map(|reply| reply.tools.as_slice()),
+        Some([].as_slice())
+    );
+    assert!(
+        sent.get(1)
+            .is_some_and(|action| action.tools.iter().any(|name| name == tool.name()))
+    );
     assert!(
         output.task.is_none(),
         "no decision assignment can authorize a goal result"

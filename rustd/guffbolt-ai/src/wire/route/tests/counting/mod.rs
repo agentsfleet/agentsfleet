@@ -170,6 +170,34 @@ async fn ordinary_turns_and_other_provider_routes_never_send_count_requests() {
     assert!(physical.requests.lock().unwrap().is_empty());
 }
 
+// Value: the provider's own origin counts natively only in its own dialect;
+// another dialect at that origin is estimated and sends nothing.
+#[tokio::test]
+async fn a_native_origin_counts_only_in_its_own_dialect() {
+    for (api, dialect, method) in [
+        (InferenceApi::Messages, "anthropic", "provider_count"),
+        (InferenceApi::Messages, "minimax", "o200k_proxy_estimate"),
+    ] {
+        let mut settings = native(api);
+        settings.dialect = Some(dialect.into());
+        let route = routed(&settings, 512).unwrap();
+        let physical = physical(200, Some(r#"{"input_tokens":123}"#), false);
+        let count = route
+            .confirm_input(
+                "model-next",
+                "private-credential",
+                &body(),
+                &HttpTransport::new(Arc::<Physical>::clone(&physical)),
+                &TurnControl::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(count.method(), method, "{dialect}");
+        let sent = physical.requests.lock().unwrap().len();
+        assert_eq!(sent, usize::from(method == "provider_count"), "{dialect}");
+    }
+}
+
 #[test]
 fn request_route_model_window_and_output_changes_invalidate_counts() {
     let settings = native(InferenceApi::Responses);

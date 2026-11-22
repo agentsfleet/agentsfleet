@@ -169,8 +169,14 @@ impl StreamAssembly {
 mod tests {
     //! Drain consumes completed reads while preserving the independent operation limits.
 
-    use super::StreamReceivers;
-    use crate::connection::{io::IncomingFrame, requests::RequestSlots};
+    use super::{ConnectionStreams, StreamReceivers};
+    use crate::{
+        connection::{
+            io::{IncomingFrame, StreamAttachment},
+            requests::RequestSlots,
+        },
+        error::ErrorKind,
+    };
     use af_stream::Budget;
     use af_wire::protocol::StreamKind;
     use serde_json::json;
@@ -214,6 +220,84 @@ mod tests {
             json!({"kind":"control"})
         );
         assert!(queues.drained());
+        Ok(())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn drained_queues_wait_instead_of_answering_nothing() -> TestResult {
+        let mut queues = filled_queues().await?;
+        let slots = RequestSlots::default();
+        for _ in 0..4 {
+            queues.next(&slots).await.ok_or("queued frame missing")?;
+        }
+        assert!(queues.drained());
+        let waited =
+            tokio::time::timeout(af_core::timing::STREAM_ANSWER_TIMEOUT, queues.next(&slots)).await;
+        assert!(waited.is_err(), "a drained connection produced a frame");
+        Ok(())
+    }
+
+    fn setup(stop: &CancellationToken) -> super::StreamSetup {
+        super::StreamSetup {
+            budget: Budget::default(),
+            stop: stop.clone(),
+            deadline: Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+        }
+    }
+
+    fn lane(kind: StreamKind, stop: &CancellationToken) -> super::StreamIo {
+        let (attachment, _response) = StreamAttachment::new(kind, axum::body::Body::empty());
+        attachment.into_io(Budget::default(), stop.clone())
+    }
+
+    #[tokio::test]
+    async fn a_lane_left_unattached_when_its_owner_leaves_closes_the_opening() -> TestResult {
+        let stop = CancellationToken::new();
+        let (attach, attachments) = mpsc::channel(3);
+        let (work, _response) = StreamAttachment::new(StreamKind::Work, axum::body::Body::empty());
+        attach
+            .send(work)
+            .await
+            .ok()
+            .ok_or("the opening stopped listening")?;
+        drop(attach);
+        let refused =
+            ConnectionStreams::attach(lane(StreamKind::Control, &stop), attachments, setup(&stop))
+                .await
+                .err();
+        assert!(
+            refused
+                .as_ref()
+                .is_some_and(|error| matches!(error.kind(), ErrorKind::Closed)),
+            "{refused:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_second_lane_of_one_kind_is_refused_without_replacing_the_first() -> TestResult {
+        let stop = CancellationToken::new();
+        let (attach, attachments) = mpsc::channel(3);
+        let (control, _response) =
+            StreamAttachment::new(StreamKind::Control, axum::body::Body::empty());
+        attach
+            .send(control)
+            .await
+            .ok()
+            .ok_or("the opening stopped listening")?;
+        let refused =
+            ConnectionStreams::attach(lane(StreamKind::Control, &stop), attachments, setup(&stop))
+                .await
+                .err();
+        assert!(
+            refused.as_ref().is_some_and(|error| matches!(
+                error.kind(),
+                ErrorKind::DuplicateStream {
+                    kind: StreamKind::Control
+                }
+            )),
+            "{refused:?}"
+        );
         Ok(())
     }
 

@@ -175,3 +175,219 @@ fn prior_work() -> Vec<Message> {
         },
     ]
 }
+
+/// The bytes past which private task history is refused: 64 MiB.
+const HISTORY_LIMIT: usize = 64 * 1024 * 1024;
+
+#[test]
+fn history_past_its_byte_limit_is_neither_captured_nor_restored() -> crate::Result<()> {
+    let task = task();
+    let captured = TaskRecovery::capture(
+        task.clone(),
+        "model",
+        "provider",
+        RootRecovery {
+            messages: vec![Message::User("x".repeat(HISTORY_LIMIT))],
+            ..RootRecovery::default()
+        },
+    );
+    let restored = TaskRecovery::restore(
+        &vec![b' '; HISTORY_LIMIT + 1],
+        &task,
+        "model",
+        "provider",
+        &crate::fixture::scrub(),
+    );
+
+    for refused in [captured.err(), restored.err()] {
+        let failure = refused.ok_or_else(crate::decision::unavailable)?;
+        assert_eq!(
+            failure.code(),
+            af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+        );
+        assert!(
+            failure
+                .to_string()
+                .contains("private task history exceeds its byte limit"),
+            "{failure}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn task_history_carrying_ordinary_folds_is_not_restored() -> crate::Result<()> {
+    let task = task();
+    let saved = TaskRecovery::capture(
+        task.clone(),
+        "model",
+        "provider",
+        RootRecovery {
+            messages: vec![Message::User("retained work".to_owned())],
+            folds: vec![af_wire::run::FoldRef {
+                turn_id: af_wire::run::CheckpointOperationId(
+                    "019f0000-0000-7000-8000-000000000007".to_owned(),
+                ),
+                sequence: 1,
+            }],
+            ..RootRecovery::default()
+        },
+    )?;
+
+    let failure = TaskRecovery::restore(
+        &saved.history,
+        &task,
+        "model",
+        "provider",
+        &crate::fixture::scrub(),
+    )
+    .err()
+    .ok_or_else(crate::decision::unavailable)?;
+
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+    );
+    assert!(
+        failure
+            .to_string()
+            .contains("native task history cannot contain ordinary folds"),
+        "{failure}"
+    );
+    Ok(())
+}
+
+/// A child the root ran, ended `status`, its transcript and answers carrying
+/// the run's key.
+fn child(id: u64, status: guffbolt::agents::Status) -> crate::Result<guffbolt::agents::Counted> {
+    Ok(guffbolt::agents::Counted {
+        id,
+        parent: 0,
+        depth: 1,
+        calls: 1,
+        tools: vec![],
+        steps: 0,
+        status,
+        transcript: vec![Message::User(format!(
+            "child task with {}",
+            crate::fixture::API_KEY
+        ))],
+        state: serde_json::from_value(serde_json::json!({
+            "answers": [format!("child answer {}", crate::fixture::API_KEY)],
+            "completed_steps": 1
+        }))?,
+    })
+}
+
+/// A root whose driver carries `children` under the census `next` and
+/// `started`.
+fn with_children(
+    next: u64,
+    started: u64,
+    children: Vec<guffbolt::agents::Counted>,
+) -> RootRecovery {
+    let mut root = RootRecovery {
+        messages: vec![Message::User("retained work".to_owned())],
+        ..RootRecovery::default()
+    };
+    *root.driver.children_mut() = guffbolt::agents::Census {
+        next,
+        started,
+        children,
+    };
+    root
+}
+
+#[test]
+fn ended_children_restore_with_every_secret_they_carried_masked() -> crate::Result<()> {
+    use guffbolt::agents::Status;
+
+    let task = task();
+    let secret = |text: &str| format!("{text} {}", crate::fixture::API_KEY);
+    let root = with_children(
+        2,
+        2,
+        vec![
+            child(1, Status::Done(secret("child done")))?,
+            child(2, Status::Failed(secret("child failed")))?,
+        ],
+    );
+    let saved = TaskRecovery::capture(task.clone(), "model", "provider", root)?;
+
+    let restored = TaskRecovery::restore(
+        &saved.history,
+        &task,
+        "model",
+        "provider",
+        &crate::fixture::scrub(),
+    )?;
+
+    let children = &restored.driver.children().children;
+    assert_eq!(children.len(), 2);
+    let encoded = serde_json::to_string(children)?;
+    assert!(!encoded.contains(crate::fixture::API_KEY), "{encoded}");
+    for kept in [
+        "child done",
+        "child failed",
+        "child task with",
+        "child answer",
+    ] {
+        assert!(encoded.contains(kept), "{kept} was lost: {encoded}");
+    }
+    Ok(())
+}
+
+#[test]
+fn a_root_whose_saved_state_contradicts_itself_is_not_captured() -> crate::Result<()> {
+    use guffbolt::agents::Status;
+
+    let fold = |number: u32, sequence: i64| af_wire::run::FoldRef {
+        turn_id: af_wire::run::CheckpointOperationId(format!(
+            "019f0000-0000-7000-8000-{number:012x}"
+        )),
+        sequence,
+    };
+    let unordered = RootRecovery {
+        messages: vec![Message::User("retained work".to_owned())],
+        folds: vec![fold(7, 2), fold(8, 1)],
+        ..RootRecovery::default()
+    };
+    let overpinned = RootRecovery {
+        messages: vec![Message::User("retained work".to_owned())],
+        pinned: 2,
+        ..RootRecovery::default()
+    };
+    let miscounted = with_children(2, 1, vec![child(1, Status::Done("done".to_owned()))?]);
+    let running = with_children(1, 1, vec![child(1, Status::Running)?]);
+    let cases = [
+        (
+            unordered,
+            "covered fold identities or order are inconsistent",
+        ),
+        (
+            overpinned,
+            "root driver state or pinned input index is inconsistent",
+        ),
+        (
+            miscounted,
+            "terminal child identifiers or counters are inconsistent",
+        ),
+        (
+            running,
+            "a saved child is running, out of order or past its bounds",
+        ),
+    ];
+
+    for (root, reason) in cases {
+        let failure = TaskRecovery::capture(task(), "model", "provider", root)
+            .err()
+            .ok_or_else(crate::decision::unavailable)?;
+
+        assert_eq!(
+            failure.code(),
+            af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
+        );
+        assert!(failure.to_string().contains(reason), "{failure}");
+    }
+    Ok(())
+}

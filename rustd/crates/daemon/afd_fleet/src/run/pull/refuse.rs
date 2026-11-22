@@ -22,7 +22,7 @@ use crate::run::installed::Installed;
 use crate::run::turn::{DETAIL_RUNS_LAPSED, Delivery, Ended};
 
 /// The no-work reason for a fleet archived between selection and assignment.
-const FLEET_ARCHIVED: &str = "the fleet was archived between selection and assignment";
+pub(super) const FLEET_ARCHIVED: &str = "the fleet was archived between selection and assignment";
 
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
@@ -31,9 +31,12 @@ impl RunService {
     /// The installed fleet behind an assignment, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
-    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, an
-    /// unreadable document and a datastore outage are different endings, and
-    /// the caller should not have to tell them apart to know the pass is over.
+    /// [`Step`](super::step::Step) rather than an `Option`: an archived fleet, a
+    /// task setup current authority no longer fits and an unreadable document
+    /// are different endings, and the caller should not have to tell them apart
+    /// to know the pass is over. The installed read parses the row the
+    /// assignment already read and asks no datastore, so every other fault it
+    /// raises is the stored document's.
     pub(super) async fn resolve_installed(
         &self,
         acquired: &Acquired,
@@ -59,11 +62,10 @@ impl RunService {
                 );
                 Ok(Step::Stop)
             }
-            Err(unreadable) if unreadable.is_config_permanent() => self
+            Err(unreadable) => self
                 .refuse_unreadable_config(acquired, runner_id, &unreadable)
                 .await
                 .map(|()| Step::Stop),
-            Err(outage) => Err(outage),
         }
     }
 

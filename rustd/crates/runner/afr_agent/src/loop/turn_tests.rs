@@ -347,3 +347,29 @@ fn assert_minted_under_run(capture: &Capture, frames: &Frames, run: &str) {
         "no log line carries the minted token"
     );
 }
+
+// Value: an answer that reaches a run with no question waiting is the
+// person's next message, scrubbed like every other.
+#[tokio::test]
+async fn an_answer_with_no_question_waiting_is_the_persons_next_message() {
+    let script = Script::new([vec![say("done")]]);
+    let engine = engine(vec![], &script);
+    let mut held = payload(&[], unbounded());
+    held.event.event_type = af_wire::turn::TurnKind::Continuation;
+    held.event.request_json = serde_json::json!({
+        "message": format!("yes, use {GITHUB_TOKEN}"),
+        "asked_turn_id": "019f0000-0000-7000-8000-0000000000b9",
+    })
+    .to_string()
+    .into();
+
+    let (_output, _frames) = drive(&engine, &held, &CancellationToken::new()).await;
+
+    let sent = script.sent();
+    let last = sent.first().and_then(|request| request.messages.last());
+    assert_eq!(
+        last,
+        Some(&Message::User("yes, use «secret:github.token»".to_owned()))
+    );
+    assert!(!format!("{sent:?}").contains(GITHUB_TOKEN));
+}

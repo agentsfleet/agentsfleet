@@ -89,18 +89,19 @@ fn queued() -> Queued {
         "hello",
         [intake_fixture::route("conversation", "unclear", 0.0)],
     );
-    {
-        let mut inputs = intake.inputs.lock().expect("queued source");
-        inputs.inputs.push(TaskHumanInput {
-            source_turn_id: SOURCE.to_owned(),
-            sequence: 1,
-            message: "hello".to_owned(),
-            accepted: None,
-        });
-        if let Some(task) = inputs.current_task.as_mut() {
-            task.questions = vec![question()];
-        }
-    }
+    let mut inputs = intake.inputs.lock().expect("queued source");
+    inputs.inputs.push(TaskHumanInput {
+        source_turn_id: SOURCE.to_owned(),
+        sequence: 1,
+        message: "hello".to_owned(),
+        accepted: None,
+    });
+    inputs
+        .current_task
+        .as_mut()
+        .expect("the intake fixture names a current task")
+        .questions = vec![question()];
+    drop(inputs);
     Queued {
         intake,
         goals: goals([evaluation("WAIT", Some(1.0), 0.0)]),

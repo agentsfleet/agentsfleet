@@ -151,10 +151,7 @@ impl Signing<'_, '_> {
         Ok(Some(CheckpointTransfer {
             url: authorization.url,
             headers: authorization.headers,
-            expires_at: clock::now()
-                .checked_add(lifetime)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?
-                .min(self.deadline),
+            expires_at: clock::after(clock::now(), lifetime).min(self.deadline),
         }))
     }
 }

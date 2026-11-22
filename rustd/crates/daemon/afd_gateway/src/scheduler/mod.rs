@@ -16,9 +16,11 @@ use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
 /// Subscription repair and notification handling keep independent progress.
-pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
+/// Neither fails: a lost broker is repaired, and a failed probe or pass is
+/// observed and the next wake tries again.
+pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) {
     let _cancel_on_exit = stop.clone().drop_guard();
-    tokio::try_join!(
+    tokio::join!(
         subscriptions::run(gateway.clone(), stop.clone()),
         notifications(
             &gateway.inner.registry,
@@ -42,8 +44,7 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
                 }
             },
         )
-    )?;
-    Ok(())
+    );
 }
 
 /// One ordinary probe can skip every tenant runner with no eligible work.
@@ -61,12 +62,11 @@ async fn notifications<F: Future<Output = Result<Probe>>>(
     assignments: usize,
     stop: CancellationToken,
     pending: impl FnMut(Vec<Uuid7>) -> F,
-) -> Result<()> {
-    tokio::try_join!(
+) {
+    tokio::join!(
         ordinary_notifications(registry, wake, &stop, pending),
         recovery::notifications(registry, wake, assignments, &stop),
-    )?;
-    Ok(())
+    );
 }
 
 async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
@@ -74,15 +74,15 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
     wake: &Wake,
     stop: &CancellationToken,
     mut pending: impl FnMut(Vec<Uuid7>) -> F,
-) -> Result<()> {
+) {
     let mut generations = wake.generations();
     let mut observed = generations.borrow_and_update().rings();
     loop {
         tokio::select! {
             biased;
-            () = stop.cancelled() => return Ok(()),
+            () = stop.cancelled() => return,
             changed = generations.changed() => {
-                if changed.is_err() { return Ok(()); }
+                if changed.is_err() { return; }
             }
         }
         let current = generations.borrow_and_update().rings();
@@ -102,7 +102,7 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
         let connections = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
-            () = stop.cancelled() => return Ok(()),
+            () = stop.cancelled() => return,
             result = pass(connections, budget) => {
                 if let Err(error) = result {
                     Gateway::observe(&error, crate::Operation::Assign);

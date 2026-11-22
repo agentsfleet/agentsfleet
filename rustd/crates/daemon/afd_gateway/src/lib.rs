@@ -31,6 +31,12 @@ pub use operation::Operation;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
+#[cfg(test)]
+mod fixture;
+#[cfg(test)]
+#[path = "gateway_tests.rs"]
+mod tests;
+
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
     /// Recovery budgets resolved before registering native connections.
@@ -155,12 +161,15 @@ impl Gateway {
         }
     }
 
-    /// Own wake subscriptions, scheduling and the independent database backstop.
+    /// Own wake subscriptions, scheduling and the independent database backstop,
+    /// until `stop`.
     ///
     /// # Errors
-    /// Preserves scheduler failures; broker outages do not disable database recovery.
+    /// None: a broker outage is repaired and never disables database recovery,
+    /// and a failed probe or pass waits for the next wake.
     pub async fn run(&self, stop: CancellationToken) -> Result<()> {
-        scheduler::run(self.clone(), stop).await
+        scheduler::run(self.clone(), stop).await;
+        Ok(())
     }
 
     /// Stop assigning, finish accepted requests and close every connection by one deadline.

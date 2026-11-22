@@ -156,3 +156,69 @@ async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
     assert_eq!(c.turns(&saved.id).await, NO_TURNS);
     c.cleanup().await;
 }
+
+/// How many identical Save retries race to admit one blocked initial run.
+const RECOVERIES: usize = 8;
+
+// Value: protects=retries racing to admit a blocked initial run admit it once,
+// each answering the one turn; fails_when=the recheck under the fleet's lock is
+// dropped, so a retry that waited behind another stages a second run;
+// seam=Creations::save over live Postgres and NATS, retries released together.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn retries_racing_to_admit_a_blocked_initial_run_admit_it_once() {
+    let c = Case::create().await;
+    c.fund().await;
+    let full = Turns::new(c.base.db.clone(), c.bus.clone(), Entropy::new()).with_budgets(Budgets {
+        deployment_backlog: 0,
+    });
+    let key = mint();
+    let (_, request) = c.request("backlog-recovered", run_now()).await;
+    let blocked = Creations::new(c.setup.clone(), full)
+        .save(c.base.access(), &key, request.clone(), now())
+        .await
+        .expect("a full backlog holds the run, not the setup");
+    assert!(
+        matches!(
+            blocked.start,
+            StartOutcome::RunNow {
+                state: StartState::Blocked,
+                ..
+            }
+        ),
+        "{:?}",
+        blocked.start
+    );
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(RECOVERIES));
+    let retries = (0..RECOVERIES).map(|_| {
+        let (c, barrier, request, key) = (
+            &c,
+            std::sync::Arc::clone(&barrier),
+            request.clone(),
+            key.clone(),
+        );
+        async move {
+            barrier.wait().await;
+            c.creations
+                .save(c.base.access(), &key, request, now())
+                .await
+        }
+    });
+    let answers = futures_util::future::join_all(retries).await;
+    let turns = c.turns(&blocked.id).await;
+    assert_eq!(turns.len(), 1, "one initial run is admitted");
+    for answer in answers {
+        let saved = answer.expect("a retry answers");
+        let admitted = match &saved.start {
+            StartOutcome::RunNow { turn_id, .. } => turn_id.as_deref(),
+            StartOutcome::None => None,
+        };
+        assert_eq!(
+            admitted,
+            turns.first().map(Uuid7::as_str),
+            "{:?}",
+            saved.start
+        );
+    }
+    c.cleanup().await;
+}

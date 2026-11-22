@@ -1,6 +1,6 @@
 //! An idle draft's edit applies whole against its strong version, or not at all.
 
-use super::{DraftPath, access, attach, id, input, render};
+use super::{DraftPath, access, id, input, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     services::TenantPlane,
@@ -14,7 +14,7 @@ use axum::{
     extract::{Path, State},
     response::{IntoResponse as _, Response},
 };
-use http::HeaderMap;
+use http::{HeaderMap, header};
 use std::sync::Arc;
 
 /// Applies one complete idle edit using the current strong version.
@@ -54,7 +54,5 @@ pub(crate) async fn patch<D: TenantPlane>(
         .await
         .map_err(setup_refusal)?;
     let tag = reviewed.etag.clone();
-    let mut response = Json(render::draft(reviewed)).into_response();
-    attach(&mut response, &tag);
-    Ok(response)
+    Ok(([(header::ETAG, tag)], Json(render::draft(reviewed))).into_response())
 }

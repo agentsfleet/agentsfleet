@@ -4,7 +4,7 @@ use super::row::{Pin, Plan};
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, TaskRun, Tasks, execution, transaction},
+    task::{TaskRefusal, TaskRun, Tasks, execution, row::sql_counter, transaction},
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::task::{CheckpointPin, CheckpointPinInput, CheckpointTransferPurpose};
@@ -49,14 +49,14 @@ pub(super) async fn insert(
         .bind(kind)
         .bind(run.run_id)
         .bind(owned.current.fence)
-        .bind(
-            i64::try_from(owned.snapshot.context.generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?,
-        )
-        .bind(
-            i64::try_from(owned.snapshot.context.stop_generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?,
-        )
+        .bind(sql_counter(
+            owned.snapshot.context.generation,
+            "pin task generation",
+        )?)
+        .bind(sql_counter(
+            owned.snapshot.context.stop_generation,
+            "pin stop generation",
+        )?)
         .bind(kind == "writer")
         .bind(tasks.times().transfer_seconds())
         .bind(tasks.times().pin_seconds())
@@ -111,8 +111,10 @@ pub(in crate::task) async fn renew(
         || current.task_generation
             != i64::try_from(input.task.generation).map_err(|_overflow| TaskRefusal::StaleState)?
         || current.stop_generation
-            != i64::try_from(owned.snapshot.context.stop_generation)
-                .map_err(|_overflow| TaskRefusal::StaleState)?
+            != sql_counter(
+                owned.snapshot.context.stop_generation,
+                "pin stop generation",
+            )?
         || current.released
         || current.expires_at <= clock::now()
         || current.operation_deadline <= clock::now()

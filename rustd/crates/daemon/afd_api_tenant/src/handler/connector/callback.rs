@@ -155,7 +155,7 @@ pub(crate) async fn complete<D: TenantPlane>(
     let Some(admin) = services.platform_admin_workspace() else {
         return Err(unconfigured());
     };
-    let secret = state_secret(&services).await?;
+    let secret = state_secret(&services, admin).await?;
     let redirect_uri = callback::relay_uri(services.dashboard(), provider);
 
     // Step 1 — the signature, the window, and whether this is the person who

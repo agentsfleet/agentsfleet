@@ -194,3 +194,26 @@ fn checkpoint_debug_output_does_not_quote_root_history() -> Checked {
     assert_eq!(paths(too_large.validate()), vec!["history"]);
     Ok(())
 }
+
+/// A page write naming `objects` copies of one history object.
+fn page_write(objects: usize) -> serde_json::Result<TurnCheckpointCommand> {
+    serde_json::from_value(json!({
+        "fencing_token":7,"operation_id":ID,"action":{
+            "kind":"page_write","checkpoint":{"checkpoint_id":ID,"pin_id":ID},
+            "page_id":ID,"digest":"a".repeat(64),
+            "contents":{"page_number":0,"entries":[],"history_objects":vec![ID; objects]}
+        }
+    }))
+}
+
+#[test]
+fn a_page_write_over_the_page_byte_limit_is_refused_at_its_contents() -> serde_json::Result<()> {
+    // 13,000 quoted identifiers encode to about 507 KiB, under the 512 KiB
+    // page limit; 14,000 encode to about 533 KiB, over it.
+    page_write(13_000)?
+        .validate()
+        .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+    let refused = page_write(14_000)?.validate();
+    assert_eq!(paths(refused), vec!["action.contents"]);
+    Ok(())
+}

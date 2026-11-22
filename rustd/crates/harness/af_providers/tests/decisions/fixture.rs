@@ -17,7 +17,7 @@ use axum::{
     http::{HeaderMap, Response, Uri},
     serve::Listener,
 };
-use futures_util::stream;
+use futures_util::{StreamExt as _, stream};
 use garde::{Unvalidated, Valid};
 use serde_json::{Value, json};
 use tokio::{
@@ -37,6 +37,8 @@ pub(super) enum Reply {
     PrivateFailure(String),
     Withheld,
     Broken,
+    /// These bytes, then the connection drops before the body ends.
+    Cut(Vec<u8>),
     Redirect(String),
 }
 
@@ -207,6 +209,16 @@ fn respond(reply: Option<&Reply>, stop: CancellationToken) -> Response<Body> {
         Some(Reply::Broken) => builder.body(Body::from_stream(stream::once(async {
             Err::<Bytes, _>(io::Error::from(io::ErrorKind::ConnectionReset))
         }))),
+        Some(Reply::Cut(head)) => builder.body(Body::from_stream(
+            stream::iter([Ok::<Bytes, io::Error>(Bytes::from(head.clone()))]).chain(stream::once(
+                async {
+                    // After the headers and these bytes have flushed, so only the
+                    // body read fails.
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Err(io::Error::from(io::ErrorKind::ConnectionReset))
+                },
+            )),
+        )),
         Some(Reply::Redirect(location)) => builder
             .status(307)
             .header("location", location)

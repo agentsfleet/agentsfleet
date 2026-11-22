@@ -4,7 +4,12 @@ use super::super::row::Plan;
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, Tasks, storage::StorageSession, transaction},
+    task::{
+        TaskRefusal, Tasks,
+        row::{small_counter, sql_counter},
+        storage::StorageSession,
+        transaction,
+    },
 };
 use af_core::id::Uuid7;
 use af_crypto::{
@@ -38,8 +43,7 @@ pub(super) async fn remote(
             workspace_id: workspace,
             repository: &plan.repository,
             object_id: id,
-            format_version: u32::try_from(plan.format_version)
-                .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+            format_version: small_counter(plan.format_version, "checkpoint format_version")?,
         },
         object,
         key,
@@ -78,7 +82,7 @@ pub(crate) async fn remote_scope(
     Ok(Some(Receipt {
         id: id.clone(),
         digest: digest.to_owned(),
-        length: i64::try_from(length).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+        length: sql_counter(length, "ciphertext length")?,
     }))
 }
 

@@ -9,7 +9,7 @@ use crate::delivery::{Claimed, Outgoing};
 use crate::lanes::LANE_DEPTH;
 use af_core::id::Uuid7;
 
-mod capacity;
+pub(crate) mod capacity;
 
 /// A canonical identifier from fixed text.
 fn id(text: &str) -> Uuid7 {

@@ -1,6 +1,9 @@
 //! Ordinary allocation uses the real run issuer and API-role PostgreSQL store.
 
+mod allocation;
 mod authority;
+mod commits;
+mod custody;
 mod expiry;
 mod files;
 mod folded;
@@ -8,6 +11,8 @@ mod garbage;
 mod identity_retention;
 mod lifecycle;
 mod manifest;
+mod objects;
+mod page_writes;
 mod publication;
 mod replacement;
 mod retirement;

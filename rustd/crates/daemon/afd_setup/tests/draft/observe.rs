@@ -158,3 +158,41 @@ async fn malformed_stored_state_remains_a_datastore_failure_during_observation()
     assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
     f.cleanup().await;
 }
+
+// Value: protects=a blank chat is observed with no candidate until a proposal
+// initializes one, and one with setup is observed with its head;
+// fails_when=the head notice is emitted without a head, or dropped with one;
+// seam=Drafts::observe over live Postgres.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn only_a_draft_with_a_head_is_noticed_with_its_candidate() {
+    let f = Fixture::create().await;
+    let mut blank = f.request(mint(), None);
+    blank.source = afd_setup::types::Source::Blank;
+    let blank = f
+        .drafts
+        .create(f.access(), blank, now())
+        .await
+        .expect("a blank chat")
+        .draft;
+    assert!(blank.candidate.is_none());
+    let headed = f
+        .drafts
+        .create(f.access(), f.request(mint(), None), now())
+        .await
+        .expect("a chat with setup")
+        .draft;
+    let candidates = |view: &View| -> Vec<&'static str> {
+        view.notices
+            .iter()
+            .filter(|notice| notice.event == "candidate.changed")
+            .map(|notice| notice.event)
+            .collect()
+    };
+    assert_eq!(candidates(&view(&f, &blank.id).await), Vec::<&str>::new());
+    assert_eq!(
+        candidates(&view(&f, &headed.id).await),
+        ["candidate.changed"]
+    );
+    f.cleanup().await;
+}

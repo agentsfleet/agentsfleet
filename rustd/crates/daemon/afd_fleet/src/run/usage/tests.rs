@@ -269,3 +269,93 @@ async fn an_empty_pass_logs_no_line() {
             .is_none()
     );
 }
+
+/// A book whose one tier charges the most a signed 64-bit rate allows, so a
+/// full-width request cannot be priced in a signed 64-bit nano count.
+fn extreme() -> Pricing {
+    let tier = afd_billing::price::Tier {
+        id: test_dead::id(8),
+        price: af_core::catalogue::Price {
+            effective_from: jiff::Timestamp::UNIX_EPOCH,
+            effective_until: None,
+            prompt_tokens_above: 0,
+            input_nanos_per_mtok: i64::MAX,
+            cached_input_nanos_per_mtok: i64::MAX,
+            cache_write_nanos_per_mtok: None,
+            cache_write_5m_nanos_per_mtok: None,
+            cache_write_1h_nanos_per_mtok: None,
+            output_nanos_per_mtok: i64::MAX,
+            source_url: "https://example.invalid/pricing".to_owned(),
+            verified_at: jiff::Timestamp::UNIX_EPOCH,
+            conditions: String::new(),
+        },
+    };
+    Pricing::of(
+        afd_billing::price::PriceBook::from_tiers(vec![tier]),
+        Posture::Platform,
+        "anthropic",
+        "claude-opus-5-5",
+    )
+}
+
+/// A request at the wire's widest token counts.
+fn widest() -> RequestUsage {
+    RequestUsage {
+        input_tokens: u32::MAX,
+        output_tokens: u32::MAX,
+        ..request(0)
+    }
+}
+
+// Value: protects=a charge that cannot fit a signed 64-bit nano count is refused
+// on every pricing path, never wrapped or logged as free; fails_when=either path
+// swallows the rater's refusal; why_new=no fleet pricing path met an overflowing
+// tier; seam=`Pricing::request_lines` and `Pricing::settlement`.
+#[test]
+fn a_charge_past_a_signed_64_bit_count_is_refused_on_every_path() {
+    let pricing = extreme();
+
+    let lines = pricing
+        .request_lines(test_dead::AT, test_dead::AT, &[widest()])
+        .expect_err("the report's request lines refuse an overflow");
+    let settled = pricing
+        .settlement(&test_dead::id(4), slice(0, 0), &[widest()])
+        .expect_err("a renewal's settlement refuses an overflow");
+
+    for fault in [lines, settled] {
+        assert_eq!(fault.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
+        assert!(!fault.is_datastore_unavailable());
+    }
+    assert_eq!(
+        pricing
+            .request_lines(test_dead::AT, test_dead::AT, &[])
+            .expect("no request prices to no line")
+            .len(),
+        0
+    );
+}
+
+// Value: protects=a setup run's pass with neither requests nor run time logs no
+// line and spends no line number; fails_when=the draft settlement answers an
+// empty settlement; why_new=only the fleet settlement's empty pass was tested;
+// seam=`Pricing::draft_settlement`.
+#[tokio::test]
+async fn an_empty_setup_pass_logs_no_line() {
+    let pricing = pricing(Posture::SelfManaged).await;
+    let slice = super::DraftSlice {
+        runtime_seq: 0,
+        checked_at: test_dead::AT,
+        started_at: test_dead::AT,
+        runtime_ms: 0,
+        tenant_id: test_dead::id(2),
+        workspace_id: test_dead::id(3),
+        message_id: test_dead::id(5),
+    };
+
+    assert!(
+        pricing
+            .draft_settlement(&test_dead::id(4), slice, &[])
+            .expect("prices")
+            .is_none()
+    );
+}

@@ -49,6 +49,7 @@ mod tests {
             r##"fn main() { let text = r#"include_str!("resident.md")"#; }"##,
             r#"fn main() { include_str!("statement.sql"); }"#,
             r#"fn main() { include_str!(concat!("../schema/", "table.sql")); }"#,
+            "macro_rules! bare { () => { include_str! }; }",
         ] {
             assert!(!loads_markdown(source));
         }
@@ -84,6 +85,21 @@ mod tests {
                 }
             }
         }
+    }
+
+    // Value: the guard's one allowance is a README beside its crate's
+    // manifest; a README anywhere else, or any other Markdown file, is not it.
+    #[test]
+    fn only_a_readme_beside_a_crate_manifest_is_a_crate_page() {
+        let root =
+            std::env::temp_dir().join(format!("afd-setup-readme-{}", afd_db::test_util::mint_id()));
+        let nested = root.join("src");
+        fs::create_dir_all(&nested).expect("scratch crate");
+        fs::write(root.join("Cargo.toml"), "[package]\n").expect("scratch manifest");
+        assert!(is_crate_readme(&root.join("README.md")));
+        assert!(!is_crate_readme(&root.join("NOTES.md")));
+        assert!(!is_crate_readme(&nested.join("README.md")));
+        fs::remove_dir_all(&root).expect("remove the scratch crate");
     }
 
     fn loads_markdown(source: &str) -> bool {

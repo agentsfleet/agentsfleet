@@ -150,8 +150,7 @@ impl RunService {
         } else {
             // Every other purpose mints over the binding exactly as stored.
         }
-        self.mint_scoped(&scope, &request.integration, now, None)
-            .await
+        self.mint_scoped(&scope, &request.integration, now).await
     }
 }
 

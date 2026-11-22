@@ -12,7 +12,7 @@ use futures_util::{StreamExt as _, stream};
 
 use super::Connected;
 use crate::wire::observe::FailureCause;
-use crate::wire::recorder::{Recorder, Seen};
+use crate::wire::recorder::{Recorder, Seen, Unwritten};
 use crate::wire::transport::{Body, Send, SendError, Sent};
 use crate::wire::{Api, Retry, Route};
 use crate::{Chunk, Message, Model as _, Request};
@@ -194,6 +194,40 @@ async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usag
     let rendered = format!("{:?}{turns:?}", recorder.seen());
     assert!(!rendered.contains("private "));
     assert!(!rendered.contains(KEY));
+}
+
+// Value: an embedder that writes none of the observer's methods gets the
+// same turn as one that records them: counted, answered, and reopened while
+// nothing was shown.
+#[tokio::test]
+async fn an_observer_that_writes_nothing_leaves_each_turn_as_it_was() {
+    let (counted, physical, _recorder) = turns(200);
+    let counted = counted.with_observer(Arc::new(Unwritten));
+    let messages = [Message::User("private source ".repeat(NEAR_CAPACITY))];
+    let chunks: Vec<_> = counted.stream(request(&messages)).collect().await;
+    assert!(chunks.iter().all(Result::is_ok));
+    assert!(chunks.iter().any(|chunk| matches!(
+        chunk,
+        Ok(Chunk::Text { text, .. }) if text == "answer"
+    )));
+    assert_eq!(
+        *physical.paths.lock().unwrap(),
+        ["/v1/responses/input_tokens", "/v1/responses"]
+    );
+
+    let (cut, physical, _recorder) = turns_with_stream(200, Generation::Truncated);
+    let cut = cut
+        .with_observer(Arc::new(Unwritten))
+        .with_retry(Retry::DEFAULT.with_openings(2));
+    let messages = [Message::User("probe".into())];
+    let mut asked = request(&messages);
+    asked.single_attempt = false;
+    let chunks: Vec<_> = cut.stream(asked).collect().await;
+    assert!(chunks.iter().any(Result::is_err));
+    assert_eq!(
+        *physical.paths.lock().unwrap(),
+        ["/v1/responses", "/v1/responses"]
+    );
 }
 
 #[tokio::test]

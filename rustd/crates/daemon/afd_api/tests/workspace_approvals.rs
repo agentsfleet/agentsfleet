@@ -223,3 +223,58 @@ async fn a_decision_accepts_borrowed_and_decoded_notes() {
         );
     }
 }
+
+/// An `answer` decision carries its answer, and a note past its bound is
+/// refused, each before the gate is read; an answer inside its bound reaches
+/// the store.
+#[tokio::test]
+async fn an_answer_needs_its_answer_and_a_note_stays_inside_its_bound() {
+    let oversized = serde_json::json!({
+        "reason": "x".repeat(afd_api_wire::approval::APPROVAL_REASON_MAX_BYTES + 1)
+    })
+    .to_string();
+    let blank_answer = serde_json::json!({"answer": ""}).to_string();
+    for (verb, body, detail) in [
+        ("answer", "", "answer is required"),
+        (
+            "answer",
+            r#"{"reason":"looked at it"}"#,
+            "answer is required",
+        ),
+        (
+            "answer",
+            blank_answer.as_str(),
+            "reason or answer is out of bounds",
+        ),
+        (
+            "deny",
+            oversized.as_str(),
+            "reason or answer is out of bounds",
+        ),
+    ] {
+        let response = authorised(Method::POST, &decision(verb), body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{verb} {body}");
+        let problem = harness::json_body(response).await;
+        assert_eq!(
+            problem.get("error_code").and_then(Value::as_str),
+            Some(error_code::INVALID_REQUEST.as_str()),
+            "{verb}"
+        );
+        assert_eq!(
+            problem.get("detail").and_then(Value::as_str),
+            Some(detail),
+            "{verb} {body}"
+        );
+    }
+    let answered = authorised(
+        Method::POST,
+        &decision("answer"),
+        r#"{"answer":"Ship it after the release"}"#,
+    )
+    .await;
+    assert_eq!(
+        answered.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "a well-formed answer reaches the gate store"
+    );
+}

@@ -49,6 +49,8 @@ tracing.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util"]
 
 [dev-dependencies]
+# `test-util`: the ledger tests fail an identifier mint on purpose.
+af_crypto = { workspace = true, features = ["test-util"] }
 # The cursor tests spell tokens out as base64url bytes.
 base64.workspace = true
 # The debt suite starts ten runs' funds checks at once.

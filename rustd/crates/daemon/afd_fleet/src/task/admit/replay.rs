@@ -46,27 +46,22 @@ pub(super) async fn read(
     let items = rows
         .into_iter()
         .map(|row| {
-            let action: af_wire::task::TaskInputAction = serde::Deserialize::deserialize(
-                serde::de::value::StrDeserializer::new(row.action.as_str()),
-            )
-            .map_err(|source: serde::de::value::Error| {
-                crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
-            })?;
+            let action = super::super::row::action(&row.action)?;
             Ok(TaskBinding {
                 item_id: row.item_id.clone(),
                 applies_here: row.task_id == current.task_id
                     && row.task_state.as_deref()
                         == Some(af_wire::task::TaskState::Running.as_str()),
                 task_id: row.task_id,
-                task_generation: row
-                    .task_generation
-                    .map(|generation| super::super::row::counter(generation, "generation"))
-                    .transpose()?,
+                task_generation: super::super::row::optional_counter(
+                    row.task_generation,
+                    "generation",
+                )?,
                 action,
-                input_sequence: row
-                    .input_sequence
-                    .map(|sequence| super::super::row::counter(sequence, "input sequence"))
-                    .transpose()?,
+                input_sequence: super::super::row::optional_counter(
+                    row.input_sequence,
+                    "input sequence",
+                )?,
             })
         })
         .collect::<Result<Vec<_>>>()?;

@@ -8,7 +8,11 @@ use super::{
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, TaskRun, Tasks, guard as task_guard, row::counter, transaction},
+    task::{
+        TaskRefusal, TaskRun, Tasks, guard as task_guard,
+        row::{counter, small_counter, sql_counter},
+        transaction,
+    },
 };
 use af_core::id::Uuid7;
 use af_wire::task::{
@@ -87,11 +91,8 @@ pub(in crate::task) async fn publish(
         .bind(&plan.id)
         .bind(&input.manifest_root)
         .bind(&input.history_digest)
-        .bind(
-            i64::try_from(input.covered_input_sequence)
-                .map_err(|_overflow| TaskRefusal::StaleState)?,
-        )
-        .bind(i64::try_from(input.effect_watermark).map_err(|_overflow| TaskRefusal::StaleState)?)
+        .bind(sql_counter(input.covered_input_sequence, "input cursor")?)
+        .bind(sql_counter(input.effect_watermark, "effect cursor")?)
         .execute(&mut *tx)
         .await
         .map_err(query("publish complete verified checkpoint manifest"))?;
@@ -202,9 +203,8 @@ async fn scan(connection: &mut PgConnection, plan: &Plan) -> Result<Manifest> {
     )
     .await?;
     tree.verify(
-        u32::try_from(plan.entry_count).map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
-        u64::try_from(plan.logical_bytes)
-            .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?,
+        small_counter(plan.entry_count, "checkpoint entry_count")?,
+        counter(plan.logical_bytes, "checkpoint logical_bytes")?,
     )?;
     Ok(manifest)
 }

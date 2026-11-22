@@ -88,10 +88,18 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_assignme
 
 async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
     let fold = incorporate(files).await?;
+    let Response::Committed(saved) = commit_covering(files, &fold).await? else {
+        return Err("saved complete file generation".into());
+    };
+    Ok((saved, fold))
+}
+
+/// A one-page file capture whose root and Commit both cover `fold`.
+async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
     };
-    let history = history(files, workspace.clone(), &fold)?;
+    let history = history(files, workspace.clone(), fold)?;
     let Response::Begun(plan) = files
         .execute(Action::Begin(TurnCheckpointBegin {
             expected_head: None,
@@ -112,18 +120,39 @@ async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
         pin_id: CheckpointOperationId(plan.pin.id),
     };
     let manifest = empty_manifest(files, &reference, &plan.page_ids).await?;
-    let Response::Committed(saved) = files
+    files
         .execute(Action::Commit {
             checkpoint: reference,
             root: history,
             manifest_root: manifest,
             folds: vec![fold.clone()],
         })
-        .await?
-    else {
-        return Err("saved complete file generation".into());
+        .await
+}
+
+// Value: protects=a generation covers only inputs folded into the run at the
+// positions they hold; fails_when=commit stops comparing each covered input
+// with its locked row; why_new=a mismatched fold had no case; seam=the
+// production fold assignment, then a Commit claiming that input one position
+// later.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_commit_covering_an_input_at_another_position_conflicts() -> Checked {
+    let files = Files::new().await?;
+    let fold = incorporate(&files).await?;
+    let claimed = FoldRef {
+        sequence: fold.sequence + 1,
+        ..fold
     };
-    Ok((saved, fold))
+    let refused = commit_covering(&files, &claimed).await;
+    assert!(refused.is_err_and(|failure| {
+        failure
+            .downcast_ref::<afd_fleet::Error>()
+            .is_some_and(|failure| failure.code() == af_core::error_code::RUN_CHECKPOINT_CONFLICT)
+    }));
+    assert_eq!(files.case.counts().await?.3, None);
+    files.finish().await;
+    Ok(())
 }
 
 async fn empty_manifest(

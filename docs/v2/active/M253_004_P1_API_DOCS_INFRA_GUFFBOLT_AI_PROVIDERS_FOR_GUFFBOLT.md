@@ -502,6 +502,12 @@ N/A: no product or operator signal changes. The provider metric families and the
 - > Owner (Indy, Nov 22, 2026): "donot send any keys or spill any keys in the PR" and "run gitleaks prior to push the PR" — context: before every push, `gitleaks detect` runs over the commits being pushed and must report no leaks; no key, token, vault path or key-derived value goes into a commit, a PR body, a PR comment, a log pasted in the PR or a test fixture.
 - > Owner (Indy, Nov 22, 2026), on §14's "all the files > 99%": "Files the PR touches (Recommended)" — context: the judge's existing `--per-file-floor` (his Oct 15 rule) turns on at 99 for every `.rs` file the branch adds, edits or moves; project and patch floors go to 99; guffbolt-ai is graded as its own crate.
 - **§13 live run (Nov 22, 2026):** two manual runs of `fireworks_live` on Fireworks' GLM 5.3 Flash passed every step; the recorded tally is $0.000289100 of the $2.00 stop. Command, answers and spend are under Dimension 13.1.
+- > Owner (Indy, Nov 22, 2026), on branches no peer can trigger: "Type the responses (Recommended)" — context: af_wire gives each runner↔daemon request its own response type, so afr_supervisor's "returned another command's response" decode arms (dead since downlink/pending.rs:142 drops mismatched replies) are deleted; the floor is met by deleting code.
+- > Owner (Indy, Nov 22, 2026), on a fleet run removed mid-renewal not logging its request lines: "i dont care on that edge case, even if we miss revenue or overcharge on revenue. so its a nit" — context: left as is; recorded as a nit.
+- > Owner (Indy, Nov 22, 2026), on the task name: "Rename to durable task" — context: API `/fleets/{fleet_id}/durable_tasks`, code `DurableTask*` / `afd_fleet::durable_task`, config `[durable_tasks]`, CLI, dashboard, openapi.json and SQL names; breaking, about 250 files, then: "no i want this in this spec" — so it is §16 of this spec. `DURABLE_TASKS_DEFAULT_ENABLED` has no production reader and moves to test helpers there.
+- > Owner (Indy, Nov 22, 2026), on the coverage-pass decisions: "2. Yes keep" (the two derived executor-frame refusals stay); "3. ... keep" (the tools page's proposed grep line cap, web_fetch default output cap and tool_search limit 8 are approved for §10); "6. if its dead unused then delete" (the unverified/tombstoned object checks, if dead); "7. yes" (the deleted metric families stand); "8. if its dead unused then delete" (the expired-gate SQL clauses, if dead).
+- > Owner (Indy, Nov 22, 2026): "4. keep 5. yes fix it" — context: G2's removal of two dead outage arms stays; a corrupted task counter is made impossible at the source with `CHECK (… >= 0)` on the counter columns (generation, ordinal, input sequence) in their schema files.
+- > Owner (Indy, Nov 22, 2026), on the duplicate tools: "Yes, cut both (Recommended)" — context: file tools 7→4 (drop file_read_hashed, file_edit_hashed, file_append, file_delete; file_edit takes several edits and refuses ambiguous text); browser_open, browser and screenshot fold into one `browser` with actions; saved ExecutionPolicy.tools are migrated in the same change; guffbolt ships `coding` and `read_only` default sets. In this PR.
 - **Open blockers** — none; the one `[?]` left blocks nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
@@ -561,6 +567,20 @@ Raise `codecov.yml`'s `rust-afd` project and patch targets to 99%, `RUSTD_COVERA
 ### §15 — The PR is green and ready, unmerged (Indy, Nov 22, 2026)
 
 Every CI job on PR #855 is green, every greptile finding is resolved or answered, and the PR is left for Indy to review and merge.
+
+### §16 — Tasks are named durable tasks everywhere (Indy, Nov 22, 2026)
+
+Indy: "Rename to durable task"; "no i want this in this spec". The API resource, the code, the config section, the CLI, the dashboard, the published OpenAPI document and the SQL names say durable task. Pre-production, so no alias for the old name (no compatibility aliases unless asked).
+
+- API: `/fleets/{fleet_id}/durable_tasks`, `/durable_tasks/{durable_task_id}` and every task route beneath them; wire types `DurableTask*`; `task_id` fields become `durable_task_id`.
+- Code: `afd_fleet::durable_task` (was `task`), `DurableTaskPolicy`, `DurableTaskSettings`, and the rest of the `Task*` types for this feature; runner-side names to match.
+- Config: `[durable_tasks]` and `[durable_tasks.checkpoints]` in `agentsfleetd.toml`, the deploy files and the config reference.
+- SQL: schema files, tables, columns, constraints and statement files (pre-production: each table's own file is edited).
+- CLI and dashboard: commands, flags, routes and text.
+- `af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED` has no production reader; it moves to test helpers. `durable_tasks_enabled` keeps its name.
+
+- Dimension 16.1 — one name → Test: an ast-grep or grep lint finds no `/tasks` route, `task_id` wire field or `[tasks]` section for this feature. Expected: none.
+- Dimension 16.2 — nothing else changed → Test: `make test-unit-all` and `make test-integration-rustd`, assertions changed only in names. Expected: green.
 
 ### §10 — Tools brainstorm with Indy, last (Indy, Nov 22, 2026)
 

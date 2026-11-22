@@ -30,6 +30,9 @@ use tokio_rustls::TlsAcceptor;
 mod route;
 pub use self::route::{Handler, Reply, Route, Seen};
 
+#[cfg(test)]
+mod tests;
+
 /// The most of one request body the fake reads.
 const BODY_LIMIT: usize = 4 * 1024 * 1024;
 /// How long a cut body waits after its first bytes before the connection dies,

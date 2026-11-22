@@ -55,15 +55,7 @@ async fn mark_private(mut response: Response) -> Response {
     response
 }
 
-fn attach(response: &mut Response, tag: &str) {
-    if let Ok(tag) = HeaderValue::from_str(tag) {
-        response.headers_mut().insert(header::ETAG, tag);
-    }
-}
-
-fn location(response: &mut Response, workspace: &Uuid7, draft: &Uuid7, suffix: &str) {
-    let path = format!("/v1/workspaces/{workspace}/drafts/{draft}{suffix}");
-    if let Ok(path) = HeaderValue::from_str(&path) {
-        response.headers_mut().insert(header::LOCATION, path);
-    }
+/// The draft's own path, which a create or a send answers as its `Location`.
+fn location(workspace: &Uuid7, draft: &Uuid7, suffix: &str) -> String {
+    format!("/v1/workspaces/{workspace}/drafts/{draft}{suffix}")
 }

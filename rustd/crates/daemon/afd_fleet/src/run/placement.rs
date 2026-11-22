@@ -68,3 +68,41 @@ impl RunService {
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_wire::run::AcceptedKinds;
+
+    use crate::run::test_dead;
+
+    // Value: protects=a degraded runner is answered no work by the combined
+    // setup-and-fleet assignment before any datastore is asked; fails_when=the
+    // degraded guard moves after the host ticket read, which this dead pool
+    // refuses; why_new=only the fleet arm's own guard was tested; seam=`assign_with`
+    // over datastores nobody answers on.
+    #[tokio::test]
+    async fn a_degraded_runner_is_given_no_run_of_either_kind() {
+        let drafts =
+            afd_setup::Drafts::new(test_dead::database(), af_crypto::entropy::Entropy::new());
+        let mut emitted = 0;
+
+        let answer = test_dead::plane()
+            .assign_with(
+                &drafts,
+                crate::run::AssignRequest {
+                    runner: &test_dead::id(9),
+                    held: &[],
+                    degraded: true,
+                    now: test_dead::AT,
+                    recovery: None,
+                },
+                AcceptedKinds::ALL,
+                &mut af_observability::verb_span::VerbClock::untimed(),
+                |_run, _metadata| emitted += 1,
+            )
+            .await;
+
+        assert!(matches!(answer, Ok(None)), "{:?}", answer.err());
+        assert_eq!(emitted, 0, "a degraded runner receives no assignment");
+    }
+}

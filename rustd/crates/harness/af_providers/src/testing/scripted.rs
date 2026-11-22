@@ -190,3 +190,7 @@ pub fn say(text: &str) -> Chunk {
         text: text.to_owned(),
     }
 }
+
+#[cfg(test)]
+#[path = "scripted_tests.rs"]
+mod tests;

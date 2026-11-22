@@ -8,7 +8,7 @@ use super::super::{
     PreparedItem, PreparedPlan, PreparedTask, TaskBinding, TaskRefusal, TaskRun, guard::RunRow, sql,
 };
 use super::source::Source;
-use crate::error::{Error, ErrorKind, Result, query};
+use crate::error::{Result, query};
 
 const CONTEXT: &str = "write durable task binding";
 
@@ -26,12 +26,7 @@ pub(super) async fn item(
     binding: &TaskBinding,
     ordinal: usize,
 ) -> Result<()> {
-    let ordinal = i32::try_from(ordinal).map_err(|source| {
-        Error::from(ErrorKind::TaskCounter {
-            column: "ordinal",
-            source,
-        })
-    })?;
+    let ordinal = super::super::row::sql_small_counter(ordinal, "ordinal")?;
     sqlx::query(sql::INSERT_ITEM)
         .bind(&binding.item_id)
         .bind(&current.fleet_id)

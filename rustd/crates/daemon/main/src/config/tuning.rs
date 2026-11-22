@@ -98,18 +98,19 @@ pub(crate) struct RunnersTuning {
 }
 
 /// The runner link's framing holds no larger message than this.
-const MESSAGE_MIB_MAX: u32 = mib(af_wire::protocol::MESSAGE_BYTES_MAX);
-
-/// The control stream's memory pool holds no larger message than this.
-const CONTROL_MESSAGE_MIB_MAX: u32 = mib(af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX);
-
 #[expect(
     clippy::cast_possible_truncation,
     reason = "a frame ceiling in MiB is far below u32::MAX"
 )]
-const fn mib(bytes: usize) -> u32 {
-    (bytes / (1024 * 1024)) as u32
-}
+const MESSAGE_MIB_MAX: u32 = (af_wire::protocol::MESSAGE_BYTES_MAX / afd_http::body::MIB) as u32;
+
+/// The control stream's memory pool holds no larger message than this.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a frame ceiling in MiB is far below u32::MAX"
+)]
+const CONTROL_MESSAGE_MIB_MAX: u32 =
+    (af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX / afd_http::body::MIB) as u32;
 
 impl Default for RunnersTuning {
     fn default() -> Self {

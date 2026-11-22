@@ -63,3 +63,35 @@ async fn a_refused_turn_reason_carries_no_code_prefix() {
         Some(refused.code().as_str())
     );
 }
+
+/// A frame for a fleet named by no canonical identifier is dropped before
+/// the bus, and the drop says why under the internal code.
+#[tokio::test]
+async fn a_frame_for_an_unparsed_fleet_is_dropped_and_logged() {
+    use std::borrow::Cow;
+
+    use afd_api_wire::tail::TailFrame;
+
+    let capture = Capture::install();
+    let steer = afd_turns::view::Steer::new(Turns::for_tests(
+        afd_db::test_util::unreachable_db(),
+        afd_bus::test_util::unreachable(),
+    ));
+    let frame = TailFrame::TurnAdmitted {
+        turn_id: Cow::Borrowed(FLEET),
+        actor: Cow::Borrowed("steer:fixture"),
+        event_type: Cow::Borrowed(TurnKind::Chat.as_str()),
+        message: Cow::Borrowed("check the deploy"),
+        message_trimmed: false,
+        created_at: jiff::Timestamp::UNIX_EPOCH,
+    };
+
+    steer.announce("not-a-fleet-id", &frame).await;
+
+    let dropped = capture.only("tail_frame_dropped");
+    assert_eq!(dropped.field("reason"), Some("invalid_fleet_identifier"));
+    assert_eq!(
+        dropped.field("error_code"),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
+}

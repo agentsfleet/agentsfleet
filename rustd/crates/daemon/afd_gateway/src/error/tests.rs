@@ -46,6 +46,14 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
             "The message is not valid JSON for this runner protocol.",
             "protocol",
         ),
+        (
+            Error::from(ErrorKind::MissingHeader {
+                header: af_wire::protocol::CONNECTION_HEADER,
+            }),
+            error_code::INVALID_REQUEST,
+            "Required runner stream header 'agentsfleet-runner-connection' is missing.",
+            "metadata",
+        ),
     ];
     for (error, code, detail, reason) in cases {
         assert_class(&error, code, detail, false, reason);
@@ -118,6 +126,34 @@ async fn transient_failures_keep_the_run_deadline_and_ask_for_a_retry() -> Proof
     Ok(())
 }
 
+/// A pool on a Postgres nobody answers on refuses the way a lost datastore does.
+async fn unreachable() -> Result<afd_db::Error, &'static str> {
+    afd_db::test_util::unreachable_db()
+        .acquire()
+        .await
+        .err()
+        .ok_or("the unreachable pool lent a connection")
+}
+
+#[tokio::test]
+async fn a_lost_datastore_asks_for_a_retry_directly_and_through_setup() -> Proof {
+    assert_class(
+        &Error::from(unreachable().await?),
+        error_code::INTERNAL_DB_UNAVAILABLE,
+        "The database did not confirm the operation. Retain the last confirmed run deadline.",
+        true,
+        "database",
+    );
+    assert_class(
+        &Error::from(afd_setup::Error::from(unreachable().await?)),
+        error_code::INTERNAL_DB_UNAVAILABLE,
+        "Service unavailable",
+        true,
+        "service",
+    );
+    Ok(())
+}
+
 #[test]
 fn every_operation_keeps_its_metric_label_and_sentence() {
     let table = [
@@ -133,6 +169,16 @@ fn every_operation_keeps_its_metric_label_and_sentence() {
         (Operation::Progress, "progress", "publishing progress"),
         (Operation::Report, "report", "settling a report"),
         (Operation::Folds, "folds", "reading pending inputs"),
+        (
+            Operation::TurnCheckpoint,
+            "turn_checkpoint",
+            "saving or restoring a turn checkpoint",
+        ),
+        (
+            Operation::Context,
+            "context",
+            "reading or saving a setup context",
+        ),
         (Operation::Write, "write", "sending a response"),
         (Operation::Drain, "drain", "closing the runner connection"),
     ];

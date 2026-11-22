@@ -39,9 +39,8 @@ pub async fn prove<A: RequestAuthentication>(
         .authenticate(&mut parts, gate.meta)
         .await
     {
-        Ok(Some(principal)) => principal,
+        Ok(principal) => principal,
         Err(refusal) => return refusal.into_response(),
-        Ok(None) => return next.run(Request::from_parts(parts, body)).await,
     };
     let required = gate.meta.scopes.required(&parts.method);
     if let Err(denied) = require_scope(&principal, required) {

@@ -138,3 +138,51 @@ impl ConnectionServices {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! A broker message names a command or asks for a full recheck; it never grants authority.
+
+    use super::receive;
+    use crate::connection::ConnectionHandle;
+    use af_core::id::Uuid7;
+    use afd_bus::{Command, Subject};
+    use std::time::Duration;
+
+    type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    async fn next(
+        commands: &mut tokio::sync::mpsc::Receiver<Command>,
+    ) -> Result<Option<Command>, tokio::time::error::Elapsed> {
+        tokio::time::timeout(Duration::from_secs(5), commands.recv()).await
+    }
+
+    #[tokio::test]
+    async fn commands_reach_the_connection_and_noise_or_a_gap_asks_for_a_recheck() -> TestResult {
+        let (bus, server) = afd_bus::test_util::detached()?;
+        let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+        let (handle, _passes, mut commands) =
+            ConnectionHandle::fixture_with_queues(runner.clone(), runner.clone());
+        let subject = Subject::RunnerCommand(runner);
+        let mut subscription = bus.subscribe(&subject).await?;
+        let receiving = tokio::spawn({
+            let handle = std::sync::Arc::clone(&handle);
+            async move { receive(&handle, &mut subscription).await }
+        });
+        let run = Uuid7::parse("019f0000-0000-7000-8000-0000000000aa")?;
+        let cancel = Command::Cancel { run_id: run };
+        server.publish(&subject, &serde_json::to_string(&cancel)?);
+        assert_eq!(next(&mut commands).await?, Some(cancel));
+        server.publish(&subject, r#"{"type":"grant","runner":"everything"}"#);
+        assert_eq!(
+            next(&mut commands).await?,
+            Some(Command::Recheck),
+            "an unreadable command"
+        );
+        server.gap(&subject);
+        assert_eq!(next(&mut commands).await?, Some(Command::Recheck), "a gap");
+        handle.stop.cancel();
+        receiving.await??;
+        Ok(())
+    }
+}

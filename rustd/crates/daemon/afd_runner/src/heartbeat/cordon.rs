@@ -53,11 +53,14 @@ impl Runners {
                             af_observability::producers::fleet::runner::cordon_changed(
                                 af_observability::metrics::label::fleet::CordonChange::Lifted,
                             );
-                            tracing::info!(
-                                event = "runner_cordon_lifted",
-                                runner_id = runner.as_str(),
-                                reason = crate::cordon::REASON
+                            // Hoisted out of the macro: `tracing`'s `log`
+                            // feature compiles an event's fields twice.
+                            let (event, runner_id, reason) = (
+                                "runner_cordon_lifted",
+                                runner.as_str(),
+                                crate::cordon::REASON,
                             );
+                            tracing::info!(event, runner_id, reason);
                         }
                         return Some(accepted);
                     }

@@ -265,3 +265,63 @@ fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
         );
     }
 }
+
+// Value: protects=a delivery whose gates read lost its grants reads them itself,
+// and an outage on that read is raised rather than assembling a policy with no
+// grants; fails_when=the fallback read is skipped or its fault is swallowed;
+// why_new=no test delivered work whose grants were unread; seam=`deliver_with`
+// over datastores nobody answers on, for a fleet that declares no credential, so
+// the grants read is the first one asked.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn unread_grants_are_read_again_and_an_outage_there_is_raised() {
+    use crate::run::test_dead;
+
+    let admitted = super::AdmittedFleetWork {
+        acquired: test_dead::acquired_installed(),
+        installed: crate::run::installed::Installed {
+            workspace_id: test_dead::id(2),
+            name: "Support triage".to_owned(),
+            config: config(None),
+            instructions: String::new(),
+            context_json: crate::run::installed::FRESH_CONTEXT.to_owned(),
+            runtime_model_ref: "anthropic/claude-opus-5".to_owned(),
+            issue_revision: None,
+        },
+        event_type: af_wire::turn::TurnKind::Chat,
+        resolved: afd_credential::provider::Resolved::new(
+            afd_billing::Posture::Platform,
+            "anthropic".into(),
+            "claude-opus-5".into(),
+            200_000,
+            None,
+            af_crypto::secret::SecretString::new("sk-ant-not-a-real-key".to_owned()),
+        ),
+        billed: crate::run::admit::Billed {
+            tenant_id: test_dead::id(3),
+            posture: afd_billing::Posture::Platform,
+            provider: "anthropic".into(),
+            model: "claude-opus-5".into(),
+        },
+        granted: None,
+    };
+    let mut emitted = 0;
+
+    let delivered = test_dead::plane()
+        .deliver_with(
+            &test_dead::id(9),
+            admitted,
+            test_dead::AT,
+            std::time::Instant::now(),
+            &mut |_run, _metadata| emitted += 1,
+        )
+        .await;
+
+    let fault = delivered.err().expect("the grants read meets the outage");
+    assert_eq!(
+        fault.code(),
+        af_core::error_code::INTERNAL_DB_UNAVAILABLE,
+        "the gate plane's own outage code: {fault}"
+    );
+    assert_eq!(emitted, 0, "nothing is issued without its grants");
+}

@@ -12,12 +12,11 @@ pub(super) async fn validate(
 ) -> Result<()> {
     let mut digests = Vec::with_capacity(plan.page_ids.len());
     let mut contents = Contents::default();
-    for (number, id) in plan.page_ids.iter().enumerate() {
+    for id in &plan.page_ids {
         let saved = pages::selected(owner, plan, id).await?;
+        // `decode` holds the page number to its stored ordinal, which
+        // `pages_allocate.sql` numbers from the plan's page order.
         let page = pages::decode(&saved)?;
-        if usize::try_from(page.page_number).ok() != Some(number) {
-            return Err(TurnCheckpointRefusal::Incompatible.into());
-        }
         pages::validate(owner, plan, &page).await?;
         digests.push((
             id.to_string(),

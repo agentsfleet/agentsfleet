@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use std::borrow::Cow;
 
-use af_wire::task::{TaskContext, TaskLimits, TaskState, TaskUsage};
+use af_wire::task::{TaskContext, TaskInputAction, TaskLimits, TaskState, TaskUsage};
 use serde::Deserialize;
 
 use super::TaskSnapshot;
@@ -101,10 +101,10 @@ impl TaskRow {
                     "confirmed_effect_watermark",
                 )?,
                 checkpoint_id: self.checkpoint_id.map(|id| Cow::Owned(id.into())),
-                checkpoint_generation: self
-                    .checkpoint_generation
-                    .map(|generation| counter(generation, "checkpoint generation"))
-                    .transpose()?,
+                checkpoint_generation: optional_counter(
+                    self.checkpoint_generation,
+                    "checkpoint generation",
+                )?,
                 expires_at: self.expires_at,
                 limits: TaskLimits {
                     model_nanos: self.max_model_nanos,
@@ -165,6 +165,17 @@ pub(super) fn state(stored: &str) -> Result<TaskState> {
         .map_err(|source: serde::de::value::Error| Error::from(ErrorKind::TaskState { source }))
 }
 
+/// A stored input action, read back through the wire spelling it was written with.
+pub(super) fn action(stored: &str) -> Result<TaskInputAction> {
+    TaskInputAction::deserialize(serde::de::value::StrDeserializer::new(stored))
+        .map_err(|source: serde::de::value::Error| Error::from(ErrorKind::TaskState { source }))
+}
+
+/// A nullable stored counter: absent stays absent, present is checked as [`counter`] checks it.
+pub(super) fn optional_counter(stored: Option<i64>, column: &'static str) -> Result<Option<u64>> {
+    stored.map(|value| counter(value, column)).transpose()
+}
+
 pub(super) fn counter<T>(stored: T, column: &'static str) -> Result<u64>
 where
     u64: TryFrom<T, Error = std::num::TryFromIntError>,
@@ -191,4 +202,52 @@ where
     i32: TryFrom<T, Error = std::num::TryFromIntError>,
 {
     i32::try_from(value).map_err(|source| Error::from(ErrorKind::TaskCounter { column, source }))
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test: an unmet precondition should fail the test loudly"
+)]
+mod tests {
+    use af_core::error_code;
+    use af_wire::task::TaskInputAction;
+
+    use super::{action, optional_counter};
+
+    // Value: protects=a stored input action reads back as the action it was
+    // accepted as, and an unknown spelling is a datastore fault, never a guess;
+    // fails_when=the decoder maps an unknown spelling to a default action or a
+    // caller-facing refusal; why_new=three readers shared a copied decoder, now
+    // this one; seam=the row decoder every input reader calls.
+    #[test]
+    fn a_stored_action_reads_back_and_an_unknown_spelling_is_a_datastore_fault() {
+        assert_eq!(action("steer").ok(), Some(TaskInputAction::Steer));
+        assert_eq!(action("refresh").ok(), Some(TaskInputAction::Refresh));
+        for stored in ["rewrite", "", "Steer"] {
+            let unknown = action(stored).expect_err("an unknown spelling is refused");
+            assert_eq!(unknown.code(), error_code::INTERNAL_DB_QUERY, "{stored:?}");
+        }
+    }
+
+    // Value: protects=a nullable stored counter stays absent when unset and is
+    // refused when negative; fails_when=a negative generation or input sequence
+    // wraps to a huge unsigned value or reads as absent; why_new=four readers
+    // shared a copied map-and-transpose, now this one; seam=the row decoder.
+    #[test]
+    fn an_optional_counter_keeps_absence_and_refuses_a_negative_value() {
+        assert_eq!(optional_counter(None, "generation").ok(), Some(None));
+        assert_eq!(optional_counter(Some(0), "generation").ok(), Some(Some(0)));
+        assert_eq!(
+            optional_counter(Some(i64::MAX), "generation").ok(),
+            Some(Some(i64::MAX.unsigned_abs()))
+        );
+        let negative = optional_counter(Some(-1), "input sequence")
+            .expect_err("a negative stored counter is refused");
+        assert_eq!(negative.code(), error_code::INTERNAL_DB_QUERY);
+        assert!(
+            negative.to_string().contains("input sequence"),
+            "the refusal names its column: {negative}"
+        );
+    }
 }

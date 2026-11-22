@@ -67,3 +67,31 @@ pub fn shed(limit: NonZeroUsize, uri: &Uri) -> Response {
     )
         .into_response()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use af_core::test_util::trace::Capture;
+    use http::{StatusCode, Uri};
+
+    use super::{HEADER_RATELIMIT_LIMIT, HEADER_RATELIMIT_REMAINING, shed};
+
+    #[test]
+    fn a_shed_request_is_logged_by_code_ceiling_and_path() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let capture = Capture::install();
+        let limit = NonZeroUsize::new(3).ok_or("three is not zero")?;
+        let response = shed(limit, &Uri::from_static("/v1/api-keys?limit=2"));
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(response.headers()[HEADER_RATELIMIT_LIMIT], "3");
+        assert_eq!(response.headers()[HEADER_RATELIMIT_REMAINING], "0");
+        let logged = capture.only("request_shed");
+        assert_eq!(logged.field("error_code"), Some("UZ-API-001"));
+        assert_eq!(logged.field("limit"), Some("3"));
+        assert_eq!(logged.field("path"), Some("/v1/api-keys"));
+        assert!(logged.field("request_id").is_some_and(|id| !id.is_empty()));
+        Ok(())
+    }
+}

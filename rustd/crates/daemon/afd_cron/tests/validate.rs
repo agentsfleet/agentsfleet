@@ -289,3 +289,18 @@ fn each_field_refuses_under_its_own_name() {
         Invalid::Message
     );
 }
+
+/// A recipe is held to the same three fields: an expression this daemon will
+/// not register is refused as an invalid request naming the cron.
+#[test]
+fn a_recipe_with_an_unregistrable_expression_is_refused_as_the_cron() {
+    let refused = afd_cron::Recipe::parse("@daily", "UTC", "run the nightly repair")
+        .expect_err("an alias is not a schedule this daemon registers");
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (
+            af_core::error_code::INVALID_REQUEST,
+            afd_cron::validate::DETAIL_INVALID_CRON
+        )
+    );
+}

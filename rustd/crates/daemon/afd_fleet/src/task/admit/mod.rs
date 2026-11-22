@@ -62,10 +62,11 @@ pub(super) async fn bind(
     )
     .await?;
     if !committed.bindings.replayed {
-        for ordinal in committed.queued {
-            if let Some(Some(wake)) = continuations.get(ordinal) {
-                wake.continuation.confirm(tasks).await;
-            }
+        // Only an item that carried a wake queues a turn, so each queued
+        // ordinal names one.
+        let queued = committed.queued.iter();
+        for wake in queued.filter_map(|ordinal| continuations.get(*ordinal)?.as_ref()) {
+            wake.continuation.confirm(tasks).await;
         }
         announce(tasks, run, &scope, &committed.bindings.items).await?;
     }

@@ -127,6 +127,28 @@ async fn first_text_arrives_before_the_provider_closes_its_response() {
     assert_eq!(physical.sends.load(Ordering::Relaxed), 1);
 }
 
+// Value: a request rig refuses to prepare, here one with no message, is the
+// caller's error before any byte is sent.
+#[test]
+fn a_request_with_no_message_is_refused_before_anything_is_sent() {
+    let physical = Arc::new(Physical {
+        body: Mutex::new(None),
+        sends: AtomicUsize::new(0),
+    });
+    let transport = HttpTransport::new(Arc::<Physical>::clone(&physical));
+    let route = Route::new(Api::Chat, "https://model.example/v1", None, 37, 128_000).unwrap();
+    let model = route.model("configured-model", "private-credential", transport);
+    let mut empty = CompletionRequest::new(Message::user("private prompt"));
+    empty.chat_history.clear();
+
+    let refused = StreamTurn::open(&route, &model, empty, TurnControl::default())
+        .err()
+        .unwrap();
+
+    assert!(refused.is_invalid_request(), "{refused:?}");
+    assert_eq!(physical.sends.load(Ordering::Relaxed), 0);
+}
+
 #[tokio::test]
 async fn fragmented_unicode_and_framing_are_decoded_by_the_sdk() {
     let wire = format!("{TEXT}{USAGE}{STOP}");

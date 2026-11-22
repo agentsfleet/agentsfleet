@@ -196,14 +196,17 @@ pub(crate) fn writer(
 mod tests {
     //! A fully read frame remains accepted even when drain interrupts its queued handoff.
 
-    use super::{IncomingFrame, read_stream};
+    use super::{IncomingFrame, PendingWrite, StreamWriters, read_stream, writer};
+    use crate::error::ErrorKind;
     use af_stream::{Budget, Reader};
     use af_wire::protocol::StreamKind;
     use serde_json::json;
+    use std::collections::BTreeMap;
     use std::{
         pin::Pin,
         task::{Context, Poll},
     };
+    use tokio::task::JoinSet;
     use tokio::{
         io::{AsyncRead, DuplexStream, ReadBuf},
         sync::{mpsc, oneshot},
@@ -239,13 +242,12 @@ mod tests {
         ) -> Poll<std::io::Result<()>> {
             let before = buf.filled().len();
             let result = Pin::new(&mut self.input).poll_read(cx, buf);
-            if matches!(result, Poll::Ready(Ok(()))) {
-                self.read += buf.filled().len() - before;
-                if self.read == self.total
-                    && let Some(complete) = self.complete.take()
-                {
-                    let _observer_closed = complete.send(());
-                }
+            // A pending or failed read fills nothing, so it adds nothing.
+            self.read += buf.filled().len() - before;
+            if self.read == self.total
+                && let Some(complete) = self.complete.take()
+            {
+                let _observer_closed = complete.send(());
             }
             result
         }
@@ -298,6 +300,72 @@ mod tests {
         }
         serving.await??;
         assert!(receiver.recv().await.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn writers_missing_a_kind_are_refused() -> TestResult {
+        let stop = CancellationToken::new();
+        let mut workers = JoinSet::new();
+        let mut queues = BTreeMap::new();
+        for kind in [StreamKind::Control, StreamKind::Work, StreamKind::Reports] {
+            let (output, _input) = tokio::io::duplex(64);
+            queues.insert(kind, writer(output, stop.clone(), &mut workers));
+        }
+        let refused = StreamWriters::try_from(queues).err();
+        assert!(
+            refused
+                .as_ref()
+                .is_some_and(|error| matches!(error.kind(), ErrorKind::Protocol)),
+            "{refused:?}"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_writer_flushes_its_accepted_frame_and_ends_when_its_queue_closes() -> TestResult {
+        let stop = CancellationToken::new();
+        let budget = Budget::default();
+        let deadline = Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
+        let mut workers = JoinSet::new();
+        let (output, input) = tokio::io::duplex(af_stream::CHUNK_BYTES);
+        let queue = writer(output, stop.clone(), &mut workers);
+        let frame = af_stream::encode(
+            &json!({"type":"pong", "request_id":3}),
+            &budget,
+            StreamKind::Control,
+            &stop,
+            deadline,
+        )
+        .await?;
+        let (flushed, completion) = oneshot::channel();
+        queue
+            .send(PendingWrite { frame, flushed })
+            .await
+            .ok()
+            .ok_or("the writer refused its first frame")?;
+        tokio::time::timeout_at(deadline, completion).await??;
+        let mut reader = Reader::new(
+            input,
+            budget,
+            StreamKind::Control,
+            stop,
+            af_core::timing::STREAM_ANSWER_TIMEOUT,
+        );
+        let written = reader
+            .next()
+            .await?
+            .ok_or("the flushed frame never arrived")?;
+        assert_eq!(
+            written.decode::<serde_json::Value>()?,
+            json!({"type":"pong", "request_id":3})
+        );
+        drop(queue);
+        let ended = workers
+            .join_next()
+            .await
+            .ok_or("the writer task vanished")?;
+        assert!(matches!(ended, Ok(Ok(()))), "{ended:?}");
         Ok(())
     }
 }

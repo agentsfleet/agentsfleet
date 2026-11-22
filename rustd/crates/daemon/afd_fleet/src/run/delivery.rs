@@ -65,8 +65,8 @@ impl Runs {
     ///
     /// Runs on the report's own transaction, through the ledger owner's
     /// statement, so the answer describes the same snapshot the settle does.
-    /// `None` covers three cases that owe the same nothing: an event id the
-    /// ledger never minted, an event admitted with no destination, and a stored
+    /// `None` covers three cases that owe the same nothing: an event the
+    /// ledger never admitted, an event admitted with no destination, and a stored
     /// connector id no connector answers to — the last logged, because only an
     /// out-of-band edit or a removed connector writes one.
     ///
@@ -75,15 +75,12 @@ impl Runs {
     pub(crate) async fn reply_destination(
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        turn_id: &str,
+        turn_id: &Uuid7,
     ) -> Result<Option<ReplyDestination>> {
-        let Ok(turn) = Uuid7::parse(turn_id) else {
-            return Ok(None);
-        };
         let stored: Option<(String, String)> =
             sqlx::query_as(afd_turns::sql::SELECT_REPLY_DESTINATION)
                 .bind(fleet_id)
-                .bind(&turn)
+                .bind(turn_id)
                 .fetch_optional(&mut *connection)
                 .await
                 .map_err(query(CONTEXT_REPLY))?;

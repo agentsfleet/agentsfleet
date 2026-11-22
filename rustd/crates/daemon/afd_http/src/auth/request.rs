@@ -4,14 +4,16 @@
 
 use std::sync::Arc;
 
-use afd_auth::Principal;
+use afd_auth::{Plane, Principal};
 use http::{header::AUTHORIZATION, request::Parts};
 
-use super::{Authenticator as _, guard::reject, plane_of};
+use super::{Authenticator as _, guard::reject};
 use crate::{route::RouteMeta, services::Shared};
 
-/// None means the route is unguarded; Err is a complete, typed HTTP refusal.
-pub type AuthenticationResult = Result<Option<Principal>, crate::handler::Refusal>;
+/// The proved principal, or a complete, typed HTTP refusal.
+///
+/// An unguarded route mounts no strategy, so every strategy proves a principal.
+pub type AuthenticationResult = Result<Principal, crate::handler::Refusal>;
 
 /// A route chooses its strategy once at mount time; no request path selects policy.
 pub trait RequestAuthentication: Clone + Send + Sync + std::fmt::Debug + 'static {
@@ -28,13 +30,15 @@ pub trait RequestAuthentication: Clone + Send + Sync + std::fmt::Debug + 'static
 #[derive(Debug)]
 pub struct BearerAuthentication<D> {
     services: Arc<D>,
+    plane: Plane,
 }
 
 impl<D> BearerAuthentication<D> {
-    /// Share the same authenticator and directory as the rest of the API.
+    /// Share the same authenticator and directory as the rest of the API,
+    /// proving credentials of the plane the route's guard names.
     #[must_use]
-    pub const fn new(services: Arc<D>) -> Self {
-        Self { services }
+    pub const fn new(services: Arc<D>, plane: Plane) -> Self {
+        Self { services, plane }
     }
 }
 
@@ -42,15 +46,14 @@ impl<D> Clone for BearerAuthentication<D> {
     fn clone(&self) -> Self {
         Self {
             services: Arc::clone(&self.services),
+            plane: self.plane,
         }
     }
 }
 
 impl<D: Shared> RequestAuthentication for BearerAuthentication<D> {
     async fn authenticate(&self, parts: &mut Parts, route: RouteMeta) -> AuthenticationResult {
-        let Some(plane) = plane_of(route.guard) else {
-            return Ok(None);
-        };
+        let plane = self.plane;
         let header = match parts
             .headers
             .get(AUTHORIZATION)
@@ -75,7 +78,6 @@ impl<D: Shared> RequestAuthentication for BearerAuthentication<D> {
             .authenticator()
             .authenticate(plane, header)
             .await
-            .map(Some)
             .map_err(|error| {
                 reject(route, error.code(), error.detail(), "credential_refused").into()
             })

@@ -292,22 +292,31 @@ fn fitted(
         to: (resized.width(), resized.height()),
     };
     let kind = written_as(kind);
-    let data = encoded(&resized, kind, metadata).map_err(|_unwritten| {
-        ToolOutput::failed(
+    let data = rewritten(path, kind, scaled, encoded(&resized, kind, metadata))?;
+    Ok(Shown {
+        image: Image { kind, data },
+        scaled: Some(scaled),
+    })
+}
+
+/// The bytes `written`, the picture at `path` scaled by `scaled` and written
+/// again as `kind`; a write that failed is refused naming both.
+fn rewritten(
+    path: &str,
+    kind: ImageKind,
+    scaled: Scaled,
+    written: Result<Vec<u8>, ImageError>,
+) -> Result<Bytes, ToolOutput> {
+    match written {
+        Ok(data) => Ok(Bytes::from(data)),
+        Err(_unwritten) => Err(ToolOutput::failed(
             code::NOT_AN_IMAGE,
             &format!(
                 "{path} could not be written again as a {} image once scaled from {scaled}",
                 named(kind)
             ),
-        )
-    })?;
-    Ok(Shown {
-        image: Image {
-            kind,
-            data: Bytes::from(data),
-        },
-        scaled: Some(scaled),
-    })
+        )),
+    }
 }
 
 /// `image`, written as `kind`: a JPEG at `JPEG_QUALITY`, a WebP lossless,
@@ -376,5 +385,37 @@ const fn named(kind: ImageKind) -> &'static str {
         ImageKind::Jpeg => "JPEG",
         ImageKind::Gif => "GIF",
         ImageKind::Webp => "WebP",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Value: an encoder that refuses the scaled picture is the model's
+    // refusal, naming the kind it was written as and the scaling, never a
+    // picture sent half-written.
+    #[test]
+    fn a_scaled_picture_the_encoder_refuses_is_refused_naming_its_scaling() {
+        let scaled = Scaled {
+            from: (4096, 1024),
+            to: (0, 0),
+        };
+        let none = Metadata {
+            icc_profile: None,
+            exif: None,
+        };
+        let refused = encoded(&DynamicImage::new_rgba8(0, 0), ImageKind::Jpeg, none);
+
+        let shown = rewritten("wide.jpg", ImageKind::Jpeg, scaled, refused);
+
+        assert_eq!(
+            shown.err().map(|refusal| refusal.text),
+            Some(
+                "[not_an_image] wide.jpg could not be written again as a JPEG image once scaled \
+                 from 4096x1024 to 0x0"
+                    .to_owned()
+            )
+        );
     }
 }

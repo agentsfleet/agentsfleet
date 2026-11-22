@@ -37,12 +37,6 @@ impl DecisionTimeouts {
     };
 }
 
-impl Default for DecisionTimeouts {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// One frozen decision profile and its credential, over pooled guarded HTTP.
 pub struct DecisionClient {
     client: reqwest::Client,

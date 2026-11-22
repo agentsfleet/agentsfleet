@@ -55,3 +55,45 @@ pub fn refused(
         other => crate::handler::Refusal::malformed(other.detail()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_core::paging::PagingRefusal;
+    use af_validate::Ceiling;
+
+    /// The limit sentence names the deployment's ceiling; sort and cursor
+    /// refusals keep the shared sentences, whatever the ceiling.
+    #[tokio::test]
+    async fn each_paging_refusal_reads_as_its_own_sentence()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for (refusal, detail) in [
+            (PagingRefusal::Limit, "limit must be between 1 and 500"),
+            (
+                PagingRefusal::Sort,
+                "sort must be one of the orderings this list offers",
+            ),
+            (
+                PagingRefusal::Cursor,
+                "starting_after must be a cursor issued under the same sort",
+            ),
+        ] {
+            let response = axum::response::IntoResponse::into_response(super::refused(
+                refusal,
+                Ceiling::new(500, 50),
+            ));
+            assert_eq!(response.status(), http::StatusCode::BAD_REQUEST);
+            let body: serde_json::Value = serde_json::from_slice(
+                &axum::body::to_bytes(response.into_body(), usize::MAX).await?,
+            )?;
+            assert_eq!(
+                body.get("error_code").and_then(serde_json::Value::as_str),
+                Some("UZ-REQ-001")
+            );
+            assert_eq!(
+                body.get("detail").and_then(serde_json::Value::as_str),
+                Some(detail)
+            );
+        }
+        Ok(())
+    }
+}

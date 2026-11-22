@@ -90,12 +90,14 @@ impl Definition {
         if batch.config_ops.is_empty() && batch.instruction_edits.is_empty() {
             return Err(invalid("an edit must contain at least one operation"));
         }
-        let mut value = serde_json::to_value(self)?;
+        // The patch writes only `config` and `description`, so the edited
+        // instructions are set before it and nothing overwrites them.
+        let edited = Self {
+            instructions_md: instructions(self.instructions_md(), &batch)?.into(),
+            ..self.clone()
+        };
+        let mut value = serde_json::to_value(edited)?;
         patch::apply(&mut value, &batch)?;
-        *value
-            .get_mut("instructions_md")
-            .ok_or_else(|| invalid("instructions member is absent"))? =
-            Value::String(instructions(self.instructions_md(), &batch)?);
         Self::from_value(value)
     }
 }

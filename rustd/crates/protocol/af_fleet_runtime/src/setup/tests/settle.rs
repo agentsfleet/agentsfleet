@@ -65,3 +65,30 @@ fn an_edit_that_leaves_out_a_list_means_none_of_that_kind() {
     let first = settle(json!({"proposal":{"kind":"initialize"}}));
     assert_eq!(first.pointer("/proposal/config_ops"), None);
 }
+
+// Value: protects=a first setup's empty repository list means no repository, with nothing that
+// only means something beside one; fails_when=the empty list reaches the checker and is refused,
+// a repository setting outlives it, or a named repository loses its settings.
+#[test]
+fn a_first_setup_with_an_empty_repository_list_names_no_repository() {
+    let first = |settings: Value| json!({"proposal":{"kind":"initialize","definition":{"config":{"x-agentsfleet":settings}}}});
+    let settled = settle(first(json!({
+        "tools":["agentmail"],
+        "repositories":[],
+        "repository_access":"read",
+        "repository_base":"main",
+        "repository_publication":"draft",
+        "repository_validation_workflows":["ci"],
+        "triggers":[trigger()]
+    })));
+    assert_eq!(
+        settled,
+        first(json!({"tools":["agentmail"],"triggers":[trigger()]}))
+    );
+    let named = first(json!({
+        "tools":["agentmail"],
+        "repositories":["acme/widgets"],
+        "repository_base":"main"
+    }));
+    assert_eq!(settle(named.clone()), named);
+}

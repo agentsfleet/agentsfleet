@@ -132,15 +132,14 @@ impl RunService {
         let slice = SliceColumns::from_row(&row)
             .map_err(query(CONTEXT))?
             .into_draft_slice();
-        let Some(expires_at) = answer.extended() else {
+        // An extension always measures its slice: `extend_run.sql` answers
+        // `new_until` only beside the slice's columns, none of which is NULL.
+        let (Some(expires_at), Some(slice)) = (answer.extended(), slice) else {
             let known = requested(pricing, run_id, run, requests, host.now())?;
             self.log_draft(tx, known.as_ref(), host.now()).await?;
             return Ok(Renewed::Lost);
         };
-        let settlement = match slice {
-            Some(slice) => pricing.draft_settlement(run_id, slice, requests)?,
-            None => requested(pricing, run_id, run, requests, host.now())?,
-        };
+        let settlement = pricing.draft_settlement(run_id, slice, requests)?;
         self.log_draft(tx, settlement.as_ref(), host.now()).await?;
         Ok(Renewed::Extended {
             expires_at,

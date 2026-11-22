@@ -61,12 +61,10 @@ mod tests {
     #[test]
     fn all_timing_sections_reach_the_checked_runtime_snapshot() -> Checked {
         let mut file = tempfile::NamedTempFile::new()?;
-        write!(
-            file,
-            "[runner.run]\nttl_seconds=40\n\
+        let contents = "[runner.run]\nttl_seconds=40\n\
             [runner.health]\nheartbeat_interval_seconds=7\noffline_after_seconds=90\n\
-            healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_hold_seconds=45"
-        )?;
+            healthy_before_uncordon_seconds=21\n[runner.sandboxes]\nmax_idle_hold_seconds=45";
+        file.write_all(contents.as_bytes())?;
         let environment = MapEnv::from_pairs([("AGENTSFLEET_RUN_TTL_SECONDS", "invalid")]);
         let config = ConfigBuilder::new(&environment)
             .file(Some(file.path()))

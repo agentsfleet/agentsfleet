@@ -240,13 +240,19 @@ async fn write_draft(
 
 #[cfg(test)]
 #[expect(
-    clippy::panic,
+    clippy::expect_used,
     reason = "fixed test fixtures fail loudly when their contract changes"
 )]
 mod tests {
+    use af_core::error_code;
+    use af_crypto::entropy::Entropy;
     use af_fleet_runtime::Definition;
 
     use super::{DEFAULT_TITLE, initial_title};
+    use crate::{
+        Access, Drafts,
+        types::{CreateDraft, Source},
+    };
 
     /// A source setup describing itself as `description`.
     fn source(description: &str) -> Definition {
@@ -260,8 +266,44 @@ mod tests {
                 }
             }},
         });
-        Definition::parse(&json.to_string())
-            .unwrap_or_else(|error| panic!("the fixture setup parses: {error:?}"))
+        Definition::parse(&json.to_string()).expect("the fixture setup parses")
+    }
+
+    // Value: protects=a Save on create has a message to save with; fails_when=the
+    // message check is dropped, and a save-only create reaches the store;
+    // seam=Drafts::create over a pool nobody answers, so a refusal before any
+    // read is the only way this passes.
+    #[tokio::test]
+    async fn a_create_that_saves_without_a_first_message_is_refused_before_any_read() {
+        let drafts = Drafts::new(afd_db::test_util::unreachable_db(), Entropy::new());
+        let workspace = afd_db::test_util::mint_id();
+        let access = Access {
+            workspace: &workspace,
+            subject: "creator",
+        };
+        let request = CreateDraft {
+            source: Source::Blank,
+            setup_model_ref: afd_credential::provider::PLATFORM_MODEL_REF.to_owned(),
+            message: None,
+            save: true,
+            operation_id: afd_db::test_util::mint_id(),
+        };
+        let with_message = CreateDraft {
+            message: Some("Save it".to_owned()),
+            ..request.clone()
+        };
+        let refused = drafts
+            .create(access, request, jiff::Timestamp::UNIX_EPOCH)
+            .await
+            .expect_err("a save with nothing to save");
+        assert_eq!(refused.code(), error_code::INVALID_REQUEST);
+        assert_eq!(refused.detail(), "Save requires an initial message");
+        assert!(!refused.is_datastore_unavailable());
+        let reached = drafts
+            .create(access, with_message, jiff::Timestamp::UNIX_EPOCH)
+            .await
+            .expect_err("nobody answers the store");
+        assert!(reached.is_datastore_unavailable(), "{reached:?}");
     }
 
     #[test]

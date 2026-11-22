@@ -67,7 +67,11 @@ pub(super) async fn publish(
         Ok(commit) => record::confirm(tasks, &effect, &commit).await?,
         Err(error) => {
             record::unknown(tasks, &effect).await?;
-            tracing::warn!(event = "dt_effect_uncertain", effect_id = %effect.id, error_code = %error.code());
+            let (effect_id, error_code) = (&effect.id, error.code());
+            {
+                let event = &"dt_effect_uncertain";
+                tracing::warn!(event, %effect_id, %error_code);
+            };
         }
     }
     Ok((read::one(tasks, run, &effect.id).await?, false))

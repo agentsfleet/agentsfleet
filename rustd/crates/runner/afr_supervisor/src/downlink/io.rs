@@ -162,18 +162,32 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_task_that_ignores_cancellation_is_aborted_after_one_answer_bound() {
         let mut workers = JoinSet::new();
-        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let observed = std::sync::Arc::clone(&finished);
-        workers.spawn(async move {
-            std::future::pending::<()>().await;
-            observed.store(true, std::sync::atomic::Ordering::SeqCst);
-            Ok(())
-        });
+        workers.spawn(std::future::pending::<Result<()>>());
         workers.spawn(async { Ok(()) });
         let started = Instant::now();
         join(workers).await;
         assert_eq!(started.elapsed(), af_core::timing::STREAM_ANSWER_TIMEOUT);
-        assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    #[expect(clippy::panic, reason = "the worker under test is the one that panics")]
+    async fn a_worker_that_panicked_is_joined_and_logged_as_failed() {
+        let capture = af_core::test_util::trace::Capture::install();
+        let mut workers = JoinSet::new();
+        workers.spawn(async { panic!("a codec bug") });
+        workers.spawn(async { Ok(()) });
+        let started = Instant::now();
+
+        join(workers).await;
+
+        assert_eq!(started.elapsed(), std::time::Duration::ZERO);
+        let failed = capture.only("runner_stream_worker_failed");
+        assert_eq!(failed.field("is_panic"), Some("true"));
+        assert_eq!(failed.field("is_cancelled"), Some("false"));
+        assert_eq!(
+            failed.field("error_code"),
+            Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
     }
 
     #[tokio::test(start_paused = true)]

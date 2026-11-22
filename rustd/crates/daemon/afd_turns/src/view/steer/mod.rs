@@ -256,12 +256,14 @@ impl Steer {
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
         let Ok(fleet) = Uuid7::parse(fleet) else {
-            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                event = "tail_frame_dropped",
-                error_code,
-                reason = "invalid_fleet_identifier"
+            // Hoisted out of the macro: `tracing`'s `log` feature compiles an
+            // event's fields twice, and llvm-cov reports the dead copy.
+            let (event, error_code, reason) = (
+                "tail_frame_dropped",
+                error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                "invalid_fleet_identifier",
             );
+            tracing::warn!(event, error_code, reason);
             return;
         };
         let subject = afd_bus::Subject::ThreadItems(fleet);

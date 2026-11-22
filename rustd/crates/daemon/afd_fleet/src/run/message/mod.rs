@@ -70,12 +70,7 @@ impl RunService {
             .await?;
         let reply = {
             let mut connection = self.runs.pool().acquire().await?;
-            Runs::reply_destination(
-                &mut connection,
-                &standing.fleet_id,
-                standing.turn_id.as_str(),
-            )
-            .await?
+            Runs::reply_destination(&mut connection, &standing.fleet_id, &standing.turn_id).await?
         }
         .ok_or_else(message_no_channel)?;
         let counted = self

@@ -171,3 +171,41 @@ fn a_recovery_request_remains_with_a_host_that_has_no_free_worker() -> TestResul
     assert_eq!(connection.snapshot.lock().recovery_pending, Some(recovery));
     Ok(())
 }
+
+#[test]
+fn a_draining_replica_refuses_a_new_connection_and_drains_the_registered_one() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+    let registered = ConnectionHandle::fixture(runner.clone(), runner);
+    let _registration = registry.register(&registered)?;
+    registry.begin_drain();
+    assert!(registry.is_draining());
+    assert!(registered.drain.is_cancelled());
+    assert!(!registered.stop.is_cancelled(), "drain lets it finish");
+    let late = Uuid7::parse("019f0000-0000-7000-8000-000000000004")?;
+    let refused = registry
+        .register(&ConnectionHandle::fixture(late.clone(), late))
+        .err();
+    assert!(
+        refused
+            .as_ref()
+            .is_some_and(|error| matches!(error.kind(), crate::error::ErrorKind::Closed)),
+        "{refused:?}"
+    );
+    assert_eq!(registry.runners(), std::slice::from_ref(&registered.runner));
+    Ok(())
+}
+
+#[test]
+fn cancelling_every_connection_stops_each_registered_one() -> TestResult {
+    let registry = Arc::new(Registry::default());
+    let first = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+    let second = Uuid7::parse("019f0000-0000-7000-8000-000000000002")?;
+    let a = ConnectionHandle::fixture(first.clone(), first);
+    let b = ConnectionHandle::fixture(second.clone(), second);
+    let _registrations = (registry.register(&a)?, registry.register(&b)?);
+    registry.cancel_all();
+    assert!(a.stop.is_cancelled());
+    assert!(b.stop.is_cancelled());
+    Ok(())
+}

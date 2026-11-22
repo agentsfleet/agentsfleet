@@ -131,18 +131,18 @@ mod tests {
         )
         .expect("an ungranted mint is a park, not a refusal");
 
-        match parked {
-            Assembled::Ungranted {
-                credential,
-                integration,
-            } => {
-                // Both halves, because "a grant is missing" is unactionable
-                // and "`github` for `gh`" is a button someone can press.
-                assert_eq!(credential, "gh");
-                assert_eq!(integration, "github");
-            }
-            Assembled::Ready(_) => panic!("an ungranted mint must not assemble"),
-        }
+        // Both halves, because "a grant is missing" is unactionable and
+        // "`github` for `gh`" is a button someone can press.
+        assert!(
+            matches!(
+                parked,
+                Assembled::Ungranted {
+                    credential: "gh",
+                    integration: "github",
+                }
+            ),
+            "an ungranted mint parks naming both halves: {parked:?}"
+        );
     }
 
     #[test]
@@ -200,9 +200,15 @@ mod tests {
         )
         .expect("an ungranted mint is a park, not a refusal");
 
-        match parked {
-            Assembled::Ungranted { integration, .. } => assert_eq!(integration, "zoho"),
-            Assembled::Ready(_) => panic!("the ungranted sibling must still park"),
-        }
+        assert!(
+            matches!(
+                parked,
+                Assembled::Ungranted {
+                    integration: "zoho",
+                    ..
+                }
+            ),
+            "the ungranted sibling must still park: {parked:?}"
+        );
     }
 }

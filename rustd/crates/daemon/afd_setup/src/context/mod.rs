@@ -12,8 +12,6 @@ use sqlx::PgConnection;
 use af_context::{Checkpoint, CheckpointStore, Error, PortFuture, Result};
 
 const LOAD: &str = include_str!("load.sql");
-const INSERT: &str = include_str!("insert.sql");
-const UPDATE: &str = include_str!("update.sql");
 const FENCED_INSERT: &str = include_str!("fenced_insert.sql");
 const FENCED_UPDATE: &str = include_str!("fenced_update.sql");
 const HOLDS: &str = include_str!("holds.sql");
@@ -106,7 +104,8 @@ impl std::fmt::Debug for Repository<'_> {
 }
 
 impl<'a> Repository<'a> {
-    /// `owner`'s store. `id` is a newly minted checkpoint row identity, used
+    /// `owner`'s store, which reads only: a save through it is refused as
+    /// stale-fenced. `id` is a newly minted checkpoint row identity, used
     /// only on first insert.
     #[must_use]
     pub const fn new(connection: &'a mut PgConnection, owner: Owner, id: Uuid7) -> Self {
@@ -155,6 +154,11 @@ impl<'a> Repository<'a> {
     }
 
     async fn publish(&mut self, expected: u64, checkpoint: Checkpoint) -> Result<()> {
+        // Every save names the run that holds the thread; a store opened with
+        // [`Repository::new`] holds none, so it only reads.
+        let Some(holder) = self.holder else {
+            return Err(Error::stale_fence());
+        };
         checkpoint.validate_document()?;
         if checkpoint.identity.scope != self.owner.scope()
             || expected.checked_add(1) != Some(checkpoint.generation)
@@ -164,32 +168,22 @@ impl<'a> Repository<'a> {
         let generation =
             i64::try_from(checkpoint.generation).map_err(|_overflow| Error::stale())?;
         let expected = i64::try_from(expected).map_err(|_overflow| Error::stale())?;
-        let fenced = self
-            .holder
-            .map(|holder| stored_fence(holder.fence).map(|fence| (holder, fence)))
-            .transpose()?;
+        let fence = stored_fence(holder.fence)?;
         // The insert names the new row's id; the update finds the row by thread.
-        let statement = match (fenced.is_some(), expected == 0) {
-            (false, true) => sqlx::query(INSERT).bind(&self.id),
-            (false, false) => sqlx::query(UPDATE),
-            (true, true) => sqlx::query(FENCED_INSERT).bind(&self.id),
-            (true, false) => sqlx::query(FENCED_UPDATE),
+        let statement = if expected == 0 {
+            sqlx::query(FENCED_INSERT).bind(&self.id)
+        } else {
+            sqlx::query(FENCED_UPDATE)
         };
-        let statement = statement
+        let changed = statement
             .bind(self.owner.thread())
             .bind(generation)
             .bind(sqlx::types::Json(&checkpoint))
-            .bind(expected);
-        // A fenced statement names its holder after the columns.
-        let statement = match fenced {
-            Some((holder, fence)) => statement
-                .bind(holder.run)
-                .bind(holder.runner)
-                .bind(fence)
-                .bind(holder.active),
-            None => statement,
-        };
-        let changed = statement
+            .bind(expected)
+            .bind(holder.run)
+            .bind(holder.runner)
+            .bind(fence)
+            .bind(holder.active)
             .execute(&mut *self.connection)
             .await
             .map_err(Error::boundary)?;
@@ -198,9 +192,7 @@ impl<'a> Repository<'a> {
         }
         // A run that no longer holds the thread is refused as such, even when
         // a save of the same checkpoint already landed while it held it.
-        if let Some((holder, fence)) = fenced
-            && !self.holds(holder, fence).await?
-        {
+        if !self.holds(holder, fence).await? {
             return Err(Error::stale_fence());
         }
         if self.load().await?.as_ref() == Some(&checkpoint) {

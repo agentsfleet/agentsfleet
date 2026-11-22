@@ -4,8 +4,7 @@ use af_core::id::Uuid7;
 use af_crypto::envelope::Envelope;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
-    FoldRef, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRead,
-    TurnCheckpointResponse, TurnPrivateRoot,
+    FoldRef, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse, TurnPrivateRoot,
 };
 
 use super::{
@@ -24,34 +23,21 @@ pub(super) async fn publish(
     store: &TurnCheckpoints,
     runs: &Runs,
     run: TurnRun<'_>,
-    input: &garde::Valid<TurnCheckpointCommand>,
+    checkpoint: &TurnCheckpointRef,
+    body: &Publication<'_>,
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::Commit {
-        checkpoint,
-        root: bytes,
-        manifest_root,
-        folds: covered,
-    } = &input.action
-    else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut owner = TurnRunGuard::lock(runs, &mut connection, run).await?;
     let head = allocation::head(&mut owner).await?;
     let plan = Plan::load(&mut owner, &guard::id(&checkpoint.checkpoint_id)?).await?;
     let pin = pins::exact(&mut owner, checkpoint).await?;
-    validate(&owner, &plan, &pin, bytes, covered)?;
+    validate(&owner, &plan, &pin, body.root, body.folds)?;
     if plan.ready {
-        if plan.manifest_root.as_ref() != Some(manifest_root) || plan.folds()? != *covered {
+        if plan.manifest_root.as_deref() != Some(body.manifest) || plan.folds()? != body.folds {
             return Err(TurnCheckpointRefusal::Conflict.into());
         }
     } else {
-        let body = Publication {
-            root: bytes,
-            manifest: manifest_root,
-            folds: covered,
-        };
-        pending(store, &mut owner, &plan, &pin, head, &body).await?;
+        pending(store, &mut owner, &plan, &pin, head, body).await?;
     }
     let saved = Plan::load(&mut owner, &plan.id).await?;
     let response = TurnCheckpointResponse::Committed(Box::new(saved.descriptor(&owner)?));
@@ -115,7 +101,9 @@ async fn write(
     covered: (&[Uuid7], &[FoldRef]),
 ) -> Result<()> {
     let sequences: Vec<_> = covered.1.iter().map(|fold| fold.sequence).collect();
-    let changed = sqlx::query(include_str!("sql/commit.sql"))
+    // The plan row is held `FOR UPDATE` and proved pending, so this always
+    // writes it.
+    sqlx::query(include_str!("sql/commit.sql"))
         .bind(id)
         .bind(manifest)
         .bind(covered.0)
@@ -130,30 +118,28 @@ async fn write(
         .execute(&mut *owner.tx)
         .await
         .map_err(query("seal complete private turn root and folded prefix"))?;
-    if changed.rows_affected() != 1 {
-        return Err(TurnCheckpointRefusal::Conflict.into());
-    }
     Ok(())
 }
 
 async fn swap(owner: &mut TurnRunGuard<'_>, plan: &Plan) -> Result<()> {
-    let changed = sqlx::query(include_str!("sql/head_swap.sql"))
+    // The head row is held `FOR UPDATE` and proved equal to the expected head,
+    // so the swap always moves it.
+    sqlx::query(include_str!("sql/head_swap.sql"))
         .bind(&owner.current.turn_id)
         .bind(&plan.id)
         .bind(&plan.expected_head_id)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("compare and swap complete turn recovery head"))?;
-    if changed.rows_affected() != 1 {
-        return Err(TurnCheckpointRefusal::Conflict.into());
-    }
     Ok(())
 }
 
-struct Publication<'a> {
-    root: &'a TurnPrivateRoot,
-    manifest: &'a str,
-    folds: &'a [FoldRef],
+/// What one commit publishes: the private root, its manifest digest and the
+/// folded prefix it covers.
+pub(super) struct Publication<'a> {
+    pub root: &'a TurnPrivateRoot,
+    pub manifest: &'a str,
+    pub folds: &'a [FoldRef],
 }
 
 fn validate(

@@ -119,6 +119,26 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(RunnerPlane::fleets(&plane), &plane.tenant.fleets));
 }
 
+/// The tenant, runner and ingress planes drive native tasks through one owner,
+/// so a task bound on one plane is the task the others report against.
+#[tokio::test]
+async fn every_plane_drives_native_tasks_through_the_one_task_owner() {
+    let plane = plane();
+
+    assert!(std::ptr::addr_eq(
+        TenantPlane::tasks(&plane),
+        &raw const plane.tasks
+    ));
+    assert!(std::ptr::addr_eq(
+        RunnerPlane::tasks(&plane),
+        &raw const plane.tasks
+    ));
+    assert!(std::ptr::addr_eq(
+        IngressPlane::tasks(&plane),
+        &raw const plane.tasks
+    ));
+}
+
 /// The second half of the service map: the stores the tenant, runner and
 /// operator planes each reach for activity, money and administration.
 #[tokio::test]

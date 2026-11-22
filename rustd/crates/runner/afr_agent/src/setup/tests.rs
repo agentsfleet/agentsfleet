@@ -223,3 +223,106 @@ async fn a_setup_run_streams_its_answer_live() -> TestResult {
     assert_eq!(streamed, ANSWER);
     Ok(())
 }
+
+#[tokio::test]
+async fn a_setup_run_stopped_before_it_answers_fails_as_stopped_and_keeps_nothing() -> TestResult {
+    let script = Script::new([vec![say(ANSWER)]]);
+    let run = setup_payload(&[], 0, None);
+    let context = Context::empty();
+    let dropped = |_frame: ActivityFrame<'static>| {};
+    let meter = Meter::default();
+    let stop = CancellationToken::new();
+    stop.cancel();
+    let setup = SetupRun {
+        run: &run,
+        context: &context,
+        events: &dropped,
+        meter: &meter,
+        stop: &stop,
+    };
+
+    let output = super::run(&script.replay(), setup).await?;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        return Err(format!("a stopped run ended {:?}", output.result.outcome).into());
+    };
+    assert_eq!(failure.detail, super::DETAIL_STOPPED);
+    assert_eq!(output.result.content, "");
+    assert_eq!(output.proposal, None);
+    Ok(())
+}
+
+#[test]
+fn a_setup_run_prints_its_run_and_nothing_it_carries() {
+    let run = setup_payload(&[], 0, None);
+    let context = Context::empty();
+    let dropped = |_frame: ActivityFrame<'static>| {};
+    let meter = Meter::default();
+    let stop = CancellationToken::new();
+    let setup = SetupRun {
+        run: &run,
+        context: &context,
+        events: &dropped,
+        meter: &meter,
+        stop: &stop,
+    };
+
+    let printed = format!("{setup:?}");
+
+    assert!(printed.starts_with("SetupRun {"), "{printed}");
+    assert!(printed.contains(run.run_id.as_ref()), "{printed}");
+    assert!(!printed.contains(ASKED), "{printed}");
+}
+
+#[tokio::test]
+async fn a_head_that_is_no_fleet_definition_fails_the_run_before_any_model_call() -> TestResult {
+    let script = Script::new([vec![say(ANSWER)]]);
+    let head = json!({"id": HEAD, "revision": 2, "definition": {"not": "a definition"}});
+    let run = setup_payload(&[], 0, Some(&head));
+
+    let refused = run_setup(&script.replay(), &run, &Context::empty()).await;
+
+    let Err(failure) = refused else {
+        return Err("a head that does not parse was edited".into());
+    };
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert!(script.sent().is_empty(), "the model was called");
+    Ok(())
+}
+
+// Value: an engine that hosts no setup run refuses one as an unusable
+// assignment rather than running it as a fleet's turn.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn an_engine_that_hosts_no_setup_run_refuses_one() {
+    use crate::engine::AgentEngine as _;
+
+    let engine = crate::scripted::ScriptedEngine::new([]);
+    let run = setup_payload(&[], 0, None);
+    let context = Context::empty();
+    let dropped = |_frame: ActivityFrame<'static>| {};
+    let meter = Meter::default();
+    let stop = CancellationToken::new();
+    let setup = SetupRun {
+        run: &run,
+        context: &context,
+        events: &dropped,
+        meter: &meter,
+        stop: &stop,
+    };
+
+    let refused = engine.setup(setup).await.err();
+
+    assert_eq!(
+        refused.as_ref().map(crate::Error::code),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED)
+    );
+    assert!(refused.is_some_and(|failure| {
+        failure
+            .to_string()
+            .contains("this engine hosts no setup run")
+    }));
+}

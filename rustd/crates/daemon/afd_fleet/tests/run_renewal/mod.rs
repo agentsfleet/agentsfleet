@@ -7,6 +7,8 @@
 
 mod assigned;
 mod cancellation;
+mod connection;
+mod context_load;
 mod expiry;
 mod fixture;
 mod holders;

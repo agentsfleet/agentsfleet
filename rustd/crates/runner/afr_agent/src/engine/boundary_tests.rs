@@ -5,7 +5,8 @@ use super::{
 };
 use guffbolt::Message;
 
-fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt)> {
+/// A task snapshot, the receipt that commits it, and its history's digest.
+fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt, String)> {
     let mut task = super::recovery_tests::task();
     task.checkpoint_generation = Some(7);
     let task = TaskRecovery::capture(
@@ -32,15 +33,15 @@ fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt)> {
         checkpoint: CommittedRecovery::Task {
             checkpoint_id: "019f0000-0000-7000-8000-000000000012".to_owned(),
             generation: 8,
-            history_digest: digest,
+            history_digest: digest.clone(),
         },
     };
-    Ok((snapshot, valid))
+    Ok((snapshot, valid, digest))
 }
 
 #[test]
 fn committed_receipt_requires_the_exact_attempt() -> crate::Result<()> {
-    let (snapshot, valid) = fixture()?;
+    let (snapshot, valid, _digest) = fixture()?;
     let expected = snapshot.witness();
     assert!(valid.matches(&expected));
     for invalid in [
@@ -64,18 +65,15 @@ fn committed_receipt_requires_the_exact_attempt() -> crate::Result<()> {
 
 #[test]
 fn committed_receipt_requires_new_identity_generation_and_exact_history() -> crate::Result<()> {
-    let (snapshot, valid) = fixture()?;
+    let (snapshot, valid, history_digest) = fixture()?;
     let expected = snapshot.witness();
-    let CommittedRecovery::Task { history_digest, .. } = &valid.checkpoint else {
-        return Err(crate::decision::unavailable());
-    };
     for (id, generation, digest) in [
         (
             "019f0000-0000-7000-8000-000000000012",
             7,
             history_digest.clone(),
         ),
-        ("missing", 8, history_digest.clone()),
+        ("missing", 8, history_digest),
         ("019f0000-0000-7000-8000-000000000012", 8, "0".repeat(64)),
     ] {
         let invalid = RecoveryReceipt {
@@ -88,5 +86,35 @@ fn committed_receipt_requires_new_identity_generation_and_exact_history() -> cra
         };
         assert!(!invalid.matches(&expected));
     }
+    Ok(())
+}
+
+#[test]
+fn an_ordinary_receipt_never_answers_a_task_snapshot() -> crate::Result<()> {
+    use af_wire::run::{CheckpointOperationId, TurnResume, TurnScope, TurnWorkspace};
+
+    let (snapshot, valid, digest) = fixture()?;
+    let expected = snapshot.witness();
+    let id = |number: u32| CheckpointOperationId(format!("019f0000-0000-7000-8000-{number:012x}"));
+    let ordinary = RecoveryReceipt {
+        checkpoint: CommittedRecovery::Turn(TurnResume {
+            checkpoint_id: id(0x12),
+            generation: 8,
+            format_version: 1,
+            scope: TurnScope {
+                workspace_id: id(1),
+                fleet_id: id(2),
+                turn_id: id(0x11),
+                setup_revision_id: id(4),
+                workspace: TurnWorkspace::ApiOnly,
+            },
+            manifest_root: af_core::etag::sha256_hex(b"manifest"),
+            history_digest: digest,
+        }),
+        ..valid.clone()
+    };
+
+    assert!(valid.matches(&expected));
+    assert!(!ordinary.matches(&expected));
     Ok(())
 }

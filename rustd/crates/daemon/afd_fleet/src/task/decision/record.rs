@@ -61,12 +61,38 @@ async fn after_commit(
     let disposition = disposition(tasks, &written.call, payload.as_ref(), receipt).await;
     changed(tasks, &written).await?;
     let result = response(&written, disposition)?;
-    tracing::info!(event = "dt_decision_recorded", decision_call_id = result.call_id.as_str(),
-        assessment_id = written.call.assessment_id.as_str(), state = result.state.as_str(),
-        call_age_ms = af_core::clock::now().duration_since(written.call.created_at).as_millis(),
-        purpose = written.call.purpose.as_str(), replayed = result.replayed,
-        disposition = ?result.disposition, charged_nanos = result.charged_nanos.as_deref(),
-        reserved_nanos = result.reserved_nanos.as_str());
+    let call_age_ms = af_core::clock::now()
+        .duration_since(written.call.created_at)
+        .as_millis();
+    let (decision_call_id, assessment_id, state) = (
+        result.call_id.as_str(),
+        written.call.assessment_id.as_str(),
+        result.state.as_str(),
+    );
+    let (purpose, replayed, disposition) = (
+        written.call.purpose.as_str(),
+        result.replayed,
+        &result.disposition,
+    );
+    let (charged_nanos, reserved_nanos) = (
+        result.charged_nanos.as_deref(),
+        result.reserved_nanos.as_str(),
+    );
+    {
+        let event = &"dt_decision_recorded";
+        tracing::info!(
+            event,
+            decision_call_id,
+            assessment_id,
+            state,
+            call_age_ms,
+            purpose,
+            replayed,
+            ?disposition,
+            charged_nanos,
+            reserved_nanos
+        );
+    };
     Ok(result)
 }
 

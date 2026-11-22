@@ -32,13 +32,8 @@ impl Creations {
             request_json: payload,
             reply: Reply::None,
         };
-        match self.turns.prepare(turn).await {
-            Ok(prepared) => Ok(Prepared::Ready(prepared)),
-            Err(refused) if refused.is_over_capacity() => {
-                Ok(Prepared::Blocked(refused.code().to_string()))
-            }
-            Err(source) => Err(source.into()),
-        }
+        // Capacity is decided when the turn is staged, never when it is prepared.
+        Ok(Prepared::Ready(self.turns.prepare(turn).await?))
     }
 
     pub(in crate::creation) async fn stage_initial(
@@ -49,7 +44,6 @@ impl Creations {
     ) -> Result<InitialStart> {
         initial.outcome = match prepared {
             Prepared::None => StartOutcome::None,
-            Prepared::Blocked(code) => blocked(code),
             Prepared::Ready(prepared) => match self.turns.stage(connection, prepared).await {
                 Ok(admitted) => StartOutcome::RunNow {
                     state: StartState::Pending,

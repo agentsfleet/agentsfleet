@@ -70,3 +70,23 @@ fn a_lapsed_run_is_stored_as_the_daemon_spells_an_event_it_stopped_re_leasing() 
         Some(af_core::turn::label::RUN_EXPIRED)
     );
 }
+
+// Value: protects=a run that ended asking a question settles waiting and stores
+// no cause, whatever failure fields rode beside it; fails_when=the waiting arm is
+// folded into success or failure; why_new=no test converted a waiting outcome;
+// seam=`Verdict::of`, the one conversion every report takes.
+#[test]
+fn a_waiting_run_settles_waiting_and_stores_no_cause() {
+    let verdict = Verdict::of(
+        Outcome::Waiting,
+        Some(FailureClass::RunnerCrash),
+        "must not survive",
+    );
+
+    assert_eq!(verdict, Verdict::Waiting);
+    assert!(verdict.waiting());
+    assert!(!verdict.succeeded() && !verdict.failed() && !verdict.stopped());
+    assert_eq!(verdict.status(), status::WAITING);
+    assert_eq!(verdict.label(), None);
+    assert_eq!(verdict.detail(), None);
+}

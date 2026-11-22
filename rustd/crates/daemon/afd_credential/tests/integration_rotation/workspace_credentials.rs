@@ -144,6 +144,11 @@ async fn same_named_keys_remain_independent_when_switching_the_active_model() {
         .await
         .expect("registered metadata reads")
         .expect("the staged model remains available");
+    // An entry is named by its UUIDv7 id: any other reference names none.
+    let unnamed = registered_model(&mut connection, &fixture.tenant, "staging-model")
+        .await
+        .expect("a reference that is not an id reads nothing");
+    assert!(unnamed.is_none(), "{unnamed:?}");
     let key = store
         .registered_key(&mut connection, &fixture.tenant, &pinned)
         .await

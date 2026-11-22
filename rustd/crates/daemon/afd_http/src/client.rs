@@ -109,4 +109,36 @@ mod tests {
             ("unknown", "unknown")
         );
     }
+
+    /// A direct caller is its socket peer, and names itself by its user agent.
+    #[tokio::test]
+    async fn a_direct_caller_is_its_socket_peer_and_its_user_agent() {
+        let mut parts = http::Request::builder()
+            .header(http::header::USER_AGENT, "agentsfleet-cli/1.0")
+            .extension(axum::extract::ConnectInfo(std::net::SocketAddr::from((
+                [192, 0, 2, 4],
+                5151,
+            ))))
+            .body(())
+            .unwrap_or_default()
+            .into_parts()
+            .0;
+        let Ok(direct) = Origin::from_request_parts(&mut parts, &()).await;
+        assert_eq!(direct.address, "192.0.2.4");
+        assert_eq!(direct.user_agent, "agentsfleet-cli/1.0");
+
+        let unreadable = http::HeaderValue::from_bytes(b"caf\xc3\xa9")
+            .unwrap_or(http::HeaderValue::from_static(""));
+        let mut parts = http::Request::builder()
+            .header(http::header::USER_AGENT, unreadable)
+            .body(())
+            .unwrap_or_default()
+            .into_parts()
+            .0;
+        let Ok(named) = Origin::from_request_parts(&mut parts, &()).await;
+        assert_eq!(
+            named.user_agent, "unknown",
+            "a user agent that is not text is not echoed"
+        );
+    }
 }

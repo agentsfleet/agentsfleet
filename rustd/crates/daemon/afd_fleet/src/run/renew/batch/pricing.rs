@@ -33,14 +33,16 @@ impl RunService {
         if !funds_due {
             return short;
         }
-        for (payer, rows) in by_payer(batch) {
-            let mut floors = Vec::with_capacity(rows.len());
-            for &row in &rows {
+        for (payer, first, rest) in by_payer(batch) {
+            let first = (
+                first,
+                self.cached_floor(&first.renewing(), first, now).await,
+            );
+            let mut floors = Vec::with_capacity(rest.len());
+            for &row in &rest {
                 floors.push((row, self.cached_floor(&row.renewing(), row, now).await));
             }
-            let Some((row, estimate)) = dearest(floors) else {
-                continue;
-            };
+            let (row, estimate) = dearest(first, floors);
             if self
                 .funds_cover_at(&row.renewing(), &row.id, row.id.as_str(), estimate)
                 .await
@@ -135,47 +137,49 @@ impl RunService {
     }
 }
 
+/// A run's funds floor, or the fault that kept it from being priced.
+type Floor = core::result::Result<Estimate, Arc<crate::Error>>;
+
 /// The batch's runs grouped by the payer that funds them, in the order each
-/// payer first appears.
+/// payer first appears: each payer's first run, then the rest of its runs.
 fn by_payer<'a>(
     batch: &[(&'a Found, &RenewRequest)],
-) -> Vec<((&'a Uuid7, &'a Uuid7), Vec<&'a Found>)> {
-    let mut groups: Vec<((&Uuid7, &Uuid7), Vec<&Found>)> = Vec::new();
+) -> Vec<((&'a Uuid7, &'a Uuid7), &'a Found, Vec<&'a Found>)> {
+    let mut groups: Vec<((&Uuid7, &Uuid7), &Found, Vec<&Found>)> = Vec::new();
     for &(row, _request) in batch {
         let payer = (&row.tenant_id, &row.workspace_id);
-        match groups.iter_mut().find(|(known, _rows)| *known == payer) {
-            Some((_payer, rows)) => rows.push(row),
-            None => groups.push((payer, vec![row])),
+        match groups
+            .iter_mut()
+            .find(|(known, _first, _rest)| *known == payer)
+        {
+            Some((_payer, _first, rest)) => rest.push(row),
+            None => groups.push((payer, row, Vec::new())),
         }
     }
     groups
 }
 
-/// The run whose floor a payer's funds must cover: the dearest, whichever
-/// order the frame listed them in.
+/// The run whose floor a payer's funds must cover: the dearest of `first`
+/// and `rest`, whichever order the frame listed them in.
 ///
 /// A run whose floor could not be priced never stands in for one that could,
 /// so a payer is admitted unchecked only when none of its runs can be priced,
 /// and then with the first fault, as an unreadable gate is on the per-run path.
-fn dearest<T>(
-    floors: Vec<(T, core::result::Result<Estimate, Arc<crate::Error>>)>,
-) -> Option<(T, core::result::Result<Estimate, Arc<crate::Error>>)> {
-    let mut chosen: Option<(T, core::result::Result<Estimate, Arc<crate::Error>>)> = None;
-    for (row, floor) in floors {
-        chosen = Some(match (chosen.take(), floor) {
-            (None, floor) => (row, floor),
-            (Some((kept_row, Ok(kept))), Ok(floor)) => {
-                if floor.floor() > kept.floor() {
-                    (row, Ok(floor))
-                } else {
-                    (kept_row, Ok(kept))
+fn dearest<T>(first: (T, Floor), rest: Vec<(T, Floor)>) -> (T, Floor) {
+    rest.into_iter()
+        .fold(first, |(kept_row, kept), (row, floor)| {
+            match (kept, floor) {
+                (Ok(kept), Ok(floor)) => {
+                    if floor.floor() > kept.floor() {
+                        (row, Ok(floor))
+                    } else {
+                        (kept_row, Ok(kept))
+                    }
                 }
+                (Err(_fault), Ok(floor)) => (row, Ok(floor)),
+                (kept, Err(_fault)) => (kept_row, kept),
             }
-            (Some((_faulted, Err(_fault))), Ok(floor)) => (row, Ok(floor)),
-            (Some(kept), Err(_fault)) => kept,
-        });
-    }
-    chosen
+        })
 }
 
 #[cfg(test)]
@@ -198,35 +202,40 @@ mod tests {
     /// A cheap run listed first never hides the dearer one's floor.
     #[test]
     fn the_dearest_floor_wins_whichever_run_is_listed_first() {
-        let cheap_first = dearest(vec![("cheap", Ok(priced(10))), ("dear", Ok(priced(900)))]);
-        let dear_first = dearest(vec![("dear", Ok(priced(900))), ("cheap", Ok(priced(10)))]);
-        assert_eq!(cheap_first.map(|(run, _floor)| run), Some("dear"));
-        assert_eq!(dear_first.map(|(run, _floor)| run), Some("dear"));
+        let cheap_first = dearest(("cheap", Ok(priced(10))), vec![("dear", Ok(priced(900)))]);
+        let dear_first = dearest(("dear", Ok(priced(900))), vec![("cheap", Ok(priced(10)))]);
+        assert_eq!(cheap_first.0, "dear");
+        assert_eq!(dear_first.0, "dear");
     }
 
     /// An unpriceable model costs nothing to admit against, so it never beats a priced one.
     #[test]
     fn an_unpriceable_run_does_not_hide_a_priced_one() {
-        let chosen = dearest(vec![
+        let chosen = dearest(
             ("free", Ok(Estimate::Unpriceable)),
-            ("priced", Ok(priced(5))),
-        ]);
-        assert_eq!(chosen.map(|(run, _floor)| run), Some("priced"));
+            vec![("priced", Ok(priced(5)))],
+        );
+        assert_eq!(chosen.0, "priced");
     }
 
     /// A run that cannot be priced is passed over for the next that can, so a
     /// permanent fault on one run does not exempt the payer from the check.
     #[test]
     fn a_fault_never_stands_in_for_a_priced_floor() {
-        let chosen = dearest(vec![("broken", fault()), ("priced", Ok(priced(5)))]);
-        assert!(matches!(chosen, Some(("priced", Ok(_)))));
+        let chosen = dearest(("broken", fault()), vec![("priced", Ok(priced(5)))]);
+        assert!(matches!(chosen, ("priced", Ok(_))));
+        let kept = dearest(("priced", Ok(priced(5))), vec![("broken", fault())]);
+        assert!(matches!(kept, ("priced", Ok(_))));
     }
 
     /// Only a payer none of whose runs can be priced is admitted unchecked.
     #[test]
     fn a_payer_with_no_priceable_run_keeps_the_first_fault() {
-        let chosen = dearest(vec![("first", fault()), ("second", fault())]);
-        assert!(matches!(chosen, Some(("first", Err(_)))));
-        assert!(dearest::<&str>(Vec::new()).is_none());
+        let chosen = dearest(("first", fault()), vec![("second", fault())]);
+        assert!(matches!(chosen, ("first", Err(_))));
+        assert!(matches!(
+            dearest(("alone", fault()), Vec::new()),
+            ("alone", Err(_))
+        ));
     }
 }

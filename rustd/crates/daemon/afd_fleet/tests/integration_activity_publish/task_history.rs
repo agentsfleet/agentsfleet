@@ -200,3 +200,63 @@ async fn contended_event_drops_progress_without_waiting_or_consuming_sequence() 
     );
     run.fixtures.cleanup().await;
 }
+
+// Value: protects=a holder that lapsed cannot attach task progress to the live
+// tail, yet its other frames still publish; fails_when=the lapsed branch
+// publishes every frame, or drops the whole batch; why_new=the lapsed holder's
+// task-frame filter had no live case; seam=`activity_for_target` over live
+// Postgres and the lane's NATS, read back on the fleet's item subject.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_lapsed_holder_publishes_its_chunk_but_no_task_progress() {
+    use afd_bus::{Received, Subject};
+
+    let run = held().await;
+    run.fixtures
+        .age(Row::Run(&run.issued.run_id), "run_expires_at", LAPSE)
+        .await;
+    let target = run.activity_target().await;
+    assert!(!target.timing_eligible, "the lapsed run is not eligible");
+    let mut tail = run
+        .fixtures
+        .bus()
+        .subscribe(&Subject::ThreadItems(run.fleet.clone()))
+        .await
+        .expect("the tail subscribes");
+    let chunk = ActivityFrame::FleetResponseChunk(af_wire::activity::FleetResponseChunk {
+        text: std::borrow::Cow::Borrowed("still talking"),
+        text_kind: af_wire::activity::StreamTextKind::Answer,
+        first_chunk_after_ms: None,
+        stream_start: false,
+        stream_contiguous: false,
+        stream_seq: 0,
+    });
+    let task =
+        ActivityFrame::TaskTransferProgress(progress(afd_db::test_util::mint_id().as_str(), 1));
+
+    run.fixtures
+        .plane()
+        .activity_for_target(&run.runner, &run.issued.run_id, &target, &[task, chunk])
+        .await
+        .expect("a lapsed holder's frames are answered, not refused");
+
+    let first: serde_json::Value = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(Received::Message(message)) = tail.recv().await {
+                return serde_json::from_str(&message.payload).expect("a frame is JSON");
+            }
+        }
+    })
+    .await
+    .expect("the chunk reaches the tail");
+    assert_eq!(
+        first.get("kind").and_then(serde_json::Value::as_str),
+        Some("chunk"),
+        "the task frame is withheld and the chunk is first: {first}"
+    );
+    assert!(
+        saved(&run).await.items.is_empty(),
+        "a lapsed holder saves no progress"
+    );
+    run.fixtures.cleanup().await;
+}

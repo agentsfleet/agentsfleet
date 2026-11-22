@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{TaskRefusal, guard::RunRow, row::counter},
+    task::{TaskRefusal, guard::RunRow, row::optional_counter},
 };
 use af_core::id::Uuid7;
 use af_wire::task::{TaskInputReceiptInput, TaskInputReceiptResult};
@@ -48,11 +48,7 @@ pub(super) async fn item(
 
 pub(super) fn current(item: &Item, input: &TaskInputReceiptInput) -> Result<()> {
     if let Some(task) = &input.task
-        && item
-            .generation
-            .map(|generation| counter(generation, "generation"))
-            .transpose()?
-            != Some(task.generation)
+        && optional_counter(item.generation, "generation")? != Some(task.generation)
     {
         return Err(TaskRefusal::StaleState.into());
     }
@@ -98,10 +94,10 @@ pub(super) fn result(
     Ok(TaskInputReceiptResult {
         item_id: input.item_id.clone(),
         mode: input.mode,
-        covered_input_sequence: item
-            .covered_input_sequence
-            .map(|sequence| counter(sequence, "covered input sequence"))
-            .transpose()?,
+        covered_input_sequence: optional_counter(
+            item.covered_input_sequence,
+            "covered input sequence",
+        )?,
         replayed,
     })
 }

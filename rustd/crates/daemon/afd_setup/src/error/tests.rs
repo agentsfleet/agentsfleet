@@ -144,3 +144,27 @@ async fn a_biller_fault_keeps_the_billing_code_and_its_cause() {
     );
     assert_eq!(error.current_state(), None);
 }
+
+// Value: protects=a fleet purge that cannot reach its store keeps the
+// lifecycle's own classification; fails_when=setup flattens it into its own
+// refusal or drops the cause; seam=the real fleet store over an unreachable
+// pool; no_claim=which delete surfaces it.
+#[tokio::test]
+async fn a_lifecycle_fault_keeps_the_lifecycle_code_and_its_cause() {
+    let fleets = afd_fleet_lifecycle::Fleets::new(afd_db::test_util::unreachable_db());
+    let fault = fleets
+        .named(&afd_db::test_util::mint_id(), "support-triage")
+        .await
+        .expect_err("nobody answers the fleet store's pool");
+    let code = fault.code();
+    let error = Error::from(fault);
+    assert_eq!(error.code(), code);
+    assert_eq!(code, error_code::INTERNAL_DB_UNAVAILABLE);
+    assert!(
+        error
+            .source()
+            .expect("the lifecycle's fault is the cause")
+            .is::<afd_fleet_lifecycle::Error>()
+    );
+    assert_eq!(error.current_state(), None);
+}

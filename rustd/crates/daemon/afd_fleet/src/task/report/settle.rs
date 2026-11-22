@@ -96,7 +96,12 @@ pub(crate) async fn apply(
         .await?;
         return Ok(Some(LIMIT));
     }
-    let Some((state, reason)) = action(connection, &current, &settlement).await? else {
+    // A Ready verdict comes only from a disposition that prepared its
+    // continuation turn; without one the task is blocked rather than stranded.
+    let decided = action(connection, &current, &settlement)
+        .await?
+        .filter(|(state, _)| *state != TaskState::Ready || settlement.turn.is_some());
+    let Some((state, reason)) = decided else {
         transition(
             connection,
             &current,
@@ -106,8 +111,10 @@ pub(crate) async fn apply(
         .await?;
         return Ok(Some(UNVERIFIED));
     };
-    if state == TaskState::Ready {
-        return continue_ready(connection, &current, settlement, reason).await;
+    if state == TaskState::Ready
+        && let Some(turn) = settlement.turn
+    {
+        return continue_ready(connection, &current, settlement.plan, turn, reason).await;
     }
     transition(connection, &current, state, reason).await?;
     if state == TaskState::Waiting {
@@ -282,30 +289,15 @@ const LIMIT: &str = "Work stopped at the task limit. No further execution was ad
 async fn continue_ready(
     connection: &mut PgConnection,
     current: &Current,
-    settlement: TaskSettlement<'_>,
+    plan: &super::PreparedReport,
+    turn: afd_turns::PreparedTurn<'_>,
     reason: Option<&str>,
 ) -> Result<Option<&'static str>> {
-    let Some(turn) = settlement.turn else {
-        transition(
-            connection,
-            current,
-            TaskState::Blocked,
-            Some("continuation_unavailable"),
-        )
-        .await?;
-        return Ok(Some(UNVERIFIED));
-    };
     let mut savepoint = connection
         .begin()
         .await
         .map_err(query("begin task continuation savepoint"))?;
-    let admitted = match settlement
-        .plan
-        .tasks
-        .turns
-        .stage(&mut savepoint, turn)
-        .await
-    {
+    let admitted = match plan.tasks.turns.stage(&mut savepoint, turn).await {
         Ok(admitted) => admitted,
         Err(fault)
             if fault.is_over_capacity() || fault.code() == af_core::error_code::SETUP_POLICY =>

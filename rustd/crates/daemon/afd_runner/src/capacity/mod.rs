@@ -45,30 +45,13 @@ pub struct Capacity {
     assignments_allowed: bool,
     renewals_allowed: bool,
     run_version: i64,
-    decision_selected: bool,
-    ownership: Ownership,
 }
 
 impl Capacity {
-    /// Whether this host may take the tenant it was locked for: the platform's
-    /// hosts take any tenant's work, a tenant's host only its own. Postgres
-    /// answers it under the lock, with the predicate the assignment uses.
-    #[must_use]
-    pub const fn serves(self) -> bool {
-        self.ownership.serves
-    }
-
     /// Authoritative database time, read once the host lock was held.
     #[must_use]
     pub const fn now(self) -> Timestamp {
         self.now
-    }
-
-    /// Whether this locked host selected a decision model. Unconfigured hosts
-    /// need no catalogue read on the ordinary run path.
-    #[must_use]
-    pub const fn decision_selected(self) -> bool {
-        self.decision_selected
     }
 
     /// Whether one additional run fits the currently assigned worker limit.
@@ -271,8 +254,6 @@ pub async fn lock<'a>(
             && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
         renewals_allowed: !host.degraded && renewable_state(&host.status),
         run_version: host.run_version,
-        decision_selected: host.decision_selected,
-        ownership: host.ownership,
     }))
 }
 
@@ -325,12 +306,11 @@ pub fn refused_placement(runner: &Uuid7, refusal: PlacementRefusal, run_type: &s
     let runner_id = runner.as_str();
     let reason = refusal.as_str();
     let error_code = af_core::error_code::RUNNER_PLACEMENT_REFUSED.as_str();
-    tracing::error!(
-        error_code,
-        runner_id,
-        reason,
-        run_type,
-        event = "runner_placement_refused",
-        "issue refused a placement the assignment should have filtered"
+    // Hoisted out of the macro: `tracing`'s `log` feature compiles an event's
+    // fields twice, and llvm-cov reports the dead copy.
+    let (event, message) = (
+        "runner_placement_refused",
+        format_args!("issue refused a placement the assignment should have filtered"),
     );
+    tracing::error!(message, error_code, runner_id, reason, run_type, event);
 }

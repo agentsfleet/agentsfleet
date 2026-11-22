@@ -209,3 +209,7 @@ impl BoundPr {
         .await
     }
 }
+
+#[cfg(test)]
+#[path = "preflight_tests.rs"]
+mod tests;

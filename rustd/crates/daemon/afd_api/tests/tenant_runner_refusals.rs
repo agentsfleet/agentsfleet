@@ -58,3 +58,34 @@ async fn a_tenant_registration_whose_body_is_not_one_is_refused() {
     .await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+/// A caller whose credential resolves to no tenant is refused on every tenant
+/// runner route, as a 403 that says why, before any runner is read.
+#[tokio::test]
+async fn a_caller_with_no_tenant_is_refused_on_every_tenant_runner_route() {
+    let fleet = Fleet::new().with_dashboard_holding(SUBJECT, RUNNER_TENANT);
+    fleet.ownership().revoke();
+    let router = fleet.router();
+    for (method, path, body) in [
+        (Method::GET, RUNNERS, ""),
+        (Method::GET, RUNNER, ""),
+        (Method::DELETE, RUNNER, ""),
+    ] {
+        let response = harness::send(&router, method.clone(), path, Some("session"), body).await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{method} {path}");
+        let problem = harness::json_body(response).await;
+        assert_eq!(
+            harness::error_code(&problem),
+            Some(af_core::error_code::AUTH_FORBIDDEN.as_str()),
+            "{method} {path}"
+        );
+        assert_eq!(
+            harness::text(&problem, "detail"),
+            Some(
+                "This account isn't part of a tenant, so it has no runners to manage. \
+                 Sign in with your tenant account."
+            ),
+            "{method} {path}"
+        );
+    }
+}

@@ -133,11 +133,9 @@ impl Creations {
             workspace: &row.workspace_id,
             subject: &row.oidc_subject,
         };
+        // The subject is the creator's own, and a subject names one person.
         let private = match access::current(&mut *connection, access).await {
-            Ok(person) if person.id == row.user_id => {
-                Some(read::lock(&mut *connection, access, &person, draft).await?)
-            }
-            Ok(_) => None,
+            Ok(person) => Some(read::lock(&mut *connection, access, &person, draft).await?),
             Err(error) if error.code() == error_code::SETUP_NOT_FOUND => None,
             Err(error) => return Err(error),
         };

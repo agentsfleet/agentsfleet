@@ -92,3 +92,23 @@ impl std::fmt::Debug for RegisteredRoute {
             .finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_crypto::secret::SecretString;
+
+    use super::RegisteredRoute;
+
+    /// The route renders the host it dials and never its key.
+    #[test]
+    fn a_registered_route_renders_its_host_and_hides_its_key() {
+        let route = RegisteredRoute {
+            api_key: SecretString::new("sk-owner-model-key".to_owned()),
+            inference_host: "inference.example".into(),
+        };
+        assert_eq!(
+            format!("{route:?}"),
+            r#"RegisteredRoute { inference_host: "inference.example", .. }"#
+        );
+    }
+}

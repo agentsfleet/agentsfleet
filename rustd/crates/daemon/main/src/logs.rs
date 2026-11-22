@@ -159,14 +159,12 @@ mod tests {
     /// resolved would make this depend on the network for nothing.
     const UNREACHABLE: &str = "http://127.0.0.1:1";
 
-    fn exports() -> Result<Exports, &'static str> {
-        let config = OtlpConfig::new(UNREACHABLE, OTEL_ENDPOINT_KNOB)
-            .map_err(|_refused| "the fixture endpoint is an absolute URL")?
+    fn exports() -> Result<Exports, Box<dyn std::error::Error>> {
+        let config = OtlpConfig::new(UNREACHABLE, OTEL_ENDPOINT_KNOB)?
             .with_encoding(Encoding::HttpJson)
             .with_timeout(Duration::from_millis(50));
-        crate::telemetry::install(&config)
-            .map(|(exports, _instruments)| exports)
-            .map_err(|_refused| "a well-formed endpoint builds a transport")
+        let (exports, _instruments) = crate::telemetry::install(&config)?;
+        Ok(exports)
     }
 
     /// The reload slot takes the bridges, and `Debug` does not unfold it.
@@ -181,7 +179,7 @@ mod tests {
     /// The `Debug` half is not decoration: a `{:?}` somebody adds later must
     /// not print a subscriber's innards into a log line.
     #[tokio::test]
-    async fn the_reload_slot_takes_the_export_bridges() -> Result<(), &'static str> {
+    async fn the_reload_slot_takes_the_export_bridges() -> Result<(), Box<dyn std::error::Error>> {
         let (slot, handle) = reload::Layer::<Attached, Registry>::new(Attached::None);
         let signals = Signals(handle);
 

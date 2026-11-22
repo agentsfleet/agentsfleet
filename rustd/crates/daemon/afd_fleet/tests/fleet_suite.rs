@@ -104,6 +104,8 @@ mod integration_report_question;
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
+#[path = "integration_report_uncached.rs"]
+mod integration_report_uncached;
 #[path = "integration_run_affinity.rs"]
 mod integration_run_affinity;
 #[path = "integration_run_assign.rs"]

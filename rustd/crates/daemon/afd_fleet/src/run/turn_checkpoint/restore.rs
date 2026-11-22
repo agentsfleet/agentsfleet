@@ -1,7 +1,8 @@
 //! Exact descriptors and live reader pins precede prefix adoption under the replacement fence.
 
 use af_wire::run::{
-    TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRead, TurnCheckpointResponse,
+    CheckpointOperationId, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse,
+    TurnResume,
 };
 
 use super::{
@@ -17,31 +18,29 @@ pub(super) async fn read(
     store: &TurnCheckpoints,
     runs: &Runs,
     run: TurnRun<'_>,
-    input: &garde::Valid<TurnCheckpointCommand>,
+    operation: &CheckpointOperationId,
+    descriptor: &TurnResume,
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::Read { descriptor } = &input.action else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut owner = TurnRunGuard::lock(runs, &mut connection, run).await?;
     let head = allocation::head(&mut owner).await?;
     let id = guard::id(&descriptor.checkpoint_id)?;
     let plan = Plan::load(&mut owner, &id).await?;
-    if head.as_ref() != Some(&id) || plan.descriptor(&owner)? != **descriptor {
+    if head.as_ref() != Some(&id) || plan.descriptor(&owner)? != *descriptor {
         return Err(TurnCheckpointRefusal::Incompatible.into());
     }
     let bytes = root::open(store, &mut owner, &plan).await?;
     let covered = plan.folds()?;
     root::validate(&bytes, &plan.scope(&owner)?, &covered, None)?;
     folds::validate(&mut owner, &covered, None).await?;
-    let pin = pins::reader(runs, &mut owner, &plan.id, &guard::id(&input.operation_id)?).await?;
+    let pin = pins::reader(runs, &mut owner, &plan.id, &guard::id(operation)?).await?;
     let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointRead {
-        descriptor: (**descriptor).clone(),
+        descriptor: descriptor.clone(),
         pin: pin.wire(),
         page_ids: plan
             .page_ids
             .iter()
-            .map(|id| af_wire::run::CheckpointOperationId(id.as_str().to_owned()))
+            .map(|id| CheckpointOperationId(id.as_str().to_owned()))
             .collect(),
         root: bytes,
         folds: covered,
@@ -54,11 +53,8 @@ pub(super) async fn read(
 pub(super) async fn adopt(
     runs: &Runs,
     run: TurnRun<'_>,
-    input: &garde::Valid<TurnCheckpointCommand>,
+    checkpoint: &TurnCheckpointRef,
 ) -> Result<TurnCheckpointResponse> {
-    let TurnCheckpointAction::Adopt { checkpoint } = &input.action else {
-        return Err(TurnCheckpointRefusal::Incompatible.into());
-    };
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut owner = TurnRunGuard::lock(runs, &mut connection, run).await?;
     let head = allocation::head(&mut owner).await?;

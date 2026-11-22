@@ -27,14 +27,6 @@ pub const MEMORY_LOAD_DROPPED_ENTRIES_TOTAL: Declared<CounterKind> =
 pub const MEMORY_LOAD_DROPPED_BYTES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_memory_load_dropped_bytes_total");
 
-/// Cap pressure on stored memory.
-pub const MEMORY_CAP_EVICTIONS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_memory_cap_evictions_total");
-
-/// Captures clipped at the push byte budget.
-pub const MEMORY_CAPTURE_TRUNCATED_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_memory_capture_truncated_total");
-
 /// Captures lost to validation.
 pub const MEMORY_CAPTURE_SKIPPED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_memory_capture_skipped_total");

@@ -15,7 +15,7 @@ use axum::{
     extract::{Path, Query, State, rejection::QueryRejection},
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, StatusCode, header};
 use std::sync::Arc;
 
 /// Accepts a user request; execution and terminal answers happen separately.
@@ -56,9 +56,13 @@ pub(crate) async fn send<D: TenantPlane>(
         )
         .await
         .map_err(setup_refusal)?;
-    let mut response = (StatusCode::ACCEPTED, Json(render::accepted(accepted))).into_response();
-    location(&mut response, &owned.workspace, &id, "/messages");
-    Ok(response)
+    let location = location(&owned.workspace, &id, "/messages");
+    Ok((
+        StatusCode::ACCEPTED,
+        [(header::LOCATION, location)],
+        Json(render::accepted(accepted)),
+    )
+        .into_response())
 }
 
 /// Reads a bounded role-ordered conversation after current creator authorization.

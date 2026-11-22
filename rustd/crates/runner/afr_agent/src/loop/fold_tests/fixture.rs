@@ -53,13 +53,13 @@ impl Inbox for Arriving {
     async fn assign(&self, after_sequence: i64) -> Vec<Folded> {
         let assignment = self.assignments.fetch_add(1, Ordering::Relaxed);
         locked(&self.asked).push(after_sequence);
-        let mut ready: Vec<Folded> = locked(&self.scheduled)
+        // In sequence order, as the daemon assigns: one message per sequence.
+        let ready: std::collections::BTreeMap<i64, Folded> = locked(&self.scheduled)
             .iter()
             .filter(|(on, folded)| *on <= assignment && folded.sequence > after_sequence)
-            .map(|(_, folded)| folded.clone())
+            .map(|(_, folded)| (folded.sequence, folded.clone()))
             .collect();
-        ready.sort_by_key(|folded| folded.sequence);
-        ready
+        ready.into_values().collect()
     }
 }
 

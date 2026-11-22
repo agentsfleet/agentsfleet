@@ -46,11 +46,7 @@ impl RunVerbs for Receipts {
             .iter()
             .filter(|receipt| receipt.mode == TaskInputMode::ApplyHere)
             .count();
-        let covered = u64::try_from(applied).map_err(|source| {
-            Unanswered::Refused(Some(
-                crate::decision::boundary("fixture receipt count", source).code(),
-            ))
-        })?;
+        let covered = u64::try_from(applied).expect("a receipt count fits a u64");
         if let Some(task) = input.current_task.as_mut() {
             task.input_sequence = self.inputs.last().map_or(0, |item| item.sequence);
             task.covered_input_sequence = self
@@ -70,8 +66,10 @@ impl RunVerbs for Receipts {
                     || {
                         self.effects
                             .iter()
-                            .filter(|effect| effect.state == TaskEffectState::Confirmed)
-                            .map(|effect| effect.ordinal)
+                            .filter_map(|effect| {
+                                (effect.state == TaskEffectState::Confirmed)
+                                    .then_some(effect.ordinal)
+                            })
                             .max()
                             .unwrap_or(0)
                     },

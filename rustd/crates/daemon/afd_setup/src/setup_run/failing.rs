@@ -109,3 +109,66 @@ pub(crate) const fn reason_word(value: FailureReason) -> &'static str {
         FailureReason::FrameTooLarge => "frame_too_large",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use af_core::{error_code, test_util::trace::Capture};
+    use af_wire::setup::FailureReason;
+
+    use super::{EVENT_TURN_FAILED, log_turn_failed};
+
+    // Value: an operator searches failed setup turns by the reason's own code,
+    // with the fault that caused it beside it only when the two differ.
+    #[test]
+    fn a_failed_turn_is_logged_under_its_reasons_code_with_any_other_cause() {
+        let draft = afd_db::test_util::mint_id();
+        let log = Capture::install();
+        for (reason, cause) in [
+            (
+                FailureReason::InsufficientBalance,
+                error_code::SETUP_BALANCE,
+            ),
+            (
+                FailureReason::ModelUnavailable,
+                error_code::INTERNAL_DB_QUERY,
+            ),
+            (FailureReason::ProviderFailed, error_code::SETUP_PROVIDER),
+        ] {
+            log_turn_failed(&draft, reason, cause);
+        }
+        let logged: Vec<_> = log
+            .events()
+            .into_iter()
+            .filter(|event| event.field("event") == Some(EVENT_TURN_FAILED))
+            .map(|event| {
+                assert_eq!(event.field("draft_id"), Some(draft.as_str()));
+                (
+                    event.field("reason").map(str::to_owned),
+                    event.field("error_code").map(str::to_owned),
+                    event.field("cause_error_code").map(str::to_owned),
+                )
+            })
+            .collect();
+        let text = |value: &str| Some(value.to_owned());
+        assert_eq!(
+            logged,
+            [
+                (
+                    text("insufficient_balance"),
+                    text(error_code::SETUP_BALANCE.as_str()),
+                    None
+                ),
+                (
+                    text("model_unavailable"),
+                    text(error_code::SETUP_MODEL.as_str()),
+                    text(error_code::INTERNAL_DB_QUERY.as_str())
+                ),
+                (
+                    text("provider_failed"),
+                    text(error_code::SETUP_PROVIDER.as_str()),
+                    None
+                ),
+            ]
+        );
+    }
+}

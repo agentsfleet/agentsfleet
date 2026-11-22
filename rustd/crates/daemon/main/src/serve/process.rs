@@ -63,13 +63,9 @@ async fn boot_supervised(
     let booted = match boot_configured(config, port, &mut supervisor).await {
         Ok(booted) => booted,
         Err(failure) => {
-            let report = supervisor.shutdown().await;
-            if !report.is_clean() {
-                tracing::warn!(
-                    event = "boot_teardown_unclean",
-                    "a task did not stop cleanly while tearing down a failed boot"
-                );
-            }
+            // The supervisor logs each task that would not stop by name, so the
+            // report adds nothing to the boot failure returned here.
+            drop(supervisor.shutdown().await);
             return Err(failure);
         }
     };

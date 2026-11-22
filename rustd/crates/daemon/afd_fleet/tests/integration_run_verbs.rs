@@ -217,3 +217,60 @@ async fn test_the_write_fence_holds_only_for_the_live_token() {
     assert!(!stale, "a token the fleet never issued does not");
     held.fixtures.cleanup().await;
 }
+
+/// A thread whose recorded connector no connector answers to is owed nothing:
+/// the message is refused as having no channel, and the stale spelling is
+/// logged once with the fleet and event it was found on.
+// Value: protects=an out-of-band connector id never routes an answer anywhere,
+// and an operator can find it; fails_when=the unknown spelling is delivered,
+// or refused silently; why_new=no test stored a connector no connector owns;
+// seam=`RunService::message` over live Postgres, the turn's connector edited.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_retired_connector_owes_a_message_nowhere_and_is_logged() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    let turn = stage.admit(Producer::Webhook, "retired", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let edited = sqlx::query("UPDATE thread.turns SET reply_provider = 'retired' WHERE id = $1")
+        .bind(&turn)
+        .execute(
+            &mut *stage
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a connection"),
+        )
+        .await
+        .expect("the connector is edited out of band");
+    assert_eq!(edited.rows_affected(), 1);
+
+    let log = af_core::test_util::trace::Capture::install();
+    let refused = stage
+        .fixtures
+        .plane()
+        .message(
+            &stage.runner,
+            run_id,
+            &MessageRequest {
+                fencing_token: run.fence.as_u64(),
+                item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+                call_number: 1,
+                text: Cow::Borrowed("anyone there?"),
+            },
+        )
+        .await
+        .err()
+        .map(|error| error.code());
+    let line = log.only("report_reply_provider_unknown");
+    drop(log);
+
+    assert_eq!(refused, Some(af_core::error_code::MESSAGE_NO_CHANNEL));
+    assert_eq!(line.field("fleet_id"), Some(stage.fleet.as_str()));
+    assert_eq!(line.field("agentsfleet_turn_id"), Some(turn.as_str()));
+    stage.fixtures.cleanup().await;
+}

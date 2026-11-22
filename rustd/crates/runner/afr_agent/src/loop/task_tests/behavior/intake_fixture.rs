@@ -121,34 +121,36 @@ pub(super) fn route(action: &str, association: &str, multiple: f64) -> DecisionE
         "clarify",
     ];
     let associations = ["task_1", "new_work", "unclear"];
-    if let Some(recorded) = result.recorded.as_mut() {
-        recorded.request.purpose = DecisionPurpose::Intent;
-        recorded.request.state =
-            serde_json::json!({"current_work":[{"alias":"task_1","task_id":SOURCE}]});
-        let mut multiplicity = question();
-        multiplicity.name = "multiple_requests".to_owned();
-        recorded.request.questions = vec![
-            multiplicity,
-            choice_question("intent", &intents),
-            choice_question("association", &associations),
-        ];
-        recorded.result.result = DecisionOutcome::Answered {
-            answers: BTreeMap::from([
-                (
-                    "multiple_requests".to_owned(),
-                    DecisionAnswer::Noul { noul: multiple },
-                ),
-                (
-                    "intent".to_owned(),
-                    choice_answer(action, Some(1.0), &intents),
-                ),
-                (
-                    "association".to_owned(),
-                    choice_answer(association, Some(1.0), &associations),
-                ),
-            ]),
-        };
-    }
+    let recorded = result
+        .recorded
+        .as_mut()
+        .expect("the goal fixture's evaluation is recorded");
+    recorded.request.purpose = DecisionPurpose::Intent;
+    recorded.request.state =
+        serde_json::json!({"current_work":[{"alias":"task_1","task_id":SOURCE}]});
+    let mut multiplicity = question();
+    multiplicity.name = "multiple_requests".to_owned();
+    recorded.request.questions = vec![
+        multiplicity,
+        choice_question("intent", &intents),
+        choice_question("association", &associations),
+    ];
+    recorded.result.result = DecisionOutcome::Answered {
+        answers: BTreeMap::from([
+            (
+                "multiple_requests".to_owned(),
+                DecisionAnswer::Noul { noul: multiple },
+            ),
+            (
+                "intent".to_owned(),
+                choice_answer(action, Some(1.0), &intents),
+            ),
+            (
+                "association".to_owned(),
+                choice_answer(association, Some(1.0), &associations),
+            ),
+        ]),
+    };
     result
 }
 

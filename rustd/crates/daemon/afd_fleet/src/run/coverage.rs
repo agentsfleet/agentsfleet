@@ -359,4 +359,30 @@ mod tests {
         assert_eq!(line.field("reason"), Some(fault.told().as_str()));
         Ok(())
     }
+
+    // Value: protects=a balance the ledger could not read admits one more slice
+    // and says which gate failed open; fails_when=the outage arm refuses the run
+    // or admits it silently; why_new=no test failed the balance read itself;
+    // seam=`funds_cover_at` over a ledger nobody answers on.
+    #[cfg(feature = "test-util")]
+    #[tokio::test]
+    async fn an_unreadable_balance_admits_the_slice_and_says_so() -> Result<(), &'static str> {
+        let log = af_core::test_util::trace::Capture::install();
+        let run = renewing()?;
+        let floor = afd_billing::rates::Estimate::Priced(afd_billing::Nanos::from_i64(1));
+
+        let admitted = crate::run::test_dead::plane()
+            .funds_cover_at(&run, &run.fleet_id, "run-fixture", Ok(floor))
+            .await;
+
+        assert!(admitted.is_ok(), "{:?}", admitted.err());
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("gate"), Some("balance"));
+        assert_eq!(line.field("run_id"), Some("run-fixture"));
+        assert_eq!(
+            line.field("error_code"),
+            Some(af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+        );
+        Ok(())
+    }
 }

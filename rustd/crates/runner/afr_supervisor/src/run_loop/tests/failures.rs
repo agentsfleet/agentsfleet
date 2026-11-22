@@ -84,3 +84,59 @@ async fn a_run_with_an_identifier_out_of_form_is_refused() {
 
     assert!(rig.run(&payload("nope", FLEET_ID)).await.is_err());
 }
+
+/// An API-only run assigned a saved turn it cannot read back is refused
+/// before its model starts, and never builds a sandbox.
+#[tokio::test(start_paused = true)]
+async fn an_api_only_turn_whose_checkpoint_cannot_be_read_never_starts_its_model() {
+    let mut rig = rig(
+        |call| {
+            (call.verb == Verb::TurnCheckpoint).then(|| {
+                Answer::Fail(error::refused(
+                    Verb::TurnCheckpoint,
+                    409,
+                    Some(af_core::error_code::RUN_CHECKPOINT_CONFLICT),
+                ))
+            })
+        },
+        FakeEngine::default(),
+        Behaviour::Answer,
+    );
+    let mut run = payload(RUN_ID, FLEET_ID);
+    run.event.workspace_id = "019f0000-0000-7000-8000-000000000001".into();
+    run.policy.tools.clear();
+    run.turn_resume = Some(af_wire::run::TurnResume {
+        checkpoint_id: af_wire::run::CheckpointOperationId(RUN_ID.to_owned()),
+        generation: 1,
+        format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
+        scope: af_wire::run::TurnScope {
+            workspace_id: af_wire::run::CheckpointOperationId(run.event.workspace_id.to_string()),
+            fleet_id: af_wire::run::CheckpointOperationId(run.event.fleet_id.to_string()),
+            turn_id: af_wire::run::CheckpointOperationId(run.event.turn_id.to_string()),
+            setup_revision_id: af_wire::run::CheckpointOperationId(RUN_ID.to_owned()),
+            workspace: af_wire::run::TurnWorkspace::ApiOnly,
+        },
+        manifest_root: "a".repeat(64),
+        history_digest: "b".repeat(64),
+    });
+
+    rig.run(&run).await.unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
+    assert_eq!(
+        report["failure_detail"],
+        "ordinary turn recovery could not be established"
+    );
+    assert!(
+        calls.iter().any(|call| call.verb == Verb::TurnCheckpoint),
+        "the saved turn was asked for"
+    );
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0, "the model never ran");
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        0,
+        "no sandbox was built"
+    );
+}
