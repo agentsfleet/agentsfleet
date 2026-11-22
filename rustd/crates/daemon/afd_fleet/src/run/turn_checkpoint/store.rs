@@ -3,7 +3,12 @@
 use std::sync::Arc;
 
 use af_crypto::{envelope::Sealer, secret::Kek};
-use af_wire::run::{TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointResponse};
+use af_wire::run::{
+    TurnCheckpointAbandon, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointAuthorize,
+    TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
+    TurnCheckpointPageWrite, TurnCheckpointPinRelease, TurnCheckpointPinRenew, TurnCheckpointRead,
+    TurnCheckpointResponse, TurnCheckpointUploads,
+};
 
 use super::{TurnCheckpointRefusal, TurnRun, commit, objects, pages, pins, restore, transfer};
 use crate::{Result, run::Runs};
@@ -83,12 +88,12 @@ impl TurnCheckpoints {
                     runs.begin_turn_checkpoint(presented, request).await?,
                 )))
             }
-            TurnCheckpointAction::Commit {
+            TurnCheckpointAction::Commit(TurnCheckpointCommit {
                 checkpoint,
                 root,
                 manifest_root,
                 folds,
-            } => {
+            }) => {
                 let body = commit::Publication {
                     root,
                     manifest: manifest_root,
@@ -96,16 +101,16 @@ impl TurnCheckpoints {
                 };
                 commit::publish(self, runs, presented, checkpoint, &body).await
             }
-            TurnCheckpointAction::Read { descriptor } => {
+            TurnCheckpointAction::Read(TurnCheckpointRead { descriptor }) => {
                 restore::read(self, runs, presented, &request.operation_id, descriptor).await
             }
-            TurnCheckpointAction::Adopt { checkpoint } => {
+            TurnCheckpointAction::Adopt(TurnCheckpointAdopt { checkpoint }) => {
                 restore::adopt(runs, presented, checkpoint).await
             }
-            TurnCheckpointAction::PinRenew {
+            TurnCheckpointAction::PinRenew(TurnCheckpointPinRenew {
                 checkpoint,
                 resource_version,
-            } => {
+            }) => {
                 pins::update(
                     runs,
                     presented,
@@ -114,37 +119,37 @@ impl TurnCheckpoints {
                 )
                 .await
             }
-            TurnCheckpointAction::PinRelease { checkpoint } => {
+            TurnCheckpointAction::PinRelease(TurnCheckpointPinRelease { checkpoint }) => {
                 pins::update(runs, presented, checkpoint, pins::Change::Release).await
             }
-            TurnCheckpointAction::Abandon { checkpoint } => {
+            TurnCheckpointAction::Abandon(TurnCheckpointAbandon { checkpoint }) => {
                 pins::update(runs, presented, checkpoint, pins::Change::Abandon).await
             }
-            TurnCheckpointAction::Objects {
+            TurnCheckpointAction::Objects(TurnCheckpointObjects {
                 checkpoint,
                 objects,
-            } => objects::register(self, runs, presented, checkpoint, objects).await,
-            TurnCheckpointAction::Uploads {
+            }) => objects::register(self, runs, presented, checkpoint, objects).await,
+            TurnCheckpointAction::Uploads(TurnCheckpointUploads {
                 checkpoint,
                 objects,
-            } => {
+            }) => {
                 let transfer = transfer::Transfer::Uploads(objects);
                 transfer::execute(self, runs, presented, checkpoint, transfer).await
             }
-            TurnCheckpointAction::Authorize {
+            TurnCheckpointAction::Authorize(TurnCheckpointAuthorize {
                 checkpoint,
                 purpose,
                 object_ids,
-            } => {
+            }) => {
                 let transfer = transfer::Transfer::Authorize(*purpose, object_ids);
                 transfer::execute(self, runs, presented, checkpoint, transfer).await
             }
-            TurnCheckpointAction::PageWrite {
+            TurnCheckpointAction::PageWrite(TurnCheckpointPageWrite {
                 checkpoint,
                 page_id,
                 digest,
                 contents,
-            } => {
+            }) => {
                 let page = pages::Write {
                     page_id,
                     digest,
@@ -152,10 +157,10 @@ impl TurnCheckpoints {
                 };
                 pages::write(runs, presented, checkpoint, &page).await
             }
-            TurnCheckpointAction::PageRead {
+            TurnCheckpointAction::PageRead(TurnCheckpointPageRead {
                 checkpoint,
                 page_id,
-            } => pages::read(runs, presented, checkpoint, page_id).await,
+            }) => pages::read(runs, presented, checkpoint, page_id).await,
         }
     }
 }

@@ -9,8 +9,10 @@ use super::{
 };
 use af_core::id::Uuid7;
 use af_wire::run::{
-    CheckpointOperationId, FoldRef, TurnCheckpointAction as Action, TurnCheckpointBegin,
-    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
+    CheckpointOperationId, FoldRef, TurnCheckpointAction as Action, TurnCheckpointAdopt,
+    TurnCheckpointBegin, TurnCheckpointCommit, TurnCheckpointPageWrite, TurnCheckpointPinRelease,
+    TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
+    TurnWorkspace,
 };
 use sqlx::Connection as _;
 
@@ -25,9 +27,9 @@ async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fe
     files.case.replace().await?;
     let reference = read(&files, saved).await?;
     let Response::Adopted(covered) = files
-        .execute(Action::Adopt {
+        .execute(Action::Adopt(TurnCheckpointAdopt {
             checkpoint: reference.clone(),
-        })
+        }))
         .await?
     else {
         return Err("adopted exact prefix".into());
@@ -40,9 +42,9 @@ async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fe
     assert!(!assign.settled);
     assert!(matches!(
         files
-            .execute(Action::PinRelease {
+            .execute(Action::PinRelease(TurnCheckpointPinRelease {
                 checkpoint: reference
-            })
+            }))
             .await?,
         Response::PinReleased
     ));
@@ -69,9 +71,9 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_assignme
             .fetch_one(&mut *held)
             .await?;
     let (result, released) = tokio::join!(
-        files.execute(Action::Adopt {
+        files.execute(Action::Adopt(TurnCheckpointAdopt {
             checkpoint: reference
-        }),
+        })),
         release_after_expiry(&files, held, controller, deadline.to_jiff())
     );
     released?;
@@ -121,12 +123,12 @@ async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
     };
     let manifest = empty_manifest(files, &reference, &plan.page_ids).await?;
     files
-        .execute(Action::Commit {
+        .execute(Action::Commit(TurnCheckpointCommit {
             checkpoint: reference,
             root: history,
             manifest_root: manifest,
             folds: vec![fold.clone()],
-        })
+        }))
         .await
 }
 
@@ -168,12 +170,12 @@ async fn empty_manifest(
     };
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
     files
-        .execute(Action::PageWrite {
+        .execute(Action::PageWrite(TurnCheckpointPageWrite {
             checkpoint: reference.clone(),
             page_id: page_id.clone(),
             digest: digest.clone(),
             contents: page,
-        })
+        }))
         .await?;
     Ok(af_crypto::checkpoint_digest::manifest_root([(
         page_id.0.as_str(),
@@ -238,7 +240,10 @@ async fn incorporate(files: &Files) -> Checked<FoldRef> {
 }
 
 async fn read(files: &Files, saved: Box<TurnResume>) -> Checked<TurnCheckpointRef> {
-    let request = valid(command(&files.case, Action::Read { descriptor: saved }))?;
+    let request = valid(command(
+        &files.case,
+        Action::Read(TurnCheckpointRead { descriptor: saved }),
+    ))?;
     let Response::Read(read) = files
         .store
         .execute(&files.case.runs, files.case.run(), &request)

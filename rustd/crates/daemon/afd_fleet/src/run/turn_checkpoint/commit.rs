@@ -4,7 +4,7 @@ use af_core::id::Uuid7;
 use af_crypto::envelope::Envelope;
 use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::run::{
-    FoldRef, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse, TurnPrivateRoot,
+    FoldRef, TurnCheckpointRef, TurnCheckpointResponse, TurnCheckpointSaved, TurnPrivateRoot,
 };
 
 use super::{
@@ -76,7 +76,7 @@ fn readable(
             .clone()
             .ok_or(TurnCheckpointRefusal::Incompatible)?,
     };
-    let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointRead {
+    let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointSaved {
         descriptor,
         pin: pin.wire(),
         page_ids: plan

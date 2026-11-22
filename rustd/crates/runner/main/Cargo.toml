@@ -106,7 +106,7 @@ hyper.workspace = true
 futures-util.workspace = true
 libtest-mimic.workspace = true
 # The kernel lane's own engine and release fixtures: a supervisor engine that
-# wraps bubblewrap, a toolbox release signed and digested as the runner admits
+# wraps bubblewrap, a toolbox release signed and digested as the runner verifies
 # one (ECDSA P-256 over SHA-256, the signature in base64), and the mount,
 # ownership and process calls a trial makes directly.
 async-trait.workspace = true

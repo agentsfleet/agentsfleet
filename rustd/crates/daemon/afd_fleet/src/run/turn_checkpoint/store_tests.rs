@@ -8,7 +8,7 @@ use af_core::error_code;
 use af_crypto::secret::Kek;
 use af_wire::run::{
     CheckpointOperationId, TURN_CHECKPOINT_FORMAT, TurnCheckpointAction, TurnCheckpointBegin,
-    TurnCheckpointCommand, TurnCheckpointRef, TurnWorkspace,
+    TurnCheckpointCommand, TurnCheckpointPinRelease, TurnCheckpointRef, TurnWorkspace,
 };
 
 use super::{TurnCheckpoints, TurnRun};
@@ -137,12 +137,12 @@ async fn allocation_refuses_another_fence_and_any_other_verb() -> Checked {
         .err()
         .map(|fault| fault.code());
     assert_eq!(stale, Some(error_code::RUN_STALE_FENCING_TOKEN));
-    let release = TurnCheckpointAction::PinRelease {
+    let release = TurnCheckpointAction::PinRelease(TurnCheckpointPinRelease {
         checkpoint: TurnCheckpointRef {
             checkpoint_id: operation(4),
             pin_id: operation(5),
         },
-    };
+    });
     let other = runs
         .begin_turn_checkpoint(presented, &valid(FENCE, release)?)
         .await

@@ -97,16 +97,6 @@ impl Workspace {
             .write_all(content)?)
     }
 
-    /// Adds to the end of a regular file, making it and any missing parent
-    /// directories when absent, all inside the workspace.
-    pub(super) fn append(&self, path: &str, content: &[u8]) -> Result<()> {
-        let mut options = OpenOptions::new();
-        options.append(true).create(true);
-        Ok(self
-            .regular(path, &mut options, Parents::Make)?
-            .write_all(content)?)
-    }
-
     /// Removes a regular file. What the name is, is read through the handle
     /// without following it, so a link is refused rather than unlinked and a
     /// directory is refused rather than emptied.
@@ -245,6 +235,6 @@ fn confined(failure: io::Error) -> Error {
 mod search;
 
 #[cfg(test)]
-mod append_delete_tests;
+mod delete_tests;
 #[cfg(test)]
 mod tests;

@@ -17,22 +17,16 @@ async fn local_env_names_its_root_and_takes_the_defaults_it_does_not_override() 
 }
 
 /// Files under the root are written with the directories they need, read to
-/// a limit, added to, listed and deleted; a path given absolute under the
-/// root reads the same as a relative one.
+/// a limit, listed and deleted; a path given absolute under the root reads
+/// the same as a relative one.
 #[cfg(unix)]
 #[tokio::test]
-async fn local_env_writes_reads_appends_lists_and_deletes_files_under_its_root() {
+async fn local_env_writes_reads_lists_and_deletes_files_under_its_root() {
     let (directory, env) = local();
 
-    env.write_file("notes/today.txt", Bytes::from_static(b"first"))
+    env.write_file("notes/today.txt", Bytes::from_static(b"first, second"))
         .await
         .expect("written");
-    env.append_file("notes/today.txt", Bytes::from_static(b", second"))
-        .await
-        .expect("added");
-    env.append_file("logs/new.txt", Bytes::from_static(b"made"))
-        .await
-        .expect("made by appending");
     let whole = env.read_file("notes/today.txt", 1024).await.expect("read");
     let absolute = format!("{}/notes/today.txt", env.root());
     let cut = env
@@ -76,10 +70,6 @@ async fn local_env_writes_reads_appends_lists_and_deletes_files_under_its_root()
     assert_eq!(file.map(|entry| entry.size), Some(13));
     assert!(!listing.truncated);
     assert!(!directory.path().join("notes/today.txt").exists());
-    assert_eq!(
-        std::fs::read(directory.path().join("logs/new.txt")).expect("kept"),
-        b"made"
-    );
 }
 
 /// A path that leaves the root, by `..`, by an absolute path elsewhere or
@@ -99,9 +89,6 @@ async fn local_env_refuses_every_path_that_leaves_its_root() {
         env.write_file("away/new", Bytes::from_static(b"x"))
             .await
             .err(),
-        env.append_file("away/deeper/new", Bytes::from_static(b"x"))
-            .await
-            .err(),
         env.delete_file("away/secret").await.err(),
         env.list_dir("away").await.err(),
     ];
@@ -118,7 +105,7 @@ async fn local_env_refuses_every_path_that_leaves_its_root() {
         EnvErrorKind::PathRefused,
         "the path leaves the working directory".to_owned(),
     ));
-    assert_eq!(kinds, vec![refused; 7]);
+    assert_eq!(kinds, vec![refused; 6]);
     assert!(!outside.path().join("new").exists());
     assert!(outside.path().join("secret").exists());
 }
@@ -152,14 +139,6 @@ async fn local_env_sorts_each_failed_file_call() {
             .await
             .err()
             .map(|error| error.kind()),
-        env.append_file("file/child", Bytes::from_static(b"x"))
-            .await
-            .err()
-            .map(|error| error.kind()),
-        env.append_file("dir", Bytes::from_static(b"x"))
-            .await
-            .err()
-            .map(|error| error.kind()),
         env.delete_file("missing")
             .await
             .err()
@@ -185,8 +164,6 @@ async fn local_env_sorts_each_failed_file_call() {
         kinds,
         [
             Some(NotFound),
-            Some(Unavailable),
-            Some(Unavailable),
             Some(Unavailable),
             Some(Unavailable),
             Some(Unavailable),
@@ -270,8 +247,8 @@ async fn local_env_kills_a_background_child_left_after_its_leader_exited() {
     assert_eq!(ended, Some(Ending::Signaled(9)));
 }
 
-/// A write or an append whose directory cannot be made, because a file sits
-/// where it would go, fails in the system's words and makes nothing.
+/// A write whose directory cannot be made, because a file sits where it
+/// would go, fails in the system's words and makes nothing.
 #[cfg(unix)]
 #[tokio::test]
 async fn local_env_refuses_a_file_under_a_path_a_file_already_holds() {
@@ -282,17 +259,9 @@ async fn local_env_refuses_a_file_under_a_path_a_file_already_holds() {
         .write_file("notes/today.txt", Bytes::from_static(b"x"))
         .await
         .err();
-    let appended = env
-        .append_file("notes/today.txt", Bytes::from_static(b"x"))
-        .await
-        .err();
 
     assert_eq!(
         written.map(|error| error.kind()),
-        Some(EnvErrorKind::Unavailable)
-    );
-    assert_eq!(
-        appended.map(|error| error.kind()),
         Some(EnvErrorKind::Unavailable)
     );
     assert_eq!(

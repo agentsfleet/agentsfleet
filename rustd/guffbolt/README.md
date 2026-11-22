@@ -964,7 +964,7 @@ A tool that needs a backend of its own takes it in its `new`, so it needs no cha
 
 ### Env and LocalEnv
 
-An `Env` runs processes and touches files under one root. It starts a process and streams its events, writes to it and kills it. Its file methods read, write, append to, delete, list and search files, and the tools call them.
+An `Env` runs processes and touches files under one root. It starts a process and streams its events, writes to it and kills it. Its file methods read, write, delete, list and search files, and the tools call them.
 
 Every path is relative to `Env::root`. The environment refuses a path that leaves the root, by name or through a link. A process's unread output keeps its first and last 512 KiB, and the middle is counted.
 

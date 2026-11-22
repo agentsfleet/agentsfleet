@@ -14,9 +14,12 @@ pub use setup::{
 };
 pub use turn_checkpoint::{
     CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
-    TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointKind,
-    TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse,
-    TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
+    TurnCheckpointAbandon, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointAuthorize,
+    TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointKind,
+    TurnCheckpointObjects, TurnCheckpointPageRead, TurnCheckpointPageWrite,
+    TurnCheckpointPinRelease, TurnCheckpointPinRenew, TurnCheckpointPlan, TurnCheckpointRead,
+    TurnCheckpointRef, TurnCheckpointRequest, TurnCheckpointResponse, TurnCheckpointSaved,
+    TurnCheckpointUploads, TurnMessageSize, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 
 /// Placement identifies the execution authority carried by a pushed assignment.

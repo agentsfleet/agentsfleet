@@ -202,12 +202,15 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
     }
 }
 
-/// A failed call as a tool reads it: a refusal keeps its registry code, and
-/// anything else is `agentsfleetd` out of reach.
-const fn unanswered(failure: &crate::Error) -> Unanswered {
-    match failure.refusal_status() {
-        Some(_status) => Unanswered::Refused(failure.refusal_code()),
-        None => Unanswered::Unreachable,
+/// A failed call as a tool reads it. A refusal keeps its registry code,
+/// whether an HTTP status or the stream carried it. A stream refusal the
+/// daemon called retryable stayed unavailable through every attempt, as a
+/// 5xx does, so it and anything else is `agentsfleetd` out of reach.
+fn unanswered(failure: &crate::Error) -> Unanswered {
+    match (failure.refusal_status(), failure.refusal_code()) {
+        (Some(_status), code) => Unanswered::Refused(code),
+        (None, Some(code)) if !failure.is_retryable() => Unanswered::Refused(Some(code)),
+        (None, _) => Unanswered::Unreachable,
     }
 }
 

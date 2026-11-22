@@ -1,12 +1,8 @@
 //! Keep the exact uncertain commit until a matching receipt or abandonment settles it.
 
 use super::NativeTurn;
-use crate::{Result, error};
-use af_wire::run::{
-    TurnCheckpointAction as Action, TurnCheckpointCommand, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnResume,
-};
-use zeroize::Zeroize as _;
+use crate::{Result, client::TurnCommand, error};
+use af_wire::run::{TurnCheckpointAbandon, TurnCheckpointCommit, TurnCheckpointRef, TurnResume};
 
 #[derive(Debug, Default)]
 pub(super) struct Publication {
@@ -16,15 +12,15 @@ pub(super) struct Publication {
 
 #[derive(Debug)]
 pub(super) struct Pending {
-    request: TurnCheckpointCommand,
+    request: TurnCommand<TurnCheckpointCommit>,
+    /// The custody the commit names, abandoned if the commit is refused.
+    checkpoint: TurnCheckpointRef,
     expected: TurnResume,
 }
 
 impl Drop for Pending {
     fn drop(&mut self) {
-        if let Action::Commit { root, .. } = &mut self.request.action {
-            root.history.zeroize();
-        }
+        self.request.zeroize_root();
     }
 }
 
@@ -33,10 +29,7 @@ impl NativeTurn<'_> {
         let Some(pending) = &self.publication.pending else {
             return Ok(());
         };
-        let Action::Commit { checkpoint, .. } = &pending.request.action else {
-            return Err(error::config("uncertain turn publication is not a commit"));
-        };
-        let reference = checkpoint.clone();
+        let reference = pending.checkpoint.clone();
         match self.acknowledge().await {
             Ok(_) => Ok(()),
             Err(failure) if failure.is_retryable() => Err(failure),
@@ -49,13 +42,13 @@ impl NativeTurn<'_> {
         reference: TurnCheckpointRef,
         failure: crate::Error,
     ) -> Result<()> {
-        if matches!(
-            self.command(Action::Abandon {
-                checkpoint: reference
+        if self
+            .command(TurnCheckpointAbandon {
+                checkpoint: reference,
             })
-            .await,
-            Ok(Response::Abandoned)
-        ) {
+            .await
+            .is_ok()
+        {
             self.publication.pending = None;
             return Ok(());
         }
@@ -67,11 +60,13 @@ impl NativeTurn<'_> {
 
     pub(super) async fn commit_capture(
         &mut self,
-        action: Action,
+        commit: TurnCheckpointCommit,
         expected: TurnResume,
     ) -> Result<TurnResume> {
+        let checkpoint = commit.checkpoint.clone();
         self.publication.pending = Some(Pending {
-            request: self.request(action)?,
+            request: self.request(commit)?,
+            checkpoint,
             expected,
         });
         let result = self.acknowledge().await;
@@ -90,15 +85,10 @@ impl NativeTurn<'_> {
             .pending
             .as_ref()
             .ok_or_else(|| error::config("turn publication has no pending commit"))?;
-        let Response::Committed(descriptor) = self
+        let descriptor = self
             .plane
             .turn_checkpoint(self.run, &pending.request)
-            .await?
-        else {
-            return Err(error::config(
-                "turn commit returned another command's response",
-            ));
-        };
+            .await?;
         if *descriptor != pending.expected {
             return Err(error::config(
                 "turn commit changed the captured generation or root",

@@ -102,18 +102,18 @@ fn upload_plane(
             let request: TurnCheckpointCommand =
                 serde_json::from_slice(body).map_err(error::encode)?;
             match request.action {
-                Action::Uploads {
+                Action::Uploads(TurnCheckpointUploads {
                     objects: descriptors,
                     ..
-                } => {
+                }) => {
                     assert_eq!(descriptors.len(), objects.len());
                     Ok(Response::Uploads(objects.clone()))
                 }
-                Action::Authorize {
+                Action::Authorize(TurnCheckpointAuthorize {
                     purpose: CheckpointTransferPurpose::Upload,
                     object_ids,
                     ..
-                } => {
+                }) => {
                     assert_eq!(object_ids.len(), objects.len());
                     let verified = objects
                         .iter()
@@ -150,7 +150,7 @@ fn unverifying_plane(
     fault: Option<Owner>,
 ) -> (crate::client::ControlPlane, test_support::Calls) {
     session_tests::scripted(move |action| match action {
-        Action::Uploads { .. } => match fault {
+        Action::Uploads(_) => match fault {
             Some(Owner::NoCreateOnly) => Ok(Response::Uploads(
                 objects
                     .iter()
@@ -165,10 +165,10 @@ fn unverifying_plane(
             )),
             None => Ok(Response::Uploads(objects.clone())),
         },
-        Action::Authorize {
+        Action::Authorize(TurnCheckpointAuthorize {
             purpose: CheckpointTransferPurpose::Upload,
             ..
-        } => Ok(Response::Authorized(
+        }) => Ok(Response::Authorized(
             objects
                 .iter()
                 .cloned()
@@ -206,7 +206,7 @@ async fn stored_chunks_the_owner_does_not_verify_fail_the_upload() -> Checked {
     );
     assert!(matches!(
         session_tests::sent(&mut calls)?.as_slice(),
-        [Action::Uploads { .. }, Action::Authorize { .. }]
+        [Action::Uploads(_), Action::Authorize(_)]
     ));
     for _ in 0..4 {
         assert_eq!(server.seen.try_recv()?.method, http::Method::PUT);
@@ -237,7 +237,7 @@ async fn a_put_refused_before_sending_is_the_failure_an_unverified_batch_reports
     );
     assert!(matches!(
         session_tests::sent(&mut calls)?.as_slice(),
-        [Action::Uploads { .. }, Action::Authorize { .. }]
+        [Action::Uploads(_), Action::Authorize(_)]
     ));
     Ok(())
 }

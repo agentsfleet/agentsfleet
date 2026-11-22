@@ -13,8 +13,10 @@ use af_wire::{
         CheckpointPin, CheckpointPlaintext, CheckpointTransfer,
     },
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
-        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnScope, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAuthorize,
+        TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects, TurnCheckpointPageRead,
+        TurnCheckpointPageWrite, TurnCheckpointPinRenew, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnCheckpointUploads, TurnScope, TurnWorkspace,
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};
@@ -182,13 +184,13 @@ fn fixture_plane(
             let request: TurnCheckpointCommand =
                 serde_json::from_slice(body).map_err(error::malformed(call.verb))?;
             match request.action {
-                Action::PageRead { .. } => {
+                Action::PageRead(_) => {
                     if let Some(stop) = &cancel_after_read {
                         stop.cancel();
                     }
                     Ok(Response::PageRead(page.clone()))
                 }
-                Action::Authorize { .. } => Ok(Response::Authorized(objects.clone())),
+                Action::Authorize(_) => Ok(Response::Authorized(objects.clone())),
                 _ => Err(error::config("unexpected ordinary file request")),
             }
         })();

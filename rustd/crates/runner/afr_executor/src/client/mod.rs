@@ -32,10 +32,10 @@ use tokio_util::sync::CancellationToken;
 use crate::api::{Executor, FileContent, Found, Listing, Process, ProcessId, Search, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
-    METHOD_WRITE_FILE, PathParams, ReadParams, ReadResult, RecoveryParams, RecoveryProof,
-    SpawnParams, WriteFileParams, WriteParams, decoded, request,
+    KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
+    METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
+    ReadParams, ReadResult, RecoveryParams, RecoveryProof, SpawnParams, WriteFileParams,
+    WriteParams, decoded, request,
 };
 use crate::sizes::Sizes;
 use crate::timing::CALL_DEADLINE;
@@ -252,14 +252,6 @@ impl Executor for Client {
             content: data,
         };
         self.order(METHOD_WRITE_FILE, &params).await
-    }
-
-    async fn append_file(&self, path: &str, data: Bytes) -> Result<()> {
-        let params = WriteFileParams {
-            path: Cow::Borrowed(path),
-            content: data,
-        };
-        self.order(METHOD_APPEND_FILE, &params).await
     }
 
     async fn delete_file(&self, path: &str) -> Result<()> {

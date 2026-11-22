@@ -294,11 +294,6 @@ pub trait Executor: Send + Sync + fmt::Debug {
         Err(file_calls_unsupported())
     }
 
-    /// Adds to the end of a regular file, making it when absent.
-    async fn append_file(&self, _path: &str, _data: Bytes) -> Result<()> {
-        Err(file_calls_unsupported())
-    }
-
     /// Removes a regular file; a link, a directory or a device is refused.
     async fn delete_file(&self, _path: &str) -> Result<()> {
         Err(file_calls_unsupported())

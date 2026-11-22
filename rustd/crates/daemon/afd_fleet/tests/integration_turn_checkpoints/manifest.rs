@@ -4,8 +4,9 @@ use super::{Checked, publication::root, storage::Files};
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointPage},
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointPlan,
-        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommit,
+        TurnCheckpointPageWrite, TurnCheckpointPlan, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnPrivateRoot, TurnWorkspace,
     },
 };
 
@@ -66,12 +67,12 @@ impl Pending {
         };
         let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
         let response = files
-            .execute(Action::PageWrite {
+            .execute(Action::PageWrite(TurnCheckpointPageWrite {
                 checkpoint: self.reference.clone(),
                 page_id: id.clone(),
                 digest: digest.clone(),
                 contents: page,
-            })
+            }))
             .await?;
         assert!(matches!(response, Response::PageWritten(_)));
         Ok((id.0, digest))
@@ -83,7 +84,7 @@ impl Pending {
         pages: &[(String, String)],
     ) -> Checked<Response> {
         files
-            .execute(Action::Commit {
+            .execute(Action::Commit(TurnCheckpointCommit {
                 checkpoint: self.reference.clone(),
                 root: self.root.clone(),
                 manifest_root: af_crypto::checkpoint_digest::manifest_root(
@@ -92,7 +93,7 @@ impl Pending {
                         .map(|(id, digest)| (id.as_str(), digest.as_str())),
                 ),
                 folds: Vec::new(),
-            })
+            }))
             .await
     }
 }
@@ -140,12 +141,12 @@ async fn a_page_cannot_change_its_preallocated_ordinal() -> Checked {
     };
     incompatible(
         files
-            .execute(Action::PageWrite {
+            .execute(Action::PageWrite(TurnCheckpointPageWrite {
                 checkpoint: pending.reference,
                 page_id: id,
                 digest: af_core::etag::sha256_hex(&serde_json::to_vec(&page)?),
                 contents: page,
-            })
+            }))
             .await,
     )?;
     no_head(&files).await?;

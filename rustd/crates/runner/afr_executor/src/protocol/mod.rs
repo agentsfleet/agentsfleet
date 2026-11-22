@@ -31,8 +31,6 @@ pub(crate) const METHOD_READ_FILE: &str = "fs/read";
 pub(crate) const METHOD_WRITE_FILE: &str = "fs/write";
 /// `fs/list`: list a directory.
 pub(crate) const METHOD_LIST_DIR: &str = "fs/list";
-/// `fs/append`: add to the end of a file, making it when absent.
-pub(crate) const METHOD_APPEND_FILE: &str = "fs/append";
 /// `fs/delete`: remove a file.
 pub(crate) const METHOD_DELETE_FILE: &str = "fs/delete";
 /// `fs/search`: walk below a path and answer its files or matching lines.
@@ -122,7 +120,7 @@ pub(crate) struct ReadResult {
     pub(crate) truncated: bool,
 }
 
-/// `fs/write` and `fs/append` parameters.
+/// `fs/write` parameters.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct WriteFileParams<'a> {
     /// The file, inside the workspace.

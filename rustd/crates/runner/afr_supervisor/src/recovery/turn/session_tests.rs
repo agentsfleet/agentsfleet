@@ -188,7 +188,7 @@ async fn restore_pages(pages: Vec<CheckpointPage>, assigned: Option<String>) -> 
     });
     let served: BTreeMap<_, _> = ids.iter().map(|id| id.0.clone()).zip(pages).collect();
     let (plane, mut calls) = scripted(move |action| match action {
-        Action::PageRead { page_id, .. } => served
+        Action::PageRead(TurnCheckpointPageRead { page_id, .. }) => served
             .get(&page_id.0)
             .cloned()
             .map(Response::PageRead)
@@ -341,7 +341,7 @@ async fn a_manifest_that_reorders_orphans_or_removes_a_path_restores_nothing() -
             restored
                 .sent
                 .iter()
-                .all(|action| matches!(action, Action::PageRead { .. })),
+                .all(|action| matches!(action, Action::PageRead(_))),
             "{case}: nothing is authorized"
         );
         assert_eq!(
@@ -361,7 +361,7 @@ async fn a_command_larger_than_one_native_message_is_never_sent() -> Checked {
     let native = NativeTurn::new(&plane, &run, 1, &transfers);
 
     let committed = native
-        .command(Action::Commit {
+        .command(TurnCheckpointCommit {
             checkpoint: reference(),
             root: TurnPrivateRoot {
                 history: "a".repeat(af_wire::protocol::MESSAGE_BYTES_MAX),

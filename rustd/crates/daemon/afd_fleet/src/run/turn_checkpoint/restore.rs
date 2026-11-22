@@ -1,7 +1,7 @@
 //! Exact descriptors and live reader pins precede prefix adoption under the replacement fence.
 
 use af_wire::run::{
-    CheckpointOperationId, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse,
+    CheckpointOperationId, TurnCheckpointRef, TurnCheckpointResponse, TurnCheckpointSaved,
     TurnResume,
 };
 
@@ -34,7 +34,7 @@ pub(super) async fn read(
     root::validate(&bytes, &plan.scope(&owner)?, &covered, None)?;
     folds::validate(&mut owner, &covered, None).await?;
     let pin = pins::reader(runs, &mut owner, &plan.id, &guard::id(operation)?).await?;
-    let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointRead {
+    let response = TurnCheckpointResponse::Read(Box::new(TurnCheckpointSaved {
         descriptor: descriptor.clone(),
         pin: pin.wire(),
         page_ids: plan

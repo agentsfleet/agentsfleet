@@ -62,10 +62,6 @@ impl Executor for Counting {
         self.crossed();
         Ok(())
     }
-    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        self.crossed();
-        Ok(())
-    }
     async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
         self.crossed();
         Ok(())

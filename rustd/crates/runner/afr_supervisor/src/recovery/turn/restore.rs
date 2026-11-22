@@ -3,8 +3,8 @@
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::run::{
-    CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointRead,
-    TurnCheckpointRef, TurnCheckpointResponse as Response, TurnWorkspace,
+    CheckpointOperationId, RunPayload, TurnCheckpointPinRelease, TurnCheckpointRead,
+    TurnCheckpointRef, TurnCheckpointSaved, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
 use garde::Validate as _;
@@ -31,16 +31,11 @@ impl NativeTurn<'_> {
                 "ordinary restore has no matching actual workspace",
             ));
         }
-        let Response::Read(saved) = self
-            .command(Action::Read {
+        let saved = self
+            .command(TurnCheckpointRead {
                 descriptor: Box::new(descriptor.clone()),
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn read returned another command's response",
-            ));
-        };
+            .await?;
         let reference = TurnCheckpointRef {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
             pin_id: CheckpointOperationId(saved.pin.id.clone()),
@@ -74,7 +69,7 @@ impl NativeTurn<'_> {
         .await;
         if let Err(failure) = checked {
             let _cleanup = self
-                .command(Action::PinRelease {
+                .command(TurnCheckpointPinRelease {
                     checkpoint: reference,
                 })
                 .await;
@@ -84,7 +79,7 @@ impl NativeTurn<'_> {
     }
 }
 
-fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
+fn require_empty_manifest(saved: &TurnCheckpointSaved) -> Result<()> {
     let empty = af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
     if !saved.page_ids.is_empty() || saved.descriptor.manifest_root != empty {
         return Err(error::config(
@@ -95,7 +90,7 @@ fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
 }
 
 fn validate(
-    saved: &TurnCheckpointRead,
+    saved: &TurnCheckpointSaved,
     assignment: &RunPayload<'_>,
     workspace: &TurnWorkspace,
 ) -> Result<()> {

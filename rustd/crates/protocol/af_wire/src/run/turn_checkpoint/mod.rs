@@ -14,12 +14,17 @@ pub struct TurnMessageSize {
 }
 
 mod command;
+mod request;
 mod response;
 pub use command::{
-    TurnCheckpointAction, TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointRef,
+    TurnCheckpointAbandon, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointAuthorize,
+    TurnCheckpointBegin, TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointObjects,
+    TurnCheckpointPageRead, TurnCheckpointPageWrite, TurnCheckpointPinRelease,
+    TurnCheckpointPinRenew, TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointUploads,
     TurnPrivateRoot,
 };
-pub use response::{TurnCheckpointPlan, TurnCheckpointRead, TurnCheckpointResponse};
+pub use request::TurnCheckpointRequest;
+pub use response::{TurnCheckpointPlan, TurnCheckpointResponse, TurnCheckpointSaved};
 
 /// The independently versioned private root format.
 pub const TURN_CHECKPOINT_FORMAT: u32 = 1;

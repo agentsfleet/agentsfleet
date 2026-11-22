@@ -5,7 +5,8 @@ use af_core::{error_code, id::Uuid7};
 use af_wire::{
     protocol::MESSAGE_BYTES_MAX,
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef, TurnPrivateRoot,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAdopt,
+        TurnCheckpointCommit, TurnCheckpointRead, TurnCheckpointRef, TurnPrivateRoot,
         TurnWorkspace,
     },
 };
@@ -34,12 +35,12 @@ async fn a_committed_generation_replays_only_its_own_manifest() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint: pending.reference,
                     root: pending.root,
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -64,12 +65,12 @@ async fn an_api_only_capture_commits_only_the_empty_manifest() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint: pending.reference.clone(),
                     root: pending.root.clone(),
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)
@@ -97,12 +98,12 @@ async fn a_file_manifest_must_digest_its_pages() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint: pending.reference,
                     root: pending.root,
                     manifest_root: other_manifest(),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)
@@ -131,14 +132,14 @@ async fn a_commit_must_carry_the_root_its_capture_began_with() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint: pending.reference,
                     root: swapped,
                     manifest_root: af_crypto::checkpoint_digest::manifest_root(
                         std::iter::empty::<(&str, &str)>()
                     ),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -160,12 +161,12 @@ async fn a_reader_pin_cannot_commit() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint: held,
                     root: pending.root,
                     manifest_root: saved.manifest_root.clone(),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -214,14 +215,14 @@ async fn a_root_too_large_to_read_back_is_a_limit() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Commit {
+                .execute(Action::Commit(TurnCheckpointCommit {
                     checkpoint,
                     root: large,
                     manifest_root: af_crypto::checkpoint_digest::manifest_root(
                         std::iter::empty::<(&str, &str)>()
                     ),
                     folds: Vec::new(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_LIMIT)
@@ -251,23 +252,27 @@ async fn only_the_current_head_is_read_or_adopted() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Read {
+                .execute(Action::Read(TurnCheckpointRead {
                     descriptor: first.clone(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)
     );
     assert_eq!(
-        code(files.execute(Action::Adopt { checkpoint: held }).await),
+        code(
+            files
+                .execute(Action::Adopt(TurnCheckpointAdopt { checkpoint: held }))
+                .await
+        ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
     );
     assert_eq!(
         code(
             files
-                .execute(Action::Adopt {
+                .execute(Action::Adopt(TurnCheckpointAdopt {
                     checkpoint: second_pending.reference,
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)

@@ -10,17 +10,18 @@
 use std::{borrow::Cow, num::NonZeroU64};
 
 use af_core::id::Uuid7;
+use af_stream::OwnedFrame;
 use af_wire::{
     context::{ContextLoadRequest, ContextLoadResponse, ContextSaveRequest, ContextSaveResponse},
-    protocol::{Down, Up},
+    protocol::Up,
 };
 use backon::Retryable as _;
 
 use super::{
     ControlPlane, Verb,
-    stream::{Command, Outcome},
+    stream::{Answered, Command, Outcome},
 };
-use crate::{Result, downlink::pending::Expected, error::ErrorKind};
+use crate::{Result, downlink::pending::Expected};
 
 impl ControlPlane {
     /// The compacted context of the thread `run` runs, read at `fencing_token`.
@@ -90,10 +91,8 @@ impl Command for Load<'_> {
         }
     }
 
-    fn decode(reply: Down<'_>) -> Result<Self::Output> {
-        let Down::ContextLoaded { answer, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
+    fn decode(reply: &OwnedFrame) -> Result<Self::Output> {
+        let Answered { answer } = reply.decode::<Answered<'_, ContextLoadResponse>>()?;
         Outcome::try_from(answer)?.accepted()
     }
 }
@@ -119,10 +118,8 @@ impl Command for Save<'_> {
         }
     }
 
-    fn decode(reply: Down<'_>) -> Result<Self::Output> {
-        let Down::ContextSaved { answer, .. } = reply else {
-            return Err(ErrorKind::StreamProtocol.into());
-        };
+    fn decode(reply: &OwnedFrame) -> Result<Self::Output> {
+        let Answered { answer } = reply.decode::<Answered<'_, ContextSaveResponse>>()?;
         Outcome::try_from(answer)?.accepted()
     }
 }

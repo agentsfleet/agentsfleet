@@ -104,7 +104,7 @@ impl Remote {
     fn respond(&mut self, request: TurnCheckpointCommand) -> Result<Response> {
         match request.action {
             Action::Begin(begin) => Ok(self.begin(begin)),
-            Action::Objects { objects, .. } => objects
+            Action::Objects(TurnCheckpointObjects { objects, .. }) => objects
                 .iter()
                 .enumerate()
                 .map(|(index, wanted)| {
@@ -121,7 +121,7 @@ impl Remote {
                 })
                 .collect::<Result<_>>()
                 .map(Response::Objects),
-            Action::Uploads { objects, .. } => {
+            Action::Uploads(TurnCheckpointUploads { objects, .. }) => {
                 self.upload_requests += 1;
                 objects
                     .iter()
@@ -133,11 +133,11 @@ impl Remote {
                     .collect::<Result<_>>()
                     .map(Response::Uploads)
             }
-            Action::Authorize {
+            Action::Authorize(TurnCheckpointAuthorize {
                 purpose: CheckpointTransferPurpose::Upload,
                 object_ids,
                 ..
-            } => {
+            }) => {
                 self.uploaded = true;
                 object_ids
                     .iter()
@@ -150,10 +150,10 @@ impl Remote {
                     .collect::<Result<_>>()
                     .map(Response::Authorized)
             }
-            Action::PageWrite { .. } if self.fault == Some(Fault::WrongPageWrite) => {
+            Action::PageWrite(_) if self.fault == Some(Fault::WrongPageWrite) => {
                 Ok(Response::PinReleased)
             }
-            Action::PageWrite { contents, .. } => {
+            Action::PageWrite(TurnCheckpointPageWrite { contents, .. }) => {
                 self.pages.push(contents.clone());
                 Ok(Response::PageWritten(
                     if self.fault == Some(Fault::ChangedPage) {
@@ -163,10 +163,10 @@ impl Remote {
                     },
                 ))
             }
-            Action::Commit { .. } if self.fault == Some(Fault::WrongCommit) => {
+            Action::Commit(_) if self.fault == Some(Fault::WrongCommit) => {
                 Ok(Response::PinReleased)
             }
-            Action::Commit { manifest_root, .. } => {
+            Action::Commit(TurnCheckpointCommit { manifest_root, .. }) => {
                 let plan = self
                     .plan
                     .as_ref()
@@ -188,10 +188,10 @@ impl Remote {
                 self.head = Some(saved.clone());
                 Ok(Response::Committed(Box::new(saved)))
             }
-            Action::PinRenew {
+            Action::PinRenew(TurnCheckpointPinRenew {
                 resource_version, ..
-            } => self.renew(resource_version),
-            Action::Abandon { .. } => {
+            }) => self.renew(resource_version),
+            Action::Abandon(_) => {
                 self.abandoned += 1;
                 self.plan = None;
                 Ok(Response::Abandoned)

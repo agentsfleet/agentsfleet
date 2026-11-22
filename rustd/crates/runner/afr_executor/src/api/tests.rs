@@ -33,7 +33,6 @@ async fn an_executor_that_serves_no_files_refuses_every_file_call_alike() {
     let refusals = [
         executor.read_file(PATH, 1).await.err(),
         executor.write_file(PATH, Bytes::new()).await.err(),
-        executor.append_file(PATH, Bytes::new()).await.err(),
         executor.delete_file(PATH).await.err(),
         executor.list_dir(PATH).await.err(),
         executor

@@ -5,7 +5,8 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
 use af_wire::run::{
-    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointCommand, TurnCheckpointRef,
+    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointAdopt, TurnCheckpointCommand,
+    TurnCheckpointCommit, TurnCheckpointPinRelease, TurnCheckpointRead, TurnCheckpointRef,
     TurnCheckpointResponse, TurnPrivateRoot, TurnResume, TurnScope, TurnWorkspace,
 };
 use afd_fleet::run::turn_checkpoint::TurnCheckpoints;
@@ -54,7 +55,7 @@ pub(super) async fn publish(
     };
     let commit = valid(command(
         case,
-        TurnCheckpointAction::Commit {
+        TurnCheckpointAction::Commit(TurnCheckpointCommit {
             checkpoint,
             root: root.clone(),
             manifest_root: af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(
@@ -62,7 +63,7 @@ pub(super) async fn publish(
                 &str,
             )>()),
             folds: Vec::new(),
-        },
+        }),
     ))?;
     let TurnCheckpointResponse::Committed(descriptor) =
         store.execute(&case.runs, case.run(), &commit).await?
@@ -101,9 +102,9 @@ async fn read_and_adopt(
 ) -> Checked {
     let read = valid(command(
         case,
-        TurnCheckpointAction::Read {
+        TurnCheckpointAction::Read(TurnCheckpointRead {
             descriptor: Box::new(descriptor.clone()),
-        },
+        }),
     ))?;
     let TurnCheckpointResponse::Read(saved) = store.execute(&case.runs, case.run(), &read).await?
     else {
@@ -118,9 +119,9 @@ async fn read_and_adopt(
     };
     let adopt = valid(command(
         case,
-        TurnCheckpointAction::Adopt {
+        TurnCheckpointAction::Adopt(TurnCheckpointAdopt {
             checkpoint: reference.clone(),
-        },
+        }),
     ))?;
     assert!(
         matches!(store.execute(&case.runs, case.run(), &adopt).await?, TurnCheckpointResponse::Adopted(covered) if covered.is_empty())
@@ -136,9 +137,9 @@ async fn release_and_refuse_replayed_read(
 ) -> Checked {
     let release = valid(command(
         case,
-        TurnCheckpointAction::PinRelease {
+        TurnCheckpointAction::PinRelease(TurnCheckpointPinRelease {
             checkpoint: reference,
-        },
+        }),
     ))?;
     assert!(matches!(
         store.execute(&case.runs, case.run(), &release).await?,

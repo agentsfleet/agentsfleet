@@ -7,8 +7,9 @@ use af_wire::{
         CheckpointObject, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
     },
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAuthorize,
+        TurnCheckpointObjects, TurnCheckpointRef, TurnCheckpointResponse as Response,
+        TurnCheckpointUploads, TurnWorkspace,
     },
 };
 use afd_db::test_util::mint_id;
@@ -37,10 +38,10 @@ async fn register(
     objects: Vec<CheckpointPlaintext>,
 ) -> Checked<Vec<CheckpointObject>> {
     let Response::Objects(registered) = files
-        .execute(Action::Objects {
+        .execute(Action::Objects(TurnCheckpointObjects {
             checkpoint: reference.clone(),
             objects,
-        })
+        }))
         .await?
     else {
         return Err("registered objects".into());
@@ -130,10 +131,10 @@ async fn a_transfer_naming_a_chunk_twice_or_an_unregistered_chunk_conflicts() ->
     assert_eq!(
         code(
             files
-                .execute(Action::Uploads {
+                .execute(Action::Uploads(TurnCheckpointUploads {
                     checkpoint: reference.clone(),
                     objects: vec![upload.clone(), upload],
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -141,11 +142,11 @@ async fn a_transfer_naming_a_chunk_twice_or_an_unregistered_chunk_conflicts() ->
     assert_eq!(
         code(
             files
-                .execute(Action::Authorize {
+                .execute(Action::Authorize(TurnCheckpointAuthorize {
                     checkpoint: reference,
                     purpose: CheckpointTransferPurpose::Upload,
                     object_ids: vec![CheckpointOperationId(mint_id().as_str().to_owned())],
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -174,14 +175,14 @@ async fn an_upload_frozen_under_one_digest_refuses_another() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Uploads {
+                .execute(Action::Uploads(TurnCheckpointUploads {
                     checkpoint: reference,
                     objects: vec![CheckpointUpload {
                         object_id: object.object_id,
                         ciphertext_sha256: af_core::etag::sha256_hex(&altered),
                         ciphertext_length: u64::try_from(altered.len())?,
                     }],
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -238,11 +239,11 @@ async fn a_restore_never_signs_an_unverified_chunk() -> Checked {
     upload_bytes(&files, &reference, kept, bytes).await?;
     assert!(matches!(
         files
-            .execute(Action::Authorize {
+            .execute(Action::Authorize(TurnCheckpointAuthorize {
                 checkpoint: reference.clone(),
                 purpose: CheckpointTransferPurpose::Upload,
                 object_ids: vec![CheckpointOperationId(kept.object_id.clone())],
-            })
+            }))
             .await?,
         Response::Authorized(_)
     ));
@@ -251,11 +252,11 @@ async fn a_restore_never_signs_an_unverified_chunk() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Authorize {
+                .execute(Action::Authorize(TurnCheckpointAuthorize {
                     checkpoint: held,
                     purpose: CheckpointTransferPurpose::Restore,
                     object_ids: vec![CheckpointOperationId(unverified.object_id.clone())],
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_INCOMPATIBLE)

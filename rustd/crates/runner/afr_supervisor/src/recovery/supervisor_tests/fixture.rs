@@ -12,7 +12,7 @@ use af_wire::{
     },
     run::{
         CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
-        TurnCheckpointRead, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
+        TurnCheckpointResponse as Response, TurnCheckpointSaved, TurnPrivateRoot, TurnResume,
         TurnScope,
     },
 };
@@ -38,7 +38,7 @@ pub(super) fn checkpoint(
     scope: TurnScope,
     expiry: jiff::Timestamp,
     page: &CheckpointPage,
-) -> Checked<TurnCheckpointRead> {
+) -> Checked<TurnCheckpointSaved> {
     let private = json!({
         "format":1,"scope":scope,"model":run.policy.context.model,"provider":run.policy.provider,
         "root":{"messages":[{"User":PREFIX}],"driver":{"answers":[],"completed_steps":0},
@@ -47,7 +47,7 @@ pub(super) fn checkpoint(
     .to_string();
     let root = TurnPrivateRoot { history: private };
     let page_digest = sha256_hex(&serde_json::to_vec(page)?);
-    Ok(TurnCheckpointRead {
+    Ok(TurnCheckpointSaved {
         descriptor: TurnResume {
             checkpoint_id: CheckpointOperationId(ID.to_owned()),
             generation: 1,
@@ -70,7 +70,7 @@ pub(super) fn checkpoint(
 
 pub(super) fn answer(
     call: &Call,
-    saved: &TurnCheckpointRead,
+    saved: &TurnCheckpointSaved,
     page: &CheckpointPage,
     object: &CheckpointObject,
 ) -> Option<Answer> {
@@ -95,11 +95,11 @@ pub(super) fn answer(
         )));
     }
     let response = match command.action {
-        Action::Read { .. } => Response::Read(Box::new(saved.clone())),
-        Action::PageRead { .. } => Response::PageRead(page.clone()),
-        Action::Authorize { .. } => Response::Authorized(vec![object.clone()]),
-        Action::Adopt { .. } => Response::Adopted(Vec::new()),
-        Action::PinRelease { .. } => Response::PinReleased,
+        Action::Read(_) => Response::Read(Box::new(saved.clone())),
+        Action::PageRead(_) => Response::PageRead(page.clone()),
+        Action::Authorize(_) => Response::Authorized(vec![object.clone()]),
+        Action::Adopt(_) => Response::Adopted(Vec::new()),
+        Action::PinRelease(_) => Response::PinReleased,
         _ => {
             return Some(Answer::Fail(crate::error::config(
                 "unexpected checkpoint fixture action",

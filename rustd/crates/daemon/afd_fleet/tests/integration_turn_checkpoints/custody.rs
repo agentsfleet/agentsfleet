@@ -6,8 +6,10 @@ use af_core::{error_code, error_code::ErrorCode, id::Uuid7};
 use af_wire::{
     durable_task::CheckpointEntry,
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointAction as Action,
+        TurnCheckpointPageRead, TurnCheckpointPinRelease, TurnCheckpointPinRenew,
+        TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
+        TurnWorkspace,
     },
 };
 use afd_db::test_util::mint_id;
@@ -57,9 +59,9 @@ pub(super) async fn committed(
 /// The reader pin a Read of `descriptor` grants.
 pub(super) async fn reader(files: &Files, descriptor: &TurnResume) -> Checked<TurnCheckpointRef> {
     let Response::Read(read) = files
-        .execute(Action::Read {
+        .execute(Action::Read(TurnCheckpointRead {
             descriptor: Box::new(descriptor.clone()),
-        })
+        }))
         .await?
     else {
         return Err("reader pin".into());
@@ -72,7 +74,9 @@ pub(super) async fn reader(files: &Files, descriptor: &TurnResume) -> Checked<Tu
 
 async fn release(files: &Files, checkpoint: TurnCheckpointRef) -> Checked {
     assert!(matches!(
-        files.execute(Action::PinRelease { checkpoint }).await?,
+        files
+            .execute(Action::PinRelease(TurnCheckpointPinRelease { checkpoint }))
+            .await?,
         Response::PinReleased
     ));
     Ok(())
@@ -95,10 +99,10 @@ async fn a_pin_update_naming_an_unknown_pin_or_a_skipped_version_conflicts() -> 
     assert_eq!(
         code(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: unknown,
                     resource_version: version,
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -106,19 +110,19 @@ async fn a_pin_update_naming_an_unknown_pin_or_a_skipped_version_conflicts() -> 
     assert_eq!(
         code(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: pending.reference.clone(),
                     resource_version: version + 2,
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
     );
     let Response::PinRenewed(renewed) = files
-        .execute(Action::PinRenew {
+        .execute(Action::PinRenew(TurnCheckpointPinRenew {
             checkpoint: pending.reference,
             resource_version: version,
-        })
+        }))
         .await?
     else {
         return Err("the holder's own version renews".into());
@@ -147,10 +151,10 @@ async fn a_pin_at_its_last_resource_version_cannot_renew() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: pending.reference,
                     resource_version: i64::MAX.unsigned_abs(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_LIMIT)
@@ -172,10 +176,10 @@ async fn a_pin_of_the_replaced_run_is_refused() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::PinRenew {
+                .execute(Action::PinRenew(TurnCheckpointPinRenew {
                     checkpoint: pending.reference,
                     resource_version: pending.plan.pin.resource_version,
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -195,9 +199,9 @@ async fn a_committed_capture_cannot_be_abandoned() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::Abandon {
+                .execute(Action::Abandon(TurnCheckpointAbandon {
                     checkpoint: pending.reference,
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -222,9 +226,9 @@ async fn a_read_replays_its_pin_and_a_generation_admits_sixty_four_readers() -> 
     let (_, saved) = committed(&files, TurnWorkspace::ApiOnly, None).await?;
     let read = valid(command(
         &files.case,
-        Action::Read {
+        Action::Read(TurnCheckpointRead {
             descriptor: saved.clone(),
-        },
+        }),
     ))?;
     let mut pins = Vec::new();
     for _ in 0..2 {
@@ -273,10 +277,10 @@ async fn file_verbs_refuse_an_api_only_capture() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::PageRead {
+                .execute(Action::PageRead(TurnCheckpointPageRead {
                     checkpoint: pending.reference,
                     page_id: CheckpointOperationId(mint_id().as_str().to_owned()),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)
@@ -317,10 +321,10 @@ async fn a_reader_of_a_replaced_head_reads_none_of_its_pages() -> Checked {
     assert_eq!(
         code(
             files
-                .execute(Action::PageRead {
+                .execute(Action::PageRead(TurnCheckpointPageRead {
                     checkpoint: held,
                     page_id: first.plan.page_ids.first().ok_or("page")?.clone(),
-                })
+                }))
                 .await
         ),
         Some(error_code::RUN_CHECKPOINT_CONFLICT)

@@ -89,113 +89,171 @@ pub struct TurnCheckpointCommand {
 }
 
 /// Keys and private root state stay within the authenticated runner session.
+///
+/// Each variant carries its own request, so a caller holding one knows the
+/// one response variant that answers it ([`super::TurnCheckpointRequest`]).
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TurnCheckpointAction {
     /// Reserve one pending generation.
     Begin(#[garde(dive)] TurnCheckpointBegin),
     /// Register one quota-bounded batch.
-    Objects {
-        /// Exact pending generation and writer custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Immutable plaintext descriptors, before encryption or upload.
-        #[garde(length(min = 1), dive)]
-        objects: Vec<CheckpointPlaintext>,
-    },
+    Objects(#[garde(dive)] TurnCheckpointObjects),
     /// Commit exact ciphertext representations before transfer verification.
-    Uploads {
-        /// Exact pending generation and writer custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Ciphertext digests and sizes bound to registered objects.
-        #[garde(length(min = 1), dive)]
-        objects: Vec<CheckpointUpload>,
-    },
+    Uploads(#[garde(dive)] TurnCheckpointUploads),
     /// Authorize only referenced objects within the current pin deadline.
-    Authorize {
-        /// Generation and custody authorizing this transfer.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Writer upload or reader restore, checked against the pin.
-        #[garde(skip)]
-        purpose: CheckpointTransferPurpose,
-        /// Registered immutable objects within this generation.
-        #[garde(length(min = 1), dive)]
-        object_ids: Vec<CheckpointOperationId>,
-    },
+    Authorize(#[garde(dive)] TurnCheckpointAuthorize),
     /// Publish one bounded immutable page.
-    PageWrite {
-        /// Exact pending generation and writer custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Preallocated page identity from the plan.
-        #[garde(dive)]
-        page_id: CheckpointOperationId,
-        /// Digest of the serialized page contents.
-        #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
-        digest: String,
-        /// Complete page whose encoded size is also bounded.
-        #[garde(dive, custom(page_bound))]
-        contents: CheckpointPage,
-    },
+    PageWrite(#[garde(dive)] TurnCheckpointPageWrite),
     /// Read the exact page named by the plan.
-    PageRead {
-        /// Generation and live reader custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Exact immutable page identity.
-        #[garde(dive)]
-        page_id: CheckpointOperationId,
-    },
+    PageRead(#[garde(dive)] TurnCheckpointPageRead),
     /// Renew without extending the original operation deadline.
-    PinRenew {
-        /// Exact custody being renewed.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Compare-and-swap version of the last acknowledged pin.
-        #[garde(range(min = 1, max = i64::MAX as u64))]
-        resource_version: u64,
-    },
+    PinRenew(#[garde(dive)] TurnCheckpointPinRenew),
     /// End exact reader or writer custody.
-    PinRelease {
-        /// Exact custody being released.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-    },
+    PinRelease(#[garde(dive)] TurnCheckpointPinRelease),
     /// Seal root state and publish the complete manifest/head together.
-    Commit {
-        /// Exact pending generation and writer custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-        /// Private state bound to the begin request's history digest.
-        #[garde(dive)]
-        root: TurnPrivateRoot,
-        /// Digest of the complete ordered manifest.
-        #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
-        manifest_root: String,
-        /// Exact input membership incorporated by the saved root.
-        #[garde(dive)]
-        folds: Vec<FoldRef>,
-    },
+    Commit(#[garde(dive)] TurnCheckpointCommit),
     /// An assignment is a descriptor, never inline private history.
-    Read {
-        /// Exact assignment metadata; the server never silently selects a newer head.
-        #[garde(dive)]
-        descriptor: Box<TurnResume>,
-    },
+    Read(#[garde(dive)] TurnCheckpointRead),
     /// Adoption validates the saved membership; it never trusts a cursor alone.
-    Adopt {
-        /// Generation and reader custody used to validate the restored root.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-    },
+    Adopt(#[garde(dive)] TurnCheckpointAdopt),
     /// Failed captures never become the event head.
-    Abandon {
-        /// Exact pending generation and writer custody.
-        #[garde(dive)]
-        checkpoint: TurnCheckpointRef,
-    },
+    Abandon(#[garde(dive)] TurnCheckpointAbandon),
+}
+
+/// Register one quota-bounded batch.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointObjects {
+    /// Exact pending generation and writer custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Immutable plaintext descriptors, before encryption or upload.
+    #[garde(length(min = 1), dive)]
+    pub objects: Vec<CheckpointPlaintext>,
+}
+
+/// Commit exact ciphertext representations before transfer verification.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointUploads {
+    /// Exact pending generation and writer custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Ciphertext digests and sizes bound to registered objects.
+    #[garde(length(min = 1), dive)]
+    pub objects: Vec<CheckpointUpload>,
+}
+
+/// Authorize only referenced objects within the current pin deadline.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointAuthorize {
+    /// Generation and custody authorizing this transfer.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Writer upload or reader restore, checked against the pin.
+    #[garde(skip)]
+    pub purpose: CheckpointTransferPurpose,
+    /// Registered immutable objects within this generation.
+    #[garde(length(min = 1), dive)]
+    pub object_ids: Vec<CheckpointOperationId>,
+}
+
+/// Publish one bounded immutable page.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointPageWrite {
+    /// Exact pending generation and writer custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Preallocated page identity from the plan.
+    #[garde(dive)]
+    pub page_id: CheckpointOperationId,
+    /// Digest of the serialized page contents.
+    #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
+    pub digest: String,
+    /// Complete page whose encoded size is also bounded.
+    #[garde(dive, custom(page_bound))]
+    pub contents: CheckpointPage,
+}
+
+/// Read the exact page named by the plan.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointPageRead {
+    /// Generation and live reader custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Exact immutable page identity.
+    #[garde(dive)]
+    pub page_id: CheckpointOperationId,
+}
+
+/// Renew without extending the original operation deadline.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointPinRenew {
+    /// Exact custody being renewed.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Compare-and-swap version of the last acknowledged pin.
+    #[garde(range(min = 1, max = i64::MAX as u64))]
+    pub resource_version: u64,
+}
+
+/// End exact reader or writer custody.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointPinRelease {
+    /// Exact custody being released.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+}
+
+/// Seal root state and publish the complete manifest/head together.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointCommit {
+    /// Exact pending generation and writer custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+    /// Private state bound to the begin request's history digest.
+    #[garde(dive)]
+    pub root: TurnPrivateRoot,
+    /// Digest of the complete ordered manifest.
+    #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
+    pub manifest_root: String,
+    /// Exact input membership incorporated by the saved root.
+    #[garde(dive)]
+    pub folds: Vec<FoldRef>,
+}
+
+/// An assignment is a descriptor, never inline private history.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointRead {
+    /// Exact assignment metadata; the server never silently selects a newer head.
+    #[garde(dive)]
+    pub descriptor: Box<TurnResume>,
+}
+
+/// Adoption validates the saved membership; it never trusts a cursor alone.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointAdopt {
+    /// Generation and reader custody used to validate the restored root.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
+}
+
+/// Failed captures never become the event head.
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TurnCheckpointAbandon {
+    /// Exact pending generation and writer custody.
+    #[garde(dive)]
+    pub checkpoint: TurnCheckpointRef,
 }
 
 impl TurnCheckpointAction {
@@ -208,10 +266,10 @@ impl TurnCheckpointAction {
     pub const fn verifies_uploads(&self) -> bool {
         matches!(
             self,
-            Self::Authorize {
+            Self::Authorize(TurnCheckpointAuthorize {
                 purpose: CheckpointTransferPurpose::Upload,
                 ..
-            }
+            })
         )
     }
 
@@ -220,17 +278,17 @@ impl TurnCheckpointAction {
     pub const fn kind(&self) -> TurnCheckpointKind {
         match self {
             Self::Begin(_) => TurnCheckpointKind::Begin,
-            Self::Objects { .. } => TurnCheckpointKind::Objects,
-            Self::Uploads { .. } => TurnCheckpointKind::Uploads,
-            Self::Authorize { .. } => TurnCheckpointKind::Authorize,
-            Self::PageWrite { .. } => TurnCheckpointKind::PageWrite,
-            Self::PageRead { .. } => TurnCheckpointKind::PageRead,
-            Self::PinRenew { .. } => TurnCheckpointKind::PinRenew,
-            Self::PinRelease { .. } => TurnCheckpointKind::PinRelease,
-            Self::Commit { .. } => TurnCheckpointKind::Commit,
-            Self::Read { .. } => TurnCheckpointKind::Read,
-            Self::Adopt { .. } => TurnCheckpointKind::Adopt,
-            Self::Abandon { .. } => TurnCheckpointKind::Abandon,
+            Self::Objects(_) => TurnCheckpointKind::Objects,
+            Self::Uploads(_) => TurnCheckpointKind::Uploads,
+            Self::Authorize(_) => TurnCheckpointKind::Authorize,
+            Self::PageWrite(_) => TurnCheckpointKind::PageWrite,
+            Self::PageRead(_) => TurnCheckpointKind::PageRead,
+            Self::PinRenew(_) => TurnCheckpointKind::PinRenew,
+            Self::PinRelease(_) => TurnCheckpointKind::PinRelease,
+            Self::Commit(_) => TurnCheckpointKind::Commit,
+            Self::Read(_) => TurnCheckpointKind::Read,
+            Self::Adopt(_) => TurnCheckpointKind::Adopt,
+            Self::Abandon(_) => TurnCheckpointKind::Abandon,
         }
     }
 }

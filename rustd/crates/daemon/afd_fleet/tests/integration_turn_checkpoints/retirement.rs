@@ -4,7 +4,8 @@ use super::{Case, Checked, lifecycle::isolated, manifest::Pending, storage::File
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
 use af_wire::run::{
-    TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
+    TurnCheckpointAbandon, TurnCheckpointAction as Action, TurnCheckpointPinRelease,
+    TurnCheckpointRead, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
 };
 use afd_fleet::durable_task::{CheckpointMaintenanceCursor, DurableTaskLifecycle as _};
 use sqlx::Connection as _;
@@ -41,9 +42,9 @@ async fn an_api_only_abandon_releases_its_writer_and_keeps_the_previous_head() -
     assert_eq!(writer_state(&files, &pending).await?, (false, false, false));
     assert!(matches!(
         files
-            .execute(Action::Abandon {
+            .execute(Action::Abandon(TurnCheckpointAbandon {
                 checkpoint: pending.reference.clone(),
-            })
+            }))
             .await?,
         Response::Abandoned
     ));
@@ -68,9 +69,9 @@ async fn releasing_a_writer_pin_preserves_both_the_pending_plan_and_the_previous
     assert_eq!(writer_state(&files, &pending).await?, (false, false, false));
     assert!(matches!(
         files
-            .execute(Action::PinRelease {
+            .execute(Action::PinRelease(TurnCheckpointPinRelease {
                 checkpoint: pending.reference.clone(),
-            })
+            }))
             .await?,
         Response::PinReleased
     ));
@@ -188,9 +189,9 @@ async fn assert_preserved_head_and_refused_commit(
         .ok_or("expected a typed checkpoint refusal")?;
     assert_eq!(failure.code(), error_code::RUN_CHECKPOINT_CONFLICT);
     let Response::Read(read) = files
-        .execute(Action::Read {
+        .execute(Action::Read(TurnCheckpointRead {
             descriptor: Box::new(head.clone()),
-        })
+        }))
         .await?
     else {
         return Err("expected the previous ready generation".into());

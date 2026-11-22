@@ -302,6 +302,43 @@ async fn a_refused_or_unreadable_fleet_steer_is_no_accepted_event() {
     }
 }
 
+/// A save the daemon refused over the stream reaches the tool with the code
+/// it named, as an HTTP refusal does.
+#[tokio::test]
+async fn a_context_save_refused_over_the_stream_keeps_its_code() {
+    let (plane, _calls) = plane(|call| {
+        assert_eq!(call.verb, Verb::ContextSave);
+        Answer::Fail(error::refused(
+            call.verb,
+            409,
+            Some(error_code::RUN_STALE_FENCING_TOKEN),
+        ))
+    });
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let host = Host::new();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &run,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+    let saved = verbs
+        .context_save(af_wire::context::ContextSaveRequest {
+            fencing_token: 0,
+            resource_version: 3,
+            checkpoint: serde_json::json!({}),
+        })
+        .await;
+    assert_eq!(
+        saved.map(|response| response.resource_version),
+        Err(Unanswered::Refused(Some(
+            error_code::RUN_STALE_FENCING_TOKEN
+        )))
+    );
+}
+
 /// A save carries the run's own fence whatever the loop named, and one the
 /// daemon could not take is unreachable.
 #[tokio::test]

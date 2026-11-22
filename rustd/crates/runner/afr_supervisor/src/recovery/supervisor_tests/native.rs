@@ -11,7 +11,7 @@ use af_core::{clock, id::Uuid7};
 use af_wire::durable_task::CheckpointPage;
 use af_wire::run::{
     CheckpointOperationId, FoldRef, RunPayload, TurnCheckpointAction as Action,
-    TurnCheckpointCommand, TurnCheckpointRead, TurnCheckpointResponse as Response, TurnScope,
+    TurnCheckpointCommand, TurnCheckpointResponse as Response, TurnCheckpointSaved, TurnScope,
     TurnWorkspace,
 };
 use std::time::Duration;
@@ -27,7 +27,7 @@ enum Fault {
 }
 
 /// A run assigned an API-only ordinary checkpoint, and what the owner saved.
-fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
+fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointSaved)> {
     let mut run = test_support::payload(RUN_ID, FLEET_ID);
     run.event.workspace_id = ID.into();
     run.setup_revision_id = Some(ID.into());
@@ -53,7 +53,7 @@ fn api_only() -> Checked<(RunPayload<'static>, TurnCheckpointRead)> {
 }
 
 fn owner(
-    saved: TurnCheckpointRead,
+    saved: TurnCheckpointSaved,
     fault: Option<Fault>,
 ) -> (crate::client::ControlPlane, test_support::Calls) {
     test_support::plane(move |call| {
@@ -65,22 +65,20 @@ fn owner(
                 serde_json::from_slice::<TurnCheckpointCommand>(body).map_err(error::encode)
             })
             .and_then(|request| match request.action {
-                Action::Read { .. } if fault == Some(Fault::WrongRead) => Ok(Response::PinReleased),
-                Action::Read { .. } => Ok(Response::Read(Box::new(saved.clone()))),
-                Action::Adopt { .. } if fault == Some(Fault::WrongAdopt) => {
-                    Ok(Response::PinReleased)
-                }
-                Action::Adopt { .. } if fault == Some(Fault::ChangedAdopt) => {
+                Action::Read(_) if fault == Some(Fault::WrongRead) => Ok(Response::PinReleased),
+                Action::Read(_) => Ok(Response::Read(Box::new(saved.clone()))),
+                Action::Adopt(_) if fault == Some(Fault::WrongAdopt) => Ok(Response::PinReleased),
+                Action::Adopt(_) if fault == Some(Fault::ChangedAdopt) => {
                     Ok(Response::Adopted(vec![FoldRef {
                         turn_id: CheckpointOperationId(ID.to_owned()),
                         sequence: 1,
                     }]))
                 }
-                Action::Adopt { .. } => Ok(Response::Adopted(saved.folds.clone())),
-                Action::PinRelease { .. } if fault == Some(Fault::WrongRelease) => {
+                Action::Adopt(_) => Ok(Response::Adopted(saved.folds.clone())),
+                Action::PinRelease(_) if fault == Some(Fault::WrongRelease) => {
                     Ok(Response::Abandoned)
                 }
-                Action::PinRelease { .. } => Ok(Response::PinReleased),
+                Action::PinRelease(_) => Ok(Response::PinReleased),
                 _ => Err(error::config("unexpected restore request")),
             });
         match answered {
@@ -104,7 +102,7 @@ fn sent(calls: &mut test_support::Calls) -> Checked<Vec<Action>> {
 /// Restores `assignment` API-only against an owner holding `saved`.
 async fn restore(
     assignment: &RunPayload<'_>,
-    saved: TurnCheckpointRead,
+    saved: TurnCheckpointSaved,
     fault: Option<Fault>,
     stop: &CancellationToken,
 ) -> Checked<(Result<Option<afr_agent::TurnRecovery>>, Vec<Action>)> {
@@ -129,11 +127,7 @@ async fn an_api_only_restore_adopts_its_saved_inputs_and_releases_its_pin() -> C
     assert_eq!(recovered.adopted, Vec::<FoldRef>::new());
     assert!(matches!(
         sent.as_slice(),
-        [
-            Action::Read { .. },
-            Action::Adopt { .. },
-            Action::PinRelease { .. }
-        ]
+        [Action::Read(_), Action::Adopt(_), Action::PinRelease(_)]
     ));
     Ok(())
 }
@@ -199,10 +193,7 @@ async fn an_api_only_restore_that_cannot_be_trusted_releases_its_pin_unadopted()
 
         assert_eq!(test_support::detail(&restored), Some(expected), "{case}");
         assert!(
-            matches!(
-                sent.as_slice(),
-                [Action::Read { .. }, Action::PinRelease { .. }]
-            ),
+            matches!(sent.as_slice(), [Action::Read(_), Action::PinRelease(_)]),
             "{case}: the pin is released without adoption"
         );
     }
@@ -230,11 +221,7 @@ async fn an_adoption_naming_other_saved_inputs_fails_the_restore() -> Checked {
     assert!(
         matches!(
             sent.as_slice(),
-            [
-                Action::Read { .. },
-                Action::Adopt { .. },
-                Action::PinRelease { .. }
-            ]
+            [Action::Read(_), Action::Adopt(_), Action::PinRelease(_)]
         ),
         "the pin is released after the refused adoption"
     );

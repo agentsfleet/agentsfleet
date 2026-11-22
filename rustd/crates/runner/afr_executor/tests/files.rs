@@ -76,22 +76,20 @@ async fn a_missing_file_is_a_failure_the_caller_can_tell_from_a_refusal() {
 }
 
 #[tokio::test]
-async fn an_append_grows_a_file_and_a_delete_removes_it() {
+async fn a_delete_removes_a_written_file() {
     let harness = start().await;
 
-    for line in [b"one\n", b"two\n"] {
-        harness
-            .client
-            .append_file("log", Bytes::from_static(line))
-            .await
-            .unwrap();
-    }
-    let grown = harness.client.read_file("log", 64).await.unwrap();
+    harness
+        .client
+        .write_file("log", Bytes::from_static(b"one\ntwo\n"))
+        .await
+        .unwrap();
+    let written = harness.client.read_file("log", 64).await.unwrap();
     harness.client.delete_file("log").await.unwrap();
     let gone = harness.client.read_file("log", 64).await.unwrap_err();
     let again = harness.client.delete_file("log").await.unwrap_err();
 
-    assert_eq!(grown.data.as_ref(), b"one\ntwo\n");
+    assert_eq!(written.data.as_ref(), b"one\ntwo\n");
     assert!(gone.is_not_found(), "{gone}");
     assert!(refused_with(&again, FILE_NOT_FOUND), "{again}");
 }

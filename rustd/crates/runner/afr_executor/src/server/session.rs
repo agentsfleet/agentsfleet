@@ -24,10 +24,10 @@ use super::launch::Plan;
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    DELIMITER, KillParams, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE,
-    METHOD_WRITE_FILE, PathParams, ReadParams, RecoveryParams, SpawnParams, SpawnResult,
-    WriteFileParams, WriteParams, decoded, line,
+    DELIMITER, KillParams, METHOD_DELETE_FILE, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
+    METHOD_RECOVERY_IDLE, METHOD_SEARCH, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
+    ReadParams, RecoveryParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams, decoded,
+    line,
 };
 use crate::sizes::Sizes;
 
@@ -190,13 +190,6 @@ impl Session {
                 params(request),
                 |workspace, write: WriteFileParams<'static>| {
                     workspace.write(&write.path, &write.content)
-                },
-            ),
-            METHOD_APPEND_FILE => self.on_files(
-                id,
-                params(request),
-                |workspace, append: WriteFileParams<'static>| {
-                    workspace.append(&append.path, &append.content)
                 },
             ),
             METHOD_DELETE_FILE => self.on_files(

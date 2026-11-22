@@ -6,9 +6,8 @@ use crate::{Result, error};
 use af_wire::{
     durable_task::{CheckpointObjectStatus, CheckpointPage},
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointBegin,
-        TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
-        TurnWorkspace,
+        CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointBegin, TurnCheckpointCommit,
+        TurnCheckpointPageWrite, TurnCheckpointRef, TurnPrivateRoot, TurnResume, TurnWorkspace,
     },
 };
 use afr_agent::TurnSnapshot;
@@ -33,11 +32,7 @@ impl NativeTurn<'_> {
         }
         let catalog = catalog(&snapshot, root, stop).await?;
         let begin = intent(&snapshot, catalog.as_ref())?;
-        let Response::Begun(plan) = self.command(Action::Begin(begin.clone())).await? else {
-            return Err(error::config(
-                "turn allocation returned another command's response",
-            ));
-        };
+        let plan = self.command(begin.clone()).await?;
         plan.validate()?;
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
@@ -58,7 +53,7 @@ impl NativeTurn<'_> {
         .await;
         if result.is_err() && self.publication.pending.is_none() {
             let _cleanup = self
-                .command(Action::Abandon {
+                .command(TurnCheckpointAbandon {
                     checkpoint: reference,
                 })
                 .await;
@@ -106,7 +101,7 @@ impl NativeTurn<'_> {
             history_digest: plan.history_digest.clone(),
         };
         self.commit_capture(
-            Action::Commit {
+            TurnCheckpointCommit {
                 checkpoint: reference,
                 root: TurnPrivateRoot { history: root },
                 manifest_root: manifest,
@@ -178,20 +173,15 @@ impl TurnSession<'_, '_> {
             self.renew().await?;
             let digest =
                 af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
-            let Response::PageWritten(saved) = self
+            let saved = self
                 .native
-                .command(Action::PageWrite {
+                .command(TurnCheckpointPageWrite {
                     checkpoint: self.reference.clone(),
                     page_id: page_id.clone(),
                     digest: digest.clone(),
                     contents,
                 })
-                .await?
-            else {
-                return Err(error::config(
-                    "turn page write returned another command's response",
-                ));
-            };
+                .await?;
             if af_core::etag::sha256_hex(&serde_json::to_vec(&saved).map_err(error::encode)?)
                 != digest
             {

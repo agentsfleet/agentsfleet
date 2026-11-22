@@ -11,10 +11,10 @@
 //! A tool never starts a process or opens a file itself: it asks its
 //! [`Env`], so one tool serves a laptop and a sandbox alike. The shape is the
 //! executor's a sandboxing embedder already has: start a process and read its
-//! events, write to it, kill it, read, write, append, delete and list
-//! files under one root, and search them where they are. Every path is
-//! relative to that root, and one that leaves it, by name or through a link,
-//! is the environment's to refuse.
+//! events, write to it, kill it, read, write, delete and list files under
+//! one root, and search them where they are. Every path is relative to that
+//! root, and one that leaves it, by name or through a link, is the
+//! environment's to refuse.
 
 mod error;
 mod local;
@@ -295,9 +295,6 @@ pub trait Env: Send + Sync + fmt::Debug {
     /// Writes a regular file, replacing what was there and making any
     /// missing directory on the way.
     fn write_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()>;
-
-    /// Adds to the end of a regular file, making it when absent.
-    fn append_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()>;
 
     /// Removes a regular file; a link, a directory or a device is refused.
     fn delete_file<'a>(&'a self, path: &'a str) -> EnvFuture<'a, ()>;

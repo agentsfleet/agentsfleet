@@ -6,8 +6,8 @@ use af_core::id::Uuid7;
 use af_wire::{
     durable_task::{CheckpointObjectStatus, CheckpointPlaintext},
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
-        TurnCheckpointResponse as Response,
+        CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointAction as Action,
+        TurnCheckpointObjects, TurnCheckpointRef, TurnCheckpointResponse as Response,
     },
 };
 use afd_fleet::durable_task::{
@@ -74,9 +74,9 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
     };
     let object = files::authenticated_chunk(files, &reference).await?;
     files
-        .execute(Action::Abandon {
+        .execute(Action::Abandon(TurnCheckpointAbandon {
             checkpoint: reference,
-        })
+        }))
         .await?;
     files
         .case
@@ -110,14 +110,14 @@ async fn race(
     .fetch_one(&mut *held)
     .await?;
     let (ready, start) = oneshot::channel();
-    let registration = files.execute(Action::Objects {
+    let registration = files.execute(Action::Objects(TurnCheckpointObjects {
         checkpoint: reference.clone(),
         objects: vec![CheckpointPlaintext {
             sha256: af_core::etag::sha256_hex(files::CONTENT),
             size: u64::try_from(files::CONTENT.len())?,
             kind: "file".to_owned(),
         }],
-    });
+    }));
     let collecting = async {
         start.await?;
         Ok::<_, Box<dyn std::error::Error + Send + Sync>>(

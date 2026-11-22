@@ -247,15 +247,6 @@ impl Env for SandboxEnv<'_> {
         })
     }
 
-    fn append_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
-        Box::pin(async move {
-            self.executor
-                .append_file(path, data)
-                .await
-                .map_err(|failure| failed(&failure))
-        })
-    }
-
     fn delete_file<'a>(&'a self, path: &'a str) -> EnvFuture<'a, ()> {
         Box::pin(async move {
             self.executor

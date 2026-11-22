@@ -27,7 +27,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
-use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+use tokio::io::AsyncReadExt as _;
 use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
 
@@ -238,27 +238,6 @@ impl Env for LocalEnv {
             tokio::fs::write(&full, &data)
                 .await
                 .map_err(|failure| failed(&failure))
-        })
-    }
-
-    fn append_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
-        Box::pin(async move {
-            let full = self.resolve(path).await?;
-            self.make_parent(&full).await?;
-            let mut file = tokio::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&full)
-                .await
-                .map_err(|failure| failed(&failure))?;
-            // tokio's file hands a write to its blocking pool, and `write_all`
-            // can answer before the bytes land; the flush waits for them, so a
-            // read after the call sees what it appended.
-            let appended = async {
-                file.write_all(&data).await?;
-                file.flush().await
-            };
-            appended.await.map_err(|failure| failed(&failure))
         })
     }
 

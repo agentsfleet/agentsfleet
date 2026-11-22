@@ -7,8 +7,8 @@ use std::sync::Arc;
 use af_core::{error_code, id::Uuid7};
 use af_crypto::secret::Kek;
 use af_wire::run::{
-    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointRef, TurnCheckpointResponse,
-    TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAction, TurnCheckpointPinRelease, TurnCheckpointRef,
+    TurnCheckpointResponse, TurnWorkspace,
 };
 use afd_db::test_util::mint_id;
 use afd_fleet::run::turn_checkpoint::TurnCheckpoints;
@@ -103,12 +103,12 @@ async fn a_replayed_begin_after_its_writer_pin_was_released_conflicts() -> Check
     let plan = case.begin(input.clone()).await?;
     let release = valid(command(
         &case,
-        TurnCheckpointAction::PinRelease {
+        TurnCheckpointAction::PinRelease(TurnCheckpointPinRelease {
             checkpoint: TurnCheckpointRef {
                 checkpoint_id: plan.checkpoint_id.clone(),
                 pin_id: CheckpointOperationId(plan.pin.id.clone()),
             },
-        },
+        }),
     ))?;
     assert!(matches!(
         store.execute(&case.runs, case.run(), &release).await?,

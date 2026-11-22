@@ -67,10 +67,6 @@ impl Env for LazySandboxEnv<'_> {
         Box::pin(async move { self.sandbox().await?.write_file(path, data).await })
     }
 
-    fn append_file<'a>(&'a self, path: &'a str, data: Bytes) -> EnvFuture<'a, ()> {
-        Box::pin(async move { self.sandbox().await?.append_file(path, data).await })
-    }
-
     fn delete_file<'a>(&'a self, path: &'a str) -> EnvFuture<'a, ()> {
         Box::pin(async move { self.sandbox().await?.delete_file(path).await })
     }

@@ -43,10 +43,6 @@ impl Env for ReadOnly {
         refused()
     }
 
-    fn append_file<'a>(&'a self, _path: &'a str, _data: bytes::Bytes) -> EnvFuture<'a, ()> {
-        refused()
-    }
-
     fn delete_file<'a>(&'a self, _path: &'a str) -> EnvFuture<'a, ()> {
         refused()
     }

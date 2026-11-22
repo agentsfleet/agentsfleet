@@ -32,6 +32,7 @@ mod turn_checkpoint;
 mod verb;
 
 pub(crate) use self::http::{CALL_TIMEOUT, HttpRunnerApi};
+pub(crate) use self::turn_checkpoint::TurnCommand;
 #[cfg(test)]
 pub(crate) use self::verb::Method;
 pub(crate) use self::verb::Verb;

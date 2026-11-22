@@ -2,9 +2,9 @@
 
 use super::*;
 use af_wire::run::{
-    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
-    TurnCheckpointPlan, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
-    TurnScope, TurnWorkspace,
+    CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointAction as Action,
+    TurnCheckpointCommand, TurnCheckpointCommit, TurnCheckpointPlan, TurnCheckpointRef,
+    TurnCheckpointResponse as Response, TurnResume, TurnScope, TurnWorkspace,
 };
 use afr_agent::TurnSnapshot;
 use zeroize::Zeroizing;
@@ -163,12 +163,12 @@ impl Ledger {
     fn respond(&mut self, request: TurnCheckpointCommand) -> Answer {
         match request.action {
             Action::Begin(begin) => self.begin(begin),
-            Action::Commit {
+            Action::Commit(TurnCheckpointCommit {
                 checkpoint,
                 root,
                 manifest_root,
                 folds,
-            } => {
+            }) => {
                 assert_eq!(folds, Vec::<af_wire::run::FoldRef>::new());
                 assert_eq!(checkpoint, self.pending_ref());
                 self.commit_operations.push(request.operation_id);
@@ -197,7 +197,7 @@ impl Ledger {
                     json(&Response::Committed(Box::new(self.head.clone().unwrap())))
                 }
             }
-            Action::Abandon { checkpoint } => self.abandon(checkpoint),
+            Action::Abandon(TurnCheckpointAbandon { checkpoint }) => self.abandon(checkpoint),
             _ => Answer::Fail(crate::error::config("unexpected native action")),
         }
     }

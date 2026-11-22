@@ -44,7 +44,7 @@ pub struct TurnCheckpointPlan {
 /// Files and root are read under the same exact pinned descriptor.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
-pub struct TurnCheckpointRead {
+pub struct TurnCheckpointSaved {
     /// Must equal the assignment's descriptor before any model call.
     #[garde(dive)]
     pub descriptor: TurnResume,
@@ -90,7 +90,7 @@ pub enum TurnCheckpointResponse {
     /// Atomic ready/head publication finished before this receipt.
     Committed(Box<TurnResume>),
     /// Exact private root and matching manifest descriptor.
-    Read(Box<TurnCheckpointRead>),
+    Read(Box<TurnCheckpointSaved>),
     /// Exact membership now owned by the replacement run/fence.
     Adopted(Vec<FoldRef>),
     /// Pending state was abandoned without changing the head.

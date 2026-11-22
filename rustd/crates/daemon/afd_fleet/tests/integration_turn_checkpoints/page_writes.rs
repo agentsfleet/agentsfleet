@@ -5,8 +5,8 @@ use af_core::error_code;
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext},
     run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
-        TurnCheckpointResponse as Response,
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointObjects,
+        TurnCheckpointPageWrite, TurnCheckpointRef, TurnCheckpointResponse as Response,
     },
 };
 use afd_db::test_util::mint_id;
@@ -40,12 +40,12 @@ async fn write(
     contents: CheckpointPage,
 ) -> Checked<Response> {
     files
-        .execute(Action::PageWrite {
+        .execute(Action::PageWrite(TurnCheckpointPageWrite {
             checkpoint: checkpoint.clone(),
             page_id: page_id.clone(),
             digest: af_core::etag::sha256_hex(&serde_json::to_vec(&contents)?),
             contents,
-        })
+        }))
         .await
 }
 
@@ -113,14 +113,14 @@ async fn a_page_naming_an_unverified_chunk_is_incompatible() -> Checked {
         pin_id: CheckpointOperationId(plan.pin.id.clone()),
     };
     let Response::Objects(mut registered) = files
-        .execute(Action::Objects {
+        .execute(Action::Objects(TurnCheckpointObjects {
             checkpoint: reference.clone(),
             objects: vec![CheckpointPlaintext {
                 sha256: af_core::etag::sha256_hex(CONTENT),
                 size: u64::try_from(CONTENT.len())?,
                 kind: "file".into(),
             }],
-        })
+        }))
         .await?
     else {
         return Err("registered object".into());

@@ -8,9 +8,7 @@ use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
     durable_task::{CheckpointEntry, CheckpointTransferPurpose},
-    run::{
-        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointResponse as Response,
-    },
+    run::{CheckpointOperationId, TurnCheckpointPageRead},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
 use garde::Validate as _;
@@ -61,18 +59,13 @@ impl TurnSession<'_, '_> {
         let mut bytes = 0_u64;
         for (number, id) in pages.iter().enumerate() {
             self.renew().await?;
-            let Response::PageRead(page) = self
+            let page = self
                 .native
-                .command(Action::PageRead {
+                .command(TurnCheckpointPageRead {
                     checkpoint: self.reference.clone(),
                     page_id: id.clone(),
                 })
-                .await?
-            else {
-                return Err(error::config(
-                    "turn page read returned another command's response",
-                ));
-            };
+                .await?;
             page.validate()?;
             if usize::try_from(page.page_number).ok() != Some(number)
                 || !page.history_objects.is_empty()

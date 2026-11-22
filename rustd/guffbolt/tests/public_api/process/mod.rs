@@ -157,10 +157,6 @@ impl Env for Fake {
         Box::pin(std::future::ready(Err(no_files())))
     }
 
-    fn append_file<'a>(&'a self, _path: &'a str, _data: Bytes) -> EnvFuture<'a, ()> {
-        Box::pin(std::future::ready(Err(no_files())))
-    }
-
     fn delete_file<'a>(&'a self, _path: &'a str) -> EnvFuture<'a, ()> {
         Box::pin(std::future::ready(Err(no_files())))
     }

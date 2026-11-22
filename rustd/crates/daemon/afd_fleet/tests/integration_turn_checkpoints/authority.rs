@@ -6,7 +6,8 @@ use super::{
 use af_core::{clock, error_code, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::run::{
-    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
+    CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointAdopt,
+    TurnCheckpointCommit, TurnCheckpointRead, TurnCheckpointRef,
     TurnCheckpointResponse as Response, TurnWorkspace,
 };
 use afd_auth::{credential::CredentialKind, minted::Minted};
@@ -123,12 +124,12 @@ async fn blocked(
 async fn prepare(files: &Files, operation: Operation) -> Checked<Action> {
     let pending = Pending::allocate(files, &[], TurnWorkspace::ApiOnly, None).await?;
     if matches!(operation, Operation::Commit) {
-        return Ok(Action::Commit {
+        return Ok(Action::Commit(TurnCheckpointCommit {
             checkpoint: pending.reference,
             root: pending.root,
             manifest_root: af_crypto::checkpoint_digest::manifest_root([]),
             folds: Vec::new(),
-        });
+        }));
     }
     let Response::Committed(saved) = pending.commit(files, &[]).await? else {
         return Err("committed checkpoint".into());
@@ -142,18 +143,20 @@ async fn prepare(files: &Files, operation: Operation) -> Checked<Action> {
             begin.expected_head = Some(saved.checkpoint_id.clone());
             Ok(request.action)
         }
-        Operation::Read => Ok(Action::Read { descriptor: saved }),
+        Operation::Read => Ok(Action::Read(TurnCheckpointRead { descriptor: saved })),
         Operation::Adopt => {
-            let Response::Read(read) = files.execute(Action::Read { descriptor: saved }).await?
+            let Response::Read(read) = files
+                .execute(Action::Read(TurnCheckpointRead { descriptor: saved }))
+                .await?
             else {
                 return Err("reader custody".into());
             };
-            Ok(Action::Adopt {
+            Ok(Action::Adopt(TurnCheckpointAdopt {
                 checkpoint: TurnCheckpointRef {
                     checkpoint_id: read.descriptor.checkpoint_id,
                     pin_id: CheckpointOperationId(read.pin.id),
                 },
-            })
+            }))
         }
         Operation::Commit => unreachable!("prepared before publication"),
     }
