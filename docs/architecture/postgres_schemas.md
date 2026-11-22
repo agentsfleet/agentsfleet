@@ -287,13 +287,11 @@ statement reads the index, and a dead run's last slice after its final renewal i
 | Table | Purpose |
 |---|---|
 | `platform_models` | Curated identities, context evidence and current decision selection |
-| `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices |
+| `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices. A NULL `decision_revision_id` is a coding price; otherwise the row is that decision revision's quote, its ownership proved by a composite revision/model reference |
 | `decision_revisions` | Immutable reviewed decision definitions; a model/revision label cannot acquire different bytes |
-| `decision_prices` | Separate decision-protocol rates keep coding writers and historical revision accounting; composite revision/model reference proves quote ownership |
 | `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key |
-| `tenant_models` | A tenant's own models, each pointing at a vault key |
-| `tenant_selections` | The tenant's default; NULL means platform default |
+| `tenant_models` | A tenant's own models, each pointing at a vault key; `selected` marks the tenant's default, at most one per tenant, and none means the platform default |
 
 The current decision pointer uses a deferred identity reference and an ownership constraint trigger.
 The trigger checks final rows and locks their immutable revision, without granting update access or public access to the trigger function.

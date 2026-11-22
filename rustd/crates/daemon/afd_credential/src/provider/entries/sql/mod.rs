@@ -8,7 +8,7 @@
 //! the schema it touches.
 //!
 //! Separate from that module because the split is a real seam: those
-//! statements resolve and write the ONE selection row a tenant runs on, these
+//! statements resolve and move the ONE selected row a tenant runs on, these
 //! read and write the MANY registry rows it may choose from.
 //!
 //! # One projection, five spellings

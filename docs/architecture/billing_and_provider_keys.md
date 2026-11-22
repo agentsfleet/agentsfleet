@@ -150,7 +150,7 @@ The default is a **pointer, not a constant**.
 Changing the default is an admin write, not a deployment.
 Both postures dial their selected model's saved endpoint (§9); platform uses the admin's key, and self-managed uses the owner's key.
 
-`model.tenant_selections` holds the separate account default. The tenant provider commands update that default; a missing row means `platform`.
+`model.tenant_models.selected` marks the separate account default. The tenant provider commands update that default; no selected row means `platform`.
 
 Runtime resolution in `afd_credential` uses the fleet's saved reference and never consults this default. Changing the account default therefore does not rewrite saved fleets.
 
@@ -502,7 +502,7 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 `provider` identifies the model's catalogue provider. `model` is the provider's model identifier, and `api_key` is the user's credential. Routing comes from that model's saved inference settings; a credential's optional `base_url` restricts the endpoint it authorizes (§9).
 
-The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet models use --secret <other>`. Only one is *active* at a time per tenant.
+The selected `model.tenant_models` row names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet models use --secret <other>`. Only one is *active* at a time per tenant.
 
 **Vault scope: explicit workspace ownership.** `vault.secrets` is keyed by `(workspace_id, key_name)`. Each `model.tenant_models` entry stores the credential's `workspace_id` and `secret_ref`; registration and activation prove that workspace belongs to the account. Runtime resolution reads that exact pair, so another workspace's same-named key cannot replace it.
 
@@ -574,9 +574,9 @@ An OpenAI-compatible endpoint must carry a key. Activation refuses a credential 
 
 Runner auth behaviour is unchanged.
 
-**Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`.
+**Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection is that row's `selected` flag, held to one per tenant by a deferrable exclusion constraint.
 
-The selection write in `afd_credential` upserts the matching entry row and writes the selection inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case.
+The selection write in `afd_credential` locks the tenant row, upserts the matching entry row and moves the flag with one `UPDATE` inside one `BEGIN`/`COMMIT` transaction. The entry upsert is `INSERT … ON CONFLICT DO NOTHING`, a clean no-op on the common re-activation case.
 
 So "every active selection has a matching entry" holds for every caller, and a partial failure leaves nothing behind. Repeat PUTs converge (PUT stays idempotent).
 

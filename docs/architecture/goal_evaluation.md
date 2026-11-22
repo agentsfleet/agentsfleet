@@ -73,7 +73,7 @@ Decision-only entries carry their own price schedule and no fabricated coding ra
 The current model selects an immutable reviewed revision; enabling or disabling it preserves that definition and prior call accounting.
 Catalogue reads resolve definitions and prices through one consistent database snapshot.
 
-`model.decision_prices` adds decision quotes without changing the coding-price table or its conflict key.
+Decision quotes live in `model.platform_model_prices` under their `decision_revision_id`; coding prices carry NULL there, and the unique key treats NULLs as equal, so each schedule keeps one row per tier and start.
 Both sources share catalogue ownership, price values, validation and billing; their helpers select fixed statements.
 `billing.usage_lines` keeps opaque quote identifiers and recorded charges, without a foreign key to either price source.
 

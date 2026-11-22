@@ -75,7 +75,7 @@ async fn unpriced(
     input: &garde::Valid<DecisionReservationInput>,
 ) -> String {
     let case = fixture.case;
-    let removed = sqlx::query("DELETE FROM model.platform_model_prices WHERE platform_model_id IN (SELECT id FROM model.platform_models WHERE provider=$1 AND model_name=$2)")
+    let removed = sqlx::query("DELETE FROM model.platform_model_prices WHERE decision_revision_id IS NULL AND platform_model_id IN (SELECT id FROM model.platform_models WHERE provider=$1 AND model_name=$2)")
         .bind(PROVIDER).bind(MODEL)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("owned rate injection"))
         .await.expect("remove this isolated fixture's coding price");

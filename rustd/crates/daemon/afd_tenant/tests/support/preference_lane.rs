@@ -89,21 +89,13 @@ impl Lane {
 
     /// Gives the tenant its own model and selects it, so `model_configured` is
     /// true without depending on whatever platform default the lane happens to
-    /// hold. The selection names a `model.tenant_models` row; the secret
-    /// reference is inert here, since nothing in this crate resolves it.
+    /// hold. The row is written selected; the secret reference is inert here,
+    /// since nothing in this crate resolves it. A tenant seeds one.
     pub(crate) async fn seed_tenant_model(&self, model: &str) {
         sqlx::query(
-            "WITH chosen AS (
-               INSERT INTO model.tenant_models
-                 (id, tenant_id, model_name, secret_ref, created_at, updated_at)
-               VALUES ($2, $1, $3, 'fixture', now(), now())
-               RETURNING id
-             )
-             INSERT INTO model.tenant_selections
-               (tenant_id, tenant_model_id, created_at, updated_at)
-             SELECT $1, id, now(), now() FROM chosen
-             ON CONFLICT (tenant_id) DO UPDATE
-               SET tenant_model_id = EXCLUDED.tenant_model_id, updated_at = now()",
+            "INSERT INTO model.tenant_models
+               (id, tenant_id, model_name, secret_ref, selected, created_at, updated_at)
+             VALUES ($2, $1, $3, 'fixture', true, now(), now())",
         )
         .bind(&self.tenant)
         .bind(mint())

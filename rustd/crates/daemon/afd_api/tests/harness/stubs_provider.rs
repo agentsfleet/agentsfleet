@@ -65,7 +65,7 @@ impl HarnessProviders {
 }
 
 impl TenantProviders for HarnessProviders {
-    async fn selection(&self, tenant: &Uuid7) -> CredentialResult<Option<Selection>> {
+    async fn selection(&self, tenant: &Uuid7) -> CredentialResult<Selection> {
         self.store().selection(tenant).await
     }
 

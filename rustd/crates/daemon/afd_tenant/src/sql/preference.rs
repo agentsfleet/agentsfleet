@@ -27,8 +27,8 @@ pub const UPSERT_PREF: &str = include_str!("preference/upsert_pref.sql");
 ///
 /// Five `EXISTS` subqueries rather than five requests: the planner stops at the
 /// first matching row, so none of these scans a table. The workspace signals
-/// key on the `workspace_id` index and the tenant-model check on
-/// `model.tenant_selections`'s primary key.
+/// key on the `workspace_id` index and the tenant-model check on the
+/// one-selected exclusion index of `model.tenant_models`.
 ///
 /// `$2` is the steer-actor prefix, bound rather than inlined (RULE NSQ).
 pub const SELECT_SIGNALS: &str = include_str!("preference/select_signals.sql");

@@ -30,5 +30,5 @@ SELECT l.provider, l.model, l.context_window_tokens,
   FROM locked l
  CROSS JOIN observed t
   JOIN model.platform_model_prices p ON p.platform_model_id = l.platform_model_id
-   AND p.prompt_tokens_above = 0 AND p.effective_from <= t.read_at
+   AND p.decision_revision_id IS NULL AND p.prompt_tokens_above = 0 AND p.effective_from <= t.read_at
    AND (p.effective_until IS NULL OR p.effective_until > t.read_at)

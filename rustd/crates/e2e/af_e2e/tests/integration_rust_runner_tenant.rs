@@ -23,8 +23,8 @@ use crate::integration_tenant_registry::{mint_tenant_token, provider_granting};
 const TENANT_SECRET: &str = "tenant-runner-model";
 
 const TENANT_MODEL_ENTRY: &str = "INSERT INTO model.tenant_models \
-    (id, tenant_id, model_name, secret_ref, workspace_id, created_at, updated_at) \
-    VALUES ($1, $2, $3, $4, $5, now(), now())";
+    (id, tenant_id, model_name, secret_ref, workspace_id, selected, created_at, updated_at) \
+    VALUES ($1, $2, $3, $4, $5, false, now(), now())";
 
 const TENANT_SECRET_ROW: &str = "INSERT INTO vault.secrets \
     (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, secret_nonce, \

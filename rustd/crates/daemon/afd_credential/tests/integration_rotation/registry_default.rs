@@ -53,15 +53,14 @@ async fn a_reset_writes_an_explicit_platform_row_pointing_at_nothing() {
         "this test seeded an active row"
     );
 
-    // What the reset verb does: an EXPLICIT platform row for the tenant,
-    // rather than deleting theirs — which is what lets a dashboard tell "reset
-    // on purpose" from "never configured". The row names no model of its own:
-    // the platform default is read live on every resolution.
+    // What the reset verb does: no row of the tenant's stays selected, so it
+    // names no model of its own and the platform default is read live on
+    // every resolution.
     store
         .reset(&fixture.tenant)
         .await
         .expect("the platform selection writes");
-    // Twice, because a reset of a reset is the same row, not a conflict.
+    // Twice, because a reset of a reset changes nothing and is no conflict.
     store
         .reset(&fixture.tenant)
         .await
@@ -70,8 +69,7 @@ async fn a_reset_writes_an_explicit_platform_row_pointing_at_nothing() {
     let written = store
         .selection(&fixture.tenant)
         .await
-        .expect("the selection reads")
-        .expect("the reset wrote a row rather than removing one");
+        .expect("the selection reads");
     assert_eq!(written, Selection::Platform);
     assert_eq!(written.posture(), Posture::Platform);
 
@@ -91,16 +89,14 @@ async fn a_tenant_that_never_configured_a_provider_is_composed_from_the_live_def
         .await;
     let store = providers(&fixture);
 
-    // The two halves the view is composed from. `None` here is the fact that
-    // makes this tenant the "never configured" one — the surface renders it
-    // differently from an explicit platform row, which is the only reason the
-    // reset writes one at all.
-    assert!(
+    // The two halves the view is composed from: a fresh tenant selected
+    // nothing, so it runs on the platform default.
+    assert_eq!(
         store
             .selection(&fixture.tenant)
             .await
-            .expect("the selection reads")
-            .is_none(),
+            .expect("the selection reads"),
+        Selection::Platform,
         "a fresh tenant has configured nothing"
     );
     let shown = store

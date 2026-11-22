@@ -1,5 +1,3 @@
-INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, updated_at)
-VALUES ($1, NULL, now(), now())
-ON CONFLICT (tenant_id) DO UPDATE SET
-    tenant_model_id = NULL,
-    updated_at = now()
+UPDATE model.tenant_models
+   SET selected = false, updated_at = now()
+ WHERE tenant_id = $1 AND selected

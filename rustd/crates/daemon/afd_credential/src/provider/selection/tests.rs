@@ -16,9 +16,9 @@ const WORKSPACE: &str = "0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b";
 
 fn pointed() -> SelectionRow {
     SelectionRow {
-        tenant_model_id: Some(Uuid7::parse(POINTER).expect("a canonical pointer")),
-        model_name: Some("claude-opus-5".to_owned()),
-        secret_ref: Some("anthropic-prod".to_owned()),
+        tenant_model_id: Uuid7::parse(POINTER).expect("a canonical pointer"),
+        model_name: "claude-opus-5".to_owned(),
+        secret_ref: "anthropic-prod".to_owned(),
         workspace_id: Some(Uuid7::parse(WORKSPACE).expect("canonical workspace")),
         provider: Some("anthropic".to_owned()),
         context_cap_tokens: 200_000,
@@ -26,20 +26,14 @@ fn pointed() -> SelectionRow {
 }
 
 #[test]
-fn a_null_pointer_is_the_platform_posture_whatever_the_joins_say() {
-    let row = SelectionRow {
-        tenant_model_id: None,
-        ..pointed()
-    };
-    let selection = row.into_selection().expect("a NULL pointer reads");
-    assert_eq!(selection, Selection::Platform);
-    assert_eq!(selection.posture(), Posture::Platform);
+fn the_platform_selection_is_the_platform_posture() {
+    assert_eq!(Selection::Platform.posture(), Posture::Platform);
 }
 
 #[test]
-fn a_pointer_reads_as_the_entry_it_names() {
-    let Selection::SelfManaged(own) = pointed().into_selection().expect("a full row reads") else {
-        panic!("a pointer is the self-managed posture");
+fn a_selected_row_reads_as_the_entry_it_is() {
+    let Selection::SelfManaged(own) = pointed().into_selection() else {
+        panic!("a selected row is the self-managed posture");
     };
     assert_eq!(own.tenant_model_id.as_str(), POINTER);
     assert_eq!(&*own.model, "claude-opus-5");
@@ -53,7 +47,7 @@ fn a_pointer_reads_as_the_entry_it_names() {
     assert_eq!(
         Selection::SelfManaged(own).posture(),
         Posture::SelfManaged,
-        "a pointer means the tenant supplies the key"
+        "a selected row means the tenant supplies the key"
     );
 }
 
@@ -65,33 +59,10 @@ fn a_credential_gone_out_of_band_still_reads_with_no_provider() {
         provider: None,
         ..pointed()
     };
-    let Selection::SelfManaged(OwnModel { provider, .. }) = row
-        .into_selection()
-        .expect("a dangling credential is not a read failure")
-    else {
-        panic!("a pointer is the self-managed posture");
+    let Selection::SelfManaged(OwnModel { provider, .. }) = row.into_selection() else {
+        panic!("a selected row is the self-managed posture");
     };
     assert_eq!(provider, None);
-}
-
-#[test]
-fn a_pointer_naming_no_readable_entry_is_a_permanent_fault() {
-    for row in [
-        SelectionRow {
-            model_name: None,
-            ..pointed()
-        },
-        SelectionRow {
-            secret_ref: None,
-            workspace_id: None,
-            ..pointed()
-        },
-    ] {
-        let refused = row
-            .into_selection()
-            .expect_err("a pointer at nothing cannot resolve");
-        assert!(refused.is_config_permanent());
-    }
 }
 
 #[test]
@@ -100,8 +71,8 @@ fn a_negative_catalogue_ceiling_clamps_rather_than_wrapping() {
         context_cap_tokens: -1,
         ..pointed()
     };
-    let Selection::SelfManaged(own) = row.into_selection().expect("a full row reads") else {
-        panic!("a pointer is the self-managed posture");
+    let Selection::SelfManaged(own) = row.into_selection() else {
+        panic!("a selected row is the self-managed posture");
     };
     assert_eq!(own.context_cap_tokens, 0);
 }

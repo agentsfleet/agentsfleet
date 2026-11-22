@@ -1,0 +1,4 @@
+SELECT 1
+  FROM identity.tenants
+ WHERE id = $1
+   FOR NO KEY UPDATE

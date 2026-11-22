@@ -42,8 +42,8 @@ pub(super) async fn model(
         )
         .await?;
     let mut connection = scene.booted.database.acquire().await?;
-    sqlx::query("INSERT INTO model.tenant_models (id,tenant_id,workspace_id,model_name,secret_ref,created_at,updated_at)
-        VALUES ($1,$2,$3,$4,$5,now(),now())")
+    sqlx::query("INSERT INTO model.tenant_models (id,tenant_id,workspace_id,model_name,secret_ref,selected,created_at,updated_at)
+        VALUES ($1,$2,$3,$4,$5,false,now(),now())")
         .bind(&entry).bind(tenant).bind(workspace).bind(&name).bind("recovery-check")
         .execute(&mut *connection).await?;
     Ok(entry)

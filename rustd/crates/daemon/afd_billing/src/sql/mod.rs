@@ -22,7 +22,8 @@
 /// `$1` tenant.
 pub const SELECT_WALLET: &str = include_str!("select_wallet.sql");
 
-/// Every tier one model is published at, across all its dates, oldest first.
+/// Every coding tier one model is published at, across all its dates, oldest
+/// first; decision quotes in the same table are left out.
 ///
 /// `$1` provider · `$2` model name. The rater, not this statement, picks the
 /// tier and the date, so one read serves every line of a piece of work.

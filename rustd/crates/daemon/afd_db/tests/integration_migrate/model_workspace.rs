@@ -22,8 +22,8 @@ async fn deleting_a_credential_workspace_retains_the_model_and_selection() {
         .await
         .expect("workspace deletion retains model history");
     let retained: (Option<Uuid7>, Uuid7) = sqlx::query_as(
-        "SELECT m.workspace_id, s.tenant_model_id FROM model.tenant_models m
-         JOIN model.tenant_selections s ON s.tenant_model_id=m.id WHERE m.id=$1",
+        "SELECT m.workspace_id, m.id FROM model.tenant_models m
+         WHERE m.id=$1 AND m.selected",
     )
     .bind(&entry)
     .fetch_one(&mut *connection)
@@ -51,8 +51,8 @@ async fn selected_model(connection: &mut PgConnection) -> (Uuid7, Uuid7, Uuid7) 
         .expect("the credential workspace seeds");
     sqlx::query(
         "INSERT INTO model.tenant_models
-         (id, tenant_id, workspace_id, model_name, secret_ref, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now(), now())",
+         (id, tenant_id, workspace_id, model_name, secret_ref, selected, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, true, now(), now())",
     )
     .bind(&entry)
     .bind(&tenant)
@@ -61,15 +61,6 @@ async fn selected_model(connection: &mut PgConnection) -> (Uuid7, Uuid7, Uuid7) 
     .bind("key")
     .execute(&mut *connection)
     .await
-    .expect("a model stores its explicit credential workspace");
-    sqlx::query(
-        "INSERT INTO model.tenant_selections (tenant_id, tenant_model_id, created_at, updated_at)
-         VALUES ($1, $2, now(), now())",
-    )
-    .bind(&tenant)
-    .bind(&entry)
-    .execute(&mut *connection)
-    .await
-    .expect("the account selects its model");
+    .expect("the account stores and selects a model with its credential workspace");
     (tenant, workspace, entry)
 }

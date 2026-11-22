@@ -2,7 +2,7 @@
 //!
 //! Everything here answers from a ROW, which is why none of it is provable at
 //! router tier: a duplicate pair is a unique index refusing, an active entry is
-//! the one the selection's pointer names. Over an
+//! the tenant's selected row. Over an
 //! unreachable pool each of these is the same 503, so the router suite proves
 //! the layers in FRONT of them and this proves the outcomes themselves.
 //!
@@ -77,7 +77,7 @@ async fn holds(store: &Providers, fixture: &Fixture, id: &Uuid7) -> bool {
         .is_some()
 }
 
-/// Activates `model` on [`CREDENTIAL`], which points the selection at its entry.
+/// Activates `model` on [`CREDENTIAL`], which selects its entry.
 async fn activated(store: &Providers, fixture: &Fixture, model: &str) -> OwnModel {
     fixture.seed_catalogue(PROVIDER, model, 128_000).await;
     let Activation::Applied(chosen) = store
@@ -100,9 +100,9 @@ async fn removing_the_entry_the_tenant_runs_on_is_refused() {
     let active = stored(&store, &fixture, &running_on).await;
     let idle = stored(&store, &fixture, &unique_model()).await;
 
-    // The selection is what makes one of the two entries the active one: its
-    // pointer names that row, and there is no `active` column to set.
-    // Activating the same pair finds the entry already there and points at it.
+    // The selection is what makes one of the two entries the active one: the
+    // `selected` flag marks that row, and activation is what moves it.
+    // Activating the same pair finds the entry already there and selects it.
     let chosen = activated(&store, &fixture, &running_on).await;
     assert_eq!(
         chosen.tenant_model_id, active.id,

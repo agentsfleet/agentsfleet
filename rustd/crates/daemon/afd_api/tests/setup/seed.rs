@@ -60,8 +60,8 @@ pub(super) async fn model(f: &Fixture) {
         .await
         .expect("seed isolated priced model");
     sqlx::query(
-        "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at) \
-        VALUES ($1,$2,$3,'setup-model',$4,now(),now())",
+        "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,selected,created_at,updated_at) \
+        VALUES ($1,$2,$3,'setup-model',$4,false,now(),now())",
     )
     .bind(&f.model)
     .bind(&f.tenant)

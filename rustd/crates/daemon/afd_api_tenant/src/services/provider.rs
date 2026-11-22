@@ -36,20 +36,13 @@ use jiff::Timestamp;
 /// verbs, and a matrix that needed a live Postgres to prove would not be
 /// proven.
 pub trait TenantProviders: Send + Sync + std::fmt::Debug + 'static {
-    /// What this tenant configured for itself, or nothing if it never has.
-    ///
-    /// `Ok(None)` is not a failure and not a default. It is the tenant who has
-    /// never configured a provider, and the surface renders it differently from
-    /// an explicit platform row — that distinction is the only reason the write
-    /// path stores an explicit row at all.
+    /// What this tenant runs on: its selected model, or the platform default
+    /// when it never chose one or reset to it.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a stored row this daemon
-    /// cannot read.
-    fn selection(
-        &self,
-        tenant: &Uuid7,
-    ) -> impl Future<Output = CredentialResult<Option<Selection>>> + Send;
+    /// Reports a datastore that would not answer.
+    fn selection(&self, tenant: &Uuid7)
+    -> impl Future<Output = CredentialResult<Selection>> + Send;
 
     /// The deployment's active platform default, or nothing if none is set.
     ///
@@ -98,7 +91,7 @@ impl TenantProviders for Providers {
     fn selection(
         &self,
         tenant: &Uuid7,
-    ) -> impl Future<Output = CredentialResult<Option<Selection>>> + Send {
+    ) -> impl Future<Output = CredentialResult<Selection>> + Send {
         Self::selection(self, tenant)
     }
 

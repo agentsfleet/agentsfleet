@@ -5,7 +5,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_credential::provider::KeyRef;
-use afd_credential::provider::{Activation, Added, Entry, Providers, registered_model};
+use afd_credential::provider::{Activation, Added, Entry, Providers, Selection, registered_model};
 use afd_db::test_util::{ModelSeed, WorkspaceSeed, mint_id};
 use afd_vault::{Deleted, Directory, SecretBody, SecretName, Vault};
 
@@ -219,12 +219,12 @@ async fn another_accounts_workspace_cannot_supply_a_model_credential() {
             .len(),
         0
     );
-    assert!(
+    assert_eq!(
         store
             .selection(&other.tenant)
             .await
-            .expect("selection reads")
-            .is_none()
+            .expect("selection reads"),
+        Selection::Platform
     );
     other.cleanup().await;
     owner.cleanup().await;

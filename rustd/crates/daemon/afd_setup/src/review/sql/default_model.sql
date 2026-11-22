@@ -1,3 +1,3 @@
-SELECT COALESCE(s.tenant_model_id::text, $2::text)
+SELECT COALESCE(m.id::text, $2::text)
   FROM (SELECT) seed
-  LEFT JOIN model.tenant_selections s ON s.tenant_id = $1
+  LEFT JOIN model.tenant_models m ON m.tenant_id = $1 AND m.selected

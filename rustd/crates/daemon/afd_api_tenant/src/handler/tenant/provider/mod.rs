@@ -131,7 +131,7 @@ pub(crate) async fn view<D: TenantPlane>(
 
     let available = default.is_some();
     Ok(match (&selection, &default) {
-        (Some(Selection::SelfManaged(own)), _) => Json(from_own(own, available)).into_response(),
+        (Selection::SelfManaged(own), _) => Json(from_own(own, available)).into_response(),
         (_, Some(fallback)) => Json(from_default(fallback, available)).into_response(),
         (_, None) => Json(empty_view()).into_response(),
     })

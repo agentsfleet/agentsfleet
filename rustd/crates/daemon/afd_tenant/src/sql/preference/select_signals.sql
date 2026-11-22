@@ -4,5 +4,5 @@ SELECT
     EXISTS(SELECT 1 FROM thread.turns WHERE workspace_id = $1 AND opened_at IS NOT NULL) AS has_event,
     EXISTS(SELECT 1 FROM thread.turns WHERE workspace_id = $1 AND opened_at IS NOT NULL
            AND actor LIKE $2) AS has_steer,
-    EXISTS(SELECT 1 FROM model.tenant_selections
-           WHERE tenant_id = $3 AND tenant_model_id IS NOT NULL) AS tenant_model
+    EXISTS(SELECT 1 FROM model.tenant_models
+           WHERE tenant_id = $3 AND selected) AS tenant_model

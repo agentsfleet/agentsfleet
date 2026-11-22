@@ -7,7 +7,7 @@ CREATE TABLE model.decision_revisions (
     definition JSONB NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_decision_revisions_model_revision UNIQUE (platform_model_id, revision),
-    -- Lets decision prices prove the owning model alongside the revision.
+    -- Lets a decision quote in `platform_model_prices` prove the owning model beside the revision.
     CONSTRAINT uq_decision_revisions_id_model UNIQUE (id, platform_model_id)
 );
 
