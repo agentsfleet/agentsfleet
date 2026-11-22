@@ -8226,7 +8226,7 @@
           "Runners"
         ],
         "summary": "Read pending human task input",
-        "description": "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
+        "description": "Returns a page of complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
         "operationId": "runner_read_task_inputs",
         "parameters": [
           {

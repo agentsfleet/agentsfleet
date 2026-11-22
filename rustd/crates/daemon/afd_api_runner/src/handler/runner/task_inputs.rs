@@ -18,7 +18,7 @@ const EVENT: &str = "runner_task_inputs_failed";
 #[cfg_attr(feature = "openapi", utoipa::path(
     get, path = af_wire::paths::RUN_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_read_task_inputs", summary = "Read pending human task input",
-    description = "Returns up to four complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
+    description = "Returns a page of complete human messages from the current source conversation in native FIFO order, with current task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
     params(("run_id" = String, Path, description = "Current run UUIDv7."), TaskInputsQuery),
     responses((status = 200, body = af_wire::task::TaskInputsResponse<'_>, description = "Complete pending input and native work"),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

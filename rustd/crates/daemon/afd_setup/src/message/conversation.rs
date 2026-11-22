@@ -28,7 +28,7 @@ pub struct Conversation {
 }
 
 impl Conversation {
-    /// Continuations for a byte-limited response, in the same order as its rows.
+    /// Continuations for a paged response, in the same order as its rows.
     #[must_use]
     pub fn page_boundaries(&self) -> (&str, &[String]) {
         (&self.continuation, &self.after_messages)
