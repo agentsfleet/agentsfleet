@@ -49,10 +49,10 @@ pub use self::detail::{
 /// Everything that REFUSES a request, re-exported as one group so no call site
 /// names the file the cap moved them into.
 pub(crate) use self::refuse::{
-    budget_exhausted, connector_mint_failed, connector_reconnect_required,
-    durable_task_target_counter, github_mint_failed, github_reconnect_required, grant_required,
-    integration_not_connected, message_no_channel, mint_unconfigured, renewal_no_credits,
-    run_cancelled, run_lost, run_not_found, stale_fence, wire_run,
+    budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
+    github_reconnect_required, grant_required, integration_not_connected, message_no_channel,
+    mint_unconfigured, renewal_no_credits, run_cancelled, run_lost, run_not_found, stale_fence,
+    wire_run,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.

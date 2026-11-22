@@ -58,13 +58,6 @@ pub(super) async fn accept(
         .execute(&mut *tx)
         .await
         .map_err(query("retain immutable input outcome"))?;
-    if response.is_some() {
-        sqlx::query(include_str!("sql/answered.sql"))
-            .bind(guard::wire(&input.item_id)?)
-            .execute(&mut *tx)
-            .await
-            .map_err(query("retain fulfilled input reply delivery"))?;
-    }
     let completion = if input.source_turn_id != current.source_turn_id && response.is_some() {
         answer::finish(tasks, &mut tx, &current, input).await?
     } else {

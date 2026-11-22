@@ -35,7 +35,7 @@ use crate::sql::apikey as sql;
 use crate::{Result, error};
 use afd_auth::minted::Minted;
 
-pub use self::name::{Deactivation, Description, KeyName};
+pub use self::name::{Deactivation, KeyName};
 pub use self::sort::ApiKeySort;
 
 /// The index that holds a tenant to one key per name.
@@ -82,7 +82,6 @@ impl ApiKeys {
             .bind(&id)
             .bind(request.tenant)
             .bind(request.name.as_str())
-            .bind(request.description.as_str())
             .bind(credential.digest().as_str())
             .bind(&display_suffix)
             .bind(request.created_by)
@@ -220,8 +219,6 @@ pub struct MintRequest<'a> {
     pub tenant: &'a Uuid7,
     /// What it is called, already parsed.
     pub name: KeyName<'a>,
-    /// The free text beside it, already bounded.
-    pub description: Description<'a>,
     /// The identity provider's subject for whoever minted it.
     ///
     /// A `&str` rather than a parsed subject, because `created_by_subject` is

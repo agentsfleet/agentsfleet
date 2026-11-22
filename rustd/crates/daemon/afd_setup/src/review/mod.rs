@@ -50,7 +50,7 @@ impl Setup {
         connection: &mut PgConnection,
         locked: read::Locked,
     ) -> Result<Draft> {
-        let review = match &locked.head_candidate_id {
+        let review = match &locked.head_revision_id {
             Some(id) => {
                 let candidate = candidate::read(connection, &locked.id, id).await?;
                 Some(

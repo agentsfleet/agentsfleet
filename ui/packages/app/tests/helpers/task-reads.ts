@@ -23,8 +23,8 @@ export function detail(task: DurableTaskSummary = summary(), checkpoint: string 
     state: task.status, covered_input_sequence: 1, effect_cursor: 0, confirmed_effect_watermark: 0,
     checkpoint_id: checkpoint, expires_at: INSTANT,
     limits: {model_nanos: "100000000", wall_seconds: 86400, running_seconds: 3600, runs: 12,
-      publications: 4, decision_calls: 64, fallback_reads: 24},
+      publications: 4, decision_calls: 64},
     usage: {model_nanos: "12000000", running_nanos: 42000000000,
-      runs: 2, publications: 0, decision_calls: 3, fallback_reads: 0},
+      runs: 2, publications: 0, decision_calls: 3},
   }};
 }

@@ -151,18 +151,29 @@ async fn a_setup_run_on_an_empty_wallet_is_refused() {
 // Value: protects=a creator who lost the workspace has their queued turn cancelled,
 // never run on their key; fails_when=the revoked branch stops cancelling, or assigns
 // the turn; why_new=the revoked-creator branch had no live case; seam=the production
-// poll over live Postgres, the creator moved to another tenant with no membership.
+// poll over live Postgres, the draft's creator a person of another tenant with no
+// membership (a user row never changes, so the draft changes hands instead).
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_revoked_creators_queued_turn_is_cancelled_and_not_run() {
     let case = Case::queued().await;
     let elsewhere = case.running.fixtures.seed_tenant().await;
-    let moved = sqlx::query("UPDATE identity.users SET tenant_id = $2 WHERE id = $1")
-        .bind(&case.seat.owner)
-        .bind(&elsewhere)
+    let outsider = afd_db::test_util::mint_id();
+    sqlx::query(
+        "INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at) \
+         VALUES($1,$2,$1,$1,now())",
+    )
+    .bind(&outsider)
+    .bind(&elsewhere)
+    .execute(&mut *case.connection().await)
+    .await
+    .expect("a person of another tenant");
+    let moved = sqlx::query("UPDATE setup.drafts SET user_id = $2 WHERE id = $1")
+        .bind(&case.draft.id)
+        .bind(&outsider)
         .execute(&mut *case.connection().await)
         .await
-        .expect("the creator leaves the seat's tenant");
+        .expect("the draft's creator holds nothing of the seat's tenant");
     assert_eq!(moved.rows_affected(), 1);
 
     assert!(

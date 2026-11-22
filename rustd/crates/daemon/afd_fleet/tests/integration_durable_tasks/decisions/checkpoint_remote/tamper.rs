@@ -1,4 +1,4 @@
-//! Remote corruption cannot become verified custody or release reserved quota.
+//! Remote corruption cannot become verified custody.
 
 use super::super::super::fixture::{Case, id};
 use super::super::{checkpoint::valid, checkpoint_server::Server};

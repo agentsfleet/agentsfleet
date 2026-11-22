@@ -7,5 +7,5 @@ WITH fleet AS (
     INSERT INTO thread.threads (id, fleet_id, fencing_token, run_expires_at, created_at, updated_at)
     SELECT id, id, 0, clock_timestamp() - interval '1 millisecond', created_at, created_at FROM fleet
 )
-INSERT INTO fleet.revisions (id, fleet_id, revision, definition, canonical_digest, policy_semantics, runtime_model_ref, created_at)
-SELECT $12, id, $13, $14::jsonb, $15, $16, $17, created_at FROM fleet
+INSERT INTO fleet.revisions (id, fleet_id, revision, definition, canonical_digest, policy_semantics, installed, runtime_model_ref, created_at, updated_at)
+SELECT $12, id, $13, $14::jsonb, $15, $16, true, $17, created_at, created_at FROM fleet

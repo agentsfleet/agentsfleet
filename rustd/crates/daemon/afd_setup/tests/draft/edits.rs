@@ -9,15 +9,15 @@ use afd_setup::types::DraftPatch;
 use serde_json::json;
 
 /// Appends a copy of draft `$1`'s head at the last revision a candidate can
-/// hold, id `$2`: candidates are append-only, so the head cannot be renumbered.
-const LAST_REVISION: &str = "INSERT INTO setup.candidates \
-     (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
-     SELECT $2,c.draft_id,9223372036854775807,c.definition,c.canonical_digest,\
-     c.policy_semantics,now() \
-     FROM setup.candidates c JOIN setup.drafts d ON d.head_candidate_id=c.id \
+/// hold, id `$2`: a proposal changes only when installed, so the head cannot be renumbered.
+const LAST_REVISION: &str = "INSERT INTO fleet.revisions \
+     (id,draft_id,revision,definition,canonical_digest,policy_semantics,installed,created_at,updated_at) \
+     SELECT $2,d.id,9223372036854775807,c.definition,c.canonical_digest,\
+     c.policy_semantics,false,now(),now() \
+     FROM fleet.revisions c JOIN setup.drafts d ON d.head_revision_id=c.id \
      WHERE d.id=$1";
 /// Moves draft `$1`'s head to candidate `$2`.
-const MOVE_HEAD: &str = "UPDATE setup.drafts SET head_candidate_id=$2 WHERE id=$1";
+const MOVE_HEAD: &str = "UPDATE setup.drafts SET head_revision_id=$2 WHERE id=$1";
 
 fn patch(value: serde_json::Value) -> DraftPatch {
     serde_json::from_value(value).expect("typed patch")
@@ -177,7 +177,7 @@ async fn an_edit_with_no_candidate_or_no_next_revision_is_refused() {
     assert_eq!(refused.code(), INVALID_REQUEST);
     assert_eq!(refused.detail(), "candidate revision is exhausted");
     let candidates: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM setup.candidates WHERE draft_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE draft_id=$1")
             .bind(&headed.id)
             .fetch_one(&mut *f.connection().await)
             .await

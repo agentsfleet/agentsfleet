@@ -119,8 +119,8 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(same(RunnerPlane::fleets(&plane), &plane.tenant.fleets));
 }
 
-/// The tenant, runner and ingress planes drive native tasks through one owner,
-/// so a task bound on one plane is the task the others report against.
+/// The tenant and runner planes drive native tasks through one owner, so a task
+/// bound on one plane is the task the other reports against.
 #[tokio::test]
 async fn every_plane_drives_native_durable_tasks_through_the_one_durable_task_owner() {
     let plane = plane();
@@ -133,10 +133,6 @@ async fn every_plane_drives_native_durable_tasks_through_the_one_durable_task_ow
         RunnerPlane::tasks(&plane),
         &raw const plane.tasks
     ));
-    assert!(std::ptr::addr_eq(
-        IngressPlane::tasks(&plane),
-        &raw const plane.tasks
-    ));
 }
 
 /// The second half of the service map: the stores the tenant, runner and
@@ -146,8 +142,8 @@ async fn production_plane_maps_every_activity_and_admin_service_to_its_owned_sto
     let plane = plane();
 
     assert!(same(
-        TenantPlane::preferences(&plane),
-        &plane.tenant.preferences
+        TenantPlane::onboarding(&plane),
+        &plane.tenant.onboarding
     ));
     assert!(same(
         TenantPlane::approvals(&plane),

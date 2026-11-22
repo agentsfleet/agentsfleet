@@ -1,4 +1,4 @@
-//! Preference, onboarding, and secret HTTP lifecycles over live Postgres.
+//! Secret and onboarding HTTP lifecycles over live Postgres.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -19,12 +19,12 @@ use serde_json::Value;
 
 use self::harness::{Fleet, json_body, send};
 
-const SUBJECT: &str = "user_live_preferences_and_secrets";
+const SUBJECT: &str = "user_live_secrets";
 const SECRET: &str = "anthropic-live";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn preferences_onboarding_and_secrets_round_trip_through_http() {
+async fn secrets_and_onboarding_round_trip_through_http() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = Fleet::live(
@@ -36,45 +36,9 @@ async fn preferences_onboarding_and_secrets_round_trip_through_http() {
     .router();
     let workspace = format!("/v1/workspaces/{}", fixture.workspace.as_str());
 
-    exercise_preferences(&router, &fixture.token, &workspace).await;
     exercise_secrets(&router, &fixture.token, &workspace).await;
 
     fixture.cleanup().await;
-}
-
-async fn exercise_preferences(router: &axum::Router, token: &str, workspace: &str) {
-    // The collection read is removed: a write answers with every preference,
-    // so nothing reads them apart from one.
-    let removed = send(
-        router,
-        Method::GET,
-        &format!("{workspace}/preferences"),
-        Some(token),
-        "",
-    )
-    .await;
-    assert_eq!(
-        removed.status(),
-        StatusCode::NOT_FOUND,
-        "the preferences collection is not served"
-    );
-
-    let written = send(
-        router,
-        Method::PUT,
-        &format!("{workspace}/preferences/getting_started_dismissed"),
-        Some(token),
-        "true",
-    )
-    .await;
-    assert_eq!(written.status(), StatusCode::OK);
-    assert_eq!(
-        json_body(written)
-            .await
-            .pointer("/prefs/getting_started_dismissed")
-            .and_then(Value::as_bool),
-        Some(true)
-    );
 }
 
 async fn exercise_secrets(router: &axum::Router, token: &str, workspace: &str) {
@@ -153,10 +117,6 @@ async fn replace_secret_and_check_onboarding(
     assert_eq!(onboarding.status(), StatusCode::OK);
     let onboarding = json_body(onboarding).await;
     assert_eq!(
-        onboarding.get("dismissed").and_then(Value::as_bool),
-        Some(true)
-    );
-    assert_eq!(
         onboarding.get("has_secret").and_then(Value::as_bool),
         Some(true)
     );
@@ -205,12 +165,12 @@ impl Fixture {
         let digest = Digest::of(&Presented::new(&self.token).expect("the token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
         TenantSeed::new(&self.tenant)
-            .name("Preferences live")
+            .name("Secrets live")
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
         WorkspaceSeed::new(&self.workspace, &self.tenant)
-            .name("preferences")
+            .name("secrets")
             .insert(&mut *connection)
             .await
             .expect("its workspace seeds");
@@ -218,7 +178,7 @@ impl Fixture {
             &self.user,
             &self.tenant,
             SUBJECT,
-            "preferences-live@example.test",
+            "secrets-live@example.test",
         )
         .insert(&mut *connection)
         .await

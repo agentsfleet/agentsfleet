@@ -5,7 +5,6 @@ mod double;
 mod http;
 mod preflight;
 mod publish;
-pub(super) mod recovery;
 pub(in crate::durable_task) mod status;
 mod tree;
 mod types;
@@ -25,7 +24,6 @@ pub(super) use types::{BoundPr, Workflow};
 pub struct Github {
     plane: RunService,
     client: reqwest::Client,
-    master: std::sync::Arc<af_crypto::secret::Kek>,
 }
 
 impl Github {
@@ -48,16 +46,8 @@ impl Github {
     }
     /// Reuses the daemon's guarded client and current credential plane.
     #[must_use]
-    pub const fn new(
-        plane: RunService,
-        client: reqwest::Client,
-        master: std::sync::Arc<af_crypto::secret::Kek>,
-    ) -> Self {
-        Self {
-            plane,
-            client,
-            master,
-        }
+    pub const fn new(plane: RunService, client: reqwest::Client) -> Self {
+        Self { plane, client }
     }
 
     pub(super) async fn session(&self, run: DurableTaskRun<'_>) -> Result<http::Session<'_>> {

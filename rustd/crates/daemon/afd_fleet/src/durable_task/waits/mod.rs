@@ -1,10 +1,5 @@
 //! Durable dependency ownership; every wake still uses ordinary turns.
 
-mod completion;
-mod types;
-pub(super) use completion::record as complete;
-pub use types::{CompletionScope, VerifiedCompletion};
-
 use super::{
     DurableTasks,
     github::{BoundPr, status::Snapshot},

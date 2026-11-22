@@ -85,7 +85,6 @@ impl Error {
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
-            | ErrorKind::DurableTaskTargetCounter { .. }
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::DurableTaskRemote { .. }

@@ -21,8 +21,8 @@ async fn a_policy_marker_change_refuses_new_turns_but_preserves_accepted_replay(
     let status = first.status();
     let first = json_body(first).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{first}");
-    sqlx::query("WITH incompatible AS (INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest,policy_semantics,created_at,runtime_model_ref)
-SELECT $2,fleet_id,revision+1,definition,canonical_digest,'policy-unavailable-fixture',created_at,runtime_model_ref
+    sqlx::query("WITH incompatible AS (INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest,policy_semantics,installed,created_at,updated_at,runtime_model_ref)
+SELECT $2,fleet_id,revision+1,definition,canonical_digest,'policy-unavailable-fixture',true,created_at,created_at,runtime_model_ref
 FROM fleet.revisions WHERE fleet_id=$1 RETURNING id)
 UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM incompatible) WHERE id=$1")
         .bind(crate::setup::id_field(&fleet.saved["id"])).bind(mint())

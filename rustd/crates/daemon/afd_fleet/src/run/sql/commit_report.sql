@@ -77,14 +77,14 @@ WITH scope AS MATERIALIZED (
   -- the moment the report owns the run, never before a lock wait.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked
 ), catalogue AS MATERIALIZED (
-  SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
+  SELECT c.number FROM model.revision c WHERE c.id = 1
 ), guard AS MATERIALIZED (
   SELECT p.*, GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until
   FROM probe p
   CROSS JOIN instant i
   WHERE p.fencing_token >= p.live_fence
     AND p.posture = $10 AND p.provider = $11 AND p.model = $12
-    AND ($13::bigint IS NULL OR (SELECT resource_version FROM catalogue) = $13::bigint)
+    AND ($13::bigint IS NULL OR (SELECT number FROM catalogue) = $13::bigint)
     -- A turn Stop settled as cancelled still lets its run settle, so the run is
     -- billed; the `settled` step below then finds no open turn and answers none.
     AND EXISTS (
@@ -113,11 +113,11 @@ WITH scope AS MATERIALIZED (
        run_id, provider, model, posture, requested_at, input_token_count,
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
-       unpriced_token_count, charged_nanos, created_at, updated_at)
+       unpriced_token_count, charged_nanos, created_at)
   SELECT line.id, $6, m.id, line.kind, line.seq, m.tenant_id, m.workspace_id, m.fleet_id, f.name, m.turn_id,
          NULL, m.provider, m.model, m.posture, line.requested_at, line.input, line.cached,
          line.write, line.write_5m, line.write_1h, line.output, line.runtime_ms, line.price_id,
-         line.unpriced, line.charged, now(), now()
+         line.unpriced, line.charged, now()
   FROM measured m
   JOIN fleet.fleets f ON f.id = m.fleet_id
   CROSS JOIN (
@@ -231,7 +231,7 @@ SELECT
     (SELECT l.status FROM thread.runs l WHERE l.id = $1 AND l.runner_id = $2 FOR SHARE)
         AS run_status,
     p.posture AS held_posture, p.provider AS held_provider, p.model AS held_model,
-    (SELECT resource_version FROM catalogue) AS catalogue_version,
+    (SELECT number FROM catalogue) AS catalogue_version,
     p.fencing_token >= p.live_fence AS fence_holds,
     p.durable_task_id IS NOT NULL AS has_durable_task,
     (SELECT reply_provider FROM settled) AS reply_provider,

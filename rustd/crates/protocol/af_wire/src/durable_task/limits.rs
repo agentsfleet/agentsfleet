@@ -21,8 +21,6 @@ pub struct DurableTaskLimits {
     pub publications: u32,
     /// Maximum physical decision calls, including retries.
     pub decision_calls: u32,
-    /// Maximum fallback dependency reads; signed events remain separate.
-    pub fallback_reads: u32,
 }
 
 impl Default for DurableTaskLimits {
@@ -34,7 +32,6 @@ impl Default for DurableTaskLimits {
             runs: 12,
             publications: 8,
             decision_calls: 128,
-            fallback_reads: 24,
         }
     }
 }
@@ -56,6 +53,4 @@ pub struct DurableTaskUsage {
     pub publications: u32,
     /// Physical decision calls, including retries.
     pub decision_calls: u32,
-    /// Fallback dependency reads already consumed.
-    pub fallback_reads: u32,
 }

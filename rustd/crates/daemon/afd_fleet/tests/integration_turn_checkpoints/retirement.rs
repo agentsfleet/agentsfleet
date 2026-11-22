@@ -120,7 +120,7 @@ async fn retention_collects_a_second_owner_while_the_first_head_is_locked() -> C
     let mut connection = older.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
     let locked: Uuid7 =
-        sqlx::query_scalar("SELECT turn_id FROM runner.turn_recovery WHERE turn_id=$1 FOR UPDATE")
+        sqlx::query_scalar("SELECT id FROM thread.turns WHERE id=$1 FOR NO KEY UPDATE")
             .bind(&older.case.acquired.turn_id)
             .fetch_one(&mut *held)
             .await?;
@@ -233,7 +233,7 @@ async fn private_rows(files: &Files) -> Checked<(i64, i64, i64)> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_as(
         "SELECT
-         (SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1),
+         (SELECT count(*) FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL),
          (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
          (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1)",
     )
@@ -267,13 +267,10 @@ async fn idle_owners(files: &Files, count: usize) -> Checked<Vec<Uuid7>> {
                 reply: afd_turns::Reply::None,
             })
             .await?;
-        sqlx::query(
-            "INSERT INTO runner.turn_recovery (turn_id, next_generation, created_at, updated_at)
-             VALUES ($1, 1, now(), now())",
-        )
-        .bind(&admitted.stored.id)
-        .execute(&mut *connection)
-        .await?;
+        sqlx::query("UPDATE thread.turns SET next_checkpoint_generation = 1 WHERE id = $1")
+            .bind(&admitted.stored.id)
+            .execute(&mut *connection)
+            .await?;
         owners.push(admitted.stored.id);
     }
     Ok(owners)
@@ -295,7 +292,8 @@ async fn retention_resumes_after_a_full_page_of_owners() -> Checked {
         .bind(&last)
         .execute(&mut *connection)
         .await?;
-    let head = "SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1";
+    let head =
+        "SELECT count(*) FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL";
 
     let tasks = files.case.tasks();
     let mut cursor = CheckpointMaintenanceCursor::default();
@@ -316,9 +314,11 @@ async fn retention_resumes_after_a_full_page_of_owners() -> Checked {
         kept, 0,
         "the next pass resumes after the full page and collects it"
     );
-    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery")
-        .fetch_one(&mut *connection)
-        .await?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE next_checkpoint_generation IS NOT NULL",
+    )
+    .fetch_one(&mut *connection)
+    .await?;
     assert_eq!(total, 100, "every unsettled owner keeps its head");
     drop(connection);
     drop(tasks);
@@ -377,7 +377,7 @@ async fn retention_skips_an_owner_that_went_while_it_waited() -> Checked {
             )
         } else {
             (
-                "DELETE FROM runner.turn_recovery WHERE turn_id=$1",
+                "UPDATE thread.turns SET head_turn_checkpoint_id=NULL, next_checkpoint_generation=NULL WHERE id=$1",
                 &files.case.acquired.turn_id,
             )
         };

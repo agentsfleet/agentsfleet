@@ -1,6 +1,6 @@
 SELECT m.sequence,
        m.status,
-       m.candidate_id AS candidate_id,
+       m.proposed_revision_id AS proposed_revision_id,
        m.failure_reason,
        r.reported_runtime_ms,
        r.input_tokens,

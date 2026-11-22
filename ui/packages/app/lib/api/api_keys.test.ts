@@ -57,10 +57,10 @@ describe("listApiKeys", () => {
 describe("createApiKey / revokeApiKey / deleteApiKey", () => {
   it("POSTs the create body verbatim", async () => {
     requestMock.mockResolvedValue({ id: "k", key_name: "ci", key: "agt_tx", created_at: "1970-01-01T00:00:00.001Z" });
-    await createApiKey("tok", { key_name: "ci", description: "runner" });
+    await createApiKey("tok", { key_name: "ci" });
     expect(requestMock).toHaveBeenCalledWith(
       "/v1/api-keys",
-      { method: "POST", body: JSON.stringify({ key_name: "ci", description: "runner" }) },
+      { method: "POST", body: JSON.stringify({ key_name: "ci" }) },
       "tok",
     );
   });

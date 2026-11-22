@@ -24,7 +24,7 @@ use afd_memory::Memories;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
-use afd_tenant::preference::Preferences;
+use afd_tenant::onboarding::Onboarding;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_turns::view::{History, Steer};
@@ -76,7 +76,7 @@ impl TenantPlane for Fleet {
     type Connectors = Connectors;
     type Steering = Steer;
     type Events = History;
-    type Preferences = Preferences;
+    type Onboarding = Onboarding;
 
     /// A different value from [`Shared::workspaces`], unlike production.
     ///
@@ -159,8 +159,8 @@ impl TenantPlane for Fleet {
         &self.events
     }
 
-    fn preferences(&self) -> &Self::Preferences {
-        &self.preferences
+    fn onboarding(&self) -> &Self::Onboarding {
+        &self.onboarding
     }
 
     fn runner_commands(&self) -> &afd_bus::Handle {
@@ -321,10 +321,6 @@ impl IngressPlane for Fleet {
     /// is the fail-closed default — see `fleet_credentials::fixed_scheduler`.
     fn scheduler(&self) -> &dyn afd_cron::Scheduler {
         self.scheduler.as_ref()
-    }
-
-    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
-        &self.tasks
     }
 
     /// The deployment's own admin workspace, when a suite configured one.

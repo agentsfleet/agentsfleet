@@ -1,4 +1,4 @@
-//! Cleanup rechecks references after quota waits and releases physical quota once.
+//! Cleanup rechecks references after storage-lock waits and purges an object once.
 
 use super::{Case, Checked, files, storage::Files};
 use crate::support::Fixtures;
@@ -19,7 +19,7 @@ use tokio::sync::oneshot;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_only_after_retention()
+async fn turn_references_survive_an_orphan_snapshot_and_purge_shared_storage_only_after_retention()
 -> Checked {
     let files =
         Files::for_case(Case::with_fixtures(Fixtures::create_isolated().await).await?).await?;
@@ -153,8 +153,8 @@ async fn release_after_both_waits(
     let mut observer = files.case.fixtures.database.acquire().await?;
     let registration = waiting(&mut observer, controller).await?;
     ready.send(()).map_err(|()| "collector disappeared")?;
-    // Registration holds quota while waiting on the object. Cleanup selected the
-    // orphan before waiting behind that same quota owner, so its snapshot is old.
+    // Registration holds the storage lock while waiting on the object. Cleanup selected
+    // the orphan before waiting behind that same lock owner, so its snapshot is old.
     waiting(&mut observer, registration).await?;
     held.commit().await?;
     Ok(())
@@ -173,20 +173,11 @@ async fn waiting(connection: &mut sqlx::PgConnection, blocker: i32) -> Checked<i
 
 async fn assert_storage(files: &Files, object: &Uuid7, live: bool) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    let (exists, pending, bytes): (bool, bool, i64) = sqlx::query_as("SELECT
+    let (exists, pending): (bool, bool) = sqlx::query_as("SELECT
         EXISTS (SELECT 1 FROM fleet.durable_task_objects WHERE id=$1),
-        EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id=$1 AND completed_at IS NULL),
-        (SELECT stored_bytes+reserved_bytes FROM fleet.durable_task_storage_quota WHERE workspace_id=$2)")
-        .bind(object).bind(&files.case.acquired.workspace_id).fetch_one(&mut *connection).await?;
+        EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id=$1 AND completed_at IS NULL)")
+        .bind(object).fetch_one(&mut *connection).await?;
     assert_eq!(exists, live);
     assert!(!pending);
-    assert_eq!(
-        bytes,
-        if live {
-            i64::try_from(files::CONTENT.len() + af_crypto::TAG_LEN)?
-        } else {
-            0
-        }
-    );
     Ok(())
 }

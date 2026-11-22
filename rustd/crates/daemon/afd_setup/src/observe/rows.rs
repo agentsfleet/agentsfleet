@@ -73,7 +73,7 @@ impl Notice {
 struct Stored {
     sequence: i64,
     status: String,
-    candidate_id: Option<Uuid7>,
+    proposed_revision_id: Option<Uuid7>,
     failure_reason: Option<String>,
     #[sqlx(flatten)]
     metered: Metered,
@@ -120,7 +120,7 @@ pub(super) async fn messages(connection: &mut PgConnection, draft: &Uuid7) -> Re
                 event,
                 draft_id: draft.clone(),
                 sequence: Some(stored.sequence.to_string()),
-                candidate_id: optional(stored.candidate_id.as_ref().map(Uuid7::as_str))?,
+                candidate_id: optional(stored.proposed_revision_id.as_ref().map(Uuid7::as_str))?,
                 revision: None,
                 state: Some(state),
                 usage: stored.metered.usage()?,

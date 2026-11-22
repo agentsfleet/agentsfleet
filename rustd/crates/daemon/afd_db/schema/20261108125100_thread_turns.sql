@@ -49,13 +49,18 @@ CREATE TABLE thread.turns (
     durable_task_activity            JSONB   NOT NULL DEFAULT jsonb_build_array(),
     durable_task_activity_sequence   BIGINT  NOT NULL DEFAULT 0,
     durable_task_activity_truncated  BOOLEAN NOT NULL DEFAULT false,
+    -- Private recovery: the ready checkpoint a replacement run restores, and the generation the
+    -- next checkpoint takes. NULL `next_checkpoint_generation` means the turn never checkpointed.
+    -- Replacement runs share the turn, so they share this head.
+    head_turn_checkpoint_id     UUID,
+    next_checkpoint_generation  BIGINT CHECK (next_checkpoint_generation > 0),
     -- A setup draft's turn: the request's operation, which is not unique once the retry
-    -- window passes; the model it chose (NULL is the platform default); the candidate it
+    -- window passes; the model it chose (NULL is the platform default); the proposal it
     -- wrote; and a requested save, which completes with the terminal answer, with the code
     -- of a checked save that was refused.
     operation_id      UUID,
     tenant_model_id   UUID,
-    candidate_id      UUID,
+    proposed_revision_id  UUID,
     save_requested    BOOLEAN NOT NULL DEFAULT false,
     save_error_code   TEXT,
     created_at        TIMESTAMPTZ(3) NOT NULL,
@@ -70,8 +75,8 @@ CREATE TABLE thread.turns (
         REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (durable_task_id),
     CONSTRAINT fk_turns_tenant_model_id FOREIGN KEY (tenant_model_id)
         REFERENCES model.tenant_models (id) ON DELETE SET NULL,
-    CONSTRAINT fk_turns_candidate_id FOREIGN KEY (candidate_id)
-        REFERENCES setup.candidates (id) ON DELETE SET NULL,
+    CONSTRAINT fk_turns_proposed_revision_id FOREIGN KEY (proposed_revision_id)
+        REFERENCES fleet.revisions (id) ON DELETE SET NULL,
     CONSTRAINT uq_turns_producer_producer_key UNIQUE (producer, producer_key),
     CONSTRAINT uq_turns_thread_id_sequence UNIQUE (thread_id, sequence),
     CONSTRAINT ck_turns_producer_all_or_none
@@ -113,13 +118,20 @@ CREATE INDEX idx_turns_thread_id_reply_sequence_unsettled
 CREATE INDEX idx_turns_tenant_model_id ON thread.turns (tenant_model_id)
     WHERE tenant_model_id IS NOT NULL;
 
-CREATE INDEX idx_turns_candidate_id ON thread.turns (candidate_id)
-    WHERE candidate_id IS NOT NULL;
+CREATE INDEX idx_turns_proposed_revision_id ON thread.turns (proposed_revision_id)
+    WHERE proposed_revision_id IS NOT NULL;
 
 -- The setup drafts with a turn waiting or running: unsettled and unproduced is a setup turn.
 CREATE INDEX idx_turns_status_thread_id_setup
     ON thread.turns (status, thread_id)
     WHERE producer IS NULL AND settled_at IS NULL;
+
+-- Checkpoint maintenance pages the recovering turns; the head index serves its foreign key.
+CREATE INDEX idx_turns_id_recovering
+    ON thread.turns (id) WHERE next_checkpoint_generation IS NOT NULL;
+
+CREATE INDEX idx_turns_head_turn_checkpoint_id
+    ON thread.turns (head_turn_checkpoint_id, id) WHERE head_turn_checkpoint_id IS NOT NULL;
 
 CREATE INDEX idx_turns_durable_task_id_durable_task_generation_settled_at
     ON thread.turns (durable_task_id, durable_task_generation, settled_at, sequence)

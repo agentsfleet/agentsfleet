@@ -3,12 +3,12 @@ WITH locked AS MATERIALIZED (
            m.context_cap_tokens AS context_window_tokens,
            s.id AS secret_id,
            s.meta_base_url, sha256(s.secret_ciphertext) AS ciphertext_digest,
-           r.resource_version, s.workspace_id AS workspace_id, s.key_name,
+           r.number, s.workspace_id AS workspace_id, s.key_name,
            m.inference
       FROM model.platform_defaults p
       JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
       JOIN model.platform_models m ON m.id = p.platform_model_id AND m.provider = p.provider
-     CROSS JOIN model.catalogue_version r
+     CROSS JOIN model.revision r
      WHERE p.active AND s.meta_has_key
        AND s.meta_provider = p.provider
        AND EXISTS (SELECT 1 FROM identity.tenants WHERE id = $1)
@@ -24,12 +24,12 @@ SELECT l.provider, l.model, l.context_window_tokens,
            l.provider, l.secret_id, l.provider, l.meta_base_url,
            encode(l.ciphertext_digest, 'hex'), l.model, l.context_window_tokens,
            p.input_nanos_per_mtok, p.output_nanos_per_mtok,
-           p.id, l.resource_version
+           p.id, l.number
        )::text, 'UTF8')), 'hex') AS resolution_version,
        l.workspace_id, l.key_name,
        l.meta_base_url AS base_url,
        l.inference,
-       l.resource_version AS catalogue_version, l.secret_id,
+       l.number AS catalogue_version, l.secret_id,
        encode(sha256(convert_to(jsonb_build_array(
            l.meta_base_url, encode(l.ciphertext_digest, 'hex')
        )::text, 'UTF8')), 'hex') AS secret_digest,

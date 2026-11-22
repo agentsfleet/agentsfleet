@@ -56,7 +56,7 @@ async fn valid_requests_reach_the_production_store() {
             WRITE,
             Method::POST,
             KEYS,
-            r#"{"key_name":"deploy","description":"release automation"}"#,
+            r#"{"key_name":"deploy"}"#,
             "mint",
         ),
         (WRITE, Method::PATCH, KEY, r#"{"active":false}"#, "revoke"),

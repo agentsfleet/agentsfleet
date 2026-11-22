@@ -1,4 +1,4 @@
-//! A concrete file operation owns ordinary authority before quota or object locks.
+//! A concrete file operation owns ordinary authority before storage or object locks.
 
 use af_wire::{durable_task::CheckpointTransferPurpose, run::TurnCheckpointRef};
 use sqlx::PgConnection;

@@ -54,7 +54,7 @@ describe("api-keys server actions — thin forwarders", () => {
   it("createApiKeyAction threads the token first and forwards the body, returning the envelope", async () => {
     const data = { id: "k1", key_name: "ci", key: "agt_tsecret", created_at: "2023-11-14T22:13:20Z" };
     createApiKeyMock.mockResolvedValueOnce(data);
-    const body = { key_name: "ci", description: "build bot" };
+    const body = { key_name: "ci" };
     const r = await createApiKeyAction(body);
     expect(createApiKeyMock).toHaveBeenCalledWith("tok", body);
     expect(r).toEqual({ ok: true, data });

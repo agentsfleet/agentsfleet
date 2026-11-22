@@ -81,8 +81,8 @@ fn test_singular_reads_the_pointer_name_a_table_takes() {
 }
 
 /// Scope dimensions repeat their target only inside a composite reference.
-/// The sole primary-id role below closes the task/checkpoint ownership cycle,
-/// and a turn's thread stands for the fleet that owns it.
+/// The two primary-id roles below close the task/checkpoint and turn/checkpoint
+/// ownership cycles, and a turn's thread stands for the fleet that owns it.
 fn key_names_match(
     table: &str,
     column: &str,
@@ -95,18 +95,20 @@ fn key_names_match(
             && (column.ends_with(&format!("{}_id", singular(target)))
                 || ROLE_NAMED.contains(&(column, target)))
     } else {
-        // `runner.turn_recovery` is keyed by `turn_id`, and a row that points at
-        // one carries that same name.
-        (arity == 1 && target_column == "turn_id" && column == target_column)
-            || (arity > 1
-                && (column == target_column
+        arity > 1
+            && (column == target_column
                     || (table == "durable_tasks"
                         && column == "id"
                         && target == "durable_task_checkpoints"
                         && target_column == "durable_task_id")
+                    // A turn's recovery head proves the checkpoint is the turn's own.
+                    || (table == "turns"
+                        && column == "id"
+                        && target == "turn_checkpoints"
+                        && target_column == "turn_id")
                     // A fleet's thread is keyed by the fleet's id, so a turn
                     // scopes its task by `thread_id`.
-                    || (table == "turns" && column == "thread_id" && target_column == "fleet_id")))
+                    || (table == "turns" && column == "thread_id" && target_column == "fleet_id"))
     }
 }
 

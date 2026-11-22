@@ -1,1 +1,1 @@
-SELECT id FROM model.catalogue_version WHERE id = 1 FOR UPDATE
+SELECT id FROM model.revision WHERE id = 1 FOR UPDATE

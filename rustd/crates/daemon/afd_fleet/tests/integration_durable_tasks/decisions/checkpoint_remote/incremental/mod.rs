@@ -57,7 +57,6 @@ async fn roundtrip(case: &Case) {
     assert_eq!(delta.plan.mode, CheckpointMode::Incremental);
     assert_eq!(delta.plan.base_id, base.plan.base_id);
     verified(case, &tasks, &task, &delta, &server).await;
-    quota(case, 77).await;
     publish(
         case,
         &tasks,
@@ -70,9 +69,7 @@ async fn roundtrip(case: &Case) {
     restore(case, &tasks, &task, &base, &delta, &server).await;
     let orphan = incremental(case, &tasks, &task, &base.plan, ORPHAN).await;
     verified(case, &tasks, &task, &orphan, &server).await;
-    quota(case, 124).await;
     collect(case, &tasks, &task, &orphan).await;
-    quota(case, 77).await;
     restore(case, &tasks, &task, &base, &delta, &server).await;
     assert_eq!(server.objects.lock().expect("remote state").len(), 2);
     fixture.model.finish().await.expect("model cleanup");
@@ -169,23 +166,4 @@ async fn verified(
     confirm(case, tasks, task, &saved.plan, &saved.object).await;
     // A repeated physical verification cannot account the object twice.
     confirm(case, tasks, task, &saved.plan, &saved.object).await;
-}
-
-async fn quota(case: &Case, stored: i64) {
-    let actual: (i64, i64) = sqlx::query_as(
-        "SELECT reserved_bytes,stored_bytes FROM fleet.durable_task_storage_quota WHERE workspace_id=$1",
-    )
-    .bind(&case.scope.workspace_id)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("quota reader"),
-    )
-    .await
-    .expect("unique physical quota");
-    assert_eq!(actual, (0, stored));
 }

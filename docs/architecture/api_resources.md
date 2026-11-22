@@ -378,7 +378,7 @@ A report below the run's current fence is refused with `UZ-RUN-005` and writes n
 A replayed report finds its run settled and writes nothing a second time.
 
 The run loads and saves the draft's compacted context with `context_load` and `context_save`, under its fence.
-A save is a compare-and-swap on `resource_version` over the thread's `memory.context_checkpoints` row. A fleet chat's run loads and saves its fleet's thread the same way.
+A save is a compare-and-swap on `resource_version` over the thread's `thread.compactions` row. A fleet chat's run loads and saves its fleet's thread the same way.
 A superseded run's save is refused with `UZ-RUN-005`, and the row stays as it was.
 
 The runner streams answer chunks on the run's activity verb, as a fleet run does.

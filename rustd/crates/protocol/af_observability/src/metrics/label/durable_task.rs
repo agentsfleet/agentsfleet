@@ -45,8 +45,6 @@ closed_set! {
         ReportPrepare => "report_prepare",
         /// Commit a native task disposition beside its financial report.
         ReportCommit => "report_commit",
-        /// Retain and match a verified workflow completion.
-        CompletionMatch => "completion_match",
     }
 }
 

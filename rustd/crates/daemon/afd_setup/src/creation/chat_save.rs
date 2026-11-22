@@ -73,7 +73,7 @@ impl Creations {
     ) -> Result<Announcement> {
         let locked = turn.draft;
         draft::idle(connection, locked).await?;
-        let id = locked.head_candidate_id.as_ref().ok_or(ErrorKind::State {
+        let id = locked.head_revision_id.as_ref().ok_or(ErrorKind::State {
             current: "no_candidate",
         })?;
         let candidate = candidate::read(connection, &locked.id, id).await?;

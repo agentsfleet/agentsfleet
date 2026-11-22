@@ -10,7 +10,7 @@
 //! predecessor. Hashing its sealed bytes in the database detects that change
 //! without returning or opening them. JSON array boundaries prevent collisions
 //! between a model reference and the metadata fields beside it. The catalogue's
-//! `resource_version` rides along, so a repriced model is a new generation.
+//! `number` rides along, so a repriced model is a new generation.
 //!
 //! # Lock order
 //!

@@ -3,7 +3,7 @@
 //! fleet chat's alike.
 //!
 //! The save is [`crate::context`]'s compare-and-swap on the thread's
-//! `memory.context_checkpoints` row, written only while the run holds the
+//! `thread.compactions` row, written only while the run holds the
 //! thread at its fence. A run a reassignment superseded writes nothing, and
 //! its save is refused with `RUN_STALE_FENCING_TOKEN`, as its late report is.
 

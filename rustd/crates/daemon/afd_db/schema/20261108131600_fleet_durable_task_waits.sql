@@ -8,7 +8,6 @@ CREATE TABLE fleet.durable_task_waits (
     generation BIGINT NOT NULL CHECK (generation > 0),
     expected_head TEXT NOT NULL,
     checks JSONB NOT NULL,
-    consumed_at TIMESTAMPTZ(3),
     cancelled_at TIMESTAMPTZ(3),
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
@@ -19,7 +18,7 @@ CREATE TABLE fleet.durable_task_waits (
 );
 
 CREATE UNIQUE INDEX uq_durable_task_wait_current ON fleet.durable_task_waits (durable_task_id)
-    WHERE consumed_at IS NULL AND cancelled_at IS NULL;
+    WHERE cancelled_at IS NULL;
 
 CREATE INDEX idx_durable_task_wait_fleet ON fleet.durable_task_waits (fleet_id);
 

@@ -114,6 +114,9 @@ const STOP_ADDITIONS: usize = 1;
 /// revisions and one revision — went with Plugins.
 const RETIRED_PLUGIN_ROUTES: usize = 4;
 
+/// The dashboard preference write went with `identity.user_preferences`.
+const RETIRED_PREFERENCE_ROUTES: usize = 1;
+
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
@@ -130,7 +133,8 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     - RETIRED_WEBHOOK_ROUTES
     - RETIRED_RUNNER_HTTP_ROUTES
     - RETIRED_CATALOGUE_ROUTES
-    - RETIRED_PLUGIN_ROUTES;
+    - RETIRED_PLUGIN_ROUTES
+    - RETIRED_PREFERENCE_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

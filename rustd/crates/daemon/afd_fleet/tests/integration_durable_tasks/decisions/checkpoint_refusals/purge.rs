@@ -1,5 +1,5 @@
 //! A purge recorded under another bucket waits; one whose workspace is gone still
-//! completes remotely, with no quota left to release.
+//! completes remotely.
 
 use af_core::{error_code, etag::sha256_hex, id::Uuid7, test_util::trace::Capture};
 use af_wire::durable_task::{CheckpointMode, CheckpointObjectsInput, CheckpointPlaintext};
@@ -75,7 +75,6 @@ async fn purges(case: &Case) {
     .fetch_one(&mut *connection(case).await)
     .await
     .expect("this storage's bucket reference");
-    let before = quota(case).await;
 
     let foreign = mint_id();
     seed(case, &foreign, &case.scope.workspace_id, "another-bucket").await;
@@ -106,11 +105,6 @@ async fn purges(case: &Case) {
         (false, false),
         "the foreign purge waits, rescheduled for a later pass"
     );
-    assert_eq!(
-        quota(case).await,
-        before,
-        "neither purge moved this workspace's quota"
-    );
     fixture.model.finish().await.expect("fixture cleanup");
     server.finish().await;
 }
@@ -139,14 +133,4 @@ async fn completed(case: &Case, object: &Uuid7) -> (bool, bool) {
     .await
     .expect("the purge row");
     (done, done || due)
-}
-
-async fn quota(case: &Case) -> (i64, i64) {
-    sqlx::query_as(
-        "SELECT reserved_bytes, stored_bytes FROM fleet.durable_task_storage_quota WHERE workspace_id = $1",
-    )
-    .bind(&case.scope.workspace_id)
-    .fetch_one(&mut *connection(case).await)
-    .await
-    .expect("this workspace's quota")
 }

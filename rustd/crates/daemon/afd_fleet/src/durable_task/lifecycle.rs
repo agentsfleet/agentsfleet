@@ -15,11 +15,6 @@ pub type DurableTaskFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Sen
 
 /// Behavior of the authoritative task owner; all writes are fenced natively.
 pub trait DurableTaskLifecycle: Send + Sync + std::fmt::Debug {
-    /// Retain verified provider evidence; it can only request an independent native read.
-    fn record_github_completion<'a>(
-        &'a self,
-        completion: &'a super::VerifiedCompletion,
-    ) -> DurableTaskFuture<'a, u64>;
     /// Collect private generations and acknowledge bounded remote storage purges.
     fn maintain_checkpoints<'a>(
         &'a self,

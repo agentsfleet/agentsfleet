@@ -4,11 +4,6 @@ WITH locked AS MATERIALIZED (
       ON n.id = o.id AND n.digest = o.ciphertext_digest AND n.length = o.ciphertext_length
     WHERE o.workspace_id = $1 AND o.verified_at IS NULL AND o.tombstoned_at IS NULL
     ORDER BY o.id FOR UPDATE OF o
-), verified AS (
-    UPDATE fleet.durable_task_objects o SET verified_at = clock_timestamp(), updated_at = now()
-    FROM locked WHERE o.id = locked.id RETURNING o.accounted_bytes
 )
-UPDATE fleet.durable_task_storage_quota q
-SET reserved_bytes = reserved_bytes - (SELECT COALESCE(sum(accounted_bytes), 0) FROM verified),
-    stored_bytes = stored_bytes + (SELECT COALESCE(sum(accounted_bytes), 0) FROM verified), updated_at = now()
-WHERE q.workspace_id = $1
+UPDATE fleet.durable_task_objects o SET verified_at = clock_timestamp(), updated_at = now()
+FROM locked WHERE o.id = locked.id

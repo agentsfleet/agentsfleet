@@ -173,8 +173,8 @@ impl Fixtures {
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO identity.users \
-             (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1, $2, $3, $1 || '@example.test', now(), now())",
+             (id, tenant_id, oidc_subject, email, created_at) \
+             VALUES ($1, $2, $3, $1 || '@example.test', now())",
         )
         .bind(id)
         .bind(tenant)
@@ -200,9 +200,9 @@ impl Fixtures {
         let mut connection = self.connection().await;
         sqlx::query(AssertSqlSafe(format!(
             "INSERT INTO identity.api_keys \
-                 (id, tenant_id, name, description, key_hash, created_by_subject, \
+                 (id, tenant_id, name, key_hash, created_by_subject, \
                   revoked_at, created_at, updated_at) \
-                 VALUES ($4, $1, $2, '', $2, $3, {revoked_at}, now(), now())"
+                 VALUES ($4, $1, $2, $2, $3, {revoked_at}, now(), now())"
         )))
         .bind(tenant)
         .bind(digest.as_str())

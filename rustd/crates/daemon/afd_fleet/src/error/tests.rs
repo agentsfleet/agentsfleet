@@ -229,23 +229,10 @@ fn a_fleet_without_a_reviewed_setup_is_told_to_review_it() {
 }
 
 #[test]
-fn external_target_overflow_preserves_refusal_and_cause() -> super::Result<()> {
+fn internal_counter_overflow_preserves_its_cause() -> super::Result<()> {
     for source in [i64::try_from(u64::MAX).err(), i32::try_from(u32::MAX).err()] {
         let source =
             source.ok_or_else(|| super::rejected("overflow fixture must fail conversion"))?;
-        let invalid = super::durable_task_target_counter("repository_id")(source);
-        assert_eq!(invalid.code(), error_code::DURABLE_TASK_INVALID_TARGET);
-        assert_eq!(
-            invalid.detail(),
-            crate::durable_task::DurableTaskRefusal::InvalidTarget.detail()
-        );
-        assert!(
-            invalid
-                .source()
-                .is_some_and(<dyn std::error::Error>::is::<std::num::TryFromIntError>)
-        );
-        assert!(!invalid.is_datastore_unavailable());
-
         let corrupt = Error::from(super::ErrorKind::DurableTaskCounter {
             column: "generation",
             source,

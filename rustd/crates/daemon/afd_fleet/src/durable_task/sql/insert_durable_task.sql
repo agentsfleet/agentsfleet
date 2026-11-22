@@ -8,14 +8,13 @@ INSERT INTO fleet.durable_tasks
    effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos,
    max_running_nanos, used_running_nanos, max_runs,
    used_runs, max_publications, used_publications, max_decision_calls,
-   used_decision_calls, max_fallback_reads, used_fallback_reads, reply_provider,
-   reply_address, expires_at, created_at, updated_at)
+   used_decision_calls, reply_provider, reply_address, expires_at, created_at, updated_at)
 SELECT $1, $2, $3, $4, $5, $6,
        $7, $8, $9::jsonb, $10, $11::jsonb, $12, 1, 1, 0, 0, 0, 0, 0,
-       $13, 0, $14, 0, $15::bigint::integer, $16, $17::bigint::integer, 0, $18::bigint::integer, 0, $19::bigint::integer, 0, $20, $21,
-       instant.admitted_at + make_interval(secs => $22),
+       $13, 0, $14, 0, $15::bigint::integer, $16, $17::bigint::integer, 0, $18::bigint::integer, 0, $19, $20,
+       instant.admitted_at + make_interval(secs => $21),
        instant.admitted_at, instant.admitted_at
 FROM instant
 WHERE (SELECT count(*) FROM fleet.durable_tasks
-       WHERE fleet_id = $2 AND terminal_at IS NULL) < $23
+       WHERE fleet_id = $2 AND terminal_at IS NULL) < $22
 RETURNING id

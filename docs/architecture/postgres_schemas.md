@@ -15,7 +15,7 @@ table has one obvious home and one obvious shape.
 
 1. **Placement.** A table lives in the schema of the product area that owns it. Its name is a
    plural noun that never repeats the schema name: `setup.drafts`, never with the schema name repeated as a prefix.
-   A singleton is named for its one row (`model.catalogue_version`) and says so in its slot.
+   A singleton is named for its one row (`model.revision`) and says so in its slot.
 2. **Foreign keys** end `_id` and name the table they point at (`user_id`, `draft_id`). A prefix
    names the role when the column alone would not say it (`invited_by_user_id`, `active_grant_id`,
    `source_workspace_id`, `last_runner_id`). A deliberately missing foreign key is explained in the
@@ -80,7 +80,7 @@ Each table's columns live in its `rustd/crates/daemon/afd_db/schema/` slot, the 
 
 | Schema | Owns |
 |---|---|
-| `identity` | Accounts, people, membership, credentials, preferences |
+| `identity` | Accounts, people, membership, credentials |
 | `setup` | The private setup chat and its runner work |
 | `fleet` | Deployed fleets, their frozen setup history, approvals and durable tasks |
 | `thread` | Every conversation: threads, turns, runs, items and deliveries |
@@ -116,7 +116,7 @@ there is no generic repository trait.
 ## identity
 
 ```
- tenants ◀── workspaces ◀── user_preferences ──▶ users
+ tenants ◀── workspaces
     ▲  ◀── users ◀── cli_credentials
     ▲  ◀── memberships ──▶ users
     ▲  ◀── invites ──▶ users (invited_by / accepted_by)
@@ -125,14 +125,13 @@ there is no generic repository trait.
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `tenants` | Billing and ownership root |  |
+| `tenants` | Billing and ownership root | immutable (rule 9); `identity.lock_tenant` takes its row lock for model selection writes |
 | `workspaces` | Isolation unit inside a tenant | `UNIQUE(id, tenant_id)` for composite references |
-| `users` | One person, bound to a sign-in subject; `tenant_id` is the personal account made at signup |  |
+| `users` | One person, bound to a sign-in subject; `tenant_id` is the personal account made at signup | immutable (rule 9); `identity.lock_user` holds a person against deletion |
 | `memberships` | Person ↔ tenant with a role; a role change is delete + insert |  |
 | `invites` | Emailed offer to join a tenant |  |
 | `api_keys` | Tenant automation tokens, digest plus nullable public display suffix; outlive the admin who made them |  |
 | `cli_credentials` | One live CLI login per machine, hash only | (metadata columns are in §Settled) |
-| `user_preferences` | Small dashboard settings per (user, workspace) |  |
 | `device_sessions` | One CLI device login in flight; ciphertext sealed to the CLI, code kept as a peppered HMAC | no foreign key: a session exists before any user does; operator roles revoked (M244) |
 
 `invites.resolved_at` is NULL while an invite is pending and is set on accept or revoke. The
@@ -143,16 +142,16 @@ there is no generic repository trait.
 
 ```
  identity.workspaces/users ◀── drafts ──▶ fleet.fleets (fleet_id)
-                                 │ head_candidate_id ──▶ candidates
+                                 │ head_revision_id ──▶ fleet.revisions
                                  │ source_fleet_revision_id ──▶ fleet.revisions
-              thread.threads (1:1) ──▶ drafts; thread.turns.candidate_id ──▶ candidates
+                                 ◀── fleet.revisions.draft_id (a proposal, until installed)
+              thread.threads (1:1) ──▶ drafts; thread.turns.proposed_revision_id ──▶ fleet.revisions
  replay_receipts (no FKs: a retry key outlives erasure)
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `drafts` | One private setup chat; its turns are `thread.turns` rows on the draft's thread |  |
-| `candidates` | A frozen numbered setup the model proposed | append-only |
 | `replay_receipts` | Every setup retry key: create draft, send message, save | append-only, swept at a fixed age |
 
 - **Model pointers.** `drafts.tenant_model_id` and `thread.turns.tenant_model_id` are NULL for the
@@ -167,7 +166,12 @@ there is no generic repository trait.
 - **Retention.** Closing a draft stamps `closed_at` and `expires_at = closed_at + 30 days` (an API
   field). Past `expires_at` the draft reads and lists as gone (`afd_setup`'s `sql/draft/lock.sql` and
   `page.sql`). Nothing deletes it on a timer since M253_003; a user delete cascades its thread, turns,
-  runs and candidates. Usage lines and replay receipts stay.
+  runs and the proposals it still owns. Usage lines and replay receipts stay.
+- **Proposals are revisions.** A setup the model proposes is a `fleet.revisions` row owned by its
+  draft (`draft_id`), numbered per draft. Save and Apply install it with no copy: it gains its fleet
+  and the fleet's next number, `installed` turns true, and `draft_id` clears. The draft's
+  `head_revision_id` keeps pointing at it. The draft numbers its next proposal past every one it
+  still owns (`sql/draft/lock.sql`).
 - **Retry window.** A replay receipt answers its key for 24 hours from `created_at` by default (`[setup] replay_window_hours`, [configuration reference](./config_reference.md); `afd_setup`'s `DEFAULT_REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
 - At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own (`afd_setup`'s `replay/sql/expire.sql`). An expired receipt whose key is never reused stays.
 - The message API returns `thread.turns.operation_id`, written at acceptance, because the turn outlives its receipt.
@@ -188,7 +192,7 @@ there is no generic repository trait.
 | Table | Purpose | Notes |
 |---|---|---|
 | `fleets` | The deployed agent |  |
-| `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | append-only |
+| `revisions` | Every proposed and installed setup; rev 1 at Save, +1 per Apply | one owner, a draft or a fleet (`ck_revisions_one_owner`); `UNIQUE (fleet_id, revision)` and `UNIQUE (draft_id, revision)` each bind only their owner's rows, because NULLs are distinct; the only update installs a proposal, and the definition never changes |
 | `durable_task_items` | Immutable interpretation receipts survive turn cleanup | append-only; task association closes a deferred cycle |
 | `durable_task_adoptions` | Human goal-revision retry receipts | append-only opaque scope; goal text and native target stay on tasks |
 | `durable_tasks` | One durable objective, its accepted setup, cumulative limits and lifecycle | one originating task item |
@@ -196,14 +200,10 @@ there is no generic repository trait.
 | `durable_task_interpretations` | Complete private source message and accepted plan | append-only; survives turn settlement and cascades with fleet |
 | `durable_task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
 | `durable_task_waits` | One native exact-head dependency owner | scoped task and generation, the arming run, the expected head and the checks read when it was armed; one continuation consumes the wait |
-| `durable_task_completions` | Verified workflow completion inbox | immutable scoped run/attempt evidence; early-race backup; acknowledged rows collect after three days |
-| `durable_task_completion_fanout` | Durable signal-delivery cursor for immutable completion evidence | bounded supervisor fanout; one wait lock per transaction; cannot allocate a run |
 | `durable_task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
 | `durable_task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; kept with opaque effect |
 | `durable_task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
-| `durable_task_effect_recovery` | Expiring encrypted exact-repository read custody | survives owner deletion until reconciliation or expiry; no write credential |
-| `durable_task_identity_keys` | Wrapped workspace/repository content-identity versions | one active version; independent of object encryption keys and master-key rewrapping |
-| `durable_task_storage_quota` | Unique reserved/stored bytes per workspace | aggregate mutated under its source lock; pending deletion stays charged |
+| `durable_task_identity_keys` | Wrapped workspace/repository content-identity versions | immutable (rule 9); one per workspace/repository; written and removed under `identity.lock_workspace_storage`; independent of object encryption keys and master-key rewrapping |
 | `durable_task_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
 | `durable_task_checkpoints` | Task capture plan and complete compatible recovery generation | native sequence, fixed pages/deadlines; ready incremental manifest alone becomes recovery pointer |
 | `durable_task_checkpoint_operations` | Opaque capture-plan retry receipts | append-only; survives private plan retention and owner deletion |
@@ -228,7 +228,8 @@ omit its model and review then resolves the tenant default.
 
 ```
  fleet.fleets / setup.drafts ◀── threads (1:1, id = owner id) ──▶ runner.runners (last_runner_id)
- threads ◀── turns ◀── items
+ threads ◀── turns ◀── items; threads ◀── compactions (1:1)
+ turns ◀── runner.turn_checkpoints; turns.head_turn_checkpoint_id ──▶ runner.turn_checkpoints
  turns ◀── turns (resumes_turn_id); turns ──▶ fleet.durable_tasks, fleet.durable_task_items (composite scope)
  runs ──▶ runner.runners; ··▶ fleets, drafts, turns: opaque, no FK
  deliveries ──▶ fleet.fleets; ··▶ turns (turn_id): opaque, no FK yet
@@ -239,9 +240,10 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Notes |
 |---|---|---|
 | `threads` | One conversation per fleet and per draft: next fencing token, sticky runner, warm sandbox hold, resume bookmark | `ck_threads_one_owner`: exactly one of `fleet_id` and `draft_id`, and `id` equals it; `resume_context` is the report's resume bookmark |
-| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB |
+| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB; `head_turn_checkpoint_id` and `next_checkpoint_generation` are the turn's private recovery head, shared by its replacement runs (folded from `runner.turn_recovery` in M253_004) |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
+| `compactions` | Private working notes, one row per thread: a setup draft's or a fleet chat's; written only by a compaction and deleted with the thread's owner (`memory.context_checkpoints` until M253_004) | `api_runtime` reaches it like every thread table; the memory schema stays behind `memory_runtime` |
 | `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; a delivery whose inline attempts fail is abandoned |
 
 `runs.turn_created_at` is the producer's instant billing uses, copied so billing reads it without a join.
@@ -289,7 +291,7 @@ statement reads the index, and a dead run's last slice after its final renewal i
 | `platform_models` | Curated identities, context evidence and current decision selection |
 | `platform_model_prices` | Prices per prompt-size tier and effective date range, in integer nanos per million tokens; a separate table because one model has many prices. A NULL `decision_revision_id` is a coding price; otherwise the row is that decision revision's quote, its ownership proved by a composite revision/model reference |
 | `decision_revisions` | Immutable reviewed decision definitions; a model/revision label cannot acquire different bytes |
-| `catalogue_version` | Singleton edit counter, bumped by every catalogue edit and read with each runtime model resolution |
+| `revision` | Singleton edit counter for the catalogue: `number` is bumped by every catalogue edit and read with each runtime model resolution |
 | `platform_defaults` | Default model per provider and the admin workspace holding its key |
 | `tenant_models` | A tenant's own models, each pointing at a vault key; `selected` marks the tenant's default, at most one per tenant, and none means the platform default |
 
@@ -326,10 +328,10 @@ that reads them (rule 7).
 
 | Root deleted | Goes with it | Stays | Scrubbed immediately |
 |---|---|---|---|
-| Draft (user delete) | its thread, turns and runs, candidates, draft context checkpoint | usage lines, replay receipts | none |
-| User | their drafts (as above), memberships, CLI credentials, preferences | api keys they created, usage lines | none |
-| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
-| Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Each removed object first records its location and charged bytes for remote cleanup |
+| Draft (user delete) | its thread, turns and runs, the proposals it still owns, its compaction | usage lines, replay receipts, installed revisions | none |
+| User | their drafts (as above), memberships, CLI credentials | api keys they created, usage lines | none |
+| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect/adoption/checkpoint-operation receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Workspace | drafts, fleets (as above), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts | Each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
@@ -341,7 +343,6 @@ that reads them (rule 7).
 |---|---|
 | `vault.secrets` | One encrypted secret per (workspace, key_name), with a plain projection |
 | `memory.entries` | A fleet's durable memory, behind role `memory_runtime` |
-| `memory.context_checkpoints` | Private working notes, one row per thread: a setup draft's or a fleet chat's; deleted with the thread's owner |
 
 ## Settled while implementing
 
@@ -349,9 +350,9 @@ Each item is decided from the rebuilt slots and the statements that read them. A
 names its slot and a reader; a dropped one names the slot that declares its table without it.
 A column kept with no reader still owes a drop under rule 7.
 
-- **`identity.api_keys.description`: kept, no reader.** The file `20261108120700_identity_api_keys.sql` declares it and
-  `afd_tenant`'s `insert_tenant_key.sql` writes it. The key list selects
-  `id, name, created_at, revoked_at`, and `ApiKeySummary` has no description field.
+- **`identity.api_keys.description`: dropped (M253_004).** The file `20261108120700_identity_api_keys.sql` declares the table without it.
+  Nothing read it: the key list selects `id, name, created_at, revoked_at`, and
+  `MintApiKeyRequest` no longer takes a description.
 - **`identity.cli_credentials.credential_prefix`, `deployment`, `created_from_address`: dropped.**
   The file `20261108120800_identity_cli_credentials.sql` declares the table without them. The
   table's one read, `afd_state`'s `select_cli_credential.sql`, selected none of them, and the mint
@@ -405,7 +406,6 @@ Added by this milestone:
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
   - `thread.deliveries.abandon_reason`, `fleet.durable_task_bases.retained_bytes`.
-  - `fleet.durable_task_completions`: `conclusion`, `body_digest`.
   - `fleet.durable_task_effect_states.confirmed_at`, `fleet.durable_task_waits.consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
   - `fleet.durable_task_inputs` and `fleet.durable_task_interpretations`: `accepting_run_id`, `accepting_fence`.
   - `fleet.durable_task_storage_purges.delete_after_at`.

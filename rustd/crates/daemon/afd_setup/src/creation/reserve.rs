@@ -168,7 +168,7 @@ impl Creations {
         Ok(checked)
     }
 
-    /// Writes the fleet row, its first immutable revision and inherited schedules.
+    /// Writes the fleet row, installs its first revision and inherited schedules.
     pub(super) async fn insert(
         &self,
         connection: &mut PgConnection,
@@ -178,7 +178,8 @@ impl Creations {
         checked: &crate::types::Review,
         now: Timestamp,
     ) -> Result<afd_turns::view::activity::Announcement> {
-        let revision = self.setup.drafts.mint(now)?;
+        // The proposal itself becomes revision 1: a system setup's candidate id was minted for it.
+        let revision = captured.candidate.id.clone();
         insert_fleet(connection, id, &revision, captured, &instance).await?;
         let accepted = Accepted::from_review(captured, checked);
         let head = Head {
@@ -188,8 +189,7 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        let mut announcement =
-            insert_revision(connection, id, &captured.candidate.definition, head).await?;
+        let mut announcement = write_revision(connection, id, captured, head).await?;
         announcement.append(
             self.replace_schedules(
                 connection,
@@ -214,8 +214,8 @@ impl Creations {
     }
 }
 
-/// One immutable revision: which it is, the setup it accepted and the model
-/// review settled on.
+/// One revision being installed: which it is, the setup it accepted and the
+/// model review settled on.
 pub(super) struct Head<'a> {
     pub(super) origin: Option<SaveOrigin>,
     pub(super) id: &'a Uuid7,
@@ -224,27 +224,50 @@ pub(super) struct Head<'a> {
     pub(super) model: Option<&'a str>,
 }
 
-/// Writes `head` for `fleet`, with its definition.
-pub(super) async fn insert_revision(
+/// Makes `head` `fleet`'s revision: a draft's proposal is installed in place,
+/// with no copy, and a system setup, which has no draft, is inserted.
+///
+/// # Errors
+/// A proposal another save already installed answers `candidate_changed`.
+pub(super) async fn write_revision(
     connection: &mut PgConnection,
     fleet: &Uuid7,
-    definition: &af_fleet_runtime::Definition,
+    captured: &Captured,
     head: Head<'_>,
 ) -> Result<afd_turns::view::activity::Announcement> {
-    sqlx::query(sql::REVISION)
-        .bind(head.id)
-        .bind(fleet)
-        .bind(head.number)
-        .bind(serde_json::to_string(definition).map_err(stored)?)
-        .bind(&head.accepted.canonical_digest)
-        .bind(&head.accepted.policy_semantics)
-        .bind(head.model)
-        .bind(&head.accepted.review_digest)
-        .bind(head.accepted.frozen()?)
-        .bind(&head.accepted.candidate_id)
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT))?;
+    if let Some(draft) = &captured.draft {
+        let installed = sqlx::query(sql::INSTALL)
+            .bind(head.id)
+            .bind(fleet)
+            .bind(head.number)
+            .bind(head.model)
+            .bind(&head.accepted.review_digest)
+            .bind(head.accepted.frozen()?)
+            .bind(&draft.id)
+            .execute(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+        if installed.rows_affected() != 1 {
+            return Err(ErrorKind::State {
+                current: "candidate_changed",
+            }
+            .into());
+        }
+    } else {
+        sqlx::query(sql::REVISION)
+            .bind(head.id)
+            .bind(fleet)
+            .bind(head.number)
+            .bind(serde_json::to_string(&captured.candidate.definition).map_err(stored)?)
+            .bind(&head.accepted.canonical_digest)
+            .bind(&head.accepted.policy_semantics)
+            .bind(head.model)
+            .bind(&head.accepted.review_digest)
+            .bind(head.accepted.frozen()?)
+            .execute(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+    }
     let number = head.number.to_string();
     let announcement = afd_turns::view::activity::record_on(
         connection,

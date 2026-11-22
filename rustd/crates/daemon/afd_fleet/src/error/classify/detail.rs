@@ -40,7 +40,6 @@ impl Error {
             ErrorKind::DurableTaskControlConflict { .. } => crate::durable_task::DurableTaskRefusal::StaleState.detail(),
             ErrorKind::DurableTaskRefused { reason } => reason.detail(),
             ErrorKind::TurnCheckpointRefused { reason } | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.detail(),
-            ErrorKind::DurableTaskTargetCounter { .. } => crate::durable_task::DurableTaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Setup { ref source } => source.detail(),

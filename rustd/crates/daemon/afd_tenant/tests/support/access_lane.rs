@@ -64,6 +64,10 @@ pub(crate) fn held(tenant: &Uuid7, role: Role) -> Access {
 pub(crate) struct Account {
     /// What they are called, and what their account is named after.
     pub(crate) name: &'static str,
+    /// The account's stored name: [`Self::name`] unless a case renamed it.
+    stored_name: &'static str,
+    /// The person's own name: [`Self::name`] unless a case left it unset.
+    display_name: Option<&'static str>,
     pub(crate) tenant: Uuid7,
     pub(crate) user: Uuid7,
     pub(crate) subject: String,
@@ -79,6 +83,8 @@ impl Account {
         let handle = name.to_lowercase();
         Self {
             name,
+            stored_name: name,
+            display_name: Some(name),
             tenant: mint_id(),
             user: mint_id(),
             subject: format!("user_{handle}_{}", mint_id()),
@@ -87,15 +93,30 @@ impl Account {
         }
     }
 
-    /// Writes this person's account as signup leaves it, named after them.
+    /// This person, whose account is stored as `stored_name`.
+    ///
+    /// Set at signup: `identity.tenants` is append-only, so a case cannot
+    /// rename the account afterwards.
+    pub(crate) const fn with_account_name(mut self, stored_name: &'static str) -> Self {
+        self.stored_name = stored_name;
+        self
+    }
+
+    /// This person, signed up without a name of their own.
+    pub(crate) const fn nameless(mut self) -> Self {
+        self.display_name = None;
+        self
+    }
+
+    /// Writes this person's account as signup leaves it.
     pub(crate) async fn sign_up(&self, database: &Db) {
         let signup = Signup {
             tenant: &self.tenant,
             user: &self.user,
             subject: &self.subject,
             email: &self.email,
-            name: self.name,
-            display_name: Some(self.name),
+            name: self.stored_name,
+            display_name: self.display_name,
             workspace: &self.workspace,
         };
         sign_up(database, &signup).await;
@@ -123,12 +144,17 @@ pub(crate) struct Fixture {
 impl Fixture {
     /// The three accounts, and Bob's membership in John's.
     pub(crate) async fn create() -> Self {
+        Self::with_john(Account::minted("John")).await
+    }
+
+    /// [`Self::create`], with John's account written as `john` says.
+    pub(crate) async fn with_john(john: Account) -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let fixture = Self {
             team: Team::new(database.clone(), Entropy::new()),
             database,
-            john: Account::minted("John"),
+            john,
             bob: Account::minted("Bob"),
             carol: Account::minted("Carol"),
             lane,

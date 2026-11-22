@@ -25,8 +25,7 @@ const RUN: &str = "INSERT INTO thread.runs \
 const FENCE: &str = "UPDATE thread.threads SET fencing_token=$2 WHERE id=$1";
 
 /// The draft's context row: its version and document.
-const ROW: &str =
-    "SELECT resource_version, document FROM memory.context_checkpoints WHERE thread_id=$1";
+const ROW: &str = "SELECT resource_version, document FROM thread.compactions WHERE thread_id=$1";
 
 /// A compacted context for `draft` at `generation`, whose goal says who saved it.
 fn checkpoint(draft: &Uuid7, generation: u64, goal: &str) -> Checkpoint {
@@ -270,7 +269,7 @@ async fn a_save_for_a_run_the_runner_never_held_is_refused_as_stale() {
         .expect_err("a run this runner never held");
     assert_eq!(refused.code(), error_code::RUN_STALE_FENCING_TOKEN);
     let rows: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE thread_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM thread.compactions WHERE thread_id=$1")
             .bind(&draft)
             .fetch_one(&mut *f.connection().await)
             .await

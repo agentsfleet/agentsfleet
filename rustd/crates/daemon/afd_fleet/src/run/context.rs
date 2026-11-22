@@ -4,7 +4,7 @@
 //! ```text
 //!  ContextLoad { run, fencing_token } ─► this runner's run, live at that fence?
 //!     no  ─► run not found, or the stale-fence refusal: nothing is read
-//!     yes ─► the thread's `memory.context_checkpoints` row, validated, and its scope
+//!     yes ─► the thread's `thread.compactions` row, validated, and its scope
 //! ```
 //!
 //! The save is `afd_setup`'s (`Drafts::save_context`), which proves the fence

@@ -124,7 +124,6 @@ running_seconds = 7_200
 max_runs = 12
 max_publication_attempts = 8
 max_decision_calls = 128
-max_fallback_reads = 24
 
 [nats]
 # Raise it when agentsfleet_fleet_ready_wake_queue_events_total shows evicted wake-ups;

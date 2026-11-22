@@ -61,7 +61,7 @@ async fn mint_key(router: &axum::Router, token: &str) -> String {
         Method::POST,
         "/v1/api-keys",
         Some(token),
-        r#"{"key_name":"release","description":"live lifecycle"}"#,
+        r#"{"key_name":"release"}"#,
     )
     .await;
     assert_eq!(minted.status(), StatusCode::CREATED);

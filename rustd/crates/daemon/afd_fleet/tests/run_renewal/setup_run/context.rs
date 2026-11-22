@@ -59,7 +59,7 @@ impl Case {
     /// The draft's context row: its version and document, if it has one.
     async fn context_row(&self) -> Option<(i64, Value)> {
         sqlx::query_as(
-            "SELECT resource_version, document FROM memory.context_checkpoints \
+            "SELECT resource_version, document FROM thread.compactions \
              WHERE thread_id = $1",
         )
         .bind(&self.draft.id)

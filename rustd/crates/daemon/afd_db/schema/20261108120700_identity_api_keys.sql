@@ -4,7 +4,6 @@ CREATE TABLE identity.api_keys (
     id                  UUID PRIMARY KEY,
     tenant_id           UUID NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
     name                TEXT NOT NULL,
-    description         TEXT NOT NULL,
     key_hash            TEXT NOT NULL,
     -- NULL when the key was minted without a recoverable suffix.
     display_suffix      TEXT,

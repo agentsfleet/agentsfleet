@@ -1,9 +1,10 @@
-WITH person AS MATERIALIZED (
+WITH held AS MATERIALIZED (
+    SELECT id FROM identity.lock_user($1, true)
+), person AS MATERIALIZED (
     SELECT u.id, u.tenant_id, w.id AS workspace_id, w.tenant_id AS owner
-      FROM identity.users u
+      FROM held h
+      JOIN identity.users u ON u.id = h.id
       JOIN identity.workspaces w ON w.id = $2
-     WHERE u.id = $1
-       FOR SHARE OF u
 ), membership AS MATERIALIZED (
     SELECT m.id, m.role, m.created_at
       FROM identity.memberships m

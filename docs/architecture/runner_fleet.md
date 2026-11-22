@@ -149,7 +149,7 @@ A live runner renews through the fenced `/renew` route. Renewal is gated on cred
 A runner that stops renewing loses its thread at the database deadline.
 
 The replacement keeps the turn and reads its committed recovery descriptor.
-Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned head in `runner.turn_recovery`.
+Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned head on their `thread.turns` row (`head_turn_checkpoint_id`, `next_checkpoint_generation`).
 [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) owns capture, restore and file safety.
 
 An absent checkpoint starts from the original accepted input and unsettled folds.
@@ -1169,7 +1169,7 @@ Setup is creator-private work. The assignment resolves the workspace owner and r
 
 Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Setup messages remain a Postgres queue in `thread.turns`; NATS carries wake and progress hints, not another authoritative copy.
 
-The `setup` schema defines creator-private `setup.drafts`, candidates and replay receipts. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
+The `setup` schema defines creator-private `setup.drafts` and replay receipts; a draft's proposals are `fleet.revisions` rows it owns until one is installed. A draft's chat inputs are its `thread.turns` rows, and a setup run is a `thread.runs` row its draft owns.
 
 A setup run's charges are its usage lines in `billing.usage_lines`, with `work_type = 'setup_run'` and the run as their work. They are retained independently of the chat (billing §11). Immutable native setup revisions join their existing domains.
 
@@ -1215,8 +1215,8 @@ The model may ask clarifying questions. It cannot grant access, Save, call arbit
 
 | Copy | Owner | Lifetime and removal |
 |---|---|---|
-| Draft turns and candidates | Creator-private setup domain | Draft deletion removes private rows and its runs. |
-| The draft's compacted context | Setup domain, `memory.context_checkpoints` keyed by the draft's thread | Removed with the draft's thread by foreign key. |
+| Draft turns and proposals | Creator-private setup domain | Draft deletion removes private rows, the proposals it still owns and its runs. |
+| The draft's compacted context | Setup domain, `thread.compactions` keyed by the draft's thread | Removed with the draft's thread by foreign key. |
 | Pending setup report | Supervisor worker | Retained only in memory. Process loss discards it. |
 | Usage lines | Billing domain | Content-free; retained independently of the draft. |
 | Provider logs and infrastructure snapshots | Their service owners | Follow their own retention; draft deletion cannot promise physical removal from these systems. |

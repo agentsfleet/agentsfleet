@@ -21,7 +21,7 @@ WITH locked_thread AS MATERIALIZED (
        AND r.fencing_token = $8 AND r.status = $9
        FOR SHARE OF r
 )
-INSERT INTO memory.context_checkpoints
+INSERT INTO thread.compactions
     (id, thread_id, resource_version, document, created_at, updated_at)
 SELECT $1, $2, $3, $4, now(), now()
   FROM holder

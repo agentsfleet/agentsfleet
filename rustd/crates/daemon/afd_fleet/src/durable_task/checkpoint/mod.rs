@@ -14,7 +14,7 @@ mod row;
 mod transfer;
 
 pub(super) use commit::publish;
-pub(crate) use identity::{load as content_identity, quota as lock_quota};
+pub(crate) use identity::{load as content_identity, lock_storage};
 pub(super) use maintenance::maintain;
 pub(crate) use object_row::Object as StoredObject;
 pub(super) use objects::register;
@@ -26,7 +26,6 @@ pub(super) use transfer::{authorize, list, uploads};
 
 /// The statements a run's turn checkpoints share with task checkpoints,
 /// included once so the two custody paths cannot drift apart.
-pub(crate) const QUOTA_RESERVE: &str = include_str!("sql/quota_reserve.sql");
 pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
 pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
 pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");

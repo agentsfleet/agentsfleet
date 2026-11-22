@@ -79,8 +79,9 @@ pub const RESET_TENANT_SELECTION: &str = include_str!("reset_tenant_selection.sq
 /// An activation's UPDATE reads the tenant's rows from its own snapshot, so
 /// without this lock it could miss an entry a concurrent activation just
 /// selected and leave two rows selected, which the exclusion constraint then
-/// refuses. `FOR NO KEY UPDATE` leaves the foreign-key share locks other
-/// writers take on the tenant free.
+/// refuses. `FOR NO KEY UPDATE`, taken in `identity.lock_tenant` because the
+/// tenant row is immutable and `api_runtime` holds no UPDATE on it, leaves the
+/// foreign-key share locks other writers take on the tenant free.
 ///
 /// `$1` tenant.
 pub const LOCK_TENANT_FOR_SELECTION: &str = include_str!("lock_tenant_for_selection.sql");

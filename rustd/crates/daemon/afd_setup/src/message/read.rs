@@ -29,7 +29,7 @@ struct Stored {
     status: String,
     user_text: String,
     answer_text: Option<String>,
-    candidate_id: Option<Uuid7>,
+    proposed_revision_id: Option<Uuid7>,
     failure_reason: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
@@ -140,7 +140,7 @@ fn project(stored: Stored) -> Result<Message> {
         candidate_id: if user {
             None
         } else {
-            read::optional(stored.candidate_id.as_ref().map(Uuid7::as_str))?
+            read::optional(stored.proposed_revision_id.as_ref().map(Uuid7::as_str))?
         },
         usage: stored.metered.usage()?,
         failure: stored

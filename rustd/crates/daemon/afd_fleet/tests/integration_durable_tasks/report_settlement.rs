@@ -67,7 +67,7 @@ async fn task(case: &Case, disposition: DurableTaskDisposition) -> DurableTaskRe
     }
 }
 
-async fn settle(case: &Case, request: &ReportRequest<'_>, durable_task_id: &str, reason: &str) {
+async fn settle(case: &Case, request: &ReportRequest<'_>, durable_task_id: &str) {
     let durable_task_id = id(durable_task_id);
     let mut plane = case.held.fixtures.plane();
     plane.durable_task_reports = Some(Arc::new(case.tasks.clone()));
@@ -91,7 +91,7 @@ async fn settle(case: &Case, request: &ReportRequest<'_>, durable_task_id: &str,
     assert_eq!(snapshot.context.generation, 2);
     assert_eq!(snapshot.context.stop_generation, 1);
     assert!(snapshot.context.usage.running_nanos > 0);
-    assert_accounted(case, &durable_task_id, reason).await;
+    assert_accounted(case, &durable_task_id).await;
     plane
         .report_with(
             &case.held.runner,
@@ -125,7 +125,7 @@ async fn native_blocked_report_settles_once_without_completion_claims() {
                 .expect("native blocked evidence")
                 .is_some()
         );
-        settle(case, &report, &durable_task_id, "prerequisite_unavailable").await;
+        settle(case, &report, &durable_task_id).await;
     })
     .await;
 }
@@ -143,13 +143,7 @@ async fn missing_semantic_report_preserves_charges_and_blocks_unverified_complet
                 .expect("ordinary report")
                 .is_none()
         );
-        settle(
-            case,
-            &report,
-            &task.durable_task.durable_task_id,
-            "completion_unverified",
-        )
-        .await;
+        settle(case, &report, &task.durable_task.durable_task_id).await;
     })
     .await;
 }
@@ -168,25 +162,19 @@ async fn continuation_without_recovery_checkpoint_settles_but_never_wakes() {
                 .expect("continuation preparation")
                 .is_some()
         );
-        settle(
-            case,
-            &report,
-            &durable_task_id,
-            "recovery_or_completion_unverified",
-        )
-        .await;
+        settle(case, &report, &durable_task_id).await;
         assert_eq!(case.counts().await, (1, 1, 1));
     })
     .await;
 }
 
-async fn assert_accounted(case: &Case, durable_task_id: &Uuid7, reason: &str) {
-    let stored: (String, i64) = sqlx::query_as(
-        "SELECT t.status_reason,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2) FROM fleet.durable_tasks t WHERE t.id=$1",
+async fn assert_accounted(case: &Case, durable_task_id: &Uuid7) {
+    let stored: i64 = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM billing.usage_lines WHERE work_id=$2) FROM fleet.durable_tasks t WHERE t.id=$1",
     ).bind(durable_task_id).bind(&case.held.run_key)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("financial observer"))
         .await.expect("task and measured charge committed together");
-    assert_eq!(stored, (reason.to_owned(), 1));
+    assert_eq!(stored, 1);
     assert!(case.held.fixtures.turn_settled(&case.held.turn_id).await);
 }
 

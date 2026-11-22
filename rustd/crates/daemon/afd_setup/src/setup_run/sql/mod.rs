@@ -43,8 +43,8 @@ pub(crate) const DELETE_RUNS: &str = include_str!("delete_runs.sql");
 /// draft, if the run is this runner's. `$1` run, `$2` runner.
 pub(super) const THREAD_OF_RUN: &str = include_str!("thread_of_run.sql");
 
-/// The creator's row, shared, refusing rather than waiting when another
-/// transaction holds it. `$1` user.
+/// The creator's row, key-shared through `identity.lock_user`, refusing rather
+/// than waiting when a delete holds it. `$1` user.
 pub(super) const HOLD_USER: &str = include_str!("hold_user.sql");
 
 /// The draft's row, refusing rather than waiting when another transaction

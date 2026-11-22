@@ -146,13 +146,13 @@ async fn a_hint_overtaken_since_it_was_read_is_passed() {
 
 /// Appends a candidate no build can read to draft `$1`, id `$2`, as its head.
 const UNREADABLE_HEAD: &str = "WITH appended AS ( \
-         INSERT INTO setup.candidates \
-             (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
-         SELECT $2,c.draft_id,c.revision+1,'{\"schema_version\":99}'::jsonb, \
-             c.canonical_digest,c.policy_semantics,now() \
-           FROM setup.candidates c JOIN setup.drafts d ON d.head_candidate_id=c.id \
+         INSERT INTO fleet.revisions \
+             (id,draft_id,revision,definition,canonical_digest,policy_semantics,installed,created_at,updated_at) \
+         SELECT $2,d.id,c.revision+1,'{\"schema_version\":99}'::jsonb, \
+             c.canonical_digest,c.policy_semantics,false,now(),now() \
+           FROM fleet.revisions c JOIN setup.drafts d ON d.head_revision_id=c.id \
           WHERE d.id=$1 RETURNING id) \
-     UPDATE setup.drafts SET head_candidate_id=(SELECT id FROM appended) WHERE id=$1";
+     UPDATE setup.drafts SET head_revision_id=(SELECT id FROM appended) WHERE id=$1";
 
 // Value: protects=a head candidate this build cannot read fails its message,
 // with a retry offered, and passes the draft so the walk goes on;

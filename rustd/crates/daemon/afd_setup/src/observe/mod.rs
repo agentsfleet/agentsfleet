@@ -78,7 +78,7 @@ impl Drafts {
         };
         let mut notices = rows::messages(&mut tx, id).await?;
         let running_sequence = rows::running_sequence(&mut tx, id).await?;
-        if let Some(candidate) = &locked.head_candidate_id {
+        if let Some(candidate) = &locked.head_revision_id {
             notices.push(Notice::candidate(id, candidate, locked.candidate_revision));
         }
         let closed = locked.status == DraftState::Closed;

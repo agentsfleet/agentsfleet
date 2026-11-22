@@ -121,7 +121,7 @@ pub(super) async fn bases(tasks: &DurableTasks) -> Result<u64> {
         .map_err(query("read retained bases without checkpoint owners"))?;
     transaction::recycle(connection);
     let mut removed = 0;
-    // Each base mutation owns one workspace quota lock; no task lock follows it.
+    // Each base mutation owns one workspace storage lock; no task lock follows it.
     for base in bases {
         let mut connection = transaction::acquire(tasks.runs.pool()).await?;
         let mut tx = transaction::begin(&mut connection).await?;

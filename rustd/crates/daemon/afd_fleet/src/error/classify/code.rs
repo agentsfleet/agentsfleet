@@ -89,7 +89,6 @@ impl Error {
             ErrorKind::DurableTaskRefused { reason } => reason.code(),
             ErrorKind::TurnCheckpointRefused { reason }
             | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
-            ErrorKind::DurableTaskTargetCounter { .. } => error_code::DURABLE_TASK_INVALID_TARGET,
             ErrorKind::SetupUnavailable => error_code::SETUP_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }

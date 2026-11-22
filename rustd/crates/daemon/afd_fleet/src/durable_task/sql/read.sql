@@ -6,10 +6,9 @@ SELECT t.id, t.originating_durable_task_item_id AS originating_item_id, t.target
        t.confirmed_effect_watermark, t.max_model_nanos, t.used_model_nanos,
        t.max_running_nanos, t.used_running_nanos,
        t.max_runs, t.used_runs, t.max_publications, t.used_publications,
-       t.max_decision_calls, t.used_decision_calls, t.max_fallback_reads,
-       t.used_fallback_reads, t.expires_at,
+       t.max_decision_calls, t.used_decision_calls, t.expires_at,
        CASE WHEN w.id IS NULL THEN NULL ELSE jsonb_build_object(
-           'active', w.consumed_at IS NULL AND w.cancelled_at IS NULL,
+           'active', w.cancelled_at IS NULL,
            'head', w.expected_head, 'checks', w.checks, 'updated_at', w.updated_at)::text END AS dependency,
        publication.receipt::text AS publication,
        EXTRACT(EPOCH FROM (t.expires_at - t.created_at))::int4 AS wall_seconds
@@ -17,7 +16,7 @@ FROM fleet.durable_tasks t
 JOIN fleet.revisions r ON r.id = t.accepted_revision_id AND r.fleet_id = t.fleet_id
 LEFT JOIN fleet.durable_task_checkpoints c ON c.id = t.durable_task_checkpoint_id AND c.durable_task_id = t.id
 LEFT JOIN LATERAL (
-    SELECT id, expected_head, checks, updated_at, consumed_at, cancelled_at FROM fleet.durable_task_waits
+    SELECT id, expected_head, checks, updated_at, cancelled_at FROM fleet.durable_task_waits
     WHERE durable_task_id = t.id AND fleet_id = t.fleet_id AND workspace_id = t.workspace_id
     ORDER BY generation DESC LIMIT 1
 ) w ON true

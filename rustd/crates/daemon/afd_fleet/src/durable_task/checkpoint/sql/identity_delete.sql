@@ -1,6 +1,6 @@
 WITH held AS MATERIALIZED (
     SELECT id, created_at FROM fleet.durable_task_identity_keys
-    WHERE id=$1 AND workspace_id=$2 AND repository=$3 FOR UPDATE
+    WHERE id=$1 AND workspace_id=$2 AND repository=$3
 ), fresh AS MATERIALIZED (
     SELECT clock_timestamp() AS at FROM held
 )

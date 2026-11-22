@@ -102,7 +102,7 @@ async fn run(scene: &Scenario, upstream: &Upstream, turn: &Uuid7) -> Vec<Asked> 
 /// The fleet thread's stored summary: what its watermark covers through.
 async fn covered_through(scene: &Scenario) -> Option<u64> {
     let document: Option<Value> =
-        sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE thread_id = $1")
+        sqlx::query_scalar("SELECT document FROM thread.compactions WHERE thread_id = $1")
             .bind(&scene.fleet)
             .fetch_optional(&mut *connection(scene).await)
             .await

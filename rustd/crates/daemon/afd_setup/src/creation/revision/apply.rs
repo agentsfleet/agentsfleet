@@ -99,7 +99,8 @@ impl Creations {
         )
         .await?;
         checked.require_digest(&request.review_digest)?;
-        let revision = self.setup.drafts.mint(now)?;
+        // The proposal is installed in place, so it keeps its id as the fleet's revision.
+        let revision = captured.candidate.id.clone();
         let won = replay::reserve(
             &mut tx,
             replay::Reservation {

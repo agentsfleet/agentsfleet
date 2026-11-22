@@ -37,13 +37,13 @@ INSERT INTO billing.usage_lines (
     requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
-    created_at, updated_at
+    created_at
 )
 SELECT id, work_kind, work_id, seq, kind, tenant, tenant,
        fleet, name, turn, CASE WHEN fleet IS NULL THEN work_id END,
        model, model, posture, at::timestamptz, $15, 0, 0, 0, 0, $16,
        CASE WHEN kind = $18 THEN $17 ELSE 0 END,
-       unpriced, money, at::timestamptz, at::timestamptz
+       unpriced, money, at::timestamptz
   FROM unnest($1, $2::text[], $3, $4::bigint[], $5::text[],
               $6, $7, $8::text[], $9::text[], $10::text[],
               $11::text[], $12::bigint[], $13::bigint[], $14)

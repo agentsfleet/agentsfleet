@@ -1,4 +1,4 @@
-//! Idempotent remote DELETE and exact-once quota release survive lost replies.
+//! Idempotent remote DELETE and its exact-once receipt survive lost replies.
 
 use crate::{
     Result,
@@ -82,17 +82,17 @@ async fn claim(tasks: &DurableTasks, limit: i64) -> Result<Vec<Purge>> {
 async fn acknowledge(tasks: &DurableTasks, purge: &Purge) -> Result<()> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    // This order is shared with registration and verification. Missing owners need no recreated quota row.
+    // This order is shared with registration and verification.
     let _parent = super::lock(&mut tx, &purge.workspace_id).await?;
     sqlx::query(include_str!("../sql/purge_complete.sql"))
         .bind(&purge.object_id)
         .bind(&purge.workspace_id)
         .execute(&mut *tx)
         .await
-        .map_err(query("release acknowledged remote storage bytes once"))?;
-    tx.commit().await.map_err(query(
-        "commit remote deletion receipt and exact quota release",
-    ))?;
+        .map_err(query("acknowledge remote storage deletion once"))?;
+    tx.commit()
+        .await
+        .map_err(query("commit remote deletion receipt"))?;
     transaction::recycle(connection);
     Ok(())
 }

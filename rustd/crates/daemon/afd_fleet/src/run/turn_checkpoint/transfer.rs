@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     Result,
-    durable_task::checkpoint::{self, StoredObject, Verification, lock_quota},
+    durable_task::checkpoint::{self, StoredObject, Verification, lock_storage},
     error::query,
     run::Runs,
 };
@@ -150,7 +150,7 @@ async fn confirm(
     let mut connection = transaction::acquire(runs.pool()).await?;
     let mut custody = FileOwner::lock(runs, &mut connection, presented, reference, purpose).await?;
     if !receipts.is_empty() {
-        lock_quota(&mut custody.owner.tx, &custody.owner.current.workspace_id).await?;
+        lock_storage(&mut custody.owner.tx, &custody.owner.current.workspace_id).await?;
     }
     objects::scoped(&mut custody, ids).await?;
     if !receipts.is_empty() {

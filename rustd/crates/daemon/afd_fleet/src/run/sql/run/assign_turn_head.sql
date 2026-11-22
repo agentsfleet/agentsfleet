@@ -82,10 +82,7 @@ WITH fleet AS MATERIALIZED (
   JOIN head h ON h.id = a.id
   CROSS JOIN won_thread
   WHERE a.settled_at IS NULL
-    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR NOT EXISTS (
-      SELECT 1 FROM runner.turn_recovery recovery
-      WHERE recovery.turn_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
-    ))
+    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR a.head_turn_checkpoint_id IS NULL)
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   -- Stamps the fence and, the first time a run takes the turn, opens its event: one
@@ -139,7 +136,7 @@ WITH fleet AS MATERIALIZED (
   LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
   LEFT JOIN thread.threads s ON s.id = f.id
 ), catalogue AS MATERIALIZED (
-  SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
+  SELECT c.number FROM model.revision c WHERE c.id = 1
 ), platform AS MATERIALIZED (
   -- The active default's secret, chosen as the platform resolution chooses it,
   -- and the digest of what it holds: the same expression `platform.sql` computes
@@ -171,7 +168,7 @@ SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        i.revision_id, i.durable_task_generation, i.current_definition,
        a.inserted, a.created_at AS opened_at, a.status AS event_status,
        k.event_count, k.budget_used_nanos,
-       (SELECT resource_version FROM catalogue) AS catalogue_version,
+       (SELECT number FROM catalogue) AS catalogue_version,
        pl.platform_secret_id, pl.platform_secret_digest,
        -- Whether the head belongs to a durable task: only such an issue reads
        -- its task source (`task/sql/issue_source.sql`); a plain chat's run

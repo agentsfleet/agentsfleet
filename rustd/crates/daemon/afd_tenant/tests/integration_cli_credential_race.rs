@@ -54,7 +54,9 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
     let mut hold = sqlx::Connection::begin(&mut *blocker)
         .await
         .expect("the hold opens");
-    sqlx::query("SELECT 1 FROM identity.users WHERE id = $1 FOR UPDATE")
+    // An uncommitted delete holds Ada's row as FOR UPDATE does: `identity.users`
+    // is append-only, so api_runtime has no UPDATE to lock it with. Rolled back.
+    sqlx::query("DELETE FROM identity.users WHERE id = $1")
         .bind(&fixture.user)
         .execute(&mut *hold)
         .await
@@ -64,7 +66,7 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
             fixture.both_wait_behind(blocker_pid).await,
             "both reach the insert"
         );
-        hold.commit().await.expect("the hold releases");
+        hold.rollback().await.expect("the hold releases");
     };
     let (first, second, ()) = tokio::join!(
         credentials.mint(&request, NOW),
@@ -88,12 +90,12 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1, $2, now(), now()) \
+               INSERT INTO identity.tenants (id, name, created_at) \
+               VALUES ($1, $2, now()) \
              ) \
              INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3, $1, $4, $5, NULL, now(), now())",
+               (id, tenant_id, oidc_subject, email, display_name, created_at) \
+             VALUES ($3, $1, $4, $5, NULL, now())",
         )
         .bind(&self.tenant)
         .bind(RACER_TENANT_NAME)

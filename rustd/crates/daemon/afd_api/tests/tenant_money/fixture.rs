@@ -59,7 +59,7 @@ impl Setup {
             .zip([17_i64, 19_i64])
         {
             // A setup run's charge is its usage line, as the report logs it.
-            sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,run_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,created_at,updated_at) VALUES($1,$5,$2,0, 'model',$4,$6,$2,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp(101),to_timestamp(101))")
+            sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,run_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,created_at) VALUES($1,$5,$2,0, 'model',$4,$6,$2,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp(101))")
                 .bind(settlement).bind(run).bind(charged)
                 .bind(&owner.tenant).bind(afd_billing::sql::work::SETUP_RUN).bind(&setup.workspace)
                 .execute(&mut *connection).await.expect("a setup line, including a paid failed run");
@@ -81,14 +81,14 @@ impl Setup {
             .acquire()
             .await
             .expect("link seed connection");
-        sqlx::query("INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at) VALUES($1,$2,$1,'fixture@example.invalid',now(),now())")
+        sqlx::query("INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at) VALUES($1,$2,$1,'fixture@example.invalid',now())")
             .bind(&self.creator).bind(&owner.tenant).execute(&mut *connection).await.expect("private chat creator");
         sqlx::query("INSERT INTO fleet.fleets(id,workspace_id,tenant_id,name,status,required_tags,memory_reads_workspace,memory_publishes_workspace,resource_version,created_at,updated_at) VALUES($1,$2,$3,'saved-setup','active','{}',false,false,1,now(),now())")
             .bind(&fleet).bind(&self.workspace).bind(&owner.tenant).execute(&mut *connection).await.expect("public saved fleet");
         // Every turn names its thread, so a fleet's thread is written with it, as creation writes it.
         sqlx::query("INSERT INTO thread.threads(id,fleet_id,fencing_token,run_expires_at,created_at,updated_at) VALUES($1,$1,0,clock_timestamp()-interval '1 millisecond',now(),now())")
             .bind(&fleet).execute(&mut *connection).await.expect("public saved fleet's thread");
-        sqlx::query("INSERT INTO setup.drafts(id,workspace_id,tenant_id,user_id,title,status,source_type,fleet_id,last_message_sequence,resource_version,created_at,updated_at) VALUES($1,$2,$3,$4,'private title','closed','blank',$5,0,1,now(),now())")
+        sqlx::query("INSERT INTO setup.drafts(id,workspace_id,tenant_id,user_id,title,status,source_type,fleet_id,resource_version,created_at,updated_at) VALUES($1,$2,$3,$4,'private title','closed','blank',$5,1,now(),now())")
             .bind(&self.draft).bind(&self.workspace).bind(&owner.tenant).bind(&self.creator).bind(&fleet)
             .execute(&mut *connection).await.expect("private draft linked to saved fleet");
         // A draft's thread is written with it too, as draft creation writes it.

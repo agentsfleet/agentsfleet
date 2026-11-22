@@ -40,7 +40,6 @@ impl Error {
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
-            | ErrorKind::DurableTaskTargetCounter { .. }
             | ErrorKind::DurableTaskControlConflict { .. }
             | ErrorKind::DurableTaskPrecondition { .. }
             | ErrorKind::DurableTaskRefused { .. }
@@ -101,7 +100,6 @@ impl Error {
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
-            | ErrorKind::DurableTaskTargetCounter { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
             | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlConflict { .. }
@@ -165,7 +163,6 @@ impl Error {
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
-            | ErrorKind::DurableTaskTargetCounter { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
             | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlConflict { .. }

@@ -38,7 +38,6 @@ pub(super) async fn issue<'a>(
     run: DurableTaskRun<'_>,
     input: &'a garde::Valid<DurableTaskEffectInput>,
     effect: &Effect,
-    recovery: &super::super::github::recovery::Sealed,
 ) -> Result<PublicationPermit<'a>> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
@@ -91,9 +90,6 @@ pub(super) async fn issue<'a>(
     if updated.rows_affected() != 1 {
         return Err(DurableTaskRefusal::EffectUncertain.into());
     }
-    recovery
-        .insert(&mut tx, &owned.scope.workspace_id, &effect.id)
-        .await?;
     sqlx::query(include_str!("sql/debit.sql"))
         .bind(&effect.durable_task_id)
         .execute(&mut *tx)
@@ -156,11 +152,6 @@ pub(super) async fn confirm(tasks: &DurableTasks, effect: &Effect, commit: &str)
             .await
             .map_err(query("advance confirmed native effect watermark"))?;
     }
-    sqlx::query(include_str!("sql/drop_recovery.sql"))
-        .bind(&effect.id)
-        .execute(&mut *tx)
-        .await
-        .map_err(query("erase resolved effect read custody"))?;
     tx.commit()
         .await
         .map_err(query("commit confirmed publication receipt"))?;

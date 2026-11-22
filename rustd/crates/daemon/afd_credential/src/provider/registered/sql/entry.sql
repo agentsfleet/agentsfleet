@@ -3,12 +3,12 @@ WITH locked AS MATERIALIZED (
            m.id AS platform_model_id, m.context_cap_tokens AS context_window_tokens,
            e.id AS entry_id, s.id AS secret_id, s.meta_base_url,
            sha256(s.secret_ciphertext) AS secret_digest,
-           r.resource_version, s.workspace_id AS workspace_id, s.key_name,
+           r.number, s.workspace_id AS workspace_id, s.key_name,
            m.inference
       FROM model.tenant_models e
       JOIN vault.secrets s ON s.workspace_id = e.workspace_id AND s.key_name = e.secret_ref
       JOIN model.platform_models m ON m.provider = s.meta_provider AND m.model_name = e.model_name
-     CROSS JOIN model.catalogue_version r
+     CROSS JOIN model.revision r
      WHERE e.tenant_id = $1 AND e.id = $2
        AND s.meta_has_key
        FOR SHARE OF e, s, m, r
@@ -22,7 +22,7 @@ SELECT l.provider, l.model, l.context_window_tokens,
            l.entry_id, l.secret_id, l.provider, l.meta_base_url,
            encode(l.secret_digest, 'hex'), l.model, l.context_window_tokens,
            p.input_nanos_per_mtok, p.output_nanos_per_mtok,
-           p.id, l.resource_version
+           p.id, l.number
        )::text, 'UTF8')), 'hex') AS resolution_version,
        l.workspace_id, l.key_name,
        l.meta_base_url AS base_url,

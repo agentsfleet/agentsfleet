@@ -84,7 +84,7 @@ WITH asked AS (
   -- Read once the locks are held, so every deadline is judged after them.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked
 ), catalogue AS MATERIALIZED (
-  SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
+  SELECT c.number FROM model.revision c WHERE c.id = 1
 ), floors AS MATERIALIZED (
   SELECT date_trunc('milliseconds', now() - $33::interval) AS day_floor,
          date_trunc('month', now(), 'UTC') AS month_floor
@@ -111,7 +111,7 @@ WITH asked AS (
              AND p.thread_expires_at > i.checked_at AS fence_holds,
          p.posture = a.posture AND p.provider = a.provider AND p.model = a.model
              AND (a.catalogue_version IS NULL
-                  OR a.catalogue_version = (SELECT resource_version FROM catalogue))
+                  OR a.catalogue_version = (SELECT number FROM catalogue))
              AS priced_as_held,
          a.daily_ceiling IS NULL OR f.head_revision_id IS NOT DISTINCT FROM a.head_revision
              AS ceilings_current,
@@ -168,11 +168,11 @@ WITH asked AS (
        turn_id, run_id, provider, model, posture, requested_at,
        input_token_count, cached_input_token_count, cache_write_token_count,
        cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms,
-       platform_model_price_id, unpriced_token_count, charged_nanos, created_at, updated_at)
+       platform_model_price_id, unpriced_token_count, charged_nanos, created_at)
   SELECT line.id, $29, g.id, line.kind, line.seq, g.tenant_id, g.workspace_id, g.fleet_id,
          f.name, g.turn_id, NULL, g.provider, g.model, g.posture, line.requested_at,
          line.input, line.cached, line.write, line.write_5m, line.write_1h, line.output,
-         line.runtime_ms, line.price_id, line.unpriced, line.charged, now(), now()
+         line.runtime_ms, line.price_id, line.unpriced, line.charged, now()
   FROM (
       SELECT requested.run_id, requested.id, $30::text AS kind, requested.seq,
              requested.requested_at, requested.input, requested.cached, requested.write,

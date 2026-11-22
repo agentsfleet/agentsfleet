@@ -36,9 +36,6 @@ use jiff::Timestamp;
 
 use super::harness;
 
-#[path = "completion.rs"]
-mod completion;
-
 /// The field a stored credential carries its shared secret in.
 const WEBHOOK_SECRET_FIELD: &str = "webhook_secret";
 

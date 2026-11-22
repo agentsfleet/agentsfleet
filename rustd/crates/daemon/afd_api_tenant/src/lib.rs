@@ -98,8 +98,7 @@ pub fn workspace_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<Met
         )),
         WorkspaceRoute::Secrets => Some(get(secret::list::<D>).post(secret::store::<D>)),
         WorkspaceRoute::Secret => Some(put(secret::replace::<D>).delete(secret::remove::<D>)),
-        WorkspaceRoute::Onboarding => Some(get(handler::preference::onboarding::<D>)),
-        WorkspaceRoute::Preference => Some(put(handler::preference::write::<D>)),
+        WorkspaceRoute::Onboarding => Some(get(handler::onboarding::read::<D>)),
         WorkspaceRoute::Approvals => Some(get(handler::approval::list::<D>)),
         WorkspaceRoute::Approval => Some(get(handler::approval::detail::<D>)),
         WorkspaceRoute::ApprovalResolve => Some(post(handler::approval::resolve::resolve::<D>)),
@@ -138,7 +137,6 @@ fn draft_handler_for<D: TenantPlane>(verb: WorkspaceRoute) -> Option<MethodRoute
         | WorkspaceRoute::Turns
         | WorkspaceRoute::TurnsStream
         | WorkspaceRoute::Onboarding
-        | WorkspaceRoute::Preference
         | WorkspaceRoute::Approvals
         | WorkspaceRoute::Approval
         | WorkspaceRoute::ApprovalResolve

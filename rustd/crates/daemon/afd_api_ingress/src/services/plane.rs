@@ -40,9 +40,6 @@ pub trait IngressPlane: Shared {
     /// What a connect is started, finished, read and forgotten through.
     fn connectors(&self) -> &Self::Connectors;
 
-    /// Authoritative task lifecycle over the same fleet run and turn stores.
-    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle;
-
     /// The workspace whose vault holds this deployment's own platform secrets.
     ///
     /// `None` for a deployment that configured none, and every surface that

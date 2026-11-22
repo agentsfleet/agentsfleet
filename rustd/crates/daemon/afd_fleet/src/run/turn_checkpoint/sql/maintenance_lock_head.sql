@@ -1,1 +1,1 @@
-SELECT turn_id FROM runner.turn_recovery WHERE turn_id=$1 FOR UPDATE NOWAIT
+SELECT id AS turn_id FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL FOR NO KEY UPDATE NOWAIT

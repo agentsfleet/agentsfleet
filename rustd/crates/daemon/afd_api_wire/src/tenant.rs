@@ -21,9 +21,6 @@ pub struct MintApiKeyRequest<'a> {
     /// What the key will be called. Unique per tenant.
     #[serde(borrow)]
     pub key_name: Cow<'a, str>,
-    /// Free text beside it, for whoever reads the list in six months.
-    #[serde(borrow, default)]
-    pub description: Option<Cow<'a, str>>,
 }
 
 /// The one response that reveals a key's plaintext.

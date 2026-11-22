@@ -81,12 +81,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: std::num::TryFromIntError,
     },
-    #[error("native task target field {column} cannot be represented")]
-    DurableTaskTargetCounter {
-        column: &'static str,
-        #[source]
-        source: std::num::TryFromIntError,
-    },
     #[error("the task continuation could not be admitted")]
     DurableTaskControlTurn {
         state: af_wire::durable_task::DurableTaskState,

@@ -42,7 +42,6 @@ async fn saved_limits(case: &Case) {
                 max_runs: 3,
                 max_publication_attempts: 2,
                 max_decision_calls: 9,
-                max_fallback_reads: 3,
             },
             ..Default::default()
         },
@@ -64,7 +63,6 @@ async fn saved_limits(case: &Case) {
         runs: 3,
         publications: 2,
         decision_calls: 9,
-        fallback_reads: 3,
     };
     assert_eq!(context.limits, expected);
     narrower_replay(case, &fixture, &input, &accepted, expected).await;

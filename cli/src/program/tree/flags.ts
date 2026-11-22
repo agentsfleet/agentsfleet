@@ -234,7 +234,6 @@ export const sortFlag = Flag.Literals("sort", API_KEY_SORTS).pipe(
 );
 
 export const keyNameFlag = textFlag(FLAG.name, "Human-readable key name");
-export const descriptionFlag = textFlag("description", "Optional description");
 export const secretNameFlag = textFlag("secret", "Named secret from the workspace vault", METAVAR.name);
 export const modelOverrideFlag = textFlag(FLAG.model, "Override the default model identifier", METAVAR.name);
 

@@ -60,7 +60,7 @@ pub(super) async fn retain(
 async fn remove(tasks: &DurableTasks, identity: &Identity) -> Result<u64> {
     let mut connection = transaction::acquire(tasks.runs.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    // Both registration families take this quota lock before creating a key or object.
+    // Both registration families take this storage lock before creating a key or object.
     let removed = if super::lock(&mut tx, &identity.workspace_id).await? {
         sqlx::query(include_str!("../sql/identity_delete.sql"))
             .bind(&identity.id)

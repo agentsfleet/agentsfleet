@@ -26,9 +26,6 @@ pub struct DurableTaskDefaults {
     /// Total physical decision calls, including eligible paid retries.
     #[garde(range(min = 1, max = 65_535))]
     pub max_decision_calls: u32,
-    /// Total dependency fallback reads, separate from signed evidence.
-    #[garde(range(min = 1, max = 65_535))]
-    pub max_fallback_reads: u32,
 }
 
 impl Default for DurableTaskDefaults {
@@ -41,7 +38,6 @@ impl Default for DurableTaskDefaults {
             max_runs: limits.runs,
             max_publication_attempts: limits.publications,
             max_decision_calls: limits.decision_calls,
-            max_fallback_reads: limits.fallback_reads,
         }
     }
 }
@@ -55,7 +51,6 @@ impl DurableTaskDefaults {
             runs: self.max_runs,
             publications: self.max_publication_attempts,
             decision_calls: self.max_decision_calls,
-            fallback_reads: self.max_fallback_reads,
         }
     }
 }

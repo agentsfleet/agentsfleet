@@ -185,8 +185,8 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     execute(
         &scene,
         &format!(
-            "WITH t AS (INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ('{tenant}'::uuid, 'other', now(), now()) RETURNING id) \
+            "WITH t AS (INSERT INTO identity.tenants (id, name, created_at) \
+               VALUES ('{tenant}'::uuid, 'other', now()) RETURNING id) \
              INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
              SELECT '{workspace}'::uuid, t.id, 'other', now() FROM t \
              WHERE $1 IS NOT NULL AND $2 IS NOT NULL"

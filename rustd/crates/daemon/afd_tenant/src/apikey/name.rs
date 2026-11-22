@@ -1,6 +1,6 @@
 //! What a tenant may call an api-key.
 
-use af_validate::{TEXT_MAX_CHARS, charset};
+use af_validate::charset;
 use garde::{Unvalidated, Valid, Validate};
 
 use crate::Result;
@@ -56,31 +56,6 @@ fn proved<T: Validate<Context = ()>>(field: T, named: ApiKeyField) -> Result<T> 
         .validate()
         .map(Valid::into_inner)
         .map_err(|_report| error::apikey_field(named))
-}
-
-/// A description that passed its bound.
-///
-/// Absent and empty are the same thing on the wire and in the column: the
-/// statement binds `''` for a key with no description. So this holds a `&str`
-/// rather than an `Option`, and the absence is resolved at the edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
-#[garde(transparent)]
-pub struct Description<'a>(#[garde(length(chars, max = TEXT_MAX_CHARS))] &'a str);
-
-impl<'a> Description<'a> {
-    /// The description, for the statement.
-    #[must_use]
-    pub const fn as_str(self) -> &'a str {
-        self.0
-    }
-
-    /// Accepts a description within its bound, treating absence as empty.
-    ///
-    /// # Errors
-    /// Refuses one past the text ceiling, `af_validate::TEXT_MAX_CHARS`.
-    pub fn parse(raw: Option<&'a str>) -> Result<Self> {
-        proved(Self(raw.unwrap_or_default()), ApiKeyField::Description)
-    }
 }
 
 /// The one mutation this surface accepts, as a value that proves it was asked.
@@ -145,34 +120,11 @@ mod tests {
     }
 
     #[test]
-    fn an_absent_description_is_the_empty_one() {
-        assert_eq!(
-            Description::parse(None).map(Description::as_str).ok(),
-            Some("")
-        );
-        assert_eq!(
-            Description::parse(Some("")).map(Description::as_str).ok(),
-            Some("")
-        );
-    }
-
-    #[test]
     fn the_only_accepted_mutation_is_deactivation() {
         assert_eq!(refusal(Deactivation::parse(false)), None);
         assert_eq!(
             refusal(Deactivation::parse(true)),
             Some(error_code::APIKEY_READONLY_FIELD)
         );
-    }
-
-    #[test]
-    fn a_description_past_its_bound_is_refused() {
-        let long = "d".repeat(TEXT_MAX_CHARS + 1);
-        assert_eq!(
-            refusal(Description::parse(Some(&long))),
-            Some(error_code::INVALID_REQUEST)
-        );
-        let at_bound = "d".repeat(TEXT_MAX_CHARS);
-        assert_eq!(refusal(Description::parse(Some(&at_bound))), None);
     }
 }

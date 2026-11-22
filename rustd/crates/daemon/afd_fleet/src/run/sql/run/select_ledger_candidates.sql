@@ -65,10 +65,7 @@ JOIN LATERAL (
         z.head_revision_id)
       AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text))
 WHERE ($13::timestamptz IS NULL OR (head.created_at, head.id)>($13, $14::uuid))
-  AND ($15::boolean OR head.durable_task_id IS NOT NULL OR NOT EXISTS (
-    SELECT 1 FROM runner.turn_recovery recovery
-    WHERE recovery.turn_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
-  ))
+  AND ($15::boolean OR head.durable_task_id IS NOT NULL OR head.head_turn_checkpoint_id IS NULL)
 -- Recovery pages keep the oldest eligible head per fleet and ignore locality.
 ORDER BY CASE WHEN $12 THEN head.created_at END,
          CASE WHEN $12 THEN head.id END,

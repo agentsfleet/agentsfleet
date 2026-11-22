@@ -268,7 +268,6 @@ async fn transition(
     sqlx::query(include_str!("../waits/sql/transition.sql"))
         .bind(&current.durable_task_id)
         .bind(state.as_str())
-        .bind(reason)
         .bind(state.is_terminal())
         .execute(&mut *connection)
         .await

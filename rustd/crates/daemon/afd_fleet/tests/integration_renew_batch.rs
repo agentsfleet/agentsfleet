@@ -34,9 +34,9 @@ const SPEND: &str = "INSERT INTO billing.usage_lines \
      (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
       provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
       cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
-      output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at) \
+      output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at) \
      VALUES (uuidv7(), 'fleet_run', uuidv7(), $5, 0, $1, $2, $3, 'spend', uuidv7(), \
-             'fixture', 'fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $4, now(), now())";
+             'fixture', 'fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $4, now())";
 
 /// Renews `runs` on `held`'s host in one frame, on a fresh run service.
 pub(crate) async fn frame(

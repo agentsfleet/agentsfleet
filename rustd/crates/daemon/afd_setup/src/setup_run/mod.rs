@@ -296,7 +296,7 @@ async fn head_candidate(
     connection: &mut PgConnection,
     draft: &read::Locked,
 ) -> Result<Option<SetupHead>> {
-    let Some(id) = &draft.head_candidate_id else {
+    let Some(id) = &draft.head_revision_id else {
         return Ok(None);
     };
     let candidate = crate::candidate::read(connection, &draft.id, id).await?;

@@ -94,12 +94,10 @@ async fn kept_facts_skip_the_pre_read_until_a_version_moves() {
         .expect("a kept frame renews");
     let steady = steady.close().await;
 
-    sqlx::query(
-        "UPDATE model.catalogue_version SET resource_version = resource_version + 1 WHERE id = 1",
-    )
-    .execute(&mut *owner.acquire().await.expect("owner"))
-    .await
-    .expect("the catalogue moves");
+    sqlx::query("UPDATE model.revision SET number = number + 1 WHERE id = 1")
+        .execute(&mut *owner.acquire().await.expect("owner"))
+        .await
+        .expect("the catalogue moves");
     held.run_a_slice().await;
     kept_frame(&plane, &held, run)
         .await
@@ -227,12 +225,10 @@ async fn catalogue_cache_reprices_after_bump() {
     .execute(&mut *owner)
     .await
     .expect("the rate doubles");
-    sqlx::query(
-        "UPDATE model.catalogue_version SET resource_version = resource_version + 1 WHERE id = 1",
-    )
-    .execute(&mut *owner)
-    .await
-    .expect("the catalogue moves");
+    sqlx::query("UPDATE model.revision SET number = number + 1 WHERE id = 1")
+        .execute(&mut *owner)
+        .await
+        .expect("the catalogue moves");
     drop(owner);
     held.run_a_slice().await;
     kept_frame_with(&plane, &held, run, output_line(&held, 1, 1_000))
@@ -319,12 +315,10 @@ async fn a_price_added_after_an_empty_book_is_charged() {
         .seed_model_rate(crate::seed::PROVIDER, crate::seed::MODEL)
         .await;
     let mut owner = held.fixtures.database.acquire().await.expect("owner");
-    sqlx::query(
-        "UPDATE model.catalogue_version SET resource_version = resource_version + 1 WHERE id = 1",
-    )
-    .execute(&mut *owner)
-    .await
-    .expect("the catalogue moves");
+    sqlx::query("UPDATE model.revision SET number = number + 1 WHERE id = 1")
+        .execute(&mut *owner)
+        .await
+        .expect("the catalogue moves");
     drop(owner);
     held.run_a_slice().await;
     kept_frame_with(&plane, &held, run, output_line(&held, 1, 1_000))

@@ -93,7 +93,7 @@ impl Drafts {
             connection,
             &locked.id,
             locked
-                .head_candidate_id
+                .head_revision_id
                 .as_ref()
                 .ok_or_else(|| invalid(NO_CANDIDATE))?,
         )
@@ -103,7 +103,7 @@ impl Drafts {
             instruction_edits: patch.instruction_edits,
         })?;
         let revision = locked
-            .candidate_revision
+            .last_revision
             .checked_add(1)
             .ok_or_else(|| invalid(REVISION_EXHAUSTED))?;
         candidate::append(

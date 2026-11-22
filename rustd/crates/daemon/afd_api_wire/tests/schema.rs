@@ -1,4 +1,4 @@
-//! The three shapes a schema derive over THIS crate's types could have failed on.
+//! The two shapes a schema derive over THIS crate's types could have failed on.
 //!
 //! # Why a spike, and why it is over real types
 //!
@@ -26,7 +26,6 @@
 
 use af_wire::{policy, runner};
 use afd_api_wire::ingress::{AppIngressAnswer, IdentityAnswer};
-use afd_api_wire::preference::PreferencesResponse;
 use afd_api_wire::secret::{StoreSecretRequest, StoredSecretResponse};
 use utoipa::{PartialSchema, ToSchema};
 
@@ -76,19 +75,6 @@ fn a_type_carrying_only_borrowed_text_still_emits_an_object() {
     assert_eq!(
         schema["properties"]["name"]["type"], "string",
         "the borrowed name must publish as a string: {schema}"
-    );
-}
-
-/// A map of borrowed keys to unparsed values publishes as a free-form object.
-///
-/// The third suspect shape, and the one the preferences bag actually is.
-#[test]
-fn a_map_of_borrowed_keys_to_raw_values_publishes_as_an_object() {
-    let schema = schema_of::<PreferencesResponse<'_>>();
-
-    assert_eq!(
-        schema["properties"]["prefs"]["type"], "object",
-        "the preferences bag must publish as an object: {schema}"
     );
 }
 

@@ -1,4 +1,4 @@
-//! Workspace/repository identity and quota are shared by a bounded object batch.
+//! Workspace/repository identity and the workspace storage lock are shared by a bounded object batch.
 
 use crate::{Result, durable_task::storage::R2CheckpointStore, error::query, run::Runs};
 use af_core::{clock, id::Uuid7};
@@ -35,12 +35,13 @@ impl Identity {
     }
 }
 
-pub(crate) async fn quota(connection: &mut PgConnection, workspace: &Uuid7) -> Result<()> {
-    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/quota.sql"))
+/// Serializes one workspace's checkpoint storage writes until the transaction ends.
+pub(crate) async fn lock_storage(connection: &mut PgConnection, workspace: &Uuid7) -> Result<()> {
+    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/lock_storage.sql"))
         .bind(workspace)
         .fetch_one(connection)
         .await
-        .map_err(query("lock workspace checkpoint quota"))?;
+        .map_err(query("lock workspace checkpoint storage"))?;
     Ok(())
 }
 
@@ -56,7 +57,7 @@ pub(crate) async fn load(
         .bind(repository)
         .fetch_optional(&mut *connection)
         .await
-        .map_err(query("lock active repository identity key"))?;
+        .map_err(query("read repository identity key under the storage lock"))?;
     if let Some(stored) = stored {
         let id = stored.id.clone();
         let envelope = stored.envelope.into_envelope()?;

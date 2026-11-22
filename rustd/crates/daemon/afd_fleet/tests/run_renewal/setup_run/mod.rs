@@ -191,7 +191,7 @@ impl Case {
     /// The turn `turn` as its report left it.
     async fn turn(&self, turn: &Uuid7) -> TurnRow {
         let (status, answer, candidate, failure_reason, failure_detail) = sqlx::query_as(
-            "SELECT status, answer_text, candidate_id, failure_reason, failure_detail \
+            "SELECT status, answer_text, proposed_revision_id, failure_reason, failure_detail \
              FROM thread.turns WHERE id = $1 AND thread_id = $2",
         )
         .bind(turn)
@@ -211,8 +211,8 @@ impl Case {
     /// The draft's candidates: how many, and which is the head.
     async fn candidates(&self) -> (i64, Option<Uuid7>) {
         sqlx::query_as(
-            "SELECT (SELECT count(*) FROM setup.candidates c WHERE c.draft_id = d.id), \
-                    d.head_candidate_id \
+            "SELECT (SELECT count(*) FROM fleet.revisions c WHERE c.draft_id = d.id), \
+                    d.head_revision_id \
              FROM setup.drafts d WHERE d.id = $1",
         )
         .bind(&self.draft.id)

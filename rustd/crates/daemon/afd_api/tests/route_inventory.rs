@@ -84,9 +84,8 @@ const INVENTORY: &[&str] = &[
     "/v1/workspaces/{workspace_id}/approvals",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}",
     "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
-    // Onboarding and preferences.
+    // Onboarding.
     "/v1/workspaces/{workspace_id}/onboarding",
-    "/v1/workspaces/{workspace_id}/preferences/{pref_key}",
     // M227 N1–N11 (`docs/architecture/api_resources.md`) — eligible models,
     // creator-private drafts and reviewed setup revisions. Removed R1/R2
     // `library-entries` and the retired Plugin routes have no row here.

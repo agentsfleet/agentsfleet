@@ -11,8 +11,7 @@
               indexes the JSON it was answered"
 )]
 
-use af_crypto::entropy::Entropy;
-use afd_tenant::preference::Preferences;
+use afd_tenant::onboarding::Onboarding;
 use afd_turns::Turns;
 use afd_turns::view::{Filter, History, Steer, prefix_to_like, steer_actor};
 use agentsfleetd::supervisor::Supervisor;
@@ -81,7 +80,7 @@ async fn fleet_steer_is_not_a_person_steer_to_onboarding_and_filters() {
     assert_eq!(status, 202, "{answer}");
 
     let scene = crew.run();
-    let signals = Preferences::new(scene.booted.database.clone(), Entropy::new())
+    let signals = Onboarding::new(scene.booted.database.clone())
         .signals(&scene.workspace, &scene.tenant)
         .await
         .expect("the onboarding read");

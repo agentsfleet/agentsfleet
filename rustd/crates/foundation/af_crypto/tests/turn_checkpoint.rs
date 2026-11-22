@@ -21,7 +21,6 @@ fn turn_history_authenticates_every_scope_and_version_dimension()
         Aad::turn_recovery(&workspace, &fleet, &event, 8, 1, af_crypto::KEK_VERSION),
         Aad::turn_recovery(&workspace, &fleet, &event, 7, 2, af_crypto::KEK_VERSION),
         Aad::turn_recovery(&workspace, &fleet, &event, 7, 1, af_crypto::KEK_VERSION + 1),
-        Aad::effect_recovery(&workspace, &event),
         Aad::checkpoint_identity(
             &workspace,
             &event,

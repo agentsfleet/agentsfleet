@@ -82,15 +82,12 @@ impl Display for SessionField {
 pub enum ApiKeyField {
     /// The name the key is listed and grepped under.
     Name,
-    /// The free text beside it.
-    Description,
 }
 
 impl Display for ApiKeyField {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Name => "key_name",
-            Self::Description => "description",
         })
     }
 }
@@ -292,7 +289,6 @@ impl Error {
             ErrorKind::SessionCodeRejected => DETAIL_SESSION_CODE_REJECTED,
             ErrorKind::ApiKeyFieldInvalid { field } => match field {
                 ApiKeyField::Name => DETAIL_APIKEY_NAME,
-                ApiKeyField::Description => DETAIL_APIKEY_DESCRIPTION,
             },
             ErrorKind::ApiKeyNotFound => DETAIL_APIKEY_NOT_FOUND,
             ErrorKind::ApiKeyNameTaken => DETAIL_APIKEY_NAME_TAKEN,

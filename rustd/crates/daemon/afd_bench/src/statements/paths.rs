@@ -162,10 +162,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Pricing.
     ("SELECT p.id AS id, p.effective_from", Path::Pricing),
-    (
-        "SELECT resource_version FROM model.catalogue_version",
-        Path::Pricing,
-    ),
+    ("SELECT number FROM model.revision", Path::Pricing),
     // Issue.
     (
         "r.definition::text, f.status, r.runtime_model_ref",

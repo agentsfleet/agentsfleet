@@ -53,10 +53,10 @@ async fn exhaust_fleet_budget(held: &Held) {
             turn_id, provider, model, posture, requested_at, input_token_count, \
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
-            charged_nanos, created_at, updated_at) \
+            charged_nanos, created_at) \
          SELECT $1, $2, $1, 0, $5::text, f.tenant_id, f.workspace_id, f.id, f.name, $3, \
                 'anthropic', 'claude-fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, 2, \
-                now(), now() \
+                now() \
            FROM fleet.fleets f WHERE f.id = $4",
     )
     .bind(afd_db::test_util::mint_id())

@@ -271,10 +271,9 @@ async fn seed_spend(
            (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id, \
             provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
-            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, \
-            updated_at) \
+            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at) \
          VALUES ($1, $2, $1, 0, $10::text, $3, $4, $5, $5, $6, $7, $8, \
-                 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now(), now())",
+                 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now())",
     )
     .bind(mint_id())
     .bind(afd_billing::sql::work::FLEET_RUN)

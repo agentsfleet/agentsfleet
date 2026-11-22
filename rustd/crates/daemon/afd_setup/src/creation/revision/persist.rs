@@ -2,7 +2,7 @@
 
 use super::super::{
     CONTEXT, Creations, INSTALLING,
-    reserve::{Head, insert_revision},
+    reserve::{Head, write_revision},
     source::Captured,
     sql,
     stored::{Accepted, Stored},
@@ -38,8 +38,7 @@ impl Creations {
             accepted: &accepted,
             model: checked.effective.runtime_model_ref.as_deref(),
         };
-        let mut announcement =
-            insert_revision(connection, &row.id, &captured.candidate.definition, head).await?;
+        let mut announcement = write_revision(connection, &row.id, captured, head).await?;
         // Both callers refuse an archived fleet under its lock, so a new revision
         // always reinstalls it.
         sqlx::query(sql::ADVANCE)

@@ -56,10 +56,10 @@ const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
         turn_id, provider, model, posture, requested_at, input_token_count, \
         cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
         cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
-        charged_nanos, created_at, updated_at) \
+        charged_nanos, created_at) \
      SELECT s.id, $1, l.id, s.seq, $7::text, l.tenant_id, l.workspace_id, l.fleet_id, f.name, $2, \
             l.provider, l.model, l.posture, now(), $3::bigint, 0, 0, 0, 0, 0, 0, 0, 0, \
-            now() - s.seq * interval '1 day', now() \
+            now() - s.seq * interval '1 day' \
        FROM thread.runs l JOIN fleet.fleets f ON f.id = l.fleet_id \
             CROSS JOIN (VALUES (0, $5), (1, $6)) AS s(seq, id) \
       WHERE l.id = $4";

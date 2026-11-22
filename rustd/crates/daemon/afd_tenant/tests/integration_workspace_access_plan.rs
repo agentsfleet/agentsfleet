@@ -48,13 +48,13 @@ async fn seed(database: &Db, prefix: &str) {
            SELECT g, $1 || '-' || lpad(to_hex(g), 4, '0') || '-7000-8000-' AS stem \
            FROM generate_series(1, $2) g \
          ), tenants AS ( \
-           INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-           SELECT (stem || '000000000001')::uuid, 'plan-' || $1, now(), now() FROM n \
+           INSERT INTO identity.tenants (id, name, created_at) \
+           SELECT (stem || '000000000001')::uuid, 'plan-' || $1, now() FROM n \
          ), people AS ( \
            INSERT INTO identity.users \
-             (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
+             (id, tenant_id, oidc_subject, email, display_name, created_at) \
            SELECT (stem || '000000000002')::uuid, (stem || '000000000001')::uuid, \
-                  'user_plan_' || $1 || '_' || g, 'plan@example.test', NULL, now(), now() FROM n \
+                  'user_plan_' || $1 || '_' || g, 'plan@example.test', NULL, now() FROM n \
          ), memberships AS ( \
            INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
            SELECT (stem || '000000000003')::uuid, (stem || '000000000001')::uuid, \

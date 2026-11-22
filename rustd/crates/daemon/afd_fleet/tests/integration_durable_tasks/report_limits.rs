@@ -172,7 +172,7 @@ async fn settle(case: &Case, task: DecisionDurableTaskVersion, reason: Option<&s
             .expect("financial settlement survives exhaustion");
     }
     let saved = exhausted(case, &task.durable_task_id, reason).await;
-    let retained = evidence(case, &id(&task.durable_task_id), reason).await;
+    let retained = evidence(case, &id(&task.durable_task_id)).await;
     assert_eq!(case.counts().await, (1, 1, 1));
     plane
         .report_with(
@@ -191,14 +191,11 @@ async fn settle(case: &Case, task: DecisionDurableTaskVersion, reason: Option<&s
             .expect("unchanged exhausted task"),
         saved
     );
-    assert_eq!(
-        evidence(case, &id(&task.durable_task_id), reason).await,
-        retained
-    );
+    assert_eq!(evidence(case, &id(&task.durable_task_id)).await, retained);
     assert_eq!(case.counts().await, (1, 1, 1));
 }
 
-async fn evidence(case: &Case, task: &Uuid7, reason: Option<&str>) -> Value {
+async fn evidence(case: &Case, task: &Uuid7) -> Value {
     let mut connection = case
         .held
         .fixtures
@@ -206,9 +203,9 @@ async fn evidence(case: &Case, task: &Uuid7, reason: Option<&str>) -> Value {
         .acquire()
         .await
         .expect("accounting observer");
-    let row: (Option<String>, bool, i64, bool) = sqlx::query_as("SELECT t.status_reason,t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$3) FROM fleet.durable_tasks t WHERE t.id=$1")
+    let row: (bool, i64, bool) = sqlx::query_as("SELECT t.terminal_at IS NOT NULL,(SELECT count(*) FROM billing.usage_lines WHERE work_id=$2),(SELECT settled_at IS NOT NULL FROM thread.turns WHERE id=$3) FROM fleet.durable_tasks t WHERE t.id=$1")
         .bind(task).bind(&case.held.run_key).bind(&case.held.turn_id).fetch_one(&mut *connection).await.expect("committed task and original accounting");
-    assert_eq!(row, (reason.map(str::to_owned), true, 1, true));
+    assert_eq!(row, (true, 1, true));
     sqlx::query_scalar("SELECT jsonb_build_object('event',(SELECT to_jsonb(e) FROM thread.turns e WHERE e.thread_id=$1 AND e.id=$2 AND e.opened_at IS NOT NULL),'charges',(SELECT jsonb_agg(to_jsonb(u) ORDER BY u.seq) FROM billing.usage_lines u WHERE u.work_id=$3),'run',(SELECT to_jsonb(l) FROM thread.runs l WHERE l.id=$3))")
         .bind(&case.scope.fleet_id).bind(&case.held.turn_id).bind(&case.held.run_key)
         .fetch_one(&mut *connection).await.expect("original event charge and run snapshot")

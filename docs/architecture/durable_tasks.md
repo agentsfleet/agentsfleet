@@ -342,7 +342,7 @@ Task mutations lock workspace and fleet parents against deletion. They then lock
 Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
 
 Callers still prove fleet and run authority.
-The schema keeps a similarly restricted helper, `fleet.lock_expired_durable_task_completions`, that locks expired, finished parent receipts before their fanout children with `SKIP LOCKED`, at least 72 hours old and at most 256 per call. No statement calls it since M253_003 removed completion collection; no update privilege is granted on immutable completion rows.
+Checkpoint storage writes for one workspace (object registration and verification, purge acknowledgement, base and identity removal) serialize on `identity.lock_workspace_storage`, the same kind of function taking `FOR NO KEY UPDATE`; the per-workspace quota row that held this lock went in M253_004, since nothing compared its counters to a cap.
 
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
 Network calls, encryption, scanning and object transfer happen outside database transactions.
@@ -719,7 +719,6 @@ Changing these defaults requires reviewed configuration and boundary tests.
 | Running time and attempts | Two hours cumulative running time; 12 execution runs; eight repair publications maximum. |
 | Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source turn. |
 | Human input boundary | Four messages/four action items per message; check after each completed action group. |
-| Fallback reads | `max_fallback_reads` (24 by default, `af_wire::durable_task::limits`) is stored per task, but nothing reads GitHub on a timer since M253_003. |
 
 A task reserves nothing against these bounds. Each gate reads spent against the maximum, such as `used_model_nanos < max_model_nanos` (`afd_fleet`'s `assign_turn_head.sql` and `task/decision/budget.rs`), so concurrent decision calls on one task can overshoot the model budget by one call's cost. A decision call counts against `max_decision_calls` once, on its first report (`task/decision/sql/account_durable_task.sql`).
 

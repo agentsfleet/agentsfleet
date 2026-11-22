@@ -15,8 +15,8 @@ const PROVIDER: &str = "openai";
 /// The key name the seated model's secret is stored under.
 const SECRET_REF: &str = "setup-model";
 const PERSON: &str = "\
-INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
-VALUES($1,$2,$1,$1,now(),now())";
+INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at)
+VALUES($1,$2,$1,$1,now())";
 const ENTRY: &str = "\
 INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,selected,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,false,now(),now())";

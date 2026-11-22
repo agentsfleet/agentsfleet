@@ -31,8 +31,8 @@ secret_ciphertext=$7,secret_tag=$8,kek_version=$9,updated_at=now()
 WHERE workspace_id=$1 AND key_name=$2";
 const IDENTITY: &str = "SELECT tenant_id, workspace_id FROM fleet.fleets WHERE id = $1";
 const PERSON: &str = "\
-INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
-VALUES($1,$2,$1,$1,now(),now())";
+INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at)
+VALUES($1,$2,$1,$1,now())";
 const ENTRY: &str = "\
 INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,selected,created_at,updated_at)
 VALUES($1,$2,$3,$4,$5,false,now(),now())";

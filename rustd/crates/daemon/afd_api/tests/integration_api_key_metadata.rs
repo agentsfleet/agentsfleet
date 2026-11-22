@@ -397,7 +397,7 @@ impl Transcript {
     }
 
     async fn mint(&mut self, router: &Router, token: &str, name: &str) -> Minted {
-        let body = serde_json::json!({"key_name": name, "description": "metadata safety"});
+        let body = serde_json::json!({"key_name": name});
         let (status, mut minted) = self
             .exchange(
                 router,

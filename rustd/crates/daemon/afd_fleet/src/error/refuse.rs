@@ -100,10 +100,3 @@ pub(crate) fn connector_mint_failed() -> Error {
 pub(crate) fn grant_required() -> Error {
     Error::new(ErrorKind::GrantRequired)
 }
-
-/// Preserve invalid-target semantics and the cause of an external numeric overflow.
-pub(crate) fn durable_task_target_counter(
-    column: &'static str,
-) -> impl Fn(std::num::TryFromIntError) -> Error {
-    move |source| Error::from(ErrorKind::DurableTaskTargetCounter { column, source })
-}

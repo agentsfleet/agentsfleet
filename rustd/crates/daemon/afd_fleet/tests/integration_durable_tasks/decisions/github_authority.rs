@@ -1,8 +1,6 @@
 //! Real broker, encrypted App/installation credentials and local external GitHub exchange.
 use super::{fixture::Decisions, github_server::Server};
-use crate::report_seed::FIXTURE_KEK_HEX;
 use af_core::clock;
-use af_crypto::secret::Kek;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::connector::Registry;
@@ -45,11 +43,7 @@ async fn configured(
         Arc::new(Vendors::new(platform, server.client.clone())),
     ));
     let mut dependencies = fixture.dependencies.clone();
-    dependencies.github = Some(Github::new(
-        plane,
-        server.client.clone(),
-        Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("fixture key")),
-    ));
+    dependencies.github = Some(Github::new(plane, server.client.clone()));
     DurableTasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)
 }
 

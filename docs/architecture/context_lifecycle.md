@@ -128,7 +128,7 @@ Missing usage produces no fabricated zero; prompts, credentials, URLs and reques
 
 ## Checkpoint ownership and storage
 
-The additive `memory.context_checkpoints` table holds a conversation's working state, one row per thread, separate from semantic memory and immutable fleet revisions.
+The `thread.compactions` table holds a conversation's working state, one row per thread, separate from semantic memory and immutable fleet revisions.
 A row belongs to its thread's owner: a private setup draft, or a fleet's chat.
 
 A fleet chat's run loads its thread's row through the fenced `context_load` verb, opens on the summary in place of the turns it covers, and saves the next summary through `context_save` whenever its in-run compaction covers earlier turns whole.
@@ -168,7 +168,7 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 ## Implementation scope
 
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
-The checkpoint table is `rustd/crates/daemon/afd_db/schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
+The checkpoint table is `rustd/crates/daemon/afd_db/schema/20261108123655_thread_compactions.sql`, registered in `afd_db`'s migration list.
 
 Setup's draft rows, its funds bound, its progress and its checkpoint store live in `afd_setup`.
 A setup run's assignment, renewal and report run in `afd_fleet`'s `run/draft` module.

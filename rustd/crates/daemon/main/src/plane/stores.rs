@@ -22,7 +22,7 @@ use afd_mail::InviteMailer;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
-use afd_tenant::preference::Preferences;
+use afd_tenant::onboarding::Onboarding;
 use afd_tenant::signup::Signups;
 use afd_tenant::team::Team;
 use afd_tenant::workspace::Workspaces;
@@ -48,7 +48,8 @@ pub(super) struct Tenant {
     pub(super) providers: Providers,
     /// Seals and lists a workspace's secrets, and never opens one.
     pub(super) secrets: SecretVault,
-    pub(super) preferences: Preferences,
+    /// Derives a workspace's onboarding checklist.
+    pub(super) onboarding: Onboarding,
     /// Opening a personal account from a verified signup event.
     pub(super) signups: Signups,
 }
@@ -73,7 +74,7 @@ pub(super) fn tenant(
         providers: providers.clone(),
         secrets: SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new())
             .with_activity_notices(notices.clone()),
-        preferences: Preferences::new(database.clone(), Entropy::new()),
+        onboarding: Onboarding::new(database.clone()),
         signups: Signups::new(database.clone(), Entropy::new()),
     }
 }

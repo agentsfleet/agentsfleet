@@ -165,12 +165,12 @@ impl Fixture {
     /// written it, under policy semantics this daemon no longer enforces, and
     /// moves the head to it. Answers the new candidate.
     pub(super) async fn retire_head(&self, draft: &Uuid7) -> Uuid7 {
-        const RETIRED: &str = "INSERT INTO setup.candidates \
-             (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
-             SELECT $2,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
-             FROM setup.candidates c JOIN setup.drafts d ON d.head_candidate_id=c.id \
+        const RETIRED: &str = "INSERT INTO fleet.revisions \
+             (id,draft_id,revision,definition,canonical_digest,policy_semantics,installed,created_at,updated_at) \
+             SELECT $2,d.id,c.revision+1,c.definition,c.canonical_digest,'retired',false,now(),now() \
+             FROM fleet.revisions c JOIN setup.drafts d ON d.head_revision_id=c.id \
              WHERE d.id=$1";
-        const HEAD: &str = "UPDATE setup.drafts SET head_candidate_id=$2 WHERE id=$1";
+        const HEAD: &str = "UPDATE setup.drafts SET head_revision_id=$2 WHERE id=$1";
         let retired = mint();
         let mut connection = self.connection().await;
         for statement in [RETIRED, HEAD] {
@@ -208,7 +208,7 @@ impl Fixture {
             .await
             .expect("wait out a concurrent purge");
         let counts = sqlx::query_as("SELECT (SELECT count(*) FROM setup.drafts WHERE workspace_id=$1), \
-            (SELECT count(*) FROM setup.candidates c JOIN setup.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1), \
+            (SELECT count(*) FROM fleet.revisions c JOIN setup.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1), \
             (SELECT count(*) FROM thread.turns m JOIN setup.drafts d ON d.id=m.thread_id WHERE d.workspace_id=$1)")
             .bind(&self.workspace).fetch_one(&mut *tx)
             .await.expect("scoped durable counts");

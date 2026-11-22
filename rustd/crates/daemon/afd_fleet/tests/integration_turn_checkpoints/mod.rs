@@ -133,8 +133,8 @@ impl Case {
             "SELECT
             (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
             (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1),
-            (SELECT next_generation FROM runner.turn_recovery WHERE turn_id=$1),
-            (SELECT head_turn_checkpoint_id FROM runner.turn_recovery WHERE turn_id=$1)",
+            (SELECT next_checkpoint_generation FROM thread.turns WHERE id=$1),
+            (SELECT head_turn_checkpoint_id FROM thread.turns WHERE id=$1)",
         )
         .bind(&self.acquired.turn_id)
         .fetch_one(&mut *connection)
@@ -242,11 +242,12 @@ async fn a_foreign_runner_or_wrong_fence_allocates_no_checkpoint() -> Checked {
             .is_err_and(|fault| fault.code() == error_code::RUN_STALE_FENCING_TOKEN)
     );
     let mut connection = case.fixtures.database.acquire().await?;
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
-            .bind(&case.acquired.turn_id)
-            .fetch_one(&mut *connection)
-            .await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL",
+    )
+    .bind(&case.acquired.turn_id)
+    .fetch_one(&mut *connection)
+    .await?;
     assert_eq!(count, 0);
     Ok(())
 }
@@ -308,7 +309,7 @@ async fn a_revoked_drained_or_degraded_host_cannot_allocate_a_checkpoint() -> Ch
         );
         let mut connection = case.fixtures.database.acquire().await?;
         let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery WHERE turn_id=$1")
+            sqlx::query_scalar("SELECT count(*) FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL")
                 .bind(&case.acquired.turn_id)
                 .fetch_one(&mut *connection)
                 .await?;

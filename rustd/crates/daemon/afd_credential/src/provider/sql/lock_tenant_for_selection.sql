@@ -1,4 +1,1 @@
-SELECT 1
-  FROM identity.tenants
- WHERE id = $1
-   FOR NO KEY UPDATE
+SELECT id FROM identity.lock_tenant($1)

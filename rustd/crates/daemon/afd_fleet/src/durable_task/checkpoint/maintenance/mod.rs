@@ -116,6 +116,6 @@ async fn lock(connection: &mut PgConnection, workspace: &Uuid7) -> Result<bool> 
     if parent.is_none() {
         return Ok(false);
     }
-    super::identity::quota(connection, workspace).await?;
+    super::identity::lock_storage(connection, workspace).await?;
     Ok(true)
 }

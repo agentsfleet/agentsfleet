@@ -100,8 +100,7 @@ const ACTOR_APP_GITHUB: &str = "github-app";
     description = concat!(
         "Receives signed GitHub events and starts runs for matching subscribed fleets. ",
         "Duplicate deliveries do not start another run. Repair pull requests, workflow ",
-        "results, and `deployment_status` deliveries do not start unrelated investigations. ",
-        "Verified workflow completions may request an independent read for an existing task wait.",
+        "results, and `deployment_status` deliveries do not start unrelated investigations.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
@@ -198,16 +197,6 @@ async fn route<D: IngressPlane>(
             error_code::WEBHOOK_INSTALL_NOT_MAPPED.as_str(),
         ));
     };
-
-    if let Some(completion) = delivery.completion(
-        afd_fleet::durable_task::CompletionScope::Workspace(workspace.clone()),
-    ) {
-        services
-            .tasks()
-            .record_github_completion(&completion)
-            .await
-            .map_err(Refusal::at(EVENT_DROPPED))?;
-    }
 
     let digest = match delivery.classify(Policy::AppIngress, services.now()) {
         Ingest::Accept(digest) => digest,

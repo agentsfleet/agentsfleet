@@ -9,7 +9,7 @@
 /// model (NULL for the platform default), `$7` user text.
 pub(crate) const INSERT: &str = include_str!("insert.sql");
 
-/// `$1` draft, `$2` the new last sequence.
+/// Moves the draft's version past a message it admitted. `$1` draft.
 pub(crate) const ADVANCE: &str = include_str!("advance.sql");
 
 /// One page of user and assistant roles, with each message's retry key and

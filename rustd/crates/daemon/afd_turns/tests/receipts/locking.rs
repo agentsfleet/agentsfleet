@@ -18,9 +18,9 @@ const BLOCKED_ON: &str =
 
 /// A copy of the fleet's head revision, stamped with a policy this build does not run.
 const FOREIGN_REVISION: &str = "INSERT INTO fleet.revisions \
-    (id, fleet_id, revision, definition, canonical_digest, policy_semantics, runtime_model_ref, created_at) \
+    (id, fleet_id, revision, definition, canonical_digest, policy_semantics, installed, runtime_model_ref, created_at, updated_at) \
     SELECT $2, r.fleet_id, r.revision + 1, r.definition, md5(random()::text), 'foreign-semantics', \
-           r.runtime_model_ref, now() \
+           true, r.runtime_model_ref, now(), now() \
     FROM fleet.revisions r JOIN fleet.fleets f ON f.head_revision_id = r.id WHERE f.id = $1";
 
 async fn wait_until_blocked(lane: &Lane, holder: i32) -> Fallible {

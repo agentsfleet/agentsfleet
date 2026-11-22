@@ -4,8 +4,8 @@ use super::{
     CheckpointMaintenance, CheckpointMaintenanceCursor, DurableTaskAdoption, DurableTaskAfter,
     DurableTaskControl, DurableTaskFuture as Reply, DurableTaskLifecycle, DurableTaskPage,
     DurableTaskRun, DurableTaskScope, DurableTaskSnapshot, DurableTasks, ReservedDecision,
-    VerifiedCompletion, adoption, bindings, checkpoint, control, decision, effects, input_receipt,
-    inputs, list, observe, read, waits,
+    adoption, bindings, checkpoint, control, decision, effects, input_receipt, inputs, list,
+    observe, read,
 };
 #[cfg(any(test, feature = "test-util"))]
 use super::{DurableTaskBindings, PreparedPlan, admit};
@@ -15,15 +15,6 @@ use af_wire::durable_task as wire;
 use garde::Valid;
 
 impl DurableTaskLifecycle for DurableTasks {
-    fn record_github_completion<'a>(
-        &'a self,
-        completion: &'a VerifiedCompletion,
-    ) -> Reply<'a, u64> {
-        observe::call(
-            DurableTaskOperation::CompletionMatch,
-            waits::complete(self, completion),
-        )
-    }
     fn maintain_checkpoints<'a>(
         &'a self,
         cursor: &'a mut CheckpointMaintenanceCursor,

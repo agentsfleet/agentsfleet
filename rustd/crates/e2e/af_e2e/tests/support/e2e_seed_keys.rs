@@ -48,9 +48,9 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &Uuid7, token: &str
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO identity.api_keys
-           (id, tenant_id, name, description, key_hash, created_by_subject,
+           (id, tenant_id, name, key_hash, created_by_subject,
             revoked_at, created_at, updated_at)
-         VALUES ($1, $2, $3, '', $4, 'e2e', NULL, $5, $5)",
+         VALUES ($1, $2, $3, $4, 'e2e', NULL, $5, $5)",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(tenant)

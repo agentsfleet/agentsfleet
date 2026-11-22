@@ -10,7 +10,7 @@ use afd_api_wire::tenant::{
 };
 use afd_http::handler::parse_id;
 use afd_tenant::apikey::{
-    ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
+    ApiKeySort, Deactivation, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
 use axum::Json;
 use axum::body::Bytes;
@@ -76,18 +76,12 @@ pub(crate) async fn mint<D: TenantPlane>(
     let person = identity.person();
     let request = afd_http::handler::read_body::<MintApiKeyRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let (name, description) = KeyName::parse(&request.key_name)
-        .and_then(|name| {
-            Description::parse(request.description.as_deref())
-                .map(|description| (name, description))
-        })
-        .map_err(Refusal::at(EVENT_MINT))?;
+    let name = KeyName::parse(&request.key_name).map_err(Refusal::at(EVENT_MINT))?;
 
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
     let mint = MintRequest {
         tenant: &tenant,
         name,
-        description,
         created_by: person.subject().as_str(),
     };
 

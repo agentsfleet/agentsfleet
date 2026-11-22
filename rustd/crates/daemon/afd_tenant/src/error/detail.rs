@@ -58,9 +58,6 @@ pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match"
 pub const DETAIL_APIKEY_NAME: &str =
     "key_name must be 1-64 chars, alphanumeric + hyphen + underscore";
 
-/// Its refusal for a description past its bound.
-pub const DETAIL_APIKEY_DESCRIPTION: &str = "description must be <=256 chars";
-
 /// Its refusal for an id naming no key this tenant holds.
 pub const DETAIL_APIKEY_NOT_FOUND: &str = "API key not found";
 

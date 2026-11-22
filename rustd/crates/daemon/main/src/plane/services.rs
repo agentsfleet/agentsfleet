@@ -25,7 +25,7 @@ use afd_memory::Memories;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
-use afd_tenant::preference::Preferences;
+use afd_tenant::onboarding::Onboarding;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_turns::view::History;
@@ -82,7 +82,7 @@ impl TenantPlane for ServingPlane {
     type Connectors = afd_connector::Connectors;
     type Steering = afd_turns::view::Steer;
     type Events = History;
-    type Preferences = Preferences;
+    type Onboarding = Onboarding;
 
     /// The same value as [`Shared::workspaces`], deliberately: production
     /// holds one directory that answers both seams, and the split exists for
@@ -165,8 +165,8 @@ impl TenantPlane for ServingPlane {
         &self.activity.events
     }
 
-    fn preferences(&self) -> &Self::Preferences {
-        &self.tenant.preferences
+    fn onboarding(&self) -> &Self::Onboarding {
+        &self.tenant.onboarding
     }
 
     fn runner_commands(&self) -> &afd_bus::Handle {
@@ -315,10 +315,6 @@ impl afd_api_ingress::services::IngressPlane for ServingPlane {
 
     fn scheduler(&self) -> &dyn afd_cron::Scheduler {
         self.outbound.scheduler.as_ref()
-    }
-
-    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
-        &self.tasks
     }
 
     fn platform_admin_workspace(&self) -> Option<&af_core::id::Uuid7> {

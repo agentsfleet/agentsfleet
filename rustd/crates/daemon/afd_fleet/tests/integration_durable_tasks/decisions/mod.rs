@@ -13,7 +13,6 @@ mod checkpoint_refusals;
 mod checkpoint_remote;
 mod checkpoint_retention;
 pub(crate) mod checkpoint_server;
-mod completions;
 mod concurrency;
 mod configured;
 mod diagnostics;

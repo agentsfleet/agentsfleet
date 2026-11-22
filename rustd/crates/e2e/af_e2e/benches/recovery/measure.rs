@@ -100,7 +100,7 @@ async fn checkpoint(run: &Scenario, fleets: &[Fleet], model: &mut Model) -> Chec
     }
     let events: Vec<_> = fleets.iter().map(|f| f.event.clone()).collect();
     let mut conn = run.booted.database.acquire().await?;
-    let heads: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.turn_recovery h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.turn_id=ANY($1::uuid[]) AND p.ready_at IS NOT NULL AND p.root_secret_ciphertext IS NOT NULL")
+    let heads: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.turns h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.id=ANY($1::uuid[]) AND p.ready_at IS NOT NULL AND p.root_secret_ciphertext IS NOT NULL")
         .bind(&events).fetch_one(&mut *conn).await?;
     if usize::try_from(heads)? != fleets.len() {
         return Err("source cohort lacks a committed root".into());

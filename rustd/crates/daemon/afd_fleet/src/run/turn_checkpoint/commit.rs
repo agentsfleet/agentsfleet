@@ -122,8 +122,8 @@ async fn write(
 }
 
 async fn swap(owner: &mut TurnRunGuard<'_>, plan: &Plan) -> Result<()> {
-    // The head row is held `FOR UPDATE` and proved equal to the expected head,
-    // so the swap always moves it.
+    // The turn row is held `FOR NO KEY UPDATE` and its head proved equal to the
+    // expected head, so the swap always moves it.
     sqlx::query(include_str!("sql/head_swap.sql"))
         .bind(&owner.current.turn_id)
         .bind(&plan.id)

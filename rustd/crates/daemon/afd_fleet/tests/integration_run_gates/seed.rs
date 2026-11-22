@@ -132,9 +132,9 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid
             turn_id, provider, model, posture, requested_at, input_token_count, \
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
-            charged_nanos, created_at, updated_at) \
+            charged_nanos, created_at) \
          VALUES ($7, $8, $7, 0, $9::text, $1, $2, $3, $3, $4, 'anthropic', \
-                 $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now(), now())",
+                 $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now())",
     )
     .bind(tenant)
     .bind(&workspace)

@@ -16,7 +16,7 @@ pub struct CheckpointMaintenance {
     pub bases: u64,
     /// Unreferenced object keys erased into durable purge custody.
     pub objects: u64,
-    /// Remote deletions acknowledged and quota released once.
+    /// Remote deletions acknowledged once.
     pub purged: u64,
     /// Remote cleanup attempts deferred for later reconciliation.
     pub deferred: u64,

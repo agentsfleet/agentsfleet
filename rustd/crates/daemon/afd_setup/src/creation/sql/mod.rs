@@ -19,7 +19,8 @@ pub(super) const LOCK: &str = include_str!("lock.sql");
 /// `$1` fleet, `$2` workspace.
 pub(super) const LOCKED: &str = include_str!("locked.sql");
 
-/// `$1` candidate, `$2` workspace, `$3` creator.
+/// The draft that owns a proposal, or whose head it is. `$1` proposal, `$2` workspace,
+/// `$3` creator.
 pub(super) const CANDIDATE_DRAFT: &str = include_str!("candidate_draft.sql");
 
 /// The fleet row, pointing at a head revision written in the same transaction.
@@ -28,12 +29,18 @@ pub(super) const CANDIDATE_DRAFT: &str = include_str!("candidate_draft.sql");
 /// revision, `$7` required tags, `$8` initial start, `$9` resource version.
 pub(super) const INSERT: &str = include_str!("insert.sql");
 
-/// One immutable revision with the review it was accepted under.
+/// One installed revision with no draft behind it: a system setup.
 ///
 /// `$1` id, `$2` fleet, `$3` revision number, `$4` definition, `$5` digest,
 /// `$6` policy semantics, `$7` runtime model, `$8` review digest, `$9` the
-/// frozen review subject, `$10` the source candidate.
+/// frozen review subject.
 pub(super) const REVISION: &str = include_str!("revision.sql");
+
+/// Installs a draft's proposal as the fleet's revision, with no copy.
+///
+/// `$1` proposal, `$2` fleet, `$3` revision number, `$4` runtime model,
+/// `$5` review digest, `$6` the frozen review subject, `$7` the draft.
+pub(super) const INSTALL: &str = include_str!("install.sql");
 
 /// Moves the fleet onto a new head revision.
 ///

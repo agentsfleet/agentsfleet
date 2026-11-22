@@ -27,8 +27,7 @@ const RUN: &str = "INSERT INTO thread.runs \
 const FENCE: &str = "UPDATE thread.threads SET fencing_token=$2 WHERE id=$1";
 
 /// The fleet's context row: its version and document.
-const ROW: &str =
-    "SELECT resource_version, document FROM memory.context_checkpoints WHERE thread_id=$1";
+const ROW: &str = "SELECT resource_version, document FROM thread.compactions WHERE thread_id=$1";
 
 /// A fleet chat's summary at `generation`, whose goal says who saved it.
 fn checkpoint(fleet: &Uuid7, generation: u64, goal: &str) -> Checkpoint {

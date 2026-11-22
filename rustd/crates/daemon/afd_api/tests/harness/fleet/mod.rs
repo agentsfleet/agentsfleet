@@ -88,7 +88,7 @@ impl Fleet {
             platform_admin: None,
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,
-            preferences: Preferences::new(database.clone(), Entropy::new()),
+            onboarding: Onboarding::new(database.clone()),
             approvals: Inbox::new(database.clone(), bus, ledger.clone()),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),

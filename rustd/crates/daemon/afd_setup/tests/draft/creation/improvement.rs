@@ -270,11 +270,11 @@ const LAST_REVISION: &str = "WITH head AS ( \
          WHERE f.id=$1), \
      appended AS ( \
          INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest, \
-             policy_semantics,runtime_model_ref,review_digest,review_context, \
-             source_candidate_id,created_at) \
+             policy_semantics,installed,runtime_model_ref,review_digest,review_context, \
+             created_at,updated_at) \
          SELECT $2,fleet_id,9223372036854775807,definition,canonical_digest, \
-             policy_semantics,runtime_model_ref,review_digest,review_context, \
-             source_candidate_id,now() FROM head RETURNING id) \
+             policy_semantics,true,runtime_model_ref,review_digest,review_context, \
+             now(),now() FROM head RETURNING id) \
      UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM appended) WHERE id=$1";
 
 // Value: protects=a fleet at the last revision a revision number can hold

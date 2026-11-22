@@ -16,7 +16,7 @@ async fn first_activations_serialize_and_keep_one_visible_default() {
             .fetch_one(&mut *transaction)
             .await
             .expect("pid");
-        sqlx::query("SELECT id FROM model.catalogue_version WHERE id = 1 FOR UPDATE")
+        sqlx::query("SELECT id FROM model.revision WHERE id = 1 FOR UPDATE")
             .execute(&mut *transaction)
             .await
             .expect("parent lock");

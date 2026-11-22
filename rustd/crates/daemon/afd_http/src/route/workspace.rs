@@ -2,7 +2,7 @@
 //!
 //! The fleet-addressed half lives in [`super::fleet`]. What is left here is
 //! the workspace's own surface: its secrets, its turn tail, its approval
-//! inbox, and the preferences a person sets on it.
+//! inbox, and its onboarding checklist.
 
 use afd_auth::Scope;
 
@@ -43,8 +43,6 @@ pub enum WorkspaceRoute {
     TurnsStream,
     /// Onboarding state.
     Onboarding,
-    /// One preference.
-    Preference,
     /// The approval inbox.
     Approvals,
     /// One approval gate.
@@ -70,7 +68,6 @@ impl WorkspaceRoute {
         Self::Turns,
         Self::TurnsStream,
         Self::Onboarding,
-        Self::Preference,
         Self::Approvals,
         Self::Approval,
         Self::ApprovalResolve,
@@ -81,9 +78,7 @@ impl WorkspaceRoute {
     ///
     /// A secret is replaced whole rather than patched — a field-wise edit on a
     /// credential would let a caller move the projection out from under the
-    /// ciphertext beside it — so `Secret` carries `PUT` and no `PATCH`. A
-    /// preference is the same shape for the same reason: one document, written
-    /// whole.
+    /// ciphertext beside it — so `Secret` carries `PUT` and no `PATCH`.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
@@ -95,7 +90,6 @@ impl WorkspaceRoute {
             | Self::Approvals
             | Self::Approval
             | Self::Members => &[Verb::Get],
-            Self::Preference => &[Verb::Put],
             Self::ApprovalResolve => &[Verb::Post],
             Self::Drafts | Self::DraftMessages | Self::Fleets | Self::Secrets => {
                 &[Verb::Get, Verb::Post]
@@ -127,7 +121,6 @@ impl WorkspaceRoute {
             | Self::Secret
             | Self::Turns
             | Self::Onboarding
-            | Self::Preference
             | Self::Approvals
             | Self::Approval
             | Self::ApprovalResolve
@@ -150,7 +143,6 @@ impl WorkspaceRoute {
             Self::Turns => workspace_path!("/turns"),
             Self::TurnsStream => workspace_path!("/turns/stream"),
             Self::Onboarding => workspace_path!("/onboarding"),
-            Self::Preference => workspace_path!("/preferences/{pref_key}"),
             Self::Approvals => workspace_path!("/approvals"),
             Self::Approval => workspace_path!("/approvals/{gate_id}"),
             // Two segments rather than one (`{gate_id}:approve`). A router
@@ -167,8 +159,8 @@ impl WorkspaceRoute {
     /// Viewing the inbox and deciding a gate are separate capabilities on
     /// purpose: reading what is waiting is not the authority to resolve it.
     ///
-    /// Onboarding and preferences carry none — their object is the caller's
-    /// own workspace state, and ownership is the check that matters.
+    /// Onboarding carries none — its object is the caller's own workspace
+    /// state, and ownership is the check that matters.
     const fn scopes(self) -> Scopes {
         match self {
             Self::Models | Self::Turns | Self::TurnsStream | Self::Members => {
@@ -182,7 +174,7 @@ impl WorkspaceRoute {
             Self::Fleets => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Secrets => Scopes::rw(SECRET_READ, SECRET_WRITE),
             Self::Secret => Scopes::Always(SECRET_WRITE),
-            Self::Onboarding | Self::Preference => Scopes::Always(NONE),
+            Self::Onboarding => Scopes::Always(NONE),
             Self::Approvals | Self::Approval => Scopes::Always(APPROVAL_READ),
             Self::ApprovalResolve => Scopes::Always(APPROVAL_RESOLVE),
         }

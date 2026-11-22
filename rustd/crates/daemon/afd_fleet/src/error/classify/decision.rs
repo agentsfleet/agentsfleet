@@ -21,7 +21,6 @@ impl Error {
             | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
             | ErrorKind::DurableTaskCounter { .. }
-            | ErrorKind::DurableTaskTargetCounter { .. }
             | ErrorKind::DurableTaskControlTurn { .. }
             | ErrorKind::DurableTaskMutation { .. }
             | ErrorKind::DurableTaskControlConflict { .. }

@@ -1,4 +1,4 @@
-//! One workspace quota lock and bounded set operations arbitrate upload owners.
+//! One workspace storage lock and bounded set operations arbitrate upload owners.
 
 use super::{guard, identity, object_row::Object, row::Plan};
 use crate::durable_task::storage::R2CheckpointStore;
@@ -39,7 +39,7 @@ pub(in crate::durable_task) async fn register(
     let items = registered(tasks, storage, &mut tx, &plan, &pin, input).await?;
     tx.commit()
         .await
-        .map_err(query("commit registered object ownership and quota"))?;
+        .map_err(query("commit registered object ownership"))?;
     transaction::recycle(connection);
     Ok(CheckpointObjectsPage {
         items,
@@ -86,7 +86,7 @@ async fn allocate(
     plan: &Plan,
     input: &CheckpointObjectsInput,
 ) -> Result<(Uuid7, Vec<String>)> {
-    identity::quota(connection, &plan.workspace_id).await?;
+    identity::lock_storage(connection, &plan.workspace_id).await?;
     let identity = identity::load(
         &tasks.runs,
         storage,
@@ -165,15 +165,6 @@ async fn reserve(
         .checked_add(new_bytes)
         .is_none_or(|bytes| bytes > plan.upload_budget_bytes)
     {
-        return Err(DurableTaskRefusal::LimitExhausted.into());
-    }
-    let reserved = sqlx::query(super::QUOTA_RESERVE)
-        .bind(&plan.workspace_id)
-        .bind(new_bytes)
-        .execute(&mut *connection)
-        .await
-        .map_err(query("reserve unique private storage bytes"))?;
-    if reserved.rows_affected() != 1 {
         return Err(DurableTaskRefusal::LimitExhausted.into());
     }
     if !new.is_empty() {

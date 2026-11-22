@@ -37,7 +37,7 @@ impl Creations {
             .map_err(query(CONTEXT))?;
         let id = id.ok_or(ErrorKind::Hidden)?;
         let locked = draft::read::lock(connection, access, person, &id).await?;
-        if locked.head_candidate_id.as_ref() != Some(draft_candidate_id) {
+        if locked.head_revision_id.as_ref() != Some(draft_candidate_id) {
             return Err(ErrorKind::State {
                 current: "candidate_changed",
             }

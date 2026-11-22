@@ -10,7 +10,7 @@
 //!
 //! | writer                     | first lock               | second lock              |
 //! |----------------------------|--------------------------|--------------------------|
-//! | admin catalogue delete     | `model.catalogue_version`| `model.platform_models`  |
+//! | admin catalogue delete     | `model.revision`         | `model.platform_models`  |
 //! | registry entry removal     | `vault.secrets`          | `model.tenant_models`    |
 //! | credential delete          | `vault.secrets`          | `model.tenant_models`    |
 //!

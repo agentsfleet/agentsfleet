@@ -24,7 +24,7 @@ WITH locked_thread AS MATERIALIZED (
        AND r.fencing_token = $7 AND r.status = $8
        FOR SHARE OF r
 )
-UPDATE memory.context_checkpoints c
+UPDATE thread.compactions c
    SET resource_version = $2, document = $3, updated_at = now()
   FROM holder
  WHERE c.thread_id = $1 AND c.resource_version = $4

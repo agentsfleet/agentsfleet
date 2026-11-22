@@ -208,16 +208,6 @@ pub struct Secret {
     pub name: String,
 }
 
-/// One preference key in a workspace.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Path)]
-pub struct Preference {
-    /// Workspace identifier (version 7 universally unique identifier, or UUID).
-    pub workspace_id: String,
-    /// The preference key.
-    pub pref_key: String,
-}
-
 /// One approval gate.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]

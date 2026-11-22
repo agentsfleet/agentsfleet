@@ -5,13 +5,13 @@ INSERT INTO fleet.durable_tasks
    effect_cursor, confirmed_effect_watermark, max_model_nanos, used_model_nanos,
    max_running_nanos, used_running_nanos, max_runs,
    used_runs, max_publications, used_publications, max_decision_calls,
-   used_decision_calls, max_fallback_reads, used_fallback_reads,
+   used_decision_calls,
    expires_at, terminal_at, created_at, updated_at)
 SELECT $1, f.id, f.workspace_id, f.tenant_id, $3, f.head_revision_id,
        $4, 'Repair the accepted redirect defect.', $5::jsonb, repeat('b', 64),
        '{"kind":"api_only"}'::jsonb, $6, 1, 1, 0, 0, 0, 0, 0,
        5000000000, 12000000, 7200000000000, 1000000000,
-       12, 1, 8, 0, 128, 1, 24, 0,
+       12, 1, 8, 0, 128, 1,
        now() + interval '7 days' - $8::bigint * interval '1 millisecond',
        CASE WHEN $7 THEN now() ELSE NULL END,
        now() - $8::bigint * interval '1 millisecond', now()

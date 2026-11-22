@@ -118,8 +118,8 @@ impl Fixture {
             .expect("the workspace seeds");
         sqlx::query(
             "INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1, $2, $3, 'slack-poster@example.test', now(), now())",
+               (id, tenant_id, oidc_subject, email, created_at) \
+             VALUES ($1, $2, $3, 'slack-poster@example.test', now())",
         )
         .bind(&self.user)
         .bind(&self.tenant)

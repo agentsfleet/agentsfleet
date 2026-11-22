@@ -8,7 +8,7 @@
 //! those has a witness a statement can read without opening anything:
 //!
 //! - the catalogue: every model, price and platform-default write advances
-//!   `model.catalogue_version` in its own transaction;
+//!   `model.revision.number` in its own transaction;
 //! - the key and its endpoint: a digest of the stored ciphertext and the
 //!   endpoint beside it. A writer cannot skip it, because it is a function of
 //!   the bytes: every write re-seals the envelope under a fresh nonce, so even

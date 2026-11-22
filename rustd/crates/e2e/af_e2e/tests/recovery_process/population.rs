@@ -60,8 +60,8 @@ pub(super) async fn select(
     );
     let stored = crate::e2e_native::Stored::of(&definition);
     sqlx::query("WITH next AS (SELECT coalesce(max(revision),0)+1 AS revision FROM fleet.revisions WHERE fleet_id=$1),
-        appended AS (INSERT INTO fleet.revisions (id,fleet_id,revision,definition,canonical_digest,policy_semantics,runtime_model_ref,created_at)
-        SELECT $2,$1,next.revision,$3::jsonb,$4,$5,$6,now() FROM next RETURNING id)
+        appended AS (INSERT INTO fleet.revisions (id,fleet_id,revision,definition,canonical_digest,policy_semantics,installed,runtime_model_ref,created_at,updated_at)
+        SELECT $2,$1,next.revision,$3::jsonb,$4,$5,true,$6,now(),now() FROM next RETURNING id)
         UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM appended),resource_version=resource_version+1,updated_at=now() WHERE id=$1")
         .bind(fleet).bind(mint_id()).bind(&stored.definition).bind(&stored.digest)
         .bind(af_fleet_runtime::definition::POLICY_SEMANTICS).bind(entry.as_str()).execute(connection).await?;

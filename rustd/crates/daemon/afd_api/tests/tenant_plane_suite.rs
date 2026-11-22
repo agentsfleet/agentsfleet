@@ -98,8 +98,8 @@ mod integration_workspace_approvals_listing;
 mod integration_workspace_enumeration;
 #[path = "integration_workspace_members.rs"]
 mod integration_workspace_members;
-#[path = "integration_workspace_preferences.rs"]
-mod integration_workspace_preferences;
+#[path = "integration_workspace_secrets.rs"]
+mod integration_workspace_secrets;
 #[path = "list_limits.rs"]
 mod list_limits;
 #[path = "tenant_api_keys.rs"]
@@ -139,6 +139,6 @@ mod workspace_member_roles;
 
 #[path = "route_auth_walk.rs"]
 mod route_auth_walk;
-#[path = "workspace_preferences.rs"]
-mod workspace_preferences;
+#[path = "workspace_onboarding.rs"]
+mod workspace_onboarding;
 mod workspace_secrets;

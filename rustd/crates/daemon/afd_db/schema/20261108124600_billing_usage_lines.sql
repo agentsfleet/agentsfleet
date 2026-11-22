@@ -32,7 +32,6 @@ CREATE TABLE billing.usage_lines (
     unpriced_token_count        BIGINT NOT NULL,
     charged_nanos               BIGINT NOT NULL,
     created_at                  TIMESTAMPTZ(3) NOT NULL,
-    updated_at                  TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_usage_lines_work_type_work_id_kind_seq UNIQUE (work_type, work_id, kind, seq),
     CONSTRAINT ck_usage_lines_non_negative
         CHECK (seq >= 0 AND input_token_count >= 0 AND cached_input_token_count >= 0
@@ -61,7 +60,7 @@ AS $$
 BEGIN
     INSERT INTO fleet.activity_counters
         (fleet_id, event_count, budget_used_nanos, created_at, updated_at)
-    SELECT f.id, 0, NEW.charged_nanos, f.created_at, NEW.updated_at
+    SELECT f.id, 0, NEW.charged_nanos, f.created_at, NEW.created_at
       FROM fleet.fleets f WHERE f.id = NEW.fleet_id
     ON CONFLICT (fleet_id) DO UPDATE
        SET budget_used_nanos = fleet.activity_counters.budget_used_nanos
@@ -102,4 +101,14 @@ CREATE TRIGGER trg_usage_lines_debit_wallets
     AFTER INSERT ON billing.usage_lines REFERENCING NEW TABLE AS inserted
     FOR EACH STATEMENT EXECUTE FUNCTION billing.usage_lines_debit_wallets();
 
-GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;
+CREATE FUNCTION billing.usage_lines_refuse_update() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'usage_lines is append-only';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_usage_lines_refuse_update
+    BEFORE UPDATE ON billing.usage_lines
+    FOR EACH ROW EXECUTE FUNCTION billing.usage_lines_refuse_update();
+
+GRANT SELECT, INSERT ON billing.usage_lines TO api_runtime;

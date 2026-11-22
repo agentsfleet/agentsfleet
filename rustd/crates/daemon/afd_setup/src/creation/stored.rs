@@ -12,8 +12,8 @@ use af_fleet_runtime::Definition;
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-/// The setup a revision was accepted as: its review subject, the candidate it
-/// copied and the review a person accepted.
+/// The setup a revision was accepted as: its review subject, the proposal it
+/// was (its own id) and the review a person accepted.
 #[derive(Debug, Clone)]
 pub(super) struct Accepted {
     pub(super) context: review::Context,
@@ -25,7 +25,9 @@ pub(super) struct Accepted {
 }
 
 /// `fleet.revisions.review_context`: what the revision's columns do not hold.
-/// The digests, the candidate id and the review digest are columns.
+/// The digests and the review digest are columns, and the candidate is the
+/// revision itself; its number at review is kept here, since installing it
+/// renumbered it.
 #[derive(Serialize, Deserialize)]
 pub(super) struct Frozen {
     pub(super) context: review::Context,
@@ -113,7 +115,6 @@ pub(super) struct StoredRow {
     runtime_model_ref: Option<String>,
     review_context: Option<String>,
     review_digest: Option<String>,
-    source_candidate_id: Option<Uuid7>,
     canonical_digest: String,
     policy_semantics: String,
     events_processed: i64,
@@ -122,8 +123,8 @@ pub(super) struct StoredRow {
 }
 
 impl StoredRow {
-    /// Every revision this crate writes carries its review, its source and
-    /// the initial start, so a revision without them is a stored fault.
+    /// Every revision this crate installs carries its review and the initial
+    /// start, so a revision without them is a stored fault.
     pub(super) fn decode(self) -> Result<Stored> {
         let frozen: Frozen = value(
             self.review_context
@@ -132,9 +133,7 @@ impl StoredRow {
         )?;
         let accepted = Accepted {
             context: frozen.context,
-            candidate_id: self
-                .source_candidate_id
-                .ok_or_else(|| absent("source_candidate_id"))?,
+            candidate_id: self.head_revision_id.clone(),
             candidate_revision: frozen.candidate_revision,
             canonical_digest: self.canonical_digest,
             policy_semantics: self.policy_semantics,

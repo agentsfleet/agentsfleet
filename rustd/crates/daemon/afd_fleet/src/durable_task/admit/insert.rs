@@ -84,7 +84,6 @@ pub(super) async fn task(
         .bind(i32::from(admission.active))
         .bind(i64::from(item.limits.publications))
         .bind(i64::from(item.limits.decision_calls))
-        .bind(i64::from(item.limits.fallback_reads))
         .bind(&admission.source.reply_provider)
         .bind(&admission.source.reply_address)
         .bind(f64::from(item.limits.wall_seconds))

@@ -30,9 +30,9 @@ async fn closing_cost_counts_the_reports_own_lines() {
          fleet_id, fleet_name, turn_id, provider, model, posture, requested_at, \
          input_token_count, cached_input_token_count, cache_write_token_count, \
          cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
-         unpriced_token_count, charged_nanos, created_at, updated_at) \
+         unpriced_token_count, charged_nanos, created_at) \
          SELECT uuidv7(), $2, l.id, 7, $4::text, l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
-                l.turn_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now(), now() \
+                l.turn_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now() \
          FROM thread.runs l WHERE l.id = $1",
     )
     .bind(&held.issued.run_id)

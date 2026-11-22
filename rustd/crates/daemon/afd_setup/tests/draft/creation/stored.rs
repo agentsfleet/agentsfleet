@@ -8,33 +8,28 @@ use afd_setup::types::Start;
 
 /// Appends a copy of the fleet's first revision, as the next one, with one
 /// field another writer got wrong, and moves the head to it: `$3` as its
-/// frozen review, `$4` a source candidate this daemon never minted, `$5` no
-/// frozen review, `$6` no source candidate.
+/// frozen review, `$4` no frozen review.
 ///
 /// Copied from the first revision, so each fault is the only one the head
-/// holds. The foreign candidate is Postgres's `gen_random_uuid()`, a
-/// version-4 UUID, which no identifier this daemon mints can be.
+/// holds.
 const CORRUPT_HEAD: &str = "WITH first AS ( \
          SELECT r.* FROM fleet.revisions r WHERE r.fleet_id=$1 AND r.revision=1), \
      appended AS ( \
          INSERT INTO fleet.revisions(id,fleet_id,revision,definition,canonical_digest, \
-             policy_semantics,runtime_model_ref,review_digest,review_context, \
-             source_candidate_id,created_at) \
+             policy_semantics,installed,runtime_model_ref,review_digest,review_context, \
+             created_at,updated_at) \
          SELECT $2,fleet_id, \
              (SELECT max(revision)+1 FROM fleet.revisions WHERE fleet_id=$1), \
-             definition,canonical_digest,policy_semantics,runtime_model_ref,review_digest, \
-             CASE WHEN $5 THEN NULL ELSE COALESCE($3::jsonb,review_context) END, \
-             CASE WHEN $4 THEN gen_random_uuid() WHEN $6 THEN NULL \
-                  ELSE source_candidate_id END,now() \
+             definition,canonical_digest,policy_semantics,true,runtime_model_ref,review_digest, \
+             CASE WHEN $4 THEN NULL ELSE COALESCE($3::jsonb,review_context) END, \
+             now(),now() \
              FROM first RETURNING id) \
      UPDATE fleet.fleets SET head_revision_id=(SELECT id FROM appended) WHERE id=$1";
 
 /// The one field a corrupted head holds wrong.
 enum Fault<'a> {
-    ForeignSource,
     Review(&'a str),
     NoReview,
-    NoSource,
 }
 
 async fn refused_read(c: &Case, fleet: &Uuid7, code: error_code::ErrorCode, why: &str) {
@@ -52,11 +47,9 @@ async fn corrupt_head(c: &Case, fleet: &Uuid7, fault: &Fault<'_>) {
         .bind(mint())
         .bind(match fault {
             Fault::Review(review) => Some(*review),
-            Fault::ForeignSource | Fault::NoReview | Fault::NoSource => None,
+            Fault::NoReview => None,
         })
-        .bind(matches!(fault, Fault::ForeignSource))
         .bind(matches!(fault, Fault::NoReview))
-        .bind(matches!(fault, Fault::NoSource))
         .execute(&mut *c.base.connection().await)
         .await
         .expect("an appended revision another writer got wrong");
@@ -109,11 +102,6 @@ async fn a_saved_fleet_whose_stored_setup_is_unreadable_reads_as_a_stored_fault(
     .await;
     set_initial(Some(initial)).await;
     for (fault, why) in [
-        (
-            Fault::ForeignSource,
-            "a source candidate this daemon never minted",
-        ),
-        (Fault::NoSource, "no source candidate"),
         (
             Fault::Review(r#"{"subject":"unknown"}"#),
             "a frozen review of no known shape",

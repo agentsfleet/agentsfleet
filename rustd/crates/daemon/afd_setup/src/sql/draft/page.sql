@@ -12,7 +12,7 @@ SELECT d.id AS id,
        c.revision AS candidate_revision,
        fr.revision AS setup_revision
   FROM setup.drafts d
-  LEFT JOIN setup.candidates c ON c.id = d.head_candidate_id
+  LEFT JOIN fleet.revisions c ON c.id = d.head_revision_id
   LEFT JOIN fleet.fleets f ON f.id = d.fleet_id
   LEFT JOIN fleet.revisions fr ON fr.id = f.head_revision_id
  WHERE d.workspace_id = $1 AND d.user_id = $2

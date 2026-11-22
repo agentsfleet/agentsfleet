@@ -3341,7 +3341,7 @@
           "Webhooks"
         ],
         "summary": "Receive a provider event",
-        "description": "Receives signed GitHub events and starts runs for matching subscribed fleets. Duplicate deliveries do not start another run. Repair pull requests, workflow results, and `deployment_status` deliveries do not start unrelated investigations. Verified workflow completions may request an independent read for an existing task wait.",
+        "description": "Receives signed GitHub events and starts runs for matching subscribed fleets. Duplicate deliveries do not start another run. Repair pull requests, workflow results, and `deployment_status` deliveries do not start unrelated investigations.",
         "operationId": "ingest_connector_webhook",
         "parameters": [
           {
@@ -18068,7 +18068,7 @@
           "Workspaces"
         ],
         "summary": "Read the workspace's onboarding checklist state",
-        "description": "Returns Getting Started progress: model configured, fleet created, credential stored, event processed, and message sent. Also includes your dismissed, collapsed, and command-line checklist preferences.",
+        "description": "Returns Getting Started progress: model configured, fleet created, credential stored, event processed, and message sent.",
         "operationId": "get_workspace_onboarding",
         "parameters": [
           {
@@ -18114,132 +18114,6 @@
           },
           "403": {
             "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
-      }
-    },
-    "/v1/workspaces/{workspace_id}/preferences/{pref_key}": {
-      "put": {
-        "tags": [
-          "Workspaces"
-        ],
-        "summary": "Write one dashboard preference",
-        "description": "Saves one dashboard preference and returns all your workspace preferences. Send any valid JSON value; it is stored unchanged. Unknown `pref_key` values return `UZ-PREFS-001`. Concurrent updates to one key keep the last write.",
-        "operationId": "put_workspace_preference",
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "description": "Workspace identifier (version 7 universally unique identifier, or UUID).",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "pref_key",
-            "in": "path",
-            "description": "The preference key.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "description": "The preference's value, as any JSON document",
-          "content": {
-            "application/json": {
-              "schema": {}
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The whole bag as it now reads, the written key included",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PreferencesResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -25680,20 +25554,13 @@
           "running_seconds",
           "runs",
           "publications",
-          "decision_calls",
-          "fallback_reads"
+          "decision_calls"
         ],
         "properties": {
           "decision_calls": {
             "type": "integer",
             "format": "int32",
             "description": "Maximum physical decision calls, including retries.",
-            "minimum": 0
-          },
-          "fallback_reads": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum fallback dependency reads; signed events remain separate.",
             "minimum": 0
           },
           "model_nanos": {
@@ -26110,20 +25977,13 @@
           "running_nanos",
           "runs",
           "publications",
-          "decision_calls",
-          "fallback_reads"
+          "decision_calls"
         ],
         "properties": {
           "decision_calls": {
             "type": "integer",
             "format": "int32",
             "description": "Physical decision calls, including retries.",
-            "minimum": 0
-          },
-          "fallback_reads": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Fallback dependency reads already consumed.",
             "minimum": 0
           },
           "model_nanos": {
@@ -27883,13 +27743,6 @@
           "key_name"
         ],
         "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free text beside it, for whoever reads the list in six months."
-          },
           "key_name": {
             "type": "string",
             "description": "What the key will be called. Unique per tenant."
@@ -28344,24 +28197,9 @@
           "has_fleet",
           "has_secret",
           "has_processed_event",
-          "has_steer_event",
-          "cli_ticked",
-          "dismissed",
-          "collapsed"
+          "has_steer_event"
         ],
         "properties": {
-          "cli_ticked": {
-            "type": "boolean",
-            "description": "The person ticked the install-the-CLI step by hand."
-          },
-          "collapsed": {
-            "type": "boolean",
-            "description": "The panel is collapsed but not dismissed."
-          },
-          "dismissed": {
-            "type": "boolean",
-            "description": "The person dismissed the panel outright."
-          },
           "has_fleet": {
             "type": "boolean",
             "description": "The workspace holds at least one fleet."
@@ -29151,19 +28989,6 @@
           "status": {
             "type": "string",
             "description": "The pong marker this deployment answers with."
-          }
-        }
-      },
-      "PreferencesResponse": {
-        "type": "object",
-        "description": "Every preference you have set in this workspace.\n\nA write returns the whole set, including the keys it did not change.",
-        "required": [
-          "prefs"
-        ],
-        "properties": {
-          "prefs": {
-            "type": "object",
-            "description": "Every key you have set in this workspace, ordered by key.\n\nEach value is any well-formed JSON value, returned as it was stored.\nThe order is stable between two reads."
           }
         }
       },

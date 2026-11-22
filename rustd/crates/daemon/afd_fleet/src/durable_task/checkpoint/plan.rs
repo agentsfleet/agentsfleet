@@ -82,7 +82,7 @@ pub(in crate::durable_task) async fn create(
     if input.mode == CheckpointMode::RetainBase && input.base_id.is_some() {
         return Err(DurableTaskRefusal::CheckpointIncompatible.into());
     }
-    identity::quota(&mut tx, &owned.current.workspace_id).await?;
+    identity::lock_storage(&mut tx, &owned.current.workspace_id).await?;
     sqlx::query(include_str!("sql/abandon_capture.sql"))
         .bind(&task)
         .bind(run.run_id)

@@ -1,4 +1,4 @@
-//! Shared workspace quota and encrypted immutable chunks, with event-owned references.
+//! The shared workspace storage lock and encrypted immutable chunks, with event-owned references.
 
 use af_core::id::Uuid7;
 use af_wire::{
@@ -15,7 +15,7 @@ use super::{
 use crate::{
     Result,
     durable_task::{
-        checkpoint::{self, StoredObject, content_identity, lock_quota},
+        checkpoint::{self, StoredObject, content_identity, lock_storage},
         storage::registration::{self, NewObject, Registration},
     },
     error::query,
@@ -56,7 +56,7 @@ async fn register_content(
     let format = i32::try_from(custody.plan.format_version)
         .map_err(|_overflow| TurnCheckpointRefusal::Incompatible)?;
     let workspace = custody.owner.current.workspace_id.clone();
-    lock_quota(&mut custody.owner.tx, &workspace).await?;
+    lock_storage(&mut custody.owner.tx, &workspace).await?;
     let identity = content_identity(
         runs,
         storage,
@@ -174,14 +174,6 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
     {
         return Err(TurnCheckpointRefusal::Limit.into());
     }
-    // `lock_quota` upserted and holds this workspace's quota row, so the
-    // reservation always lands on it.
-    sqlx::query(checkpoint::QUOTA_RESERVE)
-        .bind(&custody.owner.current.workspace_id)
-        .bind(bytes)
-        .execute(&mut *custody.owner.tx)
-        .await
-        .map_err(query("reserve shared turn storage quota"))?;
     if !new.is_empty() {
         sqlx::query(checkpoint::OBJECTS_INSERT)
             .bind(Json(new))

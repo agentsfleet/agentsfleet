@@ -172,7 +172,6 @@ impl crate::run::Runs {
             .bind(acquired.fence.as_i64())
             .bind(DurableTaskState::Ready.as_str())
             .bind(DurableTaskState::Blocked.as_str())
-            .bind("setup_authority_changed")
             .bind(DurableTaskState::Running.as_str())
             .fetch_optional(&mut *tx)
             .await

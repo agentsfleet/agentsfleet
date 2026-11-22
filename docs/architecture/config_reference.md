@@ -222,7 +222,6 @@ Unset, each `[fleet.durable_tasks]` limit allows any amount. The defaults apply 
 | `defaults.max_runs` | 12 | New objectives need more or fewer runs |
 | `defaults.max_publication_attempts` | 8 | New objectives need more or fewer publication tries |
 | `defaults.max_decision_calls` | 128 | New objectives need more or fewer decision calls |
-| `defaults.max_fallback_reads` | 24 | New objectives need more or fewer fallback reads |
 
 ### `[setup]`
 

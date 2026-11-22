@@ -46,8 +46,6 @@ pub(super) struct DurableTaskRow {
     pub used_publications: i32,
     pub max_decision_calls: i32,
     pub used_decision_calls: i32,
-    pub max_fallback_reads: i32,
-    pub used_fallback_reads: i32,
     pub wall_seconds: i32,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub expires_at: jiff::Timestamp,
@@ -119,7 +117,6 @@ impl DurableTaskRow {
                     runs: small_counter(self.max_runs, "max_runs")?,
                     publications: small_counter(self.max_publications, "max_publications")?,
                     decision_calls: small_counter(self.max_decision_calls, "max_decision_calls")?,
-                    fallback_reads: small_counter(self.max_fallback_reads, "max_fallback_reads")?,
                 },
                 usage: DurableTaskUsage {
                     model_nanos: self.used_model_nanos,
@@ -127,7 +124,6 @@ impl DurableTaskRow {
                     runs: small_counter(self.used_runs, "used_runs")?,
                     publications: small_counter(self.used_publications, "used_publications")?,
                     decision_calls: small_counter(self.used_decision_calls, "used_decision_calls")?,
-                    fallback_reads: small_counter(self.used_fallback_reads, "used_fallback_reads")?,
                 },
             },
         })

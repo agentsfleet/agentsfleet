@@ -84,7 +84,8 @@ A history-only receipt, such as an activity or a model change, is written opened
 | `durable_task_activity`, `durable_task_activity_sequence`, `durable_task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
 | `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `setup.replay_receipts` and the same key queues a new turn once it passes |
 | `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose; NULL is the platform default |
-| `candidate_id` | `UUID` | yes | `messages` | FK `setup.candidates(id)` ON DELETE SET NULL: the candidate a setup turn wrote |
+| `proposed_revision_id` | `UUID` | yes | `messages` | FK `fleet.revisions(id)` ON DELETE SET NULL: the proposal a setup turn wrote (`setup.candidates` until M253_004) |
+| `head_turn_checkpoint_id`, `next_checkpoint_generation` | `UUID`, `BIGINT` | yes | `runner.turn_recovery` | the turn's private recovery head and the generation its next checkpoint takes; `fk_turns_head_turn_checkpoint` → `runner.turn_checkpoints(id, turn_id)` ON DELETE SET NULL, deferred (folded in M253_004) |
 | `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head, and why a checked save was refused |
 
 Indexes:
@@ -196,8 +197,8 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 
 | Table | Old column | New column and FK |
 |-------|------------|-------------------|
-| `runner.turn_recovery` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done) |
-| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_refs` | `event_id` | `turn_id`, which points at `turn_recovery` (done) |
+| `runner.turn_recovery` | `event_id` → `fleet.events` | folded into `thread.turns` (M253_004) |
+| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_refs` | `event_id` | `turn_id`; `runner.turn_checkpoints.turn_id` → `thread.turns(id)` ON DELETE CASCADE (M253_004) |
 | `runner.turn_checkpoint_operations` | `event_id` | `turn_id`, `fk_turn_checkpoint_operations_turn_id` → `thread.turns(id)` ON DELETE CASCADE (done): an allocation is made only under the turn's recovery head, so the turn always exists |
 | `thread.items` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done; the file moved to `20261108125110` to follow `thread.turns`) |
 | `fleet.approval_gates` | `event_id` | `turn_id` (done), null for an install grant card. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |

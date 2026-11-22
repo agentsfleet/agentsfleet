@@ -12,7 +12,6 @@
 )]
 
 use af_core::error_code;
-use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_auth::principal::PersonCredential;
 use afd_auth::scope::ScopeSet;
@@ -157,12 +156,12 @@ async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Ac
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
-    let fixture = Fixture::create().await;
+    // The account's own name does not match its owner's, so the name read back
+    // can only be the owner's if the owner join found them.
+    let fixture =
+        Fixture::with_john(Account::minted("John").with_account_name(RENAMED_ACCOUNT)).await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let unknown = format!("user_unknown_{}", mint_id());
-    // The account's own name stops matching its owner's, so the name read back
-    // can only be the owner's if the owner join found them.
-    rename_account(&fixture, &fixture.john.tenant).await;
 
     let claim = session(&fixture.john.tenant, &unknown);
     let claimed = workspaces
@@ -193,14 +192,3 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
 
 /// A name for an account that is not its owner's name.
 const RENAMED_ACCOUNT: &str = "Renamed account";
-
-/// Gives `tenant`'s account a stored name of its own.
-async fn rename_account(fixture: &Fixture, tenant: &Uuid7) {
-    let mut connection = fixture.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1")
-        .bind(tenant)
-        .bind(RENAMED_ACCOUNT)
-        .execute(&mut *connection)
-        .await
-        .expect("the account renames");
-}

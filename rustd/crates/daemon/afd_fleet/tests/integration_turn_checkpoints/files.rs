@@ -180,7 +180,7 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
         return Err("saved file".into());
     };
     assert!(file.executable);
-    let Response::Authorized(mut objects) = authorize_with_quota_busy(
+    let Response::Authorized(mut objects) = authorize_with_storage_busy(
         files,
         Action::Authorize {
             checkpoint: reference.clone(),
@@ -204,21 +204,16 @@ async fn read(files: &Files, descriptor: TurnResume, digest: &str) -> Checked {
     Ok(())
 }
 
-async fn authorize_with_quota_busy(files: &Files, action: Action) -> Checked<Response> {
+async fn authorize_with_storage_busy(files: &Files, action: Action) -> Checked<Response> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
-    let (stored, reserved): (i64, i64) = sqlx::query_as(
-        "SELECT stored_bytes, reserved_bytes FROM fleet.durable_task_storage_quota
-         WHERE workspace_id=$1 FOR UPDATE",
-    )
-    .bind(&files.case.acquired.workspace_id)
-    .fetch_one(&mut *held)
-    .await?;
-    assert_eq!(stored, i64::try_from(CONTENT.len() + af_crypto::TAG_LEN)?);
-    assert_eq!(reserved, 0);
+    sqlx::query("SELECT id FROM identity.lock_workspace_storage($1)")
+        .bind(&files.case.acquired.workspace_id)
+        .execute(&mut *held)
+        .await?;
     let result = tokio::time::timeout(Duration::from_secs(10), files.execute(action)).await;
     held.rollback().await?;
-    result.map_err(|_elapsed| "restore authorization stalled behind workspace quota")?
+    result.map_err(|_elapsed| "restore authorization stalled behind the workspace storage lock")?
 }
 
 async fn download(

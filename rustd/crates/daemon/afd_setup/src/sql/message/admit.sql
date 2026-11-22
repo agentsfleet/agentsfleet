@@ -36,13 +36,12 @@ WITH prior AS MATERIALIZED (
     RETURNING id
 ), advanced AS (
     UPDATE setup.drafts
-       SET last_message_sequence = $2,
-           resource_version = resource_version + 1,
+       SET resource_version = resource_version + 1,
            updated_at = now()
      WHERE id = $1 AND EXISTS (SELECT 1 FROM receipt)
-    RETURNING last_message_sequence
+    RETURNING $2::bigint AS sequence
 )
 SELECT (SELECT row_to_json(prior) FROM prior) AS prior,
        (SELECT m.sequence FROM thread.turns m JOIN prior p ON m.id = p.resource_id
          WHERE m.thread_id = $1) AS prior_sequence,
-       (SELECT last_message_sequence FROM advanced) AS sequence
+       (SELECT sequence FROM advanced) AS sequence

@@ -1,3 +1,2 @@
-INSERT INTO runner.turn_recovery (turn_id, next_generation, created_at, updated_at)
-VALUES ($1, 1, now(), now())
-ON CONFLICT (turn_id) DO NOTHING
+UPDATE thread.turns SET next_checkpoint_generation = 1
+WHERE id = $1 AND next_checkpoint_generation IS NULL

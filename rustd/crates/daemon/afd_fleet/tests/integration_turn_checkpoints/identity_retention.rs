@@ -148,8 +148,14 @@ async fn used_identity(files: &Files) -> Checked<Uuid7> {
     )
     .await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
+    // Keys are immutable, so the used key is aged by re-inserting it under its own id: the
+    // objects' foreign key is deferred, and the statement ends with the key present again.
     let used: Uuid7 = sqlx::query_scalar(
-        "UPDATE fleet.durable_task_identity_keys SET created_at=clock_timestamp()-interval '10 days' WHERE workspace_id=$1 RETURNING id",
+        "WITH old AS (DELETE FROM fleet.durable_task_identity_keys WHERE workspace_id=$1 RETURNING *)
+        INSERT INTO fleet.durable_task_identity_keys
+        (id,workspace_id,repository,key_version,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,secret_ciphertext,secret_tag,kek_version,created_at)
+        SELECT id,workspace_id,repository,key_version,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,secret_ciphertext,secret_tag,kek_version,clock_timestamp()-interval '10 days'
+        FROM old RETURNING id",
     ).bind(&files.case.acquired.workspace_id).fetch_one(&mut *connection).await?;
     Ok(used)
 }
@@ -172,8 +178,8 @@ async fn insert(
         &[11_u8; 32],
     )?;
     sqlx::query("INSERT INTO fleet.durable_task_identity_keys
-        (id,workspace_id,repository,key_version,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,secret_ciphertext,secret_tag,kek_version,created_at,updated_at)
-        VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,now()-make_interval(days=>$11),now())")
+        (id,workspace_id,repository,key_version,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,secret_ciphertext,secret_tag,kek_version,created_at)
+        VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,now()-make_interval(days=>$11))")
         .bind(&id).bind(workspace).bind(repository).bind(envelope.wrapped_dek())
         .bind(envelope.dek_nonce().as_slice()).bind(envelope.dek_tag().as_slice())
         .bind(envelope.payload_nonce().as_slice()).bind(envelope.payload_ciphertext())

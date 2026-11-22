@@ -29,7 +29,6 @@ const API_KEYS_LISTED = "API keys" as const;
 
 export interface ApiKeyCreateArgs {
   readonly name: string | undefined;
-  readonly description: string | undefined;
 }
 
 export interface ApiKeyListArgs {
@@ -126,7 +125,7 @@ export const apiKeyCreateEffectFromArgs = (
     const res = yield* http.request<CreatedApiKey>({
       path: TENANT_API_KEYS_PATH,
       method: "POST",
-      body: { key_name: name, description: args.description ?? "" },
+      body: { key_name: name },
       token,
     });
 

@@ -63,9 +63,7 @@ fn field_kinds() -> Vec<(&'static str, Error)> {
     ] {
         kinds.push(("session field", super::session_field(field)));
     }
-    for field in [ApiKeyField::Name, ApiKeyField::Description] {
-        kinds.push(("api-key field", super::apikey_field(field)));
-    }
+    kinds.push(("api-key field", super::apikey_field(ApiKeyField::Name)));
     kinds
 }
 
@@ -165,7 +163,6 @@ fn field_names_render_as_the_wire_spells_them() {
         assert_eq!(field.to_string(), expected);
     }
     assert_eq!(ApiKeyField::Name.to_string(), "key_name");
-    assert_eq!(ApiKeyField::Description.to_string(), "description");
 }
 
 #[test]

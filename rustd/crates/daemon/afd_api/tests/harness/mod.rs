@@ -79,7 +79,7 @@ use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
 use afd_tenant::models::Models;
-use afd_tenant::preference::Preferences;
+use afd_tenant::onboarding::Onboarding;
 use afd_tenant::session::Sessions as Logins;
 use afd_tenant::workspace::Workspaces;
 use afd_turns::view::{History, Steer};
@@ -275,7 +275,7 @@ pub(crate) struct Fleet {
     identity_webhook_secret: Option<SecretBytes>,
     /// The dashboard base a connect relays through, parsed as boot parses it.
     dashboard_base: afd_connector::Dashboard,
-    preferences: Preferences,
+    onboarding: Onboarding,
     approvals: Inbox,
     grants: IntegrationGrants,
     events: History,

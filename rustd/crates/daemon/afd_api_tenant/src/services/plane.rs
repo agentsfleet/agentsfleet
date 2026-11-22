@@ -12,7 +12,7 @@ use afd_sse::Live;
 use super::{
     DeviceFlow, FleetGrants, FleetMemories, InviteMail, ModelCatalogue, TenantBilling, TenantKeys,
     TenantModelEntries, TenantProviders, TenantTeam, TenantWorkspaces, TerminalCredentials,
-    WorkspacePreferences, WorkspaceSecrets,
+    WorkspaceOnboarding, WorkspaceSecrets,
 };
 
 /// The tenant plane: a person's account, workspaces, fleets, setup and the
@@ -129,10 +129,10 @@ pub trait TenantPlane: Shared {
     /// The narrative log a workspace and its fleets wrote.
     fn events(&self) -> &Self::Events;
 
-    /// What the preference and onboarding surfaces act through.
-    type Preferences: WorkspacePreferences;
-    /// One person's dashboard preferences, and the checklist over them.
-    fn preferences(&self) -> &Self::Preferences;
+    /// What the onboarding surface acts through.
+    type Onboarding: WorkspaceOnboarding;
+    /// The workspace's onboarding checklist.
+    fn onboarding(&self) -> &Self::Onboarding;
 
     /// The process-wide publisher retained even when live subscriptions are
     /// unavailable: a fleet Archive's runner commands go through it.

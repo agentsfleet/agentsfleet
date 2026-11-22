@@ -140,8 +140,8 @@ impl Lane {
         // `TenantSeed`, whose insert refuses a duplicate: whichever lane runs
         // first writes it, and every later one finds it there.
         sqlx::query(
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at)
-             VALUES ($1, 'fixture', now(), now())
+            "INSERT INTO identity.tenants (id, name, created_at)
+             VALUES ($1, 'fixture', now())
              ON CONFLICT (id) DO NOTHING",
         )
         .bind(&self.tenant)

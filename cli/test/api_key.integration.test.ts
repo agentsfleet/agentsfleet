@@ -29,7 +29,7 @@ describe("api-key commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["api-keys", "create", "--name", "ci-runner", "--description", "build automation"],
+          ["api-keys", "create", "--name", "ci-runner"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -38,10 +38,7 @@ describe("api-key commands", () => {
         expect(text).toContain(KEY_ID);
         expect((text.match(new RegExp(RAW_KEY, "g")) ?? []).length).toBe(1);
         expect(text).toMatch(/shown once/i);
-        expect(JSON.parse(postBody ?? "{}")).toEqual({
-          key_name: "ci-runner",
-          description: "build automation",
-        });
+        expect(JSON.parse(postBody ?? "{}")).toEqual({ key_name: "ci-runner" });
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual(["POST /v1/api-keys"]);
       });
     });

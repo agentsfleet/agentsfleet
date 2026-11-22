@@ -42,19 +42,9 @@ pub(super) async fn publish(
         record::refuse(tasks, &effect).await?;
         return Err(error);
     }
-    let recovery = match github
-        .seal_recovery(run, &effect.workspace_id, &effect.id, effect.target()?)
-        .await
-    {
-        Ok(recovery) => recovery,
-        Err(error) => {
-            record::refuse(tasks, &effect).await?;
-            return Err(error);
-        }
-    };
     // This transaction is the committed stop cutoff. No ref request exists
     // before it; a stop after issuance retains an explicit in-flight effect.
-    let permit = match record::issue(tasks, run, input, &effect, &recovery).await {
+    let permit = match record::issue(tasks, run, input, &effect).await {
         Ok(permit) => permit,
         Err(error) => {
             record::refuse(tasks, &effect).await?;

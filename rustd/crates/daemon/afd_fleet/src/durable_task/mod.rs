@@ -61,7 +61,6 @@ pub use types::{
 
 pub use lifecycle::{DurableTaskFuture, DurableTaskLifecycle};
 pub use report::{CheckpointGuard, DurableTaskReportOwner, DurableTaskSettlement, PreparedReport};
-pub use waits::{CompletionScope, VerifiedCompletion};
 pub(crate) async fn settle_report(
     connection: &mut sqlx::PgConnection,
     run: &Uuid7,

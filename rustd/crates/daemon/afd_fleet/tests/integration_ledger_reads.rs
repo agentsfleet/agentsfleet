@@ -80,15 +80,14 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
            (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, turn_id,
             provider, model, posture, requested_at, input_token_count, cached_input_token_count,
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
-            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at,
-            updated_at)
+            output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at)
          SELECT ('0199c900-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, $4,
                 ('0199c902-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, 0, $8::text,
                 $1, $2,
                 CASE WHEN g <= $7 THEN $6
                      ELSE ('0199c901-0000-7000-8000-' || lpad(to_hex(g % $3), 12, '0'))::uuid END,
                 'decoy', uuidv7(), 'anthropic', 'claude-opus-5', 'platform', now(),
-                0, 0, 0, 0, 0, 0, 0, 0, 0, now() - make_interval(days => g % $7), now()
+                0, 0, 0, 0, 0, 0, 0, 0, 0, now() - make_interval(days => g % $7)
          FROM generate_series(1, $5 + $7) g",
     )
     .bind(&held.tenant)

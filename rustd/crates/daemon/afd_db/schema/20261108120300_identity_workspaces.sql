@@ -37,3 +37,16 @@ $$;
 REVOKE ALL ON FUNCTION identity.lock_workspace(UUID) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION identity.lock_workspace(UUID) TO api_runtime;
+
+-- Checkpoint storage writes for one workspace run one at a time: object registration and
+-- verification, purge acknowledgement and base or identity removal take this lock first.
+-- FOR NO KEY UPDATE leaves the KEY SHARE locks of `lock_workspace` and foreign keys free.
+CREATE FUNCTION identity.lock_workspace_storage(workspace_id UUID) RETURNS TABLE (id UUID)
+LANGUAGE sql VOLATILE SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp AS $$
+    SELECT w.id FROM identity.workspaces w WHERE w.id = $1 FOR NO KEY UPDATE OF w
+$$;
+
+REVOKE ALL ON FUNCTION identity.lock_workspace_storage(UUID) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION identity.lock_workspace_storage(UUID) TO api_runtime;

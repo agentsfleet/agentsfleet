@@ -99,19 +99,9 @@ pub(super) async fn assert_issued(case: &Case, task: &Uuid7, run: &Uuid7, fence:
 }
 
 pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
-    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.durable_tasks WHERE id=$1")
+    let row: (String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,generation,stop_generation,used_runs,(SELECT count(*) FROM thread.runs WHERE fleet_id=$2) FROM fleet.durable_tasks WHERE id=$1")
         .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
-    assert_eq!(
-        row,
-        (
-            "blocked".to_owned(),
-            "setup_authority_changed".to_owned(),
-            2,
-            1,
-            1,
-            1
-        )
-    );
+    assert_eq!(row, ("blocked".to_owned(), 2, 1, 1, 1));
     let live: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM thread.turns WHERE durable_task_id=$1 AND settled_at IS NULL",
     )

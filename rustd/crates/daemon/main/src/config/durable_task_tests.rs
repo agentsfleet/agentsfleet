@@ -50,7 +50,6 @@ fn durable_task_allowances_refuse_negative_money_and_impossible_active_lifetimes
         ("max_runs = 0", "max_runs"),
         ("max_publication_attempts = 0", "max_publication_attempts"),
         ("max_decision_calls = 0", "max_decision_calls"),
-        ("max_fallback_reads = 0", "max_fallback_reads"),
     ] {
         let mut file = tempfile::NamedTempFile::new()?;
         writeln!(file, "[fleet.durable_tasks.defaults]\n{setting}")?;

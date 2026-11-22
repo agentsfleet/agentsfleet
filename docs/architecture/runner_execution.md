@@ -40,7 +40,7 @@ A Stop, a refused renewal or the runner's shutdown cuts the run. The cut run sti
 
 ## Private content and report retention
 
-`DELETE` on a draft returns 204 after one transaction deletes the draft, its candidates and its active setup runs (`afd_setup/src/privacy.rs`). After the commit, the daemon tells each deleted run's runner to stop. Usage lines name the run, never the draft, so billing records outlive the delete.
+`DELETE` on a draft returns 204 after one transaction deletes the draft, the proposals it still owns and its active setup runs (`afd_setup/src/privacy.rs`). After the commit, the daemon tells each deleted run's runner to stop. Usage lines name the run, never the draft, so billing records outlive the delete.
 
 Remove the private transcript from server-rendered and browser caches, and close its stream. The target stores no unsent text in browser local storage. In-memory text is scoped to account, workspace and subject, and cleared on logout, revocation or delete.
 

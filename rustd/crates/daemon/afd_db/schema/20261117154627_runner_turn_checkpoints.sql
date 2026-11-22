@@ -1,7 +1,7 @@
 -- Private root state and a matching full workspace publish in one transaction.
 CREATE TABLE runner.turn_checkpoints (
     id UUID PRIMARY KEY,
-    turn_id UUID NOT NULL REFERENCES runner.turn_recovery (turn_id) ON DELETE CASCADE,
+    turn_id UUID NOT NULL REFERENCES thread.turns (id) ON DELETE CASCADE,
     fleet_id UUID NOT NULL REFERENCES fleet.fleets (id) ON DELETE CASCADE,
     workspace_id UUID NOT NULL REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     setup_revision_id UUID NOT NULL,
@@ -61,6 +61,6 @@ CREATE INDEX idx_turn_checkpoints_expiry ON runner.turn_checkpoints (expires_at,
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON runner.turn_checkpoints TO api_runtime;
 
-ALTER TABLE runner.turn_recovery ADD CONSTRAINT fk_turn_recovery_head
-    FOREIGN KEY (head_turn_checkpoint_id, turn_id) REFERENCES runner.turn_checkpoints (id, turn_id)
+ALTER TABLE thread.turns ADD CONSTRAINT fk_turns_head_turn_checkpoint
+    FOREIGN KEY (head_turn_checkpoint_id, id) REFERENCES runner.turn_checkpoints (id, turn_id)
     ON DELETE SET NULL (head_turn_checkpoint_id) DEFERRABLE INITIALLY DEFERRED;

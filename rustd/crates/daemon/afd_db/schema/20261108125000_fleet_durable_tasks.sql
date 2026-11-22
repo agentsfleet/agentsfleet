@@ -28,8 +28,6 @@ CREATE TABLE fleet.durable_tasks (
     used_publications       INTEGER NOT NULL CHECK (used_publications >= 0),
     max_decision_calls      INTEGER NOT NULL CHECK (max_decision_calls > 0),
     used_decision_calls     INTEGER NOT NULL CHECK (used_decision_calls >= 0),
-    max_fallback_reads      INTEGER NOT NULL CHECK (max_fallback_reads > 0),
-    used_fallback_reads     INTEGER NOT NULL CHECK (used_fallback_reads >= 0),
     reply_provider          TEXT,
     reply_address           TEXT,
     expires_at              TIMESTAMPTZ(3) NOT NULL,
@@ -54,9 +52,7 @@ CREATE TABLE fleet.durable_tasks (
     checkpoint_sequence BIGINT CHECK (checkpoint_sequence >= 0),
     checkpoint_cleanup_at TIMESTAMPTZ(3),
     -- Monotonic, so it survives deletion of old private waits.
-    wait_sequence BIGINT CHECK (wait_sequence >= 0),
-    -- A bounded reason code, never model text.
-    status_reason TEXT
+    wait_sequence BIGINT CHECK (wait_sequence >= 0)
 );
 
 CREATE INDEX idx_durable_tasks_fleet_unfinished ON fleet.durable_tasks (fleet_id, id)

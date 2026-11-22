@@ -27,11 +27,11 @@ INSERT INTO billing.usage_lines (
     run_id, provider, model, posture, requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
-    created_at, updated_at
+    created_at
 )
 SELECT id, $5, id, 0, 'model', $2, $3, $9, $10, message, id, $4, $11, $6,
        '2026-10-25T12:00:00Z', 23, 0, 0, 0, 0, 7, 0, 0, $7,
-       '2026-10-25T12:00:00Z', '2026-10-25T12:00:00Z'
+       '2026-10-25T12:00:00Z'
   FROM unnest($1, $8) AS source(id, message)
 ";
 

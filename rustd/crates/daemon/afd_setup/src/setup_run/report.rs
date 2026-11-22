@@ -176,7 +176,7 @@ impl Creations {
         if let Some(reason) = finish.failure {
             let failed = MessageState::Failed.as_str();
             let ending = Finish {
-                candidate: draft.head_candidate_id.as_ref(),
+                candidate: draft.head_revision_id.as_ref(),
                 reason: Some(super::reason_word(reason)),
                 ..Finish::status(failed)
             };
@@ -203,7 +203,7 @@ impl Creations {
         let completed = MessageState::Completed.as_str();
         let ending = Finish {
             answer: finish.answer,
-            candidate: written.or(draft.head_candidate_id.as_ref()),
+            candidate: written.or(draft.head_revision_id.as_ref()),
             detail: refused.map(Refusal::detail),
             ..Finish::status(completed)
         };
@@ -268,7 +268,7 @@ impl Creations {
         now: Timestamp,
     ) -> Result<Applied> {
         let head = Head {
-            candidate: draft.head_candidate_id.as_ref(),
+            candidate: draft.head_revision_id.as_ref(),
             revision: draft.candidate_revision,
         };
         let definition = match refusal::check(head, proposal) {
@@ -281,7 +281,7 @@ impl Creations {
             candidate::Replacement {
                 id: &id,
                 draft: &draft.id,
-                revision: draft.candidate_revision.saturating_add(1),
+                revision: draft.last_revision.saturating_add(1),
                 definition: &definition,
             },
         )

@@ -296,7 +296,7 @@ fn durable_task_plane(
                 config,
                 admin,
                 runs.vault.clone(),
-                Arc::clone(&master),
+                master,
                 client.clone(),
             )
         });
@@ -308,11 +308,7 @@ fn durable_task_plane(
             policy,
             admin_workspace,
             storage,
-            github: Some(afd_fleet::durable_task::Github::new(
-                runs.clone(),
-                client,
-                master,
-            )),
+            github: Some(afd_fleet::durable_task::Github::new(runs.clone(), client)),
             ..afd_fleet::durable_task::DurableTaskDependencies::from(&*runs)
         },
     );

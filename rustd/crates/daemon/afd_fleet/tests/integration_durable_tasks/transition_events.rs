@@ -175,21 +175,6 @@ async fn a_report_that_missed_an_accepted_input_blocks_on_changed_evidence() {
         );
         assert_eq!(event.field("state"), Some("blocked"));
         assert_eq!(event.field("reason"), Some("goal_evidence_changed"));
-        let reason: Option<String> =
-            sqlx::query_scalar("SELECT status_reason FROM fleet.durable_tasks WHERE id=$1")
-                .bind(&durable_task_id)
-                .fetch_one(
-                    &mut *case
-                        .held
-                        .fixtures
-                        .database
-                        .acquire()
-                        .await
-                        .expect("reason observer"),
-                )
-                .await
-                .expect("stored reason");
-        assert_eq!(reason.as_deref(), Some("goal_evidence_changed"));
         assert!(case.held.fixtures.turn_settled(&case.held.turn_id).await);
     })
     .await;
@@ -230,8 +215,8 @@ async fn a_report_claiming_a_cursor_the_durable_task_never_reached_is_unverified
                 )
                 .await
                 .expect("the financial report settles");
-            let stored: (String, Option<String>) =
-                sqlx::query_as("SELECT status,status_reason FROM fleet.durable_tasks WHERE id=$1")
+            let stored: String =
+                sqlx::query_scalar("SELECT status FROM fleet.durable_tasks WHERE id=$1")
                     .bind(&durable_task_id)
                     .fetch_one(
                         &mut *case
@@ -245,11 +230,7 @@ async fn a_report_claiming_a_cursor_the_durable_task_never_reached_is_unverified
                     .await
                     .expect("stored task");
             assert_eq!(
-                stored,
-                (
-                    "blocked".to_owned(),
-                    Some("recovery_or_completion_unverified".to_owned())
-                ),
+                stored, "blocked",
                 "claimed input {covered_input_sequence}, watermark {effect_watermark}"
             );
             assert!(case.held.fixtures.turn_settled(&case.held.turn_id).await);

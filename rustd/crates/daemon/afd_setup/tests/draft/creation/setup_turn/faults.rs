@@ -15,8 +15,8 @@ use sqlx::{Connection as _, PgConnection};
 
 /// The table the creator's person read joins and nothing before it reads.
 const LOCK_WORKSPACES: &str = "LOCK TABLE identity.workspaces IN ACCESS EXCLUSIVE MODE";
-/// The table the draft's locked read joins and nothing before it reads.
-const LOCK_CANDIDATES: &str = "LOCK TABLE setup.candidates IN ACCESS EXCLUSIVE MODE";
+/// The table the draft's locked read joins for its head and nothing before it reads.
+const LOCK_CANDIDATES: &str = "LOCK TABLE fleet.revisions IN ACCESS EXCLUSIVE MODE";
 /// The table the payer's balance reads.
 const LOCK_WALLETS: &str = "LOCK TABLE billing.wallets IN ACCESS EXCLUSIVE MODE";
 /// The table the assignment's first row lock takes.

@@ -7,25 +7,26 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 19] = [
+const IMMUTABLE: [&str; 20] = [
+    "billing.usage_lines",
     "connector.oauth_nonces",
     "fleet.durable_task_adoptions",
     "fleet.durable_task_checkpoint_operations",
-    "fleet.durable_task_completions",
     "fleet.durable_task_effect_payloads",
     "fleet.durable_task_effects",
+    "fleet.durable_task_identity_keys",
     "fleet.durable_task_input_receipts",
     "fleet.durable_task_interpretations",
     "fleet.durable_task_items",
     "fleet.durable_task_object_refs",
-    "fleet.revisions",
     "identity.memberships",
+    "identity.tenants",
+    "identity.users",
     "identity.workspaces",
     "model.decision_revisions",
     "runner.history",
     "runner.turn_checkpoint_operations",
     "runner.turn_checkpoint_refs",
-    "setup.candidates",
     "setup.replay_receipts",
 ];
 
@@ -102,7 +103,7 @@ async fn test_immutable_tables_refuse_update() {
 async fn assert_refused_yet_cascaded(connection: &mut PgConnection) {
     let tenant = mint_id();
     let workspace = mint_id();
-    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())")
+    sqlx::query("INSERT INTO identity.tenants (id, name, created_at) VALUES ($1, $2, now())")
         .bind(&tenant)
         .bind("tenant")
         .execute(&mut *connection)

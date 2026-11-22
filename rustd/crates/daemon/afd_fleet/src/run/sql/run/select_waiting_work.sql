@@ -15,11 +15,10 @@ WITH probe AS (
             WHERE a.settled_at IS NULL AND a.producer IS NOT NULL
               AND ($4::boolean OR NOT EXISTS (
                   SELECT 1 FROM thread.turns saved
-                  JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
                     AND saved.durable_task_generation IS NULL
-                    AND recovery.head_turn_checkpoint_id IS NOT NULL
+                    AND saved.head_turn_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
                   SELECT 1 FROM thread.threads s
@@ -54,11 +53,10 @@ SELECT
               WHERE f.tenant_id = r.tenant_id AND a.settled_at IS NULL
               AND ($4::boolean OR NOT EXISTS (
                   SELECT 1 FROM thread.turns saved
-                  JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
                     AND saved.durable_task_generation IS NULL
-                    AND recovery.head_turn_checkpoint_id IS NOT NULL
+                    AND saved.head_turn_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (
                     SELECT 1 FROM thread.threads s

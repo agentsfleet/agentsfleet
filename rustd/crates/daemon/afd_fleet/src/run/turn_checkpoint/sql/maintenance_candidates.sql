@@ -1,8 +1,9 @@
--- Seek through the primary key before examining any owner's generations or pins.
+-- Seek through the recovering turns' index before examining any owner's generations or pins.
 WITH page AS MATERIALIZED (
-    SELECT turn_id FROM runner.turn_recovery
-    WHERE turn_id > COALESCE($3::uuid, UUID '00000000-0000-0000-0000-000000000000')
-    ORDER BY turn_id LIMIT $2
+    SELECT id AS turn_id FROM thread.turns
+    WHERE next_checkpoint_generation IS NOT NULL
+      AND id > COALESCE($3::uuid, UUID '00000000-0000-0000-0000-000000000000')
+    ORDER BY id LIMIT $2
 )
 SELECT h.turn_id, a.thread_id AS fleet_id, a.workspace_id,
        COALESCE(

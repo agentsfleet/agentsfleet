@@ -1,4 +1,4 @@
-//! Expired capture cleanup transfers custody before releasing storage quota.
+//! Expired capture cleanup transfers custody into an opaque remote-delete receipt.
 
 use af_core::id::Uuid7;
 use af_wire::durable_task::{CheckpointMode, CheckpointObjectsInput, CheckpointPlaintext};
@@ -14,7 +14,7 @@ use super::{
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn expired_capture_erases_wrapped_keys_and_releases_quota_after_remote_delete_once() {
+async fn expired_capture_erases_wrapped_keys_and_acknowledges_the_remote_delete_once() {
     exercise(retention).await;
 }
 
@@ -54,7 +54,7 @@ async fn retention(case: &Case) {
         .expect("repeat collection");
     assert_eq!(
         repeated.purged, 0,
-        "acknowledged quota is never released twice"
+        "an acknowledged remote delete is never acknowledged twice"
     );
     fixture.model.finish().await.expect("model cleanup");
     server.finish().await;
@@ -105,14 +105,6 @@ async fn assert_erased(case: &Case, object: &Uuid7) {
         .acquire()
         .await
         .expect("custody observer");
-    let quota: (i64, i64) = sqlx::query_as(
-        "SELECT reserved_bytes, stored_bytes FROM fleet.durable_task_storage_quota WHERE workspace_id = $1",
-    )
-    .bind(&case.scope.workspace_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("quota");
-    assert_eq!(quota, (0, 0));
     let custody: (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM fleet.durable_task_objects WHERE id = $1), EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id = $1 AND completed_at IS NOT NULL)")
         .bind(object).fetch_one(&mut *connection).await.expect("erasure receipt");
     assert_eq!(

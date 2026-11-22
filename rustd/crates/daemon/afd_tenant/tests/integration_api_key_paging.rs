@@ -27,7 +27,7 @@
 
 use af_core::error_code;
 use af_core::paging::Cursor;
-use afd_tenant::apikey::{ApiKeySort, Description, KeyName, KeyRow, MintRequest};
+use afd_tenant::apikey::{ApiKeySort, KeyName, KeyRow, MintRequest};
 use jiff::{SignedDuration, Timestamp};
 
 /// How far apart the corpus spaces two keys that must NOT tie.
@@ -191,7 +191,6 @@ async fn should_refuse_duplicate_name_when_index_rejects_insert() {
     let request = MintRequest {
         tenant: &lane.tenant,
         name: KeyName::parse("alpha").expect("a well-formed name"),
-        description: Description::parse(None).expect("an absent description is legal"),
         created_by: "fixture|apikey-collision",
     };
     let taken = lane
@@ -232,7 +231,6 @@ async fn a_mint_for_an_account_with_no_row_is_a_statement_failure() {
     let request = MintRequest {
         tenant: &absent,
         name: KeyName::parse("alpha").expect("a well-formed name"),
-        description: Description::parse(None).expect("an absent description is legal"),
         created_by: "fixture|apikey-orphan",
     };
 

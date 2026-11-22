@@ -1,6 +1,7 @@
-//! Immutable versions and the single draft pointer changed under its row lock.
+//! A draft's proposals, `fleet.revisions` rows it owns, and its single head pointer changed
+//! under its row lock.
 
-/// `$1` candidate, `$2` draft.
+/// `$1` proposal, `$2` draft.
 pub(crate) const READ: &str = include_str!("read.sql");
 
 /// `$1` id, `$2` draft, `$3` revision, `$4` definition, `$5` digest,

@@ -22,9 +22,13 @@ pub(crate) struct Locked {
     pub(crate) title: String,
     pub(crate) resource_version: i64,
     pub(crate) setup_model_ref: String,
-    pub(crate) head_candidate_id: Option<Uuid7>,
+    /// The draft's head proposal, which stays its head once installed.
+    pub(crate) head_revision_id: Option<Uuid7>,
     /// The head candidate's revision; zero before the first candidate.
     pub(crate) candidate_revision: i64,
+    /// The number the draft's next proposal follows: its head's, or a later one it
+    /// still owns once the head was installed; zero before the first proposal.
+    pub(crate) last_revision: i64,
     pub(crate) last_message_sequence: i64,
     pub(crate) fleet_id: Option<Uuid7>,
     pub(crate) closed_at: Option<Timestamp>,
@@ -44,8 +48,9 @@ struct LockedRow {
     title: String,
     resource_version: i64,
     tenant_model_id: Option<Uuid7>,
-    head_candidate_id: Option<Uuid7>,
+    head_revision_id: Option<Uuid7>,
     candidate_revision: i64,
+    last_revision: i64,
     last_message_sequence: i64,
     fleet_id: Option<Uuid7>,
     closed_at: Option<jiff_sqlx::Timestamp>,
@@ -75,8 +80,9 @@ impl LockedRow {
             title: self.title,
             resource_version: self.resource_version,
             setup_model_ref: model::reference(self.tenant_model_id),
-            head_candidate_id: optional(self.head_candidate_id.as_ref().map(Uuid7::as_str))?,
+            head_revision_id: optional(self.head_revision_id.as_ref().map(Uuid7::as_str))?,
             candidate_revision: self.candidate_revision,
+            last_revision: self.last_revision,
             last_message_sequence: self.last_message_sequence,
             fleet_id: optional(self.fleet_id.as_ref().map(Uuid7::as_str))?,
             closed_at: self.closed_at.map(jiff_sqlx::Timestamp::to_jiff),
@@ -127,7 +133,7 @@ pub(crate) async fn lock(
 }
 
 pub(crate) async fn project(connection: &mut PgConnection, locked: Locked) -> Result<Draft> {
-    let candidate = match locked.head_candidate_id {
+    let candidate = match locked.head_revision_id {
         Some(ref id) => Some(candidate::read(connection, &locked.id, id).await?),
         None => None,
     };

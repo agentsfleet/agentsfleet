@@ -255,7 +255,6 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
     }
     sqlx::query(sql::message::ADVANCE)
         .bind(insertion.draft)
-        .bind(insertion.sequence)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

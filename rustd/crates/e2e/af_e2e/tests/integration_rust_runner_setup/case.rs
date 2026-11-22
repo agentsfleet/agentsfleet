@@ -118,7 +118,7 @@ impl Case {
 
     async fn turn(&self, draft: &Uuid7, sequence: i64) -> Option<TurnRow> {
         let row: Option<TurnColumns> = sqlx::query_as(
-            "SELECT status, answer_text, candidate_id, failure_reason FROM thread.turns \
+            "SELECT status, answer_text, proposed_revision_id, failure_reason FROM thread.turns \
              WHERE thread_id = $1 AND sequence = $2",
         )
         .bind(draft)
@@ -139,14 +139,14 @@ impl Case {
     pub(super) async fn candidates(&self, draft: &Uuid7) -> (i64, Option<(i64, Value)>) {
         let mut connection = self.connection().await;
         let count: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM setup.candidates WHERE draft_id = $1")
+            sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE draft_id = $1")
                 .bind(draft)
                 .fetch_one(&mut *connection)
                 .await
                 .expect("the draft's candidates count");
         let head: Option<(i64, Value)> = sqlx::query_as(
             "SELECT c.revision, c.definition FROM setup.drafts d \
-             JOIN setup.candidates c ON c.id = d.head_candidate_id WHERE d.id = $1",
+             JOIN fleet.revisions c ON c.id = d.head_revision_id WHERE d.id = $1",
         )
         .bind(draft)
         .fetch_optional(&mut *connection)
