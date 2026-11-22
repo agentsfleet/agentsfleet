@@ -53,7 +53,9 @@ test.describe("onboarding chat", () => {
     // The proposed name heads the page (DraftChatHeading); the setup region holds its checks.
     await expect(page.getByRole("heading", { level: 1, name: FLEET_NAME, exact: true })).toBeVisible({ timeout: PROPOSAL_TIMEOUT_MS });
     const summary = setupSummary(page);
-    await expect(summary).toContainText("Model");
+    // The region lists only checks that are not ready (SetupChecks issuesOnly), so a ready
+    // runtime model shows as no readiness list at all, not as a "Model" row.
+    await expect(summary.getByRole("list", { name: "Configuration readiness" })).toHaveCount(0);
     await expect(summary).not.toContainText("Not reviewed");
     await expect(summary).not.toContainText("Not resolved");
 

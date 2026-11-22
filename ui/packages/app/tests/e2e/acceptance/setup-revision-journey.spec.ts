@@ -79,10 +79,6 @@ test.describe("setup revisions", () => {
       await (await editSetupAction(stale)).click();
       await expect(stale).toHaveURL(new RegExp(`/fleets/new\\?fleet=${saved}&setup_revision=1$`));
       await expect(stale.getByLabel(CHAT_COPY.composer)).toBeVisible();
-      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
-      await expect(packages).toBeEnabled();
-      await packages.click();
-      await expect(packages).toBeChecked();
 
       // Revision 2: the same chat, with the first request still in it, takes one change.
       await (await editSetupAction(page)).click();
@@ -94,6 +90,13 @@ test.describe("setup revisions", () => {
       const response = await created;
       expect(response.status()).toBe(201);
       const draftId = DraftSchema.shape.id.parse((await response.headerValue("location"))?.split("/").at(-1));
+      // The stale edit lands after this chat's draft exists: an editing draft opened earlier
+      // on revision 1 is the creator's to continue (draft-editor.ts editorPatch), so it would
+      // have been this chat's draft rather than a superseded one.
+      const packages = stale.getByRole("switch", {name: "Enable package manager domains"});
+      await expect(packages).toBeEnabled();
+      await packages.click();
+      await expect(packages).toBeChecked();
       await expect.poll(async () => DraftSchema.parse(await clientFor(FIXTURE_KEY.regular)
         .get<unknown>(`/v1/workspaces/${workspaceId}/drafts/${draftId}`)).candidate?.definition.instructions_md ?? "",
       { timeout: PROPOSAL_TIMEOUT_MS }).toContain(SECOND_WORD);

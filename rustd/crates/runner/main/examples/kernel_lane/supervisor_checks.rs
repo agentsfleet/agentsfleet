@@ -3,6 +3,10 @@
 /// Shared tool, call and field spellings in the fixture.
 const POST: &str = "POST";
 const FENCING_FIELD: &str = "fencing_token";
+/// The item a retried effect names, so the daemon lands it once.
+pub(crate) const ITEM_FIELD: &str = "item_id";
+/// The call's number in its run, which the item is keyed on.
+const CALL_FIELD: &str = "call_number";
 
 use af_wire::paths::{RUN_SCHEDULES_SUFFIX, RUNNER_MEMORY, RUNNER_RUNS, SCHEDULE_RUNS_SUFFIX};
 use afr_supervisor::test_util::{FENCING, RUN_ID};
@@ -167,9 +171,25 @@ fn schedules_sent(observed: &Observed) -> Result<(), Failed> {
         "{RUNNER_RUNS}/{RUN_ID}/{RUN_SCHEDULES_SUFFIX}/{SCHEDULE_ID}/{SCHEDULE_RUNS_SUFFIX}"
     );
     let run = received(observed, &path)?;
+    // Since a retried effect lands once, a run-now also names its call's
+    // item, which the runner mints, so only its shape is checked.
     expect(
-        run.method == POST && run.body == json!({FENCING_FIELD: FENCING}),
-        "run-now targets the created schedule with the run's fence",
+        run.method == POST
+            && run.body.get(FENCING_FIELD) == Some(&json!(FENCING))
+            && run
+                .body
+                .get(ITEM_FIELD)
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|item| af_core::id::Uuid7::parse(item).is_ok())
+            && run
+                .body
+                .get(CALL_FIELD)
+                .is_some_and(serde_json::Value::is_u64)
+            && run.body.as_object().is_some_and(|fields| fields.len() == 3),
+        format!(
+            "run-now targets the created schedule with the run's fence and its call's item, got {}",
+            run.body
+        ),
     )?;
     expect(
         observed.output("run")?.contains(SCHEDULE_TURN_ID),

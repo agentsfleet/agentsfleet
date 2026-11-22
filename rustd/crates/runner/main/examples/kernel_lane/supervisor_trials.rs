@@ -13,7 +13,7 @@ use serde_json::json;
 use crate::lane::Lane;
 use crate::run::expect;
 use crate::supervisor::{Case, run};
-use crate::supervisor_checks::{finished, grafana_sent, supervisor_results};
+use crate::supervisor_checks::{ITEM_FIELD, finished, grafana_sent, supervisor_results};
 use crate::supervisor_model::{call, edit_calls, mutations, refused_calls, supervisor_calls};
 use crate::supervisor_plane::{PROVIDER_TOKEN, RUNNER_TOKEN, TOKEN};
 use crate::trials::Body;
@@ -156,15 +156,28 @@ fn failed_mutations(lane: &Lane) -> Result<(), Failed> {
         },
     )?;
     finished(&observed, 0)?;
+    // Since a retried effect lands once (the daemon keys it on its item), a
+    // 503 is retried through the runner's attempts, and every attempt names
+    // the same item, so the daemon can never act on it twice.
+    let budget = afr_supervisor::config::RuntimeSettings::default().daemon_max_attempts;
     for (id, suffix) in [(SCHEDULE, "/schedules"), ("message", "/messages")] {
-        let attempts = observed
+        let items: Vec<_> = observed
             .received
             .iter()
             .filter(|request| request.path.ends_with(suffix))
-            .count();
+            .map(|request| request.body.get(ITEM_FIELD))
+            .collect();
         expect(
-            attempts == 1,
-            format!("{id} makes one attempt after a 503, got {attempts}"),
+            items.len() == budget,
+            format!(
+                "{id} makes {budget} attempts after a 503, got {}",
+                items.len()
+            ),
+        )?;
+        let first = items.first().copied().flatten();
+        expect(
+            first.is_some() && items.iter().all(|item| *item == first),
+            format!("{id} names one item on every attempt, got {items:?}"),
         )?;
         let output = observed.output(id)?;
         expect(
