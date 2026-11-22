@@ -1,6 +1,5 @@
 import type { NextConfig } from "next";
 import { loadEnvFile } from "node:process";
-import { PROXY_BODY_LIMIT_BYTES } from "./lib/api/body-limits";
 
 const uiEnvFile = process.env.AGENTSFLEET_UI_ENV_FILE;
 if (uiEnvFile) loadEnvFile(uiEnvFile);
@@ -42,8 +41,11 @@ const nextConfig: NextConfig = {
   experimental: {
     useTypeScriptCli: true,
     // `proxy.ts` matches the setup and message routes, so Next buffers their
-    // bodies, and past its 10 MiB default it truncates them silently.
-    proxyClientMaxBodySize: PROXY_BODY_LIMIT_BYTES,
+    // bodies, and past its 10 MiB default it truncates them silently. The
+    // number is lib/api/body-limits.ts's PROXY_BODY_LIMIT_BYTES, written out
+    // because a local import breaks `next start <dir>` under Bun from another
+    // directory; tests/body-limits.test.ts pins the two equal.
+    proxyClientMaxBodySize: 25_640_960,
     optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 
