@@ -117,7 +117,7 @@ describe("fleet-stream-registry — pagination", () => {
     const url = String(fetchSpy.mock.calls[0]?.[0]);
     expect(url).not.toContain("since=");
     expect(url).not.toContain("cursor=");
-    expect(url).toContain("limit=200");
+    expect(url).not.toContain("limit=");
     expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_first_ever"]);
     a();
   });

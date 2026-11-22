@@ -12,8 +12,6 @@ import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 // second-granular RFC 3339: a frame sharing the truncated second must not be
 // skipped. mergeBackfill's id-dedupe absorbs the overlap (RULE KYS boundary).
 const BACKFILL_OVERLAP_MS = 2_000;
-// The upstream page maximum.
-const BACKFILL_PAGE_LIMIT = 200;
 
 // A backfill failure is deliberately swallowed (live frames have already
 // resumed; the next reconnect retries), so this console line is its only
@@ -41,7 +39,9 @@ export type BackfillRequest = {
 };
 
 export type WorkspaceBackfillRequest = Omit<BackfillRequest, "fleetId">;
-type BackfillQuery = Pick<TurnsQuery, "cursor" | "since" | "limit">;
+// No `limit`: the page size is the daemon's, whose ceiling a deployment sets,
+// and the walk follows `next_cursor` whatever the size.
+type BackfillQuery = Pick<TurnsQuery, "cursor" | "since">;
 type BackfillWalkRequest = WorkspaceBackfillRequest & {
   pageUrl: (query: BackfillQuery) => string;
 };
@@ -122,11 +122,8 @@ async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<
   for (;;) {
     const query =
       cursor === undefined
-        ? {
-            since: floorMs === null ? undefined : rfc3339Seconds(floorMs),
-            limit: BACKFILL_PAGE_LIMIT,
-          }
-        : { cursor, limit: BACKFILL_PAGE_LIMIT };
+        ? { since: floorMs === null ? undefined : rfc3339Seconds(floorMs) }
+        : { cursor };
 
     const body = await fetchBackfillPage(pageUrl(query));
     if (body === null) return { ok: false };

@@ -26,7 +26,6 @@ import { ui, AGE_KEY, EMPTY_CELL, instantCell } from "../../output/index.ts";
 import {
   GATE_COLUMN,
   GATE_FIELD,
-  GATE_PAGE_LIMIT,
   GATE_QUERY,
   GATE_STATUS,
 } from "../../constants/approvals.ts";
@@ -59,6 +58,8 @@ export interface ApprovalListResponse {
 
 /** One approvals page, with the daemon doing the narrowing.
  *
+ *  No `limit`: the page size is the daemon's, whose ceiling a deployment
+ *  sets, and the cursor walk reads every page whatever its size.
  *  `status` and `fleet_id` are the route's own query parameters. Filtering
  *  here rather than over a returned page is not a style choice: a client-side
  *  filter sees only what the first page happened to contain, so a workspace
@@ -70,7 +71,7 @@ export const approvalsQuery = (filters: {
   readonly status?: string | undefined;
   readonly cursor?: string | undefined;
 }): string => {
-  const params = new URLSearchParams({ [GATE_QUERY.limit]: String(GATE_PAGE_LIMIT) });
+  const params = new URLSearchParams();
   if (filters.fleetId) params.set(GATE_QUERY.fleetId, filters.fleetId);
   if (filters.status) params.set(GATE_QUERY.status, filters.status);
   if (filters.cursor) params.set(GATE_QUERY.cursor, filters.cursor);

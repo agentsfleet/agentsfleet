@@ -78,17 +78,19 @@ pub struct AnswerMarker {
     pub part: Option<Part>,
 }
 
-/// One interim line's place: the run that said it, and its number there.
+/// One interim line's place: the run that said it, and the call there that
+/// said it.
 ///
-/// The run is part of it because the count is the run's: a reassigned
-/// run numbers its lines from one again, and its first line must not read
-/// as the dead run's first.
+/// The run is part of it because the call's number is the run's: a
+/// reassigned run numbers its calls from one again, and its first line must
+/// not read as the dead run's first. The call is what makes a retried call's
+/// line the same line, so its repeat finds the first attempt's post.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Part {
     /// The run that posted the line.
     pub run_id: String,
-    /// Which line of that run it is, from one.
-    pub line: u32,
+    /// The number of the call in that run that said it, from one.
+    pub line: u64,
 }
 
 impl AnswerMarker {

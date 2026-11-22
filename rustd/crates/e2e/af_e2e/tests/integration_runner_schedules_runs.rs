@@ -265,6 +265,32 @@ async fn test_once_schedule_retires_after_fire() {
     assigned.finish(supervisor).await;
 }
 
+/// A run-now of a `once` schedule whose answer was lost is retried as the
+/// same call: the schedule retired with the first, and the retry answers the
+/// run the first created, not a 404.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_a_retried_run_now_of_a_once_schedule_answers_its_first_run() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let assigned = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
+    let (_status, created) = assigned.create(true).await;
+    let schedule = created["schedule_id"].as_str().expect("an id");
+    let runs = assigned.path(&format!("/{schedule}/runs"));
+    let call = assigned.fence_body();
+
+    let (status, first) = assigned.call(Method::POST, &runs, Some(&call)).await;
+    assert_eq!(status, 201, "{first}");
+    assert_eq!(assigned.held(None).await, 0, "the once schedule retired");
+    let (status, retried) = assigned.call(Method::POST, &runs, Some(&call)).await;
+    assert_eq!(status, 201, "{retried}");
+    assert_eq!(
+        retried["turn_id"], first["turn_id"],
+        "the retry answers the run its call created"
+    );
+    assigned.finish(supervisor).await;
+}
+
 /// A `once` schedule fired while another syncer held its row: the fire is
 /// admitted, the call answers 409 so it is repeated, and the repeat replays
 /// the same event and finishes the retirement.

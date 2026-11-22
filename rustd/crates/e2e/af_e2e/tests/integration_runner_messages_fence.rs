@@ -65,20 +65,20 @@ async fn test_superseded_holder_of_a_thread_posts_nothing() {
     speaking.finish(supervisor).await;
 }
 
-/// Posts racing for numbers: every one lands, no two take the same line, and
-/// the count is exactly how many raced.
+/// Posts racing: every one lands under its own call's line, and the count is
+/// exactly how many raced.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_messages_each_take_their_own_line() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
     let (run_id, fence) = speaking.run_thread().await;
-    let texts: Vec<String> = (0..RACERS).map(|line| format!("line {line}")).collect();
+    let texts: Vec<String> = (1..=RACERS).map(|line| format!("line {line}")).collect();
 
     let answers = futures_util::future::join_all(
-        texts
-            .iter()
-            .map(|text| speaking.say((&run_id, fence), text)),
+        (1..=u64::from(RACERS))
+            .zip(&texts)
+            .map(|(call, text)| speaking.say_as((&run_id, fence), call, text)),
     )
     .await;
     let landed = answers.iter().filter(|(status, _)| *status == 200).count();

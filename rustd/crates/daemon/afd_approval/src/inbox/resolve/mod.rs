@@ -133,6 +133,9 @@ impl Inbox {
             .bind(GRANT_REVOKED)
             .bind(KIND_INTEGRATION_GRANT)
             .bind(afd_fleet_lifecycle::FleetStatus::Archived.as_str())
+            .bind(status::DENIED)
+            .bind(status::ANSWERED)
+            .bind(afd_api_wire::approval::GATE_TYPE_QUESTION)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_RESOLVE))?;
@@ -143,9 +146,10 @@ impl Inbox {
             return Ok(Resolution::Resolved(resolved));
         }
 
-        // Nothing updated: somebody answered first, the fleet is archived, or
-        // there was never a gate. The second read is what tells those apart,
-        // and it runs only on the losing path so the winner pays one statement.
+        // Nothing updated: somebody answered first, the gate does not take this
+        // decision, the fleet is archived, or there was never a gate. The second
+        // read is what tells those apart, and it runs only on the losing path so
+        // the winner pays one statement.
         let existing = sqlx::query_as::<_, StoredLoss>(sql::SELECT_GATE_BY_ACTION)
             .bind(action)
             .bind(scope)
@@ -155,6 +159,9 @@ impl Inbox {
 
         drop(connection);
         Ok(match existing {
+            Some(row) if row.unanswered && !outcome.fits(&row.gate_type) => {
+                Resolution::WrongDecision
+            }
             Some(row) if row.unanswered => Resolution::FleetArchived,
             Some(row) => Resolution::AlreadyResolved(self.stood(row.resolution.into()).await?),
             None => Resolution::NotFound,

@@ -23,3 +23,15 @@ test("refuses a page cursor the walk already followed instead of walking forever
     expect(error).toMatchObject({detail: "the approval list repeated page cursor same", code: "APPROVAL_LIST_CURSOR_REPEATED", status: 502});
   }
 });
+
+test("an approvals page names no limit, so the server's ceiling decides", async () => {
+  const paths: string[] = [];
+  const gates = await Effect.runPromise(fetchGates("workspace", Redacted.make("test-token"), {fleetId: "fleet", status: "pending"}).pipe(
+    Effect.provide(pagedHttp((page) => (page === 1 ? "next" : null), paths))));
+  const queries = paths.map((path) => new URLSearchParams(path.slice(path.indexOf("?") + 1)));
+  expect(gates).toHaveLength(2);
+  expect(queries.map((query) => query.has("limit"))).toEqual([false, false]);
+  expect(queries.map((query) => query.get("fleet_id"))).toEqual(["fleet", "fleet"]);
+  expect(queries.map((query) => query.get("status"))).toEqual(["pending", "pending"]);
+  expect(queries.map((query) => query.get("cursor"))).toEqual([null, "next"]);
+});

@@ -69,8 +69,9 @@ async fn test_standing_answers_only_the_live_holder() {
     held.fixtures.cleanup().await;
 }
 
-/// A run asked from a thread may speak into it, and each message counts; a
-/// run with nowhere to speak is refused before anything is counted.
+/// A run asked from a thread may speak into it, each message under its own
+/// call's line; a run with nowhere to speak is refused before anything is
+/// counted.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_messages_count_against_the_live_holder() {
@@ -82,26 +83,26 @@ async fn test_messages_count_against_the_live_holder() {
     stage.admit(Producer::Webhook, "speaks", reply).await;
     let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
     let plane = stage.fixtures.plane();
-    let say = |text: &'static str| MessageRequest {
+    let say = |call_number: u64, text: &'static str| MessageRequest {
         fencing_token: run.fence.as_u64(),
         item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
-        call_number: 1,
+        call_number,
         text: Cow::Borrowed(text),
     };
 
     let first = plane
-        .message(&stage.runner, run_id.clone(), &say("working on it"))
+        .message(&stage.runner, run_id.clone(), &say(1, "working on it"))
         .await
         .expect("the live holder speaks into its thread");
     let second = plane
-        .message(&stage.runner, run_id, &say("nearly there"))
+        .message(&stage.runner, run_id, &say(2, "nearly there"))
         .await
         .expect("and again");
 
     assert_eq!(
         (first.part, second.part),
         (1, 2),
-        "each message takes the next line"
+        "each message takes its call's line"
     );
     assert_eq!(first.destination, THREAD);
     let silent = held().await;
@@ -126,7 +127,7 @@ async fn test_messages_count_against_the_live_holder() {
     stage.fixtures.cleanup().await;
 }
 
-/// No count caps a run's lines: the ninth and tenth are numbered like the
+/// No count caps a run's lines: the ninth and tenth are said like the
 /// first, and a line far past 4,096 bytes is prepared whole.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -140,14 +141,14 @@ async fn test_a_run_speaks_past_eight_lines_each_numbered() {
     let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
     let plane = stage.fixtures.plane();
     let long = "w".repeat(10_000);
-    let request = MessageRequest {
-        fencing_token: run.fence.as_u64(),
-        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
-        call_number: 1,
-        text: Cow::Borrowed(long.as_str()),
-    };
 
-    for part in 1..=10_u32 {
+    for part in 1..=10_u64 {
+        let request = MessageRequest {
+            fencing_token: run.fence.as_u64(),
+            item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+            call_number: part,
+            text: Cow::Borrowed(long.as_str()),
+        };
         let said = plane
             .message(&stage.runner, run_id.clone(), &request)
             .await
@@ -155,6 +156,42 @@ async fn test_a_run_speaks_past_eight_lines_each_numbered() {
         assert_eq!(said.part, part);
         assert_eq!(said.text.len(), 10_000);
     }
+    stage.fixtures.cleanup().await;
+}
+
+// Value: protects=a call retried after its line posted and its record was lost
+// names the line it may already have posted, so the thread check finds it;
+// fails_when=the part is the run's message count again; why_new=every message
+// case sent a new call; seam=RunService::message over live Postgres, the same
+// call said twice.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_repeated_call_number_names_the_same_part() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "retries", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let plane = stage.fixtures.plane();
+    let request = MessageRequest {
+        fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 3,
+        text: Cow::Borrowed("working on it"),
+    };
+
+    let first = plane
+        .message(&stage.runner, run_id.clone(), &request)
+        .await
+        .expect("the live holder speaks into its thread");
+    let retried = plane
+        .message(&stage.runner, run_id, &request)
+        .await
+        .expect("the retry is prepared again");
+
+    assert_eq!((first.part, retried.part), (3, 3), "one call, one line");
     stage.fixtures.cleanup().await;
 }
 

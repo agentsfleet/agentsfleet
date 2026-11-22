@@ -2,16 +2,18 @@
 //! answer, prepared here and posted by `afd_outbound`'s posters.
 //!
 //! ```text
-//!   proved run ──► the event's thread ──► the line's number ──► masked text
+//!   proved run ──► the event's thread ──► the line's count ──► masked text
 //!        │                  │                     │                   │
 //!   stale: refuse     none: no channel     superseded: refuse     Interim
 //! ```
 //!
 //! Every refusal is decided before the text is read, so a refused message
 //! costs no vault read. The order puts the thread before the count, so a
-//! message with nowhere to go takes no number. A run may say as much, and as
-//! often, as it likes: the channel refuses what it cannot take, and the post
-//! answers `delivered: false`.
+//! message with nowhere to go is not counted. The line's marker part is the
+//! call's own number, not the count, so a retried call names the line its
+//! first attempt may have posted. A run may say as much, and as often, as it
+//! likes: the channel refuses what it cannot take, and the post answers
+//! `delivered: false`.
 //!
 //! # What the mask covers
 //!
@@ -77,15 +79,15 @@ impl RunService {
             .runs
             .count_message(&standing.run_id, request.fencing_token)
             .await?;
-        let Some(part) = counted else {
-            // No number taken: the run stopped holding after its standing was
+        if !counted {
+            // Not counted: the run stopped holding after its standing was
             // read. The second read names how; a holder it still proves was
             // superseded inside the count's own fence check.
             let Standing { run_id, .. } = standing;
             self.standing(runner_id, run_id, request.fencing_token)
                 .await?;
             return Err(stale_fence());
-        };
+        }
         let text = self.masked(&standing, &request.text).await?;
         let Standing {
             run_id,
@@ -102,7 +104,7 @@ impl RunService {
             turn_id,
             run_id,
             text,
-            part,
+            part: request.call_number,
         })
     }
 
@@ -178,9 +180,8 @@ impl RunService {
 
 impl Runs {
     /// Counts one message against `run_id` while it holds its fleet under
-    /// `presented`, answering which line of the run it is, or `None` once the
-    /// run no longer holds.
-    async fn count_message(&self, run_id: &Uuid7, presented: u64) -> Result<Option<u32>> {
+    /// `presented`, answering whether the run still held.
+    async fn count_message(&self, run_id: &Uuid7, presented: u64) -> Result<bool> {
         let mut connection = self.pool().acquire().await?;
         let counted: Option<i32> = sqlx::query_scalar(COUNT_MESSAGE)
             .bind(run_id)
@@ -189,8 +190,6 @@ impl Runs {
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_COUNT))?;
-        // The column starts at zero and only grows by one, so it is never
-        // negative; a count past `u32::MAX` keeps the largest number.
-        Ok(counted.map(|posted| u32::try_from(posted).unwrap_or(u32::MAX)))
+        Ok(counted.is_some())
     }
 }

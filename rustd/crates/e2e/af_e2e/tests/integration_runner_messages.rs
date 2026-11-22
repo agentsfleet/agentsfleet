@@ -49,8 +49,9 @@ async fn test_fleet_posts_a_message_mid_run() {
     let (run_id, fence) = speaking.run_thread().await;
 
     let (status, posted) = speaking
-        .say(
+        .say_as(
             (&run_id, fence),
+            1,
             "fix pushed as a draft; re-checking at 09:00",
         )
         .await;
@@ -73,8 +74,8 @@ async fn test_fleet_posts_a_message_mid_run() {
 }
 
 /// No cap on a run's lines: a 10,000-byte line lands whole, and the ninth
-/// and tenth lines land like the first, each its own part. An empty line is
-/// still refused before anything is numbered.
+/// and tenth lines land like the first, each under its own call's part. An
+/// empty line is still refused before anything is counted.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_run_posts_long_lines_past_eight() {
@@ -89,11 +90,11 @@ async fn test_a_run_posts_long_lines_past_eight() {
         "{refused}"
     );
     let long = "a".repeat(LONG_LINE_BYTES);
-    let (status, posted) = speaking.say((&run_id, fence), &long).await;
+    let (status, posted) = speaking.say_as((&run_id, fence), 1, &long).await;
     assert_eq!((status, &posted), (200, &json!({"delivered": true})));
     for line in 2..=LINES {
         let (status, posted) = speaking
-            .say((&run_id, fence), &format!("line {line}"))
+            .say_as((&run_id, fence), u64::from(line), &format!("line {line}"))
             .await;
         assert_eq!(status, 200, "line {line}: {posted}");
     }

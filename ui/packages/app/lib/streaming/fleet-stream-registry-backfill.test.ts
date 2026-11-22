@@ -21,7 +21,7 @@ describe("fleet-stream-registry — backfill", () => {
     const url = String(fetchSpy.mock.calls[0]?.[0]);
     expect(url).toContain(`/live/v1/workspaces/${WS}/fleets/${Z_A}/turns?`);
     expect(url).toContain(`since=${encodeURIComponent(SEED_SINCE_PARAM)}`);
-    expect(url).toContain("limit=200");
+    expect(url).not.toContain("limit=");
     expect(getSnapshot(Z_A).turns.map((e) => e.id)).toEqual(["evt_seed", "evt_missed"]);
     a();
   });

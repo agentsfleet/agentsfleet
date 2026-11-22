@@ -14,6 +14,7 @@
 )]
 
 use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
 use afd_connector::test_util::FakeSlack;
 use agentsfleetd::preflight::SLACK_API_URL_KNOB;
 use agentsfleetd::supervisor::Supervisor;
@@ -65,9 +66,30 @@ impl Speaking {
     }
 
     pub(crate) async fn say(&self, (run_id, fence): (&str, u64), text: &str) -> (u16, Value) {
-        let path = format!("/v1/runners/me/runs/{run_id}/messages");
         let body = crate::schedules::itemized(json!({"fencing_token": fence, "text": text}));
-        let response = post(&self.http, &self.scene, &path, &body).await;
+        self.speak(run_id, &body).await
+    }
+
+    /// [`Self::say`], as the run's call number `call`: a line's marker part
+    /// is its call's number, so a case that reads parts names its calls.
+    pub(crate) async fn say_as(
+        &self,
+        (run_id, fence): (&str, u64),
+        call: u64,
+        text: &str,
+    ) -> (u16, Value) {
+        let item_id = Entropy::new()
+            .uuid7(af_core::clock::now())
+            .expect("an identifier");
+        let body = json!({"fencing_token": fence, "text": text, "item_id": item_id,
+                          "call_number": call});
+        self.speak(run_id, &body).await
+    }
+
+    /// Posts the messages verb's `body` for `run_id`.
+    async fn speak(&self, run_id: &str, body: &Value) -> (u16, Value) {
+        let path = format!("/v1/runners/me/runs/{run_id}/messages");
+        let response = post(&self.http, &self.scene, &path, body).await;
         let status = response.status().as_u16();
         (status, body_of(response).await)
     }

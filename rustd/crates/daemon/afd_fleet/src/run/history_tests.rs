@@ -4,6 +4,7 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use af_core::id::Uuid7;
@@ -82,12 +83,13 @@ fn made(index: u64, fence: i64, number: i64, tool: &str, output: &str) -> CallRo
 
 /// A thread that pages `rows` as the statement does, newest first and
 /// before the cursor, answers `calls` by turn, or fails; and counts its
-/// page reads.
+/// page reads and records the turns whose calls it was asked for.
 #[derive(Debug)]
 struct Fake {
     rows: Option<Vec<FinishedTurn>>,
     calls: Vec<CallRow>,
     pages: AtomicUsize,
+    asked: Mutex<Vec<Uuid7>>,
     page_turns: i64,
 }
 
@@ -97,6 +99,7 @@ impl Fake {
             rows,
             calls: Vec::new(),
             pages: AtomicUsize::new(0),
+            asked: Mutex::new(Vec::new()),
             page_turns: HISTORY_PAGE_TURNS,
         }
     }
@@ -138,12 +141,13 @@ impl Thread for Fake {
         &self,
         _workspace: &Uuid7,
         _fleet: &Uuid7,
-        turns: &[Uuid7],
+        turn: &Uuid7,
     ) -> crate::Result<Vec<CallRow>> {
+        self.asked.lock().unwrap().push(turn.clone());
         Ok(self
             .calls
             .iter()
-            .filter(|call| turns.contains(&call.turn_id))
+            .filter(|call| call.turn_id == *turn)
             .cloned()
             .collect())
     }
@@ -347,6 +351,37 @@ async fn test_a_read_stops_past_one_frame() {
         Some(page + 1),
         "the newest turns are the ones read"
     );
+}
+
+// Value: protects=a read holds at most one frame and the turn that passed it,
+// never a whole page's calls; fails_when=the calls are read a page at a time
+// again, or the frame check moves back after the page; why_new=the page-level
+// stop ran only after every call of a page was in memory, and records carry no
+// cap; seam=`turns_before` over a thread that records whose calls it read.
+#[tokio::test]
+async fn a_read_stops_inside_a_page_once_past_one_frame() {
+    // A chat read observes the process-wide history counters.
+    let _counted_alone = COUNTED.lock().await;
+    let page = u64::try_from(HISTORY_PAGE_TURNS).unwrap();
+    // The newest turn's one call alone passes the frame.
+    let heavy = "o".repeat(MESSAGE_BYTES_MAX);
+    let thread =
+        Fake::new(Some(processed(page, "a"))).with_calls(vec![made(page, 1, 1, "shell", &heavy)]);
+
+    let turns = turns_for(&thread, TurnKind::Chat).await;
+
+    assert_eq!(
+        *thread.asked.lock().unwrap(),
+        [turn_id(page)],
+        "no older turn's calls were read"
+    );
+    let sequences: Vec<u64> = turns.iter().map(|turn| turn.sequence).collect();
+    assert_eq!(
+        sequences,
+        [page],
+        "the read kept the turn that passed the frame"
+    );
+    assert_eq!(thread.pages.load(Ordering::SeqCst), 1);
 }
 
 /// A failed run whose row names no failure answers with the failed status

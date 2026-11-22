@@ -181,3 +181,30 @@ async fn test_fleet_schedule_patch_is_idempotent() {
     assert_eq!(resumed["message"], "daily check");
     held.finish(supervisor).await;
 }
+
+/// An edit whose answer was lost is retried as the same call after the
+/// schedule was deleted: the retry answers the first change, not a 404.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_a_retried_edit_of_a_deleted_schedule_answers_its_first_change() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
+    let (_status, created) = held.create(false).await;
+    let member = format!("/{}", created["schedule_id"].as_str().expect("an id"));
+    let patch = itemized(json!({"fencing_token": held.fence, "message": "daily check"}));
+
+    let (status, first) = held
+        .call(Method::PATCH, &held.path(&member), Some(&patch))
+        .await;
+    assert_eq!(status, 200, "{first}");
+    let (status, _) = held.call(Method::DELETE, &held.fenced(&member), None).await;
+    assert_eq!(status, 204);
+    assert_eq!(held.held(None).await, 0, "the schedule is gone");
+    let (status, retried) = held
+        .call(Method::PATCH, &held.path(&member), Some(&patch))
+        .await;
+    assert_eq!(status, 200, "{retried}");
+    assert_eq!(retried, first, "the retry reads the stored answer");
+    held.finish(supervisor).await;
+}

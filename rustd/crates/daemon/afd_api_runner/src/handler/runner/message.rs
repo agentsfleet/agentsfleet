@@ -1,15 +1,15 @@
 //! `POST /v1/runners/me/runs/{run_id}/messages` — a fleet saying one line
 //! to the thread it was asked from, before it answers.
 //!
-//! The run plane proves the run, finds the event's thread, numbers the line
+//! The run plane proves the run, finds the event's thread, counts the line
 //! and masks the fleet's secret values (`afd_fleet::run::message`); the
-//! outbound poster then posts it under its own marker, retried as an answer is
-//! (`afd_outbound::interim`). The runner never holds the channel's credential:
-//! it sends text, and the daemon speaks. Neither the line's length nor how
-//! many a run sends is capped here: the channel refuses what it cannot take,
-//! and the runner reads `delivered: false`. Each request names its call's
-//! item, so a retry answers the first post's result and posts nothing
-//! (`super::effect`).
+//! outbound poster then posts it under the marker its call's number names,
+//! retried as an answer is (`afd_outbound::interim`). The runner never holds
+//! the channel's credential: it sends text, and the daemon speaks. Neither the
+//! line's length nor how many a run sends is capped here: the channel refuses
+//! what it cannot take, and the runner reads `delivered: false`. Each request
+//! names its call's item, so a retry answers the first post's result and
+//! posts nothing (`super::effect`).
 
 use std::sync::Arc;
 

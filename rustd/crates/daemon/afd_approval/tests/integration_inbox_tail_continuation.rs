@@ -49,7 +49,10 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
         .expect("the resolve must not fault");
     let continuation = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_turn_id,
-        Resolution::AlreadyResolved(_) | Resolution::FleetArchived | Resolution::NotFound => None,
+        Resolution::AlreadyResolved(_)
+        | Resolution::FleetArchived
+        | Resolution::WrongDecision
+        | Resolution::NotFound => None,
     }
     .expect("a pending gate is this caller's to answer, and an approval continues its run");
 
@@ -84,7 +87,10 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     assert_eq!(lane.status_of(&action).await, "approved");
     let continuation = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_turn_id,
-        Resolution::AlreadyResolved(_) | Resolution::FleetArchived | Resolution::NotFound => None,
+        Resolution::AlreadyResolved(_)
+        | Resolution::FleetArchived
+        | Resolution::WrongDecision
+        | Resolution::NotFound => None,
     };
     assert!(
         continuation.is_some(),
@@ -137,7 +143,10 @@ async fn a_converged_continuation_announces_nothing() {
         .expect("the resolve must not fault");
     let continuation = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_turn_id,
-        Resolution::AlreadyResolved(_) | Resolution::FleetArchived | Resolution::NotFound => None,
+        Resolution::AlreadyResolved(_)
+        | Resolution::FleetArchived
+        | Resolution::WrongDecision
+        | Resolution::NotFound => None,
     }
     .expect("an approved gate still reports the run it continues");
     assert_eq!(

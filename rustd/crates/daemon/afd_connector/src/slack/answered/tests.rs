@@ -105,8 +105,8 @@ fn the_check_reads_from_just_before_the_question() {
 /// The run a fixture interim line was said under.
 const RUN: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
 
-/// Interim line `line` of `run`, for the fixture event.
-fn line(run: &str, line: u32) -> AnswerMarker {
+/// The interim line call `line` of `run` said, for the fixture event.
+fn line(run: &str, line: u64) -> AnswerMarker {
     AnswerMarker {
         part: Some(Part {
             run_id: run.to_owned(),

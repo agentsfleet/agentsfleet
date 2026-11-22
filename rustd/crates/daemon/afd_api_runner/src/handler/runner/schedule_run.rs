@@ -110,6 +110,19 @@ pub(crate) async fn run<D: RunnerPlane>(
     let schedule = schedule_id(&schedule_id_raw)?;
     let now = services.now();
     let run = standing(&*services, runner.id(), &run_id, request.fencing_token).await?;
+    let item_id = effect::item_id(&request.item_id)?;
+    let item = Effect {
+        item_id: &item_id,
+        call_number: request.call_number,
+        fencing_token: request.fencing_token,
+        tool: effect::SCHEDULE_RUN,
+    };
+    // Before the schedule is read: a `once` schedule retires when it fires,
+    // so a retry of the call that fired it must answer from its item.
+    let claimed = match effect::claimed(&*services, &run, item, StatusCode::CREATED).await? {
+        Ok(claimed) => claimed,
+        Err(replayed) => return Ok(replayed),
+    };
     // Read by the schedule alone, so the fleet is checked here: a schedule of
     // another fleet answers exactly as one that never existed.
     let target = services
@@ -120,17 +133,6 @@ pub(crate) async fn run<D: RunnerPlane>(
         .filter(|target| target.fleet == run.fleet_id)
         .ok_or_else(not_found)?;
     runnable(&run, &target)?;
-    let item_id = effect::item_id(&request.item_id)?;
-    let item = Effect {
-        item_id: &item_id,
-        call_number: request.call_number,
-        fencing_token: request.fencing_token,
-        tool: effect::SCHEDULE_RUN,
-    };
-    let claimed = match effect::claimed(&*services, &run, item, StatusCode::CREATED).await? {
-        Ok(claimed) => claimed,
-        Err(replayed) => return Ok(replayed),
-    };
     let key = format!("{RUN_KEY_PREFIX}{}", run.turn_id);
     let answered = services
         .schedules()

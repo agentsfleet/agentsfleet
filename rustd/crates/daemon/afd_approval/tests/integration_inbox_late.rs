@@ -3,7 +3,8 @@
 //! Nothing expires a gate, so an answer after the deadline lands as one on
 //! time does. A question's answer lands one continuation that carries the
 //! answer and names the asking turn whose checkpoint its run resumes. Two
-//! answers make one decision, and an archived fleet's gate takes none.
+//! answers make one decision, an archived fleet's gate takes none, and a gate
+//! takes only the decisions its type does.
 
 #![expect(
     clippy::expect_used,
@@ -150,5 +151,31 @@ async fn an_answer_to_an_archived_fleets_gate_is_refused() {
 
     assert_eq!(outcome, Resolution::FleetArchived);
     assert_eq!(lane.status_of(&action).await, "pending");
+    assert_eq!(lane.event_count().await, before, "no turn written");
+}
+
+/// An approval of a question, and an answer to a gate that asked none, are
+/// refused before either moves its gate, and no turn is written.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_decision_its_gate_does_not_take_is_refused_and_the_gate_stays_pending() {
+    let lane = Lane::isolated().await;
+    let question = lane.seed_question(Window::Open).await;
+    let policy = lane.seed_gate(Window::Open).await;
+    let before = lane.event_count().await;
+
+    for (action, decision) in [
+        (&question, Decision::Approved),
+        (&policy, Decision::Answered),
+    ] {
+        let outcome = lane
+            .inbox
+            .resolve(action.as_str(), decision, OPERATOR, NOTE, None)
+            .await
+            .expect("the resolve must not fault");
+
+        assert_eq!(outcome, Resolution::WrongDecision, "{decision:?}");
+        assert_eq!(lane.status_of(action).await, "pending", "{decision:?}");
+    }
     assert_eq!(lane.event_count().await, before, "no turn written");
 }

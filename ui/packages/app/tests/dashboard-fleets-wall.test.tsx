@@ -28,7 +28,6 @@ const FLEET_A = "fleet_a";
 const FLEET_B = "fleet_b";
 const BURST_FLEET_COUNT = 60;
 const RECONNECT_DELAY_MS = 2_000;
-const BACKFILL_PAGE_LIMIT = 200;
 const SNAPSHOT_KIND_LABEL = "kind:snapshot";
 const LIVE_KIND_LABEL = "kind:live";
 const COUNT_BEFORE_THE_DROP = 5;
@@ -201,7 +200,7 @@ describe("workspace fleet wall provider", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      `/live/v1/workspaces/${WORKSPACE_ID}/turns?limit=${BACKFILL_PAGE_LIMIT}`,
+      `/live/v1/workspaces/${WORKSPACE_ID}/turns`,
     );
     expect(view.getByTestId(FLEET_A).textContent).toContain(FEED_SHOWN_LABEL);
     expect(view.getByTestId(FLEET_B).textContent).toContain(FEED_SHOWN_LABEL);

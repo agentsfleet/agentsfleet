@@ -76,12 +76,6 @@ pub(crate) async fn update<D: RunnerPlane>(
             message: request.message.as_deref(),
         },
     )?;
-    fleet_owned(&*services, &run, &schedule).await?;
-    let message = match request.message.as_deref() {
-        Some(text) => Some(masked(&*services, &run, text).await?),
-        None => None,
-    };
-    let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
     let item_id = effect::item_id(&request.item_id)?;
     let item = Effect {
         item_id: &item_id,
@@ -89,10 +83,18 @@ pub(crate) async fn update<D: RunnerPlane>(
         fencing_token: request.fencing_token,
         tool: effect::SCHEDULE_UPDATE,
     };
+    // Before the schedule is read: a retry of a call that changed it answers
+    // from its item, even once a person has deleted the schedule since.
     let claimed = match effect::claimed(&*services, &run, item, StatusCode::OK).await? {
         Ok(claimed) => claimed,
         Err(replayed) => return Ok(replayed),
     };
+    fleet_owned(&*services, &run, &schedule).await?;
+    let message = match request.message.as_deref() {
+        Some(text) => Some(masked(&*services, &run, text).await?),
+        None => None,
+    };
+    let guard = write_fence(runner.id(), &run_id, request.fencing_token)?;
     let change = Change {
         cron: request.cron.as_deref(),
         timezone: request.timezone.as_deref(),

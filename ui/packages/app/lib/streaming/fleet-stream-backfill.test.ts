@@ -10,6 +10,7 @@ import {
   MISSED_AT_MS,
   OUTAGE_NEWEST_MS,
   pageWith,
+  queryOf,
   reconnect,
   SEED_AT_MS,
   setupBackfillTests,
@@ -97,5 +98,15 @@ describe("the recovery walk hands its rows over once", () => {
     const { onPage, outcome } = walk();
     await expect(outcome).resolves.toEqual({ ok: true, watermark: SEED_AT_MS });
     expect(onPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("the recovery walk's page size", () => {
+  it("names no limit on any page, so the server's ceiling decides", async () => {
+    threePages();
+    const { outcome } = walk();
+    await expect(outcome).resolves.toEqual({ ok: true, watermark: OUTAGE_NEWEST_MS });
+    expect([0, 1, 2].map((call) => queryOf(call).has("limit"))).toEqual([false, false, false]);
+    expect([0, 1, 2].map((call) => queryOf(call).get("cursor"))).toEqual([null, PAGE_TWO, PAGE_THREE]);
   });
 });

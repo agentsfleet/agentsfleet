@@ -3,7 +3,7 @@
 //! will read them.
 //!
 //! Read through [`Thread`], which [`Conversations`] implements with keyset
-//! pages over the thread's finished rows and one read of each page's calls,
+//! pages over the thread's finished rows and one read of each turn's calls,
 //! so a read that fails is tested without a database. A read that fails
 //! issues the run with no turns, because a follow-up answered without its
 //! context beats one refused.
@@ -11,11 +11,11 @@
 //! No count, text or byte cap applies: a run carries its whole conversation,
 //! and the model's window is the in-run compaction's (`af_context`). The run
 //! frame ([`MESSAGE_BYTES_MAX`]) is the one bound, a transport limit: the read
-//! stops once what it read passes one frame, and [`fit_frame`] drops an
-//! assignment's oldest turns until it fits one, and logs it.
+//! stops at the turn whose calls pass one frame, so it never holds more than a
+//! frame and that turn, and [`fit_frame`] drops an assignment's oldest turns
+//! until it fits one, and logs it.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt::Debug;
 
 use af_core::id::Uuid7;
@@ -119,8 +119,8 @@ pub trait Thread: Send + Sync + Debug {
         limit: i64,
     ) -> crate::Result<Vec<FinishedTurn>>;
 
-    /// Every tool call `fleet`'s runs made for `turns`, each turn's in the
-    /// order they were made.
+    /// Every tool call `fleet`'s runs made for `turn`, in the order they
+    /// were made.
     ///
     /// # Errors
     /// As [`Self::finished_before`].
@@ -128,7 +128,7 @@ pub trait Thread: Send + Sync + Debug {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        turns: &[Uuid7],
+        turn: &Uuid7,
     ) -> crate::Result<Vec<CallRow>>;
 
     /// The finished turns one [`Self::finished_before`] read asks for.
@@ -187,13 +187,13 @@ impl Thread for Conversations {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        turns: &[Uuid7],
+        turn: &Uuid7,
     ) -> crate::Result<Vec<CallRow>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as(SELECT_CALLS_OF)
             .bind(workspace)
             .bind(fleet)
-            .bind(turns)
+            .bind(turn)
             .fetch_all(&mut *connection)
             .await
             .map_err(query("read a fleet's earlier tool calls"))
@@ -237,7 +237,9 @@ pub async fn turns_before(
     if event_type != TurnKind::Chat {
         return Vec::new();
     }
-    match read(thread, workspace, fleet, at).await {
+    // Boxed: the page walk holds a row across each call read, and every
+    // issue path awaits this.
+    match Box::pin(read(thread, workspace, fleet, at)).await {
         Ok((turns, bytes)) => {
             metrics::carried(bytes);
             turns
@@ -257,6 +259,10 @@ pub async fn turns_before(
 /// Every finished turn before `at`, oldest first, with its calls, read a
 /// page at a time, newest first, until the thread ends or what was read
 /// passes one frame; and the bytes it stored.
+///
+/// A turn's calls are read with the turn, not with its page: records carry
+/// no cap, so one page's calls could hold many frames before a check after
+/// the page ran.
 async fn read(
     thread: &dyn Thread,
     workspace: &Uuid7,
@@ -267,7 +273,7 @@ async fn read(
     let mut stored = 0_usize;
     let mut cursor = at.clone();
     let page_turns = thread.page_turns();
-    loop {
+    'pages: loop {
         let page = thread
             .finished_before(workspace, fleet, &cursor, page_turns)
             .await?;
@@ -279,29 +285,20 @@ async fn read(
             created_at: oldest.created_at,
             turn_id: oldest.turn_id.clone(),
         };
-        let ids: Vec<Uuid7> = page.iter().map(|row| row.turn_id.clone()).collect();
-        let mut calls = by_turn(thread.calls_of(workspace, fleet, &ids).await?);
         for row in page {
-            stored += row.stored_bytes();
-            let made = calls.remove(&row.turn_id).unwrap_or_default();
-            stored += made.iter().map(CallRow::stored_bytes).sum::<usize>();
+            let made = thread.calls_of(workspace, fleet, &row.turn_id).await?;
+            stored += row.stored_bytes() + made.iter().map(CallRow::stored_bytes).sum::<usize>();
             newest_first.extend(turn(row, made));
+            if stored > MESSAGE_BYTES_MAX {
+                break 'pages;
+            }
         }
-        if ended || stored > MESSAGE_BYTES_MAX {
+        if ended {
             break;
         }
     }
     newest_first.reverse();
     Ok((newest_first, stored))
-}
-
-/// `calls`, each turn's in the order the read returned them.
-fn by_turn(calls: Vec<CallRow>) -> HashMap<Uuid7, Vec<CallRow>> {
-    let mut grouped: HashMap<Uuid7, Vec<CallRow>> = HashMap::new();
-    for call in calls {
-        grouped.entry(call.turn_id.clone()).or_default().push(call);
-    }
-    grouped
 }
 
 /// One finished row as a turn, carrying `calls`; a row still running,

@@ -141,7 +141,7 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `run_expires_at` | `TIMESTAMPTZ(3)` | no | `lease_expires_at` | renewal deadline |
 | `last_metered_at` | `TIMESTAMPTZ(3)` | no | `leases` | metering cursor |
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
-| `posted_message_count` | `INTEGER` | no | `leases` | numbers the run's interim lines; no cap |
+| `posted_message_count` | `INTEGER` | no | `leases` | counts the run's interim lines, each marked by its call's number; no cap |
 | `decision_snapshot`, `setup_revision_id` | `JSONB`, `UUID` | yes | `leases` | decision budget and the fleet revision run |
 | `durable_task_id`, `durable_task_generation`, `durable_task_stop_generation`, `durable_task_started_at`, `durable_task_runtime_accounted_at`, `durable_task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
 

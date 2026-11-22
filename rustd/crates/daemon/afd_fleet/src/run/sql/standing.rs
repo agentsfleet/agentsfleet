@@ -52,15 +52,16 @@ pub const SELECT_STANDING: &str = const_format::concatcp!(RUN_READ, RUN_JUDGED);
 pub const SELECT_STANDING_SHARED: &str =
     const_format::concatcp!(RUN_READ, "FOR SHARE OF l", RUN_JUDGED);
 
-/// Numbers one interim message of a run that still holds its fleet.
+/// Counts one interim message of a run that still holds its fleet.
 ///
-/// Answers the new count, the line's number; a run a reassignment superseded
-/// since its standing was read touches no row and returns none. Nothing caps
-/// the count: the channel refuses what it cannot take.
+/// Answers the new count; a run a reassignment superseded since its standing
+/// was read touches no row and returns none. The line's marker part is its
+/// call's number, not this count. Nothing caps the count: the channel refuses
+/// what it cannot take.
 ///
 /// The fence is in the statement rather than only in the standing read before
-/// it, so a holder superseded between the two cannot take a number, and one
-/// guarded statement means two concurrent posts never take the same one.
+/// it, so a holder superseded between the two cannot be counted, and one
+/// guarded statement means two concurrent posts each count once.
 ///
 /// `$1` run, `$2` the presented token, `$3` the active status.
 /// The row is locked in a `MATERIALIZED` step and the deadline read on

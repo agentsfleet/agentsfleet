@@ -1,6 +1,7 @@
 //! Ordinary allocation uses the real run issuer and API-role PostgreSQL store.
 
 mod allocation;
+mod answers;
 mod authority;
 mod commits;
 mod custody;

@@ -40,9 +40,10 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
         .expect("the resolve must not fault");
     let continued = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_turn_id,
-        Resolution::AlreadyResolved(_) | Resolution::FleetArchived | Resolution::NotFound => {
-            Some(afd_db::test_util::mint_id())
-        }
+        Resolution::AlreadyResolved(_)
+        | Resolution::FleetArchived
+        | Resolution::WrongDecision
+        | Resolution::NotFound => Some(afd_db::test_util::mint_id()),
     };
     assert_eq!(continued, None, "nothing to continue, and nothing invented");
 
