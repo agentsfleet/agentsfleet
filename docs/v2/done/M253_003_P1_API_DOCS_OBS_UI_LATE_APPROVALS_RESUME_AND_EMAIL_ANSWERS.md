@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 19, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, a person who approves late or waits for an email is the customer this fleet serves
 
