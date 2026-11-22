@@ -89,10 +89,11 @@ test("Usage preserves exact large amounts and distinguishes zero from an unavail
   const zeroBars = page.getByRole("list", {name: "Daily settled charges"}).getByRole("listitem").locator('[aria-hidden="true"]');
   await expect(zeroBars).toHaveCount(1);
   expect(await zeroBars.first().evaluate(element => element.getBoundingClientRect().height)).toBe(0);
+  // The app keeps no copy of the server's day count (M253_003 §8): every daily bar sent is shown.
   mode = "oversized";
   await page.reload();
-  await expect(page.getByText("Billing report unavailable", {exact: true})).toBeVisible();
-  await expect(page.getByRole("figure", {name: "Daily spend"})).toHaveCount(0);
+  await expect(page.getByRole("list", {name: "Daily settled charges"}).getByRole("listitem")).toHaveCount(32);
+  await expect(page.getByText("Billing report unavailable", {exact: true})).toHaveCount(0);
   mode = "unavailable";
   await page.reload();
   await expect(page.getByText("Billing report unavailable", {exact: true})).toBeVisible();

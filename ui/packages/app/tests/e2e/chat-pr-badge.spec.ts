@@ -60,7 +60,7 @@ async function holdDurableTaskDetail(page: Page) {
   const ready = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   let reads = 0;
-  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/tasks**", async route => {
+  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/durable_tasks**", async route => {
     reads += 1;
     const pathname = new URL(route.request().url()).pathname;
     if (!pathname.endsWith(DURABLE_TASK_IDS[0])) {

@@ -16,9 +16,10 @@ WITH instant AS MATERIALIZED (
     -- Table-wide: an empty ledger answers before any fleet is read.
     AND EXISTS (SELECT 1 FROM thread.turns WHERE settled_at IS NULL AND producer IS NOT NULL)
     -- Per fleet: only fleets with unsettled work reach the joins below, so the
-    -- scan grows with the backlog rather than with the active fleets.
-    AND EXISTS (
-      SELECT 1 FROM thread.turns u WHERE u.thread_id = z.id AND u.settled_at IS NULL)
+    -- scan grows with the backlog rather than with the active fleets. A scalar
+    -- subquery, not EXISTS: the planner never flattens it into a semi-join, so
+    -- stale statistics cannot turn this probe into a walk of every unsettled turn.
+    AND (SELECT true FROM thread.turns u WHERE u.thread_id = z.id AND u.settled_at IS NULL LIMIT 1)
     AND (s.run_expires_at IS NULL OR s.run_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at

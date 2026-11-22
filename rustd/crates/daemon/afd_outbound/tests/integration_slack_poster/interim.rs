@@ -77,11 +77,11 @@ async fn a_refused_line_is_undelivered_without_a_retry() {
         .await;
 
     assert!(!delivered);
-    assert_eq!(
-        slack.requests().len(),
-        1,
-        "a refusal is permanent: one post"
-    );
+    let posts = (slack.requests().into_iter())
+        .filter(Request::is_post)
+        .count();
+    assert_eq!(posts, 1, "a refusal is permanent: one post");
+    assert_eq!(slack.reads(), 1, "the one attempt read its thread first");
     fixture.cleanup().await;
 }
 

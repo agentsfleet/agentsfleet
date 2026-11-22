@@ -8,7 +8,7 @@ use af_wire::{
     activity::ActivityRequest,
     fold::{FoldRequest, FoldResponse},
     protocol::{Answer, Renewal, RenewalAnswer, Up},
-    report::{RenewRequest, RenewResponse, ReportRequest, ReportResponse},
+    report::{RenewResponse, ReportRequest, ReportResponse},
     runner::{HeartbeatRequest, HeartbeatResponse},
 };
 use serde::{Deserialize, Serialize};
@@ -122,10 +122,13 @@ impl ControlPlane {
         self.stream.compute(Heartbeat(request.clone())).await
     }
 
+    /// Renews one run alone; production renews in batches, so only tests
+    /// and the test-util session call this.
+    #[cfg(any(test, feature = "test-util"))]
     pub(crate) async fn renew(
         &self,
         run_id: &Uuid7,
-        spent: &RenewRequest,
+        spent: &af_wire::report::RenewRequest,
     ) -> Result<RenewResponse> {
         let batch = RenewalBatch {
             ids: vec![run_id.clone()],

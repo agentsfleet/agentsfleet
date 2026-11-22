@@ -19,18 +19,13 @@ const EVENT_SANDBOX_STDERR: &str = "sandbox_stderr";
 pub(super) async fn drain(stream: ChildStderr) -> String {
     let mut lines = FramedRead::new(stream, LinesCodec::new());
     let mut last = VecDeque::with_capacity(TAIL_LINES);
-    loop {
-        match lines.next().await {
-            Some(Ok(line)) => {
-                let event = EVENT_SANDBOX_STDERR;
-                tracing::debug!(line, event);
-                if last.len() == TAIL_LINES {
-                    last.pop_front();
-                }
-                last.push_back(line);
-            }
-            Some(Err(_)) | None => break,
+    while let Some(Ok(line)) = lines.next().await {
+        let event = EVENT_SANDBOX_STDERR;
+        tracing::debug!(line, event);
+        if last.len() == TAIL_LINES {
+            last.pop_front();
         }
+        last.push_back(line);
     }
     tail(Vec::from(last).join("\n").as_bytes())
 }

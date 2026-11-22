@@ -33,7 +33,8 @@ test("typed chat outcomes remain readable in dark and light appearance", async (
   await page.getByRole("button", {name: /^Tool activity:/}).click();
   await expect(page.getByRole("heading", {name: "Input", exact: true})).toHaveCount(0);
   const edit = page.locator('[data-tool="file_edit"]');
-  await expect(edit.getByText("release.yaml · Changes", {exact: true})).toBeVisible();
+  // Recorded changes show the file list and header counts; the requested diff is for an edit with none recorded.
+  await expect(edit.getByText("release.yaml · Changes", {exact: true})).toHaveCount(0);
   const counts = edit.getByLabel("1 addition, 1 deletion");
   await expect(counts).toBeVisible();
   const countsBox = (await counts.boundingBox())!, rowBox = (await edit.boundingBox())!;

@@ -242,3 +242,41 @@ test("platform header failure returns a static refusal and preserves a later val
   } finally { fault.mockRestore(); }
   await denyAfterRefusal(callback);
 });
+
+test("a graceful stop that stalls is forced once the shutdown bound fires", async () => {
+  const realServe = Bun.serve;
+  const stops: boolean[] = [];
+  const graceful = Promise.withResolvers<void>();
+  const serve = spyOn(Bun, "serve").mockImplementationOnce((options) => {
+    const server = realServe(options);
+    return new Proxy(server, {
+      get(target, key) {
+        if (key === "stop") {
+          return async (force = false) => {
+            stops.push(force);
+            if (!force) return graceful.promise;
+            await target.stop(true);
+            graceful.resolve();
+          };
+        }
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  });
+  const callback = new LoginCallback({ sessionId: SESSION_ID, dashboardOrigin: DASHBOARD_ORIGIN });
+  serve.mockRestore();
+  let bound: (() => void) | undefined;
+  const clock = spyOn(globalThis, "setTimeout").mockImplementationOnce(((run: () => void) => {
+    bound = run;
+    return 0;
+  }) as unknown as typeof setTimeout);
+  try {
+    const closing = callback.close();
+    expect(stops).toEqual([false]);
+    bound?.();
+    await closing;
+    expect(stops).toEqual([false, true]);
+    await expect(fetch(callback.callbackUrl)).rejects.toThrow();
+  } finally { clock.mockRestore(); }
+});

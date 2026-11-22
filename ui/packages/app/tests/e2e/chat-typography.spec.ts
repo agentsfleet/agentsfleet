@@ -334,7 +334,7 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
 
 test("work stays in a sidebar while the ordinary chat composer preserves its draft", async ({page, chatProbe}, info) => {
   const work = [summary(), summary(DURABLE_TASK_IDS[1], "running"), summary(DURABLE_TASK_IDS[2], "ready")];
-  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/tasks**", async route => {
+  await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/durable_tasks**", async route => {
     expect(route.request().headers()["authorization"]).toBeUndefined();
     const pathname = new URL(route.request().url()).pathname;
     const task = work.find(task => pathname.endsWith(task.id));

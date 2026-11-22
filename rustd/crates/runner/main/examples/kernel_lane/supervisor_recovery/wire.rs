@@ -58,7 +58,7 @@ pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
         current_durable_task: Some(task),
         execution_deadline: Some(deadline()),
         current_interpretation: None,
-        tasks: vec![],
+        durable_tasks: vec![],
         next_cursor: None,
     })?)
 }

@@ -88,8 +88,9 @@ async fn plant_dead_record(scene: &Scenario, fence: u64) {
     .await;
 }
 
-/// Settlement keeps only the settling fence's records, and the
-/// current run's first post already clears a dead run's.
+/// Settlement keeps only the settling fence's records. A post leaves other
+/// runs' records alone, so a later takeover still reads them: a dead run's
+/// record outlives the current run's post and goes only at settlement.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_settle_drops_dead_run_details() {
@@ -103,17 +104,16 @@ async fn test_settle_drops_dead_run_details() {
             rows_at(&scene, fence - 1).await,
             rows_at(&scene, fence).await
         ),
-        (0, 1),
-        "the current run's post clears the dead run's record"
+        (1, 1),
+        "the current run's post leaves the dead run's record listed"
     );
 
-    plant_dead_record(&scene, fence - 1).await;
     let settled = crate::wire::report(&scene, &report_body(&run_id, &scene.turn_id, fence)).await;
     assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
         rows_at(&scene, fence - 1).await,
         0,
-        "settlement drops it too"
+        "settlement drops the dead run's record"
     );
     assert_eq!(rows_at(&scene, fence).await, 1, "the settling run's stays");
     supervisor.shutdown().await;
