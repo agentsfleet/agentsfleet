@@ -277,7 +277,7 @@ where
         kind: StreamKind,
         stop: &CancellationToken,
     ) -> Result<()> {
-        if let Some(response) = reply::answer(&self.healthy, message)? {
+        if let Some(response) = reply::answer(&self.healthy, message) {
             send(writer, &response, budget, kind, stop).await?;
         }
         if matches!(message, Up::RenewBatch { .. }) {

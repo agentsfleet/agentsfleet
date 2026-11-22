@@ -25,9 +25,16 @@ const PATCH_FIELD: &str = "patch";
 const TODO: &str = "notes/todo.txt";
 /// What the file holds once every tool has had its turn.
 const FINAL: &str = "one\nTWO\nthree\n";
-/// The image a trial writes, eight bytes of PNG, and where.
+/// The image a trial writes, and where: a whole 1-by-1 grayscale PNG of
+/// 67 bytes, since `image` decodes what it attaches and refuses a bare
+/// signature as `not_an_image`.
 const SHOT: &str = "notes/shot.png";
-const WRITE_PNG: &str = "printf '\\211PNG\\r\\n\\032\\n' > notes/shot.png";
+const WRITE_PNG: &str = concat!(
+    "printf '",
+    "\\211\\120\\116\\107\\015\\012\\032\\012\\000\\000\\000\\015\\111\\110\\104\\122\\000\\000\\000\\001\\000\\000\\000\\001\\010\\000\\000\\000\\000\\072\\176\\233\\125\\000",
+    "\\000\\000\\012\\111\\104\\101\\124\\170\\332\\143\\140\\000\\000\\000\\002\\000\\001\\345\\047\\336\\374\\000\\000\\000\\000\\111\\105\\116\\104\\256\\102\\140\\202",
+    "' > notes/shot.png",
+);
 /// Prints whether the file is the sandbox user's own.
 const OWNED: &str = "[ \"$(stat -c %u notes/todo.txt)\" = \"$(id -u)\" ] && echo owned";
 /// A link from the workspace to the sandbox's own `/etc`.
@@ -149,7 +156,7 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
     expect(
         viewed
             .text
-            .starts_with("Attached notes/shot.png (8 bytes, image/png)"),
+            .starts_with("Attached notes/shot.png (67 bytes, image/png)"),
         format!(
             "the image is read inside the sandbox, got {:?}",
             viewed.text

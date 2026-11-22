@@ -4,13 +4,11 @@ use af_wire::protocol::Up;
 use serde_json::{Value, json};
 
 use crate::{
-    Result,
     client::Verb,
-    error::ErrorKind,
     test_util::{Healthy, RUNNER_ID},
 };
 
-pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value>> {
+pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Option<Value> {
     let response = match message {
         Up::Hello { request_id, .. } => json!({"type":"prepared", "request_id":request_id,
             "connection_id":RUNNER_ID, "previous_connection_id":null}),
@@ -38,7 +36,7 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value
         Up::RenewBatch { request_id, runs } => json!({"type":"renewed", "request_id":request_id,
             "runs":runs.iter().map(|run| json!({"run_id":run.run_id,
                 "answer":ok(healthy, Verb::Renew)})).collect::<Vec<_>>()}),
-        Up::Ready { .. } | Up::Progress { .. } => return Ok(None),
+        Up::Ready { .. } | Up::Progress { .. } => return None,
         Up::TurnCheckpoint {
             request_id,
             run_id,
@@ -47,9 +45,22 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Result<Option<Value
             "run_id":run_id, "operation_id":request.operation_id, "kind":request.action.kind(),
             "answer":{"status":"refused","error_code":af_core::error_code::RUN_CHECKPOINT_UNAVAILABLE.as_str(),
             "detail":"This scripted peer has no durable checkpoint store.","retryable":false}}),
-        _ => return Err(ErrorKind::StreamProtocol.into()),
+        // A fresh fleet chat reads its thread's saved summary at its start.
+        Up::ContextLoad {
+            request_id, run_id, ..
+        } => json!({"type":"context_loaded", "request_id":request_id,
+            "run_id":run_id, "answer":ok(healthy, Verb::ContextLoad)}),
+        // A save moves the stored row one generation past the one it names.
+        Up::ContextSave {
+            request_id,
+            run_id,
+            request,
+        } => json!({"type":"context_saved", "request_id":request_id, "run_id":run_id,
+            "answer":{"status":"ok", "response":af_wire::context::ContextSaveResponse {
+                resource_version: request.resource_version.saturating_add(1),
+            }}}),
     };
-    Ok(Some(response))
+    Some(response)
 }
 
 fn ok(healthy: &Healthy, verb: Verb) -> Value {
