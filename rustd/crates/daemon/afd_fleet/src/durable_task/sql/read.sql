@@ -17,10 +17,10 @@ FROM fleet.durable_tasks t
 JOIN fleet.revisions r ON r.id = t.accepted_revision_id AND r.fleet_id = t.fleet_id
 LEFT JOIN runner.checkpoints c ON c.id = t.checkpoint_id AND c.durable_task_id = t.id
 LEFT JOIN LATERAL (
-    SELECT jsonb_build_object('effect_id', e.id, 'ordinal', e.ordinal, 'state', s.status,
-        'expected_head', e.expected_head, 'tested_tree', e.tested_tree, 'commit', s.commit_oid,
+    SELECT jsonb_build_object('effect_id', e.id, 'ordinal', e.ordinal, 'state', e.status,
+        'expected_head', e.expected_head, 'tested_tree', e.tested_tree, 'commit', e.commit_oid,
         'pull_request_url', t.target->>'url') AS receipt
-    FROM fleet.durable_task_effects e JOIN fleet.durable_task_effect_states s ON s.durable_task_effect_id = e.id
+    FROM fleet.durable_task_effects e
     WHERE e.durable_task_id = t.id AND e.fleet_id = t.fleet_id AND e.workspace_id = t.workspace_id
     ORDER BY e.ordinal DESC LIMIT 1
 ) publication ON true

@@ -1,6 +1,5 @@
-UPDATE fleet.durable_task_effect_states s SET status = $2, updated_at = now()
-FROM fleet.durable_task_effects e
-WHERE s.durable_task_effect_id = e.id AND e.id = $1 AND s.status = $3
+UPDATE fleet.durable_task_effects e SET status = $2, updated_at = now()
+WHERE e.id = $1 AND e.status = $3
   AND (e.issuance_expires_at <= clock_timestamp() OR NOT EXISTS (
       SELECT 1 FROM thread.runs l
       JOIN thread.threads h ON h.fleet_id = l.fleet_id

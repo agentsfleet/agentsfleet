@@ -87,13 +87,18 @@ async fn seed(
             .fetch_one(&mut *connection)
             .await
             .expect("the bound task's scope");
+    let target = json!({"repository":"example/linkwarden","repository_id":41,
+        "installation_id":42,"number":7,"branch":"repair","base":"main",
+        "head":HEAD,"tree":TREE,"url":PULL_REQUEST,"workflows":[]});
     sqlx::query(
         "INSERT INTO fleet.durable_task_effects (id, durable_task_id, fleet_id, workspace_id,
             source_item_id, original_run_id, original_runner_id, original_fence,
             durable_task_generation, stop_generation, ordinal, operation_id,
             covered_input_sequence, expected_head, tested_tree, request_digest,
-            issuance_expires_at, github_repository_id, github_installation_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,0,$12,$13,$14,now(),41,42,now())",
+            issuance_expires_at, github_repository_id, github_installation_id, status,
+            commit_oid, target, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,0,$12,$13,$14,now(),41,42,$15,$16,$17,
+            now(),now())",
     )
     .bind(&effect)
     .bind(&task_id)
@@ -109,36 +114,12 @@ async fn seed(
     .bind(HEAD)
     .bind(TREE)
     .bind(digest(task, item))
-    .execute(&mut *connection)
-    .await
-    .expect("seed the immutable publication intent");
-    let target = json!({"repository":"example/linkwarden","repository_id":41,
-        "installation_id":42,"number":7,"branch":"repair","base":"main",
-        "head":HEAD,"tree":TREE,"url":PULL_REQUEST,"workflows":[]});
-    sqlx::query(
-        "INSERT INTO fleet.durable_task_effect_payloads
-            (durable_task_effect_id, durable_task_id, fleet_id, workspace_id, target, created_at)
-         VALUES ($1,$2,$3,$4,$5,now())",
-    )
-    .bind(&effect)
-    .bind(&task_id)
-    .bind(&fleet)
-    .bind(&workspace)
+    .bind(state)
+    .bind(commit)
     .bind(target)
     .execute(&mut *connection)
     .await
-    .expect("seed the private publication target");
-    sqlx::query(
-        "INSERT INTO fleet.durable_task_effect_states
-            (durable_task_effect_id, status, commit_oid, created_at, updated_at)
-         VALUES ($1,$2,$3,now(),now())",
-    )
-    .bind(&effect)
-    .bind(state)
-    .bind(commit)
-    .execute(&mut *connection)
-    .await
-    .expect("seed the receipt state");
+    .expect("seed the publication intent, its state and its private target");
     effect
 }
 
@@ -149,16 +130,11 @@ async fn unseed(effects: &[Uuid7]) {
     let owner = lane.open(DbRole::Migrator, &[]).await;
     let mut connection = owner.acquire().await.expect("cleanup connection");
     for effect in effects {
-        for statement in [
-            "DELETE FROM fleet.durable_task_effect_payloads WHERE durable_task_effect_id = $1",
-            "DELETE FROM fleet.durable_task_effects WHERE id = $1",
-        ] {
-            sqlx::query(statement)
-                .bind(effect)
-                .execute(&mut *connection)
-                .await
-                .expect("remove the seeded receipt");
-        }
+        sqlx::query("DELETE FROM fleet.durable_task_effects WHERE id = $1")
+            .bind(effect)
+            .execute(&mut *connection)
+            .await
+            .expect("remove the seeded receipt");
     }
     drop(connection);
     owner.close().await;

@@ -6,7 +6,9 @@ use crate::{
     error::query,
 };
 use af_core::id::Uuid7;
-use af_wire::durable_task::{DurableTaskInputReceiptInput, DurableTaskInputReceiptResult};
+use af_wire::durable_task::{
+    DurableTaskInputMode, DurableTaskInputReceiptInput, DurableTaskInputReceiptResult,
+};
 use sqlx::PgConnection;
 
 #[derive(sqlx::FromRow)]
@@ -69,6 +71,7 @@ pub(super) async fn replay(
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .bind(crate::durable_task::guard::wire(&input.operation_id)?)
+        .bind(DurableTaskInputMode::ApplyHere.as_str())
         .fetch_all(connection)
         .await
         .map_err(query("read item/mode and operation replay keys"))?;

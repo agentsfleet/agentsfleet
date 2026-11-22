@@ -37,7 +37,7 @@ fn queued(
 
 async fn receipts(case: &Case) -> Vec<String> {
     sqlx::query_scalar(
-        "SELECT response_text FROM fleet.durable_task_input_receipts WHERE fleet_id=$1 ORDER BY response_text",
+        "SELECT response_text FROM fleet.durable_task_items WHERE fleet_id=$1 AND mode IS NOT NULL ORDER BY response_text",
     )
     .bind(&case.scope.fleet_id)
     .fetch_all(&mut *case.held.fixtures.database.acquire().await.expect("receipt observer"))

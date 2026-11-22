@@ -222,15 +222,12 @@ pub(super) async fn seed(case: &Case, task: &Uuid7, ordinal: i64, state: &str) -
     sqlx::query("UPDATE fleet.durable_tasks SET effect_cursor=GREATEST(effect_cursor,$2),used_publications=used_publications+CASE WHEN $3 IN ('issued','unknown') THEN 1 ELSE 0 END WHERE id=$1")
         .bind(task).bind(ordinal).bind(state).execute(&mut *transaction)
         .await.expect("retain allocation and any issued attempt");
-    sqlx::query("INSERT INTO fleet.durable_task_effects (id,durable_task_id,fleet_id,workspace_id,source_item_id,original_run_id,original_runner_id,original_fence,durable_task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,github_repository_id,github_installation_id,issuance_expires_at,created_at) SELECT $1,id,fleet_id,workspace_id,originating_durable_task_item_id,$3,$4,$5,generation,stop_generation,$6,$7,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',now() FROM fleet.durable_tasks WHERE id=$2")
+    // The request, its unconfirmed state and its private recovery target, in one row.
+    sqlx::query("INSERT INTO fleet.durable_task_effects (id,durable_task_id,fleet_id,workspace_id,source_item_id,original_run_id,original_runner_id,original_fence,durable_task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,github_repository_id,github_installation_id,issuance_expires_at,status,target,created_at,updated_at) SELECT $1,id,fleet_id,workspace_id,originating_durable_task_item_id,$3,$4,$5,generation,stop_generation,$6,$7,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',$11,target,now(),now() FROM fleet.durable_tasks WHERE id=$2")
         .bind(&effect).bind(task).bind(case.run().run_id).bind(case.run().runner_id)
         .bind(i64::try_from(case.run().fencing_token).expect("fixture fence")).bind(ordinal).bind(mint_id())
-        .bind("0".repeat(40)).bind("1".repeat(40)).bind("a".repeat(64))
-        .execute(&mut *transaction).await.expect("preexisting immutable publication intent");
-    sqlx::query("INSERT INTO fleet.durable_task_effect_states (durable_task_effect_id,status,created_at,updated_at) VALUES ($1,$2,now(),now())")
-        .bind(&effect).bind(state).execute(&mut *transaction).await.expect("unconfirmed state");
-    sqlx::query("INSERT INTO fleet.durable_task_effect_payloads (durable_task_effect_id,durable_task_id,fleet_id,workspace_id,target,created_at) SELECT $1,id,fleet_id,workspace_id,target,now() FROM fleet.durable_tasks WHERE id=$2")
-        .bind(&effect).bind(task).execute(&mut *transaction).await.expect("private recovery target");
+        .bind("0".repeat(40)).bind("1".repeat(40)).bind("a".repeat(64)).bind(state)
+        .execute(&mut *transaction).await.expect("preexisting publication intent");
     transaction
         .commit()
         .await

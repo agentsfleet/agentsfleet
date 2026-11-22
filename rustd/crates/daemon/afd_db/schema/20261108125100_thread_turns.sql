@@ -181,7 +181,7 @@ CREATE TRIGGER trg_turns_count_opened
 -- An accepted plan is immutable: a second write, even of the same plan, is refused.
 CREATE FUNCTION thread.turns_refuse_plan_change() RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'a turn''s plan is written once';
+    RAISE EXCEPTION 'a turn''s plan is append-only';
 END;
 $$ LANGUAGE plpgsql;
 

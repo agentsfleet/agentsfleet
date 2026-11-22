@@ -5,6 +5,7 @@ mod row;
 
 use super::{DurableTaskRefusal, DurableTaskRun, DurableTasks, execution, guard, transaction};
 use crate::{Result, error::query};
+use af_core::id::Uuid7;
 use af_wire::durable_task::{
     DurableTaskInputMode, DurableTaskInputReceiptInput, DurableTaskInputReceiptResult,
 };
@@ -45,17 +46,30 @@ pub(super) async fn accept(
     if response.is_some() && row::has_answer(&mut tx, input).await? {
         return Err(DurableTaskRefusal::ReplayConflict.into());
     }
-    sqlx::query(include_str!("sql/insert.sql"))
-        .bind(guard::wire(&input.item_id)?)
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .bind(input.mode.as_str())
-        .bind(guard::wire(&input.operation_id)?)
-        .bind(run.run_id)
-        .bind(current.fence)
-        .bind(digest)
-        .bind(&response)
-        .execute(&mut *tx)
+    // An apply is the input's own receipt and carries no reply; a reply is the item's.
+    let written = if input.mode == DurableTaskInputMode::ApplyHere {
+        sqlx::query_scalar::<_, Uuid7>(include_str!("sql/applied.sql"))
+            .bind(guard::wire(&input.item_id)?)
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .bind(guard::wire(&input.operation_id)?)
+            .bind(run.run_id)
+            .bind(current.fence)
+            .bind(digest)
+    } else {
+        sqlx::query_scalar::<_, Uuid7>(include_str!("sql/insert.sql"))
+            .bind(guard::wire(&input.item_id)?)
+            .bind(&current.fleet_id)
+            .bind(&current.workspace_id)
+            .bind(input.mode.as_str())
+            .bind(guard::wire(&input.operation_id)?)
+            .bind(run.run_id)
+            .bind(current.fence)
+            .bind(digest)
+            .bind(&response)
+    };
+    written
+        .fetch_one(&mut *tx)
         .await
         .map_err(query("retain immutable input outcome"))?;
     let completion = if input.source_turn_id != current.source_turn_id && response.is_some() {

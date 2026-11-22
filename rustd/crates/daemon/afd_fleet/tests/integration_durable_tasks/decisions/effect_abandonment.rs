@@ -66,7 +66,7 @@ async fn reassign_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
 }
 
 async fn intent(case: &Case, effect: &Uuid7) -> Value {
-    let row: (Value, bool) = sqlx::query_as("SELECT to_jsonb(e),issuance_expires_at>clock_timestamp() FROM fleet.durable_task_effects e WHERE id=$1")
+    let row: (Value, bool) = sqlx::query_as("SELECT to_jsonb(e) - ARRAY['status','commit_oid','target','updated_at'],issuance_expires_at>clock_timestamp() FROM fleet.durable_task_effects e WHERE id=$1")
         .bind(effect).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("immutable intent observer"))
         .await.expect("original future issuance capability");
     assert!(
@@ -77,7 +77,7 @@ async fn intent(case: &Case, effect: &Uuid7) -> Value {
 }
 
 async fn state(case: &Case, effect: &Uuid7) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(s) FROM fleet.durable_task_effect_states s WHERE durable_task_effect_id=$1")
+    sqlx::query_scalar("SELECT jsonb_build_object('status',status,'commit_oid',commit_oid,'updated_at',updated_at) FROM fleet.durable_task_effects WHERE id=$1")
         .bind(effect)
         .fetch_one(
             &mut *case
@@ -93,7 +93,7 @@ async fn state(case: &Case, effect: &Uuid7) -> Value {
 }
 
 async fn assert_unspent(case: &Case, task: &Uuid7) {
-    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.durable_task_effects WHERE durable_task_id=$1),(SELECT s.status IN ('prepared','refused') FROM fleet.durable_task_effect_states s JOIN fleet.durable_task_effects e ON e.id=s.durable_task_effect_id WHERE e.durable_task_id=$1) FROM fleet.durable_tasks WHERE id=$1")
+    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.durable_task_effects WHERE durable_task_id=$1),(SELECT status IN ('prepared','refused') FROM fleet.durable_task_effects WHERE durable_task_id=$1) FROM fleet.durable_tasks WHERE id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("publication accounting observer"))
         .await.expect("unissued original allocation");
     assert_eq!(row, (0, 1, 1, true));

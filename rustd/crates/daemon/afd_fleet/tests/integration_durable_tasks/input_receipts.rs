@@ -66,7 +66,7 @@ async fn queued_item_receipt_preserves_original_answer_on_replay_and_conflict() 
         assert_eq!(replayed.item_id, accepted.item_id);
         conflicting_answer(case, &input).await;
         let rows: Vec<String> = sqlx::query_scalar(
-            "SELECT response_text FROM fleet.durable_task_input_receipts WHERE durable_task_item_id=$1",
+            "SELECT response_text FROM fleet.durable_task_items WHERE id=$1 AND mode IS NOT NULL",
         )
         .bind(id(&input.item_id))
         .fetch_all(
@@ -105,7 +105,7 @@ async fn input_receipts_refuse_changed_identity_generation_and_mode_without_writ
             assert_eq!(error.code(), code);
         }
         let count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.durable_task_input_receipts WHERE durable_task_item_id=$1",
+            "SELECT (SELECT count(*) FROM fleet.durable_task_items WHERE id=$1 AND mode IS NOT NULL) + (SELECT count(*) FROM fleet.durable_task_inputs WHERE durable_task_item_id=$1 AND operation_id IS NOT NULL)",
         )
         .bind(id(&original.item_id))
         .fetch_one(

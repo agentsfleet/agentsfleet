@@ -106,24 +106,12 @@ pub(super) async fn reserve(
             i64::try_from(target.target.installation_id)
                 .map_err(|_overflow| DurableTaskRefusal::InvalidTarget)?,
         )
-        .execute(&mut *tx)
-        .await
-        .map_err(query("persist immutable publication intent"))?;
-    sqlx::query(include_str!("sql/payload.sql"))
-        .bind(&id)
-        .bind(&task)
-        .bind(&owned.current.fleet_id)
-        .bind(&owned.current.workspace_id)
+        // Prepared, with its private target, in the same row as the request.
+        .bind("prepared")
         .bind(target.target)
         .execute(&mut *tx)
         .await
-        .map_err(query("retain private publication target"))?;
-    sqlx::query(include_str!("sql/prepare.sql"))
-        .bind(id)
-        .bind("prepared")
-        .execute(&mut *tx)
-        .await
-        .map_err(query("prepare native publication"))?;
+        .map_err(query("persist immutable publication intent"))?;
     let effect = existing(&mut tx, &task, &operation)
         .await?
         .ok_or(DurableTaskRefusal::NotFound)?;

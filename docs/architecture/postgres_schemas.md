@@ -194,13 +194,10 @@ Setup's retry keys (create draft, send message, save, apply) live in `thread.rep
 |---|---|---|
 | `fleets` | The deployed agent |  |
 | `revisions` | Every proposed and installed setup; rev 1 at Save, +1 per Apply | one owner, a draft or a fleet (`ck_revisions_one_owner`); `UNIQUE (fleet_id, revision)` and `UNIQUE (draft_id, revision)` each bind only their owner's rows, because NULLs are distinct; the only update installs a proposal, and the definition never changes |
-| `durable_task_items` | Immutable interpretation receipts survive turn cleanup | append-only; task association closes a deferred cycle |
+| `durable_task_items` | Immutable interpretation receipts survive turn cleanup, each with its one reply receipt | append-only item; task association closes a deferred cycle; the reply (`queued` or `answered`, its operation, digest and private text) is written once and goes with the item |
 | `durable_tasks` | One durable objective, its accepted setup, cumulative limits, lifecycle and its one exact-head wait | one originating task item; the `wait_*` columns hold the generation, arming run, expected head and the checks read when it was armed |
-| `durable_task_inputs` | Accepted task input and its consumption order, separate from queue delivery | unique task/item and task/sequence |
-| `durable_task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
-| `durable_task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
-| `durable_task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; kept with opaque effect |
-| `durable_task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
+| `durable_task_inputs` | Accepted task input and its consumption order, separate from queue delivery, with its one apply receipt | unique task/item and task/sequence; the apply receipt is written once; one operation answers one receipt per fleet across items and inputs |
+| `durable_task_effects` | Native expected-head publication authority, its acknowledgement and confirmed remote commit, and its private repository/branch/workflow target | kept opaque task/ordinal and task/operation identities; the request is written once by trigger and only the acknowledgement and target are granted UPDATE; a task's purge clears the target and keeps the effect |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `approval_gates` | A risky action waiting for a person | `turn_id` names its turn, with no foreign key yet |
 | `activity_counters` | Trigger-maintained dashboard totals | `thread.turns` triggers count each turn once, when it opens |
@@ -334,7 +331,7 @@ that reads them (rule 7).
 |---|---|---|---|
 | Draft (user delete) | its thread, turns and runs, the proposals it still owns, its compaction | usage lines, replay receipts, installed revisions | none |
 | User | their drafts (as above), memberships, CLI credentials | api keys they created, usage lines | none |
-| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, turn and task checkpoints with their pages, pins and refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect receipts and the adoption and checkpoint-allocation replay receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect targets (cleared on the kept effect), turn and task checkpoints with their pages, pins and refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect receipts and the adoption and checkpoint-allocation replay receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect receipts, replay receipts and checkpoint purges | Each removed object first records its location for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
@@ -410,14 +407,14 @@ Added by this milestone:
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
   - `thread.deliveries.abandon_reason`, `fleet.durable_task_bases.retained_bytes`.
-  - `fleet.durable_task_effect_states.confirmed_at`, the task wait's `consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
+  - The effect state's `confirmed_at`, the task wait's `consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
   - `fleet.durable_task_inputs` and the task interpretation: `accepting_run_id`, `accepting_fence`.
   - `fleet.durable_task_storage_purges.delete_after_at`.
 - **Write-only columns dropped by the M253 audit.** Each was written by a statement and read by none, or written by none.
   - `connector.channels.binding_type`, always `notice_owner`; `thread.deliveries.next_attempt_at`.
   - `setup.replay_receipts.workspace_id`: every `scope` begins with the workspace.
   - `thread.turns.durable_task_item_id`, with its foreign key and index.
-  - `fleet.durable_task_inputs.generation`, `fleet.durable_task_effect_states.issued_at`, `fleet.durable_task_effect_payloads.request`.
+  - `fleet.durable_task_inputs.generation`, the effect state's `issued_at`, the effect payload's `request`.
   - `fleet.durable_task_checkpoint_operations`: `fleet_id`, `workspace_id`.
   - The task wait: the polling and claim columns the passes M253_003 removed kept up. They are
     `durable_task_generation`, `stop_generation`, `github_installation_id`, `github_repository_id`, `pull_request_number`,
@@ -433,12 +430,19 @@ Added by this milestone:
   with the merge: `turn_checkpoints.has_workspace` (the toolbox digest's presence), `durable_task_checkpoints.page_count`
   (`cardinality(page_ids)`), `durable_task_checkpoints.transfer_expires_at` (always `expires_at`), the pins' task scope
   copies, and the receipts' owner columns. `durable_task_storage_purges.accounted_bytes` and `stored` were written and
-  never read. `fleet.durable_task_inputs.updated_at` always equalled `created_at`, so the table is immutable (rule 9).
+  never read. `fleet.durable_task_inputs.updated_at` always equalled `created_at`, so the table was immutable (rule 9)
+  until its apply receipt folded in.
 - **Three durable-task tables folded into existing ones (M253).** A task's one wait became the `wait_*` columns on
   `fleet.durable_tasks`; its partial unique index was the one-current-wait rule a single set of columns already holds.
   An adoption's retry key became a `thread.replay_receipts` row scoped `<workspace>:durable_task:<task>:adoption`,
   written and read through the turn checkpoint's receipt statements. An interpretation became its source turn's
   `plan` and `plan_digest`; its message and sender copies went, because the turn already holds both and never changes them.
+- **Three more folded into their own groups (M253).** An effect's state and private payload became `status`,
+  `commit_oid`, `target` and `updated_at` on `fleet.durable_task_effects`. A trigger keeps the request write-once,
+  and a column-level grant lets only those four change. `trg_durable_tasks_purge_effect_target` clears the
+  target in the statement that deletes its task, where the payload row used to cascade. An input receipt split
+  by the row it is one-to-one with: an apply is the input's (`fleet.durable_task_inputs`), and a reply is the
+  item's (`fleet.durable_task_items`). Each is written once, with the receipt's own column names.
 - **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
   and the dashboard. `fleet.durable_task_effects.source_item_id` is a field of the public task-effect input.
 
