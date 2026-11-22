@@ -147,8 +147,13 @@ export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | 
 /** One replacement's string argument, or undefined when the replacement is
  * not an object or the argument is absent or not a string. */
 function editArg(edit: JsonValue, key: string): string | undefined {
-  if (typeof edit !== "object" || edit === null || Array.isArray(edit)) return undefined;
-  return stringArg(edit as ToolArgs, key);
+  return isArgs(edit) ? stringArg(edit, key) : undefined;
+}
+
+/** `Array.isArray` does not narrow a readonly array out of a union, so the
+ * object check is a predicate rather than a cast. */
+function isArgs(value: JsonValue): value is ToolArgs {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requestCopy(args: ToolArgs): ToolCopy {
