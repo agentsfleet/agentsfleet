@@ -6,6 +6,7 @@ import {
   CELL_STATE,
   EMPTY_OUTPUT,
   OUTPUT_UNAVAILABLE,
+  cellDiff,
   cellState,
   fullDiff,
   moreLinesLabel,
@@ -97,6 +98,24 @@ describe("toolCopy", () => {
     // A patch argument that is missing reads as an empty patch; a replacement with no new text removes.
     expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual([]);
     expect(fullDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "gone" }] })).toEqual([{ kind: DIFF_ROW.REMOVED, text: "gone" }]);
+  });
+
+  it("draws an edit or a patch in its cell only while no text it comes from may have been cut", () => {
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "a", new_text: "b" }] })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" },
+    ]);
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "gone" }] })).toEqual([{ kind: DIFF_ROW.REMOVED, text: "gone" }]);
+    expect(cellDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y" })).toEqual([
+      { kind: DIFF_ROW.REMOVED, text: "x" }, { kind: DIFF_ROW.ADDED, text: "y" },
+    ]);
+    // A cut old text, new text or patch would draw a change the call never asked for.
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: CLIPPED, new_text: "b" }] })).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: [{ old_text: "a", new_text: CLIPPED }] })).toBeNull();
+    expect(cellDiff(TOOL_NAME.APPLY_PATCH, { patch: `*** Update File: a.md\n+${CLIPPED}` })).toBeNull();
+    // Nothing to draw at all: not kept, not a list of replacements, or not an edit.
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, undefined)).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_EDIT, { edits: "a" })).toBeNull();
+    expect(cellDiff(TOOL_NAME.FILE_WRITE, { edits: [{ old_text: "a", new_text: "b" }] })).toBeNull();
   });
 
   it("replaces the verb with Interrupted, whatever the tool", () => {

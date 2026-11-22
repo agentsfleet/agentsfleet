@@ -10,13 +10,8 @@ export type TimeFormat = "absolute" | "relative" | "datetime" | "clock" | "date"
 
 const DEFAULT_LOCALE = "en-US";
 
-const ABSOLUTE_OPTIONS: Intl.DateTimeFormatOptions = {
-  year: "numeric",
-  month: "short",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-};
+const ABSOLUTE_DATE_OPTIONS: Intl.DateTimeFormatOptions = {year: "numeric", month: "short", day: "2-digit"};
+const ABSOLUTE_TIME_OPTIONS: Intl.DateTimeFormatOptions = {hour: "2-digit", minute: "2-digit"};
 
 /* Time of day alone, to the second. For surfaces where every entry shares the
  * day and the date would be repeated noise — a conversation thread, a run's
@@ -37,14 +32,23 @@ export const TIME_INVALID_FALLBACK = "—";
  * pending flip, and each one formats its tooltip; constructing a formatter per
  * call made that a few hundred constructions per click. Only a caller that
  * names another locale pays for one. */
-const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS);
-const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
+type FormatPart = {options: Intl.DateTimeFormatOptions; built: Intl.DateTimeFormat};
+
+function part(options: Intl.DateTimeFormatOptions): FormatPart {
+  return {options, built: new Intl.DateTimeFormat(DEFAULT_LOCALE, options)};
+}
+
+/* A format holding both a date and a time is two formatters joined by ", ".
+ * One formatter given both lets the ICU build pick the joiner, and macOS ICU
+ * writes "Nov 14 at 1:30 PM" where Linux ICU writes "Nov 14, 1:30 PM". */
 const DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric"};
-const COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"};
-const MINUTE_OPTIONS: Intl.DateTimeFormatOptions = {hour: "numeric", minute: "2-digit"};
 const DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, DATE_OPTIONS);
-const COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, COMPACT_OPTIONS);
-const MINUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, MINUTE_OPTIONS);
+const DATE_PARTS = [{options: DATE_OPTIONS, built: DATE_FORMAT}];
+const MINUTE_PART = part({hour: "numeric", minute: "2-digit"});
+const ABSOLUTE_PARTS = [part(ABSOLUTE_DATE_OPTIONS), part(ABSOLUTE_TIME_OPTIONS)];
+const CLOCK_PARTS = [part(CLOCK_OPTIONS)];
+const COMPACT_PARTS = [part({month: "short", day: "numeric"}), MINUTE_PART];
+const MINUTE_PARTS = [MINUTE_PART];
 const UTC_MONTH_OPTIONS: Intl.DateTimeFormatOptions = {month: "long", year: "numeric", timeZone: "UTC"};
 const UTC_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_MONTH_OPTIONS);
 
@@ -69,7 +73,7 @@ export function formatTimeAbsolute(
   locale: string = DEFAULT_LOCALE,
   timeZone?: string,
 ): string {
-  return formatLocalDate(value, locale, timeZone, ABSOLUTE_OPTIONS, ABSOLUTE_FORMAT);
+  return formatLocalDate(value, locale, timeZone, ABSOLUTE_PARTS);
 }
 
 export function formatTimeClock(
@@ -77,7 +81,7 @@ export function formatTimeClock(
   locale: string = DEFAULT_LOCALE,
   timeZone?: string,
 ): string {
-  return formatLocalDate(value, locale, timeZone, CLOCK_OPTIONS, CLOCK_FORMAT);
+  return formatLocalDate(value, locale, timeZone, CLOCK_PARTS);
 }
 
 /** A report's instants in the reader's calendar, including local date rollovers. */
@@ -91,18 +95,20 @@ export function formatTimeRange(from: string | Date, through: string | Date, loc
 }
 
 export function formatTimeCompact(value: string | Date, locale = DEFAULT_LOCALE, timeZone?: string): string {
-  return formatLocalDate(value, locale, timeZone, COMPACT_OPTIONS, COMPACT_FORMAT);
+  return formatLocalDate(value, locale, timeZone, COMPACT_PARTS);
 }
 
 export function formatTimeMinute(value: string | Date, locale = DEFAULT_LOCALE, timeZone?: string): string {
-  return formatLocalDate(value, locale, timeZone, MINUTE_OPTIONS, MINUTE_FORMAT);
+  return formatLocalDate(value, locale, timeZone, MINUTE_PARTS);
 }
 
-function formatLocalDate(value: string | Date, locale: string, timeZone: string | undefined, options: Intl.DateTimeFormatOptions, built: Intl.DateTimeFormat): string {
+function formatLocalDate(value: string | Date, locale: string, timeZone: string | undefined, parts: readonly FormatPart[]): string {
   const date = coerceDate(value);
   if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
   try {
-    return (timeZone ? new Intl.DateTimeFormat(locale, {...options, timeZone}) : formatterFor(locale, built, options)).format(date);
+    return parts
+      .map(({options, built}) => (timeZone ? new Intl.DateTimeFormat(locale, {...options, timeZone}) : formatterFor(locale, built, options)).format(date))
+      .join(", ");
   } catch {return TIME_INVALID_FALLBACK;}
 }
 
@@ -151,7 +157,7 @@ export function visibleTimeLabel(
   if (format === "clock") return formatTimeClock(value, locale, timeZone);
   if (format === "compact") return formatTimeCompact(value, locale, timeZone);
   if (format === "minute") return formatTimeMinute(value, locale, timeZone);
-  if (format === "date") return formatLocalDate(value, locale, timeZone, DATE_OPTIONS, DATE_FORMAT);
+  if (format === "date") return formatLocalDate(value, locale, timeZone, DATE_PARTS);
   if (format === "month") {
     const date = coerceDate(value);
     const formatter = formatterFor(locale, UTC_MONTH_FORMAT, UTC_MONTH_OPTIONS);

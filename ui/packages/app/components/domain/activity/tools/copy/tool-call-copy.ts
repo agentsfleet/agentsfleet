@@ -132,9 +132,9 @@ export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | 
   if (args === undefined) return null;
   if (name === TOOL_NAME.APPLY_PATCH) return patchRows(stringArg(args, ARG.PATCH) ?? "");
   if (name !== TOOL_NAME.FILE_EDIT) return null;
-  const edits: JsonValue | undefined = args[ARG.EDITS];
+  const edits = editsOf(args);
   // The runner refuses an edit with no replacements: it has nothing to draw.
-  if (!Array.isArray(edits) || edits.length === 0) return null;
+  if (edits.length === 0) return null;
   const rows: DiffRow[] = [];
   for (const edit of edits) {
     const before = editArg(edit, ARG.OLD);
@@ -151,9 +151,16 @@ export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | 
 export function cellDiff(name: string, args: ToolArgs | undefined): DiffRow[] | null {
   const rows = fullDiff(name, args);
   if (rows === null || args === undefined) return null;
-  const texts = name === TOOL_NAME.APPLY_PATCH ? [stringArg(args, ARG.PATCH) ?? ""]
-    : (Array.isArray(args[ARG.EDITS]) ? args[ARG.EDITS] as readonly JsonValue[] : []).flatMap((edit) => [editArg(edit, ARG.OLD) ?? "", editArg(edit, ARG.NEW) ?? ""]);
-  return texts.some(mayBeClipped) ? null : rows;
+  const texts = name === TOOL_NAME.APPLY_PATCH ? [stringArg(args, ARG.PATCH)]
+    : editsOf(args).flatMap((edit) => [editArg(edit, ARG.OLD), editArg(edit, ARG.NEW)]);
+  return texts.some((text) => text !== undefined && mayBeClipped(text)) ? null : rows;
+}
+
+/** An edit's replacements, or none when its `edits` argument is absent or
+ * not a list. */
+function editsOf(args: ToolArgs): readonly JsonValue[] {
+  const edits: JsonValue | undefined = args[ARG.EDITS];
+  return Array.isArray(edits) ? edits : [];
 }
 
 /** One replacement's string argument, or undefined when the replacement is
