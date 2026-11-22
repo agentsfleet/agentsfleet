@@ -8,6 +8,25 @@
 
 You supply the model, the conversation and the tools. `guffbolt` decides when each step runs, keeps the transcript, and tells you what happens as it happens. Its sibling crate `guffbolt-ai` connects real providers.
 
+## Contents
+
+- [Install](#install): the dependency lines, and what your own code needs
+- [Quick start](#quick-start): one prompt to a real model, then the same chat offline
+- [`Chat` reference](#chat-reference): its methods, its failures, and what it keeps between prompts
+- [How a loop runs](#how-a-loop-runs): the order of one step, and how `drive` ends
+- [Your own conversation](#your-own-conversation): the `Conversation` trait, input and the window
+- [Events](#events): what your observer hears, and when
+- [Tools](#tools): your own tools, failures, the file tools and the other built-in tools
+- [Extensions](#extensions): a goal, new input and a time budget, added to the loop
+- [Reasoning and budgets](#reasoning-and-budgets): reasoning text, output limits and time limits
+- [Sessions: save and resume](#sessions-save-and-resume): the two values a later process needs
+- [Durable tasks: survive a restart](#durable-tasks-survive-a-restart): checkpoints, a journal and effects that run once
+- [Sub-agents](#sub-agents): children a run starts and drives beside its root
+- [Media](#media): images, audio, video and documents in a message
+- [Your own provider](#your-own-provider): your own `Model`, a new catalogue row, any endpoint
+- [Through a proxy](#through-a-proxy): the model's traffic and the tools' traffic
+- [Features](#features) and [Dependencies](#dependencies)
+
 ## Install
 
 `guffbolt` is not on crates.io yet, so depend on it from its Git repository.
@@ -21,6 +40,7 @@ tokio = { version = "1", features = ["macros", "rt"] }
 
 - **Rust** with edition 2024, at or above the `rust-version` in `Cargo.toml`.
 - **Your own `Model` or `Conversation`** also needs `futures-util` for the stream type, `tokio-util` for the stop token and `serde_json` for arguments.
+- **A saved session** needs `serde` with `derive`, so your own record around the transcript serializes.
 - **`Send` futures.** Each async method you write must return a `Send` future. Your conversation is shared with every call it lends, so it must be `Sync` too.
 - **Tokio, for a time budget.** `Budget::Within` uses Tokio's timer, so that loop runs inside a Tokio runtime with time enabled.
 
@@ -48,7 +68,9 @@ async fn main() -> Result<(), guffbolt_ai::Error> {
 }
 ```
 
-`Models` holds the providers you register. `connect` finds the model's catalogue row, reads the key from the provider's variable, and answers a `Model`. A missing key fails naming the variable, never its value. `guffbolt-ai`'s README lists every provider, its feature and its key variable.
+`Models` holds the providers you register. `connect` finds the model's catalogue row, reads the key from the provider's variable, and answers a `Model`. A missing key fails naming the variable, never its value.
+
+`guffbolt-ai`'s README lists every provider, its feature and its key variable.
 
 `examples/minimax_chat.rs` is the same program. Run it with `MINIMAX_API_KEY=… cargo run -p guffbolt --example minimax_chat`.
 
@@ -101,7 +123,49 @@ async fn main() {
 }
 ```
 
-A chat fails with `ChatFailure`: the model's own error, or `Silent` when the first step said nothing. `Chat::stop` hands you its `CancellationToken`. Cancel it from another task to stop the chat; every later prompt then ends `Stopped`.
+## `Chat` reference
+
+`Chat<M>` is a ready `Conversation` over one model `M`. It keeps its transcript between prompts and drives each prompt with `Plain`. `M` must be `Model + 'static`, and its error `Send + 'static`.
+
+| Method | What it does | Returns |
+|---|---|---|
+| `Chat::new(model, instructions)` | A chat that sends `instructions` as every call's system prompt, and offers no tool | `Chat<M>` |
+| `with_tools(tools)` | The same chat, offering a `Tools<dyn Tool<()>>`; each tool is lent nothing | `Chat<M>` |
+| `prompt(text).await` | Sends `text`, then drives the loop until the model answers, fails, is stopped or asks a question | `Ending<ChatFailure<M::Error>>` |
+| `stop()` | The chat's stop: clone it before `prompt`, and cancel it from another task | `&CancellationToken` |
+| `transcript()` | Every message the chat kept; it comes from the `Conversation` trait, so import it | `&mut Transcript` |
+
+A prompt's `Ending::Answered` holds that prompt's answer alone. A chat waiting on a question reads the next prompt's text as the answer.
+
+`ChatFailure<E>` says why a prompt failed:
+
+| Variant | Meaning | Displays as |
+|---|---|---|
+| `Model(E)` | The model call failed with its own error | the model's error, as it reads |
+| `Silent { cut: false }` | The first step said nothing and called nothing | `the model answered nothing` |
+| `Silent { cut: true }` | The same, and that step stopped at its output limit | `the model reached its output limit before it answered` |
+
+`ChatFailure` implements `From<E>`, and its `source` is the model error's own source.
+
+### What a chat keeps between prompts
+
+| It keeps | What that holds | What the next prompt gets |
+|---|---|---|
+| The transcript | every prompt, answer, call and result | the model reads them all again |
+| A `DriveState` | the completed steps, and a question it waits on | calls number on from the last step, and the prompt answers the question |
+| The stop | one `CancellationToken` | once it is cancelled, every prompt ends `Stopped` |
+
+A chat keeps no answer across prompts. A prompt whose future is dropped leaves the chat a fresh `DriveState`, and the transcript keeps every message the loop remembered.
+
+### What a chat decides for you
+
+| Choice | What `Chat` does | To change it |
+|---|---|---|
+| Window | sends the whole transcript on every call | a `Conversation` of your own that overrides `window` |
+| Observer | `Unobserved`: nothing hears the stream or the calls | a `Conversation` of your own, with an `Observe` |
+| Extension | `Plain` in `prompt`: no time budget, no goal check | `drive(&mut chat, &mut extension, &mut state)`, as [Reasoning and budgets](#reasoning-and-budgets) shows |
+| Tool context | lends each call `()` | a `Conversation` of your own, lending what `dispatch` chooses |
+| Request | an empty model id and cache key; a `Connected` model sends the id it was connected with | a `Conversation` of your own that writes `request` |
 
 ## How a loop runs
 
@@ -417,11 +481,9 @@ Each event takes `&self`, and `guffbolt` waits on none of them. `call_started` r
 
 A tool implements two traits. `Describe` gives the model its name, description and parameters' JSON Schema. `Tool<Cx>` runs one call with the context `Cx` your loop lends it.
 
-`Tools` holds one loop's tools, offers them in order and dispatches a call by name. A call to a name it holds no tool for answers `[tool_not_offered]`. `Tools::hold` keeps a tool callable without offering it.
+`Tools` holds one loop's tools, offers them in order and dispatches a call by name. `Tools::hold` keeps a tool callable without offering it.
 
-A tool answers a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` and a question for the person. `ToolOutput::failed(code, detail)` reads as `[code] detail` to the model, and the loop goes on.
-
-A call from a step cut at the output limit never runs. Its arguments may be incomplete, so it is answered `[output_limit_reached]`.
+A tool answers a `ToolOutput`: the text the model reads, an exit code, an `ErrorCode`, an `Image` and a question for the person. A failed call is a result too, as [When a tool fails](#when-a-tool-fails) shows.
 
 `dispatch` gets each call's `CallRef`: its step, its index in that step and the provider's call id. A backend that acts outside your process derives its idempotency key from it.
 
@@ -509,6 +571,90 @@ async fn main() {
 }
 ```
 
+### When a tool fails
+
+A failed call is the call's result, and the loop goes on. `ToolOutput::failed(code, detail)` makes its text `[code] detail`, which the model reads on the next step.
+
+```rust
+use futures_util::StreamExt as _;
+use futures_util::stream::{self, BoxStream};
+use guffbolt::{
+    Call, Chat, Chunk, Conversation as _, End, Ending, Message, Model, Request, TextKind,
+};
+use serde_json::json;
+
+/// A model that calls a tool the chat does not hold, then repeats what it read.
+#[derive(Debug)]
+struct Unheld;
+
+impl Model for Unheld {
+    type Error = String;
+
+    fn measure(&self, _request: Request<'_>) -> Result<u64, String> {
+        Ok(0)
+    }
+
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, String>> {
+        let chunk = match request.messages.last() {
+            Some(Message::ToolResult { output, .. }) => {
+                Chunk::Text { kind: TextKind::Answer, text: output.clone() }
+            }
+            _ => Chunk::Call(Call {
+                id: "call-1".to_owned(),
+                name: "send_email".to_owned(),
+                arguments: json!({ "to": "ops@example.com", "text": "Shipped." }),
+            }),
+        };
+        stream::iter([Ok(chunk), Ok(Chunk::End(End::default()))]).boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let mut chat = Chat::new(Unheld, "Tell the team.");
+    let Ending::Answered(text) = chat.prompt("Tell ops the fix shipped.").await else {
+        panic!("the loop goes on after a failed call");
+    };
+    assert_eq!(text, "[tool_not_offered] send_email is not one of this run's tools");
+
+    // The refusal is the call's result in the transcript, as the model read it.
+    let refusal = &chat.transcript().messages()[2];
+    assert!(matches!(refusal, Message::ToolResult { call_id, .. } if call_id == "call-1"));
+}
+```
+
+Three refusals come before your tool's own code runs:
+
+| When the model | It reads |
+|---|---|
+| calls a name the run does not offer or hold | `[tool_not_offered] <name> is not one of this run's tools` |
+| sends arguments a `Typed` tool's type refuses | `[invalid_arguments]`, then serde's reason |
+| calls from a step cut at its output limit | `[output_limit_reached]`; the call never runs, since its arguments may be incomplete |
+
+`ToolsConfig` offers nothing for a name no tool has. A retired name in your config builds fine, and the model's call to it reads `[tool_not_offered]`.
+
+Your observer hears the failure too. `CallEnd::outcome` is `Failed` for an error code or a non-zero exit code, and `CallEnd::error_code` names the code.
+
+These are the codes `guffbolt` spells. `ErrorCode` holds the harness's own, and `tools::code` holds the built-in tools', each with docs saying when it is raised.
+
+| Where | Codes |
+|---|---|
+| The harness (`ErrorCode`) | `tool_not_offered`, `output_limit_reached`, `interrupted`, `question_pending` |
+| Sub-agents (`ErrorCode`) | `child_cap_reached`, `child_tool_not_held`, `child_not_found` |
+| Any typed tool | `invalid_arguments` |
+| Files | `path_not_allowed`, `file_not_found`, `file_too_large`, `text_not_found`, `text_not_unique`, `patch_invalid`, `not_an_image`, `image_input_unavailable` |
+| Commands and the browser | `sandbox_unavailable`, `timed_out`, `out_of_memory`, `session_not_found`, `subcommand_not_allowed`, `browser_unavailable` |
+| Network | `https_required`, `method_not_allowed`, `host_not_allowed`, `egress_denied`, `secret_not_found`, `upstream_unreachable`, `upstream_status` |
+| Memory | `memory_full`, `shared_memory_not_granted` |
+| MCP servers | `mcp_failed`, `mcp_server_not_found` |
+| Schedules | `schedule_not_found`, `schedule_unsaved` |
+
+A code of your own is `ErrorCode::new("quota_exceeded")`. Two codes are equal when they are spelled alike, so an embedder can map its own set onto these.
+
 ### The built-in tools
 
 The `tools` feature adds tools that work on a machine, on the network, with memory, with schedules, and with the people a run works for.
@@ -534,11 +680,16 @@ A backend is what a tool calls to do its work. Each tool takes its backend when 
 
 A `ToolsConfig` lists tool names, and a single `*` matches a family, such as `memory_*` or `mcp__docs__*`. A name whose backend you did not give fails `build` with `MissingBackend`, naming both, before any step runs. A pattern offers only what the builder can build.
 
-Two sets come named. `ToolsConfig::coding()` offers `file_read`, `file_write`, `file_edit`, `apply_patch`, `shell`, `ls`, `find` and `grep`. `ToolsConfig::read_only()` offers `file_read`, `ls`, `find` and `grep`, and changes nothing. Both run over the environment alone, so a builder given `with_env` builds either whole.
+The builder's other knobs:
 
-`file_edit` takes a `path` and `edits`, each an `old_text` and its `new_text`. Each `old_text` must match the file exactly and once, as it was before the call, and no two edits may overlap. Text the file lacks fails `[text_not_found]`, text it holds more than once fails `[text_not_unique]` with the count, and either leaves the file unwritten.
+| Setter | What it sets |
+|---|---|
+| `with_repository(dir)` | the directory `git` runs in |
+| `with_image_input(bool)` | whether the model's wire takes the picture `image` reads |
+| `with_limits(Limits)` | the tools' bounds, such as `file_read`'s default of 2,000 lines and `shell`'s default 10-second timeout |
+| `with_tool(tool)` | a tool of your own, offered when the config names it, ahead of a built-in of the same name |
 
-`with_repository` names the directory `git` runs in. `with_image_input` says whether the model's wire takes the picture `image` reads. `Local` holds a local environment, sessions, network and memory, and `Local::builder` starts a builder over them.
+`Local` holds a local environment, sessions, network and memory, and `Local::builder` starts a builder over them.
 
 ```rust,no_run
 use guffbolt::tools::outbound::Allowlist;
@@ -565,6 +716,66 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+### File tools
+
+Four tools read and change files under the `Env`'s root, and every path is relative to it.
+
+| Tool | Arguments | What it does |
+|---|---|---|
+| `file_read` | `path`, and optional `offset` and `limit` | reads up to `limit` lines from line `offset`; a read that stops early names the offset to read on from |
+| `file_write` | `path`, `content` | replaces the file, and makes any missing directory |
+| `file_edit` | `path`, `edits`: a list of `{ old_text, new_text }` | replaces each `old_text`, matched against the file as it was before the call |
+| `apply_patch` | `patch`: `*** Begin Patch`, then hunks, then `*** End Patch` | adds, updates, moves and deletes files; it checks every hunk before any file changes |
+
+```rust
+use guffbolt::tools::env::LocalEnv;
+use guffbolt::tools::{Context, ToolsConfig, code};
+use guffbolt::{CallRef, Tools};
+use serde_json::json;
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // A scratch directory stands in for the run's working directory.
+    let root = std::env::temp_dir().join(format!("guffbolt-files-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let env = LocalEnv::new(&root)?;
+    let tools = Tools::builder().with_env(&env).build(&ToolsConfig::coding())?;
+    let at = CallRef { step: 1, index: 0, call_id: "call-1".to_owned() };
+    let cx = Context { call_ref: &at, run_id: "run-1", wake: None };
+
+    let write = json!({ "path": "retry.toml", "content": "web = 3\njob = 3\n" });
+    tools.dispatch("file_write", &write, cx).await;
+
+    // "= 3" occurs twice, so the edit is refused and nothing is written.
+    let vague = json!({ "path": "retry.toml", "edits": [{ "old_text": "= 3", "new_text": "= 5" }] });
+    let refused = tools.dispatch("file_edit", &vague, cx).await;
+    assert_eq!(refused.error_code, Some(code::TEXT_NOT_UNIQUE));
+
+    // Each edit quotes enough to occur once, and both land in one write.
+    let edits = json!({ "path": "retry.toml", "edits": [
+        { "old_text": "web = 3", "new_text": "web = 5" },
+        { "old_text": "job = 3", "new_text": "job = 1" }
+    ] });
+    let edited = tools.dispatch("file_edit", &edits, cx).await;
+    assert!(edited.text.starts_with("Applied 2 edits to retry.toml"), "{}", edited.text);
+    assert_eq!(std::fs::read_to_string(root.join("retry.toml"))?, "web = 5\njob = 1\n");
+
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+```
+
+`file_edit` writes nothing unless every edit applies, and no two edits may overlap. Text the file lacks fails `[text_not_found]`, and text it holds more than once fails `[text_not_unique]` with the count.
+
+`file_edit` and an `apply_patch` update refuse a file that is not text or does not fit one read. A successful write, edit or patch ends its answer with `Lines changed:` and each file's `+added -removed`.
+
+Two sets come named, and both run over the environment alone, so a builder given `with_env` builds either whole:
+
+| Set | Tools |
+|---|---|
+| `ToolsConfig::coding()` | `file_read`, `file_write`, `file_edit`, `apply_patch`, `shell`, `ls`, `find`, `grep` |
+| `ToolsConfig::read_only()` | `file_read`, `ls`, `find`, `grep`; it changes nothing |
 
 ### Built-in tools in a loop
 
@@ -753,7 +964,7 @@ A tool that needs a backend of its own takes it in its `new`, so it needs no cha
 
 ### Env and LocalEnv
 
-An `Env` runs processes and touches files under one root. It starts a process and streams its events, writes to it and kills it. It reads, writes, appends, deletes and lists files, and searches them.
+An `Env` runs processes and touches files under one root. It starts a process and streams its events, writes to it and kills it. Its file methods read, write, append to, delete, list and search files, and the tools call them.
 
 Every path is relative to `Env::root`. The environment refuses a path that leaves the root, by name or through a link. A process's unread output keeps its first and last 512 KiB, and the middle is counted.
 
@@ -908,9 +1119,9 @@ A run with many tools, such as every tool of several MCP servers, can hold most 
 
 Build a `tools::search::Deferred` from `Tools::held_specs`, and offer `Typed::new(ToolSearch::new(deferred))` beside your tools. In your `offered`, add each held tool `Deferred::is_loaded` names.
 
-## Long-running tasks
+## Extensions
 
-A task with a goal adds its rules to the same loop through an `Extension`. Every hook defaults to adding nothing, so a task overrides only the hooks it needs.
+An `Extension` adds a run's own rules to the same loop, such as a goal, new input and a time budget. Every hook defaults to adding nothing, so an extension overrides only the hooks it needs.
 
 ```rust
 use std::sync::mpsc::Receiver;
@@ -968,6 +1179,139 @@ async fn run_task<C: Conversation>(conversation: &mut C, added: Receiver<String>
 | `on_answer` | when the model answers without calling a tool | accept, end the run, or send the model back to work |
 | `after_group` | after a step's tool calls ran | check the goal after each batch of work |
 | `budget_spent` | when the budget runs out | drop what the run can no longer finish |
+
+## Reasoning and budgets
+
+A model's reasoning streams beside its answer, and only a listener sees it. Two budgets bound a run: what one model call may write, and how long one `drive` may take. A connected model adds bounds of its own.
+
+### Reasoning text
+
+A provider streams reasoning as `Chunk::Text` with `TextKind::Reasoning`, and a `Connected` model maps its wire's reasoning to the same chunks. `Step::read` keeps only `TextKind::Answer` text in `Step::text`, while `Listen::text` hears both kinds.
+
+```rust
+use std::sync::Mutex;
+
+use futures_util::StreamExt as _;
+use futures_util::stream;
+use guffbolt::{Chunk, End, Listen, Step, TextKind};
+
+/// Keeps the model's reasoning apart from its answer.
+#[derive(Default)]
+struct Thoughts {
+    reasoning: Mutex<String>,
+}
+
+impl Listen for Thoughts {
+    fn text(&self, kind: TextKind, text: &str) {
+        if kind == TextKind::Reasoning {
+            self.reasoning.lock().unwrap().push_str(text);
+        }
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    // What a provider streams for one step that reasons before it answers.
+    let chunks = [
+        Chunk::Text { kind: TextKind::Reasoning, text: "The log shows a timeout.".to_owned() },
+        Chunk::Text { kind: TextKind::Answer, text: "Raise the timeout.".to_owned() },
+        Chunk::End(End::default()),
+    ];
+    let thoughts = Thoughts::default();
+    let stream = stream::iter(chunks.map(Ok::<_, String>)).boxed();
+    let step = Step::read(stream, &thoughts).await.unwrap();
+
+    assert_eq!(step.text, "Raise the timeout.");
+    assert_eq!(*thoughts.reasoning.lock().unwrap(), "The log shows a timeout.");
+}
+```
+
+In a loop, your observer hears the same `text` calls, because `Observe` extends `Listen`. `Chat` is `Unobserved`, so a chat that shows reasoning needs a `Conversation` of your own.
+
+Reasoning text never enters the transcript. What a provider needs back, such as signed thinking, rides `End::replay` and returns to that provider unopened. `Usage::output` counts reasoning tokens, once.
+
+### Output limits
+
+`Window::max_output_tokens` caps what one call may write, and the model's own limit clips it further. A provider that stops at the limit sets `End::cut`, and the step arrives with `Step::cut`.
+
+A cut step's calls never run, and each reads `[output_limit_reached]`. A cut first step that said nothing fails as `silent(true)`, which a chat reports as `ChatFailure::Silent { cut: true }`. `after_step` can end the run on any cut step instead.
+
+### Time budgets
+
+`Extension::budget` bounds one `drive` call. The loop reads it once, before the first step, and each later `drive` call gets the whole budget again.
+
+| `Budget` | What the loop does |
+|---|---|
+| `Unbounded` | runs until it ends on its own; `Plain`, and so `Chat::prompt`, use it |
+| `Within(duration)` | runs for at most `duration`, then stops |
+| `Spent` | stops before the first step; `budget_spent` does not run |
+
+```rust
+use std::time::Duration;
+
+use futures_util::StreamExt as _;
+use futures_util::stream::{self, BoxStream};
+use guffbolt::{
+    Budget, Chat, Chunk, Conversation, DriveState, Ending, Extension, Message, Model, Request,
+    drive,
+};
+
+/// A model whose step never ends.
+#[derive(Debug)]
+struct Stalled;
+
+impl Model for Stalled {
+    type Error = String;
+
+    fn measure(&self, _request: Request<'_>) -> Result<u64, String> {
+        Ok(0)
+    }
+
+    fn stream<'a>(&'a self, _request: Request<'a>) -> BoxStream<'a, Result<Chunk, String>> {
+        stream::pending().boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
+    }
+}
+
+/// A run allowed 50 milliseconds, which notes when its time ran out.
+struct Deadline {
+    spent: bool,
+}
+
+impl<C: Conversation> Extension<C> for Deadline {
+    fn budget(&self, _conversation: &C) -> Budget {
+        Budget::Within(Duration::from_millis(50))
+    }
+
+    fn budget_spent(&mut self, _conversation: &mut C) {
+        self.spent = true;
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    // `Chat` is a `Conversation`, so `drive` runs it under any extension.
+    let mut chat = Chat::new(Stalled, "Answer in one sentence.");
+    chat.transcript().push(Message::User("Summarize the incident.".to_owned()));
+    let mut deadline = Deadline { spent: false };
+
+    let ending = drive(&mut chat, &mut deadline, &mut DriveState::default()).await;
+    assert!(matches!(ending, Ending::Stopped), "{ending:?}");
+    assert!(deadline.spent);
+}
+```
+
+A budget that runs out ends the run `Ending::Stopped`, as a cancelled stop does. The step in flight is dropped, and a tool call in flight ends `Interrupted`. Then `budget_spent` runs, and the transcript keeps every step that finished.
+
+| Knob | Where | What it bounds |
+|---|---|---|
+| `Window::max_output_tokens` | your `Conversation::window` | what one model call may write |
+| `Extension::budget` | your extension | how long one `drive` call runs |
+| `Connected::with_reply_bound(bytes)` | a `guffbolt-ai` model | a reply's bytes; a longer reply is refused, never opened again |
+| `Connected::with_timeouts(Timeouts)` | a `guffbolt-ai` model | how long a provider's stream may stay silent: 300 seconds by default |
 
 ## Sessions: save and resume
 
@@ -1042,6 +1386,349 @@ async fn answered<C: Conversation>(
 ```
 
 `Chat` does this for you: a prompt sent while it waits is read as the answer.
+
+## Durable tasks: survive a restart
+
+A durable task outlives the process that runs it. It runs in slices, each one `drive` call under `Budget::Within`, and a restart resumes it from its last checkpoint.
+
+Five pieces make that safe. An extension holds four of them:
+
+| Piece | Hook | Why there |
+|---|---|---|
+| A checkpoint of the transcript and `DriveState` | `before_model` | every earlier step is in the transcript and counted in the state |
+| A journal of the step's calls | `after_step` | the calls are on record before any of them runs |
+| A goal check | `on_answer` | an answer that misses the goal sends the model back to work |
+| A slice | `budget` | each `drive` call gets the whole slice again |
+
+Your tool holds the fifth: an effect keyed by its call id. A restart replays the journalled step, so each call keeps its id, and the tool answers it without acting twice.
+
+In this example the first process deploys, then dies before its next checkpoint. A fresh process resumes from the checkpoint, replays the deploy call and finishes the task.
+
+```rust
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+use std::time::Duration;
+
+use futures_util::StreamExt as _;
+use futures_util::stream::{self, BoxStream};
+use guffbolt::{
+    Answer, Budget, Call, CallRef, Chunk, Conversation, Describe, DriveState, End, Ending,
+    Extension, Input, Message, Model, Request, Step, TextKind, Tool, ToolFuture, ToolOutput,
+    ToolSpec, Tools, Transcript, Unobserved, Window, drive,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
+
+/// What outlives a process; a database, in a real deployment.
+#[derive(Default)]
+struct Store {
+    /// The last checkpoint, as JSON.
+    checkpoint: Mutex<Option<String>>,
+    /// The latest step that called tools, under the step number it ran as.
+    journal: Mutex<Option<(u64, Message)>>,
+    /// Each deploy's result, by the id of the call that made it.
+    deploys: Mutex<BTreeMap<String, String>>,
+}
+
+/// A checkpoint: every message, and the loop's progress.
+#[derive(Serialize, Deserialize)]
+struct Checkpoint {
+    messages: Vec<Message>,
+    state: DriveState,
+}
+
+/// What each tool call is lent: the store, and where the call sits.
+#[derive(Clone, Copy)]
+struct Lent<'a> {
+    store: &'a Store,
+    at: &'a CallRef,
+}
+
+/// Deploys a release once per call id, however often the call replays.
+#[derive(Debug)]
+struct Deploy {
+    parameters: Value,
+}
+
+impl Describe for Deploy {
+    fn spec(&self) -> ToolSpec<'_> {
+        ToolSpec { name: "deploy", description: "Deploys a release.", parameters: &self.parameters }
+    }
+}
+
+impl<'c> Tool<Lent<'c>> for Deploy {
+    fn call<'a>(&'a self, arguments: &'a Value, cx: Lent<'c>) -> ToolFuture<'a>
+    where
+        Lent<'c>: 'a,
+    {
+        let release = arguments["release"].as_str().unwrap_or("nothing");
+        let mut deploys = cx.store.deploys.lock().unwrap();
+        // A new call id deploys; a replayed one reads the first result back.
+        let output = deploys
+            .entry(cx.at.call_id.clone())
+            .or_insert_with(|| format!("Deployed {release}."))
+            .clone();
+        Box::pin(std::future::ready(ToolOutput::succeeded(output)))
+    }
+}
+
+/// A stand-in provider. Each process's calls get new ids, as a model asked again makes new calls.
+#[derive(Debug)]
+struct Operator {
+    process: &'static str,
+}
+
+impl Model for Operator {
+    type Error = String;
+
+    fn measure(&self, _request: Request<'_>) -> Result<u64, String> {
+        Ok(0)
+    }
+
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, String>> {
+        let said = |text: String| Chunk::Text { kind: TextKind::Answer, text };
+        let chunk = match request.messages {
+            // It answers too early once, and the goal check sends it back to work.
+            [Message::User(_)] => said("v2 is ready to ship.".to_owned()),
+            [.., Message::User(_)] => Chunk::Call(Call {
+                id: format!("{}-{}", self.process, request.messages.len()),
+                name: "deploy".to_owned(),
+                arguments: json!({ "release": "v2" }),
+            }),
+            [.., Message::ToolResult { output, .. }] => said(output.clone()),
+            _ => said(String::new()),
+        };
+        stream::iter([Ok(chunk), Ok(Chunk::End(End::default()))]).boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
+    }
+}
+
+/// The task's model: a journalled step a restart found, once, then the provider.
+#[derive(Debug)]
+struct Journalled {
+    replay: Mutex<Option<Message>>,
+    provider: Operator,
+}
+
+impl Model for Journalled {
+    type Error = String;
+
+    fn measure(&self, request: Request<'_>) -> Result<u64, String> {
+        self.provider.measure(request)
+    }
+
+    fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk, String>> {
+        let journalled = self.replay.lock().unwrap().take();
+        let Some(Message::Assistant { text, calls, replay }) = journalled else {
+            return self.provider.stream(request);
+        };
+        // The step comes back as the provider sent it, with the same call ids.
+        let text = Chunk::Text { kind: TextKind::Answer, text };
+        let end = Chunk::End(End { replay, cut: false });
+        let chunks = [text].into_iter().chain(calls.into_iter().map(Chunk::Call)).chain([end]);
+        stream::iter(chunks.map(Ok)).boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
+    }
+}
+
+/// One process's run of the task.
+struct Task<'s> {
+    store: &'s Store,
+    model: Journalled,
+    tools: Tools<dyn for<'c> Tool<Lent<'c>>>,
+    transcript: Transcript,
+    stop: CancellationToken,
+    /// The first process dies after its first tool call.
+    dies_after_a_call: bool,
+}
+
+impl Conversation for Task<'_> {
+    type Failure = String;
+    type Model = Journalled;
+    type Observer = Unobserved;
+
+    fn transcript(&mut self) -> &mut Transcript {
+        &mut self.transcript
+    }
+
+    async fn take_input(&mut self) -> Vec<Input> {
+        Vec::new()
+    }
+
+    fn model(&self) -> &Journalled {
+        &self.model
+    }
+
+    fn observer(&self) -> &Unobserved {
+        &Unobserved
+    }
+
+    fn offered(&self) -> Vec<ToolSpec<'_>> {
+        self.tools.specs().collect()
+    }
+
+    fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a> {
+        Request {
+            model: "operator-1",
+            instructions: "Ship the release.",
+            messages: &window.messages,
+            tools,
+            hosted: &[],
+            cache_key: "task-1",
+            max_output_tokens: window.max_output_tokens,
+            single_attempt: false,
+        }
+    }
+
+    fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        let lent = Lent { store: self.store, at: call_ref };
+        self.tools.dispatch(&call.name, &call.arguments, lent)
+    }
+
+    fn stop(&self) -> &CancellationToken {
+        &self.stop
+    }
+
+    fn silent(&self, _cut: bool) -> String {
+        "the model answered nothing".to_owned()
+    }
+
+    async fn called(&mut self) {
+        if self.dies_after_a_call {
+            // A stand-in for a crash: the deploy ran, and no checkpoint follows it.
+            self.stop.cancel();
+        }
+    }
+}
+
+/// A durable task's rules: its slice, a checkpoint at every step boundary,
+/// a journal of each step's calls, and its goal.
+struct Durable<'s> {
+    store: &'s Store,
+    slice: Duration,
+    goal: &'static str,
+    /// The step the next model call makes, as `CallRef::step` counts it.
+    step: u64,
+}
+
+impl<C: Conversation> Extension<C> for Durable<'_> {
+    fn budget(&self, _conversation: &C) -> Budget {
+        Budget::Within(self.slice)
+    }
+
+    async fn before_model(
+        &mut self,
+        conversation: &mut C,
+        _number: u64,
+        state: &DriveState,
+    ) -> Option<Ending<C::Failure>> {
+        // A boundary: every earlier step is in the transcript and counted in `state`.
+        let messages = conversation.transcript().messages().to_vec();
+        let checkpoint = Checkpoint { messages, state: state.clone() };
+        *self.store.checkpoint.lock().unwrap() = serde_json::to_string(&checkpoint).ok();
+        self.step = state.completed_steps() + 1;
+        None
+    }
+
+    fn after_step(&mut self, _conversation: &C, step: &Step) -> Option<Ending<C::Failure>> {
+        // Calls that will run are written down first, under the step they belong to.
+        if !step.cut && !step.calls.is_empty() {
+            let said = Message::Assistant {
+                text: step.text.clone(),
+                calls: step.calls.clone(),
+                replay: step.replay.clone(),
+            };
+            *self.store.journal.lock().unwrap() = Some((self.step, said));
+        }
+        None
+    }
+
+    async fn on_answer(&mut self, _conversation: &mut C, answer: &str) -> Answer<C::Failure> {
+        if answer.contains(self.goal) {
+            Answer::Accept
+        } else {
+            Answer::Continue(format!("Not done: the goal is \"{}\".", self.goal))
+        }
+    }
+}
+
+/// Starts one process: from the last checkpoint, or from the task's first message.
+fn start<'s>(store: &'s Store, process: &'static str) -> (Task<'s>, DriveState) {
+    let saved = store.checkpoint.lock().unwrap().clone();
+    let (transcript, state) = match saved {
+        Some(saved) => {
+            let Checkpoint { messages, state } = serde_json::from_str(&saved).unwrap();
+            (Transcript::resumed(messages), state)
+        }
+        None => {
+            let opening = vec![Message::User("Ship v2.".to_owned())];
+            (Transcript::new(opening), DriveState::default())
+        }
+    };
+    // Only the journal of the step after this checkpoint replays.
+    let next = state.completed_steps() + 1;
+    let journal = store.journal.lock().unwrap().clone();
+    let replay = journal.filter(|(step, _)| *step == next).map(|(_, said)| said);
+    let deploy = Deploy {
+        parameters: json!({
+            "type": "object",
+            "properties": { "release": { "type": "string" } },
+            "required": ["release"]
+        }),
+    };
+    let task = Task {
+        store,
+        model: Journalled { replay: Mutex::new(replay), provider: Operator { process } },
+        tools: Tools::new(vec![Box::new(deploy)]),
+        transcript,
+        stop: CancellationToken::new(),
+        dies_after_a_call: process == "first",
+    };
+    (task, state)
+}
+
+/// Runs one slice of the task in one process.
+async fn slice(store: &Store, process: &'static str) -> Ending<String> {
+    let (mut task, mut state) = start(store, process);
+    let mut durable = Durable { store, slice: Duration::from_secs(600), goal: "Deployed v2", step: 1 };
+    drive(&mut task, &mut durable, &mut state).await
+}
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let store = Store::default();
+
+    // The first process deploys, then dies before its next checkpoint.
+    let first = slice(&store, "first").await;
+    assert!(matches!(first, Ending::Stopped), "{first:?}");
+
+    // A fresh process resumes from the checkpoint and replays the journalled call.
+    match slice(&store, "second").await {
+        Ending::Answered(text) => assert_eq!(text, "Deployed v2."),
+        other => panic!("{other:?}"),
+    }
+
+    // One deploy, under the first process's call id.
+    let deploys = store.deploys.lock().unwrap();
+    assert_eq!(deploys.len(), 1);
+    assert!(deploys.contains_key("first-3"), "{deploys:?}");
+}
+```
+
+Without the journal, the second process would ask the model again. Its new call, `second-3`, would deploy a second time.
+
+The journal names the step it belongs to, so a restart replays it only from that step's checkpoint. Once a later checkpoint is saved, the old journal never replays.
+
+When `drive` returns `Waiting`, save the transcript and state again, because the question lives in the state past the last checkpoint.
+
+A run with sub-agents saves them too. Under a `Pause`, `Agents::save` writes every child into a clone of the state, and `Agents::restored` brings them back.
 
 ## Sub-agents
 
@@ -1235,7 +1922,11 @@ There are three ways in, from the most control to the least work.
 
 ### Implement `Model`
 
-`Model` has three methods. `stream` sends one `Request` and answers a stream of `Chunk`s. `measure` counts a request's input tokens, for fitting the window. `accepts_images` says whether a tool's image may reach the model.
+| Method | What it does |
+|---|---|
+| `stream` | sends one `Request` and answers a stream of `Chunk`s |
+| `measure` | counts a request's input tokens, for fitting the window |
+| `accepts_images` | says whether a tool's image may reach the model |
 
 A step streams `Chunk::Text`, `Chunk::Call` and `Chunk::Usage` in any order, then one `Chunk::End`. Set `End::cut` when the provider stopped at its output limit. Put whatever the provider needs back on the next step in `End::replay`.
 
@@ -1287,6 +1978,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 `Api` is `Chat`, `Responses`, `Messages`, `Gemini` or `Ollama`. The default `Reqwest` transport follows no redirect, so the key reaches only the route's host.
 
 `Connected::with_transport` takes your own `transport::Send`, such as one that routes through an egress proxy. `with_retry`, `with_timeouts`, `with_reply_bound` and `with_observer` tune the rest.
+
+## Through a proxy
+
+A run sends two kinds of traffic: the model's requests and the tools' requests. Each reaches a proxy its own way.
+
+### The model's requests
+
+A connected model sends through a `transport::Send`. `Reqwest::with_client` wraps a `reqwest` client of your own, so a client built with a `reqwest::Proxy` carries the model's traffic.
+
+```rust
+use guffbolt::Chat;
+use guffbolt_ai::wire::transport::Reqwest;
+use guffbolt_ai::{Models, providers};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = reqwest::Client::builder()
+        .proxy(reqwest::Proxy::https("http://proxy.internal:3128")?)
+        // Follow no redirect, as the default client does, so the key reaches only the provider.
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let models = Models::new().with(providers::minimax());
+    let model = models
+        .connect_with_key("minimax", "MiniMax-M3.1-Flash", "your-key")?
+        .with_transport(Reqwest::with_client(client));
+    let _chat = Chat::new(model, "Answer in one sentence.");
+    Ok(())
+}
+```
+
+| Knob | What it does |
+|---|---|
+| `Reqwest::with_client(client)` | sends through your client, which must follow no redirect |
+| `Connected::with_transport(transport)` | replaces the transport of any model: from `connect`, `connect_with_key` or `Connected::new` |
+| `Reqwest::refusing(is_refused)` | reads your proxy's refusal as `SendError::Refused`, which no retry repeats |
+
+`Reqwest::new`, the default, reads `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` as `reqwest` does. A client given its own `.proxy` reads none of them.
+
+### The tools' requests
+
+Every request a tool sends is admitted by `Outbound`, never by the model's transport. `LocalOutbound` reads no proxy, because a proxy would look names up where its private-address guard cannot see.
+
+To send the tools through a proxy, give `with_outbound` an `Outbound` of your own whose `send` forwards each request it admits. [Outbound](#outbound) shows the trait.
 
 ## Features
 

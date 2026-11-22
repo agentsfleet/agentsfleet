@@ -88,6 +88,11 @@ follows no redirect, so the key reaches only the provider's host.
 `transport::Reqwest::with_client` takes your own client, which must follow no
 redirect either.
 
+The default client reads `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY` as
+`reqwest` does. To name a proxy yourself, build a client with a
+`reqwest::Proxy` and no redirect, then pass it to `Reqwest::with_client`.
+The guffbolt README shows it under "Through a proxy".
+
 ## Features
 
 The default build is the types alone, so a provider crate links no wire.
