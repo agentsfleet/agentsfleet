@@ -179,6 +179,38 @@ async fn a_chat_save_installs_the_head_and_registers_its_schedule_once() {
     c.cleanup().await;
 }
 
+// Value: protects=a chat save pushes its schedules only once the fleet is
+// active, so a fleet stuck installing fires nothing; fails_when=the finish
+// registers the schedule of a fleet activation has not reached; seam=the
+// report half of afd_setup::Creations over live Postgres and NATS, the wallet
+// drained after the setup run started so activation stops at it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_chat_save_left_installing_registers_no_schedule() {
+    let c = funded().await;
+    let scheduler = Arc::new(Recording::default());
+    let creations = scheduling(&c, Arc::clone(&scheduler));
+    let draft = saving(&c, scheduled("UTC"), "installing-watch").await;
+    let turn = take(&c.base, &draft).await;
+    sqlx::query("UPDATE billing.wallets SET balance_nanos = 0 WHERE tenant_id = $1")
+        .bind(&c.base.tenant)
+        .execute(&mut *c.base.connection().await)
+        .await
+        .expect("the wallet drains");
+
+    report(&c, &creations, &turn)
+        .await
+        .expect("the save turn reports");
+
+    let (_, status) = saved_fleet(&c.base, &draft).await.expect("a saved fleet");
+    assert_eq!(status, "installing", "an empty wallet stops activation");
+    assert!(
+        scheduler.pushed().is_empty(),
+        "an installing fleet fires nothing"
+    );
+    c.cleanup().await;
+}
+
 // Value: protects=a save the head cannot take is told to the person on the
 // message, and installs nothing; fails_when=the refusal rolls back the answer,
 // is reported as a report failure, or leaves a fleet; seam=the report half of

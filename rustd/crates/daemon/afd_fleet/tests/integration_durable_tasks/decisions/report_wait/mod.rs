@@ -18,7 +18,7 @@ use serde_json::Value;
 use std::sync::Arc;
 
 mod support;
-use support::{Observation, checkpoint_row, counts, decision, observe};
+use support::{Observation, checkpoint_row, completion, continuing, counts, decision, observe};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -189,4 +189,134 @@ async fn settle(
         (1, 1, 1),
         "replay creates no decision call or charge"
     );
+}
+
+// Value: protects=a pull-request completion finishes only on green checks at
+// the bound head, and blocks on red ones; fails_when=a completion settles Done
+// without its checks, or a red check completes it; why_new=completion against
+// a bound pull request had no case; seam=the production report over live
+// Postgres, the GitHub fixture answering the head and its checks.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_pull_request_completion_finishes_only_on_green_checks() {
+    for (observation, expected) in [
+        (Observation::Success, DurableTaskState::Done),
+        (Observation::Failure, DurableTaskState::Blocked),
+    ] {
+        exercise(async |case| {
+            let fixture = Decisions::create(case).await;
+            let task = fixture.bind_goal().await;
+            let server = Server::start(vec![]).await;
+            let tasks = github_authority::tasks(&fixture, &server).await;
+            let _target = publication_refusal::prepared(case, task.clone()).await;
+            let semantic = completion(&fixture, task.clone()).await;
+            observe(&server, observation);
+            assert_eq!(completed(case, &tasks, semantic).await, expected);
+            server.finish().await;
+            fixture.model.finish().await.expect("model cleanup");
+        })
+        .await;
+    }
+}
+
+// Value: protects=a completion whose head cannot be read, or whose deployment
+// holds no GitHub reader, is never prepared and blocks as unverified;
+// fails_when=an unread dependency lets the completion settle Done;
+// why_new=the unread-dependency arms of report preparation had no case;
+// seam=the production report over live Postgres, the GitHub fixture failing
+// the head read.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_pull_request_completion_without_readable_checks_blocks() {
+    for reader in [true, false] {
+        exercise(async |case| {
+            let fixture = Decisions::create(case).await;
+            let task = fixture.bind_goal().await;
+            let server = Server::start(vec![]).await;
+            let configured = github_authority::tasks(&fixture, &server).await;
+            let _target = publication_refusal::prepared(case, task.clone()).await;
+            let semantic = completion(&fixture, task.clone()).await;
+            let tasks = if reader {
+                server.push(serde_json::json!({
+                    "fixture_request":{"method":"GET","path":"/repos/example/linkwarden/pulls/101"},
+                    "response":{"fixture_http_status":500,"fixture_http_body":{"message":"unavailable"}}}));
+                configured
+            } else {
+                fixture.tasks.clone()
+            };
+            assert_eq!(
+                completed(case, &tasks, semantic).await,
+                DurableTaskState::Blocked,
+                "reader configured: {reader}"
+            );
+            if reader {
+                server.finish().await;
+            } else {
+                // No reader, so the App exchange was never reached to finish.
+                drop(server);
+            }
+            fixture.model.finish().await.expect("model cleanup");
+        })
+        .await;
+    }
+}
+
+/// Reports `semantic` through the ordinary report, returning the state settled.
+async fn completed(
+    case: &Case,
+    tasks: &DurableTasks,
+    semantic: DurableTaskReport,
+) -> DurableTaskState {
+    let durable_task_id = id(&semantic.durable_task.durable_task_id);
+    let report = report_settlement::request(case, Some(semantic));
+    let mut plane = case.held.fixtures.plane();
+    plane.durable_task_reports = Some(Arc::new(tasks.clone()));
+    plane
+        .report_with(
+            &case.held.runner,
+            &report,
+            af_core::clock::after(case.held.now, crate::report_seed::SLICE),
+            None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
+        .await
+        .expect("ordinary report settlement");
+    tasks
+        .read(&case.scope, &durable_task_id)
+        .await
+        .expect("settled task")
+        .context
+        .state
+}
+
+// Value: protects=a paid CONTINUE from the task's saved checkpoint queues
+// exactly one continuation at the next generation; fails_when=a continuation
+// with current evidence blocks, or queues twice on replay; why_new=the
+// continue arm of settlement had no case; seam=the production report over live
+// Postgres, a real committed checkpoint.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_paid_continue_from_its_checkpoint_queues_one_continuation() {
+    exercise(async |case| {
+        let fixture = Decisions::create(case).await;
+        let task = fixture.bind_goal().await;
+        let server = Server::start(vec![]).await;
+        let tasks = github_authority::tasks(&fixture, &server).await;
+        let _target = publication_refusal::prepared(case, task.clone()).await;
+        let (checkpoint, saved) = capture(&fixture, &task).await;
+        let semantic = continuing(&fixture, task, &checkpoint).await;
+        Box::pin(settle(
+            &fixture,
+            &tasks,
+            semantic,
+            DurableTaskState::Ready,
+            &checkpoint,
+            &saved,
+        ))
+        .await;
+        // A continuation reads no check, so the App exchange is never reached.
+        drop(server);
+        fixture.model.finish().await.expect("model cleanup");
+    })
+    .await;
 }

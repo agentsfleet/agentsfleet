@@ -203,3 +203,200 @@ async fn test_a_refused_role_switch_answers_by_who_asked() {
     );
     lane.cleanup().await;
 }
+
+/// An upsert from a login outside `memory_runtime` is refused at the role
+/// switch, before any entry is written, with the runner plane's query code.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_upsert_whose_role_switch_is_refused_writes_nothing() {
+    let lane = TestDatabase::shared();
+    let store = roleless_store(&lane).await;
+    let (workspace, fleet) = (mint_id(), mint_id());
+    let owner = Owner {
+        workspace: &workspace,
+        fleet: &fleet,
+    };
+    let entry = delta("never_written", PINNED_CATEGORY, Visibility::Fleet);
+
+    let refused = store
+        .upsert(owner, &[&entry], AT)
+        .await
+        .expect_err("a login outside memory_runtime cannot assume it");
+
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (INTERNAL_DB_QUERY, DATABASE_ERROR)
+    );
+    lane.cleanup().await;
+}
+
+/// Holds every memory row of `fleet` under `FOR UPDATE` until the returned
+/// transaction ends, through the lane's owner, so a statement that must
+/// lock one of them waits out the API login's `lock_timeout`.
+async fn hold_rows(
+    owner: &afd_db::Db,
+    fleet: &af_core::id::Uuid7,
+) -> sqlx::Transaction<'static, sqlx::Postgres> {
+    let mut holder =
+        sqlx::Transaction::begin(owner.acquire().await.expect("an owner connection"), None)
+            .await
+            .expect("the holder's transaction opens");
+    sqlx::query("SELECT 1 FROM memory.entries WHERE fleet_id = $1 FOR UPDATE")
+        .bind(fleet)
+        .execute(&mut *holder)
+        .await
+        .expect("the holder locks the fleet's rows");
+    holder
+}
+
+/// A daily entry the sweep must delete, held by another transaction past
+/// the lock bound: the upsert fails whole at the sweep, and keeps the
+/// runner plane's query code rather than claiming the entries landed.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_upsert_whose_sweep_waits_out_the_lock_bound_is_refused() {
+    let space = crate::workspace::Workspace::create().await;
+    let fleet = space
+        .fleet("Daily notes", crate::workspace::Grants::default())
+        .await;
+    let store = PgStore::new(space.database.clone(), Entropy::new());
+    let owner = Owner {
+        workspace: &space.id,
+        fleet: &fleet,
+    };
+    let aged = delta(
+        "standup",
+        afd_memory::window::DAILY_CATEGORY,
+        Visibility::Fleet,
+    );
+    store
+        .upsert(owner, &[&aged], AT)
+        .await
+        .expect("the daily entry lands");
+    let lane_owner = TestDatabase::shared().open(DbRole::Migrator, &[]).await;
+    let holder = hold_rows(&lane_owner, &fleet).await;
+    let later = AT
+        .checked_add(afd_memory::window::DAILY_RETENTION * 2)
+        .expect("a later instant");
+    let fresh = delta("retro", PINNED_CATEGORY, Visibility::Fleet);
+
+    let refused = store
+        .upsert(owner, &[&fresh], later)
+        .await
+        .expect_err("the sweep cannot delete a row another transaction holds");
+
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (INTERNAL_DB_QUERY, DATABASE_ERROR)
+    );
+    holder.rollback().await.expect("the holder lets go");
+    let keys: Vec<String> =
+        sqlx::query_scalar("SELECT key FROM memory.entries WHERE fleet_id = $1 ORDER BY key")
+            .bind(&fleet)
+            .fetch_all(&mut *lane_owner.acquire().await.expect("an owner connection"))
+            .await
+            .expect("the entries read back");
+    assert_eq!(keys, ["standup"], "the refused upsert wrote nothing");
+    lane_owner.close().await;
+    space.cleanup().await;
+}
+
+/// A forget whose row another transaction holds past the lock bound names
+/// the forget that failed, and the entry stays.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_forget_behind_a_held_entry_answers_its_operation_sentence() {
+    let space = crate::workspace::Workspace::create().await;
+    let fleet = space
+        .fleet("Release notes", crate::workspace::Grants::default())
+        .await;
+    let store = PgStore::new(space.database.clone(), Entropy::new());
+    let owner = Owner {
+        workspace: &space.id,
+        fleet: &fleet,
+    };
+    let held = delta("changelog", PINNED_CATEGORY, Visibility::Fleet);
+    store
+        .upsert(owner, &[&held], AT)
+        .await
+        .expect("the entry lands");
+    let lane_owner = TestDatabase::shared().open(DbRole::Migrator, &[]).await;
+    let holder = hold_rows(&lane_owner, &fleet).await;
+
+    let refused = store
+        .forget(owner, "changelog")
+        .await
+        .expect_err("the delete cannot take a row another transaction holds");
+
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (MEM_UNAVAILABLE, afd_memory::error::detail::FORGET_FAILED)
+    );
+    holder.rollback().await.expect("the holder lets go");
+    assert!(
+        store
+            .forget(owner, "changelog")
+            .await
+            .expect("the entry is forgotten once the row is free"),
+        "the refused forget left the entry"
+    );
+    lane_owner.close().await;
+    space.cleanup().await;
+}
+
+/// A pool's one connection whose backend died while it sat idle, inside the
+/// window the checkout does not ping: the next operator verb's transaction
+/// cannot open, and the refusal names the verb rather than a lost socket.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_forget_on_a_lost_connection_answers_its_operation_sentence() {
+    let lane = TestDatabase::shared();
+    let pool = lane
+        .open(
+            DbRole::Api,
+            &[
+                ("DATABASE_POOL_SIZE_API", "1"),
+                ("DATABASE_MIN_POOL_SIZE_API", "0"),
+            ],
+        )
+        .await;
+    let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *pool.acquire().await.expect("the pool's one connection"))
+        .await
+        .expect("the backend answers");
+    // The release pings in a task of its own; wait until the connection is
+    // idle again so the kill lands on a pooled connection, not a returning one.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while pool.snapshot().is_none_or(|state| state.idle == 0) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the connection never went idle"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let observer = lane.open(DbRole::Default, &[]).await;
+    let gone: bool = sqlx::query_scalar("SELECT pg_terminate_backend($1, 5000)")
+        .bind(pid)
+        .fetch_one(&mut *observer.acquire().await.expect("an observer connection"))
+        .await
+        .expect("the terminate answers");
+    assert!(gone, "backend {pid} did not exit inside five seconds");
+    observer.close().await;
+    let (workspace, fleet) = (mint_id(), mint_id());
+    let owner = Owner {
+        workspace: &workspace,
+        fleet: &fleet,
+    };
+
+    let refused = PgStore::new(pool.clone(), Entropy::new())
+        .forget(owner, "never_written")
+        .await
+        .expect_err("a transaction cannot open on a dead backend");
+
+    assert_eq!(
+        (refused.code(), refused.detail()),
+        (MEM_UNAVAILABLE, afd_memory::error::detail::FORGET_FAILED)
+    );
+    pool.close().await;
+    lane.cleanup().await;
+}

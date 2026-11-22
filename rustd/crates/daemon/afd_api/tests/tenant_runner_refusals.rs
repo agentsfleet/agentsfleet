@@ -59,6 +59,24 @@ async fn a_tenant_registration_whose_body_is_not_one_is_refused() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+/// An empty registration is told the body is required, a sentence apart from
+/// the one a body that does not parse earns.
+#[tokio::test]
+async fn an_empty_tenant_registration_is_told_its_body_is_required() {
+    let router = Fleet::new()
+        .with_dashboard_holding(SUBJECT, RUNNER_TENANT)
+        .router();
+    let empty = harness::send(&router, Method::POST, RUNNERS, Some("session"), "").await;
+    assert_eq!(empty.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(harness::detail_of(empty).await, "Request body required");
+    let unreadable = harness::send(&router, Method::POST, RUNNERS, Some("session"), "{").await;
+    assert_eq!(unreadable.status(), StatusCode::BAD_REQUEST);
+    assert_ne!(
+        harness::detail_of(unreadable).await,
+        "Request body required"
+    );
+}
+
 /// A caller whose credential resolves to no tenant is refused on every tenant
 /// runner route, as a 403 that says why, before any runner is read.
 #[tokio::test]

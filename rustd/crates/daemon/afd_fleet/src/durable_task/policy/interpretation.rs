@@ -124,3 +124,7 @@ fn authored_size(question: &Question, settings: &DurableTaskSettings) -> garde::
         ))
     }
 }
+
+#[cfg(test)]
+#[path = "interpretation_tests.rs"]
+mod tests;

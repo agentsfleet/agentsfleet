@@ -413,6 +413,20 @@ fn test_parse_patch_preserves_end_of_file_marker() {
     );
 }
 
+/// An end-of-file marker before any change marks nothing, so the update
+/// still holds no lines when the patch ends.
+#[test]
+fn test_parse_patch_refuses_end_of_file_marker_before_any_change() {
+    let patch = "*** Begin Patch\n*** Update File: file.txt\n*** End of File\n*** End Patch";
+    assert_eq!(
+        parse_patch(patch),
+        Err(InvalidHunkError {
+            message: "Update file hunk for path 'file.txt' is empty".to_owned(),
+            line_number: 2,
+        })
+    );
+}
+
 #[test]
 fn test_parse_patch_lenient() {
     let patch_text = r#"*** Begin Patch

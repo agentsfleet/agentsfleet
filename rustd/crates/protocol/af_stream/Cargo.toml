@@ -51,6 +51,7 @@ url.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["json"] }
 rcgen.workspace = true

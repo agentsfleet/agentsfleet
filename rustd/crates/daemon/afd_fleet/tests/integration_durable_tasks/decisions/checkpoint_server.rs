@@ -23,6 +23,15 @@ pub(crate) struct Server {
 
 impl Server {
     pub(crate) async fn start() -> Self {
+        Self::serving(true).await
+    }
+
+    /// A backend that silently replaces an object a create-only write names.
+    pub(crate) async fn replacing() -> Self {
+        Self::serving(false).await
+    }
+
+    async fn serving(create_only: bool) -> Self {
         let socket = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("private object listener");
@@ -44,7 +53,7 @@ impl Server {
         let objects = Arc::new(Mutex::new(BTreeMap::new()));
         let owned = Arc::clone(&objects);
         let (stop, stopped) = oneshot::channel();
-        let worker = tokio::spawn(serve(socket, tls, owned, stopped));
+        let worker = tokio::spawn(serve(socket, tls, owned, stopped, create_only));
         Self {
             client,
             objects,
@@ -79,6 +88,7 @@ async fn serve(
     tls: TlsAcceptor,
     owned: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     mut stopped: oneshot::Receiver<()>,
+    honours_create_only: bool,
 ) {
     loop {
         let accepted = tokio::select! {
@@ -88,7 +98,7 @@ async fn serve(
         let (socket, _) = accepted.expect("SDK connects");
         let mut stream = tls.accept(socket).await.expect("verified TLS handshake");
         let request = protocol::read(&mut stream).await;
-        let (status, body) = respond(request, &owned);
+        let (status, body) = respond(request, &owned, honours_create_only);
         let header = format!(
             "HTTP/1.1 {status} Result\r\nContent-Length: {}\r\nETag: \"fixture-etag\"\r\nLast-Modified: Wed, 04 Nov 2026 00:00:00 GMT\r\nConnection: close\r\n\r\n",
             body.len()
@@ -102,10 +112,20 @@ async fn serve(
     }
 }
 
-fn respond(request: protocol::Request, owned: &Mutex<BTreeMap<String, Vec<u8>>>) -> (u16, Vec<u8>) {
+fn respond(
+    request: protocol::Request,
+    owned: &Mutex<BTreeMap<String, Vec<u8>>>,
+    honours_create_only: bool,
+) -> (u16, Vec<u8>) {
     let mut objects = owned.lock().expect("object state");
     let response = match request.method.as_str() {
-        "PUT" if request.create_only && objects.contains_key(&request.path) => Some((412, vec![])),
+        "PUT"
+            if honours_create_only
+                && request.create_only
+                && objects.contains_key(&request.path) =>
+        {
+            Some((412, vec![]))
+        }
         "PUT" => {
             objects.insert(request.path, request.body);
             Some((200, vec![]))

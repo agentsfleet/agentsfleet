@@ -40,6 +40,12 @@ impl Live {
 
     /// A connection whose gateway pool is opened with the `pool` knobs.
     async fn over(pool: &[(&str, &str)]) -> TestResult<Self> {
+        let (bus, _server) = afd_bus::test_util::detached()?;
+        Self::on(pool, bus).await
+    }
+
+    /// A connection whose gateway pool is opened with the `pool` knobs, over `bus`.
+    async fn on(pool: &[(&str, &str)], bus: afd_bus::Handle) -> TestResult<Self> {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, pool).await;
         let owner = lane.open(DbRole::Migrator, &[]).await;
@@ -47,7 +53,6 @@ impl Live {
         let enrolled = runners
             .register(&registration(), "fixture:platform-operator", clock::now())
             .await?;
-        let (bus, _server) = afd_bus::test_util::detached()?;
         let gateway =
             crate::fixture::gateway(database.clone(), bus, afd_bus::wake::Wake::default())?;
         let connection = RunnerConnection::open(
@@ -252,5 +257,108 @@ async fn a_renewal_the_datastore_cannot_take_now_keeps_each_run_for_a_retry() ->
         error_code::INTERNAL_DB_UNAVAILABLE.as_str()
     );
     assert_eq!(renewed["runs"][0]["answer"]["retryable"], true);
+    live.close().await
+}
+
+/// A connection that is already closing starts no command listener: it
+/// returns before it asks the broker for anything.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_closed_connection_listens_for_no_commands() -> TestResult {
+    let mut live = Live::on(&[], afd_bus::Handle::new(crate::fixture::Silent)).await?;
+    live.connection.shutdown().await;
+    let services = std::sync::Arc::clone(live.connection.services());
+    // The silent broker would hold a subscription forever; the bound proves none was asked.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        super::super::commands::listen(services),
+    )
+    .await??;
+    live.close().await
+}
+
+/// A broker that refuses the command subscription is asked again on the
+/// backoff while the connection lives, each refusal observed, and the
+/// listener ends cleanly when the connection stops.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_refused_command_subscription_is_retried_until_the_connection_stops() -> TestResult {
+    let live = Live::on(&[], afd_bus::test_util::unreachable()).await?;
+    let services = std::sync::Arc::clone(live.connection.services());
+    let capture = af_core::test_util::trace::Capture::install();
+    let listening = tokio::spawn(super::super::commands::listen(std::sync::Arc::clone(
+        &services,
+    )));
+    // The first retry waits 100 ms plus at most a 250 ms stagger; the second twice that.
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    services.handle.stop.cancel();
+    listening.await??;
+    let refused = capture
+        .events()
+        .into_iter()
+        .filter(|event| {
+            event.field("event") == Some("runner_stream_operation_failed")
+                && event.field("operation") == Some("recheck")
+        })
+        .count();
+    assert!(
+        refused >= 3,
+        "each refused subscription is observed: {refused}"
+    );
+    live.close().await
+}
+
+/// A fleet run's durable-task progress the datastore cannot retain is
+/// observed and dropped: cosmetic progress never fails the runner's frame.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn fleet_progress_the_datastore_cannot_retain_is_observed_not_returned() -> TestResult {
+    let mut live = Live::connect().await?;
+    let run = mint_id();
+    // What an assignment leaves for a live fleet run: its activity target.
+    live.connection.services().cache.insert(
+        afd_fleet::run::AssignedRun {
+            run_id: run.clone(),
+            expires_at: jiff::Timestamp::MAX,
+            target: Some(afd_fleet::run::activity::Target {
+                fleet_id: mint_id(),
+                turn_id: mint_id(),
+                run_created_at: clock::now(),
+                turn_created_at: clock::now(),
+                timing_eligible: true,
+                fence: 1,
+            }),
+            reported: None,
+            draft: None,
+        },
+        clock::now(),
+    )?;
+    live.database.close().await;
+    let capture = af_core::test_util::trace::Capture::install();
+    let progress = json!({"activity_id":mint_id(),"durable_task_id":null,
+        "source_turn_id":null,"operation":"capture","phase":"uploading","provider":null,
+        "model":null,"completed":2,"total":3,"sequence":7});
+    let frame = json!({"type":"progress","run_id":run,"request":{"frames":[
+        {"durable_task_transfer_progress":progress}]}});
+    let text = frame.to_string();
+    let message: Up<'_> = serde_json::from_str(&text)?;
+    live.connection.send(&message).await?;
+    let observed: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| {
+            event.field("event") == Some("runner_stream_operation_failed")
+                && event.field("operation") == Some("progress")
+        })
+        .collect();
+    // The operation wrapper observes the failure, and the progress handler again.
+    assert_eq!(observed.len(), 2, "{observed:?}");
+    assert!(
+        observed
+            .iter()
+            .all(|event| event.level == tracing::Level::WARN
+                && event.field("error_code") == Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+                && event.field("retryable") == Some("true"))
+    );
     live.close().await
 }

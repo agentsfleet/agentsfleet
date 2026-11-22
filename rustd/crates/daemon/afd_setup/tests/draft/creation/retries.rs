@@ -229,3 +229,42 @@ async fn concurrent_retries_after_an_aborted_activation_admit_one_run() {
         .cleanup()
         .await;
 }
+
+// Value: protects=a retry that also renames an installing fleet resumes its
+// setup without forging the activation; fails_when=the rename writes the
+// requested `active` status instead of keeping `installing`; seam=
+// Creations::patch over live Postgres and NATS, the fleet unfunded so setup
+// stops at the wallet.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_renaming_retry_keeps_an_installing_fleet_installing() {
+    let c = Case::create().await;
+    let (_, request) = c.request("rename-retry", Start::None).await;
+    let fleet = retained(&c, &mint(), request).await;
+    let current = c
+        .creations
+        .read(c.base.access(), &fleet)
+        .await
+        .expect("the retained fleet reads");
+
+    let resumed = c
+        .creations
+        .patch(
+            c.base.access(),
+            &fleet,
+            Some(&current.etag),
+            Some("active"),
+            Some("renamed-retry"),
+            now(),
+        )
+        .await
+        .expect("a retry may rename the fleet it resumes");
+
+    assert_eq!(resumed.name, "renamed-retry");
+    assert_eq!(
+        resumed.status, "installing",
+        "unfunded, so setup has not activated it"
+    );
+    assert_ne!(resumed.etag, current.etag, "the rename is a new version");
+    c.cleanup().await;
+}

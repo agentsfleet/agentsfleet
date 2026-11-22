@@ -69,3 +69,34 @@ answered_by!(TurnCheckpointCommit, Commit => Committed(Box<TurnResume>));
 answered_by!(TurnCheckpointRead, Read => Read(Box<TurnCheckpointSaved>));
 answered_by!(TurnCheckpointAdopt, Adopt => Adopted(Vec<FoldRef>));
 answered_by!(TurnCheckpointAbandon, Abandon => Abandoned);
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        TurnCheckpointAbandon, TurnCheckpointAdopt, TurnCheckpointPinRelease,
+        TurnCheckpointRequest, TurnCheckpointResponse,
+    };
+
+    /// A response answering another request yields nothing, whether the
+    /// request expects a value or only an acknowledgement, so a caller never
+    /// reads one action's answer as another's.
+    #[test]
+    fn a_response_for_another_request_is_no_answer() {
+        assert_eq!(
+            TurnCheckpointAdopt::answer(TurnCheckpointResponse::Adopted(Vec::new())),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            TurnCheckpointAdopt::answer(TurnCheckpointResponse::Abandoned),
+            None
+        );
+        assert_eq!(
+            TurnCheckpointPinRelease::answer(TurnCheckpointResponse::PinReleased),
+            Some(())
+        );
+        assert_eq!(
+            TurnCheckpointAbandon::answer(TurnCheckpointResponse::PinReleased),
+            None
+        );
+    }
+}

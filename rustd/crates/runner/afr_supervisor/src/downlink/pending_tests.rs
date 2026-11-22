@@ -68,6 +68,8 @@ fn turn_replies_require_run_operation_kind_and_matching_success_variant() -> ser
     assert!(accept(&changed)?);
     *field(&mut changed, "/operation_id")? = json!(other);
     assert!(!accept(&changed)?);
+    // A reply of another family never answers a checkpoint request.
+    assert!(!accept(&json!({"type":"pong","request_id":2}))?);
     Ok(())
 }
 

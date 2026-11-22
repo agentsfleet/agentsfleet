@@ -285,3 +285,41 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
         ingress.deliveries()
     );
 }
+
+#[tokio::test]
+async fn a_delivery_with_no_event_header_is_malformed_and_wakes_nobody() {
+    // The header names the body's kind, and the body is never read without it:
+    // a signed delivery missing it is a sender's fault, refused before the wall.
+    let ingress = deployment(vec![subscriber(signed::FLEET)]);
+    let router = Fleet::new()
+        .with_ingress(&ingress)
+        .with_platform_admin(signed::id(signed::WORKSPACE))
+        .router();
+    let proof = signed::signature(Scheme::BodyHex, APP_SECRET, APP_RUN_FAILURE.as_bytes());
+    let headers: Vec<_> = signed::github_headers(EVENT_WORKFLOW_RUN, signed::DELIVERY_ID, &proof)
+        .into_iter()
+        .filter(|(header, _)| header.as_str() != signed::HEADER_EVENT)
+        .collect();
+    let refused = send_with_headers(
+        &router,
+        Method::POST,
+        &path(SHIPPED),
+        None,
+        APP_RUN_FAILURE,
+        &headers,
+    )
+    .await;
+
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{document}");
+    assert_eq!(
+        harness::error_code(&document),
+        Some(error_code::WEBHOOK_MALFORMED.as_str())
+    );
+    assert_eq!(
+        ingress.deliveries().len(),
+        0,
+        "a refused delivery wakes nobody"
+    );
+}

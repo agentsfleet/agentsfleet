@@ -181,6 +181,12 @@ impl RunnerConnection {
         Ok(IncomingFrame { kind, frame })
     }
 
+    /// The connection's services, for an in-crate test that reads its run cache.
+    #[cfg(test)]
+    pub(crate) const fn services(&self) -> &Arc<ConnectionServices> {
+        &self.services
+    }
+
     /// Join every writer before the benchmark releases its datastores.
     pub async fn close(mut self) {
         self.shutdown().await;

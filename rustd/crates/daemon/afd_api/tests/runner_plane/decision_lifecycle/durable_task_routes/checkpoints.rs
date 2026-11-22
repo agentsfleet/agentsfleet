@@ -320,4 +320,18 @@ async fn refuse_upload(
     )
     .await;
     problem(&refused, "UZ-DT-003");
+    // Under the 17-byte floor the shape itself is refused, before the task is read.
+    let mut short = upload.clone();
+    *short
+        .pointer_mut("/objects/0/ciphertext_length")
+        .expect("fixture field exists") = json!(16);
+    let malformed = call(
+        fixture,
+        Method::POST,
+        &format!("{route}/uploads"),
+        &short,
+        StatusCode::BAD_REQUEST,
+    )
+    .await;
+    problem(&malformed, "UZ-REQ-001");
 }

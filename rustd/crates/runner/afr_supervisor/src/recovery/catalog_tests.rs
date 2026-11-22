@@ -2,7 +2,7 @@
 
 use super::{catalog::Catalog, files::Workspace};
 use af_wire::durable_task::CheckpointEntry;
-use std::{collections::BTreeMap, fs, sync::Arc};
+use std::{collections::BTreeMap, fs, os::unix::ffi::OsStrExt as _, sync::Arc};
 use zeroize::Zeroizing;
 
 #[test]
@@ -211,4 +211,46 @@ fn a_file_without_registered_objects_cannot_name_a_page() -> crate::Result<()> {
         ),
         "checkpoint file registration is incomplete",
     )
+}
+
+#[test]
+fn a_retained_base_path_is_not_removed_and_an_unreadable_workspace_builds_no_catalog()
+-> crate::Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::write(root.path().join("kept"), b"contents")?;
+    let workspace = Arc::new(Workspace::open(root.path())?);
+    let catalog = Catalog::build(
+        Some(&workspace),
+        Zeroizing::new(Vec::new()),
+        vec!["kept".to_owned(), "gone".to_owned()],
+        &tokio_util::sync::CancellationToken::new(),
+    )?;
+    let pages = catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
+    let entries: Vec<_> = pages.iter().flat_map(|page| &page.entries).collect();
+    assert!(
+        entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::File(file) if file.path == "kept"))
+    );
+    assert!(
+        !entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::Remove { path } if path == "kept")),
+        "a path still present is never removed"
+    );
+    assert!(
+        entries
+            .iter()
+            .any(|entry| matches!(entry, CheckpointEntry::Remove { path } if path == "gone"))
+    );
+
+    let target = std::ffi::OsStr::from_bytes(b"not-utf8-\xff");
+    std::os::unix::fs::symlink(target, root.path().join("link"))?;
+    let refused = Catalog::build(
+        Some(&workspace),
+        Zeroizing::new(Vec::new()),
+        Vec::new(),
+        &tokio_util::sync::CancellationToken::new(),
+    );
+    refused_as(refused, "checkpoint link is not UTF-8")
 }

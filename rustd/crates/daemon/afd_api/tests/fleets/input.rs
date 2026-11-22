@@ -113,6 +113,51 @@ async fn a_patch_may_not_forge_a_status_the_platform_owns() {
     }
 }
 
+/// A rename is bounded to 1..=64 bytes, checked on the body before the
+/// resource tag is asked for: outside the bound the patch is malformed, and at
+/// either edge it passes on to the tag.
+#[tokio::test]
+async fn a_rename_outside_its_bounds_is_refused_before_the_resource_tag() {
+    for name in [String::new(), "x".repeat(65), "界".repeat(22)] {
+        let body = serde_json::json!({ "name": name }).to_string();
+        let response = authorised(Method::PATCH, &item(), &body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{name}");
+        assert_eq!(
+            detail_of(response).await,
+            "Fleet setup input violates the supported shape or bounds",
+            "{name}"
+        );
+    }
+    for name in ["x".to_owned(), "x".repeat(64), "界".repeat(21)] {
+        let body = serde_json::json!({ "name": name }).to_string();
+        let response = authorised(Method::PATCH, &item(), &body).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::PRECONDITION_REQUIRED,
+            "{name}"
+        );
+    }
+}
+
+/// A memory-access change is read strictly: a body that does not parse, a
+/// grant that is not a boolean and a field the route does not know are each
+/// refused as malformed before the store; a readable change reaches it.
+#[tokio::test]
+async fn an_unreadable_memory_access_change_is_refused_before_the_store() {
+    let path = format!("{}/memory-access", item());
+    for body in ["{not json", r#"{"read":"yes"}"#, r#"{"write":true}"#, ""] {
+        let response = authorised(Method::PATCH, &path, body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            detail_of(response).await,
+            "Malformed memory access body",
+            "{body}"
+        );
+    }
+    let response = authorised(Method::PATCH, &path, r#"{"read":true}"#).await;
+    assert_reached_the_verb(response, "a readable change reaches the store").await;
+}
+
 #[tokio::test]
 async fn a_status_patch_requires_the_resource_tag_before_reaching_the_store() {
     let response = authorised(Method::PATCH, &item(), r#"{"status":"archived"}"#).await;

@@ -63,14 +63,17 @@ mod tests {
 
     use super::Requirements;
 
-    /// A setup whose block adds `binding` to the fixture's.
-    fn setup(binding: &serde_json::Value) -> Definition {
+    /// A setup whose block adds each of `binding`'s fields to the fixture's.
+    fn setup(binding: &[(&str, serde_json::Value)]) -> Definition {
         let mut block = serde_json::json!({
             "triggers": [], "tools": [], "credentials": [], "network": {"allow": []},
             "budget": {"daily_nanos": af_core::money::NANOS_PER_USD.to_string()}
         });
-        if let (Some(block), Some(binding)) = (block.as_object_mut(), binding.as_object()) {
-            block.extend(binding.clone());
+        let fields = block
+            .as_object_mut()
+            .expect("the fixture block is an object");
+        for (field, value) in binding {
+            fields.insert((*field).to_owned(), value.clone());
         }
         let json = serde_json::json!({
             "schema_version": 1,
@@ -85,15 +88,18 @@ mod tests {
     /// credentials to, and none when it binds none.
     #[test]
     fn a_reviews_repositories_are_the_setups_binding() {
-        let bound = setup(&serde_json::json!({
-            "repositories": ["acme/checkout", "acme/billing"],
-            "repository_access": "read"
-        }));
+        let bound = setup(&[
+            (
+                "repositories",
+                serde_json::json!(["acme/checkout", "acme/billing"]),
+            ),
+            ("repository_access", serde_json::json!("read")),
+        ]);
         assert_eq!(
             Requirements::of(&bound).repositories,
             ["acme/checkout", "acme/billing"]
         );
-        let unbound = setup(&serde_json::json!({}));
+        let unbound = setup(&[]);
         assert_eq!(
             Requirements::of(&unbound).repositories,
             Vec::<String>::new()

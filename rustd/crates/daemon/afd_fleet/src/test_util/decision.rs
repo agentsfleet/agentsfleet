@@ -62,3 +62,7 @@ pub fn known_result(request: &DecisionRequest) -> DecisionResult {
         result: DecisionOutcome::Answered { answers },
     }
 }
+
+#[cfg(test)]
+#[path = "decision_tests.rs"]
+mod tests;

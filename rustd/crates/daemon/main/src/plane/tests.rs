@@ -46,6 +46,15 @@ fn plane() -> ServingPlane {
 }
 
 fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
+    plane_storing(admin, None)
+}
+
+fn plane_storing(
+    admin: Option<af_core::id::Uuid7>,
+    checkpoint_storage: Option<
+        garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>,
+    >,
+) -> ServingPlane {
     let database = afd_db::test_util::unreachable_db();
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
@@ -69,7 +78,7 @@ fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
         // which is what this fixture is for — the plane must map every service
         // to its own store whether or not one is present.
         platform_admin_workspace: admin,
-        checkpoint_storage: None,
+        checkpoint_storage,
         identity_webhook_secret: None,
         schedule: schedule(),
         analytics: Analytics::silent(),
@@ -331,4 +340,32 @@ async fn test_the_wake_queue_hears_the_shared_bus() {
         Some(rung),
         "the daemon's wake listener hears the wake ring"
     );
+}
+
+/// A private R2 location the operator configured, valid by preflight's rules.
+fn checkpoint_storage() -> garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig> {
+    garde::Unvalidated::new(afd_fleet::durable_task::storage::CheckpointStorageConfig {
+        endpoint: format!("https://{}.r2.cloudflarestorage.com", "a".repeat(32)),
+        bucket: "fleet-checkpoints".into(),
+        credential_name: "r2_checkpoints".into(),
+    })
+    .validate()
+    .expect("a fixture location preflight accepts")
+}
+
+/// Checkpoint storage needs the platform Secrets workspace that holds its
+/// credential: with both, native tasks write files to R2; with the location
+/// but no workspace there is no vault row to read, so tasks get no store.
+#[tokio::test]
+async fn native_tasks_store_checkpoints_only_with_a_location_and_an_admin_workspace() {
+    const STORE: &str = "R2CheckpointStore(private)";
+    let admin = af_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
+        .expect("a fixture identifier");
+
+    let stored = plane_storing(Some(admin), Some(checkpoint_storage()));
+    let unowned = plane_storing(None, Some(checkpoint_storage()));
+
+    assert!(format!("{:?}", stored.tasks).contains(STORE));
+    assert!(!format!("{:?}", unowned.tasks).contains(STORE));
+    assert!(!format!("{:?}", plane().tasks).contains(STORE));
 }

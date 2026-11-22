@@ -316,6 +316,8 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
         "the history reports the complete filtered count"
     );
 
+    assert_runner_events_page_on(router, token, runner_path).await;
+
     for path in [
         "/v1/admin/runners/not-a-runner/history".to_owned(),
         format!("{runner_path}/history?limit=0"),
@@ -412,4 +414,34 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
+}
+
+/// A one-row history page names where the next one starts, and following it
+/// reads a different, older event of the same filtered history.
+async fn assert_runner_events_page_on(router: &axum::Router, token: &str, runner_path: &str) {
+    let filtered =
+        format!("{runner_path}/history?limit=1&event_type=runner_revoked,runner_cordoned");
+    let first = send(router, Method::GET, &filtered, Some(token), "").await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let first = json_body(first).await;
+    let items = first.get("items").and_then(Value::as_array);
+    assert_eq!(items.map(Vec::len), Some(1), "{first}");
+    let cursor = text(&first, "next_cursor");
+    let next = send(
+        router,
+        Method::GET,
+        &format!("{filtered}&starting_after={cursor}"),
+        Some(token),
+        "",
+    )
+    .await;
+    assert_eq!(next.status(), StatusCode::OK);
+    let next = json_body(next).await;
+    let older = next.get("items").and_then(Value::as_array);
+    assert_eq!(older.map(Vec::len), Some(1), "{next}");
+    assert_ne!(
+        items.and_then(|rows| rows.first()),
+        older.and_then(|rows| rows.first()),
+        "the cursor moves past the first page's event"
+    );
 }

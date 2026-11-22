@@ -93,3 +93,72 @@ fn only_the_api_role_connects_as_the_api_login() {
 fn a_lane_url_that_is_not_a_url_is_a_lane_fault() {
     let _url = owned("not a url", "afd_it_1_0").url();
 }
+
+/// A pool on a port nobody listens on, so every statement a seed runs fails.
+fn nowhere() -> sqlx::PgPool {
+    sqlx::postgres::PgPoolOptions::new()
+        .acquire_timeout(std::time::Duration::from_millis(50))
+        .connect_lazy("postgres://seed:secret@127.0.0.1:1/agentsfleet")
+        .unwrap_or_else(|failure| panic!("the fixture URL is well formed: {failure}"))
+}
+
+/// A seed whose insert fails answers the query class naming what it seeds,
+/// so a suite's setup failure reads as the row it could not write.
+#[tokio::test]
+async fn a_seed_that_cannot_write_its_row_names_the_row() {
+    use super::{
+        ApiKeySeed, FleetSeed, RunnerPolicy, RunnerSeed, SEEDED_TURN, TenantSeed, TurnSeed,
+        UserSeed, WorkspaceSeed, mint_id,
+    };
+
+    let pool = nowhere();
+    let (id, tenant) = (mint_id(), mint_id());
+    let policy = RunnerPolicy {
+        sandbox_tier: "dev_none",
+        network_policy: "deny_all_egress",
+    };
+    let refused = [
+        ("seed a tenant", TenantSeed::new(&id).insert(&pool).await),
+        (
+            "seed a workspace",
+            WorkspaceSeed::new(&id, &tenant).insert(&pool).await,
+        ),
+        (
+            "seed an API key",
+            ApiKeySeed::new(&id, &tenant, "hash", "user_fixture")
+                .insert(&pool)
+                .await,
+        ),
+        (
+            "seed a person",
+            UserSeed::new(&id, &tenant, "user_fixture", "seed@example.test")
+                .insert(&pool)
+                .await,
+        ),
+        (
+            "seed a fleet",
+            FleetSeed::new(&id, &tenant, &tenant, "active")
+                .insert(&pool)
+                .await,
+        ),
+        (
+            "seed a runner",
+            RunnerSeed::new(&id, "active", policy).insert(&pool).await,
+        ),
+        (
+            "seed a fleet event",
+            TurnSeed::new(&id, &tenant, &id, SEEDED_TURN)
+                .insert(&pool)
+                .await
+                .map(drop),
+        ),
+    ];
+
+    for (context, answered) in refused {
+        let error = answered
+            .err()
+            .unwrap_or_else(|| panic!("{context} wrote a row"));
+        assert!(error.is_query(), "{context}: {error}");
+        assert!(error.to_string().contains(context), "{context}: {error}");
+    }
+}

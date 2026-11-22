@@ -98,3 +98,41 @@ fn receipts(page: &Value, identities: &mut BTreeSet<String>) {
         assert!(identities.insert(row["turn_id"].as_str().expect("event identity").to_owned()));
     }
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_fleet_list_limit_sizes_its_page_and_an_oversized_one_is_clamped() {
+    let saved = Saved::create(json!({})).await;
+    let neighbor = saved.neighbor("Pull request review", json!({})).await;
+    let collection = saved.case.collection();
+    let page = |query: &'static str| {
+        let path = format!("{collection}?{query}");
+        let router = saved.reloaded_router();
+        let token = saved.case.base.token.clone();
+        async move {
+            let response = send(&router, Method::GET, &path, Some(&token), "").await;
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            crate::setup::json_body(response).await
+        }
+    };
+    let one = page("limit=1").await;
+    assert_eq!(one["items"].as_array().expect("one fleet").len(), 1);
+    assert!(
+        one["next_cursor"].is_string(),
+        "a second fleet waits: {one}"
+    );
+    let clamped = page("limit=4294967295").await;
+    let ids: BTreeSet<&str> = clamped["items"]
+        .as_array()
+        .expect("every fleet")
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        BTreeSet::from([saved.fleet.as_str(), neighbor.as_str()]),
+        "a limit past the ceiling reads as the ceiling, not a refusal"
+    );
+    assert!(clamped["next_cursor"].is_null());
+    saved.case.cleanup().await;
+}

@@ -131,3 +131,79 @@ async fn approving_a_setup_grant_through_the_route_activates_the_fleet() {
     );
     denied.cleanup().await;
 }
+
+/// Approves `gate` through the route, answering its status.
+async fn approve(case: &Case, gate: &Uuid7) -> StatusCode {
+    let route = format!(
+        "/v1/workspaces/{}/approvals/{}/approve",
+        case.base.workspace,
+        gate.as_str()
+    );
+    send(
+        &case.router,
+        Method::POST,
+        &route,
+        Some(&case.base.token),
+        "",
+    )
+    .await
+    .status()
+}
+
+/// The fleet's status as its item reads, and the tag a PATCH must send.
+async fn status_and_tag(case: &Case, item: &str) -> (String, String) {
+    let read = send(&case.router, Method::GET, item, Some(&case.base.token), "").await;
+    assert_eq!(read.status(), StatusCode::OK);
+    let tag = read.headers()[header::ETAG]
+        .to_str()
+        .expect("fleet tag")
+        .to_owned();
+    let status = json_body(read).await["status"]
+        .as_str()
+        .expect("fleet status")
+        .to_owned();
+    (status, tag)
+}
+
+/// An approval whose setup step then fails is still the person's answer: the
+/// approval stands, the failure is logged under its code, the fleet stays
+/// installing, and PATCH `active` finishes what the approval started.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn an_approved_grant_whose_setup_restart_fails_is_logged_and_still_answered() {
+    use super::activity::fault::Refusal;
+    use af_core::test_util::trace::Capture;
+    let case = Case::create().await;
+    let (item, gate) = installing(&case).await;
+    let fleet = super::fixture::fleet_of(&item);
+    let fault = Refusal::install(case.base.owner_url(), &case.base.workspace, "setup_ready").await;
+
+    let capture = Capture::install();
+    assert_eq!(approve(&case, &gate).await, StatusCode::OK);
+    let logged = capture.only("approval_setup_resume_failed");
+    drop(capture);
+    assert_eq!(logged.field("fleet_id"), Some(fleet.as_str()));
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| code.starts_with("UZ-")),
+        "{logged:?}"
+    );
+    fault.assert_fired_once().await;
+    drop(fault);
+
+    let (status, tag) = status_and_tag(&case, &item).await;
+    assert_eq!(status, "installing", "the failed restart activated nothing");
+    let activated = crate::setup::send_with_headers(
+        &case.router,
+        Method::PATCH,
+        &item,
+        Some(&case.base.token),
+        r#"{"status":"active"}"#,
+        &[(header::IF_MATCH, &tag)],
+    )
+    .await;
+    assert_eq!(activated.status(), StatusCode::OK);
+    assert_eq!(json_body(activated).await["status"], "active");
+    case.cleanup().await;
+}

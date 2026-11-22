@@ -157,6 +157,39 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), commands.recv()).await
     }
 
+    /// A broker that never answers the ownership announcement is given up on
+    /// at the ready-wake deadline, as a recheck timeout.
+    #[tokio::test(start_paused = true)]
+    async fn an_announcement_the_broker_never_answers_times_out() -> TestResult {
+        let gateway = crate::fixture::gateway(
+            afd_db::test_util::unreachable_db(),
+            afd_bus::Handle::new(crate::fixture::Silent),
+            afd_bus::wake::Wake::default(),
+        )?;
+        let runner = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+        let started = tokio::time::Instant::now();
+        let refused = super::announce(&gateway, &runner)
+            .await
+            .err()
+            .ok_or("a silent broker cannot confirm the announcement")?;
+        assert_eq!(started.elapsed(), af_core::timing::READY_WAKE_DEADLINE);
+        assert!(
+            matches!(
+                refused.kind(),
+                crate::error::ErrorKind::Timeout {
+                    operation: crate::Operation::Recheck,
+                    ..
+                }
+            ),
+            "{refused:?}"
+        );
+        assert_eq!(
+            refused.code().as_str(),
+            af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()
+        );
+        Ok(())
+    }
+
     #[tokio::test]
     async fn commands_reach_the_connection_and_noise_or_a_gap_asks_for_a_recheck() -> TestResult {
         let (bus, server) = afd_bus::test_util::detached()?;

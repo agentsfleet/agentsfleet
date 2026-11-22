@@ -347,3 +347,45 @@ async fn joiners_fail_when_their_opener_gives_up() -> TestResult {
     }
     Ok(())
 }
+
+/// A native subscription that ends — its client gave up on the server —
+/// stops the pump and ends the channel, so its readers see it close.
+#[tokio::test]
+async fn a_pump_whose_native_subscription_ends_closes_its_channel() -> TestResult {
+    // Port 1 is reserved and unbound: one dial, then the client gives up and
+    // every subscription it opened ends.
+    let client = async_nats::ConnectOptions::new()
+        .retry_on_initial_connect()
+        .max_reconnects(1)
+        .connect("nats://127.0.0.1:1")
+        .await?;
+    let native = client.subscribe(PHYSICAL).await?;
+    let channels = Arc::new(Channels::new(8));
+    let opened = channels.open(PHYSICAL);
+    let Pump {
+        sender, generation, ..
+    } = opened.pump.ok_or("opened")?;
+    let mut reader = opened.reader;
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        super::pump(
+            native,
+            sender,
+            super::super::Reads::One(subject()?),
+            Arc::clone(&channels),
+            PHYSICAL.to_owned(),
+            generation,
+        ),
+    )
+    .await?;
+
+    let Err(_) = reader.recv().await else {
+        return Err("an ended pump closes its readers".into());
+    };
+    assert!(
+        channels.open(PHYSICAL).pump.is_some(),
+        "the ended channel is gone, so the next reader starts a pump"
+    );
+    Ok(())
+}

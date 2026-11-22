@@ -6,6 +6,7 @@
 
 mod binding;
 mod checkpoints;
+mod effect_replay;
 mod errors;
 
 use af_core::etag::sha256_hex;

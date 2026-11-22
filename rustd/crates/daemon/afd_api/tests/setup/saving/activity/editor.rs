@@ -203,3 +203,69 @@ async fn seed_recent_history(saved: &Saved, id: &Uuid7) {
     }
     drop(connection);
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_receipts_past_one_page_continue_through_the_activity_cursor() {
+    use af_core::paging::DEFAULT_LIMIT;
+    use http::StatusCode;
+    let saved = Saved::create(json!({})).await;
+    // Saving left a saved/ready pair; each memory change adds one receipt.
+    let page = usize::try_from(DEFAULT_LIMIT).expect("a page fits usize");
+    for index in 0..page {
+        assert_eq!(
+            saved.memory(index % 2 == 0, false).await.status(),
+            StatusCode::OK
+        );
+    }
+    let context = saved.get("/setup-context").await;
+    let first = context["activities"]["items"]
+        .as_array()
+        .expect("receipt page");
+    assert_eq!(first.len(), page, "the deployment's default page");
+    let cursor = context["activities"]["next_cursor"]
+        .as_str()
+        .expect("two older receipts");
+    let rest = saved
+        .get(&format!(
+            "/messages?event_type=activity&limit=25&starting_after={cursor}"
+        ))
+        .await;
+    let rest = rest["items"].as_array().expect("older receipts");
+    assert_eq!(rest.len(), 2, "the saved/ready pair, oldest of all");
+    assert!(
+        rest.iter()
+            .all(|older| first.iter().all(|row| row["turn_id"] != older["turn_id"])),
+        "the cursor resumes after the page's last receipt"
+    );
+    saved.case.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn editor_context_refuses_an_empty_or_oversized_conversation_cursor() {
+    use crate::setup::{json_body, send};
+    use http::{Method, StatusCode};
+    let saved = Saved::create(json!({})).await;
+    for cursor in [String::new(), "c".repeat(4097)] {
+        let path = format!("{}/setup-context?starting_after={cursor}", saved.item);
+        let response = send(
+            &saved.case.router,
+            Method::GET,
+            &path,
+            Some(&saved.case.base.token),
+            "",
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "{}",
+            cursor.len()
+        );
+        let problem = json_body(response).await;
+        assert_eq!(problem["error_code"], "UZ-REQ-001", "{problem}");
+        assert_eq!(problem["detail"], "Invalid setup context query");
+    }
+    saved.case.cleanup().await;
+}

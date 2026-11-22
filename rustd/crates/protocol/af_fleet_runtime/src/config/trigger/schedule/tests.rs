@@ -155,3 +155,18 @@ fn a_long_cron_expression_is_judged_by_the_parser() {
     assert!(is_schedule_refusal(&Definition::parse(&definition(&junk))));
     assert!(breaks_the_bound(""), "an empty expression holds no bound");
 }
+
+/// A schedule past the text ceiling is refused before the parser reads it,
+/// with the same refusal an unparseable one gets, so the author is told which
+/// key to change rather than shown a bound report.
+#[test]
+fn a_schedule_past_the_text_ceiling_is_refused_before_the_parser() {
+    let past = format!("{}7 * * * *", "7,".repeat(af_validate::TEXT_MAX_CHARS));
+    assert!(breaks_the_bound(&past));
+
+    let refused = super::Cron::parse(Some(past), None, None);
+    assert!(matches!(
+        refused.as_ref().map_err(Error::kind),
+        Err(ErrorKind::InvalidTriggerSet { reason }) if *reason == REASON_INVALID_SCHEDULE
+    ));
+}

@@ -81,7 +81,7 @@ fn timed_out(source: tokio::time::error::Elapsed) {
 
 #[cfg(test)]
 mod tests {
-    use super::{REPAIR_BACKOFF_MAX, repair_schedule, run};
+    use super::{REPAIR_BACKOFF_MAX, STREAM_ANSWER_TIMEOUT, repair_schedule, run};
     use backon::BackoffBuilder as _;
     use std::time::Duration;
     use tokio_util::sync::CancellationToken;
@@ -124,6 +124,51 @@ mod tests {
                 .iter()
                 .all(|failure| failure.level == tracing::Level::WARN
                     && failure.field("error_code")
+                        == Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()))
+        );
+        Ok(())
+    }
+
+    /// A broker that takes the subscription and never answers it is given up
+    /// on at the stream's answer timeout, logged as a timeout, and asks for
+    /// one recovery pass, as a refused subscription does.
+    #[tokio::test(start_paused = true)]
+    async fn a_broker_that_never_answers_the_subscription_times_out_into_one_pass() -> TestResult {
+        let wake = afd_bus::wake::Wake::default();
+        let gateway = crate::fixture::gateway(
+            afd_db::test_util::unreachable_db(),
+            afd_bus::Handle::new(crate::fixture::Silent),
+            wake.clone(),
+        )?;
+        let capture = af_core::test_util::trace::Capture::install();
+        let stop = CancellationToken::new();
+        let repairing = tokio::spawn(run(gateway, stop.clone()));
+        tokio::time::sleep(STREAM_ANSWER_TIMEOUT / 2).await;
+        assert_eq!(wake.recovery(), None, "the subscription is still waiting");
+        tokio::time::sleep(STREAM_ANSWER_TIMEOUT).await;
+        let first = wake
+            .recovery()
+            .ok_or("the timed-out subscription asked for no pass")?;
+        tokio::time::sleep(STREAM_ANSWER_TIMEOUT * 3).await;
+        assert_eq!(wake.recovery(), Some(first), "one outage, one pass");
+        stop.cancel();
+        repairing.await?;
+        let timeouts: Vec<_> = capture
+            .events()
+            .into_iter()
+            .filter(|event| {
+                event.field("event") == Some("runner_stream_wake_subscriptions_timed_out")
+            })
+            .collect();
+        assert!(
+            timeouts.len() > 1,
+            "every timed-out repair is logged: {timeouts:?}"
+        );
+        assert!(
+            timeouts
+                .iter()
+                .all(|timeout| timeout.level == tracing::Level::WARN
+                    && timeout.field("error_code")
                         == Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()))
         );
         Ok(())

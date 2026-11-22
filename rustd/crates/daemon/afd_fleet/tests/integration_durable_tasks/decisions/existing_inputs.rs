@@ -123,15 +123,144 @@ async fn paid_existing_input_refuses_missing_and_foreign_durable_task_without_pa
     .await;
 }
 
+// Value: protects=a person's steer wakes a blocked task into exactly one
+// continuation at the next generation; fails_when=the steer appends without
+// queueing, or queues at the stale generation; why_new=the wake path of an
+// existing-task input had no case; seam=the paid interpretation over live
+// Postgres, the task stopped as its settlement would leave it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn paid_steer_wakes_a_blocked_durable_task_into_one_continuation() {
+    exercise(async |case| {
+        let fixture = Decisions::create(case).await;
+        let task = fixture.bind_goal().await;
+        let durable_task_id = id(&task.durable_task_id);
+        stop(case, &durable_task_id, "blocked", false).await;
+        let source = case.assigned_source().await;
+        let input = proposed_from(
+            &fixture,
+            &source,
+            &task.durable_task_id,
+            DurableTaskInputAction::Steer,
+            false,
+        )
+        .await;
+        let accepted = fixture
+            .tasks
+            .interpret(case.run(), &valid(input))
+            .await
+            .expect("a steer wakes the blocked task");
+        let item = accepted.items.first().expect("one associated item");
+        assert!(!item.applies_here, "the woken task runs on its own turn");
+        assert_eq!(item.input_sequence, Some(1));
+        assert_eq!(item.durable_task_generation, Some(3));
+        let (state, queued): (String, i64) = sqlx::query_as(
+            "SELECT t.status,(SELECT count(*) FROM thread.turns a WHERE a.durable_task_id=t.id AND a.durable_task_generation=t.generation AND a.settled_at IS NULL) FROM fleet.durable_tasks t WHERE t.id=$1",
+        )
+        .bind(&durable_task_id)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("woken task observer"),
+        )
+        .await
+        .expect("woken task");
+        assert_eq!((state.as_str(), queued), ("ready", 1));
+        fixture.model.finish().await.expect("model fixture cleanup");
+    })
+    .await;
+}
+
+// Value: protects=a steer cannot wake a task with no run left, nor revive a
+// finished one; fails_when=either input queues another execution;
+// why_new=the exhausted and terminal refusals of an existing-task input had no
+// case; seam=the paid interpretation over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn paid_steer_refuses_to_wake_an_exhausted_or_finished_durable_task() {
+    for (state, exhausted, code) in [
+        ("blocked", true, error_code::DURABLE_TASK_LIMIT_EXHAUSTED),
+        ("done", false, error_code::DURABLE_TASK_STALE_STATE),
+    ] {
+        exercise(async |case| {
+            let fixture = Decisions::create(case).await;
+            let task = fixture.bind_goal().await;
+            let durable_task_id = id(&task.durable_task_id);
+            stop(case, &durable_task_id, state, exhausted).await;
+            let source = case.assigned_source().await;
+            let input = proposed_from(
+                &fixture,
+                &source,
+                &task.durable_task_id,
+                DurableTaskInputAction::Steer,
+                false,
+            )
+            .await;
+            let before = case.counts().await;
+            let error = fixture
+                .tasks
+                .interpret(case.run(), &valid(input))
+                .await
+                .expect_err("no further execution is admitted");
+            assert_eq!(error.code(), code, "{state}");
+            assert_eq!(case.counts().await, before, "{state}");
+            fixture.model.finish().await.expect("model fixture cleanup");
+        })
+        .await;
+    }
+}
+
+/// Stops `task` as a settlement would: the next generation, in `state`, and
+/// the run that executed it now serves the conversation alone.
+async fn stop(case: &Case, task: &Uuid7, state: &str, exhausted: bool) {
+    let mut connection = case
+        .held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("stop connection");
+    sqlx::query("UPDATE thread.runs SET durable_task_id=NULL,durable_task_generation=NULL,durable_task_stop_generation=NULL WHERE id=$1")
+        .bind(&case.held.run_key)
+        .execute(&mut *connection)
+        .await
+        .expect("run released from the stopped task");
+    let stopped = sqlx::query(
+        "UPDATE fleet.durable_tasks SET status=$2,generation=generation+1,stop_generation=stop_generation+1,used_runs=CASE WHEN $3 THEN max_runs ELSE used_runs END WHERE id=$1",
+    )
+    .bind(task)
+    .bind(state)
+    .bind(exhausted)
+    .execute(&mut *connection)
+    .await
+    .expect("stopped task");
+    assert_eq!(stopped.rows_affected(), 1);
+}
+
 pub(super) async fn proposed(
     fixture: &Decisions<'_>,
     source: &Uuid7,
     task: &str,
     action: DurableTaskInputAction,
 ) -> DurableTaskBindingsInput {
+    proposed_from(fixture, source, task, action, true).await
+}
+
+/// [`proposed`], from a run `attached` to the task or from one that is not.
+async fn proposed_from(
+    fixture: &Decisions<'_>,
+    source: &Uuid7,
+    task: &str,
+    action: DurableTaskInputAction,
+    attached: bool,
+) -> DurableTaskBindingsInput {
     let reservation = fixture.reservation(
         DecisionAssessment::Message,
-        Some(af_wire::durable_task::DecisionDurableTaskVersion {
+        attached.then(|| af_wire::durable_task::DecisionDurableTaskVersion {
             durable_task_id: task.to_owned(),
             generation: 1,
         }),

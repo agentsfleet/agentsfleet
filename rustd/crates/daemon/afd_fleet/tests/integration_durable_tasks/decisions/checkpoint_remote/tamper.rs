@@ -17,11 +17,39 @@ pub(super) async fn refuse(
     object: &CheckpointObject,
     server: &Server,
 ) {
+    // A flipped byte fails authentication; a truncated object fails the exact
+    // length the readback asks for before any byte is authenticated.
+    for corrupt in [flip as fn(&mut Vec<u8>), truncate] {
+        corrupted(case, tasks, task, plan, object, server, corrupt).await;
+    }
+}
+
+#[expect(
+    clippy::ptr_arg,
+    reason = "one corruption signature serves both, and truncation needs the Vec"
+)]
+fn flip(bytes: &mut Vec<u8>) {
+    *bytes.first_mut().expect("nonempty encrypted object") ^= 1;
+}
+
+fn truncate(bytes: &mut Vec<u8>) {
+    bytes.pop().expect("nonempty encrypted object");
+}
+
+async fn corrupted(
+    case: &Case,
+    tasks: &DurableTasks,
+    task: &DecisionDurableTaskVersion,
+    plan: &CheckpointPlan,
+    object: &CheckpointObject,
+    server: &Server,
+    corrupt: fn(&mut Vec<u8>),
+) {
     let (path, original) = {
         let mut stored = server.objects.lock().expect("remote fault control");
         let (path, bytes) = stored.iter_mut().next().expect("one ciphertext");
         let original = bytes.clone();
-        *bytes.first_mut().expect("nonempty encrypted object") ^= 1;
+        corrupt(bytes);
         (path.clone(), original)
     };
     let failure = tasks

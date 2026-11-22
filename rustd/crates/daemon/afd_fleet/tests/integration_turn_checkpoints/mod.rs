@@ -18,6 +18,7 @@ mod replacement;
 mod retirement;
 mod rollout;
 mod storage;
+mod storage_refusals;
 use crate::integration_durable_tasks::decisions::checkpoint_server as storage_server;
 
 use af_core::{error_code, id::Uuid7};

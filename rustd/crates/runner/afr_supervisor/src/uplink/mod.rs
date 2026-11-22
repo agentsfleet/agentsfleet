@@ -1,6 +1,8 @@
 //! Workers share typed session operations; the native connection stays with the downlink owner.
 
 pub(crate) mod queues;
+#[cfg(test)]
+mod queues_tests;
 pub(crate) mod renewals;
 pub(crate) mod writer;
 

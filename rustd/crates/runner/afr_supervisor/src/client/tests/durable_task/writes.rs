@@ -84,3 +84,42 @@ async fn a_native_publication_refusal_is_not_redispatched_or_reinterpreted() {
     assert_eq!(failure.refusal_code(), Some(af_core::error_code::RUN_LOST));
     server.finish();
 }
+
+#[tokio::test]
+async fn a_success_body_that_is_not_the_read_or_binding_it_answers_is_refused() {
+    let server = Server::start(vec![
+        request(
+            Method::GET,
+            "inputs?fencing_token=31&limit=4",
+            Value::Null,
+            json!({"unexpected":true}),
+        ),
+        request(
+            Method::POST,
+            "bindings",
+            binding(),
+            json!({"unexpected":true}),
+        ),
+    ])
+    .await;
+    let run = Uuid7::parse(ID).unwrap();
+    let read = server
+        .plane
+        .durable_task_inputs(
+            &run,
+            &DurableTaskInputsQuery {
+                fencing_token: FENCE,
+                starting_after: None,
+                after_input_sequence: None,
+                limit: 4,
+            },
+        )
+        .await;
+    assert!(read.is_err(), "a malformed input page was accepted");
+    let bound = server
+        .plane
+        .durable_task_bindings(&run, &serde_json::from_value(binding()).unwrap())
+        .await;
+    assert!(bound.is_err(), "a malformed binding receipt was accepted");
+    server.finish();
+}

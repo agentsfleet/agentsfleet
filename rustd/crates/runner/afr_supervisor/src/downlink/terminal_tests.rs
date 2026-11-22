@@ -327,3 +327,60 @@ async fn a_runner_stopped_before_its_first_attempt_opens_no_session() -> Proof {
     assert!(downlink.current.borrow().is_none());
     Ok(())
 }
+
+async fn control_frame(message: serde_json::Value) -> af_stream::Result<af_stream::OwnedFrame> {
+    af_stream::encode(
+        &message,
+        &Budget::default(),
+        StreamKind::Control,
+        &CancellationToken::new(),
+        Instant::now() + Duration::from_secs(1),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn control_drains_to_its_go_away_and_misplaced_or_opening_frames_are_protocol_faults() -> Proof
+{
+    let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let config = configured("https://localhost:1", &identity.root())?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
+    let requests = Requests::new();
+    let stop = CancellationToken::new();
+    let mut dispatch = Dispatch {
+        requests: &requests,
+        running: &downlink.running,
+        assignments: &downlink.assignments,
+        assignment_budget: &downlink.assignment_budget,
+        policies: &downlink.policies,
+        stop: &stop,
+        early_cancel: std::collections::HashSet::new(),
+    };
+    let run = "019f0000-0000-7000-8000-000000000001";
+    let (control_tx, mut control) = mpsc::channel(2);
+    let cancel = serde_json::json!({"type":"cancel", "run_id":run,
+        "error_code":error_code::RUN_CANCELLED.as_str()});
+    control_tx
+        .send((StreamKind::Control, control_frame(cancel).await?))
+        .await?;
+    let drain = serde_json::json!({"type":"go_away", "error_code":null});
+    control_tx
+        .send((StreamKind::Control, control_frame(drain.clone()).await?))
+        .await?;
+    // A lane that ended cleanly is still a lost session until control says why.
+    let progress = dispatch.until_control_ends(&mut control, Ok(())).await?;
+    assert!(matches!(progress, Progress::Reconnect));
+    assert!(
+        dispatch
+            .early_cancel
+            .contains(&af_core::id::Uuid7::parse(run)?)
+    );
+
+    let misplaced = dispatch.frame(StreamKind::Work, control_frame(drain).await?);
+    assert!(misplaced.is_err_and(|error| matches!(error.kind(), ErrorKind::StreamProtocol)));
+    let prepared = serde_json::json!({"type":"prepared", "request_id":1,
+        "connection_id":run, "previous_connection_id":null});
+    let opening = dispatch.frame(StreamKind::Control, control_frame(prepared).await?);
+    assert!(opening.is_err_and(|error| matches!(error.kind(), ErrorKind::StreamProtocol)));
+    Ok(())
+}

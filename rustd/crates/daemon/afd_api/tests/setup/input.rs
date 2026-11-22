@@ -54,3 +54,34 @@ async fn body_keys_are_required_and_header_keys_are_refused() {
     );
     f.cleanup().await;
 }
+
+/// A field other than the message outside its bounds earns the setup shape
+/// sentence, not the message ceiling's, and allocates no draft.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_setup_model_outside_its_bounds_is_refused_with_the_shape_sentence() {
+    let f = Fixture::create().await;
+    let router = f.router();
+    for model in [String::new(), "model\u{0}ref".to_owned()] {
+        let mut body = f.request(&mint());
+        body["setup_model_ref"] = json!(model);
+        let response = send(
+            &router,
+            Method::POST,
+            &f.collection(),
+            Some(&f.token),
+            &body.to_string(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{model:?}");
+        let problem = json_body(response).await;
+        assert_eq!(problem["error_code"], "UZ-REQ-001", "{problem}");
+        assert_eq!(
+            problem["detail"], "Setup input violates the supported shape or bounds",
+            "{problem}"
+        );
+    }
+    let listed = send(&router, Method::GET, &f.collection(), Some(&f.token), "").await;
+    assert_eq!(json_body(listed).await["items"], json!([]));
+    f.cleanup().await;
+}

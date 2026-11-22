@@ -235,3 +235,36 @@ async fn a_source_reply_writes_within_its_route_and_at_most_4096() -> crate::Res
     }
     Ok(())
 }
+
+#[tokio::test]
+async fn answered_items_and_inputs_not_yet_incorporated_get_no_new_reply() -> crate::Result<()> {
+    let mut later = item(PENDING, DurableTaskInputAction::Steer, true);
+    later.binding.input_sequence = Some(5);
+    let mut greeted = item(SOURCE, DurableTaskInputAction::Conversation, false);
+    greeted.response_text = Some("Earlier hello.".to_owned());
+    let native = source(vec![
+        later,
+        item(ITEM, DurableTaskInputAction::NewWork, true),
+        greeted,
+    ]);
+    let script = Script::new([vec![say("Work needs checks."), ended(false)]]);
+
+    let output = execute(&script, &native, true).await?;
+
+    // Both active items share the one task answer; the earlier reply stands.
+    assert_eq!(
+        output.result.content,
+        "Work needs checks.\n\nEarlier hello."
+    );
+    let receipts = native.receipts.lock().expect("fixture mutex is unpoisoned");
+    assert_eq!(
+        receipts
+            .iter()
+            .map(|receipt| receipt.item_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![ITEM],
+        "the input at sequence 5 is not incorporated, and the hello was answered"
+    );
+    assert_eq!(script.sent().len(), 1);
+    Ok(())
+}

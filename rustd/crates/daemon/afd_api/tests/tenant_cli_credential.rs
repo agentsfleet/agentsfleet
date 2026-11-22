@@ -226,3 +226,25 @@ async fn a_malformed_mint_body_is_refused() {
         "the class check precedes the body parse"
     );
 }
+
+/// A browser session gets past the class check, so its body is the first
+/// thing that can refuse: an unreadable one is a malformed request, answered
+/// before the machine name is read or any credential is minted.
+#[tokio::test]
+async fn a_fresh_session_sending_an_unreadable_mint_body_is_refused_as_malformed() {
+    const SESSION: &str = "session";
+    let router = Fleet::new().with_dashboard(SUBJECT).router();
+    for body in ["{not json", r#"{"machine_name":7}"#, ""] {
+        let response = harness::send(&router, Method::POST, CREDENTIALS, Some(SESSION), body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            detail_of(response).await,
+            afd_api_tenant::tenant::DETAIL_MALFORMED_BODY,
+            "{body}"
+        );
+    }
+    // The same session with a readable body reaches the store.
+    let response =
+        harness::send(&router, Method::POST, CREDENTIALS, Some(SESSION), GOOD_BODY).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+}

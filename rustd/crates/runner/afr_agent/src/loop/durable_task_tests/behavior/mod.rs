@@ -10,6 +10,8 @@ use afr_tools::verbs::DecisionEvaluation;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
+mod assessment;
+mod effects;
 mod evidence;
 mod finish_boundary;
 mod intake;
@@ -23,6 +25,7 @@ mod recovery;
 mod recovery_fixture;
 mod replies;
 mod replies_fixture;
+mod task_boundary;
 
 #[derive(Debug)]
 struct Goals {

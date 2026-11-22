@@ -154,3 +154,44 @@ async fn a_bound_listener_renders_without_its_identity_or_sockets() -> TestResul
     assert_eq!(listener.local_addr()?.ip(), Ipv4Addr::LOCALHOST);
     Ok(())
 }
+
+/// Each carrier loads the identity again when it starts serving, so files gone
+/// since the bind fail both: either failure stops its sibling, and the caller
+/// gets one error while the second is logged rather than lost.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn should_stop_both_carriers_and_log_the_second_when_the_identity_is_gone() -> TestResult {
+    use std::convert::Infallible;
+
+    use http::{Request, Response};
+    use tokio_util::sync::CancellationToken;
+
+    use crate::{Incoming, Outgoing};
+
+    let capture = af_core::test_util::trace::Capture::install();
+    let fixture = crate::test_util::IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let listener = super::Listener::bind(address(ANY_PORT), fixture.identity()).await?;
+    drop(fixture);
+
+    let served = listener
+        .serve(
+            |_info| {
+                tower::service_fn(async |_request: Request<Incoming>| {
+                    Ok::<_, Infallible>(Response::new(Outgoing::new(http_body_util::Empty::<
+                        bytes::Bytes,
+                    >::new())))
+                })
+            },
+            CancellationToken::new(),
+            CancellationToken::new(),
+        )
+        .await;
+
+    assert!(served.is_err(), "no carrier can serve without its identity");
+    let logged = capture.only("runner_stream_transport_ended");
+    assert_eq!(
+        logged.field("transport"),
+        Some(crate::Transport::H3.as_str())
+    );
+    Ok(())
+}

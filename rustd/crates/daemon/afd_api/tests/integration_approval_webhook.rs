@@ -295,3 +295,42 @@ async fn a_signed_callback_this_daemon_cannot_read_is_refused_after_it_verifies(
 
     fixture.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn an_approval_for_an_archived_fleet_is_refused_and_the_gate_stays_pending() {
+    // The resolving statement skips an archived fleet's gate, so the second
+    // read finds it unanswered: the fleet is gone, not the gate. A continuation
+    // here would restart a run on a fleet its owner retired.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let mut connection = fixture.database.acquire().await.expect("an API connection");
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
+        .bind(&fixture.fleet)
+        .bind(afd_fleet_lifecycle::FleetStatus::Archived.as_str())
+        .execute(&mut *connection)
+        .await
+        .expect("the fleet archives");
+    drop(connection);
+    let router = fixture.router();
+
+    let refused = callback(
+        &router,
+        fixture.fleet.as_str(),
+        &payload(fixture.action.as_str(), "approve"),
+    )
+    .await;
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(error_code::AGENTSFLEET_ARCHIVED.as_str())
+    );
+
+    let (state, _by) = fixture.gate_state(&fixture.gate).await;
+    assert_eq!(state, "pending", "an archived fleet's gate is not answered");
+    assert_eq!(fixture.continuations(&fixture.event).await, 0);
+
+    fixture.cleanup().await;
+}

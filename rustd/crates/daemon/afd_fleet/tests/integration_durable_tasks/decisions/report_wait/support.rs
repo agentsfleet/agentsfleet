@@ -32,6 +32,36 @@ pub(super) async fn decision(
     task: DecisionDurableTaskVersion,
     checkpoint: &str,
 ) -> DurableTaskReport {
+    let mut report = decided(fixture, task, "WAIT", DurableTaskDisposition::Waiting).await;
+    report.checkpoint_id = Some(checkpoint.to_owned());
+    report
+}
+
+/// A paid goal decision answering DONE, claimed as a completion.
+pub(super) async fn completion(
+    fixture: &Decisions<'_>,
+    task: DecisionDurableTaskVersion,
+) -> DurableTaskReport {
+    decided(fixture, task, "DONE", DurableTaskDisposition::Complete).await
+}
+
+/// A paid goal decision answering CONTINUE, claimed from `checkpoint`.
+pub(super) async fn continuing(
+    fixture: &Decisions<'_>,
+    task: DecisionDurableTaskVersion,
+    checkpoint: &str,
+) -> DurableTaskReport {
+    let mut report = decided(fixture, task, "CONTINUE", DurableTaskDisposition::Continue).await;
+    report.checkpoint_id = Some(checkpoint.to_owned());
+    report
+}
+
+async fn decided(
+    fixture: &Decisions<'_>,
+    task: DecisionDurableTaskVersion,
+    action: &str,
+    disposition: DurableTaskDisposition,
+) -> DurableTaskReport {
     let (_, body) = fixture.reserve(&fixture.goal_reservation(&task)).await;
     let request = request(&body);
     let mut result = known_result(&request);
@@ -40,15 +70,15 @@ pub(super) async fn decision(
         _ => None,
     }
     .expect("paid goal answers");
-    choose(answers, "next_action", "WAIT");
+    choose(answers, "next_action", action);
     fixture
         .record(&request.call_id, DecisionReceipt::Provider { result })
         .await;
     DurableTaskReport {
         durable_task: task,
-        disposition: DurableTaskDisposition::Waiting,
+        disposition,
         decision_call_id: Some(request.call_id),
-        checkpoint_id: Some(checkpoint.to_owned()),
+        checkpoint_id: None,
         covered_input_sequence: 0,
         effect_watermark: 0,
     }

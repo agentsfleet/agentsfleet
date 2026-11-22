@@ -143,4 +143,20 @@ mod tests {
             "the joined worker released its resources"
         );
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_panicked_worker_is_joined_without_waiting_for_the_cleanup_grace() {
+        let mut active = JoinSet::new();
+        active.spawn(async {
+            #[expect(clippy::panic, reason = "the worker under test panics")]
+            {
+                panic!("a worker failed");
+            }
+        });
+        let halt = Halt::new(CancellationToken::new());
+        let started = Instant::now();
+        workers(&halt, &mut active).await;
+        assert!(active.is_empty());
+        assert_eq!(started.elapsed(), Duration::ZERO, "no grace was spent");
+    }
 }

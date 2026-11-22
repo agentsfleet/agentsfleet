@@ -367,3 +367,63 @@ async fn the_watcher_says_so_and_stops_when_the_broadcast_subscription_ends() ->
     );
     Ok(())
 }
+
+/// A subscribe the client refuses fails the reader that asked and ends the
+/// channel it opened, so the next reader opens a fresh one with its own pump
+/// rather than joining a channel nothing will ever feed.
+#[tokio::test]
+async fn a_refused_subscribe_fails_its_reader_and_frees_the_channel() -> TestResult {
+    let client = client_that_has_given_up().await?;
+    let channels = Arc::new(Channels::new(8));
+    let adapter = super::Adapter {
+        prefix: String::new(),
+        deadline: BOUND,
+        live: tokio::sync::RwLock::new(Some(super::Live {
+            client,
+            channels: Arc::clone(&channels),
+            signals: Arc::new(signals::Signals::new(&Tuning::default())),
+            watcher: tokio::spawn(async {}),
+        })),
+    };
+    let subject = Subject::ThreadItems(Uuid7::parse(ID)?);
+
+    let refused = adapter.open(TAIL.to_owned(), Reads::One(subject)).await;
+
+    assert!(
+        refused.is_err(),
+        "a client that gave up subscribes to nothing"
+    );
+    assert!(
+        channels.open(TAIL).pump.is_some(),
+        "the failed channel ended, so the next reader starts its own pump"
+    );
+    Ok(())
+}
+
+/// A bus task that panicked is a defect shutdown would otherwise swallow:
+/// its join is logged under the task's event, and a cancelled one is not.
+#[tokio::test]
+#[expect(clippy::panic, reason = "the test is of a bus task that panics")]
+async fn a_bus_task_that_panicked_is_logged_when_shutdown_joins_it() -> TestResult {
+    let panicked = tokio::spawn(async { std::panic::panic_any("a pump defect") }).await;
+    let pending = tokio::spawn(std::future::pending::<()>());
+    pending.abort();
+    let cancelled = pending.await;
+    let capture = Capture::install();
+
+    super::joined("bus_pump_panicked", panicked);
+    super::joined("bus_watcher_panicked", cancelled);
+
+    let logged = capture.only("bus_pump_panicked");
+    assert_eq!(logged.level, Level::WARN);
+    assert_eq!(
+        logged.field("error_code"),
+        Some(INTERNAL_OPERATION_FAILED.as_str())
+    );
+    assert_eq!(
+        named(&capture, "bus_watcher_panicked"),
+        0,
+        "cancellation is how shutdown stops a task"
+    );
+    Ok(())
+}

@@ -72,6 +72,12 @@ impl Fixture {
         }
     }
 
+    /// The lane database this fixture writes to, for a test that must reach
+    /// the server as its owner or open a pool of its own.
+    pub(crate) const fn lane(&self) -> &TestDatabase {
+        &self.lane
+    }
+
     pub(crate) const fn check<'fixture>(
         &'fixture self,
         turn_id: &'fixture Uuid7,

@@ -92,3 +92,49 @@ async fn accept(
         relays.lock().await.push(relay.abort_handle());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::AsyncReadExt as _;
+    use tokio::net::{TcpListener, TcpStream};
+
+    use super::Proxy;
+
+    type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    /// A port nothing listens on: bound, read, then released.
+    async fn dead_port() -> std::io::Result<u16> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        listener.local_addr().map(|address| address.port())
+    }
+
+    /// Bytes a client reads before its connection closes.
+    async fn read_to_close(mut client: TcpStream) -> std::io::Result<usize> {
+        let mut seen = Vec::new();
+        client.read_to_end(&mut seen).await
+    }
+
+    /// A cut proxy refuses a dial at once, and a relay whose backend will not
+    /// answer closes its client rather than leaving it hanging.
+    #[tokio::test]
+    async fn a_cut_proxy_and_a_dead_backend_each_close_the_client() -> TestResult {
+        let proxy = Proxy::start(dead_port().await?).await?;
+
+        proxy.cut().await;
+        let refused = TcpStream::connect(("127.0.0.1", proxy.port())).await?;
+        assert_eq!(
+            read_to_close(refused).await?,
+            0,
+            "a cut proxy relays nothing"
+        );
+
+        proxy.restore();
+        let stranded = TcpStream::connect(("127.0.0.1", proxy.port())).await?;
+        assert_eq!(
+            read_to_close(stranded).await?,
+            0,
+            "no backend answered, so the relay ends and drops its client"
+        );
+        Ok(())
+    }
+}

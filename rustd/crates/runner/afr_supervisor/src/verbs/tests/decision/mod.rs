@@ -279,3 +279,58 @@ fn receipt_retries(
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
     }
 }
+
+#[tokio::test]
+async fn a_provider_the_egress_guard_refuses_is_receipted_unknown_and_never_retried() {
+    let reservations = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reservations);
+    let receipts = Arc::new(Mutex::new(Vec::new()));
+    let saved = Arc::clone(&receipts);
+    let (plane, _calls) = plane(move |call| match call.verb {
+        Verb::DurableTaskDecisionReserve => {
+            count.fetch_add(1, Ordering::SeqCst);
+            let mut reservation = dispatch("typesafe", "goal");
+            // A name that resolves only to loopback: the guard refuses it after
+            // preflight, so the call may have left and its outcome is unknown.
+            *reservation
+                .pointer_mut("/dispatch/assignment/profile/endpoint")
+                .unwrap() = serde_json::json!("https://localhost:1/v1");
+            json(&reservation)
+        }
+        Verb::DurableTaskDecisionRecord => {
+            let receipt: serde_json::Value =
+                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            saved.lock().unwrap().push(receipt);
+            json(
+                &serde_json::json!({"call_id":CALL,"state":"unknown","replayed":false,
+                "disposition":"unusable","charged_nanos":"0","reserved_nanos":"0"}),
+            )
+        }
+        Verb::Progress => json(&serde_json::json!({})),
+        _ => Answer::Fail(crate::error::config("unexpected decision request")),
+    });
+    let host = Host::new();
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &run,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+
+    let result = verbs.durable_task_decision(input()).await.unwrap();
+
+    assert_eq!(result.state, DecisionCallState::Unknown);
+    assert!(result.recorded.is_none());
+    assert_eq!(reservations.load(Ordering::SeqCst), 1, "no retry");
+    let receipts = receipts.lock().unwrap();
+    assert_eq!(receipts.len(), 1);
+    let receipt = receipts.first().unwrap();
+    assert_eq!(*receipt.pointer("/receipt/outcome").unwrap(), "unknown");
+    assert_eq!(
+        *receipt.pointer("/receipt/cause/reason").unwrap(),
+        "transport"
+    );
+}

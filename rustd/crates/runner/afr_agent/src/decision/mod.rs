@@ -6,6 +6,8 @@ pub(crate) mod interpretation;
 mod interpretation_tests;
 mod reply;
 mod routing;
+#[cfg(test)]
+mod routing_tests;
 
 use crate::{Meter, Result};
 use af_wire::{

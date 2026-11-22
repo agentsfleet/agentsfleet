@@ -96,3 +96,30 @@ async fn a_repeated_fleet_steer_is_answered_its_turn_past_a_spent_ceiling() {
     assert_eq!(rows(&lane).await, before, "the repeat writes no row");
     lane.cleanup().await;
 }
+
+/// New words from a fleet past a spent deployment ceiling have no first turn
+/// to answer with, so the capacity refusal stands and nothing is written.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_new_fleet_steer_past_a_spent_ceiling_is_refused_for_capacity() {
+    let lane = TurnsLane::open().await;
+    let event = mint_id();
+    lane.seed_event(&event, jiff::Timestamp::now()).await;
+    let before = rows(&lane).await;
+    let spent = lane.turns().with_budgets(Budgets {
+        deployment_backlog: 0,
+    });
+
+    let refused = Steer::new(spent)
+        .append_from_fleet(steer(&lane, &event), &Verdict(true))
+        .await
+        .expect_err("no repeat to answer, so the ceiling refuses");
+
+    assert!(
+        refused.is_datastore_unavailable(),
+        "capacity invites the retry an outage does: {refused}"
+    );
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_UNAVAILABLE);
+    assert_eq!(rows(&lane).await, before, "a refused steer writes no row");
+    lane.cleanup().await;
+}

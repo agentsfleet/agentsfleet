@@ -79,6 +79,28 @@ impl TurnsLane {
         afd_turns::Turns::for_tests(self.database.clone(), self.bus.clone())
     }
 
+    /// The ledger over its own pool whose statements give up on a held lock
+    /// after `lock_timeout` rather than the API login's own bound, so a test
+    /// holding a table can fail one read without stalling the rest of the lane.
+    pub(crate) async fn turns_waiting_at_most(&self, lock_timeout: &str) -> afd_turns::Turns {
+        let base = self.lane.api_url();
+        let joiner = if base.contains('?') { '&' } else { '?' };
+        // `-c lock_timeout=<bound>`, percent-encoded as a URL query value.
+        let url = format!("{base}{joiner}options=-c%20lock_timeout%3D{lock_timeout}");
+        let database = self
+            .lane
+            .open(DbRole::Api, &[(DbRole::Api.url_knob(), &url)])
+            .await;
+        afd_turns::Turns::for_tests(database, self.bus.clone())
+    }
+
+    /// A connection as the lane's owner, which may lock any table.
+    pub(crate) async fn owner(&self) -> sqlx::PgConnection {
+        <sqlx::PgConnection as sqlx::Connection>::connect(&self.lane.url())
+            .await
+            .expect("the lane owner must accept a connection")
+    }
+
     /// A pooled connection, or a failed test.
     pub(crate) async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
         self.database

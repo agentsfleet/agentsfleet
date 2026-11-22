@@ -119,7 +119,8 @@ async fn a_publication_that_cannot_be_allocated_writes_nothing() {
 // Value: protects=a ref mutation whose answer was lost is recorded as uncertain,
 // counted as spent, logged, and holds back the next publication; fails_when=the
 // failed mutation is refused instead, its effect stays issued, or a second
-// publication is allocated beside it; why_new=the uncertain publication had no
+// publication is allocated beside it, or a blocked report settles over the
+// unresolved effect as verified; why_new=the uncertain publication had no
 // case; seam=the production publication verb over live Postgres and a scripted
 // GitHub origin whose mutation answers 502; no_claim=later reconciliation.
 #[tokio::test]
@@ -132,6 +133,7 @@ async fn a_publication_whose_mutation_fails_is_uncertain_and_blocks_the_next() {
         let tasks = github_authority::publisher(&fixture, &server).await;
         let input = prepared(case, task).await;
         let durable_task_id = input.durable_task.durable_task_id.clone();
+        let input_task = input.durable_task.clone();
         preparation(&server);
         server.push(json!({"fixture_request":{"method":"POST","path":"/graphql","publication":true},
             "response":{"fixture_http_status":502,"fixture_http_body":{"message":"fixture unavailable"}}}));
@@ -158,8 +160,52 @@ async fn a_publication_whose_mutation_fails_is_uncertain_and_blocks_the_next() {
             error_code::DURABLE_TASK_EFFECT_UNCERTAIN
         );
         assert_eq!(spent(case, &durable_task_id).await, (1, 1), "nothing new allocated");
+        assert_eq!(
+            blocked_report(&tasks, case, &input_task).await,
+            Some("recovery_or_completion_unverified".to_owned()),
+            "an unresolved effect leaves the blocked claim unverified"
+        );
         server.finish().await;
         fixture.model.finish().await.expect("fixture cleanup");
     })
     .await;
+}
+
+/// Reports `task` blocked through the ordinary report, returning the reason
+/// its settlement journalled.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
+async fn blocked_report(
+    tasks: &DurableTasks,
+    case: &Case,
+    task: &af_wire::durable_task::DecisionDurableTaskVersion,
+) -> Option<String> {
+    let report = super::super::report_settlement::request(
+        case,
+        Some(af_wire::durable_task::DurableTaskReport {
+            durable_task: task.clone(),
+            disposition: af_wire::durable_task::DurableTaskDisposition::Blocked,
+            decision_call_id: None,
+            checkpoint_id: None,
+            covered_input_sequence: 0,
+            effect_watermark: 0,
+        }),
+    );
+    let mut plane = case.held.fixtures.plane();
+    plane.durable_task_reports = Some(std::sync::Arc::new(tasks.clone()));
+    let capture = Capture::install();
+    plane
+        .report_with(
+            &case.held.runner,
+            &report,
+            af_core::clock::after(case.held.now, crate::report_seed::SLICE),
+            None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
+        .await
+        .expect("the financial report settles");
+    let transition = capture.only("dt_transition");
+    transition.field("reason").map(str::to_owned)
 }

@@ -181,7 +181,33 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
             }
             .into(),
         ),
+        (
+            "bag unminted",
+            ErrorKind::BagUnreadable {
+                source: afd_vault::Error::from(mint_sample()),
+            }
+            .into(),
+        ),
+        (
+            "json",
+            ErrorKind::Json {
+                source: serde_json::from_str::<u8>("not a number")
+                    .expect_err("text is not a number"),
+            }
+            .into(),
+        ),
     ]
+}
+
+/// An `af_core` refusal, which the vault reads as a failed mint of its own:
+/// the vault failure that answers as a database error.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+fn mint_sample() -> af_core::error::Error {
+    af_core::id::Uuid7::parse("not-an-identifier").expect_err("a word is not an identifier")
 }
 
 /// An `af_crypto` error from a key that will not decode, for the kinds that

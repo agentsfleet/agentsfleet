@@ -5,7 +5,7 @@
 use super::super::{fixture::now, mint};
 use super::fixture::Case;
 use af_core::error_code;
-use afd_setup::types::{DraftPatch, SaveSource, Start};
+use afd_setup::types::{DraftPatch, SaveSource, SendMessage, Start};
 use serde_json::json;
 
 #[tokio::test]
@@ -80,6 +80,36 @@ async fn a_draft_already_saving_refuses_a_second_key() {
         .expect_err("one draft becomes one fleet");
     assert_eq!(refused.current_state(), Some("saving"));
     assert_eq!(c.fleet_count().await, 1);
+    c.cleanup().await;
+}
+
+// Value: protects=a Save waits out the setup conversation, so a fleet is
+// never made from a head a queued message may still replace; fails_when=Save
+// skips the draft's idle check and installs the reviewed candidate while a
+// message is queued; seam=Creations::save over live Postgres and NATS.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_draft_with_a_queued_message_saves_no_fleet() {
+    let c = Case::create().await;
+    let (draft, request) = c.request("queued-message", Start::None).await;
+    let message = SendMessage {
+        message: "Also watch refunds".to_owned(),
+        save: false,
+        operation_id: mint(),
+    };
+    c.base
+        .drafts
+        .send(c.base.access(), &draft, message, now())
+        .await
+        .expect("the message is queued");
+    let refused = c
+        .creations
+        .save(c.base.access(), &mint(), request, now())
+        .await
+        .expect_err("the setup conversation is still busy");
+    assert_eq!(refused.code(), error_code::SETUP_STATE);
+    assert_eq!(refused.current_state(), Some("setup"));
+    assert_eq!(c.fleet_count().await, 0);
     c.cleanup().await;
 }
 

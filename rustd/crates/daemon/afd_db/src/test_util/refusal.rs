@@ -122,3 +122,27 @@ fn remove(url: &str, name: &str, table: &str) -> sqlx::Result<()> {
         tx.commit().await
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use af_core::test_util::trace::Capture;
+
+    use super::{NOT_REMOVED, Refusal};
+
+    /// A guard whose lane went away before it dropped cannot remove its
+    /// trigger; it says which trigger stayed rather than panicking mid-unwind.
+    #[test]
+    fn a_trigger_that_cannot_be_removed_is_named_in_a_line() {
+        let capture = Capture::install();
+
+        drop(Refusal {
+            url: "postgres://owner:secret@127.0.0.1:1/agentsfleet".to_owned(),
+            name: "afd_it_fixture_unremovable".to_owned(),
+            table: "fleet.fleets",
+        });
+
+        let line = capture.only(NOT_REMOVED);
+        assert_eq!(line.field("trigger"), Some("afd_it_fixture_unremovable"));
+        assert!(line.field("error").is_some_and(|error| !error.is_empty()));
+    }
+}

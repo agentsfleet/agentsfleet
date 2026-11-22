@@ -61,10 +61,20 @@ async fn first_lines(process: &mut Process, count: usize) -> String {
     said
 }
 
-/// Whether `pid` names no process before [`GONE_WITHIN`] passes.
+/// Whether `pid` names a process that has exited but is not yet reaped. A
+/// child whose runtime was dropped is reaped only when some other runtime
+/// handles a child's exit, so until then it lingers here, dead.
+fn zombie(pid: Pid) -> bool {
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.as_raw_nonzero().to_string()])
+        .output()
+        .is_ok_and(|listed| listed.stdout.trim_ascii_start().starts_with(b"Z"))
+}
+
+/// Whether `pid` names no running process before [`GONE_WITHIN`] passes.
 fn gone(pid: Pid) -> bool {
     let deadline = Instant::now() + GONE_WITHIN;
-    while test_kill_process(pid).is_ok() {
+    while test_kill_process(pid).is_ok() && !zombie(pid) {
         if Instant::now() >= deadline {
             return false;
         }
@@ -167,6 +177,40 @@ fn a_dropped_watcher_leaves_no_child_running() {
         assert!(
             gone(pid),
             "{pid:?} still runs after its watcher was dropped"
+        );
+    }
+}
+
+/// A terminal process still flooding its output when its watcher is
+/// dropped is killed with its group, as a process on pipes is.
+#[test]
+fn a_dropped_watcher_of_a_flooding_terminal_leaves_no_child_running() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("a runtime builds");
+    let leader = runtime.block_on(async {
+        let env = env();
+        let mut process = env
+            .spawn(
+                &Spawn::program("sh")
+                    .args(["-c", "echo $$; exec yes flood"])
+                    .terminal(),
+            )
+            .await
+            .expect("sh starts");
+        let said = first_lines(&mut process, 2).await;
+        let first = said.lines().next().expect("the shell said its number");
+        numbers(first)
+    });
+
+    drop(runtime);
+
+    assert_eq!(leader.len(), 1, "the shell's number");
+    for pid in leader {
+        assert!(
+            gone(pid),
+            "{pid:?} still floods after its watcher was dropped"
         );
     }
 }

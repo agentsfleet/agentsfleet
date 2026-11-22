@@ -43,7 +43,7 @@ pub(crate) fn gateway(
             database.clone(),
         )),
     };
-    let drafts = afd_setup::Drafts::new(database.clone(), Entropy::new());
+    let drafts = afd_setup::Drafts::new(database.clone(), Entropy::new()).with_bus(bus.clone());
     let turns = afd_turns::Turns::new(database.clone(), bus.clone(), Entropy::new());
     let creations = afd_setup::Creations::new(
         afd_setup::Setup::new(drafts.clone(), Arc::clone(&key)),
@@ -64,4 +64,59 @@ pub(crate) fn gateway(
         analytics: af_observability::Analytics::silent(),
         frames: FrameCeilings::default(),
     }))
+}
+
+/// What every [`Silent`] call answers: nothing, ever.
+type Never<'a, T> = std::pin::Pin<Box<dyn Future<Output = afd_bus::Result<T>> + Send + 'a>>;
+
+/// A broker that took the connection and never answers it: every publish and
+/// subscribe waits forever, so only the caller's own deadline ends the wait.
+///
+/// Written out rather than through `#[async_trait]`, which this crate does not
+/// depend on; the signatures are what that macro expands to.
+#[derive(Debug)]
+pub(crate) struct Silent;
+
+impl afd_bus::Bus for Silent {
+    fn publish<'s, 'a, 'b, 'f>(
+        &'s self,
+        _subject: &'a afd_bus::Subject,
+        _payload: &'b str,
+    ) -> Never<'f, ()>
+    where
+        's: 'f,
+        'a: 'f,
+        'b: 'f,
+        Self: 'f,
+    {
+        Box::pin(std::future::pending())
+    }
+
+    fn subscribe<'s, 'a, 'f>(
+        &'s self,
+        _subject: &'a afd_bus::Subject,
+    ) -> Never<'f, afd_bus::Subscription>
+    where
+        's: 'f,
+        'a: 'f,
+        Self: 'f,
+    {
+        Box::pin(std::future::pending())
+    }
+
+    fn subscribe_thread_wakes<'s, 'f>(&'s self) -> Never<'f, afd_bus::Subscription>
+    where
+        's: 'f,
+        Self: 'f,
+    {
+        Box::pin(std::future::pending())
+    }
+
+    fn shutdown<'s, 'f>(&'s self) -> Never<'f, ()>
+    where
+        's: 'f,
+        Self: 'f,
+    {
+        Box::pin(std::future::ready(Ok(())))
+    }
 }

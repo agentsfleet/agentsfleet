@@ -16,6 +16,8 @@ pub(super) struct Receipts {
     pub(super) resolved: Option<DurableTaskEffect>,
     pub(super) reads: Mutex<Vec<String>>,
     pub(super) wrong_receipt: bool,
+    /// Every effects page names a later one, past the walk's page bound.
+    pub(super) endless: bool,
 }
 
 #[async_trait::async_trait]
@@ -114,7 +116,7 @@ impl RunVerbs for Receipts {
                 .filter(|effect| effect.ordinal > query.ordinal_after)
                 .cloned()
                 .collect(),
-            next_cursor: None,
+            next_cursor: self.endless.then(|| "a later effects page".to_owned()),
         })
     }
     async fn durable_task_effect(&self, effect_id: &str) -> Result<DurableTaskEffect, Unanswered> {
@@ -141,6 +143,7 @@ pub(super) fn receipts() -> Receipts {
         resolved: None,
         reads: Mutex::new(vec![]),
         wrong_receipt: false,
+        endless: false,
     }
 }
 

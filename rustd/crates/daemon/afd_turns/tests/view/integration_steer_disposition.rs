@@ -212,3 +212,35 @@ async fn a_retry_of_a_folded_send_stays_folded() -> Outcome {
     lane.cleanup().await;
     Ok(())
 }
+
+/// How long the send's own reads wait on a held lock: long enough to prove a
+/// wait, short enough that the lane's other suites barely notice the hold.
+const SHORT_LOCK_WAIT: &str = "100ms";
+
+/// Where a message went is read after it committed, and is advisory: when
+/// that read fails the message stands, answered `queued`, which it is or does
+/// better than, and the failure is logged rather than refused.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_send_whose_placement_cannot_be_read_stands_as_queued() -> Outcome {
+    let capture = af_core::test_util::trace::Capture::install();
+    let lane = TurnsLane::open().await;
+    let steer = Steer::new(lane.turns_waiting_at_most(SHORT_LOCK_WAIT).await);
+    let mut owner = lane.owner().await;
+    let mut holder = sqlx::Connection::begin(&mut owner).await?;
+    // The placement read joins `thread.runs`; the send itself never touches it.
+    sqlx::query("LOCK TABLE thread.runs IN ACCESS EXCLUSIVE MODE")
+        .execute(&mut *holder)
+        .await?;
+
+    let sent = send(&steer, &lane, None).await;
+    holder.rollback().await?;
+
+    let sent = sent?;
+    assert_eq!(sent.placed, placed(SteerDisposition::Queued, None));
+    assert!(sent.admitted_at.is_some(), "the message was written");
+    let logged = capture.only("steer_run_facts_unread");
+    assert_eq!(logged.field("turn_id"), Some(sent.turn_id.as_str()));
+    lane.cleanup().await;
+    Ok(())
+}

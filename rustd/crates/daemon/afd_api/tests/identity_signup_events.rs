@@ -224,3 +224,18 @@ async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
         error_code::INVALID_REQUEST.as_str()
     );
 }
+
+/// A well-formed signup that reaches the store while the store cannot answer
+/// is refused as a fault to retry, never answered as an opened account.
+#[tokio::test]
+async fn a_signup_the_store_cannot_take_is_refused_for_a_redelivery() {
+    let answer = signed(&ada()).await;
+    assert_eq!(answer.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let problem = json_body(answer).await;
+    assert_eq!(
+        harness::error_code(&problem),
+        Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
+        "{problem}"
+    );
+    assert!(problem.get("workspace_id").is_none(), "{problem}");
+}

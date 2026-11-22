@@ -151,3 +151,12 @@ async fn an_unusable_success_reply_is_unknown_and_never_qualifies_for_a_status_r
     server.finish().await?;
     Ok(())
 }
+
+#[test]
+fn a_provider_delay_past_the_budget_buys_no_retry() {
+    let cause = DecisionUnavailableCause::ProviderStatus {
+        status: 429,
+        retry_delay: DecisionRetryDelay::TooLong,
+    };
+    assert_eq!(retry_delay(&DecisionReceipt::Unknown { cause }), None);
+}

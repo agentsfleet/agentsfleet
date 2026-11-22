@@ -244,3 +244,7 @@ fn object_path(workspace: &Uuid7, repository: &Uuid7, object: &Uuid7) -> Path {
         object.as_str()
     ))
 }
+
+#[cfg(test)]
+#[path = "transfer_tests.rs"]
+mod tests;

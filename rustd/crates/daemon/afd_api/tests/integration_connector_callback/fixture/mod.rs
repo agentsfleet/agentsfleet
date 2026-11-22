@@ -32,7 +32,7 @@ const STATE_KEY: &str = afd_http::services::APPROVAL_IDENTITY;
 const SECRET_FIELD: &str = "webhook_secret";
 
 /// What this deployment's connect states are signed with.
-const STATE_SECRET: &str = "fixture-connect-state-secret";
+pub(crate) const STATE_SECRET: &str = "fixture-connect-state-secret";
 
 /// The client identity this deployment registered with the provider.
 const CLIENT_ID: &str = "fixture-client-id";
