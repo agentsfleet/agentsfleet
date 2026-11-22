@@ -24,7 +24,7 @@ export default function Examples() {
   return (
     <div data-testid="home-page">
       <Hero request={request} onRequest={setRequest} job={job} onJob={setJob}>
-        {view.example && <HowItWorks key={job.id} job={job} navigation={<Button asChild variant="ghost" size="sm" className="example-return"><Link to={`#${JOBS_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "example_back", surface: "example", target: "home" })}><span aria-hidden="true">←</span>Back to examples</Link></Button>} />}
+        {view.example && <HowItWorks key={job.id} job={job} navigation={<Button asChild variant="ghost" size="sm" className="min-h-11 text-pulse"><Link to={`#${JOBS_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "example_back", surface: "example", target: "home" })}><span aria-hidden="true">←</span>Back to examples</Link></Button>} />}
       </Hero>
       <AudienceSection />
       <Pricing />

@@ -1,4 +1,5 @@
-import { Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
+import { SECTION_SPACING, SITE_CONTAINER } from "../components/site-classes";
+import { cn, Button, Card, DisplayLG, DisplayXL, SectionLabel, Terminal } from "@agentsfleet/design-system";
 import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const jsonLd = {
@@ -124,10 +125,10 @@ function ConstraintTable({
 export default function Fleets() {
   return (
     <div data-testid="fleets-page">
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-6">
+      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
+        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
           <SectionLabel as="p" className="mb-0">Agent resources</SectionLabel>
-          <DisplayXL>This page is for agents.</DisplayXL>
+          <DisplayXL className="font-bold text-balance">This page is for agents.</DisplayXL>
           <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
             Use <code className="font-mono">/openapi.json</code> as canonical surface. Docs are
             secondary.
@@ -135,9 +136,9 @@ export default function Fleets() {
         </div>
       </section>
 
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md text-pulse">
+      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
+        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
+          <DisplayLG className="font-bold">
             Install agentsfleet
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
@@ -166,15 +167,15 @@ export default function Fleets() {
         * This page's audience is a machine, so the first thing it needs (how to
         * authenticate) leads, then create / trigger / stream. Full schemas live
         * in /openapi.json. */}
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md text-pulse">
+      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
+        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
+          <DisplayLG className="font-bold">
             Get started in four calls
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Authenticate, create a Fleet, trigger it, then stream what it does.
             Full request and response schemas live in{" "}
-            <a href="/openapi.json" className="text-pulse hover:underline">
+            <a href="/openapi.json" className="text-pulse underline underline-offset-4">
               /openapi.json
             </a>
             .
@@ -196,15 +197,15 @@ export default function Fleets() {
         </div>
       </section>
 
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md">
+      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
+        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
+          <DisplayLG className="font-bold">
             Machine surface
           </DisplayLG>
           <Card className="font-mono text-mono">
             <a
               href="/openapi.json"
-              className="text-pulse hover:underline"
+              className="text-pulse underline underline-offset-4"
               data-testid="fleets-openapi-link"
             >
               /openapi.json
@@ -216,9 +217,9 @@ export default function Fleets() {
         </div>
       </section>
 
-      <section className="site-section">
-        <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-fluid-display-md">
+      <section className={cn(SECTION_SPACING, "border-t border-border first:border-0")}>
+        <div className={cn(SITE_CONTAINER, "grid gap-xl")}>
+          <DisplayLG className="font-bold">
             Safety limits
           </DisplayLG>
           <ConstraintTable cols={["constraint", "rule"]} rows={safetyLimits} />

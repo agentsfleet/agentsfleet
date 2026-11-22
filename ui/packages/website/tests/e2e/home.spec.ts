@@ -21,9 +21,14 @@ const CONTEXTUAL_EXAMPLES = [
 test.beforeEach(async ({ page }) => { await page.emulateMedia({ reducedMotion: "reduce" }); await page.goto("/examples#how-it-works"); });
 
 async function startMotion(page: Page) {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.clock.install({ time: MOTION_CLOCK_TIME });
-  await page.clock.pauseAt(MOTION_CLOCK_TIME.getTime() + MOTION_STEP_MS);
   await page.reload();
+  // Let the lazy route mount before freezing its playback clock.
+  await expect(page.getByTestId("hero")).toBeVisible();
+  const readyAt = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(readyAt + MOTION_STEP_MS);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
 }
 
 test("visitors inspect the full planned journey without connecting or running anything", async ({ page }) => {

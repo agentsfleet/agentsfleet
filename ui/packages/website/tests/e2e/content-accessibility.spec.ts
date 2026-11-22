@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { DEMO_STAGES } from "../../src/landing/useDemoPlayback";
 const SCREENSHOT_HEIGHT = 1000;
 const BROWSER_TIMEOUT_DEFAULT = "Number(process.env.BROWSER_TIMEOUT) || 5";
 
@@ -21,8 +22,8 @@ for (const width of [320, 375, 768, 1440]) {
     await page.keyboard.press("Enter");
     await expect(page.getByRole("textbox")).toHaveCount(0);
     if (width < 768) {
-      const titleWidth = await page.locator(".workbench-bar h2").evaluate(element => element.getBoundingClientRect().width);
-      const rowWidth = await page.locator(".workbench-bar").evaluate(element => {
+      const titleWidth = await page.getByTestId("example-heading").getByRole("heading").evaluate(element => element.getBoundingClientRect().width);
+      const rowWidth = await page.getByTestId("example-heading").evaluate(element => {
         const style = getComputedStyle(element);
         return element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
       });
@@ -47,7 +48,6 @@ for (const width of [390, 1440]) {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.getByRole("link", { name: /Automate recurring work/ }).scrollIntoViewIfNeeded();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await expect(page.locator(".signal-field > g")).toHaveCSS("animation-name", "none");
     await page.getByRole("link", { name: /Investigate an incident.*Explore example run/ }).click();
     await expect(page.getByRole("textbox")).toHaveCount(0);
     await expect(page.getByTestId("how-it-works")).toHaveAttribute("data-running", "false");
@@ -62,4 +62,37 @@ test("captures desktop, tablet, and mobile evidence", async ({ page }) => {
     await page.evaluate(async () => { await document.fonts.ready; window.scrollTo(0, 0); });
     await page.screenshot({ path: `/tmp/agentsfleet-website-${name}.png`, fullPage: true });
   }
+});
+
+test("phone walkthrough pauses when someone focuses the Grafana evidence", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.clock.install();
+  await page.goto("/");
+  const demo = page.getByRole("figure", { name: "Why did chat freeze?" });
+  await demo.scrollIntoViewIfNeeded();
+  await expect(demo.getByRole("region", { name: "Slack ticket in customer-support" })).toBeVisible();
+  await expect(demo.locator("[data-playing]")).toHaveAttribute("data-playing", "true");
+  await page.clock.runFor(DEMO_STAGES[0].duration);
+
+  const scout = demo.getByRole("article", { name: "Scout investigates the recurring chat freeze" });
+  const evidence = scout.locator("summary").filter({ hasText: "Worked for 4s · 2 tools" });
+  await evidence.focus();
+  const resume = demo.getByRole("button", { name: "Resume demo" });
+  await expect(resume).toBeVisible();
+  await page.clock.runFor(DEMO_STAGES[1].duration);
+  await expect(evidence).toBeFocused();
+  await expect(scout.getByText("agentsfleet/agentsfleet", { exact: true })).toBeHidden();
+  await scout.getByText("Summary", { exact: true }).click();
+  await expect(scout.getByText("agentsfleet/agentsfleet", { exact: true })).toBeVisible();
+  await expect(scout.getByText("grafana", { exact: true })).toBeVisible();
+});
+
+test("the homepage pricing buttons wrap at 320px with doubled text", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/#pricing");
+  await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+  await expect(page.getByRole("link", { name: "Read the quickstart" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

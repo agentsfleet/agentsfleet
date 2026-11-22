@@ -1,109 +1,50 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useMotionEnvironment } from "../components/use-motion-environment";
 
-export function useDemoPlayback(ref: RefObject<HTMLElement | null>) {
+export const DEMO_STAGES = [
+  { name: "Slack ticket", duration: 5200 },
+  { name: "Grafana investigation", duration: 11000 },
+  { name: "Draft fix", duration: 6500 },
+  { name: "Verified result", duration: 6800 },
+] as const;
+
+const LAST_STAGE = DEMO_STAGES.length - 1;
+
+export function useDemoPlayback(ref: RefObject<HTMLDivElement | null>) {
+  const { active, staticMode } = useMotionEnvironment(ref);
+  const [stage, setStage] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const elapsed = useRef(0);
+  const playing = active && !paused && !finished;
+
   useEffect(() => {
-    const demo = ref.current!;
-    const listeners = new AbortController();
-    const signal = listeners.signal;
-    const controls = demo.querySelector<HTMLElement>(".controls")!;
-    const control = controls.querySelector("button")!;
-    const meter = controls.querySelector<HTMLElement>(".meter span")!;
-    const motionPreference = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    );
-    const observeVisibility = "IntersectionObserver" in window;
-    let inView = !observeVisibility;
-    let paused = false;
-    let complete = false;
+    if (!playing) return;
+    const duration = DEMO_STAGES[stage].duration;
+    const started = performance.now();
+    let advanced = false;
+    const timer = window.setTimeout(() => {
+      advanced = true;
+      elapsed.current = 0;
+      if (stage === LAST_STAGE) setFinished(true);
+      else setStage(stage + 1);
+    }, Math.max(0, duration - elapsed.current));
 
-    function syncPlayback() {
-      const reduced = motionPreference.matches;
-      demo.toggleAttribute(
-        "data-playing",
-        !reduced && inView && !document.hidden && !paused && !complete,
-      );
-      controls.hidden = reduced;
-      control.textContent = complete
-        ? "Replay demo"
-        : paused
-          ? "Resume demo"
-          : "Pause demo";
-    }
-
-    function resetDemo() {
-      paused = false;
-      complete = false;
-      demo.removeAttribute("data-motion");
-      // Flush the prior animation before replaying on the same elements.
-      void demo.offsetWidth;
-      demo.toggleAttribute("data-motion", !motionPreference.matches);
-      syncPlayback();
-    }
-
-    control.addEventListener(
-      "click",
-      () => {
-        if (complete) {
-          resetDemo();
-        } else {
-          paused = !paused;
-          syncPlayback();
-        }
-      },
-      { signal },
-    );
-
-    meter.addEventListener(
-      "animationend",
-      () => {
-        complete = true;
-        syncPlayback();
-      },
-      { signal },
-    );
-
-    let observer: IntersectionObserver | undefined;
-    if (observeVisibility) {
-      observer = new IntersectionObserver(
-        (entries) => {
-          const entry = entries.at(-1)!;
-          inView = entry.isIntersecting && entry.intersectionRatio >= 0.45;
-          syncPlayback();
-        },
-        { threshold: 0.45 },
-      );
-      observer.observe(demo.querySelector(".stage")!);
-    }
-
-    document.addEventListener("visibilitychange", syncPlayback, { signal });
-    motionPreference.addEventListener("change", resetDemo, { signal });
-    const small = matchMedia("(max-width:36rem)");
-    const setup = demo.querySelector<HTMLDetailsElement>(".setup details")!;
-    function sizeSummary() {
-      setup.open = !small.matches;
-    }
-    demo
-      .querySelectorAll(
-        ".work-group > summary, .trace > summary, .setup summary",
-      )
-      .forEach((summary) => {
-        summary.addEventListener(
-          "click",
-          () => {
-            if (!complete && !motionPreference.matches) {
-              paused = true;
-              syncPlayback();
-            }
-          },
-          { signal },
-        );
-      });
-    sizeSummary();
-    small.addEventListener("change", sizeSummary, { signal });
-    resetDemo();
     return () => {
-      listeners.abort();
-      observer?.disconnect();
+      window.clearTimeout(timer);
+      if (!advanced) elapsed.current += performance.now() - started;
     };
-  }, [ref]);
+  }, [playing, stage]);
+
+  function toggle() {
+    if (finished) {
+      setFinished(false);
+      setStage(0);
+      setPaused(false);
+    } else {
+      setPaused((current) => !current);
+    }
+  }
+
+  return { stage, paused, finished, playing, staticMode, toggle, pause: () => setPaused(true) };
 }

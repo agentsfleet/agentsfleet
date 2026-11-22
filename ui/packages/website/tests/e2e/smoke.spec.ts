@@ -106,10 +106,15 @@ test.describe("Smoke", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     await expect(page.getByRole("button", { name: /pause demo/i })).toHaveCount(0);
-    for (const scene of [".opening", ".investigation", ".returning"]) {
-      await expect(page.locator(scene)).toBeVisible();
+    for (const [role, name] of [
+      ["region", "Slack ticket in customer-support"],
+      ["article", "Scout investigates the recurring chat freeze"],
+      ["region", "Draft fix in the Slack thread"],
+      ["region", "Verified result in the Slack thread"],
+    ] as const) {
+      await expect(page.getByRole(role, { name })).toBeVisible();
     }
-    await expect(page.locator(".verify")).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+    await expect(page.getByRole("region", { name: "Verified result in the Slack thread" })).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
   });
 });
 
@@ -117,10 +122,10 @@ test.describe("Crawler view", () => {
   test.use({ javaScriptEnabled: false });
   test("the homepage explains the incident and exposes its answers without JavaScript", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator(".opening")).toContainText("@agentfleet");
-    await expect(page.locator(".investigation")).toContainText("Grafana");
-    await expect(page.locator(".verify")).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
-    const answers = await page.locator(".faq-item").evaluateAll(items => items.map(item => ({
+    await expect(page.getByRole("region", { name: "Slack ticket in customer-support" })).toContainText("@agentfleet");
+    await expect(page.getByRole("article", { name: "Scout investigates the recurring chat freeze" })).toContainText("Grafana");
+    await expect(page.getByRole("region", { name: "Verified result in the Slack thread" })).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+    const answers = await page.locator("#faq article").evaluateAll(items => items.map(item => ({
       question: item.querySelector("h3")!.innerText,
       answer: item.querySelector("p")!.innerText,
     })));

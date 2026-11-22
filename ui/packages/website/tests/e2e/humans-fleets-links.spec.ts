@@ -5,7 +5,6 @@ const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 type InternalLinkCase = {
   label: RegExp;
   href: string;
-  heading?: string;
 };
 
 async function assertFooterLinks(page: Page) {
@@ -14,11 +13,11 @@ async function assertFooterLinks(page: Page) {
 
   const dashboardHref = await page.getByTestId("header-install-cta").getAttribute("href");
   expect(dashboardHref).toMatch(/^https?:\/\//);
-  await expect(footer.getByRole("link", { name: "join waitlist", exact: true })).toHaveAttribute("href", dashboardHref!);
+  await expect(footer.getByRole("link", { name: "Join waitlist", exact: true })).toHaveAttribute("href", dashboardHref!);
   await expect(footer.getByRole("link", { name: /^early access$/i })).toHaveCount(0);
 
   const internalFooterLinks: InternalLinkCase[] = [
-    { label: /^Use cases$/i, href: "/examples#how-it-works" },
+    { label: /^Examples$/i, href: "/examples" },
     { label: /^Agents$/i, href: "/agents" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
@@ -42,8 +41,8 @@ test.describe("Cross-page link coverage", () => {
     await nav.getByRole("link", { name: "Product" }).click();
     await expect(page).toHaveURL(/\/#how-it-works$/);
     await expect(page.getByRole("heading", { name: /work in a private network/ })).toBeInViewport();
-    await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.agentsfleet.net/");
-    const heroLinks = page.locator(".hero .actions").getByRole("link");
+    await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.agentsfleet.net");
+    const heroLinks = page.getByRole("region", { name: /Find out why\. Check the fix\./ }).getByRole("link");
     await expect(heroLinks).toHaveText(["Join waitlist", "View on GitHub"]);
     await expect(heroLinks.first()).toHaveAttribute("href", WAITLIST);
     await expect(heroLinks.last()).toHaveAttribute("href", "https://github.com/agentsfleet/agentsfleet");

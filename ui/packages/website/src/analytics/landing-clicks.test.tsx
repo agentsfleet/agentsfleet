@@ -23,14 +23,13 @@ const LINKS = [
   { area: "pricing-block", name: /Tell us about your workflow/, source: "pricing_contact", surface: "pricing", target: "email" },
 ] as const;
 const FOOTER_LINKS = [
-  { name: "use cases", source: "footer_use_cases", target: "example" },
-  { name: "join waitlist", source: "footer_sign_in", target: "sign_in" },
-  { name: "docs", source: "footer_docs", target: "docs" },
-  { name: "agents", source: "footer_agents", target: "agents" },
-  { name: "github", source: "footer_github", target: "github" },
-  { name: "discord", source: "footer_discord", target: "discord" },
-  { name: "privacy", source: "footer_privacy", target: "privacy" },
-  { name: "terms", source: "footer_terms", target: "terms" },
+  { name: "Examples", source: "footer_examples", target: "examples" },
+  { name: "Docs", source: "footer_docs", target: "docs" },
+  { name: "Agents", source: "footer_agents", target: "agents" },
+  { name: "GitHub", source: "footer_github", target: "github" },
+  { name: "Discord", source: "footer_discord", target: "discord" },
+  { name: "Privacy", source: "footer_privacy", target: "privacy" },
+  { name: "Terms", source: "footer_terms", target: "terms" },
   { name: "Contact", source: "footer_contact", target: "contact" },
 ] as const;
 const SUGGESTIONS = [
@@ -39,9 +38,10 @@ const SUGGESTIONS = [
   { role: "link", name: /Automate recurring work/, target: "agent" },
 ] as const;
 
-function renderLanding(path = "/examples") {
+async function renderLanding(path = "/examples") {
   const router = createMemoryRouter([{ path: "*", element: <App /> }], { initialEntries: [path] });
-  return render(<RouterProvider router={router} />);
+  render(<RouterProvider router={router} />);
+  await screen.findByTestId("hero", {}, { timeout: 10_000 });
 }
 
 async function expectEvent(event: string, props: Record<string, string | undefined>) {
@@ -67,27 +67,26 @@ afterEach(() => {
 describe("website click attribution", () => {
   it.each([
     { name: /^Product$/, event: NAVIGATION, source: "header_nav_product", target: "example" },
-    { name: /^Early access$/, event: SIGNUP, source: "header_early_access", mode: "humans" },
+    { name: /^Pricing$/, event: NAVIGATION, source: "header_pricing", target: "pricing" },
     { name: /^Docs$/, event: NAVIGATION, source: "header_nav_docs", target: "docs" },
-    { name: /^GitHub ↗$/, event: NAVIGATION, source: "header_nav_source", target: "github" },
+    { name: /^GitHub$/, event: NAVIGATION, source: "header_nav_source", target: "github" },
   ])("tracks $source from primary navigation", async ({ name, event, ...props }) => {
-    renderLanding();
+    await renderLanding();
     fireEvent.click(within(screen.getByRole("navigation", { name: "Primary" })).getByRole("link", { name }));
     await expectEvent(event, { ...props, surface: "header" });
   });
   it.each(LINKS)("tracks $source exactly once", async ({ area, name, ...props }) => {
-    renderLanding();
+    await renderLanding();
     fireEvent.click(within(screen.getByTestId(area)).getByRole("link", { name }));
     await expectEvent(NAVIGATION, props);
   });
   it.each(FOOTER_LINKS)("tracks $source from the footer", async ({ name, ...props }) => {
-    renderLanding();
+    await renderLanding();
     fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("link", { name }));
     await expectEvent(NAVIGATION, { ...props, surface: "footer" });
-    if (props.target === "example") expect(screen.getByRole("figure")).toBeInTheDocument();
   });
   it.each(SUGGESTIONS)("tracks the $target suggestion without the request", async ({ role, name, target }) => {
-    renderLanding();
+    await renderLanding();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     fireEvent.click(screen.getByRole(role, { name }));
     await expectEvent(INTERACTION, { source: `hero_suggestion_${target}`, surface: "hero", target });
@@ -96,13 +95,13 @@ describe("website click attribution", () => {
   it("tracks the install Copy button and copies the displayed command", async () => {
     const user = userEvent.setup();
     const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-    renderLanding();
+    await renderLanding();
     await user.click(screen.getByRole("button", { name: "Copy command" }));
     expect(write).toHaveBeenCalledWith(INSTALL_COMMAND);
     await expectEvent(INTERACTION, { source: "cli_install_copy", surface: "cli_quickstart", target: "installation" });
   });
   it("tracks Join waitlist without exposing the private composer text", async () => {
-    renderLanding();
+    await renderLanding();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     expect(sdk.capture).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByTestId("hero")).getByRole("link", { name: "Join waitlist" }));
@@ -113,17 +112,17 @@ describe("website click attribution", () => {
     { area: "audience-section", name: /^Join waitlist ↗$/, source: "source_early_access", surface: "source_strip" },
     { area: "pricing-block", name: /Join waitlist/, source: "pricing_early_access", surface: "pricing" },
   ])("tracks $source signup intent", async ({ area, name, ...props }) => {
-    renderLanding();
+    await renderLanding();
     fireEvent.click(within(screen.getByTestId(area)).getByRole("link", { name }));
     await expectEvent(SIGNUP, { ...props, mode: "humans" });
   });
   it("tracks the example's Join waitlist action", async () => {
-    renderLanding(EXAMPLE_PATH);
+    await renderLanding(EXAMPLE_PATH);
     fireEvent.click(within(screen.getByTestId("how-it-works")).getByRole("link", { name: "Join waitlist" }));
     await expectEvent(SIGNUP, { source: "example_create_fleet", surface: "example", mode: "humans" });
   });
   it("tracks exploration and returning home while preserving private text", async () => {
-    renderLanding();
+    await renderLanding();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     fireEvent.click(screen.getByRole("link", { name: "Explore an example run" }));
     await expectEvent(NAVIGATION, { source: "composer_example", surface: "hero", target: "incident" });
@@ -138,19 +137,19 @@ describe("website click attribution", () => {
       media, matches: false, onchange: null, addListener: vi.fn(), removeListener: vi.fn(),
       addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(() => true),
     }));
-    renderLanding(EXAMPLE_PATH);
+    await renderLanding(EXAMPLE_PATH);
     fireEvent.click(screen.getByRole("button", { name: "Read full conversation" }));
     await expectEvent(INTERACTION, { source: "example_read_full", surface: "example", target: "incident" });
     expect(screen.getByRole("figure")).toHaveTextContent("BROWSER_TIMEOUT=10");
     expect(screen.queryByRole("button", { name: "Read full conversation" })).toBeNull();
   });
   it("tracks the example's repository link", async () => {
-    renderLanding(EXAMPLE_PATH);
+    await renderLanding(EXAMPLE_PATH);
     fireEvent.click(screen.getByRole("link", { name: /agentsfleet\/linkwarden/ }));
     await expectEvent(NAVIGATION, { source: "example_repository", surface: "example", target: "github" });
   });
   it("keeps the starting price informational", async () => {
-    renderLanding();
+    await renderLanding();
     fireEvent.click(screen.getByTestId("pricing-early-access-banner"));
     await flushAnalyticsForTests();
     expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start");

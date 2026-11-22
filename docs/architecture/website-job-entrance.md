@@ -9,9 +9,9 @@ At `/`, a Slack message about frozen chat prompts Mira to ask Scout to check Gra
 
 `src/pages/Home.tsx` composes the page from the website's `src/landing/` components. The Vite build renders this route to HTML so a visitor or crawler can read the full story before JavaScript loads.
 
-React adds playback controls, and reduced motion shows the full investigation. The FAQ and its structured data use the same questions and answers.
+React moves between four scenes and pauses when a visitor inspects the evidence. Reduced motion and JavaScript-free browsers see the full story. The FAQ and its structured data use the same questions and answers.
 
-The website imports the shared brand mark, navigation, buttons, heading components, and font tokens. Its marketing stylesheet loads only in the homepage document. Vercel serves the other website routes through `app.html`; the previous job composer is available at `/examples`.
+The website uses a shared header and footer across public routes, plus design-system primitives and Tailwind utilities. Vite builds a homepage stylesheet that loads only the styles it needs. Vercel serves other website routes through `app.html`, with each page in its own JavaScript chunk.
 
 ## Examples page and component boundaries
 
@@ -114,7 +114,7 @@ The primary homepage button, “Join waitlist,” opens the configured waitlist.
 
 The pricing banner emits no custom event and excludes automatic capture.
 
-The footer's use cases link opens the existing example conversation.
+The footer's Examples link opens the example composer. Visitors choose a suggestion to start its conversation.
 
 ## Shared branding and external surfaces
 

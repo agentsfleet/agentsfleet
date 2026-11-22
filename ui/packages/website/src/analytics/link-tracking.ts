@@ -1,7 +1,7 @@
 import {
   trackNavigationClicked,
   trackSignupStarted,
-} from "../analytics/posthog";
+} from "./posthog";
 
 export function linkTracking(source: string, surface: string, target: string) {
   return {

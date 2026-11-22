@@ -1,133 +1,134 @@
-import { useRef, type CSSProperties, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+import { Button, cn } from "@agentsfleet/design-system";
 import { ScoutInvestigation } from "./ScoutInvestigation";
-import { useDemoPlayback } from "./useDemoPlayback";
+import { Mention, SlackMessage, SlackThread } from "./SlackThread";
+import { DEMO_STAGES, useDemoPlayback } from "./useDemoPlayback";
 
-function SlackMessage({
-  bot,
-  time,
-  at,
+function Scene({
+  active,
+  staticMode,
   children,
 }: {
-  bot?: boolean;
-  time: string;
-  at?: string;
+  active: boolean;
+  staticMode: boolean;
   children: ReactNode;
 }) {
   return (
     <div
-      className="sl-message"
-      data-arrive={at && ""}
-      style={{ "--at": at } as CSSProperties}
+      data-active={active}
+      inert={!staticMode && !active}
+      className="min-w-0 motion-safe:[@media(scripting:enabled)]:[grid-area:1/1] motion-safe:[@media(scripting:enabled)]:transition-[opacity,visibility] motion-safe:[@media(scripting:enabled)]:duration-500 motion-safe:[@media(scripting:enabled)]:data-[active=false]:invisible motion-safe:[@media(scripting:enabled)]:data-[active=false]:opacity-0"
     >
-      <span className="sl-avatar" aria-hidden="true">
-        {bot ? <img src="/favicon.svg" alt="" /> : "L"}
-      </span>
-      <div>
-        <p className="sl-sender">
-          <strong>{bot ? "agentfleet" : "Leah"}</strong>
-          {bot && <small className="bot-label">APP</small>}
-          <time>{time}</time>
-        </p>
-        <p>{children}</p>
-      </div>
+      {children}
     </div>
   );
 }
 
-function Mention() {
-  return <b className="sl-mention">@agentfleet</b>;
-}
-
-function SlackThread({
-  scene,
-  label,
-  children,
-}: {
-  scene: string;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className={`beat slack ${scene}`} aria-label={label}>
-      <div className="sl-title">
-        <span className="sl-hash" aria-hidden="true">
-          #
-        </span>
-        customer-support <span>Slack thread</span>
-      </div>
-      <div className="sl-body">
-        <SlackMessage time="09:02">
-          <Mention /> mira: Chat froze again at 8:55. I hit Send twice. Any idea
-          why?
-        </SlackMessage>
-        <div className="sl-replies">{children}</div>
-      </div>
-    </section>
-  );
-}
-
 export function ProductDemo() {
-  const film = useRef<HTMLElement>(null);
-  useDemoPlayback(film);
+  const stage = useRef<HTMLDivElement>(null);
+  const demo = useDemoPlayback(stage);
+  const scenes = [
+    <SlackThread key="ticket" label="Slack ticket in customer-support">
+      <SlackMessage time="09:02">
+        <Mention /> mira: Chat froze again at 8:55. I hit Send twice. Any idea
+        why?
+      </SlackMessage>
+      <SlackMessage bot time="09:02">
+        I’ve asked Scout to check the connection.
+      </SlackMessage>
+    </SlackThread>,
+    <ScoutInvestigation key="investigation" onInspect={demo.pause} />,
+    <SlackThread key="draft" label="Draft fix in the Slack thread">
+      <SlackMessage time="09:08">
+        <Mention /> incident-repairer: Can you fix the connection and add a
+        test?
+      </SlackMessage>
+      <SlackMessage bot time="09:19">
+        <strong className="block">Draft fix ready for review</strong>
+        The runner sent packets that were too big. The fix sends smaller ones.
+        The test passes.
+      </SlackMessage>
+    </SlackThread>,
+    <SlackThread key="result" label="Verified result in the Slack thread">
+      <SlackMessage time="11:01">
+        I reviewed the fix and shipped it at 9:55. <Mention /> mira: Are replies
+        faster now?
+      </SlackMessage>
+      <SlackMessage bot time="11:02">
+        <strong className="block">
+          95% of replies started within 2.8 seconds, down from 15.1 seconds.
+        </strong>
+        Packet loss fell from 8% to 0.2%.
+        <small className="mt-md block font-mono text-xs/relaxed text-zinc-300">
+          Grafana · Similar traffic
+          <br />
+          08:00–09:00 and 10:00–11:00 IST
+        </small>
+      </SlackMessage>
+    </SlackThread>,
+  ];
+
   return (
     <figure
-      ref={film}
-      className="film"
+      className="min-w-0"
       id="product-demo"
       aria-labelledby="film-heading"
     >
-      <figcaption className="film-head">
-        <h2 id="film-heading">Why did chat freeze?</h2>
-        <small>Example thread · IST</small>
+      <figcaption className="mb-md flex flex-wrap justify-between gap-md">
+        <h2 id="film-heading" className="font-bold text-text">
+          Why did chat freeze?
+        </h2>
+        <span className="font-mono text-xs text-text-muted">
+          Example thread · IST
+        </span>
       </figcaption>
-      <div className="stage">
-        <SlackThread scene="opening" label="Slack ticket in customer-support">
-          <SlackMessage bot time="09:02" at="1.25s">
-            I’ve asked Scout to check the connection.
-          </SlackMessage>
-        </SlackThread>
-        <ScoutInvestigation />
-        <SlackThread
-          scene="returning"
-          label="Updates to Leah’s original Slack ticket"
-        >
-          <div className="updates repair">
-            <SlackMessage time="09:08">
-              <Mention /> incident-repairer: Can you fix the connection and add
-              a test?
-            </SlackMessage>
-            <SlackMessage bot time="09:19" at="17.8s">
-              <strong>Draft fix ready for review</strong>
-              <br />
-              The runner sent packets that were too big. The fix sends smaller
-              ones. The test passes.
-            </SlackMessage>
+      <div className="flex flex-col gap-md">
+        <div className="flex flex-wrap items-center justify-between gap-x-lg gap-y-sm md:order-last motion-reduce:hidden [@media(scripting:none)]:hidden">
+          <div className="min-w-32 flex-1">
+            <div className="mb-sm flex gap-1" aria-hidden="true">
+              {DEMO_STAGES.map(({ name }, index) => (
+                <span
+                  key={name}
+                  className={cn(
+                    "h-0.5 flex-1 rounded-full",
+                    index <= demo.stage ? "bg-pulse" : "bg-border-strong",
+                  )}
+                />
+              ))}
+            </div>
+            <p className="text-label text-text-muted">
+              {DEMO_STAGES[demo.stage].name}
+            </p>
           </div>
-          <div className="updates verify">
-            <SlackMessage time="11:01">
-              I reviewed the fix and shipped it at 9:55. <Mention /> mira: Are
-              replies faster now?
-            </SlackMessage>
-            <SlackMessage bot time="11:02" at="25.6s">
-              <strong>
-                95% of replies started within 2.8 seconds, down from 15.1
-                seconds.
-              </strong>{" "}
-              Packet loss fell from 8% to 0.2%.
-              <small className="window">
-                Grafana · Similar traffic
-                <br />
-                08:00–09:00 and 10:00–11:00 IST
-              </small>
-            </SlackMessage>
-          </div>
-        </SlackThread>
-      </div>
-      <div className="controls" hidden>
-        <div className="meter" aria-hidden="true">
-          <span />
+          <Button
+            size="sm"
+            variant="outline"
+            className="min-h-11"
+            onClick={demo.toggle}
+          >
+            {demo.finished
+              ? "Replay demo"
+              : demo.paused
+                ? "Resume demo"
+                : "Pause demo"}
+          </Button>
         </div>
-        <button type="button">Pause demo</button>
+        <div
+          ref={stage}
+          className="grid gap-lg motion-safe:[@media(scripting:enabled)]:gap-0 md:motion-safe:[@media(scripting:enabled)]:min-h-[29rem]"
+          data-playing={demo.playing}
+          onFocus={demo.pause}
+        >
+          {scenes.map((scene, index) => (
+            <Scene
+              key={DEMO_STAGES[index].name}
+              active={index === demo.stage}
+              staticMode={demo.staticMode}
+            >
+              {scene}
+            </Scene>
+          ))}
+        </div>
       </div>
     </figure>
   );

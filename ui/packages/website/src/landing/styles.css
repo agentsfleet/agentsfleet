@@ -1,0 +1,11 @@
+@import "tailwindcss" source(none);
+@import "@agentsfleet/design-system/tokens.css";
+@import "@agentsfleet/design-system/theme.css";
+
+@source "./";
+@source not "./**/*.test.tsx";
+@source "../pages/Home.tsx";
+@source "../components/SiteLayout.tsx";
+@source "../components/SiteNavigation.tsx";
+@source "../components/site-classes.ts";
+@source "../../../design-system/src/design-system/{BrandMark,Button,Card,Display,Nav,Switch}.tsx";

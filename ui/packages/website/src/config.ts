@@ -8,4 +8,3 @@ export const PUBLIC_ACCESS_URL = WAITLIST_URL;
 // in src/lib/contact.ts — used by Pricing, Terms, and Privacy. A second
 // "team@agentsfleet.net" constant used to live here, unused by any component
 // and contradicting the canonical address, so it was removed.
-export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
