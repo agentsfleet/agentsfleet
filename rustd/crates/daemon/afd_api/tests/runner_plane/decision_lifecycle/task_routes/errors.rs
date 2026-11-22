@@ -50,22 +50,21 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         problem(&json_body(response).await, "UZ-REQ-001");
     }
-    for limit in [0, 5] {
-        let response = send(
-            &fixture.router,
-            Method::GET,
-            &format!(
-                "{}?fencing_token={}&limit={limit}",
-                path(fixture, "inputs"),
-                fixture.run.fence
-            ),
-            Some(&fixture.runner.token),
-            "",
-        )
-        .await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        problem(&json_body(response).await, "UZ-REQ-001");
-    }
+    // An input page has no upper bound on the wire; the daemon serves its policy's batch.
+    let response = send(
+        &fixture.router,
+        Method::GET,
+        &format!(
+            "{}?fencing_token={}&limit=0",
+            path(fixture, "inputs"),
+            fixture.run.fence
+        ),
+        Some(&fixture.runner.token),
+        "",
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    problem(&json_body(response).await, "UZ-REQ-001");
 }
 
 async fn refuse_stale_input_read(fixture: &Fixture) {

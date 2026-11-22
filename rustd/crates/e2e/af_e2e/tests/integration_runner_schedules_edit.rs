@@ -131,6 +131,8 @@ async fn test_fleet_deletes_its_schedule() {
 }
 
 /// The REST guide's PATCH rule: the same body twice leaves the same schedule.
+/// A retry of one call (same item, same call number) is answered from the
+/// item, whole; the same fields under a new call are a second write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_schedule_patch_is_idempotent() {
@@ -139,22 +141,26 @@ async fn test_fleet_schedule_patch_is_idempotent() {
     let held = Box::pin(Assigned::boot(&mut supervisor, &qstash)).await;
     let (_status, created) = held.create(false).await;
     let member = format!("/{}", created["schedule_id"].as_str().expect("an id"));
-    let patch =
-        itemized(json!({"fencing_token": held.fence, "message": "daily check", "paused": true}));
+    let fields = json!({"fencing_token": held.fence, "message": "daily check", "paused": true});
+    let patch = itemized(fields.clone());
 
     let (first_status, mut first) = held
         .call(Method::PATCH, &held.path(&member), Some(&patch))
         .await;
-    let (second_status, mut second) = held
+    let (retried_status, retried) = held
         .call(Method::PATCH, &held.path(&member), Some(&patch))
         .await;
+    let (second_status, mut second) = held
+        .call(Method::PATCH, &held.path(&member), Some(&itemized(fields)))
+        .await;
     assert_eq!(
-        (first_status, second_status),
-        (200, 200),
-        "{first} {second}"
+        (first_status, retried_status, second_status),
+        (200, 200, 200),
+        "{first} {retried} {second}"
     );
     assert_eq!(first["message"], "daily check");
     assert_eq!(first["status"], "paused");
+    assert_eq!(retried, first, "a retried call reads the stored answer");
     // A second write moves two fields: its instant, and the version it mints,
     // which a later If-Match must name. Everything else is unchanged.
     assert_ne!(first["etag"], second["etag"], "each write is a new version");

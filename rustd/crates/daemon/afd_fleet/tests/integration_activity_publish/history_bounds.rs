@@ -1,4 +1,5 @@
-//! Persisted history keeps its shape and hard bounds even outside the writer.
+//! Persisted history keeps its shape even outside the writer; nothing caps
+//! how long it grows.
 
 use crate::report_seed::held;
 use serde_json::json;
@@ -9,7 +10,7 @@ const WRITE: &str =
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn database_refuses_non_arrays_excess_history_and_negative_sequences() {
+async fn database_refuses_non_arrays_and_negative_sequences() {
     let run = held().await;
     let mut connection = run
         .fixtures
@@ -17,22 +18,16 @@ async fn database_refuses_non_arrays_excess_history_and_negative_sequences() {
         .acquire()
         .await
         .expect("API connection");
-    for allowed in [json!([]), json!(vec![0; 128]), json!(["x".repeat(119_996)])] {
+    for allowed in [json!([]), json!(vec![0; 129]), json!(["x".repeat(119_997)])] {
         let result = sqlx::query(WRITE)
             .bind(&run.fleet)
             .bind(Json(allowed))
             .execute(&mut *connection)
             .await
-            .expect("exact storage boundary is permitted");
+            .expect("any array is permitted, however long");
         assert_eq!(result.rows_affected(), 1);
     }
-    for (rejected, expected) in [
-        (json!({}), "22023"),
-        (json!(null), "22023"),
-        (json!(1), "22023"),
-        (json!(vec![0; 129]), "23514"),
-        (json!(["x".repeat(119_997)]), "23514"),
-    ] {
+    for rejected in [json!({}), json!(null), json!(1)] {
         let error = sqlx::query(WRITE)
             .bind(&run.fleet)
             .bind(Json(rejected))
@@ -45,7 +40,7 @@ async fn database_refuses_non_arrays_excess_history_and_negative_sequences() {
                 .expect("Postgres refusal")
                 .code()
                 .as_deref(),
-            Some(expected)
+            Some("22023")
         );
     }
     let error = sqlx::query(

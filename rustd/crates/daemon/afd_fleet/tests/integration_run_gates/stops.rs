@@ -103,12 +103,12 @@ async fn test_approval_resolution_runs_next_poll() {
     fixtures.cleanup().await;
 }
 
-// Value: protects=an unanswered approval cannot strand the queue;
-// fails_when=deadline reconsideration cannot reach gate evaluation and settlement;
-// why_new=assignment-only tests cannot prove tail progress; seam=Postgres and the bus.
+/// Nothing expires a gate: an approval past its deadline keeps its turn
+/// parked and answerable, the fleet's later event waits behind it, and the
+/// late answer releases the turn on the next poll.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event() {
+async fn an_expired_approval_keeps_its_parked_head_waiting_and_answerable() {
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
@@ -125,21 +125,29 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     let resumed = assign(&fixtures, &seeded).await;
     assert_eq!(resumed.turn_id, seeded.turn_id);
     assert!(drive(&fixtures, &seeded, resumed).await.is_none());
-    assert_expired_settlement(&fixtures, &seeded.turn_id, &action).await;
-    let next = assign(&fixtures, &seeded).await;
+    assert_waiting(&fixtures, &seeded.turn_id, &action).await;
+
+    approve_parked(&fixtures, &seeded, &action).await;
+    let next = crate::seed::select_fleet(&fixtures.runs(), &seeded.runner, &seeded.fleet)
+        .await
+        .expect("the late answer releases the turn");
     assert_eq!(
-        next.turn_id, later,
-        "expiry released the tail without a sweeper"
+        next.turn_id, seeded.turn_id,
+        "the answered head runs ahead of {later}"
     );
     fixtures.cleanup().await;
 }
 
-async fn assert_expired_settlement(fixtures: &Fixtures, event: &Uuid7, action: &Uuid7) {
-    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM thread.turns a JOIN fleet.approval_gates g ON g.fleet_id=a.thread_id WHERE a.id=$1 AND g.action_id=$2")
+async fn assert_waiting(fixtures: &Fixtures, event: &Uuid7, action: &Uuid7) {
+    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NULL, g.resolved_at IS NULL FROM thread.turns a JOIN fleet.approval_gates g ON g.fleet_id=a.thread_id WHERE a.id=$1 AND g.action_id=$2")
         .bind(event).bind(action)
-        .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
-        .await.expect("settled turn and answerable approval");
-    assert_eq!(state, (true, true));
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("waiting observer"))
+        .await.expect("unsettled turn and answerable approval");
+    assert_eq!(
+        state,
+        (true, true),
+        "the turn waits and the gate still takes an answer"
+    );
 }
 
 /// Ingress for one event of `event_type`, marking the fleet as ingress does.

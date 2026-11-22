@@ -113,7 +113,7 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn bounded_history_retains_monotonic_sequence_and_truncation() {
+async fn history_retains_every_stage_in_monotonic_sequence() {
     let run = held().await;
     for _ in 0..130 {
         write(&run, progress(afd_db::test_util::mint_id().as_str(), 1))
@@ -121,11 +121,8 @@ async fn bounded_history_retains_monotonic_sequence_and_truncation() {
             .expect("owned progress persists");
     }
     let history = saved(&run).await;
-    assert_eq!(history.items.len(), 128);
-    assert!(
-        history.truncated,
-        "discarded stages remain explicit on reconnect"
-    );
+    assert_eq!(history.items.len(), 130, "nothing caps the history");
+    assert!(!history.truncated, "no stage was discarded");
     let sequences: Vec<_> = history
         .items
         .iter()
@@ -135,7 +132,7 @@ async fn bounded_history_retains_monotonic_sequence_and_truncation() {
                 .expect("native observation sequence")
         })
         .collect();
-    assert_eq!(sequences, (3..=130).collect::<Vec<_>>());
+    assert_eq!(sequences, (1..=130).collect::<Vec<_>>());
     run.fixtures.cleanup().await;
 }
 

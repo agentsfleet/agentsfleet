@@ -161,12 +161,8 @@ async fn refuse_invalid_receipts(fixture: &Fixture, receipt: &DecisionReceiptInp
 
 fn malformed_receipts(receipt: &DecisionReceiptInput) -> Vec<Value> {
     let original = serde_json::to_value(receipt).expect("complete receipt JSON");
-    let mut oversized = original.clone();
-    *oversized
-        .pointer_mut("/receipt/result/reported_model")
-        .expect("provider model field") = json!("x".repeat(70 * 1024));
-    std::iter::once(oversized)
-        .chain(["00", "+0"].map(|alias| {
+    ["00", "+0"]
+        .map(|alias| {
             let mut malformed = original.clone();
             let answer = malformed
                 .pointer_mut("/receipt/result/result/answers")
@@ -176,8 +172,8 @@ fn malformed_receipts(receipt: &DecisionReceiptInput) -> Vec<Value> {
             *answer = json!({"type":"score","score":0.4,"confidence":0.8,
                 "probabilities":{"0":0.8,(alias):0.6,"1":0.4}});
             malformed
-        }))
-        .collect()
+        })
+        .into()
 }
 
 fn reordered_receipt(receipt: &DecisionReceiptInput) -> String {

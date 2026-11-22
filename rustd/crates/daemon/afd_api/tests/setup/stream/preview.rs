@@ -75,7 +75,11 @@ async fn running_answer_remains_visible_behind_twenty_five_queued_messages() {
 async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    for raw in ["not-json".to_owned(), "x".repeat(32769)] {
+    // The preview bound is the draft frame: NATS's max_payload less its envelope.
+    for raw in [
+        "not-json".to_owned(),
+        "x".repeat(afd_bus::DRAFT_FRAME_BYTES + 1),
+    ] {
         live.server.publish(&live.subject(), &raw);
     }
     for (field, invalid) in [
@@ -87,7 +91,7 @@ async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
         ("stream_seq", json!(0)),
         ("text_kind", json!("reasoning")),
         ("text", json!("")),
-        ("text", json!("x".repeat(4097))),
+        ("text", json!("x".repeat(afd_bus::DRAFT_FRAME_BYTES))),
     ] {
         let mut invalid_frame = live.delta("must stay private");
         invalid_frame[field] = invalid;

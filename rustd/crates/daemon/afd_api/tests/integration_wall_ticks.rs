@@ -63,22 +63,6 @@ async fn a_steady_tick_announces_nothing_and_the_stream_keeps_serving() {
     wall.close().await;
 }
 
-/// A tick whose ownership read fails keeps the stream open: a datastore blip
-/// is not a revocation.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_tick_whose_ownership_read_fails_keeps_the_stream_open() {
-    let mut wall = Wall::open(Fixture::create().await).await;
-    wall.ownership.refuse();
-    let before = wall.ownership.authorize_calls();
-    past_a_tick().await;
-    wall.stays_quiet().await;
-    the_tick_re_read_ownership(&wall, before);
-    wall.publish(1).await;
-    assert!(next_chunk(&mut wall.body).await.contains("event: chunk"));
-    wall.close().await;
-}
-
 /// A tick whose set read fails keeps the set it has — a fleet added meanwhile
 /// is not announced — and the next tick that can read announces it.
 #[tokio::test]

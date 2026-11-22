@@ -3,7 +3,7 @@ use super::{
     fixture::{Case, exercise, id},
     report_settlement::request,
 };
-use af_core::{error_code, id::Uuid7};
+use af_core::{error_code, id::Uuid7, test_util::trace::Capture};
 use af_wire::task::{DecisionTaskVersion, TaskDisposition, TaskLimits, TaskReport, TaskState};
 use afd_fleet::task::{TaskLifecycle as _, TaskReportOwner as _};
 use serde_json::Value;
@@ -69,12 +69,24 @@ async fn a_task_over_its_model_budget_is_not_assigned() {
             covered_input_sequence: 0,
             effect_watermark: 0,
         };
-        let refused = case
+        // Refused report evidence is answered, not raised: the report
+        // carries no task semantics, and the refusal's code is logged.
+        let capture = Capture::install();
+        let prepared = case
             .tasks
             .prepare_report(case.run(), &request(case, Some(semantic)))
             .await
-            .expect_err("a task at its model limit owns no further work");
-        assert_eq!(refused.code(), error_code::TASK_LIMIT_EXHAUSTED);
+            .expect("a refusal is not a fault");
+        assert!(
+            prepared.is_none(),
+            "a task at its model limit owns no further work"
+        );
+        let refused = capture.only("dt_report_evidence_refused");
+        assert_eq!(
+            refused.field("error_code"),
+            Some(error_code::TASK_LIMIT_EXHAUSTED.as_str())
+        );
+        drop(capture);
         let counts = case.counts().await;
         let mut plane = case.held.fixtures.plane();
         plane.task_reports = Some(Arc::new(case.tasks.clone()));

@@ -1,10 +1,11 @@
 //! Live daemon coverage for an operator label edit reaching placement.
 //!
-//! The runner binary never reads its own labels: the daemon's run poll reads
-//! `runner.runners.labels` afresh on every request and assigns a fleet only when
-//! its `required_tags` are a subset of them. So an edit takes effect on the
-//! runner's next polls, with no restart, no re-enrolment and nothing for the
-//! host to pick up, and this is the test that holds the daemon to that.
+//! The runner binary never reads its own labels: the daemon's assignment pass
+//! reads `runner.runners.labels` afresh each time a wake starts one, and
+//! assigns a fleet only when its `required_tags` are a subset of them. No timer
+//! re-runs the pass, so an edit takes effect on the fleet's next wake, with no
+//! restart, no re-enrolment and nothing for the host to pick up, and this is
+//! the test that holds the daemon to that.
 
 use super::*;
 
@@ -52,13 +53,13 @@ async fn assert_never_assigned(scene: &Scenario, why: &str) {
     assert!(!ended, "{why}");
 }
 
-/// A fleet requiring a tag is withheld from a runner without it, assigned on
-/// that same runner's next polls once an operator adds the label, and withheld
-/// again once the label is edited away — with the runner never restarted or
-/// re-enrolled.
+/// A fleet requiring a tag is withheld from a runner without it, assigned to
+/// that same runner on the fleet's next wake once an operator adds the label,
+/// and withheld again once the label is edited away — with the runner never
+/// restarted or re-enrolled.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
+async fn test_operator_label_edit_changes_placement_on_the_next_wake() {
     let mut supervisor = Supervisor::new();
     let scene = scenario(&mut supervisor).await;
     // `gpu`, made unique to this fleet so another suite's runner on the shared
@@ -74,6 +75,7 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     assert_never_assigned(&scene, "a runner without the tag was assigned the fleet").await;
 
     edit_labels(&scene, &[ENROLLED_LABEL, &tag]).await;
+    afd_bus::wake::publish(&scene.booted.bus, scene.fleet.clone()).await;
     let (run_id, fence) = wait_for_seeded_assignment(&scene).await;
     let report = report_body(&run_id, &scene.turn_id, fence);
     let settled = crate::wire::report(&scene, &report).await;

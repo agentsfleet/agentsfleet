@@ -216,9 +216,11 @@ async fn assert_revoked_runner_refuses_the_whole_save(
         "a refused save wrote half of itself"
     );
 
+    // A label past the text ceiling makes a body past `[server]
+    // max_request_body_mib`, which the body limit refuses before the handler.
     let invalid = json!({ "labels": ["l".repeat(af_validate::TEXT_MAX_CHARS + 1)] }).to_string();
     let refused = patch(router, &fixture.token, path, &invalid).await;
-    assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
     assert_eq!(
         column(fixture, WHOLE_ROW).await,
         before,

@@ -27,9 +27,10 @@ const POSTED: &str = r#"{"delivered":true}"#;
 /// The tool a message's item names.
 const MESSAGE: &str = "message";
 
-/// The item the runner minted for call `n`.
-fn item(n: u8) -> Uuid7 {
-    Uuid7::parse(&format!("0199a0b0-0000-7000-8000-0000000000{n:02x}")).expect("a UUIDv7")
+/// An item id, minted as the runner mints one: `thread.items` is keyed by it
+/// alone, so tests sharing the lane never share an item.
+fn item() -> Uuid7 {
+    afd_db::test_util::mint_id()
 }
 
 /// The live holder's standing.
@@ -104,7 +105,7 @@ async fn a_retried_message_for_one_item_posts_once() {
     let plane = held.fixtures.plane();
     let standing = standing(&held).await;
     let posts = std::sync::atomic::AtomicU32::new(0);
-    let one = item(1);
+    let one = item();
 
     let (first, racing) = tokio::join!(
         send(&plane, &standing, message(&held, &one, 1), &posts),
@@ -127,7 +128,7 @@ async fn two_calls_in_one_run_post_two_messages() {
     let plane = held.fixtures.plane();
     let standing = standing(&held).await;
     let posts = std::sync::atomic::AtomicU32::new(0);
-    let (one, two) = (item(1), item(2));
+    let (one, two) = (item(), item());
 
     send(&plane, &standing, message(&held, &one, 1), &posts).await;
     send(&plane, &standing, message(&held, &two, 2), &posts).await;
@@ -137,8 +138,10 @@ async fn two_calls_in_one_run_post_two_messages() {
     held.fixtures.cleanup().await;
 }
 
-/// A send at the first fence after a second was assigned is refused with
-/// `UZ-RUN-005` before any item is read, so nothing posts.
+/// A send at the first fence after a second was assigned is refused before
+/// any item is read, so nothing posts. The reassignment expired the first
+/// run (`expire_prior_run.sql`), so it is no live run of its runner's:
+/// `UZ-RUN-006`.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_effect_from_a_superseded_fence_is_refused() {
@@ -163,7 +166,7 @@ async fn an_effect_from_a_superseded_fence_is_refused() {
         .err()
         .map(|error| error.code());
 
-    assert_eq!(refused, Some(af_core::error_code::RUN_STALE_FENCING_TOKEN));
+    assert_eq!(refused, Some(af_core::error_code::RUN_NOT_FOUND));
     assert_eq!(items_of(&held, &held.issued.run_id).await, 0, "no post");
     held.fixtures.cleanup().await;
 }
@@ -177,7 +180,7 @@ async fn a_resumed_run_note_lists_the_dead_runs_posts() {
     let plane = held.fixtures.plane();
     let standing = standing(&held).await;
     let posts = std::sync::atomic::AtomicU32::new(0);
-    let one = item(1);
+    let one = item();
     send(&plane, &standing, message(&held, &one, 1), &posts).await;
 
     held.fixtures

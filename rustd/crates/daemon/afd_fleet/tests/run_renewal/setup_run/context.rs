@@ -1,7 +1,8 @@
 //! A stale run cannot overwrite a draft's compacted context: once a lapsed
 //! setup run's turn is assigned again at a higher fence and the new run saved,
 //! the first holder's late save is refused with `UZ-RUN-005`, even when its
-//! version would win the compare-and-swap, and the new run's row stays.
+//! version would win the compare-and-swap, and the new run's row stays. A
+//! fleet run's save names its fleet's thread, so the draft's scope refuses it.
 
 use af_context::Checkpoint;
 use af_core::error_code;
@@ -137,7 +138,8 @@ async fn a_superseded_setup_run_cannot_save_context() {
         stale_fenced(&old_fence),
         "the live run at the old fence: {old_fence:?}"
     );
-    // The fixture's own runtime run is this runner's, but holds no draft.
+    // The fixture's own runtime run is this runner's and names its fleet's
+    // thread, so a checkpoint scoped to the draft is refused by its scope.
     let fleet_run = case
         .save_context(
             case.running.run.clone(),
@@ -145,9 +147,12 @@ async fn a_superseded_setup_run_cannot_save_context() {
             1,
             checkpoint(&case, 2, "fleet run"),
         )
-        .await;
+        .await
+        .expect_err("a fleet run cannot save the draft's context");
     assert!(
-        stale_fenced(&fleet_run),
+        std::error::Error::source(&fleet_run)
+            .and_then(|source| source.downcast_ref::<af_context::Error>())
+            .is_some_and(af_context::Error::is_stale),
         "a fleet run's save: {fleet_run:?}"
     );
 

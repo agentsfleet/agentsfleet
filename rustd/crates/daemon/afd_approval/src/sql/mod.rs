@@ -123,6 +123,7 @@ pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 /// Read only when [`RESOLVE_GATE`] updated nothing, to tell a gate somebody
 /// else already answered from one that was never there. A row found
 /// `unanswered` is one the update skipped because its fleet is archived;
-/// `updated_at` stands in for its `resolved_at` only so the decode is total.
+/// `updated_at` stands in for its `resolved_at`, and an empty resolver for its
+/// `resolved_by`, only so the decode is total.
 /// `$1` action, `$2` fleet filter (empty disables).
 pub(crate) const SELECT_GATE_BY_ACTION: &str = include_str!("select_gate_by_action.sql");

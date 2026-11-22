@@ -66,10 +66,12 @@ pub(crate) fn script(
         let branch = repair_branch(asked).unwrap_or_default();
         match asked.turn {
             0 => vec![reconcile(repo, branch, "reconcile")],
+            // The last result is this run's reconcile answer: a later run
+            // carries the whole chat, earlier runs' results included.
             1 if asked
                 .results
-                .iter()
-                .any(|result| result.contains(DRAFT_URL)) =>
+                .last()
+                .is_some_and(|result| result.contains(DRAFT_URL)) =>
             {
                 vec![say(&format!("The draft is already open: {DRAFT_URL}"))]
             }

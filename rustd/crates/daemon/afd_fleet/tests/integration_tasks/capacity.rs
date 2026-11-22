@@ -1,10 +1,33 @@
 //! A capacity failure rolls back every item, goal and queued continuation.
+//!
+//! Unset, `max_unfinished_per_fleet` limits nothing, so the deployment here
+//! sets it to [`UNFINISHED`].
 
 use af_core::error_code;
 use af_wire::task::TaskLimits;
-use afd_fleet::task::{TaskBindings, TaskControl, TaskLifecycle as _};
+use afd_fleet::task::policy::{TaskPolicy, TaskSettings};
+use afd_fleet::task::{TaskBindings, TaskControl, TaskDependencies, TaskLifecycle as _, Tasks};
 
 use super::fixture::{Case, exercise};
+
+/// The deployment's unfinished-task setting under test.
+const UNFINISHED: u32 = 16;
+
+/// The case's task service under a deployment that sets [`UNFINISHED`].
+fn configured(case: &Case) -> Tasks {
+    let settings = TaskSettings {
+        max_unfinished_per_fleet: UNFINISHED,
+        ..TaskSettings::default()
+    };
+    let checked = garde::Unvalidated::new(settings)
+        .validate()
+        .expect("a positive setting");
+    let dependencies = TaskDependencies {
+        policy: TaskPolicy::new(&checked),
+        ..TaskDependencies::from(&case.held.fixtures.plane())
+    };
+    Tasks::new(case.held.runs.clone(), case.turns.clone(), dependencies)
+}
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -12,8 +35,7 @@ async fn a_partially_full_fleet_rolls_back_the_whole_plan_and_retries_after_room
     exercise(capacity).await;
 }
 
-async fn fill_capacity(case: &Case) -> TaskBindings {
-    let tasks = &case.tasks;
+async fn fill_capacity(case: &Case, tasks: &Tasks) -> TaskBindings {
     let first = tasks
         .bind(case.run(), &case.plan("first-three", 3))
         .await
@@ -37,8 +59,9 @@ async fn fill_capacity(case: &Case) -> TaskBindings {
 }
 
 async fn capacity(case: &Case) {
-    let (tasks, scope) = (&case.tasks, &case.scope);
-    let first = fill_capacity(case).await;
+    let configured = configured(case);
+    let (tasks, scope) = (&configured, &case.scope);
+    let first = fill_capacity(case, tasks).await;
     let before = case.counts().await;
     assert_eq!((before.0, before.1), (15, 15));
     let source = case.assigned_source().await;
@@ -81,16 +104,17 @@ async fn capacity(case: &Case) {
     assert_eq!(retry.items.len(), 2);
     assert!(!retry.replayed);
     assert_eq!(case.counts().await, (17, 17, with_source.2 + 2));
-    recovered_plan(case, &plan, &retry, with_source.2 + 2).await;
+    recovered_plan(case, tasks, &plan, &retry, with_source.2 + 2).await;
 }
 
 async fn recovered_plan(
     case: &Case,
+    tasks: &Tasks,
     plan: &afd_fleet::task::PreparedPlan,
     retry: &TaskBindings,
     turns: i64,
 ) {
-    let (tasks, scope) = (&case.tasks, &case.scope);
+    let scope = &case.scope;
     let replay = tasks
         .bind(case.run(), plan)
         .await
