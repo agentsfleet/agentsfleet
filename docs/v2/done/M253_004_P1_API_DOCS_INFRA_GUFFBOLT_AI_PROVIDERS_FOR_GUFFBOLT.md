@@ -17,7 +17,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 21, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Priority:** P1, guffbolt is published for others to build on, and today nobody can run it without writing a provider
 
@@ -520,6 +520,7 @@ N/A: no product or operator signal changes. The provider metric families and the
 - > Owner (Indy, Nov 22, 2026): "Runtime model" as the one term — "Yes" (code and docs say runtime model where they mean the model that runs a fleet; InferenceApi keeps naming the API format). Terse replies — "Yes, lets measure the real token use" (no terse option now; measure first).
 - > Owner (Indy, Nov 22, 2026), on old terminology: "Can you scour the code to see if you use any of the old terminology code danglings" and, on admission's five meanings, "Rename all 5 (Recommended)" — context: af_egress Admission → EgressPolicy; afr_sandbox toolbox admission → toolbox verify; afd_fleet run/admit → run/start_check; durable_task/admit → durable_task/accept; runner admission → runner enrol; pure renames after E and F. Also fixed: a pi mention in af_e2e layers, "lease" wording in comments, the fleet_events test helper, and the obligations sentence in thread_model.md.
 - > Owner (Indy, Nov 22, 2026), on the durable-task wait that a green build never resumes: "I want to test think about this as its decision to make so i would park this for now." — context: deferral; today a Waiting task resumes only through an ordinary turn routed to it as Steer/Refresh (admit/input.rs), and the GitHub webhook makes a turn only for failure, timed_out or startup_failure (afd_api_ingress github/mod.rs:68); a successful run on the awaited head never reaches the task. Parked for Indy to decide after testing.
+- > Owner (Indy, Nov 22, 2026): "I think if the make test-integration-rustd passes you must move the spec to done or even check now and move it to done since either way you are not going merged the PR if the CI jobs are red." — context: the spec closes now; the PR is not merged until CI is green. Still tracked on PR #855, not in this spec: the integration lane's result on the final tree, Rust coverage to 99 / 99 / per-file 99 (§14), the one E2E acceptance burst including the Linux-only sandbox code (§7), every CI job green and greptile answered (§15). Manual and by Indy: live MiniMax (Dimension 4.5). Parked by Indy: the durable-task wait wake; the design-docs scour (next milestone).
 - **Open blockers** — none; the one `[?]` left blocks nothing. Q1 to Q7 are answered ("Take all seven").
 - > Owner (Indy, Nov 22, 2026): "Indy is off to bed, so you need to keep going on M253_004 and move the tools brainstorm at the end.  I cant sit and wait for you to complete to do a brain storm" — context: the tools brainstorm moves from before §1 to §10, the last Section; §1–§9 are built without waiting for it.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
