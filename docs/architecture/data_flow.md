@@ -445,7 +445,7 @@ PATCH stays status/name only. Concurrent setup requests share the same guarded s
 
 A name edit during installing invalidates the pending review and refuses activation until a newly reviewed revision is applied. It cannot silently change accepted creation inputs.
 
-Archive uses existing fleet:write authority. The transaction changes fleet state and setup cancellation generation before a late activation can commit. The linked draft returns to `editing`.
+Archive uses existing fleet:write authority. The transaction changes fleet state and setup cancellation generation before a late activation can commit. The linked draft closes; a new setup starts from a new draft.
 
 Pending approval requests are cancelled under the fleet lifecycle guard. An archived fleet takes no new run or grant use, and its history stays readable.
 
@@ -811,7 +811,7 @@ One PR through one run: its records and timers in [run_flow.md §1](./run_flow.m
 record key + normalized body + retained installing fleet -> commit
 checks or grants incomplete -> installing + missing checks
 same key + same body -> resume same fleet and setup revision
-Archive wins activation guard -> archived fleet; linked draft returns to editing
+Archive wins activation guard -> archived fleet; linked draft closed
 activation + initial turn -> commit together
 read back the same initial turn -> Accepted
 read-back unavailable -> Pending; retry confirms the same turn

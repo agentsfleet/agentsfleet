@@ -175,7 +175,10 @@ impl Creations {
     }
 }
 
-async fn close_saved_drafts(connection: &mut sqlx::PgConnection, fleet: &Uuid7) -> Result<()> {
+pub(super) async fn close_saved_drafts(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+) -> Result<()> {
     sqlx::query(sql::CLOSE_DRAFTS)
         .bind(fleet)
         .bind(DraftState::Closed.as_str())

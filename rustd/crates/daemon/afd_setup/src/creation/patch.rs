@@ -9,7 +9,6 @@ use crate::{
         ErrorKind,
         raise::{invalid, query},
     },
-    types::DraftState,
 };
 use af_core::id::Uuid7;
 use af_observability::SetupStep;
@@ -21,7 +20,7 @@ impl Creations {
     ///
     /// # Errors
     /// Refuses stale/missing tags, unsupported transitions and invalid slugs.
-    /// An archive and linked-draft restoration commit together.
+    /// An archive closes the fleet's saving draft in the same commit.
     pub async fn patch(
         &self,
         access: Access<'_>,
@@ -67,7 +66,11 @@ impl Creations {
                 .map_err(query(CONTEXT))?;
         }
         let cancelled = if requested == ARCHIVED {
-            self.cancel(&mut tx, fleet).await?
+            let cancelled = self.cancel(&mut tx, fleet).await?;
+            // The draft's proposal is now the fleet's revision 1, so the draft
+            // has nothing left to edit: an archive ends it.
+            super::activate::close_saved_drafts(&mut tx, fleet).await?;
+            cancelled
         } else {
             Vec::new()
         };
@@ -93,14 +96,7 @@ impl Creations {
         let cancelled = sqlx::query_as(sql::CANCEL_RUNS)
             .bind(fleet)
             .bind(afd_state::sql::RUN_STATUS_ACTIVE)
-            .fetch_all(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        sqlx::query(sql::RESTORE)
-            .bind(fleet)
-            .bind(DraftState::Editing.as_str())
-            .bind(DraftState::Saving.as_str())
-            .execute(connection)
+            .fetch_all(connection)
             .await
             .map_err(query(CONTEXT))?;
         Ok(cancelled)

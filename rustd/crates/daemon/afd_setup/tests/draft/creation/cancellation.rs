@@ -1,41 +1,12 @@
-//! Archive wins against later retries and returns an unfinished draft to its creator.
+//! Archive wins against later retries and ends the draft it was saved from.
 
 use super::super::{fixture::now, mint};
 use super::fixture::{Case, NO_TURNS};
-use af_core::id::Uuid7;
-use afd_setup::types::{DraftState, SaveFleet, Start};
-
-/// `request` under a new instance name: the draft renamed through a patch on
-/// its current tag, and the review digest re-read for the renamed source.
-async fn renamed(c: &Case, draft: &Uuid7, request: SaveFleet, name: &str) -> SaveFleet {
-    let mut another = request;
-    another.name = name.to_owned();
-    let fresh = c
-        .setup
-        .read_draft(c.base.access(), draft)
-        .await
-        .expect("current source");
-    let patch = serde_json::from_value(serde_json::json!({"instance_name":another.name}))
-        .expect("name patch");
-    c.base
-        .drafts
-        .patch(c.base.access(), draft, Some(&fresh.etag), patch, now())
-        .await
-        .expect("new reviewed instance name");
-    another.review_digest = c
-        .setup
-        .read_draft(c.base.access(), draft)
-        .await
-        .expect("new review")
-        .review
-        .expect("review")
-        .review_digest;
-    another
-}
+use afd_setup::types::{DraftState, Start};
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn archive_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
+async fn archive_closes_the_draft_and_replay_cannot_resurrect_the_fleet() {
     let c = Case::create().await;
     let (draft, request) = c.request("cancel-setup", Start::None).await;
     let key = mint();
@@ -55,21 +26,29 @@ async fn archive_restores_private_editing_and_replay_cannot_resurrect_the_fleet(
         .expect("atomic setup cancellation");
     assert_eq!(archived.status, "archived");
     assert_eq!(archived.setup.state, "cancelled");
-    let restored = c
+    let closed = c
         .base
         .drafts
         .read(c.base.access(), &draft)
         .await
-        .expect("private editing restored");
-    assert_eq!(restored.state, DraftState::Editing);
-    assert!(restored.linked_fleet_id.is_none());
+        .expect("closed draft stays readable");
+    assert_eq!(closed.state, DraftState::Closed);
     c.fund().await;
     assert_eq!(c.save(&key, request.clone()).await.status, "archived");
     assert_eq!(c.turns(&saved.id).await, NO_TURNS);
-    let another = renamed(&c, &draft, request, "new-setup").await;
-    let saved_again = c.save(&mint(), another).await;
-    assert_ne!(saved_again.id, saved.id);
-    assert_eq!(saved_again.status, "active");
+    c.creations
+        .save(c.base.access(), &mint(), request, now())
+        .await
+        .expect_err("a closed draft saves nothing");
+    assert_eq!(c.fleet_count().await, 1, "no second fleet");
+    assert_eq!(
+        c.creations
+            .read(c.base.access(), &saved.id)
+            .await
+            .expect("retained")
+            .status,
+        "archived"
+    );
     c.cleanup().await;
 }
 

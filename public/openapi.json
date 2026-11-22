@@ -14432,7 +14432,7 @@
           "Fleets"
         ],
         "summary": "Change fleet lifecycle or name",
-        "description": "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an installing fleet to active resumes setup checks. Archiving it cancels setup, ends its live work and makes its private draft editable again. Archive is terminal.",
+        "description": "Updates lifecycle state or name. Send the current `ETag` in `If-Match`. Setting an installing fleet to active resumes setup checks. Archiving it cancels setup, ends its live work and closes its private draft. Archive is terminal.",
         "operationId": "patch_fleet",
         "parameters": [
           {

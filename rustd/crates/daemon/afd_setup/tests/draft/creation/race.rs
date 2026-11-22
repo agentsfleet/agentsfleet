@@ -198,8 +198,8 @@ async fn a_archive_committed_while_activation_waits_refuses_that_activation() {
     );
     assert_eq!(refused.setup.state, "cancelled");
     assert_eq!(c.turns(&fleet).await, NO_TURNS);
-    let restored = c.base.drafts.read(c.base.access(), &draft).await;
-    assert_eq!(restored.expect("draft").state, DraftState::Editing);
+    let closed = c.base.drafts.read(c.base.access(), &draft).await;
+    assert_eq!(closed.expect("draft").state, DraftState::Closed);
     Arc::into_inner(c).expect("tasks joined").cleanup().await;
 }
 
