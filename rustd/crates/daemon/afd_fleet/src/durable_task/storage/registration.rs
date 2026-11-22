@@ -24,7 +24,7 @@ pub(crate) struct Registration<'a> {
 #[derive(Serialize)]
 pub(crate) struct NewObject {
     id: Uuid7,
-    #[serde(rename = "durable_task_identity_key_id")]
+    #[serde(rename = "checkpoint_identity_key_id")]
     identity_key_id: Uuid7,
     content_identity: String,
     plaintext_digest: String,

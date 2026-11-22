@@ -43,7 +43,7 @@ impl Fixture {
             token: format!("agt_t{}{}", mint(), mint()).replace('-', ""),
         };
         f.cleanup.record_text(
-            "DELETE FROM setup.replay_receipts WHERE scope LIKE $1",
+            "DELETE FROM thread.replay_receipts WHERE scope LIKE $1",
             &format!("{}:%", f.workspace),
         );
         f.cleanup.record(

@@ -43,7 +43,7 @@ pub(super) async fn refuse(
         error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE
     );
     let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM fleet.durable_task_objects WHERE id=$1",
+        "SELECT verified_at IS NOT NULL FROM runner.checkpoint_objects WHERE id=$1",
     )
     .bind(id(&object.object_id))
     .fetch_one(

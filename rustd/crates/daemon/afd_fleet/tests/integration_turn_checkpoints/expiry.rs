@@ -29,7 +29,7 @@ async fn expired_commit(plan_expires: bool) -> Checked {
     let deadline = shorten(&mut connection, &pending, plan_expires).await?;
     let mut held = connection.begin().await?;
     let blocker: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM runner.turn_checkpoint_pages WHERE id=$1 FOR UPDATE",
+        "SELECT pg_backend_pid() FROM runner.checkpoint_pages WHERE id=$1 FOR UPDATE",
     )
     .bind(Uuid7::parse(&id.0)?)
     .fetch_one(&mut *held)
@@ -57,9 +57,9 @@ async fn shorten(
     plan_expires: bool,
 ) -> Checked<jiff::Timestamp> {
     let statement = if plan_expires {
-        "UPDATE runner.turn_checkpoints SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at"
+        "UPDATE runner.checkpoints SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at"
     } else {
-        "UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at"
+        "UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at"
     };
     let id = if plan_expires {
         &pending.plan.checkpoint_id.0

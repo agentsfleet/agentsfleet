@@ -1,3 +1,3 @@
-INSERT INTO fleet.durable_task_bases (id, workspace_id, repository, commit_oid, format_version, toolbox_digest,
+INSERT INTO runner.checkpoint_bases (id, workspace_id, repository, commit_oid, format_version, toolbox_digest,
     page_ids, logical_bytes, entry_count, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())

@@ -75,18 +75,23 @@ async fn expire(
         .acquire()
         .await
         .expect("expiry fixture");
-    sqlx::query("UPDATE fleet.durable_task_object_pins SET expires_at = now() - interval '2 hours', operation_expires_at = now() - interval '2 hours' WHERE durable_task_id = $1")
+    sqlx::query("UPDATE runner.checkpoint_pins SET expires_at = now() - interval '2 hours', operation_expires_at = now() - interval '2 hours' WHERE checkpoint_id IN (SELECT id FROM runner.checkpoints WHERE durable_task_id = $1)")
         .bind(task).execute(&mut *connection).await.expect("expired writer");
-    sqlx::query("UPDATE fleet.durable_task_checkpoints SET transfer_expires_at = now() - interval '2 hours' WHERE id = $1")
-        .bind(id(&plan.checkpoint_id)).execute(&mut *connection).await.expect("expired transfer");
     sqlx::query(
-        "UPDATE fleet.durable_task_bases SET updated_at = now() - interval '2 hours' WHERE id = $1",
+        "UPDATE runner.checkpoints SET expires_at = now() - interval '2 hours' WHERE id = $1",
+    )
+    .bind(id(&plan.checkpoint_id))
+    .execute(&mut *connection)
+    .await
+    .expect("expired transfer");
+    sqlx::query(
+        "UPDATE runner.checkpoint_bases SET updated_at = now() - interval '2 hours' WHERE id = $1",
     )
     .bind(plan.base_id.as_deref().map(id))
     .execute(&mut *connection)
     .await
     .expect("aged base");
-    sqlx::query("UPDATE fleet.durable_task_objects SET updated_at = now() - interval '2 hours', reclaim_after_at = now() - interval '2 hours' WHERE id = $1")
+    sqlx::query("UPDATE runner.checkpoint_objects SET updated_at = now() - interval '2 hours', reclaim_after_at = now() - interval '2 hours' WHERE id = $1")
         .bind(object).execute(&mut *connection).await.expect("aged object");
     sqlx::query(
         "UPDATE fleet.durable_tasks SET checkpoint_cleanup_at = now() - interval '2 hours' WHERE id = $1",
@@ -105,7 +110,7 @@ async fn assert_erased(case: &Case, object: &Uuid7) {
         .acquire()
         .await
         .expect("custody observer");
-    let custody: (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM fleet.durable_task_objects WHERE id = $1), EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id = $1 AND completed_at IS NOT NULL)")
+    let custody: (bool, bool) = sqlx::query_as("SELECT EXISTS (SELECT 1 FROM runner.checkpoint_objects WHERE id = $1), EXISTS (SELECT 1 FROM runner.checkpoint_purges WHERE checkpoint_object_id = $1 AND completed_at IS NOT NULL)")
         .bind(object).fetch_one(&mut *connection).await.expect("erasure receipt");
     assert_eq!(
         custody,

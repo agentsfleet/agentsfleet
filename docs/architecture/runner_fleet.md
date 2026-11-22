@@ -149,7 +149,7 @@ A live runner renews through the fenced `/renew` route. Renewal is gated on cred
 A runner that stops renewing loses its thread at the database deadline.
 
 The replacement keeps the turn and reads its committed recovery descriptor.
-Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned head on their `thread.turns` row (`head_turn_checkpoint_id`, `next_checkpoint_generation`).
+Native tasks retain their task checkpoint owner; ordinary turns use a turn-owned head on their `thread.turns` row (`head_checkpoint_id`, `next_checkpoint_generation`). Both owners' checkpoints live in `runner.checkpoints`.
 [Platform runner checkpoint recovery](runner_checkpoint_recovery.md) owns capture, restore and file safety.
 
 An absent checkpoint starts from the original accepted input and unsettled folds.

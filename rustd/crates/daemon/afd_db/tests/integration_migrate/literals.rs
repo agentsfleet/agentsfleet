@@ -136,11 +136,7 @@ fn reviewed_structural_literal(name: &str, text: &str, literal: &str) -> bool {
             text.contains(&format!("~ '{literal}'"))
                 && text.matches(&format!("'{literal}'")).count() == 1
         }
-        (
-            "function durable_task_checkpoint_pages_freeze",
-            "completed checkpoint pages are immutable",
-        )
-        | ("function durable_task_base_pages_freeze", "completed base pages are immutable") => {
+        ("function checkpoint_pages_freeze", "completed checkpoint pages are immutable") => {
             text.contains(&format!("RAISE EXCEPTION '{literal}'"))
                 && text.matches(&format!("'{literal}'")).count() == 1
         }
@@ -185,17 +181,17 @@ fn reviewed_shapes_do_not_admit_runtime_vocabulary() {
     ));
     let diagnostic = "completed checkpoint pages are immutable";
     assert!(reviewed_structural_literal(
-        "function durable_task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("RAISE EXCEPTION '{diagnostic}';"),
         diagnostic
     ));
     assert!(!reviewed_structural_literal(
-        "function durable_task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("SELECT status = '{diagnostic}';"),
         diagnostic
     ));
     assert!(!reviewed_structural_literal(
-        "function durable_task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("IF status = '{diagnostic}' THEN RAISE EXCEPTION '{diagnostic}'; END IF;"),
         diagnostic
     ));

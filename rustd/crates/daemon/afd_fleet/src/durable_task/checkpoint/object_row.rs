@@ -21,7 +21,7 @@ use base64::{Engine as _, prelude::BASE64_STANDARD};
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct Object {
     pub id: Uuid7,
-    #[sqlx(rename = "durable_task_identity_key_id")]
+    #[sqlx(rename = "checkpoint_identity_key_id")]
     pub identity_key_id: Uuid7,
     pub content_identity: String,
     pub plaintext_digest: String,

@@ -25,9 +25,10 @@ const SEQUENCE_EXHAUSTED: &str = "message sequence is exhausted";
 /// Runs after the draft lock, so its snapshot sees the
 /// preceding sender's committed receipt and sequence.
 /// `$1` draft, `$2` next sequence, `$3` message, `$4` operation, `$5` status,
-/// `$6` model, `$7` text, `$8` receipt, `$9` workspace, `$10` actor, `$11` scope,
-/// `$12` digest, `$13` replay window, `$14` save requested, `$15` turn kind. An
-/// earlier run whose usage is not yet settled never refuses a new message.
+/// `$6` model, `$7` text, `$8` workspace, `$9` actor, `$10` scope, `$11` digest
+/// bound to the actor ([`replay::bound`]), `$12` replay window, `$13` save
+/// requested, `$14` turn kind. An earlier run whose usage is not yet settled
+/// never refuses a new message.
 const ADMIT: &str = include_str!("../sql/message/admit.sql");
 
 /// A setup draft's turn is a person's chat message, so `thread.turns.kind`
@@ -47,7 +48,7 @@ impl AdmitRow {
         person: &Uuid7,
         digest: &str,
         next: Option<i64>,
-        identifiers: Result<(Uuid7, Uuid7)>,
+        identifier: Result<Uuid7>,
     ) -> Result<Accepted> {
         if replay::decide(self.prior.map(|prior| prior.0), person, digest)?.is_some() {
             return Ok(Accepted {
@@ -57,7 +58,7 @@ impl AdmitRow {
             });
         }
         next.ok_or_else(|| invalid(SEQUENCE_EXHAUSTED))?;
-        identifiers?;
+        identifier?;
         Ok(Accepted {
             status: super::ACCEPTED,
             sequence: self.sequence.ok_or(ErrorKind::Replay)?.to_string(),
@@ -136,33 +137,29 @@ impl Drafts {
         now: Timestamp,
     ) -> Result<Accepted> {
         let sequence = draft.last_message_sequence.checked_add(1);
-        // A replay or refusal still wins over an entropy failure. Missing IDs
-        // make the SQL read-only; only a fresh, otherwise valid Send returns it.
-        let identifiers = self
-            .mint(now)
-            .and_then(|message| self.mint(now).map(|receipt| (message, receipt)));
-        let ids = identifiers.as_ref().ok();
+        // A replay or refusal still wins over an entropy failure. A missing ID
+        // makes the SQL read-only; only a fresh, otherwise valid Send returns it.
+        let identifier = self.mint(now);
         let digest = message_digest(text, request.save)?;
         let admitted: AdmitRow = sqlx::query_as(ADMIT)
             .bind(&draft.id)
             .bind(sequence)
-            .bind(ids.map(|(message, _)| message))
+            .bind(identifier.as_ref().ok())
             .bind(&request.operation_id)
             .bind(QUEUED)
             .bind(model::tenant_model(&draft.setup_model_ref)?)
             .bind(text)
-            .bind(ids.map(|(_, receipt)| receipt))
             .bind(&draft.workspace_id)
             .bind(&person.id)
             .bind(scope(&draft.workspace_id, &draft.id))
-            .bind(&digest)
+            .bind(replay::bound(&person.id, &digest)?)
             .bind(self.tuning.replay_window)
             .bind(request.save)
             .bind(TURN_KIND)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;
-        admitted.accepted(&person.id, &digest, sequence, identifiers)
+        admitted.accepted(&person.id, &digest, sequence, identifier)
     }
 }
 
@@ -203,8 +200,6 @@ async fn replayed(
 
 pub(crate) struct Insertion<'a> {
     pub(crate) id: &'a Uuid7,
-    /// The message's retry receipt.
-    pub(crate) receipt: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) person: &'a Person,
     pub(crate) draft: &'a Uuid7,
@@ -240,7 +235,6 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
     let reserved = replay::reserve(
         &mut *connection,
         replay::Reservation {
-            receipt_id: insertion.receipt,
             person: insertion.person,
             scope: &scope(insertion.workspace, insertion.draft),
             operation: insertion.operation,

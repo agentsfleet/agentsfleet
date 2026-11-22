@@ -32,7 +32,7 @@ async fn fixture_unwind_removes_only_registered_account_and_private_rows() {
         "SELECT \
         (SELECT count(*) FROM identity.tenants WHERE id=$1), \
         (SELECT count(*) FROM setup.drafts WHERE workspace_id=$2), \
-        (SELECT count(*) FROM setup.replay_receipts WHERE scope LIKE $3)",
+        (SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $3)",
     )
     .bind(&tenant)
     .bind(&workspace)

@@ -42,8 +42,11 @@ pub(super) async fn checkpoint(scene: &Scenario, covered: &Uuid7) -> Checked<Uui
     let mut connection = scene.booted.database.acquire().await?;
     let (id, ready, sealed, folds): (Uuid7, bool, bool, Vec<Uuid7>) = sqlx::query_as(
         "SELECT p.id,p.ready_at IS NOT NULL,p.root_secret_ciphertext IS NOT NULL,p.covered_fold_ids
-        FROM thread.turns h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.id=$1")
-        .bind(&scene.turn_id).fetch_one(&mut *connection).await?;
+        FROM thread.turns h JOIN runner.checkpoints p ON p.id=h.head_checkpoint_id WHERE h.id=$1",
+    )
+    .bind(&scene.turn_id)
+    .fetch_one(&mut *connection)
+    .await?;
     assert!(ready && sealed);
     assert_eq!(folds, vec![covered.clone()]);
     Ok(id)

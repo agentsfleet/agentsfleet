@@ -1,4 +1,4 @@
-UPDATE runner.turn_checkpoint_pins
+UPDATE runner.checkpoint_pins
 SET expires_at = LEAST(operation_expires_at, $4 + make_interval(secs => $5)),
     resource_version = resource_version + 1, updated_at = now()
 WHERE id = $1 AND resource_version = $2 AND resource_version < $3

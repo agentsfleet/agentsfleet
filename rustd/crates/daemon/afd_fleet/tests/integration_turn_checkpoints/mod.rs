@@ -131,15 +131,22 @@ impl Case {
         let mut connection = self.fixtures.database.acquire().await?;
         Ok(sqlx::query_as(
             "SELECT
-            (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
-            (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1),
+            (SELECT count(*) FROM runner.checkpoints WHERE turn_id=$1),
+            (SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $2),
             (SELECT next_checkpoint_generation FROM thread.turns WHERE id=$1),
-            (SELECT head_turn_checkpoint_id FROM thread.turns WHERE id=$1)",
+            (SELECT head_checkpoint_id FROM thread.turns WHERE id=$1)",
         )
         .bind(&self.acquired.turn_id)
+        .bind(receipts_of(&self.acquired.turn_id))
         .fetch_one(&mut *connection)
         .await?)
     }
+}
+
+/// A `LIKE` pattern for the allocation receipts of `turn`, whatever its
+/// workspace: `thread.replay_receipts` scopes them `<workspace>:turn:<turn>:checkpoint`.
+fn receipts_of(turn: &Uuid7) -> String {
+    format!("%:turn:{turn}:checkpoint")
 }
 
 fn required<T>(value: Option<T>) -> Checked<T> {
@@ -198,7 +205,7 @@ async fn a_changed_begin_or_a_retired_plan_cannot_reallocate_its_operation() -> 
     );
     assert_eq!(case.counts().await?, (1, 1, 2, None));
     let mut connection = case.fixtures.database.acquire().await?;
-    sqlx::query("DELETE FROM runner.turn_checkpoints WHERE id=$1 AND turn_id=$2")
+    sqlx::query("DELETE FROM runner.checkpoints WHERE id=$1 AND turn_id=$2")
         .bind(Uuid7::parse(&saved.checkpoint_id.0)?)
         .bind(&case.acquired.turn_id)
         .execute(&mut *connection)
@@ -276,12 +283,11 @@ async fn a_parked_or_settled_source_cannot_begin_recovery() -> Checked {
         );
     }
     let mut connection = case.fixtures.database.acquire().await?;
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1",
-    )
-    .bind(&case.acquired.turn_id)
-    .fetch_one(&mut *connection)
-    .await?;
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $1")
+            .bind(receipts_of(&case.acquired.turn_id))
+            .fetch_one(&mut *connection)
+            .await?;
     assert_eq!(count, 0);
     Ok(())
 }

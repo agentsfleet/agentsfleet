@@ -31,7 +31,6 @@ pub(super) struct DurableTaskRow {
     pub stop_generation: i64,
     pub covered_input_sequence: i64,
     pub input_sequence: i64,
-    #[sqlx(rename = "durable_task_checkpoint_id")]
     pub checkpoint_id: Option<Uuid7>,
     pub checkpoint_generation: Option<i64>,
     pub effect_cursor: i64,

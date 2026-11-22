@@ -60,7 +60,7 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_assignme
     let reference = read(&files, saved).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
     let deadline: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at",
+        "UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at",
     ).bind(Uuid7::parse(&reference.pin_id.0)?).fetch_one(&mut *connection).await?;
     let mut held = connection.begin().await?;
     let controller: i32 =

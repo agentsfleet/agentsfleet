@@ -1,4 +1,4 @@
-UPDATE runner.turn_checkpoints
+UPDATE runner.checkpoints
 SET manifest_root = $2, covered_fold_ids = $3, covered_fold_sequences = $4,
     root_dek_ciphertext = $5, root_dek_nonce = $6, root_dek_tag = $7,
     root_secret_nonce = $8, root_secret_ciphertext = $9, root_secret_tag = $10,

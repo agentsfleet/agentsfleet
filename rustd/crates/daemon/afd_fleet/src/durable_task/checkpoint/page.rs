@@ -65,11 +65,9 @@ pub(in crate::durable_task) async fn write(
             return Err(DurableTaskRefusal::ReplayConflict.into());
         }
     } else {
-        let statement = match plan.mode()? {
-            CheckpointMode::RetainBase => include_str!("sql/base_page_write.sql"),
-            CheckpointMode::Incremental => include_str!("sql/page_write.sql"),
-        };
-        sqlx::query(statement)
+        // An overlay page and a base page share one table; the plan proved the
+        // page is its own above.
+        sqlx::query(include_str!("sql/page_write.sql"))
             .bind(page)
             .bind(&input.digest)
             .bind(&body)

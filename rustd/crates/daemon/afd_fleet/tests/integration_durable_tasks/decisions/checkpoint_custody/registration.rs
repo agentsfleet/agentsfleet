@@ -119,7 +119,7 @@ async fn refuse_batches(
 }
 
 async fn accounting(case: &Case, plan: &af_wire::durable_task::CheckpointPlan) {
-    let stored: (i64, i64) = sqlx::query_as("SELECT uploaded_bytes, (SELECT count(*) FROM fleet.durable_task_objects WHERE owner_checkpoint_id = c.id) FROM fleet.durable_task_checkpoints c WHERE id = $1")
+    let stored: (i64, i64) = sqlx::query_as("SELECT uploaded_bytes, (SELECT count(*) FROM runner.checkpoint_objects WHERE owner_checkpoint_id = c.id) FROM runner.checkpoints c WHERE id = $1")
         .bind(id(&plan.checkpoint_id)).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("stored accounting");
     assert_eq!(
         stored,

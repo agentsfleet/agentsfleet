@@ -533,7 +533,7 @@ async fn substituted(
         "plaintext other than the registered bytes never verifies",
     );
     let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM fleet.durable_task_objects WHERE id = $1",
+        "SELECT verified_at IS NOT NULL FROM runner.checkpoint_objects WHERE id = $1",
     )
     .bind(id(&object.object_id))
     .fetch_one(&mut *super::connection(case).await)
@@ -542,7 +542,7 @@ async fn substituted(
     assert!(!verified, "the substituted object stays unverified");
 
     let narrowed =
-        sqlx::query("UPDATE fleet.durable_task_objects SET object_nonce = $2 WHERE id = $1")
+        sqlx::query("UPDATE runner.checkpoint_objects SET object_nonce = $2 WHERE id = $1")
             .bind(id(&object.object_id))
             .bind(vec![0_u8; 3])
             .execute(&mut *super::connection(case).await)

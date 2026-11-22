@@ -70,10 +70,14 @@ async fn shift(case: &Case, statement: &'static str, row: &str) {
     assert_eq!(changed.rows_affected(), 1, "{statement}");
 }
 
-const PIN_LAPSES: &str = "UPDATE fleet.durable_task_object_pins SET expires_at = expires_at - interval '1 day' WHERE id = $1";
-const PIN_RESTORED: &str = "UPDATE fleet.durable_task_object_pins SET expires_at = expires_at + interval '1 day' WHERE id = $1";
-const WINDOW_LAPSES: &str = "UPDATE fleet.durable_task_checkpoints SET transfer_expires_at = transfer_expires_at - interval '1 day' WHERE id = $1";
-const WINDOW_RESTORED: &str = "UPDATE fleet.durable_task_checkpoints SET transfer_expires_at = transfer_expires_at + interval '1 day' WHERE id = $1";
+const PIN_LAPSES: &str =
+    "UPDATE runner.checkpoint_pins SET expires_at = expires_at - interval '1 day' WHERE id = $1";
+const PIN_RESTORED: &str =
+    "UPDATE runner.checkpoint_pins SET expires_at = expires_at + interval '1 day' WHERE id = $1";
+const WINDOW_LAPSES: &str =
+    "UPDATE runner.checkpoints SET expires_at = expires_at - interval '1 day' WHERE id = $1";
+const WINDOW_RESTORED: &str =
+    "UPDATE runner.checkpoints SET expires_at = expires_at + interval '1 day' WHERE id = $1";
 
 async fn try_write(
     tasks: &DurableTasks,
@@ -119,7 +123,7 @@ async fn lapsed_writes(
     );
     shift(case, WINDOW_RESTORED, &plan.checkpoint_id).await;
     let unwritten: bool =
-        sqlx::query_scalar("SELECT body IS NULL FROM fleet.durable_task_base_pages WHERE id = $1")
+        sqlx::query_scalar("SELECT body IS NULL FROM runner.checkpoint_pages WHERE id = $1")
             .bind(id(plan.page_ids.first().expect("allocated page")))
             .fetch_one(&mut *connection(case).await)
             .await
@@ -186,7 +190,7 @@ async fn unpinned(
         "one object named twice is a conflicting request",
     );
     let readers: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.durable_task_object_pins WHERE durable_task_checkpoint_id = $1 AND kind = 'reader'",
+        "SELECT count(*) FROM runner.checkpoint_pins WHERE checkpoint_id = $1 AND kind = 'reader'",
     )
     .bind(&checkpoint)
     .fetch_one(&mut *connection(case).await)
@@ -259,7 +263,7 @@ async fn reader(
 
 /// Stores `kind` as the pin's kind.
 async fn relabel(case: &Case, pin: &str, kind: &str) {
-    let changed = sqlx::query("UPDATE fleet.durable_task_object_pins SET kind = $2 WHERE id = $1")
+    let changed = sqlx::query("UPDATE runner.checkpoint_pins SET kind = $2 WHERE id = $1")
         .bind(id(pin))
         .bind(kind)
         .execute(&mut *connection(case).await)
@@ -359,7 +363,7 @@ async fn restore_reads(
         "a lapsed live reader is not handed out again",
     );
     let readers: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.durable_task_object_pins WHERE durable_task_checkpoint_id = $1 AND kind = 'reader'",
+        "SELECT count(*) FROM runner.checkpoint_pins WHERE checkpoint_id = $1 AND kind = 'reader'",
     )
     .bind(&checkpoint)
     .fetch_one(&mut *connection(case).await)

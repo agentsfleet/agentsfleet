@@ -46,6 +46,12 @@ pub(crate) const RETENTION: std::time::Duration = af_core::timing::DAY.saturatin
 /// How long an uncommitted upload is kept, by default.
 pub(crate) const ORPHAN: std::time::Duration = std::time::Duration::from_hours(1);
 const READY_GENERATIONS: i64 = 2;
+
+/// The `thread.replay_receipts` scope of a turn's checkpoint allocations: one
+/// retry key per operation for the turn's life, shared by its replacement runs.
+pub(crate) fn receipt_scope(workspace: &Uuid7, turn: &Uuid7) -> String {
+    format!("{workspace}:turn:{turn}:checkpoint")
+}
 const WRITER: &str = "writer";
 const READER: &str = "reader";
 

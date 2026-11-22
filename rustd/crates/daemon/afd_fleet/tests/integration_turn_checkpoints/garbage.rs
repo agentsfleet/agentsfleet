@@ -90,7 +90,7 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
 
 async fn age_object(files: &Files, object: &Uuid7) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.durable_task_objects SET updated_at=clock_timestamp()-interval '2 hours',reclaim_after_at=clock_timestamp()-interval '2 hours' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoint_objects SET updated_at=clock_timestamp()-interval '2 hours',reclaim_after_at=clock_timestamp()-interval '2 hours' WHERE id=$1")
         .bind(object).execute(&mut *connection).await?;
     Ok(())
 }
@@ -104,7 +104,7 @@ async fn race(
     let mut connection = files.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
     let controller: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM fleet.durable_task_objects WHERE id=$1 FOR UPDATE",
+        "SELECT pg_backend_pid() FROM runner.checkpoint_objects WHERE id=$1 FOR UPDATE",
     )
     .bind(object)
     .fetch_one(&mut *held)
@@ -174,8 +174,8 @@ async fn waiting(connection: &mut sqlx::PgConnection, blocker: i32) -> Checked<i
 async fn assert_storage(files: &Files, object: &Uuid7, live: bool) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let (exists, pending): (bool, bool) = sqlx::query_as("SELECT
-        EXISTS (SELECT 1 FROM fleet.durable_task_objects WHERE id=$1),
-        EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id=$1 AND completed_at IS NULL)")
+        EXISTS (SELECT 1 FROM runner.checkpoint_objects WHERE id=$1),
+        EXISTS (SELECT 1 FROM runner.checkpoint_purges WHERE checkpoint_object_id=$1 AND completed_at IS NULL)")
         .bind(object).fetch_one(&mut *connection).await?;
     assert_eq!(exists, live);
     assert!(!pending);

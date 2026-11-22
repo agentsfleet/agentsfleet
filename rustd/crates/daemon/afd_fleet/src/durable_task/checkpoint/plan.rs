@@ -20,6 +20,14 @@ use af_core::id::Uuid7;
 use af_wire::durable_task::{CheckpointMode, CheckpointPlan, CheckpointPlanInput};
 use sqlx::{PgConnection, types::Json};
 
+/// A task's allocation receipt: the plan the operation created and the request
+/// that created it.
+#[derive(sqlx::FromRow)]
+struct Receipt {
+    checkpoint_id: Uuid7,
+    request_digest: String,
+}
+
 #[derive(sqlx::FromRow)]
 struct Base {
     id: Uuid7,
@@ -47,17 +55,19 @@ pub(in crate::durable_task) async fn create(
         .clone()
         .filter(|task| *task == input.durable_task.durable_task_id)
         .ok_or(DurableTaskRefusal::NotFound)?;
-    let existing: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/plan_replay.sql"))
-        .bind(&task)
+    let scope = super::receipt_scope(&current.workspace_id, &task);
+    let existing: Option<Receipt> = sqlx::query_as(include_str!("sql/plan_replay.sql"))
+        .bind(&scope)
         .bind(durable_task_guard::wire(&input.operation_id)?)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("read immutable checkpoint plan replay"))?;
-    if let Some(id) = existing {
-        let plan = Plan::load(&mut tx, &id, &task).await?;
-        if plan.request_digest != digest {
+    if let Some(receipt) = existing {
+        if receipt.request_digest != digest {
             return Err(DurableTaskRefusal::ReplayConflict.into());
         }
+        let id = receipt.checkpoint_id;
+        let plan = Plan::load(&mut tx, &id, &task).await?;
         let pin: Pin = sqlx::query_as(include_str!("sql/plan_pin.sql"))
             .bind(&id)
             .bind("writer")
@@ -102,7 +112,7 @@ pub(in crate::durable_task) async fn create(
         run,
         input,
         &owned,
-        &digest,
+        (&digest, &scope),
         (repository, commit),
     )
     .await?;
@@ -141,7 +151,7 @@ async fn allocate(
     run: DurableTaskRun<'_>,
     input: &CheckpointPlanInput,
     owned: &execution::Owned,
-    digest: &str,
+    (digest, scope): (&str, &str),
     repository_target: (String, Option<String>),
 ) -> Result<Uuid7> {
     let (repository, commit) = repository_target;
@@ -196,10 +206,6 @@ async fn allocate(
             "checkpoint format_version",
         )?)
         .bind(&input.toolbox_digest)
-        .bind(
-            i32::try_from(pages.len())
-                .map_err(|_overflow| DurableTaskRefusal::CheckpointIncompatible)?,
-        )
         .bind(&pages)
         .bind(sql_counter(
             input.upload_budget_bytes,
@@ -217,6 +223,7 @@ async fn allocate(
         .bind(owned.current.fence)
         .bind(tasks.times().transfer_seconds())
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
+        .bind(scope)
         .execute(&mut *connection)
         .await
         .map_err(query("persist native checkpoint plan"))?;

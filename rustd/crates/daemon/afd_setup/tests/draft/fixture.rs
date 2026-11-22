@@ -223,7 +223,7 @@ impl Fixture {
             &self.workspace,
         );
         self.cleanup.record_text(
-            "DELETE FROM setup.replay_receipts WHERE scope LIKE $1",
+            "DELETE FROM thread.replay_receipts WHERE scope LIKE $1",
             &format!("{}:%", self.workspace),
         );
         self.cleanup

@@ -180,7 +180,7 @@ async fn altered(
         );
     }
 
-    Stored::delete(case, Pages::Overlay, &original.id).await;
+    Stored::delete(case, &original.id).await;
     refused(
         tasks
             .commit_checkpoint(

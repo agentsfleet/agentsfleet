@@ -7,27 +7,25 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 20] = [
+const IMMUTABLE: [&str; 18] = [
     "billing.usage_lines",
     "connector.oauth_nonces",
     "fleet.durable_task_adoptions",
-    "fleet.durable_task_checkpoint_operations",
     "fleet.durable_task_effect_payloads",
     "fleet.durable_task_effects",
-    "fleet.durable_task_identity_keys",
     "fleet.durable_task_input_receipts",
+    "fleet.durable_task_inputs",
     "fleet.durable_task_interpretations",
     "fleet.durable_task_items",
-    "fleet.durable_task_object_refs",
     "identity.memberships",
     "identity.tenants",
     "identity.users",
     "identity.workspaces",
     "model.decision_revisions",
+    "runner.checkpoint_identity_keys",
+    "runner.checkpoint_object_refs",
     "runner.history",
-    "runner.turn_checkpoint_operations",
-    "runner.turn_checkpoint_refs",
-    "setup.replay_receipts",
+    "thread.replay_receipts",
 ];
 
 /// Every runtime role, none of which may update an immutable table.

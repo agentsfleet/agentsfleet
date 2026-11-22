@@ -13,7 +13,7 @@ use super::{
 use sqlx::Connection as _;
 
 /// Gates every receipt write behind the holder.
-const GATE: &str = "LOCK TABLE setup.replay_receipts IN SHARE MODE";
+const GATE: &str = "LOCK TABLE thread.replay_receipts IN SHARE MODE";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

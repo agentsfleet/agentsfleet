@@ -322,7 +322,7 @@ async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head()
 async fn unverified(files: &Files, object: &af_wire::durable_task::CheckpointObject) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let verified: bool = sqlx::query_scalar(
-        "SELECT verified_at IS NOT NULL FROM fleet.durable_task_objects WHERE id=$1",
+        "SELECT verified_at IS NOT NULL FROM runner.checkpoint_objects WHERE id=$1",
     )
     .bind(af_core::id::Uuid7::parse(&object.object_id)?)
     .fetch_one(&mut *connection)

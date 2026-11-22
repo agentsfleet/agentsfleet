@@ -67,7 +67,7 @@ async fn planned(
 /// one unfinished capture at a time.
 async fn lapse(case: &Case, plan: &CheckpointPlan) {
     let lapsed = sqlx::query(
-        "UPDATE fleet.durable_task_checkpoints SET transfer_expires_at = now() - interval '1 minute' WHERE id = $1",
+        "UPDATE runner.checkpoints SET expires_at = now() - interval '1 minute' WHERE id = $1",
     )
     .bind(id(&plan.checkpoint_id))
     .execute(&mut *connection(case).await)
@@ -141,28 +141,21 @@ impl Pages {
     const fn select(self) -> &'static str {
         match self {
             Self::Overlay => {
-                "SELECT id, durable_task_checkpoint_id AS owner, page_number, digest, body FROM fleet.durable_task_checkpoint_pages WHERE id = $1"
+                "SELECT id, checkpoint_id AS owner, page_number, digest, body FROM runner.checkpoint_pages WHERE id = $1"
             }
             Self::Base => {
-                "SELECT id, durable_task_base_id AS owner, page_number, digest, body FROM fleet.durable_task_base_pages WHERE id = $1"
+                "SELECT id, checkpoint_base_id AS owner, page_number, digest, body FROM runner.checkpoint_pages WHERE id = $1"
             }
-        }
-    }
-
-    const fn delete(self) -> &'static str {
-        match self {
-            Self::Overlay => "DELETE FROM fleet.durable_task_checkpoint_pages WHERE id = $1",
-            Self::Base => "DELETE FROM fleet.durable_task_base_pages WHERE id = $1",
         }
     }
 
     const fn insert(self) -> &'static str {
         match self {
             Self::Overlay => {
-                "INSERT INTO fleet.durable_task_checkpoint_pages (id, durable_task_checkpoint_id, page_number, digest, body, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())"
+                "INSERT INTO runner.checkpoint_pages (id, checkpoint_id, page_number, digest, body, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())"
             }
             Self::Base => {
-                "INSERT INTO fleet.durable_task_base_pages (id, durable_task_base_id, page_number, digest, body, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())"
+                "INSERT INTO runner.checkpoint_pages (id, checkpoint_base_id, page_number, digest, body, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())"
             }
         }
     }
@@ -188,8 +181,9 @@ impl Stored {
             .expect("the frozen page row")
     }
 
-    async fn delete(case: &Case, pages: Pages, page: &af_core::id::Uuid7) {
-        let gone = sqlx::query(pages.delete())
+    /// Overlay and base pages share one table, so a page id alone deletes it.
+    async fn delete(case: &Case, page: &af_core::id::Uuid7) {
+        let gone = sqlx::query("DELETE FROM runner.checkpoint_pages WHERE id = $1")
             .bind(page)
             .execute(&mut *connection(case).await)
             .await
@@ -199,7 +193,7 @@ impl Stored {
 
     /// This row in place of the one stored under its id.
     async fn replace(&self, case: &Case, pages: Pages) {
-        Self::delete(case, pages, &self.id).await;
+        Self::delete(case, &self.id).await;
         self.replace_missing(case, pages).await;
     }
 

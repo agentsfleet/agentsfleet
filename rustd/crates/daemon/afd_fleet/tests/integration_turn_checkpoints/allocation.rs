@@ -29,7 +29,7 @@ fn store() -> Checked<TurnCheckpoints> {
 async fn plans(case: &Case) -> Checked<i64> {
     let mut connection = case.fixtures.database.acquire().await?;
     Ok(
-        sqlx::query_scalar("SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1")
+        sqlx::query_scalar("SELECT count(*) FROM runner.checkpoints WHERE turn_id=$1")
             .bind(&case.acquired.turn_id)
             .fetch_one(&mut *connection)
             .await?,
@@ -76,7 +76,7 @@ async fn a_replayed_begin_whose_plan_expired_conflicts() -> Checked {
     let input = case.command();
     let plan = case.begin(input.clone()).await?;
     let mut connection = case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.turn_checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(Uuid7::parse(&plan.checkpoint_id.0)?)
         .execute(&mut *connection)
         .await?;
@@ -139,8 +139,10 @@ async fn turn_resume_answers_the_committed_head_and_refuses_one_from_another_set
     );
 
     let mut connection = case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.turn_checkpoints SET setup_revision_id=$2 WHERE id=$1")
-        .bind(Uuid7::parse(&descriptor.checkpoint_id.0)?)
+    // The checkpoint's revision is a real fleet revision (`fk_checkpoints_revision`),
+    // so the run's moves instead: the comparison is the same either way.
+    sqlx::query("UPDATE thread.runs SET setup_revision_id=$2 WHERE id=$1")
+        .bind(&case.issued.run_id)
         .bind(mint_id())
         .execute(&mut *connection)
         .await?;

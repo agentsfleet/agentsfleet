@@ -138,7 +138,7 @@ async fn a_pin_at_its_last_resource_version_cannot_renew() -> Checked {
     let files = Files::new().await?;
     let pending = Pending::allocate(&files, &[], TurnWorkspace::ApiOnly, None).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.turn_checkpoint_pins SET resource_version=$2 WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoint_pins SET resource_version=$2 WHERE id=$1")
         .bind(Uuid7::parse(&pending.plan.pin.id)?)
         .bind(i64::MAX)
         .execute(&mut *connection)

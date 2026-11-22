@@ -1,2 +1,2 @@
-UPDATE fleet.durable_tasks SET durable_task_checkpoint_id = $2, checkpoint_cleanup_at = clock_timestamp(),
+UPDATE fleet.durable_tasks SET checkpoint_id = $2, checkpoint_cleanup_at = clock_timestamp(),
     resource_version = resource_version + 1, updated_at = now() WHERE id = $1

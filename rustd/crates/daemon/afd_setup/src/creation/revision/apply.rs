@@ -104,7 +104,6 @@ impl Creations {
         let won = replay::reserve(
             &mut tx,
             replay::Reservation {
-                receipt_id: &self.setup.drafts.mint(now)?,
                 person: &person,
                 scope: &scope,
                 operation,

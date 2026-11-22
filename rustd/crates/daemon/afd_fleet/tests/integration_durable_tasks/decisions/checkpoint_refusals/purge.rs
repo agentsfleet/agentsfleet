@@ -69,7 +69,7 @@ async fn purges(case: &Case) {
         .await
         .expect("a live object records this bucket's reference");
     let bucket: String = sqlx::query_scalar(
-        "SELECT bucket_reference FROM fleet.durable_task_objects WHERE workspace_id = $1",
+        "SELECT bucket_reference FROM runner.checkpoint_objects WHERE workspace_id = $1",
     )
     .bind(&case.scope.workspace_id)
     .fetch_one(&mut *connection(case).await)
@@ -112,7 +112,7 @@ async fn purges(case: &Case) {
 /// Seeds one due purge, as an object's deletion records it.
 async fn seed(case: &Case, object: &Uuid7, workspace: &Uuid7, bucket: &str) {
     sqlx::query(
-        "INSERT INTO fleet.durable_task_storage_purges (durable_task_object_id, workspace_id, durable_task_identity_key_id, bucket_reference, accounted_bytes, stored, next_attempt_at, created_at, updated_at) VALUES ($1, $2, $3, $4, 20, true, now() - interval '1 minute', now(), now())",
+        "INSERT INTO runner.checkpoint_purges (checkpoint_object_id, workspace_id, checkpoint_identity_key_id, bucket_reference, next_attempt_at, created_at, updated_at) VALUES ($1, $2, $3, $4, now() - interval '1 minute', now(), now())",
     )
     .bind(object)
     .bind(workspace)
@@ -126,7 +126,7 @@ async fn seed(case: &Case, object: &Uuid7, workspace: &Uuid7, bucket: &str) {
 /// Whether `object`'s purge completed, and whether it is still due now.
 async fn completed(case: &Case, object: &Uuid7) -> (bool, bool) {
     let (done, due): (bool, bool) = sqlx::query_as(
-        "SELECT completed_at IS NOT NULL, next_attempt_at <= now() FROM fleet.durable_task_storage_purges WHERE durable_task_object_id = $1",
+        "SELECT completed_at IS NOT NULL, next_attempt_at <= now() FROM runner.checkpoint_purges WHERE checkpoint_object_id = $1",
     )
     .bind(object)
     .fetch_one(&mut *connection(case).await)

@@ -1,7 +1,7 @@
 //! What a read receipt answers, without a database.
 #![expect(clippy::expect_used, reason = "a wrong answer fails the proof loudly")]
 
-use super::{Receipt, Resource, decide, sql};
+use super::{Receipt, Resource, bound, decide, sql};
 use af_core::error_code::{self, ErrorCode};
 use af_core::id::Uuid7;
 
@@ -10,10 +10,11 @@ const OTHER: &str = "019f0000-0000-7000-8000-000000000002";
 const RESOURCE: &str = "019f0000-0000-7000-8000-000000000003";
 const DIGEST: &str = "setup:v1:sha256:aa";
 
+/// The receipt `user` filed for a request whose digest is `digest`.
 fn receipt(user: &str, digest: &str, live: bool) -> Receipt {
+    let user = Uuid7::parse(user).expect("a canonical actor");
     Receipt {
-        user_id: Uuid7::parse(user).expect("a canonical actor"),
-        request_digest: digest.to_owned(),
+        request_digest: bound(&user, digest).expect("a bound digest"),
         resource_id: Uuid7::parse(RESOURCE).expect("a canonical resource"),
         live,
     }

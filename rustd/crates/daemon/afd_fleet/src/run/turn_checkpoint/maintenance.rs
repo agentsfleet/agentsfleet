@@ -56,23 +56,8 @@ impl Runs {
         if wrapped {
             *after = None;
         }
-        retain_orphans(self).await?;
         Ok((removed, deferred))
     }
-}
-
-async fn retain_orphans(runs: &Runs) -> Result<()> {
-    let mut connection = transaction::acquire(runs.pool()).await?;
-    sqlx::query(include_str!("sql/maintenance_orphans.sql"))
-        .bind(runs.limits().turn_checkpoints.retention_seconds())
-        .bind(BATCH)
-        .execute(&mut **connection)
-        .await
-        .map_err(query(
-            "collect opaque turn operations after source deletion",
-        ))?;
-    transaction::recycle(connection);
-    Ok(())
 }
 
 async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) -> Result<u64> {
@@ -98,6 +83,7 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
             removed = collect(
                 &mut tx,
                 event,
+                &super::receipt_scope(workspace, event),
                 runs.limits().turn_checkpoints.retention_seconds(),
             )
             .await?;
@@ -110,9 +96,14 @@ async fn retain(runs: &Runs, event: &Uuid7, fleet: &Uuid7, workspace: &Uuid7) ->
     Ok(removed)
 }
 
+/// Collects the turn's expired generations, then, once none is left and the
+/// turn settled past retention, its receipts a batch at a time. The head clears
+/// only when the scope holds no receipt, so the turn stays a candidate until
+/// every key is gone and no receipt is left behind without a turn to page it.
 async fn collect(
     connection: &mut sqlx::PgConnection,
     event: &Uuid7,
+    scope: &str,
     retention: i32,
 ) -> Result<u64> {
     let plans: Vec<Uuid7> = sqlx::query_scalar(include_str!("sql/maintenance_lock_plans.sql"))
@@ -140,20 +131,22 @@ async fn collect(
         .await
         .map_err(query("collect only expired unpinned turn generations"))?
         .rows_affected();
-    let terminal: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/maintenance_head.sql"))
+    sqlx::query(include_str!("sql/maintenance_operations.sql"))
+        .bind(scope)
+        .bind(BATCH)
         .bind(event)
         .bind(now)
         .bind(retention)
-        .fetch_optional(&mut *connection)
+        .execute(&mut *connection)
+        .await
+        .map_err(query("collect terminal opaque turn receipts"))?;
+    sqlx::query(include_str!("sql/maintenance_head.sql"))
+        .bind(event)
+        .bind(now)
+        .bind(retention)
+        .bind(scope)
+        .execute(connection)
         .await
         .map_err(query("collect terminal turn recovery head"))?;
-    if terminal.is_some() {
-        sqlx::query(include_str!("sql/maintenance_operations.sql"))
-            .bind(event)
-            .bind(BATCH)
-            .execute(connection)
-            .await
-            .map_err(query("collect terminal opaque turn receipts"))?;
-    }
     Ok(removed)
 }

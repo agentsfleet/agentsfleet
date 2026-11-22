@@ -151,9 +151,9 @@ async fn renew(
 
 async fn expire_pending(files: &Files, pending: &Pending) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second',operation_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second',operation_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(Uuid7::parse(&pending.plan.pin.id)?).execute(&mut *connection).await?;
-    sqlx::query("UPDATE runner.turn_checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+    sqlx::query("UPDATE runner.checkpoints SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
         .bind(Uuid7::parse(&pending.plan.checkpoint_id.0)?).execute(&mut *connection).await?;
     Ok(())
 }
@@ -221,7 +221,7 @@ async fn end_reader(
 ) -> Checked {
     if expire {
         let mut connection = files.case.fixtures.database.acquire().await?;
-        sqlx::query("UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
+        sqlx::query("UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1")
             .bind(Uuid7::parse(&original.id)?).execute(&mut *connection).await?;
         drop(connection);
         refused(

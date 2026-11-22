@@ -1,6 +1,6 @@
 WITH locked AS MATERIALIZED (
     SELECT id, owner_run_id, owner_fence, expires_at
-    FROM runner.turn_checkpoints
+    FROM runner.checkpoints
     WHERE turn_id = $1 AND ready_at IS NULL AND abandoned_at IS NULL
     ORDER BY generation
     FOR UPDATE
@@ -8,7 +8,7 @@ WITH locked AS MATERIALIZED (
     SELECT id, owner_run_id, owner_fence, expires_at, clock_timestamp() AS checked_at
     FROM locked
 )
-UPDATE runner.turn_checkpoints p
+UPDATE runner.checkpoints p
 SET abandoned_at = c.checked_at, updated_at = now()
 FROM checked c
 WHERE p.id = c.id

@@ -44,8 +44,8 @@ pub struct TurnCheckpointBegin {
     /// Bind operation replay to the exact captured root before any upload.
     #[garde(length(bytes, min = 64, max = 64), pattern(r"^[0-9a-f]+$"))]
     pub history_digest: String,
-    /// Empty only for an API-only capture. Bounded by its Postgres `INTEGER`
-    /// column, `runner.turn_checkpoints.page_count`.
+    /// Empty only for an API-only capture. Bounded by the Postgres `INTEGER`
+    /// that numbers each page, `runner.checkpoint_pages.page_number`.
     #[garde(range(max = i32::MAX.unsigned_abs()))]
     pub page_count: u32,
     /// Full-capture ceiling, including authentication tags. Bounded by its

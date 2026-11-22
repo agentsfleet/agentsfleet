@@ -1,7 +1,7 @@
 SELECT t.id AS durable_task_id, t.status, t.generation, t.stop_generation,
        l.durable_task_generation, l.durable_task_stop_generation, t.accepted_revision_id,
        t.goal_digest, t.covered_input_sequence, t.input_sequence, t.effect_cursor, t.confirmed_effect_watermark,
-       t.durable_task_checkpoint_id, t.used_runs < t.max_runs AS can_resume,
+       t.checkpoint_id, t.used_runs < t.max_runs AS can_resume,
        t.expires_at > clock_timestamp() AND t.used_model_nanos < t.max_model_nanos
          AND t.used_running_nanos < t.max_running_nanos AS within_limits,
        NOT EXISTS (SELECT 1 FROM fleet.durable_task_effects e JOIN fleet.durable_task_effect_states s ON s.durable_task_effect_id = e.id

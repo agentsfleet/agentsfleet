@@ -1,3 +1,3 @@
-UPDATE fleet.durable_task_checkpoints SET abandoned_at = clock_timestamp(), updated_at = now()
+UPDATE runner.checkpoints SET abandoned_at = clock_timestamp(), updated_at = now()
 WHERE durable_task_id = $1 AND ready_at IS NULL AND abandoned_at IS NULL
-  AND (owner_run_id <> $2 OR owner_fence <> $3 OR transfer_expires_at <= clock_timestamp())
+  AND (owner_run_id <> $2 OR owner_fence <> $3 OR expires_at <= clock_timestamp())

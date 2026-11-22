@@ -85,8 +85,8 @@ impl Plan {
         if self.setup_revision_id != owner.setup {
             return Err(TurnCheckpointRefusal::Incompatible.into());
         }
-        // `ck_turn_checkpoint_workspace` holds `has_workspace` to a toolbox
-        // digest's presence, so the digest alone names the workspace.
+        // `plan.sql` reads `has_workspace` as a toolbox digest's presence, so
+        // the digest alone names the workspace.
         let workspace = self
             .toolbox_digest
             .clone()
@@ -105,7 +105,7 @@ impl Plan {
             .covered_fold_sequences
             .as_ref()
             .ok_or(TurnCheckpointRefusal::Incompatible)?;
-        // `ck_turn_checkpoint_folds` holds both arrays to one length.
+        // `ck_checkpoints_folds` holds both arrays to one length.
         Ok(ids
             .iter()
             .zip(sequences)
@@ -117,7 +117,7 @@ impl Plan {
     }
 
     /// A committed plan's descriptor. Only commit writes `manifest_root`, and
-    /// `ck_turn_checkpoint_disposition` keeps a committed plan unabandoned, so
+    /// `ck_checkpoints_disposition` keeps a committed plan unabandoned, so
     /// a plan never committed refuses at its missing manifest.
     pub(super) fn descriptor(&self, owner: &TurnRunGuard<'_>) -> Result<TurnResume> {
         let descriptor = TurnResume {

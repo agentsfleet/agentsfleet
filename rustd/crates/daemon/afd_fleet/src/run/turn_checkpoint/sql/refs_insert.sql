@@ -1,3 +1,3 @@
-INSERT INTO runner.turn_checkpoint_refs (turn_checkpoint_id, workspace_id, durable_task_object_id, created_at)
+INSERT INTO runner.checkpoint_object_refs (checkpoint_id, workspace_id, checkpoint_object_id, created_at)
 SELECT $1, $2, unnest($3::uuid[]), now()
 ON CONFLICT DO NOTHING

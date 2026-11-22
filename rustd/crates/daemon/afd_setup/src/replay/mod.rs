@@ -74,10 +74,15 @@ impl Resource {
     }
 }
 
+/// The digest a receipt stores: the request's, bound to the person who sent
+/// it, so another person reusing the key reads as a changed body.
+pub(crate) fn bound(actor: &Uuid7, digest: &str) -> Result<String> {
+    self::digest(&(actor.as_str(), digest))
+}
+
 /// [`sql::READ`]'s row, by column name.
 #[derive(Deserialize, sqlx::FromRow)]
 pub(crate) struct Receipt {
-    user_id: Uuid7,
     request_digest: String,
     resource_id: Uuid7,
     /// Whether the named resource still exists.
@@ -123,7 +128,7 @@ pub(crate) fn decide(
     let Some(receipt) = receipt else {
         return Ok(None);
     };
-    if receipt.user_id != actor.as_str() || receipt.request_digest != digest {
+    if receipt.request_digest != bound(actor, digest)? {
         return Err(ErrorKind::Replay.into());
     }
     if !receipt.live {
@@ -133,7 +138,6 @@ pub(crate) fn decide(
 }
 
 pub(crate) struct Reservation<'a> {
-    pub(crate) receipt_id: &'a Uuid7,
     pub(crate) person: &'a Person,
     pub(crate) scope: &'a str,
     pub(crate) operation: &'a Uuid7,
@@ -161,11 +165,9 @@ pub(crate) async fn reserve(
         .await
         .map_err(query(CONTEXT))?;
     let inserted = sqlx::query(sql::INSERT)
-        .bind(reservation.receipt_id)
-        .bind(&reservation.person.id)
         .bind(reservation.scope)
         .bind(reservation.operation)
-        .bind(reservation.digest)
+        .bind(bound(&reservation.person.id, reservation.digest)?)
         .bind(reservation.resource)
         .execute(connection)
         .await

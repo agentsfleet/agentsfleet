@@ -107,7 +107,7 @@ pub(super) fn assert_state(
 }
 
 pub(super) async fn checkpoint_row(case: &Case, checkpoint: &Uuid7) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(c) FROM fleet.durable_task_checkpoints c WHERE id=$1")
+    sqlx::query_scalar("SELECT to_jsonb(c) FROM runner.checkpoints c WHERE id=$1")
         .bind(checkpoint)
         .fetch_one(
             &mut *case

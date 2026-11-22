@@ -82,10 +82,10 @@ A history-only receipt, such as an activity or a model change, is written opened
 | `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
 | `durable_task_id`, `durable_task_item_id`, `durable_task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(durable_task_id, thread_id, workspace_id)` to `fleet.durable_tasks` and `(durable_task_item_id, thread_id, workspace_id)` to `fleet.durable_task_items`, ON DELETE SET NULL on the id column, as today |
 | `durable_task_activity`, `durable_task_activity_sequence`, `durable_task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
-| `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `setup.replay_receipts` and the same key queues a new turn once it passes |
+| `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `thread.replay_receipts` and the same key queues a new turn once it passes |
 | `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose; NULL is the platform default |
 | `proposed_revision_id` | `UUID` | yes | `messages` | FK `fleet.revisions(id)` ON DELETE SET NULL: the proposal a setup turn wrote (`setup.candidates` until M253_004) |
-| `head_turn_checkpoint_id`, `next_checkpoint_generation` | `UUID`, `BIGINT` | yes | `runner.turn_recovery` | the turn's private recovery head and the generation its next checkpoint takes; `fk_turns_head_turn_checkpoint` → `runner.turn_checkpoints(id, turn_id)` ON DELETE SET NULL, deferred (folded in M253_004) |
+| `head_checkpoint_id`, `next_checkpoint_generation` | `UUID`, `BIGINT` | yes | `runner.turn_recovery` | the turn's private recovery head and the generation its next checkpoint takes; `fk_turns_head_checkpoint` → `runner.checkpoints(id, turn_id)` ON DELETE SET NULL, deferred (folded in M253_004) |
 | `save_requested`, `save_error_code` | `BOOLEAN`, `TEXT` | no, yes | `messages` | a setup turn that saves the head, and why a checked save was refused |
 
 Indexes:
@@ -198,8 +198,8 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | Table | Old column | New column and FK |
 |-------|------------|-------------------|
 | `runner.turn_recovery` | `event_id` → `fleet.events` | folded into `thread.turns` (M253_004) |
-| `runner.turn_checkpoints`, `turn_checkpoint_pins`, `turn_checkpoint_refs` | `event_id` | `turn_id`; `runner.turn_checkpoints.turn_id` → `thread.turns(id)` ON DELETE CASCADE (M253_004) |
-| `runner.turn_checkpoint_operations` | `event_id` | `turn_id`, `fk_turn_checkpoint_operations_turn_id` → `thread.turns(id)` ON DELETE CASCADE (done): an allocation is made only under the turn's recovery head, so the turn always exists |
+| `runner.checkpoints` (was `runner.turn_checkpoints`; its pins, pages and refs hang off it) | `event_id` | `turn_id`; `runner.checkpoints.turn_id` → `thread.turns(id)` ON DELETE CASCADE (M253_004) |
+| `thread.replay_receipts` (was `runner.turn_checkpoint_operations`) | `event_id` | none: the scope `<workspace>:turn:<turn>:checkpoint` names the turn and no foreign key holds it, like every retry key (M253_004); retention deletes a terminal turn's receipts before clearing its head |
 | `thread.items` | `event_id` → `fleet.events` | `turn_id` → `thread.turns(id)` ON DELETE CASCADE (done; the file moved to `20261108125110` to follow `thread.turns`) |
 | `fleet.approval_gates` | `event_id` | `turn_id` (done), null for an install grant card. The FK to `thread.turns(id)` ON DELETE CASCADE waits for M253_003: the gate fixtures still bind a minted id with no turn behind it |
 | `thread.deliveries` | `event_id` | `turn_id` (done). No FK yet: a Slack notice owes a delivery that names its own row id (`afd_ingress/src/slack/notice.rs`), so it has no turn |

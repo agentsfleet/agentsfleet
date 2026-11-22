@@ -146,13 +146,14 @@ there is no generic repository trait.
                                  │ source_fleet_revision_id ──▶ fleet.revisions
                                  ◀── fleet.revisions.draft_id (a proposal, until installed)
               thread.threads (1:1) ──▶ drafts; thread.turns.proposed_revision_id ──▶ fleet.revisions
- replay_receipts (no FKs: a retry key outlives erasure)
+ thread.replay_receipts (no FKs: a retry key outlives erasure)
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `drafts` | One private setup chat; its turns are `thread.turns` rows on the draft's thread |  |
-| `replay_receipts` | Every setup retry key: create draft, send message, save | append-only, swept at a fixed age |
+
+Setup's retry keys (create draft, send message, save, apply) live in `thread.replay_receipts`, the one receipt table, since M253_004.
 
 - **Model pointers.** `drafts.tenant_model_id` and `thread.turns.tenant_model_id` are NULL for the
   platform default and otherwise reference a `model.tenant_models` row of the same tenant. The wire
@@ -172,7 +173,7 @@ there is no generic repository trait.
   and the fleet's next number, `installed` turns true, and `draft_id` clears. The draft's
   `head_revision_id` keeps pointing at it. The draft numbers its next proposal past every one it
   still owns (`sql/draft/lock.sql`).
-- **Retry window.** A replay receipt answers its key for 24 hours from `created_at` by default (`[setup] replay_window_hours`, [configuration reference](./config_reference.md); `afd_setup`'s `DEFAULT_REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused; a deleted resource returns Gone.
+- **Retry window.** A setup replay receipt answers its key for 24 hours from `created_at` by default (`[setup] replay_window_hours`, [configuration reference](./config_reference.md); `afd_setup`'s `DEFAULT_REPLAY_WINDOW`). Inside the window, the same key and body return the first result. A different body or user is refused: the stored digest binds the request to its person (`afd_setup`'s `replay::bound`). A deleted resource returns Gone.
 - At or after the boundary, the key is new. The next claim deletes the expired receipt and files its own (`afd_setup`'s `replay/sql/expire.sql`). An expired receipt whose key is never reused stays.
 - The message API returns `thread.turns.operation_id`, written at acceptance, because the turn outlives its receipt.
 - **Lapsed runs.** A setup run is a `thread.runs` row, so it lapses as a fleet run does: the next
@@ -203,19 +204,11 @@ there is no generic repository trait.
 | `durable_task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
 | `durable_task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; kept with opaque effect |
 | `durable_task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
-| `durable_task_identity_keys` | Wrapped workspace/repository content-identity versions | immutable (rule 9); one per workspace/repository; written and removed under `identity.lock_workspace_storage`; independent of object encryption keys and master-key rewrapping |
-| `durable_task_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
-| `durable_task_checkpoints` | Task capture plan and complete compatible recovery generation | native sequence, fixed pages/deadlines; ready incremental manifest alone becomes recovery pointer |
-| `durable_task_checkpoint_operations` | Opaque capture-plan retry receipts | append-only; survives private plan retention and owner deletion |
-| `durable_task_checkpoint_pages` | Bounded immutable incremental page bytes | native page identity/position; identical replay is read without update |
-| `durable_task_base_pages` | Independently kept immutable base pages | cascades with base rather than its first task |
-| `durable_task_objects` | Random scoped encrypted object, wrapped key and frozen ciphertext descriptor | one live keyed-content identity; quota charged once; erasure records purge custody |
-| `durable_task_object_refs` | Workspace-scoped checkpoint/object or base/object edges | composite ownership keys; one owner per edge; referenced objects cannot be collected |
-| `durable_task_object_pins` | One current capture/restore operation and deadline | versioned run/fence; retention serializes with task pin acquisition |
-| `durable_task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `approval_gates` | A risky action waiting for a person | `turn_id` names its turn, with no foreign key yet |
 | `activity_counters` | Trigger-maintained dashboard totals | `thread.turns` triggers count each turn once, when it opens |
+
+A durable task's checkpoints, pages, pins, bases and objects live in the one checkpoint system in `runner` (`durable_tasks.checkpoint_id` points at its recovery generation), and its plan receipts in `thread.replay_receipts`.
 
 The live setup is read from `revisions` only; `fleets` keeps no config copy.
 `revisions.review_context` is the frozen review subject (creator, source pin, instance name) that
@@ -229,7 +222,8 @@ omit its model and review then resolves the tenant default.
 ```
  fleet.fleets / setup.drafts ◀── threads (1:1, id = owner id) ──▶ runner.runners (last_runner_id)
  threads ◀── turns ◀── items; threads ◀── compactions (1:1)
- turns ◀── runner.turn_checkpoints; turns.head_turn_checkpoint_id ──▶ runner.turn_checkpoints
+ turns ◀── runner.checkpoints; turns.head_checkpoint_id ──▶ runner.checkpoints
+ replay_receipts (no FKs: a retry key outlives erasure)
  turns ◀── turns (resumes_turn_id); turns ──▶ fleet.durable_tasks, fleet.durable_task_items (composite scope)
  runs ──▶ runner.runners; ··▶ fleets, drafts, turns: opaque, no FK
  deliveries ──▶ fleet.fleets; ··▶ turns (turn_id): opaque, no FK yet
@@ -240,10 +234,11 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Notes |
 |---|---|---|
 | `threads` | One conversation per fleet and per draft: next fencing token, sticky runner, warm sandbox hold, resume bookmark | `ck_threads_one_owner`: exactly one of `fleet_id` and `draft_id`, and `id` equals it; `resume_context` is the report's resume bookmark |
-| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB; `head_turn_checkpoint_id` and `next_checkpoint_generation` are the turn's private recovery head, shared by its replacement runs (folded from `runner.turn_recovery` in M253_004) |
+| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB; `head_checkpoint_id` and `next_checkpoint_generation` are the turn's private recovery head, shared by its replacement runs (folded from `runner.turn_recovery` in M253_004) |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
 | `compactions` | Private working notes, one row per thread: a setup draft's or a fleet chat's; written only by a compaction and deleted with the thread's owner (`memory.context_checkpoints` until M253_004) | `api_runtime` reaches it like every thread table; the memory schema stays behind `memory_runtime` |
+| `replay_receipts` | Every retry key: setup's create draft, send message, save and apply, and each turn or durable task checkpoint allocation | primary key `(scope, operation_id)`; the scope names workspace and owner (`<workspace>:turn:<turn>:checkpoint`, `<workspace>:durable_task:<task>:checkpoint`); append-only (rule 9); no foreign key, so a receipt outlives the resource it created. Setup reuses a key after its replay window; turn retention deletes a terminal turn's keys before its head; a task's keys stay |
 | `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; a delivery whose inline attempts fail is abandoned |
 
 `runs.turn_created_at` is the producer's instant billing uses, copied so billing reads it without a join.
@@ -255,6 +250,10 @@ The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassig
  runners ◀── history
  runners ◀── thread.runs, thread.threads (last_runner_id)
  runners ──▶ identity.tenants (tenant_id, NULL for a platform runner)   ON DELETE CASCADE
+ checkpoints ──▶ thread.turns XOR fleet.durable_tasks; checkpoints ──▶ checkpoint_bases
+ checkpoints, checkpoint_bases ◀── checkpoint_pages, checkpoint_object_refs ──▶ checkpoint_objects
+ checkpoints ◀── checkpoint_pins; checkpoint_objects ──▶ checkpoint_identity_keys
+ checkpoint_purges: no FK, written by the object delete trigger
 ```
 
 | Table | Purpose | Notes |
@@ -262,6 +261,14 @@ The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassig
 | `runners` | An enrolled host: policy, health, self-test, and the tenant that owns it | `platform_owned` says who owns it and `tenant_id` is set exactly when it is false; both fixed after insert by a trigger; unique `(tenant_id, host_id)` with nulls not distinct, so each owner, the platform included, registers a host once; a check refuses a decision model on a tenant row; optional reviewed decision-model selection; referenced models cannot be deleted |
 | `decision_calls` | Kept physical-call identity, frozen prices, reservations and canonical usage | opaque original ownership survives deletion; unresolved rows prevent whole-reservation release |
 | `decision_payloads` | Bounded private evidence and answers for a call | fleet deletion removes payloads while accounting stays |
+| `checkpoints` | One checkpoint system: a turn's or a durable task's capture plan and recoverable generation | exactly one owner (`ck_checkpoints_one_owner`, `num_nonnulls(turn_id, durable_task_id) = 1`); unique owner/generation and one pending capture per owner; a turn row carries its sealed root and folded prefix, a task row its generations, mode, repository, cursors and base, all or none; `revision_id` is the fleet revision the run executed |
+| `checkpoint_pages` | Bounded immutable manifest pages | owner is a checkpoint or a base, exactly one; one freeze trigger; identical replay is read without update |
+| `checkpoint_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
+| `checkpoint_objects` | The one encrypted object custody for turn and task checkpoints | one live keyed-content identity; erasure records purge custody |
+| `checkpoint_identity_keys` | Wrapped workspace/repository content-identity versions | immutable (rule 9); one per workspace/repository; written and removed under `identity.lock_workspace_storage`; independent of object encryption keys and master-key rewrapping |
+| `checkpoint_object_refs` | Workspace-scoped checkpoint/object or base/object edges | one owner per edge; referenced objects cannot be collected; append-only (rule 9) |
+| `checkpoint_pins` | A capture or restore's bounded custody of one checkpoint | turn shape keys its reader by operation, task shape carries the generations its guard compares, exactly one (`ck_checkpoint_pins_shape`); a deadline never past its operation's |
+| `checkpoint_purges` | Durable remote-delete custody for a removed object | opaque object/workspace/identity/location; no owner foreign key |
 | `history` | Append-only runner history | unique `(runner_id, last_seen_at) WHERE last_seen_at IS NOT NULL`: an offline event stamps the heartbeat it observed, so one stale episode is one row |
 
 Run counts per runner are a metric, `agentsfleet_runner_runs_total`, and no table holds them.
@@ -330,8 +337,8 @@ that reads them (rule 7).
 |---|---|---|---|
 | Draft (user delete) | its thread, turns and runs, the proposals it still owns, its compaction | usage lines, replay receipts, installed revisions | none |
 | User | their drafts (as above), memberships, CLI credentials | api keys they created, usage lines | none |
-| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect/adoption/checkpoint-operation receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
-| Workspace | drafts, fleets (as above), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts | Each removed object first records its location and charged bytes for remote cleanup |
+| Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect payloads, turn and task checkpoints with their pages, pins and refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect/adoption receipts and checkpoint-allocation replay receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
+| Workspace | drafts, fleets (as above), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect receipts, replay receipts and checkpoint purges | Each removed object first records its location for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
@@ -422,6 +429,14 @@ Added by this milestone:
     `idx_durable_task_wait_due` and `idx_durable_task_wait_completion` and the check `ck_durable_task_wait_claim` went with them.
 - **Duplicates dropped by the M253 audit.** `fleet.durable_task_bases.page_count` and `runner.turn_checkpoints.page_count`
   restated `cardinality(page_ids)`, and each check now reads the array.
+- **One checkpoint system (M253_004).** Turn and durable-task checkpoints became one set in `runner`: `checkpoints`,
+  `checkpoint_pages`, `checkpoint_bases`, `checkpoint_objects`, `checkpoint_identity_keys`, `checkpoint_object_refs`,
+  `checkpoint_pins` and `checkpoint_purges`, from 14 tables. Every retry key moved into `thread.replay_receipts`, keyed
+  `(scope, operation_id)`; setup's `id` and `user_id` went, the actor folded into `request_digest`. Duplicates went
+  with the merge: `turn_checkpoints.has_workspace` (the toolbox digest's presence), `durable_task_checkpoints.page_count`
+  (`cardinality(page_ids)`), `durable_task_checkpoints.transfer_expires_at` (always `expires_at`), the pins' task scope
+  copies, and the receipts' owner columns. `durable_task_storage_purges.accounted_bytes` and `stored` were written and
+  never read. `fleet.durable_task_inputs.updated_at` always equalled `created_at`, so the table is immutable (rule 9).
 - **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
   and the dashboard. `fleet.durable_task_effects.source_item_id` is a field of the public task-effect input.
 

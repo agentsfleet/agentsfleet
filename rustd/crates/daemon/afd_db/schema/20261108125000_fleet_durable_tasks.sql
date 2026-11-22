@@ -47,7 +47,7 @@ CREATE TABLE fleet.durable_tasks (
     CONSTRAINT ck_durable_tasks_input_coverage CHECK (covered_input_sequence <= input_sequence),
     CONSTRAINT ck_durable_tasks_effect_coverage CHECK (confirmed_effect_watermark <= effect_cursor),
     -- Its foreign key closes a cycle and is added with the checkpoint table.
-    durable_task_checkpoint_id UUID,
+    checkpoint_id UUID,
     -- NULL means no plan allocated yet; otherwise a monotonic cursor.
     checkpoint_sequence BIGINT CHECK (checkpoint_sequence >= 0),
     checkpoint_cleanup_at TIMESTAMPTZ(3),
@@ -69,7 +69,7 @@ CREATE INDEX idx_durable_tasks_unfinished_created
     ON fleet.durable_tasks (fleet_id, created_at DESC, id DESC)
     WHERE terminal_at IS NULL;
 
-CREATE INDEX idx_durable_task_checkpoint ON fleet.durable_tasks (durable_task_checkpoint_id) WHERE durable_task_checkpoint_id IS NOT NULL;
+CREATE INDEX idx_durable_tasks_checkpoint_id ON fleet.durable_tasks (checkpoint_id) WHERE checkpoint_id IS NOT NULL;
 
 CREATE INDEX idx_durable_task_checkpoint_cleanup ON fleet.durable_tasks (checkpoint_cleanup_at, id)
     WHERE checkpoint_cleanup_at IS NOT NULL;

@@ -1,7 +1,7 @@
-UPDATE fleet.durable_task_checkpoints c SET abandoned_at = clock_timestamp(), updated_at = now()
+UPDATE runner.checkpoints c SET abandoned_at = clock_timestamp(), updated_at = now()
 FROM fleet.durable_tasks t
 WHERE c.durable_task_id = $1 AND t.id = c.durable_task_id AND c.ready_at IS NULL AND c.abandoned_at IS NULL
-  AND (c.transfer_expires_at <= clock_timestamp() OR t.generation <> c.durable_task_generation
+  AND (c.expires_at <= clock_timestamp() OR t.generation <> c.durable_task_generation
        OR t.stop_generation <> c.stop_generation OR t.terminal_at IS NOT NULL
        OR NOT EXISTS (SELECT 1 FROM thread.runs l JOIN thread.threads s ON s.fleet_id = l.fleet_id
            WHERE l.id = c.owner_run_id AND l.fencing_token = c.owner_fence AND l.status = $2

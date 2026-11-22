@@ -18,7 +18,7 @@ WITH probe AS (
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
                     AND saved.durable_task_generation IS NULL
-                    AND saved.head_turn_checkpoint_id IS NOT NULL
+                    AND saved.head_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
                   SELECT 1 FROM thread.threads s
@@ -56,7 +56,7 @@ SELECT
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
                     AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
                     AND saved.durable_task_generation IS NULL
-                    AND saved.head_turn_checkpoint_id IS NOT NULL
+                    AND saved.head_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (
                     SELECT 1 FROM thread.threads s

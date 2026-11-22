@@ -74,7 +74,7 @@ pub(super) async fn with_execution(
     if purpose == CheckpointTransferPurpose::Upload
         && (plan.owner_run_id != run.run_id.as_str()
             || plan.owner_fence != owned.current.fence
-            || plan.transfer_deadline <= clock::now())
+            || plan.expires_at <= clock::now())
     {
         return Err(DurableTaskRefusal::StaleState.into());
     }

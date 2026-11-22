@@ -186,7 +186,7 @@ async fn reserve(custody: &mut FileOwner<'_>, new: &[NewObject], bucket: &str) -
             .execute(&mut *custody.owner.tx)
             .await
             .map_err(query("allocate encrypted turn chunks"))?;
-        sqlx::query(include_str!("sql/plan_bytes.sql"))
+        sqlx::query(checkpoint::PLAN_BYTES)
             .bind(&custody.plan.id)
             .bind(bytes)
             .execute(&mut *custody.owner.tx)

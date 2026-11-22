@@ -309,7 +309,7 @@ Use UUIDv7 native row identities and application-owned state constants, followin
 All task-owned rows carry workspace and fleet ownership; composite foreign keys reject cross-workspace links.
 Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollars with overflow checks.
 
-| Table or proposed addition in the fleet schema | Required fields and uniqueness |
+| Table or proposed addition | Required fields and uniqueness |
 |---|---|
 | `fleet.durable_tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
 | `fleet.durable_task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique turn/ordinal; conflicting replay returns 409. |
@@ -317,13 +317,14 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 | `fleet.durable_task_waits` | Task/generation, arming run, expected head and the check results read when it was armed, consumption or cancellation. One current wait per task through a partial unique index. |
 | `fleet.durable_task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
 | Proposed `durable_task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
-| `fleet.durable_task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
-| `fleet.durable_task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
-| `fleet.durable_task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
-| `fleet.durable_task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
-| `fleet.durable_task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
-| `fleet.durable_task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
-| `fleet.durable_task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
+| `runner.checkpoints` | One checkpoint system for a durable task or an ordinary turn, exactly one owner (`num_nonnulls(turn_id, durable_task_id) = 1`). A task's row carries its generation, the task and stop generations it was planned under, mode, repository, optional base and commit, budgets, history digest, covered-input cursor, effect watermark, manifest root, format/toolbox, owner run and fence, and transfer deadline (`expires_at`); those task columns are present together or not at all. Unique owner/generation; one pending capture per owner. Only a ready incremental manifest can become the task recovery pointer (`durable_tasks.checkpoint_id`). |
+| `runner.checkpoint_pages` | Native UUIDv7 page identity, owner (a checkpoint or a retained base, exactly one), page number, digest and complete bounded page bytes. Unique owner/page number; one freeze trigger makes a completed page immutable. |
+| `runner.checkpoint_bases` | Workspace/repository identity, exact Git commit, immutable base manifest, logical bytes, entry count and ready/retired state. One live base per workspace, repository, commit, format and toolbox. |
+| `runner.checkpoint_objects` | The one encrypted object custody for task and turn checkpoints: scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
+| `runner.checkpoint_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
+| `runner.checkpoint_object_refs` | Checkpoint/object or retained-base/object edges, exactly one owner; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
+| `runner.checkpoint_pins` | Capture-or-restore pin on one checkpoint: kind, owner run and fence, the task and stop generations a task pin was taken under (a turn pin carries its operation instead), renewable expiry bounded by its operation deadline. One live task pin per checkpoint and kind. |
+| `thread.replay_receipts` | Opaque checkpoint-plan retry receipts, scope `<workspace>:durable_task:<task>:checkpoint`, shared with turn allocations and setup operations. No foreign key; survives plan retention and owner deletion. |
 | Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
@@ -334,8 +335,8 @@ Object reference rows have either a checkpoint foreign key or base foreign key, 
 Deleting a task removes its references after retention rules permit; shared bases/chunks survive while another retained owner references them.
 
 Workspace deletion records durable storage-purge receipts before deleting ownership rows.
-Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
-`fleet.durable_task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
+Receipts contain only random object identities, workspace and identity-key references and bucket references, and survive owner-row removal until cleanup completes.
+`runner.checkpoint_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
 
 Task mutations lock workspace and fleet parents against deletion. They then lock the thread row, turns by sequence, run, tasks by identity and subordinate rows by identity.
 

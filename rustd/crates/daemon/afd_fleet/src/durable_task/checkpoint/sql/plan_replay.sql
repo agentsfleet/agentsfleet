@@ -1,1 +1,3 @@
-SELECT durable_task_checkpoint_id FROM fleet.durable_task_checkpoint_operations WHERE durable_task_id = $1 AND operation_id = $2
+SELECT resource_id AS checkpoint_id, request_digest
+FROM thread.replay_receipts
+WHERE scope = $1 AND operation_id = $2

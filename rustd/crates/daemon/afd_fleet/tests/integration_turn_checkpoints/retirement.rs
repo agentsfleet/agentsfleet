@@ -163,8 +163,8 @@ async fn writer_state(files: &Files, pending: &Pending) -> Checked<(bool, bool, 
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_as(
         "SELECT p.ready_at IS NOT NULL, p.abandoned_at IS NOT NULL, pin.released_at IS NOT NULL
-         FROM runner.turn_checkpoints p JOIN runner.turn_checkpoint_pins pin
-            ON pin.turn_checkpoint_id=p.id
+         FROM runner.checkpoints p JOIN runner.checkpoint_pins pin
+            ON pin.checkpoint_id=p.id
          WHERE p.id=$1 AND pin.id=$2",
     )
     .bind(Uuid7::parse(&pending.plan.checkpoint_id.0)?)
@@ -234,10 +234,11 @@ async fn private_rows(files: &Files) -> Checked<(i64, i64, i64)> {
     Ok(sqlx::query_as(
         "SELECT
          (SELECT count(*) FROM thread.turns WHERE id=$1 AND next_checkpoint_generation IS NOT NULL),
-         (SELECT count(*) FROM runner.turn_checkpoints WHERE turn_id=$1),
-         (SELECT count(*) FROM runner.turn_checkpoint_operations WHERE turn_id=$1)",
+         (SELECT count(*) FROM runner.checkpoints WHERE turn_id=$1),
+         (SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $2)",
     )
     .bind(&files.case.acquired.turn_id)
+    .bind(super::receipts_of(&files.case.acquired.turn_id))
     .fetch_one(&mut *connection)
     .await?)
 }
@@ -377,7 +378,7 @@ async fn retention_skips_an_owner_that_went_while_it_waited() -> Checked {
             )
         } else {
             (
-                "UPDATE thread.turns SET head_turn_checkpoint_id=NULL, next_checkpoint_generation=NULL WHERE id=$1",
+                "UPDATE thread.turns SET head_checkpoint_id=NULL, next_checkpoint_generation=NULL WHERE id=$1",
                 &files.case.acquired.turn_id,
             )
         };

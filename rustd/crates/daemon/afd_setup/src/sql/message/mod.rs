@@ -1,7 +1,7 @@
 //! Request sequence and its selected model are accepted in the draft transaction.
 //!
 //! A message keeps the operation key that queued it, which its page returns;
-//! the 24-hour retry window is `setup.replay_receipts`, swept long before
+//! the 24-hour retry window is `thread.replay_receipts`, swept long before
 //! the message goes. Its usage is its draft runs' usage lines, never a
 //! message column.
 

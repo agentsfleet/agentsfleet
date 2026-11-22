@@ -18,18 +18,23 @@ const INSIDE: Duration = DAY.saturating_sub(Duration::from_secs(60));
 /// An hour past the window.
 pub(super) const PAST: Duration = DAY.saturating_add(Duration::from_hours(1));
 
-/// Re-files the receipt `$1` holds for resource `$2` as user `$3`, `$4` ago.
+/// A stored digest no request of this fixture's person hashes to: a receipt
+/// another person filed binds its digest to them (`replay::bound`).
+pub(super) const FOREIGN: Option<&str> = Some("setup:v1:sha256:foreign");
+
+/// Re-files the receipt `$1` holds for resource `$2`, `$4` ago, under digest
+/// `$3` when one is given and its own otherwise.
 ///
 /// Receipts refuse UPDATE, so the row is deleted and inserted again under its
-/// own id in one statement.
+/// own key in one statement.
 const REFILE: &str = "\
 WITH old AS (
- DELETE FROM setup.replay_receipts WHERE operation_id=$1 AND resource_id=$2
+ DELETE FROM thread.replay_receipts WHERE operation_id=$1 AND resource_id=$2
  RETURNING *
 )
-INSERT INTO setup.replay_receipts
- (id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-SELECT id,$3,scope,operation_id,request_digest,resource_id,
+INSERT INTO thread.replay_receipts
+ (scope,operation_id,request_digest,resource_id,created_at)
+SELECT scope,operation_id,COALESCE($3::text,request_digest),resource_id,
        statement_timestamp() - $4::interval
   FROM old";
 
@@ -37,13 +42,13 @@ pub(super) async fn refile(
     f: &Fixture,
     operation: &Uuid7,
     resource: &Uuid7,
-    user: &Uuid7,
+    digest: Option<&str>,
     age: Duration,
 ) {
     let filed = sqlx::query(REFILE)
         .bind(operation)
         .bind(resource)
-        .bind(user)
+        .bind(digest)
         .bind(age)
         .execute(&mut *f.connection().await)
         .await
@@ -64,7 +69,7 @@ pub(super) async fn message_id(f: &Fixture, draft: &Uuid7, sequence: i64) -> Uui
 
 /// How many receipts name `resource`.
 pub(super) async fn receipts(f: &Fixture, resource: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE resource_id=$1")
+    sqlx::query_scalar("SELECT count(*) FROM thread.replay_receipts WHERE resource_id=$1")
         .bind(resource)
         .fetch_one(&mut *f.connection().await)
         .await
@@ -97,20 +102,20 @@ async fn test_replay_receipt_window() {
         .expect("send");
     assert_eq!(first.sequence, "1");
     let message = message_id(&f, &draft, 1).await;
-    refile(&f, &key, &message, &f.owner, INSIDE).await;
+    refile(&f, &key, &message, None, INSIDE).await;
     let replayed = send(&f, &draft, &key, "Watch checkout").await;
     let replayed = replayed.expect("the same key and body replay inside the window");
     assert!(replayed.replayed);
     assert_eq!(replayed.sequence, "1");
     let changed = send(&f, &draft, &key, "Watch billing").await;
     assert_eq!(changed.expect_err("changed body").code(), SETUP_REPLAY);
-    refile(&f, &key, &message, &f.member, INSIDE).await;
+    refile(&f, &key, &message, FOREIGN, INSIDE).await;
     let foreign = send(&f, &draft, &key, "Watch checkout").await;
     assert_eq!(
         foreign.expect_err("another user's key").code(),
         SETUP_REPLAY
     );
-    refile(&f, &key, &message, &f.owner, DAY).await;
+    refile(&f, &key, &message, None, DAY).await;
     let fresh = send(&f, &draft, &key, "Watch checkout").await;
     let fresh = fresh.expect("the key is new at the boundary");
     assert!(!fresh.replayed);
@@ -142,13 +147,13 @@ async fn a_deleted_draft_answers_gone_inside_the_window_and_is_new_at_its_bounda
     let created = f.drafts.create(f.access(), request.clone(), now()).await;
     let old = created.expect("create").draft.id;
     f.drafts.delete(f.access(), &old).await.expect("delete");
-    refile(&f, &key, &old, &f.owner, INSIDE).await;
+    refile(&f, &key, &old, None, INSIDE).await;
     let gone = f.drafts.create(f.access(), request.clone(), now()).await;
     assert_eq!(
         gone.expect_err("deleted inside the window").code(),
         SETUP_GONE
     );
-    refile(&f, &key, &old, &f.owner, DAY).await;
+    refile(&f, &key, &old, None, DAY).await;
     let created = f.drafts.create(f.access(), request, now()).await;
     let fresh = created.expect("the key is new at the boundary").draft.id;
     assert_ne!(fresh, old);
@@ -164,7 +169,7 @@ async fn concurrent_claims_on_an_expired_key_file_exactly_one_new_receipt() {
     let request = f.request(key.clone(), Some("Watch checkout"));
     let created = f.drafts.create(f.access(), request.clone(), now()).await;
     let old = created.expect("create").draft.id;
-    refile(&f, &key, &old, &f.owner, PAST).await;
+    refile(&f, &key, &old, None, PAST).await;
     let (left, right) = tokio::join!(
         f.drafts.create(f.access(), request.clone(), now()),
         f.drafts.create(f.access(), request, now()),

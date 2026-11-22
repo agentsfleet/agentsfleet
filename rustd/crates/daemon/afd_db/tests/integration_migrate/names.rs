@@ -97,14 +97,15 @@ fn key_names_match(
     } else {
         arity > 1
             && (column == target_column
+                    // A task's recovery pointer proves the checkpoint is the task's own.
                     || (table == "durable_tasks"
                         && column == "id"
-                        && target == "durable_task_checkpoints"
+                        && target == "checkpoints"
                         && target_column == "durable_task_id")
                     // A turn's recovery head proves the checkpoint is the turn's own.
                     || (table == "turns"
                         && column == "id"
-                        && target == "turn_checkpoints"
+                        && target == "checkpoints"
                         && target_column == "turn_id")
                     // A fleet's thread is keyed by the fleet's id, so a turn
                     // scopes its task by `thread_id`.
@@ -115,51 +116,51 @@ fn key_names_match(
 #[test]
 fn composite_scope_columns_preserve_target_identity() {
     assert!(key_names_match(
-        "durable_task_checkpoints",
-        "durable_task_base_id",
-        "durable_task_bases",
+        "checkpoints",
+        "checkpoint_base_id",
+        "checkpoint_bases",
         "id",
         1
     ));
     assert!(key_names_match(
-        "durable_task_checkpoints",
+        "checkpoints",
         "repository",
-        "durable_task_bases",
+        "checkpoint_bases",
         "repository",
         3
     ));
     assert!(key_names_match(
         "durable_tasks",
         "id",
-        "durable_task_checkpoints",
+        "checkpoints",
         "durable_task_id",
         4
     ));
     assert!(!key_names_match(
-        "durable_task_checkpoints",
+        "checkpoints",
         "base_id",
-        "durable_task_bases",
+        "checkpoint_bases",
         "id",
         1
     ));
     assert!(!key_names_match(
-        "durable_task_checkpoints",
+        "checkpoints",
         "wrong_repository",
-        "durable_task_bases",
+        "checkpoint_bases",
         "repository",
         3
     ));
     assert!(!key_names_match(
         "other_durable_tasks",
         "id",
-        "durable_task_checkpoints",
+        "checkpoints",
         "durable_task_id",
         4
     ));
     assert!(!key_names_match(
         "durable_tasks",
         "id",
-        "durable_task_checkpoints",
+        "checkpoints",
         "other_durable_task_id",
         4
     ));
@@ -181,7 +182,7 @@ fn composite_scope_columns_preserve_target_identity() {
     assert!(!key_names_match(
         "durable_tasks",
         "id",
-        "durable_task_checkpoints",
+        "checkpoints",
         "durable_task_id",
         1
     ));

@@ -174,6 +174,24 @@ Model policy and credentials come from the new run.
 | Ordinary turn with workspace files | Same history root plus an ordered manifest and encrypted private object-store chunks | Same turn head |
 | Native durable task | Task history and file manifest with its bound base and overlay | Existing task checkpoint and task generation |
 
+Both owners share one checkpoint system (M253_004). `runner.checkpoints` holds a turn's or a task's plans and generations, exactly one owner per row (`num_nonnulls(turn_id, durable_task_id) = 1`). Pages, object refs and pins hang off it, one encrypted object custody serves both, and allocation receipts sit in `thread.replay_receipts` beside setup's retry keys.
+
+```text
+thread.turns.head_checkpoint_id ──┐        ┌── fleet.durable_tasks.checkpoint_id
+                                  ▼        ▼
+                         runner.checkpoints (turn_id XOR durable_task_id)
+                           │ pages · pins · object_refs
+                           ▼
+                         runner.checkpoint_objects ──▶ runner.checkpoint_identity_keys
+                           │ delete trigger
+                           ▼
+                         runner.checkpoint_purges
+
+thread.replay_receipts: scope <workspace>:turn:<turn>:checkpoint, (scope, operation_id) unique
+```
+
+[Checkpoint schema](../../rustd/crates/daemon/afd_db/schema/20261122090200_runner_checkpoints.sql) · [Receipts](../../rustd/crates/daemon/afd_db/schema/20261122090800_thread_replay_receipts.sql)
+
 The agent requests capture after a completed turn and input reconciliation. Busy children, open executor sessions, unfinished file work, and live tenant processes can defer it.
 
 File capture requires a verified toolbox and an available runner transfer permit before the agent builds the snapshot. [Agent boundary](../../rustd/crates/runner/afr_agent/src/loop/recovery_boundary.rs) · [Supervisor admission](../../rustd/crates/runner/afr_supervisor/src/recovery/admission.rs)
@@ -324,7 +342,7 @@ Remote object I/O runs outside the checkpoint transaction. The return path check
 
 The product database is development-only. Columns and indexes are defined in their owning initial schema files.
 
-Fresh development rigs apply those definitions from an empty database. [Recovery head columns](../../rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql) · [Checkpoint schema](../../rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql)
+Fresh development rigs apply those definitions from an empty database. [Recovery head columns](../../rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql) · [Checkpoint schema](../../rustd/crates/daemon/afd_db/schema/20261122090200_runner_checkpoints.sql)
 
 ## Operator and lab checks
 
@@ -437,11 +455,11 @@ Benchmark drivers, test files, documentation and generated output are accounted 
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/signing.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/signing.rs) | issue_object | Bound physical authenticated readback by the current pin deadline. |
 | [`rustd/crates/daemon/afd_fleet/src/durable_task/types.rs`](../../rustd/crates/daemon/afd_fleet/src/durable_task/types.rs) | CheckpointMaintenanceCursor | Keep turn-owner scan progress alongside task-owner progress. |
 | [`rustd/crates/daemon/afd_fleet/src/durable_task/checkpoint/maintenance/mod.rs`](../../rustd/crates/daemon/afd_fleet/src/durable_task/checkpoint/maintenance/mod.rs) | maintain | Carry turn retention counts and deferrals through independent maintenance stages. |
-| [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs) | maintain_turn_checkpoints, retain | Bound the scan, advance before processing a contended owner, and retry on wraparound. |
+| [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/maintenance.rs) | maintain_turn_checkpoints, retain, collect | Bound the scan, advance before processing a contended owner, and retry on wraparound. Delete a terminal turn's receipts before its head, so none is left without a turn to page it. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_candidates.sql`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_candidates.sql) | owner scan | Page by indexed cursor before inspecting owner-specific work. |
 | [`rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql`](../../rustd/crates/daemon/afd_fleet/src/run/turn_checkpoint/sql/maintenance_lock_head.sql) | owner head lock | Defer a contended owner promptly so the current pass can collect other owners. |
 | [`rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql`](../../rustd/crates/daemon/afd_db/schema/20261108125100_thread_turns.sql) | thread.turns recovery indexes | Index the referenced head checkpoint and the maintenance cursor key. |
-| [`rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql`](../../rustd/crates/daemon/afd_db/schema/20261117154627_runner_turn_checkpoints.sql) | runner.turn_checkpoints index | Index the fleet FK used by deletion and retention. |
+| [`rustd/crates/daemon/afd_db/schema/20261122090200_runner_checkpoints.sql`](../../rustd/crates/daemon/afd_db/schema/20261122090200_runner_checkpoints.sql) | runner.checkpoints index | Index the fleet FK used by deletion and retention. |
 | [`rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs`](../../rustd/crates/daemon/afd_api_operator/src/handler/operator/events.rs) | list query documentation | Include runner_uncordoned in the operator event filter. |
 
 The maintenance pass in these rows (`Tasks::maintain_checkpoints`) has no production caller: the daemon runs no timed loop, so only tests run it. A running daemon deletes no settled turn's checkpoint after `[turns.checkpoints] retention_days` and collects no orphaned upload ([configuration reference](config_reference.md)).

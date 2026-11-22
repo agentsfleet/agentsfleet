@@ -92,7 +92,7 @@ async fn stale_review_allocates_neither_fleet_nor_replay_receipt() {
     assert!(error.review_digest().is_some());
     assert_eq!(c.fleet_count().await, 0);
     let receipts: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM setup.replay_receipts WHERE scope LIKE $1")
+        sqlx::query_scalar("SELECT count(*) FROM thread.replay_receipts WHERE scope LIKE $1")
             .bind(format!("{}:fleet:create:%", c.base.workspace))
             .fetch_one(&mut *c.base.connection().await)
             .await

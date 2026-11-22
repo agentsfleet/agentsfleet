@@ -80,9 +80,13 @@ pub(super) async fn publish(
 
 async fn assert_sealed(case: &Case, root: &TurnPrivateRoot, descriptor: &TurnResume) -> Checked {
     let mut connection = case.fixtures.database.acquire().await?;
-    let (head, ready, sealed): (Uuid7, bool, Vec<u8>) = sqlx::query_as("SELECT h.head_turn_checkpoint_id,p.ready_at IS NOT NULL,p.root_secret_ciphertext
-        FROM thread.turns h JOIN runner.turn_checkpoints p ON p.id=h.head_turn_checkpoint_id WHERE h.id=$1")
-        .bind(&case.acquired.turn_id).fetch_one(&mut *connection).await?;
+    let (head, ready, sealed): (Uuid7, bool, Vec<u8>) = sqlx::query_as(
+        "SELECT h.head_checkpoint_id,p.ready_at IS NOT NULL,p.root_secret_ciphertext
+        FROM thread.turns h JOIN runner.checkpoints p ON p.id=h.head_checkpoint_id WHERE h.id=$1",
+    )
+    .bind(&case.acquired.turn_id)
+    .fetch_one(&mut *connection)
+    .await?;
     assert_eq!(head.as_str(), descriptor.checkpoint_id.0);
     assert!(ready);
     assert_ne!(sealed.as_slice(), root.history.as_bytes());

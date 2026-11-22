@@ -72,7 +72,7 @@ impl Fixture {
             &owner.tenant,
         );
         cleanup.record(
-            "DELETE FROM fleet.durable_task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1",
+            "DELETE FROM runner.checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1 AND c.durable_task_id IS NOT NULL",
             &owner.tenant,
         );
         cleanup.record(include_str!("fixtures/cleanup.sql"), &owner.tenant);

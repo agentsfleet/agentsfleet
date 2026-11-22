@@ -4,7 +4,7 @@
 -- event, and its report settles it. A history-only receipt (an activity, a model change) is
 -- written opened and settled, with no producer. A setup draft's turn has no producer either and
 -- never opens a fleet event: its sequence is the draft's own, its retry window lives in
--- `setup.replay_receipts`, and it settles when it finishes. The reply columns are frozen at
+-- `thread.replay_receipts`, and it settles when it finishes. The reply columns are frozen at
 -- intake because the source may change. Design and foreign-key reasons:
 -- docs/architecture/thread_model.md.
 CREATE TABLE thread.turns (
@@ -52,7 +52,7 @@ CREATE TABLE thread.turns (
     -- Private recovery: the ready checkpoint a replacement run restores, and the generation the
     -- next checkpoint takes. NULL `next_checkpoint_generation` means the turn never checkpointed.
     -- Replacement runs share the turn, so they share this head.
-    head_turn_checkpoint_id     UUID,
+    head_checkpoint_id          UUID,
     next_checkpoint_generation  BIGINT CHECK (next_checkpoint_generation > 0),
     -- A setup draft's turn: the request's operation, which is not unique once the retry
     -- window passes; the model it chose (NULL is the platform default); the proposal it
@@ -130,8 +130,8 @@ CREATE INDEX idx_turns_status_thread_id_setup
 CREATE INDEX idx_turns_id_recovering
     ON thread.turns (id) WHERE next_checkpoint_generation IS NOT NULL;
 
-CREATE INDEX idx_turns_head_turn_checkpoint_id
-    ON thread.turns (head_turn_checkpoint_id, id) WHERE head_turn_checkpoint_id IS NOT NULL;
+CREATE INDEX idx_turns_head_checkpoint_id
+    ON thread.turns (head_checkpoint_id, id) WHERE head_checkpoint_id IS NOT NULL;
 
 CREATE INDEX idx_turns_durable_task_id_durable_task_generation_settled_at
     ON thread.turns (durable_task_id, durable_task_generation, settled_at, sequence)

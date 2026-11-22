@@ -189,7 +189,7 @@ async fn report_head(
         .acquire()
         .await
         .expect("report observer");
-    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM fleet.durable_task_checkpoints c JOIN fleet.durable_task_bases b ON b.id = c.durable_task_base_id WHERE c.id = $1")
+    let state: (String, String) = sqlx::query_as("SELECT c.commit_oid, b.commit_oid FROM runner.checkpoints c JOIN runner.checkpoint_bases b ON b.id = c.checkpoint_base_id WHERE c.id = $1")
         .bind(&checkpoint_id).fetch_one(&mut *connection).await.expect("separate saved heads");
     assert_eq!(state, (head.to_owned(), "0".repeat(40)));
     let revision: Uuid7 =
@@ -245,20 +245,19 @@ async fn refusals(tasks: &DurableTasks, case: &Case, request: CheckpointPlanInpu
             .expect_err("current head required");
         assert_eq!(failure.code(), error_code::DURABLE_TASK_INVALID_TARGET);
     }
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.durable_task_checkpoints WHERE durable_task_id = $1",
-    )
-    .bind(id(&request.durable_task.durable_task_id))
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM runner.checkpoints WHERE durable_task_id = $1")
+            .bind(id(&request.durable_task.durable_task_id))
+            .fetch_one(
+                &mut *case
+                    .held
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("residual observer"),
+            )
             .await
-            .expect("residual observer"),
-    )
-    .await
-    .expect("checkpoint count");
+            .expect("checkpoint count");
     assert_eq!(count, 2, "refused plans and replay allocate nothing");
 }

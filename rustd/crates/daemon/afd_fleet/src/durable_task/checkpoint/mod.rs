@@ -29,8 +29,16 @@ pub(super) use transfer::{authorize, list, uploads};
 pub(crate) const OBJECTS_INSERT: &str = include_str!("sql/objects_insert.sql");
 pub(crate) const DESCRIPTORS: &str = include_str!("sql/descriptors.sql");
 pub(crate) const VERIFY: &str = include_str!("sql/verify.sql");
+pub(crate) const PLAN_BYTES: &str = include_str!("sql/plan_bytes.sql");
 
+use af_core::id::Uuid7;
 use std::time::Duration;
+
+/// The `thread.replay_receipts` scope of a task's checkpoint allocations: one
+/// retry key per operation for as long as the receipt stays.
+pub(super) fn receipt_scope(workspace: &Uuid7, task: &Uuid7) -> String {
+    format!("{workspace}:durable_task:{task}:checkpoint")
+}
 
 /// How long a checkpoint's uploads or restore may run in total, by default.
 pub(crate) const TRANSFER: Duration = Duration::from_mins(15);

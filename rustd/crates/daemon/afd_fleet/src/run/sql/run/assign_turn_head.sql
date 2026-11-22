@@ -82,7 +82,7 @@ WITH fleet AS MATERIALIZED (
   JOIN head h ON h.id = a.id
   CROSS JOIN won_thread
   WHERE a.settled_at IS NULL
-    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR a.head_turn_checkpoint_id IS NULL)
+    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR a.head_checkpoint_id IS NULL)
   FOR UPDATE OF a SKIP LOCKED
 ), stamped AS (
   -- Stamps the fence and, the first time a run takes the turn, opens its event: one

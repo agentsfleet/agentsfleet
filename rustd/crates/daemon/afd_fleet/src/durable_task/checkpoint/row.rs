@@ -19,14 +19,12 @@ pub(super) struct Plan {
     pub id: Uuid7,
     pub durable_task_id: Uuid7,
     pub workspace_id: Uuid7,
-    pub fleet_id: Uuid7,
     pub generation: i64,
     pub durable_task_generation: i64,
     pub stop_generation: i64,
-    pub request_digest: String,
     pub mode: String,
     pub repository: String,
-    #[sqlx(rename = "durable_task_base_id")]
+    #[sqlx(rename = "checkpoint_base_id")]
     pub base_id: Option<Uuid7>,
     pub format_version: i32,
     pub toolbox_digest: String,
@@ -45,11 +43,9 @@ pub(super) struct Plan {
     pub effect_watermark: i64,
     pub owner_run_id: Uuid7,
     pub owner_fence: i64,
+    /// The transfer deadline: uploads and the writer pin end here.
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub expires_at: jiff::Timestamp,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    #[sqlx(rename = "transfer_expires_at")]
-    pub transfer_deadline: jiff::Timestamp,
     pub ready: bool,
     pub abandoned: bool,
 }

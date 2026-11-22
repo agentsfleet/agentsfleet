@@ -46,8 +46,6 @@ pub(super) async fn insert(
         .bind(&id)
         .bind(&plan.id)
         .bind(&plan.durable_task_id)
-        .bind(&plan.fleet_id)
-        .bind(&plan.workspace_id)
         .bind(kind)
         .bind(run.run_id)
         .bind(owned.current.fence)

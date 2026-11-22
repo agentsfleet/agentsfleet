@@ -101,11 +101,9 @@ impl Drafts {
         let captured = candidate::resolve(connection, new.access, new.request).await?;
         model::selected(connection, &new.person.owner, &new.request.setup_model_ref).await?;
         let id = self.mint(new.now)?;
-        let receipt = self.mint(new.now)?;
         let inserted = replay::reserve(
             connection,
             replay::Reservation {
-                receipt_id: &receipt,
                 person: new.person,
                 scope: new.scope,
                 operation: &new.request.operation_id,
@@ -161,7 +159,6 @@ impl Drafts {
                 connection,
                 message::Insertion {
                     id: &self.mint(new.now)?,
-                    receipt: &self.mint(new.now)?,
                     workspace: new.access.workspace,
                     person: new.person,
                     draft: id,

@@ -21,12 +21,12 @@ use std::time::Duration;
 const POLL: Duration = Duration::from_millis(10);
 const POLLS: usize = 100;
 
-/// Files a receipt for key `$3` in scope `$2` as the racing writer; `$1` id,
-/// `$4` user, `$5` resource.
+/// Files a receipt for key `$2` in scope `$1` as the racing writer; `$3`
+/// resource.
 const RACER: &str = "\
-INSERT INTO setup.replay_receipts
- (id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-VALUES ($1,$4,$2,$3,'racer',$5,now())";
+INSERT INTO thread.replay_receipts
+ (scope,operation_id,request_digest,resource_id,created_at)
+VALUES ($1,$2,'racer',$3,now())";
 
 /// Backends waiting on a lock held by backend `$1`.
 const BLOCKED: &str = "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
@@ -88,7 +88,7 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
     let draft = draft_with_message(&f, &mint()).await;
     let first = message_id(&f, &draft, 1).await;
     let scope: String =
-        sqlx::query_scalar("SELECT scope FROM setup.replay_receipts WHERE resource_id=$1")
+        sqlx::query_scalar("SELECT scope FROM thread.replay_receipts WHERE resource_id=$1")
             .bind(&first)
             .fetch_one(&mut *f.connection().await)
             .await
@@ -101,10 +101,8 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
         .await
         .expect("racing writer's backend");
     sqlx::query(RACER)
-        .bind(mint())
         .bind(&scope)
         .bind(&key)
-        .bind(&f.owner)
         .bind(mint())
         .execute(&mut *racer)
         .await

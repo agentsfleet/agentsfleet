@@ -88,13 +88,13 @@ pub(super) async fn create(
         .collect::<std::result::Result<Vec<_>, _>>()?;
     insert(owner, input, &id, generation, expected.as_ref(), &pages).await?;
     sqlx::query(include_str!("sql/operation_insert.sql"))
-        .bind(&id)
-        .bind(&owner.current.turn_id)
-        .bind(&owner.current.fleet_id)
-        .bind(&owner.current.workspace_id)
+        .bind(super::receipt_scope(
+            &owner.current.workspace_id,
+            &owner.current.turn_id,
+        ))
         .bind(operation)
         .bind(digest)
-        .bind(generation)
+        .bind(&id)
         .execute(&mut *owner.tx)
         .await
         .map_err(query("retain immutable turn allocation identity"))?;
@@ -133,7 +133,6 @@ async fn insert(
             i32::try_from(input.format_version)
                 .map_err(|_overflow| TurnCheckpointRefusal::Incompatible)?,
         )
-        .bind(toolbox.is_some())
         .bind(toolbox)
         .bind(pages)
         .bind(

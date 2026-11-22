@@ -181,7 +181,7 @@ async fn reserve(
             .map_err(query(
                 "allocate one wrapped key and nonce per missing object",
             ))?;
-        sqlx::query(include_str!("sql/plan_bytes.sql"))
+        sqlx::query(super::PLAN_BYTES)
             .bind(&plan.id)
             .bind(new_bytes)
             .execute(&mut *connection)

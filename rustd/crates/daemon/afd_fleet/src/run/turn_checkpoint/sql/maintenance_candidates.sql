@@ -9,18 +9,18 @@ SELECT h.turn_id, a.thread_id AS fleet_id, a.workspace_id,
        COALESCE(
            (a.settled_at <= statement_timestamp() - make_interval(secs => $1)
             AND NOT EXISTS (
-                SELECT 1 FROM runner.turn_checkpoints p
-                JOIN runner.turn_checkpoint_pins pin ON pin.turn_checkpoint_id = p.id
+                SELECT 1 FROM runner.checkpoints p
+                JOIN runner.checkpoint_pins pin ON pin.checkpoint_id = p.id
                 WHERE p.turn_id = h.turn_id AND pin.released_at IS NULL
                   AND pin.expires_at > statement_timestamp()
                   AND pin.operation_expires_at > statement_timestamp()))
            OR EXISTS (
-               SELECT 1 FROM runner.turn_checkpoints p
+               SELECT 1 FROM runner.checkpoints p
                WHERE p.turn_id = h.turn_id AND p.ready_at IS NULL
                  AND (p.abandoned_at IS NOT NULL OR p.expires_at <= statement_timestamp())
                  AND NOT EXISTS (
-                     SELECT 1 FROM runner.turn_checkpoint_pins pin
-                     WHERE pin.turn_checkpoint_id = p.id AND pin.released_at IS NULL
+                     SELECT 1 FROM runner.checkpoint_pins pin
+                     WHERE pin.checkpoint_id = p.id AND pin.released_at IS NULL
                        AND pin.expires_at > statement_timestamp()
                        AND pin.operation_expires_at > statement_timestamp())),
            false) AS due
