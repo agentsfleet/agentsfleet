@@ -494,7 +494,6 @@ dependencies = [
  "afd_auth",
  "afd_connector",
  "afd_cron",
- "afd_fleet",
  "afd_fleet_lifecycle",
  "afd_gate",
  "afd_http",
