@@ -1,6 +1,6 @@
 import React, { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { summary } from "@/tests/helpers/task-reads";
 
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
@@ -113,8 +113,8 @@ function turn(reply: string, status: FleetTurn["status"]): FleetTurn {
   };
 }
 
-function thread() {
-  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
+function thread(setupSummary?: React.ReactNode) {
+  return <FleetThread workspaceId="ws_flush" fleetId="fleet_flush" senderLabel={SENDER} initial={[]} viewer={shell.user} senderNames={[]} setupSummary={setupSummary} sources={{repositories: ["agentsfleet/agentsfleet"], access: "write", publication: "existing_pr"}} />;
 }
 
 function flush(view: ReturnType<typeof render>, turn: FleetTurn) {
@@ -141,7 +141,7 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
   vi.stubGlobal("fetch", network);
   try {
     const turns = [{...turn("Last confirmed answer", AGENTSFLEET_TURN_STATUS.PROCESSED), tools: [{name: "file_write", args: {path: "src/repair.ts"}, startedAtMs: 0, ms: 1, done: true, status: "succeeded" as const}]}];
-    shell.stream.mockReturnValue({...STABLE, turns});
+    shell.stream.mockReturnValue({...STABLE, turns, workTurns: turns});
     const view = render(thread());
     const draft = screen.getByRole("textbox", {name: /^Message your fleet/});
     fireEvent.change(draft, {target: {value: "Keep the existing redirect checks."}});
@@ -150,7 +150,7 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
     expect(screen.getByText("Last confirmed answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("region", {name: "Sources"}).querySelector("summary")!);
     expect(screen.getByRole("link", {name: "agentsfleet/agentsfleet"}).getAttribute("href")).toBe("https://github.com/agentsfleet/agentsfleet");
-    expect(screen.getByText("1 file")).toBeTruthy();
+    expect(screen.getByRole("region", {name: "Changes"}).textContent?.includes("1 file changed")).toBeTruthy();
     const requestSignal = network.mock.calls[0]?.[1]?.signal;
     const detailSignal = network.mock.calls[1]?.[1]?.signal;
     expect(detailSignal?.aborted).toBe(false);
@@ -166,6 +166,17 @@ it("clears confirmed work and cancels its reads when the fleet stream revokes ac
     expect(detailSignal?.aborted).toBe(true);
     expect(network).toHaveBeenCalledTimes(2);
     expect(draft).toHaveProperty("value", "Keep the existing redirect checks.");
+  } finally {vi.unstubAllGlobals();}
+});
+
+it("shows the saved setup beside current work without listing repositories twice", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({items: [], next_cursor: null})));
+  try {
+    shell.stream.mockReturnValue({...STABLE, turns: []});
+    render(thread(<p>Saved scheduled setup</p>));
+    expect(screen.getByText("Saved scheduled setup")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("region", {name: "Current work"})).toBeTruthy());
+    expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
   } finally {vi.unstubAllGlobals();}
 });
 

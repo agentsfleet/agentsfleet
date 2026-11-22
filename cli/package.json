@@ -28,8 +28,8 @@
     "test:acceptance:live": "bun run build && bun run test:acceptance:live:run",
     "test:acceptance:live:run": "bun test/acceptance/run-lane.ts live",
     "typecheck": "bun run --bun tsrs --noEmit",
-    "lint": "oxlint src test scripts && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
-    "lint:fix": "oxlint src test scripts --fix && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "lint": "bun run --bun oxlint src test scripts && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
+    "lint:fix": "bun run --bun oxlint src test scripts --fix && bun ./scripts/audit-runtime-imports.mjs && bun ./scripts/audit-const-names.mjs && bun run --bun tsrs --noEmit",
     "build": "bun run --bun tsrs -p tsconfig.build.json && bun scripts/stamp-build.ts",
     "prepublishOnly": "bun run build"
   },

@@ -3,18 +3,18 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DraftSidebarProvider } from "@/components/layout/draft-sidebar-state";
-import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
 let fixture: ChatFixture;
 beforeEach(() => { fixture = new ChatFixture(); fixture.mount(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("explains unavailable setup, preserves the lock, and offers reload or fleet navigation", async () => {
+it("explains unavailable setup and keeps the reload action", async () => {
   fixture.fetch.mockResolvedValueOnce(response({}, 404));
   const reload = vi.spyOn(window.location, "reload").mockImplementation(() => undefined);
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("alert")).textContent).toContain("Fleet setup isn’t available");
-  expect(screen.getByRole("link", {name: "Your fleets"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets`);
+  expect(screen.queryByRole("link", {name: "Your Fleets"})).toBeNull();
   expect(screen.queryByRole("button", {name: /Watch a pull request/})).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Reload"}));
@@ -25,24 +25,66 @@ it("explains unavailable setup, preserves the lock, and offers reload or fleet n
 it.each([503, 200])("retries a failed initial read with status %i without claiming the workspace has no models", async status => {
   fixture.fetch.mockResolvedValueOnce(response({}, status));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  await screen.findByText("We couldn’t load your model choices. Try again in a moment.");
-  expect(screen.getByRole("alert").closest('[data-testid="fleet-chat-footer"]')).toBeTruthy();
+  const composer = screen.getByRole("form", {name: "Setup chat composer"});
+  await within(composer).findByText("Couldn’t load models");
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByText(/Add a model to this workspace/)).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  fireEvent.click(within(composer).getByRole("button", {name: "Retry models"}));
+  await waitFor(() => expect(within(composer).getByRole("combobox", {name: "Setup model"})).toHaveProperty("disabled", false));
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
   expect(fixture.writes()).toHaveLength(0);
 });
 
-it("reloads unavailable unfinished setups from their own recovery action without writing", async () => {
+// Value: protects=model recovery on a resumed draft; fails_when=the persisted model hides a failed choice list or retry reopens the chat;
+// why_new=blank setup does not have a persisted model; seam=the app's fetch fixture; no_claim=live model availability.
+it("retries only the model list on a resumed draft and keeps the unsent message", async () => {
+  const initialModels = Promise.withResolvers<Response>();
+  fixture.fetch.mockReturnValueOnce(initialModels.promise);
+  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
+  await waitFor(() => expect(input).toHaveProperty("disabled", false));
+  fireEvent.change(input, {target: {value: "Follow up on the deployment"}});
+  initialModels.resolve(response({}, 503));
+  const composer = screen.getByRole("form", {name: "Setup chat composer"});
+  const retry = await within(composer).findByRole("button", {name: "Retry models"});
+  const picker = within(composer).getByRole("combobox", {name: "Setup model"});
+  expect(picker).toHaveProperty("disabled", true);
+  expect(screen.queryByText("Setup needs attention")).toBeNull();
+  const before = fixture.fetch.mock.calls.length;
+
   fixture.fetch.mockResolvedValueOnce(response({}, 503));
+  fireEvent.click(retry);
+  await within(composer).findByText("Couldn’t load models");
+  fireEvent.click(retry);
+  await waitFor(() => expect(picker).toHaveProperty("disabled", false));
+
+  const reads = fixture.fetch.mock.calls.slice(before).map(([input]) => input);
+  expect(reads).toEqual([expect.stringContaining("/models?"), expect.stringContaining("/models?")]);
+  expect(input).toHaveProperty("value", "Follow up on the deployment");
+  expect(input).toHaveProperty("disabled", false);
+  expect(input).toBe(document.activeElement);
+  expect(within(composer).queryByRole("button", {name: "Retry models"})).toBeNull();
+  expect(fixture.writes()).toHaveLength(0);
+});
+
+it("reloads unavailable unfinished setups from their own recovery action without writing", async () => {
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  let refuseHistory = true;
+  fixture.fetch.mockImplementation((input, init) => refuseHistory && typeof input === "string" && input.includes("/drafts?")
+    ? Promise.resolve(response({}, 503)) : base(input, init));
   render(<DraftSidebarProvider><WorkspaceChat {...CHAT_PROPS} /></DraftSidebarProvider>);
   await screen.findByText(/Unfinished setups could not be loaded/);
-  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
-  await waitFor(() => expect(screen.queryByText(/Unfinished setups could not be loaded/)).toBeNull());
-  expect(screen.queryByText(/We couldn’t load your model choices/)).toBeNull();
-  fireEvent.change(screen.getByRole("textbox", {name: "Describe the work you want this fleet to do…"}), {target: {value: "Review the nightly build"}});
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", {name: "Retry models"})).toBeNull();
+  expect(screen.queryByText("No chat model yet")).toBeNull();
+  const input = screen.getByRole("textbox", {name: "What would you like your fleet to do?"});
+  fireEvent.change(input, {target: {value: "Review the nightly build"}});
   expect(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/})).toHaveProperty("disabled", false);
+  refuseHistory = false;
+  fireEvent.click(screen.getByRole("button", {name: "Try again"}));
+  await waitFor(() => expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull());
+  expect(input).toHaveProperty("value", "Review the nightly build");
   expect(fixture.writes()).toHaveLength(0);
 });
 
@@ -56,12 +98,12 @@ it("sends a long message whole and shows the daemon's refusal inside the chat", 
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST"
     ? Promise.resolve(response(refused, 400)) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
   const long = "🌱".repeat(8_193);
   fireEvent.change(input, {target: {value: long}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
-  expect((await screen.findByRole("alert")).textContent).toContain(refused.user_message);
+  expect((await screen.findByRole("alert")).textContent).toContain("Couldn’t complete this request");
   const posts = fixture.fetch.mock.calls.filter(([input, init]) =>
     typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST");
   expect(posts, "the app sends the long message once, whole").toHaveLength(1);
@@ -69,19 +111,6 @@ it("sends a long message whole and shows the daemon's refusal inside the chat", 
   if (typeof body !== "string") throw new Error("the draft POST carries a JSON string body");
   expect(JSON.parse(body)).toMatchObject({message: long});
 });
-
-it("identifies a failed chat-history read without claiming a missing model", async () => {
-  const base = fixture.fetch.getMockImplementation();
-  if (!base) throw new Error("Chat fetch fixture is not installed");
-  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/drafts?")
-    ? Promise.resolve(response({}, 503)) : base(input, init));
-  render(<WorkspaceChat {...CHAT_PROPS} />);
-  expect((await screen.findByRole("alert")).textContent).toContain("We couldn’t load your chats. Try again in a moment.");
-  expect(screen.queryByText("No chat model yet")).toBeNull();
-  expect(screen.getByRole("button", {name: "Retry"})).toBeTruthy();
-  expect(fixture.writes()).toEqual([]);
-});
-
 
 it("offers model settings when a successful list confirms there are no setup models", async () => {
   const base = fixture.fetch.getMockImplementation();
@@ -138,7 +167,7 @@ it("reopens the current fleet setup after an initial read fails without creating
   render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByText(unavailable);
   expect(screen.queryByRole("textbox")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Start over from current setup"}));
+  fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   expect(await screen.findByRole("heading", {name: FLEET_DETAIL.name})).toBeTruthy();
   await waitFor(() => expect(screen.getByRole("textbox")).toHaveProperty("disabled", false));
   expect(screen.queryByText(unavailable)).toBeNull();
@@ -164,11 +193,10 @@ it("loads the new saved revision when the same fleet source changes in place", a
   current = {...FLEET_DETAIL, name: nextName, setup_revision: "2", definition: {...FLEET_DETAIL.definition, instructions_md: nextInstructions}};
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "2"}} />);
   expect(await screen.findByRole("heading", {name: nextName})).toBeTruthy();
-  expect(screen.getByText("Fleet setup · v2")).toBeTruthy();
+  expect(screen.getByText("Draft", {exact: true})).toBeTruthy();
   expect(screen.queryByRole("heading", {name: FLEET_DETAIL.name})).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
-  await chooseSetupAction("Instructions");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", nextInstructions);
+  expect(screen.queryByRole("button", {name: "Edit instructions"})).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });
 
@@ -176,7 +204,7 @@ it("loads the new saved revision when the same fleet source changes in place", a
 // why_new=existing recovery tests retried initial lists or setup activation; seam=none; no_claim=successful rename persistence.
 it("refreshes a draft after an edit refusal while retaining the unsent message", async () => {
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  const input = await screen.findByRole("textbox", {name: "Describe the work you want this fleet to do…"});
+  const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   const unsent = "Keep this follow-up question";
   fireEvent.change(input, {target: {value: unsent}});
@@ -185,9 +213,9 @@ it("refreshes a draft after an edit refusal while retaining the unsent message",
   const refused = "Conversation name could not be saved";
   fixture.fetch.mockResolvedValueOnce(response({user_message: refused}, 503));
   fireEvent.click(screen.getByRole("button", {name: "Save name"}));
-  await screen.findByText(refused);
+  await screen.findByText("Couldn’t complete this request");
   fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-  await waitFor(() => expect(screen.queryByText(refused)).toBeNull());
+  await waitFor(() => expect(screen.queryByText("Couldn’t complete this request")).toBeNull());
   expect(input).toHaveProperty("value", unsent);
   expect(input).toHaveProperty("disabled", false);
   expect(screen.getByRole("button", {name: "Save name"})).toHaveProperty("disabled", false);

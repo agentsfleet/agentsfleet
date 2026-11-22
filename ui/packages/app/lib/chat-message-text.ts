@@ -1,4 +1,5 @@
 import type { AppendMessage, QuoteInfo } from "@assistant-ui/react";
+import { parseChatAddress } from "./chat-address";
 import { z } from "zod";
 
 type Draft = {text: string; quote?: QuoteInfo};
@@ -10,12 +11,12 @@ export function chatMessageText(message: AppendMessage): string {
 }
 
 /** Preserve native quote identity when restoring a failed queue submission. */
-export function chatMessageDraft(message: AppendMessage): Draft {
+export function chatMessageDraft(message: AppendMessage, format = chatComposerText): Draft {
   const text = message.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n");
   const parsed = Quote.safeParse(message.metadata.custom.quote);
   if (!parsed.success) return {text};
   const quote = parsed.data;
-  return quote.messageId === undefined ? {text: chatComposerText({text, quote})}
+  return quote.messageId === undefined ? {text: format({text, quote})}
     : {text, quote: {text: quote.text, messageId: quote.messageId}};
 }
 
@@ -24,4 +25,15 @@ export function chatComposerText({text, quote}: {text: string; quote?: {text: st
   if (!quote?.text.trim()) return text;
   const quoted = quote.text.replaceAll("\r\n", "\n").split("\n").map(line => `> ${line}`).join("\n");
   return `${quoted}\n\n${text}`;
+}
+
+/** Address the recipient before serializing a quote, so the quote is sent to that fleet. */
+export function fleetComposerText(draft: {text: string; quote?: {text: string}}): string {
+  const address = draft.quote?.text.trim() && parseChatAddress(draft.text);
+  if (!address) return chatComposerText(draft);
+  return `@${address.name} ${chatComposerText({...draft, text: address.rest})}`;
+}
+
+export function fleetMessageText(message: AppendMessage): string {
+  return fleetComposerText(chatMessageDraft(message, fleetComposerText));
 }

@@ -146,7 +146,7 @@ Install the latest orly. Continuous Integration installs the latest too, and
 `orly update --no-hooks` moves `.orly/orly.json` to it after a release:
 
 ```bash
-npm install -g @agentsfleet/orly@latest
+bun add --global @agentsfleet/orly@latest
 
 orly doctor                     # report drift between the lock and the tree
 orly update --no-hooks          # re-materialise at the installed version

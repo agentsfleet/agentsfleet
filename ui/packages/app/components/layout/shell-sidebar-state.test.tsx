@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ShellSidebarState } from "./shell-sidebar-state";
+import { renderToString } from "react-dom/server";
+import { ShellSidebarState, useDesktopNavigationViewport } from "./shell-sidebar-state";
 
 describe("shell sidebar state", () => {
   it("notifies every active island with the same collapse snapshot", () => {
@@ -8,15 +9,15 @@ describe("shell sidebar state", () => {
     const observed: boolean[] = [];
     const unsubscribe = state.subscribe(() => observed.push(state.getSnapshot()));
 
-    expect(state.getServerSnapshot()).toBe(true);
-    expect(state.getSnapshot()).toBe(true);
+    expect(state.getServerSnapshot()).toBe(false);
+    expect(state.getSnapshot()).toBe(false);
     state.toggle();
     state.toggle();
     unsubscribe();
     state.toggle();
 
-    expect(observed).toEqual([false, true]);
-    expect(state.getSnapshot()).toBe(false);
+    expect(observed).toEqual([true, false]);
+    expect(state.getSnapshot()).toBe(true);
   });
 
   it("resets once and ignores idempotent writes", () => {
@@ -25,14 +26,19 @@ describe("shell sidebar state", () => {
     state.subscribe(listener);
 
     state.reset();
-    state.setCollapsed(true);
+    state.setCollapsed(false);
     expect(listener).not.toHaveBeenCalled();
 
-    state.setCollapsed(false);
-    state.setCollapsed(false);
+    state.setCollapsed(true);
+    state.setCollapsed(true);
     state.reset();
     state.reset();
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(state.getSnapshot()).toBe(true);
+    expect(state.getSnapshot()).toBe(false);
   });
+});
+
+it("waits for the client viewport before loading the desktop history", () => {
+  function Viewport() {return <span>{String(useDesktopNavigationViewport())}</span>;}
+  expect(renderToString(<Viewport />)).toContain("false");
 });

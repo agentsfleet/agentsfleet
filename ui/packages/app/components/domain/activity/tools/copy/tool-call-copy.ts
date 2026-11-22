@@ -144,6 +144,18 @@ export function fullDiff(name: string, args: ToolArgs | undefined): DiffRow[] | 
   return rows;
 }
 
+/** An edit's or a patch's rows for its cell, which draws them from the
+ * call's own, possibly leaf-capped, arguments: null when any text the rows
+ * come from may have been cut, since a cut text would draw a change the call
+ * never asked for. */
+export function cellDiff(name: string, args: ToolArgs | undefined): DiffRow[] | null {
+  const rows = fullDiff(name, args);
+  if (rows === null || args === undefined) return null;
+  const texts = name === TOOL_NAME.APPLY_PATCH ? [stringArg(args, ARG.PATCH) ?? ""]
+    : (Array.isArray(args[ARG.EDITS]) ? args[ARG.EDITS] as readonly JsonValue[] : []).flatMap((edit) => [editArg(edit, ARG.OLD) ?? "", editArg(edit, ARG.NEW) ?? ""]);
+  return texts.some(mayBeClipped) ? null : rows;
+}
+
 /** One replacement's string argument, or undefined when the replacement is
  * not an object or the argument is absent or not a string. */
 function editArg(edit: JsonValue, key: string): string | undefined {

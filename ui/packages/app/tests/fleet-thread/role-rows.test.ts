@@ -6,6 +6,14 @@ import { FleetThread } from "@/components/domain/conversation/thread/FleetThread
 import { RUNNER_REFUSAL_SENTENCE } from "@/lib/turns/turn-summary";
 
 describe("FleetThread — role rendering: row kinds and badges", () => {
+  it("identifies the sending fleet on an incoming handoff", () => {
+    const senderId = "0199a801-1000-7000-8000-0000000000c0";
+    mockStream([ev({role: "user", actor: `fleet:${senderId}`, text: `[from fleet bob, fleet_id ${senderId}; answer with fleet_steer to that id]\nThe check passed.`})]);
+    renderThread();
+    expect(screen.getByText("@bob")).toBeTruthy();
+    expect(screen.getByText("The check passed.")).toBeTruthy();
+  });
+
   it("aligns the fleet name and brand mark above a reply", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", reply: "reviewed it" }),
@@ -149,11 +157,11 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     ]);
     renderThread();
     expect(screen.getByText(/investigate the spike/)).toBeTruthy();
-    const working = screen.getByRole("status", { name: "Queued" });
+    const working = screen.getByRole("status", { name: "On it" });
     // Queued retains visible activity while it waits for work to start.
     expect(working.querySelector("[data-signal-spinner]")).toBeNull();
     expect(working.querySelector('[data-chat-loading="true"]')).toBeTruthy();
-    expect(working.querySelector("[data-chat-loading]")?.textContent).toBe("Queued");
+    expect(working.querySelector("[data-chat-loading]")?.textContent).toBe("On it");
     expect(working.closest('[data-role="assistant"]')).toBeTruthy();
     expect(screen.queryByText(/^sending$/i)).toBeNull();
   });

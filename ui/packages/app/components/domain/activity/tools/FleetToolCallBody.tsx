@@ -38,14 +38,21 @@ export function ChangedFiles({changes}: {changes: readonly FileChange[]}) {
   </>;
 }
 
-/** An edit's text as the full-call dialog draws it from the untrimmed call,
- * tinted by side; the header counts are the recorded `changes`' totals, and
- * absent when none were recorded. */
-export function DiffRows({rows, changes}: {rows: readonly DiffRow[]; changes: readonly FileChange[]}) {
-  const counted = changes.length > 0;
-  const added = changes.reduce((sum, change) => sum + change.added, 0);
-  const removed = changes.reduce((sum, change) => sum + change.removed, 0);
-  return <CodeDiff filename="Changes" {...(counted ? { additions: added, deletions: removed } : {})} lines={rows} />;
+/** The lines an edit's recorded `changes` gained and lost, over every file. */
+export function changeTotals(changes: readonly FileChange[]): {added: number; removed: number} {
+  return {
+    added: changes.reduce((sum, change) => sum + change.added, 0),
+    removed: changes.reduce((sum, change) => sum + change.removed, 0),
+  };
+}
+
+/** An edit's text, tinted by side. The header counts are the recorded
+ * `changes`' totals, absent when none were recorded, and left to the cell's
+ * header once the edit is confirmed. */
+export function DiffRows({rows, changes, filename, confirmed}: {rows: readonly DiffRow[]; changes: readonly FileChange[]; filename?: string | undefined; confirmed?: boolean}) {
+  const label = confirmed === false ? "Requested changes" : "Changes";
+  const {added, removed} = changeTotals(changes);
+  return <CodeDiff filename={filename ? `${filename} · ${label}` : label} showCounts={changes.length > 0 && confirmed !== true} additions={added} deletions={removed} lines={rows} />;
 }
 
 function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: OnShowAll }) {

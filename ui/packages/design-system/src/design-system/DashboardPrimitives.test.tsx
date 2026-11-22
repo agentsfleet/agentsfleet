@@ -1,3 +1,4 @@
+import { ResourceRow } from "./ResourceRow";
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -6,6 +7,7 @@ import {
   DashboardPanelContent,
   DashboardPanelDescription,
   DashboardPanelHeader,
+  OutputPanel,
   DashboardPanelTitle,
 } from "./DashboardPanel";
 import { MetaGrid } from "./MetaGrid";
@@ -13,6 +15,19 @@ import { StatusPill } from "./StatusPill";
 import { TerminalPanel } from "./TerminalPanel";
 
 describe("dashboard primitives", () => {
+  it("keeps output controls and code in the same panel", () => {
+    render(<OutputPanel header={<button type="button">Copy output</button>}><code>Complete</code></OutputPanel>);
+    expect(screen.getByRole("button", {name: "Copy output"}).closest("[data-dashboard-panel]")).toContainElement(screen.getByText("Complete"));
+  });
+
+  it("preserves list semantics and accepts a compact standalone resource", () => {
+    const {rerender} = render(<ul><ResourceRow icon="Key" actions="Revoke">Build key</ResourceRow></ul>);
+    expect(screen.getByRole("listitem")).toHaveTextContent("Build key");
+    rerender(<ResourceRow as="div" density="compact" icon="Browser" actions="Sign out">Session</ResourceRow>);
+    expect(screen.queryByRole("listitem")).toBeNull();
+    expect(screen.getByText("Session").parentElement).toHaveTextContent("Sign out");
+  });
+
   it("renders a dashboard panel with header and content slots", () => {
     render(
       <DashboardPanel data-testid="panel">
@@ -44,6 +59,14 @@ describe("dashboard primitives", () => {
     const pill = screen.getByText("Token required");
     expect(pill).toHaveAttribute("data-variant", "warning");
     expect(pill.className).toContain("text-warning");
+  });
+
+  it("uses a neutral status without a dot when no variant is selected", () => {
+    render(<StatusPill>Not started</StatusPill>);
+    const pill = screen.getByText("Not started");
+    expect(pill).toHaveAttribute("data-variant", "neutral");
+    expect(pill).toHaveClass("bg-secondary", "text-muted-foreground");
+    expect(pill.querySelector("span.rounded-full")).toBeNull();
   });
 
   it("renders a status pill with a status dot", () => {

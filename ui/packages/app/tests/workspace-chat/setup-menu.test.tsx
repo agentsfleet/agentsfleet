@@ -1,17 +1,14 @@
-import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS, chooseSetupAction, setupAction } from "./fixture";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
 import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftChatHeading";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { CHAT_PLACEHOLDER } from "@/components/domain/setup/chat-defaults";
 import { DraftClient } from "@/lib/api/drafts";
-import { DRAFT, MESSAGE, REVIEW, response } from "@/tests/helpers/draft-fixtures";
+import { DRAFT, FLEET, REVIEW } from "@/tests/helpers/draft-fixtures";
 
-const MENU = "Setup chat actions";
-const EDIT = "Instructions";
+const MENU = "Draft actions";
 const SAVE = "Save fleet";
-const RENAME = "Rename chat";
 let fixture: ChatFixture;
 let client: DraftClient;
 beforeEach(async () => {
@@ -24,7 +21,7 @@ afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 it("starts a fresh setup from the empty heading action without writing a draft", () => {
   client.fresh();
   const fresh = vi.spyOn(client, "fresh");
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={client.getSnapshot()} />);
   fireEvent.click(screen.getByRole("button", {name: "New fleet"}));
   expect(fresh).toHaveBeenCalledOnce();
   expect(client.getSnapshot().draft).toBeNull();
@@ -32,181 +29,39 @@ it("starts a fresh setup from the empty heading action without writing a draft",
 });
 
 it.each([false, true])("hides private actions without an accessible setup (inaccessible: %s)", (inaccessible) => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: null, preview: null, inaccessible}} />);
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), draft: null, preview: null, inaccessible}} />);
   expect(screen.queryByRole("button", {name: MENU})).toBeNull();
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
 });
 
-it("offers editing before the first message without allowing an unreviewed save or rename", async () => {
-  client.fresh({kind: "definition", definition: REVIEW.effective.definition}); await client.refreshSetup();
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
-  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
-  await chooseSetupAction(EDIT);
-  expect(screen.queryByRole("button", {name: RENAME})).toBeNull();
-  const dialog = await screen.findByRole("dialog", {name: EDIT});
-  expect(dialog.className).toContain("ph-no-capture");
-  expect(dialog.className).toContain("ph-no-record");
-  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
-  fireEvent.click(screen.getByRole("button", {name: "Close"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(document.activeElement).toBe(screen.getByRole("button", {name: "Edit instructions"}));
-  expect(fixture.writes()).toHaveLength(0);
-});
-
-it.each([
-  {busy: true}, {pending: true},
-  {messages: [{...MESSAGE, state: "queued" as const}]},
-  {messages: [{...MESSAGE, state: "running" as const}]},
-  {draft: {...DRAFT, state: "saving" as const}},
-])("blocks mutations while the setup cannot be edited (%j)", async (change: Partial<DraftView>) => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), ...change}} />);
-  const save = screen.queryByRole("button", {name: SAVE});
-  if (save) expect(save).toHaveProperty("disabled", true);
-  expect(screen.getByRole("button", {name: "Edit instructions"})).toHaveProperty("disabled", true);
-  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
-  expect(fixture.writes()).toHaveLength(0);
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(screen.queryByLabelText("Chat name")).toBeNull();
-});
-
-it("keeps an unfinished candidate unsavable and allows naming the conversation", async () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, candidate: undefined, review: undefined}}} />);
-  expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Edit instructions"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: RENAME}));
-  fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "  "}});
-  expect(screen.getByRole("button", {name: "Save name"})).toHaveProperty("disabled", true);
-  fireEvent.click(screen.getByRole("button", {name: "Save name"}));
-  expect(fixture.writes()).toHaveLength(0);
-});
-
-it("allows editing after Stop has cleared the pending turn", async () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: DRAFT,
-    messages: [{...MESSAGE, state: "cancelled"}]}} />);
-  expect(await setupAction(EDIT)).toHaveProperty("disabled", false);
-  await chooseSetupAction(EDIT);
-  expect(await screen.findByRole("dialog", {name: EDIT})).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Save changes"})).toHaveProperty("disabled", true);
-});
-
-it("retains the chat composer and failed instruction edits when the panel is opened and closed", async () => {
-  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  const input = await screen.findByLabelText(CHAT_PLACEHOLDER);
-  await waitFor(() => expect(input).toHaveProperty("disabled", false));
-  fireEvent.change(input, {target: {value: "Keep this unsent message"}});
-  await chooseSetupAction(EDIT);
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Keep these unsaved instructions"}});
-  fixture.fetch.mockResolvedValueOnce(response({user_message: "These instructions changed elsewhere"}, 412));
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await screen.findAllByText("These instructions changed elsewhere");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", "Keep these unsaved instructions");
-  expect(input.isConnected).toBe(true);
-  expect(input).toHaveProperty("value", "Keep this unsent message");
-  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toBe(input);
-  expect(input).toHaveProperty("value", "Keep this unsent message");
-  expect(fixture.saveAttempts).toBe(0);
-});
-
-it("keeps preview edits open while draft creation succeeds and the instruction patch is rejected", async () => {
-  const patch = Promise.withResolvers<Response>();
-  const base = fixture.fetch.getMockImplementation()!;
-  fixture.fetch.mockImplementation((input, init) => init?.method === "PATCH" ? patch.promise : base(input, init));
-  render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: REVIEW.effective.definition}} />);
-  await chooseSetupAction(EDIT);
-  const instructions = screen.getByRole("textbox", {name: "Instructions"});
-  fireEvent.change(instructions, {target: {value: "Preserve these preview edits"}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await waitFor(() => expect(fixture.fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
-  expect(instructions.isConnected).toBe(true);
-  expect(screen.getByRole("dialog", {name: EDIT})).toBeTruthy();
-  await act(async () => patch.resolve(response({user_message: "Instructions were refused"}, 422)));
-  await screen.findAllByText("Instructions were refused");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toBe(instructions);
-  expect(instructions).toHaveProperty("value", "Preserve these preview edits");
-  expect(fixture.saveAttempts).toBe(0);
-});
-
-it("clears unfinished rename and editor state when New fleet resets the conversation", async () => {
-  const snapshot = client.getSnapshot();
-  const view = render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={snapshot} />);
-  await chooseSetupAction(RENAME);
-  fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "Abandoned name from the old chat"}});
-  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...snapshot, draft: null, preview: null}} />);
-  expect(screen.queryByLabelText("Chat name")).toBeNull();
-  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...snapshot, draft: {...DRAFT, title: "The new conversation"}}} />);
-  expect(screen.queryByLabelText("Chat name")).toBeNull();
-  expect(screen.getByRole("heading", {name: REVIEW.effective.instance_name})).toBeTruthy();
-  await chooseSetupAction(EDIT);
-  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...snapshot, draft: null, preview: null}} />);
-  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={snapshot} />);
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(fixture.writes()).toHaveLength(0);
-});
-
-it("removes the save button and setup ellipsis from the setup heading", () => {
+it("uses the draft title and keeps save and instruction editing out of the heading", () => {
   const review = {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}};
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, review}}} />);
-  expect(screen.queryByRole("button", {name: "Save changes"})).toBeNull();
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), draft: {...DRAFT, linked_fleet_id: FLEET.id, review}, fleet: FLEET}} />);
+  expect(screen.queryByRole("button", {name: "Edit instructions"})).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByText("Draft", {exact: true})).toBeTruthy();
   expect(screen.queryByRole("button", {name: MENU})).toBeNull();
   expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
 });
 
-// Value: protects=instruction editing immediately after saving; fails_when=the saved chat cannot reopen editable current instructions;
-// why_new=existing heading menu tests begin with unsaved drafts; seam=none; no_claim=database revision durability.
-it("refreshes saved instructions before reopening their editor", async () => {
-  await client.save();
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
-  await chooseSetupAction(EDIT);
-  expect(await screen.findByRole("textbox", {name: EDIT})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
-  expect(fixture.saveAttempts).toBe(1);
+it("rejects a rename submitted just as setup becomes busy", async () => {
+  const current = client.getSnapshot();
+  const view = render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={current} />);
+  await chooseSetupAction("Rename chat");
+  const input = screen.getByRole("textbox", {name: "Chat name"});
+  fireEvent.change(input, {target: {value: "My fleet"}});
+  view.rerender(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={{...current, busy: true}} />);
+  fireEvent.submit(input.closest("form")!);
+  expect(input).toHaveProperty("value", "My fleet");
+  expect(fixture.writes()).toEqual([]);
 });
 
 it("removes the save action when the current viewer loses access", () => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={{...client.getSnapshot(), inaccessible: true}} />);
+  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} client={client} view={{...client.getSnapshot(), inaccessible: true}} />);
   expect(screen.queryByRole("button", {name: SAVE})).toBeNull();
   expect(fixture.writes()).toHaveLength(0);
-});
-
-// Value: protects=unsaved instruction changes on dialog dismissal; fails_when=declining discard loses manual work;
-// why_new=existing cancel test skipped the dismissal confirmation; seam=none; no_claim=saved instruction durability.
-it("keeps edited instructions when discard is refused and closes only after confirmation", async () => {
-  const instructions = "Keep this manual change until I discard it";
-  const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
-  vi.stubGlobal("confirm", confirm);
-  render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
-  await chooseSetupAction(EDIT);
-  fireEvent.change(screen.getByRole("textbox", {name: EDIT}), {target: {value: instructions}});
-  fireEvent.click(screen.getByRole("button", {name: "Close"}));
-  expect(screen.getByRole("textbox", {name: EDIT})).toHaveProperty("value", instructions);
-  expect(screen.getByRole("dialog", {name: EDIT})).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Close"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(confirm).toHaveBeenCalledTimes(2);
-  expect(fixture.writes()).toEqual([]);
-});
-
-it.each([false, true])("opens instructions from the pencil and keeps Back in standalone setup only (fleet page: %s)", async fleetPage => {
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} fleetPage={fleetPage} />);
-  if (fleetPage) expect(screen.queryByRole("link", {name: /Back to/})).toBeNull();
-  else expect(screen.getByRole("link", {name: /Back to/})).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
-  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", REVIEW.effective.definition.instructions_md);
-  expect(fixture.writes()).toEqual([]);
-});
-
-it("keeps the editor closed and records a failed saved-setup refresh from the pencil", async () => {
-  await client.save();
-  const writes = fixture.writes().length;
-  fixture.fetch.mockRejectedValueOnce(new TypeError("network interrupted"));
-  render(<DraftChatHeading workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} client={client} view={client.getSnapshot()} />);
-  fireEvent.click(screen.getByRole("button", {name: "Edit instructions"}));
-  await waitFor(() => expect(client.getSnapshot().error).toBeTruthy());
-  expect(screen.queryByRole("dialog")).toBeNull();
-  expect(fixture.writes()).toHaveLength(writes);
 });
 
 it("loads setup inspection when the summary is opened while preserving the draft", async () => {
@@ -219,7 +74,7 @@ it("loads setup inspection when the summary is opened while preserving the draft
 
 it("keeps an unfinished private chat identifiable before its first recorded message", () => {
   render(<DraftChatHeading client={client} view={{...client.getSnapshot(), messages: [], draft: {...DRAFT, review: undefined, candidate: undefined}}}
-    workspace={CHAT_PROPS.workspace} onDirtyChange={vi.fn()} />);
+    workspace={CHAT_PROPS.workspace} />);
   expect(screen.getByRole("heading", {name: DRAFT.title})).toBeTruthy();
-  expect(screen.getByRole("button", {name: "Rename chat"})).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Draft actions"})).toBeTruthy();
 });

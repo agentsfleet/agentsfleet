@@ -4,13 +4,13 @@ import { usePathname } from "next/navigation";
 import { cn, Nav, TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import { workspaceIdFromPath } from "@/lib/workspace-routes";
-import { SIDEBAR_COLUMN, useShellSidebarCollapsed } from "./shell-sidebar-state";
+import { SIDEBAR_COLUMN, useDesktopNavigationViewport, useShellSidebarCollapsed } from "./shell-sidebar-state";
 import { NavSection } from "./SidebarNavigationSections";
 import { PRIMARY_NAV, resolveActiveHref, resolveHref } from "./sidebar-navigation-data";
 
 import { Suspense, useEffect } from "react";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
-import { DraftSidebarHistory } from "./DraftSidebarHistory";
+import { CollapsedFleetListTrigger, DraftSidebarHistory } from "./DraftSidebarHistory";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 import type { TenantBilling } from "@/lib/types";
 import { BalanceLink } from "./BalanceLink";
@@ -64,15 +64,16 @@ export function DesktopSidebarNavigation({
 }
 
 export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate, workspaces = [], billing }: SidebarNavigationProps) {
+  const desktop = useDesktopNavigationViewport();
   const entries = PRIMARY_NAV;
   const activeHref = resolveActiveHref(entries.map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <TooltipProvider><Nav aria-label="Primary" className="flex h-full min-h-0 flex-col gap-lg py-lg">
     <ShellControls workspaceId={workspaceId} collapsed={collapsed} />
     <div className="min-h-0 shrink overflow-y-auto"><NavSection items={entries} {...shared} /></div>
-    {!collapsed ? <div className="hidden min-h-0 flex-1 overflow-y-auto md:block">
+    {!collapsed && desktop ? <div className="hidden min-h-0 flex-1 overflow-y-auto md:block">
       <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
-    </div> : <div className="flex-1" />}
+    </div> : <div className="flex flex-1 flex-col">{collapsed && desktop && workspaceId ? <CollapsedFleetListTrigger /> : null}</div>}
     <div className="mt-auto flex shrink-0 flex-col gap-md px-sm md:px-lg">
       {!collapsed && billing ? <div className="hidden px-lg md:block"><BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} /></div> : null}
       <div className="hidden md:block"><SidebarExpandControl collapsed={collapsed} /></div>

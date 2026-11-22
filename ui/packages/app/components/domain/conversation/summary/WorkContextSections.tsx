@@ -3,67 +3,109 @@ import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
-import { ArrowUpRightIcon, CaretDownIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpRightIcon, CaretDownIcon, CaretRightIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { confirmed } from "../../tasks/use-task-read";
 import { FleetApprovalSummary } from "../../approvals/FleetApprovalSummary";
+import { AttachedSources, PreviewOutputs } from "./RunResources";
 import { WorkSection } from "../../shared/summary/WorkSection";
-import { RecordedChangesDialog } from "./RecordedChangesDialog";
-import { recordedChanges } from "./recorded-changes";
+import type { RecordedChange, RecordedChangeRepository } from "./recorded-changes";
+import { RecordedChangeCounts, RecordedChangesDialog } from "./RecordedChangesDialog";
+import { groupRecordedChanges, recordedChanges } from "./recorded-changes";
 
 
-
-export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false}: {details: DurableTaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
-  const records = [...details.values()].flatMap(resource => {
+export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false, previews = []}: {previews?: readonly string[]; details: DurableTaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
+  const published = new Map<string, PullRequestRecord>();
+  const related = new Map<string, PullRequestRecord>();
+  let loading = details.size < expectedDetails;
+  let unavailable = false;
+  for (const resource of details.values()) {
     const detail = confirmed(resource);
-    const target = detail?.context.target;
-    if (!detail || target?.kind !== "existing_pr") return [];
+    if (!detail) {
+      loading ||= resource.kind === "loading";
+      unavailable ||= resource.kind === "failed";
+      continue;
+    }
+    const {target} = detail.context;
+    if (target?.kind !== "existing_pr") continue;
     const receipt = detail.publication;
-    const published = receipt?.state === "confirmed" && receipt.commit !== null && receipt.pull_request_url === target.url;
-    return [{target, published, stale: resource.kind !== "ready"}];
-  });
-  const published = [...new Map(records.filter(row => row.published).map(row => [row.target.url, row])).values()];
-  const related = [...new Map(records.filter(row => !row.published && !published.some(output => output.target.url === row.target.url)).map(row => [row.target.url, row])).values()];
-  const loading = details.size < expectedDetails || [...details.values()].some(resource => resource.kind === "loading" && !confirmed(resource));
-  const unavailable = [...details.values()].some(resource => resource.kind === "failed" && !confirmed(resource));
+    const delivered = receipt?.state === "confirmed" && receipt.commit !== null && receipt.pull_request_url === target.url;
+    const records = delivered ? published : related;
+    records.set(target.url, {target, published: delivered, stale: resource.kind !== "ready"});
+  }
+  for (const url of published.keys()) related.delete(url);
+
+  const hasOutput = previews.length > 0 || published.size > 0;
+  const showOutput = hasOutput || loading || unavailable || (!hideEmpty && !related.size);
   return <>
-    {published.length ? <PullRequestSection title="Outputs" records={published} /> : loading || unavailable || !hideEmpty && !related.length
-      ? <WorkSection title="Outputs"><p className="text-eyebrow leading-eyebrow text-muted-foreground">{loading ? "Loading outputs…" : unavailable ? "Outputs unavailable." : "No outputs yet."}</p></WorkSection> : null}
-    {related.length ? <PullRequestSection title="Pull requests" records={related} /> : null}
+    {showOutput && <WorkSection title="Output">
+      {hasOutput ? <><PreviewOutputs links={previews} /><PullRequestRows records={[...published.values()]} /></> :
+        <p className="text-eyebrow leading-eyebrow text-muted-foreground">{loading ? "Loading outputs…" : unavailable ? "Outputs unavailable." : "No outputs yet."}</p>}
+    </WorkSection>}
+    {related.size > 0 && <WorkSection title="Pull requests"><PullRequestRows records={[...related.values()]} /></WorkSection>}
   </>;
 }
 
 type PullRequestRecord = {target: {url: string; number: number; repository: string}; published: boolean; stale: boolean};
-function PullRequestSection({title, records}: {title: string; records: PullRequestRecord[]}) {
-  return <WorkSection title={title}><ul className="space-y-sm">{records.map(({target, published, stale}) => <li key={target.url}>
-    <a className="flex min-h-9 items-center gap-md py-sm break-words text-label font-medium leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer">
+function PullRequestRows({records}: {records: PullRequestRecord[]}) {
+  return <ul className="space-y-sm">{records.map(({target, published, stale}) => <li key={target.url}>
+    <a className="fleet-pull-request-link" href={target.url} target="_blank" rel="noopener noreferrer">
       <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1"><span className="block">Pull request #{target.number}</span>
         <span className="mt-xs block text-eyebrow font-normal leading-eyebrow text-text-dim">{published ? "Changes published" : target.repository}{stale ? " · last confirmed" : ""}</span></span>
       <ArrowUpRightIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /></a>
-  </li>)}</ul></WorkSection>;
+  </li>)}</ul>;
 }
 
+export function WorkChanges({turns, repositories}: {turns: readonly FleetTurn[]; repositories?: readonly RecordedChangeRepository[]}) {
+  return <ChangesSummary changes={recordedChanges(turns, {repositories})} />;
+}
 
-export function WorkChanges({turns}: {turns: readonly FleetTurn[]}) {
-  const changes = recordedChanges(turns);
+/** Explicit repository metadata is required for repository labels. */
+export function ChangesSummary({changes}: {changes: readonly RecordedChange[]}) {
   if (!changes.length) return null;
-  return <WorkSection title="Changes"><RecordedChangesDialog changes={changes}>
-    <Button variant="ghost" size="compact" className="w-full justify-start gap-md px-0 text-left text-foreground">
-      <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="font-medium">{changes.length} {changes.length === 1 ? "file" : "files"}</span>
+  return <WorkSection title="Changes">{groupRecordedChanges(changes).map(group => <RecordedChangesDialog key={group.repository?.id ?? "unbound"} groups={[group]}>
+    <Button variant="ghost" size="compact" className="fleet-changes-trigger">
+      <GitDiffIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1" title={group.repository?.fullName}>
+        <span className="block font-medium">{group.changes.length} {group.changes.length === 1 ? "file" : "files"}{group.changes.some(change => change.running) ? "" : " changed"}</span>
+        {group.label ? <RepositoryName name={group.label} className="text-eyebrow font-normal text-muted-foreground" /> : null}
+      </span>
+      {group.lines.kind !== "unknown" ? <RecordedChangeCounts lines={group.lines} /> : null}
+      <CaretRightIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </Button>
-  </RecordedChangesDialog></WorkSection>;
+  </RecordedChangesDialog>)}</WorkSection>;
 }
 
-export function WorkSources({sources}: {sources?: FleetSources}) {
+function RepositoryName({name, className = "font-medium"}: {name: string; className?: string}) {
+  return <span className={`repo-name min-w-0 ${className}`}><span>{name}</span></span>;
+}
+
+export function WorkSources({sources, files}: {sources?: FleetSources; files?: readonly {id: string; name: string}[]}) {
   return <WorkSection title="Sources">
-      {sources?.repositories.length ? <details className="group">
-        <summary className="flex min-h-11 cursor-pointer items-center gap-sm rounded-sm py-sm text-label leading-label focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">
-          <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="min-w-0 flex-1 break-words" title={sources.repositories.join(", ")}><span className="block font-medium">{sources.repositories.length === 1 ? sources.repositories[0] : `${sources.repositories.length} repositories`}</span><span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></span>
-          <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
-        </summary>
-        <ul className="mt-sm space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a></li>)}</ul>
-      </details> : <p className="text-eyebrow leading-eyebrow text-muted-foreground">No sources configured.</p>}
+    {files?.length ? <AttachedSources files={files} /> : null}
+    {sources?.repositories.length ? <RepositorySources sources={sources} /> : files?.length ? null :
+      <p className="text-eyebrow leading-eyebrow text-muted-foreground">No sources configured.</p>}
   </WorkSection>;
+}
+
+function RepositorySources({sources}: {sources: FleetSources}) {
+  const {repositories, access, publication} = sources;
+  const label = repositories.length === 1 ? repositories.join("") : `${repositories.length} repositories`;
+  const policy = ["Saved fleet policy", access ? `${access} access` : "access not specified"];
+  if (publication) policy.push(publication === "existing_pr" ? "existing PRs" : "draft PRs");
+  return <details className="group">
+    <summary className="fleet-sources-trigger">
+      <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 flex-1 break-words" title={repositories.join(", ")}>
+        <RepositoryName name={label} />
+        <span className="mt-xs block text-eyebrow leading-eyebrow text-muted-foreground">{policy.join(" · ")}</span>
+      </span>
+      <CaretDownIcon size={16} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+    </summary>
+    <ul className="mt-sm space-y-sm">{repositories.map(repository => <li key={repository} className="break-words text-label leading-label">
+      <a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="hover:underline">{repository}</a>
+    </li>)}</ul>
+  </details>;
 }
 
 export function WorkApprovals({approvals, scope}: {approvals?: {count: number; href: string}; scope?: {workspaceId: string; fleetId: string; subject: string; revision: number}}) {

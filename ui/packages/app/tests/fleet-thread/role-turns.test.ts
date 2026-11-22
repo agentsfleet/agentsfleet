@@ -170,7 +170,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
   it("keeps the waiting clock out of announcements", () => {
     const waiting = (clientTimestamp: boolean) =>
       ev({ role: "user", actor: "steer:user_abc", text: "Howdy", reply: "", status: "received", clientTimestamp });
-    for (const [queued, name] of [[false, "Working"], [true, "Queued"]] as const) {
+    for (const [queued, name] of [[false, "Working"], [true, "On it"]] as const) {
       mockStream([waiting(queued)]);
       const view = renderThread();
       // The status is named once; the visual clock never changes its spoken name.

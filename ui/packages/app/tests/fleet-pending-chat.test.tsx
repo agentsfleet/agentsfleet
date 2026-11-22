@@ -31,8 +31,8 @@ afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
 it("keeps an installing fleet's questions in setup chat without admitting a run or changing its saved setup", async () => {
   render(<FleetPendingChat {...CHAT_PROPS} fleet={PENDING_FLEET} canGrant />);
-  await screen.findByRole("heading", {name: "Setup saved · v1"});
-  expect(screen.getAllByRole("heading", {name: "Setup saved · v1"})).toHaveLength(1);
+  await screen.findByRole("heading", {name: "Saved setup"});
+  expect(screen.getAllByRole("heading", {name: "Saved setup"})).toHaveLength(1);
   expect(screen.queryByText("INSTALLING")).toBeNull();
   expect(screen.queryByText("Continue setup in chat")).toBeNull();
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();

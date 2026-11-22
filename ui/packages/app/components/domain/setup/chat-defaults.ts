@@ -3,7 +3,7 @@ import starters from "@/public/fleet-starters.json" with { type: "json" };
 
 export const DEFAULT_INSTANCE_NAME = "my-fleet";
 export const DEFAULT_DAILY_NANOS = "1000000000";
-export const CHAT_PLACEHOLDER = "Describe the work you want this fleet to do…";
+export const CHAT_PLACEHOLDER = "What would you like your fleet to do?";
 export const CHAT_STARTERS: readonly {title: string; prompt: string}[] = starters;
 
 export function initialDefinition(): Definition {

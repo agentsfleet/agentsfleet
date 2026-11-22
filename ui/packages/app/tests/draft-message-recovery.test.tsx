@@ -8,7 +8,7 @@ import { DraftClient } from "@/lib/api/drafts";
 import { ChatFixture, CHAT_PROPS } from "./workspace-chat/fixture";
 import { DRAFT, MESSAGE, response } from "./helpers/draft-fixtures";
 
-const RETRY = "Try again";
+const RETRY = "Retry";
 const PARTIAL = "The partial answer is still available.";
 let fixture: ChatFixture;
 let client: DraftClient;
@@ -21,7 +21,7 @@ afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 
 function RecordedFailure({failure}: {failure: unknown}) {
   const messages: ThreadMessageLike[] = [{id: "recorded-failure", role: "assistant", content: [{type: "text", text: PARTIAL}],
-    status: {type: "complete", reason: "stop"}, metadata: {custom: {failure, retryText: MESSAGE.text}}}];
+    status: {type: "complete", reason: "stop"}, metadata: {custom: {failure}}}];
   const runtime = useExternalStoreRuntime({messages, convertMessage: message => message,
     onNew: async () => {throw new Error("Recorded failure replay cannot send new requests.");}});
   return <AssistantRuntimeProvider runtime={runtime}>

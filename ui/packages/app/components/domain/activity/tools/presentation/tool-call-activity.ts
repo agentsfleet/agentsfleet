@@ -1,7 +1,7 @@
 import type { MessageState } from "@assistant-ui/react";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { CellState } from "../copy/tool-call-copy";
-import { readToolResult } from "../../replies/fleetReplyMessage";
+import { readToolResult, type ToolResult } from "../../replies/fleetReplyMessage";
 import { formatElapsed } from "@/lib/turns/run-figures-format";
 import { CELL_STATE, cellState, toolCopy } from "../copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
@@ -11,6 +11,8 @@ type Kind = "read" | "write" | "list" | "command" | "request" | "pull-request" |
 type Description = {running: string; done: string; target: string; kind: Kind};
 export type ToolActivity = {label: string; target: string; kind: Kind; state: CellState};
 const KNOWN: ReadonlySet<string> = new Set(Object.values(TOOL_NAME));
+// The finished coordination turn uses the work disclosure; its steps name the actual calls.
+const COORDINATION: ReadonlySet<string> = new Set([TOOL_NAME.FLEET_STEER, TOOL_NAME.FLEET_ACTIVITY]);
 const PREFIX = {[CELL_STATE.FAILED]: "Failed", [CELL_STATE.INTERRUPTED]: "Interrupted", [CELL_STATE.SETTLED]: "Outcome unavailable"};
 const PRIORITY: Record<CellState, number> = {running: 4, failed: 3, interrupted: 2, settled: 1, succeeded: 0};
 
@@ -23,12 +25,20 @@ export function toolActivity(name: string, args: ToolArgs | undefined, state: Ce
 }
 
 /** Targets and raw tool names belong in the disclosure. */
-export function toolActivityLabel(activity: ToolActivity): string {
+export function toolActivityLabel(activity: ToolActivity, expanded = false): string {
   const label = activity.label;
   if (activity.kind === "write" && !/\bfiles?\b/.test(label)) return `${label} file`;
-  if (activity.kind === "tool" && /\b(using|used)$/i.test(label)) return `${label} tool`;
+  if (activity.kind === "tool" && /\b(using|used)$/i.test(label)) return `${label} ${expanded ? activity.target : "tool"}`;
   if (activity.kind === "list" && /\b(listing|listed)$/i.test(label)) return `${label} items`;
   return label;
+}
+
+/** A synchronous shell returns its outcome; exec_command can return while a process is still running. */
+export function recordedToolState(name: string, outcome: ToolResult | undefined, running: boolean): CellState {
+  const state = cellState(outcome !== undefined, outcome?.status, running);
+  if (state !== CELL_STATE.SUCCEEDED || (name !== TOOL_NAME.EXEC_COMMAND && name !== TOOL_NAME.SHELL)) return state;
+  if (outcome?.exitCode !== undefined) return outcome.exitCode === 0 ? CELL_STATE.SUCCEEDED : CELL_STATE.FAILED;
+  return name === TOOL_NAME.SHELL ? state : CELL_STATE.SETTLED;
 }
 
 /** Only this group's indices contribute; an adjacent text part cannot change its outcome. */
@@ -39,14 +49,15 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
   let activeCount = 0;
   for (const call of calls) {
     const result = readToolResult(call.result);
-    const current = cellState(result !== undefined, result?.status, running && call.result === undefined);
-    const activity = toolActivity(call.toolName, call.args, current);
-    if (current === CELL_STATE.RUNNING) {active ??= activity; activeCount++; continue;}
+    const current = recordedToolState(call.toolName, result, running && call.result === undefined);
+    if (current === CELL_STATE.RUNNING) {active ??= toolActivity(call.toolName, call.args, current); activeCount++; continue;}
     if (PRIORITY[current] > PRIORITY[state]) state = current;
   }
   if (active) return activeCount === 1 ? active : {...active, target: [active.target, `${activeCount} active`].filter(Boolean).join(" · ")};
   const single = calls[0];
-  if (calls.length === 1 && single) return toolActivity(single.toolName, single.args, state);
+  if (calls.length === 1 && single && (state !== CELL_STATE.SUCCEEDED || (KNOWN.has(single.toolName) && !COORDINATION.has(single.toolName)))) {
+    return toolActivity(single.toolName, single.args, state);
+  }
   const commands = calls.filter(call => call.toolName === TOOL_NAME.EXEC_COMMAND || call.toolName === TOOL_NAME.SHELL).length;
   const tools = calls.length - commands;
   const counts = [tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "", commands ? `${commands} ${commands === 1 ? "command" : "commands"}` : ""].filter(Boolean).join(", ");
@@ -71,6 +82,8 @@ function describe(name: string, args: ToolArgs | undefined): Description {
     case TOOL_NAME.MEMORY_RECALL: return {running: "Recalling memory", done: "Recalled memory", target: first(stringArg(args, "query")), kind: "read"};
     case TOOL_NAME.MEMORY_STORE: return {running: "Saving memory", done: "Saved memory", target: first(stringArg(args, "key")), kind: "tool"};
     case TOOL_NAME.MEMORY_FORGET: return {running: "Forgetting memory", done: "Forgot memory", target: first(stringArg(args, "key")), kind: "tool"};
+    case TOOL_NAME.FLEET_ACTIVITY: return {running: "Reading fleet activity", done: "Read fleet activity", target: "", kind: "read"};
+    case TOOL_NAME.FLEET_STEER: return {running: "Sending fleet message", done: "Sent fleet message", target: "", kind: "tool"};
     case TOOL_NAME.GIT: return git(args);
     case TOOL_NAME.PROPOSE_CHANGE: return {running: "Validating and publishing changes", done: "Published tested changes", target: "Accepted pull request", kind: "pull-request"};
     default: {

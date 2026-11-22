@@ -18,6 +18,7 @@ import {
   DialogTrigger,
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -45,7 +46,7 @@ type FormValues = z.infer<typeof schema>;
 
 /** `onSettled` runs after every create attempt: a refused or timed-out create
  * may still have saved the invite, so the list re-reads either way. */
-export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
+export default function InviteDialog({ onSettled, ownerName }: { onSettled: () => void; ownerName?: string | null }) {
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<InviteSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,15 +87,15 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" size="sm">
-          <PlusIcon size={14} />
+          <PlusIcon aria-hidden="true" />
           Invite member
         </Button>
       </DialogTrigger>
-      <DialogContent closeDisabled={sending}>
+      <DialogContent closeDisabled={sending} className="[&_[data-dialog-close]]:text-foreground">
         {created ? (
           <InviteReady invite={created} onDone={() => handleOpenChange(false)} />
         ) : (
-          <InviteForm error={error} pending={sending} onSend={send} onCancel={() => handleOpenChange(false)} />
+          <InviteForm ownerName={ownerName} error={error} pending={sending} onSend={send} onCancel={() => handleOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
@@ -102,6 +103,7 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
 }
 
 type InviteFormProps = {
+  ownerName?: string | null;
   error: string | null;
   pending: boolean;
   onSend: (email: string) => Promise<void>;
@@ -110,18 +112,18 @@ type InviteFormProps = {
 
 // The address to invite. It mounts each time the dialog opens, so every invite
 // starts from an empty field.
-function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
+function InviteForm({ error, pending, ownerName, onSend, onCancel }: InviteFormProps) {
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
   return (
     <>
-      <DialogHeader>
+      <DialogHeader className="gap-5">
         <DialogTitle>Invite a teammate</DialogTitle>
-        <DialogDescription>They can open every workspace in your account.</DialogDescription>
+        <DialogDescription>Invite someone to {ownerName ? <strong className="font-semibold">{ownerName}’s account</strong> : "your account"}.</DialogDescription>
       </DialogHeader>
       <Form {...form}>
         {/* The schema's message, not the browser's bubble, explains a bad address. */}
         <ActionForm className="space-y-0" onSubmit={(e) => { void form.handleSubmit((values) => onSend(values.email))(e); }} noValidate>
-          <div className="space-y-4">
+          <div className="space-y-5">
             <FormField
               control={form.control}
               name="email"
@@ -129,13 +131,16 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
                 <FormItem>
                   <FormLabel>Email address</FormLabel>
                   <FormControl>
-                    <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
+                    <Input type="email" className="font-medium" placeholder="teammate@example.com" autoComplete="off" {...field} />
                   </FormControl>
                   <FormMessage />
+                  <FormDescription className="mt-lg flex items-start gap-lg rounded-md border border-border p-xl text-label">
+                    <UsersIcon size={20} className="mt-xs shrink-0" aria-hidden="true" />
+                    <span>They’ll join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</span>
+                  </FormDescription>
                 </FormItem>
               )}
             />
-            <div className="flex items-start gap-lg rounded-md border border-border p-xl"><UsersIcon size={20} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" /><p className="text-label text-muted-foreground">They’ll join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
             {error ? <Alert variant="destructive">{error}</Alert> : null}
           </div>
           <DialogFooter>

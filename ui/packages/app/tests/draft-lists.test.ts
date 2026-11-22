@@ -67,6 +67,22 @@ it("private chat lists > retains the list outcome when starting a fresh conversa
   await expect(client.retry()).rejects.toMatchObject({status: 409});
   expect(client.getSnapshot()).toMatchObject({listStatus: "ready", cards: []});
 });
+it("private chat lists > keeps loaded chats and makes one model request per retry", async () => {
+  models = () => response({}, 503);
+  const client = new DraftClient({account: "owner-account", workspace: WORKSPACE, subject: "creator"});
+  clients.push(client);
+  await expect(client.initialize()).rejects.toMatchObject({status: 503});
+  await vi.waitFor(() => expect(client.getSnapshot()).toMatchObject({modelListStatus: "unavailable", listStatus: "ready", cards: [FIRST_CARD], error: null}));
+  const catalogue = Promise.withResolvers<Response>();
+  models = () => catalogue.promise;
+  const retry = client.retryModels();
+  await client.retryModels();
+  catalogue.resolve(page([MODEL], null));
+  await retry;
+  expect(requests(MODELS)).toHaveLength(2);
+  expect(requests(DRAFTS)).toHaveLength(1);
+  expect(client.getSnapshot()).toMatchObject({modelListStatus: "ready", listStatus: "ready", model: MODEL_REF, cards: [FIRST_CARD]});
+});
 it("private chat lists > opens configured models with eligibility and one bounded page of chats", async () => {
   const client = await opened();
   const [model] = requests(MODELS);
@@ -136,7 +152,8 @@ it("private chat lists > stops a model search whose cursor repeats", async () =>
   urls.length = 0; models = () => page([], CURSOR);
   await expect(client.initialize()).rejects.toMatchObject({status: 502});
   expect(requests(MODELS)).toHaveLength(2);
-  expect(client.getSnapshot()).toMatchObject({listStatus: "unavailable"});
+  // The model list carries its own status since main split it from the chat list's.
+  expect(client.getSnapshot()).toMatchObject({modelListStatus: "unavailable"});
 });
 
 it("private chat lists > shares one request between concurrent loads of the same list", async () => {

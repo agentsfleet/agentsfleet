@@ -20,7 +20,7 @@ import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   archiveFleet,
   expectDetailArchived,
-  expectRowState,
+  expectSidebarFleetState,
 } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -61,9 +61,9 @@ test.describe("login → install → lifecycle", () => {
     // post-install scaffolding assertion.
     await expect(page.getByLabel("Fleet chat")).toBeVisible({ timeout: 15_000 });
 
-    // Listing shows the new row live.
+    // Saved history exposes the new fleet and its active status.
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "live");
+    await expectSidebarFleetState(page, fleetId, "active");
 
     // Billing page loads the report's period totals.
     await page.goto("/settings/billing");
@@ -74,6 +74,6 @@ test.describe("login → install → lifecycle", () => {
     await archiveFleet(page);
     await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
-    await expectRowState(page, fleetId, "archived");
+    await expectSidebarFleetState(page, fleetId, "archived");
   });
 });

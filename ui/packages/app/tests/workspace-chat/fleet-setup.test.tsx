@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Alert } from "@agentsfleet/design-system";
@@ -7,7 +7,7 @@ import { DraftChatHeading } from "@/components/domain/setup/conversation/DraftCh
 import { DraftConversation } from "@/components/domain/setup/conversation/DraftConversation";
 import { FleetSetup } from "@/components/domain/setup/conversation/FleetSetup";
 import { SetupSaveFlap } from "@/components/domain/setup/saving/SetupSaveFlap";
-import { ChatFixture, CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chatRouter } from "./fixture";
 import { DRAFT, FLEET, FLEET_ID, REVIEW, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 
@@ -24,12 +24,10 @@ beforeEach(async () => {
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
 function LiveSetup() {
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  const [dirty, setDirty] = useState(false);
   return <>{view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
-    <DraftChatHeading client={client} view={view} workspace={WORKSPACE} onDirtyChange={setDirty} />
+    <DraftChatHeading client={client} view={view} workspace={WORKSPACE} />
     <FleetSetup client={client} view={view} workspace={WORKSPACE} />
-    <SetupSaveFlap client={client} view={view} workspace={WORKSPACE} dirty={dirty} />
-    {dirty ? <output>Manual changes pending</output> : null}</>;
+    <SetupSaveFlap client={client} view={view} workspace={WORKSPACE} /></>;
 }
 
 function SetupConversation() {
@@ -182,22 +180,10 @@ it("keeps native private saving without starting a run", async () => {
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.queryByRole("button", {name: "Review setup"})).toBeNull();
   await act(async () => {await client.save().catch(() => undefined);});
-  await screen.findByRole("heading", {name: "Setup saved · v1"});
-  expect(fixture.writes()).toHaveLength(1);
-  expect(fixture.writes()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
+  await screen.findByRole("heading", {name: "Saved setup"});
+  expect(fixture.writes().filter(call => call.method === "POST")).toHaveLength(1);
+  expect(fixture.writes().find(call => call.method === "POST")?.body).toMatchObject({review_digest: "review-with-tools", start: {kind: "none"}});
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
-});
-
-it("cancels manual editing without saving or exposing advanced run options", async () => {
-  render(<LiveSetup />); await chooseSetupAction("Instructions");
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: "Unsaved manual instructions"}});
-  expect(await screen.findByText("Manual changes pending")).toBeTruthy();
-  expect(screen.queryByRole("button", {name: "Save", hidden: true})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Review and run options"})).toBeNull();
-  expect(screen.queryByRole("button", {name: "Advanced settings"})).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(fixture.writes()).toEqual([]);
 });
 
 it("refuses saving a newer proposal that the person has not seen", async () => {
@@ -227,8 +213,11 @@ it("keeps a refused improvement editable and never claims another revision was s
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.endsWith("/revisions") ? Promise.resolve(response({user_message: "The saved fleet changed"}, 409)) : base(input, init);
   });
-  render(<LiveSetup />); await act(async () => {await client.apply().catch(() => undefined);});
+  render(<LiveSetup />);
+  const priorReceipts = screen.getAllByRole("heading", {name: "Saved setup"}).length;
+  await act(async () => {await client.apply().catch(() => undefined);});
   await screen.findByText("The saved fleet changed");
-  expect(screen.queryByRole("heading", {name: "Setup saved · v2"})).toBeNull();
+  expect(screen.getAllByRole("heading", {name: "Saved setup"})).toHaveLength(priorReceipts);
+  expect(client.getSnapshot().draft?.review?.effective.target_setup_revision).toBe("1");
   expect(client.getSnapshot().draft?.state).toBe(DRAFT_STATE.editing);
 });

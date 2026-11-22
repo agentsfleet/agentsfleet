@@ -201,7 +201,7 @@ describe("rowToTurn", () => {
     const receipt = {...row({actor: "config_reload", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       tokens: null, wall_ms: null, cost_nanos: null}),
       request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "3"})};
-    expect(rowToTurn(receipt)).toMatchObject({role: "system", text: "Setup saved · v3", reply: "", outcome: "",
+    expect(rowToTurn(receipt)).toMatchObject({role: "system", text: "Saved setup", reply: "", outcome: "",
       status: FLEET_ACTIVITY.status, tokens: null, wallMs: null, costNanos: null});
     expect(rowToTurn(row()).outcome).toBe(OUTCOME.COMPLETED);
   });

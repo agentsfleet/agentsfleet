@@ -6,7 +6,8 @@ import {
   gotoWorkspace,
   openSettingsDestination,
   openWorkspaceMenu,
-  workspaceUrlPattern,
+  openFleetFromSidebar,
+  workspaceEntryPattern,
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
@@ -17,18 +18,14 @@ import {
 } from "./fixtures/blank-frame-audit";
 
 const ROUTE_TIMEOUT_MS = 10_000;
-const CHAT_ENTRANCE = "What should your fleet do?";
 const LOADING_LABEL = "Loading…";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
-// The shell's `data-surface` lands with the layout, before the Fleets route's
-// own Suspense boundary resolves: on a slow read the canvas is still the
-// route's text-free skeleton, and an audit installed then counts the server's
-// latency as blank shell frames. Gate on content only the loaded route
-// carries — the chat entrance heading — so the audit
-// measures navigation, not the first read.
+// Wait for the conversation or empty-workspace setup after the entry redirect.
 async function expectFleetsRouteLoaded(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: CHAT_ENTRANCE, exact: true })).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
+  await expect(page.getByLabel("Fleet chat", {exact: true}).or(
+    page.getByLabel("Fleet setup conversation", {exact: true}),
+  ).filter({visible: true})).toBeVisible({ timeout: ROUTE_TIMEOUT_MS });
 }
 
 async function installBlankFrameAudit(page: Page): Promise<void> {
@@ -100,14 +97,65 @@ test.describe("authenticated dashboard fluidity", () => {
     streamWorkspaceId = null;
   });
 
+  test("New fleet opens its composer while unfinished setups are loading", async ({page}, info) => {
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    await signInAs(page, FIXTURE_KEY.regular);
+    await page.addInitScript(() => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('textarea[aria-label="What would you like your fleet to do?"]:enabled')) return;
+        performance.mark("setup-composer-ready");
+        observer.disconnect();
+      });
+      observer.observe(document, {subtree: true, childList: true, attributes: true, attributeFilter: ["disabled"]});
+    });
+    const path = `**/live/v1/workspaces/${workspaceId}/drafts?*`;
+    const release = Promise.withResolvers<void>();
+    let sidebarRequested = false;
+    await page.route(path, async route => {
+      sidebarRequested = true;
+      await release.promise;
+      await route.continue();
+    });
+    try {
+      await page.goto(`/w/${workspaceId}/fleets/new`, {waitUntil: "domcontentloaded"});
+      await expect.poll(() => sidebarRequested, {timeout: ROUTE_TIMEOUT_MS}).toBe(true);
+      const composer = page.getByRole("textbox", {name: "What would you like your fleet to do?"});
+      const loadingSetups = page.getByLabel("Loading unfinished setups", {exact: true});
+      await expect(loadingSetups).toBeVisible();
+      await expect(composer).toBeEnabled({timeout: ROUTE_TIMEOUT_MS});
+      await composer.fill("Review the release checklist.");
+      const timing = await page.evaluate(() => {
+        const ready = performance.getEntriesByName("setup-composer-ready")[0]?.startTime;
+        const models = performance.getEntriesByType("resource").find((entry): entry is PerformanceResourceTiming => {
+          const path = new URL(entry.name).pathname;
+          return entry instanceof PerformanceResourceTiming && path.startsWith("/live/v1/workspaces/") && path.endsWith("/models");
+        });
+        return {composerReadyMs: ready, afterModelResponseMs: ready !== undefined && models ? ready - models.responseEnd : undefined};
+      });
+      expect(timing.composerReadyMs).toEqual(expect.any(Number));
+      await info.attach("setup-composer-performance", {contentType: "application/json", body: JSON.stringify({
+        ...timing,
+        sidebarRequested,
+        sidebarResponseHeld: true,
+      })});
+      release.resolve();
+      await expect(loadingSetups).toBeHidden({timeout: ROUTE_TIMEOUT_MS});
+      await expect(page.getByText("Unfinished setups could not be loaded.", {exact: false})).toHaveCount(0);
+      await expect(composer).toHaveValue("Review the release checklist.");
+    } finally {
+      release.resolve();
+      await page.unroute(path);
+    }
+  });
+
   test(
     "test_shell_navigation_and_workspace_creation_survive_boundary_split",
     async ({ page }) => {
       const pageErrors: string[] = [];
       page.on("pageerror", (error) => pageErrors.push(error.message));
       await signInAs(page, FIXTURE_KEY.regular);
-      await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
+      const workspaceId = await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
+      await expectFleetsRouteLoaded(page);
       await installBlankFrameAudit(page);
 
       await openSettingsDestination(page, "Security");
@@ -137,8 +185,11 @@ test.describe("authenticated dashboard fluidity", () => {
       await page.setViewportSize({ width: 390, height: 844 });
       const mobileNavigation = page.getByRole("navigation", {name: "Primary", exact: true});
       await expect(mobileNavigation).toBeVisible();
-      await mobileNavigation.getByRole("link", { name: "Your fleets", exact: true }).click();
-      await expect(page).toHaveURL(workspaceUrlPattern("fleets"), {
+      await mobileNavigation.getByRole("button", {name: "Open navigation", exact: true}).click();
+      const expanded = page.getByRole("navigation", {name: "Expanded navigation"});
+      await expect(expanded.locator("summary").filter({hasText: "Your Fleets"})).toBeVisible();
+      await expanded.getByRole("link", {name: "New fleet", exact: true}).click();
+      await expect(page).toHaveURL(workspaceEntryPattern(workspaceId), {
         timeout: ROUTE_TIMEOUT_MS,
       });
       await expect(mobileNavigation).toBeVisible();
@@ -160,7 +211,7 @@ test.describe("authenticated dashboard fluidity", () => {
 
       await signInAs(page, FIXTURE_KEY.regular);
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-      await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
+      await expectFleetsRouteLoaded(page);
       await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
       await page.getByRole("menuitem", { name: "Models", exact: true }).hover();
       await expect.poll(
@@ -212,11 +263,11 @@ test.describe("authenticated dashboard fluidity", () => {
       });
 
       streamWorkspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-      await seedFleet(FIXTURE_KEY.regular, streamWorkspaceId, {
+      const fleet = await seedFleet(FIXTURE_KEY.regular, streamWorkspaceId, {
         name: `${STREAM_PREFIX}-one`,
       });
       await signInAs(page, FIXTURE_KEY.regular);
-      await page.goto(`/w/${streamWorkspaceId}/fleets`);
+      await page.goto(`/w/${streamWorkspaceId}/fleets/${fleet.id}`);
       await expect.poll(
         () =>
           page.evaluate(
@@ -228,11 +279,12 @@ test.describe("authenticated dashboard fluidity", () => {
         { timeout: ROUTE_TIMEOUT_MS },
       ).toBeGreaterThan(0);
 
-      const navigation = page.getByRole("navigation", { name: "Primary" });
       await openSettingsDestination(page, "Security");
       await expect(page).toHaveURL(/\/settings\/security(?:\?|$)/);
-      await navigation.getByRole("link", { name: "Your fleets" }).click();
-      await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+      await expect.poll(() => page.evaluate(() =>
+        (window as typeof window & {__streamAudit?: {active: number}}).__streamAudit?.active ?? 0,
+      )).toBe(0);
+      await openFleetFromSidebar(page, streamWorkspaceId, fleet.id);
 
       const audit = await page.evaluate(
         () =>

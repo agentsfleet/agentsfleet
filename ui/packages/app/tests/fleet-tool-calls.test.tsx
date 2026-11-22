@@ -96,7 +96,7 @@ describe("FleetThread — tool cells", () => {
     mockStream([{ ...working, status: PROCESSED, reply: "Found it." }]);
     view.rerender(threadElement());
     const stranded = cells()[1]!;
-    expect(headerOf(stranded)).toContain("Interrupted: using tool Interrupted");
+    expect(headerOf(stranded)).toContain("Interrupted: using search_repo Interrupted");
   });
 
   it("test_tool_cell_names_verb_and_target", () => {
@@ -109,12 +109,12 @@ describe("FleetThread — tool cells", () => {
 
   it("test_unknown_tool_cell_calls_by_name", () => {
     renderCalls([running({ name: "fly_status", args: { app: "x" } })], RECEIVED);
-    expect(headerOf(cells()[0]!)).toContain("Using tool Running");
+    expect(headerOf(cells()[0]!)).toContain("Using fly_status Running");
     cleanup();
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
-    expect(headerOf(cells()[0]!)).toContain("Used tool Success");
+    expect(headerOf(cells()[0]!)).toContain("Used fly_status Success");
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^Used tool Success$/);
+    expect(headerOf(cells()[1]!)).toMatch(/^Used fly_apps Success$/);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Input")).toBeTruthy();
   });
@@ -319,8 +319,10 @@ describe("FleetThread — tool cells", () => {
   it("test_failed_edit_shows_its_error", () => {
     renderCalls([call({ name: TOOL_NAME.FILE_EDIT, status: FAILED, args: { path: "d.yaml", edits: [{ old_text: "a", new_text: "b" }] }, outputHead: "old_text not found", outputLineCount: 1 })]);
     const [edit] = cells();
-    // A failed edit changed nothing, so it counts nothing; the error says it did not apply.
-    expect(edit!.querySelector("[data-changed-file], [data-diff]")).toBeNull();
+    // What it tried stays visible as requested lines; it changed nothing, so it counts nothing.
+    expect(edit!.querySelectorAll("[data-diff]")).toHaveLength(2);
+    expect(edit!.querySelector("[data-changed-file]")).toBeNull();
+    expect(edit!.textContent).not.toMatch(/\+\d+ −\d+/);
     expect(edit!.textContent).toContain("└old_text not found");
     expect(headerOf(edit!)).toContain("Failed");
   });

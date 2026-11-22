@@ -5,7 +5,7 @@ import { MESSAGE_STATE } from "@/lib/api/draft-types";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, response } from "./helpers/draft-fixtures";
+import { ACCEPTED, DRAFT, DRAFT_ID, FAILED_SCHEDULE, FLEET, FLEET_ID, MESSAGE, MODEL_REF, PENDING_SCHEDULE, REVIEW, SCHEDULE, TURN_ID, WORKSPACE, applyToolSelection, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 const {calls, ready, mutations} = fixture;
@@ -14,6 +14,94 @@ afterEach(() => fixture.dispose());
 
 describe("private setup editing and recovery boundaries", () => {
   const edit = () => ({definition: structuredClone(REVIEW.effective.definition), instanceName: REVIEW.effective.instance_name});
+
+  it("selects a setup model before the unfinished setup list returns", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise : undefined;
+    const instance = fixture.create();
+    const initialized = instance.initialize();
+    await vi.waitFor(() => expect(instance.getSnapshot().model).toBe(MODEL_REF));
+    expect(instance.getSnapshot()).toMatchObject({listStatus: "loading", modelListStatus: "ready"});
+    sidebar.resolve(response({items: [], next_cursor: null}));
+    await initialized;
+    expect(instance.getSnapshot().listStatus).toBe("ready");
+  });
+
+  it("keeps the active chat usable when the unfinished setup list fails late", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise.then(value => value.clone()) : undefined;
+    const instance = fixture.create();
+    const initialized = expect(instance.initialize()).rejects.toMatchObject({status: 503});
+    await vi.waitFor(() => expect(instance.getSnapshot().model).toBe(MODEL_REF));
+    await instance.send("Create a private setup");
+    sidebar.resolve(response({}, 503));
+    await initialized;
+    expect(instance.getSnapshot()).toMatchObject({draft: DRAFT, listStatus: "unavailable", modelListStatus: "ready", error: null});
+  });
+
+  it("reuses default tools already applied when their response was lost before a chat Save", async () => {
+    const instance = await ready(true);
+    fixture.override = ({method, body}) => {
+      if (method !== "PATCH") return;
+      fixture.current = applyToolSelection(fixture.current, body);
+      return response({}, 503);
+    };
+    await expect(instance.send("Save")).rejects.toMatchObject({status: 503});
+    expect(instance.getSnapshot().pending).toBe(true);
+    await instance.retry();
+    expect(mutations().map(call => call.method)).toEqual(["PATCH", "POST"]);
+    expect(mutations()[1]?.body).toMatchObject({message: "Save", save: true});
+  });
+
+  it("opens a saved draft with one draft read and one message page", async () => {
+    const instance = await ready(true);
+    expect(calls.filter(({path}) => path.endsWith(`/drafts/${DRAFT_ID}`))).toHaveLength(1);
+    expect(calls.filter(({path}) => path.endsWith(`/drafts/${DRAFT_ID}/messages`))).toHaveLength(1);
+    expect(instance.getSnapshot().messages).toEqual([MESSAGE]);
+  });
+
+  it("keeps an unfinished list read from repopulating an inaccessible setup", async () => {
+    const sidebar = Promise.withResolvers<Response>();
+    fixture.override = ({path, method}) => path.endsWith("/drafts") && method === "GET" ? sidebar.promise
+      : path.endsWith(`/drafts/${DRAFT_ID}`) ? response({}, 403) : undefined;
+    const instance = fixture.create();
+    const initialized = instance.initialize();
+    await expect(instance.resume(DRAFT_ID)).rejects.toMatchObject({status: 403});
+    sidebar.resolve(response({items: [], next_cursor: null}));
+    await initialized;
+    expect(instance.getSnapshot()).toMatchObject({inaccessible: true, model: "", listStatus: "unavailable", modelListStatus: "unavailable"});
+    const before = calls.length;
+    await instance.retryModels();
+    expect(calls).toHaveLength(before);
+  });
+
+  it("updates a queued turn on its start signal and ignores repeats and unrelated sequences", async () => {
+    const pending = Promise.withResolvers<Response>();
+    const queued = {...MESSAGE, state: MESSAGE_STATE.queued};
+    fixture.override = ({path}) => path.endsWith("/messages") ? response({items: [queued], next_cursor: null}) : undefined;
+    const instance = await ready(true);
+    fixture.override = ({path}) => path.endsWith("/messages") ? pending.promise : undefined;
+    const source = FakeEventSource.instances[0]!;
+    const started = (sequence: string) => source.emitNamed(DRAFT_EVENT.running, JSON.stringify({draft_id: DRAFT_ID, sequence}));
+    const layout = instance.getLayoutSnapshot();
+    started("2");
+    expect(instance.getSnapshot().startedTurn).toBeFalsy();
+    started(queued.sequence);
+    const progress = instance.getSnapshot();
+    expect(progress.startedTurn).toEqual({draftId: DRAFT_ID, sequence: queued.sequence});
+    expect(instance.getLayoutSnapshot()).toBe(layout);
+    started("2");
+    started(queued.sequence);
+    expect(instance.getSnapshot()).toBe(progress);
+    pending.resolve(response({items: [queued], next_cursor: null}));
+  });
+
+  it("materializes a definition without a patch when the server returns the same content", async () => {
+    const instance = await ready();
+    await instance.edit({definition: REVIEW.effective.definition});
+    await instance.edit({definition: REVIEW.effective.definition});
+    expect(mutations().map(call => call.method)).toEqual(["POST"]);
+  });
 
   it("changes the setup model locally before creation and conditionally after creation", async () => {
     const instance = await ready(); await instance.selectModel("model:second");
@@ -234,9 +322,9 @@ describe("private browser chat", () => {
     fixture.override = ({path, method}) => path.endsWith("/fleets") && method === "POST" ? response(FLEET, 201) : undefined;
     await instance.save(); expect(instance.getSnapshot().fleet?.id).toBe(FLEET_ID);
     await instance.retry();
-    const saved = mutations(); expect(saved).toHaveLength(2); expect(saved[0]?.body).toEqual(saved[1]?.body);
+    const saved = mutations().filter(call => call.method === "POST"); expect(saved).toHaveLength(2); expect(saved[0]?.body).toEqual(saved[1]?.body);
     expect(saved[0]?.headers.get("Idempotency-Key")).toBe(saved[1]?.headers.get("Idempotency-Key"));
-    expect(saved[0]?.body).toMatchObject({review_digest: REVIEW.review_digest, start: {kind: "none"}});
+    expect(saved[0]?.body).toMatchObject({review_digest: "review-with-tools", start: {kind: "none"}});
   });
   it("pins Apply to the setup tag whose revision matches the displayed Review", async () => {
     fixture.current = {...DRAFT, linked_fleet_id: FLEET_ID, review: {...REVIEW, effective: {...REVIEW.effective, target_setup_revision: "1"}}};

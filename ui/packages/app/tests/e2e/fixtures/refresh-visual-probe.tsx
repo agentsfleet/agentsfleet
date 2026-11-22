@@ -1,3 +1,6 @@
+import {launchChangeRepositories} from "./launch-review-changes";
+import {LAUNCH_REVIEW_ID} from "./launch-review-activity";
+import {launchReviewConversation} from "./launch-review-conversation";
 import {visualWakeup} from "./refresh-wakeup-data";
 import {FleetScopeProvider} from "@/components/domain/conversation/stream/FleetScope";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -26,35 +29,49 @@ import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixture
 import { useFleetUploadPreviews } from "@/components/domain/conversation/composer/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/activity/tools/FleetToolRegistry";
 import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
+import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
+import { fleetSetupPath } from "@/lib/workspace-routes";
 import { chatMessageText } from "@/lib/chat-message-text";
 import { latestFigures } from "@/lib/turns/run-summary";
 import {VisualLifecycleNotice} from "./visual-lifecycle-notice";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
+const SCHEDULED_DEFINITION = {...FLEET_DETAIL.definition, config: {name: "merge-watch", "x-agentsfleet": {
+  repositories: ["agentsfleet/agentsfleet"], tools: ["shell"], credentials: ["github"],
+  budget: {daily_nanos: "1000000000"}, network: {http_egress: "public", package_manager_domains: true},
+}}};
 
 
 /** Current production conversation, activity, composer, and Summary; sample data. */
 export function RefreshVisualFixture() {
-  const archived = new URLSearchParams(location.search).has("archived");
+  const params = new URLSearchParams(location.search);
+  const archived = params.has("archived");
+  const repositoryLabel = params.get("repositoryLabel");
   const [started] = useState(Date.now);
   const [phase, setPhase] = useState<VisualScenario>(() => VISUAL_SCENARIOS.find(value => value === new URLSearchParams(location.search).get("state")) ?? "running");
   const showScenario = useCallback((value: VisualScenario) => {const url = new URL(location.href); url.searchParams.set("state", value); history.replaceState(null, "", url); setPhase(value);}, []);
-  const turns = useMemo(() => visualTurns(phase, started, new URLSearchParams(location.search).has("code")), [phase, started]);
+  const turns = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const rows = visualTurns(phase, started, params.has("code"));
+    // The same receipts just before the run settles still attest to a running session.
+    return phase === "activity" && params.has("openSession") ? rows.map(row => ({...row, status: "received" as const})) : rows;
+  }, [phase, started]);
   const grouped = useFleetThreadEntries(turns, convertTurn);
-  const fleetName = phase === "wake-up" ? "Merge watch" : "Release watch";
+  const fleetName = phase === "wake-up" ? "Merge watch" : phase === "activity" ? "Launch review" : phase === "error" ? "Deploy monitor" : "Release watch";
+  const scheduled = phase === "wake-up" && !archived;
+  const schedules = phase === "wake-up" ? [visualWakeup(started)] : [];
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
-    if (phase === "error") showScenario("running");
-    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}]}]);
-  }, [phase, showScenario]);
+    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}], metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);
+  }, []);
   const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", turns, onNew});
-  const messages = useMemo(() => [...(phase === "wake-up" ? grouped.entries.map(grouped.convertEntry) : conversation(turns, started)), ...sent, ...previews.entries.map(entry => entry.message)], [turns, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
+  const messages = useMemo(() => [...(phase === "wake-up" || phase === "error" ? grouped.entries.map(grouped.convertEntry) : conversation(turns, started)), ...sent, ...previews.entries.map(entry => entry.message)], [turns, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
   const runtime = useExternalStoreRuntime({ messages, isDisabled: archived, isRunning: !archived && phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
     onNew: previews.onNew, adapters: {attachments: previews.attachments},
     onCancel: async () => { showScenario("completed"); },
   });
-  return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome>
+  return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome key={fleetName}>
     <div className="flex min-h-0 flex-1 flex-col">
       <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11.5 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg [&>button]:shrink-0 [&>span]:shrink-0">
         <span className="mr-auto text-eyebrow text-muted-foreground">Sample data · Design comparison</span>
@@ -63,11 +80,13 @@ export function RefreshVisualFixture() {
       </div>
       <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
-      <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
+      <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules, pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetDurableTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetDurableTaskProvider changeRepositories={phase === "activity" ? launchChangeRepositories(LAUNCH_REVIEW_ID, repositoryLabel) : undefined} files={phase === "activity" ? [{id: "brief", name: "launch-brief.md"}, {id: "reference", name: "mobile-reference.png"}] : previews.files} readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={schedules} sources={{repositories: phase === "empty" || phase === "activity" || phase === "error" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
-        <FleetConversationLayout work={<DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
+        <FleetConversationLayout summary={scheduled ? "setup" : "current-work"} work={scheduled
+          ? <SetupSummary definition={SCHEDULED_DEFINITION} schedules={schedules} modelLabel="MiniMax M3.1 Flash" editHref={fleetSetupPath(WORKSPACE, FLEET_ID, FLEET_DETAIL.setup_revision)} />
+          : <DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
@@ -92,6 +111,7 @@ function conversation(turns: FleetTurn[], started: number): ThreadMessageLike[] 
   if (!turn) return [];
   const actor = `${ACTOR.STEER_PREFIX}fixture-owner`;
   const answer = toReplyMessage(convertTurn(turn), turn, actor);
+  if (turn.id === LAUNCH_REVIEW_ID) return launchReviewConversation(turn, answer, actor);
   const [intro, ...rest] = turn.reply.split("\n\n");
   return [
     {id: "request", role: "user", createdAt: new Date(started - 138_000),

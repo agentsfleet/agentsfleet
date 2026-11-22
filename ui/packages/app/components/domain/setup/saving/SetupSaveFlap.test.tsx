@@ -16,10 +16,10 @@ beforeEach(async () => {
   await client.initialize();await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup();client.dispose();vi.useRealTimers();vi.unstubAllGlobals();});
-function Flap({dirty = false, patch = {}}: {dirty?: boolean; patch?: Partial<DraftView>}) {
+function Flap({patch = {}}: {patch?: Partial<DraftView>}) {
   const current = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
   const view = {...current, ...patch};
-  return <><SetupSaveFlap client={client} view={view} workspace={CHAT_PROPS.workspace} dirty={dirty} />
+  return <><SetupSaveFlap client={client} view={view} workspace={CHAT_PROPS.workspace} />
     {current.pending ? <button onClick={() => {void client.retry().catch(() => undefined);}}>Retry save</button> : null}</>;
 }
 
@@ -27,10 +27,11 @@ function Flap({dirty = false, patch = {}}: {dirty?: boolean; patch?: Partial<Dra
 it("saves v1 through the fleet API", async () => {
   render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
-  await screen.findByText("Setup saved · v1");
-  expect(fixture.writes()).toHaveLength(1);
-  expect(fixture.writes()[0]).toMatchObject({path: expect.stringMatching(/\/fleets$/), method: "POST",
-    body: {name: REVIEW.effective.instance_name, review_digest: REVIEW.review_digest, start: {kind: "none"}}});
+  await screen.findByText("Saved setup");
+  expect(fixture.writes()).toMatchObject([
+    {method: "PATCH", body: {config_ops: [{path: "/config/x-agentsfleet/tools", value: ["exec_command", "write_stdin", "file_read", "file_write", "file_edit", "web_fetch"]}]}},
+    {path: expect.stringMatching(/\/fleets$/), method: "POST", body: {name: REVIEW.effective.instance_name, review_digest: "review-with-tools", start: {kind: "none"}}},
+  ]);
   expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", {name: "Save fleet"})).toBeNull();
   expect(screen.getByRole("link", {name: "Open fleet"})).toBeTruthy();
@@ -46,19 +47,19 @@ it("keeps seconds and the spinner visible until the fleet receipt arrives, despi
   expect(screen.getByText("Saving").getAttribute("data-chat-loading")).toBe("true");
   await act(async () => {vi.advanceTimersByTime(2_000);});
   expect(screen.getByText("2s")).toBeTruthy();
-  expect(screen.queryByText("Setup saved · v1")).toBeNull();
+  expect(screen.queryByText("Saved setup")).toBeNull();
   const writes = fixture.fetch.mock.calls.filter(([, init]) => init?.method === "POST");
   expect(writes).toHaveLength(1);
   await act(async () => {pending.resolve(await base(...writes[0]!));});
-  expect(screen.getByText("Setup saved · v1")).toBeTruthy();
+  expect(screen.getByText("Saved setup")).toBeTruthy();
 });
 
 it("retries an uncertain fleet save with the original key and body", async () => {
   fixture.failSave = true;render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   fireEvent.click(await screen.findByRole("button", {name: "Retry save"}));
-  await screen.findByText("Setup saved · v1");
-  const writes = fixture.writes();expect(writes).toHaveLength(2);
+  await screen.findByText("Saved setup");
+  const writes = fixture.writes().filter(call => call.method === "POST");expect(writes).toHaveLength(2);
   expect(writes[1]?.body).toEqual(writes[0]?.body);
   expect(writes[1]?.headers.get("Idempotency-Key")).toBe(writes[0]?.headers.get("Idempotency-Key"));
 });
@@ -66,7 +67,7 @@ it("retries an uncertain fleet save with the original key and body", async () =>
 it("materializes a local definition and then saves it", async () => {
   client.fresh({kind: "definition", definition: REVIEW.effective.definition});await client.refreshSetup();
   render(<Flap />);fireEvent.click(screen.getByRole("button", {name: "Save"}));
-  await screen.findByText("Setup saved · v1");
+  await screen.findByText("Saved setup");
   expect(fixture.writes().filter(call => call.path.endsWith("/drafts"))).toHaveLength(1);
   expect(fixture.saveAttempts).toBe(1);
 });
@@ -86,7 +87,7 @@ it("updates an existing fleet to v2 without cloning it", async () => {
   });
   await client.resume(DRAFT.id);render(<Flap />);
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
-  await screen.findByText("Setup saved · v2");
+  await screen.findByText("Saved setup");
   expect(writes).toBe(1);expect(fixture.saveAttempts).toBe(0);
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toContain(FLEET_ID);
 });
@@ -125,7 +126,7 @@ it("preserves the server-created frozen model when the account default differs",
   expect(client.getSnapshot().preview?.definition.config["x-agentsfleet"]).not.toHaveProperty("model");
   expect(client.getSnapshot().model).not.toBe(frozen);
   render(<Flap />);fireEvent.click(screen.getByRole("button", {name: "Save"}));
-  await screen.findByText("Setup saved · v2");
+  await screen.findByText("Saved setup");
   expect(appliedModel).toBe(frozen);
 });
 
@@ -136,13 +137,6 @@ it.each([
   {draft: null, preview: null},
 ])("keeps incomplete, unavailable or owned operations from exposing a save %#", async patch => {
   render(<Flap patch={patch} />);
-  expect(screen.queryByRole("button", {name: "Save"})).toBeNull();
-  expect(fixture.writes()).toEqual([]);
-});
-
-it("retains manual changes without starting a write", () => {
-  render(<Flap dirty />);
-  expect(screen.getByText("Unsaved setup changes")).toBeTruthy();
   expect(screen.queryByRole("button", {name: "Save"})).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });

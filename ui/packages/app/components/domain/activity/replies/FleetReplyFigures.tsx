@@ -11,10 +11,9 @@ import type { ReplyFigures } from "../messages/fleetMessageReaders";
 import { readDurableTaskActivityHistory } from "@/lib/task-activity";
 import { DurableTaskActivityTimeline } from "../../tasks/TaskActivityTimeline";
 import {CheckCircleIcon} from "@phosphor-icons/react/ssr";
-import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
+import { ChatProgressLabel, QUEUED_PROGRESS_LABEL } from "../../shared/chat/ChatProgressLabel";
 
 export const WORKING_LABEL = "Working";
-export const QUEUED_LABEL = "Queued";
 export const RUN_DETAILS_LABEL = "Run details";
 export const REPLY_FIGURES_TEST_ID = "fleet-reply-figures";
 
@@ -60,7 +59,7 @@ export function OmittedCalls({ count }: { count: number }) {
 /** The library's `indicator` part: the reply is running and has nothing to show yet.
  * Keep the label stable; only the isolated clock ticks. */
 export function Waiting({ queued, startedAtMs }: { queued: boolean; startedAtMs: number }) {
-  const label = queued ? QUEUED_LABEL : WORKING_LABEL;
+  const label = queued ? QUEUED_PROGRESS_LABEL : WORKING_LABEL;
   return (
     <output
       className="inline-flex items-center gap-sm text-body-sm text-text-subtle"

@@ -7,6 +7,7 @@ import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import type { Schedule } from "@/lib/api/draft-types";
 import type { DurableTaskResource } from "./use-task-read";
 import type { DurableTaskDetails } from "./use-task-details";
+import type { RecordedChangeRepository } from "../conversation/summary/recorded-changes";
 import type { DurableTaskReference } from "./task-references";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { readDurableTasks } from "@/lib/api/tasks";
@@ -16,6 +17,8 @@ import { currentDurableTaskRef, recentDurableTaskIds } from "./task-references";
 
 export type FleetDurableTaskProps = {
   workspaceId: string; fleetId: string; subject: string | null; revision: number;
+  changeRepositories?: readonly RecordedChangeRepository[];
+  files?: readonly {id: string; name: string}[];
   turns?: readonly FleetTurn[]; sources?: FleetSources; schedules?: readonly Schedule[];
   approvals?: {count: number; href: string};
   approvalRevision?: number;
@@ -33,15 +36,15 @@ const ViewContext = createContext<ViewState | null>(null);
 const LinkedWorkContext = createContext<LinkedWorkState | null>(null);
 
 /** Key only the data owner: revocation must not remount the conversation draft. */
-export function FleetDurableTaskProvider({children, workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetDurableTaskProps & {children: ReactNode}) {
-  const props = {workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly};
+export function FleetDurableTaskProvider({children, workspaceId, fleetId, subject, revision, turns, files, changeRepositories, sources, schedules, approvals, approvalRevision, readOnly = false}: FleetDurableTaskProps & {children: ReactNode}) {
+  const props = {workspaceId, fleetId, subject, revision, turns, files, changeRepositories, sources, schedules, approvals, approvalRevision, readOnly};
   const [read, publish] = useState<FleetDurableTaskReadState | null>(null);
   const scope = `${props.subject}:${props.workspaceId}:${props.fleetId}`;
   const owned = props.subject && read?.scope === scope ? read : null;
   const details = owned && confirmed(owned.resource) ? owned.details : EMPTY_DETAILS;
   useEffect(() => {if (!subject) publish(null);}, [subject]);
-  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
-    [workspaceId, fleetId, subject, revision, turns, sources, schedules, approvals, approvalRevision, readOnly, owned]);
+  const view = useMemo<ViewState>(() => ({workspaceId, fleetId, subject, revision, turns, files, changeRepositories, sources, schedules, approvals, approvalRevision, readOnly, read: owned}),
+    [workspaceId, fleetId, subject, revision, turns, files, changeRepositories, sources, schedules, approvals, approvalRevision, readOnly, owned]);
   const linked = useMemo<LinkedWorkState>(() => ({subject, read: owned}), [subject, owned]);
   return <DetailContext value={details}><LinkedWorkContext value={linked}><ViewContext value={view}>
     {props.subject ? <DurableTaskReadOwner key={scope} {...props} scope={scope} publish={publish} /> : null}

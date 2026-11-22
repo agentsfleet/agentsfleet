@@ -54,6 +54,19 @@ it("retains a chat when deletion is refused and deletes only the requested chat"
 
 it("does not require a separate review action before a direct Save", async () => {
   await client.save();
-  expect(fixture.mutations()).toHaveLength(1);
-  expect(fixture.mutations()[0]?.body).toMatchObject({review_digest: REVIEW.review_digest});
+  expect(fixture.mutations().map(call => call.method)).toEqual(["PATCH", "POST"]);
+  expect(fixture.mutations()[1]?.body).toMatchObject({review_digest: "review-with-tools"});
+});
+
+it("retries an unconfirmed tool preparation and continues the same save", async () => {
+  fixture.override = ({method}) => {
+    if (method !== "PATCH") return;
+    fixture.override = () => undefined;
+    return response({}, 503);
+  };
+  await expect(client.save()).rejects.toMatchObject({status: 503});
+  expect(client.getSnapshot().pending).toBe(true);
+  await client.retry();
+  expect(fixture.mutations().map(call => call.method)).toEqual(["PATCH", "PATCH", "POST"]);
+  expect(fixture.mutations()[2]?.body).toMatchObject({review_digest: "review-with-tools"});
 });

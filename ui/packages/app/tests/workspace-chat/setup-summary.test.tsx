@@ -13,9 +13,9 @@ it("uses the approved flat grouping and real model and spending metadata", () =>
   render(<SetupSummary definition={REVIEW.effective.definition} requirements={REQUIREMENTS} modelLabel="MiniMax M3.1 Flash" />);
   expect(screen.getByText("MiniMax M3.1 Flash")).toBeTruthy();
   expect(screen.getByText("$1.00 / day")).toBeTruthy();
-  expect(screen.queryByText("Next wake-up")).toBeNull();
+  expect(screen.getByText("Next wake-up")).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Repositories"})).getByText("agentsfleet/web")).toBeTruthy();
-  expect(screen.getByText("shell")).toBeTruthy();
+  expect(screen.getByText("Shell")).toBeTruthy();
   expect(within(screen.getByRole("region", {name: "Secrets"})).getByText("github-token")).toBeTruthy();
   expect(screen.queryByText("Purpose")).toBeNull();
   expect(screen.queryByText("Source and model")).toBeNull();
@@ -64,9 +64,9 @@ it("keeps controls read-only without an edit owner and while a request is pendin
   for (const control of [...screen.getAllByRole("switch"), ...screen.getAllByRole("button", {name: /Manage/})]) expect(control).toHaveProperty("disabled", true);
 });
 
-it("keeps next wake-up in the composer and can show an incomplete saved setup", () => {
+it("labels incomplete saved setup metadata without inventing schedule or network access", () => {
   render(<SetupSummary ready />);
-  expect(screen.queryByText("Next wake-up")).toBeNull();
+  expect(screen.getByText("Next wake-up")).toBeTruthy();
   expect(screen.getByText("Network policy not reviewed")).toBeTruthy();
 });
 

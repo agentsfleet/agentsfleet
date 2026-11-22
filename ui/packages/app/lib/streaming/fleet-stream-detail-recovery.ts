@@ -14,7 +14,7 @@ import { mergeBackfill } from "./fleet-stream-frames";
 import { applyFinalReply, applyReplyGone } from "./fleet-stream-reply-frames";
 
 /** A write to an entry's rows, with what the same frame said about its fleet. */
-export type ApplyTurns = (next: (prev: FleetTurn[]) => FleetTurn[], facts: Partial<FleetFacts>) => void;
+export type ApplyTurns = (next: (prev: FleetTurn[]) => FleetTurn[], facts: Partial<FleetFacts>, replyTurnId?: string) => void;
 
 /** Reads one turn's saved detail when a streamed reply needs its final text. */
 export type TurnDetailReader = (workspaceId: string, fleetId: string, turnId: string) => Promise<ActionResult<TurnDetail>>;

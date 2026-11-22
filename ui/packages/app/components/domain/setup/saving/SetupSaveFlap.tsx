@@ -11,16 +11,16 @@ import {chatRecovery} from "@/lib/api/draft-recovery";
 import {SetupStatusFlap} from "./SetupStatusFlap";
 import {ChatProgressLabel} from "../../shared/chat/ChatProgressLabel";
 
-type Props = {client: DraftClient; view: DraftView; workspace: string; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string};
+type Props = {client: DraftClient; view: DraftView; workspace: string; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string};
 
 /** Saves the reviewed setup as a new fleet, or as the next revision of the fleet it edits. */
-export function SetupSaveFlap({client, view, dirty, ...statusProps}: Props) {
+export function SetupSaveFlap({client, view, ...statusProps}: Props) {
   const inFlight = useRef(false);
   const [preparing, setPreparing] = useState(false);
   const editable = view.draft ? !savedDraft(view) && view.draft.state === DRAFT_STATE.editing && Boolean(view.draft.candidate && view.draft.review)
     : Boolean(view.preview);
   const name = view.draft?.review?.effective.instance_name ?? view.preview?.instanceName;
-  const available = editable && Boolean(name?.trim()) && !view.inaccessible && !view.busy && !view.pending && !view.error && !dirty && !chatRecovery(view).pending;
+  const available = editable && Boolean(name?.trim()) && !view.inaccessible && !view.busy && !view.pending && !view.error && !chatRecovery(view).pending;
   const save = async (): Promise<void> => {
     if (inFlight.current) return;
     inFlight.current = true;setPreparing(true);
@@ -42,7 +42,10 @@ export function SetupSaveFlap({client, view, dirty, ...statusProps}: Props) {
       <ChatProgressLabel label="Saving" />
     </output>
   </div>;
-  return available ? <div className="mb-sm flex justify-center"><Button variant="outline" className="rounded-full bg-card px-xl" onClick={() => {void save();}}>
-    Save<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" />
-  </Button></div> : <SetupStatusFlap view={view} dirty={dirty} {...statusProps} />;
+  return <div className="flex flex-wrap items-center justify-center gap-x-sm">
+    {!available || statusProps.onRetry ? <SetupStatusFlap view={view} {...statusProps} /> : null}
+    {available ? <Button variant="outline" className="mb-sm rounded-full bg-card px-xl" onClick={() => {void save();}}>
+      Save<CaretRightIcon size={16} className="text-muted-foreground" aria-hidden="true" />
+    </Button> : null}
+  </div>;
 }

@@ -1,3 +1,4 @@
+import { runtimeModelLabel } from "@/lib/api/draft-list-types";
 import { describe, expect, it, vi } from "vitest";
 
 const listFleetMessagesMock = vi.hoisted(() => vi.fn());
@@ -12,7 +13,7 @@ vi.mock("@/lib/api/memory", () => ({ listAllMemories: listAllMemoriesMock }));
 vi.mock("@/lib/api/tenant-members", () => ({ listWorkspaceMembers: listWorkspaceMembersMock }));
 vi.mock("@/lib/api/client", () => ({request: requestMock}));
 
-import { CHAT_TURNS, runtimeModelLabel, startChatData, type ChatViewData } from "./view-data";
+import { CHAT_TURNS, startChatData, type ChatViewData } from "./view-data";
 import { MODEL } from "@/tests/helpers/draft-fixtures";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";

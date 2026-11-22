@@ -1,15 +1,16 @@
+import { runtimeModelLabel } from "@/lib/api/draft-list-types";
 import { fleetSources } from "@/lib/fleet-sources";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
 import { notFound, redirect } from "next/navigation";
-import { workspacePath } from "@/lib/workspace-routes";
+import { fleetSetupPath, workspacePath } from "@/lib/workspace-routes";
 import { ApiError } from "@/lib/api/errors";
 import { getFleet } from "@/lib/api/fleets";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { FleetSetupWorkspace } from "@/components/domain/setup/FleetSetupWorkspace";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
-import { startChatData, runtimeModelLabel, type ChatViewData } from "./components/view-data";
+import { startChatData, type ChatViewData } from "./components/view-data";
 import { ChatView } from "./components/ChatView";
 import { FleetHeader } from "./components/FleetHeader";
 import { buildRunSummary } from "@/lib/turns/run-summary";
@@ -19,6 +20,8 @@ import { namedMembers } from "@/lib/turns/sender-names";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { FleetPendingChat } from "./components/FleetPendingChat";
 import type { FleetDetail } from "@/lib/types";
+import { setupRequirements } from "@/lib/setup-requirements";
+import { SetupSummary } from "@/components/domain/setup/summary/SetupSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -49,14 +52,15 @@ export default async function FleetDetailPage({
   const {fleet} = fleetResult;
   const account = workspaces?.items.find(item => item.id === workspaceId)?.account.tenant_id ?? null;
   const pendingSetup = fleet.status === AGENTSFLEET_STATUS.INSTALLING;
-  const content = pendingSetup ? <FleetPendingChat account={account} workspace={workspaceId} fleet={fleet} canGrant={canGrant} />
-    : await loadChatView(workspaceId, fleet, viewData);
-  const latestRun = pendingSetup ? null : buildRunSummary(fleet.status, await viewData.thread, fleet.pending_approvals).latest;
+  const viewer = typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null;
+  const {content, latestRun} = pendingSetup
+    ? {content: <FleetPendingChat account={account} workspace={workspaceId} fleet={fleet} canGrant={canGrant} />, latestRun: null}
+    : await loadChatView(workspaceId, fleet, viewData, viewer);
   return <div data-fleet-workspace className="flex h-full min-h-0 flex-1 flex-col overflow-clip">
     <FleetViewedTracker fleetId={fleet.id} status={fleet.status} />
     <FleetSetupWorkspace account={account} fleet={fleet.id} revision={fleet.setup_revision}
       model={typeof fleet.definition.config["x-agentsfleet"].model === "string" ? fleet.definition.config["x-agentsfleet"].model : "platform-default"}
-      workspace={workspaceId} viewer={typeof sessionClaims?.sub === "string" ? sessionClaims.sub : null}
+      workspace={workspaceId} viewer={viewer}
       header={pendingSetup ? null : <FleetHeader workspaceId={workspaceId} fleet={fleet} canGrant={canGrant} latestRun={latestRun}
         exhaustedAt={billing?.is_exhausted ? billing.exhausted_at : undefined} />}>
       <div className="page-entrance flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip">{content}</div>
@@ -73,7 +77,7 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
 
 async function loadChatView(
   workspaceId: string, fleet: FleetDetail,
-  data: ChatViewData,
+  data: ChatViewData, viewer: string | null,
 ) {
   // The transcript is the one surface that genuinely wants the bodies: it
   // renders what was said. The thread read carries them in ONE request — the
@@ -83,12 +87,13 @@ async function loadChatView(
   // the live tail moves both from there.
   const [threadResult, members, models] = await Promise.all([data.thread, data.members, data.models]);
   const turns = threadResult?.items ?? [];
-  // Who is signed in, from the verified claims this request already holds:
-  // the thread keys its unsent messages by it before the client knows.
-  const subject = (await claims())?.sub;
+  const initialSummary = buildRunSummary(fleet.status, threadResult, fleet.pending_approvals);
   const approvalsHref = `${workspacePath(workspaceId, `fleets/${fleet.id}`)}#fleet-approvals`;
-  return (
-    <ChatView
+  const modelLabel = runtimeModelLabel(models, fleet.definition.config["x-agentsfleet"].model);
+  const scheduled = fleet.status !== AGENTSFLEET_STATUS.ARCHIVED && fleet.schedules.some(schedule => schedule.status === "active" || schedule.status === "paused");
+  return {
+    latestRun: initialSummary.latest,
+    content: <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
       schedules={fleet.schedules}
@@ -96,13 +101,16 @@ async function loadChatView(
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}
       setup={<FleetRecovery key={`${workspaceId}:${fleet.id}:${fleet.etag}`} workspace={workspaceId} fleet={fleet} showSaved />}
-      modelLabel={runtimeModelLabel(models, fleet.definition.config["x-agentsfleet"].model)}
+      setupSummary={scheduled ? <SetupSummary requirements={setupRequirements(fleet.definition) ?? undefined} schedules={fleet.schedules}
+        modelLabel={modelLabel}
+        ready editHref={fleetSetupPath(workspaceId, fleet.id, fleet.setup_revision)} /> : undefined}
+      modelLabel={modelLabel}
       initial={turns}
-      initialSummary={buildRunSummary(fleet.status, threadResult, fleet.pending_approvals)}
+      initialSummary={initialSummary}
       approvalsHref={approvalsHref}
-      viewer={typeof subject === "string" ? subject : null}
+      viewer={viewer}
       senderNames={namedMembers(members ?? [])}
-    />
-  );
+    />,
+  };
 }
 

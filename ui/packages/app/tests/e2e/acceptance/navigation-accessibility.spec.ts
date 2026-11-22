@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { expectAccessible, expectNoPageOverflow } from "./fixtures/accessibility";
+import {expectWorkspaceEntry} from "./fixtures/nav";
 
 const WIDTHS = [1440, 390, 320];
 const CREATE_WORKSPACE = "Create workspace";
@@ -14,7 +15,7 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
-    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
+    await expectWorkspaceEntry(page, workspaceId);
     const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();
@@ -52,17 +53,19 @@ for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
-    await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
+    await expectWorkspaceEntry(page, workspaceId);
     const rail = page.getByRole("navigation", {name: "Primary", exact: true});
     await expect(rail).toBeVisible();
-    for (const name of ["New fleet", "Your fleets", "Secrets", "Connected apps"]) {
+    for (const name of ["New fleet", "Secrets", "Connected apps"]) {
       await expect(rail.getByRole("link", {name, exact: true})).toBeVisible();
     }
-    const fleets = rail.getByRole("link", {name: "Your fleets", exact: true});
+    await expect(rail.getByRole("link", {name: "Plugins", exact: true})).toHaveCount(0);
+    const fleets = rail.locator("summary").filter({hasText: "Your Fleets"});
+    const before = page.url();
     await fleets.focus();
     await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets$`));
-    await expect(fleets).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveURL(before);
+    await expect(fleets.locator("..")).not.toHaveAttribute("open");
     await expectAccessible(page, "Mobile navigation");
     await expectNoPageOverflow(page);
     await expect(rail).toBeVisible();

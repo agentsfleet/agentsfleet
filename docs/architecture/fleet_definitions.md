@@ -27,8 +27,10 @@ One validated Definition serves browser chat, terminal chat, review and runtime 
 
 Customers supply the job through chat, or start from an editable starter such as pull-request review.
 
+The Chief of Staff starter asks for a workspace coordinator that reads fleet activity, delegates requests, and reports the results.
 The New fleet suggestion buttons load editable user-message text from `ui/packages/app/public/fleet-starters.json`.
-Review pull requests includes suggested completion questions and yes/no criteria; selecting it sends nothing and creates no fleet.
+
+The pull-request review starter includes suggested completion questions and yes/no criteria. Selecting it fills the draft composer.
 The owner edits and submits that text through ordinary setup chat; Rust supplies no PR-review canned reply or default completion question.
 
 Conversation compaction retains context separately; saved instructions and accepted questions remain the authoritative setup.

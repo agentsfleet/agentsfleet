@@ -38,10 +38,10 @@ describe("FleetThread — steer recovery", () => {
     // assistant-ui hands the draft back when the handler rejects with
     // MessageNotSentError.
     await waitFor(() => expect(composerInput().value).toBe("refused send"));
-    expect(screen.getByText(SEND_FAILED_TEXT)).toBeTruthy();
+    expect(screen.getByText("This fleet is not active. Choose an active fleet with @, then send again.")).toBeTruthy();
     expect(screen.getByRole("button", { name: RESEND_LABEL })).toBeTruthy();
     expect(reconcileOptimistic).not.toHaveBeenCalled();
-    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.REFUSED]);
+    expect(getPendingSends(SCOPE).map((entry) => entry.state)).toEqual([PENDING_SEND_STATE.TARGET_INACTIVE]);
   });
 
   it("test_unknown_delivery_notice", async () => {

@@ -27,6 +27,19 @@ it("keeps commands, reads, edits and a new tool readable inside one reply", () =
   expect(failed?.textContent).toContain("(exit 2)");
 });
 
+it("announces the number of lines actually added and removed by a completed edit", () => {
+  // The counts are the runner's recorded changes, never worked out from the arguments.
+  renderTools([{name: "file_edit", args: {path: "list.txt", edits: [{old_text: "first\nsecond", new_text: "one\ntwo\nthree"}]},
+    changes: [{path: "list.txt", added: 3, removed: 2}]}]);
+  expect(screen.getByLabelText("3 additions, 2 deletions")).toBeTruthy();
+});
+
+it("uses the runner’s deletion count in a confirmed patch header", () => {
+  renderTools([{name: "apply_patch", args: {patch: "*** Begin Patch\n*** Delete File: retired.txt\n*** End Patch"},
+    outputHead: "Success. Updated the following files:\nD retired.txt\n+0 −17"}]);
+  expect(screen.getByLabelText("0 additions, 17 deletions")).toBeTruthy();
+});
+
 it.each(["constructor", "toString", "hasOwnProperty", "__proto__"])("uses the generic tool view for %s", name => {
   const {container} = renderTools([{name, args: {message: "recorded input"}, status: TOOL_CALL_STATUS.INTERRUPTED, outputHead: "run interrupted"}]);
   const cell = container.querySelector('[data-tool]');
@@ -49,8 +62,10 @@ it("does not claim success when the runner returns no outcome status", () => {
   const cell = container.querySelector('[data-tool="file_edit"]');
   expect(cell?.getAttribute("data-state")).toBe("settled");
   expect(cell?.textContent).not.toContain("Success");
-  // No change recorded: no counts and no lines worked out of the arguments.
-  expect(cell?.querySelector("[data-changed-file], [data-diff]")).toBeNull();
+  expect(screen.getByText("a.ts · Requested changes")).toBeTruthy();
+  expect(cell?.querySelector('[data-diff="added"]')?.textContent).toContain("new");
+  // No change recorded: the requested lines show, but no counts worked out of the arguments.
+  expect(cell?.textContent).not.toMatch(/\+\d+ −\d+/);
 });
 
 it("keeps an unfinished command unconfirmed while its output is still arriving", () => {
@@ -59,6 +74,29 @@ it("keeps an unfinished command unconfirmed while its output is still arriving",
   expect(cell?.getAttribute("data-state")).toBe("running");
   expect(screen.getByLabelText("Command result").textContent).toContain("run-checks");
   expect(cell?.textContent).not.toContain("Success");
+});
+
+it.each([
+  {outputHead: "Process running with session ID 12", exitCode: undefined, state: "settled"},
+  {outputHead: "Process failed", exitCode: 1, state: "failed"},
+])("keeps a successful tool call distinct from the command outcome: $state", ({outputHead, exitCode, state}) => {
+  const {container} = renderTools([{name: "exec_command", args: {cmd: "build"}, status: TOOL_CALL_STATUS.SUCCEEDED, outputHead, exitCode}]);
+  expect(container.querySelector('[data-tool="exec_command"]')?.getAttribute("data-state")).toBe(state);
+  expect(screen.queryByText("Succeeded")).toBeNull();
+});
+
+it("shows the recorded command outcome after one expansion when the arguments were omitted", () => {
+  mockStream([ev({id: "receipt", role: "user", actor: "operator", text: "Run the check", status: "processed",
+    tools: [{name: "exec_command", callId: "check", startedAtMs: 1000, ms: 10, done: true, status: TOOL_CALL_STATUS.SUCCEEDED,
+      exitCode: 0, outputHead: "status=checked"}]})]);
+  renderThread();
+  expect(screen.queryByLabelText("Command result")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: /^Tool activity:/}));
+  const result = screen.getByLabelText("Command result");
+  expect(within(result).getByText("exit 0")).toBeTruthy();
+  expect(within(result).getByText("status=checked")).toBeTruthy();
+  expect(result.querySelector("code")).toBeNull();
+  expect(screen.queryByRole("heading", {name: "Input"})).toBeNull();
 });
 
 it("offers the existing full-output view when a command's returned output is truncated", async () => {

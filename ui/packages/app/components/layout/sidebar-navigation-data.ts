@@ -1,5 +1,5 @@
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { StackIcon, NotePencilIcon, KeyIcon, PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
+import { NotePencilIcon, KeyIcon, PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
 import { workspacePath } from "@/lib/workspace-routes";
 
 export type NavEntry = {
@@ -17,7 +17,6 @@ export const NAV_ICON_SIZE = 16;
 
 export const PRIMARY_NAV: NavEntry[] = [
   { label: "New fleet", path: "fleets/new", icon: NotePencilIcon, workspaceScoped: true },
-  { label: "Your fleets", path: "fleets", icon: StackIcon, workspaceScoped: true },
   { label: "Secrets", path: "secrets", icon: KeyIcon, workspaceScoped: true },
   { label: "Connected apps", path: "integrations", icon: PlugsConnectedIcon, workspaceScoped: true },
 ];

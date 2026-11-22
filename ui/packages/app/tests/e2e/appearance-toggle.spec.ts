@@ -61,3 +61,17 @@ test("Appearance applies the selected palette and persists across reload", async
   await expect(root).toHaveAttribute("data-theme", "dark");
   await expect(surface).toHaveCSS("background-color", dark);
 });
+
+test("Appearance switches to light on the first click with a saved System preference", async ({page}) => {
+  await page.emulateMedia({colorScheme: "light"});
+  await page.goto(origin);
+  await page.evaluate(() => localStorage.setItem("theme", "system"));
+  await page.reload();
+  const surface = page.getByRole("main", {name: "Dashboard"});
+  await expect(surface).toHaveCSS("background-color", "rgb(24, 26, 30)");
+
+  await page.getByRole("button", {name: "Workspace and account menu"}).click();
+  await page.getByRole("menuitem", {name: /^Appearance/}).click();
+  await expect(surface).toHaveCSS("background-color", "rgb(250, 251, 252)");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+});

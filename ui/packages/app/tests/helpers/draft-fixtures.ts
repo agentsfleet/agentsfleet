@@ -40,6 +40,17 @@ export const MODEL: WorkspaceModel = {ref: MODEL_REF, label: "Setup model", prov
   pricing: {input_nanos_per_million: String(2.5 * NANOS_PER_USD), output_nanos_per_million: String(10 * NANOS_PER_USD), runtime_nanos_per_second: "1"}};
 export const ACCEPTED = {status: "accepted", sequence: "1", replayed: false} as const;
 
+export function applyToolSelection(draft: Draft, body: unknown): Draft {
+  const {config_ops: edits} = (body ?? {}) as {config_ops?: {path: string; value: string[]}[]};
+  const tools = edits?.find(edit => edit.path === "/config/x-agentsfleet/tools")?.value;
+  if (!tools || !draft.candidate || !draft.review) return draft;
+  const current = draft.candidate.definition;
+  const definition = {...current, config: {...current.config,
+    "x-agentsfleet": {...current.config["x-agentsfleet"] as Record<string, unknown>, tools}}};
+  return {...draft, etag: '"draft-with-tools"', candidate: {...draft.candidate, id: REVISION_ID, revision: "2", definition},
+    review: {...draft.review, effective: {...draft.review.effective, definition}, requirements: {...draft.review.requirements, tools}, review_digest: "review-with-tools"}};
+}
+
 export function response(value: unknown, status = 200, headers?: HeadersInit): Response {
   return new Response(status === 204 ? null : JSON.stringify(value), {status, headers: {"Content-Type": "application/json", ...headers}});
 }

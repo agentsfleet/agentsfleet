@@ -1,5 +1,5 @@
 import type { Definition, Draft, DraftCard, Fleet, Message, Schedule, WorkspaceModel } from "./draft-types";
-import { DRAFT_LIST_STATUS } from "./draft-list-types";
+import { DRAFT_LIST_STATUS, type DraftListStatus, type MODEL_LIST_RETRYING } from "./draft-list-types";
 import type { DraftReply } from "./draft-replies";
 import type { DraftCompaction } from "./draft-live";
 import type { SetupActivity } from "./draft-activity";
@@ -22,12 +22,14 @@ export type DraftView = {
   readonly activities?: readonly SetupActivity[];
   readonly liveReply?: DraftReply | null;
   readonly contextProgress?: DraftCompaction | null;
+  readonly startedTurn?: {readonly draftId: string; readonly sequence: string} | null;
   readonly optimistic?: {readonly operation: string; readonly save?: boolean; readonly text: string; readonly createdAt: string} | null;
   readonly models: readonly WorkspaceModel[];
   readonly cards: readonly DraftCard[];
   readonly moreModels: boolean;
   readonly moreChats: boolean;
-  readonly listStatus: typeof DRAFT_LIST_STATUS[keyof typeof DRAFT_LIST_STATUS];
+  readonly listStatus: DraftListStatus;
+  readonly modelListStatus: DraftListStatus | typeof MODEL_LIST_RETRYING;
   readonly model: string;
   readonly preview: {readonly definition: Definition; readonly instanceName: string; readonly revision: string; readonly setupRevision?: string} | null;
   readonly savedSetupRevision: string | null;
@@ -46,10 +48,10 @@ export type DraftView = {
   /** Successful saved-setup reads invalidate approvals even with unchanged history. */
   readonly readinessRevision: number;
 };
-export type DrawerEdit = {readonly definition: Definition; readonly instanceName: string; readonly runtimeModel?: string};
+export type DrawerEdit = {readonly definition: Definition; readonly instanceName?: string; readonly runtimeModel?: string};
 
 export const EMPTY_DRAFT_VIEW: DraftView = {draft: null, messages: [], models: [], cards: [], moreModels: false, moreChats: false, listStatus: DRAFT_LIST_STATUS.loading,
-  model: "", fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,
+  modelListStatus: DRAFT_LIST_STATUS.loading, model: "", fleet: null, schedules: [], busy: false, pending: false, inaccessible: false, error: null, notice: null,
   truncated: false, preview: null, savedSetupRevision: null, focusRevision: 0, readinessRevision: 0};
 
 /** Keep the view interface stable while one request state owns its lifecycle flags. */

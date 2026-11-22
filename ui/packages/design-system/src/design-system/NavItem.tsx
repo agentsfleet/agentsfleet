@@ -7,6 +7,8 @@ import { cn } from "../utils";
 export type NavItemProps = ComponentProps<"a"> & {
   asChild?: boolean;
   active?: boolean;
+  appearance?: "default" | "rail" | "list";
+  tone?: "default" | "accent";
 };
 
 /**
@@ -18,7 +20,7 @@ export type NavItemProps = ComponentProps<"a"> & {
  * clipped corner. Dropping it also puts the icon on the same column as the
  * group eyebrows, which the rail's two pixels had pushed it off.
  */
-export function NavItem({ asChild = false, active = false, className, onFocus, ...props }: NavItemProps) {
+export function NavItem({ asChild = false, active = false, appearance = "default", tone = "default", className, onFocus, ...props }: NavItemProps) {
   const Component = asChild ? Slot : "a";
   return (
     <Component
@@ -37,8 +39,13 @@ export function NavItem({ asChild = false, active = false, className, onFocus, .
       data-active={active ? "true" : undefined}
       className={cn(
         "flex min-h-9 shrink-0 items-center gap-md rounded-md px-md py-xs font-sans text-body-sm text-muted-foreground no-underline pointer-coarse:min-h-11",
-        "transition duration-snap ease-snap hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        "data-[active=true]:bg-pulse/10 data-[active=true]:font-medium data-[active=true]:text-pulse",
+        "transition duration-snap ease-snap hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:font-medium",
+        appearance === "default"
+          ? "hover:bg-accent data-[active=true]:bg-pulse/10 data-[active=true]:text-pulse"
+          : "w-full hover:bg-muted data-[active=true]:bg-muted data-[active=true]:text-foreground",
+        appearance === "rail" && "min-h-11 gap-lg px-lg font-medium md:min-h-12",
+        appearance === "list" && "text-label leading-label",
+        tone === "accent" && "bg-primary/10 text-foreground hover:bg-primary/15 data-[active=true]:bg-primary/15 data-[active=true]:text-foreground",
         className,
       )}
     />

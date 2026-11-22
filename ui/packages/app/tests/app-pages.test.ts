@@ -84,10 +84,10 @@ describe("app layouts and pages", () => {
     expect(authMarkup).not.toContain("data-live");
     // Configuration nav carries the consolidated Models destination
     // (the standalone Credentials vault was folded into it).
-    expect(dashboardMarkup).toContain("Your fleets");
+    expect(dashboardMarkup).toContain("Connected apps");
     // M118: the Models destination is workspace-scoped — it carries the `/w/<id>`
     // segment (the switcher-seeded first workspace) rather than a bare root path.
-    expect(dashboardMarkup).toContain('href="/w/ws_1/fleets"');
+    expect(dashboardMarkup).toContain('href="/w/ws_1/fleets/new"');
     expect(dashboardMarkup).not.toContain('href="/credentials"');
   });
 

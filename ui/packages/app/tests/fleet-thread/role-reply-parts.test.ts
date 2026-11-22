@@ -38,7 +38,7 @@ describe("FleetThread — reply parts", () => {
     expect(screen.getByText("deploy the canary")).toBeTruthy();
     // The reply row exists before any word, holding only the wait state.
     const reply = replyRow();
-    expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();
+    expect(within(reply).getByRole("status", { name: "On it" })).toBeTruthy();
     expect(within(reply).queryByRole("list", { name: TOOL_CALLS })).toBeNull();
     expect(within(reply).queryByRole("button")).toBeNull();
     // A running reply marks the thread running, and the composer still steers.
@@ -61,7 +61,7 @@ describe("FleetThread — reply parts", () => {
     fireEvent.click(within(reply).getByRole("button", { name: /^Tool activity:/ }));
     const tools = within(reply).getByRole("list", { name: TOOL_CALLS });
     const answer = within(reply).getByText("Opened the PR.");
-    fireEvent.click(within(tools).getByRole("button", {name: /using tool/i}));
+    fireEvent.click(within(tools).getByRole("button", {name: /using search_repo/i}));
     expect(within(tools).getByText("Action · search_repo")).toBeTruthy();
     // Reasoning, then tools, then the answer — the library's grouping order.
     expect(chip.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -137,7 +137,7 @@ describe("FleetThread — reply parts", () => {
     expect(screen.getByText("PR opened")).toBeTruthy();
     fireEvent.click(within(replyRow()).getByRole("button", { name: /^Tool activity:/ }));
     const calls = within(replyRow()).getByRole("list", { name: TOOL_CALLS });
-    fireEvent.click(within(calls).getByRole("button", {name: /using tool/i}));
+    fireEvent.click(within(calls).getByRole("button", {name: /using read_file/i}));
     expect(within(calls).getByText("Action · read_file")).toBeTruthy();
   });
 

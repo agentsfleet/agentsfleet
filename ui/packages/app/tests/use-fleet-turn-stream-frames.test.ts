@@ -74,6 +74,37 @@ describe("useFleetTurnStream — conversion and frame edges", () => {
     expect(result.current.turns).toEqual([]);
   });
 
+  it("keeps recorded work stable while an existing turn streams text", () => {
+    const {result} = mount();
+    const source = FakeEventSource.instances[0];
+    if (!source) throw new Error("Fleet connection was not opened");
+    act(() => source.emit({kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*"}));
+    const work = result.current.workTurns;
+    act(() => source.emit({
+      kind: FRAME_KIND.CHUNK, turn_id: "evt_live", text: "Checking the release.", text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }));
+    expect(result.current.turns[0]?.reply).toBe("Checking the release.");
+    expect(result.current.workTurns).toBe(work);
+    expect(work[0]?.id).toBe("evt_live");
+  });
+
+  it.each([["file_read", false], ["exec_command", true]] as const)("preserves reply links for %s work", (name, updatesWork) => {
+    const {result} = mount();
+    const source = FakeEventSource.instances[0]!;
+    act(() => {
+      source.emit({kind: FRAME_KIND.TURN_RECEIVED, turn_id: "evt_live", actor: "cron:*"});
+      source.emit({kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "evt_live", call_id: "1:1", name, args_redacted: {cmd: "bun run preview"}});
+    });
+    const work = result.current.workTurns;
+    expect(work[0]?.tools?.[0]?.name).toBe(name);
+    act(() => source.emit({
+      kind: FRAME_KIND.CHUNK, turn_id: "evt_live", text: "Preview https://preview.example.test", text_kind: "answer",
+      stream_seq: 0, stream_start: true, stream_contiguous: true,
+    }));
+    expect(result.current.workTurns === work).toBe(!updatesWork);
+  });
+
   // ── Robustness: invalid/error paths ─────────────────────────────────────
 
   it("creates a fresh turn row when CHUNK arrives before TURN_RECEIVED", async () => {

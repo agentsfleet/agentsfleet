@@ -1,4 +1,4 @@
-import { FLEET_ID } from "../helpers/draft-fixtures";
+import { FLEET_DETAIL, FLEET_ID, SCHEDULE } from "../helpers/draft-fixtures";
 import { happyBilling, mockFetchBilling } from "./harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -6,6 +6,7 @@ import { authMock } from "../helpers/dashboard-mocks";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
 import type { SenderName } from "@/lib/turns/sender-names";
+import { fleetSetupPath } from "@/lib/workspace-routes";
 
 const VIEWER = "user_viewer";
 const WORKSPACE_ID = "ws_1";
@@ -14,7 +15,7 @@ const BOB_NAME = "Bob";
 const BOB: WorkspaceMember = { user_id: "user_bob", display_name: BOB_NAME, role: ACCOUNT_ROLE.member, actor: "steer:user_bob" };
 const NAMELESS: WorkspaceMember = { user_id: "user_anon", display_name: null, role: ACCOUNT_ROLE.member, actor: "steer:user_anon" };
 
-type ChatViewProps = { viewer: string | null; senderNames: readonly SenderName[] };
+type ChatViewProps = { viewer: string | null; senderNames: readonly SenderName[]; setupSummary?: unknown };
 
 // What the page hands the chat, captured instead of rendered: the unsent-message
 // ledger is keyed by `viewer` before Clerk loads in the browser, so the page is
@@ -40,12 +41,22 @@ beforeEach(() => {
   authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(TOKEN), sessionClaims: { sub: VIEWER } });
 });
 
-async function renderChat(): Promise<ChatViewProps | undefined> {
-  mockFetchBilling(happyBilling);
+async function renderChat(fleet?: Record<string, unknown>): Promise<ChatViewProps | undefined> {
+  mockFetchBilling(happyBilling, {fleet});
   const { default: Page } = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
   renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, id: FLEET_ID }) }));
   return chatViewProps.at(-1);
 }
+
+it.each(["active", "paused", "removed"] as const)("displays saved setup alongside a %s wake-up only while it can recur", async status => {
+  const definition = status === "paused" ? {...FLEET_DETAIL.definition, config: {name: "repairer", "x-agentsfleet": {}}} : FLEET_DETAIL.definition;
+  const props = await renderChat({definition, schedules: [{...SCHEDULE, status}]});
+  if (status === "removed") expect(props?.setupSummary).toBeUndefined();
+  else expect(props?.setupSummary).toMatchObject({props: {
+    requirements: status === "active" ? expect.objectContaining({budget: expect.any(Object)}) : undefined,
+    editHref: fleetSetupPath(WORKSPACE_ID, FLEET_ID, FLEET_DETAIL.setup_revision),
+  }});
+});
 
 describe("fleets routes — the chat's viewer", () => {
   it("hands the chat the user the request's verified claims name", async () => {

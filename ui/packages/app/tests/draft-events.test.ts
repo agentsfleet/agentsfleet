@@ -69,6 +69,25 @@ it("coalesces a burst during an in-flight read and reconciles the terminal resul
   expect(reconcile).toHaveBeenCalledTimes(2); expect(current.source.closed).toBe(true);
 });
 
+it("reports the current draft's running notice while a read is pending", async () => {
+  const owner = new AbortController(); owners.push(owner);
+  const read = Promise.withResolvers<boolean>();
+  const reconcile = vi.fn(() => read.promise);
+  const started = vi.fn();
+  const pending = followDraft(PATH, DRAFT_ID, owner.signal, reconcile, undefined, {started, delta: () => false, gap: vi.fn()});
+  const source = FakeEventSource.instances.at(-1);
+  if (!source) throw new Error("Private connection was not opened");
+  source.open();
+  hint(source, DRAFT_EVENT.running, {draft_id: FLEET_ID, sequence: "2"});
+  hint(source, DRAFT_EVENT.running, {draft_id: DRAFT_ID, sequence: "-1"});
+  hint(source, DRAFT_EVENT.running, {draft_id: DRAFT_ID, sequence: "2"});
+  expect(started).toHaveBeenCalledExactlyOnceWith("2");
+  expect(reconcile).toHaveBeenCalledOnce();
+  owner.abort();
+  read.resolve(false);
+  await pending;
+});
+
 it.each([401, 403, 404, 410])("closes private follow when reconciliation refuses HTTP %i", async (status) => {
   const current = follow(vi.fn(async () => { throw new SetupUnavailable("Unavailable", status); }));
   const refused = expect(current.pending).rejects.toMatchObject({status}); current.source.fail();

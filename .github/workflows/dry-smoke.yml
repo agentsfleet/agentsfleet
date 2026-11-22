@@ -33,9 +33,9 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-website.outputs.cache-hit }}" = "true" ]; then
-            bunx --no-install playwright install chromium
+            bunx --bun --no-install playwright install chromium
           else
-            bunx --no-install playwright install --with-deps chromium
+            bunx --bun --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/website
       - name: Run website smoke dry Playwright lane
@@ -62,9 +62,9 @@ jobs:
       - name: Install Playwright browsers
         run: |
           if [ "${{ steps.playwright-cache-app.outputs.cache-hit }}" = "true" ]; then
-            bunx --no-install playwright install chromium
+            bunx --bun --no-install playwright install chromium
           else
-            bunx --no-install playwright install --with-deps chromium
+            bunx --bun --no-install playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
       - name: Load Clerk dev keys from 1Password

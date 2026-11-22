@@ -107,15 +107,62 @@ describe("FleetThreadViewport scroll", () => {
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: LOG_PX, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(600);
-      // A settled reply laid out taller than its placeholder.
+      // A deferred row's anchor can move before the browser reports its new height.
+      frame.viewport.scrollTop = 550;
+      fireEvent.scroll(frame.viewport);
       frame.size.log = 1_300;
       browser.layout(frame.log);
       expect(frame.scrollTo).toHaveBeenLastCalledWith({ top: 1_300, behavior: "instant" });
       expect(frame.viewport.scrollTop).toBe(900);
     });
 
+    it("lands on late layout after a jump and releases the viewport on a new upward scroll", () => {
+      const browser = stubBrowserLayout();
+      const view = render(<View messages={SETTLED_TURN} turnsCount={1} />);
+      const frame = browser.frameOf(view);
+      browser.layout(frame.log);
+      frame.viewport.scrollTop = 200;
+      fireEvent.wheel(frame.viewport, {deltaY: -400});
+      fireEvent.scroll(frame.viewport);
+      fireEvent.click(view.getByRole("button", {name: "Jump to latest"}));
+      browser.layout(frame.log);
+      frame.size.log = 1_300;
+      fireEvent.scroll(frame.viewport);
+      browser.layout(frame.log);
+      expect(frame.viewport.scrollTop).toBe(900);
+      frame.viewport.scrollTop = 620;
+      fireEvent.wheel(frame.viewport, {deltaY: -280});
+      fireEvent.scroll(frame.viewport);
+      frame.size.log = 1_400;
+      browser.layout(frame.log);
+      expect(frame.viewport.scrollTop).toBe(620);
+    });
+
+    it("follows the same reply after a jump and stops once a different turn arrives", () => {
+      const browser = stubBrowserLayout();
+      const view = render(<View messages={TEAMMATE_REPLY("Checking")} turnsCount={2} />);
+      const frame = browser.frameOf(view);
+      browser.layout(frame.log);
+      frame.viewport.scrollTop = 200;
+      fireEvent.scroll(frame.viewport);
+      fireEvent.click(view.getByRole("button", {name: "Jump to latest"}));
+      browser.layout(frame.log);
+      view.rerender(<View messages={TEAMMATE_REPLY("Checking the rollout")} turnsCount={2} />);
+      frame.size.log = 1_300;
+      browser.layout(frame.log);
+      expect(frame.viewport.scrollTop).toBe(900);
+      const next: ThreadMessageLike = {id: "other", role: "assistant", content: "A new update"};
+      view.rerender(<View messages={[...TEAMMATE_REPLY("Done"), next]} turnsCount={3} />);
+      frame.size.log = 1_400;
+      browser.layout(frame.log);
+      expect(frame.viewport.scrollTop).toBe(900);
+    });
+
     it.each([
-      ["scrolls up", (frame: Frame) => { frame.viewport.scrollTop = 200; fireEvent.scroll(frame.viewport); }, 200],
+      ["scrolls up", (frame: Frame) => { fireEvent.wheel(frame.viewport, {deltaY: -400}); frame.viewport.scrollTop = 200; }, 200],
+      ["reads with the keyboard", (frame: Frame) => { fireEvent.keyDown(frame.viewport, {key: "PageUp"}); }, 600],
+      ["points at the transcript", (frame: Frame) => { fireEvent.pointerDown(frame.log); }, 600],
+      ["focuses the transcript", (frame: Frame) => { fireEvent.focusIn(frame.log); }, 600],
       ["types a draft", (frame: Frame) => { fireEvent.input(frame.composer, { target: { value: "Hold the rollout" } }); }, 600],
     ] as const)("stops landing once the reader %s", (_, act, held) => {
       const browser = stubBrowserLayout();
@@ -128,7 +175,7 @@ describe("FleetThreadViewport scroll", () => {
       expect(frame.viewport.scrollTop).toBe(held);
     });
 
-    it("keeps landing when the reader scrolls but stays at the latest turn", () => {
+    it("keeps landing through a scroll event at the latest turn", () => {
       const browser = stubBrowserLayout();
       const frame = browser.frameOf(render(<View messages={SETTLED_TURN} turnsCount={1} />));
       browser.layout(frame.log);
@@ -252,23 +299,23 @@ describe("FleetThreadViewport layout", () => {
     expect(view.getByTestId("fleet-thread-root").querySelector('[role="presentation"]')?.contains(footerElement)).toBe(true);
   });
   it("places the saved setup inside the log once, with the composer still available", () => {
-    const view = render(<View setup={<h2>Setup saved · v1</h2>} />);
-    expect(view.getByRole("log").contains(view.getByRole("heading", {name: "Setup saved · v1"}))).toBe(true);
-    expect(view.queryAllByText("Setup saved · v1")).toHaveLength(1);
+    const view = render(<View setup={<h2>Saved setup</h2>} />);
+    expect(view.getByRole("log").contains(view.getByRole("heading", {name: "Saved setup"}))).toBe(true);
+    expect(view.queryAllByText("Saved setup")).toHaveLength(1);
     expect(view.queryByText("Saved v1")).toBeNull();
     expect(view.getByRole("form", {name: "Chat composer"})).toBeTruthy();
   });
   it("replaces the saved receipt in sequence without repeating it above later messages", () => {
     const messages: ThreadMessageLike[] = [
       {id: "before", role: "user", content: "Save this setup"},
-      {id: "saved", role: "system", content: "Setup saved · v1"},
+      {id: "saved", role: "system", content: "Saved setup"},
       {id: "after", role: "user", content: "Check performance"},
     ];
-    const view = render(<View messages={messages} turnsCount={3} setupTurnId="saved" setup={<h2>Setup saved · v1</h2>} />);
+    const view = render(<View messages={messages} turnsCount={3} setupTurnId="saved" setup={<h2>Saved setup</h2>} />);
     const history = view.getByRole("log").textContent ?? "";
-    expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Setup saved · v1"));
-    expect(history.indexOf("Setup saved · v1")).toBeLessThan(history.indexOf("Check performance"));
-    expect(view.getAllByText("Setup saved · v1")).toHaveLength(1);
+    expect(history.indexOf("Save this setup")).toBeLessThan(history.indexOf("Saved setup"));
+    expect(history.indexOf("Saved setup")).toBeLessThan(history.indexOf("Check performance"));
+    expect(view.getAllByText("Saved setup")).toHaveLength(1);
   });
 });
 

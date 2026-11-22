@@ -1,75 +1,94 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { Definition, Review } from "@/lib/api/draft-types";
+import type { Definition, Review, Schedule } from "@/lib/api/draft-types";
 import type { SetupNetworkChange } from "@/lib/setup-requirements";
-import { useId } from "react";
-import { Button, Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, Switch, TooltipButton, cn } from "@agentsfleet/design-system";
-import { GitBranchIcon, InfoIcon, KeyIcon } from "@phosphor-icons/react/ssr";
-import { setupRequirements } from "@/lib/setup-requirements";
+import { useId, useState } from "react";
+import Link from "next/link";
+import { Button, Section, SectionLabel, Time, cn, sameCalendarDay } from "@agentsfleet/design-system";
+import { GitBranchIcon, KeyIcon } from "@phosphor-icons/react/ssr";
+import { hasProposedWakeup, setupRequirements } from "@/lib/setup-requirements";
+import { SetupNetworkPolicy } from "./SetupNetworkPolicy";
 import { formatDollars } from "@/lib/money";
+import { nextFleetWakeup } from "@/lib/api/schedule-status";
 
-type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string;
-  ready?: boolean; scheduleRecovery?: ReactNode; disabled?: boolean;
-  onNetworkChange?: (change: SetupNetworkChange) => void; onManage?: (kind: "repositories" | "credentials") => void};
+type Props = {definition?: Definition; requirements?: Review["requirements"]; modelLabel?: string; schedules?: readonly Schedule[];
+  ready?: boolean; scheduleRecovery?: ReactNode; disabled?: boolean; secretEditor?: ReactNode; editHref?: string;
+  onNetworkChange?: (change: SetupNetworkChange) => void; onManage?: (kind: "repositories" | "credentials", trigger: HTMLButtonElement) => void};
 
-const PACKAGE_MANAGER_DOMAINS_HELP = "Allow standard package registries while public internet access is restricted.";
+const SHELL_TOOLS = new Set(["shell", "exec_command", "write_stdin"]);
+const FILE_TOOLS = new Set(["apply_patch", "file_read", "file_read_hashed", "file_write", "file_edit", "file_edit_hashed", "file_append", "file_delete"]);
 
-export function SetupSummary({definition, requirements, modelLabel, ready, scheduleRecovery, disabled, onNetworkChange, onManage}: Props) {
+export function SetupSummary({definition, requirements, modelLabel, schedules = [], ready, scheduleRecovery, disabled, secretEditor, editHref, onNetworkChange, onManage}: Props) {
   const id = useId();
+  const [today] = useState(() => new Date());
   if (!definition && !requirements && !ready) return <p className="text-label leading-label text-muted-foreground">Your setup will appear here as you chat.</p>;
   const setup = setupRequirements(definition, requirements);
   const network = setup?.network;
-  const networkKnown = Boolean(network && (network.http_egress !== undefined || network.allow !== undefined || network.package_manager_domains !== undefined));
-  const publicInternet = network?.http_egress === "public";
-  const selected = (items: readonly string[] | undefined, empty: string, kind: "repositories" | "credentials") => items
-    ? items.length ? <ul className="space-y-sm">{items.map(name => <li key={name} className="flex min-w-0 items-center gap-md py-xs">
-      {kind === "repositories" ? <GitBranchIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" /> : <KeyIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
-      <span className="min-w-0 break-words">{name}</span></li>)}</ul> : <p className="text-muted-foreground">{empty}</p>
-    : <p className="text-muted-foreground">Not reviewed</p>;
-  return <div className="min-w-0 space-y-lg text-label leading-label [overflow-wrap:anywhere]">
+  const nextWakeup = nextFleetWakeup(schedules);
+  const tools = setup?.tools.length ? toolSummary(setup.tools) : null;
+  return <div className="ph-no-capture ph-no-record min-w-0 text-label leading-label [overflow-wrap:anywhere]">
     <dl className="space-y-md">
       <Meta label="Model">{modelLabel ?? "Not reviewed"}</Meta>
-      <Meta label="Spending limit">{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
+      <Meta label="Spending limit" emphasize>{setup ? <>{formatDollars(setup.budget.daily_nanos, 9)} / day{setup.budget.monthly_nanos ? <span className="block">{formatDollars(setup.budget.monthly_nanos, 9)} / month</span> : null}</> : "Not reviewed"}</Meta>
+      <Meta label="Next wake-up" emphasize>{nextWakeup ? <Time value={nextWakeup} format={sameCalendarDay(nextWakeup, today) ? "minute" : "compact"} /> : wakeupStatus(schedules, definition, Boolean(setup))}</Meta>
     </dl>
-    {scheduleRecovery}
-    <SummarySection title="Repositories" action={onManage ? <Manage kind="repositories" disabled={disabled} onClick={() => onManage("repositories")} /> : undefined}>
-      {selected(setup?.repositories, "No repositories selected", "repositories")}
-      <p className="text-eyebrow leading-eyebrow text-muted-foreground"><span className="mr-sm text-text-dim">Tools</span>{setup ? setup.tools.length ? setup.tools.join(", ") : "None selected" : "Not reviewed"}</p>
+    {scheduleRecovery ? <div className="mt-lg">{scheduleRecovery}</div> : null}
+    <SummarySection title="Repositories" className="mt-lg" action={<Manage kind="repositories" href={editHref} disabled={disabled} onClick={onManage && (trigger => onManage("repositories", trigger))} />}>
+      <SummaryResources items={setup?.repositories} kind="repositories" />
+      {tools ? <p className="mt-sm text-eyebrow leading-summary-label text-muted-foreground"><span className="mr-md text-text-dim">Tools</span>{tools}</p> : null}
     </SummarySection>
     <SummarySection title="Public internet access">
-      {networkKnown ? <div className="space-y-xs">
-        <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-md gap-y-xs sm:min-h-9"><label htmlFor={`${id}-public`}>Allow all</label>
-          <Switch id={`${id}-public`} aria-label="Allow all public internet access" checked={publicInternet} disabled={disabled || !onNetworkChange}
-            onCheckedChange={checked => onNetworkChange?.({http_egress: checked ? "public" : "restricted"})} /></div>
-        <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-md gap-y-xs sm:min-h-9"><div className="flex max-w-full shrink-0 flex-wrap items-center gap-xs">
-          <label htmlFor={`${id}-packages`} className={cn("whitespace-nowrap", publicInternet && "text-text-dim")}>Enable package manager domains</label>
-          <PackageManagerDomainsHelp />
-        </div><Switch id={`${id}-packages`} className="ml-auto" checked={network?.package_manager_domains === true} disabled={disabled || publicInternet || !onNetworkChange}
-          onCheckedChange={checked => onNetworkChange?.({package_manager_domains: checked})} /></div>
-      </div> : <p className="text-muted-foreground">Network policy not reviewed</p>}
+      {setup ? <SetupNetworkPolicy publicInternet={network?.http_egress === "public"} packages={network?.package_manager_domains === true}
+        editHref={editHref} disabled={disabled} onChange={onNetworkChange} /> : <p className="text-muted-foreground">Network policy not reviewed</p>}
     </SummarySection>
-    <SummarySection title="Secrets" action={onManage ? <Manage kind="secrets" disabled={disabled} onClick={() => onManage("credentials")} /> : undefined}>
-      {selected(setup?.credentials, "No secrets selected", "credentials")}
+    <SummarySection title="Secrets" action={<Manage kind="secrets" href={editHref} disabled={disabled} expanded={Boolean(secretEditor)}
+      controls={secretEditor ? `${id}-secrets` : undefined} onClick={onManage && (trigger => onManage("credentials", trigger))} />}>
+      {secretEditor ? <div id={`${id}-secrets`}>{secretEditor}</div> : <SummaryResources items={setup?.credentials} kind="secrets" />}
     </SummarySection>
   </div>;
 }
 
-function Meta({label, children}: {label: string; children: ReactNode}) {
-  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md"><dt className="text-eyebrow leading-eyebrow text-text-dim">{label}</dt><dd className="min-w-0 break-words">{children}</dd></div>;
+function Meta({label, emphasize, children}: {label: string; emphasize?: boolean; children: ReactNode}) {
+  return <div className="grid grid-cols-[5.25rem_minmax(0,1fr)] items-baseline gap-md">
+    <dt className="text-eyebrow leading-summary-label text-text-dim">{label}</dt>
+    <dd className={cn("min-w-0 break-words", emphasize && "font-medium")}>{children}</dd>
+  </div>;
 }
-function SummarySection({title, action, children}: {title: string; action?: ReactNode; children: ReactNode}) {
-  return <section aria-label={title} className="space-y-sm border-t border-border pt-md"><div className="flex items-center justify-between gap-sm"><h3 className="text-eyebrow leading-eyebrow font-normal text-text-dim">{title}</h3>{action}</div>{children}</section>;
+function SummarySection({title, action, children, className}: {title: string; action?: ReactNode; children: ReactNode; className?: string}) {
+  return <Section aria-label={title} variant="divided" className={cn("space-y-sm py-lg last:pb-0", className)}>
+    <div className="flex items-center justify-between gap-sm">
+      <SectionLabel as="h3" variant="summary">{title}</SectionLabel>
+      {action}
+    </div>
+    {children}
+  </Section>;
 }
-function Manage({kind, onClick, disabled}: {kind: string; onClick: () => void; disabled?: boolean}) {
-  return <Button variant="ghost" size="compact" className="px-0 text-eyebrow text-text-dim" aria-label={`Manage ${kind}`} disabled={disabled} onClick={onClick}>Manage</Button>;
+function SummaryResources({items, kind}: {items?: readonly string[]; kind: "repositories" | "secrets"}) {
+  if (!items?.length) return <p className="text-muted-foreground">{items ? `No ${kind} selected` : "Not reviewed"}</p>;
+  const Icon = kind === "repositories" ? GitBranchIcon : KeyIcon;
+  return <ul>{items.map(name => <li key={name} className="flex min-h-8 min-w-0 items-center gap-md py-xs">
+    <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+    <span className="min-w-0 break-words font-medium">{name}</span>
+  </li>)}</ul>;
+}
+function Manage({kind, href, onClick, disabled, expanded, controls}: {kind: "secrets" | "repositories"; href?: string; onClick?: (trigger: HTMLButtonElement) => void; disabled?: boolean; expanded?: boolean; controls?: string}) {
+  if (!href && !onClick) return null;
+  return <Button asChild={Boolean(href)} variant="ghost" size="compact" className="px-0 text-eyebrow"
+    aria-label={`Manage ${kind}`} aria-expanded={href ? undefined : expanded} aria-controls={controls} disabled={disabled}
+    onClick={onClick ? event => onClick(event.currentTarget) : undefined}>
+    {href ? <Link href={`${href}#${kind}`}>Manage</Link> : "Manage"}
+  </Button>;
+}
+function wakeupStatus(schedules: readonly Schedule[], definition: Definition | undefined, known: boolean): string {
+  if (schedules.some(schedule => schedule.status === "active")) return "Unavailable";
+  if (schedules.some(schedule => schedule.status === "paused")) return "Paused";
+  if (hasProposedWakeup(definition) && !schedules.length) return "Pending save";
+  return known ? "Not scheduled" : "Not reviewed";
 }
 
-function PackageManagerDomainsHelp() {
-  return <Dialog><DialogTrigger asChild>
-    <TooltipButton tooltip={PACKAGE_MANAGER_DOMAINS_HELP} variant="ghost" size="icon-compact" aria-label="About package manager domains"><InfoIcon size={16} aria-hidden="true" /></TooltipButton>
-  </DialogTrigger><DialogContent><DialogHeader><DialogTitle>Package manager domains</DialogTitle><DialogDescription>{PACKAGE_MANAGER_DOMAINS_HELP}</DialogDescription></DialogHeader>
-    <p className="text-label leading-label text-muted-foreground">This option is disabled when Allow all is on. Its selection is kept when Allow all is switched off.</p>
-    <DialogFooter><DialogClose asChild><Button>Done</Button></DialogClose></DialogFooter>
-  </DialogContent></Dialog>;
+function toolSummary(tools: readonly string[]): string {
+  const categories = new Set(tools.map(tool => SHELL_TOOLS.has(tool) ? "Shell" : FILE_TOOLS.has(tool) ? "Files" : tool.replaceAll("_", " ")));
+  const [first, second] = categories;
+  return [first, categories.size > 2 ? `+${categories.size - 1} more` : second].filter(Boolean).join(" · ");
 }

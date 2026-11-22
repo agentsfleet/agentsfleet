@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { DRAFT, FLEET, MESSAGE, MODEL, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -49,11 +49,21 @@ it.each([false, true])("keeps a failed or unconfirmed operation separate from sa
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it.each([false, true])("marks manual and proposed changes as unsaved (%s)", dirty => {
-  render(<SetupStatusFlap view={{...SAVED, draft: dirty ? null : DRAFT}} workspace={WORKSPACE} dirty={dirty} />);
+it("marks a proposal for an existing fleet as unsaved", () => {
+  render(<SetupStatusFlap view={{...SAVED, draft: DRAFT}} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toBe("Unsaved setup changes");
   expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("keeps the error and its retry on the same flap after a second failure", async () => {
+  const retry = vi.fn().mockRejectedValue(new Error("Still unavailable"));
+  render(<SetupStatusFlap view={{...SAVED, error: "A request failed"}} workspace={WORKSPACE} onRetry={retry} />);
+  const status = screen.getByRole("status", {name: "Setup status"});
+  expect(status.textContent).toContain("Setup needs attention");
+  await act(async () => {fireEvent.click(within(status).getByRole("button", {name: "Retry"}));});
+  expect(retry).toHaveBeenCalledOnce();
+  expect(status.textContent).toContain("Setup needs attention");
 });
 
 it("makes an unsaved proposal available for saving without a success tick", () => {
@@ -69,7 +79,7 @@ it("does not keep refining after a stopped request", () => {
 
 it("offers Open fleet for an accepted version without claiming activation", () => {
   render(<SetupStatusFlap view={SAVED} workspace={WORKSPACE} />);
-  expect(screen.getByRole("status").textContent).toContain("Setup saved · v1");
+  expect(screen.getByRole("status").textContent).toContain("Saved setup");
   expect(screen.getByRole("status").textContent).not.toContain("ready");
   expect(screen.getByRole("link", {name: "Open fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET.id}`);
 });
@@ -82,23 +92,19 @@ it("opens the refreshed fleet view when setup is already on that page", () => {
   expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
 });
 
-it.each([
-  {kind: "setup_ready", revision: "1"},
-  {kind: "setup_saved", revision: "2", origin: "cli"},
-  {kind: "unsupported", revision: "1"},
-  {kind: "setup_saved", revision: "1"},
-  {kind: "setup_saved", revision: "1", origin: "cli"},
-])("uses only a matching saved receipt for provenance %#", payload => {
-  const activities = [{turn_id: "receipt", event_type: "activity", status: "recorded", request_json: JSON.stringify(payload), created_at: MESSAGE.created_at}];
+it("keeps version and origin out of the visible save receipt", () => {
+  const activities = [{turn_id: "receipt", event_type: "activity", status: "recorded",
+    request_json: JSON.stringify({kind: "setup_saved", revision: "1", origin: "cli"}), created_at: MESSAGE.created_at}];
   render(<SetupStatusFlap view={{...SAVED, activities}} workspace={WORKSPACE} />);
-  const cli = payload.kind === "setup_saved" && payload.revision === "1" && payload.origin === "cli";
-  expect(screen.getByRole("status").textContent).toContain(cli ? "Setup saved via CLI · v1" : "Setup saved · v1");
+  const receipt = screen.getByRole("status");
+  expect(receipt.textContent).toContain("Saved setup");
+  expect(receipt.textContent).not.toMatch(/v1|CLI/);
 });
 
-const READY = {...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready};
+const READY = {...EMPTY_DRAFT_VIEW, modelListStatus: DRAFT_LIST_STATUS.ready};
 
-it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", listStatus => {
-  const {container} = render(<SetupStatusFlap view={{...EMPTY_DRAFT_VIEW, listStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
+it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", modelListStatus => {
+  const {container} = render(<SetupStatusFlap view={{...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready, modelListStatus}} workspace={WORKSPACE} modelsHref={`/w/${WORKSPACE}/settings/models`} />);
   expect(container.textContent).toBe("");
 });
 

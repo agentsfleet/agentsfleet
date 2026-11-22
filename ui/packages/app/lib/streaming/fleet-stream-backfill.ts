@@ -1,5 +1,5 @@
 import { type TurnRow, type TurnsPage } from "@/lib/api/turns";
-import { backfillFleetTurnsUrl, backfillWorkspaceTurnsUrl, type TurnsQuery } from "@/lib/api/turns-types";
+import { backfillFleetTurnsUrl } from "@/lib/api/turns-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
 import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
@@ -38,14 +38,6 @@ export type BackfillRequest = {
   onPage: (rows: TurnRow[]) => void;
 };
 
-export type WorkspaceBackfillRequest = Omit<BackfillRequest, "fleetId">;
-// No `limit`: the page size is the daemon's, whose ceiling a deployment sets,
-// and the walk follows `next_cursor` whatever the size.
-type BackfillQuery = Pick<TurnsQuery, "cursor" | "since">;
-type BackfillWalkRequest = WorkspaceBackfillRequest & {
-  pageUrl: (query: BackfillQuery) => string;
-};
-
 // One page of the backfill list, or null when the fetch failed (already
 // diagnosed). Upstream rejects `cursor` together with `since`, so the caller
 // sends exactly one of them.
@@ -81,26 +73,8 @@ function oldestCreatedAt(rows: TurnRow[]): number | null {
 // A never-seeded fleet has no anchor to walk back to, so it takes exactly one
 // most-recent page — following the cursor there would drag in all of history.
 export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome> {
-  return runBackfillWalk({
-    ...req,
-    pageUrl: (query) => backfillFleetTurnsUrl(req.workspaceId, req.fleetId, query),
-  });
-}
-
-export async function runWorkspaceBackfill(
-  req: WorkspaceBackfillRequest,
-): Promise<BackfillOutcome> {
-  return runBackfillWalk({
-    ...req,
-    pageUrl: (query) => backfillWorkspaceTurnsUrl(req.workspaceId, query),
-  });
-}
-
-// Every page is merged before any is handed over: each hand-over is a merge, a
-// sort and a notify, so a three-page recovery repainted its subscribers three
-// times for one gap. Rows already fetched still land when a later page fails
-// or throws, as they did page by page; a walk whose owner is gone lands none.
-async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcome> {
+  // Notify once even when recovery needs several pages. A later failure
+  // still delivers the rows already fetched to a live owner.
   const fetched: TurnRow[] = [];
   try {
     return await walkPages(req, fetched);
@@ -109,8 +83,8 @@ async function runBackfillWalk(req: BackfillWalkRequest): Promise<BackfillOutcom
   }
 }
 
-async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<BackfillOutcome> {
-  const { anchorMs, stillCurrent, pageUrl } = req;
+async function walkPages(req: BackfillRequest, fetched: TurnRow[]): Promise<BackfillOutcome> {
+  const { anchorMs, stillCurrent, workspaceId, fleetId } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
   let cursor: string | undefined;
@@ -125,7 +99,7 @@ async function walkPages(req: BackfillWalkRequest, fetched: TurnRow[]): Promise<
         ? { since: floorMs === null ? undefined : rfc3339Seconds(floorMs) }
         : { cursor };
 
-    const body = await fetchBackfillPage(pageUrl(query));
+    const body = await fetchBackfillPage(backfillFleetTurnsUrl(workspaceId, fleetId, query));
     if (body === null) return { ok: false };
     if (!stillCurrent()) return { ok: false };
 

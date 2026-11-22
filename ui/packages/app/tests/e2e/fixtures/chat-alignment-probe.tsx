@@ -61,6 +61,14 @@ export function ChatErrorFixture({draft}: {draft?: string}) {
   </ChatFixtureShell></AppRouterContext>;
 }
 
+export function EmptySetupAlignmentFixture() {
+  const view = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
+  return <AppRouterContext value={router}><ChatFixtureShell setup>
+    <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} />
+    <DraftConversation client={setupClient} view={view} workspace={WORKSPACE} />
+  </ChatFixtureShell></AppRouterContext>;
+}
+
 export function SetupAlignmentFixture() {
   const model = {...MODEL, label: "MiniMax M3.1 Flash"};
   const definition = {...REVIEW.effective.definition, config: {...REVIEW.effective.definition.config,
@@ -75,7 +83,7 @@ export function SetupAlignmentFixture() {
       {...MESSAGE, created_at: createdAt, sequence: String(index * 2 + 2), role: "assistant" as const, text: answer ?? ""},
     ])};
   return <AppRouterContext value={router}><ChatFixtureShell setup>
-    <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} onDirtyChange={() => {}} />
+    <DraftChatHeading client={setupClient} view={view} workspace={WORKSPACE} />
       <DraftConversation client={setupClient} view={view} workspace={WORKSPACE} />
   </ChatFixtureShell></AppRouterContext>;
 }

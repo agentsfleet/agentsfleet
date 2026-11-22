@@ -1,8 +1,9 @@
 // Adapted from https://r.assistant-ui.com/elements-code-diff.json; see UPSTREAM.md.
 "use client";
 
-import { cn } from "@agentsfleet/design-system";
-import { codeScroll, codeSurface, mono, paper } from "./surfaces";
+import { FileTextIcon } from "@phosphor-icons/react/ssr";
+import { OutputPanel, cn } from "@agentsfleet/design-system";
+import { codeScroll, codeSurface, mono } from "./surfaces";
 
 export type DiffKind = "context" | "added" | "removed";
 
@@ -19,45 +20,38 @@ const GUTTER: Record<DiffKind, string> = {
 
 export function CodeDiff({
   filename,
+  showCounts,
   additions,
   deletions,
   lines,
 }: {
   filename: string;
-  /** Lines added, shown beside `deletions` when both are known. */
-  additions?: number;
-  deletions?: number;
+  showCounts: boolean;
+  additions: number;
+  deletions: number;
   lines: readonly DiffLine[];
 }) {
   return (
-    <div
-      data-slot="code-diff"
-      className={cn(paper, "w-full min-w-0 overflow-hidden rounded-md font-mono text-label")}
-    >
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <span className="text-foreground/90">{filename}</span>
-        {additions === undefined || deletions === undefined ? null : (
-          <span className={cn(mono, "tabular-nums")}>
-            <span className="text-emerald-600 dark:text-emerald-400">
-              +{additions}
-            </span>{" "}
-            <span className="text-red-600 dark:text-red-400">−{deletions}</span>
-          </span>
-        )}
-      </div>
-      <div className={codeScroll}>
+    <OutputPanel data-slot="code-diff" header={<>
+        <FileTextIcon aria-hidden="true" className="size-4 shrink-0" /><span className="min-w-0 [overflow-wrap:anywhere]">{filename}</span>
+        {showCounts ? <span className={cn(mono, "ml-auto shrink-0 tabular-nums")}>
+          <span className="text-success">
+            +{additions}
+          </span>{" "}
+          <span className="text-destructive">−{deletions}</span>
+        </span> : null}
+    </>}>
+      <div className={cn(codeScroll, "bg-surface-deep py-sm")}>
         <div className={codeSurface}>
           {lines.map((line, i) => (
             <div
               key={`${i}-${line.text}`}
               data-diff={line.kind}
               className={cn(
-                "flex px-sm py-xs leading-mono whitespace-pre motion-reduce:animate-none",
+                "flex px-lg py-xs leading-mono whitespace-pre motion-reduce:animate-none",
                 line.kind === "context" && "text-muted-foreground",
-                line.kind === "added" &&
-                  "bg-success/10 text-success",
-                line.kind === "removed" &&
-                  "bg-destructive/10 text-destructive",
+                line.kind === "added" && "text-success",
+                line.kind === "removed" && "text-destructive",
               )}
             >
               <span aria-hidden="true" className="w-4 shrink-0 select-none">
@@ -68,6 +62,6 @@ export function CodeDiff({
           ))}
         </div>
       </div>
-    </div>
+    </OutputPanel>
   );
 }

@@ -1,3 +1,5 @@
+import {launchReviewTurn} from "./launch-review-activity";
+import {deployFailureTurn} from "./deploy-failure-data";
 import {visualWakeupTurns} from "./refresh-wakeup-data";
 import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { DurableTaskPage } from "@/lib/api/tasks";
@@ -11,10 +13,12 @@ export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 export function visualTurns(scenario: VisualScenario, started: number, includeCode = false): FleetTurn[] {
   if (scenario === "empty") return [];
   if (scenario === "wake-up") return visualWakeupTurns(started);
-  const completed = scenario === "completed" || scenario === "activity";
+  if (scenario === "error") return [deployFailureTurn(started)];
+  if (scenario === "activity") return [launchReviewTurn(started)];
+  const completed = scenario === "completed";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),
-    tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
+    tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running"),
     ...(completed ? [
       tool("file", "file_read", {path: "release.yaml"}, started),
       {...tool("edit", "file_edit", {path: "release.yaml", edits: [{old_text: "ready: false", new_text: "ready: true"}]}, started),
@@ -27,9 +31,8 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
   return [{id: "answer", role: "assistant", actor: "fleet", text: "", tools,
     reply: completed ? "The runner update is ready. The image builds for both architectures, and both security scans passed.\n\n## Ready for your review\n\nI opened the pull request with the changes and scan results. Publishing is paused until you approve it." + (includeCode ? "\n\nReview `release.yaml` and [the build report](https://example.test/release).\n\n```yaml\nready: true\n```" : "")
       : "I’m checking the image builds and security scans before publishing.",
-    outcome: "", failureLabel: scenario === "error" ? "transport_loss" : null,
-    failureDetail: scenario === "error" ? "The scan response was interrupted. Earlier build results are retained." : null,
-    createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : scenario === "error" ? "fleet_error" : "processed",
+    outcome: "", failureLabel: null, failureDetail: null,
+    createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : "processed",
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
     ...(completed ? {durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
@@ -38,19 +41,19 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
 }
 
 export function visualDurableTaskPage(scenario: VisualScenario, started: number, parity = false): DurableTaskPage {
-  return {items: scenario === "empty" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
-    title: parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
+  return {items: scenario === "empty" || scenario === "activity" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
+    title: scenario === "error" ? "Deploy connection expired" : scenario === "wake-up" ? "Watch pull request #58" : parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
 }
 
 export function visualDurableTaskDetail(scenario: VisualScenario, started: number, parity = false) {
   const task = visualDurableTaskPage(scenario, started, parity).items[0] ?? summary();
   const saved = detail(task);
-  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: DURABLE_TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
+  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: DURABLE_TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: scenario === "error" ? "Verify the latest deployment health." : scenario === "wake-up" ? "Watch pull request #58 and report its build after it merges." : "Update the runner image, run the scans, and ask before publishing.",
     target: (scenario === "completed" || scenario === "activity") ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,
       branch: "runner-refresh", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/agentsfleet/platform-images/pull/58", workflows: []} : saved.context.target}};
 }
 
-function tool(callId: string, name: string, args: ToolArgs, started: number, running = false, failed = false): FleetToolCall {
+function tool(callId: string, name: string, args: ToolArgs, started: number, running = false): FleetToolCall {
   return {callId, name, args, startedAtMs: started - 138_000, ms: running ? null : 2000, done: !running,
-    ...(running ? {} : {status: failed ? TOOL_CALL_STATUS.FAILED : TOOL_CALL_STATUS.SUCCEEDED, outputHead: "Recorded example result", outputLineCount: 1})};
+    ...(running ? {} : {status: TOOL_CALL_STATUS.SUCCEEDED, outputHead: "Recorded example result", outputLineCount: 1})};
 }

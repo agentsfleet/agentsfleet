@@ -29,9 +29,7 @@ const SCHEDULE_CHANGE_TEXT: Record<z.infer<typeof ScheduleChange>, string> = {
   created: "set up", changed: "changed", paused: "pause requested", removal_requested: "removal requested",
 };
 
-export function saveDoneText(revision: string, origin?: z.infer<typeof SaveOrigin>): string {
-  return origin === "cli" ? `Setup saved via CLI · v${revision}` : `Setup saved · v${revision}`;
-}
+export const SAVED_SETUP_LABEL = "Saved setup";
 
 /** Only the permitted fields of a known activity can become visible text. */
 export function readFleetActivity(json: string): FleetActivity | null {
@@ -48,8 +46,8 @@ export function fleetActivityText(json: string): string {
 export function fleetActivityLabel(activity: FleetActivity | null): string {
   if (!activity) return "Activity recorded";
   switch (activity.kind) {
-    case ACTIVITY_KIND.setupSaved: return saveDoneText(activity.revision, activity.origin);
-    case ACTIVITY_KIND.setupReady: return `Setup done · v${activity.revision}`;
+    case ACTIVITY_KIND.setupSaved: return SAVED_SETUP_LABEL;
+    case ACTIVITY_KIND.setupReady: return "Setup ready";
     case ACTIVITY_KIND.accessSaved: return `${activity.service.charAt(0).toUpperCase()}${activity.service.slice(1)} access saved`;
     case ACTIVITY_KIND.memorySharingChanged: return `Workspace memories: learning ${activity.read ? "on" : "off"}, sharing ${activity.publish ? "on" : "off"}`;
     case ACTIVITY_KIND.scheduleChanged: return scheduleLabel(activity, SCHEDULE_CHANGE_TEXT[activity.change]);

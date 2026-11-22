@@ -7,7 +7,7 @@
  * person, because a setup-model reply is not deterministic
  * (`fixtures/install-ui.ts` makes the same trade). Everything after that runs
  * through the shipped chat: the history entry, a reload, Save from the
- * keyboard, the saved fleet's full setup page, Save changes, and a
+ * keyboard, the saved fleet's full setup page, Save, and a
  * phone-width reread. Signs up a fresh teammate, so DEV only, like every
  * signup spec.
  */
@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, privateSaveButton, setupAction, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, privateSaveButton, setupSummary,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -33,7 +33,6 @@ const FLOW_TIMEOUT_MS = 240_000;
 // Save and Save changes each run bounded in-request steps before they answer.
 const SETUP_TIMEOUT_MS = 60_000;
 const NAME_PREFIX = "private-chat-";
-const IMPROVED_INSTRUCTIONS = "Acknowledge the request, then name the next step.";
 const PHONE = { width: 390, height: 844 } as const;
 const FLEET_PAGE = /\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/;
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
@@ -84,7 +83,7 @@ async function saveFromTheKeyboard(page: Page, workspaceId: string): Promise<voi
   await openSavedFleet(page, {handle: FIXTURE_KEY.regular, workspaceId});
 }
 
-// The automatic handoff and a reload preserve the saved fleet identity.
+// The fleet link and a reload preserve the saved fleet identity.
 async function openTheSavedFleet(page: Page, workspaceId: string, name: string): Promise<string> {
   await expect(page).toHaveURL(FLEET_PAGE, { timeout: SETUP_TIMEOUT_MS });
   const fleetId = new URL(page.url()).pathname.split("/").pop();
@@ -101,22 +100,22 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   await (await editSetupAction(page)).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?fleet=${fleetId}&setup_revision=${before.setup_revision}$`));
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
-  await (await setupAction(page, CHAT_COPY.editSetup)).click();
-  const panel = page.getByRole("dialog", {name: CHAT_COPY.instructions, exact: true});
-  await panel.getByLabel(CHAT_COPY.instructions, { exact: true }).fill(IMPROVED_INSTRUCTIONS);
+  const packages = page.getByRole("switch", {name: "Enable package manager domains"});
+  await expect(packages).toBeEnabled();
   const created = page.waitForResponse(response => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(`/workspaces/${workspaceId}/drafts`));
-  await panel.getByRole("button", { name: CHAT_COPY.updateInstructions }).click();
+  await packages.click();
   const response = await created;
   expect(response.status()).toBe(201);
   const location = await response.headerValue("location");
   const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
   expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
-  await expect(panel).toBeHidden({timeout: SETUP_TIMEOUT_MS});
+  await expect(packages).toBeChecked({timeout: SETUP_TIMEOUT_MS});
+  await page.getByRole("button", {name: "Save", exact: true}).click();
   await openSavedFleet(page, {handle: FIXTURE_KEY.regular, workspaceId, revision: String(BigInt(before.setup_revision) + 1n)});
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
-  expect(after.definition?.instructions_md).toBe(IMPROVED_INSTRUCTIONS);
+  expect(after.definition?.config["x-agentsfleet"]).toMatchObject({network: {package_manager_domains: true}});
   return draftId;
 }
 

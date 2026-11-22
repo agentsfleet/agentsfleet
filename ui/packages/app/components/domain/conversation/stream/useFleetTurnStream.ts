@@ -30,6 +30,7 @@ export type UseFleetTurnStreamResult = {
   durableTasksSeq: number;
   approvalsSeq: number;
   turns: FleetTurn[];
+  workTurns: readonly FleetTurn[];
   connectionStatus: ConnectionStatus;
   appendOptimistic: (text: string, actor: string, sentAs?: string) => string;
   reconcileOptimistic: (tempId: string, realTurnId: string, replayed: boolean, foldedInto?: string | null) => boolean;
@@ -109,6 +110,7 @@ export function useFleetTurnStream(
     durableTasksSeq: snapshot.durableTasksSeq,
     approvalsSeq: snapshot.approvalsSeq,
     turns: snapshot.turns,
+    workTurns: snapshot.workTurns,
     connectionStatus: snapshot.connectionStatus,
 
     appendOptimistic,

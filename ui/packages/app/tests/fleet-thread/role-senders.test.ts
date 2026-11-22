@@ -67,7 +67,7 @@ describe("FleetThread — who sent each turn in a shared thread", () => {
     expect(sender.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     const reply = container.querySelector<HTMLElement>(REPLY_ROW);
     if (reply === null) throw new Error("no reply row rendered");
-    expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();
+    expect(within(reply).getByRole("status", { name: "On it" })).toBeTruthy();
     expect(within(reply).queryByRole("status", { name: "Working" })).toBeNull();
   });
 });

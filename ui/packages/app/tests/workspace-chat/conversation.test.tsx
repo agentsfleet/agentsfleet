@@ -54,7 +54,7 @@ it.each([ACTIVITY_KIND.setupSaved, ACTIVITY_KIND.setupReady])("keeps the saved o
     MESSAGE, {...MESSAGE, sequence: "2", text: "Change the setup", state: "running" as const, created_at: "1970-01-01T00:00:02Z"},
   ]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view}><p>Configuration readiness</p></DraftConversation>);
-  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Setup saved · v1" : "Setup done · v1");
+  const saved = screen.getByText(kind === ACTIVITY_KIND.setupSaved ? "Saved setup" : "Setup ready");
   const checks = screen.getByText("Configuration readiness");
   const working = screen.getByRole("status", {name: "Thinking"});
   expect(saved.compareDocumentPosition(checks) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -66,7 +66,7 @@ it("keeps saved setup actions inside the conversation history", () => {
     <SetupProgress fleet={FLEET} definition={DRAFT.candidate?.definition} workspace={CHAT_PROPS.workspace} busy={false}
       onContinue={() => {}} onRetrySchedule={() => {}} />
   </DraftConversation>);
-  const saved = screen.getByRole("heading", {name: "Setup saved · v1"});
+  const saved = screen.getByRole("heading", {name: "Saved setup"});
   expect(screen.getByRole("log").contains(saved)).toBe(true);
   expect(screen.queryByRole("link", {name: "Continue setup in chat"})).toBeNull();
 });
@@ -81,7 +81,7 @@ it.each([false, true])("shows the new-fleet entrance only before an empty draft 
   if (saved) {
     expect(entrance).toBeNull();
     expect(suggestion).toBeNull();
-    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Setup saved · v1"}))).toBe(true);
+    expect(screen.getByRole("log").contains(screen.getByRole("heading", {name: "Saved setup"}))).toBe(true);
   } else {
     expect(entrance).toBeTruthy();
     expect(suggestion).toBeTruthy();
@@ -108,20 +108,19 @@ it("stops setup through the turn's PATCH and replaces Working with the terminal 
 });
 
 it.each([
-  ["insufficient_balance", "There aren’t enough credits to finish this request."],
-  ["model_unavailable", "This model isn’t available right now."],
-  ["provider_failed", "The model didn’t finish its response."],
-  ["provider_usage_unknown", "Usage is still being reconciled."],
-  ["frame_too_large", "This message is too large for a run to carry."],
-  ["new-failure-reason", "The model didn’t finish its response."],
+  ["insufficient_balance", "More credits needed"],
+  ["model_unavailable", "Model unavailable"],
+  ["provider_failed", "Couldn’t complete this request"],
+  ["provider_usage_unknown", "Usage is still being reconciled"],
+  ["frame_too_large", "Message too large"],
+  ["new-failure-reason", "Couldn’t complete this request"],
 ])("explains the recorded failure without asking for another message (%s)", (reason, copy) => {
   const view: DraftView = {...client.getSnapshot(), truncated: true, messages: [{...MESSAGE, role: "assistant", state: "failed",
     text: undefined, failure: {reason, error_code: "UZ-TEST-001", recovery_action: "retry_message"}}]};
   render(<DraftConversation workspace={CHAT_PROPS.workspace} client={client} view={view} />);
   expect(screen.getByRole("log").textContent).toContain(copy);
   expect(screen.getByRole("log").textContent).not.toContain("UZ-TEST-001");
-  fireEvent.click(screen.getByRole("button", {name: "View details"}));
-  expect(screen.getByRole("log").textContent).toContain("UZ-TEST-001");
+  expect(screen.queryByRole("button", {name: "View details"})).toBeNull();
   expect(screen.getByRole("log").textContent).not.toContain("Send a new message to try again");
   expect(screen.queryByRole("button", {name: /Retry request/})).toBeNull();
   expect(screen.getByText(/Showing the latest conversation messages/)).toBeTruthy();

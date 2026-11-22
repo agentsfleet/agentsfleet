@@ -108,7 +108,7 @@ jobs:
         run: npm install -g @agentsfleet/cli@${{ needs.resolve-release.outputs.version }}
 
       - name: Install Playwright browsers
-        run: bunx --no-install playwright install --with-deps chromium
+        run: bunx --bun --no-install playwright install --with-deps chromium
         working-directory: cli
 
       - name: Build the command-line application before credentials

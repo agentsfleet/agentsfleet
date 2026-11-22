@@ -18,6 +18,11 @@ describe("Section", () => {
     expect(el.className).toContain("py-5xl");
   });
 
+  it("adds a divider to a named summary section", () => {
+    const {getByRole} = render(<Section variant="divided" aria-label="Repositories">body</Section>);
+    expect(getByRole("region", {name: "Repositories"})).toHaveClass("block", "border-t", "border-border");
+  });
+
   it("merges custom className", () => {
     const { container } = render(<Section className="custom">x</Section>);
     expect((container.firstChild as HTMLElement).className).toContain("custom");

@@ -114,21 +114,3 @@ export function fleetTurnDetailUrl(workspaceId: string, fleetId: string, turnId:
 export function fleetTurnItemUrl(workspaceId: string, fleetId: string, turnId: string, callId: string): string {
   return `${fleetTurnDetailUrl(workspaceId, fleetId, turnId)}/items/${encodeURIComponent(callId)}`;
 }
-
-// Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
-// the Next Route Handler at app/live/.../turns/stream/route.ts, which mints
-// the api-audience Bearer server-side. This is the wall's single connection —
-// it replaces the per-tile streamFleetTurnsUrl fan-out.
-export function streamWorkspaceTurnsUrl(workspaceId: string): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/turns/stream`;
-}
-
-// Same-origin URL for the workspace-scoped reconnect backfill list. The wall
-// recovers a gap by paging `thread.turns` for the whole workspace (or one
-// fleet via `fleet_id`), the same durable source the per-fleet client uses.
-export function backfillWorkspaceTurnsUrl(
-  workspaceId: string,
-  opts?: Pick<TurnsQuery, "cursor" | "since" | "limit" | "fleet_id">,
-): string {
-  return `/live/v1/workspaces/${encodeURIComponent(workspaceId)}/turns${buildQuery(opts)}`;
-}

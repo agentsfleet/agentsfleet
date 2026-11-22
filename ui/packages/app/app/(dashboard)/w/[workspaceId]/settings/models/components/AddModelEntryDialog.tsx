@@ -45,11 +45,11 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
       <DialogTrigger asChild>
         <Button variant={secondary ? "outline" : "default"} type="button" size="sm" disabled={!ownerReady} onFocus={catalogue.preload}
           onPointerEnter={() => { if (catalogue.status !== CATALOGUE_STATUS.error && maySpeculateOnHover()) catalogue.preload(); }}>
-          {secondary ? null : <PlusIcon size={16} aria-hidden="true" />}{triggerLabel}{secondary ? <ArrowUpRightIcon size={16} aria-hidden="true" /> : null}
+          {secondary ? null : <PlusIcon aria-hidden="true" />}{triggerLabel}{secondary ? <ArrowUpRightIcon aria-hidden="true" /> : null}
         </Button>
       </DialogTrigger>
-      <DialogContent size="wide" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
-        <DialogHeader>
+      <DialogContent size="wide" className="[&_[data-dialog-close]]:text-foreground max-summary:[&_[data-dialog-close]]:right-lg" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
+        <DialogHeader className="gap-lg pb-3xl max-summary:pb-7">
           <DialogTitle>Create model</DialogTitle>
           <DialogDescription>Choose a model and connect its provider. You can add the key without leaving this form.</DialogDescription>
         </DialogHeader>

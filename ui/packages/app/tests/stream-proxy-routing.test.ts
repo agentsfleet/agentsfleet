@@ -11,11 +11,9 @@ import { describe, expect, it, vi } from "vitest";
 import nextConfig from "../next.config";
 import {
   backfillFleetTurnsUrl,
-  backfillWorkspaceTurnsUrl,
   fleetTurnDetailUrl,
   fleetTurnItemUrl,
   streamFleetTurnsUrl,
-  streamWorkspaceTurnsUrl,
 } from "@/lib/api/turns-types";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 
@@ -28,14 +26,15 @@ const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "z_1";
 const TURN_ID = "1790573387481-566";
 const CALL_ID = "7:3";
+const WORKSPACE_TURNS_PROXY = `/live/v1/workspaces/${WORKSPACE_ID}/turns`;
 
 // Every browser-facing URL whose request MUST be intercepted by a Route
 // Handler that injects the api-audience Bearer server-side, with the method
 // the browser sends it.
 const PROXY_ROUTES: ReadonlyArray<readonly [string, "GET" | "POST"]> = [
-  [streamWorkspaceTurnsUrl(WORKSPACE_ID), "GET"],
+  [`${WORKSPACE_TURNS_PROXY}/stream`, "GET"],
   [streamFleetTurnsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
-  [backfillWorkspaceTurnsUrl(WORKSPACE_ID), "GET"],
+  [WORKSPACE_TURNS_PROXY, "GET"],
   [backfillFleetTurnsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
   [fleetTurnDetailUrl(WORKSPACE_ID, FLEET_ID, TURN_ID), "GET"],
   [fleetTurnItemUrl(WORKSPACE_ID, FLEET_ID, TURN_ID, CALL_ID), "GET"],

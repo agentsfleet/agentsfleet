@@ -36,10 +36,11 @@ it("does not navigate or send runtime instructions for a preview", async () => {
 it("retains the save identity after a lost response and hands off once confirmation arrives", async () => {
   fixture.failSave = true; await proposed();
   await saveInChat();
-  await screen.findAllByText("The request could not be confirmed. Retry the same operation.");
+  await screen.findByText("Couldn’t complete this request");
   expect(chatRouter.replace).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", {name: "Retry"}));
-  await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
+  expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
+  expect(chatRouter.replace).not.toHaveBeenCalled();
   const saves = fixture.writes().filter(call => call.path.endsWith("/messages"));
   expect(saves).toHaveLength(2);
   expect(saves[0]?.body).toMatchObject({save: true, operation_id: expect.any(String)});
@@ -49,7 +50,8 @@ it("retains the save identity after a lost response and hands off once confirmat
 
 it("waits for a recorded native save receipt when its following history read fails", async () => {
   followupFailure(503); await proposed(); await saveInChat();
-  await screen.findByRole("alert", {name: "Chat recovery"});
+  await screen.findByText("Couldn’t complete this request");
+  expect(screen.queryByRole("link", {name: "Open fleet"})).toBeNull();
   expect(chatRouter.replace).not.toHaveBeenCalled();
   expect(fixture.saveAttempts).toBe(1);
   expect(fixture.writes().filter(call => call.path.includes("/fleets/") && call.path.endsWith("/messages"))).toEqual([]);
@@ -57,7 +59,7 @@ it("waits for a recorded native save receipt when its following history read fai
 
 it("blocks handoff when a follow-up read reports lost authorization", async () => {
   followupFailure(403); await proposed(); await saveInChat();
-  await screen.findByText("Chat is unavailable");
+  await screen.findByRole("button", {name: "Reload"});
   expect(fixture.saveAttempts).toBe(1);
   expect(chatRouter.replace).not.toHaveBeenCalled();
 });

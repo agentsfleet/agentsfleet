@@ -37,5 +37,5 @@ function NextWakeup({instant, onRefresh}: {instant: string; onRefresh: () => voi
   const today = clock !== null && sameCalendarDay(instant, new Date(clock));
   return elapsed ? <div className="text-eyebrow text-muted-foreground">
     <p>Next wake-up needs an update.</p><Button variant="link" size="eyebrow" onClick={onRefresh}>Refresh schedule</Button>
-  </div> : <p className="truncate whitespace-nowrap text-label font-medium leading-label text-foreground"><span className="sr-only">Next wake-up · </span><Time value={instant} format={today ? "minute" : "compact"} tooltip /></p>;
+  </div> : <span className="text-eyebrow leading-eyebrow text-foreground"><span className="sr-only">Next wake-up · </span><Time value={instant} format={today ? "minute" : "compact"} tooltip /></span>;
 }

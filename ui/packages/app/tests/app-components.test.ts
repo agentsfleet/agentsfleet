@@ -74,7 +74,7 @@ describe("app components", () => {
     );
 
     // Clicking a sidebar nav link emits a navigation-analytics event.
-    await user.click(screen.getByRole("link", {name: "Your fleets"}));
+    await user.click(screen.getByRole("link", {name: "Secrets"}));
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
 
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:
@@ -263,7 +263,7 @@ describe("app components", () => {
     expect(markup).toContain('data-brand-mark="signal"');
     expect(markup).toContain("agentsfleet");
     expect(markup).toContain("New fleet");
-    expect(markup).toContain("Your fleets");
+    expect(markup).toContain("Connected apps");
     expect(markup).toContain("Workspace and account menu");
     expect(markup).not.toContain('href="/w/ws_1/settings/models"');
   });

@@ -8,6 +8,11 @@ function renderAction(node: React.ReactElement) {
 const Glyph = () => <svg data-testid="glyph" aria-hidden="true" />;
 
 describe("IconAction", () => {
+  it("reveals row actions for pointer, keyboard and touch users", () => {
+    render(<IconAction revealOnRowFocus label="Delete"><Glyph /></IconAction>);
+    expect(screen.getByRole("button", {name: "Delete"})).toHaveClass("group-hover:opacity-100", "group-focus-within:opacity-100", "pointer-coarse:opacity-100");
+  });
+
   it("test_icon_action_accessible_name", () => {
     renderAction(
       <IconAction label="Cordon">

@@ -21,17 +21,17 @@ export function ChatFailure({title, description, note, details, onRetry, disable
     try { await send(); } catch { setRetryError(true); }
     finally { pending.current = false; setRetrying(false); }
   };
-  return <Alert variant="destructive" aria-label={title} className="block space-y-md rounded-md border-error-border bg-error-surface p-5 text-body-sm leading-body-sm text-muted-foreground">
-    <div className="block space-y-md">
-      <span className="flex items-center gap-md text-base font-semibold text-destructive"><WarningCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />{title}</span>
-      <span className="block">{description}</span>
+  return <Alert variant="destructive" aria-label={title} className="fleet-failure-card">
+    <div className="mb-xl space-y-md">
+      <h2 className="flex items-center gap-md text-base leading-[1.3] font-title text-destructive"><WarningCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />{title}</h2>
+      <p>{description}</p>
     </div>
-    {note ? <p className="text-eyebrow text-muted-foreground">{note}</p> : null}
-    <div className="space-y-lg">
-      {onRetry ? <Button disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
+    {note ? <p className="mb-xl text-eyebrow leading-eyebrow text-muted-foreground">{note}</p> : null}
+    <div className="space-y-xl">
+      {onRetry ? <Button className="py-md" disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
       {details ? <Accordion type="single" collapsible className="min-w-0">
         <AccordionItem value="details" className="border-0">
-          <AccordionTrigger className="min-h-9 w-fit flex-none gap-sm py-0 text-eyebrow text-muted-foreground">View details</AccordionTrigger>
+          <AccordionTrigger className="fleet-failure-details">View details</AccordionTrigger>
           <AccordionContent className="break-words pt-sm text-label text-muted-foreground">{details}</AccordionContent>
         </AccordionItem>
       </Accordion> : null}

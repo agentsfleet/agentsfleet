@@ -16,15 +16,17 @@ it("keeps unavailable definitions and instructions explicit", () => {
   expect(screen.queryByRole("list", {name: "Current readiness"})).toBeNull();
 });
 
-it("inspects the actual saved definition with source and revision provenance", () => {
+it.each([{}, {credentials: null, repositories: null, network: null}])("inspects the saved definition with source and revision provenance (%j)", optional => {
   const definition = {...REVIEW.effective.definition, config: {"x-agentsfleet": {
-    model: "saved-runtime", tools: ["shell"], budget: {daily_nanos: "2000000000"}}}};
+    model: "saved-runtime", tools: ["shell"], budget: {daily_nanos: "2000000000"}, ...optional}}};
   render(<FleetSetupDetails definition={definition} name="Merge watch" revision="2" sourceRevision="source-v3" />);
   expect(screen.getByText("Merge watch")).toBeTruthy();
   expect(screen.getAllByText("saved-runtime")).toHaveLength(2);
   expect(screen.getByText("Revision 2")).toBeTruthy();
   expect(screen.getByText("source-v3")).toBeTruthy();
   expect(screen.getByText("$2.00 / day")).toBeTruthy();
+  expect(screen.getByRole("switch", {name: "Allow all public internet access", checked: false})).toBeTruthy();
+  expect(screen.getByRole("switch", {name: "Enable package manager domains", checked: false})).toBeTruthy();
 });
 
 it.each([{}, {tools: [], budget: {daily_nanos: "1000000000"}}])("does not infer an unresolved model from a saved response without a model: %j", extension => {

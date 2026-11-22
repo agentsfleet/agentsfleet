@@ -11,7 +11,7 @@ import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
   archiveFleet,
   expectDetailArchived,
-  expectRowState,
+  expectSidebarFleetState,
 } from "./fixtures/lifecycle";
 import {
   cliEnv,
@@ -188,10 +188,8 @@ test.describe("operator journey", () => {
     await switchWorkspace(page, primaryWorkspaceName);
     await switchWorkspace(page, secondaryWorkspaceName);
 
-    await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets"));
-    // The header's icon link shares the name; the page's entrance button is the one with visible text.
-    await page.getByRole("main").getByRole("link", { name: "New fleet", exact: true }).filter({ hasText: "New fleet" }).click();
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets/new"));
+    await clickSidebarLink(page, workspaceHref(wsId, "fleets"), workspaceUrlPattern("fleets/new"));
+    await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
     const fleetId = await saveFleetViaUI(page, JOURNEY_FLEET_PREFIX, {
       handle: FIXTURE_KEY.admin,
       workspaceId: wsId,
@@ -251,7 +249,7 @@ test.describe("operator journey", () => {
     await archiveFleet(page);
     await expectDetailArchived(page);
     await page.goto(workspaceHref(wsId, "fleets"));
-    await expectRowState(page, fleetId, "archived");
+    await expectSidebarFleetState(page, fleetId, "archived");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
     await page.goto("/settings/security");

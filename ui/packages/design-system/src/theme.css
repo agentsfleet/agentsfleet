@@ -107,6 +107,7 @@
   --color-error: var(--error);
   --color-info: var(--info);
   --color-evidence: var(--evidence);
+  --color-activity-agent: var(--activity-agent);
 
   /* The pulse — exposed for the WakePulse primitive and focus rings.
    * Avoid using `bg-pulse` in component chrome; it dilutes the currency. */
@@ -196,6 +197,7 @@
   --leading-display-md: var(--lh-display-md);
   --leading-heading: var(--lh-heading);
   --leading-eyebrow: var(--lh-eyebrow);
+  --leading-summary-label: var(--lh-summary-label, var(--lh-eyebrow));
   --leading-body-lg: var(--lh-body-lg);
   --leading-body: var(--lh-body);
   --leading-body-sm: var(--lh-body-sm);
@@ -212,7 +214,6 @@
   --container-narrow: var(--max-w-narrow);
   --container-measure: var(--max-w-measure);
   --container-chat: var(--max-w-chat);
-  --container-setup-summary: var(--setup-summary-width);
   --spacing-chat-input: var(--chat-input-height);
   --spacing-chat-inset: var(--chat-inset);
   --text-conversation: var(--fs-conversation);

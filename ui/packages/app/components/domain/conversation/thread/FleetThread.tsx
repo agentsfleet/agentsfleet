@@ -46,6 +46,7 @@ export type FleetThreadProps = {
   modelLabel?: string;
   setupRevision?: string;
   setup?: ReactNode;
+  setupSummary?: ReactNode;
   workspaceId: string;
   fleetId: string;
   /** The console's own fleet — the name a fleet reply is labelled with. */
@@ -89,12 +90,13 @@ export function FleetThread(props: FleetThreadProps) {
 }
 
 function OwnedFleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount, files} = useThreadRuntime(props);
   const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.turns, stream.reconcileRows);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
   const durableTaskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
+  const {workTurns} = stream;
   const work = useMemo(() => <DurableTaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={stream.turns} sources={props.sources} readOnly={props.archived} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, stream.turns, props.archived]);
+    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} readOnly={props.archived} showRepositories={!props.setupSummary} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, workTurns, props.archived, props.setupSummary]);
   return (
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -106,8 +108,8 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetDurableTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={stream.turns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
-              <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
+              <FleetDurableTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
+              <FleetConversationLayout summary={props.setupSummary ? "setup" : "current-work"} work={durableTaskSubject && props.setupSummary ? <div className="space-y-lg">{props.setupSummary}{work}</div> : work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
                 archived={props.archived}
                 turnsCount={stream.turns.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
@@ -130,7 +132,7 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
   const subject = identity.isLoaded ? identity.userId : identity.userId ?? viewer;
   const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
-  const openFleet = useOpenFleet(workspaceId);
+  const openFleet = useOpenFleet(workspaceId, fleetId);
   // Stable registry methods keep delivery independent of streamed frames.
   const delivery = useMessageDelivery({
     workspaceId,
@@ -168,5 +170,5 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount: previews.entries.length};
+  return {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount: previews.entries.length, files: previews.files};
 }

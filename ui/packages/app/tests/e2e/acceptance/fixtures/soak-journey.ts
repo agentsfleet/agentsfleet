@@ -8,7 +8,7 @@ import { SOAK, SOAK_KIND, SOAK_STEPS, UNICODE_SAVED } from "./soak-scenario";
 import { CHAT_COPY, privateSaveButton, NEW_FLEET, draftHref, editSetupAction, openSavedFleet } from "./private-chat";
 import { writeFile } from "node:fs/promises";
 import { APPLICATION_FAILURE, outageLedger, trackRequests } from "./soak-outage";
-import { workspaceHref } from "./nav";
+import { fleetNavigation, openFleetFromSidebar, workspaceHref } from "./nav";
 import { purgeFixtureFleet } from "./teardown";
 
 /** Where a journey stands: step -1 is the first setup chat; turn is the next turn to send. */
@@ -152,14 +152,11 @@ export class SoakJourney {
   }
 
   private async reopen(): Promise<void> {
-    await this.page.getByRole("link", {name: "Your fleets", exact: true}).click();
-    await expect(this.page).toHaveURL(new RegExp(`/w/${this.workspace}/fleets$`));
-    // The card's chosen name must lead back to this exact fleet, even with ten cards.
-    const card = this.page.getByRole("article").filter({has: this.page.locator(
-      `a[href="${workspaceHref(this.workspace, `fleets/${this.fleetId}`)}"]`)});
-    await expect(card).toHaveCount(1);
-    await expect(card.getByText(this.name, {exact: true})).toBeVisible();
-    await card.getByRole("link").click();
+    const history = await fleetNavigation(this.page);
+    const conversation = history.locator(`a[href="${workspaceHref(this.workspace, `fleets/${this.fleetId}`)}"]`);
+    await expect(conversation).toHaveCount(1);
+    await expect(conversation.getByText(this.name, {exact: true})).toBeVisible();
+    await openFleetFromSidebar(this.page, this.workspace, this.fleetId);
     await expect(this.page).toHaveURL(new RegExp(`/fleets/${this.fleetId}$`));
     await this.assertSaved(this.revision);
     await this.runtime!.assertHistory(this.revision);

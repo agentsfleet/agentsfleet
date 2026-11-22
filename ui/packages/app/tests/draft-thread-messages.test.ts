@@ -20,7 +20,7 @@ it("retains historical and receipt rows while a current answer changes", () => {
   for (const id of ["earlier:1:user", "activity:saved"]) expect(next.find(row => row.id === id)).toBe(first.find(row => row.id === id));
   expect(next.find(row => row.id === "2:assistant")).not.toBe(first.find(row => row.id === "2:assistant"));
   const changed = project({...view, activities: [{...receipt, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupReady, revision: "1"})}]});
-  expect(changed.find(row => row.id === "activity:saved")).toMatchObject({content: [{text: "Setup done · v1"}]});
+  expect(changed.find(row => row.id === "activity:saved")).toMatchObject({content: [{text: "Setup ready"}]});
   expect(createDraftThreadProjection()(view).find(row => row.id === "activity:saved")).not.toBe(first.find(row => row.id === "activity:saved"));
 });
 
@@ -33,7 +33,7 @@ it("places a dated receipt before the undated answer to an optimistic request", 
     activities: [{turn_id: "saved", event_type: FLEET_ACTIVITY.type, status: FLEET_ACTIVITY.status,
       created_at: MESSAGE.created_at, request_json: JSON.stringify({kind: ACTIVITY_KIND.setupSaved, revision: "1"})}]});
   expect(rows.map(row => row.id)).toEqual([`pending:${operation}`, "activity:saved", `pending-answer:${operation}`]);
-  expect(rows[1]).toMatchObject({role: "system", content: [{type: "text", text: "Setup saved · v1"}]});
+  expect(rows[1]).toMatchObject({role: "system", content: [{type: "text", text: "Saved setup"}]});
   expect(rows[2]).toMatchObject({role: "assistant", status: {type: "running"}});
 });
 
@@ -42,14 +42,14 @@ it.each([UNKNOWN_USAGE_REASON, "provider_failed", "frame_too_large"])("preserves
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [MESSAGE, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
   expect(rows[1]).toMatchObject({content: [{type: "text", text: "Partial answer"}], status: {type: "complete"},
-    metadata: {custom: {failure, retryText: MESSAGE.text}}});
+    metadata: {custom: {failure}}});
 });
 
-it("preserves unsettled usage after stopping without inventing a cause or retry text", () => {
+it("preserves unsettled usage after stopping without inventing a cause", () => {
   const failure = {reason: UNKNOWN_USAGE_REASON, error_code: "UZ-SETUP-015", recovery_action: "retry_message"};
   const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
     messages: [{...MESSAGE, role: "assistant", state: "failed", text: undefined, failure}]});
-  expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure, retryText: undefined}}}]);
+  expect(rows).toMatchObject([{content: [{type: "text", text: ""}], metadata: {custom: {failure}}}]);
 });
 
 it("keeps settled messages stable while another answer streams and keeps conversation caches separate", () => {
@@ -76,21 +76,20 @@ it("shows matching live text while running and preserves the durable answer afte
     .toMatchObject([{content: [{text: "Durable answer"}], status: {type: "complete"}}]);
 });
 
-it("does not invent retry text for a user row without recorded request text", () => {
-  const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
-  const rows = draftThreadMessages({...EMPTY_DRAFT_VIEW, draft: DRAFT,
-    messages: [{...MESSAGE, text: undefined}, {...MESSAGE, role: "assistant", state: "failed", text: "Partial answer", failure}]});
-  expect(rows[1]).toMatchObject({content: [{text: "Partial answer"}], metadata: {custom: {failure, retryText: undefined}}});
+it("uses a start notice only for its own conversation when sequence numbers overlap", () => {
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, startedTurn: {draftId: DRAFT.id, sequence: MESSAGE.sequence},
+    messages: [{...MESSAGE, state: "queued" as const}]};
+  expect(draftThreadMessages(view)[1]?.metadata?.custom?.queued).toBe(false);
+  expect(draftThreadMessages({...view, draft: {...DRAFT, id: "next-draft"}})[1]?.metadata?.custom?.queued).toBe(true);
 });
 
-it("invalidates a cached failure when its original request becomes available", () => {
+it("keeps a cached failure stable when its original request becomes available", () => {
   const failure = {reason: "provider_failed", error_code: "UZ-SETUP-014", recovery_action: "retry_message"};
   const answer = {...MESSAGE, role: "assistant" as const, state: "failed" as const, failure};
   const project = createDraftThreadProjection();
   const before = project({...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [answer]});
   const after = project({...EMPTY_DRAFT_VIEW, draft: DRAFT, messages: [MESSAGE, answer]});
-  expect(after[1]).not.toBe(before[0]);
-  expect(after[1]).toMatchObject({metadata: {custom: {retryText: MESSAGE.text}}});
+  expect(after[1]).toBe(before[0]);
 });
 
 it.each(HISTORY_COUNTS)("projects %s turns with linear history reads and stable settled rows", (count) => {

@@ -8,8 +8,7 @@ import { Button } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { MESSAGE_STATE } from "@/lib/api/draft-types";
-import { setupActivity } from "@/lib/api/draft-activity";
-import { ACTIVITY_KIND, saveDoneText } from "@/lib/turns/fleet-activity";
+import { SAVED_SETUP_LABEL } from "@/lib/turns/fleet-activity";
 import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
 import { ChatProgressLabel } from "../../shared/chat/ChatProgressLabel";
 
@@ -17,25 +16,27 @@ type Status = {label: string; icon: PhosphorIcon; busy?: boolean; confirmed?: bo
 const ACTIONS = {reading: {label: "Reading setup", icon: BookOpenIcon}, sending: {label: "Sending request", icon: UploadSimpleIcon}, saving: {label: "Saving", icon: FloppyDiskIcon}};
 
 /** Only accepted fleet revisions receive a success tick. */
-export function SetupStatusFlap({view, workspace, dirty = false, onOpenFleet, modelsHref}: {view: DraftView; workspace: string; dirty?: boolean; onOpenFleet?: () => void; modelsHref?: string}) {
+export function SetupStatusFlap({view, workspace, onOpenFleet, onRetry, modelsHref}: {view: DraftView; workspace: string; onOpenFleet?: () => void; onRetry?: () => Promise<void>; modelsHref?: string}) {
   if (view.inaccessible) return null;
-  const status = setupStatus(view, dirty, modelsHref);
+  const status = setupStatus(view, modelsHref, Boolean(onRetry));
   if (!status) return null;
   const Icon = status.icon;
   return <div className="mb-sm flex justify-center">
     <output aria-label="Setup status" aria-live="polite" aria-atomic="true" data-setup-status={status.busy ? "working" : status.confirmed ? "confirmed" : "attention"}
-      className="flex max-w-full flex-wrap items-center justify-center gap-x-sm gap-y-xs rounded-full border border-border bg-card px-lg py-sm text-label text-muted-foreground motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-stream">
-      {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span>{status.label}</span></>}
+      className="fleet-setup-receipt">
+      {status.busy ? <ChatProgressLabel label={status.label} /> : <><Icon className={`size-4 shrink-0 ${status.confirmed ? "text-success" : ""}`} aria-hidden="true" /><span className={status.confirmed ? "text-foreground" : undefined}>{status.label}</span></>}
+      {status.confirmed && view.fleet ? <span aria-hidden="true">·</span> : null}
       {status.confirmed && view.fleet ? onOpenFleet
         ? <Button variant="link" size="eyebrow" className="gap-xs px-0" onClick={onOpenFleet}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Button>
         : <Link className="inline-flex items-center gap-xs hover:underline" href={`/w/${workspace}/fleets/${view.fleet.id}`}>Open fleet<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
       {status.link ? <Link className="inline-flex items-center gap-xs hover:underline" href={status.link.href}>{status.link.label}<ArrowRightIcon className="size-4" aria-hidden="true" /></Link> : null}
+      {onRetry ? <><span aria-hidden="true">·</span><Button type="button" variant="link" size="eyebrow" disabled={view.busy || chatRecovery(view).pending} className="px-0 text-foreground" onClick={() => {void onRetry().catch(() => undefined);}}>Retry</Button></> : null}
     </output>
   </div>;
 }
 
-function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undefined): Status | null {
-  if (view.error) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
+function setupStatus(view: DraftView, modelsHref: string | undefined, retry: boolean): Status | null {
+  if (view.error || retry) return {label: view.pending ? "Update not confirmed" : "Setup needs attention", icon: view.pending ? QuestionIcon : WarningCircleIcon};
   if (view.saveOperation) return {...ACTIONS.saving, busy: true};
   if (view.setupAction) return {...ACTIONS[view.setupAction], busy: true};
   if (view.optimistic) return {label: "Sending request", icon: UploadSimpleIcon, busy: true};
@@ -43,21 +44,19 @@ function setupStatus(view: DraftView, dirty: boolean, modelsHref: string | undef
     const refining = view.messages.some(message => message.state === MESSAGE_STATE.running);
     return {label: refining ? "Refining setup" : "Waiting to refine setup", icon: refining ? SparkleIcon : ClockIcon, busy: true};
   }
-  const unusableModels = modelStatus(view, modelsHref);
-  if (unusableModels) return unusableModels;
-  if (dirty) return {label: "Unsaved setup changes", icon: PencilSimpleIcon};
   const revision = view.fleet?.setup_revision;
   if (revision && (!view.draft || savedDraft(view))) {
-    const receipt = view.activities?.map(setupActivity).find(activity => activity?.kind === ACTIVITY_KIND.setupSaved && activity.revision === revision);
-    return {label: saveDoneText(revision, receipt?.kind === ACTIVITY_KIND.setupSaved ? receipt.origin : undefined), icon: CheckCircleIcon, confirmed: true};
+    return {label: SAVED_SETUP_LABEL, icon: CheckCircleIcon, confirmed: true};
   }
+  const unusableModels = modelStatus(view, modelsHref);
+  if (unusableModels) return unusableModels;
   if (view.draft?.candidate) return {label: revision ? "Unsaved setup changes" : "Setup ready to save", icon: PencilSimpleIcon};
   return null;
 }
 
 /** Explains the disabled composer, and only once a successful list proves no model can author. */
 function modelStatus(view: DraftView, modelsHref?: string): Status | null {
-  if (view.listStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.setup)) return null;
+  if (view.modelListStatus !== DRAFT_LIST_STATUS.ready || view.models.some(model => model.eligibility.setup)) return null;
   if (view.moreModels) return {label: "Load more models to find one for chat", icon: WarningCircleIcon};
   const link = modelsHref ? {href: modelsHref, label: "Set up model"} : undefined;
   return {label: view.models.length > 0 ? "No chat model available" : "No chat model yet", icon: WarningCircleIcon, link};

@@ -8,7 +8,6 @@ import { ModelsSchema, type WorkspaceModel } from "@/lib/api/draft-types";
 
 /** Turns the chat view opens with — one thread request, bodies included. */
 export const CHAT_TURNS = 20;
-const PLATFORM_DEFAULT = "platform-default";
 
 /** Chat opens on the transcript; the approvals waiting on the fleet ride the
  * fleet detail the page already reads. */
@@ -43,11 +42,4 @@ async function readModels(workspaceId: string, token: string): Promise<Workspace
     if (cursor !== null) seen.add(cursor);
   } while (cursor !== null);
   return models;
-}
-
-/** A missing catalogue must not pretend that a different model was selected. */
-export function runtimeModelLabel(models: readonly WorkspaceModel[] | null, selected: unknown): string {
-  const ref = typeof selected === "string" ? selected : PLATFORM_DEFAULT;
-  return models?.find(model => model.ref === ref)?.label
-    ?? (ref === PLATFORM_DEFAULT ? "Platform default model" : ref);
 }

@@ -1,6 +1,7 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
 import * as v from "valibot";
 
+import { activityTracePart, recordedActivityTrace } from "./fleet-activity-trace";
 import { isSteerBy } from "@/lib/turns/turn-summary";
 import { TOOL_NAME } from "../tools/presentation/tool-call-shape";
 import {
@@ -128,6 +129,8 @@ export function replyParts(turn: FleetTurn): ReplyPart[] {
     // starts, while the message keeps running until the turn ends.
     parts.push({ type: "reasoning", text: reasoning, status: turn.thinking === true ? RUNNING : PART_COMPLETE });
   }
+  const activity = recordedActivityTrace(turn);
+  if (activity.length) parts.push(activityTracePart(activity));
   // Keep the recorded trace intact; internal memory bookkeeping has no chat row.
   (turn.tools ?? []).forEach((tool, index) => {
     if (!INTERNAL_MEMORY_TOOLS.has(tool.name)) parts.push(toolCallPart(turn.id, tool, index));

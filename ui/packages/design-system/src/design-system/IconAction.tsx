@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { cn } from "../utils";
 import { TooltipButton, type TooltipButtonProps } from "./TooltipButton";
 
 /*
@@ -21,6 +22,8 @@ export interface IconActionProps
   extends Omit<TooltipButtonProps, "size" | "aria-label" | "children" | "tooltip"> {
   /** Accessible name AND tooltip body. Required — an icon alone is not a name. */
   label: string;
+  /** Reveal with its enclosing group on hover or focus. Always visible on touch. */
+  revealOnRowFocus?: boolean;
   /** The icon glyph. */
   children: ReactNode;
 }
@@ -29,6 +32,8 @@ export function IconAction({
   label,
   children,
   variant = "outline",
+  revealOnRowFocus,
+  className,
   ...rest
 }: IconActionProps) {
   return (
@@ -37,6 +42,7 @@ export function IconAction({
       variant={variant}
       aria-label={label}
       tooltip={label}
+      className={cn(revealOnRowFocus && "text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100", className)}
       {...rest}
     >
       {children}

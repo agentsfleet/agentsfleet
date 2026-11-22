@@ -12,7 +12,7 @@ it("reports Saving until the accepted fleet response can be read", async () => {
   const gate = Promise.withResolvers<Response>();
   fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleets") ? gate.promise : undefined;
   const saving = client.save();
-  await vi.waitFor(() => expect(fixture.mutations()).toHaveLength(1));
+  await vi.waitFor(() => expect(fixture.mutations().filter(call => call.method === "POST")).toHaveLength(1));
   expect(client.getSnapshot()).toMatchObject({busy: true, setupAction: "saving", fleet: null});
   gate.resolve(response(FLEET, 201)); await saving;
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, setupAction: null, savedSetupRevision: "1", fleet: {id: FLEET.id}});
@@ -35,13 +35,15 @@ it("keeps the original pending action and operation key after a lost save respon
   fixture.override = ({path, method}) => method === "POST" && path.endsWith("/fleets") ? response({user_message: "Unavailable"}, 503) : undefined;
   await expect(client.save()).rejects.toMatchObject({status: 503});
   expect(client.getSnapshot()).toMatchObject({busy: false, pending: true, setupAction: "saving"});
-  const key = fixture.mutations()[0]?.headers.get("Idempotency-Key");
+  // Save writes the default tools with a PATCH before its POST; the key is the POST's.
+  const saves = () => fixture.mutations().filter(call => call.method === "POST");
+  const key = saves()[0]?.headers.get("Idempotency-Key");
   await expect(client.rename("Renamed setup")).rejects.toMatchObject({status: 409});
   expect(client.getSnapshot().setupAction).toBe("saving");
-  expect(fixture.mutations()).toHaveLength(1);
+  expect(saves()).toHaveLength(1);
   fixture.override = () => undefined;
   await client.retry();
-  expect(fixture.mutations()[1]?.headers.get("Idempotency-Key")).toBe(key);
+  expect(saves()[1]?.headers.get("Idempotency-Key")).toBe(key);
   expect(client.getSnapshot()).toMatchObject({pending: false, setupAction: null, error: null});
 });
 

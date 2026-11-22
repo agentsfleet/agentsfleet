@@ -8,7 +8,7 @@ import { executionInstructions } from "./fixtures/definition";
  * their own ledger rows and the tenant balance prove the work was billed.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { deriveFleetIdentity } from "@/lib/fleets/identity";
+import { fleetCallsign } from "@/lib/fleets/identity";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import {
@@ -116,12 +116,12 @@ async function activated(fleetId: string): Promise<WalkFleet> {
   await observed(JOURNEY_LEG.install, () =>
     waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleetId),
   );
-  return { id: fleetId, callsign: deriveFleetIdentity(fleetId).callsign };
+  return { id: fleetId, callsign: fleetCallsign(fleetId) };
 }
 
 /** Approval is separate from Save; approving the last grant activates the same fleet. */
 async function approveAndContinue(page: Page, fleetId: string, setupUrl: string): Promise<void> {
-  const callsign = deriveFleetIdentity(fleetId).callsign;
+  const callsign = fleetCallsign(fleetId);
   const grant = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleetId), callsign);
   expect(grant.status).toBe(GRANT_STATUS.pending);
   expect(grant.approved_at).toBeNull();

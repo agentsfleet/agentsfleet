@@ -24,7 +24,7 @@ export class DraftHistory {
   }
 
   /** Queue one fresh read after an outstanding read; concurrent waiters share that successor. */
-  async synchronize(path: string, signal: AbortSignal): Promise<DraftRead> {
+  async synchronize(path: string, signal: AbortSignal, opened?: Draft): Promise<DraftRead> {
     const previous = this.#reading;
     if (previous) {
       await previous.catch(() => undefined);
@@ -34,7 +34,7 @@ export class DraftHistory {
     const read = (async () => {
       signal.throwIfAborted();
       const [messages, draft] = await Promise.all([
-        this.read(path, signal), setupRequest({path}, DraftSchema, signal),
+        this.read(path, signal), opened ? Promise.resolve(opened) : setupRequest({path}, DraftSchema, signal),
       ]);
       signal.throwIfAborted();
       return {messages, draft};

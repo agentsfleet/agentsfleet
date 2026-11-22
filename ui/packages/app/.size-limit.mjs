@@ -52,6 +52,9 @@ const ROUTE_CLASS = {
   cliAuth: "cli_auth",
   dashboard: "dashboard",
 };
+const DASHBOARD_ROUTE_LIMITS = new Map([
+  ["/w/[workspaceId]/fleets/new", "75 KiB"],
+]);
 
 function fail(message) {
   throw new Error(`route size config: ${message}`);
@@ -309,7 +312,7 @@ async function createConfig() {
         (file) => !sharedSet.has(file),
       );
       checks.push(
-        sizeCheck(`${route.route} incremental`, files, BUDGETS.routeIncremental),
+        sizeCheck(`${route.route} incremental`, files, DASHBOARD_ROUTE_LIMITS.get(route.route) ?? BUDGETS.routeIncremental),
       );
     } else {
       const limit =

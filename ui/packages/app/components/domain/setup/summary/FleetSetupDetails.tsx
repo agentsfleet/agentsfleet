@@ -1,27 +1,21 @@
 "use client";
 
 import type { Definition, Review } from "@/lib/api/draft-types";
-import { z } from "zod";
 import { DashboardPanel, MetaGrid, Section } from "@agentsfleet/design-system";
 import { FleetMarkdownDynamic } from "../../shared/chat/FleetMarkdownDynamic";
 import { SetupChecks } from "./SetupChecks";
 import { SetupSummary } from "./SetupSummary";
-import { SetupRequirementsSchema } from "@/lib/setup-requirements";
+import { savedSetupRequirements } from "@/lib/setup-requirements";
 import { SetupQuestions } from "./SetupQuestions";
-
-// Normalized saved definitions omit empty credential/repository lists.
-const SavedConfigSchema = SetupRequirementsSchema.extend({
-  credentials: z.array(z.string()).default([]), repositories: z.array(z.string()).default([]), model: z.string().optional(),
-});
 
 export function FleetSetupDetails({review, definition: savedDefinition, name, revision, sourceRevision}: {review?: Review; definition?: Definition; name?: string; revision?: string; sourceRevision?: string}) {
   const effective = review?.effective;
   const definition = effective?.definition ?? savedDefinition;
-  const config = SavedConfigSchema.safeParse(definition?.config["x-agentsfleet"]);
-  const requirements = review?.requirements ?? (config.success ? config.data : undefined);
+  const config = savedSetupRequirements(definition);
+  const requirements = review?.requirements ?? config ?? undefined;
   const savedRevision = revision ?? effective?.target_setup_revision;
   const runtimeModel = effective ? effective.runtime_model_ref ?? "Account default is not resolved"
-    : (config.success ? config.data.model : undefined) ?? "Runtime model unavailable in this view";
+    : config?.model ?? "Runtime model unavailable in this view";
   return <div className="min-w-0 space-y-2xl text-label leading-label [overflow-wrap:anywhere]">
     <Section className="gap-lg" aria-label="Fleet identity">
       <h3 className="font-semibold">Fleet</h3>

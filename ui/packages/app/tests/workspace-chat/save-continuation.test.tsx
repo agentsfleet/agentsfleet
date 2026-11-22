@@ -1,9 +1,7 @@
-import type { DraftClient } from "@/lib/api/drafts";
-import { useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { useLayoutEffect, useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
-import { DefinitionEditor } from "@/components/domain/setup/editor/DefinitionEditor";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { CHAT_PROPS, chatRouter } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DraftClientFixture } from "@/tests/helpers/draft-client-fixture";
 import { DRAFT_ID, FLEET_ID, REVIEW, REVISION_ID, response } from "@/tests/helpers/draft-fixtures";
@@ -48,33 +46,7 @@ beforeEach(() => {
   };
 });
 
-// Value: protects=editing again after a definite refusal; fails_when=retry drops newer text;
-// seam=HTTP fixture; no_claim=durable revision history.
-it("saves newer manual instructions after a definite Apply refusal", async () => {
-  failure = "refusal";
-  const client = await fixture.ready(true);
-  const done = vi.fn();
-  render(<LiveEditor client={client} done={done} dirty={vi.fn()} />);
-  fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: INSTRUCTIONS}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await screen.findByText(REFUSED);
-  const newer = "Ask the owner before repairing a production failure.";
-  editedDefinition = {...definition, instructions_md: newer};
-  fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: newer}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await waitFor(() => expect(done).toHaveBeenCalledOnce());
-  const patches = fixture.mutations().filter(call => call.method === "PATCH");
-  expect(patches).toHaveLength(2);
-  expect(patches[1]?.body).toMatchObject({instruction_edits: [{text: newer}]});
-  expect(client.getSnapshot().fleet?.definition?.instructions_md).toBe(newer);
-  expect(applyCount).toBe(2);
-});
 afterEach(() => {cleanup(); fixture.dispose(); chatRouter.search = "";});
-
-function LiveEditor({client, done, dirty}: {client: DraftClient; done: () => void; dirty: (value: boolean) => void}) {
-  const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  return <DefinitionEditor client={client} view={view} onUpdated={done} onDirtyChange={dirty} />;
-}
 
 function OpeningNavigation() {
   const [revision, setRevision] = useState("1");
@@ -95,8 +67,7 @@ it("loads a revision selected before the initial chat surface mounts", async () 
   };
   render(<OpeningNavigation />);
   expect(await screen.findByRole("heading", {name: latest.name})).toBeTruthy();
-  await chooseSetupAction("Instructions");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", INSTRUCTIONS);
+  expect(screen.queryByRole("button", {name: "Edit instructions"})).toBeNull();
   expect(fixture.mutations()).toEqual([]);
 });
 
@@ -110,49 +81,34 @@ it.each([false, true])("reopens saved instructions and creator history (restored
       activities: {items: [], next_cursor: null}, next_cursor: null}) : normal(call);
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   await screen.findByRole("heading", {name: fixture.fleet.name});
-  await chooseSetupAction("Instructions");
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: INSTRUCTIONS}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  const composer = await screen.findByRole("textbox");
+  fireEvent.change(composer, {target: {value: "Keep this unsent follow-up."}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await screen.findByRole("link", {name: "Open fleet"});
   expect(fixture.fleet.setup_revision).toBe("2");
-  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/${FLEET_ID}`, {scroll: false});
+  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/new?fleet=${FLEET_ID}&setup_revision=2`, {scroll: false});
+  expect(composer).toHaveProperty("value", "Keep this unsent follow-up.");
   const writes = [...fixture.mutations()];
-  await chooseSetupAction("Instructions");
-  await act(async () => {await Promise.resolve();});
-  expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", INSTRUCTIONS);
-  expect(screen.queryByText(/This fleet changed/)).toBeNull();
-  expect(within(screen.getByRole("log")).getByText("Investigate failures")).toBeTruthy();
-  expect(fixture.mutations()).toEqual(writes);
-  const reads = fixture.calls.length;
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "2"}} />);
   await act(async () => {await Promise.resolve();});
-  expect(fixture.calls).toHaveLength(reads);
-  fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  const nextInstructions = "Use the newly selected saved revision.";
-  fixture.fleet = {...fixture.fleet, setup_revision: "3", definition: {...definition, instructions_md: nextInstructions}};
-  page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "3"}} />);
-  await screen.findByText("Fleet setup · v3");
-  await chooseSetupAction("Instructions");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", nextInstructions);
   expect(fixture.mutations()).toEqual(writes);
+
 });
 
-// Value: protects=recovery from a stale saved setup URL; fails_when=Start over reuses its old revision;
+// Value: protects=recovery from a stale saved setup URL; fails_when=Retry reuses its old revision;
 // seam=HTTP fixture and router; no_claim=real browser reload.
-it("starts over from the current revision when a reloaded setup URL is stale", async () => {
+it("retries the current revision when a reloaded setup URL is stale", async () => {
   chatRouter.replace.mockClear();
   fixture.fleet = {...fixture.fleet, setup_revision: "2", definition};
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
-  fireEvent.click(await screen.findByRole("button", {name: "Start over from current setup"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Retry"}));
   await screen.findByRole("heading", {name: fixture.fleet.name});
   expect(screen.queryByText(/This fleet changed/)).toBeNull();
   expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/new?fleet=${FLEET_ID}&setup_revision=2`, {scroll: false});
   const redirects = chatRouter.replace.mock.calls.length;
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
   expect(chatRouter.replace).toHaveBeenCalledTimes(redirects);
-  await chooseSetupAction("Instructions");
-  expect(screen.getByRole("textbox", {name: "Instructions"})).toHaveProperty("value", INSTRUCTIONS);
+  expect(screen.getByText("Draft", {exact: true})).toBeTruthy();
   expect(fixture.mutations()).toEqual([]);
 });
 
@@ -162,10 +118,9 @@ it("retains the setup route when a save response does not advance the pinned set
     ? response({fleet_id: FLEET_ID, setup_revision: "1", setup_etag: fixture.fleet.setup_etag, etag: fixture.fleet.etag, schedules: []}, 201)
     : normal(call);
   render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);
-  await screen.findByRole("heading", {name: fixture.fleet.name}); await chooseSetupAction("Instructions");
-  fireEvent.change(screen.getByRole("textbox", {name: "Instructions"}), {target: {value: INSTRUCTIONS}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await screen.findByRole("heading", {name: fixture.fleet.name});
+  fireEvent.click(await screen.findByRole("button", {name: "Save"}));
+  await screen.findByRole("link", {name: "Open fleet"});
   expect(chatRouter.replace).not.toHaveBeenCalled();
   expect(fixture.mutations().filter(call => call.path.endsWith("/revisions"))).toHaveLength(1);
 });
@@ -175,25 +130,14 @@ it("retains the setup route when a save response does not advance the pinned set
 it.each(["refresh", "refusal", "lost-answer", "followup"] as const)("finishes a partial save after %s without duplicating the edit", async mode => {
   failure = mode;
   const client = await fixture.ready(true);
-  const done = vi.fn(); const dirty = vi.fn();
-  render(<LiveEditor client={client} done={done} dirty={dirty} />);
-  fireEvent.change(screen.getByLabelText("Instructions"), {target: {value: INSTRUCTIONS}});
-  fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
-  expect((await screen.findByRole("alert")).textContent).toContain(REFUSED);
+  await client.edit({definition});
+  const apply = async () => {await client.refreshSetup();await client.apply();};
+  await expect(apply()).rejects.toMatchObject({message: REFUSED});
   expect(failed).toBe(true);
-  expect(done).not.toHaveBeenCalled();
-  expect(dirty).toHaveBeenLastCalledWith(true);
-  expect(screen.getByLabelText("Instructions")).toHaveProperty("value", INSTRUCTIONS);
   const pending = mode === "lost-answer" || mode === "followup";
-  expect(screen.getByLabelText("Instructions")).toHaveProperty("disabled", pending);
-  expect(screen.getByLabelText("Fleet name")).toHaveProperty("disabled", pending);
-  const retry = screen.getByRole("button", {name: pending ? "Retry save" : "Save changes"});
-  expect(retry).toHaveProperty("disabled", false);
-  fireEvent.click(retry);
-  await waitFor(() => {
-    expect(done).toHaveBeenCalledOnce();
-    expect(dirty).toHaveBeenLastCalledWith(false);
-  });
+  expect(client.getSnapshot().pending).toBe(pending);
+  if (pending) await client.retry();
+  else await apply();
   expect(client.getSnapshot().fleet?.setup_revision).toBe("2");
   expect(client.getSnapshot().pending).toBe(false);
   expect(screen.queryByRole("alert")).toBeNull();

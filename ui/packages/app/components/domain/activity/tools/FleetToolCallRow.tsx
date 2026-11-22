@@ -1,14 +1,23 @@
-import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
-import { lazy, memo, Suspense, useState } from "react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner } from "@agentsfleet/design-system";
+import type { FileChange, ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
+import { lazy, memo, Suspense, useMemo, useState } from "react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ListItem, SignalSpinner, cn } from "@agentsfleet/design-system";
 import { useFleetScope } from "../../conversation/stream/FleetScope";
 import { readToolResult } from "../replies/fleetReplyMessage";
-import { cellState } from "./copy/tool-call-copy";
+import { CELL_STATE, cellDiff, toolCopy } from "./copy/tool-call-copy";
 import { ToolCallHeader } from "./FleetToolCallHeader";
 import { ToolCallDetails } from "./FleetToolCallDetails";
 import { TRIGGER_CLASS } from "./presentation/tool-call-presentation";
+import { TOOL_BODY, TOOL_NAME } from "./presentation/tool-call-shape";
+import { ChangedFiles, DiffRows, changeTotals } from "./FleetToolCallBody";
+import { recordedToolState } from "./presentation/tool-call-activity";
+import { recordedPatchTotals } from "../../conversation/summary/recorded-patch-changes";
+import { FleetCommandResult } from "./FleetCommandResult";
 
 const COMMAND = "command";
+const CARD_TOOLS: ReadonlySet<string> = new Set([
+  TOOL_NAME.EXEC_COMMAND, TOOL_NAME.SHELL, TOOL_NAME.FILE_EDIT, TOOL_NAME.APPLY_PATCH,
+]);
+const NO_CHANGES: readonly FileChange[] = [];
 const FleetToolOutputDialog = lazy(() => import("./FleetToolOutputDialog").then(module => ({default: module.FleetToolOutputDialog})));
 const FULL_OUTPUT_LOADING = <output className="inline-flex items-center gap-xs text-label text-muted-foreground"><SignalSpinner className="text-pulse" aria-hidden="true" />Loading full command output…</output>;
 
@@ -25,22 +34,44 @@ export type ToolCallRowProps = {
 export const ToolCallRow = memo(function ToolCallRow({name, args, argsText, result, running, settled, turnId}: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
   const outcome = readToolResult(result);
-  const state = cellState(outcome !== undefined, outcome?.status, running);
+  const command = name === TOOL_NAME.EXEC_COMMAND || name === TOOL_NAME.SHELL;
+  const state = recordedToolState(name, outcome, running);
+  // These bounded cards mount with the work group. Other tools keep their body behind the action disclosure.
+  const changes = outcome?.changes ?? NO_CHANGES;
+  const card = useMemo(() => CARD_TOOLS.has(name) ? toolCopy(name, named, changes) : undefined, [name, named, changes]);
+  // Recorded changes name an edit's files and counts; until there are some, the cell shows the lines it asked for.
+  const rows = useMemo(() => CARD_TOOLS.has(name) ? cellDiff(name, named) : null, [name, named]);
   const [shown, setShown] = useState(false);
   const scope = useFleetScope();
   const callId = outcome?.callId;
   const canShowAll = scope !== null && callId !== undefined && settled;
   if (shown && !canShowAll) setShown(false);
+  const showAll = canShowAll ? () => setShown(true) : undefined;
+  const commandBody = card?.body.kind === TOOL_BODY.COMMAND ? card.body : undefined;
+  const confirmed = state === CELL_STATE.SUCCEEDED;
+  const counts = !confirmed ? undefined : changes.length > 0 ? changeTotals(changes)
+    : name === TOOL_NAME.APPLY_PATCH ? recordedPatchTotals({args, ...outcome}) : undefined;
+  const showSuccess = command && confirmed;
   return <ListItem data-tool={name} data-done={outcome !== undefined || undefined} data-state={state}
     className="flex min-w-0 flex-col gap-xs text-body-sm text-muted-foreground">
     <Accordion type="single" collapsible>
       <AccordionItem value={COMMAND} className="border-0">
-        <AccordionTrigger className={TRIGGER_CLASS}>
+        <AccordionTrigger className={cn(TRIGGER_CLASS, (counts || showSuccess) && "[&>svg:last-child]:ml-0")}>
           <ToolCallHeader name={name} args={named} state={state} />
+          {counts ? <span className="ml-auto shrink-0 font-mono text-label tabular-nums" title={name === TOOL_NAME.APPLY_PATCH ? "Recorded patch totals" : "Recorded edit totals"} aria-label={`${counts.added} ${counts.added === 1 ? "addition" : "additions"}, ${counts.removed} ${counts.removed === 1 ? "deletion" : "deletions"}`}>
+            <span className="text-success">+{counts.added}</span>{" "}<span className="text-destructive">−{counts.removed}</span>
+          </span> : null}
+          {showSuccess ? <span className="ml-auto text-label text-success" aria-hidden="true">Succeeded</span> : null}
         </AccordionTrigger>
+        {card?.body.kind === TOOL_BODY.CHANGES ? <div className="mb-md px-md"><ChangedFiles changes={card.body.changes} /></div>
+          : rows ? <div className="mb-md px-md"><DiffRows rows={rows} changes={changes} filename={card?.target} confirmed={confirmed} /></div> : null}
+        {command ? <div className="mb-md px-md">
+          <FleetCommandResult command={commandBody ? [card?.target, ...commandBody.rail].join("\n") : ""} commandLinesHidden={commandBody?.hiddenLines ?? 0}
+            outcome={outcome} state={state} onShowAll={showAll} />
+        </div> : null}
         <AccordionContent className="ml-md border-l border-border pb-lg pl-2xl pt-sm">
           <ToolCallDetails name={name} args={named} argsText={named === undefined ? undefined : argsText} outcome={outcome} state={state}
-            onShowAll={canShowAll ? () => setShown(true) : undefined} />
+            card={card} command={command} onShowAll={showAll} />
         </AccordionContent>
       </AccordionItem>
     </Accordion>

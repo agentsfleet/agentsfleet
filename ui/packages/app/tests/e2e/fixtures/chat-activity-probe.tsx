@@ -35,17 +35,17 @@ function ActivityMessage() {
 
 function message(state: State): ThreadMessageLike {
   const running = state === "running";
-  const call = (id: string, toolName: string, args: Record<string, string>, status: State): Extract<Exclude<ThreadMessageLike["content"], string>[number], {type: "tool-call"}> => ({
+  const call = (id: string, toolName: string, args: Record<string, string>, status: State, exitCode?: number): Extract<Exclude<ThreadMessageLike["content"], string>[number], {type: "tool-call"}> => ({
     type: "tool-call", toolCallId: id, toolName, args, argsText: JSON.stringify(args),
     timing: {startedAt, ...(status === "running" ? {} : {completedAt: startedAt + 400})},
     ...(status === "running" ? {} : {result: {status: status === "unconfirmed" ? undefined : status,
-      outputHead: status === "failed" ? "[request_policy_not_allowed] The request is outside the reviewed scope." : "Recorded fixture response", outputLineCount: 1}}),
+      outputHead: status === "failed" ? "[request_policy_not_allowed] The request is outside the reviewed scope." : "Recorded fixture response", outputLineCount: 1, exitCode}}),
   });
   return {id: "activity-fixture", role: "assistant", createdAt: new Date(startedAt),
     status: running ? {type: "running"} : {type: "complete", reason: "stop"}, content: [
       call("ready", "http_request", {url: "https://api-dev.agentsfleet.net/readyz"}, "succeeded"),
       call("read", "file_read", {path: "/workspace/apps/web/lib/client/unescapeString.ts"}, "succeeded"),
-      call("command", "exec_command", {cmd: "bun run typecheck"}, "succeeded"),
+      call("command", "exec_command", {cmd: "bun run typecheck"}, "succeeded", 0),
       call("pull", "http_request", {url: github, method: "POST"}, state),
       call("write", "file_write", {path: "/workspace/notes.md", content: "Recorded fixture"}, state),
       {type: "text", text: running ? "I’m checking the recorded evidence and preparing the small repair." : "The recorded action has settled. Its outcome appears in the activity above."},

@@ -3,6 +3,8 @@
 @import "@agentsfleet/design-system/tokens.css";
 @import "@agentsfleet/design-system/theme.css";
 @import "@agentsfleet/design-system/app-tokens.css";
+@import "./(dashboard)/settings/settings.css";
+@import "../components/domain/conversation/conversation.css";
 
 /* Tailwind scans the sibling design-system package for utility classes used
  * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
@@ -182,6 +184,3 @@ code, pre, kbd { font-family: var(--ff-mono); }
 @media (max-width: 42.5rem) {
   .fleet-chat-heading > svg, .fleet-chat-heading > div > svg { display: none; }
 }
-
-/* The native tool disclosure selects the activity presentation. */
-[data-testid="fleet-thread-root"]:not(:has([data-activity-group][data-state="open"])) [data-changes-strip] { display: none; }

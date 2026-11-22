@@ -5,7 +5,7 @@ ACTIONLINT ?= actionlint
 # ast-grep source rules (sgconfig.yml). `test` first: each rule must refuse its
 # regression before a clean scan means anything. `--no-install` runs only the
 # pinned version. `--no-ignore hidden` reaches .github/; .git/ is excluded by glob.
-AST_GREP := bunx --no-install ast-grep
+AST_GREP := bunx --bun --no-install ast-grep
 
 lint-source:  ## Source rules over code, docs, tests, workflows and infra (ast-grep test + scan)
 	@echo "→ [source] ast-grep rule tests, then the scan..."

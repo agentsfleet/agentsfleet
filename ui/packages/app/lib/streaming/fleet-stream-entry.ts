@@ -23,6 +23,8 @@ export type ConnectionStatus = ChatConnectionStatus;
 
 export type FleetStreamSnapshot = {
   turns: FleetTurn[];
+  /** Turns last published to the work panel. Ordinary reply text stays in the transcript. */
+  workTurns: readonly FleetTurn[];
   connectionStatus: ConnectionStatus;
   // What the server render and the live tail last said about the fleet
   // itself: its lifecycle status and how many approvals wait on it. The
@@ -89,6 +91,7 @@ export type Entry = {
 
 export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   turns: [],
+  workTurns: [],
   connectionStatus: CONNECTION_STATUS.CONNECTING,
 
   fleet: NO_FACTS,
@@ -104,6 +107,7 @@ export function createEntry(workspaceId: string, initial: TurnRow[]): Entry {
     workspaceId,
     snapshot: {
       turns,
+      workTurns: turns,
       connectionStatus: CONNECTION_STATUS.CONNECTING,
 
       fleet: NO_FACTS,

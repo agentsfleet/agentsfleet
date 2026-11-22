@@ -1,11 +1,13 @@
-import { MessageNotSentError, useExternalStoreRuntime, type AppendMessage, type AssistantRuntime, type ThreadMessageLike } from "@assistant-ui/react";
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { useEffect, useRef } from "react";
+import { AssistantRuntimeProvider, MessageNotSentError, useExternalStoreRuntime, type AppendMessage, type AssistantRuntime, type ThreadMessageLike } from "@assistant-ui/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { useEffect, useMemo, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 import { PENDING_SEND_STATE, useFleetPendingSends } from "./useFleetPendingSends";
 import { SEND_TIMEOUT_MS, useMessageDelivery, useOpenFleet } from "./useFleetMessageDelivery";
 import { useFleetUploadPreviews } from "../composer/useFleetUploadPreviews";
+import { SteerComposer } from "../composer/SteerComposer";
 import { __resetPendingSendsForTests } from "@/lib/streaming/pending-sends";
 import { sendMarks } from "@/lib/streaming/send-marks";
 import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
@@ -15,7 +17,7 @@ import { UUID_V7 } from "@/tests/fleet-thread/steer-copy";
 // chat is fleet A's; `agentbob` is fleet B.
 
 const router = vi.hoisted(() => ({ push: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => `/w/${WORKSPACE}/fleets/${HERE}` }));
 
 const WORKSPACE = "0199a801-1000-7000-8000-000000000001";
 const HERE = "0199a801-1000-7000-8000-0000000000a0";
@@ -91,6 +93,17 @@ async function refused(hook: ReturnType<typeof chat>["hook"], text: string): Pro
   });
 }
 
+function RefusalComposer() {
+  const stream = useMemo(() => paint(), []);
+  const open = useOpenFleet(WORKSPACE, HERE);
+  const {ledger, delivery} = useChat(HERE, HERE_NAME, open, stream);
+  const runtime = useExternalStoreRuntime({messages: NO_MESSAGES, convertMessage: (row: ThreadMessageLike) => row, onNew: delivery.onNew});
+  return <AssistantRuntimeProvider runtime={runtime}><TooltipProvider>
+    <SteerComposer pending={ledger.pending} onResend={delivery.resend} onDismiss={ledger.writers.dismiss}
+      onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} />
+  </TooltipProvider></AssistantRuntimeProvider>;
+}
+
 const ended = (hook: ReturnType<typeof chat>["hook"]) => hook.result.current.ledger.writers.list().map(({ text, state }) => ({ text, state }));
 
 beforeEach(() => {
@@ -136,7 +149,7 @@ describe("an addressed chat message", () => {
     await refused(hook, "@agentbob");
     expect(lookups()).toHaveLength(1);
     expect(ended(hook)).toEqual([
-      { text: "@nobody retry", state: PENDING_SEND_STATE.REFUSED },
+      { text: "@nobody retry", state: PENDING_SEND_STATE.TARGET_MISSING },
       { text: "@agentbob", state: PENDING_SEND_STATE.REFUSED },
     ]);
     expect(stream.discardOptimistic).toHaveBeenCalledTimes(2);
@@ -198,7 +211,7 @@ describe("an addressed chat message", () => {
     await refused(hook, "@agentbob retry");
     const [entry] = hook.result.current.ledger.writers.list();
     if (entry === undefined) throw new Error("the refused send left no ledger entry");
-    expect(entry).toMatchObject({ text: "@agentbob retry", state: PENDING_SEND_STATE.REFUSED });
+    expect(entry).toMatchObject({ text: "@agentbob retry", state: PENDING_SEND_STATE.TARGET_MISSING });
     saved.push(summary(BOB, BOB_NAME));
     act(() => hook.result.current.delivery.resend(entry.operationId));
     await waitFor(() => expect(openFleet).toHaveBeenCalledExactlyOnceWith(BOB));
@@ -231,8 +244,57 @@ describe("an addressed chat message", () => {
   });
 
   it("opens a fleet's chat at that fleet's page in the workspace", () => {
-    const { result } = renderHook(() => useOpenFleet(WORKSPACE));
+    const { result, unmount } = renderHook(() => useOpenFleet(WORKSPACE));
+    const received = result.current;
     result.current(BOB);
+    unmount();
+    received(BOB);
     expect(router.push).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${BOB}`);
+  });
+
+  it.each([
+    [404, "UZ-AGT-009", PENDING_SEND_STATE.TARGET_MISSING],
+    [409, "UZ-AGT-012", PENDING_SEND_STATE.TARGET_INACTIVE],
+    [503, "UZ-AGT-009", PENDING_SEND_STATE.UNKNOWN],
+    [503, "UZ-AGT-012", PENDING_SEND_STATE.UNKNOWN],
+    [404, "unrelated", PENDING_SEND_STATE.REFUSED],
+    [409, "unrelated", PENDING_SEND_STATE.REFUSED],
+  ] as const)("classifies a target refusal only from its matching status and code: %s %s", async (status, code, state) => {
+    network.mockImplementation(async (url) => url.startsWith(LIST_ROUTE) ? listOf(summary(BOB, BOB_NAME))
+      : Response.json({error_code: code}, {status}));
+    const {hook, openFleet} = chat();
+    await refused(hook, "@agentbob Check status");
+    expect(ended(hook)).toEqual([{text: "@agentbob Check status", state}]);
+    expect(posts()).toHaveLength(1);
+    expect(openFleet).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "inactive"] as const)("names a confirmed %s target, restores the draft and retries under the same operation", async (reason) => {
+    network.mockImplementation(async (url) => url.startsWith(LIST_ROUTE)
+      ? listOf(...(reason === "missing" ? [] : [{...summary(BOB, BOB_NAME), status: "archived"}]))
+      : Response.json({error_code: "UZ-AGT-012"}, {status: 409}));
+    render(<RefusalComposer />);
+    const input = screen.getByRole<HTMLTextAreaElement>("textbox", {name: "Message your fleet…"});
+    fireEvent.change(input, {target: {value: "@agentbob Check status"}});
+    fireEvent.click(screen.getByRole("button", {name: /^Send$/}));
+    const notice = reason === "missing"
+      ? "Fleet @agentbob was not found in this workspace. Check the name or choose a fleet with @, then send again."
+      : "Fleet @agentbob is not active. Choose an active fleet with @, then send again.";
+    await screen.findByText(notice);
+    await waitFor(() => expect(input.value).toBe("@agentbob Check status"));
+    const {getPendingSends} = await import("@/lib/streaming/pending-sends");
+    const scope = {subject: SUBJECT, workspaceId: WORKSPACE, fleetId: HERE};
+    const operation = getPendingSends(scope)[0]?.operationId;
+    expect(operation).toMatch(UUID_V7);
+    expect(posts()).toHaveLength(reason === "missing" ? 0 : 1);
+    expect(router.push).not.toHaveBeenCalled();
+    daemon(() => listOf(summary(BOB, BOB_NAME)));
+    fireEvent.click(screen.getByRole("button", {name: /^Resend$/}));
+    await waitFor(() => expect(router.push).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${BOB}`));
+    expect(posts().at(-1)).toEqual({url: messagesOf(BOB), body: {message: "Check status", operation_id: operation}});
+    expect(lookups()).toHaveLength(reason === "missing" ? 2 : 1);
+    expect(input.value).toBe("");
+    expect(screen.queryByText(notice)).toBeNull();
+    expect(getPendingSends(scope)).toEqual([]);
   });
 });

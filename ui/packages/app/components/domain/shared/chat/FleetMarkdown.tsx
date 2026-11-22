@@ -30,7 +30,7 @@ const COMPONENTS = {
   ul: ({ children }) => <ul className="list-disc space-y-xs pl-lg">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal space-y-xs pl-lg">{children}</ol>,
   li: ({ children }) => <li className="leading-conversation">{children}</li>,
-  strong: ({ children }) => <strong className="font-medium text-foreground">{children}</strong>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
   h1: ({ children }) => <Heading>{children}</Heading>,
   h2: ({ children }) => <Heading>{children}</Heading>,
@@ -88,7 +88,7 @@ export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {
   const length = useAuiState(state => state.message.content.reduce((total, part) => total + (part.type === "text" ? part.text.length : 0), 0));
   const running = useAuiState(state => state.message.status?.type === "running");
   return <MessageExpansion length={length} running={running}>{display => <MarkdownTextPrimitive className={BODY_CLASS} components={REPLY_COMPONENTS}
-    remarkPlugins={REMARK_PLUGINS} preprocess={display} smooth defer />}</MessageExpansion>;
+    remarkPlugins={REMARK_PLUGINS} preprocess={display} smooth={false} defer />}</MessageExpansion>;
 });
 
 export const FleetMarkdown = memo(function FleetMarkdown({ children, expandable = false }: { children: string; expandable?: boolean }) {

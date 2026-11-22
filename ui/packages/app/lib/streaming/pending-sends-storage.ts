@@ -10,6 +10,10 @@ export const PENDING_SEND_STATE = {
   SENDING: "sending",
   /** The server answered no. */
   REFUSED: "refused",
+  /** An exact-name lookup or the message endpoint confirmed no target fleet. */
+  TARGET_MISSING: "target-missing",
+  /** The message endpoint confirmed that the target cannot accept new work. */
+  TARGET_INACTIVE: "target-inactive",
   /** The server answered 401. */
   SESSION: "session",
   /** Nothing answered: the transport failed, or the document that sent it is gone. */
@@ -25,6 +29,8 @@ export const PENDING_SEND_STATE = {
 /** How a send ended without an acknowledgement. */
 export type PendingSendOutcome =
   | typeof PENDING_SEND_STATE.REFUSED
+  | typeof PENDING_SEND_STATE.TARGET_MISSING
+  | typeof PENDING_SEND_STATE.TARGET_INACTIVE
   | typeof PENDING_SEND_STATE.SESSION
   | typeof PENDING_SEND_STATE.UNKNOWN
   | typeof PENDING_SEND_STATE.CONFLICT;
@@ -36,6 +42,8 @@ const PendingSendSchema = z.object({
   state: z.enum([
     PENDING_SEND_STATE.SENDING,
     PENDING_SEND_STATE.REFUSED,
+    PENDING_SEND_STATE.TARGET_MISSING,
+    PENDING_SEND_STATE.TARGET_INACTIVE,
     PENDING_SEND_STATE.SESSION,
     PENDING_SEND_STATE.UNKNOWN,
     PENDING_SEND_STATE.CONFLICT,

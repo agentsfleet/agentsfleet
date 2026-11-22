@@ -6,7 +6,7 @@ import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
 import { ApiError } from "@/lib/api/errors";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import { ERROR_CODE } from "@/lib/errors";
-import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
+import { workspacePath } from "@/lib/workspace-routes";
 import { AccountSetup } from "./AccountSetup";
 import DashboardIndexPage from "./page";
 
@@ -115,7 +115,7 @@ describe("dashboard entry — an opened account", () => {
   it("lists workspaces with the session token and redirects once to the owned workspace's new fleet page", async () => {
     network.mockResolvedValueOnce(workspacePage([OWNED_WORKSPACE]));
     const thrown = await DashboardIndexPage().then(() => null, (error: unknown) => error);
-    expect(redirectTarget(thrown)).toBe(workspacePath(WORKSPACE, DEFAULT_WORKSPACE_SUBPATH));
+    expect(redirectTarget(thrown)).toBe(workspacePath(WORKSPACE, "fleets"));
     expect(network).toHaveBeenCalledTimes(1);
     const [input, init] = network.mock.calls[0] ?? [""];
     const target = input instanceof Request ? input.url : input.toString();
