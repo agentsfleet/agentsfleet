@@ -78,6 +78,7 @@ export default defineConfig(({ mode }) => {
         include: ["src/**/*.{ts,tsx}"],
         exclude: [
           "src/main.tsx",
+          "src/landing/entry.tsx",
           "src/test-setup.ts",
           "src/vite-env.d.ts",
           TEST_FILE_PATTERN,
