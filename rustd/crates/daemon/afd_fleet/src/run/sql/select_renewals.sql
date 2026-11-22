@@ -7,7 +7,7 @@
 -- $1 the runs · $2 the runner
 SELECT l.id, l.status, l.cancel_requested_at IS NOT NULL AS cancelled,
        l.tenant_id, l.workspace_id, l.fleet_id, l.posture, l.provider, l.model,
-       l.task_id, l.created_at, f.head_revision_id,
+       l.durable_task_id, l.created_at, f.head_revision_id,
        (SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1)
            AS catalogue_version
 FROM thread.runs l

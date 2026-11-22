@@ -191,9 +191,9 @@ async fn a_frame_refuses_a_run_whose_posture_no_daemon_writes() {
 // answered as the per-run path answers it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_frame_sends_a_run_with_a_task_to_the_per_run_path() {
+async fn a_frame_sends_a_run_with_a_durable_task_to_the_per_run_path() {
     let held = funded().await;
-    sqlx::query("UPDATE thread.runs SET task_id = $2 WHERE id = $1")
+    sqlx::query("UPDATE thread.runs SET durable_task_id = $2 WHERE id = $1")
         .bind(&held.issued.run_id)
         .bind(afd_db::test_util::mint_id())
         .execute(&mut *held.fixtures.database.acquire().await.expect("writer"))

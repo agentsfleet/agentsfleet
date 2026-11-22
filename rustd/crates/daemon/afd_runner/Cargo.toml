@@ -64,6 +64,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "te
 afd_turns = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
 af_observability = { workspace = true, features = ["test-util"] }
+af_wire = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "runner_suite"

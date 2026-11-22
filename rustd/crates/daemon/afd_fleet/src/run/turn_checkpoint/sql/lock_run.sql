@@ -9,7 +9,7 @@ WITH held AS MATERIALIZED (
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
     JOIN fleet.fleets f ON f.id = l.fleet_id AND f.workspace_id = l.workspace_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $3
-      AND l.task_id IS NULL AND l.task_generation IS NULL
+      AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL
     FOR UPDATE OF l
 )
 -- An answer's run ($4 is the answer's producer) saves and restores the asking turn's

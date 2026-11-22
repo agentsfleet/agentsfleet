@@ -12,7 +12,7 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("API connection");
         let mut tx = connection.begin().await.expect("task fixture transaction");
         sqlx::query(include_str!(
-            "../integration_fleet_tasks/fixtures/seed_item.sql"
+            "../integration_fleet_durable_tasks/fixtures/seed_item.sql"
         ))
         .bind(&item)
         .bind(&self.fleet)
@@ -24,7 +24,7 @@ impl Fixture {
         .await
         .expect("immutable task input");
         sqlx::query(include_str!(
-            "../integration_fleet_tasks/fixtures/seed_task.sql"
+            "../integration_fleet_durable_tasks/fixtures/seed_durable_task.sql"
         ))
         .bind(&task)
         .bind(&self.fleet)
@@ -43,13 +43,13 @@ impl Fixture {
             }])
             .expect("typed questions serialize"),
         )
-        .bind(af_wire::task::TaskState::Waiting.as_str())
+        .bind(af_wire::durable_task::DurableTaskState::Waiting.as_str())
         .bind(false)
         .bind(0_i64)
         .execute(&mut *tx)
         .await
         .expect("unfinished native task");
-        sqlx::query("UPDATE fleet.tasks SET target = $2 WHERE id = $1")
+        sqlx::query("UPDATE fleet.durable_tasks SET target = $2 WHERE id = $1")
             .bind(&task)
             .bind(sqlx::types::Json(serde_json::json!({
                 "repository": "example/platform",
@@ -73,12 +73,12 @@ impl Fixture {
     pub(in super::super) async fn completion_receipts(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("API connection");
         sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.task_completions c \
-             JOIN fleet.task_completion_fanout f ON f.task_completion_id = c.id \
+            "SELECT count(*) FROM fleet.durable_task_completions c \
+             JOIN fleet.durable_task_completion_fanout f ON f.durable_task_completion_id = c.id \
              WHERE c.workspace_id = $1 AND c.scope_fleet_id IS NULL \
-               AND c.installation_id = $2 \
-               AND c.repository_id = 65_432_109 AND c.workflow_id = 87_654_321 \
-               AND c.run_id = 9842731401 AND c.run_number = 412 \
+               AND c.github_installation_id = $2 \
+               AND c.github_repository_id = 65_432_109 AND c.github_workflow_id = 87_654_321 \
+               AND c.github_run_id = 9842731401 AND c.run_number = 412 \
                AND c.run_attempt = 2 \
                AND c.head_oid = 'f1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e'",
         )

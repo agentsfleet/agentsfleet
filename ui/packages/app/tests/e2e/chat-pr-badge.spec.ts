@@ -1,14 +1,14 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
-import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
+import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 
 test("late native PR result cards retain their association without moving a draft or visible reply", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   for (const width of [1280, 390]) {
     await page.setViewportSize({width, height: 844});
     for (const composing of [true, false]) {
-      const {ready, requested, reads} = await holdTaskDetail(page);
-      await page.goto(`${chatProbe}?tasks=1`);
+      const {ready, requested, reads} = await holdDurableTaskDetail(page);
+      await page.goto(`${chatProbe}?durable_tasks=1`);
       const paragraph = page.getByText("The login repair is waiting for checks. I’m working on duplicate bookmarks next; the import repair is queued.", {exact: true});
       const composer = page.getByRole("textbox", {name: /^Message your fleet/});
       await expect(paragraph).toBeVisible();
@@ -56,14 +56,14 @@ test("late native PR result cards retain their association without moving a draf
   }
 });
 
-async function holdTaskDetail(page: Page) {
+async function holdDurableTaskDetail(page: Page) {
   const ready = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   let reads = 0;
   await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/tasks**", async route => {
     reads += 1;
     const pathname = new URL(route.request().url()).pathname;
-    if (!pathname.endsWith(TASK_IDS[0])) {
+    if (!pathname.endsWith(DURABLE_TASK_IDS[0])) {
       await route.fulfill({json: {items: [summary()], next_cursor: null}}); return;
     }
     requested.resolve();

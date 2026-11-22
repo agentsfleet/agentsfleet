@@ -60,7 +60,7 @@ Nullable `decision_model_id` in the existing runner assignment selects reviewed 
 Runner enrollment, edit and heartbeat carry the catalogue identity; run issue freezes `DecisionAssignment` in its payload and `thread.runs.decision_snapshot`.
 Unconfigured hosts skip the catalogue read.
 
-Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::task::decision`.
+Native reservation, one-time credential issuance and receipt accounting are written in `afd_fleet::durable_task::decision`.
 The November 5 source continuation connects `afr_supervisor::verbs::decision` to the
 physical client. It fsyncs encrypted uncertainty before dispatch, retains the actual
 receipt and requires native acknowledgement before returning usable answers.
@@ -226,7 +226,7 @@ UI setup chat / CLI -> assistant drafts instructions_md + decision_policy
    accepted questions + current evidence -> typed request -> selected model
 ```
 
-Task creation saves its accepted questions in `fleet.tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
+Task creation saves its accepted questions in `fleet.durable_tasks.questions`, bound to `accepted_revision_id` and `goal_digest`.
 Adoption preserves prior revisions, assessments, confirmed effects and cumulative spend.
 The model catalogue supplies supported types and evaluated model thresholds; fleet owners control the question text and criteria.
 
@@ -236,7 +236,7 @@ Task adoption and the root decision loop have source implementations.
 
 Restored history is authenticated task data; current native adopted criteria control the next assessment.
 
-A completed action group is sent whole first (`afr_agent/src/loop/task_evidence.rs`).
+A completed action group is sent whole first (`afr_agent/src/loop/durable_task_evidence.rs`).
 Only when `agentsfleetd` refuses it as larger than the decision model's `input_max_bytes` (`UZ-REQ-002`, before any reservation) does the runner send one semantic summary of it.
 Summaries cannot satisfy native publication or exact-head validation checks.
 

@@ -1,7 +1,7 @@
 //! A full manifest lists each entry once, in path order across pages, under a
 //! directory it has already listed, and never as a removal.
 
-use af_wire::task::{CheckpointEntry, CheckpointFile};
+use af_wire::durable_task::{CheckpointEntry, CheckpointFile};
 
 use super::Contents;
 use crate::{Result, error::ErrorKind, run::turn_checkpoint::TurnCheckpointRefusal};

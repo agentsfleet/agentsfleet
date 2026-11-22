@@ -43,5 +43,8 @@ jiff.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+af_wire = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

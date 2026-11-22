@@ -27,34 +27,34 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageSigning { .. } | ErrorKind::TaskStorageSigningParameters { .. } | ErrorKind::TaskStorageRequest { .. } => crate::task::TaskRefusal::StorageUnavailable.detail(),
-            ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteCooldown { .. } => crate::task::TaskRefusal::EffectUncertain.detail(),
-            ErrorKind::TaskMutation { ref source, .. } => source.detail(),
-            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::task::TaskRefusal::DecisionUnavailable.detail(),
+            ErrorKind::DurableTaskStorage { .. } | ErrorKind::DurableTaskStorageSigning { .. } | ErrorKind::DurableTaskStorageSigningParameters { .. } | ErrorKind::DurableTaskStorageRequest { .. } => crate::durable_task::DurableTaskRefusal::StorageUnavailable.detail(),
+            ErrorKind::DurableTaskRemote { .. } | ErrorKind::DurableTaskRemoteStatus { .. } | ErrorKind::DurableTaskRemoteCooldown { .. } => crate::durable_task::DurableTaskRefusal::EffectUncertain.detail(),
+            ErrorKind::DurableTaskMutation { ref source, .. } => source.detail(),
+            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::durable_task::DurableTaskRefusal::DecisionUnavailable.detail(),
             // The one kind whose sentence the CALL SITE chose: a rejection
             // names the field it refused. Every other kind's sentence is
             // decided here or by the crate it delegates to, so no handler can
             // describe one failure two ways.
             ErrorKind::Rejected { detail } => detail,
-            ErrorKind::TaskPrecondition { .. } => "the task resource version changed",
-            ErrorKind::TaskControlConflict { .. } => crate::task::TaskRefusal::StaleState.detail(),
-            ErrorKind::TaskRefused { reason } => reason.detail(),
+            ErrorKind::DurableTaskPrecondition { .. } => "the task resource version changed",
+            ErrorKind::DurableTaskControlConflict { .. } => crate::durable_task::DurableTaskRefusal::StaleState.detail(),
+            ErrorKind::DurableTaskRefused { reason } => reason.detail(),
             ErrorKind::TurnCheckpointRefused { reason } | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.detail(),
-            ErrorKind::TaskTargetCounter { .. } => crate::task::TaskRefusal::InvalidTarget.detail(),
+            ErrorKind::DurableTaskTargetCounter { .. } => crate::durable_task::DurableTaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
             ErrorKind::Setup { ref source } => source.detail(),
-            ErrorKind::TurnWrite { ref source } | ErrorKind::TaskControlTurn { ref source, .. } => source.detail(),
-            ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::TurnWrite { ref source } | ErrorKind::DurableTaskControlTurn { ref source, .. } => source.detail(),
+            ErrorKind::Datastore { .. } | ErrorKind::DurableTaskReadTimeout { .. } | ErrorKind::DurableTaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about
             // any of them.
             ErrorKind::Context { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskState { .. }
-            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }

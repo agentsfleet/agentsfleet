@@ -65,7 +65,7 @@ pub struct ServingPlane {
     runs: RunService,
     runner_streams: afd_gateway::Gateway,
     runner_commands: afd_bus::Handle,
-    tasks: afd_fleet::task::Tasks,
+    tasks: afd_fleet::durable_task::DurableTasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
     platform_admin_workspace: Option<Uuid7>,
@@ -144,7 +144,7 @@ impl ServingPlane {
             crate::config::tuning::seconds(tuning.mail.send_timeout_seconds),
         );
         let activity = stores::activity(&database, &kek, &common.turns);
-        let task_turns = common.turns.clone();
+        let durable_task_turns = common.turns.clone();
         let outbound = surfaces::outbound(
             &database,
             &kek,
@@ -167,10 +167,10 @@ impl ServingPlane {
             broker: parts.broker,
             biller: common.biller,
             wake: parts.runner_wake,
-            turns: task_turns,
+            turns: durable_task_turns,
             admin_workspace: parts.platform_admin_workspace.clone(),
             storage_config: parts.checkpoint_storage,
-            master: common.task_master,
+            master: common.durable_task_master,
             client: common.github_client,
             setup: &setup,
             stream_limit: parts.live.stream_limit().clone(),
@@ -243,7 +243,7 @@ fn run_plane(
     notices: afd_turns::view::activity::Notices,
 ) -> RunService {
     RunService {
-        task_reports: None,
+        durable_task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), bus, Entropy::new()),
@@ -280,19 +280,19 @@ pub type Shared = Arc<ServingPlane>;
 mod tests;
 
 /// One native task owner attaches reporting to the existing run plane.
-fn task_plane(
+fn durable_task_plane(
     runs: &mut RunService,
     turns: Turns,
     admin_workspace: Option<Uuid7>,
-    storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
+    storage_config: Option<garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>>,
     master: Arc<af_crypto::secret::Kek>,
     client: reqwest::Client,
-    policy: afd_fleet::task::policy::TaskPolicy,
-) -> afd_fleet::task::Tasks {
+    policy: afd_fleet::durable_task::policy::DurableTaskPolicy,
+) -> afd_fleet::durable_task::DurableTasks {
     let storage = storage_config
         .zip(admin_workspace.clone())
         .map(|(config, admin)| {
-            afd_fleet::task::storage::R2CheckpointStore::new(
+            afd_fleet::durable_task::storage::R2CheckpointStore::new(
                 config,
                 admin,
                 runs.vault.clone(),
@@ -301,17 +301,21 @@ fn task_plane(
             )
         });
     runs.turn_checkpoints = runs.turn_checkpoints.clone().with_storage(storage.clone());
-    let tasks = afd_fleet::task::Tasks::new(
+    let tasks = afd_fleet::durable_task::DurableTasks::new(
         runs.runs.clone(),
         turns,
-        afd_fleet::task::TaskDependencies {
+        afd_fleet::durable_task::DurableTaskDependencies {
             policy,
             admin_workspace,
             storage,
-            github: Some(afd_fleet::task::Github::new(runs.clone(), client, master)),
-            ..afd_fleet::task::TaskDependencies::from(&*runs)
+            github: Some(afd_fleet::durable_task::Github::new(
+                runs.clone(),
+                client,
+                master,
+            )),
+            ..afd_fleet::durable_task::DurableTaskDependencies::from(&*runs)
         },
     );
-    runs.task_reports = Some(Arc::new(tasks.clone()));
+    runs.durable_task_reports = Some(Arc::new(tasks.clone()));
     tasks
 }

@@ -2,7 +2,7 @@
 
 use super::transfer;
 use af_core::id::Uuid7;
-use af_wire::task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
+use af_wire::durable_task::{CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 

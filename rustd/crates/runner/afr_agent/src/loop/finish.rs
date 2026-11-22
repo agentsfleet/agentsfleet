@@ -13,7 +13,7 @@ pub(super) const DETAIL_STOPPED: &str = "the run was stopped before it finished"
 pub(super) const EVENT_SESSIONS_INTERRUPTED: &str = "sessions_interrupted";
 
 impl Harness<'_, '_> {
-    async fn finish_task_replies(&mut self) -> crate::Result<()> {
+    async fn finish_durable_task_replies(&mut self) -> crate::Result<()> {
         let pending = self.task.as_ref().is_some_and(|task| {
             task.inputs
                 .current_interpretation
@@ -33,12 +33,12 @@ impl Harness<'_, '_> {
         // and a person's Stop bound its replies, as they bound the run. A
         // bound task whose ceiling is missing still answers nothing.
         if self.task.as_ref().is_some_and(|task| {
-            task.execution_deadline.is_none() && task.inputs.current_task.is_none()
+            task.execution_deadline.is_none() && task.inputs.current_durable_task.is_none()
         }) {
-            return self.answer_task_inputs().await;
+            return self.answer_durable_task_inputs().await;
         }
-        let budget = self.task_execution_budget();
-        super::task_slice::within_budget(budget, self.answer_task_inputs()).await
+        let budget = self.durable_task_execution_budget();
+        super::durable_task_slice::within_budget(budget, self.answer_durable_task_inputs()).await
     }
 
     /// Adds the answer a run ended on to its history. The loop remembers an
@@ -68,16 +68,16 @@ impl Harness<'_, '_> {
     pub(super) async fn finish(mut self, mut ending: Ending, pause: Option<&Pause>) -> RunOutput {
         self.close_sessions().await;
         if matches!(ending, Ending::Answered(_))
-            && let Err(failure) = self.finish_task_replies().await
+            && let Err(failure) = self.finish_durable_task_replies().await
         {
             tracing::warn!(event = "task_input_reply_pending", error_code = %failure.code());
-            self.task_report = None;
+            self.durable_task_report = None;
             if let Ending::Answered(text) = &mut ending {
                 text.push_str("\n\nThe task paused because its input replies could not be acknowledged. Its final status has not been confirmed.");
             }
         }
         if let Ending::Answered(text) = ending {
-            ending = Ending::Answered(self.combined_task_answer(text));
+            ending = Ending::Answered(self.combined_durable_task_answer(text));
         }
         self.record_answer(&ending);
         if matches!(ending, Ending::Waiting(_)) {
@@ -117,7 +117,7 @@ impl Harness<'_, '_> {
         let memory = shared.run.memory.pending().await;
         RunOutput {
             recovery,
-            task: self.task_report,
+            task: self.durable_task_report,
             result: ExecutionResult {
                 outcome,
                 content: content.into(),
@@ -138,19 +138,19 @@ impl Harness<'_, '_> {
         &mut self,
         ending: &mut Ending,
         pause: Option<&Pause>,
-    ) -> Option<crate::TaskRecovery> {
-        let recovery_task = self
+    ) -> Option<crate::DurableTaskRecovery> {
+        let recovery_durable_task = self
             .task
             .as_ref()
             .filter(|task| task.allow_actions)
-            .and_then(|task| task.inputs.current_task.clone());
-        match recovery_task {
+            .and_then(|task| task.inputs.current_durable_task.clone());
+        match recovery_durable_task {
             None => None,
-            Some(task) => match self.capture_task_root(task, pause).await {
+            Some(task) => match self.capture_durable_task_root(task, pause).await {
                 Ok(recovery) => Some(recovery),
                 Err(failure) => {
                     tracing::warn!(event = "task_history_capture_failed", error_code = %failure.code());
-                    self.task_report = None;
+                    self.durable_task_report = None;
                     if matches!(*ending, Ending::Answered(_)) {
                         *ending = Ending::Answered("The task is blocked because its private history could not be saved. No continuation or completion was authorized.".to_owned());
                     }

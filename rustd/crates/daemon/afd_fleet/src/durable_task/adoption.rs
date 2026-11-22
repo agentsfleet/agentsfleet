@@ -1,0 +1,317 @@
+//! Explicit reviewed question adoption fences old assessments without resetting work.
+
+use af_core::id::Uuid7;
+use af_wire::durable_task::DurableTaskState;
+use sqlx::PgConnection;
+
+use super::{
+    DurableTaskAdoption, DurableTaskRefusal, DurableTaskScope, DurableTaskSnapshot, DurableTasks,
+    continuation::Continuation, decision::compile, fetch, guard, read, row, sql, transaction,
+};
+use crate::{
+    Result,
+    error::{ErrorKind, query},
+    run::Runs,
+};
+
+const CONTEXT: &str = "adopt reviewed task goal";
+
+#[derive(sqlx::FromRow)]
+struct Locked {
+    can_resume: bool,
+}
+
+#[derive(sqlx::FromRow)]
+struct Origin {
+    turn_id: Uuid7,
+    reply_provider: Option<String>,
+    reply_address: Option<String>,
+    generation: i64,
+    state: String,
+    accepted_revision_id: Uuid7,
+    request_digest: Option<String>,
+}
+
+pub(super) async fn apply(
+    tasks: &DurableTasks,
+    scope: &DurableTaskScope,
+    task: &Uuid7,
+    expected_tag: &str,
+    adoption: &DurableTaskAdoption,
+) -> Result<DurableTaskSnapshot> {
+    let digest = digest(expected_tag, adoption)?;
+    let origin = origin(tasks, scope, task, adoption).await?;
+    if let Some(saved) = origin.request_digest.as_deref() {
+        if saved != digest {
+            return Err(ErrorKind::DurableTaskMutation {
+                state: row::state(&origin.state)?,
+                source: Box::new(DurableTaskRefusal::ReplayConflict.into()),
+            }
+            .into());
+        }
+        return read::read(tasks, scope, task).await;
+    }
+    let eligible = matches!(
+        row::state(&origin.state)?,
+        DurableTaskState::Running | DurableTaskState::Ready | DurableTaskState::Waiting
+    );
+    let changed = origin.accepted_revision_id != adoption.goal_revision_id.as_str();
+    let wake = origin.wake(scope, task, eligible && changed)?;
+    let prepared = match &wake {
+        Some(wake) => Some(tasks.turns.prepare(wake.turn()).await?),
+        None => None,
+    };
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let mut tx = transaction::begin(&mut connection).await?;
+    let locked = lock(&mut tx, scope, task).await?;
+    let current = read::on(&mut tx, scope, task).await?;
+    if replay(&mut tx, scope, task, adoption, &digest)
+        .await
+        .map_err(|source| ErrorKind::DurableTaskMutation {
+            state: current.context.state,
+            source: Box::new(source),
+        })?
+    {
+        tx.commit().await.map_err(query(CONTEXT))?;
+        transaction::recycle(connection);
+        return Ok(current);
+    }
+    check(&current, expected_tag, adoption)?;
+    if eligible && changed && !locked.can_resume {
+        return Err(DurableTaskRefusal::LimitExhausted.into());
+    }
+    let questions = questions(
+        &mut tx,
+        scope,
+        &current.context.accepted_revision_id,
+        &adoption.goal_revision_id,
+    )
+    .await
+    .map_err(|source| ErrorKind::DurableTaskMutation {
+        state: current.context.state,
+        source: Box::new(source),
+    })?;
+    let changed =
+        current.context.accepted_revision_id.as_ref() != adoption.goal_revision_id.as_str();
+    if changed {
+        update_goal(&mut tx, task, adoption, &current, &questions, eligible).await?;
+        if eligible {
+            let admitted = tasks
+                .turns
+                .stage(&mut tx, prepared.ok_or(DurableTaskRefusal::StaleState)?)
+                .await
+                .map_err(|source| ErrorKind::DurableTaskControlTurn {
+                    state: current.context.state,
+                    source,
+                })?;
+            sqlx::query(sql::CONTROL_TURN)
+                .bind(task)
+                .bind(&admitted.stored.id)
+                .execute(&mut *tx)
+                .await
+                .map_err(query(CONTEXT))?;
+        }
+    }
+    sqlx::query(include_str!("sql/adoption_receipt.sql"))
+        .bind(&adoption.operation_id)
+        .bind(task)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
+        .bind(digest)
+        .execute(&mut *tx)
+        .await
+        .map_err(query(CONTEXT))?;
+    let snapshot = read::on(&mut tx, scope, task).await?;
+    tx.commit().await.map_err(query(CONTEXT))?;
+    transaction::recycle(connection);
+    if changed {
+        tasks
+            .publish_changed(scope, task, snapshot.resource_version)
+            .await;
+        if let Some(wake) = wake {
+            wake.confirm(tasks).await;
+        }
+    }
+    Ok(snapshot)
+}
+
+fn check(
+    current: &DurableTaskSnapshot,
+    expected_tag: &str,
+    adoption: &DurableTaskAdoption,
+) -> Result<()> {
+    if current.etag() != expected_tag {
+        return Err(ErrorKind::DurableTaskPrecondition {
+            current_etag: current.etag(),
+        }
+        .into());
+    }
+    if current.context.generation != adoption.expected_generation
+        || current.context.state.is_terminal()
+    {
+        return Err(ErrorKind::DurableTaskControlConflict {
+            state: current.context.state,
+        }
+        .into());
+    }
+    Ok(())
+}
+
+async fn questions(
+    connection: &mut PgConnection,
+    scope: &DurableTaskScope,
+    previous: &str,
+    revision: &Uuid7,
+) -> Result<Vec<af_wire::decision::NamedQuestion>> {
+    let reviewed: bool = sqlx::query_scalar(include_str!("sql/adoption_revision.sql"))
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
+        .bind(revision)
+        .fetch_one(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    if !reviewed {
+        return Err(DurableTaskRefusal::InvalidTarget.into());
+    }
+    let config = Runs::stored_config_on(connection, &scope.fleet_id, Some(revision))
+        .await?
+        .ok_or(DurableTaskRefusal::InvalidTarget)?;
+    let original =
+        Runs::stored_config_on(connection, &scope.fleet_id, Some(&guard::wire(previous)?))
+            .await?
+            .ok_or(DurableTaskRefusal::InvalidTarget)?;
+    if !original.same_durable_task_authority(&config) {
+        return Err(DurableTaskRefusal::InvalidTarget.into());
+    }
+    compile::completion(
+        config
+            .decision_policy()
+            .ok_or(DurableTaskRefusal::DecisionUnavailable)?,
+    )
+}
+
+async fn replay(
+    connection: &mut PgConnection,
+    scope: &DurableTaskScope,
+    task: &Uuid7,
+    adoption: &DurableTaskAdoption,
+    digest: &str,
+) -> Result<bool> {
+    let saved: Option<String> = sqlx::query_scalar(include_str!("sql/adoption_replay.sql"))
+        .bind(task)
+        .bind(&adoption.operation_id)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    if saved.as_deref().is_some_and(|saved| saved != digest) {
+        return Err(DurableTaskRefusal::ReplayConflict.into());
+    }
+    Ok(saved.is_some())
+}
+
+fn digest(tag: &str, adoption: &DurableTaskAdoption) -> Result<String> {
+    Ok(af_core::etag::sha256_hex(
+        &serde_json::to_vec(&(
+            tag,
+            adoption.goal_revision_id.as_str(),
+            adoption.expected_generation,
+        ))
+        .map_err(af_core::json::Unreadable::from)?,
+    ))
+}
+
+async fn origin(
+    tasks: &DurableTasks,
+    scope: &DurableTaskScope,
+    task: &Uuid7,
+    adoption: &DurableTaskAdoption,
+) -> Result<Origin> {
+    fetch::rows(
+        tasks.runs.pool(),
+        sqlx::query_as(include_str!("sql/adoption_origin.sql"))
+            .bind(task)
+            .bind(&scope.fleet_id)
+            .bind(&scope.workspace_id)
+            .bind(&adoption.operation_id),
+        None,
+        CONTEXT,
+    )
+    .await?
+    .into_iter()
+    .next()
+    .ok_or_else(|| DurableTaskRefusal::NotFound.into())
+}
+
+impl Origin {
+    fn wake(
+        &self,
+        scope: &DurableTaskScope,
+        task: &Uuid7,
+        eligible: bool,
+    ) -> Result<Option<Continuation>> {
+        let wake = if eligible {
+            Some(
+                Continuation::new(
+                    scope,
+                    task,
+                    row::counter(self.generation, "generation")?
+                        .checked_add(1)
+                        .ok_or(DurableTaskRefusal::LimitExhausted)?,
+                    &self.turn_id,
+                )
+                .with_reply(
+                    self.reply_provider.as_deref(),
+                    self.reply_address.as_deref(),
+                )?,
+            )
+        } else {
+            None
+        };
+        Ok(wake)
+    }
+}
+
+async fn update_goal(
+    connection: &mut PgConnection,
+    task: &Uuid7,
+    adoption: &DurableTaskAdoption,
+    current: &DurableTaskSnapshot,
+    questions: &[af_wire::decision::NamedQuestion],
+    eligible: bool,
+) -> Result<()> {
+    super::waits::cancel(connection, task).await?;
+    let goal_digest = af_core::etag::sha256_hex(
+        &serde_json::to_vec(&(&current.context.objective, &questions))
+            .map_err(af_core::json::Unreadable::from)?,
+    );
+    sqlx::query(include_str!("sql/adopt_goal.sql"))
+        .bind(task)
+        .bind(&adoption.goal_revision_id)
+        .bind(sqlx::types::Json(questions))
+        .bind(goal_digest)
+        .bind(DurableTaskState::Ready.as_str())
+        .bind(eligible)
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT))?;
+    super::continuation::retire(connection, task).await?;
+    Ok(())
+}
+
+async fn lock(
+    connection: &mut PgConnection,
+    scope: &DurableTaskScope,
+    task: &Uuid7,
+) -> Result<Locked> {
+    guard::scope(connection, scope).await?;
+    sqlx::query_as(sql::LOCK_DURABLE_TASK)
+        .bind(task)
+        .bind(&scope.fleet_id)
+        .bind(&scope.workspace_id)
+        .fetch_optional(connection)
+        .await
+        .map_err(query(CONTEXT))?
+        .ok_or_else(|| DurableTaskRefusal::NotFound.into())
+}

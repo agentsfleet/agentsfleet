@@ -8,11 +8,11 @@ use std::borrow::Cow;
 use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{
+    durable_task::{DecisionAssessment, DecisionReservationInput},
     runner::{
         AssignedPolicy, CapabilityReport, HeartbeatRequest, NetworkPolicy, RegisterRequest,
         SandboxTier,
     },
-    task::{DecisionAssessment, DecisionReservationInput},
     turn::TurnKind,
 };
 use afd_auth::scope::ScopeSet;
@@ -22,8 +22,8 @@ use afd_db::{
     test_util::{OwnedRows, TestDatabase, mint_id},
 };
 use afd_fleet::{
+    durable_task::DurableTasks,
     run::{Billed, Runs},
-    task::Tasks,
 };
 use afd_runner::Runners;
 use afd_turns::{IncomingTurn, Key, Producer, Reply, Turns};
@@ -72,7 +72,7 @@ impl Fixture {
             &owner.tenant,
         );
         cleanup.record(
-            "DELETE FROM fleet.task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1",
+            "DELETE FROM fleet.durable_task_checkpoints c USING identity.workspaces w WHERE c.workspace_id = w.id AND w.tenant_id = $1",
             &owner.tenant,
         );
         cleanup.record(include_str!("fixtures/cleanup.sql"), &owner.tenant);
@@ -99,17 +99,17 @@ impl Fixture {
         let run = acquire(&runs, &turns, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;
-        let mut dependencies = harness::task_dependencies(database.clone());
+        let mut dependencies = harness::durable_task_dependencies(database.clone());
         dependencies.admin_workspace = Some(owner.workspace.clone());
         dependencies.storage = Some(storage::build(&database, &owner).await);
-        let tasks = Tasks::new(runs, turns, dependencies);
+        let tasks = DurableTasks::new(runs, turns, dependencies);
         let router = harness::Fleet::live(
             database.clone(),
             "native_decision_http",
             ScopeSet::from_scopes(&[]),
         )
         .at(clock::now())
-        .with_tasks(tasks)
+        .with_durable_tasks(tasks)
         .router();
         Self {
             database,
@@ -127,7 +127,10 @@ impl Fixture {
     }
 
     pub(super) fn collection(&self) -> String {
-        format!("/v1/runners/me/runs/{}/tasks/decisions", self.run.id)
+        format!(
+            "/v1/runners/me/runs/{}/durable_tasks/decisions",
+            self.run.id
+        )
     }
 
     pub(super) fn item(&self, call: &str) -> String {
@@ -140,7 +143,7 @@ impl Fixture {
             fencing_token: self.run.fence,
             source_turn_id: self.run.source.to_string(),
             assessment: DecisionAssessment::Message,
-            task: None,
+            durable_task: None,
             retry_of: None,
             evidence: json!({"checks":"not yet read"}),
         }
@@ -188,7 +191,7 @@ async fn enroll(database: &Db, owner: &Owner, model: &Uuid7) -> [Runner; 2] {
                 &RegisterRequest {
                     host_id: Cow::Owned(format!("{}-{suffix}", owner.tag)),
                     assigned_policy: AssignedPolicy {
-                        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                        durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
                         decision_model_id: Some(Cow::Owned(model.to_string())),
                         sandbox_tier: SandboxTier::DevNone,
                         network_policy: NetworkPolicy::AllowAll,

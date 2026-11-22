@@ -75,16 +75,16 @@ impl Runs {
     ///
     /// # Errors
     /// Reports database failures while saving bounded progress.
-    pub async fn retain_task_activity(
+    pub async fn retain_durable_task_activity(
         &self,
         target: &Target,
         runner_id: &Uuid7,
         run_id: &Uuid7,
-        records: &[af_wire::activity::TaskActivityRecord],
-    ) -> Result<Option<af_wire::activity::TaskActivityHistory>> {
+        records: &[af_wire::activity::DurableTaskActivityRecord],
+    ) -> Result<Option<af_wire::activity::DurableTaskActivityHistory>> {
         let mut connection = self.pool().acquire().await?;
-        let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
-            sqlx::query_scalar(include_str!("task_history.sql"))
+        let history: Option<sqlx::types::Json<af_wire::activity::DurableTaskActivityHistory>> =
+            sqlx::query_scalar(include_str!("durable_task_history.sql"))
                 .bind(&target.fleet_id)
                 .bind(&target.turn_id)
                 .bind(sqlx::types::Json(records))
@@ -177,21 +177,21 @@ impl crate::run::pull::RunService {
     ) -> Result<()> {
         let retained: Vec<_> = frames
             .iter()
-            .filter_map(ActivityFrame::task_activity)
+            .filter_map(ActivityFrame::durable_task_activity)
             .collect();
         let published = if retained.is_empty() {
             frames.to_vec()
         } else if target.timing_eligible {
             let history = self
                 .runs
-                .retain_task_activity(target, runner_id, run_id, &retained)
+                .retain_durable_task_activity(target, runner_id, run_id, &retained)
                 .await?;
             history::canonical(frames, &history.unwrap_or_default())
         } else {
             // A superseded worker cannot attach unsequenced task progress to a live event.
             frames
                 .iter()
-                .filter(|frame| frame.task_activity().is_none())
+                .filter(|frame| frame.durable_task_activity().is_none())
                 .cloned()
                 .collect()
         };
@@ -231,9 +231,9 @@ fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
         {
             body.first_chunk_after_ms
         }
-        ActivityFrame::TaskDecisionStarted(_)
-        | ActivityFrame::TaskDecisionCompleted(_)
-        | ActivityFrame::TaskTransferProgress(_)
+        ActivityFrame::DurableTaskDecisionStarted(_)
+        | ActivityFrame::DurableTaskDecisionCompleted(_)
+        | ActivityFrame::DurableTaskTransferProgress(_)
         | ActivityFrame::ContextProgress(_)
         | ActivityFrame::ToolCallStarted(_)
         | ActivityFrame::FleetResponseChunk(_)

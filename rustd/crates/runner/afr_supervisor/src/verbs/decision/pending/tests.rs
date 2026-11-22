@@ -7,7 +7,7 @@ use crate::{
 use af_core::id::Uuid7;
 use af_wire::{
     decision::{DecisionOutcome, DecisionResult, DecisionUsage},
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
 };
 use std::sync::{
     Arc,
@@ -124,7 +124,7 @@ fn receipt_peer(
     ready: Arc<AtomicBool>,
 ) -> (crate::client::ControlPlane, crate::test_support::Calls) {
     plane(move |call| {
-        assert_eq!(call.verb, Verb::TaskDecisionRecord);
+        assert_eq!(call.verb, Verb::DurableTaskDecisionRecord);
         if !ready.load(Ordering::SeqCst) {
             return Answer::Stall;
         }

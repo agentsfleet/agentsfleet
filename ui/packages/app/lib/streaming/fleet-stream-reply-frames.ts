@@ -1,4 +1,4 @@
-import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
+import { mergeDurableTaskActivity, readDurableTaskActivityHistory } from "../task-activity";
 import type { TurnDetail } from "@/lib/api/turns";
 import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame } from "./fleet-stream-frames";
@@ -66,9 +66,9 @@ export function applyFinalReply(prev: FleetTurn[], detail: TurnDetail, nowMs: nu
   const index = prev.findIndex((turn) => turn.id === detail.turn_id);
   const turn = prev[index];
   if (turn === undefined) return [...prev, rowToTurn(detail)];
-  const activity = readTaskActivityHistory(detail.task_activity);
+  const activity = readDurableTaskActivityHistory(detail.durable_task_activity);
   const next = applyFinalReplyText(prev, detail.turn_id, detail.response_text ?? "", nowMs);
-  return activity ? next.map(row => row.id === detail.turn_id ? {...row, taskActivity: mergeTaskActivity(row.taskActivity, activity)} : row) : next;
+  return activity ? next.map(row => row.id === detail.turn_id ? {...row, durableTaskActivity: mergeDurableTaskActivity(row.durableTaskActivity, activity)} : row) : next;
 }
 
 /** The completion frame carries the same saved answer as the detail route. */

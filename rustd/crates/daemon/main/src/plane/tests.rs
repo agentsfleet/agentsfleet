@@ -122,7 +122,7 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
 /// The tenant, runner and ingress planes drive native tasks through one owner,
 /// so a task bound on one plane is the task the others report against.
 #[tokio::test]
-async fn every_plane_drives_native_tasks_through_the_one_task_owner() {
+async fn every_plane_drives_native_durable_tasks_through_the_one_durable_task_owner() {
     let plane = plane();
 
     assert!(std::ptr::addr_eq(

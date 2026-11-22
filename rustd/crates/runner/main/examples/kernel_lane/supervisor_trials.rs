@@ -20,15 +20,15 @@ use crate::trials::Body;
 
 pub(crate) const TRIALS: &[(&str, Body)] = &[
     (
-        "test_supervisor_api_task_captures_frozen_workspace",
+        "test_supervisor_api_durable_task_captures_frozen_workspace",
         crate::supervisor_recovery::api,
     ),
     (
-        "test_supervisor_repository_task_retains_base_then_incremental",
+        "test_supervisor_repository_durable_task_retains_base_then_incremental",
         crate::supervisor_recovery::repository,
     ),
     (
-        "test_supervisor_changed_task_head_refuses_capture",
+        "test_supervisor_changed_durable_task_head_refuses_capture",
         crate::supervisor_recovery::wrong_head,
     ),
     (

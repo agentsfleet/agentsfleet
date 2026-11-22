@@ -91,37 +91,37 @@ pub(crate) enum Verb {
     /// A setup run's fenced save of its draft's compacted context.
     ContextSave,
     /// Complete native human input and recovered meaning.
-    TaskInputs,
+    DurableTaskInputs,
     /// One complete immutable human interpretation.
-    TaskBindings,
+    DurableTaskBindings,
     /// Accepted input application or original reply.
-    TaskInputReceipt,
+    DurableTaskInputReceipt,
     /// One native physical decision reservation.
-    TaskDecisionReserve,
+    DurableTaskDecisionReserve,
     /// Original-owner physical decision accounting.
-    TaskDecisionRecord,
+    DurableTaskDecisionRecord,
     /// One exact-head native publication.
-    TaskEffectPublish,
+    DurableTaskEffectPublish,
     /// Recovery effects beyond a confirmed watermark.
-    TaskEffects,
+    DurableTaskEffects,
     /// One retained publication receipt.
-    TaskEffect,
+    DurableTaskEffect,
     /// An immutable capture plan and writer pin.
-    TaskCheckpointPlan,
+    DurableTaskCheckpointPlan,
     /// A complete verified manifest publication.
-    TaskCheckpointCommit,
+    DurableTaskCheckpointCommit,
     /// An immutable manifest page.
-    TaskCheckpointPageWrite,
+    DurableTaskCheckpointPageWrite,
     /// One authorized recovery page.
-    TaskCheckpointPage,
+    DurableTaskCheckpointPage,
     /// Bounded native plaintext object registration.
-    TaskCheckpointObjectsRegister,
+    DurableTaskCheckpointObjectsRegister,
     /// Immutable ciphertext and create-only transfers.
-    TaskCheckpointUploads,
+    DurableTaskCheckpointUploads,
     /// Native restore custody and transfer refresh.
-    TaskCheckpointAuthorizations,
+    DurableTaskCheckpointAuthorizations,
     /// Versioned native reader or writer pin renewal.
-    TaskCheckpointPin,
+    DurableTaskCheckpointPin,
 }
 
 impl Verb {
@@ -154,22 +154,22 @@ impl Verb {
         Self::TurnCheckpoint,
         Self::ContextLoad,
         Self::ContextSave,
-        Self::TaskInputs,
-        Self::TaskBindings,
-        Self::TaskInputReceipt,
-        Self::TaskDecisionReserve,
-        Self::TaskDecisionRecord,
-        Self::TaskEffectPublish,
-        Self::TaskEffects,
-        Self::TaskEffect,
-        Self::TaskCheckpointPlan,
-        Self::TaskCheckpointCommit,
-        Self::TaskCheckpointPageWrite,
-        Self::TaskCheckpointPage,
-        Self::TaskCheckpointObjectsRegister,
-        Self::TaskCheckpointUploads,
-        Self::TaskCheckpointAuthorizations,
-        Self::TaskCheckpointPin,
+        Self::DurableTaskInputs,
+        Self::DurableTaskBindings,
+        Self::DurableTaskInputReceipt,
+        Self::DurableTaskDecisionReserve,
+        Self::DurableTaskDecisionRecord,
+        Self::DurableTaskEffectPublish,
+        Self::DurableTaskEffects,
+        Self::DurableTaskEffect,
+        Self::DurableTaskCheckpointPlan,
+        Self::DurableTaskCheckpointCommit,
+        Self::DurableTaskCheckpointPageWrite,
+        Self::DurableTaskCheckpointPage,
+        Self::DurableTaskCheckpointObjectsRegister,
+        Self::DurableTaskCheckpointUploads,
+        Self::DurableTaskCheckpointAuthorizations,
+        Self::DurableTaskCheckpointPin,
     ];
 
     /// The method this verb is sent with.
@@ -181,15 +181,15 @@ impl Verb {
             | Self::ScheduleRuns
             | Self::FleetList
             | Self::FleetTurns
-            | Self::TaskInputs
-            | Self::TaskEffects
-            | Self::TaskEffect
-            | Self::TaskCheckpointPage => Method::Get,
-            Self::TaskCheckpointPageWrite => Method::Put,
+            | Self::DurableTaskInputs
+            | Self::DurableTaskEffects
+            | Self::DurableTaskEffect
+            | Self::DurableTaskCheckpointPage => Method::Get,
+            Self::DurableTaskCheckpointPageWrite => Method::Put,
             Self::ScheduleUpdate
-            | Self::TaskDecisionRecord
-            | Self::TaskCheckpointCommit
-            | Self::TaskCheckpointPin => Method::Patch,
+            | Self::DurableTaskDecisionRecord
+            | Self::DurableTaskCheckpointCommit
+            | Self::DurableTaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Open
             | Self::Heartbeat
@@ -208,14 +208,14 @@ impl Verb {
             | Self::TurnCheckpoint
             | Self::ContextLoad
             | Self::ContextSave
-            | Self::TaskBindings
-            | Self::TaskInputReceipt
-            | Self::TaskDecisionReserve
-            | Self::TaskEffectPublish
-            | Self::TaskCheckpointPlan
-            | Self::TaskCheckpointObjectsRegister
-            | Self::TaskCheckpointUploads
-            | Self::TaskCheckpointAuthorizations => Method::Post,
+            | Self::DurableTaskBindings
+            | Self::DurableTaskInputReceipt
+            | Self::DurableTaskDecisionReserve
+            | Self::DurableTaskEffectPublish
+            | Self::DurableTaskCheckpointPlan
+            | Self::DurableTaskCheckpointObjectsRegister
+            | Self::DurableTaskCheckpointUploads
+            | Self::DurableTaskCheckpointAuthorizations => Method::Post,
         }
     }
 
@@ -247,22 +247,24 @@ impl Verb {
             Self::TurnCheckpoint => "turn_checkpoint",
             Self::ContextLoad => "context_load",
             Self::ContextSave => "context_save",
-            Self::TaskInputs => "task_inputs",
-            Self::TaskBindings => "task_bindings",
-            Self::TaskInputReceipt => "task_input_receipt",
-            Self::TaskDecisionReserve => "task_decision_reserve",
-            Self::TaskDecisionRecord => "task_decision_record",
-            Self::TaskEffectPublish => "task_effect_publish",
-            Self::TaskEffects => "task_effects",
-            Self::TaskEffect => "task_effect",
-            Self::TaskCheckpointPlan => "task_checkpoint_plan",
-            Self::TaskCheckpointCommit => "task_checkpoint_commit",
-            Self::TaskCheckpointPageWrite => "task_checkpoint_page_write",
-            Self::TaskCheckpointPage => "task_checkpoint_page",
-            Self::TaskCheckpointObjectsRegister => "task_checkpoint_objects_register",
-            Self::TaskCheckpointUploads => "task_checkpoint_uploads",
-            Self::TaskCheckpointAuthorizations => "task_checkpoint_authorizations",
-            Self::TaskCheckpointPin => "task_checkpoint_pin",
+            Self::DurableTaskInputs => "durable_task_inputs",
+            Self::DurableTaskBindings => "durable_task_bindings",
+            Self::DurableTaskInputReceipt => "task_input_receipt",
+            Self::DurableTaskDecisionReserve => "task_decision_reserve",
+            Self::DurableTaskDecisionRecord => "task_decision_record",
+            Self::DurableTaskEffectPublish => "task_effect_publish",
+            Self::DurableTaskEffects => "durable_task_effects",
+            Self::DurableTaskEffect => "durable_task_effect",
+            Self::DurableTaskCheckpointPlan => "task_checkpoint_plan",
+            Self::DurableTaskCheckpointCommit => "task_checkpoint_commit",
+            Self::DurableTaskCheckpointPageWrite => "durable_task_checkpoint_page_write",
+            Self::DurableTaskCheckpointPage => "task_checkpoint_page",
+            Self::DurableTaskCheckpointObjectsRegister => {
+                "durable_task_checkpoint_objects_register"
+            }
+            Self::DurableTaskCheckpointUploads => "durable_task_checkpoint_uploads",
+            Self::DurableTaskCheckpointAuthorizations => "durable_task_checkpoint_authorizations",
+            Self::DurableTaskCheckpointPin => "task_checkpoint_pin",
         }
     }
 
@@ -292,22 +294,22 @@ impl Verb {
             | Self::TurnCheckpoint
             | Self::ContextLoad
             | Self::ContextSave
-            | Self::TaskInputs
-            | Self::TaskBindings
-            | Self::TaskInputReceipt
-            | Self::TaskDecisionReserve
-            | Self::TaskDecisionRecord
-            | Self::TaskEffectPublish
-            | Self::TaskEffects
-            | Self::TaskEffect
-            | Self::TaskCheckpointPlan
-            | Self::TaskCheckpointCommit
-            | Self::TaskCheckpointPageWrite
-            | Self::TaskCheckpointPage
-            | Self::TaskCheckpointObjectsRegister
-            | Self::TaskCheckpointUploads
-            | Self::TaskCheckpointAuthorizations
-            | Self::TaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,
+            | Self::DurableTaskInputs
+            | Self::DurableTaskBindings
+            | Self::DurableTaskInputReceipt
+            | Self::DurableTaskDecisionReserve
+            | Self::DurableTaskDecisionRecord
+            | Self::DurableTaskEffectPublish
+            | Self::DurableTaskEffects
+            | Self::DurableTaskEffect
+            | Self::DurableTaskCheckpointPlan
+            | Self::DurableTaskCheckpointCommit
+            | Self::DurableTaskCheckpointPageWrite
+            | Self::DurableTaskCheckpointPage
+            | Self::DurableTaskCheckpointObjectsRegister
+            | Self::DurableTaskCheckpointUploads
+            | Self::DurableTaskCheckpointAuthorizations
+            | Self::DurableTaskCheckpointPin => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

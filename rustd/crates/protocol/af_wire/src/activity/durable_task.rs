@@ -1,0 +1,153 @@
+//! Bounded public progress facts; no prompts, credentials or provider reasoning.
+
+use garde::Validate;
+use serde::{Deserialize, Serialize};
+
+/// The operation whose progress is being shown.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DurableTaskActivityOperation {
+    /// Interpret an authorized person's current message.
+    Intent,
+    /// Assess the accepted task goal after a complete action group.
+    Goal,
+    /// Save frozen files and private conversation.
+    Capture,
+    /// Restore authenticated files and private conversation.
+    Restore,
+}
+
+/// A public stage, separate from authoritative task completion.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DurableTaskActivityPhase {
+    /// Work has begun; no successful outcome is implied.
+    Starting,
+    /// The original decision receipt was recorded.
+    Recorded,
+    /// No usable decision was established.
+    Unavailable,
+    /// Frozen contents are being inventoried.
+    Preparing,
+    /// Frozen files are being scanned; transfer requirements are not yet known.
+    Scanning,
+    /// Missing encrypted objects are being sent.
+    Uploading,
+    /// Native integrity verification is in progress.
+    Verifying,
+    /// Native manifest commit confirmed a saved recovery boundary.
+    Saved,
+    /// Authenticated contents are being restored into a fresh workspace.
+    Restoring,
+    /// All files and conversation have been restored.
+    Restored,
+    /// The operation failed; no saved/restored outcome is implied.
+    Failed,
+}
+
+/// Progress comes from native identities and counters, never model prose.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct DurableTaskActivity {
+    /// Physical decision or checkpoint operation identity.
+    #[garde(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    )]
+    pub activity_id: String,
+    /// Native task, absent during initial intent routing.
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
+    pub durable_task_id: Option<String>,
+    /// Exact original turn, when assessing human intent.
+    #[garde(inner(
+        length(bytes, min = 36, max = 36),
+        pattern(r"^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+    ))]
+    pub source_turn_id: Option<String>,
+    /// Native operation category.
+    #[garde(skip)]
+    pub operation: DurableTaskActivityOperation,
+    /// The current public stage.
+    #[garde(skip)]
+    pub phase: DurableTaskActivityPhase,
+    /// Selected provider label; no credential or URL.
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
+    pub provider: Option<String>,
+    /// Selected model label.
+    #[garde(inner(length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS)))]
+    pub model: Option<String>,
+    /// Completed objects, never an inferred success percentage.
+    #[garde(skip)]
+    pub completed: u32,
+    /// Total objects when known.
+    #[garde(skip)]
+    pub total: Option<u32>,
+    /// Deduplicated ciphertext bytes; absent for decisions and historical frames.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub bytes: Option<DurableTaskTransferBytes>,
+    /// Event-local observation order assigned by the daemon, never a worker clock.
+    ///
+    /// Bounded by JavaScript's `Number.MAX_SAFE_INTEGER`, 2^53 - 1: the browser
+    /// and the CLI read this JSON number as a double and order by it exactly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(range(max = 9_007_199_254_740_991_u64)))]
+    pub sequence: Option<u64>,
+}
+
+/// Transfer facts, excluding speculative sends and repeated object references.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct DurableTaskTransferBytes {
+    /// Unique bytes verified after upload or authenticated download.
+    #[garde(skip)]
+    pub acknowledged: u64,
+    /// Known missing bytes still awaiting acknowledgement; not a total estimate.
+    #[garde(skip)]
+    pub missing: u64,
+    /// Unique bytes already present when native authorization was read.
+    #[garde(skip)]
+    pub reused: u64,
+}
+
+/// Saved progress uses the same discriminators as live activity.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "progress", rename_all = "snake_case")]
+pub enum DurableTaskActivityRecord {
+    /// A physical judgment started.
+    DurableTaskDecisionStarted(DurableTaskActivity),
+    /// Its original receipt was recorded or remained unusable.
+    DurableTaskDecisionCompleted(DurableTaskActivity),
+    /// A bounded capture/restore stage advanced.
+    DurableTaskTransferProgress(DurableTaskActivity),
+}
+
+impl DurableTaskActivityRecord {
+    /// Public progress shared by saved and live representations.
+    #[must_use]
+    pub const fn progress(&self) -> &DurableTaskActivity {
+        match self {
+            Self::DurableTaskDecisionStarted(progress)
+            | Self::DurableTaskDecisionCompleted(progress)
+            | Self::DurableTaskTransferProgress(progress) => progress,
+        }
+    }
+}
+
+/// Retained activity, kept apart from the task's private history.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DurableTaskActivityHistory {
+    /// The newest fact of each operation and stage, in observed order.
+    pub items: Vec<DurableTaskActivityRecord>,
+    /// Whether earlier stages were omitted when the history was bounded.
+    pub truncated: bool,
+}

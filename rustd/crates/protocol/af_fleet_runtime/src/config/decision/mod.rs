@@ -24,7 +24,7 @@ pub const INTENT_OPTIONS: [&str; 6] = [
     "clarify",
 ];
 /// Association criteria apply to native candidate aliases supplied at dispatch.
-pub const ASSOCIATION_CRITERIA: [&str; 3] = ["matching_task", "new_work", "unclear"];
+pub const ASSOCIATION_CRITERIA: [&str; 3] = ["matching_durable_task", "new_work", "unclear"];
 /// Probability-of-yes criteria; no separate confidence or progress value.
 pub const NOUL_CRITERIA: [&str; 2] = ["true", "false"];
 /// Fixed goal transitions remain proposals subject to native evidence checks.

@@ -11,35 +11,35 @@ pub(crate) enum ErrorKind {
     },
 
     #[error("private checkpoint upload authorization could not be signed")]
-    TaskStorageSigning {
+    DurableTaskStorageSigning {
         #[source]
         source: aws_sigv4::http_request::SigningError,
     },
     #[error("private checkpoint upload signing parameters are unavailable")]
-    TaskStorageSigningParameters {
+    DurableTaskStorageSigningParameters {
         #[source]
         source: aws_sigv4::sign::v4::signing_params::BuildError,
     },
     #[error("private checkpoint upload request could not be constructed")]
-    TaskStorageRequest {
+    DurableTaskStorageRequest {
         #[source]
         source: http::Error,
     },
 
     #[error("private checkpoint storage could not establish object custody")]
-    TaskStorage {
+    DurableTaskStorage {
         #[source]
         source: object_store::Error,
     },
     #[error("the native GitHub request did not produce a confirmed receipt")]
-    TaskRemote {
+    DurableTaskRemote {
         #[source]
         source: reqwest::Error,
     },
     #[error("the native GitHub request returned status {status}")]
-    TaskRemoteStatus { status: u16 },
+    DurableTaskRemoteStatus { status: u16 },
     #[error("GitHub requested a cooldown after status {status}")]
-    TaskRemoteCooldown { status: u16, until: jiff::Timestamp },
+    DurableTaskRemoteCooldown { status: u16, until: jiff::Timestamp },
     #[error("the complete decision request cannot be represented within its reviewed bounds")]
     DecisionRequest {
         #[source]
@@ -51,12 +51,12 @@ pub(crate) enum ErrorKind {
         source: tokio::time::error::Elapsed,
     },
     #[error("task progress could not be read before its deadline")]
-    TaskReadTimeout {
+    DurableTaskReadTimeout {
         #[source]
         source: tokio::time::error::Elapsed,
     },
     #[error("the database cancelled an overdue task progress read")]
-    TaskStatementCancelled {
+    DurableTaskStatementCancelled {
         #[source]
         source: sqlx::Error,
     },
@@ -66,45 +66,49 @@ pub(crate) enum ErrorKind {
         source: afd_turns::Error,
     },
     #[error("a stored task document is malformed")]
-    TaskDocument {
+    DurableTaskDocument {
         #[source]
         source: af_core::json::Unreadable,
     },
     #[error("a stored task lifecycle state is unknown")]
-    TaskState {
+    DurableTaskState {
         #[source]
         source: serde::de::value::Error,
     },
     #[error("task counter {column} cannot be represented")]
-    TaskCounter {
+    DurableTaskCounter {
         column: &'static str,
         #[source]
         source: std::num::TryFromIntError,
     },
     #[error("native task target field {column} cannot be represented")]
-    TaskTargetCounter {
+    DurableTaskTargetCounter {
         column: &'static str,
         #[source]
         source: std::num::TryFromIntError,
     },
     #[error("the task continuation could not be admitted")]
-    TaskControlTurn {
-        state: af_wire::task::TaskState,
+    DurableTaskControlTurn {
+        state: af_wire::durable_task::DurableTaskState,
         #[source]
         source: afd_turns::Error,
     },
     #[error("the task mutation was refused")]
-    TaskMutation {
-        state: af_wire::task::TaskState,
+    DurableTaskMutation {
+        state: af_wire::durable_task::DurableTaskState,
         #[source]
         source: Box<Error>,
     },
     #[error("the task generation or lifecycle state changed")]
-    TaskControlConflict { state: af_wire::task::TaskState },
+    DurableTaskControlConflict {
+        state: af_wire::durable_task::DurableTaskState,
+    },
     #[error("the task resource version changed")]
-    TaskPrecondition { current_etag: String },
+    DurableTaskPrecondition { current_etag: String },
     #[error("{reason}")]
-    TaskRefused { reason: crate::task::TaskRefusal },
+    DurableTaskRefused {
+        reason: crate::durable_task::DurableTaskRefusal,
+    },
     #[error("{reason}")]
     TurnCheckpointRefused {
         reason: crate::run::turn_checkpoint::TurnCheckpointRefusal,

@@ -20,6 +20,7 @@ pub mod billing;
 pub mod bus;
 pub mod cost;
 pub mod database;
+pub mod durable_task;
 pub mod fleet;
 pub mod http;
 pub mod library;
@@ -28,7 +29,6 @@ pub mod outbound;
 mod run_cache;
 mod runner_run;
 pub mod scheduler;
-pub mod task;
 
 #[cfg(test)]
 mod spelling_tests;

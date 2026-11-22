@@ -47,16 +47,16 @@ WITH fleet AS MATERIALIZED (
             prior.hold_expires_at > (SELECT checked_at FROM instant) AS held,
             prior.last_runner_id AS holder
 ), first_head AS MATERIALIZED (
-  SELECT a.id, a.task_id, host.platform_owned AS host_platform FROM thread.turns a
+  SELECT a.id, a.durable_task_id, host.platform_owned AS host_platform FROM thread.turns a
   JOIN fleet f ON f.id = a.thread_id AND f.workspace_id = a.workspace_id
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   JOIN runner.runners host ON host.id = $2
   WHERE a.thread_id = $1 AND a.settled_at IS NULL AND host.cordon_reason IS NULL
     AND ((host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false))
          OR setup.definition #> $11::text[] IS NULL OR setup.definition #> $11::text[] = 'null'::jsonb)
-    AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR EXISTS (
-      SELECT 1 FROM fleet.tasks t JOIN runner.runners r ON r.id = $2
-      WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.thread_id AND t.workspace_id = a.workspace_id
+    AND ((a.durable_task_id IS NULL AND a.durable_task_generation IS NULL) OR EXISTS (
+      SELECT 1 FROM fleet.durable_tasks t JOIN runner.runners r ON r.id = $2
+      WHERE t.id = a.durable_task_id AND t.generation = a.durable_task_generation AND t.fleet_id = a.thread_id AND t.workspace_id = a.workspace_id
         AND r.durable_tasks_enabled AND r.capability_report @> jsonb_build_object($8::text, true)
         AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > (SELECT checked_at FROM instant) AND t.used_runs < t.max_runs
@@ -74,7 +74,7 @@ WITH fleet AS MATERIALIZED (
     SELECT 1 FROM fleet.revisions r
     WHERE r.fleet_id = f.id
       AND r.id = COALESCE(
-        (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = h.task_id AND t.fleet_id = f.id),
+        (SELECT t.accepted_revision_id FROM fleet.durable_tasks t WHERE t.id = h.durable_task_id AND t.fleet_id = f.id),
         f.head_revision_id)
       AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $15::text)
 ), locked AS (
@@ -82,7 +82,7 @@ WITH fleet AS MATERIALIZED (
   JOIN head h ON h.id = a.id
   CROSS JOIN won_thread
   WHERE a.settled_at IS NULL
-    AND ($14::boolean OR a.task_id IS NOT NULL OR NOT EXISTS (
+    AND ($14::boolean OR a.durable_task_id IS NOT NULL OR NOT EXISTS (
       SELECT 1 FROM runner.turn_recovery recovery
       WHERE recovery.turn_id = a.id AND recovery.head_turn_checkpoint_id IS NOT NULL
     ))
@@ -108,7 +108,7 @@ WITH fleet AS MATERIALIZED (
         AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING WITH (OLD AS prior)
             a.id, a.workspace_id, a.actor, a.kind AS event_type, a.request_json::text AS request_json,
-            a.created_at, a.task_id, a.task_generation,
+            a.created_at, a.durable_task_id, a.durable_task_generation,
             a.sequence, a.reply_provider, a.reply_address, a.status,
             prior.run_fence IS NOT NULL AS redelivered,
             prior.opened_at IS NULL AS inserted
@@ -129,11 +129,11 @@ WITH fleet AS MATERIALIZED (
   LEFT JOIN fleet.activity_counters k ON k.fleet_id = $1
 ), installed AS (
   SELECT r.definition::text AS definition, r.runtime_model_ref, s.resume_context::text AS context_json,
-         r.policy_semantics, r.id AS revision_id, t.generation AS task_generation,
+         r.policy_semantics, r.id AS revision_id, t.generation AS durable_task_generation,
          current.definition::text AS current_definition
   FROM stamped a
   CROSS JOIN fleet f
-  LEFT JOIN fleet.tasks t ON t.id = a.task_id AND t.fleet_id = f.id AND t.workspace_id = f.workspace_id
+  LEFT JOIN fleet.durable_tasks t ON t.id = a.durable_task_id AND t.fleet_id = f.id AND t.workspace_id = f.workspace_id
   LEFT JOIN fleet.revisions r ON r.id = COALESCE(t.accepted_revision_id, f.head_revision_id)
    AND r.fleet_id = f.id
   LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
@@ -168,7 +168,7 @@ SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        f.tenant_id, f.name, f.status, f.head_revision_id,
        f.memory_reads_workspace, f.memory_publishes_workspace,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,
-       i.revision_id, i.task_generation, i.current_definition,
+       i.revision_id, i.durable_task_generation, i.current_definition,
        a.inserted, a.created_at AS opened_at, a.status AS event_status,
        k.event_count, k.budget_used_nanos,
        (SELECT resource_version FROM catalogue) AS catalogue_version,
@@ -176,12 +176,12 @@ SELECT a.id AS turn_id, a.workspace_id, a.actor, a.event_type,
        -- Whether the head belongs to a durable task: only such an issue reads
        -- its task source (`task/sql/issue_source.sql`); a plain chat's run
        -- insert carries the setup proof instead.
-       (a.task_id IS NOT NULL OR a.task_generation IS NOT NULL) AS tasked,
+       (a.durable_task_id IS NOT NULL OR a.durable_task_generation IS NOT NULL) AS tasked,
        -- Whether a later message waits in the head's conversation, foldable
        -- or not: the run's first fold ask finds nothing when this is false.
        -- assign_inputs.sql's two branches, through the same index. A durable
        -- task's inbox stays closed, so its run says false.
-       a.task_id IS NULL AND CASE
+       a.durable_task_id IS NULL AND CASE
          WHEN a.reply_provider IS NOT NULL THEN EXISTS (
            SELECT 1 FROM thread.turns w
            WHERE w.thread_id = $1 AND w.reply_provider = a.reply_provider

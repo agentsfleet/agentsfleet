@@ -37,8 +37,8 @@ struct StoredDetail {
     request_json: String,
     response_text: Option<String>,
     tool_calls: Option<String>,
-    task_activity: sqlx::types::Json<Vec<af_wire::activity::TaskActivityRecord>>,
-    task_activity_truncated: bool,
+    durable_task_activity: sqlx::types::Json<Vec<af_wire::activity::DurableTaskActivityRecord>>,
+    durable_task_activity_truncated: bool,
 }
 
 /// One event with everything recorded about it.
@@ -61,7 +61,7 @@ pub struct TurnDetailRow {
     /// "no tools ran".
     pub tool_calls: Option<String>,
     /// Bounded public decision/recovery stages retained before live publication.
-    pub task_activity: af_wire::activity::TaskActivityHistory,
+    pub durable_task_activity: af_wire::activity::DurableTaskActivityHistory,
 }
 
 impl TurnDetailRow {
@@ -77,9 +77,9 @@ impl TurnDetailRow {
             request_json: stored.request_json,
             response_text: stored.response_text,
             tool_calls: stored.tool_calls,
-            task_activity: af_wire::activity::TaskActivityHistory {
-                items: stored.task_activity.0,
-                truncated: stored.task_activity_truncated,
+            durable_task_activity: af_wire::activity::DurableTaskActivityHistory {
+                items: stored.durable_task_activity.0,
+                truncated: stored.durable_task_activity_truncated,
             },
         })
     }
@@ -142,7 +142,7 @@ impl TurnDetailRow {
             request_json: FIXTURE_REQUEST_JSON.to_owned(),
             response_text: Some(response_text),
             tool_calls: None,
-            task_activity: af_wire::activity::TaskActivityHistory::default(),
+            durable_task_activity: af_wire::activity::DurableTaskActivityHistory::default(),
         }
     }
 

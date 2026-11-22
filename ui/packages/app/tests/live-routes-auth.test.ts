@@ -20,8 +20,8 @@ import { GET as workspaceTurns } from "../app/live/v1/workspaces/[workspaceId]/t
 import { GET as workspaceStream } from "../app/live/v1/workspaces/[workspaceId]/turns/stream/route";
 import { GET as fleetTurns } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/route";
 import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/turns/stream/route";
-import { GET as fleetTasks } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/route";
-import { GET as fleetTask } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/tasks/[taskId]/route";
+import { GET as fleetDurableTasks } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/durable_tasks/route";
+import { GET as fleetDurableTask } from "../app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/durable_tasks/[durableTaskId]/route";
 
 const HTTP_UNAUTHORIZED = 401;
 const WORKSPACE_ID = "ws_1";
@@ -34,8 +34,8 @@ const ROUTES: ReadonlyArray<readonly [string, Route, Record<string, string>]> = 
   ["workspace stream", workspaceStream as Route, { workspaceId: WORKSPACE_ID }],
   ["fleet turns", fleetTurns as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
   ["fleet stream", fleetStream as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
-  ["fleet tasks", fleetTasks as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
-  ["fleet task", fleetTask as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID, taskId: "task_one" }],
+  ["fleet tasks", fleetDurableTasks as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID }],
+  ["fleet task", fleetDurableTask as Route, { workspaceId: WORKSPACE_ID, fleetId: FLEET_ID, durableTaskId: "durable_task_one" }],
 ];
 
 beforeEach(() => {

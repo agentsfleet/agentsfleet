@@ -12,8 +12,8 @@ use super::TestHttpsServer;
 use crate::test_support::{self, Behaviour, FLEET_ID, FakeAgent, FakeEngine, Freezer, RUN_ID, Rig};
 use af_core::clock;
 use af_wire::{
+    durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointTransfer},
     run::{CheckpointOperationId, TurnScope, TurnWorkspace},
-    task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointTransfer},
 };
 use afr_tools::{Catalog, catalog::FILE_READ, stub::Stub};
 use serde_json::Value;
@@ -147,7 +147,7 @@ async fn objects(
     outcome: Outcome,
 ) -> Checked<(
     TestHttpsServer,
-    af_wire::task::CheckpointObject,
+    af_wire::durable_task::CheckpointObject,
     CheckpointPage,
 )> {
     let (mut object, mut bytes) = fixture::encrypted(scope)?;

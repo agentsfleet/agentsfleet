@@ -1,7 +1,7 @@
 import {visualWakeupTurns} from "./refresh-wakeup-data";
 import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
-import type { TaskPage } from "@/lib/api/tasks";
-import { detail, summary, TASK_IDS } from "@/tests/helpers/task-reads";
+import type { DurableTaskPage } from "@/lib/api/tasks";
+import { detail, summary, DURABLE_TASK_IDS } from "@/tests/helpers/task-reads";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "wake-up", "error"] as const;
@@ -32,20 +32,20 @@ export function visualTurns(scenario: VisualScenario, started: number, includeCo
     createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : scenario === "error" ? "fleet_error" : "processed",
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
-    ...(completed ? {taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
+    ...(completed ? {durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
+      activity_id: DURABLE_TASK_IDS[1], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }
 
-export function visualTaskPage(scenario: VisualScenario, started: number, parity = false): TaskPage {
+export function visualDurableTaskPage(scenario: VisualScenario, started: number, parity = false): DurableTaskPage {
   return {items: scenario === "empty" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
     title: parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
 }
 
-export function visualTaskDetail(scenario: VisualScenario, started: number, parity = false) {
-  const task = visualTaskPage(scenario, started, parity).items[0] ?? summary();
+export function visualDurableTaskDetail(scenario: VisualScenario, started: number, parity = false) {
+  const task = visualDurableTaskPage(scenario, started, parity).items[0] ?? summary();
   const saved = detail(task);
-  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
+  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: DURABLE_TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
     target: (scenario === "completed" || scenario === "activity") ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,
       branch: "runner-refresh", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/agentsfleet/platform-images/pull/58", workflows: []} : saved.context.target}};
 }

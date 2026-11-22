@@ -3,7 +3,7 @@
 use super::files::{Restoring, Workspace};
 use crate::{Result, error};
 use af_crypto::secret::SecretBytes;
-use af_wire::task::CheckpointEntry;
+use af_wire::durable_task::CheckpointEntry;
 use futures_util::future::BoxFuture;
 use std::{collections::BTreeMap, iter::Peekable, path::PathBuf, sync::Arc};
 

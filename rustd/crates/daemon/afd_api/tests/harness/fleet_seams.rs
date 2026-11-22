@@ -20,7 +20,10 @@ use super::*;
 
 impl Fleet {
     /// Runs run decision routes over a fully configured native task owner.
-    pub(crate) fn with_tasks(mut self, tasks: afd_fleet::task::Tasks) -> Self {
+    pub(crate) fn with_durable_tasks(
+        mut self,
+        tasks: afd_fleet::durable_task::DurableTasks,
+    ) -> Self {
         self.tasks = tasks;
         self
     }

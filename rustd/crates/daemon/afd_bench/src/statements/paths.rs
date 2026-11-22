@@ -210,7 +210,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     // Activity has no fragment: a session authorizes its run once, when it
     // opens, so a live-tail post of a plain chat sends no statement and the
     // path reads zero. A durable task's progress frame runs
-    // `run/activity/task_history.sql`, whose text the assign fragments above
+    // `run/activity/durable_task_history.sql`, whose text the assign fragments above
     // already match; the chat drain sends none. A statement a post starts
     // sending lands in `other`, which every drain reports.
     // Report.
@@ -230,13 +230,16 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ("INSERT INTO runner.history (id, runner_id", Path::Report),
     // Task: the durable-task reads that issue, renewal and report each send.
     (
-        "SELECT task_id, fleet_id, workspace_id FROM thread.runs",
+        "SELECT durable_task_id, fleet_id, workspace_id FROM thread.runs",
         Path::Task,
     ),
-    ("SELECT t.id AS task_id, t.status, t.generation", Path::Task),
-    ("a.task_generation AS turn_generation", Path::Task),
     (
-        "SELECT task_execution_deadline_at AS execution_deadline",
+        "SELECT t.id AS durable_task_id, t.status, t.generation",
+        Path::Task,
+    ),
+    ("a.durable_task_generation AS turn_generation", Path::Task),
+    (
+        "SELECT durable_task_execution_deadline_at AS execution_deadline",
         Path::Task,
     ),
     // Shared. `set_config(` is the bench's own session-naming statement

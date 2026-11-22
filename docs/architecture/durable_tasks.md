@@ -54,7 +54,7 @@ Task methods extend existing `RunVerbs`; an ordinary message can retain a null t
 ```text
 fleet -> existing turn -> existing run -> existing agent -> existing report
             |                     |
-       optional task_id      optional TaskContext
+       optional durable_task_id      optional DurableTaskContext
             +---------- one DT across several runs --------+
 ```
 
@@ -138,7 +138,7 @@ R2 holds encrypted immutable checkpoint bytes and does not decide current owners
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).
 
-The fleet schema defines `fleet.tasks`, `fleet.task_items` and `fleet.task_inputs`; authenticated list/detail reads share the daemon task owner.
+The fleet schema defines `fleet.durable_tasks`, `fleet.durable_task_items` and `fleet.durable_task_inputs`; authenticated list/detail reads share the daemon task owner.
 Native bind/control, authenticated reads and public control routes have source implementations.
 The root prepares intent before sandbox creation and reads the oldest unsettled human source page.
 
@@ -148,7 +148,7 @@ Native decision reservation and receipt handlers use the same task owner; [goal 
 
 List reads return unfinished work, while detail retains terminal outcomes.
 
-The inline chat panel reads these native rows and lazy-loads saved criteria; committed bind/control changes publish `task_changed` on the existing fleet stream.
+The inline chat panel reads these native rows and lazy-loads saved criteria; committed bind/control changes publish `durable_task_changed` on the existing fleet stream.
 Initial stream readiness, reconnect and gap recovery trigger readback; frames carry no authority.
 Failed refreshes preserve labelled confirmed progress until access is lost.
 
@@ -311,19 +311,19 @@ Store timestamps as `TIMESTAMPTZ(3)` and money as nonnegative integer nanodollar
 
 | Table or proposed addition in the fleet schema | Required fields and uniqueness |
 |---|---|
-| `fleet.tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
-| `fleet.task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique turn/ordinal; conflicting replay returns 409. |
-| `fleet.task_inputs` | Task/item/sequence, accepted text and interpretation, answer state, applied-effect references. Unique task/item and task/sequence. |
-| `fleet.task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumption. One current wait per task through a partial unique index. |
-| `fleet.task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
-| Proposed `task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
-| `fleet.task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
-| `fleet.task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
-| `fleet.task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
-| `fleet.task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
-| `fleet.task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
-| `fleet.task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
-| `fleet.task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
+| `fleet.durable_tasks` | Identity/ownership, originating item, accepted revision/objective digest, target document, state, resource version, stop generation, deadline, limits, cumulative usage, input/effect cursors, recovery pointer, trusted reply destination. Unique originating item. |
+| `fleet.durable_task_items` | Source turn, native item identity/ordinal, immutable interpretation digest, action/association, source text spans, resulting task binding. Unique turn/ordinal; conflicting replay returns 409. |
+| `fleet.durable_task_inputs` | Task/item/sequence, accepted text and interpretation, answer state, applied-effect references. Unique task/item and task/sequence. |
+| `fleet.durable_task_waits` | Task/generation, dependency kind, expected head/check identity/run attempt, due time, expiry, consumption. One current wait per task through a partial unique index. |
+| `fleet.durable_task_effects` | Task/item, native effect ordinal/identity, expected old state, immutable request/tree digests, prepared/issued/confirmed/unknown/refused state, remote receipt. Unique task/ordinal and operation identity. |
+| Proposed `durable_task_decisions` | Physical call identity, run/task binding, requested/resolved model, question revision, assessed state/input cursor, reservation, usage and native disposition. Unique physical call identity. |
+| `fleet.durable_task_checkpoints` | Task/checkpoint generation, plan state/mode/owner/expiry, declared budgets/page count, history digest, covered-input cursor, Git/base identity, complete manifest digest, format/toolbox compatibility, effect watermark. Unique task/checkpoint generation. Only a ready incremental manifest can become the task recovery pointer. |
+| `fleet.durable_task_checkpoint_pages` | Native UUIDv7 page identity, checkpoint owner, page number, digest and complete bounded page bytes. Unique checkpoint/page number; immutable replacement conflicts. |
+| `fleet.durable_task_bases` | Workspace/repository identity, exact Git commit/refs, immutable base manifest, unique/logical bytes and current custody state. Unique scope/base digest. |
+| `fleet.durable_task_objects` | Scope, random object identity, identity-key version/content identity, private plaintext digest, size, fixed nonce, immutable ciphertext digest/length, format, wrapped key envelope, upload owner and timestamps. Unique live scoped content identity; tombstones retain distinct historical identities. |
+| `fleet.durable_task_identity_keys` | Workspace/repository, native key version, wrapped 256-bit content-identity key and active/retired state. Stable across master-key rewrapping; never sent to the sandbox or ordinary runner. |
+| `fleet.durable_task_object_refs` | Checkpoint/object or retained-base/object edges; unique owner/object. Protect all reachable objects, including previous recoverable generations. |
+| `fleet.durable_task_object_pins` | Object/capture-or-restore pin identity, protecting task, current generation and renewable expiry. Pin acquisition locks the same object row as tombstoning. |
 | Existing turns and runs | Nullable task/item identities; input claim run/fence on turns; capability-selected task context on runs. Existing one-shot rows retain null bindings. |
 
 Task targets include repository installation identity, PR identity, head repository/ref, approved base and last independently verified head.
@@ -335,14 +335,14 @@ Deleting a task removes its references after retention rules permit; shared base
 
 Workspace deletion records durable storage-purge receipts before deleting ownership rows.
 Receipts contain only random object identities, bucket references and wrapped-key deletion state, and survive owner-row removal until cleanup completes.
-`fleet.task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
+`fleet.durable_task_storage_purges` rows track independent cleanup; deleting ownership cannot strand an untracked private object.
 
 Task mutations lock workspace and fleet parents against deletion. They then lock the thread row, turns by sequence, run, tasks by identity and subordinate rows by identity.
 
 Immutable workspace rows remain unavailable for updates by the API database role. An exact-key security-definer function supplies only the parent row lock, with a pinned search path and no public `EXECUTE` grant.
 
 Callers still prove fleet and run authority.
-The schema keeps a similarly restricted helper, `fleet.lock_expired_task_completions`, that locks expired, finished parent receipts before their fanout children with `SKIP LOCKED`, at least 72 hours old and at most 256 per call. No statement calls it since M253_003 removed completion collection; no update privilege is granted on immutable completion rows.
+The schema keeps a similarly restricted helper, `fleet.lock_expired_durable_task_completions`, that locks expired, finished parent receipts before their fanout children with `SKIP LOCKED`, at least 72 hours old and at most 256 per call. No statement calls it since M253_003 removed completion collection; no update privilege is granted on immutable completion rows.
 
 Checkpoint commit locks task before objects; collection locks candidate tasks before objects in the same order.
 Network calls, encryption, scanning and object transfer happen outside database transactions.
@@ -379,9 +379,9 @@ An accepted but unanswered item remains recoverable through native history after
 
 New work gets a fresh continuation turn at the queue tail; it never replaces the current task binding.
 The original message receives a queued-work receipt; its item identity deduplicates the continuation.
-Add `Producer::TaskContinuation`, keyed by task, generation and wake/item identity, to the existing ledger.
+Add `Producer::DurableTaskContinuation`, keyed by task, generation and wake/item identity, to the existing ledger.
 
-Reuse `TurnKind::Continuation` with a typed task payload, `Producer::TaskContinuation` and machine actor `task:<task_id>` for native continuations.
+Reuse `TurnKind::Continuation` with a typed task payload, `Producer::DurableTaskContinuation` and machine actor `durable_task:<durable_task_id>` for native continuations.
 Preserve the originating person's identity separately; do not label a scheduler or webhook wake as a new human command.
 Native control-plane commits, rather than model tool calls, create continuation turns.
 
@@ -422,26 +422,26 @@ The following proposed endpoints extend those existing resource families:
 
 | Method and path | Request and successful response |
 |---|---|
-| `POST L/tasks/bindings` | Source turn, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
-| `GET L/tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
-| `POST L/tasks/input-receipts` | Source turn/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
-| `POST L/tasks/decisions` | Reserve a physical call for a message, pinned item or goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
-| `PATCH L/tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
-| `POST L/tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
-| `GET L/tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
-| `GET L/tasks/effects/{effect_id}` | 200 returns prepared/issued/confirmed/unknown/refused state and attributable remote receipt; unknown results require reconciliation. |
-| `POST L/tasks/checkpoints` | Expected generation, operation identity, retain_base/incremental mode, exact repository/base, declared byte budget/page count (maximum 64) and format; 201 returns the plan, expiry, writer pin, base/checkpoint identity and native UUIDv7 page identities. |
-| `PUT L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | Complete page representation with page number, digest and contents; identical replay succeeds, changed page or number conflicts. Final root requires every declared page in order. |
-| `GET L/tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live run; verify its digest and ordered manifest root before using file/chunk mappings. |
-| `POST L/tasks/checkpoints/{checkpoint_id}/objects` | At most 256 plaintext SHA-256/size/kind descriptors; 201 returns missing/reused/busy objects. The native upload owner receives the fixed nonce and temporary data key for new objects. |
-| `POST L/tasks/checkpoints/{checkpoint_id}/uploads` | Registered object identities plus immutable ciphertext digest/length; 201 freezes descriptors and returns exact create-only PUT authorizations. It cannot change a prior descriptor. |
-| `POST L/tasks/checkpoints/{checkpoint_id}/authorizations` | Read purpose without object IDs acquires/adopts one restore pin and returns root plus at most 64 ordered page IDs. Registered object batches then obtain/refresh five-minute read/upload URLs after scope/descriptor/pin checks; no arbitrary keys or paths. |
-| `PATCH L/tasks/checkpoints/{checkpoint_id}/pins/{pin_id}` | Expected pin/task version; 200 renews the native reader/writer pin. One capture/restore pin protects its object set; no per-object renewal request or extension of task/transfer deadlines. |
-| `PATCH L/tasks/checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
-| `GET L/tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current run. |
-| `GET F/tasks?starting_after=<cursor>&limit=20` | `FleetRead`; 200 returns titles, states, version, next dependency and confirmed result links. Maximum limit 100. |
-| `GET F/tasks/{task_id}` | `FleetRead`; 200 returns progress, accepted questions/criteria and setup revision, assessments/evidence and ETag, with local versus published file labels. |
-| `PATCH F/tasks/{task_id}` | `FleetWrite` and `If-Match`; lifecycle control or explicit reviewed `goal_revision_id` adoption with expected generation/operation identity; 200 returns state/version, ETag and any in-flight effect warning. Adoption invalidates old assessments without resetting usage or expanding authority. |
+| `POST L/durable_tasks/bindings` | Source turn, expected fleet revision, plan digest, four-or-fewer typed action items and source spans; 201 returns immutable native item/task bindings, replay 200. |
+| `GET L/durable_tasks/inputs?starting_after=<cursor>&limit=4` | Returns eligible human messages in sequence and current task summaries, scoped to the source conversation. Machine work rows do not obstruct steering. Does not consume them. |
+| `POST L/durable_tasks/input-receipts` | Source turn/plan/item identities, expected task generation, interpreted input and association mode; 201 accepts history plus claim, replay 200. Native mode applies here or queues for another task. |
+| `POST L/durable_tasks/decisions` | Reserve a physical call for a message, pinned item or goal action group, with an optional retry parent; 201 returns its frozen request/profile and trusted-supervisor credential response. Native code owns digests, rates, limits and deadlines. |
+| `PATCH L/durable_tasks/decisions/{call_id}` | Bounded typed answers, actual resolved model and usage or explicit unknown outcome; 200 returns native disposition and settled/reserved usage. |
+| `POST L/durable_tasks/effects` | Immutable source item/cursor, operation identity, expected head, tested tree and supported changes; reserve and issue one bounded native publication synchronously. Confirmed creation returns 201; confirmed replay 200; unknown outcome returns 409 without retrying the mutation. |
+| `GET L/durable_tasks/effects?ordinal_after=<watermark>&starting_after=<cursor>&limit=50` | 200 returns the selected task's ordered effects after its checkpoint watermark, including unresolved and newly confirmed effects. Replacement workers need no previously returned effect identity. |
+| `GET L/durable_tasks/effects/{effect_id}` | 200 returns prepared/issued/confirmed/unknown/refused state and attributable remote receipt; unknown results require reconciliation. |
+| `POST L/durable_tasks/checkpoints` | Expected generation, operation identity, retain_base/incremental mode, exact repository/base, declared byte budget/page count (maximum 64) and format; 201 returns the plan, expiry, writer pin, base/checkpoint identity and native UUIDv7 page identities. |
+| `PUT L/durable_tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | Complete page representation with page number, digest and contents; identical replay succeeds, changed page or number conflicts. Final root requires every declared page in order. |
+| `GET L/durable_tasks/checkpoints/{checkpoint_id}/pages/{page_id}` | 200 returns one bounded manifest page only under the current restore pin and live run; verify its digest and ordered manifest root before using file/chunk mappings. |
+| `POST L/durable_tasks/checkpoints/{checkpoint_id}/objects` | At most 256 plaintext SHA-256/size/kind descriptors; 201 returns missing/reused/busy objects. The native upload owner receives the fixed nonce and temporary data key for new objects. |
+| `POST L/durable_tasks/checkpoints/{checkpoint_id}/uploads` | Registered object identities plus immutable ciphertext digest/length; 201 freezes descriptors and returns exact create-only PUT authorizations. It cannot change a prior descriptor. |
+| `POST L/durable_tasks/checkpoints/{checkpoint_id}/authorizations` | Read purpose without object IDs acquires/adopts one restore pin and returns root plus at most 64 ordered page IDs. Registered object batches then obtain/refresh five-minute read/upload URLs after scope/descriptor/pin checks; no arbitrary keys or paths. |
+| `PATCH L/durable_tasks/checkpoints/{checkpoint_id}/pins/{pin_id}` | Expected pin/task version; 200 renews the native reader/writer pin. One capture/restore pin protects its object set; no per-object renewal request or extension of task/transfer deadlines. |
+| `PATCH L/durable_tasks/checkpoints/{checkpoint_id}` | Ready state, expected generation, completed manifest root, covered-input cursor and trusted upload attestations; 200 publishes after native guards and object verification. |
+| `GET L/durable_tasks/checkpoints/{checkpoint_id}/objects?starting_after=<cursor>` | 200 returns at most 100 authorized object reads/keys; every page rechecks ownership, pins and current run. |
+| `GET F/durable_tasks?starting_after=<cursor>&limit=20` | `FleetRead`; 200 returns titles, states, version, next dependency and confirmed result links. Maximum limit 100. |
+| `GET F/durable_tasks/{durable_task_id}` | `FleetRead`; 200 returns progress, accepted questions/criteria and setup revision, assessments/evidence and ETag, with local versus published file labels. |
+| `PATCH F/durable_tasks/{durable_task_id}` | `FleetWrite` and `If-Match`; lifecycle control or explicit reviewed `goal_revision_id` adoption with expected generation/operation identity; 200 returns state/version, ETag and any in-flight effect warning. Adoption invalidates old assessments without resetting usage or expanding authority. |
 
 New dispatch and task-transition bodies include the fence, current running task when bound, expected generation and operation identity.
 Late decision receipts carry their original call/fence; current task ownership is not a prerequisite for accounting.
@@ -483,12 +483,12 @@ The user continues messaging the fleet without typing task identities.
 
 | Runner collection under L | Responsibility and example |
 |---|---|
-| `tasks/bindings` | Associate an admitted request with new or existing DTs. One message assigning PR X creates its task; independent PR Y work queues another. |
-| `tasks/inputs` | Read eligible human messages at a safe boundary, such as preserving the existing title fallback. Reading does not claim that instruction was applied. |
-| `tasks/input-receipts` | Save the accepted message, interpretation and task association once. Recovery can replay its meaning without applying the same effects twice. |
-| `tasks/decisions` | Reserve and record physical decision-provider calls, including typed answers, model identity, usage and native disposition. |
-| `tasks/effects` | Record and perform supported external writes, such as appending a tested repair to the approved PR. Lost acknowledgements require readback before another mutation. |
-| `tasks/checkpoints` | Save and restore compatible task files, Git state and conversation coverage across worker replacement. Live process memory is excluded. |
+| `durable_tasks/bindings` | Associate an admitted request with new or existing DTs. One message assigning PR X creates its task; independent PR Y work queues another. |
+| `durable_tasks/inputs` | Read eligible human messages at a safe boundary, such as preserving the existing title fallback. Reading does not claim that instruction was applied. |
+| `durable_tasks/input-receipts` | Save the accepted message, interpretation and task association once. Recovery can replay its meaning without applying the same effects twice. |
+| `durable_tasks/decisions` | Reserve and record physical decision-provider calls, including typed answers, model identity, usage and native disposition. |
+| `durable_tasks/effects` | Record and perform supported external writes, such as appending a tested repair to the approved PR. Lost acknowledgements require readback before another mutation. |
+| `durable_tasks/checkpoints` | Save and restore compatible task files, Git state and conversation coverage across worker replacement. Live process memory is excluded. |
 
 ### Existing mechanisms to reuse
 
@@ -511,12 +511,12 @@ Wire records remain validated data rather than gaining a trait for each field.
 
 | Owner | Data structs and behavior |
 |---|---|
-| `afd_fleet`'s task module | `Tasks` implements `TaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native turn staging and run fences with real database tests. |
+| `afd_fleet`'s `durable_task` module | `DurableTasks` implements `DurableTaskLifecycle`: bind work, accept input, settle, wait/wake, publish/reconcile and control state. Reuse native turn staging and run fences with real database tests. |
 | `af_providers`' decision module | `DecisionClient` implements `DecisionEvaluator::evaluate`, returning typed `DecisionResult` and measured usage through four native wire adapters. |
 | `afr_tools`' verbs; `afr_supervisor`'s verbs and task client | Extend the existing `RunVerbs` with bounded native input/binding/receipt/decision/effect calls. `FencedVerbs` supplies its own run fence. The root receives an accounted `DecisionEvaluation`, never dispatch keys. Native checkpoint calls stay with supervisor recovery. The existing closed `Verb` vocabulary owns methods and diagnostic names; calls reuse `ControlPlane` and `RunnerApi`. |
 | `afr_supervisor`'s recovery module | `Recovery` implements `WorkspaceRecovery::capture` and `restore`, handling writer quiescence, verified manifests and private workspace reconstruction. |
-| `afd_fleet`'s task storage module | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `TaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
-| `af_wire`'s task and decision modules | `TaskContext`, `TaskInputReceipt`, `PublicationIntent`, `TaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
+| `afd_fleet`'s task storage module | `R2CheckpointStore` holds scoped storage configuration and existing SDK clients. Task checkpoint behavior stays under `DurableTaskLifecycle`; use existing `object_store::ObjectStore` and signing support. |
+| `af_wire`'s task and decision modules | `DurableTaskContext`, `DurableTaskInputReceipt`, `PublicationIntent`, `DurableTaskCheckpointManifest`, `DecisionProfile` and `TransferProgress` carry bounded typed data. |
 
 Use trait objects at existing runtime composition boundaries, following `AgentRun` and its `Executor`, `RunVerbs`, `EventSink` and `Clock` dependencies.
 An `Arc<dyn DecisionEvaluator>` can share the configured client; the loop borrows it through the current run context.
@@ -548,7 +548,7 @@ Task rows and canonical billing lines remain the source of truth; emit signals f
 | Why could a decision not start? | `dt_decision_funding_refused` names the bounded funding reason and run; `agentsfleet_task_operations_total` and `agentsfleet_task_operation_seconds` measure native outcomes and latency without identity labels. |
 | Are writes confirmed? | `dt_effect_uncertain` plus native effect outcomes; uncertain/reconciled/refused/confirmed state and reconciliation latency. |
 | How expensive is save/restore? | `dt_checkpoint_published`; capture/upload/verify/restore duration, unique uploaded/reused/readback bytes and quota/integrity failures. |
-| What does the person see? | `task_decision_started`, `task_decision_completed`, `task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |
+| What does the person see? | `durable_task_decision_started`, `durable_task_decision_completed`, `durable_task_transfer_progress`; current provider, stage and acknowledged progress through existing CLI/browser activity. |
 | Is work stranded? | Run expiry and reassignment events, read from logs and traces. No backlog or overdue-wait gauge exists since M253_003 removed the passes that sampled them. |
 
 Logs and traces carry approved task, turn, run, decision-call, effect and checkpoint identities for correlation.
@@ -639,18 +639,18 @@ A pin does not permit coding, extend the task budget or grant repository write a
 ### URL conventions and replay
 
 Follow the repository's [HTTP rules](../../.orly/standards/domains/http.md): versioned plural resources, explicit owning scope and typed identifiers.
-`tasks` is the plural run-scoped namespace; its `bindings`, `input-receipts` and `decisions` collections name protocol records.
+`durable_tasks` is the plural run-scoped namespace; its `bindings`, `input-receipts` and `decisions` collections name protocol records.
 The namespace does not create another task processor or another run claim path.
 
 Runner URLs are run-authorized views of the bound DT, including earlier effects needed during recovery.
 
-The path supplies `run_id`, `task_id` or an effect identity only once; do not repeat those path identifiers in request bodies.
+The path supplies `run_id`, `durable_task_id` or an effect identity only once; do not repeat those path identifiers in request bodies.
 Internal runner mutations use their declared operation identity and native replay guards.
 
 List responses use `starting_after` and `{items, total, next_cursor}`; `ordinal_after` is an independent semantic watermark filter.
 Person chat uses existing `F/messages` and its body `operation_id`; do not add a parallel task-message send endpoint.
 
-Use `PATCH F/tasks/{task_id}` for paused, ready or cancelled state under current version checks.
+Use `PATCH F/durable_tasks/{durable_task_id}` for paused, ready or cancelled state under current version checks.
 Detail reads return ETag; PATCH requires `If-Match`, with 428 for absence and 412 for a stale tag.
 Native lifecycle, run-fence and generation conflicts remain 409.
 
@@ -719,9 +719,9 @@ Changing these defaults requires reviewed configuration and boundary tests.
 | Running time and attempts | Two hours cumulative running time; 12 execution runs; eight repair publications maximum. |
 | Decision calls | 128 physical calls per DT, including retries; pre-task calls remain charged to their source turn. |
 | Human input boundary | Four messages/four action items per message; check after each completed action group. |
-| Fallback reads | `max_fallback_reads` (24 by default, `af_wire::task::limits`) is stored per task, but nothing reads GitHub on a timer since M253_003. |
+| Fallback reads | `max_fallback_reads` (24 by default, `af_wire::durable_task::limits`) is stored per task, but nothing reads GitHub on a timer since M253_003. |
 
-A task reserves nothing against these bounds. Each gate reads spent against the maximum, such as `used_model_nanos < max_model_nanos` (`afd_fleet`'s `assign_turn_head.sql` and `task/decision/budget.rs`), so concurrent decision calls on one task can overshoot the model budget by one call's cost. A decision call counts against `max_decision_calls` once, on its first report (`task/decision/sql/account_task.sql`).
+A task reserves nothing against these bounds. Each gate reads spent against the maximum, such as `used_model_nanos < max_model_nanos` (`afd_fleet`'s `assign_turn_head.sql` and `task/decision/budget.rs`), so concurrent decision calls on one task can overshoot the model budget by one call's cost. A decision call counts against `max_decision_calls` once, on its first report (`task/decision/sql/account_durable_task.sql`).
 
 No daemon pass runs for durable tasks since M253_003 (Indy, Nov 21, 2026: "Delete all now"). Nothing advances abandoned input claims, reconciles uncertain effects, collects checkpoint objects or ends an expired task on a timer. An expired task is no longer assigned, because the assignment requires `expires_at` in the future (`afd_fleet`'s `assign_turn_head.sql`).
 

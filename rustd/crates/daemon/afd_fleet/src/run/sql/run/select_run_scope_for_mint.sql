@@ -8,7 +8,7 @@ FROM thread.runs l
 CROSS JOIN instant
 JOIN fleet.fleets f ON f.id = l.fleet_id
 JOIN fleet.revisions r ON r.id = f.head_revision_id AND r.fleet_id = f.id
-LEFT JOIN fleet.tasks task ON task.id = l.task_id AND task.fleet_id = f.id
+LEFT JOIN fleet.durable_tasks task ON task.id = l.durable_task_id AND task.fleet_id = f.id
 LEFT JOIN fleet.revisions issued
   ON issued.id = COALESCE(task.accepted_revision_id, l.setup_revision_id) AND issued.fleet_id = f.id
 LEFT JOIN thread.threads a ON a.fleet_id = l.fleet_id

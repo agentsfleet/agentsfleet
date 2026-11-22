@@ -250,7 +250,7 @@ mod tests {
 
     fn policy() -> af_wire::runner::AssignedPolicy<'static> {
         af_wire::runner::AssignedPolicy {
-            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
             decision_model_id: None,
             sandbox_tier: af_wire::runner::SandboxTier::DevNone,
             network_policy: af_wire::runner::NetworkPolicy::AllowAll,

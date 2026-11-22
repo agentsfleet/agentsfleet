@@ -18,7 +18,7 @@ Every name below follows the pattern most of `rustd/crates/daemon/afd_db/schema/
 |--------|------|---------|
 | Primary key | `id UUID PRIMARY KEY` | `thread.turns.id` |
 | Foreign key | `fk_<table>_<column>`, always named, so a refusal is matched by name (SQL-FKSTATE) | `fk_turns_thread_id` |
-| Composite foreign key | `fk_<table>_<first column>_scope` | `fk_turns_task_id_scope` |
+| Composite foreign key | `fk_<table>_<first column>_scope` | `fk_turns_durable_task_id_scope` |
 | Unique | `uq_<table>_<columns>` | `uq_turns_thread_id_sequence` |
 | Index | `idx_<table>_<columns>` | `idx_turns_thread_id_created_at_id` |
 | Partial index | `idx_<table>_<columns>_<state>` | `idx_turns_thread_id_sequence_unsettled` |
@@ -80,8 +80,8 @@ A history-only receipt, such as an activity or a model change, is written opened
 | `run_fence`, `input_run_id`, `input_fence` | `BIGINT`, `UUID`, `BIGINT` | yes | `admissions` | the fence of the assignment that took the turn as its head, and of the run whose conversation folded it in. No foreign key: a fence outlives its run |
 | `opened_at` | `TIMESTAMPTZ(3)` | yes | new | when the fleet's event opened; history reads and the activity counter read only opened turns |
 | `parked_at`, `interpreted_at`, `settled_at` | `TIMESTAMPTZ(3)` | yes | `admissions`; `messages.finished_at` | waiting on an approval; read by a task; finished. A setup turn settles when it finishes |
-| `task_id`, `task_item_id`, `task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(task_id, thread_id, workspace_id)` to `fleet.tasks` and `(task_item_id, thread_id, workspace_id)` to `fleet.task_items`, ON DELETE SET NULL on the id column, as today |
-| `task_activity`, `task_activity_sequence`, `task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
+| `durable_task_id`, `durable_task_item_id`, `durable_task_generation` | `UUID`, `UUID`, `BIGINT` | yes | `admissions` | composite FKs `(durable_task_id, thread_id, workspace_id)` to `fleet.durable_tasks` and `(durable_task_item_id, thread_id, workspace_id)` to `fleet.durable_task_items`, ON DELETE SET NULL on the id column, as today |
+| `durable_task_activity`, `durable_task_activity_sequence`, `durable_task_activity_truncated` | `JSONB`, `BIGINT`, `BOOLEAN` | no | `events` | bounded task progress, at most 128 entries |
 | `operation_id` | `UUID` | yes | `messages.operation_id` | a setup turn's request operation. Not a `producer_key`: it is a minted `UUID` the wire returns, and it is not unique, because the retry window lives in `setup.replay_receipts` and the same key queues a new turn once it passes |
 | `tenant_model_id` | `UUID` | yes | `messages` | FK `model.tenant_models(id)` ON DELETE SET NULL: the model a setup turn chose; NULL is the platform default |
 | `candidate_id` | `UUID` | yes | `messages` | FK `setup.candidates(id)` ON DELETE SET NULL: the candidate a setup turn wrote |
@@ -93,9 +93,9 @@ Indexes:
 - **Workspace stream:** `(workspace_id, created_at, id)`.
 - **Assignment:** `(thread_id, sequence) WHERE settled_at IS NULL`.
 - **One conversation's next turns:** `(thread_id, reply_provider, reply_address, sequence) WHERE settled_at IS NULL`.
-- **Tasks:** `(task_id, task_generation, settled_at, sequence)`.
+- **Tasks:** `(durable_task_id, durable_task_generation, settled_at, sequence)`.
 - **Setup drafts with a turn waiting or running:** `(status, thread_id) WHERE producer IS NULL AND settled_at IS NULL`.
-- **Foreign keys:** `task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id`.
+- **Foreign keys:** `durable_task_item_id`, `resumes_turn_id`, `tenant_model_id` and `candidate_id`.
 
 Two triggers, `trg_turns_count_inserted_opened` and `trg_turns_count_opened`, bump `fleet.activity_counters.event_count` once per turn, when its event opens.
 
@@ -141,7 +141,7 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `cancel_requested_at` | `TIMESTAMPTZ(3)` | yes | `leases` | the durable Stop mark |
 | `posted_message_count` | `INTEGER` | no | `leases` | numbers the run's interim lines; no cap |
 | `decision_snapshot`, `setup_revision_id` | `JSONB`, `UUID` | yes | `leases` | decision budget and the fleet revision run |
-| `task_id`, `task_generation`, `task_stop_generation`, `task_started_at`, `task_runtime_accounted_at`, `task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
+| `durable_task_id`, `durable_task_generation`, `durable_task_stop_generation`, `durable_task_started_at`, `durable_task_runtime_accounted_at`, `durable_task_execution_deadline_at` | as today | yes | `leases` | task slice accounting |
 
 The owner is the thread's `kind`, so runs carry no `fleet_id` or `draft_id`. `leases.event_created_at` is dropped, because the turn holds its own `created_at`.
 
@@ -205,7 +205,7 @@ Every column that holds a turn id is named `turn_id` (or `source_turn_id`), and 
 | `thread.runs` | `event_id`, `event_created_at` | `turn_id`, `turn_created_at` (done). No FK yet: a settled run outlives its owner, so the FK arrives with the `thread_id` change |
 | `billing.usage_lines` | `event_id`, the setup attempt's id | `turn_id`, `run_id` (done; `run_id` names a setup run, a fleet line names its run in `work_id`). No FK: a line outlives what it names. `work_type` is `fleet_run` or `setup_run` |
 | `runner.decision_calls` | `source_turn_id` | `source_turn_id` (done). No FK: the call outlives its run and turn |
-| `fleet.task_items`, `fleet.task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
+| `fleet.durable_task_items`, `fleet.durable_task_interpretations` | `admission_id` | `turn_id` (done). No FK: an interpretation receipt outlives its source turn |
 
 ## Bus subjects
 

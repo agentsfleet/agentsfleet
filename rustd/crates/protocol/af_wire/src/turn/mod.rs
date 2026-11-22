@@ -242,7 +242,7 @@ pub struct TurnDetail<'a> {
     pub tool_calls: Option<RawToolTrace<'a>>,
     /// Retained public task progress, separate from private conversation state.
     #[serde(default)]
-    pub task_activity: crate::activity::TaskActivityHistory,
+    pub durable_task_activity: crate::activity::DurableTaskActivityHistory,
     /// Tokens the run spent, absent until a runner reports.
     pub tokens: Option<i64>,
     /// Wall milliseconds the run took, absent until a runner reports.

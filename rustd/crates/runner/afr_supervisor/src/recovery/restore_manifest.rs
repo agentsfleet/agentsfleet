@@ -3,7 +3,7 @@
 use super::Session;
 use crate::{Result, error};
 use af_core::id::Uuid7;
-use af_wire::task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
+use af_wire::durable_task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
 use std::collections::BTreeMap;
 
 impl Session<'_> {
@@ -65,7 +65,7 @@ impl Session<'_> {
             self.renew().await?;
             let page = self
                 .plane
-                .task_checkpoint_page(
+                .durable_task_checkpoint_page(
                     self.run,
                     &checkpoint,
                     &Uuid7::parse(id)?,

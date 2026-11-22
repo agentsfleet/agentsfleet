@@ -21,7 +21,7 @@ pub struct RunLimits {
     /// Turn checkpoint lifetimes.
     pub turn_checkpoints: TurnCheckpointLimits,
     /// Durable tasks' slices, operations and checkpoints.
-    pub tasks: crate::task::policy::TaskTimes,
+    pub tasks: crate::durable_task::policy::DurableTaskTimes,
     /// The tool-window tiers a run's context resolves against.
     pub tool_windows: afd_gate::policy::context::ToolWindows,
 }
@@ -35,7 +35,7 @@ impl Default for RunLimits {
             head_cache_count: super::cache::HEAD_CAPACITY,
             price_book_cache_count: super::cache::PRICE_BOOK_CAPACITY,
             turn_checkpoints: TurnCheckpointLimits::default(),
-            tasks: crate::task::policy::TaskTimes::default(),
+            tasks: crate::durable_task::policy::DurableTaskTimes::default(),
             tool_windows: afd_gate::policy::context::ToolWindows::default(),
         }
     }

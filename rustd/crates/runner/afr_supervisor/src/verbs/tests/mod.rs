@@ -6,8 +6,8 @@
 )]
 
 mod decision;
+mod durable_tasks;
 mod folds;
-mod tasks;
 
 use af_core::error_code;
 use af_core::id::Uuid7;
@@ -25,7 +25,7 @@ const PAGE: &str = r#"{"schedules":[]}"#;
 async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt() {
     let call_id = "019f0000-0000-7000-8000-000000000001";
     let (plane, mut calls) = plane(move |call| {
-        assert_eq!(call.verb, Verb::TaskDecisionReserve);
+        assert_eq!(call.verb, Verb::DurableTaskDecisionReserve);
         json(&serde_json::json!({"status": "existing", "call_id": call_id, "state": "unknown"}))
     });
     let run = Uuid7::parse(RUN_ID).unwrap();
@@ -38,18 +38,21 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
         &host.stop,
         &host.decisions,
     );
-    let input = af_wire::task::DecisionReservationInput {
+    let input = af_wire::durable_task::DecisionReservationInput {
         operation_id: call_id.to_owned(),
         fencing_token: 0,
         source_turn_id: call_id.to_owned(),
-        task: None,
+        durable_task: None,
         retry_of: None,
-        assessment: af_wire::task::DecisionAssessment::Message,
+        assessment: af_wire::durable_task::DecisionAssessment::Message,
         evidence: serde_json::json!({}),
     };
     for _attempt in 0..2 {
-        let result = verbs.task_decision(input.clone()).await.unwrap();
-        assert_eq!(result.state, af_wire::task::DecisionCallState::Unknown);
+        let result = verbs.durable_task_decision(input.clone()).await.unwrap();
+        assert_eq!(
+            result.state,
+            af_wire::durable_task::DecisionCallState::Unknown
+        );
         assert!(result.recorded.is_none());
     }
     assert_eq!(crate::test_support::drain(&mut calls).len(), 2);

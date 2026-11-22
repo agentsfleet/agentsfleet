@@ -7,14 +7,16 @@ use crate::{
     report::Ending,
 };
 use af_core::id::Uuid7;
-use af_wire::task::{CheckpointMode, CheckpointPlan, TaskDisposition, TaskTarget};
-use afr_agent::{PreparedTask, TaskRecovery};
+use af_wire::durable_task::{
+    CheckpointMode, CheckpointPlan, DurableTaskDisposition, DurableTaskTarget,
+};
+use afr_agent::{DurableTaskRecovery, PreparedDurableTask};
 use afr_sandbox::Sandbox;
 use zeroize::Zeroizing;
 
 #[derive(Debug)]
 pub(super) struct State {
-    pub(super) history: Option<TaskRecovery>,
+    pub(super) history: Option<DurableTaskRecovery>,
     pub(super) turn: Option<afr_agent::TurnRecovery>,
     pub(super) base: Option<CheckpointPlan>,
     pub(super) base_paths: Vec<String>,
@@ -34,14 +36,14 @@ impl Run<'_> {
             return self.prepare_turn_recovery(sandbox, build).await;
         }
         let Some(prepared) = build
-            .prepared_task
+            .prepared_durable_task
             .filter(|prepared| prepared.allow_actions)
         else {
             return Ok(());
         };
         let task = prepared
             .inputs
-            .current_task
+            .current_durable_task
             .as_ref()
             .ok_or_else(|| error::config("durable workspace has no native task"))?;
         let workspace = sandbox
@@ -52,7 +54,7 @@ impl Run<'_> {
             .ok_or_else(|| error::config("sandbox has no verified recovery toolbox"))?;
         let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
         let permit = if task.checkpoint_id.is_some()
-            || matches!(task.target, TaskTarget::ExistingPr { .. })
+            || matches!(task.target, DurableTaskTarget::ExistingPr { .. })
         {
             Some(self.lessee.recovery.file(build.stop).await?)
         } else {
@@ -90,18 +92,18 @@ impl Run<'_> {
 
     pub(super) async fn recover_without_sandbox(
         &self,
-        prepared: Option<&PreparedTask>,
-    ) -> Result<Option<TaskRecovery>> {
+        prepared: Option<&PreparedDurableTask>,
+    ) -> Result<Option<DurableTaskRecovery>> {
         let Some(task) = prepared
             .filter(|prepared| prepared.allow_actions)
-            .and_then(|prepared| prepared.inputs.current_task.as_ref())
+            .and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
         else {
             return Ok(None);
         };
         if task.checkpoint_id.is_none() {
             return Ok(None);
         }
-        if !matches!(task.target, TaskTarget::ApiOnly) {
+        if !matches!(task.target, DurableTaskTarget::ApiOnly) {
             return Err(error::config("repository recovery requires a sandbox"));
         }
         let scope = Uuid7::parse(&self.payload.event.workspace_id)?;
@@ -192,7 +194,7 @@ impl Run<'_> {
             let Some(recovery) = output.recovery.as_ref() else {
                 return Ok(());
             };
-            if !matches!(recovery.task.target, TaskTarget::ApiOnly) {
+            if !matches!(recovery.task.target, DurableTaskTarget::ApiOnly) {
                 return Err(error::config("repository capture has no sandbox"));
             }
             let _reservation = self.lessee.recovery.file(&self.interrupt).await?;
@@ -236,7 +238,7 @@ pub(super) fn capture_unavailable(ending: &mut Ending) {
             return;
         }
         if let Some(task) = output.task.as_mut() {
-            task.disposition = TaskDisposition::Blocked;
+            task.disposition = DurableTaskDisposition::Blocked;
             task.decision_call_id = None;
             task.checkpoint_id = None;
         }
@@ -277,14 +279,14 @@ pub(super) async fn verify_fresh_checkout(
 
 /// A restored history carries the cursors authenticated by its saved manifest.
 pub(super) fn recovered_history(
-    task: &af_wire::task::TaskContext<'static>,
+    task: &af_wire::durable_task::DurableTaskContext<'static>,
     plan: &CheckpointPlan,
     history: &af_crypto::secret::SecretBytes,
-) -> TaskRecovery {
+) -> DurableTaskRecovery {
     let mut task = task.clone();
     task.covered_input_sequence = plan.covered_input_sequence;
     task.confirmed_effect_watermark = plan.effect_watermark;
-    TaskRecovery {
+    DurableTaskRecovery {
         task,
         history: Zeroizing::new(history.expose().to_vec()),
     }

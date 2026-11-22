@@ -1,4 +1,4 @@
-import { readTaskActivityHistory, type TaskActivityHistory } from "../task-activity";
+import { readDurableTaskActivityHistory, type DurableTaskActivityHistory } from "../task-activity";
 import type { TurnDetail, TurnRow } from "@/lib/api/turns";
 import type { ContextProgress } from "../context-progress";
 import { readNanos } from "@/lib/api/nanos";
@@ -128,7 +128,7 @@ export type FleetTurn = {
   /** Identifies the observed restart so a polite notice is spoken once per attempt. */
   restartAttempt?: string;
   contextProgress?: ContextProgress;
-  taskActivity?: TaskActivityHistory;
+  durableTaskActivity?: DurableTaskActivityHistory;
   contextProgressHidden?: true;
   /**
    * What the reply bubble says when `reply` is empty — the honest floor that
@@ -218,7 +218,7 @@ export function rowToTurn(row: TurnRow | TurnDetail): FleetTurn {
     wallMs: figure(row.wall_ms),
     costNanos: readNanos(row.cost_nanos),
     custom: { requestJson: request_json },
-    taskActivity: readTaskActivityHistory(bodies.task_activity),
+    durableTaskActivity: readDurableTaskActivityHistory(bodies.durable_task_activity),
     ...(trace === null ? {} : { tools: trace.calls, omittedCallCount: trace.omitted }),
   };
 }

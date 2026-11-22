@@ -107,7 +107,7 @@ max_attempts = 3
 initial_backoff_ms = 200
 max_backoff_ms = 800
 
-[fleet.tasks]
+[fleet.durable_tasks]
 max_unfinished_per_fleet = 16
 max_inputs_per_safe_boundary = 4
 max_actions_per_message = 4
@@ -117,7 +117,7 @@ max_completion_questions = 6
 max_question_text_bytes = 512
 max_authored_question_bytes = 1_024
 
-[fleet.tasks.defaults]
+[fleet.durable_tasks.defaults]
 model_budget_nanodollars = 5_000_000_000
 wall_seconds = 604_800
 running_seconds = 7_200

@@ -25,12 +25,12 @@ import { patchSnapshot, patchGateFacts, setTurns } from "./fleet-stream-snapshot
 // entry is adopted, so a frame allocates neither.
 export type LiveEntry = Entry & { apply: ApplyTurns; isCurrent: () => boolean };
 
-const TaskChange = z.object({task_id: z.uuidv7(), resource_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)});
+const DurableTaskChange = z.object({durable_task_id: z.uuidv7(), resource_version: z.number().int().positive().max(Number.MAX_SAFE_INTEGER)});
 
 // Reads back what the stream missed. A burst of gap signals during a walk
 // costs one more walk after it, not one each.
 export function recoverGap(entry: LiveEntry, fleetId: string): void {
-  patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
+  patchSnapshot(entry, {durableTasksSeq: entry.snapshot.durableTasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
   setTurns(entry, hideContextProgress);
   void backfillEntry(entry, fleetId, {
     stillCurrent: entry.isCurrent,
@@ -58,14 +58,14 @@ export function landFrames(entry: LiveEntry, fleetId: string, frames: readonly L
 }
 
 function applyFrame(entry: LiveEntry, fleetId: string, frame: LiveFrame): void {
-  if (frame.kind === FRAME_KIND.TASK_CHANGED) {
-    if (TaskChange.safeParse(frame).success) patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1});
+  if (frame.kind === FRAME_KIND.DURABLE_TASK_CHANGED) {
+    if (DurableTaskChange.safeParse(frame).success) patchSnapshot(entry, {durableTasksSeq: entry.snapshot.durableTasksSeq + 1});
     return;
   }
   // The first HTTP read can precede subscription. A ready stream closes that
   // gap even when the task's only hint was published before we subscribed.
   if (frame.kind === FRAME_KIND.HELLO) {
-    patchSnapshot(entry, {tasksSeq: entry.snapshot.tasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
+    patchSnapshot(entry, {durableTasksSeq: entry.snapshot.durableTasksSeq + 1, approvalsSeq: entry.snapshot.approvalsSeq + 1});
     return;
   }
   // The daemon lost frames for this stream — dropped behind a slow reader, or

@@ -2,8 +2,8 @@
 //! together: the children ride the root's drive state.
 
 use af_secrets::Scrub;
+use af_wire::durable_task::DurableTaskContext;
 use af_wire::run::{EarlierCall, TurnWorkspace};
-use af_wire::task::TaskContext;
 use afr_memory::Loaded;
 use guffbolt::Message;
 use guffbolt::agents::Pause;
@@ -13,8 +13,8 @@ use super::Harness;
 use crate::engine::{AgentRun, RecoveryWitness, RootRecovery};
 use crate::error::recovery_invalid;
 use crate::{
-    CommittedRecovery, RecoverySave, RecoverySkip, RecoverySnapshot, RecoveryState, Result,
-    TaskRecovery, TurnSnapshot,
+    CommittedRecovery, DurableTaskRecovery, RecoverySave, RecoverySkip, RecoverySnapshot,
+    RecoveryState, Result, TurnSnapshot,
 };
 use guffbolt::DriveState;
 
@@ -30,19 +30,19 @@ pub(super) fn prepare_root<'run>(
     mut opening: Vec<Message>,
     message: &str,
 ) -> Result<RootSetup<'run>> {
-    if (run.recovered_task.is_some() && run.recovered_turn.is_some())
+    if (run.recovered_durable_task.is_some() && run.recovered_turn.is_some())
         || (run.run.turn_resume.is_some() && run.recovered_turn.is_none())
     {
         return Err(recovery_invalid(
             "assigned recovery has no single complete restore owner",
         ));
     }
-    let mut state = if let Some(recovered) = run.recovered_task {
+    let mut state = if let Some(recovered) = run.recovered_durable_task {
         let current = run
-            .prepared_task
-            .and_then(|prepared| prepared.inputs.current_task.as_ref())
+            .prepared_durable_task
+            .and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
             .ok_or_else(|| recovery_invalid("recovered history has no current native task"))?;
-        Some(TaskRecovery::restore(
+        Some(DurableTaskRecovery::restore(
             &recovered.history,
             current,
             &run.run.policy.context.model,
@@ -96,15 +96,15 @@ pub(super) fn finished_note(calls: &[EarlierCall<'_>]) -> String {
 }
 
 impl<'run> Harness<'_, 'run> {
-    pub(super) async fn capture_task_root(
+    pub(super) async fn capture_durable_task_root(
         &self,
-        task: TaskContext<'static>,
+        task: DurableTaskContext<'static>,
         pause: Option<&Pause>,
-    ) -> Result<TaskRecovery> {
+    ) -> Result<DurableTaskRecovery> {
         let pause = pause
             .ok_or_else(|| recovery_invalid("child cleanup did not grant a terminal boundary"))?;
         let root = self.root_snapshot(&self.driver, pause).await?;
-        TaskRecovery::capture(
+        DurableTaskRecovery::capture(
             task,
             self.shared.model,
             &self.shared.payload.policy.provider,
@@ -227,7 +227,7 @@ impl<'run> Harness<'_, 'run> {
                 if let Some(current) = self
                     .task
                     .as_mut()
-                    .and_then(|task| task.inputs.current_task.as_mut())
+                    .and_then(|task| task.inputs.current_durable_task.as_mut())
                 {
                     current.checkpoint_id = Some(receipt.checkpoint.id().to_owned().into());
                     current.checkpoint_generation = Some(receipt.checkpoint.generation());
@@ -237,12 +237,12 @@ impl<'run> Harness<'_, 'run> {
                 }
             }
             Ok(RecoverySave::Committed(_)) => {
-                self.task_report = None;
+                self.durable_task_report = None;
                 tracing::warn!(event = "run_checkpoint_receipt_mismatch", error_code = %af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE);
                 return Some(Ending::Stopped);
             }
             Err(failure) => {
-                self.task_report = None;
+                self.durable_task_report = None;
                 tracing::warn!(event = "run_checkpoint_cleanup_failed", error_code = %failure.code());
                 return Some(Ending::Stopped);
             }
@@ -260,17 +260,17 @@ impl<'run> Harness<'_, 'run> {
         if let Some(mut task) = self
             .task
             .as_ref()
-            .and_then(|task| task.inputs.current_task.clone())
+            .and_then(|task| task.inputs.current_durable_task.clone())
         {
             task.covered_input_sequence = self.incorporated_input_sequence;
             task.confirmed_effect_watermark = self.confirmed_effect_watermark;
-            return TaskRecovery::capture(
+            return DurableTaskRecovery::capture(
                 task,
                 self.shared.model,
                 &self.shared.payload.policy.provider,
                 root,
             )
-            .map(RecoveryState::Task);
+            .map(RecoveryState::DurableTask);
         }
         let workspace =
             workspace.ok_or_else(|| recovery_invalid("ordinary workspace is not ready"))?;
@@ -306,7 +306,7 @@ pub(super) fn restored(run: &AgentRun<'_>) {
             recovered.descriptor.checkpoint_id.0.as_str(),
             recovered.descriptor.generation,
         )
-    } else if let Some(recovered) = run.recovered_task {
+    } else if let Some(recovered) = run.recovered_durable_task {
         let (Some(id), Some(generation)) = (
             recovered.task.checkpoint_id.as_deref(),
             recovered.task.checkpoint_generation,

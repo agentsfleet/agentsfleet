@@ -199,7 +199,7 @@ A run's children are `guffbolt`'s as well, with the seven tools that start and s
 
 `afr_agent` gives `guffbolt` only the loop a child's turn runs as: its own `Harness`, over the run's provider, sandbox, memory, ledger and meter. It keeps the caps' values and logs each turn's start and end. A checkpoint writes the children into the root's `DriveState` under a `Pause` that proves them quiet, so a recovered run brings them back.
 
-What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `Task`, and every other loop installs `Plain`. A message's media parts reach the model through a `MediaReader`; until one reads a kind, `Unread` names the part to the model.
+What a run of one kind adds is an `Extension`: a durable task is `afr_agent`'s `DurableTask`, and every other loop installs `Plain`. A message's media parts reach the model through a `MediaReader`; until one reads a kind, `Unread` names the part to the model.
 
 `afr_agent` keeps only what is `agentsfleet`'s own. That is the run and its durable task, recovery, the frames, trace rows and records each call leaves, and the catalog's tools behind its router.
 

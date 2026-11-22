@@ -185,9 +185,11 @@ pub(crate) fn vault(database: Db) -> SecretVault {
 }
 
 /// Uses the same native billing and vault facilities as the live router.
-pub(crate) fn task_dependencies(database: Db) -> afd_fleet::task::TaskDependencies {
-    afd_fleet::task::TaskDependencies {
-        policy: afd_fleet::task::policy::TaskPolicy::default(),
+pub(crate) fn durable_task_dependencies(
+    database: Db,
+) -> afd_fleet::durable_task::DurableTaskDependencies {
+    afd_fleet::durable_task::DurableTaskDependencies {
+        policy: afd_fleet::durable_task::policy::DurableTaskPolicy::default(),
         admin_workspace: None,
         github: None,
         storage: None,
@@ -251,7 +253,7 @@ pub(crate) struct Fleet {
     runners: Runners,
     runner_commands: afd_bus::Handle,
     runs: NoWork,
-    tasks: afd_fleet::task::Tasks,
+    tasks: afd_fleet::durable_task::DurableTasks,
     workspaces: Ownership,
     workspace_directory: Workspaces,
     api_keys: ApiKeys,

@@ -28,9 +28,9 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+pub mod durable_task;
 pub mod error;
 pub mod run;
-pub mod task;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 

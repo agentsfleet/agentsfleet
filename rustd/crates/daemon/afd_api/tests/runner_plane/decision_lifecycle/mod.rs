@@ -5,11 +5,13 @@
 )]
 
 mod assertions;
+mod durable_task_routes;
 mod fixture;
 mod setup;
-mod task_routes;
 
-use af_wire::task::{DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput};
+use af_wire::durable_task::{
+    DecisionReceiptInput, DecisionRecordDisposition, DecisionReservationInput,
+};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 

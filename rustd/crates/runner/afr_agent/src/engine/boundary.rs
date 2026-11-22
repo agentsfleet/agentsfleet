@@ -1,7 +1,7 @@
 //! Capture has a committed receipt or a typed skip; absence never means success.
 
 use super::TurnSnapshot;
-use crate::{Result, TaskRecovery};
+use crate::{DurableTaskRecovery, Result};
 use af_wire::run::{TurnResume, TurnScope, TurnWorkspace};
 use garde::Validate as _;
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub type FileRecoveryPermit = Arc<tokio::sync::OwnedSemaphorePermit>;
 #[derive(Debug)]
 pub enum RecoveryState {
     /// Existing task checkpoint resources and native input/effect cursors.
-    Task(TaskRecovery),
+    DurableTask(DurableTaskRecovery),
     /// Event-owned private state and exact incorporated fold membership.
     Turn(TurnSnapshot),
 }
@@ -37,7 +37,7 @@ pub struct RecoverySnapshot {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommittedRecovery {
     /// Native task publication already verified the matching file manifest.
-    Task {
+    DurableTask {
         /// Committed checkpoint identity.
         checkpoint_id: String,
         /// Monotonic checkpoint ordering.
@@ -132,7 +132,7 @@ pub(crate) struct RecoveryWitness {
 impl RecoverySnapshot {
     pub(crate) fn witness(&self) -> RecoveryWitness {
         let (generation, digest, previous_id, scope) = match &self.state {
-            RecoveryState::Task(task) => (
+            RecoveryState::DurableTask(task) => (
                 task.task.checkpoint_generation.unwrap_or(0),
                 af_core::etag::sha256_hex(&task.history),
                 task.task.checkpoint_id.as_ref().map(ToString::to_string),
@@ -171,7 +171,7 @@ impl RecoveryReceipt {
             && expected.previous_id.as_deref() != Some(self.checkpoint.id())
             && self.checkpoint.digest() == expected.digest
             && match (&self.checkpoint, &expected.scope) {
-                (CommittedRecovery::Task { .. }, None) => true,
+                (CommittedRecovery::DurableTask { .. }, None) => true,
                 (CommittedRecovery::Turn(descriptor), Some(scope)) => {
                     descriptor.scope == *scope && descriptor.validate().is_ok()
                 }
@@ -183,21 +183,21 @@ impl RecoveryReceipt {
 impl CommittedRecovery {
     pub(crate) fn id(&self) -> &str {
         match self {
-            Self::Task { checkpoint_id, .. } => checkpoint_id,
+            Self::DurableTask { checkpoint_id, .. } => checkpoint_id,
             Self::Turn(descriptor) => &descriptor.checkpoint_id.0,
         }
     }
 
     pub(crate) const fn generation(&self) -> u64 {
         match self {
-            Self::Task { generation, .. } => *generation,
+            Self::DurableTask { generation, .. } => *generation,
             Self::Turn(descriptor) => descriptor.generation,
         }
     }
 
     fn digest(&self) -> &str {
         match self {
-            Self::Task { history_digest, .. } => history_digest,
+            Self::DurableTask { history_digest, .. } => history_digest,
             Self::Turn(descriptor) => &descriptor.history_digest,
         }
     }

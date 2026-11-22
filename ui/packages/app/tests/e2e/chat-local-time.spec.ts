@@ -12,7 +12,7 @@ for (const scenario of [
     const errors: string[] = [];page.on("pageerror", error => errors.push(error.message));
     await page.emulateMedia({reducedMotion: "reduce"});
     await page.clock.setFixedTime(new Date(scenario.now));
-    await page.goto(`${chatProbe}?tasks=1&wakeups=1`);
+    await page.goto(`${chatProbe}?durable_tasks=1&wakeups=1`);
     const footer = page.getByTestId("fleet-chat-footer");
     await expect(footer.locator("time")).toHaveText(scenario.wake);
     await expect(footer.getByText(/\bUTC\b/)).toHaveCount(0);

@@ -115,34 +115,39 @@ pub const RUN_FLEETS: &str = concatcp!(RUN, RUN_FLEETS_SUFFIX);
 pub const RUN_FLEET_TURNS: &str = concatcp!(RUN_FLEETS, "/{fleet_id}/", FLEET_TURNS_SUFFIX);
 
 /// Physical decision reservations owned by the existing fenced run.
-pub const RUN_TASK_DECISIONS: &str = concatcp!(RUN, "tasks/decisions");
+pub const RUN_DURABLE_TASK_DECISIONS: &str = concatcp!(RUN, "durable_tasks/decisions");
 
 /// Original-owner accounting for one reserved physical decision call.
-pub const RUN_TASK_DECISION: &str = concatcp!(RUN_TASK_DECISIONS, "/{call_id}");
+pub const RUN_DURABLE_TASK_DECISION: &str = concatcp!(RUN_DURABLE_TASK_DECISIONS, "/{call_id}");
 
 /// Complete pending human messages under the current run.
-pub const RUN_TASK_INPUTS: &str = concatcp!(RUN, "tasks/inputs");
+pub const RUN_DURABLE_TASK_INPUTS: &str = concatcp!(RUN, "durable_tasks/inputs");
 /// Complete immutable interpretation of an admitted human message.
-pub const RUN_TASK_BINDINGS: &str = concatcp!(RUN, "tasks/bindings");
+pub const RUN_DURABLE_TASK_BINDINGS: &str = concatcp!(RUN, "durable_tasks/bindings");
 /// Immutable native publication collection and recovery watermark reads.
-pub const RUN_TASK_EFFECTS: &str = concatcp!(RUN, "tasks/effects");
+pub const RUN_DURABLE_TASK_EFFECTS: &str = concatcp!(RUN, "durable_tasks/effects");
 /// One native publication and its attributable remote receipt.
-pub const RUN_TASK_EFFECT: &str = concatcp!(RUN_TASK_EFFECTS, "/{effect_id}");
+pub const RUN_DURABLE_TASK_EFFECT: &str = concatcp!(RUN_DURABLE_TASK_EFFECTS, "/{effect_id}");
 
 /// Original source reply or current-boundary input application acknowledgement.
-pub const RUN_TASK_INPUT_RECEIPTS: &str = concatcp!(RUN, "tasks/input-receipts");
+pub const RUN_DURABLE_TASK_INPUT_RECEIPTS: &str = concatcp!(RUN, "durable_tasks/input-receipts");
 /// Native immutable capture plan allocation.
-pub const RUN_TASK_CHECKPOINTS: &str = concatcp!(RUN, "tasks/checkpoints");
+pub const RUN_DURABLE_TASK_CHECKPOINTS: &str = concatcp!(RUN, "durable_tasks/checkpoints");
 /// Complete compatible manifest publication.
-pub const RUN_TASK_CHECKPOINT: &str = concatcp!(RUN_TASK_CHECKPOINTS, "/{checkpoint_id}");
+pub const RUN_DURABLE_TASK_CHECKPOINT: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINTS, "/{checkpoint_id}");
 /// One immutable bounded base/overlay page.
-pub const RUN_TASK_CHECKPOINT_PAGE: &str = concatcp!(RUN_TASK_CHECKPOINT, "/pages/{page_id}");
+pub const RUN_DURABLE_TASK_CHECKPOINT_PAGE: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINT, "/pages/{page_id}");
 /// Native object registration and bounded restore reads.
-pub const RUN_TASK_CHECKPOINT_OBJECTS: &str = concatcp!(RUN_TASK_CHECKPOINT, "/objects");
+pub const RUN_DURABLE_TASK_CHECKPOINT_OBJECTS: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINT, "/objects");
 /// Immutable ciphertext descriptors and conditional upload authorizations.
-pub const RUN_TASK_CHECKPOINT_UPLOADS: &str = concatcp!(RUN_TASK_CHECKPOINT, "/uploads");
+pub const RUN_DURABLE_TASK_CHECKPOINT_UPLOADS: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINT, "/uploads");
 /// Restore-pin bootstrap and bounded transfer refresh.
-pub const RUN_TASK_CHECKPOINT_AUTHORIZATIONS: &str =
-    concatcp!(RUN_TASK_CHECKPOINT, "/authorizations");
+pub const RUN_DURABLE_TASK_CHECKPOINT_AUTHORIZATIONS: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINT, "/authorizations");
 /// One native reader/writer pin renewal.
-pub const RUN_TASK_CHECKPOINT_PIN: &str = concatcp!(RUN_TASK_CHECKPOINT, "/pins/{pin_id}");
+pub const RUN_DURABLE_TASK_CHECKPOINT_PIN: &str =
+    concatcp!(RUN_DURABLE_TASK_CHECKPOINT, "/pins/{pin_id}");

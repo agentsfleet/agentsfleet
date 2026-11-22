@@ -34,12 +34,12 @@ const JOINED: [(&str, &str); 5] = [
         afd_fleet::run::sql::tool_detail::SELECT_LIVE_RUN,
     ),
     (
-        "afd_fleet::task::DECISION_BUDGET_STATEMENT",
-        afd_fleet::task::DECISION_BUDGET_STATEMENT,
+        "afd_fleet::durable_task::DECISION_BUDGET_STATEMENT",
+        afd_fleet::durable_task::DECISION_BUDGET_STATEMENT,
     ),
     (
-        "afd_fleet::task::LOCKED_DECISION_CALL_STATEMENT",
-        afd_fleet::task::LOCKED_DECISION_CALL_STATEMENT,
+        "afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT",
+        afd_fleet::durable_task::LOCKED_DECISION_CALL_STATEMENT,
     ),
 ];
 

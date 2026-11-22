@@ -83,7 +83,7 @@ pub enum HeadKind {
     Plain,
     /// A durable task's turn: the issue reads its task source and
     /// attaches it.
-    Task,
+    DurableTask,
 }
 
 /// The fleet the assignment statement read, and the event row it opened.
@@ -134,7 +134,7 @@ impl Opened {
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             inputs_waiting: true,
-            head: HeadKind::Task,
+            head: HeadKind::DurableTask,
             setup: FleetWithSession::unread(workspace_id),
         }
     }

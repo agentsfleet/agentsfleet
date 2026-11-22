@@ -7,7 +7,7 @@ import {WakeupStrip} from "./WakeupStrip";
 
 const mocks = vi.hoisted(() => ({refresh: vi.fn(), view: {subject: "user", workspaceId: "", fleetId: "", schedules: [] as Schedule[]}}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh: mocks.refresh})}));
-vi.mock("../tasks/FleetTaskProvider", () => ({useFleetTaskView: () => mocks.view}));
+vi.mock("../tasks/FleetTaskProvider", () => ({useFleetDurableTaskView: () => mocks.view}));
 const current = {...SCHEDULE, source: "trigger", etag: '"one"', description: "Check release", next_run_at: "2099-11-12T13:30:00Z"};
 beforeEach(() => {mocks.refresh.mockClear(); mocks.view = {subject: "user", workspaceId: WORKSPACE, fleetId: FLEET_ID, schedules: [current]};});
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});

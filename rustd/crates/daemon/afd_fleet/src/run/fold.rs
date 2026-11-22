@@ -3,7 +3,7 @@
 //! report makes for every message a completed call read.
 //!
 //! A folded message is answered the way a durable task's folded input is
-//! (`task::input_receipt::answer`): its own event opened, then closed with the
+//! (`durable_task::input_receipt::answer`): its own event opened, then closed with the
 //! run's answer. It is in the run's conversation, so the run's own reply
 //! reaches its thread; it owes none of its own.
 

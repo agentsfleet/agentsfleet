@@ -5,8 +5,8 @@ use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use super::{Reconciled, RunTokens, assembly::reconciled, steps, timing};
+use crate::durable_task::PreparedReport;
 use crate::run::{commit::Committed, pull::RunService, settle::Reported};
-use crate::task::PreparedReport;
 use crate::{Result, error::stale_fence};
 
 pub(super) struct Context<'a> {
@@ -21,7 +21,7 @@ impl RunService {
         &self,
         run: Reported,
         committed: Committed,
-        task_plan: Option<&PreparedReport>,
+        durable_task_plan: Option<&PreparedReport>,
         context: Context<'_>,
     ) -> Result<Reconciled> {
         let Context {
@@ -47,7 +47,7 @@ impl RunService {
                 notice,
                 folds,
             } => {
-                if let Some(plan) = task_plan {
+                if let Some(plan) = durable_task_plan {
                     plan.announce().await;
                 }
                 let answer = notice.unwrap_or_else(|| request.response_text.as_ref());

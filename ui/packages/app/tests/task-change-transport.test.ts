@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from "vitest";
-import { adoptTaskGoal, controlTask, readTask } from "@/lib/api/tasks";
-import { detail, TASK_IDS } from "./helpers/task-reads";
+import { adoptDurableTaskGoal, controlDurableTask, readDurableTask } from "@/lib/api/tasks";
+import { detail, DURABLE_TASK_IDS } from "./helpers/task-reads";
 const TAG = `"${"a".repeat(64)}"`;
 afterEach(() => vi.unstubAllGlobals());
 
@@ -10,17 +10,17 @@ it("requires confirmed version and generation and never retries uncertain mutati
   const signal = new AbortController().signal;
   const network = vi.fn<typeof fetch>().mockResolvedValue(Response.json(task, {headers: {etag: TAG}}));
   vi.stubGlobal("fetch", network);
-  expect(await controlTask("w", "f", detail(), "paused", signal)).toEqual({kind: "failed", reason: "changed"});
+  expect(await controlDurableTask("w", "f", detail(), "paused", signal)).toEqual({kind: "failed", reason: "changed"});
   expect(network).not.toHaveBeenCalled();
-  expect(await controlTask("w/1", "f?2", task, "paused", signal)).toEqual({kind: "confirmed", value: task});
-  expect(network.mock.calls[0]?.[0]).toContain("w%2F1/fleets/f%3F2/tasks/");
+  expect(await controlDurableTask("w/1", "f?2", task, "paused", signal)).toEqual({kind: "confirmed", value: task});
+  expect(network.mock.calls[0]?.[0]).toContain("w%2F1/fleets/f%3F2/durable_tasks/");
   expect(network.mock.calls[0]?.[1]).toMatchObject({method: "PATCH", redirect: "manual", cache: "no-store",
     headers: {"If-Match": TAG}, body: JSON.stringify({state: "paused", expected_generation: 1})});
   network.mockResolvedValueOnce(Response.json(task, {headers: {etag: TAG}}));
-  expect((await adoptTaskGoal("w", "f", task, TASK_IDS[1], TASK_IDS[2], signal)).kind).toBe("confirmed");
+  expect((await adoptDurableTaskGoal("w", "f", task, DURABLE_TASK_IDS[1], DURABLE_TASK_IDS[2], signal)).kind).toBe("confirmed");
   const body = network.mock.calls[1]?.[1]?.body;
   if (typeof body !== "string") throw new Error("Expected a JSON request body");
-  expect(JSON.parse(body)).toEqual({goal_revision_id: TASK_IDS[1], operation_id: TASK_IDS[2], expected_generation: 1});
+  expect(JSON.parse(body)).toEqual({goal_revision_id: DURABLE_TASK_IDS[1], operation_id: DURABLE_TASK_IDS[2], expected_generation: 1});
 });
 
 it("keeps refusal, stale state, limits, malformed confirmation and transport uncertainty distinct", async () => {
@@ -34,7 +34,7 @@ it("keeps refusal, stale state, limits, malformed confirmation and transport unc
   network.mockRejectedValueOnce(new Error("lost acknowledgement"));
   vi.stubGlobal("fetch", network);
   const results = [];
-  for (let i = 0; i < replies.length + 1; i++) results.push(await controlTask("w", "f", {...detail(), etag: TAG}, "cancelled", new AbortController().signal));
+  for (let i = 0; i < replies.length + 1; i++) results.push(await controlDurableTask("w", "f", {...detail(), etag: TAG}, "cancelled", new AbortController().signal));
   expect(results).toEqual(["access", "access", "access", "changed", "changed", "changed", "changed", "limited", "unconfirmed", "invalid", "invalid", "invalid", "invalid", "unconfirmed", "unconfirmed"].map(reason => ({kind: "failed", reason})));
   expect(network).toHaveBeenCalledTimes(replies.length + 1);
 });
@@ -45,6 +45,6 @@ it("accepts only GitHub repository links and validates tagged detail envelopes",
   for (const url of ["https://github.com/a/b/pull/1", "https://evil.example/a/b"]) network.mockResolvedValueOnce(Response.json({...detail(), context: {...detail().context, target: {...target, url}}}, {headers: {etag: TAG}}));
   for (const value of [null, [], "wrong"]) network.mockResolvedValueOnce(Response.json(value));
   vi.stubGlobal("fetch", network);
-  expect((await readTask("w", "f", TASK_IDS[0], new AbortController().signal)).kind).toBe("ready");
-  for (let i = 0; i < 4; i++) expect(await readTask("w", "f", TASK_IDS[0], new AbortController().signal)).toEqual({kind: "failed", reason: "invalid"});
+  expect((await readDurableTask("w", "f", DURABLE_TASK_IDS[0], new AbortController().signal)).kind).toBe("ready");
+  for (let i = 0; i < 4; i++) expect(await readDurableTask("w", "f", DURABLE_TASK_IDS[0], new AbortController().signal)).toEqual({kind: "failed", reason: "invalid"});
 });

@@ -45,7 +45,7 @@ impl Run<'_> {
         );
         let prepared = match lessee
             .agent
-            .prepare_task(self.payload, &verbs, &self.meter, &self.interrupt)
+            .prepare_durable_task(self.payload, &verbs, &self.meter, &self.interrupt)
             .await
         {
             Ok(prepared) => prepared,
@@ -68,7 +68,7 @@ impl Run<'_> {
         &self,
         needs_sandbox: bool,
         sink: ActivitySink,
-        prepared: Option<&afr_agent::PreparedTask>,
+        prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> Worked {
         let lessee = self.lessee;
         // The window rides the run from a daemon at this release; only a
@@ -115,7 +115,7 @@ impl Run<'_> {
         needs_sandbox: bool,
         seed: Seed<'_>,
         sink: ActivitySink,
-        prepared: Option<&afr_agent::PreparedTask>,
+        prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> Worked {
         if needs_sandbox && prepared.is_none_or(|prepared| prepared.allow_actions) {
             self.sandboxed(seed, sink, prepared).await

@@ -233,11 +233,11 @@ fn external_target_overflow_preserves_refusal_and_cause() -> super::Result<()> {
     for source in [i64::try_from(u64::MAX).err(), i32::try_from(u32::MAX).err()] {
         let source =
             source.ok_or_else(|| super::rejected("overflow fixture must fail conversion"))?;
-        let invalid = super::task_target_counter("repository_id")(source);
-        assert_eq!(invalid.code(), error_code::TASK_INVALID_TARGET);
+        let invalid = super::durable_task_target_counter("repository_id")(source);
+        assert_eq!(invalid.code(), error_code::DURABLE_TASK_INVALID_TARGET);
         assert_eq!(
             invalid.detail(),
-            crate::task::TaskRefusal::InvalidTarget.detail()
+            crate::durable_task::DurableTaskRefusal::InvalidTarget.detail()
         );
         assert!(
             invalid
@@ -246,7 +246,7 @@ fn external_target_overflow_preserves_refusal_and_cause() -> super::Result<()> {
         );
         assert!(!invalid.is_datastore_unavailable());
 
-        let corrupt = Error::from(super::ErrorKind::TaskCounter {
+        let corrupt = Error::from(super::ErrorKind::DurableTaskCounter {
             column: "generation",
             source,
         });
@@ -295,13 +295,13 @@ async fn a_decision_fault_answers_unavailable_and_names_its_reason() {
         (&bounds, "request_bounds"),
         (&deadline, "decision_deadline"),
     ] {
-        assert_eq!(fault.code(), error_code::TASK_DECISION_UNAVAILABLE);
+        assert_eq!(fault.code(), error_code::DURABLE_TASK_DECISION_UNAVAILABLE);
         assert_eq!(
             fault.detail(),
             "the fleet cannot currently obtain a funded reviewed decision"
         );
         assert_eq!(fault.decision_failure_reason(), Some(reason));
-        assert_eq!(fault.task_timeout_reason(), None);
+        assert_eq!(fault.durable_task_timeout_reason(), None);
         assert!(!fault.is_datastore_unavailable());
         assert!(fault.source().is_some(), "{reason} keeps its cause");
     }
@@ -315,7 +315,7 @@ fn an_unbuildable_storage_request_answers_storage_unavailable() {
     let built = http::Request::builder().uri("http://bad host/").body(());
     let fault = Error::from(built.expect_err("a space is no authority"));
 
-    assert_eq!(fault.code(), error_code::TASK_STORAGE_UNAVAILABLE);
+    assert_eq!(fault.code(), error_code::DURABLE_TASK_STORAGE_UNAVAILABLE);
     assert_eq!(
         fault.detail(),
         "checkpoint storage cannot currently establish object custody"
@@ -336,15 +336,15 @@ fn an_unbuildable_storage_request_answers_storage_unavailable() {
 #[test]
 fn a_remote_cooldown_carries_its_resume_instant() {
     let until = jiff::Timestamp::from_second(1_800_000_000).expect("a representable instant");
-    let fault = Error::from(super::ErrorKind::TaskRemoteCooldown { status: 429, until });
+    let fault = Error::from(super::ErrorKind::DurableTaskRemoteCooldown { status: 429, until });
 
     assert_eq!(fault.remote_cooldown(), Some(until));
-    assert_eq!(fault.code(), error_code::TASK_EFFECT_UNCERTAIN);
+    assert_eq!(fault.code(), error_code::DURABLE_TASK_EFFECT_UNCERTAIN);
     assert_eq!(
         fault.detail(),
         "the saved publication requires authoritative reconciliation"
     );
-    assert_eq!(fault.task_timeout_reason(), None);
+    assert_eq!(fault.durable_task_timeout_reason(), None);
     assert!(fault.source().is_none());
 }
 
@@ -374,10 +374,13 @@ async fn a_remote_request_that_times_out_is_a_remote_deadline() {
         .expect_err("a closed port refuses the connection");
     let refused = Error::from(refused);
 
-    assert_eq!(timed_out.task_timeout_reason(), Some("remote_deadline"));
-    assert_eq!(refused.task_timeout_reason(), None);
+    assert_eq!(
+        timed_out.durable_task_timeout_reason(),
+        Some("remote_deadline")
+    );
+    assert_eq!(refused.durable_task_timeout_reason(), None);
     for fault in [&timed_out, &refused] {
-        assert_eq!(fault.code(), error_code::TASK_EFFECT_UNCERTAIN);
+        assert_eq!(fault.code(), error_code::DURABLE_TASK_EFFECT_UNCERTAIN);
         assert_eq!(fault.remote_cooldown(), None);
         assert!(!fault.is_datastore_unavailable());
     }
@@ -390,12 +393,12 @@ async fn a_remote_request_that_times_out_is_a_remote_deadline() {
 #[tokio::test]
 async fn a_mutation_over_an_unavailable_read_is_an_outage() {
     let read = Error::from(elapsed().await);
-    let unavailable = Error::from(super::ErrorKind::TaskMutation {
-        state: af_wire::task::TaskState::Running,
+    let unavailable = Error::from(super::ErrorKind::DurableTaskMutation {
+        state: af_wire::durable_task::DurableTaskState::Running,
         source: Box::new(read),
     });
-    let refused = Error::from(super::ErrorKind::TaskMutation {
-        state: af_wire::task::TaskState::Running,
+    let refused = Error::from(super::ErrorKind::DurableTaskMutation {
+        state: af_wire::durable_task::DurableTaskState::Running,
         source: Box::new(super::run_lost()),
     });
 

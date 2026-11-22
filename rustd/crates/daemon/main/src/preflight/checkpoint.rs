@@ -3,7 +3,7 @@
 use super::{Fault, PLATFORM_ADMIN_WORKSPACE_KNOB};
 use af_core::env::{EnvSource, optional};
 use af_core::id::Uuid7;
-use afd_fleet::task::storage::CheckpointStorageConfig;
+use afd_fleet::durable_task::storage::CheckpointStorageConfig;
 
 /// JSON location and existing platform vault reference; contains no secret bytes.
 pub const CHECKPOINT_STORAGE_KNOB: &str = "R2_CHECKPOINT_STORAGE";

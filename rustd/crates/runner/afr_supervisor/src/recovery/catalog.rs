@@ -2,7 +2,7 @@
 
 use super::files::{self, Entry, Identity, Workspace};
 use crate::{Result, error};
-use af_wire::task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
+use af_wire::durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
 use std::{collections::BTreeMap, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -128,7 +128,7 @@ impl Catalog {
         }
         catalog.add_history(history)?;
         // Validate the complete page layout before allocating any native plan.
-        catalog.pages(None, af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+        catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
         Ok(catalog)
     }
 

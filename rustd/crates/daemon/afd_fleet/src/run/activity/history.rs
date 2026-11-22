@@ -1,15 +1,15 @@
 //! Live task observations use the same daemon-owned order as their saved row.
 
-use af_wire::activity::{ActivityFrame, TaskActivityHistory, TaskActivityRecord};
+use af_wire::activity::{ActivityFrame, DurableTaskActivityHistory, DurableTaskActivityRecord};
 
 pub(super) fn canonical<'a>(
     frames: &[ActivityFrame<'a>],
-    history: &TaskActivityHistory,
+    history: &DurableTaskActivityHistory,
 ) -> Vec<ActivityFrame<'a>> {
     frames
         .iter()
         .filter_map(|frame| {
-            let Some(record) = frame.task_activity() else {
+            let Some(record) = frame.durable_task_activity() else {
                 return Some(frame.clone());
             };
             let input = record.progress();
@@ -23,14 +23,14 @@ pub(super) fn canonical<'a>(
             // The saved record is the frame's own kind, so its variant names
             // the frame it republishes as.
             Some(match saved.clone() {
-                TaskActivityRecord::TaskDecisionStarted(saved) => {
-                    ActivityFrame::TaskDecisionStarted(saved)
+                DurableTaskActivityRecord::DurableTaskDecisionStarted(saved) => {
+                    ActivityFrame::DurableTaskDecisionStarted(saved)
                 }
-                TaskActivityRecord::TaskDecisionCompleted(saved) => {
-                    ActivityFrame::TaskDecisionCompleted(saved)
+                DurableTaskActivityRecord::DurableTaskDecisionCompleted(saved) => {
+                    ActivityFrame::DurableTaskDecisionCompleted(saved)
                 }
-                TaskActivityRecord::TaskTransferProgress(saved) => {
-                    ActivityFrame::TaskTransferProgress(saved)
+                DurableTaskActivityRecord::DurableTaskTransferProgress(saved) => {
+                    ActivityFrame::DurableTaskTransferProgress(saved)
                 }
             })
         })

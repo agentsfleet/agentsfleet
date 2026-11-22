@@ -72,7 +72,7 @@ WITH asked AS (
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at, l.posture, l.provider,
-         l.model, l.task_id, l.cancel_requested_at IS NOT NULL AS cancelled,
+         l.model, l.durable_task_id, l.cancel_requested_at IS NOT NULL AS cancelled,
          s.fencing_token AS live_fence, s.run_expires_at AS thread_expires_at
   FROM thread.runs l
   JOIN locked_thread s ON s.fleet_id = l.fleet_id
@@ -138,7 +138,7 @@ WITH asked AS (
          LEAST((EXTRACT(EPOCH FROM j.metered_until - j.last_metered_at) * $26::bigint)::bigint,
                $32::bigint) AS d_ms
   FROM judged j
-  WHERE j.fence_holds AND NOT j.cancelled AND j.task_id IS NULL
+  WHERE j.fence_holds AND NOT j.cancelled AND j.durable_task_id IS NULL
     AND j.priced_as_held AND j.ceilings_current AND NOT j.over_budget
     AND j.host_renews AND j.admitted
 ), runtime AS MATERIALIZED (
@@ -198,7 +198,7 @@ SELECT a.run_id,
        j.id IS NOT NULL AS found,
        j.cancelled, j.fence_holds, j.priced_as_held, j.ceilings_current,
        j.over_budget, j.host_renews, j.admitted,
-       j.task_id IS NOT NULL AS has_task,
+       j.durable_task_id IS NOT NULL AS has_durable_task,
        m.run_expires_at AS extended_until,
        (SELECT s.fleet_id FROM moved_thread s WHERE s.fleet_id = j.fleet_id) IS NOT NULL AS thread_moved
 FROM asked a

@@ -31,9 +31,9 @@ pub enum FleetRoute {
     /// The fleet's message thread.
     Messages,
     /// Current durable objectives belonging to this fleet.
-    Tasks,
+    DurableTasks,
     /// One durable objective and its accepted success criteria.
-    Task,
+    DurableTask,
     /// The fleet's hosted schedules.
     Schedules,
     /// One hosted schedule.
@@ -67,8 +67,8 @@ impl FleetRoute {
         Self::SetupContext,
         Self::Revisions,
         Self::Messages,
-        Self::Tasks,
-        Self::Task,
+        Self::DurableTasks,
+        Self::DurableTask,
         Self::Schedules,
         Self::Schedule,
         Self::ScheduleSync,
@@ -92,13 +92,13 @@ impl FleetRoute {
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
             Self::SetupContext
-            | Self::Tasks
+            | Self::DurableTasks
             | Self::Turns
             | Self::TurnsStream
             | Self::Item
             | Self::Memories
             | Self::Grants => &[Verb::Get],
-            Self::Task | Self::Turn => &[Verb::Get, Verb::Patch],
+            Self::DurableTask | Self::Turn => &[Verb::Get, Verb::Patch],
             Self::Memory | Self::Grant => &[Verb::Delete],
             Self::ScheduleSync | Self::Revisions => &[Verb::Post],
             Self::MemoryAccess => &[Verb::Patch],
@@ -122,8 +122,8 @@ impl FleetRoute {
             | Self::SetupContext
             | Self::Revisions
             | Self::Messages
-            | Self::Tasks
-            | Self::Task
+            | Self::DurableTasks
+            | Self::DurableTask
             | Self::Schedules
             | Self::Schedule
             | Self::ScheduleSync
@@ -145,8 +145,8 @@ impl FleetRoute {
             Self::SetupContext => fleet_path!("/setup-context"),
             Self::Revisions => fleet_path!("/revisions"),
             Self::Messages => fleet_path!("/messages"),
-            Self::Tasks => fleet_path!("/tasks"),
-            Self::Task => fleet_path!("/tasks/{task_id}"),
+            Self::DurableTasks => fleet_path!("/durable_tasks"),
+            Self::DurableTask => fleet_path!("/durable_tasks/{durable_task_id}"),
             Self::Schedules => fleet_path!("/schedules"),
             Self::Schedule => fleet_path!("/schedules/{schedule_id}"),
             // `/sync` as its own segment rather than the custom verb
@@ -191,10 +191,10 @@ impl FleetRoute {
             }
             // Stopping a turn is steering the fleet, so it takes the write
             // scope its messages take.
-            Self::Messages | Self::Task | Self::Turn => Scopes::rw(FLEET_READ, FLEET_WRITE),
+            Self::Messages | Self::DurableTask | Self::Turn => Scopes::rw(FLEET_READ, FLEET_WRITE),
             Self::Schedules | Self::Schedule => Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             Self::ScheduleSync => Scopes::Always(SCHEDULE_WRITE),
-            Self::Tasks | Self::Turns | Self::TurnsStream | Self::Item | Self::Memories => {
+            Self::DurableTasks | Self::Turns | Self::TurnsStream | Self::Item | Self::Memories => {
                 Scopes::Always(FLEET_READ)
             }
             Self::Grants => Scopes::Always(GRANT_READ),

@@ -123,7 +123,7 @@ async fn mint(
 ) -> (Result<Minted, ErrorCode>, usize) {
     let counting = Arc::new(Counting::default());
     let plane = afd_fleet::run::RunService {
-        task_reports: None,
+        durable_task_reports: None,
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
             Arc::clone(&counting) as Arc<dyn Exchanger>,

@@ -54,8 +54,8 @@ impl RunService {
             }
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
-            Err(changed) if changed.code() == af_core::error_code::TASK_INVALID_TARGET => {
-                self.runs.block_changed_task_setup(acquired).await?;
+            Err(changed) if changed.code() == af_core::error_code::DURABLE_TASK_INVALID_TARGET => {
+                self.runs.block_changed_durable_task_setup(acquired).await?;
                 no_work(
                     runner_id,
                     "the task's accepted setup no longer fits current authority",

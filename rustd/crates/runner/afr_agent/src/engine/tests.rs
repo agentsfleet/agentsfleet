@@ -12,9 +12,9 @@ fn a_run_debugs_without_the_runs_secrets() {
     let sink = |_frame: ActivityFrame<'static>| {};
     let run = AgentRun {
         recovery: None,
-        recovered_task: None,
+        recovered_durable_task: None,
         recovered_turn: None,
-        prepared_task: None,
+        prepared_durable_task: None,
         run: &this_run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),

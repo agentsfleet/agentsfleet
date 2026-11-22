@@ -13,13 +13,13 @@
 //! never a handler deciding whether it may.
 
 pub mod detail;
+pub(crate) mod durable_tasks;
 pub mod memory;
 pub mod memory_access;
 mod memory_request;
 pub mod message;
 pub mod message_steer;
 pub(crate) mod native;
-pub(crate) mod tasks;
 
 use std::borrow::Cow;
 use std::sync::Arc;

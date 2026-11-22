@@ -5,7 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
 import { WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/conversation/summary/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail, TASK_IDS } from "./helpers/task-reads";
+import { detail, DURABLE_TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
 
 it("projects only explicitly saved repository policy and rejects malformed repository links", () => {
@@ -73,7 +73,7 @@ it("lists a confirmed publication only as an output while retaining other relate
   const task = detail();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
   const related = {...task, context: {...task.context, target}};
-  const published = {...related, publication: {effect_id: TASK_IDS[0], ordinal: 1, state: "confirmed" as const,
+  const published = {...related, publication: {effect_id: DURABLE_TASK_IDS[0], ordinal: 1, state: "confirmed" as const,
     expected_head: target.head, tested_tree: target.tree, commit: "c".repeat(40), pull_request_url: target.url}};
   const other = {...related, context: {...related.context, target: {...target, number: 124, url: "https://github.com/a/b/pull/124"}}};
   render(<WorkOutputs details={new Map([

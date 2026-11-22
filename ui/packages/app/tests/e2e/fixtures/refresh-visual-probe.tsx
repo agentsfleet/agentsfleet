@@ -16,8 +16,8 @@ import { senderNamesFrom } from "@/lib/turns/sender-names";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 import { toReplyMessage, replyParts } from "@/components/domain/activity/replies/fleetReplyMessage";
 import { VISUAL_SCENARIOS, visualTurns, type VisualScenario } from "./refresh-visual-data";
-import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
-import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
+import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { FleetDurableTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
 import { CONNECTION_STATUS, convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY, useFleetThreadEntries } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";
@@ -65,15 +65,15 @@ export function RefreshVisualFixture() {
       {archived ? <VisualLifecycleNotice outcome="archived" /> : null}
       <FleetHeader latestRun={latestFigures(turns)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: archived ? "archived" : "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: !archived && phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+        <FleetDurableTaskProvider readOnly={archived} workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} turns={turns} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
           approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
-        <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
+        <FleetConversationLayout work={<DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport archived={archived} modelLabel="MiniMax M3" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
           </div>
         </FleetConversationLayout>
-        </FleetTaskProvider>
+        </FleetDurableTaskProvider>
       </SenderNamesProvider></SenderLabelProvider></FleetScopeProvider></AssistantRuntimeProvider></FleetSetupWorkspace>
     </div>
   </ReviewChrome></TooltipProvider></SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext>;

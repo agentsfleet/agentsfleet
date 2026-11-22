@@ -31,7 +31,7 @@ pub trait RunnerPlane: Shared {
     fn runner_streams(&self) -> &Self::RunnerStreams;
 
     /// Authoritative task lifecycle over the same fleet run and turn stores.
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle;
 
     /// The fleets a runner's fleet may name.
     type Fleets: WorkspaceFleets;

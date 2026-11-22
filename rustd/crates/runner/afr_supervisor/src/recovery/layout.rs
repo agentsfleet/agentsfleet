@@ -1,7 +1,7 @@
 //! Page packing uses the receiving owner's byte ceiling before native allocation.
 
 use crate::{Result, error};
-use af_wire::task::{CheckpointEntry, CheckpointPage};
+use af_wire::durable_task::{CheckpointEntry, CheckpointPage};
 
 pub(super) struct Pages {
     items: Vec<CheckpointPage>,

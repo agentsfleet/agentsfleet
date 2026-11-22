@@ -36,7 +36,7 @@ pub(crate) struct Routing {
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false, value_type = super::schema::IntentQuestion))]
     #[serde(default, deserialize_with = "present_object")]
     pub(super) intent: Option<Question>,
-    /// Criteria keys: `matching_task`, `new_work`, unclear. Candidate IDs stay native.
+    /// Criteria keys: `matching_durable_task`, `new_work`, unclear. Candidate IDs stay native.
     #[garde(dive)]
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false, value_type = super::schema::AssociationQuestion))]
     #[serde(default, deserialize_with = "present_object")]

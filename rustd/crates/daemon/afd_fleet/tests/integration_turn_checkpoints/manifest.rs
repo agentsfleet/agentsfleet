@@ -2,11 +2,11 @@
 
 use super::{Checked, publication::root, storage::Files};
 use af_wire::{
+    durable_task::{CheckpointEntry, CheckpointPage},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointPlan,
         TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnWorkspace,
     },
-    task::{CheckpointEntry, CheckpointPage},
 };
 
 pub(super) struct Pending {

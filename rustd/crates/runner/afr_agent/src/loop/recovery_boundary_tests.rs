@@ -71,7 +71,7 @@ impl RecoveryBoundarySink for Sink {
                 run_id: "019f0000-0000-7000-8000-0000000000ff".to_owned(),
                 turn_id: snapshot.turn_id,
                 fencing_token: snapshot.fencing_token,
-                checkpoint: CommittedRecovery::Task {
+                checkpoint: CommittedRecovery::DurableTask {
                     checkpoint_id: "019f0000-0000-7000-8000-0000000000fe".to_owned(),
                     generation: 1,
                     history_digest: "0".repeat(64),
@@ -110,9 +110,9 @@ async fn drive(run: &RunPayload<'_>, sink: &Sink) -> RunOutput {
     let output = engine
         .run(AgentRun {
             recovery: Some(sink),
-            recovered_task: None,
+            recovered_durable_task: None,
             recovered_turn: None,
-            prepared_task: None,
+            prepared_durable_task: None,
             run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(
@@ -204,9 +204,9 @@ async fn an_assigned_checkpoint_with_no_restored_state_refuses_the_run_before_an
     let refused = engine
         .run(AgentRun {
             recovery: None,
-            recovered_task: None,
+            recovered_durable_task: None,
             recovered_turn: None,
-            prepared_task: None,
+            prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

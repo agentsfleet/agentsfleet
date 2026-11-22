@@ -52,7 +52,7 @@ export type TurnDetail = TurnRow & {
    */
   tool_calls: SavedToolTrace | null;
   /** Bounded public stages retained independently of private recovery state. */
-  task_activity?: unknown;
+  durable_task_activity?: unknown;
 };
 
 /** `af_wire::tool_trace::ToolTrace`: every call the run made, in order. */
@@ -159,7 +159,7 @@ export type FleetCountersSnapshot = {
 };
 
 export type ActivityLiveFrame = (
-  | {kind: typeof FRAME_KIND.TASK_CHANGED; task_id: string; resource_version: number}
+  | {kind: typeof FRAME_KIND.DURABLE_TASK_CHANGED; durable_task_id: string; resource_version: number}
   // A person's message, accepted and waiting for a runner: the id the send's
   // 202 names, who sent it, and what they typed. Fields past the identifier
   // are optional on the TYPE because the wire is untrusted.
@@ -208,7 +208,7 @@ export type ActivityLiveFrame = (
 
   | { kind: typeof FRAME_KIND.RUN_RESTARTED; turn_id: string; restarted_at?: string }
   | { kind: typeof FRAME_KIND.CHUNK; turn_id: string; text: string; text_kind: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
-  | {kind: typeof FRAME_KIND.TASK_DECISION_STARTED | typeof FRAME_KIND.TASK_DECISION_COMPLETED | typeof FRAME_KIND.TASK_TRANSFER_PROGRESS; turn_id: string; progress: unknown}
+  | {kind: typeof FRAME_KIND.DURABLE_TASK_DECISION_STARTED | typeof FRAME_KIND.DURABLE_TASK_DECISION_COMPLETED | typeof FRAME_KIND.DURABLE_TASK_TRANSFER_PROGRESS; turn_id: string; progress: unknown}
   | ({ kind: typeof FRAME_KIND.CONTEXT_PROGRESS; turn_id: string } & ContextProgress)
 
   // Status is required; output edges and exit codes depend on the tool.

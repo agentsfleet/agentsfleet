@@ -4,7 +4,7 @@
 use afd_turns::Producer;
 
 use super::support::{
-    Assigned, Checked, STEER_JSON, STEER_TEXT, assign_as_holder, send, set_run_task,
+    Assigned, Checked, STEER_JSON, STEER_TEXT, assign_as_holder, send, set_run_durable_task,
     settle_directly, workspace_of,
 };
 use crate::report_seed::held;
@@ -57,9 +57,9 @@ async fn test_a_durable_task_run_is_assigned_nothing() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    set_run_task(&held, Some(&afd_db::test_util::mint_id())).await?;
+    set_run_durable_task(&held, Some(&afd_db::test_util::mint_id())).await?;
     assert_eq!(assign_as_holder(&held, 0).await?, Vec::new());
-    set_run_task(&held, None).await?;
+    set_run_durable_task(&held, None).await?;
     assert_eq!(
         assign_as_holder(&held, 0).await?,
         [sent.assigned(STEER_TEXT)]
@@ -113,17 +113,19 @@ async fn test_a_settled_message_is_not_assigned_again() -> Checked {
 /// Privacy cleanup can remove the task reference while retaining its generation.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_retained_task_generation_stops_the_ordinary_fold_prefix() -> Checked {
+async fn a_retained_durable_task_generation_stops_the_ordinary_fold_prefix() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let earlier = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     let barrier = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     let later = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     let mut connection = held.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE thread.turns SET task_generation=1 WHERE id=$1 AND task_id IS NULL")
-        .bind(&barrier.id)
-        .execute(&mut *connection)
-        .await?;
+    sqlx::query(
+        "UPDATE thread.turns SET durable_task_generation=1 WHERE id=$1 AND durable_task_id IS NULL",
+    )
+    .bind(&barrier.id)
+    .execute(&mut *connection)
+    .await?;
     drop(connection);
     assert_eq!(
         assign_as_holder(&held, 0).await?,

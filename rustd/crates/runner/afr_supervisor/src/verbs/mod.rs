@@ -55,9 +55,9 @@ impl<'a> FencedVerbs<'a> {
 
 #[async_trait::async_trait]
 impl afr_tools::RunVerbs for FencedVerbs<'_> {
-    async fn task_decision(
+    async fn durable_task_decision(
         &self,
-        input: af_wire::task::DecisionReservationInput,
+        input: af_wire::durable_task::DecisionReservationInput,
     ) -> Result<afr_tools::verbs::DecisionEvaluation, Unanswered> {
         self.evaluate(input)
             .await
@@ -109,69 +109,72 @@ impl afr_tools::RunVerbs for FencedVerbs<'_> {
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_inputs(
+    async fn durable_task_inputs(
         &self,
-        mut query: af_wire::task::TaskInputsQuery,
-    ) -> Result<af_wire::task::TaskInputsResponse<'static>, Unanswered> {
+        mut query: af_wire::durable_task::DurableTaskInputsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskInputsResponse<'static>, Unanswered> {
         query.fencing_token = self.fencing_token;
         self.plane
-            .task_inputs(self.run_id, &query)
+            .durable_task_inputs(self.run_id, &query)
             .await
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_bindings(
+    async fn durable_task_bindings(
         &self,
-        mut input: af_wire::task::TaskBindingsInput,
-    ) -> Result<af_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+        mut input: af_wire::durable_task::DurableTaskBindingsInput,
+    ) -> Result<af_wire::durable_task::DurableTaskBindingsResponse<'static>, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_bindings(self.run_id, &input)
+            .durable_task_bindings(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_input_receipt(
+    async fn durable_task_input_receipt(
         &self,
-        mut input: af_wire::task::TaskInputReceiptInput,
-    ) -> Result<af_wire::task::TaskInputReceiptResult, Unanswered> {
+        mut input: af_wire::durable_task::DurableTaskInputReceiptInput,
+    ) -> Result<af_wire::durable_task::DurableTaskInputReceiptResult, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_input_receipt(self.run_id, &input)
+            .durable_task_input_receipt(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_publish(
+    async fn durable_task_publish(
         &self,
-        mut input: af_wire::task::TaskEffectInput,
-    ) -> Result<af_wire::task::TaskEffect, Unanswered> {
+        mut input: af_wire::durable_task::DurableTaskEffectInput,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         input.fencing_token = self.fencing_token;
         self.plane
-            .task_publish(self.run_id, &input)
+            .durable_task_publish(self.run_id, &input)
             .await
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_effect(&self, effect_id: &str) -> Result<af_wire::task::TaskEffect, Unanswered> {
+    async fn durable_task_effect(
+        &self,
+        effect_id: &str,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         let id = Uuid7::parse(effect_id).map_err(|source| {
             let failure = crate::error::Error::from(source);
             tracing::debug!(event = "task_effect_identity_refused", error_code = %failure.code());
             Unanswered::Refused(Some(failure.code()))
         })?;
         self.plane
-            .task_effect(self.run_id, &id, self.fencing_token)
+            .durable_task_effect(self.run_id, &id, self.fencing_token)
             .await
             .map_err(|failure| unanswered(&failure))
     }
 
-    async fn task_effects(
+    async fn durable_task_effects(
         &self,
-        mut query: af_wire::task::TaskEffectsQuery,
-    ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
+        mut query: af_wire::durable_task::DurableTaskEffectsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskEffectsPage, Unanswered> {
         query.fencing_token = self.fencing_token;
         self.plane
-            .task_effects(self.run_id, &query)
+            .durable_task_effects(self.run_id, &query)
             .await
             .map_err(|failure| unanswered(&failure))
     }

@@ -393,8 +393,8 @@ The [DT API target](durable_tasks.md#proposed-native-api) describes the remainin
 
 | Method and suffix | Current response and behavior |
 |---|---|
-| `GET /tasks?starting_after=<cursor>&limit=20` | `{items,next_cursor}`; unfinished titles, states, versions, accepted revision identities and timestamps. Maximum page size 100; newest `(created_at,id)` first. Owned empty fleets return 200; missing or foreign scoped fleets return 404. |
-| `GET /tasks/{task_id}` | `{title,resource_version,setup_revision,context}`; accepted objective, questions, cumulative usage, limits and cursors. Strong ETag supports `If-None-Match` and empty 304; completed tasks remain readable. |
+| `GET /durable_tasks?starting_after=<cursor>&limit=20` | `{items,next_cursor}`; unfinished titles, states, versions, accepted revision identities and timestamps. Maximum page size 100; newest `(created_at,id)` first. Owned empty fleets return 200; missing or foreign scoped fleets return 404. |
+| `GET /durable_tasks/{durable_task_id}` | `{title,resource_version,setup_revision,context}`; accepted objective, questions, cumulative usage, limits and cursors. Strong ETag supports `If-None-Match` and empty 304; completed tasks remain readable. |
 
 Collection responses use `private, no-store`; detail responses use `private, no-cache` with revalidation.
 Dashboard proxies retain the resource tag and apply `no-store` without exposing bearer credentials to browser code.

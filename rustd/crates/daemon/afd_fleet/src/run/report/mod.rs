@@ -101,10 +101,10 @@ impl RunService {
         clock.identify(run.turn_id.as_str(), run.fleet_id.as_str());
 
         let run_key = run_id.clone();
-        let task_plan = self
-            .prepare_task_report(runner_id, &run_key, request)
+        let durable_task_plan = self
+            .prepare_durable_task_report(runner_id, &run_key, request)
             .await?;
-        let task_settlement = match &task_plan {
+        let durable_task_settlement = match &durable_task_plan {
             Some(plan) => Some(plan.settlement().await?),
             None => None,
         };
@@ -153,7 +153,7 @@ impl RunService {
             now,
         );
 
-        report.task_settlement = task_settlement;
+        report.durable_task_settlement = durable_task_settlement;
         clock.mark(ReportStage::Prepare);
         let committed = self
             .commit_reported(report, &run, (runner_id, request, now), clock)
@@ -165,7 +165,7 @@ impl RunService {
             now,
         };
         let reconciled = self
-            .finalize_report(run, committed, task_plan.as_ref(), context)
+            .finalize_report(run, committed, durable_task_plan.as_ref(), context)
             .await;
         clock.mark(ReportStage::Announce);
         reconciled

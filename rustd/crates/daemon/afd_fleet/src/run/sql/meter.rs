@@ -65,6 +65,6 @@ impl<'a> Metering<'a> {
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::RUN_STATUS_ACTIVE)
             .bind(clock.ttl())
-            .bind(af_wire::task::TaskState::Running.as_str())
+            .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
     }
 }

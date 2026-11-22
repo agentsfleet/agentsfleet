@@ -199,10 +199,10 @@ fn fleets_and_billing_values_reach_the_runtime() -> Checked {
 }
 
 #[test]
-fn tasks_values_reach_the_runtime() -> Checked {
+fn durable_tasks_values_reach_the_runtime() -> Checked {
     let tuning = tuned(
-        "[tasks]\nslice_seconds=60\noperation_timeout_seconds=6\nterminal_retention_days=1\n\
-         [tasks.checkpoints]\nkeep_generations=2\nupload_link_ttl_minutes=3\n\
+        "[durable_tasks]\nslice_seconds=60\noperation_timeout_seconds=6\nterminal_retention_days=1\n\
+         [durable_tasks.checkpoints]\nkeep_generations=2\nupload_link_ttl_minutes=3\n\
          download_link_ttl_minutes=4\ntransfer_window_minutes=8\nrestore_pin_minutes=5\n\
          orphan_after_minutes=6\nobjects_per_delete_call=7",
     )?;
@@ -461,33 +461,33 @@ const REFUSED: &[(&str, &str)] = &[
         "[billing]\nprice_book_cache_count=0",
         "price_book_cache_count",
     ),
-    ("[tasks]\nslice_seconds=0", "slice_seconds"),
+    ("[durable_tasks]\nslice_seconds=0", "slice_seconds"),
     (
-        "[tasks]\noperation_timeout_seconds=0",
+        "[durable_tasks]\noperation_timeout_seconds=0",
         "operation_timeout_seconds",
     ),
     (
-        "[tasks]\nterminal_retention_days=0",
+        "[durable_tasks]\nterminal_retention_days=0",
         "terminal_retention_days",
     ),
     (
-        "[tasks.checkpoints]\nkeep_generations=0",
+        "[durable_tasks.checkpoints]\nkeep_generations=0",
         "keep_generations",
     ),
     (
-        "[tasks.checkpoints]\nupload_link_ttl_minutes=0",
+        "[durable_tasks.checkpoints]\nupload_link_ttl_minutes=0",
         "upload_link_ttl_minutes",
     ),
     (
-        "[tasks.checkpoints]\ndownload_link_ttl_minutes=0",
+        "[durable_tasks.checkpoints]\ndownload_link_ttl_minutes=0",
         "download_link_ttl_minutes",
     ),
     (
-        "[tasks.checkpoints]\ntransfer_window_minutes=0",
+        "[durable_tasks.checkpoints]\ntransfer_window_minutes=0",
         "transfer_window_minutes",
     ),
     (
-        "[tasks.checkpoints]\nobjects_per_delete_call=0",
+        "[durable_tasks.checkpoints]\nobjects_per_delete_call=0",
         "objects_per_delete_call",
     ),
     (

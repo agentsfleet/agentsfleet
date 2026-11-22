@@ -9,14 +9,14 @@ use super::{
 };
 use crate::{
     Result,
+    durable_task::checkpoint::{self, StoredObject, Verification, lock_quota},
     error::query,
     run::Runs,
-    task::checkpoint::{self, StoredObject, Verification, lock_quota},
 };
 use af_core::id::Uuid7;
 use af_wire::{
+    durable_task::{CheckpointTransferPurpose, CheckpointUpload},
     run::{CheckpointOperationId, TurnCheckpointRef, TurnCheckpointResponse},
-    task::{CheckpointTransferPurpose, CheckpointUpload},
 };
 use serde::Serialize;
 use sqlx::types::Json;

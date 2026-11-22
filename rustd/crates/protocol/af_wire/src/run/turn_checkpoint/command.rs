@@ -4,10 +4,10 @@ use super::{
     CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TURN_CHECKPOINT_PAGE_BYTES,
     TurnCheckpointKind, TurnResume, TurnWorkspace,
 };
-use crate::protocol::MESSAGE_BYTES_MAX;
-use crate::task::{
+use crate::durable_task::{
     CheckpointPage, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
 };
+use crate::protocol::MESSAGE_BYTES_MAX;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 

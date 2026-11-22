@@ -62,8 +62,8 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. }
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::TurnWrite { .. }
             | ErrorKind::Setup { .. }
@@ -76,25 +76,25 @@ impl Error {
             | ErrorKind::Events { .. }
             | ErrorKind::Outbound { .. }
             | ErrorKind::Rejected { .. }
-            | ErrorKind::TaskMutation { .. }
-            | ErrorKind::TaskControlTurn { .. }
-            | ErrorKind::TaskControlConflict { .. }
-            | ErrorKind::TaskPrecondition { .. }
-            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::DurableTaskMutation { .. }
+            | ErrorKind::DurableTaskControlTurn { .. }
+            | ErrorKind::DurableTaskControlConflict { .. }
+            | ErrorKind::DurableTaskPrecondition { .. }
+            | ErrorKind::DurableTaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskState { .. }
-            | ErrorKind::TaskDocument { .. }
-            | ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteCooldown { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskTargetCounter { .. }
+            | ErrorKind::DurableTaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
+            | ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. }
             | ErrorKind::Mint { .. }
             | ErrorKind::StaleFence
             | ErrorKind::RunNotFound

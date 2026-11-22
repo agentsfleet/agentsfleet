@@ -73,10 +73,10 @@ impl Run<'_> {
         &self,
         memory: Seed<'_>,
         sink: ActivitySink,
-        prepared_task: Option<&afr_agent::PreparedTask>,
+        prepared_durable_task: Option<&afr_agent::PreparedDurableTask>,
     ) -> Worked {
         let setup = self.timeline.start(Segment::Sandbox);
-        let admitted = match self.admitted(prepared_task).await {
+        let admitted = match self.admitted(prepared_durable_task).await {
             Ok(admitted) => admitted,
             Err(refused) => return (*refused).into(),
         };
@@ -84,7 +84,7 @@ impl Run<'_> {
         let stop = self.interrupt.child_token();
         let recovery = OnceLock::new();
         let build = Build {
-            prepared_task,
+            prepared_durable_task,
             recovery: &recovery,
             key: &key,
             limits: admitted.limits,
@@ -110,7 +110,7 @@ impl Run<'_> {
                 setup.stop();
             });
             let driving = Box::pin(async {
-                if !self.workspace_ready(&slot, prepared_task).await {
+                if !self.workspace_ready(&slot, prepared_durable_task).await {
                     return failed(
                         FailureClass::StartupPosture,
                         "recovery workspace was not prepared",
@@ -120,7 +120,7 @@ impl Run<'_> {
                     memory,
                     &slot,
                     sink,
-                    prepared_task,
+                    prepared_durable_task,
                     super::drive::Recovered::from(recovery.get()),
                     &capture,
                 )
@@ -143,7 +143,7 @@ impl Run<'_> {
     async fn workspace_ready(
         &self,
         slot: &ExecutorSlot<'_>,
-        prepared: Option<&afr_agent::PreparedTask>,
+        prepared: Option<&afr_agent::PreparedDurableTask>,
     ) -> bool {
         if !prepared.is_some_and(|prepared| prepared.allow_actions)
             && self.payload.turn_resume.is_none()
@@ -205,7 +205,7 @@ impl Run<'_> {
     /// ends the run at startup and releases the fleet's hold.
     async fn admitted<'p>(
         &'p self,
-        prepared: Option<&'p afr_agent::PreparedTask>,
+        prepared: Option<&'p afr_agent::PreparedDurableTask>,
     ) -> Result<Admitted<'p>, Box<Ending>> {
         let refused = |ending: Box<Ending>| {
             self.release_hold();

@@ -114,7 +114,7 @@ pub(crate) async fn log_measured(
 ) -> Result<bool> {
     if let Some(settled) = settlement {
         let fresh = afd_billing::ledger::log_lines(&mut *connection, entropy, now, settled).await?;
-        return crate::task::usage::record(connection, settled.work.id(), fresh).await;
+        return crate::durable_task::usage::record(connection, settled.work.id(), fresh).await;
     }
     Ok(true)
 }

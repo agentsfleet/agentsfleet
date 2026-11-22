@@ -24,7 +24,7 @@ const EVENT_ENGINE_FAILED: &str = "engine_run_failed";
 const EVENT_ENGINE_PANICKED: &str = "engine_panicked";
 
 pub(super) struct Recovered<'a> {
-    pub(super) task: Option<&'a afr_agent::TaskRecovery>,
+    pub(super) task: Option<&'a afr_agent::DurableTaskRecovery>,
     pub(super) turn: Option<&'a afr_agent::TurnRecovery>,
 }
 
@@ -55,7 +55,7 @@ impl afr_agent::Inbox for Closed {
 /// Where a run is assigned the messages its fleet received while it works: nowhere
 /// for a durable task, through the run's own fence for every other run.
 fn inbox_of<'a>(
-    task: Option<&afr_agent::PreparedTask>,
+    task: Option<&afr_agent::PreparedDurableTask>,
     run: &'a dyn afr_agent::Inbox,
 ) -> &'a dyn afr_agent::Inbox {
     if task.is_some() { &Closed } else { run }
@@ -69,7 +69,7 @@ impl Run<'_> {
         memory: Seed<'_>,
         executor: &dyn ExecutorSource,
         sink: ActivitySink,
-        prepared_task: Option<&afr_agent::PreparedTask>,
+        prepared_durable_task: Option<&afr_agent::PreparedDurableTask>,
         recovered: Recovered<'_>,
         recovery: &dyn afr_agent::RecoveryBoundarySink,
     ) -> Ending {
@@ -85,16 +85,16 @@ impl Run<'_> {
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
             recovery: Some(recovery),
-            recovered_task: recovered.task,
+            recovered_durable_task: recovered.task,
             recovered_turn: recovered.turn,
-            prepared_task,
+            prepared_durable_task,
             run: self.payload,
             memory,
             executor,
             mint: &mint,
             verbs: &verbs,
             checkpoint: &checkpoint,
-            inbox: inbox_of(prepared_task, &verbs),
+            inbox: inbox_of(prepared_durable_task, &verbs),
             events: &sink,
             meter: &self.meter,
             stop: &self.interrupt,
@@ -153,8 +153,8 @@ impl Run<'_> {
 
 #[cfg(test)]
 mod tests {
-    use af_wire::task::TaskInputsResponse;
-    use afr_agent::{Folded, Inbox, PreparedTask};
+    use af_wire::durable_task::DurableTaskInputsResponse;
+    use afr_agent::{Folded, Inbox, PreparedDurableTask};
 
     use super::inbox_of;
 
@@ -173,19 +173,19 @@ mod tests {
         }
     }
 
-    fn task() -> PreparedTask {
-        PreparedTask {
+    fn task() -> PreparedDurableTask {
+        PreparedDurableTask {
             execution_deadline: None,
-            inputs: TaskInputsResponse {
+            inputs: DurableTaskInputsResponse {
                 source_turn_id: "turn".to_owned(),
                 accepted_revision_id: None,
                 current_message: None,
                 inputs: Vec::new(),
                 accepted_inputs: Vec::new(),
-                current_task: None,
+                current_durable_task: None,
                 execution_deadline: None,
                 current_interpretation: None,
-                tasks: Vec::new(),
+                durable_tasks: Vec::new(),
                 next_cursor: None,
             },
             allow_actions: false,

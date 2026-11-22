@@ -144,7 +144,7 @@ fn stopped_report(taken: &Taken) -> ReportRequest<'_> {
     ReportRequest {
         folded_through_sequence: None,
         setup: Some(SetupReport { proposal: None }),
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed(&taken.run),
         turn_id: Cow::Borrowed(&taken.turn),
         fencing_token: taken.fence,

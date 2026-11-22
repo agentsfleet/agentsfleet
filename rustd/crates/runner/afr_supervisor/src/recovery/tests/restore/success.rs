@@ -33,8 +33,8 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
     assert_eq!(restored.plan.pin.resource_version, 2);
     let requests = drain(&mut calls).await;
     let requests_for = |verb| requests.iter().filter(|call| call.verb == verb).count();
-    assert_eq!(requests_for(Verb::TaskCheckpointPin), 1);
-    assert_eq!(requests_for(Verb::TaskCheckpointPage), 2);
+    assert_eq!(requests_for(Verb::DurableTaskCheckpointPin), 1);
+    assert_eq!(requests_for(Verb::DurableTaskCheckpointPage), 2);
     assert_eq!(
         phases(&requests).last().map(String::as_str),
         Some("restored")
@@ -68,7 +68,10 @@ async fn retained_base_inspection_returns_verified_paths_without_restoring_histo
     let requests = crate::test_support::drain(&mut calls);
     assert_eq!(
         requests.iter().map(|call| call.verb).collect::<Vec<_>>(),
-        [Verb::TaskCheckpointAuthorizations, Verb::TaskCheckpointPage]
+        [
+            Verb::DurableTaskCheckpointAuthorizations,
+            Verb::DurableTaskCheckpointPage
+        ]
     );
     Ok(())
 }

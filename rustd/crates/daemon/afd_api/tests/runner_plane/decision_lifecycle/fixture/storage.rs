@@ -4,7 +4,7 @@ use super::*;
 pub(super) async fn build(
     database: &Db,
     owner: &Owner,
-) -> afd_fleet::task::storage::R2CheckpointStore {
+) -> afd_fleet::durable_task::storage::R2CheckpointStore {
     let storage_key = std::sync::Arc::new(af_crypto::secret::Kek::from_bytes([0x27; 32]));
     let storage_secret = RawValue::from_string(
         json!({
@@ -26,8 +26,8 @@ pub(super) async fn build(
     )
     .await
     .expect("native storage credential custody");
-    afd_fleet::task::storage::R2CheckpointStore::new(
-        garde::Unvalidated::new(afd_fleet::task::storage::CheckpointStorageConfig {
+    afd_fleet::durable_task::storage::R2CheckpointStore::new(
+        garde::Unvalidated::new(afd_fleet::durable_task::storage::CheckpointStorageConfig {
             endpoint: format!("https://{}.r2.cloudflarestorage.com", "0".repeat(32)),
             bucket: "checkpoint-http-test".to_owned(),
             credential_name: "checkpoint-http-test".to_owned(),

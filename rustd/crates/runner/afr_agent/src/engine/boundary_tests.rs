@@ -1,7 +1,8 @@
 //! A receipt from another attempt or private root never advances recovery state.
 
 use super::{
-    CommittedRecovery, RecoveryReceipt, RecoverySnapshot, RecoveryState, RootRecovery, TaskRecovery,
+    CommittedRecovery, DurableTaskRecovery, RecoveryReceipt, RecoverySnapshot, RecoveryState,
+    RootRecovery,
 };
 use guffbolt::Message;
 
@@ -9,7 +10,7 @@ use guffbolt::Message;
 fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt, String)> {
     let mut task = super::recovery_tests::task();
     task.checkpoint_generation = Some(7);
-    let task = TaskRecovery::capture(
+    let task = DurableTaskRecovery::capture(
         task,
         "model",
         "provider",
@@ -24,13 +25,13 @@ fn fixture() -> crate::Result<(RecoverySnapshot, RecoveryReceipt, String)> {
         turn_id: "019f0000-0000-7000-8000-000000000011".to_owned(),
         fencing_token: 9,
         file_permit: None,
-        state: RecoveryState::Task(task),
+        state: RecoveryState::DurableTask(task),
     };
     let valid = RecoveryReceipt {
         run_id: snapshot.run_id.clone(),
         turn_id: snapshot.turn_id.clone(),
         fencing_token: snapshot.fencing_token,
-        checkpoint: CommittedRecovery::Task {
+        checkpoint: CommittedRecovery::DurableTask {
             checkpoint_id: "019f0000-0000-7000-8000-000000000012".to_owned(),
             generation: 8,
             history_digest: digest.clone(),
@@ -77,7 +78,7 @@ fn committed_receipt_requires_new_identity_generation_and_exact_history() -> cra
         ("019f0000-0000-7000-8000-000000000012", 8, "0".repeat(64)),
     ] {
         let invalid = RecoveryReceipt {
-            checkpoint: CommittedRecovery::Task {
+            checkpoint: CommittedRecovery::DurableTask {
                 checkpoint_id: id.to_owned(),
                 generation,
                 history_digest: digest,
@@ -90,7 +91,7 @@ fn committed_receipt_requires_new_identity_generation_and_exact_history() -> cra
 }
 
 #[test]
-fn an_ordinary_receipt_never_answers_a_task_snapshot() -> crate::Result<()> {
+fn an_ordinary_receipt_never_answers_a_durable_task_snapshot() -> crate::Result<()> {
     use af_wire::run::{CheckpointOperationId, TurnResume, TurnScope, TurnWorkspace};
 
     let (snapshot, valid, digest) = fixture()?;

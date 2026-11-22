@@ -6,7 +6,7 @@ use serde_json::json;
 use sqlx::types::Json;
 
 const WRITE: &str =
-    "UPDATE thread.turns SET task_activity=$2 WHERE thread_id=$1 AND opened_at IS NOT NULL";
+    "UPDATE thread.turns SET durable_task_activity=$2 WHERE thread_id=$1 AND opened_at IS NOT NULL";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -44,7 +44,7 @@ async fn database_refuses_non_arrays_and_negative_sequences() {
         );
     }
     let error = sqlx::query(
-        "UPDATE thread.turns SET task_activity_sequence=-1 WHERE thread_id=$1 AND opened_at IS NOT NULL",
+        "UPDATE thread.turns SET durable_task_activity_sequence=-1 WHERE thread_id=$1 AND opened_at IS NOT NULL",
     )
         .bind(&run.fleet)
         .execute(&mut *connection)

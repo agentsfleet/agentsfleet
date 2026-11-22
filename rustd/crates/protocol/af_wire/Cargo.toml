@@ -45,6 +45,9 @@ utoipa = { workspace = true, optional = true }
 # Generates the OpenAPI schemas for these wire types. NOT default: the shipped
 # daemon resolves a dependency graph carrying serde, serde_json and jiff alone.
 openapi = ["dep:utoipa"]
+# Fixture values the suites share, such as a runner policy's
+# `durable_tasks_enabled`. No production reader.
+test-util = []
 
 [dev-dependencies]
 # Pins every route template in one reviewed snapshot.

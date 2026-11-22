@@ -45,14 +45,16 @@ impl Run<'_> {
     /// startup. Refusals use the same owned ending as workspace admission.
     pub(super) fn plan<'p>(
         &'p self,
-        prepared: Option<&'p afr_agent::PreparedTask>,
+        prepared: Option<&'p afr_agent::PreparedDurableTask>,
     ) -> Result<Option<Plan<'p>>, Box<Ending>> {
         let mut wanted =
             checkouts(&self.payload.policy).map_err(|refusal| Box::new(self.unready(&refusal)))?;
-        if let Some(task) = prepared.and_then(|prepared| prepared.inputs.current_task.as_ref()) {
+        if let Some(task) =
+            prepared.and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
+        {
             match &task.target {
-                af_wire::task::TaskTarget::ApiOnly => wanted.clear(),
-                af_wire::task::TaskTarget::ExistingPr {
+                af_wire::durable_task::DurableTaskTarget::ApiOnly => wanted.clear(),
+                af_wire::durable_task::DurableTaskTarget::ExistingPr {
                     repository, branch, ..
                 } => {
                     wanted.retain(|checkout| checkout.repository == repository);

@@ -75,22 +75,22 @@ impl Healthy {
         match verb {
             // Durable-task fixtures supply their native receipts explicitly.
             Some(
-                Verb::TaskInputs
-                | Verb::TaskBindings
-                | Verb::TaskInputReceipt
-                | Verb::TaskDecisionReserve
-                | Verb::TaskDecisionRecord
-                | Verb::TaskEffectPublish
-                | Verb::TaskEffects
-                | Verb::TaskEffect
-                | Verb::TaskCheckpointPlan
-                | Verb::TaskCheckpointCommit
-                | Verb::TaskCheckpointPageWrite
-                | Verb::TaskCheckpointPage
-                | Verb::TaskCheckpointObjectsRegister
-                | Verb::TaskCheckpointUploads
-                | Verb::TaskCheckpointAuthorizations
-                | Verb::TaskCheckpointPin
+                Verb::DurableTaskInputs
+                | Verb::DurableTaskBindings
+                | Verb::DurableTaskInputReceipt
+                | Verb::DurableTaskDecisionReserve
+                | Verb::DurableTaskDecisionRecord
+                | Verb::DurableTaskEffectPublish
+                | Verb::DurableTaskEffects
+                | Verb::DurableTaskEffect
+                | Verb::DurableTaskCheckpointPlan
+                | Verb::DurableTaskCheckpointCommit
+                | Verb::DurableTaskCheckpointPageWrite
+                | Verb::DurableTaskCheckpointPage
+                | Verb::DurableTaskCheckpointObjectsRegister
+                | Verb::DurableTaskCheckpointUploads
+                | Verb::DurableTaskCheckpointAuthorizations
+                | Verb::DurableTaskCheckpointPin
                 | Verb::TurnCheckpoint
                 // A setup run's save names a version only its fixture knows.
                 | Verb::ContextSave

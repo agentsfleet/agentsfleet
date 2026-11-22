@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use af_wire::task::{DecisionReceiptInput, DecisionReservationInput};
-use afd_fleet::task::TaskRun;
+use af_wire::durable_task::{DecisionReceiptInput, DecisionReservationInput};
+use afd_fleet::durable_task::DurableTaskRun;
 use afd_http::handler::{Refusal, parse_id, read_strict_body};
 use axum::{
     Json,
@@ -22,14 +22,14 @@ const CALL_ID: &str = "call_id must be a UUIDv7";
 
 /// Native issuance commits once; an operation retry never receives another key.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    post, path = af_wire::paths::RUN_TASK_DECISIONS, tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "runner_reserve_task_decision", summary = "Reserve a physical task decision",
+    post, path = af_wire::paths::RUN_DURABLE_TASK_DECISIONS, tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_reserve_durable_task_decision", summary = "Reserve a physical durable task decision",
     description = "Uses the run's reviewed decision profile, native source and accepted questions. Confirmed credit and fresh platform Secrets are required before one credential response. Identical retries return saved state without another credential.",
     params(("run_id" = String, Path, description = "Original run UUIDv7.")),
     request_body = DecisionReservationInput,
     responses(
-        (status = 201, description = "One physical send authorized", body = af_wire::task::DecisionReservationResult<'_>),
-        (status = 200, description = "Saved call without another credential", body = af_wire::task::DecisionReservationResult<'_>),
+        (status = 201, description = "One physical send authorized", body = af_wire::durable_task::DecisionReservationResult<'_>),
+        (status = 200, description = "Saved call without another credential", body = af_wire::durable_task::DecisionReservationResult<'_>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -49,7 +49,7 @@ pub(crate) async fn reserve<D: RunnerPlane>(
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let run = TaskRun {
+    let run = DurableTaskRun {
         runner_id: runner.id(),
         run_id: &run_id,
         fencing_token: input.fencing_token,
@@ -78,14 +78,14 @@ pub(crate) async fn reserve<D: RunnerPlane>(
 
 /// Accounting survives deleted task/run state and never grants transition authority.
 #[cfg_attr(feature = "openapi", utoipa::path(
-    patch, path = af_wire::paths::RUN_TASK_DECISION, tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "runner_record_task_decision", summary = "Record a physical task decision receipt",
+    patch, path = af_wire::paths::RUN_DURABLE_TASK_DECISION, tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_record_durable_task_decision", summary = "Record a physical durable task decision receipt",
     description = "Accounts usage under the original runner, run and fence, even after live work is removed. Known charges and unknown reservations are independent of answer usability. Canonical retries do not charge twice.",
     params(("run_id" = String, Path, description = "Original run UUIDv7."),
         ("call_id" = String, Path, description = "Native physical decision call UUIDv7.")),
     request_body = DecisionReceiptInput,
     responses(
-        (status = 200, description = "Current accounting and answer disposition", body = af_wire::task::DecisionReceiptResult),
+        (status = 200, description = "Current accounting and answer disposition", body = af_wire::durable_task::DecisionReceiptResult),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
         (status = 409, description = afd_http::openapi::CONFLICT),
@@ -106,7 +106,7 @@ pub(crate) async fn record<D: RunnerPlane>(
     let input = garde::Unvalidated::new(input)
         .validate()
         .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let run = TaskRun {
+    let run = DurableTaskRun {
         runner_id: runner.id(),
         run_id: &run_id,
         fencing_token: input.fencing_token,

@@ -10,46 +10,46 @@ WITH locked_thread AS MATERIALIZED (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id,
            l.fencing_token, l.created_at, l.run_expires_at, l.last_metered_at,
            a.fencing_token AS live_fence, a.run_expires_at AS thread_expires_at,
-           l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
-           l.task_runtime_accounted_at
+           l.durable_task_id, l.durable_task_generation, l.durable_task_stop_generation, l.durable_task_execution_deadline_at,
+           l.durable_task_runtime_accounted_at
     FROM thread.runs l
     JOIN locked_thread a ON a.fleet_id = l.fleet_id
     WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
     FOR UPDATE OF l
-), held_task AS MATERIALIZED (
+), held_durable_task AS MATERIALIZED (
     SELECT t.id, t.status, t.generation, t.stop_generation, t.expires_at,
            t.max_model_nanos, t.used_model_nanos,
            t.max_running_nanos, t.used_running_nanos
-    FROM fleet.tasks t JOIN probe p ON p.task_id = t.id
+    FROM fleet.durable_tasks t JOIN probe p ON p.durable_task_id = t.id
       AND t.fleet_id = p.fleet_id AND t.workspace_id = p.workspace_id
     FOR UPDATE OF t
 ), instant AS MATERIALIZED (
-    SELECT clock_timestamp() AS checked_at FROM probe CROSS JOIN (SELECT count(*) FROM held_task) held
+    SELECT clock_timestamp() AS checked_at FROM probe CROSS JOIN (SELECT count(*) FROM held_durable_task) held
 ), metered AS (
     -- The run time since the run's cursor, never past the deadline it was
     -- granted: a report that lands after its run lapsed bills no time beyond it.
-    SELECT p.*, i.checked_at, t.status AS task_status, t.generation AS live_task_generation,
-           t.stop_generation AS live_stop_generation, t.expires_at AS task_expires_at,
+    SELECT p.*, i.checked_at, t.status AS durable_task_status, t.generation AS live_durable_task_generation,
+           t.stop_generation AS live_stop_generation, t.expires_at AS durable_task_expires_at,
            t.used_model_nanos, t.max_model_nanos,
            t.max_running_nanos - t.used_running_nanos AS remaining_running_nanos,
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.run_expires_at)) AS metered_until
-    FROM probe p CROSS JOIN instant i LEFT JOIN held_task t ON t.id = p.task_id
+    FROM probe p CROSS JOIN instant i LEFT JOIN held_durable_task t ON t.id = p.durable_task_id
 ), guard AS (
     -- A renewal must still be the live holder, before either deadline. A run
     -- grants one more lifetime at any age; only a durable task's own limits
     -- shorten it.
-    SELECT *, LEAST(checked_at + $5::interval, task_execution_deadline_at,
-                    task_expires_at, task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
+    SELECT *, LEAST(checked_at + $5::interval, durable_task_execution_deadline_at,
+                    durable_task_expires_at, durable_task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
            (EXTRACT(EPOCH FROM metered_until - last_metered_at) * $3::bigint)::bigint AS d_ms
     FROM metered
     WHERE fencing_token = live_fence
       AND run_expires_at > checked_at AND thread_expires_at > checked_at
-      AND (task_id IS NULL OR (
-          task_status = $6 AND task_generation = live_task_generation
-          AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
+      AND (durable_task_id IS NULL OR (
+          durable_task_status = $6 AND durable_task_generation = live_durable_task_generation
+          AND durable_task_stop_generation = live_stop_generation AND durable_task_expires_at > checked_at
           AND used_model_nanos < max_model_nanos
-          AND task_execution_deadline_at > checked_at
-          AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
+          AND durable_task_execution_deadline_at > checked_at
+          AND durable_task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
       AND EXISTS (
           SELECT 1 FROM thread.turns a
           WHERE a.id = metered.turn_id AND a.thread_id = metered.fleet_id

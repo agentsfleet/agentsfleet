@@ -180,7 +180,7 @@ function startPhasedStub() {
     if (kind === "detail") {
       if (terminalSent) counts.readbacks++;
       else counts.polls++;
-      return jsonResponse({turn_id: TURN_ID, task_activity: {items: [], truncated: false}});
+      return jsonResponse({turn_id: TURN_ID, durable_task_activity: {items: [], truncated: false}});
     }
     return jsonResponse({ error: "unexpected request" }, 500);
   } });

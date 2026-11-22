@@ -212,7 +212,7 @@ fn triage<'a>(
             answers.insert(run_id.clone(), Answer::Done(Err(run_not_found())));
             continue;
         };
-        if row.task_id.is_some() {
+        if row.durable_task_id.is_some() {
             answers.insert(run_id.clone(), Answer::PerRun);
             continue;
         }

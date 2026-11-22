@@ -4,7 +4,10 @@ use super::unavailable;
 use crate::Result;
 use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionThreshold, IntentDecisionPolicy},
-    task::{DecisionCallState, DecisionRecordDisposition, TaskInputAction, TaskProposedItem},
+    durable_task::{
+        DecisionCallState, DecisionRecordDisposition, DurableTaskInputAction,
+        DurableTaskProposedItem,
+    },
 };
 use afr_tools::verbs::DecisionEvaluation;
 use std::collections::BTreeMap;
@@ -76,7 +79,7 @@ pub(super) fn choice<'a>(
 
 pub(super) fn check(
     evaluation: &DecisionEvaluation,
-    item: &TaskProposedItem,
+    item: &DurableTaskProposedItem,
     policy: &IntentDecisionPolicy,
 ) -> Result<()> {
     let answers = answers(evaluation)?;
@@ -85,17 +88,20 @@ pub(super) fn check(
     }
     if matches!(
         item.action,
-        TaskInputAction::Conversation | TaskInputAction::Clarify
+        DurableTaskInputAction::Conversation | DurableTaskInputAction::Clarify
     ) {
-        return if item.task_id.is_none() && item.target.is_none() {
+        return if item.durable_task_id.is_none() && item.target.is_none() {
             Ok(())
         } else {
             Err(unavailable())
         };
     }
     let association = choice(answers, "association", policy.association)?;
-    if item.action == TaskInputAction::NewWork {
-        return if association == "new_work" && item.task_id.is_none() && item.target.is_some() {
+    if item.action == DurableTaskInputAction::NewWork {
+        return if association == "new_work"
+            && item.durable_task_id.is_none()
+            && item.target.is_some()
+        {
             Ok(())
         } else {
             Err(unavailable())
@@ -116,7 +122,10 @@ pub(super) fn check(
             candidate.get("alias").and_then(serde_json::Value::as_str) == Some(association)
         })
         .ok_or_else(unavailable)?;
-    if item.task_id.as_deref() != candidate.get("task_id").and_then(serde_json::Value::as_str)
+    if item.durable_task_id.as_deref()
+        != candidate
+            .get("durable_task_id")
+            .and_then(serde_json::Value::as_str)
         || item.target.is_some()
     {
         return Err(unavailable());

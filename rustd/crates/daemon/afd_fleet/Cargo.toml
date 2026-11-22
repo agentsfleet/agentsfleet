@@ -192,6 +192,7 @@ af_fleet_runtime = { workspace = true, features = ["test-util"] }
 # `af_secrets::error::one_of_each_kind`, the matcher refusal a scrub raises
 # only past gigabytes of secret values, for the lift suite's scrub case.
 af_secrets = { workspace = true, features = ["test-util"] }
+af_wire = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

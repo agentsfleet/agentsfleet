@@ -103,7 +103,8 @@ struct Readings {
     deployment: Box<str>,
     identity: Option<IdentityConfig>,
     platform_admin_workspace: Option<Uuid7>,
-    checkpoint_storage: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
+    checkpoint_storage:
+        Option<garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>>,
 }
 
 /// Reads every knob in fault order, pushing a fault for each one that is

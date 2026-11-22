@@ -1,0 +1,67 @@
+//! Durable dependency ownership; every wake still uses ordinary turns.
+
+mod completion;
+mod types;
+pub(super) use completion::record as complete;
+pub use types::{CompletionScope, VerifiedCompletion};
+
+use super::{
+    DurableTasks,
+    github::{BoundPr, status::Snapshot},
+};
+use crate::{Result, error::query};
+use af_core::id::Uuid7;
+use sqlx::{PgConnection, types::Json};
+
+pub(in crate::durable_task) async fn arm(
+    tasks: &DurableTasks,
+    connection: &mut PgConnection,
+    task: &Uuid7,
+    run: &Uuid7,
+    target: &BoundPr,
+    dependency: &Snapshot,
+) -> Result<()> {
+    let id = tasks.runs.entropy().uuid7(af_core::clock::now())?;
+    sqlx::query(include_str!("sql/arm.sql"))
+        .bind(&id)
+        .bind(task)
+        .bind(run)
+        .bind(
+            i64::try_from(target.installation_id)
+                .map_err(crate::error::durable_task_target_counter("installation_id"))?,
+        )
+        .bind(
+            i64::try_from(target.repository_id)
+                .map_err(crate::error::durable_task_target_counter("repository_id"))?,
+        )
+        .bind(
+            i32::try_from(target.number)
+                .map_err(crate::error::durable_task_target_counter("number"))?,
+        )
+        .bind(&target.head)
+        .bind(Json(&dependency.checks))
+        .bind(dependency.digest()?)
+        .execute(connection)
+        .await
+        .map_err(query("arm exact-head wait before releasing execution"))?;
+    tracing::info!(
+        event = "dt_wait_armed",
+        durable_task_id = %task,
+        wait_id = %id.as_str()
+    );
+    Ok(())
+}
+
+pub(in crate::durable_task) async fn cancel(
+    connection: &mut PgConnection,
+    task: &Uuid7,
+) -> Result<()> {
+    sqlx::query(include_str!("sql/cancel.sql"))
+        .bind(task)
+        .execute(connection)
+        .await
+        .map_err(query(
+            "invalidate previous task wait in the owning transition",
+        ))?;
+    Ok(())
+}

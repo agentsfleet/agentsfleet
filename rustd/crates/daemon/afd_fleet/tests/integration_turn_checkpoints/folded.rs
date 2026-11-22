@@ -161,7 +161,7 @@ async fn empty_manifest(
     page_ids: &[CheckpointOperationId],
 ) -> Checked<String> {
     let page_id = page_ids.first().ok_or("page")?.clone();
-    let page = af_wire::task::CheckpointPage {
+    let page = af_wire::durable_task::CheckpointPage {
         page_number: 0,
         entries: Vec::new(),
         history_objects: Vec::new(),

@@ -13,7 +13,7 @@ use crate::{Result, run::Runs};
 pub struct TurnCheckpoints {
     pub(super) master: Arc<Kek>,
     pub(super) sealer: Sealer,
-    pub(super) storage: Option<Arc<crate::task::storage::R2CheckpointStore>>,
+    pub(super) storage: Option<Arc<crate::durable_task::storage::R2CheckpointStore>>,
 }
 
 impl std::fmt::Debug for TurnCheckpoints {
@@ -37,13 +37,13 @@ impl TurnCheckpoints {
     #[must_use]
     pub fn with_storage(
         mut self,
-        storage: Option<crate::task::storage::R2CheckpointStore>,
+        storage: Option<crate::durable_task::storage::R2CheckpointStore>,
     ) -> Self {
         self.storage = storage.map(Arc::new);
         self
     }
 
-    pub(super) fn files(&self) -> Result<&crate::task::storage::R2CheckpointStore> {
+    pub(super) fn files(&self) -> Result<&crate::durable_task::storage::R2CheckpointStore> {
         self.storage
             .as_deref()
             .ok_or_else(|| TurnCheckpointRefusal::Unavailable.into())

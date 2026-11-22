@@ -235,9 +235,9 @@ async fn drive(model: &Sized, run: &RunPayload<'_>, thread: &Thread) -> RunOutpu
     let output = engine
         .run(AgentRun {
             recovery: None,
-            recovered_task: None,
+            recovered_durable_task: None,
             recovered_turn: None,
-            prepared_task: None,
+            prepared_durable_task: None,
             run,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

@@ -173,7 +173,7 @@ impl TenantPlane for ServingPlane {
         &self.runner_commands
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 
@@ -248,7 +248,7 @@ impl afd_api_runner::services::RunnerPlane for ServingPlane {
         &self.runners
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 
@@ -317,7 +317,7 @@ impl afd_api_ingress::services::IngressPlane for ServingPlane {
         self.outbound.scheduler.as_ref()
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 

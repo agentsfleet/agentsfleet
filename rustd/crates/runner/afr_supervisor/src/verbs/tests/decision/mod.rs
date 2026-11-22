@@ -6,7 +6,7 @@ use super::{FENCING, FencedVerbs, Host, RUN_ID};
 use crate::client::Verb;
 use crate::test_support::{Answer, drain, json, plane};
 use af_core::id::Uuid7;
-use af_wire::task::{DecisionCallState, DecisionReservationInput};
+use af_wire::durable_task::{DecisionCallState, DecisionReservationInput};
 use afr_tools::{RunVerbs as _, Unanswered};
 use std::sync::{
     Arc, Mutex,
@@ -20,8 +20,8 @@ fn input() -> DecisionReservationInput {
         operation_id: CALL.to_owned(),
         fencing_token: 0,
         source_turn_id: CALL.to_owned(),
-        assessment: af_wire::task::DecisionAssessment::Message,
-        task: None,
+        assessment: af_wire::durable_task::DecisionAssessment::Message,
+        durable_task: None,
         retry_of: None,
         evidence: serde_json::json!({}),
     }
@@ -41,7 +41,7 @@ fn dispatch(api: &str, purpose: &str) -> serde_json::Value {
             "association":threshold,"single_request_max_bps":2000,"multiple_request_min_bps":8000},
         "goal":{"questions_revision":"dt-goal-v1","statement_min_bps":9000,
             "continue_action":threshold,"wait":threshold,"done":threshold}},
-        "request":{"call_id":CALL,"purpose":purpose,"state":{"task":{"task_id":CALL},"source_turn_id":CALL},
+        "request":{"call_id":CALL,"purpose":purpose,"state":{"durable_task":{"durable_task_id":CALL},"source_turn_id":CALL},
             "questions":[{"name":"matches","question":{"type":"noul","instructions":"Does the evidence match?",
                 "criteria":{"true":"It matches","false":"It does not match"}}}]}
     }})
@@ -81,7 +81,7 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
         &host.stop,
         &host.decisions,
     );
-    let result = verbs.task_decision(input()).await.unwrap();
+    let result = verbs.durable_task_decision(input()).await.unwrap();
     assert_eq!(result.state, DecisionCallState::NotSent);
     assert!(result.recorded.is_none());
     let mut requests = drain(&mut calls);
@@ -106,14 +106,14 @@ fn preflight_reply(
     _fault: &str,
 ) -> Answer {
     match call.verb {
-        Verb::TaskDecisionReserve => {
+        Verb::DurableTaskDecisionReserve => {
             let sent: DecisionReservationInput =
                 serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
             assert_eq!(sent.fencing_token, FENCING);
             assert!(sent.retry_of.is_none());
             json(reservation)
         }
-        Verb::TaskDecisionRecord => {
+        Verb::DurableTaskDecisionRecord => {
             let receipt: serde_json::Value =
                 serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
             assert_eq!(*receipt.get("fencing_token").unwrap(), FENCING);
@@ -145,7 +145,7 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
         &host.decisions,
     );
     assert_eq!(
-        verbs.task_decision(input()).await.unwrap().state,
+        verbs.durable_task_decision(input()).await.unwrap().state,
         DecisionCallState::NotSent
     );
     assert_eq!(reservations.load(Ordering::SeqCst), 1);
@@ -155,7 +155,7 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
     assert_eq!(
         drain(&mut calls)
             .iter()
-            .filter(|call| call.verb == Verb::TaskDecisionRecord)
+            .filter(|call| call.verb == Verb::DurableTaskDecisionRecord)
             .count(),
         2
     );
@@ -164,7 +164,7 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
 #[tokio::test]
 async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     let (plane, mut calls) = plane(|call| {
-        assert_eq!(call.verb, Verb::TaskDecisionReserve);
+        assert_eq!(call.verb, Verb::DurableTaskDecisionReserve);
         let mut value = dispatch("typesafe", "goal");
         *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(RUN_ID);
         json(&value)
@@ -180,7 +180,7 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
         &host.decisions,
     );
     assert!(matches!(
-        verbs.task_decision(input()).await,
+        verbs.durable_task_decision(input()).await,
         Err(Unanswered::Unreachable)
     ));
     assert_eq!(drain(&mut calls).len(), 1);
@@ -222,7 +222,10 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
         .collect();
     assert_eq!(
         authorities,
-        [Verb::TaskDecisionReserve, Verb::TaskDecisionRecord]
+        [
+            Verb::DurableTaskDecisionReserve,
+            Verb::DurableTaskDecisionRecord
+        ]
     );
     let progress: Vec<serde_json::Value> = requests
         .iter()
@@ -233,7 +236,7 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
         *progress
             .first()
             .unwrap()
-            .pointer("/frames/0/task_decision_started/provider")
+            .pointer("/frames/0/durable_task_decision_started/provider")
             .unwrap(),
         api
     );
@@ -241,14 +244,14 @@ fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpos
         *progress
             .first()
             .unwrap()
-            .pointer("/frames/0/task_decision_started/operation")
+            .pointer("/frames/0/durable_task_decision_started/operation")
             .unwrap(),
         purpose
     );
     assert_eq!(
         *progress
             .get(1)
-            .and_then(|frame| frame.pointer("/frames/0/task_decision_completed/phase"))
+            .and_then(|frame| frame.pointer("/frames/0/durable_task_decision_completed/phase"))
             .unwrap(),
         "unavailable"
     );
@@ -259,11 +262,11 @@ fn receipt_retries(
     saved: Arc<Mutex<Vec<bytes::Bytes>>>,
 ) -> impl Fn(&crate::client::Call) -> Answer + Send + Sync {
     move |call| match call.verb {
-        Verb::TaskDecisionReserve => {
+        Verb::DurableTaskDecisionReserve => {
             count.fetch_add(1, Ordering::SeqCst);
             json(&dispatch("typesafe", "goal"))
         }
-        Verb::TaskDecisionRecord => {
+        Verb::DurableTaskDecisionRecord => {
             let mut bodies = saved.lock().unwrap();
             bodies.push(call.body.clone().unwrap());
             if bodies.len() == 1 {

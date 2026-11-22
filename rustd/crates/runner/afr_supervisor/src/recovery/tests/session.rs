@@ -27,7 +27,7 @@ fn missing_registration(call: &Call, archive: &mut Archive) -> Answer {
 async fn already_received_ciphertext_is_verified_without_a_second_physical_upload()
 -> crate::Result<()> {
     let (plane, mut calls, state) = remote(Archive::empty(), |call, archive| {
-        (call.verb == Verb::TaskCheckpointObjectsRegister)
+        (call.verb == Verb::DurableTaskCheckpointObjectsRegister)
             .then(|| missing_registration(call, archive))
     });
     let identity = id();
@@ -93,7 +93,7 @@ async fn upload_response_cannot_replace_registered_ciphertext_or_skip_readback()
         assert!(
             !requests
                 .iter()
-                .any(|call| call.verb == Verb::TaskCheckpointCommit)
+                .any(|call| call.verb == Verb::DurableTaskCheckpointCommit)
         );
         assert_eq!(phases(&requests).last().map(String::as_str), Some("failed"));
     }
@@ -101,10 +101,10 @@ async fn upload_response_cannot_replace_registered_ciphertext_or_skip_readback()
 }
 
 fn upload_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {
-    if call.verb == Verb::TaskCheckpointObjectsRegister {
+    if call.verb == Verb::DurableTaskCheckpointObjectsRegister {
         return Some(missing_registration(call, archive));
     }
-    if call.verb == Verb::TaskCheckpointUploads {
+    if call.verb == Verb::DurableTaskCheckpointUploads {
         let Answer::Reply(bytes) = archive.respond(call) else {
             return Some(Answer::Fail(crate::error::config("upload fixture refused")));
         };
@@ -124,7 +124,8 @@ fn upload_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answe
         }
         return Some(json(&page));
     }
-    if call.verb == Verb::TaskCheckpointAuthorizations && matches!(fault, "unverified" | "transfer")
+    if call.verb == Verb::DurableTaskCheckpointAuthorizations
+        && matches!(fault, "unverified" | "transfer")
     {
         return Some(json(&CheckpointAuthorizations {
             plan: archive.plan.clone(),
@@ -173,7 +174,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
         assert_eq!(
             requests
                 .iter()
-                .filter(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+                .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
                 .count(),
             2
         );
@@ -186,7 +187,7 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     let upload: CheckpointUploadsInput = body(
         requests
             .iter()
-            .find(|call| call.verb == Verb::TaskCheckpointUploads)
+            .find(|call| call.verb == Verb::DurableTaskCheckpointUploads)
             .unwrap(),
     );
     assert_eq!(upload.objects.len(), 1);
@@ -198,7 +199,7 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
     let verified: CheckpointAuthorizationInput = body(
         requests
             .iter()
-            .find(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+            .find(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
             .unwrap(),
     );
     assert_eq!(
@@ -221,7 +222,7 @@ fn assert_verified_upload(requests: &[Call], state: &Arc<Mutex<Archive>>) {
 }
 
 fn history_reply(call: &Call, archive: &Archive, fault: &str, object_id: &str) -> Option<Answer> {
-    if call.verb != Verb::TaskCheckpointAuthorizations {
+    if call.verb != Verb::DurableTaskCheckpointAuthorizations {
         return None;
     }
     let input: CheckpointAuthorizationInput = body(call);
@@ -243,7 +244,7 @@ fn history_reply(call: &Call, archive: &Archive, fault: &str, object_id: &str) -
             } else {
                 archive.plan.repository.clone()
             },
-            plaintext: af_wire::task::CheckpointPlaintext {
+            plaintext: af_wire::durable_task::CheckpointPlaintext {
                 sha256: "a".repeat(64),
                 size: 1,
                 kind: "history".to_owned(),

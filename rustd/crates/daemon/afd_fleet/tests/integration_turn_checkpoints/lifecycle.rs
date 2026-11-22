@@ -4,15 +4,15 @@ use super::{Case, Checked, manifest::Pending, publication::command, storage::Fil
 use crate::support::Fixtures;
 use af_core::{error_code, id::Uuid7};
 use af_wire::{
+    durable_task::CheckpointEntry,
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
     },
-    task::CheckpointEntry,
 };
 use afd_fleet::{
+    durable_task::{CheckpointMaintenanceCursor, DurableTaskLifecycle as _},
     run::turn_checkpoint::TurnRun,
-    task::{CheckpointMaintenanceCursor, TaskLifecycle as _},
 };
 
 fn modes() -> [TurnWorkspace; 2] {
@@ -128,7 +128,7 @@ async fn both_workspace_modes_bound_writer_custody_and_preserve_retired_allocati
 async fn renew(
     files: &Files,
     reference: &TurnCheckpointRef,
-    original: &af_wire::task::CheckpointPin,
+    original: &af_wire::durable_task::CheckpointPin,
 ) -> Checked {
     let action = Action::PinRenew {
         checkpoint: reference.clone(),
@@ -216,7 +216,7 @@ async fn reader_retention(workspace: TurnWorkspace, expire: bool) -> Checked {
 async fn end_reader(
     files: &Files,
     reference: TurnCheckpointRef,
-    original: &af_wire::task::CheckpointPin,
+    original: &af_wire::durable_task::CheckpointPin,
     expire: bool,
 ) -> Checked {
     if expire {

@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::tool_trace::{FileChange, ToolCallStatus, changes_fit, edge_fits};
 
-mod task;
-pub use task::{
-    TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
-    TaskActivityRecord, TaskTransferBytes,
+mod durable_task;
+pub use durable_task::{
+    DurableTaskActivity, DurableTaskActivityHistory, DurableTaskActivityOperation,
+    DurableTaskActivityPhase, DurableTaskActivityRecord, DurableTaskTransferBytes,
 };
 
 /// A tool call started. `args_redacted` contains JSON text with secret values masked, never
@@ -152,11 +152,11 @@ pub struct ToolCallProgress<'a> {
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFrame<'a> {
     /// A physical intent/goal decision has started.
-    TaskDecisionStarted(#[garde(dive)] TaskActivity),
+    DurableTaskDecisionStarted(#[garde(dive)] DurableTaskActivity),
     /// Its original-owner receipt is recorded or unavailable.
-    TaskDecisionCompleted(#[garde(dive)] TaskActivity),
+    DurableTaskDecisionCompleted(#[garde(dive)] DurableTaskActivity),
     /// Encrypted recovery is preparing, transferring or committed.
-    TaskTransferProgress(#[garde(dive)] TaskActivity),
+    DurableTaskTransferProgress(#[garde(dive)] DurableTaskActivity),
     /// The root conversation is summarizing or continuing after a checkpoint.
     ContextProgress(#[garde(dive)] crate::context::ContextProgress),
     /// A tool call began.
@@ -176,17 +176,17 @@ pub enum ActivityFrame<'a> {
 impl ActivityFrame<'_> {
     /// The small public task fact retained alongside the existing event.
     #[must_use]
-    pub fn task_activity(&self) -> Option<TaskActivityRecord> {
+    pub fn durable_task_activity(&self) -> Option<DurableTaskActivityRecord> {
         match self {
-            Self::TaskDecisionStarted(progress) => {
-                Some(TaskActivityRecord::TaskDecisionStarted(progress.clone()))
-            }
-            Self::TaskDecisionCompleted(progress) => {
-                Some(TaskActivityRecord::TaskDecisionCompleted(progress.clone()))
-            }
-            Self::TaskTransferProgress(progress) => {
-                Some(TaskActivityRecord::TaskTransferProgress(progress.clone()))
-            }
+            Self::DurableTaskDecisionStarted(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskDecisionStarted(progress.clone()),
+            ),
+            Self::DurableTaskDecisionCompleted(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskDecisionCompleted(progress.clone()),
+            ),
+            Self::DurableTaskTransferProgress(progress) => Some(
+                DurableTaskActivityRecord::DurableTaskTransferProgress(progress.clone()),
+            ),
             Self::ContextProgress(_)
             | Self::ToolCallStarted(_)
             | Self::FleetResponseChunk(_)
@@ -204,9 +204,9 @@ impl ActivityFrame<'_> {
             Self::ToolCallCompleted(body) => Some(&body.call_id),
             Self::FleetResponseChunk(_)
             | Self::ContextProgress(_)
-            | Self::TaskDecisionStarted(_)
-            | Self::TaskDecisionCompleted(_)
-            | Self::TaskTransferProgress(_) => None,
+            | Self::DurableTaskDecisionStarted(_)
+            | Self::DurableTaskDecisionCompleted(_)
+            | Self::DurableTaskTransferProgress(_) => None,
         }
     }
 

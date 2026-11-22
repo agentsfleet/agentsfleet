@@ -29,7 +29,7 @@ pub(super) struct Judged {
     pub(super) over_budget: Option<bool>,
     pub(super) host_renews: Option<bool>,
     pub(super) admitted: Option<bool>,
-    pub(super) has_task: Option<bool>,
+    pub(super) has_durable_task: Option<bool>,
     pub(super) extended_until: Option<jiff_sqlx::Timestamp>,
     pub(super) thread_moved: bool,
 }
@@ -56,7 +56,7 @@ impl Judged {
     /// this runner's live holder is lost before anything else is asked of it.
     pub(super) fn verdict(&self) -> Verdict {
         let held = |check: Option<bool>| check.unwrap_or(false);
-        if self.found && held(self.has_task) {
+        if self.found && held(self.has_durable_task) {
             return Verdict::Tasked;
         }
         if !self.found || !held(self.host_renews) {

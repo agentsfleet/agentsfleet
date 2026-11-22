@@ -25,7 +25,7 @@ const EVERY_PRODUCER: [Producer; 8] = [
     Producer::ScheduleFire,
     Producer::GateContinuation,
     Producer::QuestionAnswer,
-    Producer::TaskContinuation,
+    Producer::DurableTaskContinuation,
     Producer::SlackMention,
 ];
 

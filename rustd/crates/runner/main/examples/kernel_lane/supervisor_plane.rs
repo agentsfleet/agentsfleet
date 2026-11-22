@@ -68,7 +68,7 @@ impl Server {
         let granted_until = af_core::clock::after(af_core::clock::now(), GRANTED_FOR);
         let healthy = Healthy {
             assigned: AssignedPolicy {
-                durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+                durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
                 decision_model_id: None,
                 sandbox_tier: SandboxTier::LandlockFull,
                 network_policy: NetworkPolicy::DenyAllEgress,
@@ -144,7 +144,7 @@ async fn reply(
             body: body.clone(),
         })
         .unwrap_or_else(|_| unreachable!("the trial retains its HTTP transcript"));
-    if path.contains("/tasks/")
+    if path.contains("/durable_tasks/")
         && let Some(recovery) = &plane.recovery
     {
         let response = recovery.lock().await.reply(&method, &uri, body);

@@ -2,13 +2,13 @@
 
 import { CaretUpIcon, GitDiffIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
-import { useFleetTaskView } from "../../tasks/FleetTaskProvider";
+import { useFleetDurableTaskView } from "../../tasks/FleetTaskProvider";
 import { recordedChanges } from "./recorded-changes";
 import { RecordedChangesDialog } from "./RecordedChangesDialog";
 
 /** Only confirmed writes from this fleet's recorded turns enter the count. */
 export function ChangesStrip() {
-  const view = useFleetTaskView();
+  const view = useFleetDurableTaskView();
   const changes = view?.subject ? recordedChanges(view.turns ?? [], {includeRunning: false}) : [];
   if (!changes.length) return null;
   return <div data-changes-strip="" className="flex justify-center pb-md"><RecordedChangesDialog changes={changes}>

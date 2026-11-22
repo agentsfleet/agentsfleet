@@ -6,7 +6,7 @@ import { test as base } from "@playwright/test";
 import { applicationCss } from "./fleet-output-browser-assets";
 import { summary, detail } from "@/tests/helpers/task-reads";
 import { SCHEDULE_TURN } from "@/tests/helpers/schedule-activity";
-import { visualTaskDetail, visualTaskPage } from "./refresh-visual-data";
+import { visualDurableTaskDetail, visualDurableTaskPage } from "./refresh-visual-data";
 
 export const test = base.extend<object, {chatProbe: string}>({
   chatProbe: [async ({browserName}, provideProbe) => {
@@ -17,14 +17,14 @@ export const test = base.extend<object, {chatProbe: string}>({
     const server = http.createServer((request, response) => {
       if (request.url === "/probe.js") {
         response.writeHead(200, {"content-type": "text/javascript"}); response.end(built.stdout);
-      } else if (request.url?.includes("/tasks")) {
+      } else if (request.url?.includes("/durable_tasks")) {
         const referer = new URL(request.headers.referer ?? "http://localhost");
         if (referer.searchParams.has("visual")) {
           const selected = referer.searchParams.get("state");
           const scenario = selected === "empty" || selected === "completed" || selected === "error" ? selected : "running";
           const started = Date.now();
           response.writeHead(200, {"content-type": "application/json"});
-          response.end(JSON.stringify(request.url.includes("?limit=") ? visualTaskPage(scenario, started) : visualTaskDetail(scenario, started)));
+          response.end(JSON.stringify(request.url.includes("?limit=") ? visualDurableTaskPage(scenario, started) : visualDurableTaskDetail(scenario, started)));
           return;
         }
         const task = {...summary(undefined, "running"), title: "Validate the Linkwarden repair"};

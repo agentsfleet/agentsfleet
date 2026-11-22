@@ -27,7 +27,7 @@ export {
 };
 
 export type UseFleetTurnStreamResult = {
-  tasksSeq: number;
+  durableTasksSeq: number;
   approvalsSeq: number;
   turns: FleetTurn[];
   connectionStatus: ConnectionStatus;
@@ -106,7 +106,7 @@ export function useFleetTurnStream(
   // it, held every message from then on. Work is now reported per turn, on
   // the row it belongs to, where a strand can only misreport itself.
   return {
-    tasksSeq: snapshot.tasksSeq,
+    durableTasksSeq: snapshot.durableTasksSeq,
     approvalsSeq: snapshot.approvalsSeq,
     turns: snapshot.turns,
     connectionStatus: snapshot.connectionStatus,

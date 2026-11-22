@@ -159,14 +159,14 @@ impl Runners {
         if request.assigned_policy.decision_model_id.is_some() {
             return Err(rejected(DETAIL_TENANT_DECISION_MODEL));
         }
-        let tasks_off = RegisterRequest {
+        let durable_tasks_off = RegisterRequest {
             assigned_policy: AssignedPolicy {
                 durable_tasks_enabled: false,
                 ..request.assigned_policy.clone()
             },
             ..request.clone()
         };
-        let prepared = Prepared::of(self, &tasks_off, now)?;
+        let prepared = Prepared::of(self, &durable_tasks_off, now)?;
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REGISTER))?;
         prepared

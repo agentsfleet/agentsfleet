@@ -3,8 +3,8 @@
 
 use super::*;
 use af_wire::{
+    durable_task::CheckpointTransferPurpose,
     run::{TurnCheckpointPlan, TurnResume},
-    task::CheckpointTransferPurpose,
 };
 use afr_agent::TurnSnapshot;
 use std::sync::{Arc, Mutex};

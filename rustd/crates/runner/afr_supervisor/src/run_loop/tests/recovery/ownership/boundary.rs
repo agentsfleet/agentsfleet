@@ -13,11 +13,11 @@ fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
         turn_id: fixture.run.event.turn_id.to_string(),
         fencing_token: fixture.run.fencing_token,
         file_permit: None,
-        state: RecoveryState::Task(TaskRecovery {
+        state: RecoveryState::DurableTask(DurableTaskRecovery {
             task: fixture
                 .prepared
                 .inputs
-                .current_task
+                .current_durable_task
                 .clone()
                 .ok_or_else(|| error::config("fixture task missing"))?,
             history: Zeroizing::new(Vec::new()),
@@ -26,11 +26,11 @@ fn snapshot(fixture: &Fixture) -> Result<RecoverySnapshot> {
 }
 
 fn unavailable(call: &Call) -> Option<Answer> {
-    (call.verb == Verb::TaskCheckpointPlan).then(|| {
+    (call.verb == Verb::DurableTaskCheckpointPlan).then(|| {
         Answer::Fail(error::refused(
             call.verb,
             503,
-            Some(af_core::error_code::TASK_STORAGE_UNAVAILABLE),
+            Some(af_core::error_code::DURABLE_TASK_STORAGE_UNAVAILABLE),
         ))
     })
 }

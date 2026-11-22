@@ -10,7 +10,7 @@ import { ActivityFixture } from "./chat-activity-probe";
 import { SetupChecks } from "@/components/domain/setup/summary/SetupChecks";
 import { FleetActivityRow, SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
 import { ChatFailure } from "@/components/domain/shared/chat/ChatFailure";
-import { TaskFixture } from "./task-browser-probe";
+import { DurableTaskFixture } from "./task-browser-probe";
 import { ChatScrollFixture } from "./chat-scroll-probe";
 import { ScheduleFixture } from "./schedule-browser-probe";
 import { DraftSidebarItem } from "@/components/layout/DraftSidebarItem";
@@ -37,7 +37,7 @@ const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
 createRoot(root).render(<ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem={false}>{query.has("address") ? <ChatAddressFixture /> : query.has("fleetSteer") ? <FleetSteerRowFixture /> : query.has("fleetStop") ? <FleetStopFixture /> : query.has("chatError") ? <ChatErrorFixture draft={query.has("fleetSave") ? DRAFT.id : undefined} /> : query.has("usage") ? <UsageBrowserFixture /> : query.has("resourcePages") ? <ResourcePagesFixture /> : query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
-</main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
+</main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("durable_tasks") ? <DurableTaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Sample data · Chat component review</p>
   <DraftConversation client={client} view={query.has("loading") ? {...view, busy: true,
     contextProgress: query.get("loading") === "compacting" ? {sequence: MESSAGE.sequence, progress: {generation: 1, state: CONTEXT_STATE.summarizing}} : undefined,

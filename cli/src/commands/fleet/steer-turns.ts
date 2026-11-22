@@ -255,7 +255,7 @@ export const pollTurnTerminal = (
           error._tag === CLI_ERROR_TAG.server && error.status === 404 && error.code === TURN_NOT_FOUND_CODE)
           ? Effect.succeed(null) : Effect.fail(error)),
       );
-      if (isRecord(res) && res.turn_id === turnId) activity.history(res["task_activity"]);
+      if (isRecord(res) && res.turn_id === turnId) activity.history(res["durable_task_activity"]);
       if (isRecord(res) && res.turn_id === turnId && isString(res.status) && isTerminal(res.status)) {
         tools.history(res["tool_calls"]);
         if (isString(res["response_text"]) && res["response_text"]) printLine(`Final reply:\n${activityText(res["response_text"])}`);

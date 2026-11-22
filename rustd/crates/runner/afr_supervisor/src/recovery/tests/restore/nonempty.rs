@@ -6,7 +6,7 @@ use crate::{
     recovery::{progress::Progress, transfer, transfer::http_tests::server::Server},
     test_support::{self, Answer},
 };
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointAuthorizations, CheckpointFile, CheckpointObject, CheckpointObjectStatus,
     CheckpointPlaintext, CheckpointTransfer,
 };
@@ -75,7 +75,7 @@ fn plan(object: &CheckpointObject) -> CheckpointPlan {
         covered_input_sequence: 3,
         effect_watermark: 2,
         expires_at: expires,
-        pin: af_wire::task::CheckpointPin {
+        pin: af_wire::durable_task::CheckpointPin {
             id: ID.to_owned(),
             resource_version: 1,
             operation_deadline: expires,
@@ -95,7 +95,7 @@ fn native(
     })?;
     Ok(test_support::plane(move |call| match call.verb {
         Verb::Progress => test_support::json(&serde_json::json!({})),
-        Verb::TaskCheckpointAuthorizations => {
+        Verb::DurableTaskCheckpointAuthorizations => {
             let input = call.body.as_ref().and_then(|bytes| {
                 serde_json::from_slice::<CheckpointAuthorizationInput>(bytes).ok()
             });
@@ -122,8 +122,8 @@ fn session<'a>(
         run: identity,
         workspace: identity,
         fence: 31,
-        task: DecisionTaskVersion {
-            task_id: ID.to_owned(),
+        task: DecisionDurableTaskVersion {
+            durable_task_id: ID.to_owned(),
             generation: 7,
         },
         plan,
@@ -180,7 +180,7 @@ async fn repeated_manifest_ids_share_one_authorization_and_one_authenticated_dow
     assert_eq!(
         test_support::drain(&mut calls)
             .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+            .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
             .count(),
         1
     );

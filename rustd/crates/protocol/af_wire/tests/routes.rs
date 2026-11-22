@@ -24,34 +24,34 @@ fn test_route_templates_compose_from_their_segments() {
         ("schedule", paths::RUN_SCHEDULE),
         ("schedule_runs", paths::RUN_SCHEDULE_RUNS),
         ("messages", paths::RUN_MESSAGES),
-        ("task_inputs", paths::RUN_TASK_INPUTS),
-        ("task_effects", paths::RUN_TASK_EFFECTS),
-        ("task_effect", paths::RUN_TASK_EFFECT),
-        ("task_decisions", paths::RUN_TASK_DECISIONS),
-        ("task_decision", paths::RUN_TASK_DECISION),
+        ("durable_task_inputs", paths::RUN_DURABLE_TASK_INPUTS),
+        ("durable_task_effects", paths::RUN_DURABLE_TASK_EFFECTS),
+        ("durable_task_effect", paths::RUN_DURABLE_TASK_EFFECT),
+        ("durable_task_decisions", paths::RUN_DURABLE_TASK_DECISIONS),
+        ("durable_task_decision", paths::RUN_DURABLE_TASK_DECISION),
     ];
     let rendered = routes
         .iter()
-        .map(|(name, template)| format!("{name:<16} {template}"))
+        .map(|(name, template)| format!("{name:<22} {template}"))
         .collect::<Vec<_>>()
         .join("\n");
     insta::assert_snapshot!(rendered, @r"
-    enrol            /v1/admin/runners
-    self             /v1/runners/me
-    stream           /v1/runners/me/stream
-    credentials_mint /v1/runners/me/credentials/mint
-    memory           /v1/runners/me/memory/{fleet_id}
-    memory_recall    /v1/runners/me/memory/{fleet_id}/recall
-    tool_calls       /v1/runners/me/runs/{run_id}/items
-    schedules        /v1/runners/me/runs/{run_id}/schedules
-    schedule         /v1/runners/me/runs/{run_id}/schedules/{schedule_id}
-    schedule_runs    /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs
-    messages         /v1/runners/me/runs/{run_id}/messages
-    task_inputs      /v1/runners/me/runs/{run_id}/tasks/inputs
-    task_effects     /v1/runners/me/runs/{run_id}/tasks/effects
-    task_effect      /v1/runners/me/runs/{run_id}/tasks/effects/{effect_id}
-    task_decisions   /v1/runners/me/runs/{run_id}/tasks/decisions
-    task_decision    /v1/runners/me/runs/{run_id}/tasks/decisions/{call_id}
+    enrol                  /v1/admin/runners
+    self                   /v1/runners/me
+    stream                 /v1/runners/me/stream
+    credentials_mint       /v1/runners/me/credentials/mint
+    memory                 /v1/runners/me/memory/{fleet_id}
+    memory_recall          /v1/runners/me/memory/{fleet_id}/recall
+    tool_calls             /v1/runners/me/runs/{run_id}/items
+    schedules              /v1/runners/me/runs/{run_id}/schedules
+    schedule               /v1/runners/me/runs/{run_id}/schedules/{schedule_id}
+    schedule_runs          /v1/runners/me/runs/{run_id}/schedules/{schedule_id}/runs
+    messages               /v1/runners/me/runs/{run_id}/messages
+    durable_task_inputs    /v1/runners/me/runs/{run_id}/durable_tasks/inputs
+    durable_task_effects   /v1/runners/me/runs/{run_id}/durable_tasks/effects
+    durable_task_effect    /v1/runners/me/runs/{run_id}/durable_tasks/effects/{effect_id}
+    durable_task_decisions /v1/runners/me/runs/{run_id}/durable_tasks/decisions
+    durable_task_decision  /v1/runners/me/runs/{run_id}/durable_tasks/decisions/{call_id}
     ");
 }
 

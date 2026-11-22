@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { Button } from "@agentsfleet/design-system";
-import { adoptTaskGoal, type TaskDetail } from "@/lib/api/tasks";
+import { adoptDurableTaskGoal, type DurableTaskDetail } from "@/lib/api/tasks";
 import { setupRequest } from "@/lib/api/draft-request";
 import { readDecisionPolicy, type DecisionPolicy } from "@/lib/api/decision-policy";
 import { fleetPath } from "@/lib/api/fleet-paths";
@@ -15,9 +15,9 @@ const Saved = z.object({setup_revision_id: z.uuidv7(), setup_revision: z.string(
 type Preview = {revisionId: string; revision: string; policy: DecisionPolicy; operation: string};
 type State = {kind: "idle"} | {kind: "reading"} | {kind: "preview"; value: Preview}
   | {kind: "applying"; value: Preview} | {kind: "notice"; text: string};
-type Props = {workspaceId: string; fleetId: string; detail: TaskDetail; enabled: boolean; onChanged: () => void};
+type Props = {workspaceId: string; fleetId: string; detail: DurableTaskDetail; enabled: boolean; onChanged: () => void};
 
-export function TaskGoalAdoption({workspaceId, fleetId, detail, enabled, onChanged}: Props) {
+export function DurableTaskGoalAdoption({workspaceId, fleetId, detail, enabled, onChanged}: Props) {
   const [state, setState] = useState<State>({kind: "idle"});
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
@@ -45,7 +45,7 @@ export function TaskGoalAdoption({workspaceId, fleetId, detail, enabled, onChang
     const pending = new AbortController();
     active.current = pending;
     setState({kind: "applying", value: preview});
-    const result = await adoptTaskGoal(workspaceId, fleetId, detail, preview.revisionId, preview.operation, pending.signal);
+    const result = await adoptDurableTaskGoal(workspaceId, fleetId, detail, preview.revisionId, preview.operation, pending.signal);
     active.current = null;
     if (pending.signal.aborted) return;
     if (result.kind === "confirmed") {setState({kind: "idle"}); onChanged();}

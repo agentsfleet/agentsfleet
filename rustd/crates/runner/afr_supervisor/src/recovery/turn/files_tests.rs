@@ -8,13 +8,13 @@ use crate::{
 };
 use af_core::{clock, id::Uuid7};
 use af_wire::{
+    durable_task::{
+        CheckpointEntry, CheckpointFile, CheckpointObject, CheckpointObjectStatus, CheckpointPage,
+        CheckpointPin, CheckpointPlaintext, CheckpointTransfer,
+    },
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommand,
         TurnCheckpointRef, TurnCheckpointResponse as Response, TurnScope, TurnWorkspace,
-    },
-    task::{
-        CheckpointEntry, CheckpointFile, CheckpointObject, CheckpointObjectStatus, CheckpointPage,
-        CheckpointPin, CheckpointPlaintext, CheckpointTransfer,
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};

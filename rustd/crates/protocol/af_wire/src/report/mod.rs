@@ -185,7 +185,7 @@ pub struct ReportRequest<'a> {
     pub outcome: Outcome,
     /// Safe-boundary task disposition, independently verified before changing task state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub task: Option<crate::task::TaskReport>,
+    pub durable_task: Option<crate::durable_task::DurableTaskReport>,
     /// The granular cause when the run failed.
     pub failure_reason: Option<FailureClass>,
     /// Human-readable cause, stored only on failure.

@@ -7,10 +7,10 @@ use super::super::{
 use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
+    durable_task::{CheckpointEntry, CheckpointTransferPurpose},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointResponse as Response,
     },
-    task::{CheckpointEntry, CheckpointTransferPurpose},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
 use garde::Validate as _;

@@ -27,5 +27,5 @@ async fn migrated() -> (TestDatabase, afd_db::Db) {
     (database, db)
 }
 
+mod durable_task_lock_privileges;
 mod statements;
-mod task_lock_privileges;

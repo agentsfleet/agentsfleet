@@ -14,7 +14,7 @@
     "association": {
       "question": "Which trusted task matches the newest request?",
       "criteria": {
-        "matching_task": "The message identifies the same defect and pull request as a candidate.",
+        "matching_durable_task": "The message identifies the same defect and pull request as a candidate.",
         "new_work": "It requests an independent outcome absent from the candidates.",
         "unclear": "Several candidates fit, or the message does not identify its target."
       }

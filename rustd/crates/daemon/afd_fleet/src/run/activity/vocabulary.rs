@@ -62,20 +62,20 @@ const fn slot(frame: &ActivityFrame<'_>) -> usize {
         ActivityFrame::ToolCallCompleted(_) => 2,
         ActivityFrame::ToolCallProgress(_) => 3,
         ActivityFrame::ContextProgress(_) => 4,
-        ActivityFrame::TaskDecisionStarted(_) => 5,
-        ActivityFrame::TaskDecisionCompleted(_) => 6,
-        ActivityFrame::TaskTransferProgress(_) => 7,
+        ActivityFrame::DurableTaskDecisionStarted(_) => 5,
+        ActivityFrame::DurableTaskDecisionCompleted(_) => 6,
+        ActivityFrame::DurableTaskTransferProgress(_) => 7,
     }
 }
 
 /// One frame of each kind, the smallest each can be.
 fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
-    let progress = af_wire::activity::TaskActivity {
+    let progress = af_wire::activity::DurableTaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
-        task_id: None,
+        durable_task_id: None,
         source_turn_id: None,
-        operation: af_wire::activity::TaskActivityOperation::Intent,
-        phase: af_wire::activity::TaskActivityPhase::Starting,
+        operation: af_wire::activity::DurableTaskActivityOperation::Intent,
+        phase: af_wire::activity::DurableTaskActivityPhase::Starting,
         provider: Some("typesafe".to_owned()),
         model: Some("jev-latest".to_owned()),
         completed: 0,
@@ -84,9 +84,9 @@ fn one_of_each() -> [ActivityFrame<'static>; ACTIVITY_VARIANTS] {
         sequence: None,
     };
     [
-        ActivityFrame::TaskDecisionStarted(progress.clone()),
-        ActivityFrame::TaskDecisionCompleted(progress.clone()),
-        ActivityFrame::TaskTransferProgress(progress),
+        ActivityFrame::DurableTaskDecisionStarted(progress.clone()),
+        ActivityFrame::DurableTaskDecisionCompleted(progress.clone()),
+        ActivityFrame::DurableTaskTransferProgress(progress),
         ActivityFrame::ToolCallStarted(ToolCallStarted {
             name: TOOL,
             args_redacted: Cow::Borrowed("{}"),

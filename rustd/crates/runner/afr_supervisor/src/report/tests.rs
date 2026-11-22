@@ -292,7 +292,7 @@ fn a_stopped_run_reports_stopped_with_its_tokens_and_no_answer() {
     assert_eq!(report.response_text, "", "a stopped turn gets no answer");
     assert_eq!(report.checkpoint.last_response, "");
     assert_eq!(report.tokens, answer().result.token_count);
-    assert_eq!(report.task, None);
+    assert_eq!(report.durable_task, None);
     assert_eq!(report.folded_through_sequence, None);
     assert_eq!(report.telemetry.time_to_first_token_ms, 120);
 }

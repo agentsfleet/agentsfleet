@@ -22,17 +22,17 @@ impl<'s, 'run> Harness<'s, 'run> {
     ) -> Self {
         let selection = shared.selection;
         let mut root = Self {
-            task: shared.prepared_task.cloned(),
+            task: shared.prepared_durable_task.cloned(),
             incorporated_input_sequence: shared
-                .recovered_task
+                .recovered_durable_task
                 .map_or(0, |recovery| recovery.task.covered_input_sequence),
             reconciled_effect_ordinal: shared
-                .recovered_task
+                .recovered_durable_task
                 .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
             confirmed_effect_watermark: shared
-                .recovered_task
+                .recovered_durable_task
                 .map_or(0, |recovery| recovery.task.confirmed_effect_watermark),
-            task_report: None,
+            durable_task_report: None,
             shared,
             id: 0,
             depth: 0,
@@ -43,7 +43,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
             context: context::State::new(
-                if shared.recovered_task.is_some() || shared.recovered_turn.is_some() {
+                if shared.recovered_durable_task.is_some() || shared.recovered_turn.is_some() {
                     0
                 } else {
                     opening.len().saturating_sub(1)
@@ -51,7 +51,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             ),
             // A recovered task's first assessment judges its whole saved
             // history as one action group.
-            transcript: if shared.recovered_task.is_some() {
+            transcript: if shared.recovered_durable_task.is_some() {
                 Transcript::resumed(opening)
             } else {
                 Transcript::new(opening)
@@ -97,7 +97,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             incorporated_input_sequence: 0,
             reconciled_effect_ordinal: 0,
             confirmed_effect_watermark: 0,
-            task_report: None,
+            durable_task_report: None,
             shared,
             id,
             depth,

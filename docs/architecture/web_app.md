@@ -270,11 +270,11 @@ Both purposes use `ChatConnection`, `ReplyStream`, `ChatThread`, `ChatMessageRow
 Effects own connections and cleanup; render stays pure and Hooks remain static.
 Private history loading does not wait for model or sidebar lists.
 
-Fleet chat also renders `TaskPanel` inline above its composer through `FleetThreadViewport`.
-Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `TaskDetail`.
+Fleet chat also renders `DurableTaskPanel` inline above its composer through `FleetThreadViewport`.
+Its scoped reads load compact unfinished work; expanding a row loads accepted criteria through `DurableTaskDetail`.
 The [DT owner](durable_tasks.md#status-and-ownership) distinguishes these implemented reads from pending task attempts and recovery.
 
-The existing fleet stream supplies `task_changed` read hints through `tasksSeq`; its initial hello and gap recovery also invalidate task reads.
+The existing fleet stream supplies `durable_task_changed` read hints through `durableTasksSeq`; its initial hello and gap recovery also invalidate task reads.
 Account or workspace changes abort old requests, and access loss clears private rows.
 Transient failures retain labelled confirmed data and expose retry without claiming fresh progress.
 

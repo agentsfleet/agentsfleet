@@ -255,7 +255,7 @@ mod tests {
                 ReadOutcome::Forbidden,
             ),
             (
-                Refusal::coded(error_code::TASK_NOT_FOUND, "no such task"),
+                Refusal::coded(error_code::DURABLE_TASK_NOT_FOUND, "no such task"),
                 ReadOutcome::NotFound,
             ),
         ];

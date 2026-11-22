@@ -72,8 +72,8 @@ const INVENTORY: &[&str] = &[
     // One tool call of an event, in full — the read behind "show all".
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/turns/{turn_id}/items/{item_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/messages",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks",
-    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/tasks/{task_id}",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/durable_tasks",
+    "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/durable_tasks/{durable_task_id}",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/memories/{key}",
     // Who reads and publishes the workspace's shared memory.

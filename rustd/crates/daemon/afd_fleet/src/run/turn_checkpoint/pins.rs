@@ -1,8 +1,8 @@
 //! A pin grants bounded custody only after live connection and run proof.
 
 use af_core::id::Uuid7;
+use af_wire::durable_task::CheckpointPin;
 use af_wire::run::{TurnCheckpointRef, TurnCheckpointResponse};
-use af_wire::task::CheckpointPin;
 
 use super::{
     TurnCheckpointRefusal, TurnRun, allocation,

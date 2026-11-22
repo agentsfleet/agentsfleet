@@ -1,5 +1,5 @@
-import { applyTaskActivity } from "./fleet-stream-task-activity";
-import { mergeTaskActivity, readTaskActivityHistory } from "../task-activity";
+import { applyDurableTaskActivity } from "./fleet-stream-task-activity";
+import { mergeDurableTaskActivity, readDurableTaskActivityHistory } from "../task-activity";
 import { instantMs, isInstant } from "@/lib/api/decode";
 import { type TurnRow, type LiveFrame } from "@/lib/api/turns";
 import { FRAME_KIND } from "@/lib/api/turns-types";
@@ -56,10 +56,10 @@ export function applyLiveFrame(
   nowMs: number = Date.now(),
 ): FleetTurn[] {
   switch (frame.kind) {
-    case FRAME_KIND.TASK_DECISION_STARTED:
-    case FRAME_KIND.TASK_DECISION_COMPLETED:
-    case FRAME_KIND.TASK_TRANSFER_PROGRESS:
-      return applyTaskActivity(prev, frame);
+    case FRAME_KIND.DURABLE_TASK_DECISION_STARTED:
+    case FRAME_KIND.DURABLE_TASK_DECISION_COMPLETED:
+    case FRAME_KIND.DURABLE_TASK_TRANSFER_PROGRESS:
+      return applyDurableTaskActivity(prev, frame);
     case FRAME_KIND.CONTEXT_PROGRESS:
       return applyContextProgress(prev, frame);
     case FRAME_KIND.TURN_ADMITTED:
@@ -268,7 +268,7 @@ export function mergeBackfill(
   // The one exception moves forward only: a "received" row starts a live row
   // still waiting, whose received frame fell in the gap the page recovers.
   const authoritative = new Map<string, TurnRow>();
-  const progress = new Map(rows.map(row => [row.turn_id, readTaskActivityHistory("task_activity" in row ? row.task_activity : undefined)]));
+  const progress = new Map(rows.map(row => [row.turn_id, readDurableTaskActivityHistory("durable_task_activity" in row ? row.durable_task_activity : undefined)]));
   const started = new Set<string>();
   for (const r of rows) {
     if (!seen.has(r.turn_id)) continue;
@@ -279,8 +279,8 @@ export function mergeBackfill(
     const replacement = authoritative.get(e.id);
     if (!replacement) {
       const running = started.has(e.id) ? startWaiting(e) : e;
-      const taskActivity = mergeTaskActivity(e.taskActivity, progress.get(e.id));
-      return taskActivity === running.taskActivity ? running : {...running, taskActivity};
+      const durableTaskActivity = mergeDurableTaskActivity(e.durableTaskActivity, progress.get(e.id));
+      return durableTaskActivity === running.durableTaskActivity ? running : {...running, durableTaskActivity};
     }
     const reconciled = rowToTurn(replacement);
     // The reasoning span is the browser's own measure — no row carries it — so
@@ -292,7 +292,7 @@ export function mergeBackfill(
       ...reconciled,
       ...(reconciled.text.length > 0 ? {} : { text: e.text, textTrimmed: e.textTrimmed }),
       reply: reconciled.reply.length > 0 ? reconciled.reply : e.reply,
-      taskActivity: mergeTaskActivity(e.taskActivity, reconciled.taskActivity),
+      durableTaskActivity: mergeDurableTaskActivity(e.durableTaskActivity, reconciled.durableTaskActivity),
       runRestarted: e.runRestarted,
       reasoning: e.reasoning,
       reasoningStartedAtMs: e.reasoningStartedAtMs,

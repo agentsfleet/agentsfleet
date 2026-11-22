@@ -9,7 +9,7 @@ function uploadBoundary(reply: () => Promise<Response>) {
   vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
     const path = input instanceof Request ? input.url : String(input);
     if (path.endsWith("/uploads")) return uploads();
-    if (path.includes("/tasks?")) return Promise.resolve(Response.json({items: [], next_cursor: null}));
+    if (path.includes("/durable_tasks?")) return Promise.resolve(Response.json({items: [], next_cursor: null}));
     throw new Error(`Unexpected fixture request: ${path}`);
   });
   return uploads;
@@ -76,7 +76,7 @@ it("cancels a pending upload on unmount and exposes removal only in the native c
   const aborted = vi.fn();
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const path = input instanceof Request ? input.url : String(input);
-    if (path.includes("/tasks?")) return Promise.resolve(Response.json({items: [], next_cursor: null}));
+    if (path.includes("/durable_tasks?")) return Promise.resolve(Response.json({items: [], next_cursor: null}));
     if (!path.endsWith("/uploads")) throw new Error(`Unexpected fixture request: ${path}`);
     return new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => {aborted(); reject(new DOMException("Removed", "AbortError"));}, {once: true});

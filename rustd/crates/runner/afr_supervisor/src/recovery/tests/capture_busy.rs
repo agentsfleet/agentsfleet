@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
 #[tokio::test]
-async fn a_busy_task_object_returns_the_nonfatal_unavailable_class_without_committing()
+async fn a_busy_durable_task_object_returns_the_nonfatal_unavailable_class_without_committing()
 -> crate::Result<()> {
     let (plane, mut calls, _) = remote(Archive::empty(), busy_objects);
     let identity = id();
@@ -38,14 +38,14 @@ async fn a_busy_task_object_returns_the_nonfatal_unavailable_class_without_commi
     assert!(
         requests
             .iter()
-            .all(|call| call.verb != Verb::TaskCheckpointCommit)
+            .all(|call| call.verb != Verb::DurableTaskCheckpointCommit)
     );
     assert_eq!(phases(&requests).last().map(String::as_str), Some("failed"));
     Ok(())
 }
 
 fn busy_objects(call: &Call, archive: &mut Archive) -> Option<Answer> {
-    if call.verb != Verb::TaskCheckpointObjectsRegister {
+    if call.verb != Verb::DurableTaskCheckpointObjectsRegister {
         return None;
     }
     let Answer::Reply(bytes) = archive.registered(call) else {

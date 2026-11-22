@@ -9,9 +9,9 @@ mod urls;
 mod values;
 
 #[cfg(test)]
-mod origin_tests;
+mod durable_task_tests;
 #[cfg(test)]
-mod task_tests;
+mod origin_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

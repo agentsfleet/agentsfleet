@@ -312,7 +312,7 @@ fn processed<'a>(run: &'a RunPayload<'a>, folded_through: Option<i64>) -> Report
     ReportRequest {
         folded_through_sequence: folded_through,
         setup: None,
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed(&run.run_id),
         turn_id: Cow::Borrowed(&run.event.turn_id),
         fencing_token: run.fencing_token,

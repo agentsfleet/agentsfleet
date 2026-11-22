@@ -163,8 +163,10 @@ pub fn fleet_handler_for<D: TenantPlane>(verb: FleetRoute) -> Option<MethodRoute
             SETUP_BODY_BYTES_MAX,
         )),
         FleetRoute::Turns => Some(get(handler::turn::fleet_list::<D>)),
-        FleetRoute::Tasks => Some(get(fleet::tasks::list::<D>)),
-        FleetRoute::Task => Some(get(fleet::tasks::one::<D>).patch(fleet::tasks::change::<D>)),
+        FleetRoute::DurableTasks => Some(get(fleet::durable_tasks::list::<D>)),
+        FleetRoute::DurableTask => {
+            Some(get(fleet::durable_tasks::one::<D>).patch(fleet::durable_tasks::change::<D>))
+        }
         FleetRoute::Turn => {
             Some(get(handler::turn::detail::<D>).patch(handler::turn::stop::fleet::<D>))
         }

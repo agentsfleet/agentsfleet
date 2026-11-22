@@ -1,11 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { ChangesStrip } from "./ChangesStrip";
-import type { FleetTaskProps } from "../../tasks/FleetTaskProvider";
+import type { FleetDurableTaskProps } from "../../tasks/FleetTaskProvider";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 
-const state = vi.hoisted(() => ({view: null as Pick<FleetTaskProps, "subject" | "turns"> | null}));
-vi.mock("../../tasks/FleetTaskProvider", () => ({useFleetTaskView: () => state.view}));
+const state = vi.hoisted(() => ({view: null as Pick<FleetDurableTaskProps, "subject" | "turns"> | null}));
+vi.mock("../../tasks/FleetTaskProvider", () => ({useFleetDurableTaskView: () => state.view}));
 afterEach(() => {cleanup(); state.view = null;});
 
 it("shows no change claim without an identity or confirmed writes", () => {

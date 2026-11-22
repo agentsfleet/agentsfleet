@@ -13,7 +13,7 @@ async fn decision_routes_preserve_runner_auth_strict_input_and_datastore_failure
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-    let collection = format!("/v1/runners/me/runs/{RUN_ID}/tasks/decisions");
+    let collection = format!("/v1/runners/me/runs/{RUN_ID}/durable_tasks/decisions");
     let receipt = format!("{collection}/{FLEET_ID}");
     let reservation = json!({"operation_id": FLEET_ID, "fencing_token": 7,
         "source_turn_id": RUN_ID, "assessment": {"kind": "message"}, "evidence": {}});

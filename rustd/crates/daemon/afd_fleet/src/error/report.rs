@@ -59,7 +59,7 @@ pub(crate) fn posture_corrupt() -> Error {
 pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| {
         if afd_db::error::is_bound_reached(&source) {
-            Error::new(ErrorKind::TaskStatementCancelled { source })
+            Error::new(ErrorKind::DurableTaskStatementCancelled { source })
         } else {
             Error::new(ErrorKind::Query { context, source })
         }

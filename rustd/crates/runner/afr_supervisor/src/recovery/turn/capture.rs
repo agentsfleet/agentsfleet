@@ -4,12 +4,12 @@ use super::super::{catalog::Catalog, files::Workspace, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
+    durable_task::{CheckpointObjectStatus, CheckpointPage},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointBegin,
         TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
         TurnWorkspace,
     },
-    task::{CheckpointObjectStatus, CheckpointPage},
 };
 use afr_agent::TurnSnapshot;
 use garde::Validate as _;
@@ -126,7 +126,7 @@ impl TurnSession<'_, '_> {
     ) -> Result<Vec<(String, String)>> {
         let mut ids = BTreeMap::new();
         let chunks: Vec<_> = catalog.chunks.iter().collect();
-        for batch in chunks.chunks(af_wire::task::CHECKPOINT_BATCH) {
+        for batch in chunks.chunks(af_wire::durable_task::CHECKPOINT_BATCH) {
             let objects = self
                 .register(
                     batch

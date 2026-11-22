@@ -34,8 +34,8 @@ import { reportsOwnRun } from "../../activity/replies/fleetReplyMessage";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { FleetScopeProvider } from "../stream/FleetScope";
-import { FleetTaskProvider } from "../../tasks/FleetTaskProvider";
-import { TaskPanel } from "../../tasks/TaskPanel";
+import { FleetDurableTaskProvider } from "../../tasks/FleetTaskProvider";
+import { DurableTaskPanel } from "../../tasks/TaskPanel";
 import { FLEET_CHAT_CONFIG } from "../../activity/tools/FleetToolRegistry";
 
 export type FleetThreadProps = {
@@ -92,9 +92,9 @@ function OwnedFleetThread(props: FleetThreadProps) {
   const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount} = useThreadRuntime(props);
   const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.turns, stream.reconcileRows);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
-  const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
-  const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={taskSubject} revision={stream.tasksSeq} turns={stream.turns} sources={props.sources} readOnly={props.archived} />, [props.sources, props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq, stream.turns, props.archived]);
+  const durableTaskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
+  const work = useMemo(() => <DurableTaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
+    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={stream.turns} sources={props.sources} readOnly={props.archived} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, stream.turns, props.archived]);
   return (
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -106,13 +106,13 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} turns={stream.turns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
+              <FleetDurableTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={stream.turns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
               <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
                 archived={props.archived}
                 turnsCount={stream.turns.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
                 onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
-              </FleetTaskProvider>
+              </FleetDurableTaskProvider>
             </DashboardPanel>
           </SenderNamesProvider>
         </SenderLabelProvider>

@@ -83,7 +83,7 @@ impl Fixtures {
     pub(crate) fn plane(&self) -> RunService {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         RunService {
-            task_reports: None,
+            durable_task_reports: None,
             turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
                 &kek,
             )),
@@ -121,7 +121,7 @@ impl Fixtures {
     /// tail makes about itself.
     pub(crate) fn plane_with_dead_bus(&self) -> RunService {
         RunService {
-            task_reports: None,
+            durable_task_reports: None,
             runs: self.runs_with_dead_bus(),
             ..self.plane()
         }

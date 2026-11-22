@@ -25,8 +25,8 @@ async fn test_thread_read_includes_queued_steers() {
     assert_eq!(first.row.actor, ACTOR);
     assert_eq!(first.request_json, BODY);
     assert_eq!(first.response_text, None);
-    assert_eq!(first.task_activity.items, []);
-    assert!(!first.task_activity.truncated);
+    assert_eq!(first.durable_task_activity.items, []);
+    assert!(!first.durable_task_activity.truncated);
 
     lane.cleanup().await;
 }
@@ -71,22 +71,22 @@ async fn test_thread_read_dedupes_assigned_steer() {
 /// The storage array and truncation scalar reconstruct the existing public history.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
+async fn durable_task_history_preserves_records_and_truncation_in_detail_and_thread() {
     let lane = TurnsLane::open().await;
     let event = afd_db::test_util::mint_id();
     lane.seed_event(&event, jiff::Timestamp::now()).await;
     let items = serde_json::json!([{
-        "kind": "task_decision_started",
+        "kind": "durable_task_decision_started",
         "progress": {
-            "activity_id": event, "task_id": null, "source_turn_id": null,
+            "activity_id": event, "durable_task_id": null, "source_turn_id": null,
             "operation": "intent", "phase": "starting", "provider": null,
             "model": null, "completed": 0, "total": null, "sequence": 2
         }
     }]);
     let mut connection = lane.connection().await;
     sqlx::query(
-        "UPDATE thread.turns SET task_activity = $3, task_activity_sequence = 2, \
-                 task_activity_truncated = true WHERE thread_id = $1 AND id = $2",
+        "UPDATE thread.turns SET durable_task_activity = $3, durable_task_activity_sequence = 2, \
+                 durable_task_activity_truncated = true WHERE thread_id = $1 AND id = $2",
     )
     .bind(&lane.fleet)
     .bind(&event)
@@ -110,10 +110,10 @@ async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
         .iter()
         .find(|row| row.row.turn_id == event)
         .expect("saved event appears in thread");
-    assert_eq!(detail.task_activity, thread.task_activity);
-    assert!(detail.task_activity.truncated);
+    assert_eq!(detail.durable_task_activity, thread.durable_task_activity);
+    assert!(detail.durable_task_activity.truncated);
     assert_eq!(
-        serde_json::to_value(&detail.task_activity.items).expect("public items serialize"),
+        serde_json::to_value(&detail.durable_task_activity.items).expect("public items serialize"),
         items
     );
     lane.cleanup().await;

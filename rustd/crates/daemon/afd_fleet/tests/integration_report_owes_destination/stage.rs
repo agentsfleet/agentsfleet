@@ -105,7 +105,7 @@ impl Stage {
         let request = ReportRequest {
             folded_through_sequence: None,
             setup: None,
-            task: None,
+            durable_task: None,
             run_id: Cow::Borrowed(run_id.as_str()),
             turn_id: Cow::Borrowed(run.turn_id.as_str()),
             fencing_token: run.fence.as_u64(),

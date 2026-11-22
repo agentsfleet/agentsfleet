@@ -131,20 +131,20 @@ const fn is_registry_spelling(code: &str) -> bool {
 // tables are walked against each other by a test, and a family that lives in
 // comparable files is a family somebody can actually compare.
 mod auth;
+mod durable_task;
 mod fleet;
 mod integration;
 mod invite;
 mod request;
 mod setup;
-mod task;
 
 pub use self::auth::*;
+pub use self::durable_task::*;
 pub use self::fleet::*;
 pub use self::integration::*;
 pub use self::invite::*;
 pub use self::request::*;
 pub use self::setup::*;
-pub use self::task::*;
 
 /// Every code this crate declares, in declaration order.
 ///
@@ -152,17 +152,17 @@ pub use self::task::*;
 /// row here is invisible to the uniqueness and problem-entry checks, which is why
 /// `test_error_registry_unique` also asserts the count.
 pub const REGISTRY: &[ErrorCode] = &[
-    TASK_NOT_FOUND,
-    TASK_STALE_STATE,
-    TASK_REPLAY_CONFLICT,
-    TASK_INVALID_TARGET,
-    TASK_LIMIT_EXHAUSTED,
-    TASK_DECISION_UNAVAILABLE,
-    TASK_INPUT_AMBIGUOUS,
-    TASK_CHECKPOINT_INCOMPATIBLE,
-    TASK_STORAGE_UNAVAILABLE,
-    TASK_EFFECT_UNCERTAIN,
-    TASK_PRECONDITION_FAILED,
+    DURABLE_TASK_NOT_FOUND,
+    DURABLE_TASK_STALE_STATE,
+    DURABLE_TASK_REPLAY_CONFLICT,
+    DURABLE_TASK_INVALID_TARGET,
+    DURABLE_TASK_LIMIT_EXHAUSTED,
+    DURABLE_TASK_DECISION_UNAVAILABLE,
+    DURABLE_TASK_INPUT_AMBIGUOUS,
+    DURABLE_TASK_CHECKPOINT_INCOMPATIBLE,
+    DURABLE_TASK_STORAGE_UNAVAILABLE,
+    DURABLE_TASK_EFFECT_UNCERTAIN,
+    DURABLE_TASK_PRECONDITION_FAILED,
     UUIDV7_INVALID_ID_SHAPE,
     INVALID_REQUEST,
     PAYLOAD_TOO_LARGE,

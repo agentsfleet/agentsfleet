@@ -1,6 +1,6 @@
 //! Presigned object transfers authenticate transport and enforce exact descriptors.
 use super::Transfers;
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointObject, CheckpointObjectStatus, CheckpointPlaintext, CheckpointTransfer,
 };
 use axum::http::{Method, StatusCode};

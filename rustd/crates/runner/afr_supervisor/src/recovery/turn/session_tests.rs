@@ -2,8 +2,8 @@
 //! changes what it asked for, before it trusts a pin, an object or a page.
 
 use super::*;
+use af_wire::durable_task::CheckpointTransferPurpose;
 use af_wire::run::TurnPrivateRoot;
-use af_wire::task::CheckpointTransferPurpose;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 

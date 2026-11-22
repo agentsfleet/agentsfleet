@@ -3,10 +3,10 @@
 use std::panic::AssertUnwindSafe;
 
 use af_core::{error_code, id::Uuid7};
-use af_wire::task::{CheckpointMode, TaskTarget};
+use af_wire::durable_task::{CheckpointMode, DurableTaskTarget};
 use afr_agent::{
-    CommittedRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave, RecoverySkip,
-    RecoverySnapshot, RecoveryState, TaskRecovery, TurnSnapshot,
+    CommittedRecovery, DurableTaskRecovery, FileRecoveryPermit, RecoveryReceipt, RecoverySave,
+    RecoverySkip, RecoverySnapshot, RecoveryState, TurnSnapshot,
 };
 use afr_sandbox::Sandbox;
 use futures_util::FutureExt as _;
@@ -105,8 +105,8 @@ impl BoundaryOwner<'_, '_> {
     ) -> Result<RecoverySave> {
         let (root, toolbox, state) = match ready {
             Ready::ApiOnly => {
-                if matches!(&snapshot.state, RecoveryState::Task(task)
-                    if !matches!(task.task.target, TaskTarget::ApiOnly))
+                if matches!(&snapshot.state, RecoveryState::DurableTask(task)
+                    if !matches!(task.task.target, DurableTaskTarget::ApiOnly))
                 {
                     return Err(error::config("file capture requires a ready sandbox"));
                 }
@@ -128,7 +128,9 @@ impl BoundaryOwner<'_, '_> {
             }
         };
         match snapshot.state {
-            RecoveryState::Task(task) => self.publish_task(task, root, &toolbox, state).await,
+            RecoveryState::DurableTask(task) => {
+                self.publish_durable_task(task, root, &toolbox, state).await
+            }
             RecoveryState::Turn(turn) => self.publish_turn(turn, root).await,
         }
     }
@@ -163,9 +165,9 @@ impl BoundaryOwner<'_, '_> {
         }
     }
 
-    async fn publish_task(
+    async fn publish_durable_task(
         &self,
-        task: TaskRecovery,
+        task: DurableTaskRecovery,
         root: Option<std::path::PathBuf>,
         toolbox: &str,
         state: Option<&State>,
@@ -195,7 +197,7 @@ impl BoundaryOwner<'_, '_> {
                 run_id: self.run.ids.run.to_string(),
                 turn_id: self.run.payload.event.turn_id.to_string(),
                 fencing_token: self.run.payload.fencing_token,
-                checkpoint: CommittedRecovery::Task {
+                checkpoint: CommittedRecovery::DurableTask {
                     checkpoint_id: plan.checkpoint_id,
                     generation: plan.generation,
                     history_digest: digest,
@@ -204,7 +206,7 @@ impl BoundaryOwner<'_, '_> {
             Err(failure)
                 if matches!(
                     failure.code(),
-                    error_code::TASK_LIMIT_EXHAUSTED | error_code::RUN_CHECKPOINT_LIMIT
+                    error_code::DURABLE_TASK_LIMIT_EXHAUSTED | error_code::RUN_CHECKPOINT_LIMIT
                 ) =>
             {
                 Ok(RecoverySave::Skipped(RecoverySkip::Limit))
@@ -212,7 +214,8 @@ impl BoundaryOwner<'_, '_> {
             Err(failure)
                 if matches!(
                     failure.code(),
-                    error_code::TASK_STORAGE_UNAVAILABLE | error_code::RUN_CHECKPOINT_UNAVAILABLE
+                    error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
+                        | error_code::RUN_CHECKPOINT_UNAVAILABLE
                 ) =>
             {
                 Ok(RecoverySave::Skipped(RecoverySkip::Unavailable))

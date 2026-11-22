@@ -14,7 +14,7 @@ const Progress = Schema.Struct({
 const PHASE = {starting: "Assessing", recorded: "Assessment recorded", unavailable: "Assessment unavailable",
   preparing: "Preparing recovery files", scanning: "Scanning frozen recovery files", uploading: "Saving encrypted files", verifying: "Verifying recovery data",
   saved: "Recovery point saved", restoring: "Restoring saved progress", restored: "Saved progress restored", failed: "Recovery interrupted"} as const;
-const KINDS: ReadonlySet<string> = new Set(["task_decision_started", "task_decision_completed", "task_transfer_progress"]);
+const KINDS: ReadonlySet<string> = new Set(["durable_task_decision_started", "durable_task_decision_completed", "durable_task_transfer_progress"]);
 const RANK = {starting: 0, preparing: 0, scanning: 1, uploading: 2, verifying: 3, restoring: 4,
   unavailable: 5, failed: 5, recorded: 6, saved: 6, restored: 6} as const;
 

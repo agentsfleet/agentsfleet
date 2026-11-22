@@ -5,7 +5,7 @@ use super::*;
 pub(super) struct Fixture {
     pub(super) rig: Rig,
     pub(super) run: RunPayload<'static>,
-    pub(super) prepared: PreparedTask,
+    pub(super) prepared: PreparedDurableTask,
     key: HoldKey,
     egress: Egress,
     bound: Bound,
@@ -18,17 +18,17 @@ impl Fixture {
     ) -> Result<Self> {
         let mut run = test_support::payload(test_support::RUN_ID, test_support::FLEET_ID);
         run.event.workspace_id = ID.into();
-        let task = TaskContext {
-            task_id: ID.into(),
+        let task = DurableTaskContext {
+            durable_task_id: ID.into(),
             originating_item_id: ID.into(),
-            target: TaskTarget::ApiOnly,
+            target: DurableTaskTarget::ApiOnly,
             generation: 7,
             stop_generation: 0,
             accepted_revision_id: ID.into(),
             objective: "Restore the accepted repair".into(),
             goal_digest: "b".repeat(64).into(),
             questions: vec![],
-            state: af_wire::task::TaskState::Running,
+            state: af_wire::durable_task::DurableTaskState::Running,
             covered_input_sequence: 7,
             input_sequence: 7,
             effect_cursor: 5,
@@ -39,15 +39,15 @@ impl Fixture {
                 af_core::clock::now(),
                 std::time::Duration::from_mins(10),
             ),
-            limits: af_wire::task::TaskLimits::default(),
-            usage: af_wire::task::TaskUsage::default(),
+            limits: af_wire::durable_task::DurableTaskLimits::default(),
+            usage: af_wire::durable_task::DurableTaskUsage::default(),
         };
         run.durable_tasks = true;
         run.decision = Some(Box::new(
             crate::run_loop::tests::recovery::fixture::assignment(),
         ));
         run.run_expires_at = task.expires_at;
-        run.task = Some(task.clone());
+        run.durable_task = Some(task.clone());
         Ok(Self {
             rig: Rig::new(
                 test_support::daemon(reply),
@@ -61,17 +61,17 @@ impl Fixture {
                 policy: BuiltUnder::allowing(&[]),
             },
             run,
-            prepared: PreparedTask {
+            prepared: PreparedDurableTask {
                 execution_deadline: None,
-                inputs: TaskInputsResponse {
+                inputs: DurableTaskInputsResponse {
                     source_turn_id: ID.to_owned(),
                     accepted_revision_id: Some(ID.to_owned()),
                     current_message: None,
                     inputs: vec![],
                     accepted_inputs: vec![],
                     current_interpretation: None,
-                    current_task: Some(task),
-                    tasks: vec![],
+                    current_durable_task: Some(task),
+                    durable_tasks: vec![],
                     next_cursor: None,
                     execution_deadline: None,
                 },
@@ -102,7 +102,7 @@ impl Fixture {
 
     pub(super) fn build<'a>(&'a self, recovery: &'a OnceLock<State>) -> Build<'a> {
         Build {
-            prepared_task: Some(&self.prepared),
+            prepared_durable_task: Some(&self.prepared),
             recovery,
             key: &self.key,
             limits: Limits::default(),
@@ -130,7 +130,7 @@ pub(super) fn plan() -> Result<CheckpointPlan> {
         base_id: None,
         mode: CheckpointMode::Incremental,
         repository: "api-only".to_owned(),
-        format_version: af_wire::task::CHECKPOINT_FORMAT,
+        format_version: af_wire::durable_task::CHECKPOINT_FORMAT,
         toolbox_digest: api_toolbox(),
         page_ids: vec![PAGE.to_owned()],
         base_page_ids: vec![],
@@ -146,7 +146,7 @@ pub(super) fn plan() -> Result<CheckpointPlan> {
         covered_input_sequence: 3,
         effect_watermark: 2,
         expires_at: deadline,
-        pin: af_wire::task::CheckpointPin {
+        pin: af_wire::durable_task::CheckpointPin {
             id: ID.to_owned(),
             resource_version: 1,
             operation_deadline: deadline,
@@ -158,14 +158,14 @@ pub(super) fn plan() -> Result<CheckpointPlan> {
 
 pub(super) fn saved(call: &Call) -> Option<Answer> {
     match call.verb {
-        Verb::TaskCheckpointAuthorizations => Some(match plan() {
+        Verb::DurableTaskCheckpointAuthorizations => Some(match plan() {
             Ok(plan) => test_support::json(&CheckpointAuthorizations {
                 plan,
                 objects: vec![],
             }),
             Err(error) => Answer::Fail(error),
         }),
-        Verb::TaskCheckpointPage => Some(test_support::json(&page())),
+        Verb::DurableTaskCheckpointPage => Some(test_support::json(&page())),
         _ => None,
     }
 }

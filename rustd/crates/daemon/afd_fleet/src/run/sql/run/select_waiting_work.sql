@@ -17,8 +17,8 @@ WITH probe AS (
                   SELECT 1 FROM thread.turns saved
                   JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
-                    AND saved.settled_at IS NULL AND saved.task_id IS NULL
-                    AND saved.task_generation IS NULL
+                    AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
+                    AND saved.durable_task_generation IS NULL
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
               AND NOT EXISTS (
@@ -56,8 +56,8 @@ SELECT
                   SELECT 1 FROM thread.turns saved
                   JOIN runner.turn_recovery recovery ON recovery.turn_id = saved.id
                   WHERE saved.thread_id = a.thread_id AND saved.sequence <= a.sequence
-                    AND saved.settled_at IS NULL AND saved.task_id IS NULL
-                    AND saved.task_generation IS NULL
+                    AND saved.settled_at IS NULL AND saved.durable_task_id IS NULL
+                    AND saved.durable_task_generation IS NULL
                     AND recovery.head_turn_checkpoint_id IS NOT NULL
               ))
                 AND NOT EXISTS (

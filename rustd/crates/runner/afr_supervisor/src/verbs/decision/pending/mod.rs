@@ -3,7 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use af_core::id::Uuid7;
-use af_wire::task::{DecisionReceiptInput, DecisionReceiptResult};
+use af_wire::durable_task::{DecisionReceiptInput, DecisionReceiptResult};
 use parking_lot::Mutex;
 
 mod receipt;
@@ -51,7 +51,7 @@ impl PendingDecisions {
         input: &DecisionReceiptInput,
     ) -> Result<DecisionReceiptResult> {
         let result = until_acknowledged(halt, plane.runtime, async || {
-            let result = plane.task_decision_record(run, call, input).await?;
+            let result = plane.durable_task_decision_record(run, call, input).await?;
             if result.call_id != call.as_str() {
                 return Err(error::config(
                     "decision receipt acknowledgement names another call",

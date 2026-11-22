@@ -10,8 +10,8 @@ CREATE TABLE runner.decision_calls (
     tenant_id UUID NOT NULL,
     -- Budget owner only: intent is charged to its source turn even while another task
     -- holds the run.
-    task_id UUID,
-    task_generation BIGINT,
+    durable_task_id UUID,
+    durable_task_generation BIGINT,
     fencing_token BIGINT NOT NULL CHECK (fencing_token >= 0),
     operation_id UUID NOT NULL,
     request_digest TEXT NOT NULL,
@@ -58,9 +58,9 @@ CREATE TABLE runner.decision_calls (
         (attempt_number = 0 AND retry_of_decision_call_id IS NULL)
         OR (attempt_number = 1 AND retry_of_decision_call_id IS NOT NULL)
     ),
-    CONSTRAINT ck_decision_calls_task_generation CHECK (
-        (task_id IS NULL AND task_generation IS NULL)
-        OR (task_id IS NOT NULL AND task_generation IS NOT NULL AND task_generation > 0)
+    CONSTRAINT ck_decision_calls_durable_task_generation CHECK (
+        (durable_task_id IS NULL AND durable_task_generation IS NULL)
+        OR (durable_task_id IS NOT NULL AND durable_task_generation IS NOT NULL AND durable_task_generation > 0)
     ),
     CONSTRAINT ck_decision_calls_known_usage CHECK (known_usage IS NULL OR issued_at IS NOT NULL),
     CONSTRAINT ck_decision_calls_charge_accounted CHECK (charged_nanos IS NULL OR accounted_at IS NOT NULL)
@@ -76,7 +76,7 @@ CREATE INDEX idx_decision_calls_expired_unissued
     ON runner.decision_calls (logical_expires_at, id)
     WHERE issued_at IS NULL AND accounted_at IS NULL;
 
-CREATE INDEX idx_decision_calls_task ON runner.decision_calls (task_id, created_at);
+CREATE INDEX idx_decision_calls_durable_task ON runner.decision_calls (durable_task_id, created_at);
 
 CREATE INDEX idx_decision_calls_source ON runner.decision_calls (source_turn_id, created_at);
 

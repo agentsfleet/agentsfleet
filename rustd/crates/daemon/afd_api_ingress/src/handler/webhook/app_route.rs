@@ -199,9 +199,9 @@ async fn route<D: IngressPlane>(
         ));
     };
 
-    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Workspace(
-        workspace.clone(),
-    )) {
+    if let Some(completion) = delivery.completion(
+        afd_fleet::durable_task::CompletionScope::Workspace(workspace.clone()),
+    ) {
         services
             .tasks()
             .record_github_completion(&completion)

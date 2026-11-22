@@ -1,6 +1,6 @@
 //! Native HTTP fixture identities, with an API-only task and known goal receipt.
 use super::{CHECKPOINT, ID, PAGE};
-use af_wire::{decision::*, task::*};
+use af_wire::{decision::*, durable_task::*};
 use serde_json::{Value, json};
 
 pub(in crate::run_loop) fn assignment() -> DecisionAssignment {
@@ -41,17 +41,17 @@ pub(in crate::run_loop) fn assignment() -> DecisionAssignment {
     }
 }
 pub(super) fn inputs() -> Value {
-    let task = TaskContext {
-        task_id: ID.into(),
+    let task = DurableTaskContext {
+        durable_task_id: ID.into(),
         originating_item_id: ID.into(),
-        target: TaskTarget::ApiOnly,
+        target: DurableTaskTarget::ApiOnly,
         generation: 7,
         stop_generation: 0,
         accepted_revision_id: ID.into(),
         objective: "Save accepted progress".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
-        state: TaskState::Running,
+        state: DurableTaskState::Running,
         covered_input_sequence: 0,
         input_sequence: 0,
         effect_cursor: 0,
@@ -59,19 +59,19 @@ pub(super) fn inputs() -> Value {
         checkpoint_id: None,
         checkpoint_generation: None,
         expires_at: deadline(),
-        limits: TaskLimits::default(),
-        usage: TaskUsage::default(),
+        limits: DurableTaskLimits::default(),
+        usage: DurableTaskUsage::default(),
     };
-    serde_json::to_value(TaskInputsResponse {
+    serde_json::to_value(DurableTaskInputsResponse {
         source_turn_id: ID.to_owned(),
         accepted_revision_id: Some(ID.to_owned()),
         current_message: None,
         inputs: vec![],
         accepted_inputs: vec![],
-        current_task: Some(task),
+        current_durable_task: Some(task),
         execution_deadline: Some(deadline()),
         current_interpretation: None,
-        tasks: vec![],
+        durable_tasks: vec![],
         next_cursor: None,
     })
     .unwrap()
@@ -112,9 +112,9 @@ pub(super) fn decision(input: &DecisionReservationInput) -> Value {
     assert_eq!(input.source_turn_id, ID);
     assert_eq!(
         input
-            .task
+            .durable_task
             .as_ref()
-            .map(|task| (task.task_id.as_str(), task.generation)),
+            .map(|task| (task.durable_task_id.as_str(), task.generation)),
         Some((ID, 7))
     );
     let answers = std::collections::BTreeMap::from([(

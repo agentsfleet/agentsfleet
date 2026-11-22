@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use af_core::error_code::{self, ErrorCode};
-use af_wire::task::{CheckpointEntry, CheckpointFile, CheckpointPage};
+use af_wire::durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage};
 
 use super::pages::{self, Page};
 

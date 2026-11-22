@@ -11,8 +11,8 @@ use super::{
 use crate::{Result, error::query, run::Runs};
 use af_core::id::Uuid7;
 use af_wire::{
+    durable_task::{CheckpointEntry, CheckpointPage, CheckpointTransferPurpose},
     run::{CheckpointOperationId, TurnCheckpointRef, TurnCheckpointResponse},
-    task::{CheckpointEntry, CheckpointPage, CheckpointTransferPurpose},
 };
 use garde::Validate as _;
 use std::collections::{BTreeMap, BTreeSet};

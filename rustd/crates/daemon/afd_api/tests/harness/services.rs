@@ -167,7 +167,7 @@ impl TenantPlane for Fleet {
         &self.runner_commands
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 
@@ -254,7 +254,7 @@ impl RunnerPlane for Fleet {
         &self.runners
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 
@@ -323,7 +323,7 @@ impl IngressPlane for Fleet {
         self.scheduler.as_ref()
     }
 
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle {
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle {
         &self.tasks
     }
 

@@ -24,7 +24,7 @@ use af_wire::protocol::MESSAGE_BYTES_MAX;
 use afd_http::handler::setup_input::TEXT_BODY_BYTES_MAX;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{MethodRouter, get, patch, post};
-use handler::runner::task_checkpoints as checkpoints;
+use handler::runner::durable_task_checkpoints as checkpoints;
 use route::RunnerRoute;
 use services::RunnerPlane;
 
@@ -33,24 +33,30 @@ pub fn handler_for<D: RunnerPlane>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
         RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
-        RunnerRoute::TaskCheckpoints => post(checkpoints::plan::handle::<D>),
-        RunnerRoute::TaskCheckpoint => patch(checkpoints::commit::handle::<D>),
-        RunnerRoute::TaskCheckpointPage => {
+        RunnerRoute::DurableTaskCheckpoints => post(checkpoints::plan::handle::<D>),
+        RunnerRoute::DurableTaskCheckpoint => patch(checkpoints::commit::handle::<D>),
+        RunnerRoute::DurableTaskCheckpointPage => {
             get(checkpoints::page_read::handle::<D>).put(checkpoints::page_write::handle::<D>)
         }
-        RunnerRoute::TaskCheckpointObjects => get(checkpoints::objects_read::handle::<D>)
+        RunnerRoute::DurableTaskCheckpointObjects => get(checkpoints::objects_read::handle::<D>)
             .post(checkpoints::objects_register::handle::<D>),
-        RunnerRoute::TaskCheckpointUploads => post(checkpoints::uploads::handle::<D>),
-        RunnerRoute::TaskCheckpointAuthorizations => post(checkpoints::authorize::handle::<D>),
-        RunnerRoute::TaskCheckpointPin => patch(checkpoints::pin::handle::<D>),
-        RunnerRoute::TaskInputReceipts => post(handler::runner::task_input_receipts::handle::<D>),
-        RunnerRoute::TaskInputs => get(handler::runner::task_inputs::read::<D>),
-        RunnerRoute::TaskBindings => post(handler::runner::task_bindings::accept::<D>),
-        RunnerRoute::TaskEffects => get(handler::runner::task_effects::list::<D>)
-            .post(handler::runner::task_effects::publish::<D>),
-        RunnerRoute::TaskEffect => get(handler::runner::task_effects::read::<D>),
-        RunnerRoute::TaskDecisions => post(handler::runner::decisions::reserve::<D>),
-        RunnerRoute::TaskDecision => patch(handler::runner::decisions::record::<D>),
+        RunnerRoute::DurableTaskCheckpointUploads => post(checkpoints::uploads::handle::<D>),
+        RunnerRoute::DurableTaskCheckpointAuthorizations => {
+            post(checkpoints::authorize::handle::<D>)
+        }
+        RunnerRoute::DurableTaskCheckpointPin => patch(checkpoints::pin::handle::<D>),
+        RunnerRoute::DurableTaskInputReceipts => {
+            post(handler::runner::durable_task_input_receipts::handle::<D>)
+        }
+        RunnerRoute::DurableTaskInputs => get(handler::runner::durable_task_inputs::read::<D>),
+        RunnerRoute::DurableTaskBindings => {
+            post(handler::runner::durable_task_bindings::accept::<D>)
+        }
+        RunnerRoute::DurableTaskEffects => get(handler::runner::durable_task_effects::list::<D>)
+            .post(handler::runner::durable_task_effects::publish::<D>),
+        RunnerRoute::DurableTaskEffect => get(handler::runner::durable_task_effects::read::<D>),
+        RunnerRoute::DurableTaskDecisions => post(handler::runner::decisions::reserve::<D>),
+        RunnerRoute::DurableTaskDecision => patch(handler::runner::decisions::record::<D>),
         RunnerRoute::MemoryLoad => get(handler::runner::memory::load::<D>),
         // A push carries every entry a run stored, each at the text ceiling,
         // so it is bounded by the runner frame alone.

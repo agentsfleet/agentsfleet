@@ -143,7 +143,7 @@ pub(crate) fn report<'a>(
     };
     let tokens = result.map_or_else(|| meter.read().total(), |result| result.token_count);
     ReportRequest {
-        task: match ending {
+        durable_task: match ending {
             Ending::Ran { output, .. } if outcome == Outcome::Processed => output.task.clone(),
             Ending::Ran { .. } | Ending::Failed { .. } | Ending::Stopped { .. } => None,
         },

@@ -7,7 +7,7 @@ use crate::run_loop::tests::recovery::{CHECKPOINT, archive::Refusal, server::Ser
 use afr_agent::{CommittedRecovery, RecoveryReceipt};
 
 #[tokio::test]
-async fn a_live_task_capture_commits_and_answers_its_receipt() -> Result<()> {
+async fn a_live_durable_task_capture_commits_and_answers_its_receipt() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     let mut server = Server::start(Refusal::None).await;
     let plane = server
@@ -19,7 +19,7 @@ async fn a_live_task_capture_commits_and_answers_its_receipt() -> Result<()> {
         .plane = plane;
     let history = b"saved conversation".to_vec();
     let mut request = snapshot(&fixture)?;
-    if let RecoveryState::Task(task) = &mut request.state {
+    if let RecoveryState::DurableTask(task) = &mut request.state {
         task.history = Zeroizing::new(history.clone());
     }
     let run = fixture.run()?;
@@ -41,7 +41,7 @@ async fn a_live_task_capture_commits_and_answers_its_receipt() -> Result<()> {
     assert_eq!(fencing_token, test_support::FENCING);
     assert!(matches!(
         checkpoint,
-        CommittedRecovery::Task { checkpoint_id, generation: 1, history_digest }
+        CommittedRecovery::DurableTask { checkpoint_id, generation: 1, history_digest }
             if checkpoint_id == CHECKPOINT
                 && history_digest == af_core::etag::sha256_hex(&history)
     ));
@@ -130,7 +130,7 @@ async fn a_ready_sandbox_names_its_toolbox_and_one_without_one_is_unavailable() 
 }
 
 #[tokio::test]
-async fn an_api_only_task_reserves_file_storage_until_none_is_left() -> Result<()> {
+async fn an_api_only_durable_task_reserves_file_storage_until_none_is_left() -> Result<()> {
     let fixture = Fixture::new(|_| None)?;
     let run = fixture.run()?;
     let (sink, _owner) = BoundaryOwner::new(&run, Workspace::ApiOnly);

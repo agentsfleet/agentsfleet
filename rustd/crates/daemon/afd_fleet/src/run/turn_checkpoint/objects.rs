@@ -2,8 +2,8 @@
 
 use af_core::id::Uuid7;
 use af_wire::{
+    durable_task::{CheckpointPlaintext, CheckpointTransferPurpose},
     run::{TurnCheckpointRef, TurnCheckpointResponse},
-    task::{CheckpointPlaintext, CheckpointTransferPurpose},
 };
 use jiff_sqlx::ToSqlx as _;
 use sqlx::types::Json;
@@ -14,12 +14,12 @@ use super::{
 };
 use crate::{
     Result,
-    error::query,
-    run::Runs,
-    task::{
+    durable_task::{
         checkpoint::{self, StoredObject, content_identity, lock_quota},
         storage::registration::{self, NewObject, Registration},
     },
+    error::query,
+    run::Runs,
 };
 
 const FILE: &str = "file";
@@ -50,9 +50,9 @@ pub(super) async fn register(
 async fn register_content(
     custody: &mut FileOwner<'_>,
     runs: &Runs,
-    storage: &crate::task::storage::R2CheckpointStore,
+    storage: &crate::durable_task::storage::R2CheckpointStore,
     objects: &[CheckpointPlaintext],
-) -> Result<Vec<af_wire::task::CheckpointObject>> {
+) -> Result<Vec<af_wire::durable_task::CheckpointObject>> {
     let format = i32::try_from(custody.plan.format_version)
         .map_err(|_overflow| TurnCheckpointRefusal::Incompatible)?;
     let workspace = custody.owner.current.workspace_id.clone();
@@ -96,7 +96,7 @@ async fn register_content(
 
 fn missing(
     runs: &Runs,
-    storage: &crate::task::storage::R2CheckpointStore,
+    storage: &crate::durable_task::storage::R2CheckpointStore,
     scope: Registration<'_>,
     objects: &[CheckpointPlaintext],
     content: &[String],
@@ -116,10 +116,10 @@ fn missing(
 
 fn ordered(
     custody: &FileOwner<'_>,
-    storage: &crate::task::storage::R2CheckpointStore,
+    storage: &crate::durable_task::storage::R2CheckpointStore,
     registered: Vec<StoredObject>,
     content: &[String],
-) -> Result<Vec<af_wire::task::CheckpointObject>> {
+) -> Result<Vec<af_wire::durable_task::CheckpointObject>> {
     let mut by_content: BTreeMap<_, _> = registered
         .into_iter()
         .map(|object| (object.content_identity.clone(), object))
@@ -151,7 +151,7 @@ async fn matching(
     content: &[String],
 ) -> Result<Vec<StoredObject>> {
     sqlx::query_as(include_str!(
-        "../../task/checkpoint/sql/objects_content.sql"
+        "../../durable_task/checkpoint/sql/objects_content.sql"
     ))
     .bind(&custody.owner.current.workspace_id)
     .bind(identity)
@@ -244,7 +244,7 @@ pub(super) async fn scoped_held(
 
 pub(super) async fn protect(custody: &mut FileOwner<'_>, ids: &[Uuid7]) -> Result<()> {
     sqlx::query(include_str!(
-        "../../task/checkpoint/sql/objects_protect.sql"
+        "../../durable_task/checkpoint/sql/objects_protect.sql"
     ))
     .bind(ids)
     .bind(custody.owner.limits.orphan_seconds().saturating_add(60))

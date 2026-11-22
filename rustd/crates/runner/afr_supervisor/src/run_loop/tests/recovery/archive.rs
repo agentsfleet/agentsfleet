@@ -1,7 +1,7 @@
 //! External checkpoint-service fixture models pre-existing content-addressed objects.
 //! It proves orchestration and manifest acknowledgement, not ciphertext retention.
 use super::{CHECKPOINT, ID, PAGE, fixture};
-use af_wire::task::*;
+use af_wire::durable_task::*;
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,8 +40,8 @@ impl Archive {
             }
             let mut inputs = fixture::inputs();
             if self.refusal == Refusal::Restore {
-                inputs["current_task"]["checkpoint_id"] = json!(CHECKPOINT);
-                inputs["current_task"]["checkpoint_generation"] = json!(1);
+                inputs["current_durable_task"]["checkpoint_id"] = json!(CHECKPOINT);
+                inputs["current_durable_task"]["checkpoint_generation"] = json!(1);
             }
             return (StatusCode::OK, inputs);
         }
@@ -78,8 +78,8 @@ impl Archive {
     fn planned(&mut self, body: Value) -> Value {
         let input: CheckpointPlanInput = serde_json::from_value(body).unwrap();
         assert_eq!(input.mode, CheckpointMode::Incremental);
-        assert_eq!(input.task.task_id, ID);
-        assert_eq!(input.task.generation, 7);
+        assert_eq!(input.durable_task.durable_task_id, ID);
+        assert_eq!(input.durable_task.generation, 7);
         assert_eq!(input.page_count, 1);
         assert_eq!(input.entry_count, 0);
         assert!(input.upload_budget_bytes > 16);

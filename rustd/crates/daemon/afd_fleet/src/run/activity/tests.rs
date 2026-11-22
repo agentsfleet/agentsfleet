@@ -17,17 +17,17 @@ use jiff::Timestamp;
 use super::{Published, Target, first_visible_candidate_ms};
 
 #[test]
-fn live_task_frames_use_the_saved_counter_and_sequence() {
+fn live_durable_task_frames_use_the_saved_counter_and_sequence() {
     use af_wire::activity::{
-        TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
-        TaskActivityRecord,
+        DurableTaskActivity, DurableTaskActivityHistory, DurableTaskActivityOperation,
+        DurableTaskActivityPhase, DurableTaskActivityRecord,
     };
-    let incoming = TaskActivity {
+    let incoming = DurableTaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000123".to_owned(),
-        task_id: None,
+        durable_task_id: None,
         source_turn_id: None,
-        operation: TaskActivityOperation::Capture,
-        phase: TaskActivityPhase::Uploading,
+        operation: DurableTaskActivityOperation::Capture,
+        phase: DurableTaskActivityPhase::Uploading,
         provider: None,
         model: None,
         completed: 1,
@@ -35,26 +35,31 @@ fn live_task_frames_use_the_saved_counter_and_sequence() {
         bytes: None,
         sequence: Some(999_999),
     };
-    let saved = TaskActivity {
+    let saved = DurableTaskActivity {
         completed: 3,
         sequence: Some(7),
         ..incoming.clone()
     };
-    let history = TaskActivityHistory {
-        items: vec![TaskActivityRecord::TaskTransferProgress(saved.clone())],
+    let history = DurableTaskActivityHistory {
+        items: vec![DurableTaskActivityRecord::DurableTaskTransferProgress(
+            saved.clone(),
+        )],
         truncated: false,
     };
     let mut absent = incoming.clone();
-    absent.phase = TaskActivityPhase::Verifying;
+    absent.phase = DurableTaskActivityPhase::Verifying;
     let frames = [
-        ActivityFrame::TaskTransferProgress(incoming),
-        ActivityFrame::TaskTransferProgress(absent),
+        ActivityFrame::DurableTaskTransferProgress(incoming),
+        ActivityFrame::DurableTaskTransferProgress(absent),
     ];
     let canonical = super::history::canonical(&frames, &history);
     assert_eq!(canonical.len(), 1, "unsaved progress is not published");
     let frame = canonical.first().expect("saved canonical frame");
     assert_eq!(
-        frame.task_activity().expect("task activity").progress(),
+        frame
+            .durable_task_activity()
+            .expect("task activity")
+            .progress(),
         &saved
     );
     let value = published(frame);
@@ -71,14 +76,14 @@ fn live_task_frames_use_the_saved_counter_and_sequence() {
 #[test]
 fn decision_frames_republish_as_their_saved_kind_and_other_frames_pass_through() {
     use af_wire::activity::{
-        TaskActivity, TaskActivityHistory, TaskActivityOperation, TaskActivityPhase,
-        TaskActivityRecord,
+        DurableTaskActivity, DurableTaskActivityHistory, DurableTaskActivityOperation,
+        DurableTaskActivityPhase, DurableTaskActivityRecord,
     };
-    let live = |phase| TaskActivity {
+    let live = |phase| DurableTaskActivity {
         activity_id: "019a42b0-0000-7000-8000-000000000456".to_owned(),
-        task_id: None,
+        durable_task_id: None,
         source_turn_id: None,
-        operation: TaskActivityOperation::Goal,
+        operation: DurableTaskActivityOperation::Goal,
         phase,
         provider: None,
         model: None,
@@ -87,22 +92,28 @@ fn decision_frames_republish_as_their_saved_kind_and_other_frames_pass_through()
         bytes: None,
         sequence: Some(999_999),
     };
-    let saved = |phase, sequence| TaskActivity {
+    let saved = |phase, sequence| DurableTaskActivity {
         sequence: Some(sequence),
         ..live(phase)
     };
-    let history = TaskActivityHistory {
+    let history = DurableTaskActivityHistory {
         items: vec![
-            TaskActivityRecord::TaskDecisionStarted(saved(TaskActivityPhase::Starting, 4)),
-            TaskActivityRecord::TaskDecisionCompleted(saved(TaskActivityPhase::Recorded, 5)),
+            DurableTaskActivityRecord::DurableTaskDecisionStarted(saved(
+                DurableTaskActivityPhase::Starting,
+                4,
+            )),
+            DurableTaskActivityRecord::DurableTaskDecisionCompleted(saved(
+                DurableTaskActivityPhase::Recorded,
+                5,
+            )),
         ],
         truncated: false,
     };
     let [tool, ..] = every_frame(RUNNER_CALL);
     let frames = [
-        ActivityFrame::TaskDecisionStarted(live(TaskActivityPhase::Starting)),
+        ActivityFrame::DurableTaskDecisionStarted(live(DurableTaskActivityPhase::Starting)),
         tool.clone(),
-        ActivityFrame::TaskDecisionCompleted(live(TaskActivityPhase::Recorded)),
+        ActivityFrame::DurableTaskDecisionCompleted(live(DurableTaskActivityPhase::Recorded)),
     ];
 
     let canonical = super::history::canonical(&frames, &history);
@@ -110,9 +121,12 @@ fn decision_frames_republish_as_their_saved_kind_and_other_frames_pass_through()
     assert_eq!(
         canonical,
         vec![
-            ActivityFrame::TaskDecisionStarted(saved(TaskActivityPhase::Starting, 4)),
+            ActivityFrame::DurableTaskDecisionStarted(saved(DurableTaskActivityPhase::Starting, 4)),
             tool,
-            ActivityFrame::TaskDecisionCompleted(saved(TaskActivityPhase::Recorded, 5)),
+            ActivityFrame::DurableTaskDecisionCompleted(saved(
+                DurableTaskActivityPhase::Recorded,
+                5
+            )),
         ]
     );
 }

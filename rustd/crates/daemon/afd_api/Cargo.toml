@@ -107,7 +107,7 @@ hex.workspace = true
 afd_setup.workspace = true
 # The harness stubs the runner plane, whose request and report types are the
 # shared protocol.
-af_wire.workspace = true
+af_wire = { workspace = true, features = ["test-util"] }
 # The harness's invite mailer, the production one over the fixture vault; its
 # test-util seam shortens the send deadline for the stalled-relay case.
 afd_mail = { workspace = true, features = ["test-util"] }

@@ -1,17 +1,17 @@
-import type { TaskActivityHistory } from "@/lib/task-activity";
+import type { DurableTaskActivityHistory } from "@/lib/task-activity";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import * as taskActivity from "@/lib/task-activity";
-import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
-import { NativeTaskPrBadge } from "@/components/domain/tasks/NativeTaskPrBadge";
-import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
+import * as durableTaskActivity from "@/lib/task-activity";
+import { FleetDurableTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
+import { NativeDurableTaskPrBadge } from "@/components/domain/tasks/NativeTaskPrBadge";
+import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
 import { FleetWorkSidebar } from "@/components/domain/shared/summary/FleetWorkSidebar";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail, summary, TASK_IDS } from "./helpers/task-reads";
+import { detail, summary, DURABLE_TASK_IDS } from "./helpers/task-reads";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
-function activity(ids: (string | null)[]): TaskActivityHistory {
-  return {items: ids.map(id => ({kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: id, source_turn_id: null,
+function activity(ids: (string | null)[]): DurableTaskActivityHistory {
+  return {items: ids.map(id => ({kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: id, source_turn_id: null,
     operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}})), truncated: false};
 }
 function response() {
@@ -31,9 +31,9 @@ function network() {
 it("shows the linked PR card before the mobile drawer opens, sharing reads and preserving draft on revocation", async () => {
   const fetcher = network();
   function View({subject = "indy"}: {subject?: string | null}) {
-    return <FleetTaskProvider {...SCOPE} subject={subject}><textarea aria-label="Draft" defaultValue="Keep this direction" />
-      <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />
-      <FleetWorkSidebar><TaskPanel {...SCOPE} /></FleetWorkSidebar></FleetTaskProvider>;
+    return <FleetDurableTaskProvider {...SCOPE} subject={subject}><textarea aria-label="Draft" defaultValue="Keep this direction" />
+      <NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />
+      <FleetWorkSidebar><DurableTaskPanel {...SCOPE} /></FleetWorkSidebar></FleetDurableTaskProvider>;
   }
   const view = render(<View />);
   const badge = await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"});
@@ -54,26 +54,26 @@ it("shows the linked PR card before the mobile drawer opens, sharing reads and p
 
 it("omits ambiguous, truncated, malformed, or unassociated activity instead of inferring a PR from text", async () => {
   network();
-  const view = render(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /></FleetTaskProvider>);
+  const view = render(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} /></FleetDurableTaskProvider>);
   await screen.findByRole("link");
-  for (const value of [activity([TASK_IDS[0], TASK_IDS[1]]), activity([null]), {...activity([TASK_IDS[0]]), truncated: true}, "PR #803", activity([TASK_IDS[2]])]) {
-    view.rerender(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={value} /></FleetTaskProvider>);
+  for (const value of [activity([DURABLE_TASK_IDS[0], DURABLE_TASK_IDS[1]]), activity([null]), {...activity([DURABLE_TASK_IDS[0]]), truncated: true}, "PR #803", activity([DURABLE_TASK_IDS[2]])]) {
+    view.rerender(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={value} /></FleetDurableTaskProvider>);
     expect(screen.queryByRole("link")).toBeNull();
   }
-  view.rerender(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0], TASK_IDS[0], null])} /></FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0], DURABLE_TASK_IDS[0], null])} /></FleetDurableTaskProvider>);
   expect(screen.getByRole("link")).toBeTruthy();
 });
 
 it("withholds the card through an unauthorized list read and pending retry", async () => {
   const fetcher = network();
-  const props = {children: <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />};
-  const view = render(<FleetTaskProvider {...SCOPE} {...props} />);
+  const props = {children: <NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />};
+  const view = render(<FleetDurableTaskProvider {...SCOPE} {...props} />);
   await screen.findByRole("link");
   fetcher.mockResolvedValue(new Response(null, {status: 403}));
-  view.rerender(<FleetTaskProvider {...SCOPE} {...props} revision={1} />);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} {...props} revision={1} />);
   await waitFor(() => expect(screen.queryByRole("link")).toBeNull());
   const pending = Promise.withResolvers<Response>(); fetcher.mockReturnValue(pending.promise);
-  view.rerender(<FleetTaskProvider {...SCOPE} {...props} revision={2} />);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} {...props} revision={2} />);
   expect(screen.queryByRole("link")).toBeNull();
   view.unmount();
   pending.resolve(Response.json(response()));
@@ -81,8 +81,8 @@ it("withholds the card through an unauthorized list read and pending retry", asy
 
 it("marks retained PR evidence stale during a failed refresh, then clears the card when the native task is missing", async () => {
   const fetcher = network();
-  const content = <><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /><TaskPanel {...SCOPE} /></>;
-  const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
+  const content = <><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} /><DurableTaskPanel {...SCOPE} /></>;
+  const view = render(<FleetDurableTaskProvider {...SCOPE}>{content}</FleetDurableTaskProvider>);
   expect((await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).textContent).not.toContain("last confirmed");
   fireEvent.click(screen.getByRole("button", {name: /^Tasks/}));
   fireEvent.click(screen.getByRole("button", {name: /PR #123 repair/}));
@@ -91,19 +91,19 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ca
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : new Response(null, {status});
   });
-  view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} revision={1}>{content}</FleetDurableTaskProvider>);
   await screen.findByText(/Last confirmed details are shown/);
   await waitFor(() => expect(screen.getByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"}).textContent).toContain("last confirmed"));
   status = 404;
-  view.rerender(<FleetTaskProvider {...SCOPE} revision={2}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} revision={2}>{content}</FleetDurableTaskProvider>);
   await waitFor(() => expect(screen.queryByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).toBeNull());
 });
 
 
 it("presents the explicitly associated native target as a result card with retained evidence", async () => {
   const fetcher = network();
-  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
-  const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
+  const content = <NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />;
+  const view = render(<FleetDurableTaskProvider {...SCOPE}>{content}</FleetDurableTaskProvider>);
   const card = await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"});
   expect(card.textContent).toContain("Repair login redirect");
   expect(card.textContent).toContain("Pull request #803 · a/b");
@@ -113,7 +113,7 @@ it("presents the explicitly associated native target as a result card with retai
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : new Response(null, {status: 503});
   });
-  view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} revision={1}>{content}</FleetDurableTaskProvider>);
   await screen.findByText(/last confirmed/);
   expect(card.getAttribute("href")).toBe("https://github.com/a/b/pull/803");
 });
@@ -125,26 +125,26 @@ it("reserves linked-result space while the native detail is pending and withhold
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : pending.promise;
   });
-  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
-  const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
+  const content = <NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />;
+  const view = render(<FleetDurableTaskProvider {...SCOPE}>{content}</FleetDurableTaskProvider>);
   expect(await screen.findByRole("status", {name: "Reading linked work"})).toBeTruthy();
   pending.resolve(Response.json(response()));
   expect(await screen.findByRole("link")).toHaveProperty("href", "https://github.com/a/b/pull/803");
   expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
   fetcher.mockResolvedValue(new Response(null, {status: 403}));
-  view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} revision={1}>{content}</FleetDurableTaskProvider>);
   await waitFor(() => expect(screen.queryByRole("link")).toBeNull());
   expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
   const retry = Promise.withResolvers<Response>(); fetcher.mockReturnValue(retry.promise);
-  view.rerender(<FleetTaskProvider {...SCOPE} revision={2}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} revision={2}>{content}</FleetDurableTaskProvider>);
   expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
-  view.rerender(<FleetTaskProvider {...SCOPE} subject={null}>{content}</FleetTaskProvider>);
+  view.rerender(<FleetDurableTaskProvider {...SCOPE} subject={null}>{content}</FleetDurableTaskProvider>);
   expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
   retry.resolve(new Response(null, {status: 503}));
 });
 
 it("does not claim to read linked results without an identity-owned reader", () => {
-  render(<NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />);
+  render(<NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />);
   expect(screen.queryByRole("status")).toBeNull();
   expect(screen.queryByRole("link")).toBeNull();
 });
@@ -153,7 +153,7 @@ it("does not claim to read linked results without an identity-owned reader", () 
 it.each([503, 200])("stops reserving a result after the first list read fails or is invalid (%s)", async status => {
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => status === 503 ? new Response(null, {status}) : Response.json({items: "invalid"}));
   vi.stubGlobal("fetch", fetcher);
-  render(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /></FleetTaskProvider>);
+  render(<FleetDurableTaskProvider {...SCOPE}><NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} /></FleetDurableTaskProvider>);
   await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull());
   expect(screen.queryByRole("link")).toBeNull();
@@ -161,14 +161,14 @@ it.each([503, 200])("stops reserving a result after the first list read fails or
 
 it("does not re-render a stable linked-work card for stream turns it does not read", async () => {
   network();
-  const reads = vi.spyOn(taskActivity, "readTaskActivityHistory");
+  const reads = vi.spyOn(durableTaskActivity, "readDurableTaskActivityHistory");
   // One element, reused: only a context change can re-render the card.
-  const card = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} />;
+  const card = <NativeDurableTaskPrBadge activity={activity([DURABLE_TASK_IDS[0]])} />;
   const turns = (count: number) => Array.from({length: count}, (_, index) => evt({id: `text-${index}`, reply: `chunk ${index}`}));
-  const view = render(<FleetTaskProvider {...SCOPE} turns={turns(0)}>{card}</FleetTaskProvider>);
+  const view = render(<FleetDurableTaskProvider {...SCOPE} turns={turns(0)}>{card}</FleetDurableTaskProvider>);
   await screen.findByRole("link");
   const settled = reads.mock.calls.length;
-  for (let count = 1; count <= 20; count++) view.rerender(<FleetTaskProvider {...SCOPE} turns={turns(count)}>{card}</FleetTaskProvider>);
+  for (let count = 1; count <= 20; count++) view.rerender(<FleetDurableTaskProvider {...SCOPE} turns={turns(count)}>{card}</FleetDurableTaskProvider>);
   expect(reads.mock.calls.length).toBe(settled);
   expect(screen.getByRole("link")).toBeTruthy();
   reads.mockRestore();

@@ -25,6 +25,7 @@ mod tenant_current_user;
 
 #[path = "auth_sessions.rs"]
 mod auth_sessions;
+mod fleet_durable_tasks;
 #[path = "fleet_grants.rs"]
 mod fleet_grants;
 #[path = "fleet_memories.rs"]
@@ -39,7 +40,6 @@ mod fleet_messages_input;
 mod fleet_messages_steer;
 #[path = "fleet_streams.rs"]
 mod fleet_streams;
-mod fleet_tasks;
 #[path = "fleet_tool_calls.rs"]
 mod fleet_tool_calls;
 mod fleets;
@@ -53,13 +53,13 @@ mod integration_auth_sessions;
 mod integration_billing_report;
 #[path = "integration_fleet_admitted.rs"]
 mod integration_fleet_admitted;
+mod integration_fleet_durable_tasks;
 #[path = "integration_fleet_memories.rs"]
 mod integration_fleet_memories;
 #[path = "integration_fleet_memory_access.rs"]
 mod integration_fleet_memory_access;
 #[path = "integration_fleet_streams.rs"]
 mod integration_fleet_streams;
-mod integration_fleet_tasks;
 #[path = "integration_invite_email.rs"]
 mod integration_invite_email;
 #[path = "integration_invite_email_mailpit.rs"]

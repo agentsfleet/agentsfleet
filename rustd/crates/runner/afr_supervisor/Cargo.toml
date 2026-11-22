@@ -126,3 +126,4 @@ af_core = { workspace = true, features = ["test-util"] }
 # The subscriber a run's spans are exported through in the telemetry suite.
 tracing-subscriber = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }
+af_wire = { workspace = true, features = ["test-util"] }

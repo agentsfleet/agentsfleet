@@ -1,6 +1,6 @@
 //! A concrete file operation owns ordinary authority before quota or object locks.
 
-use af_wire::{run::TurnCheckpointRef, task::CheckpointTransferPurpose};
+use af_wire::{durable_task::CheckpointTransferPurpose, run::TurnCheckpointRef};
 use sqlx::PgConnection;
 
 use super::{
@@ -88,10 +88,10 @@ pub(super) fn public_failure(fault: crate::Error) -> crate::Error {
         if source.is_open_failed() || source.is_malformed_envelope() || source.is_mac_mismatch());
     let reason = match fault.code() {
         _ if authenticated_state => TurnCheckpointRefusal::Incompatible,
-        error_code::TASK_LIMIT_EXHAUSTED => TurnCheckpointRefusal::Limit,
-        error_code::TASK_STORAGE_UNAVAILABLE => TurnCheckpointRefusal::Unavailable,
-        error_code::TASK_CHECKPOINT_INCOMPATIBLE => TurnCheckpointRefusal::Incompatible,
-        error_code::TASK_REPLAY_CONFLICT | error_code::TASK_STALE_STATE => {
+        error_code::DURABLE_TASK_LIMIT_EXHAUSTED => TurnCheckpointRefusal::Limit,
+        error_code::DURABLE_TASK_STORAGE_UNAVAILABLE => TurnCheckpointRefusal::Unavailable,
+        error_code::DURABLE_TASK_CHECKPOINT_INCOMPATIBLE => TurnCheckpointRefusal::Incompatible,
+        error_code::DURABLE_TASK_REPLAY_CONFLICT | error_code::DURABLE_TASK_STALE_STATE => {
             TurnCheckpointRefusal::Conflict
         }
         _ => return fault,

@@ -40,7 +40,7 @@ pub struct ProblemResponse {
     etag: Option<String>,
     review_digest: Option<String>,
     resolution: Option<Resolution>,
-    effect: Option<af_wire::task::TaskEffect>,
+    effect: Option<af_wire::durable_task::DurableTaskEffect>,
 }
 
 /// The standing answer a 409 on an approval gate reports.
@@ -90,7 +90,7 @@ impl ProblemResponse {
         code: ErrorCode,
         detail: &'static str,
         request_id: impl Into<String>,
-        effect: af_wire::task::TaskEffect,
+        effect: af_wire::durable_task::DurableTaskEffect,
     ) -> Self {
         Self {
             effect: Some(effect),

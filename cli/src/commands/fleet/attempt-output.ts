@@ -6,8 +6,8 @@ const FENCE = Schema.String.check(Schema.isPattern(/^[1-9][0-9]{0,18}$/u),
   Schema.makeFilter((value: string) => value.length < MAX_FENCE.length || value <= MAX_FENCE));
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([
   "chunk", ...TOOL_CALL_KINDS,
-  "context_progress", "task_decision_started", "task_decision_completed",
-  "task_transfer_progress", "run_restarted",
+  "context_progress", "durable_task_decision_started", "durable_task_decision_completed",
+  "durable_task_transfer_progress", "run_restarted",
 ]);
 
 /** One turn's live attempt; a saved completion permanently closes its output. */

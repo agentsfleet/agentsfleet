@@ -40,7 +40,7 @@ pub(crate) use transfer::http_tests::server::Server as TestHttpsServer;
 
 use crate::client::ControlPlane;
 use af_core::id::Uuid7;
-use af_wire::task::{CheckpointPlan, DecisionTaskVersion};
+use af_wire::durable_task::{CheckpointPlan, DecisionDurableTaskVersion};
 
 /// One native pin owner. It never extends the original capture/restore deadline.
 #[derive(Debug)]
@@ -49,7 +49,7 @@ pub(super) struct Session<'a> {
     run: &'a Uuid7,
     workspace: &'a Uuid7,
     fence: u64,
-    task: DecisionTaskVersion,
+    task: DecisionDurableTaskVersion,
     plan: CheckpointPlan,
     activity_id: String,
     progress: &'a mut progress::Progress,
@@ -59,15 +59,15 @@ pub(super) struct Session<'a> {
 
 /// Native temporary keys are wiped on every early return as well as successful use.
 #[derive(Debug)]
-pub(super) struct Object(af_wire::task::CheckpointObject);
+pub(super) struct Object(af_wire::durable_task::CheckpointObject);
 
-impl From<af_wire::task::CheckpointObject> for Object {
-    fn from(object: af_wire::task::CheckpointObject) -> Self {
+impl From<af_wire::durable_task::CheckpointObject> for Object {
+    fn from(object: af_wire::durable_task::CheckpointObject) -> Self {
         Self(object)
     }
 }
 impl std::ops::Deref for Object {
-    type Target = af_wire::task::CheckpointObject;
+    type Target = af_wire::durable_task::CheckpointObject;
     fn deref(&self) -> &Self::Target {
         &self.0
     }

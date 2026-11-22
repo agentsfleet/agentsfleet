@@ -280,8 +280,8 @@ pub(crate) async fn run_with(
     );
     let run = AgentRun {
         recovery: None,
-        prepared_task: None,
-        recovered_task: None,
+        prepared_durable_task: None,
+        recovered_durable_task: None,
         recovered_turn: None,
         run,
         memory: afr_memory::Seed::default(),

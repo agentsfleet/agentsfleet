@@ -3,11 +3,11 @@
 
 use af_core::error_code;
 use af_wire::{
+    durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response,
     },
-    task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext},
 };
 use afd_db::test_util::mint_id;
 

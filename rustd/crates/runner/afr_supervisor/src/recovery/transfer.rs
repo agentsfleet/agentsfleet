@@ -6,7 +6,7 @@ use af_crypto::{
     checkpoint::{CheckpointScope, EncryptedCheckpointObject},
     secret::SecretBytes,
 };
-use af_wire::task::{CheckpointObject, CheckpointTransfer};
+use af_wire::durable_task::{CheckpointObject, CheckpointTransfer};
 use base64::Engine as _;
 use zeroize::Zeroizing;
 

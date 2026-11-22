@@ -39,7 +39,7 @@ async fn exercise(mode: &'static str) {
     let engine = afr_agent::Loop::new(afr_tools::Catalog::new(vec![]), model.clone());
     let run = fixture::payload();
     let inputs = fixture::inputs();
-    let prepared = afr_agent::PreparedTask {
+    let prepared = afr_agent::PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
         inputs,
         allow_actions: true,
@@ -72,7 +72,7 @@ fn assert_stopped(output: &afr_agent::RunOutput, model: &model::Model) {
 async fn execute(
     engine: &afr_agent::Loop,
     run: &af_wire::run::RunPayload<'_>,
-    prepared: &afr_agent::PreparedTask,
+    prepared: &afr_agent::PreparedDurableTask,
     verbs: &FencedVerbs<'_>,
     host: &Host,
 ) -> afr_agent::RunOutput {
@@ -80,8 +80,8 @@ async fn execute(
         .run(afr_agent::AgentRun {
             recovery: None,
             run,
-            prepared_task: Some(prepared),
-            recovered_task: None,
+            prepared_durable_task: Some(prepared),
+            recovered_durable_task: None,
             recovered_turn: None,
             memory: afr_memory::Seed::default(),
             executor: &afr_executor::ExecutorSlot::unavailable(

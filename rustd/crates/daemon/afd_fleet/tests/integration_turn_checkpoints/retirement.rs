@@ -6,7 +6,7 @@ use af_core::{error_code, id::Uuid7};
 use af_wire::run::{
     TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
 };
-use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
+use afd_fleet::durable_task::{CheckpointMaintenanceCursor, DurableTaskLifecycle as _};
 use sqlx::Connection as _;
 
 #[tokio::test]

@@ -1,14 +1,14 @@
 //! Every independent request survives the decomposition boundary intact.
 
 use super::{interpretation::validate, routing::Multiplicity};
-use af_wire::task::{TaskInputAction, TaskProposedItem};
+use af_wire::durable_task::{DurableTaskInputAction, DurableTaskProposedItem};
 
-fn item(start: i32, end: i32) -> TaskProposedItem {
-    TaskProposedItem {
+fn item(start: i32, end: i32) -> DurableTaskProposedItem {
+    DurableTaskProposedItem {
         source_start: start,
         source_end: end,
-        action: TaskInputAction::Conversation,
-        task_id: None,
+        action: DurableTaskInputAction::Conversation,
+        durable_task_id: None,
         title: "Reply to the request".to_owned(),
         interpretation: "Answer this complete source item".to_owned(),
         target: None,

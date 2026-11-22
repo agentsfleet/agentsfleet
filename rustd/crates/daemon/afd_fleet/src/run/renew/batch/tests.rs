@@ -30,7 +30,7 @@ fn passing() -> Judged {
         over_budget: Some(false),
         host_renews: Some(true),
         admitted: Some(true),
-        has_task: Some(false),
+        has_durable_task: Some(false),
         extended_until: Some(jiff_sqlx::Timestamp::from(test_dead::AT)),
         thread_moved: true,
     }
@@ -48,7 +48,7 @@ type Case = (fn(&mut Judged), Verdict);
 fn each_failed_check_answers_as_the_per_run_path_would() {
     let cases: [Case; 10] = [
         (|row| row.found = false, Verdict::Lost),
-        (|row| row.has_task = Some(true), Verdict::Tasked),
+        (|row| row.has_durable_task = Some(true), Verdict::Tasked),
         (|row| row.host_renews = Some(false), Verdict::Lost),
         (|row| row.admitted = None, Verdict::Lost),
         (|row| row.cancelled = Some(true), Verdict::Cancelled),
@@ -182,7 +182,7 @@ fn found() -> Found {
         posture: "platform".to_owned(),
         provider: "anthropic".to_owned(),
         model: "claude-opus-5".to_owned(),
-        task_id: None,
+        durable_task_id: None,
         created_at: test_dead::AT,
         head_revision_id: None,
         catalogue_version: 1,

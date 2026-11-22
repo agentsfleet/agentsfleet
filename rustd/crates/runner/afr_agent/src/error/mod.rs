@@ -45,34 +45,34 @@ pub(crate) enum ErrorKind {
     },
     /// No authoritative, bounded task decision is available at this boundary.
     #[error("durable task preparation could not establish current authority")]
-    TaskDecision,
+    DurableTaskDecision,
     /// A bounded task operation failed with its original cause retained.
     #[error("durable task boundary failed: {context}")]
-    TaskBoundary {
+    DurableTaskBoundary {
         context: &'static str,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
     /// The existing native verb already retains its refusal code.
     #[error("native task request was not answered: {reason:?}")]
-    TaskNative {
+    DurableTaskNative {
         reason: afr_tools::verbs::Unanswered,
     },
     /// A private bounded task document could not be encoded or decoded.
     #[error("private task document is unreadable")]
-    TaskJson {
+    DurableTaskJson {
         #[from]
         source: serde_json::Error,
     },
     /// Native operation identity could not be generated.
     #[error("task cryptographic operation failed")]
-    TaskCrypto {
+    DurableTaskCrypto {
         #[from]
         source: af_crypto::error::Error,
     },
     /// The existing context owner could not prepare complete evidence.
     #[error("task evidence context is unavailable")]
-    TaskContext {
+    DurableTaskContext {
         #[from]
         source: af_context::Error,
     },
@@ -169,17 +169,17 @@ impl Error {
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }
             | ErrorKind::RecoveryMemory { .. } => error_code::RUN_CHECKPOINT_INCOMPATIBLE,
-            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => {
+            ErrorKind::DurableTaskDecision | ErrorKind::DurableTaskBoundary { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
-            ErrorKind::TaskNative {
+            ErrorKind::DurableTaskNative {
                 reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
             } => *code,
-            ErrorKind::TaskNative { .. } | ErrorKind::TaskJson { .. } => {
+            ErrorKind::DurableTaskNative { .. } | ErrorKind::DurableTaskJson { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
-            ErrorKind::TaskCrypto { source } => source.code(),
-            ErrorKind::TaskContext { source } => source.code(),
+            ErrorKind::DurableTaskCrypto { source } => source.code(),
+            ErrorKind::DurableTaskContext { source } => source.code(),
             ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(feature = "test-util")]
             ErrorKind::Executor { .. } => error_code::INTERNAL_OPERATION_FAILED,
@@ -199,11 +199,11 @@ impl Error {
             | ErrorKind::RecoveryInvalid { .. }
             | ErrorKind::RecoveryBounds { .. }
             | ErrorKind::RecoveryMemory { .. } => None,
-            ErrorKind::TaskDecision | ErrorKind::TaskBoundary { .. } => None,
-            ErrorKind::TaskNative { .. }
-            | ErrorKind::TaskJson { .. }
-            | ErrorKind::TaskCrypto { .. }
-            | ErrorKind::TaskContext { .. } => None,
+            ErrorKind::DurableTaskDecision | ErrorKind::DurableTaskBoundary { .. } => None,
+            ErrorKind::DurableTaskNative { .. }
+            | ErrorKind::DurableTaskJson { .. }
+            | ErrorKind::DurableTaskCrypto { .. }
+            | ErrorKind::DurableTaskContext { .. } => None,
             ErrorKind::Tools { source } => source.unhosted_tool().map(Unhosted::Tool),
             ErrorKind::Provider { source } => source.unhosted_provider().map(Unhosted::Provider),
             ErrorKind::Checkpoint { .. }

@@ -103,7 +103,7 @@ async fn test_follow_up_run_is_issued_when_its_thread_will_not_answer() {
         .ask(TurnKind::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
     let silent = RunService {
-        task_reports: None,
+        durable_task_reports: None,
         thread: Arc::new(Conversations::new(unreachable_db())),
         ..chat.fixtures.plane()
     };

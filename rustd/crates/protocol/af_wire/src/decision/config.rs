@@ -78,7 +78,7 @@ pub struct GoalDecisionPolicy {
 pub struct DecisionModelSettings {
     /// Immutable reviewed definition revision; changing settings needs a new one.
     // utoipa reads only a literal: 2676 is `REVISION_MAX_BYTES`, each
-    // 1_048_576 below is `TEXT_MAX_CHARS`, and `tests/task_validation.rs`
+    // 1_048_576 below is `TEXT_MAX_CHARS`, and `tests/durable_task_validation.rs`
     // pins both against the published schema.
     #[cfg_attr(
         feature = "openapi",

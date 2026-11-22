@@ -8,9 +8,9 @@ af_core::error_lifts!(Error, ErrorKind:
     af_providers::Error => Provider,
     afr_tools::Error => Tools,
     af_secrets::Error => Scrub,
-    serde_json::Error => TaskJson,
-    af_crypto::error::Error => TaskCrypto,
-    af_context::Error => TaskContext,
+    serde_json::Error => DurableTaskJson,
+    af_crypto::error::Error => DurableTaskCrypto,
+    af_context::Error => DurableTaskContext,
     garde::Report => RecoveryBounds,
     afr_memory::Error => RecoveryMemory,
 );

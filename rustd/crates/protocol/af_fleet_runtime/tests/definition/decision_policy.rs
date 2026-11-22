@@ -182,7 +182,7 @@ fn incomplete_wrong_shaped_and_unknown_policies_never_become_runtime_defaults() 
         ("/routing/intent/question", Value::Null),
         (
             "/routing/association/criteria",
-            json!({"matching_task":"Yes", "new_work":"New", "publish":"Unbounded"}),
+            json!({"matching_durable_task":"Yes", "new_work":"New", "publish":"Unbounded"}),
         ),
         ("/routing/multiple_requests/criteria", json!({"true":"Yes"})),
         (

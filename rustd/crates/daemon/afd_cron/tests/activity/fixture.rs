@@ -120,7 +120,7 @@ pub(super) async fn no_work(lane: &CronLane) {
     let counts: (i64, i64) = sqlx::query_as(
         "SELECT \
         (SELECT count(*) FROM thread.turns WHERE thread_id=$1 AND settled_at IS NULL), \
-        (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1)",
+        (SELECT count(*) FROM fleet.durable_tasks WHERE fleet_id=$1)",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *connection)

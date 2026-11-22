@@ -256,4 +256,4 @@ mod satellites;
 
 mod schedule_guard;
 
-mod task_bounds;
+mod durable_task_bounds;

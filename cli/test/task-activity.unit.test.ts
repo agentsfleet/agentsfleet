@@ -47,17 +47,17 @@ test("byte progress labels distinguish acknowledged, missing and reused cipherte
   const printer = new ActivityPrinter(line => lines.push(line));
   const payload = {progress: {activity_id: "019f0000-0000-7000-8000-000000000001", operation: "capture", phase: "uploading",
     provider: null, model: null, completed: 2, total: 3, bytes: {acknowledged: 128, missing: 64, reused: 256}}};
-  printer.frame("task_transfer_progress", payload);
-  printer.frame("task_transfer_progress", payload);
+  printer.frame("durable_task_transfer_progress", payload);
+  printer.frame("durable_task_transfer_progress", payload);
   expect(lines).toEqual(["Saving encrypted files · capture · 2/3 objects · 128 bytes acknowledged · 64 known missing bytes · 256 bytes reused"]);
-  printer.frame("task_transfer_progress", {...payload, progress: {...payload.progress, bytes: {...payload.progress.bytes, missing: -1}}});
+  printer.frame("durable_task_transfer_progress", {...payload, progress: {...payload.progress, bytes: {...payload.progress.bytes, missing: -1}}});
   expect(lines).toHaveLength(1);
 });
 
 test("replayed decisions and recovery steps remain bounded public observations", () => {
   const lines: string[] = [];
   const printer = new ActivityPrinter(line => lines.push(line));
-  const item = {kind: "task_decision_completed", progress: {activity_id: "019f0000-0000-7000-8000-000000000001",
+  const item = {kind: "durable_task_decision_completed", progress: {activity_id: "019f0000-0000-7000-8000-000000000001",
     operation: "goal", phase: "unavailable", provider: "openai", model: "selected-model", completed: 0, total: null}};
   expect(printer.frame(item.kind, item)).toBe(true);
   printer.history({items: [item], truncated: true});
@@ -100,8 +100,8 @@ test("older server observations cannot repeat changed missing-byte estimates", (
   const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", sequence: 3,
     operation: "capture", phase: "uploading", provider: null, model: null, completed: 1, total: 2,
     bytes: {acknowledged: 128, missing: 128, reused: 0}};
-  printer.frame("task_transfer_progress", {progress});
-  printer.frame("task_transfer_progress", {progress: {...progress, sequence: 2, bytes: {...progress.bytes, missing: 256}}});
+  printer.frame("durable_task_transfer_progress", {progress});
+  printer.frame("durable_task_transfer_progress", {progress: {...progress, sequence: 2, bytes: {...progress.bytes, missing: 256}}});
   expect(lines).toHaveLength(1);
 });
 
@@ -117,10 +117,10 @@ test("values past the retired caps print, and the safe-integer check stays", () 
   const progress = {activity_id: "019f0000-0000-7000-8000-000000000001", operation: "capture", phase: "uploading",
     provider: "p".repeat(257), model: "m".repeat(257), completed: 200_001, total: 200_002,
     bytes: {acknowledged: 68_719_476_737, missing: 0, reused: 0}};
-  printer.frame("task_transfer_progress", {progress});
+  printer.frame("durable_task_transfer_progress", {progress});
   expect(lines).toHaveLength(1);
   expect(lines[0]).toContain("200001/200002 objects · 68719476737 bytes acknowledged");
-  printer.frame("task_transfer_progress", {progress: {...progress, completed: 2 ** 53}});
+  printer.frame("durable_task_transfer_progress", {progress: {...progress, completed: 2 ** 53}});
   expect(lines).toHaveLength(1);
 });
 

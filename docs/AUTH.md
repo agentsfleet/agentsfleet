@@ -994,11 +994,11 @@ The native reservation response delivers a key to its trusted runner once; retri
 
 Parser scratch/error buffers, HTTP headers and transport buffers remain outside those owned-buffer wiping guarantees.
 
-`POST /v1/runners/me/runs/{run_id}/tasks/decisions` reserves and funds a physical call before resolving its current key.
-`PATCH /v1/runners/me/runs/{run_id}/tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
+`POST /v1/runners/me/runs/{run_id}/durable_tasks/decisions` reserves and funds a physical call before resolving its current key.
+`PATCH /v1/runners/me/runs/{run_id}/durable_tasks/decisions/{call_id}` records usage under the original owner, including late or unusable results.
 Handlers live in `rustd/crates/daemon/afd_api_runner/src/handler/runner/decisions.rs`.
 
-The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/task.rs`.
+The runner prepares intent before durable work and assesses completed action groups through `afr_agent/src/decision/` and `afr_agent/src/loop/durable_task.rs`.
 Native report preparation independently checks task authority and completion evidence.
 Live end-to-end verification remains pending.
 

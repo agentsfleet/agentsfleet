@@ -56,7 +56,7 @@ pub(crate) fn runs() -> Runs {
 pub(crate) fn plane() -> RunService {
     let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
     RunService {
-        task_reports: None,
+        durable_task_reports: None,
         turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&kek)),
         runs: runs(),
         gates: Gates::new(database(), bus(), Entropy::new()),

@@ -42,25 +42,30 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. } => error_code::TASK_STORAGE_UNAVAILABLE,
-            ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteCooldown { .. } => error_code::TASK_EFFECT_UNCERTAIN,
+            ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. } => {
+                error_code::DURABLE_TASK_STORAGE_UNAVAILABLE
+            }
+            ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. } => {
+                error_code::DURABLE_TASK_EFFECT_UNCERTAIN
+            }
             ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => {
-                error_code::TASK_DECISION_UNAVAILABLE
+                error_code::DURABLE_TASK_DECISION_UNAVAILABLE
             }
             ErrorKind::Datastore { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. } => {
+                error_code::INTERNAL_DB_UNAVAILABLE
+            }
             ErrorKind::Billing { ref source } => source.code(),
             ErrorKind::Runner { ref source } => source.code(),
             ErrorKind::Setup { ref source } => source.code(),
-            ErrorKind::TurnWrite { ref source } | ErrorKind::TaskControlTurn { ref source, .. } => {
-                source.code()
-            }
+            ErrorKind::TurnWrite { ref source }
+            | ErrorKind::DurableTaskControlTurn { ref source, .. } => source.code(),
             ErrorKind::Context { ref source } => source.code(),
             ErrorKind::Credential { ref source } => source.code(),
             ErrorKind::Gate { ref source } => source.code(),
@@ -70,19 +75,21 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskState { .. }
-            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            ErrorKind::TaskPrecondition { .. } => error_code::TASK_PRECONDITION_FAILED,
-            ErrorKind::TaskMutation { ref source, .. } => source.code(),
-            ErrorKind::TaskControlConflict { .. } => error_code::TASK_STALE_STATE,
-            ErrorKind::TaskRefused { reason } => reason.code(),
+            ErrorKind::DurableTaskPrecondition { .. } => {
+                error_code::DURABLE_TASK_PRECONDITION_FAILED
+            }
+            ErrorKind::DurableTaskMutation { ref source, .. } => source.code(),
+            ErrorKind::DurableTaskControlConflict { .. } => error_code::DURABLE_TASK_STALE_STATE,
+            ErrorKind::DurableTaskRefused { reason } => reason.code(),
             ErrorKind::TurnCheckpointRefused { reason }
             | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.code(),
-            ErrorKind::TaskTargetCounter { .. } => error_code::TASK_INVALID_TARGET,
+            ErrorKind::DurableTaskTargetCounter { .. } => error_code::DURABLE_TASK_INVALID_TARGET,
             ErrorKind::SetupUnavailable => error_code::SETUP_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }

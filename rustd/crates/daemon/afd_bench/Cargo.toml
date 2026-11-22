@@ -76,7 +76,7 @@ af_core = { workspace = true, features = ["sqlx"] }
 # measured cost is the production path's, not a shortcut around it.
 af_crypto.workspace = true
 # The enrolment request shape a seeded runner is registered with.
-af_wire.workspace = true
+af_wire = { workspace = true, features = ["test-util"] }
 # The reads the lanes take of what they measured, and the connection the
 # shared seeds write through.
 sqlx.workspace = true

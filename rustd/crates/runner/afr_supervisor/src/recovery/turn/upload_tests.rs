@@ -8,7 +8,7 @@ use crate::recovery::{
     files::Workspace,
     uploads::UploadBatch,
 };
-use af_wire::task::CheckpointTransferPurpose;
+use af_wire::durable_task::CheckpointTransferPurpose;
 use std::sync::Arc;
 
 type Checked<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;

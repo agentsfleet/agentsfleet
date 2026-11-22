@@ -18,7 +18,7 @@ const EVIDENCE_READS: [GithubPermission; 2] = [GithubPermission::Actions, Github
 const READ_REACH: [(GithubPermission, Permission); 1] =
     [(GithubPermission::Contents, Permission::Read)];
 /// Existing-PR evidence needs private PR metadata while retaining no write permission.
-const TASK_READ_REACH: [(GithubPermission, Permission); 2] = [
+const DURABLE_TASK_READ_REACH: [(GithubPermission, Permission); 2] = [
     (GithubPermission::Contents, Permission::Read),
     (GithubPermission::PullRequests, Permission::Read),
 ];
@@ -90,7 +90,7 @@ impl ScopedRequest {
     pub fn for_binding(binding: &RepositoryBinding, installed: &Installed) -> Self {
         let reach: &[(GithubPermission, Permission)] = match binding.access() {
             Access::Read if binding.publication() == RepositoryPublication::ExistingPr => {
-                &TASK_READ_REACH
+                &DURABLE_TASK_READ_REACH
             }
             Access::Read => &READ_REACH,
             Access::Write => &WRITE_REACH,

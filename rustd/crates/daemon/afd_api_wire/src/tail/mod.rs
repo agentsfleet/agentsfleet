@@ -157,9 +157,9 @@ pub enum TailFrame<'a> {
         restarted_at: jiff::Timestamp,
     },
     /// A committed task change invalidates the fleet's authenticated work read.
-    TaskChanged {
+    DurableTaskChanged {
         /// The task within the fleet named by this channel.
-        task_id: Cow<'a, str>,
+        durable_task_id: Cow<'a, str>,
         /// The committed resource version; the frame is only a read hint.
         resource_version: u64,
     },

@@ -33,7 +33,7 @@ pub(super) const EVENT_BUILD_FAILED: &str = "sandbox_build_failed";
 
 /// What one run's build works from, every check before the turn passed.
 pub(super) struct Build<'b> {
-    pub(super) prepared_task: Option<&'b afr_agent::PreparedTask>,
+    pub(super) prepared_durable_task: Option<&'b afr_agent::PreparedDurableTask>,
     pub(super) recovery: &'b OnceLock<super::recovery::State>,
     /// The key a held sandbox is found under, and the new one filed under.
     pub(super) key: &'b HoldKey,
@@ -153,8 +153,8 @@ impl Run<'_> {
                 if !held
                     && self.payload.turn_resume.is_none()
                     && build
-                        .prepared_task
-                        .and_then(|prepared| prepared.inputs.current_task.as_ref())
+                        .prepared_durable_task
+                        .and_then(|prepared| prepared.inputs.current_durable_task.as_ref())
                         .is_none_or(|task| task.checkpoint_id.is_none()) =>
             {
                 let _checking_out = self.timeline.start(Segment::Checkout);
@@ -189,7 +189,7 @@ impl Run<'_> {
     /// watch records when it drops, so a refused build is timed too.
     async fn acquire(&self, build: &Build<'_>) -> Result<(Box<dyn Sandbox>, bool), Ended> {
         let _preparing = self.timeline.start(Segment::Prepare);
-        let held = if build.prepared_task.is_some() || self.payload.turn_resume.is_some() {
+        let held = if build.prepared_durable_task.is_some() || self.payload.turn_resume.is_some() {
             // Durable state has one restore owner; an unrelated warm workspace
             // cannot silently replace the native checkpoint generation.
             self.lessee

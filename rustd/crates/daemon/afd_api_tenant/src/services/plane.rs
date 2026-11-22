@@ -139,7 +139,7 @@ pub trait TenantPlane: Shared {
     fn runner_commands(&self) -> &afd_bus::Handle;
 
     /// Authoritative task lifecycle over the same fleet run and turn stores.
-    fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;
+    fn tasks(&self) -> &dyn afd_fleet::durable_task::DurableTaskLifecycle;
 
     /// Creator-private setup shared by browser and terminal conversation clients.
     fn drafts(&self) -> &afd_setup::Drafts;

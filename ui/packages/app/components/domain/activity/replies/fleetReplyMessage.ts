@@ -106,7 +106,7 @@ export function toReplyMessage(base: ThreadMessageLike, turn: FleetTurn, request
       custom: {
         ...base.metadata?.custom,
         requestActor,
-        taskActivity: turn.taskActivity,
+        durableTaskActivity: turn.durableTaskActivity,
         contextProgress: turn.contextProgressHidden ? undefined : turn.contextProgress,
         [REASONING_SPAN.STARTED]: turn.reasoningStartedAtMs,
         [REASONING_SPAN.ENDED]: turn.reasoningEndedAtMs,

@@ -29,7 +29,7 @@ CREATE TABLE thread.runs (
     created_at                  TIMESTAMPTZ(3)  NOT NULL,
     updated_at                  TIMESTAMPTZ(3)  NOT NULL,
     -- Opaque once the task row is gone; settled runs outlive a fleet purge.
-    task_id UUID,
+    durable_task_id UUID,
     -- Non-secret snapshot of the decision revision this run delivered. No foreign key:
     -- settled history must survive catalogue removal.
     decision_snapshot JSONB,
@@ -37,12 +37,12 @@ CREATE TABLE thread.runs (
     -- match this witness. No foreign key: settled runs survive fleet purge.
     setup_revision_id UUID,
     -- The run freezes semantic ownership and meters its own task-running delta.
-    -- Opaque task_id already outlives task deletion; these add no privacy owner FK.
-    task_generation BIGINT CHECK (task_generation > 0),
-    task_stop_generation BIGINT CHECK (task_stop_generation >= 0),
-    task_started_at TIMESTAMPTZ(3),
-    task_runtime_accounted_at TIMESTAMPTZ(3),
-    task_execution_deadline_at TIMESTAMPTZ(3),
+    -- Opaque durable_task_id already outlives task deletion; these add no privacy owner FK.
+    durable_task_generation BIGINT CHECK (durable_task_generation > 0),
+    durable_task_stop_generation BIGINT CHECK (durable_task_stop_generation >= 0),
+    durable_task_started_at TIMESTAMPTZ(3),
+    durable_task_runtime_accounted_at TIMESTAMPTZ(3),
+    durable_task_execution_deadline_at TIMESTAMPTZ(3),
     CONSTRAINT ck_runs_one_owner CHECK (num_nonnulls(fleet_id, draft_id) = 1)
 );
 
@@ -70,4 +70,4 @@ CREATE INDEX idx_runs_run_expires_at_unbilled
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON thread.runs TO api_runtime;
 
-CREATE INDEX idx_runner_runs_task ON thread.runs (task_id) WHERE task_id IS NOT NULL;
+CREATE INDEX idx_runner_runs_durable_task ON thread.runs (durable_task_id) WHERE durable_task_id IS NOT NULL;

@@ -3,14 +3,14 @@
 use super::TurnCheckpointRefusal;
 use crate::{
     Result,
-    task::{
+    durable_task::{
         checkpoint::{StoredObject, Verification, verify_object},
         storage::{R2CheckpointStore, StorageSession},
     },
 };
 use af_core::{clock, id::Uuid7};
 use af_crypto::checkpoint::CheckpointScope;
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointObject, CheckpointObjectStatus, CheckpointTransfer, CheckpointTransferPurpose,
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};

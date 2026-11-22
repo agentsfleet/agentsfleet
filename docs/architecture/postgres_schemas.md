@@ -182,37 +182,37 @@ there is no generic repository trait.
  identity.workspaces ◀── fleets ──▶ revisions (head_revision_id)
  fleets ◀── revisions, schedules, activity_counters (1:1), thread.threads (1:1),
             approval_gates ──▶ connector.integration_grants,
-            task_items ◀── tasks ◀── task_inputs
+            durable_task_items ◀── tasks ◀── durable_task_inputs
 ```
 
 | Table | Purpose | Notes |
 |---|---|---|
 | `fleets` | The deployed agent |  |
 | `revisions` | Frozen setup history; rev 1 at Save, +1 per Apply | append-only |
-| `task_items` | Immutable interpretation receipts survive turn cleanup | append-only; task association closes a deferred cycle |
-| `task_adoptions` | Human goal-revision retry receipts | append-only opaque scope; goal text and native target stay on tasks |
-| `tasks` | One durable objective, its accepted setup, cumulative limits and lifecycle | one originating task item |
-| `task_inputs` | Accepted task input and its consumption order, separate from queue delivery | unique task/item and task/sequence |
-| `task_interpretations` | Complete private source message and accepted plan | append-only; survives turn settlement and cascades with fleet |
-| `task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
-| `task_waits` | One native exact-head dependency owner | scoped task/generation/stop, separate read claim deadline and monotonic signal cursor; one continuation consumes the wait |
-| `task_completions` | Verified workflow completion inbox | immutable scoped run/attempt evidence; early-race backup; acknowledged rows collect after three days |
-| `task_completion_fanout` | Durable signal-delivery cursor for immutable completion evidence | bounded supervisor fanout; one wait lock per transaction; cannot allocate a run |
-| `task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
-| `task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; kept with opaque effect |
-| `task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
-| `task_effect_recovery` | Expiring encrypted exact-repository read custody | survives owner deletion until reconciliation or expiry; no write credential |
-| `task_identity_keys` | Wrapped workspace/repository content-identity versions | one active version; independent of object encryption keys and master-key rewrapping |
-| `task_storage_quota` | Unique reserved/stored bytes per workspace | aggregate mutated under its source lock; pending deletion stays charged |
-| `task_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
-| `task_checkpoints` | Task capture plan and complete compatible recovery generation | native sequence, fixed pages/deadlines; ready incremental manifest alone becomes recovery pointer |
-| `task_checkpoint_operations` | Opaque capture-plan retry receipts | append-only; survives private plan retention and owner deletion |
-| `task_checkpoint_pages` | Bounded immutable incremental page bytes | native page identity/position; identical replay is read without update |
-| `task_base_pages` | Independently kept immutable base pages | cascades with base rather than its first task |
-| `task_objects` | Random scoped encrypted object, wrapped key and frozen ciphertext descriptor | one live keyed-content identity; quota charged once; erasure records purge custody |
-| `task_object_refs` | Workspace-scoped checkpoint/object or base/object edges | composite ownership keys; one owner per edge; referenced objects cannot be collected |
-| `task_object_pins` | One current capture/restore operation and deadline | versioned run/fence; retention serializes with task pin acquisition |
-| `task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
+| `durable_task_items` | Immutable interpretation receipts survive turn cleanup | append-only; task association closes a deferred cycle |
+| `durable_task_adoptions` | Human goal-revision retry receipts | append-only opaque scope; goal text and native target stay on tasks |
+| `durable_tasks` | One durable objective, its accepted setup, cumulative limits and lifecycle | one originating task item |
+| `durable_task_inputs` | Accepted task input and its consumption order, separate from queue delivery | unique task/item and task/sequence |
+| `durable_task_interpretations` | Complete private source message and accepted plan | append-only; survives turn settlement and cascades with fleet |
+| `durable_task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
+| `durable_task_waits` | One native exact-head dependency owner | scoped task/generation/stop, separate read claim deadline and monotonic signal cursor; one continuation consumes the wait |
+| `durable_task_completions` | Verified workflow completion inbox | immutable scoped run/attempt evidence; early-race backup; acknowledged rows collect after three days |
+| `durable_task_completion_fanout` | Durable signal-delivery cursor for immutable completion evidence | bounded supervisor fanout; one wait lock per transaction; cannot allocate a run |
+| `durable_task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
+| `durable_task_effect_states` | Acknowledgement and confirmed remote commit | cannot rewrite the effect request; kept with opaque effect |
+| `durable_task_effect_payloads` | Private repository/branch/workflow binding | append-only; cascades with task |
+| `durable_task_effect_recovery` | Expiring encrypted exact-repository read custody | survives owner deletion until reconciliation or expiry; no write credential |
+| `durable_task_identity_keys` | Wrapped workspace/repository content-identity versions | one active version; independent of object encryption keys and master-key rewrapping |
+| `durable_task_storage_quota` | Unique reserved/stored bytes per workspace | aggregate mutated under its source lock; pending deletion stays charged |
+| `durable_task_bases` | Independently kept verified repository base | exact repository/commit/format/toolbox identity; outlives its first task |
+| `durable_task_checkpoints` | Task capture plan and complete compatible recovery generation | native sequence, fixed pages/deadlines; ready incremental manifest alone becomes recovery pointer |
+| `durable_task_checkpoint_operations` | Opaque capture-plan retry receipts | append-only; survives private plan retention and owner deletion |
+| `durable_task_checkpoint_pages` | Bounded immutable incremental page bytes | native page identity/position; identical replay is read without update |
+| `durable_task_base_pages` | Independently kept immutable base pages | cascades with base rather than its first task |
+| `durable_task_objects` | Random scoped encrypted object, wrapped key and frozen ciphertext descriptor | one live keyed-content identity; quota charged once; erasure records purge custody |
+| `durable_task_object_refs` | Workspace-scoped checkpoint/object or base/object edges | composite ownership keys; one owner per edge; referenced objects cannot be collected |
+| `durable_task_object_pins` | One current capture/restore operation and deadline | versioned run/fence; retention serializes with task pin acquisition |
+| `durable_task_storage_purges` | Durable remote-delete custody and quota-release receipt | opaque object/location plus charged bytes/disposition; no owner foreign key |
 | `schedules` | Cron or one-shot runs, synced to the external scheduler |  |
 | `approval_gates` | A risky action waiting for a person | `turn_id` names its turn, with no foreign key yet |
 | `activity_counters` | Trigger-maintained dashboard totals | `thread.turns` triggers count each turn once, when it opens |
@@ -229,7 +229,7 @@ omit its model and review then resolves the tenant default.
 ```
  fleet.fleets / setup.drafts ◀── threads (1:1, id = owner id) ──▶ runner.runners (last_runner_id)
  threads ◀── turns ◀── items
- turns ◀── turns (resumes_turn_id); turns ──▶ fleet.tasks, fleet.task_items (composite scope)
+ turns ◀── turns (resumes_turn_id); turns ──▶ fleet.durable_tasks, fleet.durable_task_items (composite scope)
  runs ──▶ runner.runners; ··▶ fleets, drafts, turns: opaque, no FK
  deliveries ──▶ fleet.fleets; ··▶ turns (turn_id): opaque, no FK yet
 ```
@@ -239,7 +239,7 @@ omit its model and review then resolves the tenant default.
 | Table | Purpose | Notes |
 |---|---|---|
 | `threads` | One conversation per fleet and per draft: next fencing token, sticky runner, warm sandbox hold, resume bookmark | `ck_threads_one_owner`: exactly one of `fleet_id` and `draft_id`, and `id` equals it; `resume_context` is the report's resume bookmark |
-| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `task_activity` keeps at most 128 public stages / 120 KB |
+| `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
 | `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` is no longer written: a delivery whose inline attempts fail is abandoned |
@@ -401,18 +401,18 @@ Added by this milestone:
   are not distinct, so the platform registers each host once too.
 - **`idx_runners_created_at_id`: added by M246.** The runner list pages newest first. A volume bench measured the list at
   3.7 ms before the index and 0.1 ms after.
-- **Unused indexes dropped by the M246 audit.** `idx_task_effects_source_item`, `idx_task_effect_states_reconcile` and
-  `idx_task_checkpoints_expiry`: no statement filters or orders on them, and each cost a write per row.
+- **Unused indexes dropped by the M246 audit.** `idx_durable_task_effects_source_item`, `idx_durable_task_effect_states_reconcile` and
+  `idx_durable_task_checkpoints_expiry`: no statement filters or orders on them, and each cost a write per row.
 - **Write-only columns dropped by the M246 audit.** Each was written by a statement and read by none.
   - `fleet.approval_gates`: `spend_count`, `spend_ceiling`, `stated_binding`.
   - `identity.cli_credentials`: `credential_prefix`, `deployment`, `created_from_address`.
-  - `thread.deliveries.abandon_reason`, `fleet.task_bases.retained_bytes`.
-  - `fleet.task_completions`: `conclusion`, `body_digest`.
-  - `fleet.task_effect_states.confirmed_at`, `fleet.task_waits.consumed_admission_id`, `fleet.tasks.last_transition_at`.
-  - `fleet.task_inputs` and `fleet.task_interpretations`: `accepting_run_id`, `accepting_fence`.
-  - `fleet.task_storage_purges.delete_after_at`.
+  - `thread.deliveries.abandon_reason`, `fleet.durable_task_bases.retained_bytes`.
+  - `fleet.durable_task_completions`: `conclusion`, `body_digest`.
+  - `fleet.durable_task_effect_states.confirmed_at`, `fleet.durable_task_waits.consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
+  - `fleet.durable_task_inputs` and `fleet.durable_task_interpretations`: `accepting_run_id`, `accepting_fence`.
+  - `fleet.durable_task_storage_purges.delete_after_at`.
 - **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
-  and the dashboard. `fleet.task_effects.source_item_id` is a field of the public task-effect input.
+  and the dashboard. `fleet.durable_task_effects.source_item_id` is a field of the public task-effect input.
 
 ## Public interface changes
 

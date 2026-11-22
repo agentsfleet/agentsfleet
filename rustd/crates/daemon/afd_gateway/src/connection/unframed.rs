@@ -106,7 +106,7 @@ impl Unsent {
             turn_id: Cow::Borrowed(&self.turn_id),
             fencing_token: self.fencing_token,
             outcome: Outcome::FleetError,
-            task: None,
+            durable_task: None,
             failure_reason: Some(FailureClass::FrameTooLarge),
             failure_detail: Cow::Borrowed(detail),
             response_text: Cow::Borrowed(""),

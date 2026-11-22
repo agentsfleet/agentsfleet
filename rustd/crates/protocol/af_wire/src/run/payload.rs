@@ -101,7 +101,7 @@ pub struct RunPayload<'a> {
     pub decision: Option<Box<crate::decision::DecisionAssignment>>,
     /// Native task ownership and saved recovery cursors, frozen at issuance.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    pub task: Option<crate::task::TaskContext<'a>>,
+    pub durable_task: Option<crate::durable_task::DurableTaskContext<'a>>,
     /// Owner-authored task policy requires intent before any investigation or checkout.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub durable_tasks: bool,

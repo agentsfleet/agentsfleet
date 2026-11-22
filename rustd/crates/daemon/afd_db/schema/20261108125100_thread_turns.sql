@@ -42,14 +42,14 @@ CREATE TABLE thread.turns (
     parked_at         TIMESTAMPTZ(3),
     interpreted_at    TIMESTAMPTZ(3),
     settled_at        TIMESTAMPTZ(3),
-    task_id           UUID,
-    task_item_id      UUID,
-    -- Frozen separately from the run fence, and kept when cleanup clears `task_id`.
-    task_generation   BIGINT,
+    durable_task_id           UUID,
+    durable_task_item_id      UUID,
+    -- Frozen separately from the run fence, and kept when cleanup clears `durable_task_id`.
+    durable_task_generation   BIGINT,
     -- Public task progress, kept apart from private recovery so it survives reconnects.
-    task_activity            JSONB   NOT NULL DEFAULT jsonb_build_array(),
-    task_activity_sequence   BIGINT  NOT NULL DEFAULT 0,
-    task_activity_truncated  BOOLEAN NOT NULL DEFAULT false,
+    durable_task_activity            JSONB   NOT NULL DEFAULT jsonb_build_array(),
+    durable_task_activity_sequence   BIGINT  NOT NULL DEFAULT 0,
+    durable_task_activity_truncated  BOOLEAN NOT NULL DEFAULT false,
     -- A setup draft's turn: the request's operation, which is not unique once the retry
     -- window passes; the model it chose (NULL is the platform default); the candidate it
     -- wrote; and a requested save, which completes with the terminal answer, with the code
@@ -67,10 +67,10 @@ CREATE TABLE thread.turns (
         REFERENCES identity.workspaces (id) ON DELETE CASCADE,
     CONSTRAINT fk_turns_resumes_turn_id FOREIGN KEY (resumes_turn_id)
         REFERENCES thread.turns (id) ON DELETE SET NULL,
-    CONSTRAINT fk_turns_task_id_scope FOREIGN KEY (task_id, thread_id, workspace_id)
-        REFERENCES fleet.tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (task_id),
-    CONSTRAINT fk_turns_task_item_id_scope FOREIGN KEY (task_item_id, thread_id, workspace_id)
-        REFERENCES fleet.task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (task_item_id),
+    CONSTRAINT fk_turns_durable_task_id_scope FOREIGN KEY (durable_task_id, thread_id, workspace_id)
+        REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (durable_task_id),
+    CONSTRAINT fk_turns_durable_task_item_id_scope FOREIGN KEY (durable_task_item_id, thread_id, workspace_id)
+        REFERENCES fleet.durable_task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (durable_task_item_id),
     CONSTRAINT fk_turns_tenant_model_id FOREIGN KEY (tenant_model_id)
         REFERENCES model.tenant_models (id) ON DELETE SET NULL,
     CONSTRAINT fk_turns_candidate_id FOREIGN KEY (candidate_id)
@@ -81,10 +81,10 @@ CREATE TABLE thread.turns (
         CHECK (num_nulls(producer, producer_key, payload_digest) IN (0, 3)),
     CONSTRAINT ck_turns_reply_both_or_neither
         CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
-    CONSTRAINT ck_turns_task_generation_positive CHECK (task_generation > 0),
-    CONSTRAINT ck_turns_task_activity_sequence_nonnegative CHECK (task_activity_sequence >= 0),
+    CONSTRAINT ck_turns_durable_task_generation_positive CHECK (durable_task_generation > 0),
+    CONSTRAINT ck_turns_durable_task_activity_sequence_nonnegative CHECK (durable_task_activity_sequence >= 0),
     -- jsonb_array_length rejects anything but an array; nothing caps how long one is.
-    CONSTRAINT ck_turns_task_activity_array CHECK (jsonb_array_length(task_activity) >= 0)
+    CONSTRAINT ck_turns_durable_task_activity_array CHECK (jsonb_array_length(durable_task_activity) >= 0)
 );
 
 -- History pages, newest first: a thread's, one actor's on a thread, one kind's on a thread,
@@ -113,8 +113,8 @@ CREATE INDEX idx_turns_thread_id_reply_sequence_unsettled
     ON thread.turns (thread_id, reply_provider, reply_address, sequence)
     WHERE settled_at IS NULL;
 
-CREATE INDEX idx_turns_task_item_id ON thread.turns (task_item_id)
-    WHERE task_item_id IS NOT NULL;
+CREATE INDEX idx_turns_durable_task_item_id ON thread.turns (durable_task_item_id)
+    WHERE durable_task_item_id IS NOT NULL;
 
 CREATE INDEX idx_turns_tenant_model_id ON thread.turns (tenant_model_id)
     WHERE tenant_model_id IS NOT NULL;
@@ -127,9 +127,9 @@ CREATE INDEX idx_turns_status_thread_id_setup
     ON thread.turns (status, thread_id)
     WHERE producer IS NULL AND settled_at IS NULL;
 
-CREATE INDEX idx_turns_task_id_task_generation_settled_at_sequence
-    ON thread.turns (task_id, task_generation, settled_at, sequence)
-    WHERE task_id IS NOT NULL;
+CREATE INDEX idx_turns_durable_task_id_durable_task_generation_settled_at
+    ON thread.turns (durable_task_id, durable_task_generation, settled_at, sequence)
+    WHERE durable_task_id IS NOT NULL;
 
 -- A thread lives in exactly one workspace, so the planner must not multiply the two
 -- selectivities when a query filters on both.

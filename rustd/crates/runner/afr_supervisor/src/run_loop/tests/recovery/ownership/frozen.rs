@@ -3,29 +3,29 @@
 
 use super::*;
 use crate::run_loop::tests::recovery::{CHECKPOINT, archive::Refusal, server::Server};
-use af_wire::task::{DecisionTaskVersion, TaskReport};
+use af_wire::durable_task::{DecisionDurableTaskVersion, DurableTaskReport};
 
 /// What a run hands back with history to save and a waiting task.
 fn ending(fixture: &Fixture) -> Result<Ending> {
     let task = fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .clone()
         .ok_or_else(|| error::config("fixture task missing"))?;
     let mut output = test_support::answer();
-    output.task = Some(TaskReport {
-        task: DecisionTaskVersion {
-            task_id: task.task_id.to_string(),
+    output.task = Some(DurableTaskReport {
+        durable_task: DecisionDurableTaskVersion {
+            durable_task_id: task.durable_task_id.to_string(),
             generation: task.generation,
         },
-        disposition: TaskDisposition::Waiting,
+        disposition: DurableTaskDisposition::Waiting,
         decision_call_id: Some(ID.to_owned()),
         checkpoint_id: None,
         covered_input_sequence: 7,
         effect_watermark: 5,
     });
-    output.recovery = Some(TaskRecovery {
+    output.recovery = Some(DurableTaskRecovery {
         task,
         history: Zeroizing::new(b"saved conversation".to_vec()),
     });
@@ -78,7 +78,7 @@ async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report
         .as_ref()
         .ok_or_else(|| error::config("task report missing"))?;
     assert_eq!(task.checkpoint_id.as_deref(), Some(CHECKPOINT));
-    assert_eq!(task.disposition, TaskDisposition::Waiting);
+    assert_eq!(task.disposition, DurableTaskDisposition::Waiting);
     assert_eq!(task.decision_call_id.as_deref(), Some(ID));
     assert_eq!(output.result.content, "done");
     assert_eq!(
@@ -109,7 +109,8 @@ async fn a_frozen_capture_commits_history_and_names_its_checkpoint_in_the_report
 }
 
 #[tokio::test]
-async fn a_frozen_capture_it_cannot_prove_blocks_the_task_without_native_io() -> Result<()> {
+async fn a_frozen_capture_it_cannot_prove_blocks_the_durable_task_without_native_io() -> Result<()>
+{
     for fault in ["owner", "workspace", "toolbox", "unproved", "busy"] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
@@ -145,7 +146,7 @@ async fn a_frozen_capture_it_cannot_prove_blocks_the_task_without_native_io() ->
             .task
             .as_ref()
             .ok_or_else(|| error::config("task report missing"))?;
-        assert_eq!(task.disposition, TaskDisposition::Blocked, "{fault}");
+        assert_eq!(task.disposition, DurableTaskDisposition::Blocked, "{fault}");
         assert_eq!(task.checkpoint_id, None, "{fault}");
         assert_eq!(task.decision_call_id, None, "{fault}");
         assert!(
@@ -183,12 +184,12 @@ async fn a_frozen_capture_saves_nothing_for_an_ending_without_history() -> Resul
 }
 
 #[tokio::test]
-async fn a_fresh_api_task_takes_no_file_permit_and_restores_nothing() -> Result<()> {
+async fn a_fresh_api_durable_task_takes_no_file_permit_and_restores_nothing() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     let task = fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .as_mut()
         .ok_or_else(|| error::config("fixture task missing"))?;
     task.checkpoint_id = None;
@@ -225,9 +226,9 @@ async fn a_fresh_api_task_takes_no_file_permit_and_restores_nothing() -> Result<
 }
 
 #[tokio::test]
-async fn a_durable_workspace_without_a_native_task_never_freezes() -> Result<()> {
+async fn a_durable_workspace_without_a_native_durable_task_never_freezes() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
-    fixture.prepared.inputs.current_task = None;
+    fixture.prepared.inputs.current_durable_task = None;
     let root = tempfile::tempdir()?;
     let (engine, sandbox) = sandbox(root.path(), Freezer::Works).await?;
     let owner = OnceLock::new();
@@ -256,18 +257,18 @@ fn retained(call: &Call) -> Option<Answer> {
         Ok::<_, crate::Error>(plan)
     };
     match call.verb {
-        Verb::TaskCheckpointPlan => Some(match retained() {
+        Verb::DurableTaskCheckpointPlan => Some(match retained() {
             Ok(plan) => test_support::json(&plan),
             Err(failure) => Answer::Fail(failure),
         }),
-        Verb::TaskCheckpointAuthorizations => Some(match retained() {
+        Verb::DurableTaskCheckpointAuthorizations => Some(match retained() {
             Ok(plan) => test_support::json(&CheckpointAuthorizations {
                 plan,
                 objects: vec![],
             }),
             Err(failure) => Answer::Fail(failure),
         }),
-        Verb::TaskCheckpointPage => Some(test_support::json(&fixture::page())),
+        Verb::DurableTaskCheckpointPage => Some(test_support::json(&fixture::page())),
         _ => None,
     }
 }
@@ -277,12 +278,12 @@ fn pull_request(fixture: &mut Fixture, head: &str) -> Result<()> {
     let task = fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .as_mut()
         .ok_or_else(|| error::config("fixture task missing"))?;
     task.checkpoint_id = None;
     task.checkpoint_generation = None;
-    task.target = TaskTarget::ExistingPr {
+    task.target = DurableTaskTarget::ExistingPr {
         repository: "acme/widget".to_owned(),
         repository_id: 42,
         number: 3,
@@ -328,17 +329,17 @@ async fn a_fresh_pull_request_retains_its_checkout_as_the_base_before_the_model_
     let calls = fixture.rig.calls();
     let planned = calls
         .iter()
-        .find(|call| call.verb == Verb::TaskCheckpointPlan)
+        .find(|call| call.verb == Verb::DurableTaskCheckpointPlan)
         .and_then(|call| call.body.as_ref())
         .ok_or_else(|| error::config("no base was planned"))?;
-    let planned: af_wire::task::CheckpointPlanInput =
+    let planned: af_wire::durable_task::CheckpointPlanInput =
         serde_json::from_slice(planned).map_err(error::encode)?;
     assert_eq!(planned.mode, CheckpointMode::RetainBase);
     assert_eq!(planned.commit_oid.as_deref(), Some(head.as_str()));
     assert!(
         calls
             .iter()
-            .any(|call| call.verb == Verb::TaskCheckpointAuthorizations),
+            .any(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations),
         "the retained base was inspected"
     );
     Ok(())
@@ -374,7 +375,8 @@ async fn a_pull_request_checkout_that_moved_is_refused_before_any_capture() -> R
 }
 
 #[tokio::test]
-async fn history_without_a_task_report_still_commits_through_the_api_only_owner() -> Result<()> {
+async fn history_without_a_durable_task_report_still_commits_through_the_api_only_owner()
+-> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     let mut server = Server::start(Refusal::None).await;
     let plane = server

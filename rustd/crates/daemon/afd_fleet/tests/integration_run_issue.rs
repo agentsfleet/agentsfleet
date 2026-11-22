@@ -266,7 +266,7 @@ async fn a_plain_run_under_a_moved_setup_is_not_written() {
     let proof = afd_fleet::run::installed::IssueRevision {
         accepted: assigned.clone(),
         current: assigned,
-        task_generation: None,
+        durable_task_generation: None,
     };
     fixtures
         .native_config(&fleet, r#"{"name":"moved-setup","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000000"}}}"#)

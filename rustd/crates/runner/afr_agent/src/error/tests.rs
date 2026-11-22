@@ -127,7 +127,7 @@ fn should_keep_the_identity_and_context_codes_and_name_nothing_unhosted() {
 }
 
 #[test]
-fn should_name_nothing_unhosted_for_a_recovery_or_task_refusal() {
+fn should_name_nothing_unhosted_for_a_recovery_or_durable_task_refusal() {
     let recovery = super::recovery_invalid("assigned recovery has no restore owner");
     let decision = crate::decision::unavailable();
 

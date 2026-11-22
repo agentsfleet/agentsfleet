@@ -116,7 +116,7 @@ async fn test_window_read_failure_issues_without_a_window() {
         .ask(TurnKind::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
     let forgetful = RunService {
-        task_reports: None,
+        durable_task_reports: None,
         memories: Memories::new(unreachable_db(), Entropy::new()),
         ..chat.fixtures.plane()
     };

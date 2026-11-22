@@ -32,7 +32,7 @@ impl Turns {
     pub async fn backlog(&self) -> Result<LedgerBacklog> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, BacklogRow>(sql::SELECT_BACKLOG)
-            .bind(crate::Producer::TaskContinuation.as_str())
+            .bind(crate::Producer::DurableTaskContinuation.as_str())
             .fetch_one(&mut *connection)
             .await
             .map(BacklogRow::into_backlog)

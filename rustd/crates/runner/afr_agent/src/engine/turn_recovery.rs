@@ -167,7 +167,7 @@ impl TurnRecovery {
 }
 
 fn scope(run: &RunPayload<'_>, workspace: TurnWorkspace) -> Result<TurnScope> {
-    if run.durable_tasks || run.task.is_some() {
+    if run.durable_tasks || run.durable_task.is_some() {
         return Err(recovery_invalid(
             "ordinary recovery cannot impersonate native task state",
         ));

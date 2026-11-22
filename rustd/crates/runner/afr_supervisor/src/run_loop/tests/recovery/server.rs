@@ -82,7 +82,7 @@ fn respond(
         serde_json::from_slice(bytes).unwrap()
     };
     let mut archive = archive.lock().unwrap();
-    if uri.path().contains("/tasks/") {
+    if uri.path().contains("/durable_tasks/") {
         if method == Method::GET {
             assert!(
                 uri.query()

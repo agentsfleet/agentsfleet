@@ -63,7 +63,7 @@ pub struct TerminalReport<'a> {
     /// none when the runner holds nothing.
     pub held_until: Option<Timestamp>,
     /// Native task participant, prepared before taking report locks.
-    pub task_settlement: Option<crate::task::TaskSettlement<'a>>,
+    pub durable_task_settlement: Option<crate::durable_task::DurableTaskSettlement<'a>>,
     /// The last folded message a completed model call read; its messages
     /// settle with this answer when the run succeeded.
     pub folded_through_sequence: Option<i64>,
@@ -114,7 +114,7 @@ impl Runs {
     /// Reports an entropy source that could not mint an identifier and a
     /// datastore that would not answer, in which case nothing was written.
     pub async fn commit_report(&self, mut report: TerminalReport<'_>) -> Result<Committed> {
-        let mut task_settlement = report.task_settlement.take();
+        let mut durable_task_settlement = report.durable_task_settlement.take();
         let mut repriced: Option<Pricing> = None;
         loop {
             let pricing = repriced.as_ref().unwrap_or(report.pricing);
@@ -126,7 +126,12 @@ impl Runs {
             match next_step(answer, repriced.is_some()) {
                 Step::Settle(settled) => {
                     return self
-                        .settled(transaction, &report, *settled, task_settlement.take())
+                        .settled(
+                            transaction,
+                            &report,
+                            *settled,
+                            durable_task_settlement.take(),
+                        )
                         .await;
                 }
                 Step::AlreadySettled => return Ok(Committed::AlreadySettled),
@@ -241,17 +246,21 @@ impl Runs {
         mut transaction: sqlx::Transaction<'_, sqlx::Postgres>,
         report: &TerminalReport<'_>,
         settled: SettledReport,
-        task_settlement: Option<crate::task::TaskSettlement<'_>>,
+        durable_task_settlement: Option<crate::durable_task::DurableTaskSettlement<'_>>,
     ) -> Result<Committed> {
         let mut notice = None;
-        if settled.has_task {
-            crate::task::usage::record(&mut transaction, report.run_key, settled.model_nanos)
-                .await?;
-            notice = crate::task::settle_report(
+        if settled.has_durable_task {
+            crate::durable_task::usage::record(
+                &mut transaction,
+                report.run_key,
+                settled.model_nanos,
+            )
+            .await?;
+            notice = crate::durable_task::settle_report(
                 &mut transaction,
                 report.run_key,
                 report.runner_id,
-                task_settlement,
+                durable_task_settlement,
             )
             .await?;
             if let Some(notice) = notice {

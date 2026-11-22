@@ -1,0 +1,29 @@
+# A durable task has one name. Its routes are `/durable_tasks` under a fleet
+# and under a runner's run, its path parameter and wire field are
+# `durable_task_id`, and its config sections are `[durable_tasks]` and
+# `[fleet.durable_tasks]`. Before the first production deploy nothing aliases
+# the old `tasks` name. M253_004 Dimension 16.1 names this check; it lives
+# here because a test never reads the repository (tests-*-repo-read). TOML has
+# no grammar here, so `make lint-rustd` greps the manifests for the sections.
+id: rust-durable-task-names
+language: Rust
+severity: error
+message: names the retired `tasks` route, `task_id` field or `[tasks]` config section; a durable task is `durable_tasks` and `durable_task_id` (M253_004 §16)
+files:
+  - rustd/crates/**/*.rs
+ignores:
+  - "**/target/**"
+  # The daemon supervisor logs its own tokio tasks under `task_id`: another word.
+  - rustd/crates/daemon/main/src/supervisor/**
+utils:
+  retired-text:
+    # `/fleets/{fleet_id}/tasks/{task_id}`, `concatcp!(RUN, "tasks/inputs")`,
+    # `[tasks.checkpoints]`, `[fleet.tasks]`, a `"task_id"` JSON key.
+    regex: '/tasks(/|\?|$)|^tasks/|\{task_id\}|\[(fleet\.)?tasks(\.[a-z_]+)?\]|^task_id$'
+rule:
+  any:
+    - kind: string_content
+      matches: retired-text
+    # `pub task_id: Uuid7` on a wire type serialises as `"task_id"`.
+    - kind: field_identifier
+      regex: '^task_id$'

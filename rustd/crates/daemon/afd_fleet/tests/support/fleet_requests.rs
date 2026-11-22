@@ -36,7 +36,7 @@ pub(crate) fn enrolment(
         )),
         assigned_policy: AssignedPolicy {
             decision_model_id: None,
-            durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+            durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
             sandbox_tier: tier,
             network_policy: network,
             registry_allowlist: vec![Cow::Borrowed("registry.npmjs.org")],

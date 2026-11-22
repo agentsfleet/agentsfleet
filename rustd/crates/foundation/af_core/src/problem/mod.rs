@@ -112,12 +112,12 @@ impl Problem {
 
 mod auth;
 mod checkpoint;
+mod durable_task;
 mod fleet;
 mod integration;
 mod invite;
 mod request;
 mod setup;
-mod task;
 
 /// The families, in `REGISTRY` order — which is the order [`ENTRIES`] takes.
 ///
@@ -126,7 +126,7 @@ mod task;
 /// what lets [`ENTRIES`] be flattened from the parts rather than written out
 /// a second time that could disagree with them.
 const FAMILIES: [&[Problem]; 7] = [
-    task::TASK,
+    durable_task::DURABLE_TASK,
     request::REQUEST,
     auth::AUTH,
     fleet::FLEET,

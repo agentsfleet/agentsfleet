@@ -3,7 +3,7 @@
 
 use crate::recovery::layout::Pages;
 use crate::test_support;
-use af_wire::task::{CheckpointEntry, CheckpointPage};
+use af_wire::durable_task::{CheckpointEntry, CheckpointPage};
 
 fn empty_page() -> crate::Result<usize> {
     let page = CheckpointPage {

@@ -115,7 +115,7 @@ impl DraftAssignment {
             finished_calls: Vec::new(),
             resume_hold: false,
             decision: None,
-            task: None,
+            durable_task: None,
             durable_tasks: false,
             memory: None,
             inputs_waiting: false,

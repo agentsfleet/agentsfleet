@@ -12,7 +12,7 @@ const DecisionPolicySchema = z.object({
       steer: TextSchema, new_work: TextSchema, clarify: TextSchema,
     }).strict()}).strict(),
     association: z.object({question: TextSchema, criteria: z.object({
-      matching_task: TextSchema, new_work: TextSchema, unclear: TextSchema,
+      matching_durable_task: TextSchema, new_work: TextSchema, unclear: TextSchema,
     }).strict()}).strict(),
     multiple_requests: NoulQuestionSchema,
   }).strict(),

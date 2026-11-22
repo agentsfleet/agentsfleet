@@ -29,10 +29,10 @@ fn recovery_refusals_are_safe_nonpermanent_domain_answers() {
         assert_eq!(fault.detail(), reason.detail());
         assert!(!fault.is_config_permanent());
         assert!(!fault.is_datastore_unavailable());
-        assert_eq!(fault.task_current_state(), None);
-        assert_eq!(fault.task_precondition_tag(), None);
+        assert_eq!(fault.durable_task_current_state(), None);
+        assert_eq!(fault.durable_task_precondition_tag(), None);
         assert_eq!(fault.decision_failure_reason(), None);
-        assert_eq!(fault.task_timeout_reason(), None);
+        assert_eq!(fault.durable_task_timeout_reason(), None);
         assert_eq!(fault.remote_cooldown(), None);
         assert!(!fault.is_fence_refusal());
         assert!(fault.source().is_none());

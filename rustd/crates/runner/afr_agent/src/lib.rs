@@ -48,5 +48,5 @@ pub use self::harness::{Loop, RunLimits};
 pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
 pub use self::setup::{SetupContext, SetupOutput, SetupRun};
 
-pub use decision::PreparedTask;
-pub use engine::TaskRecovery;
+pub use decision::PreparedDurableTask;
+pub use engine::DurableTaskRecovery;

@@ -72,7 +72,7 @@ mod tests {
     /// A message other than the one that started the run.
     const LATER: &str = "0190d5c2-7e1a-7000-8000-00000000e002";
 
-    fn live_task() -> RunFacts {
+    fn live_durable_task() -> RunFacts {
         RunFacts {
             live_run: Some(LiveRun {
                 turn_id: RUN_EVENT.to_owned(),
@@ -84,7 +84,7 @@ mod tests {
     }
 
     fn with_run(change: impl FnOnce(&mut LiveRun)) -> RunFacts {
-        let mut facts = live_task();
+        let mut facts = live_durable_task();
         if let Some(live) = facts.live_run.as_mut() {
             change(live);
         }
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn disposition_follows_the_run_state() {
         let person = steer_actor("user_2folder");
-        let folded = of(&live_task(), &person, LATER);
+        let folded = of(&live_durable_task(), &person, LATER);
         assert_eq!(folded.disposition, SteerDisposition::Folded);
         assert_eq!(folded.folded_into_turn_id.as_deref(), Some(RUN_EVENT));
 
@@ -111,7 +111,7 @@ mod tests {
         );
 
         assert_eq!(
-            of(&live_task(), ACTOR_MACHINE, LATER).disposition,
+            of(&live_durable_task(), ACTOR_MACHINE, LATER).disposition,
             SteerDisposition::Queued,
             "a durable task is never assigned a machine's send"
         );
@@ -169,7 +169,7 @@ mod tests {
     fn no_run_folds_a_message_whose_actor_is_no_steer() {
         for actor in ["webhook:github", "cron:nightly", ""] {
             assert_eq!(
-                of(&live_task(), actor, LATER).disposition,
+                of(&live_durable_task(), actor, LATER).disposition,
                 SteerDisposition::Queued,
                 "{actor:?} is not a person"
             );
@@ -195,8 +195,8 @@ mod tests {
             ..with_run(|live| live.durable_task = false)
         };
         for (facts, actor) in [
-            (live_task(), person.as_str()),
-            (live_task(), ACTOR_MACHINE),
+            (live_durable_task(), person.as_str()),
+            (live_durable_task(), ACTOR_MACHINE),
             (plain_clear.clone(), person.as_str()),
             (plain_clear, ACTOR_MACHINE),
         ] {

@@ -14,7 +14,7 @@ pub(super) fn turn_refused(failure: fn() -> crate::Error) -> impl Fn(&Call) -> O
 /// A run whose native owner refuses the task checkpoint plan with `code`.
 fn plan_refused(code: af_core::error_code::ErrorCode) -> impl Fn(&Call) -> Option<Answer> {
     move |call| {
-        (call.verb == Verb::TaskCheckpointPlan)
+        (call.verb == Verb::DurableTaskCheckpointPlan)
             .then(|| Answer::Fail(error::refused(call.verb, 409, Some(code))))
     }
 }
@@ -45,13 +45,14 @@ fn turn_commands(calls: &[Call]) -> usize {
 }
 
 #[tokio::test]
-async fn a_repository_task_without_a_ready_sandbox_stops_the_run_before_native_io() -> Result<()> {
+async fn a_repository_durable_task_without_a_ready_sandbox_stops_the_run_before_native_io()
+-> Result<()> {
     let mut fixture = Fixture::new(unavailable)?;
     let run = fixture.run()?;
     let (_, mut owner) = BoundaryOwner::new(&run, Workspace::ApiOnly);
     let mut request = snapshot(&fixture)?;
-    if let RecoveryState::Task(task) = &mut request.state {
-        task.task.target = TaskTarget::ExistingPr {
+    if let RecoveryState::DurableTask(task) = &mut request.state {
+        task.task.target = DurableTaskTarget::ExistingPr {
             repository: "acme/widget".to_owned(),
             repository_id: 42,
             number: 3,
@@ -189,10 +190,10 @@ async fn an_unprovable_tenant_stops_the_run_after_thaw() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_task_capture_at_its_limit_skips_and_a_stale_one_stops_the_run() -> Result<()> {
+async fn a_durable_task_capture_at_its_limit_skips_and_a_stale_one_stops_the_run() -> Result<()> {
     for (code, skipped) in [
-        (af_core::error_code::TASK_LIMIT_EXHAUSTED, true),
-        (af_core::error_code::TASK_STALE_STATE, false),
+        (af_core::error_code::DURABLE_TASK_LIMIT_EXHAUSTED, true),
+        (af_core::error_code::DURABLE_TASK_STALE_STATE, false),
     ] {
         let mut fixture = Fixture::new(plan_refused(code))?;
         let run = fixture.run()?;
@@ -217,7 +218,7 @@ async fn a_task_capture_at_its_limit_skips_and_a_stale_one_stops_the_run() -> Re
                 .rig
                 .calls()
                 .iter()
-                .any(|call| call.verb == Verb::TaskCheckpointPlan),
+                .any(|call| call.verb == Verb::DurableTaskCheckpointPlan),
             "the plan was asked for"
         );
     }

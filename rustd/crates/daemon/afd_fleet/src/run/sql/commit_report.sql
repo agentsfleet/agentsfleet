@@ -66,7 +66,7 @@ WITH scope AS MATERIALIZED (
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.turn_id, l.fencing_token,
          l.created_at, l.run_expires_at, l.last_metered_at,
-         l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence,
+         l.posture, l.provider, l.model, l.durable_task_id, a.fencing_token AS live_fence,
          a.thread_expires_at, a.hold_authorized
   FROM thread.runs l
   JOIN locked_thread a ON a.fleet_id = l.fleet_id
@@ -233,7 +233,7 @@ SELECT
     p.posture AS held_posture, p.provider AS held_provider, p.model AS held_model,
     (SELECT resource_version FROM catalogue) AS catalogue_version,
     p.fencing_token >= p.live_fence AS fence_holds,
-    p.task_id IS NOT NULL AS has_task,
+    p.durable_task_id IS NOT NULL AS has_durable_task,
     (SELECT reply_provider FROM settled) AS reply_provider,
     (SELECT id FROM owed) AS owed_id,
     -- The run's token sums, this statement's lines included. Summed as

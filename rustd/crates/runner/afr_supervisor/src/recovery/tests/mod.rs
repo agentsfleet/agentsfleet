@@ -13,12 +13,13 @@ mod window;
 use crate::client::{Call, ControlPlane, Verb};
 use crate::test_support::{Answer, Calls, json, plane};
 use af_core::{clock, id::Uuid7};
-use af_wire::task::{
+use af_wire::durable_task::{
     CHECKPOINT_FORMAT, CheckpointAuthorizationInput, CheckpointAuthorizations,
     CheckpointCommitInput, CheckpointEntry, CheckpointMode, CheckpointObject,
     CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage, CheckpointPage,
     CheckpointPageInput, CheckpointPin, CheckpointPlan, CheckpointPlanInput,
-    CheckpointUploadsInput, TaskContext, TaskLimits, TaskState, TaskTarget, TaskUsage,
+    CheckpointUploadsInput, DurableTaskContext, DurableTaskLimits, DurableTaskState,
+    DurableTaskTarget, DurableTaskUsage,
 };
 use serde::de::DeserializeOwned;
 use std::{
@@ -36,18 +37,18 @@ fn toolbox() -> String {
     "a".repeat(64)
 }
 
-fn task() -> TaskContext<'static> {
-    TaskContext {
-        task_id: ID.into(),
+fn task() -> DurableTaskContext<'static> {
+    DurableTaskContext {
+        durable_task_id: ID.into(),
         originating_item_id: ID.into(),
-        target: TaskTarget::ApiOnly,
+        target: DurableTaskTarget::ApiOnly,
         generation: 7,
         stop_generation: 0,
         accepted_revision_id: ID.into(),
         objective: "Repair the admitted defect".into(),
         goal_digest: "b".repeat(64).into(),
         questions: vec![],
-        state: TaskState::Running,
+        state: DurableTaskState::Running,
         covered_input_sequence: 3,
         input_sequence: 3,
         effect_cursor: 2,
@@ -55,8 +56,8 @@ fn task() -> TaskContext<'static> {
         checkpoint_id: Some(ID.into()),
         checkpoint_generation: Some(1),
         expires_at: clock::after(clock::now(), Duration::from_hours(1)),
-        limits: TaskLimits::default(),
-        usage: TaskUsage::default(),
+        limits: DurableTaskLimits::default(),
+        usage: DurableTaskUsage::default(),
     }
 }
 
@@ -138,22 +139,22 @@ impl Archive {
     fn respond(&mut self, call: &Call) -> Answer {
         match call.verb {
             Verb::Progress => json(&serde_json::json!({})),
-            Verb::TaskCheckpointPlan => self.planned(call),
-            Verb::TaskCheckpointObjectsRegister => self.registered(call),
-            Verb::TaskCheckpointPageWrite => self.written(call),
-            Verb::TaskCheckpointCommit => self.committed(call),
-            Verb::TaskCheckpointUploads => self.uploaded(call),
-            Verb::TaskCheckpointAuthorizations => self.authorized(call),
-            Verb::TaskCheckpointPage => self.read_page(call),
-            Verb::TaskCheckpointPin => self.renewed(call),
+            Verb::DurableTaskCheckpointPlan => self.planned(call),
+            Verb::DurableTaskCheckpointObjectsRegister => self.registered(call),
+            Verb::DurableTaskCheckpointPageWrite => self.written(call),
+            Verb::DurableTaskCheckpointCommit => self.committed(call),
+            Verb::DurableTaskCheckpointUploads => self.uploaded(call),
+            Verb::DurableTaskCheckpointAuthorizations => self.authorized(call),
+            Verb::DurableTaskCheckpointPage => self.read_page(call),
+            Verb::DurableTaskCheckpointPin => self.renewed(call),
             _ => Answer::Fail(crate::error::config("unexpected recovery request")),
         }
     }
     fn planned(&self, call: &Call) -> Answer {
         let input: CheckpointPlanInput = body(call);
         assert_eq!(input.fencing_token, FENCE);
-        assert_eq!(input.task.generation, 7);
-        assert_eq!(input.task.task_id, ID);
+        assert_eq!(input.durable_task.generation, 7);
+        assert_eq!(input.durable_task.durable_task_id, ID);
         assert_eq!(input.page_count, 1);
         json(&self.plan)
     }
@@ -292,7 +293,7 @@ async fn drain(calls: &mut Calls) -> Vec<Call> {
                 let value: serde_json::Value = body(&call);
                 matches!(
                     value
-                        .pointer("/frames/0/task_transfer_progress/phase")
+                        .pointer("/frames/0/durable_task_transfer_progress/phase")
                         .and_then(serde_json::Value::as_str),
                     Some("saved" | "restored" | "failed")
                 )
@@ -324,7 +325,7 @@ fn phases(calls: &[Call]) -> Vec<String> {
         .map(|call| {
             let value: serde_json::Value = body(call);
             value
-                .pointer("/frames/0/task_transfer_progress/phase")
+                .pointer("/frames/0/durable_task_transfer_progress/phase")
                 .unwrap()
                 .as_str()
                 .unwrap()

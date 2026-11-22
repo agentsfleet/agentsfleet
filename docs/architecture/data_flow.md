@@ -22,7 +22,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` and `slack_mention`. Each commits a `thread.turns` row and attempts a wake notification. | §B. TRIGGER |
+| Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `durable_task_continuation` and `slack_mention`. Each commits a `thread.turns` row and attempts a wake notification. | §B. TRIGGER |
 | Message disposition | `started`, `folded` or `queued` | a message accepted while its fleet's run is live folds into that run; the run takes it at its next model call, and the message's own turn gets the run's reply | §"C. EXECUTE" |
 | Queue ownership | Postgres | Intake, assignment and settlement use the same `thread.turns` row. Outbound replies are `thread.deliveries` rows; core NATS carries only notifications. | §Steer flow end-to-end |
 | Durable stores | 4 tables, join key `turn_id` | `thread.turns` (one row per input, UNIQUE `(producer, producer_key)` and `(thread_id, sequence)`) · `thread.deliveries` (one row per answer, UNIQUE `(fleet_id, turn_id)`) · `thread.threads` (one row per fleet or draft, holding `resume_context`) · `billing.usage_lines` (one row per measured slice of a run, UNIQUE `(work_type, work_id, kind, seq)`, charged by its own insert) | §The five durable stores |
@@ -572,7 +572,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
 
    TASK          a durable task's matched completion or wake
    CONTINUATION  → INSERT thread.turns keyed by task, generation and wake
-                 (producer task_continuation; durable_tasks.md)
+                 (producer durable_task_continuation; durable_tasks.md)
 
    All seven producers commit the same turn shape to one ledger. The
    reasoning loop never branches on actor. Actor is metadata for the

@@ -157,7 +157,7 @@ describe("fleet-stream-registry — fleet facts", () => {
     expect(listener.mock.calls.length).toBe(woken + 1);
     expect(getSnapshot(FLEET).approvalsSeq).toBe(before.approvalsSeq + 1);
     expect(getSnapshot(FLEET).factsSeq).toBe(before.factsSeq);
-    expect(getSnapshot(FLEET).tasksSeq).toBe(before.tasksSeq);
+    expect(getSnapshot(FLEET).durableTasksSeq).toBe(before.durableTasksSeq);
     release();
   });
 });

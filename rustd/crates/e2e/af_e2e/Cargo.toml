@@ -50,7 +50,7 @@ af_observability.workspace = true
 af_otlp.workspace = true
 af_stream = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }
-af_wire.workspace = true
+af_wire = { workspace = true, features = ["test-util"] }
 # The daemon's stores, read back and seeded through their own statements.
 afd_approval.workspace = true
 afd_auth.workspace = true

@@ -1,6 +1,6 @@
 import { test } from "./fixtures/chat-probe";
 import { expect, type Locator, type Page } from "@playwright/test";
-import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
+import { DURABLE_TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 
 test("setup and fleet status text has a muted-to-foreground sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
@@ -286,7 +286,7 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
 });
 
 test("work stays in a sidebar while the ordinary chat composer preserves its draft", async ({page, chatProbe}, info) => {
-  const work = [summary(), summary(TASK_IDS[1], "running"), summary(TASK_IDS[2], "ready")];
+  const work = [summary(), summary(DURABLE_TASK_IDS[1], "running"), summary(DURABLE_TASK_IDS[2], "ready")];
   await page.route("**/live/v1/workspaces/workspace/fleets/linkwarden/tasks**", async route => {
     expect(route.request().headers()["authorization"]).toBeUndefined();
     const pathname = new URL(route.request().url()).pathname;
@@ -295,16 +295,16 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     const target = task ? {kind: "existing_pr", repository: "linkwarden/linkwarden", number: Number(task.id.slice(-3)), branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: `https://github.com/linkwarden/linkwarden/pull/${Number(task.id.slice(-3))}`, workflows: []} : null;
     await route.fulfill({headers: {etag: `"${"a".repeat(64)}"`}, json: saved ? {...saved, context: {...saved.context, target}} : {items: work, next_cursor: null}});
   });
-  await page.goto(`${chatProbe}?tasks=1`);
+  await page.goto(`${chatProbe}?durable_tasks=1`);
   const input = page.getByRole("textbox", {name: /^Message your fleet/});
   await input.fill("Keep the redirect fix in the callback handler.");
   for (const window of [{width: 1280, height: 800}, {width: 1280, height: 360}, {width: 390, height: 667}]) {
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
     const panel = page.getByRole("region", {name: "Current work"});
-    const taskList = panel.getByRole("button", {name: /^Tasks/});
-    await expect(taskList).toBeVisible();
-    if (await taskList.getAttribute("aria-expanded") !== "true") await taskList.click();
+    const durableTaskList = panel.getByRole("button", {name: /^Tasks/});
+    await expect(durableTaskList).toBeVisible();
+    if (await durableTaskList.getAttribute("aria-expanded") !== "true") await durableTaskList.click();
     for (const section of ["Pull requests", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
     await expect(panel.getByRole("heading", {name: "Outputs", exact: true})).toHaveCount(0);
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);

@@ -75,14 +75,14 @@ describe("attempt output ownership", () => {
     const progress = {activity_id: "019a8b12-3456-7890-8abc-0123456789ab", operation: "capture", phase: "saved",
       provider: null, model: null, completed: 1, total: 1};
     const tool = {name: "shell", call_id: "1:0", status: "succeeded", ms: 1};
-    activity.frame("task_transfer_progress", {progress});
+    activity.frame("durable_task_transfer_progress", {progress});
     tools.frame("tool_call_completed", tool);
-    activity.frame("task_transfer_progress", {progress});
+    activity.frame("durable_task_transfer_progress", {progress});
     tools.frame("tool_call_completed", tool);
     expect(lines).toHaveLength(2);
     activity.reset();
     tools.reset();
-    activity.frame("task_transfer_progress", {progress});
+    activity.frame("durable_task_transfer_progress", {progress});
     tools.frame("tool_call_completed", tool);
     expect(lines).toHaveLength(4);
   });

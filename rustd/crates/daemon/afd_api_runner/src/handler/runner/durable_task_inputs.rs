@@ -1,0 +1,60 @@
+//! Pending inputs are complete native messages; this route never consumes them.
+
+use af_wire::durable_task::DurableTaskInputsQuery;
+use afd_fleet::durable_task::DurableTaskRun;
+use afd_http::handler::{Refusal, parse_id};
+use axum::{
+    Json,
+    extract::{Path, Query, State, rejection::QueryRejection},
+    response::{IntoResponse as _, Response},
+};
+use std::sync::Arc;
+
+use crate::{auth::RunnerIdentity, services::RunnerPlane};
+
+const MALFORMED: &str = "Task input query exceeds its supported shape or bounds";
+const EVENT: &str = "runner_task_inputs_failed";
+
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get, path = af_wire::paths::RUN_DURABLE_TASK_INPUTS, tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_read_durable_task_inputs", summary = "Read pending human durable task input",
+    description = "Returns a page of complete human messages from the current source conversation in native FIFO order, with current durable task summaries. Reads never claim or consume input. Requires the current runner, live run and fence.",
+    params(("run_id" = String, Path, description = "Current run UUIDv7."), DurableTaskInputsQuery),
+    responses((status = 200, body = af_wire::durable_task::DurableTaskInputsResponse<'_>, description = "Complete pending input and native work"),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),
+        afd_http::openapi::GuardedFailures,
+    )
+))]
+pub(crate) async fn read<D: RunnerPlane>(
+    State(services): State<Arc<D>>,
+    RunnerIdentity(runner): RunnerIdentity,
+    Path(run): Path<String>,
+    query: Result<Query<DurableTaskInputsQuery>, QueryRejection>,
+) -> Result<Response, Refusal> {
+    let run_id = parse_id(&run, "run_id must be a UUIDv7")?;
+    let Query(query) = query.map_err(|_invalid| Refusal::malformed(MALFORMED))?;
+    let input = garde::Unvalidated::new(query)
+        .validate()
+        .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
+    let run = DurableTaskRun {
+        runner_id: runner.id(),
+        run_id: &run_id,
+        fencing_token: input.fencing_token,
+    };
+    let page = services
+        .tasks()
+        .inputs(run, &input)
+        .await
+        .map_err(Refusal::conflict_or_at(EVENT, conflict))?;
+    Ok(([(http::header::CACHE_CONTROL, "no-store")], Json(page)).into_response())
+}
+
+fn conflict(error: &afd_fleet::Error) -> Option<&'static str> {
+    matches!(
+        error.code(),
+        af_core::error_code::RUN_STALE_FENCING_TOKEN
+            | af_core::error_code::DURABLE_TASK_STALE_STATE
+    )
+    .then_some("superseded")
+}

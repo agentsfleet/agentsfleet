@@ -62,7 +62,7 @@ pub struct Issued {
     /// The exact non-secret selection committed with this run.
     pub decision: Option<Box<DecisionAssignment>>,
     /// Frozen native task and recovery state.
-    pub task: Option<af_wire::task::TaskContext<'static>>,
+    pub task: Option<af_wire::durable_task::DurableTaskContext<'static>>,
     /// Actual thread deadline after task limits were applied.
     pub expires_at: Timestamp,
 }
@@ -111,7 +111,7 @@ impl Runs {
     ) -> Result<Option<Issued>> {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ISSUE))?;
-        if !crate::task::run::parents(&mut transaction, acquired).await? {
+        if !crate::durable_task::run::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
         let Some(host) = self
@@ -152,7 +152,7 @@ impl Runs {
         else {
             return Ok(None);
         };
-        let Some((task, expires_at)) = crate::task::run::attach(
+        let Some((task, expires_at)) = crate::durable_task::run::attach(
             &mut transaction,
             acquired,
             (runner_id, &run_id),

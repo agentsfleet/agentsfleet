@@ -36,7 +36,7 @@ export type FleetStreamSnapshot = {
   // was in flight is not rolled back by facts the server read before it.
   factsSeq: number;
   /** Read invalidations only; task rows remain authoritative on the server. */
-  tasksSeq: number;
+  durableTasksSeq: number;
   /** Every gate hint invalidates approval details, even when the count is unchanged. */
   approvalsSeq: number;
   // The newest server row's figures, recomputed whenever the rows change and
@@ -93,7 +93,7 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
 
   fleet: NO_FACTS,
   factsSeq: 0,
-  tasksSeq: 0,
+  durableTasksSeq: 0,
   approvalsSeq: 0,
   latest: null,
 }) as FleetStreamSnapshot;
@@ -108,7 +108,7 @@ export function createEntry(workspaceId: string, initial: TurnRow[]): Entry {
 
       fleet: NO_FACTS,
       factsSeq: 0,
-      tasksSeq: 0,
+      durableTasksSeq: 0,
       approvalsSeq: 0,
       latest: latestFigures(turns),
     },

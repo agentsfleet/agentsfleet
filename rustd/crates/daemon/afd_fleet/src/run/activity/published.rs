@@ -38,17 +38,17 @@ fn decimal<S: serde::Serializer, T: std::fmt::Display>(
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum Frame<'a> {
-    TaskDecisionStarted {
+    DurableTaskDecisionStarted {
         turn_id: &'a Uuid7,
-        progress: &'a af_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::DurableTaskActivity,
     },
-    TaskDecisionCompleted {
+    DurableTaskDecisionCompleted {
         turn_id: &'a Uuid7,
-        progress: &'a af_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::DurableTaskActivity,
     },
-    TaskTransferProgress {
+    DurableTaskTransferProgress {
         turn_id: &'a Uuid7,
-        progress: &'a af_wire::activity::TaskActivity,
+        progress: &'a af_wire::activity::DurableTaskActivity,
     },
     ContextProgress {
         turn_id: &'a Uuid7,
@@ -118,14 +118,14 @@ impl<'a> Published<'a> {
         let turn_id = &target.turn_id;
         let call_id = |call: &str| fenced_call_id(target.fence, call);
         let frame = match frame {
-            ActivityFrame::TaskDecisionStarted(progress) => {
-                Frame::TaskDecisionStarted { turn_id, progress }
+            ActivityFrame::DurableTaskDecisionStarted(progress) => {
+                Frame::DurableTaskDecisionStarted { turn_id, progress }
             }
-            ActivityFrame::TaskDecisionCompleted(progress) => {
-                Frame::TaskDecisionCompleted { turn_id, progress }
+            ActivityFrame::DurableTaskDecisionCompleted(progress) => {
+                Frame::DurableTaskDecisionCompleted { turn_id, progress }
             }
-            ActivityFrame::TaskTransferProgress(progress) => {
-                Frame::TaskTransferProgress { turn_id, progress }
+            ActivityFrame::DurableTaskTransferProgress(progress) => {
+                Frame::DurableTaskTransferProgress { turn_id, progress }
             }
             ActivityFrame::ContextProgress(progress) => Frame::ContextProgress {
                 turn_id,

@@ -37,8 +37,8 @@ pub(super) struct Current {
 struct HeldTurn {
     id: Uuid7,
     run_fence: Option<i64>,
-    task_id: Option<Uuid7>,
-    task_generation: Option<i64>,
+    durable_task_id: Option<Uuid7>,
+    durable_task_generation: Option<i64>,
     parked: bool,
     settled: bool,
 }
@@ -175,8 +175,8 @@ async fn hold_turn(connection: &mut PgConnection, current: &Current) -> Result<(
         || held.run_fence != Some(current.fence)
         || held.parked
         || held.settled
-        || held.task_id.is_some()
-        || held.task_generation.is_some()
+        || held.durable_task_id.is_some()
+        || held.durable_task_generation.is_some()
     {
         return Err(run_lost());
     }

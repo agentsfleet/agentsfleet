@@ -24,10 +24,10 @@ use zeroize::Zeroizing;
 use crate::error::{self, Result};
 
 mod context;
+mod durable_task;
 mod http;
 mod run_verbs;
 pub(crate) mod stream;
-mod task;
 mod turn_checkpoint;
 mod verb;
 

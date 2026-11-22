@@ -96,7 +96,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
         during,
     };
     let plane = afd_fleet::run::RunService {
-        task_reports: None,
+        durable_task_reports: None,
         broker: Arc::new(Broker::new(Arc::new(Registry::default()), Arc::new(vendor))),
         ..fixtures.plane()
     };

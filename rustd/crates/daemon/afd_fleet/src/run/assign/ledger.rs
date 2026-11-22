@@ -109,10 +109,10 @@ impl Runs {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
             .bind(hint.as_ref())
-            .bind(af_wire::task::CAPABILITY)
-            .bind(af_wire::task::TaskState::Ready.as_str())
-            .bind(af_wire::task::TaskState::Running.as_str())
-            .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(af_wire::durable_task::CAPABILITY)
+            .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
+            .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
+            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .bind(recovery.is_some())
             .bind(after.map(|key| key.created.to_sqlx()))
             .bind(after.map(|key| &key.turn))
@@ -157,10 +157,10 @@ impl Runs {
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(sql::RUN_STATUS_ACTIVE)
             .bind(sql::RUN_STATUS_EXPIRED)
-            .bind(af_wire::task::CAPABILITY)
-            .bind(af_wire::task::TaskState::Ready.as_str())
-            .bind(af_wire::task::TaskState::Running.as_str())
-            .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(af_wire::durable_task::CAPABILITY)
+            .bind(af_wire::durable_task::DurableTaskState::Ready.as_str())
+            .bind(af_wire::durable_task::DurableTaskState::Running.as_str())
+            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(af_core::turn::status::RECEIVED)
             .bind(self.checkpoint_resume_enabled())
@@ -255,7 +255,7 @@ impl HeadTurn {
             memory_publishes_workspace: self.memory.memory_publishes_workspace,
             inputs_waiting,
             head: if tasked {
-                HeadKind::Task
+                HeadKind::DurableTask
             } else {
                 HeadKind::Plain
             },

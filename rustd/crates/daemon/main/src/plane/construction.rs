@@ -1,6 +1,6 @@
 //! Construction groups retain each shared owner while the serving plane is assembled.
 
-use super::{PlaneParts, run_plane, surfaces, task_plane};
+use super::{PlaneParts, durable_task_plane, run_plane, surfaces};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -13,12 +13,13 @@ use afd_runner::Runners;
 use afd_turns::Turns;
 use std::sync::Arc;
 
-type StorageConfig = Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>;
+type StorageConfig =
+    Option<garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>>;
 
 pub(super) struct Common {
     pub(super) providers: Providers,
     pub(super) github_client: reqwest::Client,
-    pub(super) task_master: Arc<Kek>,
+    pub(super) durable_task_master: Arc<Kek>,
     pub(super) turns: Turns,
     pub(super) biller: Arc<dyn Biller>,
     pub(super) drafts: afd_setup::Drafts,
@@ -40,7 +41,7 @@ impl Common {
                 .platform_key_cache_minutes,
         ));
         let github_client = parts.storage_client.clone();
-        let task_master = Arc::clone(&parts.kek);
+        let durable_task_master = Arc::clone(&parts.kek);
         let tuning = parts.runtime.operations.tuning;
         let turns = Turns::new(parts.database.clone(), parts.bus.clone(), Entropy::new())
             .with_budgets(afd_turns::budget::Budgets {
@@ -57,7 +58,7 @@ impl Common {
         Self {
             providers,
             github_client,
-            task_master,
+            durable_task_master,
             turns,
             biller,
             drafts,
@@ -87,7 +88,7 @@ pub(super) struct NativeInputs<'a> {
 
 pub(super) struct Native {
     pub(super) runs: RunService,
-    pub(super) tasks: afd_fleet::task::Tasks,
+    pub(super) tasks: afd_fleet::durable_task::DurableTasks,
     pub(super) runners: Runners,
     pub(super) streams: afd_gateway::Gateway,
 }
@@ -114,7 +115,7 @@ impl NativeInputs<'_> {
                 i64::from(self.runtime.operations.tuning.turns.history_turns_per_page),
             ),
         );
-        let tasks = task_plane(
+        let tasks = durable_task_plane(
             &mut runs,
             self.turns,
             self.admin_workspace,
@@ -173,7 +174,7 @@ const fn mib_bytes(mib: u32) -> u32 {
 }
 
 /// The run plane's settings from the deployment file's `[runners]`,
-/// `[turns]`, `[fleets]`, `[billing]` and `[tasks]` sections.
+/// `[turns]`, `[fleets]`, `[billing]` and `[durable_tasks]` sections.
 fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimits {
     let minutes = |value: u32| std::time::Duration::from_secs(u64::from(value) * 60);
     let days = |value: u32| af_core::timing::DAY.saturating_mul(value);
@@ -191,7 +192,7 @@ fn run_limits(tuning: &crate::config::tuning::Tuning) -> afd_fleet::run::RunLimi
             restore_pin: minutes(checkpoints.restore_pin_minutes),
             orphan_after: minutes(checkpoints.orphan_after_minutes),
         },
-        tasks: afd_fleet::task::policy::TaskTimes {
+        tasks: afd_fleet::durable_task::policy::DurableTaskTimes {
             slice: std::time::Duration::from_secs(u64::from(tasks.slice_seconds)),
             operation_timeout: std::time::Duration::from_secs(u64::from(
                 tasks.operation_timeout_seconds,

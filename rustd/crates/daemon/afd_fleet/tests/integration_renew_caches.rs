@@ -59,7 +59,7 @@ async fn kept_frame_with(
 
 /// How many times the frame's pre-read ran in `ran`.
 fn pre_reads(ran: &statements::Ran) -> u64 {
-    ran.calls_containing("l.task_id, l.created_at, f.head_revision_id")
+    ran.calls_containing("l.durable_task_id, l.created_at, f.head_revision_id")
 }
 
 // Value: protects=a steady-state frame whose session kept its runs' facts

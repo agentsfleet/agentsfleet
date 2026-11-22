@@ -10,11 +10,11 @@ use super::NativeTurn;
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
 use af_wire::{
+    durable_task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnScope,
     },
-    task::{CheckpointPin, CheckpointPlaintext, CheckpointTransferPurpose},
 };
 use garde::Validate as _;
 use tokio_util::sync::CancellationToken;

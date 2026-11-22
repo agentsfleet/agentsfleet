@@ -181,8 +181,8 @@ impl Delivery {
     /// Completion matching is separate from ordinary investigation classification.
     pub(crate) fn completion(
         &self,
-        scope: afd_fleet::task::CompletionScope,
-    ) -> Option<afd_fleet::task::VerifiedCompletion> {
+        scope: afd_fleet::durable_task::CompletionScope,
+    ) -> Option<afd_fleet::durable_task::VerifiedCompletion> {
         let Body::WorkflowRun(event) = &self.body else {
             return None;
         };
@@ -190,14 +190,14 @@ impl Delivery {
             return None;
         }
         let run = &event.workflow_run;
-        Some(afd_fleet::task::VerifiedCompletion {
+        Some(afd_fleet::durable_task::VerifiedCompletion {
             scope,
-            installation_id: self.installation()?,
-            repository_id: self.envelope.repository.as_ref()?.id?,
+            github_installation_id: self.installation()?,
+            github_repository_id: self.envelope.repository.as_ref()?.id?,
             head: run.head_sha.clone(),
-            workflow_id: run.workflow_id?,
+            github_workflow_id: run.workflow_id?,
             run_number: run.run_number?,
-            run_id: u64::try_from(run.id).ok()?,
+            github_run_id: u64::try_from(run.id).ok()?,
             run_attempt: u32::try_from(run.run_attempt).ok()?,
         })
     }

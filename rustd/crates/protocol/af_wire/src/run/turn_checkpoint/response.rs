@@ -4,7 +4,7 @@ use super::{
     CheckpointOperationId, FoldRef, TURN_CHECKPOINT_FORMAT, TurnCheckpointKind, TurnPrivateRoot,
     TurnResume, TurnScope,
 };
-use crate::task::{CheckpointObject, CheckpointPage, CheckpointPin};
+use crate::durable_task::{CheckpointObject, CheckpointPage, CheckpointPin};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 

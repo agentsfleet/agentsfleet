@@ -13,19 +13,19 @@ fn bound(fixture: &mut Fixture) {
     });
 }
 
-fn target(fixture: &mut Fixture, target: TaskTarget) -> Result<()> {
+fn target(fixture: &mut Fixture, target: DurableTaskTarget) -> Result<()> {
     fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .as_mut()
         .ok_or_else(|| error::config("fixture task missing"))?
         .target = target;
     Ok(())
 }
 
-fn pull_request(repository: &str) -> TaskTarget {
-    TaskTarget::ExistingPr {
+fn pull_request(repository: &str) -> DurableTaskTarget {
+    DurableTaskTarget::ExistingPr {
         repository: repository.to_owned(),
         repository_id: 42,
         number: 3,
@@ -39,10 +39,10 @@ fn pull_request(repository: &str) -> TaskTarget {
 }
 
 #[tokio::test]
-async fn an_api_only_task_checks_nothing_out_even_with_bound_repositories() -> Result<()> {
+async fn an_api_only_durable_task_checks_nothing_out_even_with_bound_repositories() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     bound(&mut fixture);
-    target(&mut fixture, TaskTarget::ApiOnly)?;
+    target(&mut fixture, DurableTaskTarget::ApiOnly)?;
     let run = fixture.run()?;
 
     assert!(
@@ -54,7 +54,7 @@ async fn an_api_only_task_checks_nothing_out_even_with_bound_repositories() -> R
 }
 
 #[tokio::test]
-async fn a_pull_request_task_checks_out_only_its_repository_at_its_branch() -> Result<()> {
+async fn a_pull_request_durable_task_checks_out_only_its_repository_at_its_branch() -> Result<()> {
     let mut fixture = Fixture::new(|_| None)?;
     bound(&mut fixture);
     target(&mut fixture, pull_request("acme/gadget"))?;

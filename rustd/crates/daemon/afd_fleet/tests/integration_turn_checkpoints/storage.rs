@@ -12,12 +12,12 @@ use af_crypto::{
     secret::{Kek, SecretBytes},
 };
 use af_wire::{
+    durable_task::CheckpointObject,
     run::{TurnCheckpointAction, TurnCheckpointResponse},
-    task::CheckpointObject,
 };
 use afd_fleet::{
+    durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore},
     run::turn_checkpoint::TurnCheckpoints,
-    task::storage::{CheckpointStorageConfig, R2CheckpointStore},
 };
 use afd_vault::{SecretBody, SecretName};
 use base64::{Engine as _, prelude::BASE64_STANDARD};

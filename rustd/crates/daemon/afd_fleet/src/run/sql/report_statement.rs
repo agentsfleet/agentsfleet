@@ -177,7 +177,7 @@ struct AnswerRow {
     held_model: Option<String>,
     catalogue_version: i64,
     fence_holds: Option<bool>,
-    has_task: Option<bool>,
+    has_durable_task: Option<bool>,
     reply_provider: Option<String>,
     owed_id: Option<Uuid7>,
     input_tokens: Option<i64>,
@@ -209,7 +209,7 @@ pub(crate) struct SettledReport {
     pub(crate) accepted_hold: Option<Timestamp>,
     /// Whether the run runs a durable task, whose usage and settlement
     /// follow in the same transaction.
-    pub(crate) has_task: bool,
+    pub(crate) has_durable_task: bool,
     pub(crate) closed: Option<Closed>,
     pub(crate) owed: Option<Uuid7>,
     pub(crate) reply_provider: Option<String>,
@@ -240,7 +240,7 @@ impl ReportAnswer {
         let tokens = tokens_of(&answer, run_id);
         Ok(Self::Settled(Box::new(SettledReport {
             accepted_hold: answer.accepted_hold.map(Into::into),
-            has_task: answer.has_task.unwrap_or(false),
+            has_durable_task: answer.has_durable_task.unwrap_or(false),
             closed,
             owed: answer.owed_id,
             reply_provider: answer.reply_provider,

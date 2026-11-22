@@ -31,7 +31,7 @@ pub enum Producer {
     /// action. Its runs resume the asking turn's checkpoint.
     QuestionAnswer,
     /// Native task continuation, keyed by its task/generation/wake identity.
-    TaskContinuation,
+    DurableTaskContinuation,
     /// A chat mention of the bot, keyed by the provider's own event id, which
     /// the provider signs and repeats on every retry.
     SlackMention,
@@ -48,7 +48,7 @@ impl Producer {
             Self::ScheduleFire => "schedule_fire",
             Self::GateContinuation => "gate_continuation",
             Self::QuestionAnswer => "question_answer",
-            Self::TaskContinuation => "task_continuation",
+            Self::DurableTaskContinuation => "durable_task_continuation",
             Self::SlackMention => "slack_mention",
         }
     }

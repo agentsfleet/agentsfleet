@@ -6,7 +6,7 @@
 
 use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionResult, DecisionUsage},
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
 };
 use serde_json::{Value, json};
 

@@ -15,7 +15,7 @@ import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared
 import { FleetHeader } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetHeader";
 import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
-import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
 import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/conversation/thread/useFleetThreadEntries";
 import { ACTOR } from "@/lib/turns/turn-summary";
@@ -46,7 +46,7 @@ export function ChatAlignmentFixture() {
       metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}}]);}});
   return <AppRouterContext value={router}><ChatFixtureShell>
     <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({...FLEET_DETAIL, name: "ci-repairer", status: "active"})} />
-    <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr"}} />}>
+    <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={<DurableTaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr"}} />}>
       <FleetThreadViewport modelLabel="MiniMax M3.1 Flash" turnsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
     </FleetConversationLayout></AssistantRuntimeProvider>

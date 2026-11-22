@@ -8,8 +8,8 @@ use af_wire::{
     },
     task::{
         DecisionAssessment, DecisionReceipt, DecisionReceiptInput, DecisionRecordDisposition,
-        DecisionRecorded, DecisionReservationInput, TaskContext, TaskInputsResponse, TaskLimits,
-        TaskState, TaskUsage,
+        DecisionRecorded, DecisionReservationInput, DurableTaskContext, DurableTaskInputsResponse,
+        DurableTaskLimits, DurableTaskState, DurableTaskUsage,
     },
 };
 use garde::Validate as _;
@@ -28,8 +28,8 @@ pub(super) fn assignment() -> Result<DecisionAssignment, Failed> {
     Ok(assignment)
 }
 pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
-    let task = TaskContext {
-        task_id: TASK.into(),
+    let task = DurableTaskContext {
+        durable_task_id: TASK.into(),
         originating_item_id: TASK.into(),
         target: config.target(),
         generation: 1,
@@ -38,7 +38,7 @@ pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
         objective: "Capture accepted progress".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
-        state: TaskState::Running,
+        state: DurableTaskState::Running,
         covered_input_sequence: 0,
         input_sequence: 0,
         effect_cursor: 0,
@@ -46,16 +46,16 @@ pub(super) fn inputs(config: &Config) -> Result<Value, Failed> {
         checkpoint_id: None,
         checkpoint_generation: None,
         expires_at: deadline(),
-        limits: TaskLimits::default(),
-        usage: TaskUsage::default(),
+        limits: DurableTaskLimits::default(),
+        usage: DurableTaskUsage::default(),
     };
-    Ok(serde_json::to_value(TaskInputsResponse {
+    Ok(serde_json::to_value(DurableTaskInputsResponse {
         source_turn_id: TASK.to_owned(),
         accepted_revision_id: Some(TASK.to_owned()),
         current_message: None,
         inputs: vec![],
         accepted_inputs: vec![],
-        current_task: Some(task),
+        current_durable_task: Some(task),
         execution_deadline: Some(deadline()),
         current_interpretation: None,
         tasks: vec![],
@@ -138,7 +138,7 @@ fn reservation(input: &DecisionReservationInput) -> Result<(), Failed> {
             && input
                 .task
                 .as_ref()
-                .is_some_and(|task| task.task_id == TASK && task.generation == 1),
+                .is_some_and(|task| task.durable_task_id == TASK && task.generation == 1),
         "accepted goal task and source",
     )
 }

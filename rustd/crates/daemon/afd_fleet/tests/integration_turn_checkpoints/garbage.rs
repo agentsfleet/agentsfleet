@@ -4,13 +4,15 @@ use super::{Case, Checked, files, storage::Files};
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_wire::{
+    durable_task::{CheckpointObjectStatus, CheckpointPlaintext},
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response,
     },
-    task::{CheckpointObjectStatus, CheckpointPlaintext},
 };
-use afd_fleet::task::{CheckpointMaintenanceCursor, TaskDependencies, TaskLifecycle as _, Tasks};
+use afd_fleet::durable_task::{
+    CheckpointMaintenanceCursor, DurableTaskDependencies, DurableTaskLifecycle as _, DurableTasks,
+};
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -53,15 +55,15 @@ async fn turn_references_survive_an_orphan_snapshot_and_release_shared_quota_onl
     Ok(())
 }
 
-fn tasks(files: &Files) -> Tasks {
+fn tasks(files: &Files) -> DurableTasks {
     let turns = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
     );
-    let mut dependencies = TaskDependencies::from(&files.case.fixtures.plane());
+    let mut dependencies = DurableTaskDependencies::from(&files.case.fixtures.plane());
     dependencies.storage = Some(files.storage.clone());
-    Tasks::new(files.case.runs.clone(), turns, dependencies)
+    DurableTasks::new(files.case.runs.clone(), turns, dependencies)
 }
 
 async fn orphan(files: &Files) -> Checked<Uuid7> {
@@ -88,21 +90,21 @@ async fn orphan(files: &Files) -> Checked<Uuid7> {
 
 async fn age_object(files: &Files, object: &Uuid7) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    sqlx::query("UPDATE fleet.task_objects SET updated_at=clock_timestamp()-interval '2 hours',reclaim_after_at=clock_timestamp()-interval '2 hours' WHERE id=$1")
+    sqlx::query("UPDATE fleet.durable_task_objects SET updated_at=clock_timestamp()-interval '2 hours',reclaim_after_at=clock_timestamp()-interval '2 hours' WHERE id=$1")
         .bind(object).execute(&mut *connection).await?;
     Ok(())
 }
 
 async fn race(
     files: &Files,
-    tasks: &Tasks,
+    tasks: &DurableTasks,
     object: &Uuid7,
     reference: &TurnCheckpointRef,
 ) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
     let controller: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM fleet.task_objects WHERE id=$1 FOR UPDATE",
+        "SELECT pg_backend_pid() FROM fleet.durable_task_objects WHERE id=$1 FOR UPDATE",
     )
     .bind(object)
     .fetch_one(&mut *held)
@@ -137,7 +139,7 @@ async fn race(
     let reused = objects.first().ok_or("reused object")?;
     assert_eq!(reused.object_id, object.as_str());
     assert!(matches!(reused.status, CheckpointObjectStatus::Reused));
-    let collected: afd_fleet::task::CheckpointMaintenance = collected?;
+    let collected: afd_fleet::durable_task::CheckpointMaintenance = collected?;
     assert_eq!((collected.objects, collected.purged), (0, 0));
     assert_storage(files, object, true).await
 }
@@ -172,9 +174,9 @@ async fn waiting(connection: &mut sqlx::PgConnection, blocker: i32) -> Checked<i
 async fn assert_storage(files: &Files, object: &Uuid7, live: bool) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let (exists, pending, bytes): (bool, bool, i64) = sqlx::query_as("SELECT
-        EXISTS (SELECT 1 FROM fleet.task_objects WHERE id=$1),
-        EXISTS (SELECT 1 FROM fleet.task_storage_purges WHERE task_object_id=$1 AND completed_at IS NULL),
-        (SELECT stored_bytes+reserved_bytes FROM fleet.task_storage_quota WHERE workspace_id=$2)")
+        EXISTS (SELECT 1 FROM fleet.durable_task_objects WHERE id=$1),
+        EXISTS (SELECT 1 FROM fleet.durable_task_storage_purges WHERE durable_task_object_id=$1 AND completed_at IS NULL),
+        (SELECT stored_bytes+reserved_bytes FROM fleet.durable_task_storage_quota WHERE workspace_id=$2)")
         .bind(object).bind(&files.case.acquired.workspace_id).fetch_one(&mut *connection).await?;
     assert_eq!(exists, live);
     assert!(!pending);

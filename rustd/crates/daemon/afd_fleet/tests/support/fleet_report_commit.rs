@@ -57,7 +57,7 @@ pub(crate) fn report<'a>(
     let (run_key, pricing) = priced;
     TerminalReport {
         folded_through_sequence: None,
-        task_settlement: None,
+        durable_task_settlement: None,
         run_id,
         runner_id,
         run,

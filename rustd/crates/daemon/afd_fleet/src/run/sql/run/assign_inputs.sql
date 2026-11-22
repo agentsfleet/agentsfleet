@@ -32,23 +32,23 @@ WITH run AS MATERIALIZED (
       ON head.id = l.turn_id AND head.thread_id = l.fleet_id AND head.producer IS NOT NULL
     WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
-      AND l.task_id IS NULL AND l.task_generation IS NULL AND head.task_generation IS NULL
+      AND l.durable_task_id IS NULL AND l.durable_task_generation IS NULL AND head.durable_task_generation IS NULL
       AND l.run_expires_at > clock_timestamp()
       AND s.run_expires_at > clock_timestamp()
 ), ahead AS MATERIALIZED (
     -- The conversation's next messages: an addressed conversation by equality,
     -- the unaddressed one by NULL, each in the index's own order.
-    SELECT w.id, w.sequence, w.parked_at, w.task_id, w.task_generation, w.producer, w.actor, w.workspace_id
+    SELECT w.id, w.sequence, w.parked_at, w.durable_task_id, w.durable_task_generation, w.producer, w.actor, w.workspace_id
     FROM run
     CROSS JOIN LATERAL (
-        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
          WHERE run.reply_provider IS NOT NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider = run.reply_provider AND a.reply_address = run.reply_address
            AND a.settled_at IS NULL AND a.sequence > GREATEST(run.head_sequence, $5)
          ORDER BY a.sequence)
         UNION ALL
-        (SELECT a.id, a.sequence, a.parked_at, a.task_id, a.task_generation, a.producer, a.actor, a.workspace_id
+        (SELECT a.id, a.sequence, a.parked_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor, a.workspace_id
          FROM thread.turns a
          WHERE run.reply_provider IS NULL AND a.thread_id = run.fleet_id
            AND a.reply_provider IS NULL AND a.reply_address IS NULL
@@ -60,7 +60,7 @@ WITH run AS MATERIALIZED (
     SELECT f.id, bool_and(f.foldable) OVER (ORDER BY f.sequence) AS clear
     FROM (
         SELECT id, sequence,
-               parked_at IS NULL AND task_id IS NULL AND task_generation IS NULL AND CASE
+               parked_at IS NULL AND durable_task_id IS NULL AND durable_task_generation IS NULL AND CASE
                    WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8
                    WHEN producer = $9 THEN COALESCE(
                        connector.slack_person_allowed(workspace_id, actor, $10, $11, $12), false)

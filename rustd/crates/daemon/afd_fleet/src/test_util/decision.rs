@@ -3,7 +3,7 @@
 
 use af_wire::{
     decision::{DecisionRequest, DecisionResult},
-    task::DecisionReceipt,
+    durable_task::DecisionReceipt,
 };
 
 /// A provider receipt answering every question in `request` with its first

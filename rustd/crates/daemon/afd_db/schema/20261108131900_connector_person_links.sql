@@ -37,23 +37,23 @@ $$;
 GRANT EXECUTE ON FUNCTION connector.slack_person_allowed(UUID, TEXT, TEXT, TEXT, TEXT) TO api_runtime;
 
 -- Holds after the source turn is gone. A quoted message never enters these identities.
-CREATE FUNCTION fleet.task_person_allowed(task UUID, source_producer TEXT, provider TEXT, actor_pattern TEXT, separator TEXT)
+CREATE FUNCTION fleet.durable_task_person_allowed(task UUID, source_producer TEXT, provider TEXT, actor_pattern TEXT, separator TEXT)
 RETURNS BOOLEAN LANGUAGE SQL STABLE SET search_path = pg_catalog AS $$
     WITH target AS MATERIALIZED (
-        SELECT id, workspace_id, fleet_id, originating_task_item_id, covered_input_sequence
-        FROM fleet.tasks WHERE id = $1
+        SELECT id, workspace_id, fleet_id, originating_durable_task_item_id, covered_input_sequence
+        FROM fleet.durable_tasks WHERE id = $1
     ), senders AS MATERIALIZED (
         -- UNION dedupes repeat senders and the origin, so each person needs one membership check.
         SELECT p.source_actor FROM target t
-        JOIN fleet.task_items origin ON origin.id = t.originating_task_item_id
-        JOIN fleet.task_interpretations p ON p.turn_id = origin.turn_id
+        JOIN fleet.durable_task_items origin ON origin.id = t.originating_durable_task_item_id
+        JOIN fleet.durable_task_interpretations p ON p.turn_id = origin.turn_id
             AND p.fleet_id = t.fleet_id AND p.workspace_id = t.workspace_id
         WHERE p.source_producer = $2
         UNION
         SELECT applied.source_actor FROM target t
-        JOIN fleet.task_inputs n ON n.task_id = t.id AND n.sequence <= t.covered_input_sequence
-        JOIN fleet.task_items i ON i.id = n.task_item_id
-        JOIN fleet.task_interpretations applied ON applied.turn_id = i.turn_id
+        JOIN fleet.durable_task_inputs n ON n.durable_task_id = t.id AND n.sequence <= t.covered_input_sequence
+        JOIN fleet.durable_task_items i ON i.id = n.durable_task_item_id
+        JOIN fleet.durable_task_interpretations applied ON applied.turn_id = i.turn_id
             AND applied.fleet_id = t.fleet_id AND applied.workspace_id = t.workspace_id
         WHERE applied.source_producer = $2
     )
@@ -65,4 +65,4 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SET search_path = pg_catalog AS $$
     )
 $$;
 
-GRANT EXECUTE ON FUNCTION fleet.task_person_allowed(UUID, TEXT, TEXT, TEXT, TEXT) TO api_runtime;
+GRANT EXECUTE ON FUNCTION fleet.durable_task_person_allowed(UUID, TEXT, TEXT, TEXT, TEXT) TO api_runtime;

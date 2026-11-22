@@ -6,14 +6,14 @@ use super::{
     storage::{self, Files},
 };
 use af_wire::{
+    durable_task::{
+        CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext,
+        CheckpointTransferPurpose, CheckpointUpload,
+    },
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointPlan,
         TurnCheckpointRef, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
         TurnWorkspace,
-    },
-    task::{
-        CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext,
-        CheckpointTransferPurpose, CheckpointUpload,
     },
 };
 use sqlx::Connection as _;
@@ -66,7 +66,7 @@ pub(super) async fn begin(files: &Files) -> Checked<(TurnCheckpointPlan, TurnPri
 pub(super) async fn authenticated_chunk(
     files: &Files,
     reference: &TurnCheckpointRef,
-) -> Checked<af_wire::task::CheckpointObject> {
+) -> Checked<af_wire::durable_task::CheckpointObject> {
     let Response::Objects(mut registered) = files
         .execute(Action::Objects {
             checkpoint: reference.clone(),
@@ -101,7 +101,7 @@ pub(super) async fn authenticated_chunk(
     let object = verified.pop().ok_or("verified object")?;
     assert!(matches!(
         object.status,
-        af_wire::task::CheckpointObjectStatus::Reused
+        af_wire::durable_task::CheckpointObjectStatus::Reused
     ));
     Ok(object)
 }
@@ -208,7 +208,7 @@ async fn authorize_with_quota_busy(files: &Files, action: Action) -> Checked<Res
     let mut connection = files.case.fixtures.database.acquire().await?;
     let mut held = connection.begin().await?;
     let (stored, reserved): (i64, i64) = sqlx::query_as(
-        "SELECT stored_bytes, reserved_bytes FROM fleet.task_storage_quota
+        "SELECT stored_bytes, reserved_bytes FROM fleet.durable_task_storage_quota
          WHERE workspace_id=$1 FOR UPDATE",
     )
     .bind(&files.case.acquired.workspace_id)
@@ -223,7 +223,7 @@ async fn authorize_with_quota_busy(files: &Files, action: Action) -> Checked<Res
 
 async fn download(
     files: &Files,
-    transfer: af_wire::task::CheckpointTransfer,
+    transfer: af_wire::durable_task::CheckpointTransfer,
     digest: &str,
 ) -> Checked {
     let bytes = files
@@ -242,7 +242,7 @@ async fn download(
 pub(super) async fn upload_bytes(
     files: &Files,
     reference: &TurnCheckpointRef,
-    object: &af_wire::task::CheckpointObject,
+    object: &af_wire::durable_task::CheckpointObject,
     bytes: Vec<u8>,
 ) -> Checked {
     let upload = CheckpointUpload {
@@ -324,13 +324,14 @@ async fn corrupt_uploaded_ciphertext_never_becomes_verified_or_a_recovery_head()
     Ok(())
 }
 
-async fn unverified(files: &Files, object: &af_wire::task::CheckpointObject) -> Checked {
+async fn unverified(files: &Files, object: &af_wire::durable_task::CheckpointObject) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    let verified: bool =
-        sqlx::query_scalar("SELECT verified_at IS NOT NULL FROM fleet.task_objects WHERE id=$1")
-            .bind(af_core::id::Uuid7::parse(&object.object_id)?)
-            .fetch_one(&mut *connection)
-            .await?;
+    let verified: bool = sqlx::query_scalar(
+        "SELECT verified_at IS NOT NULL FROM fleet.durable_task_objects WHERE id=$1",
+    )
+    .bind(af_core::id::Uuid7::parse(&object.object_id)?)
+    .fetch_one(&mut *connection)
+    .await?;
     assert!(!verified);
     drop(connection);
     assert_eq!(files.case.counts().await?.3, None);

@@ -261,7 +261,7 @@ impl Default for BillingTuning {
 /// Durable tasks.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct TasksTuning {
+pub(crate) struct DurableTasksTuning {
     /// A task runs in slices of this length; its funds are checked before each.
     #[garde(range(min = 1))]
     pub slice_seconds: u32,
@@ -273,17 +273,17 @@ pub(crate) struct TasksTuning {
     pub terminal_retention_days: u32,
     /// Task checkpoints stored in R2.
     #[garde(dive)]
-    pub checkpoints: TaskCheckpointTuning,
+    pub checkpoints: DurableTaskCheckpointTuning,
 }
 
-impl Default for TasksTuning {
+impl Default for DurableTasksTuning {
     fn default() -> Self {
-        let times = afd_fleet::task::policy::TaskTimes::default();
+        let times = afd_fleet::durable_task::policy::DurableTaskTimes::default();
         Self {
             slice_seconds: whole(times.slice, SECOND),
             operation_timeout_seconds: whole(times.operation_timeout, SECOND),
             terminal_retention_days: whole(times.terminal_retention, DAY),
-            checkpoints: TaskCheckpointTuning::default(),
+            checkpoints: DurableTaskCheckpointTuning::default(),
         }
     }
 }
@@ -291,7 +291,7 @@ impl Default for TasksTuning {
 /// Task checkpoints stored in R2.
 #[derive(Debug, Clone, Copy, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct TaskCheckpointTuning {
+pub(crate) struct DurableTaskCheckpointTuning {
     /// Newest checkpoints kept per task.
     #[garde(range(min = 1))]
     pub keep_generations: u32,
@@ -315,9 +315,9 @@ pub(crate) struct TaskCheckpointTuning {
     pub objects_per_delete_call: u32,
 }
 
-impl Default for TaskCheckpointTuning {
+impl Default for DurableTaskCheckpointTuning {
     fn default() -> Self {
-        let times = afd_fleet::task::policy::TaskTimes::default();
+        let times = afd_fleet::durable_task::policy::DurableTaskTimes::default();
         Self {
             keep_generations: times.keep_generations,
             upload_link_ttl_minutes: whole(times.upload_link_ttl, MINUTE),
@@ -541,7 +541,7 @@ pub(crate) struct Tuning {
     pub context: ContextTuning,
     pub fleets: FleetsTuning,
     pub billing: BillingTuning,
-    pub tasks: TasksTuning,
+    pub tasks: DurableTasksTuning,
     pub setup: SetupTuning,
     pub auth: AuthTuning,
     pub credentials: CredentialsTuning,
@@ -616,7 +616,7 @@ impl From<&super::settings::ConfigToml> for Tuning {
             context: settings.context,
             fleets: settings.fleets,
             billing: settings.billing,
-            tasks: settings.tasks,
+            tasks: settings.durable_tasks,
             setup: settings.setup,
             auth: settings.auth,
             credentials: settings.credentials,

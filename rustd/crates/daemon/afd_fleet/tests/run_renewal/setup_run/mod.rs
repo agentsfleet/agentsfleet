@@ -311,7 +311,7 @@ fn processed<'a>(taken: &'a Taken, proposal: Option<SetupProposal<'a>>) -> Repor
     ReportRequest {
         folded_through_sequence: None,
         setup: Some(SetupReport { proposal }),
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed(&taken.run),
         turn_id: Cow::Borrowed(&taken.turn),
         fencing_token: taken.fence,

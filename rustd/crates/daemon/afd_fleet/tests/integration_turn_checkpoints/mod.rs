@@ -18,7 +18,7 @@ mod replacement;
 mod retirement;
 mod rollout;
 mod storage;
-use crate::integration_tasks::decisions::checkpoint_server as storage_server;
+use crate::integration_durable_tasks::decisions::checkpoint_server as storage_server;
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::run::{
@@ -114,16 +114,16 @@ impl Case {
             .await?)
     }
 
-    fn tasks(&self) -> afd_fleet::task::Tasks {
+    fn tasks(&self) -> afd_fleet::durable_task::DurableTasks {
         let turns = afd_turns::Turns::new(
             self.fixtures.database.clone(),
             self.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
         );
-        afd_fleet::task::Tasks::new(
+        afd_fleet::durable_task::DurableTasks::new(
             self.runs.clone(),
             turns,
-            afd_fleet::task::TaskDependencies::from(&self.fixtures.plane()),
+            afd_fleet::durable_task::DurableTaskDependencies::from(&self.fixtures.plane()),
         )
     }
 

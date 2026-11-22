@@ -22,10 +22,10 @@ describe("steer recovery reads the admitted event directly", () => {
     const progress = {activity_id: TURN, operation: "capture", phase: "uploading", provider: null, model: null,
       sequence: 10, completed: 2, total: 3, bytes: {acknowledged: 128, missing: 64, reused: 256}};
     const call = {name: "shell", call_id: "one", status: "succeeded", output_head: "checked"};
-    presentation.activity.frame("task_transfer_progress", {progress});
+    presentation.activity.frame("durable_task_transfer_progress", {progress});
     presentation.tools.frame("tool_call_completed", call);
     const http = Layer.succeed(HttpClient, {request: <T>() => Effect.succeed({turn_id: TURN,
-      status: TURN_STATUS.PROCESSED, task_activity: {items: [{kind: "task_transfer_progress",
+      status: TURN_STATUS.PROCESSED, durable_task_activity: {items: [{kind: "durable_task_transfer_progress",
         progress: {...progress, sequence: 9, completed: 1}}], truncated: false}, tool_calls: {calls: [call]},
     } as T)});
     await Effect.runPromise(pollTurnTerminal(WORKSPACE, FLEET, TURN, TOKEN, undefined, presentation)
@@ -39,7 +39,7 @@ describe("steer recovery reads the admitted event directly", () => {
     const lines: string[] = [];
     const http = Layer.succeed(HttpClient, {
       request: <T>() => Effect.succeed({turn_id: TURN, status: TURN_STATUS.PROCESSED, response_text: "repair complete",
-        task_activity: {items: [{kind: "task_transfer_progress", progress: {activity_id: TURN,
+        durable_task_activity: {items: [{kind: "durable_task_transfer_progress", progress: {activity_id: TURN,
           operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1,
           bytes: {acknowledged: 128, missing: 0, reused: 64}}}], truncated: false},
         tool_calls: {calls: [{name: "shell", call_id: "one", status: "succeeded", output_head: "checked"}]},

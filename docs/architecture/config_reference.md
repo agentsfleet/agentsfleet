@@ -183,7 +183,7 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 | `fleets.head_cache_count` | 16,384 | You run more fleets than the cache holds |
 | `billing.price_book_cache_count` | 1,024 | You meter more models than the cache holds |
 
-### `[tasks]` and `[tasks.checkpoints]`
+### `[durable_tasks]` and `[durable_tasks.checkpoints]`
 
 | Key | Default | Change it when… |
 |---|---|---|
@@ -199,12 +199,12 @@ The daemon sends `max_message_mib` and `max_control_message_mib` to each runner 
 | `checkpoints.objects_per_delete_call` | 256 | No effect today; see below |
 
 Four checkpoint keys are read only by checkpoint maintenance, and no daemon code starts that maintenance today.
-They are `[turns.checkpoints] retention_days`, `[tasks] terminal_retention_days`, `keep_generations` and `objects_per_delete_call`.
+They are `[turns.checkpoints] retention_days`, `[durable_tasks] terminal_retention_days`, `keep_generations` and `objects_per_delete_call`.
 Only the integration tests call `maintain_checkpoints`, so setting these keys changes nothing in a running daemon.
 
-### `[fleet.tasks]` and `[fleet.tasks.defaults]`
+### `[fleet.durable_tasks]` and `[fleet.durable_tasks.defaults]`
 
-Unset, each `[fleet.tasks]` limit allows any amount. The defaults apply to new objectives only.
+Unset, each `[fleet.durable_tasks]` limit allows any amount. The defaults apply to new objectives only.
 
 | Key | Default | Change it when… |
 |---|---|---|

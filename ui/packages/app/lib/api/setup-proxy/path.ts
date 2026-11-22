@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const SETUP_METHOD = {get: "GET", post: "POST", patch: "PATCH", delete: "DELETE"} as const;
 const RESOURCE = {models: "models", drafts: "drafts", fleets: "fleets"} as const;
-const SUFFIX = {tasks: "tasks", messages: "messages", turns: "turns", stream: "stream",
+const SUFFIX = {durableTasks: "durable_tasks", messages: "messages", turns: "turns", stream: "stream",
   revisions: "revisions", schedules: "schedules", sync: "sync", setupContext: "setup-context"} as const;
 const PAGE = ["limit", "starting_after"] as const;
 const uuid = z.uuidv7();
@@ -29,7 +29,7 @@ export function matchSetupRoute(workspace: string, parts: readonly string[], met
   if (parts.length === 1 && method === SETUP_METHOD.post) return ORDINARY;
   if (!uuid.safeParse(id).success) return undefined;
   if (parts.length === 2 && [SETUP_METHOD.get, SETUP_METHOD.patch].some((allowed) => allowed === method)) return ORDINARY;
-  if (parts.length === 4 && child === SUFFIX.tasks && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
+  if (parts.length === 4 && child === SUFFIX.durableTasks && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
   // Stop: a turn's status PATCH (`FleetRoute::Turn`).
   if (parts.length === 4 && child === SUFFIX.turns && uuid.safeParse(member).success && method === SETUP_METHOD.patch) return ORDINARY;
   if (parts.length === 3 && child === SUFFIX.setupContext && method === SETUP_METHOD.get) return {stream: false, query: ["starting_after"]};

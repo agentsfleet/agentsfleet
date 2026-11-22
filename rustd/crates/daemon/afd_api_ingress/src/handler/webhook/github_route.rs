@@ -122,11 +122,13 @@ pub(crate) async fn receive<D: IngressPlane>(
     let delivery = super::github::Delivery::read(&event, &proven.body).map_err(|_unreadable| {
         Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER)
     })?;
-    let scope = afd_fleet::task::TaskScope {
+    let scope = afd_fleet::durable_task::DurableTaskScope {
         fleet_id: fleet.clone(),
         workspace_id: proven.binding.workspace().clone(),
     };
-    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Fleet(scope)) {
+    if let Some(completion) =
+        delivery.completion(afd_fleet::durable_task::CompletionScope::Fleet(scope))
+    {
         services
             .tasks()
             .record_github_completion(&completion)

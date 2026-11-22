@@ -88,7 +88,7 @@ const AGAIN_ID = "evt_flush_again";
 
 // Stable across flushes, as the registry's callbacks are.
 const STABLE = {
-  tasksSeq: 0,
+  durableTasksSeq: 0,
   connectionStatus: CONNECTION_STATUS.LIVE,
   isRunning: false,
   appendOptimistic: vi.fn(),

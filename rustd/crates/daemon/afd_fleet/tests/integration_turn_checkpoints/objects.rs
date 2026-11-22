@@ -3,11 +3,13 @@
 
 use af_core::error_code;
 use af_wire::{
+    durable_task::{
+        CheckpointObject, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload,
+    },
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnWorkspace,
     },
-    task::{CheckpointObject, CheckpointPlaintext, CheckpointTransferPurpose, CheckpointUpload},
 };
 use afd_db::test_util::mint_id;
 

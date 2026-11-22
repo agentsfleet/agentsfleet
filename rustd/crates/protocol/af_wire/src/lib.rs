@@ -55,6 +55,7 @@ pub mod activity;
 pub mod context;
 pub mod credentials;
 pub mod decision;
+pub mod durable_task;
 pub mod fleets_verb;
 pub mod fold;
 pub mod inference;
@@ -72,7 +73,8 @@ pub mod runner;
 pub mod schedule_verb;
 pub mod setup;
 pub mod steer_verb;
-pub mod task;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod tool_detail;
 pub mod tool_trace;
 pub mod turn;

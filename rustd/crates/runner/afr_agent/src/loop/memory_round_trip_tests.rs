@@ -49,9 +49,9 @@ async fn test_memory_tools_round_trip_through_push() -> Checked {
     let output = engine
         .run(AgentRun {
             recovery: None,
-            recovered_task: None,
+            recovered_durable_task: None,
             recovered_turn: None,
-            prepared_task: None,
+            prepared_durable_task: None,
             run: &run,
             memory: afr_memory::Seed::window(&loaded),
             executor: &afr_executor::ExecutorSlot::unavailable(

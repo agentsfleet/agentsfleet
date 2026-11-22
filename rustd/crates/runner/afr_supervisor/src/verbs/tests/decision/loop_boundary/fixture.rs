@@ -1,6 +1,6 @@
 //! Schema-valid daemon decisions distinguish accounting facts from usable answers.
 use super::CALL;
-use af_wire::{decision::*, task::*};
+use af_wire::{decision::*, durable_task::*};
 use serde_json::{Value, json};
 
 pub(super) fn assignment() -> DecisionAssignment {
@@ -13,29 +13,29 @@ pub(super) fn assignment() -> DecisionAssignment {
     .unwrap()
 }
 
-pub(super) fn inputs() -> TaskInputsResponse<'static> {
+pub(super) fn inputs() -> DurableTaskInputsResponse<'static> {
     let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(5));
-    TaskInputsResponse {
+    DurableTaskInputsResponse {
         source_turn_id: CALL.into(),
         accepted_revision_id: Some(CALL.into()),
         current_message: None,
         inputs: vec![],
         accepted_inputs: vec![],
         current_interpretation: None,
-        tasks: vec![],
+        durable_tasks: vec![],
         next_cursor: None,
         execution_deadline: Some(deadline),
-        current_task: Some(TaskContext {
-            task_id: CALL.into(),
+        current_durable_task: Some(DurableTaskContext {
+            durable_task_id: CALL.into(),
             originating_item_id: CALL.into(),
-            target: TaskTarget::ApiOnly,
+            target: DurableTaskTarget::ApiOnly,
             generation: 1,
             stop_generation: 0,
             accepted_revision_id: CALL.into(),
             objective: "Retain the accepted repair".into(),
             goal_digest: "a".repeat(64).into(),
             questions: vec![],
-            state: TaskState::Running,
+            state: DurableTaskState::Running,
             covered_input_sequence: 0,
             input_sequence: 0,
             effect_cursor: 0,
@@ -43,8 +43,8 @@ pub(super) fn inputs() -> TaskInputsResponse<'static> {
             checkpoint_id: None,
             checkpoint_generation: None,
             expires_at: deadline,
-            limits: TaskLimits::default(),
-            usage: TaskUsage::default(),
+            limits: DurableTaskLimits::default(),
+            usage: DurableTaskUsage::default(),
         }),
     }
 }

@@ -41,12 +41,12 @@ use guffbolt::ToolOutput;
 
 use crate::runtime::ToolErrorCode;
 
+mod durable_task;
 mod fenced;
 mod fleet_steer;
 mod fleets;
-mod task;
 
-pub use task::DecisionEvaluation;
+pub use durable_task::DecisionEvaluation;
 
 pub use self::fenced::Fenced;
 pub(crate) use self::fleet_steer::FleetSteer;
@@ -241,55 +241,58 @@ pub trait RunVerbs: Send + Sync + fmt::Debug {
     }
 
     /// Read complete native input and accepted recovery meaning at a safe boundary.
-    async fn task_inputs(
+    async fn durable_task_inputs(
         &self,
-        _query: af_wire::task::TaskInputsQuery,
-    ) -> Result<af_wire::task::TaskInputsResponse<'static>, Unanswered> {
+        _query: af_wire::durable_task::DurableTaskInputsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskInputsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Freeze the complete interpretation once, with native decision proofs.
-    async fn task_bindings(
+    async fn durable_task_bindings(
         &self,
-        _input: af_wire::task::TaskBindingsInput,
-    ) -> Result<af_wire::task::TaskBindingsResponse<'static>, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskBindingsInput,
+    ) -> Result<af_wire::durable_task::DurableTaskBindingsResponse<'static>, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Acknowledge an accepted input or answer without replaying its meaning.
-    async fn task_input_receipt(
+    async fn durable_task_input_receipt(
         &self,
-        _input: af_wire::task::TaskInputReceiptInput,
-    ) -> Result<af_wire::task::TaskInputReceiptResult, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskInputReceiptInput,
+    ) -> Result<af_wire::durable_task::DurableTaskInputReceiptResult, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Reserve, evaluate and account one decision outside model/sandbox custody.
-    async fn task_decision(
+    async fn durable_task_decision(
         &self,
-        _input: af_wire::task::DecisionReservationInput,
+        _input: af_wire::durable_task::DecisionReservationInput,
     ) -> Result<DecisionEvaluation, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Publish a tested tree through the native exact-head effect owner.
-    async fn task_publish(
+    async fn durable_task_publish(
         &self,
-        _input: af_wire::task::TaskEffectInput,
-    ) -> Result<af_wire::task::TaskEffect, Unanswered> {
+        _input: af_wire::durable_task::DurableTaskEffectInput,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Read back one original publication; this never authorizes a new write.
-    async fn task_effect(&self, _effect_id: &str) -> Result<af_wire::task::TaskEffect, Unanswered> {
+    async fn durable_task_effect(
+        &self,
+        _effect_id: &str,
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 
     /// Recover all effects beyond a checkpoint's confirmed watermark.
-    async fn task_effects(
+    async fn durable_task_effects(
         &self,
-        _query: af_wire::task::TaskEffectsQuery,
-    ) -> Result<af_wire::task::TaskEffectsPage, Unanswered> {
+        _query: af_wire::durable_task::DurableTaskEffectsQuery,
+    ) -> Result<af_wire::durable_task::DurableTaskEffectsPage, Unanswered> {
         Err(Unanswered::Refused(None))
     }
 

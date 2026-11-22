@@ -48,7 +48,7 @@ pub struct IssueRevision {
     /// Current authority ceiling observed during assembly.
     pub current: Uuid7,
     /// Native generation, absent before the initial interpretation.
-    pub task_generation: Option<i64>,
+    pub durable_task_generation: Option<i64>,
 }
 
 /// A fleet as installed, resolved for one run.
@@ -155,7 +155,7 @@ impl Runs {
             policy_semantics: policy,
             revision_id,
             head_revision_id,
-            task_generation,
+            durable_task_generation,
             current_definition,
         } = row;
         if status != sql::FLEET_STATUS_ACTIVE {
@@ -171,12 +171,15 @@ impl Runs {
         let definition = definitions
             .get_or_parse(&RevisionKey::observed(revision), &document, parse_for_save)
             .await?;
-        if task_generation.is_some() {
+        if durable_task_generation.is_some() {
             let current = Definition::parse(
                 &current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?,
             )?;
-            if !definition.runtime().same_task_authority(current.runtime()) {
-                return Err(crate::task::TaskRefusal::InvalidTarget.into());
+            if !definition
+                .runtime()
+                .same_durable_task_authority(current.runtime())
+            {
+                return Err(crate::durable_task::DurableTaskRefusal::InvalidTarget.into());
             }
         }
 
@@ -193,7 +196,7 @@ impl Runs {
                 .map(|(accepted, current)| IssueRevision {
                     accepted,
                     current,
-                    task_generation,
+                    durable_task_generation,
                 }),
         }))
     }
@@ -258,7 +261,7 @@ pub(crate) struct FleetWithSession {
     pub(crate) policy_semantics: Option<String>,
     pub(crate) revision_id: Option<Uuid7>,
     pub(crate) head_revision_id: Option<Uuid7>,
-    pub(crate) task_generation: Option<i64>,
+    pub(crate) durable_task_generation: Option<i64>,
     pub(crate) current_definition: Option<String>,
 }
 
@@ -276,7 +279,7 @@ impl FleetWithSession {
             policy_semantics: None,
             revision_id: None,
             head_revision_id: None,
-            task_generation: None,
+            durable_task_generation: None,
             current_definition: None,
         }
     }

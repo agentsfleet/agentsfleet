@@ -3,7 +3,7 @@
 use af_core::id::Uuid7;
 use af_wire::{
     decision::DecisionRequest,
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
     usage::LineKind,
 };
 use serde::Deserialize as _;
@@ -56,7 +56,7 @@ pub(super) fn saved(
     response: &Value,
     request: &DecisionRequest,
     receipt: &DecisionReceiptInput,
-    disposition: af_wire::task::DecisionRecordDisposition,
+    disposition: af_wire::durable_task::DecisionRecordDisposition,
 ) {
     let result = match &receipt.receipt {
         DecisionReceipt::Provider { result } => Some(result),

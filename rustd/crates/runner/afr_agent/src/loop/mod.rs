@@ -77,13 +77,13 @@ impl Loop {
 
 #[async_trait::async_trait]
 impl AgentEngine for Loop {
-    async fn prepare_task(
+    async fn prepare_durable_task(
         &self,
         run: &af_wire::run::RunPayload<'_>,
         verbs: &dyn afr_tools::RunVerbs,
         meter: &crate::Meter,
         stop: &CancellationToken,
-    ) -> Result<Option<crate::PreparedTask>> {
+    ) -> Result<Option<crate::PreparedDurableTask>> {
         if !run.durable_tasks {
             return Ok(None);
         }
@@ -107,11 +107,11 @@ impl AgentEngine for Loop {
 
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput> {
         let policy = &run.run.policy;
-        if run.run.durable_tasks && run.prepared_task.is_none() {
+        if run.run.durable_tasks && run.prepared_durable_task.is_none() {
             return Err(crate::decision::unavailable());
         }
         let tools = if run
-            .prepared_task
+            .prepared_durable_task
             .is_some_and(|prepared| !prepared.allow_actions)
         {
             &[][..]
@@ -124,8 +124,8 @@ impl AgentEngine for Loop {
         let span = spans::invoke_agent(policy);
         let prompt = Prompt::new(run.run);
         let mut instructions = scrub.clean(prompt.instructions).into_inner();
-        if let Some(prepared) = run.prepared_task {
-            let native = serde_json::json!({ "current_task": prepared.inputs.current_task,
+        if let Some(prepared) = run.prepared_durable_task {
+            let native = serde_json::json!({ "current_durable_task": prepared.inputs.current_durable_task,
                 "accepted_interpretation": prepared.inputs.current_interpretation,
                 "accepted_inputs": prepared.inputs.accepted_inputs });
             instructions.push_str("\n\nNative task scope: execute only the current task's accepted objective and items marked applies_here. Other accepted items retain their original reply deliveries but grant no permission to execute another task. A conversational answer does not complete the task. The coordinator assesses progress after complete action groups.\n");
@@ -202,20 +202,20 @@ impl AgentEngine for Loop {
 /// task's run its task's.
 fn keeps_summary(run: &AgentRun<'_>) -> bool {
     run.run.event.event_type == af_wire::turn::TurnKind::Chat
-        && run.recovered_task.is_none()
+        && run.recovered_durable_task.is_none()
         && run.recovered_turn.is_none()
-        && run.run.task.is_none()
+        && run.run.durable_task.is_none()
         && !run.run.durable_tasks
         && run.run.owner.setup().is_none()
 }
 
 /// One loop in progress: the root, or a child.
 pub(crate) struct Harness<'s, 'run> {
-    task: Option<crate::PreparedTask>,
+    task: Option<crate::PreparedDurableTask>,
     incorporated_input_sequence: u64,
     reconciled_effect_ordinal: u64,
     confirmed_effect_watermark: u64,
-    task_report: Option<af_wire::task::TaskReport>,
+    durable_task_report: Option<af_wire::durable_task::DurableTaskReport>,
     pub(crate) shared: &'s Shared<'run>,
     /// The child this loop is a turn of: zero for the root.
     pub(crate) id: u64,
@@ -266,7 +266,7 @@ impl Harness<'_, '_> {
     pub(crate) async fn drive(&mut self) -> Ending {
         let mut state = std::mem::take(&mut self.driver);
         let ending = if self.task.is_some() {
-            guffbolt::drive(self, &mut task::Task, &mut state).await
+            guffbolt::drive(self, &mut durable_task::DurableTask, &mut state).await
         } else {
             guffbolt::drive(self, &mut recovery_boundary::Root, &mut state).await
         };
@@ -278,22 +278,22 @@ impl Harness<'_, '_> {
 mod construction;
 mod context;
 mod conversation;
+mod durable_task;
+mod durable_task_effects;
+mod durable_task_evidence;
+mod durable_task_replies;
+mod durable_task_slice;
 mod finish;
 mod observe;
 mod publication;
 mod recovery_boundary;
 pub(crate) mod shared;
-mod task;
-mod task_effects;
-mod task_evidence;
-mod task_replies;
-mod task_slice;
 
 #[cfg(test)]
 pub(crate) mod tests;
 
 #[cfg(test)]
-mod task_tests;
+mod durable_task_tests;
 
 #[cfg(test)]
 mod image_tests;

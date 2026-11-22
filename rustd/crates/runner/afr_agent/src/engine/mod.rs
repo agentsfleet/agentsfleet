@@ -20,7 +20,7 @@ mod boundary_tests;
 mod recovery_tests;
 #[cfg(test)]
 mod turn_recovery_tests;
-pub use recovery::TaskRecovery;
+pub use recovery::DurableTaskRecovery;
 
 use std::fmt;
 
@@ -102,11 +102,11 @@ pub struct AgentRun<'run> {
     /// Optional live capture owner; absence cannot acknowledge a checkpoint.
     pub recovery: Option<&'run dyn RecoveryBoundarySink>,
     /// Authenticated history restored with the same frozen file generation.
-    pub recovered_task: Option<&'run TaskRecovery>,
+    pub recovered_durable_task: Option<&'run DurableTaskRecovery>,
     /// Exact ordinary generation restored and adopted before the agent starts.
     pub recovered_turn: Option<&'run TurnRecovery>,
     /// Native intent and recovery read completed before sandbox construction.
-    pub prepared_task: Option<&'run crate::PreparedTask>,
+    pub prepared_durable_task: Option<&'run crate::PreparedDurableTask>,
     /// The run being run.
     pub run: &'run RunPayload<'run>,
     /// The fleet's memory, loaded before the run started, and where a
@@ -149,10 +149,10 @@ impl fmt::Debug for AgentRun<'_> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunOutput {
     /// Private history paired with frozen files by the supervisor's recovery owner.
-    pub recovery: Option<TaskRecovery>,
+    pub recovery: Option<DurableTaskRecovery>,
     /// Native decision-backed disposition at the last completed safe boundary.
     /// A conversational answer alone never supplies a durable task outcome.
-    pub task: Option<af_wire::task::TaskReport>,
+    pub task: Option<af_wire::durable_task::DurableTaskReport>,
     /// The result the report carries.
     pub result: ExecutionResult<'static>,
     /// The memory to push, fenced, before the report.
@@ -180,13 +180,13 @@ pub struct Needs {
 pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// Establishes native intent before provisioning any sandbox or checkout.
     /// Engines without durable coordination refuse durable runs explicitly.
-    async fn prepare_task(
+    async fn prepare_durable_task(
         &self,
         run: &RunPayload<'_>,
         _verbs: &dyn RunVerbs,
         _meter: &Meter,
         _stop: &CancellationToken,
-    ) -> Result<Option<crate::PreparedTask>> {
+    ) -> Result<Option<crate::PreparedDurableTask>> {
         if run.durable_tasks {
             return Err(crate::decision::unavailable());
         }

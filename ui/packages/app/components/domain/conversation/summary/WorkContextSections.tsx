@@ -1,6 +1,6 @@
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
-import type { TaskDetails } from "../../tasks/use-task-details";
+import type { DurableTaskDetails } from "../../tasks/use-task-details";
 import Link from "next/link";
 import { Button } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, CaretDownIcon, GitBranchIcon, GitDiffIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
@@ -12,7 +12,7 @@ import { recordedChanges } from "./recorded-changes";
 
 
 
-export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false}: {details: TaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
+export function WorkOutputs({details, expectedDetails = details.size, hideEmpty = false}: {details: DurableTaskDetails; expectedDetails?: number; hideEmpty?: boolean}) {
   const records = [...details.values()].flatMap(resource => {
     const detail = confirmed(resource);
     const target = detail?.context.target;

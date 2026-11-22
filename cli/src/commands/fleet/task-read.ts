@@ -24,7 +24,7 @@ const question = Schema.Struct({name: Schema.String, question: Schema.Struct({
   criteria: Schema.Struct({true: Schema.String, false: Schema.String}),
 })});
 
-export const TaskDetailSchema = Schema.Struct({
+export const DurableTaskDetailSchema = Schema.Struct({
   publication: Schema.optionalKey(Schema.NullOr(Schema.Struct({effect_id: identity, ordinal: count,
     state: Schema.Literals(["prepared", "issued", "confirmed", "unknown", "refused"]),
     expected_head: oid, tested_tree: oid, commit: Schema.NullOr(oid), pull_request_url: Schema.String,
@@ -34,7 +34,7 @@ export const TaskDetailSchema = Schema.Struct({
   etag: Schema.String.check(Schema.isPattern(/^"[0-9a-f]{64}"$/u)),
   context: Schema.Struct({
     target: Schema.optionalKey(target),
-    task_id: identity, generation: count, stop_generation: count, state,
+    durable_task_id: identity, generation: count, stop_generation: count, state,
     accepted_revision_id: identity, objective: Schema.String, goal_digest: Schema.String,
     questions: Schema.Array(question), covered_input_sequence: count,
     effect_cursor: count, confirmed_effect_watermark: count, checkpoint_id: Schema.NullOr(identity), expires_at: instant,
@@ -44,12 +44,12 @@ export const TaskDetailSchema = Schema.Struct({
       runs: count, publications: count, decision_calls: count, fallback_reads: count}),
   }),
 });
-export type TaskDetail = typeof TaskDetailSchema.Type;
+export type DurableTaskDetail = typeof DurableTaskDetailSchema.Type;
 
-export function decodeTask<T>(schema: Schema.Codec<T, unknown>, value: unknown): Effect.Effect<T, ServerError> {
+export function decodeDurableTask<T>(schema: Schema.Codec<T, unknown>, value: unknown): Effect.Effect<T, ServerError> {
   return Schema.decodeUnknownEffect(schema)(value).pipe(Effect.mapError(() => new ServerError({
-    detail: "The task response did not match the supported API shape",
+    detail: "The durable task response did not match the supported API shape",
     suggestion: "update the CLI and verify that it targets the matching daemon build",
-    code: "TASK_RESPONSE_INVALID", status: 502, requestId: null,
+    code: "DURABLE_TASK_RESPONSE_INVALID", status: 502, requestId: null,
   })));
 }

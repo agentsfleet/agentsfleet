@@ -6,17 +6,17 @@
 )]
 
 use crate::metrics::declared::{
-    billing, bus, database, fleet, http, library, outbound, scheduler, task,
+    billing, bus, database, durable_task, fleet, http, library, outbound, scheduler,
 };
 use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::bus as bus_labels;
 use crate::metrics::label::database as database_labels;
+use crate::metrics::label::durable_task as durable_task_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
 use crate::metrics::label::outbound as outbound_labels;
 use crate::metrics::label::scheduler as scheduler_labels;
-use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
 /// Where a sent message went, and the folds a live run was assigned and settled.
@@ -44,7 +44,7 @@ fn label_products() -> Vec<(&'static str, usize)> {
     products.extend(fold_products());
     products.extend(stream_products());
     products.extend(transport_products());
-    products.extend(task_products());
+    products.extend(durable_task_products());
     products.extend(billing_products());
     products.extend(http_products());
     products.extend(fleet_products());
@@ -167,15 +167,17 @@ fn every_declared_ceiling_admits_its_label_product() {
     }
 }
 
-fn task_products() -> [(&'static str, usize); 2] {
+fn durable_task_products() -> [(&'static str, usize); 2] {
     [
         (
-            task::TASK_OPERATIONS_TOTAL.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+            durable_task::DURABLE_TASK_OPERATIONS_TOTAL.wire_name(),
+            durable_task_labels::DurableTaskOperation::ALL.len()
+                * durable_task_labels::DurableTaskOutcome::ALL.len(),
         ),
         (
-            task::TASK_OPERATION_SECONDS.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+            durable_task::DURABLE_TASK_OPERATION_SECONDS.wire_name(),
+            durable_task_labels::DurableTaskOperation::ALL.len()
+                * durable_task_labels::DurableTaskOutcome::ALL.len(),
         ),
     ]
 }

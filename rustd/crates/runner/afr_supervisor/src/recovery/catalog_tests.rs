@@ -1,7 +1,7 @@
 //! Complete page boundaries retain paths, content deduplication and private history.
 
 use super::{catalog::Catalog, files::Workspace};
-use af_wire::task::CheckpointEntry;
+use af_wire::durable_task::CheckpointEntry;
 use std::{collections::BTreeMap, fs, sync::Arc};
 use zeroize::Zeroizing;
 
@@ -59,7 +59,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
         .enumerate()
         .map(|(index, key)| (key.clone(), format!("019f0000-0000-7000-8000-{index:012}")))
         .collect();
-    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+    let pages = catalog.pages(Some(&ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     assert_eq!(
         pages.iter().map(|page| page.entries.len()).sum::<usize>(),
@@ -78,7 +78,7 @@ fn complete_layout_spans_pages_without_repeating_shared_content() -> crate::Resu
     Ok(())
 }
 
-fn assert_paths(pages: &[af_wire::task::CheckpointPage]) {
+fn assert_paths(pages: &[af_wire::durable_task::CheckpointPage]) {
     let names: Vec<_> = pages
         .iter()
         .flat_map(|page| page.entries.iter().map(CheckpointEntry::path))
@@ -115,7 +115,7 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
         .keys()
         .map(|key| (key.clone(), identity.to_owned()))
         .collect();
-    let pages = catalog.pages(Some(&ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+    let pages = catalog.pages(Some(&ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
     assert_eq!(pages.len(), 2);
     let history = pages
         .last()
@@ -132,7 +132,7 @@ fn a_near_full_manifest_keeps_all_private_history_on_a_separate_bounded_page() -
             serde_json::to_vec(page)
                 .map_err(crate::error::encode)?
                 .len()
-                <= af_wire::task::CHECKPOINT_PAGE_BYTES
+                <= af_wire::durable_task::CHECKPOINT_PAGE_BYTES
         );
     }
     Ok(())
@@ -186,7 +186,10 @@ fn history_without_registered_objects_cannot_name_a_root_or_a_page() -> crate::R
         "checkpoint history registration is incomplete",
     )?;
     refused_as(
-        catalog.pages(Some(&unregistered), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        catalog.pages(
+            Some(&unregistered),
+            af_wire::durable_task::CHECKPOINT_PAGE_BYTES,
+        ),
         "checkpoint history registration is incomplete",
     )
 }
@@ -202,7 +205,10 @@ fn a_file_without_registered_objects_cannot_name_a_page() -> crate::Result<()> {
         &tokio_util::sync::CancellationToken::new(),
     )?;
     refused_as(
-        catalog.pages(Some(&BTreeMap::new()), af_wire::task::CHECKPOINT_PAGE_BYTES),
+        catalog.pages(
+            Some(&BTreeMap::new()),
+            af_wire::durable_task::CHECKPOINT_PAGE_BYTES,
+        ),
         "checkpoint file registration is incomplete",
     )
 }

@@ -68,7 +68,7 @@ fn request() -> ReportRequest<'static> {
     ReportRequest {
         folded_through_sequence: None,
         setup: None,
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed("01924f4e-0000-7000-8000-00000000fee7"),
         turn_id: Cow::Borrowed("event-fixture"),
         fencing_token: 1,

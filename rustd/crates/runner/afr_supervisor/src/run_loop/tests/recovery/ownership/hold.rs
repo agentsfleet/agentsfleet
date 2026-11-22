@@ -3,29 +3,29 @@
 
 use super::*;
 use crate::run_loop::hold::{Fate, Kept};
-use af_wire::task::{DecisionTaskVersion, TaskReport};
+use af_wire::durable_task::{DecisionDurableTaskVersion, DurableTaskReport};
 
 /// The fixture's run, ended with history to save and a waiting task.
 fn ending(fixture: &Fixture) -> Result<Ending> {
     let task = fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .clone()
         .ok_or_else(|| error::config("fixture task missing"))?;
     let mut output = test_support::answer();
-    output.task = Some(TaskReport {
-        task: DecisionTaskVersion {
-            task_id: task.task_id.to_string(),
+    output.task = Some(DurableTaskReport {
+        durable_task: DecisionDurableTaskVersion {
+            durable_task_id: task.durable_task_id.to_string(),
             generation: task.generation,
         },
-        disposition: TaskDisposition::Waiting,
+        disposition: DurableTaskDisposition::Waiting,
         decision_call_id: Some(ID.to_owned()),
         checkpoint_id: None,
         covered_input_sequence: 7,
         effect_watermark: 5,
     });
-    output.recovery = Some(TaskRecovery {
+    output.recovery = Some(DurableTaskRecovery {
         task,
         history: Zeroizing::new(b"saved conversation".to_vec()),
     });
@@ -54,8 +54,8 @@ fn kept(fixture: &Fixture, sandbox: Box<dyn Sandbox>) -> Result<Kept> {
 }
 
 #[tokio::test]
-async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the_task() -> Result<()>
-{
+async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the_durable_task()
+-> Result<()> {
     for fault in ["interrupted", "busy executor", "refused freeze"] {
         let mut fixture = Fixture::new(|_| None)?;
         let root = tempfile::tempdir()?;
@@ -83,7 +83,7 @@ async fn a_durable_sandbox_that_cannot_save_its_history_is_killed_and_blocks_the
             .task
             .as_ref()
             .ok_or_else(|| error::config("task report missing"))?;
-        assert_eq!(task.disposition, TaskDisposition::Blocked, "{fault}");
+        assert_eq!(task.disposition, DurableTaskDisposition::Blocked, "{fault}");
         assert_eq!(task.checkpoint_id, None, "{fault}");
         assert_eq!(
             engine.frozen.load(Ordering::SeqCst),

@@ -39,7 +39,7 @@ pub(super) struct ConfigToml {
     #[garde(dive)]
     pub billing: super::tuning::BillingTuning,
     #[garde(dive)]
-    pub tasks: super::tuning::TasksTuning,
+    pub durable_tasks: super::tuning::DurableTasksTuning,
     #[garde(dive)]
     pub setup: super::tuning::SetupTuning,
     #[garde(dive)]
@@ -59,7 +59,7 @@ pub(super) struct Outbound {
 #[derive(Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Fleet {
-    pub tasks: afd_fleet::task::policy::TaskSettings,
+    pub durable_tasks: afd_fleet::durable_task::policy::DurableTaskSettings,
 }
 
 #[derive(Deserialize, Validate)]
@@ -422,5 +422,5 @@ impl std::fmt::Display for LogLevel {
 #[serde(default, deny_unknown_fields)]
 pub(super) struct Checkpoint {
     #[garde(dive)]
-    pub storage: Option<afd_fleet::task::storage::CheckpointStorageConfig>,
+    pub storage: Option<afd_fleet::durable_task::storage::CheckpointStorageConfig>,
 }

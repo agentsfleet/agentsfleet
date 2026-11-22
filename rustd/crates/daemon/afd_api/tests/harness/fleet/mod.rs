@@ -151,10 +151,10 @@ fn tasks(
     database: &Db,
     bus: &afd_bus::Handle,
     ledger: &afd_turns::Turns,
-) -> afd_fleet::task::Tasks {
-    afd_fleet::task::Tasks::new(
+) -> afd_fleet::durable_task::DurableTasks {
+    afd_fleet::durable_task::DurableTasks::new(
         afd_fleet::run::Runs::new(database.clone(), bus.clone(), Entropy::new()),
         ledger.clone(),
-        task_dependencies(database.clone()),
+        durable_task_dependencies(database.clone()),
     )
 }

@@ -2,7 +2,7 @@ WITH instant AS MATERIALIZED (
   SELECT statement_timestamp() AS read_at
 ), eligible AS MATERIALIZED (
   SELECT z.id, s.last_runner_id, instant.read_at, z.head_revision_id, host.platform_owned AS host_platform,
-         (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS task_capable
+         (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS durable_task_capable
   FROM fleet.fleets z
   CROSS JOIN instant
   JOIN runner.runners host ON host.id = $2
@@ -37,11 +37,11 @@ WITH instant AS MATERIALIZED (
 SELECT z.id AS fleet_id, head.id AS turn_id, head.created_at AS turn_created_at
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at, a.created_at, a.task_id
+  SELECT a.id, a.parked_at, a.created_at, a.durable_task_id
   FROM thread.turns a
   WHERE a.thread_id = z.id AND a.settled_at IS NULL
-    AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR (z.task_capable AND EXISTS (
-      SELECT 1 FROM fleet.tasks t WHERE t.id = a.task_id AND t.generation = a.task_generation AND t.fleet_id = a.thread_id
+    AND ((a.durable_task_id IS NULL AND a.durable_task_generation IS NULL) OR (z.durable_task_capable AND EXISTS (
+      SELECT 1 FROM fleet.durable_tasks t WHERE t.id = a.durable_task_id AND t.generation = a.durable_task_generation AND t.fleet_id = a.thread_id
         AND t.workspace_id = a.workspace_id AND t.status IN ($9, $10) AND t.terminal_at IS NULL
         AND t.expires_at > z.read_at AND t.used_runs < t.max_runs
         AND t.used_model_nanos < t.max_model_nanos
@@ -61,11 +61,11 @@ JOIN LATERAL (
     SELECT 1 FROM fleet.revisions r
     WHERE r.fleet_id = z.id
       AND r.id = COALESCE(
-        (SELECT t.accepted_revision_id FROM fleet.tasks t WHERE t.id = head.task_id AND t.fleet_id = z.id),
+        (SELECT t.accepted_revision_id FROM fleet.durable_tasks t WHERE t.id = head.durable_task_id AND t.fleet_id = z.id),
         z.head_revision_id)
       AND r.runtime_model_ref IS NOT NULL AND r.runtime_model_ref <> $16::text))
 WHERE ($13::timestamptz IS NULL OR (head.created_at, head.id)>($13, $14::uuid))
-  AND ($15::boolean OR head.task_id IS NOT NULL OR NOT EXISTS (
+  AND ($15::boolean OR head.durable_task_id IS NOT NULL OR NOT EXISTS (
     SELECT 1 FROM runner.turn_recovery recovery
     WHERE recovery.turn_id = head.id AND recovery.head_turn_checkpoint_id IS NOT NULL
   ))

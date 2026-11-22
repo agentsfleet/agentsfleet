@@ -66,24 +66,26 @@ async fn real_loop_commits_api_history_before_reporting_reused_checkpoint() {
         let archive = server.archive.lock().unwrap();
         let report = report(&archive);
         assert_eq!(
-            report.pointer("/task/disposition").and_then(Value::as_str),
+            report
+                .pointer("/durable_task/disposition")
+                .and_then(Value::as_str),
             Some("waiting")
         );
         assert_eq!(
             report
-                .pointer("/task/checkpoint_id")
+                .pointer("/durable_task/checkpoint_id")
                 .and_then(Value::as_str),
             Some(CHECKPOINT)
         );
         assert_eq!(
             report
-                .pointer("/task/decision_call_id")
+                .pointer("/durable_task/decision_call_id")
                 .and_then(Value::as_str),
             archive.decision.as_deref()
         );
         assert_eq!(
             report
-                .pointer("/task/task/generation")
+                .pointer("/durable_task/durable_task/generation")
                 .and_then(Value::as_u64),
             Some(7)
         );
@@ -114,17 +116,19 @@ async fn real_loop_checkpoint_refusal_clears_goal_authority_before_report() {
             let archive = server.archive.lock().unwrap();
             let report = report(&archive);
             assert_eq!(
-                report.pointer("/task/disposition").and_then(Value::as_str),
+                report
+                    .pointer("/durable_task/disposition")
+                    .and_then(Value::as_str),
                 Some("blocked")
             );
             assert!(
                 report
-                    .pointer("/task/checkpoint_id")
+                    .pointer("/durable_task/checkpoint_id")
                     .is_none_or(Value::is_null)
             );
             assert!(
                 report
-                    .pointer("/task/decision_call_id")
+                    .pointer("/durable_task/decision_call_id")
                     .is_none_or(Value::is_null)
             );
             assert!(
@@ -159,7 +163,7 @@ fn assert_safe(archive: &archive::Archive) {
 }
 
 #[tokio::test]
-async fn refused_task_preparation_or_restore_never_enters_the_model_or_captures_state() {
+async fn refused_durable_task_preparation_or_restore_never_enters_the_model_or_captures_state() {
     for refusal in [Refusal::Inputs, Refusal::Restore] {
         let mut server = server::Server::start(refusal).await;
         let model = model::Model::default();

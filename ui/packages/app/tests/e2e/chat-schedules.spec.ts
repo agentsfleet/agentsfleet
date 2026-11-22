@@ -69,7 +69,7 @@ test("native scheduled composer preserves chat through edit, pause, resume and d
       run_state: body.override.status === "paused" ? "paused" : "scheduled"};
     await route.fulfill({json: current});
   });
-  await page.goto(`${chatProbe}?tasks=1&wakeups=1`);
+  await page.goto(`${chatProbe}?durable_tasks=1&wakeups=1`);
   const footer = page.getByTestId("fleet-chat-footer");
   const input = page.getByRole("textbox", {name: /^Message your fleet/});
   await input.fill("Keep my unsent instruction");
@@ -114,7 +114,7 @@ test("empty and invalid wake-up edits retain the saved schedule and unsent chat"
     writes.push(route.request().postDataJSON());
     return route.fulfill({status: 400, json: {user_message: "Choose a valid cron schedule."}});
   });
-  await page.goto(`${chatProbe}?tasks=1&wakeups=1`);
+  await page.goto(`${chatProbe}?durable_tasks=1&wakeups=1`);
   const chat = page.getByRole("textbox", {name: /^Message your fleet/});
   await chat.fill("Keep this instruction while I correct the schedule");
   await page.getByRole("button", {name: "Edit wake-up"}).click();

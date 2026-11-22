@@ -112,7 +112,7 @@ pub struct FleetConfig {
 impl FleetConfig {
     /// Goal adoption can change owner wording while retaining every execution policy bound.
     #[must_use]
-    pub fn same_task_authority(&self, other: &Self) -> bool {
+    pub fn same_durable_task_authority(&self, other: &Self) -> bool {
         let mut compared = self.clone();
         compared.name = other.name.clone();
         compared.decision_policy.clone_from(&other.decision_policy);

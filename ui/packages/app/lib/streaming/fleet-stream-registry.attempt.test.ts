@@ -31,7 +31,7 @@ function hint(fence: string): Extract<LiveFrame, {kind: typeof FRAME_KIND.RUN_RE
 
 function validActivityFrames(): ActivityLiveFrame[] {
   const id = "019f0000-0000-7000-8000-000000000001";
-  const progress = {activity_id: id, task_id: id, source_turn_id: null, operation: "goal",
+  const progress = {activity_id: id, durable_task_id: id, source_turn_id: null, operation: "goal",
     phase: "starting", provider: null, model: null, completed: 0, total: null};
   return [
     chunk("1", "replacement output"),
@@ -39,9 +39,9 @@ function validActivityFrames(): ActivityLiveFrame[] {
     {kind: FRAME_KIND.TOOL_CALL_PROGRESS, turn_id: TURN, call_id: "1:0", name: "shell", elapsed_ms: 10},
     {kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: TURN, call_id: "1:0", name: "shell", ms: 10, status: "succeeded"},
     {kind: FRAME_KIND.CONTEXT_PROGRESS, turn_id: TURN, generation: 1, state: "summarizing"},
-    {kind: FRAME_KIND.TASK_DECISION_STARTED, turn_id: TURN, progress},
-    {kind: FRAME_KIND.TASK_DECISION_COMPLETED, turn_id: TURN, progress: {...progress, phase: "recorded"}},
-    {kind: FRAME_KIND.TASK_TRANSFER_PROGRESS, turn_id: TURN,
+    {kind: FRAME_KIND.DURABLE_TASK_DECISION_STARTED, turn_id: TURN, progress},
+    {kind: FRAME_KIND.DURABLE_TASK_DECISION_COMPLETED, turn_id: TURN, progress: {...progress, phase: "recorded"}},
+    {kind: FRAME_KIND.DURABLE_TASK_TRANSFER_PROGRESS, turn_id: TURN,
       progress: {...progress, operation: "capture", phase: "uploading", total: 10}},
   ];
 }

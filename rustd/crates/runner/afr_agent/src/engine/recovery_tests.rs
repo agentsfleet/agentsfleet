@@ -1,22 +1,24 @@
 //! Recovery preserves work while refusing historical authority and new secrets.
 
 use super::RootRecovery;
-use super::recovery::TaskRecovery;
-use af_wire::task::{TaskContext, TaskLimits, TaskState, TaskTarget, TaskUsage};
+use super::recovery::DurableTaskRecovery;
+use af_wire::durable_task::{
+    DurableTaskContext, DurableTaskLimits, DurableTaskState, DurableTaskTarget, DurableTaskUsage,
+};
 use guffbolt::{Call, Message, Replay};
 
-pub(super) fn task() -> TaskContext<'static> {
-    TaskContext {
-        task_id: "019f0000-0000-7000-8000-000000000001".into(),
+pub(super) fn task() -> DurableTaskContext<'static> {
+    DurableTaskContext {
+        durable_task_id: "019f0000-0000-7000-8000-000000000001".into(),
         originating_item_id: "019f0000-0000-7000-8000-000000000002".into(),
-        target: TaskTarget::ApiOnly,
+        target: DurableTaskTarget::ApiOnly,
         generation: 1,
         stop_generation: 0,
         accepted_revision_id: "019f0000-0000-7000-8000-000000000003".into(),
         objective: "Investigate the reported failure".into(),
         goal_digest: "a".repeat(64).into(),
         questions: vec![],
-        state: TaskState::Running,
+        state: DurableTaskState::Running,
         covered_input_sequence: 2,
         input_sequence: 2,
         effect_cursor: 0,
@@ -24,17 +26,17 @@ pub(super) fn task() -> TaskContext<'static> {
         checkpoint_id: None,
         checkpoint_generation: None,
         expires_at: jiff::Timestamp::UNIX_EPOCH,
-        limits: TaskLimits::default(),
-        usage: TaskUsage::default(),
+        limits: DurableTaskLimits::default(),
+        usage: DurableTaskUsage::default(),
     }
 }
 
 #[test]
-fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_task_identity()
+fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_durable_task_identity()
 -> crate::Result<()> {
     let original = task();
     let messages = prior_work();
-    let saved = TaskRecovery::capture(
+    let saved = DurableTaskRecovery::capture(
         original.clone(),
         "old-model",
         "old-provider",
@@ -46,7 +48,7 @@ fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_task_iden
     let mut adopted = original;
     adopted.goal_digest = "b".repeat(64).into();
     adopted.generation += 1;
-    let restored = TaskRecovery::restore(
+    let restored = DurableTaskRecovery::restore(
         &saved.history,
         &adopted,
         "new-model",
@@ -59,8 +61,8 @@ fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_task_iden
     assert!(encoded.contains("Observed the failure"));
     assert_eq!(restored.messages.len(), 3);
     assert_eq!(adopted.generation, 2);
-    adopted.task_id = "019f0000-0000-7000-8000-000000000004".into();
-    let failure = TaskRecovery::restore(
+    adopted.durable_task_id = "019f0000-0000-7000-8000-000000000004".into();
+    let failure = DurableTaskRecovery::restore(
         &saved.history,
         &adopted,
         "old-model",
@@ -79,7 +81,7 @@ fn adopted_goal_restores_prior_work_as_scrubbed_data_but_cannot_change_task_iden
 #[test]
 fn incomplete_or_unknown_history_never_becomes_an_empty_successful_resume() -> crate::Result<()> {
     let task = task();
-    let saved = TaskRecovery::capture(
+    let saved = DurableTaskRecovery::capture(
         task.clone(),
         "model",
         "provider",
@@ -92,7 +94,7 @@ fn incomplete_or_unknown_history_never_becomes_an_empty_successful_resume() -> c
     *history
         .get_mut("format")
         .ok_or_else(crate::decision::unavailable)? = serde_json::json!(1);
-    let failure = TaskRecovery::restore(
+    let failure = DurableTaskRecovery::restore(
         &serde_json::to_vec(&history)?,
         &task,
         "model",
@@ -105,9 +107,10 @@ fn incomplete_or_unknown_history_never_becomes_an_empty_successful_resume() -> c
         failure.code(),
         af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
     );
-    let failure = TaskRecovery::restore(b"{", &task, "model", "provider", &crate::fixture::scrub())
-        .err()
-        .ok_or_else(crate::decision::unavailable)?;
+    let failure =
+        DurableTaskRecovery::restore(b"{", &task, "model", "provider", &crate::fixture::scrub())
+            .err()
+            .ok_or_else(crate::decision::unavailable)?;
     assert_eq!(
         failure.code(),
         af_core::error_code::RUN_CHECKPOINT_INCOMPATIBLE
@@ -135,8 +138,8 @@ fn rich_history_retains_driver_answers_and_pinned_input_index() -> crate::Result
         ..RootRecovery::default()
     };
     let task = task();
-    let saved = TaskRecovery::capture(task.clone(), "model", "provider", root)?;
-    let recovered = TaskRecovery::restore(
+    let saved = DurableTaskRecovery::capture(task.clone(), "model", "provider", root)?;
+    let recovered = DurableTaskRecovery::restore(
         &saved.history,
         &task,
         "model",
@@ -182,7 +185,7 @@ const HISTORY_LIMIT: usize = 64 * 1024 * 1024;
 #[test]
 fn history_past_its_byte_limit_is_neither_captured_nor_restored() -> crate::Result<()> {
     let task = task();
-    let captured = TaskRecovery::capture(
+    let captured = DurableTaskRecovery::capture(
         task.clone(),
         "model",
         "provider",
@@ -191,7 +194,7 @@ fn history_past_its_byte_limit_is_neither_captured_nor_restored() -> crate::Resu
             ..RootRecovery::default()
         },
     );
-    let restored = TaskRecovery::restore(
+    let restored = DurableTaskRecovery::restore(
         &vec![b' '; HISTORY_LIMIT + 1],
         &task,
         "model",
@@ -216,9 +219,9 @@ fn history_past_its_byte_limit_is_neither_captured_nor_restored() -> crate::Resu
 }
 
 #[test]
-fn task_history_carrying_ordinary_folds_is_not_restored() -> crate::Result<()> {
+fn durable_task_history_carrying_ordinary_folds_is_not_restored() -> crate::Result<()> {
     let task = task();
-    let saved = TaskRecovery::capture(
+    let saved = DurableTaskRecovery::capture(
         task.clone(),
         "model",
         "provider",
@@ -234,7 +237,7 @@ fn task_history_carrying_ordinary_folds_is_not_restored() -> crate::Result<()> {
         },
     )?;
 
-    let failure = TaskRecovery::restore(
+    let failure = DurableTaskRecovery::restore(
         &saved.history,
         &task,
         "model",
@@ -312,9 +315,9 @@ fn ended_children_restore_with_every_secret_they_carried_masked() -> crate::Resu
             child(2, Status::Failed(secret("child failed")))?,
         ],
     );
-    let saved = TaskRecovery::capture(task.clone(), "model", "provider", root)?;
+    let saved = DurableTaskRecovery::capture(task.clone(), "model", "provider", root)?;
 
-    let restored = TaskRecovery::restore(
+    let restored = DurableTaskRecovery::restore(
         &saved.history,
         &task,
         "model",
@@ -379,7 +382,7 @@ fn a_root_whose_saved_state_contradicts_itself_is_not_captured() -> crate::Resul
     ];
 
     for (root, reason) in cases {
-        let failure = TaskRecovery::capture(task(), "model", "provider", root)
+        let failure = DurableTaskRecovery::capture(task(), "model", "provider", root)
             .err()
             .ok_or_else(crate::decision::unavailable)?;
 

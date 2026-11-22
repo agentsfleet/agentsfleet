@@ -70,7 +70,7 @@ async fn meter_plan(connection: &mut PgConnection, held: &Held) -> serde_json::V
         ms = afd_billing::nanos::MS_PER_SEC,
         active = afd_state::sql::RUN_STATUS_ACTIVE,
         ttl = af_core::timing::RUN_TTL.as_secs_f64(),
-        running = af_wire::task::TaskState::Running.as_str(),
+        running = af_wire::durable_task::DurableTaskState::Running.as_str(),
     )))
     .fetch_one(connection)
     .await

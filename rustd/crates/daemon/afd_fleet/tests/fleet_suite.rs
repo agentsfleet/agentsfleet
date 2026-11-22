@@ -12,8 +12,8 @@
 )]
 
 mod installed;
+mod integration_durable_tasks;
 mod integration_model_seed;
-mod integration_tasks;
 mod integration_turn_checkpoints;
 mod issue_lifecycle;
 mod run_renewal;

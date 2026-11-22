@@ -41,10 +41,10 @@ export function buildQuery(opts?: TurnsQuery): string {
 // `gate_resolved` when a human is asked and answers. Keep every spelling in
 // sync with those enums.
 export const FRAME_KIND = {
-  TASK_CHANGED: "task_changed",
-  TASK_DECISION_STARTED: "task_decision_started",
-  TASK_DECISION_COMPLETED: "task_decision_completed",
-  TASK_TRANSFER_PROGRESS: "task_transfer_progress",
+  DURABLE_TASK_CHANGED: "durable_task_changed",
+  DURABLE_TASK_DECISION_STARTED: "durable_task_decision_started",
+  DURABLE_TASK_DECISION_COMPLETED: "durable_task_decision_completed",
+  DURABLE_TASK_TRANSFER_PROGRESS: "durable_task_transfer_progress",
   TURN_ADMITTED: "turn_admitted",
   TURN_RECEIVED: "turn_received",
   TOOL_CALL_STARTED: "tool_call_started",

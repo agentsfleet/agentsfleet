@@ -55,8 +55,8 @@ use afd_credential::credential::outcome::Minted;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Purpose {
     Runner,
-    TaskRead,
-    TaskPublish,
+    DurableTaskRead,
+    DurableTaskPublish,
 }
 
 impl RunService {
@@ -77,25 +77,31 @@ impl RunService {
             .await
     }
 
-    pub(crate) async fn mint_task_publisher(
+    pub(crate) async fn mint_durable_task_publisher(
         &self,
         runner_id: &Uuid7,
         request: &MintCredentialRequest<'_>,
         now: Timestamp,
     ) -> Result<Minted> {
-        self.mint_for(runner_id, request, now, Purpose::TaskPublish, None)
+        self.mint_for(runner_id, request, now, Purpose::DurableTaskPublish, None)
             .await
     }
 
-    pub(crate) async fn mint_task_reader(
+    pub(crate) async fn mint_durable_task_reader(
         &self,
         runner_id: &Uuid7,
         request: &MintCredentialRequest<'_>,
         now: Timestamp,
         repository: &str,
     ) -> Result<Minted> {
-        self.mint_for(runner_id, request, now, Purpose::TaskRead, Some(repository))
-            .await
+        self.mint_for(
+            runner_id,
+            request,
+            now,
+            Purpose::DurableTaskRead,
+            Some(repository),
+        )
+        .await
     }
 
     async fn mint_for(
@@ -119,14 +125,14 @@ impl RunService {
         {
             return Err(crate::error::integration_not_connected());
         }
-        if purpose == Purpose::TaskPublish
+        if purpose == Purpose::DurableTaskPublish
             && !scope.binding.as_ref().is_some_and(|binding| {
                 binding.publication() == af_fleet_runtime::config::RepositoryPublication::ExistingPr
             })
         {
-            return Err(crate::task::TaskRefusal::InvalidTarget.into());
+            return Err(crate::durable_task::DurableTaskRefusal::InvalidTarget.into());
         }
-        if purpose == Purpose::TaskRead {
+        if purpose == Purpose::DurableTaskRead {
             scope.binding = Some(
                 scope
                     .binding
@@ -135,7 +141,7 @@ impl RunService {
                         let repository = repository?;
                         binding.read_repository(repository)
                     })
-                    .ok_or(crate::task::TaskRefusal::InvalidTarget)?,
+                    .ok_or(crate::durable_task::DurableTaskRefusal::InvalidTarget)?,
             );
         } else if request.integration == "github"
             && purpose == Purpose::Runner

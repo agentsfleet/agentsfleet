@@ -1,11 +1,11 @@
-import type { TaskActivity } from "@/lib/task-activity";
+import type { DurableTaskActivity } from "@/lib/task-activity";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FleetWorkSidebar } from "@/components/domain/shared/summary/FleetWorkSidebar";
 import { workActivity } from "@/components/domain/conversation/summary/WorkActivity";
-import { TaskNextStep } from "@/components/domain/tasks/TaskNextStep";
+import { DurableTaskNextStep } from "@/components/domain/tasks/TaskNextStep";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail, TASK_IDS } from "./helpers/task-reads";
+import { detail, DURABLE_TASK_IDS } from "./helpers/task-reads";
 afterEach(() => {cleanup(); vi.restoreAllMocks();});
 
 it("shows Summary inline on mobile without touching the conversation draft", () => {
@@ -26,30 +26,30 @@ it("mounts one desktop sidebar, and no work surface when no child exists", () =>
 });
 
 it("attributes actions only to explicit task identities and retains recorded provenance", () => {
-  const item: TaskActivity = {kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: TASK_IDS[0],
+  const item: DurableTaskActivity = {kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0],
     source_turn_id: null, operation: "capture", phase: "uploading", provider: null, model: null, completed: 1, total: 2}};
-  const turns = [evt(), evt({taskActivity: {items: [item, {...item, progress: {...item.progress, task_id: null}}], truncated: true}})];
-  const history = workActivity(turns, TASK_IDS[0]);
+  const turns = [evt(), evt({durableTaskActivity: {items: [item, {...item, progress: {...item.progress, durable_task_id: null}}], truncated: true}})];
+  const history = workActivity(turns, DURABLE_TASK_IDS[0]);
   expect(history.items).toEqual([item]);
   expect(history.truncated).toBe(true);
   const recent = {...item, progress: {...item.progress, sequence: 1, phase: "saved" as const}};
-  expect(workActivity([...turns, evt({taskActivity: {items: [recent], truncated: false}})], TASK_IDS[0]).items).toEqual([recent]);
-  expect(workActivity(turns, TASK_IDS[1])).toEqual({items: [], truncated: false});
+  expect(workActivity([...turns, evt({durableTaskActivity: {items: [recent], truncated: false}})], DURABLE_TASK_IDS[0]).items).toEqual([recent]);
+  expect(workActivity(turns, DURABLE_TASK_IDS[1])).toEqual({items: [], truncated: false});
 
 });
 
 it("explains saved dependencies without inventing a next action from status", () => {
   const value = detail();
-  const view = render(<TaskNextStep detail={value} />);
+  const view = render(<DurableTaskNextStep detail={value} />);
   expect(screen.getByText(/No active check dependency/)).toBeTruthy();
   const dependency = {active: true, head: "a".repeat(40), updated_at: "2026-11-03T10:00:00Z", checks: []};
-  view.rerender(<TaskNextStep detail={{...value, dependency}} />);
+  view.rerender(<DurableTaskNextStep detail={{...value, dependency}} />);
   expect(screen.getByText(/continuation is not yet confirmed/)).toBeTruthy();
   const check = {workflow_id: 42, run_id: null, run_number: null, run_attempt: null, status: "queued", conclusion: null};
-  view.rerender(<TaskNextStep detail={{...value, dependency: {...dependency, checks: [check]}}} />);
+  view.rerender(<DurableTaskNextStep detail={{...value, dependency: {...dependency, checks: [check]}}} />);
   expect(screen.getByText("Waiting on: Workflow 42.")).toBeTruthy();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 1, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/1", workflows: [{id: 42, path: "checks.yml", digest: "x"}]};
-  view.rerender(<TaskNextStep detail={{...value, context: {...value.context, target}, dependency: {...dependency, checks: [check]}}} />);
+  view.rerender(<DurableTaskNextStep detail={{...value, context: {...value.context, target}, dependency: {...dependency, checks: [check]}}} />);
   expect(screen.getByText("Waiting on: checks.yml.")).toBeTruthy();
 });
 

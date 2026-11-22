@@ -6,16 +6,16 @@ use crate::preflight::runtime::OperationalSettings;
 pub(super) fn read(
     settings: &garde::Valid<ConfigToml>,
 ) -> Result<OperationalSettings, crate::preflight::Refusal> {
-    let tasks = garde::Unvalidated::new(settings.fleet.tasks)
+    let tasks = garde::Unvalidated::new(settings.fleet.durable_tasks)
         .validate()
-        .map_err(|report| invalid(format!("fleet.tasks: {report}")))?;
+        .map_err(|report| invalid(format!("fleet.durable_tasks: {report}")))?;
     Ok(OperationalSettings {
         outbound_retries: afd_outbound::retry::RetryPolicy::new(
             &garde::Unvalidated::new(settings.outbound.retries)
                 .validate()
                 .map_err(|report| invalid(format!("outbound.retries: {report}")))?,
         ),
-        tasks: afd_fleet::task::policy::TaskPolicy::new(&tasks),
+        tasks: afd_fleet::durable_task::policy::DurableTaskPolicy::new(&tasks),
         telemetry: garde::Unvalidated::new(settings.telemetry.otlp)
             .validate()
             .map_err(|report| invalid(format!("telemetry.otlp: {report}")))?,

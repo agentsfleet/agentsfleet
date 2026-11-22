@@ -1,0 +1,1 @@
+LOCK TABLE fleet.durable_tasks IN ACCESS EXCLUSIVE MODE

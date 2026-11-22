@@ -38,9 +38,9 @@ pub(crate) async fn drive(
     let sink = frames.sink();
     let run = AgentRun {
         recovery: None,
-        recovered_task: None,
+        recovered_durable_task: None,
         recovered_turn: None,
-        prepared_task: None,
+        prepared_durable_task: None,
         run,
         memory: afr_memory::Seed::default(),
         executor: &afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox),
@@ -277,9 +277,9 @@ async fn a_dropped_run_still_closes_its_open_call_once() {
     let executor = afr_executor::ExecutorSlot::unavailable(afr_executor::Unavailable::NoSandbox);
     let run = engine.run(AgentRun {
         recovery: None,
-        recovered_task: None,
+        recovered_durable_task: None,
         recovered_turn: None,
-        prepared_task: None,
+        prepared_durable_task: None,
         run: &run,
         memory: afr_memory::Seed::default(),
         executor: &executor,

@@ -49,9 +49,9 @@ fn first_shown<'a>(frames: &'a [ActivityFrame<'_>]) -> Option<(StreamTextKind, &
         | ActivityFrame::ToolCallCompleted(_)
         | ActivityFrame::ToolCallProgress(_)
         | ActivityFrame::ContextProgress(_)
-        | ActivityFrame::TaskDecisionStarted(_)
-        | ActivityFrame::TaskDecisionCompleted(_)
-        | ActivityFrame::TaskTransferProgress(_) => None,
+        | ActivityFrame::DurableTaskDecisionStarted(_)
+        | ActivityFrame::DurableTaskDecisionCompleted(_)
+        | ActivityFrame::DurableTaskTransferProgress(_) => None,
     })
 }
 

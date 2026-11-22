@@ -6,7 +6,7 @@ use std::error::Error as _;
 use af_core::error_code;
 
 use super::files::public_failure;
-use crate::task::TaskRefusal;
+use crate::durable_task::DurableTaskRefusal;
 
 // Value: protects=a runner sees checkpoint codes, never task-plane codes, for a
 // file-custody failure; fails_when=any arm of public_failure is dropped or
@@ -16,22 +16,25 @@ use crate::task::TaskRefusal;
 fn file_custody_failures_answer_with_checkpoint_codes() {
     for (refusal, code) in [
         (
-            TaskRefusal::LimitExhausted,
+            DurableTaskRefusal::LimitExhausted,
             error_code::RUN_CHECKPOINT_LIMIT,
         ),
         (
-            TaskRefusal::StorageUnavailable,
+            DurableTaskRefusal::StorageUnavailable,
             error_code::RUN_CHECKPOINT_UNAVAILABLE,
         ),
         (
-            TaskRefusal::CheckpointIncompatible,
+            DurableTaskRefusal::CheckpointIncompatible,
             error_code::RUN_CHECKPOINT_INCOMPATIBLE,
         ),
         (
-            TaskRefusal::ReplayConflict,
+            DurableTaskRefusal::ReplayConflict,
             error_code::RUN_CHECKPOINT_CONFLICT,
         ),
-        (TaskRefusal::StaleState, error_code::RUN_CHECKPOINT_CONFLICT),
+        (
+            DurableTaskRefusal::StaleState,
+            error_code::RUN_CHECKPOINT_CONFLICT,
+        ),
     ] {
         let mapped = public_failure(crate::Error::from(refusal));
         assert_eq!(mapped.code(), code, "{refusal:?}");
@@ -52,6 +55,6 @@ fn file_custody_failures_answer_with_checkpoint_codes() {
 // refusal outside its table.
 #[test]
 fn a_failure_outside_file_custody_passes_through() {
-    let passed = public_failure(crate::Error::from(TaskRefusal::NotFound));
-    assert_eq!(passed.code(), error_code::TASK_NOT_FOUND);
+    let passed = public_failure(crate::Error::from(DurableTaskRefusal::NotFound));
+    assert_eq!(passed.code(), error_code::DURABLE_TASK_NOT_FOUND);
 }

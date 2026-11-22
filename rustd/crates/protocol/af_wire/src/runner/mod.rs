@@ -100,9 +100,6 @@ pub struct ExtraBind<'a> {
     pub note: Cow<'a, str>,
 }
 
-/// Whether newly assigned runners accept durable task work.
-pub const DURABLE_TASKS_DEFAULT_ENABLED: bool = true;
-
 /// Sandbox isolation, outgoing network access, and concurrency settings assigned to this
 /// runner.
 //

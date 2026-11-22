@@ -5,7 +5,7 @@ use crate::support::Fixtures;
 use af_core::id::Uuid7;
 use af_crypto::{aad::Aad, envelope::Sealer, secret::Kek};
 use af_wire::run::{CheckpointOperationId, TurnCheckpointRef};
-use afd_fleet::task::{CheckpointMaintenanceCursor, TaskLifecycle as _};
+use afd_fleet::durable_task::{CheckpointMaintenanceCursor, DurableTaskLifecycle as _};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -45,7 +45,7 @@ async fn event_identity_retention_is_bounded_fair_and_waits_for_object_and_purge
 async fn finish_purge_after_asserting_retention(files: &Files, keys: &Keys) -> Checked {
     let mut connection = files.case.fixtures.database.acquire().await?;
     let retained: Vec<Uuid7> = sqlx::query_scalar(
-        "SELECT id FROM fleet.task_identity_keys WHERE workspace_id=$1 ORDER BY id",
+        "SELECT id FROM fleet.durable_task_identity_keys WHERE workspace_id=$1 ORDER BY id",
     )
     .bind(&files.case.acquired.workspace_id)
     .fetch_all(&mut *connection)
@@ -62,7 +62,7 @@ async fn finish_purge_after_asserting_retention(files: &Files, keys: &Keys) -> C
             .collect::<std::collections::BTreeSet<_>>(),
         expected
     );
-    sqlx::query("UPDATE fleet.task_storage_purges SET completed_at=now(),updated_at=now() WHERE task_identity_key_id=$1")
+    sqlx::query("UPDATE fleet.durable_task_storage_purges SET completed_at=now(),updated_at=now() WHERE durable_task_identity_key_id=$1")
         .bind(&keys.blocked).execute(&mut *connection).await?;
     drop(connection);
     Ok(())
@@ -149,7 +149,7 @@ async fn used_identity(files: &Files) -> Checked<Uuid7> {
     .await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
     let used: Uuid7 = sqlx::query_scalar(
-        "UPDATE fleet.task_identity_keys SET created_at=clock_timestamp()-interval '10 days' WHERE workspace_id=$1 RETURNING id",
+        "UPDATE fleet.durable_task_identity_keys SET created_at=clock_timestamp()-interval '10 days' WHERE workspace_id=$1 RETURNING id",
     ).bind(&files.case.acquired.workspace_id).fetch_one(&mut *connection).await?;
     Ok(used)
 }
@@ -171,7 +171,7 @@ async fn insert(
         &Aad::checkpoint_identity(workspace, &id, repository, 1, af_crypto::KEK_VERSION),
         &[11_u8; 32],
     )?;
-    sqlx::query("INSERT INTO fleet.task_identity_keys
+    sqlx::query("INSERT INTO fleet.durable_task_identity_keys
         (id,workspace_id,repository,key_version,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,secret_ciphertext,secret_tag,kek_version,created_at,updated_at)
         VALUES ($1,$2,$3,1,$4,$5,$6,$7,$8,$9,$10,now()-make_interval(days=>$11),now())")
         .bind(&id).bind(workspace).bind(repository).bind(envelope.wrapped_dek())
@@ -189,8 +189,8 @@ async fn purge(
     done: bool,
 ) -> Checked {
     let object = afd_db::test_util::mint_id();
-    sqlx::query("INSERT INTO fleet.task_storage_purges
-        (task_object_id,workspace_id,task_identity_key_id,bucket_reference,accounted_bytes,stored,next_attempt_at,completed_at,created_at,updated_at)
+    sqlx::query("INSERT INTO fleet.durable_task_storage_purges
+        (durable_task_object_id,workspace_id,durable_task_identity_key_id,bucket_reference,accounted_bytes,stored,next_attempt_at,completed_at,created_at,updated_at)
         VALUES ($1,$2,$3,$4,0,false,now()+interval '1 day',CASE WHEN $5 THEN now() ELSE NULL END,now(),now())")
         .bind(&object).bind(workspace).bind(identity).bind(object.to_string()).bind(done)
         .execute(connection).await?;

@@ -1,7 +1,7 @@
 //! External service returns verified reused objects and authenticates complete manifests.
 use super::{Config, TASK, wire};
 use crate::run::expect;
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointAuthorizations, CheckpointCommitInput, CheckpointMode,
     CheckpointObject, CheckpointObjectStatus, CheckpointObjectsInput, CheckpointObjectsPage,
     CheckpointPage, CheckpointPageInput, CheckpointPin, CheckpointPlaintext, CheckpointPlan,
@@ -113,7 +113,9 @@ impl Archive {
         input.validate()?;
         let plan = self.selected()?;
         expect(
-            input.pin_id == plan.pin.id && input.task.task_id == TASK && input.task.generation == 1,
+            input.pin_id == plan.pin.id
+                && input.task.durable_task_id == TASK
+                && input.task.generation == 1,
             "object custody",
         )?;
         let repository = plan.repository.clone();
@@ -151,7 +153,7 @@ impl Archive {
             "page writer owns native pin",
         )?;
         expect(
-            input.task.task_id == TASK && input.task.generation == 1,
+            input.task.durable_task_id == TASK && input.task.generation == 1,
             "page accepted task version",
         )?;
         expect(
@@ -175,7 +177,7 @@ impl Archive {
             .get(self.base.as_ref().ok_or("retained base identity")?)
             .ok_or("committed base")?;
         expect(
-            input.task.task_id == TASK && input.task.generation == 1,
+            input.task.durable_task_id == TASK && input.task.generation == 1,
             "restore accepted task version",
         )?;
         expect(

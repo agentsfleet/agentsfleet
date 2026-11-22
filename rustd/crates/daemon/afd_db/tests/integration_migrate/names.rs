@@ -100,10 +100,10 @@ fn key_names_match(
         (arity == 1 && target_column == "turn_id" && column == target_column)
             || (arity > 1
                 && (column == target_column
-                    || (table == "tasks"
+                    || (table == "durable_tasks"
                         && column == "id"
-                        && target == "task_checkpoints"
-                        && target_column == "task_id")
+                        && target == "durable_task_checkpoints"
+                        && target_column == "durable_task_id")
                     // A fleet's thread is keyed by the fleet's id, so a turn
                     // scopes its task by `thread_id`.
                     || (table == "turns" && column == "thread_id" && target_column == "fleet_id")))
@@ -113,74 +113,74 @@ fn key_names_match(
 #[test]
 fn composite_scope_columns_preserve_target_identity() {
     assert!(key_names_match(
-        "task_checkpoints",
-        "task_base_id",
-        "task_bases",
+        "durable_task_checkpoints",
+        "durable_task_base_id",
+        "durable_task_bases",
         "id",
         1
     ));
     assert!(key_names_match(
-        "task_checkpoints",
+        "durable_task_checkpoints",
         "repository",
-        "task_bases",
+        "durable_task_bases",
         "repository",
         3
     ));
     assert!(key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "durable_task_checkpoints",
+        "durable_task_id",
         4
     ));
     assert!(!key_names_match(
-        "task_checkpoints",
+        "durable_task_checkpoints",
         "base_id",
-        "task_bases",
+        "durable_task_bases",
         "id",
         1
     ));
     assert!(!key_names_match(
-        "task_checkpoints",
+        "durable_task_checkpoints",
         "wrong_repository",
-        "task_bases",
+        "durable_task_bases",
         "repository",
         3
     ));
     assert!(!key_names_match(
-        "other_tasks",
+        "other_durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "durable_task_checkpoints",
+        "durable_task_id",
         4
     ));
     assert!(!key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "other_task_id",
+        "durable_task_checkpoints",
+        "other_durable_task_id",
         4
     ));
     assert!(key_names_match(
         "turns",
         "thread_id",
-        "tasks",
+        "durable_tasks",
         "fleet_id",
         3
     ));
     assert!(!key_names_match(
         "turns",
         "thread_id",
-        "tasks",
+        "durable_tasks",
         "fleet_id",
         1
     ));
     assert!(!key_names_match("members", "email", "users", "email", 1));
     assert!(!key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "durable_task_checkpoints",
+        "durable_task_id",
         1
     ));
 }

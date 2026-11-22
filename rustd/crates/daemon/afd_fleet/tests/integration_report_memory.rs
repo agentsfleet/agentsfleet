@@ -53,7 +53,7 @@ pub(crate) fn report<'a>(
     ReportRequest {
         folded_through_sequence: None,
         setup: None,
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: token,
@@ -183,7 +183,7 @@ async fn test_failed_capture_still_settles() {
     let (entropy, fault) = Entropy::new_mocked();
     fault.fail_next();
     let forgetful = RunService {
-        task_reports: None,
+        durable_task_reports: None,
         memories: Memories::new(held.fixtures.database.clone(), entropy),
         ..held.fixtures.plane()
     };

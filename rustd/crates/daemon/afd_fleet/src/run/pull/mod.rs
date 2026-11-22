@@ -49,7 +49,7 @@ pub struct RunService {
     /// Assignments, rows, and the narrative log.
     pub runs: Runs,
     /// Native task report evidence, sharing the request-path task owner.
-    pub task_reports: Option<Arc<dyn crate::task::TaskReportOwner>>,
+    pub durable_task_reports: Option<Arc<dyn crate::durable_task::DurableTaskReportOwner>>,
     /// Ordinary recovery uses the deployment key even when no file store is configured.
     pub turn_checkpoints: crate::run::turn_checkpoint::TurnCheckpoints,
     /// Approval gates and standing integration grants.

@@ -60,7 +60,7 @@ pub(super) fn terminal<'a>(
         last_turn_id: run.last_event,
         last_response: request.checkpoint.last_response.as_ref(),
         held_until: request.held_until,
-        task_settlement: None,
+        durable_task_settlement: None,
         folded_through_sequence: request.folded_through_sequence,
         now,
     }
@@ -105,17 +105,17 @@ pub(super) fn reconciled(
 }
 
 impl RunService {
-    pub(super) async fn prepare_task_report(
+    pub(super) async fn prepare_durable_task_report(
         &self,
         runner_id: &Uuid7,
         run_id: &Uuid7,
         request: &ReportRequest<'_>,
-    ) -> crate::Result<Option<crate::task::PreparedReport>> {
-        match &self.task_reports {
+    ) -> crate::Result<Option<crate::durable_task::PreparedReport>> {
+        match &self.durable_task_reports {
             Some(owner) => {
                 owner
                     .prepare_report(
-                        crate::task::TaskRun {
+                        crate::durable_task::DurableTaskRun {
                             runner_id,
                             run_id,
                             fencing_token: request.fencing_token,

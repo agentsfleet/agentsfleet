@@ -4,11 +4,11 @@
 
 use af_core::{error_code, error_code::ErrorCode, id::Uuid7};
 use af_wire::{
+    durable_task::CheckpointEntry,
     run::{
         CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointRef,
         TurnCheckpointResponse as Response, TurnResume, TurnWorkspace,
     },
-    task::CheckpointEntry,
 };
 use afd_db::test_util::mint_id;
 

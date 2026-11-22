@@ -26,7 +26,7 @@ pub(crate) fn processed(held: &Held, held_until: Option<Timestamp>) -> ReportReq
     ReportRequest {
         folded_through_sequence: None,
         setup: None,
-        task: None,
+        durable_task: None,
         run_id: Cow::Borrowed(held.issued.run_id.as_str()),
         turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: held.fence.as_u64(),

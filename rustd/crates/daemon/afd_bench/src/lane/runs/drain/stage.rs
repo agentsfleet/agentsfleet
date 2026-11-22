@@ -137,7 +137,7 @@ impl Staged {
 pub(in crate::lane::runs) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> RunService {
     let database = stores.database.clone();
     RunService {
-        task_reports: None,
+        durable_task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(kek)),
         runs: Runs::new(database.clone(), stores.bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),

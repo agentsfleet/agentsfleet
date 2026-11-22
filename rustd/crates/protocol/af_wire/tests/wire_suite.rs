@@ -24,6 +24,9 @@ mod policy_shapes;
 #[path = "redaction.rs"]
 mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
+mod durable_task_owned;
+mod durable_task_progress;
+mod durable_task_validation;
 mod native_requests;
 mod protocol;
 #[path = "routes.rs"]
@@ -31,9 +34,6 @@ mod routes;
 mod runner_policy;
 #[path = "strictness.rs"]
 mod strictness;
-mod task_owned;
-mod task_progress;
-mod task_validation;
 mod turn_checkpoint;
 // Declared bounds at their exact limits, the steer request's own rows, and a
 // seeded mutation corpus the parser must survive without panicking.

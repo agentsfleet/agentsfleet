@@ -18,7 +18,7 @@ const DecisionPolicySchema = Schema.Struct({
       steer: TextSchema, new_work: TextSchema, clarify: TextSchema,
     })}),
     association: Schema.Struct({question: TextSchema, criteria: Schema.Struct({
-      matching_task: TextSchema, new_work: TextSchema, unclear: TextSchema,
+      matching_durable_task: TextSchema, new_work: TextSchema, unclear: TextSchema,
     })}),
     multiple_requests: NoulQuestionSchema,
   }),

@@ -104,7 +104,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
             .filter(|call| call.verb != Verb::Progress)
             .map(|call| call.verb)
             .collect::<Vec<_>>(),
-        [Verb::TaskCheckpointPlan]
+        [Verb::DurableTaskCheckpointPlan]
     );
     assert_eq!(phases(&requests).last().map(String::as_str), Some("saved"));
     Ok(())
@@ -154,7 +154,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         assert!(
             !requests
                 .iter()
-                .any(|call| call.verb == Verb::TaskCheckpointCommit)
+                .any(|call| call.verb == Verb::DurableTaskCheckpointCommit)
         );
         assert_eq!(phases(&requests).last().map(String::as_str), Some("failed"));
     }
@@ -203,7 +203,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
         assert_eq!(
             requests
                 .iter()
-                .filter(|call| call.verb == Verb::TaskCheckpointCommit)
+                .filter(|call| call.verb == Verb::DurableTaskCheckpointCommit)
                 .count(),
             usize::from(fault == "commit")
         );
@@ -256,12 +256,12 @@ fn assert_captured_boundary(
 }
 
 fn registration_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {
-    if call.verb == Verb::TaskCheckpointPlan && fault == "toolbox" {
+    if call.verb == Verb::DurableTaskCheckpointPlan && fault == "toolbox" {
         let mut plan = archive.plan.clone();
         plan.toolbox_digest = "c".repeat(64);
         return Some(json(&plan));
     }
-    if call.verb == Verb::TaskCheckpointObjectsRegister {
+    if call.verb == Verb::DurableTaskCheckpointObjectsRegister {
         let Answer::Reply(bytes) = archive.respond(call) else {
             return Some(Answer::Fail(crate::error::config(
                 "registration fixture refused",
@@ -282,14 +282,14 @@ fn registration_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option
 }
 
 fn acknowledgement_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {
-    if call.verb == Verb::TaskCheckpointPageWrite && fault == "page" {
+    if call.verb == Verb::DurableTaskCheckpointPageWrite && fault == "page" {
         let mut input: CheckpointPageInput = body(call);
         input.contents.entries.push(CheckpointEntry::Directory {
             path: "unexpected".to_owned(),
         });
         return Some(json(&input.contents));
     }
-    if call.verb == Verb::TaskCheckpointCommit && fault == "commit" {
+    if call.verb == Verb::DurableTaskCheckpointCommit && fault == "commit" {
         let _accepted = archive.respond(call);
         let mut saved = archive.plan.clone();
         saved.covered_input_sequence += 1;
@@ -301,7 +301,7 @@ fn acknowledgement_reply(call: &Call, archive: &mut Archive, fault: &str) -> Opt
 fn assert_registered(requests: &[Call]) {
     let registration: Vec<CheckpointObjectsInput> = requests
         .iter()
-        .filter(|call| call.verb == Verb::TaskCheckpointObjectsRegister)
+        .filter(|call| call.verb == Verb::DurableTaskCheckpointObjectsRegister)
         .map(body)
         .collect();
     assert_eq!(registration.len(), 1);
@@ -313,6 +313,6 @@ fn assert_registered(requests: &[Call]) {
     assert!(
         !requests
             .iter()
-            .any(|call| call.verb == Verb::TaskCheckpointUploads)
+            .any(|call| call.verb == Verb::DurableTaskCheckpointUploads)
     );
 }

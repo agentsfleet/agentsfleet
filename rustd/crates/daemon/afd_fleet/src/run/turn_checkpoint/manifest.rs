@@ -2,7 +2,7 @@
 
 use super::{TurnCheckpointRefusal, guard::TurnRunGuard, pages, row::Plan};
 use crate::Result;
-use af_wire::task::CheckpointEntry;
+use af_wire::durable_task::CheckpointEntry;
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) async fn validate(

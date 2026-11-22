@@ -88,12 +88,12 @@ impl Server {
         let calls = self.calls.lock().unwrap();
         let reservations = calls
             .iter()
-            .filter(|(path, _)| path.ends_with("/tasks/decisions"))
+            .filter(|(path, _)| path.ends_with("/durable_tasks/decisions"))
             .count();
         assert_eq!(reservations, 1);
         let records: Vec<_> = calls
             .iter()
-            .filter(|(path, _)| path.contains("/tasks/decisions/"))
+            .filter(|(path, _)| path.contains("/durable_tasks/decisions/"))
             .collect();
         let dispatch = matches!(
             self.mode,
@@ -107,12 +107,18 @@ impl Server {
             assert_eq!(record.pointer("/receipt/cause"), Some(&json!("preflight")));
             let started = calls
                 .iter()
-                .filter(|(_, body)| body.pointer("/frames/0/task_decision_started").is_some())
+                .filter(|(_, body)| {
+                    body.pointer("/frames/0/durable_task_decision_started")
+                        .is_some()
+                })
                 .count();
             assert_eq!(started, 1);
             let completed = calls
                 .iter()
-                .filter(|(_, body)| body.pointer("/frames/0/task_decision_completed").is_some())
+                .filter(|(_, body)| {
+                    body.pointer("/frames/0/durable_task_decision_completed")
+                        .is_some()
+                })
                 .count();
             assert_eq!(completed, usize::from(self.mode != "mismatched_receipt"));
         }
@@ -153,14 +159,15 @@ fn respond(
         serde_json::to_value(fixture::inputs()).unwrap()
     } else if uri.path().ends_with("/effects") {
         json!({"effects":[],"next_cursor":null})
-    } else if uri.path().ends_with("/tasks/decisions") {
+    } else if uri.path().ends_with("/durable_tasks/decisions") {
         assert_eq!(method, &Method::POST);
-        let input: af_wire::task::DecisionReservationInput = serde_json::from_value(body).unwrap();
+        let input: af_wire::durable_task::DecisionReservationInput =
+            serde_json::from_value(body).unwrap();
         assert_eq!(input.fencing_token, FENCING);
         assert_eq!(input.source_turn_id, CALL);
         assert!(input.retry_of.is_none());
         fixture::reservation(mode, &input)
-    } else if uri.path().contains("/tasks/decisions/") {
+    } else if uri.path().contains("/durable_tasks/decisions/") {
         let id = uri.path().rsplit('/').next().unwrap();
         json!({"call_id":if mode == "mismatched_receipt" {CALL} else {id},"state":"not_sent",
             "replayed":false,"disposition":"unusable","charged_nanos":"0","reserved_nanos":"0"})

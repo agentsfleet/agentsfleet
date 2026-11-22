@@ -6,7 +6,7 @@ use crate::{
     supervisor::{Case, Observed},
     supervisor_model::call,
 };
-use af_wire::{run::RunPayload, task::TaskTarget};
+use af_wire::{run::RunPayload, task::DurableTaskTarget};
 use libtest_mimic::Failed;
 use serde_json::{Value, json};
 mod archive;
@@ -57,11 +57,11 @@ impl Config {
         })
     }
 
-    pub(crate) fn target(&self) -> TaskTarget {
+    pub(crate) fn target(&self) -> DurableTaskTarget {
         if self.mode == Mode::Api {
-            return TaskTarget::ApiOnly;
+            return DurableTaskTarget::ApiOnly;
         }
-        TaskTarget::ExistingPr {
+        DurableTaskTarget::ExistingPr {
             repository: "acme/widget".to_owned(),
             repository_id: 1,
             number: 1,
@@ -126,7 +126,7 @@ fn exercise(lane: &Lane, mode: Mode) -> Result<(), Failed> {
             "head mismatch prevents every capture plan",
         )?;
         return expect(
-            report.get("task").is_none_or(Value::is_null),
+            report.get("durable_task").is_none_or(Value::is_null),
             "failed build has no task completion proof",
         );
     }
@@ -134,12 +134,12 @@ fn exercise(lane: &Lane, mode: Mode) -> Result<(), Failed> {
 }
 fn completed(observed: &Observed, report: &Value, mode: Mode) -> Result<(), Failed> {
     expect(
-        report.pointer("/task/disposition") == Some(&json!("waiting")),
+        report.pointer("/durable_task/disposition") == Some(&json!("waiting")),
         format!("saved task report: {report}"),
     )?;
     expect(
         report
-            .pointer("/task/checkpoint_id")
+            .pointer("/durable_task/checkpoint_id")
             .and_then(Value::as_str)
             .is_some(),
         "incremental checkpoint reaches report",
@@ -156,7 +156,7 @@ fn completed(observed: &Observed, report: &Value, mode: Mode) -> Result<(), Fail
         "actual private history enters the checkpoint manifest",
     )?;
     let commit = observed.received.iter().rposition(|request| {
-        request.method == "PATCH" && request.path.contains("/tasks/checkpoints/")
+        request.method == "PATCH" && request.path.contains("/durable_tasks/checkpoints/")
     });
     let report_at = observed
         .received

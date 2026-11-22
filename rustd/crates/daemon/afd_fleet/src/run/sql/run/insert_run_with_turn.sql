@@ -53,7 +53,7 @@ WITH instant AS MATERIALIZED (
   -- The setup the assignment assembled is still the head, and a setup that needs
   -- durable tasks still has a host that runs them: what `issue_source.sql`
   -- rechecked for every run, now in the insert so a plain chat reads nothing
-  -- more. The issue holds the fleet (`task::run::parents`) and the host, so
+  -- more. The issue holds the fleet (`durable_task::run::parents`) and the host, so
   -- neither moves before commit.
   JOIN runner.runners r ON r.id = $2
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id

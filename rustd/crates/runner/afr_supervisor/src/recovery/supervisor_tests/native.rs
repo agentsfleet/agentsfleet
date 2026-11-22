@@ -8,12 +8,12 @@ use crate::{
     test_support::{self, Answer, FLEET_ID, RUN_ID},
 };
 use af_core::{clock, id::Uuid7};
+use af_wire::durable_task::CheckpointPage;
 use af_wire::run::{
     CheckpointOperationId, FoldRef, RunPayload, TurnCheckpointAction as Action,
     TurnCheckpointCommand, TurnCheckpointRead, TurnCheckpointResponse as Response, TurnScope,
     TurnWorkspace,
 };
-use af_wire::task::CheckpointPage;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 

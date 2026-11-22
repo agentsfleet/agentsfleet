@@ -130,8 +130,8 @@ impl RunRow<'_> {
             .bind(self.run_kind)
             .bind(self.held_until.to_sqlx())
             .bind(self.setup_revision)
-            .bind(af_wire::task::CAPABILITY)
-            .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(af_wire::durable_task::CAPABILITY)
+            .bind(crate::durable_task::DECISION_POLICY_PATH)
             .fetch_optional(connection)
             .await
             .map_err(query(

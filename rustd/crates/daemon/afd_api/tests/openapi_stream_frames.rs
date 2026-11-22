@@ -33,7 +33,7 @@ const fn slot(frame: &TailFrame<'_>) -> usize {
         TailFrame::TurnComplete { .. } => 2,
         TailFrame::GateOpened { .. } => 3,
         TailFrame::GateResolved { .. } => 4,
-        TailFrame::TaskChanged { .. } => 5,
+        TailFrame::DurableTaskChanged { .. } => 5,
         TailFrame::RunRestarted { .. } => 6,
     }
 }
@@ -79,8 +79,8 @@ fn one_of_each() -> Vec<TailFrame<'static>> {
             pending_approvals: 0,
             counters: None,
         },
-        TailFrame::TaskChanged {
-            task_id: Cow::Borrowed("019a42b0-0000-7000-8000-000000000123"),
+        TailFrame::DurableTaskChanged {
+            durable_task_id: Cow::Borrowed("019a42b0-0000-7000-8000-000000000123"),
             resource_version: 1,
         },
     ]

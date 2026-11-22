@@ -15,7 +15,7 @@ impl Fleet {
         let biller = Arc::new(afd_billing::ledger::LedgerBiller::new(database.clone()));
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let runs = RunService {
-            task_reports: None,
+            durable_task_reports: None,
             turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(
                 &key,
             )),

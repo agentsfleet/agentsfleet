@@ -17,13 +17,13 @@ WITH source AS MATERIALIZED (
      ORDER BY a.sequence LIMIT $5)
 ), locked AS MATERIALIZED (
     SELECT a.id, a.sequence, a.input_run_id, a.input_fence,
-           a.parked_at, a.settled_at, a.task_id, a.task_generation, a.producer, a.actor,
+           a.parked_at, a.settled_at, a.durable_task_id, a.durable_task_generation, a.producer, a.actor,
            a.workspace_id
     FROM thread.turns a JOIN candidates c ON c.id = a.id
     ORDER BY a.sequence FOR UPDATE OF a
 )
 SELECT id, sequence, input_run_id, input_fence,
-       parked_at IS NULL AND settled_at IS NULL AND task_id IS NULL AND task_generation IS NULL
+       parked_at IS NULL AND settled_at IS NULL AND durable_task_id IS NULL AND durable_task_generation IS NULL
        AND CASE WHEN producer = $6 THEN actor <> $7 AND actor LIKE $8
                 WHEN producer = $9 THEN COALESCE(
                     connector.slack_person_allowed(workspace_id, actor, $10, $11, $12), false)

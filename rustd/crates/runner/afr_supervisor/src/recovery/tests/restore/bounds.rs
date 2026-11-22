@@ -73,14 +73,14 @@ async fn assert_retained_case(fault: &str) -> crate::Result<()> {
     assert_eq!(
         requests
             .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+            .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
             .count(),
         1
     );
     assert_eq!(
         requests
             .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointPage)
+            .filter(|call| call.verb == Verb::DurableTaskCheckpointPage)
             .count(),
         usize::from(fault == "history")
     );
@@ -147,7 +147,7 @@ async fn assert_bounded(archive: Archive, expected: &str) -> crate::Result<()> {
     assert_eq!(
         requests
             .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+            .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
             .count(),
         1
     );

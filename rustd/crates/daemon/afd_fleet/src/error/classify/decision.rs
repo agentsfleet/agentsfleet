@@ -7,26 +7,26 @@ impl Error {
         match self.inner.kind {
             ErrorKind::DecisionRequest { .. } => Some("request_bounds"),
             ErrorKind::DecisionDeadline { .. } => Some("decision_deadline"),
-            ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteCooldown { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. }
+            ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. }
+            | ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. }
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. }
             | ErrorKind::TurnWrite { .. }
-            | ErrorKind::TaskDocument { .. }
-            | ErrorKind::TaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
+            | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlTurn { .. }
-            | ErrorKind::TaskMutation { .. }
-            | ErrorKind::TaskControlConflict { .. }
-            | ErrorKind::TaskPrecondition { .. }
-            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskTargetCounter { .. }
+            | ErrorKind::DurableTaskControlTurn { .. }
+            | ErrorKind::DurableTaskMutation { .. }
+            | ErrorKind::DurableTaskControlConflict { .. }
+            | ErrorKind::DurableTaskPrecondition { .. }
+            | ErrorKind::DurableTaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }

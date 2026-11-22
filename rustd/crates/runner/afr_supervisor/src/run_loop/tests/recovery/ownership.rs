@@ -9,8 +9,10 @@ use crate::{
     test_support::{self, Answer, Behaviour, FakeAgent, FakeEngine, Freezer, Rig},
 };
 use af_wire::{
+    durable_task::{
+        CheckpointAuthorizations, CheckpointPage, DurableTaskContext, DurableTaskInputsResponse,
+    },
     run::RunPayload,
-    task::{CheckpointAuthorizations, CheckpointPage, TaskContext, TaskInputsResponse},
 };
 use afr_agent::Meter;
 use afr_sandbox::{Engine as _, Limits, SandboxRequest};
@@ -24,19 +26,19 @@ const PAGE: &str = "019f0000-0000-7000-8000-000000000002";
 mod fixture;
 use fixture::{Fixture, saved};
 
-fn history(state: Option<&TaskRecovery>) -> Result<&TaskRecovery> {
+fn history(state: Option<&DurableTaskRecovery>) -> Result<&DurableTaskRecovery> {
     state.ok_or_else(|| error::config("fixture expected authenticated recovery"))
 }
 
 #[tokio::test]
-async fn api_recovery_uses_manifest_cursors_and_current_task_identity() -> Result<()> {
+async fn api_recovery_uses_manifest_cursors_and_current_durable_task_identity() -> Result<()> {
     let fixture = Fixture::new(saved)?;
     let restored = fixture
         .run()?
         .recover_without_sandbox(Some(&fixture.prepared))
         .await?;
     let restored = history(restored.as_ref())?;
-    assert_eq!(restored.task.task_id, ID);
+    assert_eq!(restored.task.durable_task_id, ID);
     assert_eq!(restored.task.generation, 7);
     assert_eq!(restored.task.covered_input_sequence, 3);
     assert_eq!(restored.task.confirmed_effect_watermark, 2);
@@ -101,11 +103,11 @@ async fn frozen_recovery_installs_history_only_after_a_successful_thaw() -> Resu
 #[tokio::test]
 async fn a_restore_refusal_remains_primary_when_thaw_also_fails() -> Result<()> {
     let fixture = Fixture::new(|call| {
-        (call.verb == Verb::TaskCheckpointAuthorizations).then(|| {
+        (call.verb == Verb::DurableTaskCheckpointAuthorizations).then(|| {
             Answer::Fail(error::refused(
                 call.verb,
                 409,
-                Some(af_core::error_code::TASK_STALE_STATE),
+                Some(af_core::error_code::DURABLE_TASK_STALE_STATE),
             ))
         })
     })?;
@@ -119,7 +121,10 @@ async fn a_restore_refusal_remains_primary_when_thaw_also_fails() -> Result<()> 
     let Err(failure) = result else {
         return Err(error::config("restore refusal was lost"));
     };
-    assert_eq!(failure.code(), af_core::error_code::TASK_STALE_STATE);
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::DURABLE_TASK_STALE_STATE
+    );
     assert!(owner.get().is_none());
     assert_eq!(engine.frozen.load(Ordering::SeqCst), 1);
     assert_eq!(engine.thaw_attempts.load(Ordering::SeqCst), 1);
@@ -134,10 +139,10 @@ async fn repository_recovery_without_a_sandbox_has_no_native_read() -> Result<()
     let task = fixture
         .prepared
         .inputs
-        .current_task
+        .current_durable_task
         .as_mut()
         .ok_or_else(|| error::config("fixture task missing"))?;
-    task.target = TaskTarget::ExistingPr {
+    task.target = DurableTaskTarget::ExistingPr {
         repository: "acme/widget".to_owned(),
         repository_id: 42,
         number: 3,
@@ -148,7 +153,7 @@ async fn repository_recovery_without_a_sandbox_has_no_native_read() -> Result<()
         url: "https://github.com/acme/widget/pull/3".to_owned(),
         workflows: vec![],
     };
-    fixture.run.task = fixture.prepared.inputs.current_task.clone();
+    fixture.run.durable_task = fixture.prepared.inputs.current_durable_task.clone();
     let result = fixture
         .run()?
         .recover_without_sandbox(Some(&fixture.prepared))

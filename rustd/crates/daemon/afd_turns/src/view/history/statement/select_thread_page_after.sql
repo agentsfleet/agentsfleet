@@ -6,7 +6,7 @@ SELECT thread_id AS fleet_id, id AS turn_id, workspace_id,
           FROM billing.usage_lines charge
          WHERE charge.turn_id = thread.turns.id
            AND charge.fleet_id = thread.turns.thread_id) AS cost_nanos,
-       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, task_activity, task_activity_truncated
+       request_json::text AS request_json, answer_text AS response_text, tool_calls::text AS tool_calls, durable_task_activity, durable_task_activity_truncated
 FROM thread.turns
 WHERE workspace_id = $1
   AND thread_id = $2

@@ -2,19 +2,21 @@
 
 use super::{Intake, interpretation, unavailable};
 use crate::Result;
-use af_wire::task::{TaskAcceptedInterpretation, TaskInputsResponse, TaskRecoveredItem};
+use af_wire::durable_task::{
+    DurableTaskAcceptedInterpretation, DurableTaskInputsResponse, DurableTaskRecoveredItem,
+};
 use guffbolt::{Message, Request};
 
 impl Intake<'_> {
     pub(crate) async fn reply(
         &self,
-        accepted: &TaskAcceptedInterpretation,
-        item: &TaskRecoveredItem,
-        inputs: &TaskInputsResponse<'_>,
+        accepted: &DurableTaskAcceptedInterpretation,
+        item: &DurableTaskRecoveredItem,
+        inputs: &DurableTaskInputsResponse<'_>,
     ) -> Result<String> {
         let scrub = af_secrets::Scrub::new(&self.run.policy)?;
         let context = serde_json::json!({ "original_message": accepted.message,
-            "accepted_item": item, "current_task": inputs.current_task, "current_work": inputs.tasks });
+            "accepted_item": item, "current_durable_task": inputs.current_durable_task, "current_work": inputs.durable_tasks });
         let instructions = format!(
             "{}\n\nAnswer only this already accepted conversation, status or clarification item. Do not investigate or execute work. Report native task facts accurately; missing evidence remains unknown. Other items in the complete source retain their own deliveries. Return a concise plain-text answer for the original person.",
             self.run.instructions

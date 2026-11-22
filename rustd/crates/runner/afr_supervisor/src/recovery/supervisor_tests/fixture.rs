@@ -6,14 +6,14 @@ use af_crypto::{
     secret::SecretBytes,
 };
 use af_wire::{
+    durable_task::{
+        CheckpointObject, CheckpointObjectStatus, CheckpointPage, CheckpointPin,
+        CheckpointPlaintext,
+    },
     run::{
         CheckpointOperationId, RunPayload, TurnCheckpointAction as Action, TurnCheckpointCommand,
         TurnCheckpointRead, TurnCheckpointResponse as Response, TurnPrivateRoot, TurnResume,
         TurnScope,
-    },
-    task::{
-        CheckpointObject, CheckpointObjectStatus, CheckpointPage, CheckpointPin,
-        CheckpointPlaintext,
     },
 };
 use base64::{Engine as _, prelude::BASE64_STANDARD};

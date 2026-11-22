@@ -4,7 +4,7 @@ mod process;
 
 use super::Harness;
 use crate::router::Lent;
-use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
+use af_wire::durable_task::{DurableTaskEffectInput, DurableTaskFileChange, DurableTaskTarget};
 use afr_executor::Spawn;
 use afr_tools::{SandboxEnv, ToolErrorCode};
 use guffbolt::tools::Schema;
@@ -36,7 +36,7 @@ struct Invocation {
 #[serde(deny_unknown_fields)]
 struct Candidate {
     tested_tree: String,
-    changes: Vec<TaskFileChange>,
+    changes: Vec<DurableTaskFileChange>,
 }
 
 /// `propose_change` as a loop holds it. The root of a task that may publish
@@ -61,7 +61,7 @@ impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Propose {
     where
         Lent<'call, 's, 'run>: 'a,
     {
-        Box::pin(cx.harness.publish_task(arguments))
+        Box::pin(cx.harness.publish_durable_task(arguments))
     }
 }
 
@@ -107,7 +107,14 @@ impl Harness<'_, '_> {
     /// The task this loop may publish for, and its pull request's
     /// repository, head and tree: the root, offered a shell, of a task that
     /// may act on an existing pull request.
-    fn publishable(&self) -> Option<(&af_wire::task::TaskContext<'static>, &str, &str, &str)> {
+    fn publishable(
+        &self,
+    ) -> Option<(
+        &af_wire::durable_task::DurableTaskContext<'static>,
+        &str,
+        &str,
+        &str,
+    )> {
         if self.depth != 0
             || !(self.selection.offers("shell") || self.selection.offers("exec_command"))
         {
@@ -117,19 +124,19 @@ impl Harness<'_, '_> {
             .task
             .as_ref()
             .filter(|prepared| prepared.allow_actions)?;
-        let task = prepared.inputs.current_task.as_ref()?;
+        let task = prepared.inputs.current_durable_task.as_ref()?;
         match &task.target {
-            TaskTarget::ExistingPr {
+            DurableTaskTarget::ExistingPr {
                 repository,
                 head,
                 tree,
                 ..
             } => Some((task, repository.as_str(), head.as_str(), tree.as_str())),
-            TaskTarget::ApiOnly => None,
+            DurableTaskTarget::ApiOnly => None,
         }
     }
 
-    async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
+    async fn publish_durable_task(&self, arguments: &serde_json::Value) -> ToolOutput {
         match self.publication(arguments).await {
             Ok(output) | Err(output) => output,
         }
@@ -176,9 +183,9 @@ impl Harness<'_, '_> {
             .shared
             .run
             .verbs
-            .task_effects(af_wire::task::TaskEffectsQuery {
+            .durable_task_effects(af_wire::durable_task::DurableTaskEffectsQuery {
                 fencing_token: self.shared.fencing_token,
-                task_id: task.task_id.to_string(),
+                durable_task_id: task.durable_task_id.to_string(),
                 ordinal_after: self.reconciled_effect_ordinal,
                 starting_after: None,
                 limit: 1,
@@ -204,8 +211,8 @@ impl Harness<'_, '_> {
             .validated_candidate(executor, name, tree, &input)
             .await?;
         let effect = self.submit_candidate(task, head, before).await?;
-        let confirmed =
-            effect.state == af_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
+        let confirmed = effect.state == af_wire::durable_task::DurableTaskEffectState::Confirmed
+            && effect.commit.is_some();
         let output = serde_json::json!({ "publication": effect,
             "validation": { "argv": input.validation, "exit_code": 0, "output": String::from_utf8_lossy(&output) } }).to_string();
         Ok(if confirmed {
@@ -217,11 +224,11 @@ impl Harness<'_, '_> {
 
     async fn submit_candidate(
         &self,
-        task: &af_wire::task::TaskContext<'_>,
+        task: &af_wire::durable_task::DurableTaskContext<'_>,
         head: &str,
         before: Candidate,
-    ) -> Result<af_wire::task::TaskEffect, ToolOutput> {
-        let request = TaskEffectInput {
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, ToolOutput> {
+        let request = DurableTaskEffectInput {
             operation_id: crate::decision::identity().map_err(|source| {
                 failed(
                     ToolErrorCode::AgentsfleetdRefused,
@@ -230,8 +237,8 @@ impl Harness<'_, '_> {
                 )
             })?,
             fencing_token: self.shared.fencing_token,
-            task: af_wire::task::DecisionTaskVersion {
-                task_id: task.task_id.to_string(),
+            durable_task: af_wire::durable_task::DecisionDurableTaskVersion {
+                durable_task_id: task.durable_task_id.to_string(),
                 generation: task.generation,
             },
             source_item_id: task.originating_item_id.to_string(),
@@ -247,7 +254,7 @@ impl Harness<'_, '_> {
                 source,
             )
         })?;
-        let effect = self.shared.run.verbs.task_publish(request).await
+        let effect = self.shared.run.verbs.durable_task_publish(request).await
             .map_err(|source| failed(ToolErrorCode::AgentsfleetdRefused, "Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt.", crate::decision::native(source)))?;
         Ok(effect)
     }

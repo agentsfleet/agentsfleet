@@ -12,5 +12,5 @@
 #[path = "billing_capture.rs"]
 mod billing_capture;
 
-#[path = "task_capture.rs"]
-mod task_capture;
+#[path = "durable_task_capture.rs"]
+mod durable_task_capture;

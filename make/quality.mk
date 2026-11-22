@@ -70,6 +70,11 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy + cargo shear + guffbo
 	@# only: no workflow or make recipe names it (M253_004 Dimension 13.2,
 	@# no_ci_lane_runs_the_fireworks_live_tests). `[_]` keeps this line unmatched.
 	@! grep -rnwE 'fireworks[_]live' .github/workflows make Makefile || { echo "a CI lane runs the Fireworks live example"; exit 1; }
+	@# A durable task's config sections are `[durable_tasks]` and
+	@# `[fleet.durable_tasks]`, and nothing aliases the old `[tasks]`. TOML has no
+	@# ast-grep grammar, so the manifests are grepped here; the Rust strings are
+	@# `rust-durable-task-names`'s (M253_004 Dimension 16.1).
+	@! git grep --untracked -nE '^\[(fleet\.)?tasks(\.[a-z_]+)?\]' -- '*.toml' || { echo "a config names the retired [tasks] section; it is [durable_tasks]"; exit 1; }
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] guffbolt-ai default build" -- sh -c 'extra=$$(cargo tree -q --locked -p guffbolt-ai -e normal --no-default-features --depth 1 --prefix none --format "{p}" | tail -n +2 | cut -d" " -f1 | sort -u | grep -vxE "bytes|futures-util|serde|serde_json"); test -z "$$extra" || { echo "guffbolt-ai default build links: $$extra"; exit 1; }'
 	@# agentsfleet reaches rig only through guffbolt-ai: no other crate links
 	@# rig-core but af_observability, whose provider labels are read from rig's

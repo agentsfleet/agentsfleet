@@ -21,7 +21,7 @@ pub(crate) fn gateway(
     let key = Arc::new(Kek::from_bytes(KEY));
     let vendors = afd_identity::direct(af_core::timing::STREAM_ANSWER_TIMEOUT).build()?;
     let runs = RunService {
-        task_reports: None,
+        durable_task_reports: None,
         turn_checkpoints: afd_fleet::run::turn_checkpoint::TurnCheckpoints::new(Arc::clone(&key)),
         runs: Runs::new(database.clone(), bus.clone(), Entropy::new()),
         gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),

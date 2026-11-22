@@ -19,9 +19,9 @@
 use std::fmt::{self, Debug, Formatter};
 
 use crate::credentials::MintCredentialResponse;
+use crate::durable_task::{DecisionDispatch, DecisionRecorded, DecisionReservationResult};
 use crate::policy::ExecutionPolicy;
 use crate::runner::RegisterResponse;
-use crate::task::{DecisionDispatch, DecisionRecorded, DecisionReservationResult};
 
 /// What a redacted field renders as. One spelling, so a log grep for leaked
 /// credentials has exactly one negative to look for.

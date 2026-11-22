@@ -20,7 +20,7 @@ fn bind(path: &str) -> ExtraBind<'_> {
 
 fn policy(registry_allowlist: Vec<Cow<'_, str>>, worker_count: u32) -> AssignedPolicy<'_> {
     AssignedPolicy {
-        durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
+        durable_tasks_enabled: af_wire::test_util::DURABLE_TASKS_DEFAULT_ENABLED,
         decision_model_id: None,
         sandbox_tier: SandboxTier::LandlockFull,
         network_policy: NetworkPolicy::AllowListEgress,

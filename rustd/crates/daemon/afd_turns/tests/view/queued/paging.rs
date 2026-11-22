@@ -31,8 +31,11 @@ async fn test_waiting_overflow_reaches_later_pages() {
             .thread_page(workspace, fleet, cursor.as_ref(), SMALL_PAGE)
             .await
             .expect("the thread reads");
-        assert!(page.iter().all(|row| row.task_activity.items.is_empty()));
-        assert!(page.iter().all(|row| !row.task_activity.truncated));
+        assert!(
+            page.iter()
+                .all(|row| row.durable_task_activity.items.is_empty())
+        );
+        assert!(page.iter().all(|row| !row.durable_task_activity.truncated));
         let kept: Vec<_> = page.into_iter().take(page_rows).collect();
         let Some(last) = kept.last() else { break };
         cursor = Some(Cursor::after(last.row.created_at, &last.row.turn_id));

@@ -24,7 +24,7 @@ pub struct RuntimeSettings {
 pub(crate) struct OperationalSettings {
     pub(crate) outbound_retries: afd_outbound::retry::RetryPolicy,
     pub(crate) telemetry: garde::Valid<af_otlp::PipelineSettings>,
-    pub(crate) tasks: afd_fleet::task::policy::TaskPolicy,
+    pub(crate) tasks: afd_fleet::durable_task::policy::DurableTaskPolicy,
     /// Every checked numeric section of the deployment file.
     pub(crate) tuning: crate::config::tuning::Tuning,
     /// `[connectors.qstash]`, proved to end inside its call budget.
@@ -67,7 +67,7 @@ pub(crate) fn read(env: &(impl EnvSource + ?Sized)) -> Result<RuntimeSettings, R
 #[cfg(test)]
 pub(crate) fn operations() -> Result<OperationalSettings, Refusal> {
     Ok(OperationalSettings {
-        tasks: afd_fleet::task::policy::TaskPolicy::default(),
+        tasks: afd_fleet::durable_task::policy::DurableTaskPolicy::default(),
         outbound_retries: afd_outbound::retry::RetryPolicy::DEFAULT,
         telemetry: garde::Unvalidated::new(af_otlp::PipelineSettings::default())
             .validate()

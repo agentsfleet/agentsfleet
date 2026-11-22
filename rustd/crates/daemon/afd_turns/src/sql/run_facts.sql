@@ -19,7 +19,7 @@ WITH message AS MATERIALIZED (
     FROM thread.turns a
     WHERE a.id = $2 AND a.thread_id = $1
 ), live_run AS MATERIALIZED (
-    SELECT l.task_id IS NOT NULL AS durable_task,
+    SELECT l.durable_task_id IS NOT NULL AS durable_task,
            head.sequence AS head_sequence,
            head.reply_provider IS NULL AND head.reply_address IS NULL AS unaddressed,
            l.turn_id AS run_turn_id
@@ -42,14 +42,14 @@ SELECT r.run_turn_id,
                   AND a.sequence < m.sequence)
             ELSE EXISTS (
                 SELECT 1 FROM (
-                    SELECT a.parked_at, a.task_id, a.producer, a.actor
+                    SELECT a.parked_at, a.durable_task_id, a.producer, a.actor
                     FROM thread.turns a
                     WHERE a.thread_id = m.fleet_id
                       AND a.reply_provider IS NULL AND a.reply_address IS NULL
                       AND a.settled_at IS NULL
                       AND a.sequence > r.head_sequence AND a.sequence < m.sequence
                 ) ahead
-                WHERE NOT (ahead.parked_at IS NULL AND ahead.task_id IS NULL
+                WHERE NOT (ahead.parked_at IS NULL AND ahead.durable_task_id IS NULL
                            AND ahead.producer = $4 AND ahead.actor <> $5
                            AND ahead.actor LIKE $6))
        END AS earlier_waiting

@@ -2,8 +2,8 @@
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readTask, readTasks } from "@/lib/api/tasks";
-import { TASK_IDS, detail, summary } from "./helpers/task-reads";
+import { readDurableTask, readDurableTasks } from "@/lib/api/tasks";
+import { DURABLE_TASK_IDS, detail, summary } from "./helpers/task-reads";
 
 afterEach(() => {vi.unstubAllGlobals(); vi.restoreAllMocks();});
 
@@ -19,16 +19,16 @@ describe("task reads at the browser HTTP boundary", () => {
       .mockResolvedValueOnce(Response.json({...expected, context: {...expected.context, usage: {...expected.context.usage, model_nanos: 12000000}}}));
     vi.stubGlobal("fetch", network);
     const signal = new AbortController().signal;
-    expect(await readTasks("workspace/one", "fleet?two", signal)).toEqual({kind: "ready", value: {items: [task], next_cursor: null}});
-    expect(await readTask("workspace/one", "fleet?two", TASK_IDS[0], signal)).toEqual({kind: "ready", value: expected});
+    expect(await readDurableTasks("workspace/one", "fleet?two", signal)).toEqual({kind: "ready", value: {items: [task], next_cursor: null}});
+    expect(await readDurableTask("workspace/one", "fleet?two", DURABLE_TASK_IDS[0], signal)).toEqual({kind: "ready", value: expected});
     const calls = network.mock.calls;
     expect(calls.map(([path]) => path)).toEqual([
-      "/live/v1/workspaces/workspace%2Fone/fleets/fleet%3Ftwo/tasks?limit=100",
-      `/live/v1/workspaces/workspace%2Fone/fleets/fleet%3Ftwo/tasks/${TASK_IDS[0]}`,
+      "/live/v1/workspaces/workspace%2Fone/fleets/fleet%3Ftwo/durable_tasks?limit=100",
+      `/live/v1/workspaces/workspace%2Fone/fleets/fleet%3Ftwo/durable_tasks/${DURABLE_TASK_IDS[0]}`,
     ]);
     for (const [, options] of calls) expect(options).toMatchObject({cache: "no-store", redirect: "manual", signal: expect.any(AbortSignal)});
-    expect(await readTasks("w", "f", signal)).toEqual({kind: "failed", reason: "invalid"});
-    for (let attempt = 0; attempt < 2; attempt += 1) expect(await readTask("w", "f", TASK_IDS[0], signal)).toEqual({kind: "failed", reason: "invalid"});
+    expect(await readDurableTasks("w", "f", signal)).toEqual({kind: "failed", reason: "invalid"});
+    for (let attempt = 0; attempt < 2; attempt += 1) expect(await readDurableTask("w", "f", DURABLE_TASK_IDS[0], signal)).toEqual({kind: "failed", reason: "invalid"});
     expect(network).toHaveBeenCalledTimes(5);
   });
 
@@ -43,7 +43,7 @@ describe("task reads at the browser HTTP boundary", () => {
     vi.stubGlobal("fetch", network);
     const signal = new AbortController().signal;
     const outcomes = [];
-    for (let attempt = 0; attempt < 7; attempt += 1) outcomes.push(await readTasks("w", "f", signal));
+    for (let attempt = 0; attempt < 7; attempt += 1) outcomes.push(await readDurableTasks("w", "f", signal));
     expect(outcomes).toEqual(["access", "access", "missing", "unreachable", "access", "unreachable", "invalid"].map(reason => ({kind: "failed", reason})));
     expect(network).toHaveBeenCalledTimes(7);
   });
@@ -86,7 +86,7 @@ describe("task reads at the browser HTTP boundary", () => {
         callers.push(caller);
         deadlineFactory.mockReturnValueOnce(deadline.signal);
         let completed: unknown;
-        const reading = readTasks("w", "f", caller.signal).then(result => {completed = result;});
+        const reading = readDurableTasks("w", "f", caller.signal).then(result => {completed = result;});
         reads.push(reading);
         await vi.waitFor(() => expect(received).toBe(index + 1), {timeout: 5_000});
         if (boundary === "body") await vi.waitFor(() => expect(headers).toBe(1), {timeout: 5_000});

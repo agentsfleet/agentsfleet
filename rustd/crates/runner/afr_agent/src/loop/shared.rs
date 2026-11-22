@@ -70,9 +70,9 @@ impl Default for RunLimits {
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
     pub(crate) payload: &'run af_wire::run::RunPayload<'run>,
-    pub(crate) recovered_task: Option<&'run crate::TaskRecovery>,
+    pub(crate) recovered_durable_task: Option<&'run crate::DurableTaskRecovery>,
     pub(crate) recovered_turn: Option<&'run crate::TurnRecovery>,
-    pub(crate) prepared_task: Option<&'run crate::PreparedTask>,
+    pub(crate) prepared_durable_task: Option<&'run crate::PreparedDurableTask>,
     pub(crate) decision: Option<&'run af_wire::decision::DecisionAssignment>,
     pub(crate) fencing_token: u64,
     pub(crate) run_id: &'run str,
@@ -154,9 +154,9 @@ impl<'run> Shared<'run> {
         let started = Instant::now();
         Self {
             payload: run.run,
-            recovered_task: run.recovered_task,
+            recovered_durable_task: run.recovered_durable_task,
             recovered_turn: run.recovered_turn,
-            prepared_task: run.prepared_task,
+            prepared_durable_task: run.prepared_durable_task,
             decision: run.run.decision.as_deref(),
             fencing_token: run.run.fencing_token,
             run_id: &run.run.run_id,

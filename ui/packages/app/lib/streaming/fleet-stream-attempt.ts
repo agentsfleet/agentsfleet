@@ -14,8 +14,8 @@ const FENCE = v.pipe(v.string(), v.regex(/^[1-9][0-9]{0,18}$/u),
 const OUTPUT_KINDS: ReadonlySet<string> = new Set([
   FRAME_KIND.CHUNK, FRAME_KIND.TOOL_CALL_STARTED, FRAME_KIND.TOOL_CALL_PROGRESS,
   FRAME_KIND.TOOL_CALL_COMPLETED, FRAME_KIND.CONTEXT_PROGRESS,
-  FRAME_KIND.TASK_DECISION_STARTED, FRAME_KIND.TASK_DECISION_COMPLETED,
-  FRAME_KIND.TASK_TRANSFER_PROGRESS, FRAME_KIND.RUN_RESTARTED,
+  FRAME_KIND.DURABLE_TASK_DECISION_STARTED, FRAME_KIND.DURABLE_TASK_DECISION_COMPLETED,
+  FRAME_KIND.DURABLE_TASK_TRANSFER_PROGRESS, FRAME_KIND.RUN_RESTARTED,
 ]);
 
 /** Compare canonical decimal strings without losing a database bigint's precision. */
@@ -51,6 +51,6 @@ function restart(entry: Entry, turnId: string, fence: string, apply: ApplyTurns)
     ...interruptOpenCalls(turn), runRestarted: true, restartAttempt: fence, reply: "", reasoning: "",
     thinking: false, reasoningStartedAtMs: undefined, reasoningEndedAtMs: undefined,
     replyRecovering: false, contextProgress: undefined, contextProgressHidden: undefined,
-    taskActivity: undefined,
+    durableTaskActivity: undefined,
   } : turn), {});
 }

@@ -26,7 +26,7 @@ pub(super) struct Found {
     pub(super) posture: String,
     pub(super) provider: String,
     pub(super) model: String,
-    pub(super) task_id: Option<Uuid7>,
+    pub(super) durable_task_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub(super) created_at: Timestamp,
     pub(super) head_revision_id: Option<Uuid7>,
@@ -72,7 +72,7 @@ impl RunService {
                 posture: facts.posture.clone(),
                 provider: facts.provider.clone(),
                 model: facts.model.clone(),
-                task_id: None,
+                durable_task_id: None,
                 created_at: facts.run_created_at,
                 head_revision_id: Some(head),
                 catalogue_version,
