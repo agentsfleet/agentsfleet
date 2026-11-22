@@ -64,11 +64,6 @@ const DETAIL_INVALID_BODY: &str =
 /// The refusal a body naming an answer that is not one earns.
 const DETAIL_INVALID_DECISION: &str = "The decision must be approve or deny.";
 
-/// The refusal an approval of a question earns: a question takes an answer,
-/// which only the dashboard carries.
-const DETAIL_QUESTION_APPROVED: &str =
-    "A question takes an answer, so approve does not resolve it.";
-
 /// The refusal an answer to an archived fleet's approval earns.
 const DETAIL_FLEET_ARCHIVED: &str = "The fleet is archived, so its approvals take no answer.";
 
@@ -93,8 +88,7 @@ struct Answer {
 ///
 /// # Errors
 /// The wall's refusals, `UZ-WH-002` for a body this route cannot read as an
-/// answer or an approval of a question, and `UZ-APPROVAL-002` for a payload
-/// naming no gate of this fleet's.
+/// answer, and `UZ-APPROVAL-002` for a payload naming no gate of this fleet's.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/webhooks/{fleet_id}/approval",
@@ -178,14 +172,6 @@ pub(crate) async fn receive<D: IngressPlane>(
             return Err(Refusal::coded(
                 error_code::AGENTSFLEET_ARCHIVED,
                 DETAIL_FLEET_ARCHIVED,
-            ));
-        }
-        // The question stays pending: its answer is still owed, from the
-        // dashboard.
-        Resolution::WrongDecision => {
-            return Err(Refusal::coded(
-                error_code::WEBHOOK_MALFORMED,
-                DETAIL_QUESTION_APPROVED,
             ));
         }
         Resolution::NotFound => {

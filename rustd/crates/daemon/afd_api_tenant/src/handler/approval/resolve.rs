@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use af_core::error_code;
-use afd_api_wire::approval::{ResolveApprovalRequest, ResolvedResponse};
+use afd_api_wire::approval::{GATE_TYPE_QUESTION, ResolveApprovalRequest, ResolvedResponse};
 use afd_approval::{Decision, Resolution};
 use afd_http::envelope;
 use axum::Json;
@@ -87,7 +87,9 @@ pub(crate) async fn resolve<D: TenantPlane>(
     // decision keys on. A resolve that took the gate id straight from the path
     // would answer without ever proving the gate is this workspace's.
     let gate = read_gate(&services, &owned.workspace, &gate_id, EVENT_RESOLVE).await?;
-    if !outcome.fits(&gate.gate_type) {
+    if (outcome == Decision::Answered) != (gate.gate_type == GATE_TYPE_QUESTION)
+        && outcome != Decision::Denied
+    {
         return Err(Refusal::malformed(DETAIL_WRONG_DECISION));
     }
 
@@ -139,7 +141,6 @@ fn answered(resolution: Resolution, outcome: Decision, detail: &str) -> Result<R
             error_code::AGENTSFLEET_ARCHIVED,
             DETAIL_FLEET_ARCHIVED,
         )),
-        Resolution::WrongDecision => Err(Refusal::malformed(DETAIL_WRONG_DECISION)),
         Resolution::NotFound => Err(Refusal::coded(
             error_code::APPROVAL_NOT_FOUND,
             DETAIL_NOT_FOUND,

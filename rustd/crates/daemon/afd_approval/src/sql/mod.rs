@@ -76,8 +76,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// The `WHERE resolved_at IS NULL` on the UPDATE is the whole race decision,
 /// and it admits a gate past its deadline: nothing expires a gate, so an
 /// answer two hours late lands as one on time does. A gate whose fleet is
-/// archived is not updated, and neither is one the decision does not fit
-/// (`crate::Decision::fits`); [`SELECT_GATE_BY_ACTION`] then finds it
+/// archived is not updated; [`SELECT_GATE_BY_ACTION`] then finds it
 /// unanswered.
 /// Two operators answering one gate at the same instant both run this
 /// statement, and exactly one updates a row — the loser's `RETURNING` is empty,
@@ -116,16 +115,14 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 ///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` action, `$5` fleet filter
 /// (empty disables), `$6` approved status, `$7` grant approved, `$8` grant
-/// revoked, `$9` grant gate type, `$10` the archived fleet status, `$11` the
-/// denied status, `$12` the answered status, `$13` the question gate type.
+/// revoked, `$9` grant gate type, `$10` the archived fleet status.
 pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 
 /// The gate an action already holds, newest first.
 ///
 /// Read only when [`RESOLVE_GATE`] updated nothing, to tell a gate somebody
 /// else already answered from one that was never there. A row found
-/// `unanswered` is one the update skipped because its fleet is archived or
-/// its `gate_type` does not take the decision;
+/// `unanswered` is one the update skipped because its fleet is archived;
 /// `updated_at` stands in for its `resolved_at`, and an empty resolver for its
 /// `resolved_by`, only so the decode is total.
 /// `$1` action, `$2` fleet filter (empty disables).

@@ -16,7 +16,7 @@
 //! plane wrote the other could not read, and the gate would sit pending forever
 //! with a human's answer landing nowhere.
 
-use afd_api_wire::approval::{GATE_TYPE_QUESTION, status};
+use afd_api_wire::approval::status;
 
 /// A terminal answer to an approval gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,16 +49,6 @@ impl Decision {
     pub const fn continues_the_run(self) -> bool {
         matches!(self, Self::Approved | Self::Answered)
     }
-
-    /// Whether this decision resolves a gate of `gate_type`: a question
-    /// takes an answer, only a question does, and a denial ends either.
-    ///
-    /// An approval of a question would continue its run with no answer, and
-    /// the question could never be answered again.
-    #[must_use]
-    pub fn fits(self, gate_type: &str) -> bool {
-        self == Self::Denied || (self == Self::Answered) == (gate_type == GATE_TYPE_QUESTION)
-    }
 }
 
 #[cfg(test)]
@@ -70,18 +60,6 @@ mod tests {
         assert!(Decision::Approved.continues_the_run());
         assert!(Decision::Answered.continues_the_run());
         assert!(!Decision::Denied.continues_the_run());
-    }
-
-    #[test]
-    fn a_question_takes_only_an_answer_and_only_a_question_does() {
-        assert!(Decision::Answered.fits(GATE_TYPE_QUESTION));
-        assert!(Decision::Denied.fits(GATE_TYPE_QUESTION));
-        assert!(!Decision::Approved.fits(GATE_TYPE_QUESTION));
-        for other in ["tool", "integration_grant", ""] {
-            assert!(Decision::Approved.fits(other), "{other}");
-            assert!(Decision::Denied.fits(other), "{other}");
-            assert!(!Decision::Answered.fits(other), "{other}");
-        }
     }
 
     #[test]

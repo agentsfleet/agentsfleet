@@ -112,9 +112,6 @@ pub enum Resolution {
     /// The gate is unanswered and its fleet is archived, so it takes no
     /// answer.
     FleetArchived,
-    /// The gate is unanswered, and its type does not take this decision: a
-    /// question takes an answer, and only a question does.
-    WrongDecision,
     /// No gate for that action, in that scope.
     NotFound,
 }
@@ -234,14 +231,12 @@ impl From<StoredResolution> for Resolved {
     }
 }
 
-/// What the losing resolve reads: the attribution, the gate's type, and
-/// whether the gate is still unanswered, which only an archived fleet or a
-/// decision its type does not take leaves it.
+/// What the losing resolve reads: the attribution, and whether the gate is
+/// still unanswered, which only an archived fleet leaves it.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct StoredLoss {
     #[sqlx(flatten)]
     pub(super) resolution: StoredResolution,
-    pub(super) gate_type: String,
     pub(super) unanswered: bool,
 }
 

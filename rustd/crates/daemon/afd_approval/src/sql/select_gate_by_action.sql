@@ -1,7 +1,7 @@
 SELECT g.id AS gate_id, g.action_id, g.workspace_id,
        g.fleet_id, g.status,
        COALESCE(g.resolved_at, g.updated_at) AS resolved_at, COALESCE(g.resolved_by, '') AS resolved_by,
-       g.detail, g.turn_id, g.gate_type,
+       g.detail, g.turn_id,
        g.resolved_at IS NULL AS unanswered
 FROM fleet.approval_gates g
 WHERE g.action_id = $1
