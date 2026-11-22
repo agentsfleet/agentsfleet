@@ -313,3 +313,6 @@ impl Env for SandboxEnv<'_> {
         Err(WAITS_FOR_FIRECRACKER)
     }
 }
+
+#[cfg(test)]
+mod tests;

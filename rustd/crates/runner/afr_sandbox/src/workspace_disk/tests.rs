@@ -283,3 +283,20 @@ fn test_each_caching_names_itself() {
     assert_eq!(Caching::Direct.as_str(), "direct");
     assert_eq!(Caching::Buffered.as_str(), "buffered");
 }
+
+/// Only Linux has loop devices, so elsewhere the mount refuses as an
+/// unconfined host and touches neither path.
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn test_a_host_without_loop_devices_refuses_the_mount() {
+    let dir = tempfile::tempdir().unwrap();
+    let image = dir.path().join(IMAGE_NAME);
+
+    let refused = super::loop_mount(&image, dir.path()).unwrap_err();
+
+    assert_eq!(
+        refused.detail(),
+        "the sandbox is not confined: no loop devices: only Linux mounts a workspace disk"
+    );
+    assert!(!image.exists());
+}

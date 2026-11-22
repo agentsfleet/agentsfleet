@@ -159,9 +159,12 @@ impl Workspace {
         options.custom_flags(NONBLOCK);
         let file = match (self.dir.open_with(inside, options), parents) {
             (Err(missing), Parents::Make) if missing.kind() == io::ErrorKind::NotFound => {
-                if let Some(parent) = inside.parent() {
-                    self.dir.create_dir_all(parent).map_err(confined)?;
-                }
+                // `inside` is never empty (the workspace itself reads as `.`),
+                // so it always has a parent to make.
+                inside
+                    .parent()
+                    .map_or(Ok(()), |parent| self.dir.create_dir_all(parent))
+                    .map_err(confined)?;
                 self.dir.open_with(inside, options)
             }
             (opened, _either) => opened,

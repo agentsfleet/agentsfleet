@@ -173,7 +173,9 @@ mod tests {
 
     use af_observability::metrics::label::http::{DiscardReason, Signal};
 
-    use af_providers::observe::labels::{Provider, RetryReason};
+    use af_providers::observe::labels::{
+        DecisionOutcome, DecisionProvider, DecisionPurpose, Provider, RetryReason,
+    };
 
     use crate::labels::{
         FrameDrop, PushFailure, SandboxHold, SandboxStart, Tool, ToolOutcome, TurnOutcome,
@@ -193,6 +195,12 @@ mod tests {
         scoped(tally, async {
             super::turn(anthropic, TurnOutcome::Completed, elapsed);
             af_providers::observe::retry(anthropic, RetryReason::Transport);
+            af_providers::observe::decision(
+                DecisionProvider::Openai,
+                DecisionPurpose::Intent,
+                DecisionOutcome::Timeout,
+                elapsed,
+            );
             super::sandbox_start(SandboxStart::Failed, elapsed);
             super::frames_dropped(FrameDrop::PostFailed, 4);
             super::push_failed(PushFailure::Refused);
@@ -211,6 +219,12 @@ mod tests {
             vec![
                 Recorded::Turn(anthropic, TurnOutcome::Completed, elapsed),
                 Recorded::Retry(anthropic, RetryReason::Transport),
+                Recorded::Decision(
+                    DecisionProvider::Openai,
+                    DecisionPurpose::Intent,
+                    DecisionOutcome::Timeout,
+                    elapsed,
+                ),
                 Recorded::SandboxStart(SandboxStart::Failed, elapsed),
                 Recorded::FramesDropped(FrameDrop::PostFailed, 4),
                 Recorded::PushFailed(PushFailure::Refused),

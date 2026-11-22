@@ -179,9 +179,10 @@ impl RecordingVerbs {
     }
 
     fn record(&self, asked: Asked) {
-        if let Ok(mut held) = self.asked.lock() {
-            held.push(asked);
-        }
+        self.asked
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(asked);
     }
 }
 

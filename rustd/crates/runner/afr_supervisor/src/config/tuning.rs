@@ -46,9 +46,3 @@ impl Tuning {
         limits: Limits::DEFAULT,
     };
 }
-
-impl Default for Tuning {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}

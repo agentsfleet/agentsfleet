@@ -186,3 +186,26 @@ fn a_decision_evaluation_debug_view_omits_the_recorded_receipt() {
         format!("DecisionEvaluation {{ call_id: {ID:?}, state: Unknown, recorded: false }}")
     );
 }
+
+/// The fleet and context verbs a seam leaves out refuse without a code, so a
+/// tool reads `agentsfleetd` refused rather than a guessed answer.
+#[tokio::test]
+async fn the_fleet_and_context_verbs_a_seam_leaves_out_refuse_without_a_code() {
+    let refused = Some(Unanswered::Refused(None));
+    let fleet = af_core::id::Uuid7::parse(ID).unwrap_or_else(|_| unreachable!("a fixed id"));
+    let listed = CLOSED
+        .fleets(super::FleetsCall::List {
+            limit: Some(1),
+            starting_after: None,
+        })
+        .await;
+    assert_eq!(listed.err(), refused);
+    assert_eq!(CLOSED.fleet_steer(&fleet, "hello").await.err(), refused);
+    assert_eq!(CLOSED.context_load().await.err(), refused);
+    let save = af_wire::context::ContextSaveRequest {
+        fencing_token: 1,
+        resource_version: 0,
+        checkpoint: serde_json::json!({}),
+    };
+    assert_eq!(CLOSED.context_save(save).await.err(), refused);
+}

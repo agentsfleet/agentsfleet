@@ -363,3 +363,32 @@ async fn a_renewal_refused_for_another_reason_is_no_stop() {
 
     assert!(!plane.stream.running.stopped(&run));
 }
+
+/// One run has one renewal: a second keeper for a run already renewing ends
+/// at once and sends nothing, and the first keeps renewing.
+#[tokio::test(start_paused = true)]
+async fn a_second_renewal_for_a_run_already_renewing_ends_at_once() {
+    let (plane, mut calls) = plane(|_call| renewed());
+    let run = Uuid7::parse(RUN_ID).unwrap();
+    let clock = clock();
+    let meter = Arc::new(Meter::default());
+    let first = Renewal::new(&plane, &run, GRANTED_UNTIL, &clock, &meter).keep();
+    tokio::pin!(first);
+    assert!(
+        futures_util::poll!(&mut first).is_pending(),
+        "the first keeper registers and waits"
+    );
+    let started = Instant::now();
+
+    let second = Renewal::new(&plane, &run, GRANTED_UNTIL, &clock, &meter)
+        .keep()
+        .await;
+
+    assert_eq!(second, FailureClass::RenewalTerminate);
+    assert_eq!(started.elapsed(), Duration::ZERO, "it waited for no tick");
+    assert!(drain(&mut calls).is_empty(), "nothing was renewed for it");
+    assert!(
+        futures_util::poll!(&mut first).is_pending(),
+        "the first keeper still holds the run"
+    );
+}

@@ -7,7 +7,7 @@ use af_wire::run::{CheckpointOperationId, TurnScope, TurnWorkspace};
 use futures_util::FutureExt as _;
 
 /// A run whose native owner answers every turn checkpoint with `failure`.
-fn turn_refused(failure: fn() -> crate::Error) -> impl Fn(&Call) -> Option<Answer> {
+pub(super) fn turn_refused(failure: fn() -> crate::Error) -> impl Fn(&Call) -> Option<Answer> {
     move |call| (call.verb == Verb::TurnCheckpoint).then(|| Answer::Fail(failure()))
 }
 
@@ -20,7 +20,7 @@ fn plan_refused(code: af_core::error_code::ErrorCode) -> impl Fn(&Call) -> Optio
 }
 
 /// An API-only ordinary turn of the fixture's run.
-fn turn(fixture: &Fixture) -> Result<RecoverySnapshot> {
+pub(super) fn turn(fixture: &Fixture) -> Result<RecoverySnapshot> {
     let mut request = snapshot(fixture)?;
     request.state = RecoveryState::Turn(afr_agent::TurnSnapshot {
         scope: TurnScope {

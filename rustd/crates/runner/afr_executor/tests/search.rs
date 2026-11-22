@@ -134,6 +134,49 @@ async fn a_search_skips_gitignored_paths() {
     assert_eq!(shown(&files), [".gitignore", "src/main.rs"]);
 }
 
+/// Lines past the limit mark the answer limited, a file whose matched line
+/// is not text answers none of its lines, and a file the walk listed but the
+/// executor cannot open is passed over.
+#[tokio::test]
+async fn a_line_search_is_limited_and_passes_over_files_it_cannot_read_as_text() {
+    let harness = start().await;
+    put(
+        &harness.root,
+        "a.rs",
+        "fn one() {}\nfn two() {}\nfn three() {}\n",
+    );
+    std::fs::write(harness.root.join("b.rs"), b"fn \xff\xfe\n").unwrap();
+    put(&harness.root, "c.rs", "fn locked() {}\n");
+    let locked = harness.root.join("c.rs");
+    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o000)).unwrap();
+    let root = rustix::process::geteuid().is_root();
+
+    let limited = harness
+        .client
+        .search(&search(".", None, Some("^fn"), 2))
+        .await
+        .unwrap();
+    let rest = harness
+        .client
+        .search(&search(".", Some("[bc].rs"), Some("^fn"), 10))
+        .await
+        .unwrap();
+    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+
+    assert_eq!(
+        shown(&limited),
+        ["a.rs:1: fn one() {}", "a.rs:2: fn two() {}"]
+    );
+    assert!(limited.limited);
+    if root {
+        // Root reads through mode bits, so the locked file answers too.
+        assert_eq!(shown(&rest), ["c.rs:1: fn locked() {}"]);
+    } else {
+        assert_eq!(shown(&rest), Vec::<String>::new());
+    }
+    assert!(!rest.limited);
+}
+
 #[tokio::test]
 async fn a_search_outside_missing_or_uncompiled_is_refused() {
     let harness = start().await;

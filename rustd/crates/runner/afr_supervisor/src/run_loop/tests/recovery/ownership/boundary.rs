@@ -233,3 +233,6 @@ async fn a_vanished_agent_cannot_release_the_owner_before_thaw_finishes() -> Res
 
 #[path = "capture.rs"]
 mod capture_tests;
+
+#[path = "live.rs"]
+mod live_tests;

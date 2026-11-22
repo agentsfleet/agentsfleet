@@ -97,3 +97,20 @@ async fn a_refused_steer_names_its_code() {
     );
     assert!(output.text.contains("UZ-AGT-018"), "{}", output.text);
 }
+
+/// An argument the type does not name refuses the call before any verb is
+/// asked, as invalid arguments.
+#[tokio::test]
+async fn an_argument_the_tool_does_not_take_refuses_before_any_verb() {
+    let (output, asked) = steered(
+        Ok(accepted(false)),
+        json!({"fleet_id": TARGET, "text": "run the hourly check", "priority": "now"}),
+    )
+    .await;
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::InvalidArguments.into())
+    );
+    assert!(output.text.contains("priority"), "{}", output.text);
+    assert_eq!(asked, []);
+}

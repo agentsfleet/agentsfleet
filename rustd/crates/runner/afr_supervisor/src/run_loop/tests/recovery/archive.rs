@@ -5,20 +5,20 @@ use af_wire::task::*;
 use serde_json::{Value, json};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Refusal {
+pub(in crate::run_loop) enum Refusal {
     None,
     Plan,
     Commit,
     Inputs,
     Restore,
 }
-pub(super) struct Archive {
+pub(in crate::run_loop) struct Archive {
     pub(super) refusal: Refusal,
-    pub(super) plan: Option<CheckpointPlan>,
+    pub(in crate::run_loop) plan: Option<CheckpointPlan>,
     pub(super) page: Option<CheckpointPage>,
     pub(super) descriptors: Vec<CheckpointPlaintext>,
     pub(super) decision: Option<String>,
-    pub(super) calls: Vec<(String, Value)>,
+    pub(in crate::run_loop) calls: Vec<(String, Value)>,
 }
 impl Archive {
     pub(super) fn new(refusal: Refusal) -> Self {

@@ -113,7 +113,7 @@ impl Fixture {
     }
 }
 
-fn page() -> CheckpointPage {
+pub(super) fn page() -> CheckpointPage {
     CheckpointPage {
         page_number: 0,
         entries: vec![],
@@ -121,7 +121,7 @@ fn page() -> CheckpointPage {
     }
 }
 
-fn plan() -> Result<CheckpointPlan> {
+pub(super) fn plan() -> Result<CheckpointPlan> {
     let deadline = af_core::clock::after(af_core::clock::now(), std::time::Duration::from_mins(10));
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page()).map_err(error::encode)?);
     Ok(CheckpointPlan {

@@ -122,3 +122,19 @@ async fn two_runs_keep_their_memories_apart() {
     assert_eq!(recalled.text, "nothing remembered matches k");
     assert_eq!(second.memory.pending().await, Vec::new());
 }
+
+/// The debug view names the tools a run built, and nothing they hold.
+#[test]
+fn the_debug_view_names_the_built_tools() {
+    let (run, slot) = (Run::default(), no_sandbox());
+    let backends = Backends::new(&run, &slot, None);
+
+    let tools = backends
+        .tools(&["memory_recall", "shell"])
+        .expect("every backend is given");
+
+    assert_eq!(
+        format!("{tools:?}"),
+        r#"RunTools { tools: ["memory_recall", "shell"] }"#
+    );
+}

@@ -1,8 +1,8 @@
-//! The trait's file calls refuse by default, all five the same way.
+//! The trait's file calls refuse by default, every one the same way.
 
 use bytes::Bytes;
 
-use super::{Executor, Process, ProcessId, Spawn};
+use super::{Executor, Process, ProcessId, Search, Spawn};
 use crate::error::{Result, file_calls_unsupported};
 
 /// An executor that serves processes and inherits every file call.
@@ -36,6 +36,16 @@ async fn an_executor_that_serves_no_files_refuses_every_file_call_alike() {
         executor.append_file(PATH, Bytes::new()).await.err(),
         executor.delete_file(PATH).await.err(),
         executor.list_dir(PATH).await.err(),
+        executor
+            .search(&Search {
+                path: PATH.to_owned(),
+                glob: None,
+                pattern: None,
+                limit: 1,
+            })
+            .await
+            .err(),
+        executor.recovery_idle().await.err(),
     ];
 
     let expected = file_calls_unsupported();
@@ -47,4 +57,13 @@ async fn an_executor_that_serves_no_files_refuses_every_file_call_alike() {
             "every inherited file call refuses as unsupported"
         );
     }
+}
+
+/// A stand-in that names no sizes holds the ones an unconfigured link holds.
+#[test]
+fn an_executor_that_names_no_sizes_holds_the_unconfigured_ones() {
+    let sizes = ProcessesOnly.sizes();
+    assert_eq!(sizes, crate::Sizes::DEFAULT);
+    assert_eq!(sizes.max_read_bytes, crate::MAX_READ_BYTES);
+    assert_eq!(sizes.edge_bytes, crate::EDGE_BYTES);
 }

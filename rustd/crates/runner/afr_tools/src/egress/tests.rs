@@ -63,3 +63,33 @@ fn should_map_every_refusal_to_its_code() {
         assert_eq!(ToolErrorCode::from(refusal), code, "{refusal:?}");
     }
 }
+
+/// An MCP connection is admitted by the run's own policy: an allowed host
+/// connects with no header added, any other is refused under the guard's
+/// code before anything is sent.
+#[tokio::test]
+async fn should_admit_an_mcp_connection_only_to_a_host_the_policy_allows() {
+    use guffbolt::tools::outbound::Outbound as _;
+
+    let fixture = crate::testing::RunFixture::new(false);
+    let run = fixture.run();
+    let egressed = super::Egressed::new(None, &run);
+
+    let Ok(admitted) = egressed
+        .connect("mcp", "https://demo-grafana.internal/mcp")
+        .await
+    else {
+        unreachable!("the policy allows the host");
+    };
+    let Err(refused) = egressed
+        .connect("mcp", "https://elsewhere.example/mcp")
+        .await
+    else {
+        unreachable!("the policy names no such host");
+    };
+
+    assert_eq!(admitted.url, "https://demo-grafana.internal/mcp");
+    assert_eq!(admitted.headers, Vec::<(String, String)>::new());
+    assert_eq!(refused.code, ToolErrorCode::HostNotAllowed.into());
+    assert_eq!(fixture.mint.asked(), 0, "a connection mints nothing");
+}

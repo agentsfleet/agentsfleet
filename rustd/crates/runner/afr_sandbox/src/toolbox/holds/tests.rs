@@ -336,3 +336,25 @@ fn should_unmount_on_drop_and_log_an_image_that_stays() {
             .is_some_and(|reason| reason.contains("busy"))
     );
 }
+
+/// A host's guard closed on purpose unmounts every image once, so its drop
+/// has nothing left to unmount or log.
+#[test]
+fn should_unmount_once_when_the_guard_is_closed() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let one = release(&signer, dir.path(), 1);
+    let (toolboxes, recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    let capture = Capture::install();
+
+    MountedToolboxes::from(toolboxes).close().unwrap();
+
+    assert_eq!(*recorder.unmounted.lock().unwrap(), [one.manifest.sha256()]);
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some("sandbox_toolbox_unmount_failed"))
+    );
+}

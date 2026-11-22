@@ -31,6 +31,15 @@ fn test_told_is_the_sentence_then_each_cause_without_the_code() {
     assert!(!told.contains(failure.code().as_str()), "{told}");
 }
 
+/// A failure that is not an egress or toolbox refusal names neither.
+#[test]
+fn test_a_cgroup_failure_names_no_egress_or_toolbox_refusal() {
+    let failure = cgroup_unreadable(FILE)(std::io::Error::other("gone"));
+
+    assert_eq!(failure.egress_refusal(), None);
+    assert_eq!(failure.toolbox_refusal(), None);
+}
+
 /// Each egress refusal says the sentence an operator has always read for it,
 /// byte for byte, whatever value a test or a log line tells it apart by.
 #[test]

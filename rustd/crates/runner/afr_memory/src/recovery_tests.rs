@@ -147,3 +147,24 @@ fn the_debug_view_counts_the_overlay_without_printing_it() {
         "MemoryRecovery { pending_count: 1, hidden_count: 1, recall_misses: 2 }"
     );
 }
+
+/// Two hidden keys the current scrub masks to one key are one key twice, and
+/// recovery refuses them rather than keep either.
+#[test]
+fn hidden_keys_that_scrub_to_one_key_cannot_restore() -> TestResult {
+    let scrub = af_secrets::Scrub::of([
+        ("rotated".to_owned(), "first-value"),
+        ("rotated".to_owned(), "second-value"),
+    ])?;
+    let saved = MemoryRecovery::new(
+        vec![],
+        vec![
+            "token_first-value".to_owned(),
+            "token_second-value".to_owned(),
+        ],
+        0,
+    );
+    let refused = Loaded::recover(Seed::default(), saved, &scrub);
+    assert!(refused.is_err_and(|failure| failure.code() == af_core::error_code::INVALID_REQUEST));
+    Ok(())
+}

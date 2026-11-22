@@ -174,6 +174,15 @@ mod boundary_tests;
 #[path = "ownership/turn.rs"]
 mod turn_tests;
 
+#[path = "ownership/frozen.rs"]
+mod frozen_tests;
+
+#[path = "ownership/checkout.rs"]
+mod checkout_tests;
+
+#[path = "ownership/hold.rs"]
+mod hold_tests;
+
 async fn sandbox(
     root: &std::path::Path,
     freezer: Freezer,

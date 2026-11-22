@@ -3,13 +3,13 @@
 use crate::test_support::{FENCING, FLEET_ID, FakeEngine, RUN_ID, Rig, payload};
 use serde_json::Value;
 use std::sync::{Arc, atomic::Ordering};
-mod archive;
+pub(in crate::run_loop) mod archive;
 pub(in crate::run_loop) mod fixture;
 mod model;
-mod server;
+pub(in crate::run_loop) mod server;
 use archive::Refusal;
-const ID: &str = "019f0000-0000-7000-8000-000000000001";
-const CHECKPOINT: &str = "019f0000-0000-7000-8000-000000000002";
+pub(in crate::run_loop) const ID: &str = "019f0000-0000-7000-8000-000000000001";
+pub(in crate::run_loop) const CHECKPOINT: &str = "019f0000-0000-7000-8000-000000000002";
 const PAGE: &str = "019f0000-0000-7000-8000-000000000003";
 
 fn recovery_payload() -> af_wire::run::RunPayload<'static> {

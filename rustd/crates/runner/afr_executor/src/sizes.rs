@@ -36,9 +36,3 @@ impl Sizes {
     /// longer than this would end the connection on one.
     pub const LISTING_BYTES: usize = MAX_LISTING_BYTES;
 }
-
-impl Default for Sizes {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}

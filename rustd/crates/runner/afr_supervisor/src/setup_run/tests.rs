@@ -22,8 +22,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::client::Verb;
 use crate::test_support::{
-    FENCING, FLEET_ID, FakeEngine, OUTCOME, PROCESSED, RUN_ID, Rig, STARTUP_POSTURE, bounded,
-    daemon, payload, reported,
+    Answer, FAILURE_REASON, FENCING, FLEET_ID, FakeEngine, OUTCOME, PROCESSED, RENEWAL_TERMINATE,
+    RUN_ID, Rig, STARTUP_POSTURE, bounded, daemon, payload, reported,
 };
 
 /// What the scripted setup answers.
@@ -40,6 +40,8 @@ struct Setup {
     kept: Option<SetupOutput>,
     /// Whether each load answered.
     loads: Arc<Mutex<Vec<bool>>>,
+    /// Whether it answers only once its run is stopped.
+    waits: bool,
 }
 
 #[async_trait::async_trait]
@@ -61,6 +63,9 @@ impl AgentEngine for Setup {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(loaded);
+        if self.waits {
+            run.stop.cancelled().await;
+        }
         self.kept.clone().ok_or_else(|| {
             afr_agent::Error::setup_context(crate::error::config("the model is unreachable"))
         })
@@ -113,6 +118,7 @@ async fn a_setup_run_builds_no_sandbox_and_reports_its_kept_proposal() {
     let mut rig = rig(Setup {
         kept: Some(answered()),
         loads: Arc::clone(&loads),
+        waits: false,
     });
 
     bounded(
@@ -148,6 +154,7 @@ async fn a_setup_run_its_engine_could_not_run_reports_no_proposal() {
     let mut rig = rig(Setup {
         kept: None,
         loads: Arc::default(),
+        waits: false,
     });
 
     bounded(
@@ -174,6 +181,7 @@ async fn a_fleet_run_never_reaches_the_setup_engine() {
     let mut rig = rig(Setup {
         kept: Some(answered()),
         loads: Arc::clone(&loads),
+        waits: false,
     });
 
     // A fleet's run has no owner part, so it takes the fleet path.
@@ -189,4 +197,63 @@ async fn a_fleet_run_never_reaches_the_setup_engine() {
             .all(|call| call.verb != Verb::ContextLoad),
         "a fleet run spoke the context verb"
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_setup_run_whose_lease_is_refused_is_stopped_and_reports_the_cut() {
+    let loads = Arc::default();
+    let mut rig = Rig::running(
+        daemon(|call| {
+            (call.verb == Verb::Renew)
+                .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
+        }),
+        FakeEngine::default(),
+        Setup {
+            kept: Some(answered()),
+            loads: Arc::clone(&loads),
+            waits: true,
+        },
+    );
+
+    bounded(
+        "Lessee::setup",
+        rig.lessee.setup(&draft_run(), CancellationToken::new()),
+    )
+    .await
+    .unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_ne!(report[OUTCOME], PROCESSED, "a cut run is not processed");
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
+    assert_eq!(
+        report["setup"]["proposal"]["base_candidate_id"], HEAD,
+        "the kept proposal still rides the report"
+    );
+    assert_eq!(*loads.lock().unwrap(), [true]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_setup_run_the_runner_stops_ends_and_reports_the_stop() {
+    let mut rig = rig(Setup {
+        kept: Some(answered()),
+        loads: Arc::default(),
+        waits: true,
+    });
+    let halt = Arc::clone(&rig.lessee);
+    let stopping = async move {
+        tokio::task::yield_now().await;
+        halt.halt.running().cancel();
+    };
+
+    let run = draft_run();
+    let (setup, ()) = bounded("Lessee::setup", async {
+        tokio::join!(rig.lessee.setup(&run, CancellationToken::new()), stopping)
+    })
+    .await;
+    setup.unwrap();
+
+    let report = reported(&rig.calls());
+    assert_ne!(report[OUTCOME], PROCESSED, "a stopped run is not processed");
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
 }

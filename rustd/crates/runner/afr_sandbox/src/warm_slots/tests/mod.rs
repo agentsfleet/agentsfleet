@@ -230,6 +230,29 @@ async fn test_a_slot_whose_run_stopped_waiting_is_retired() {
     slots.shutdown().await;
 }
 
+/// A waiting slot whose teardown is refused at shutdown is logged with its
+/// code and name, and the keeper still stops.
+#[tokio::test]
+async fn test_a_slot_whose_teardown_is_refused_is_logged_as_left() {
+    let inner = Arc::new(Counting {
+        leaks: true,
+        ..Counting::default()
+    });
+    let capture = af_core::test_util::trace::Capture::install();
+    let slots = WarmSlots::start(Arc::clone(&inner) as Arc<dyn Engine>, 1, Limits::default());
+    settle().await;
+
+    slots.shutdown().await;
+
+    let left = capture.only("sandbox_warm_slot_left");
+    assert!(left.field("error_code").is_some());
+    assert!(
+        left.field("slot")
+            .is_some_and(|slot| slot.contains("warm-"))
+    );
+    assert_eq!(inner.destroyed.load(Ordering::SeqCst), 1);
+}
+
 /// A keeper that dies is reported by shutdown rather than ignored.
 #[tokio::test]
 async fn test_a_keeper_that_dies_is_reported_at_shutdown() {

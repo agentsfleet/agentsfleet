@@ -47,12 +47,6 @@ impl EngineTuning {
     };
 }
 
-impl Default for EngineTuning {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// What one run's sandbox enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Limits {

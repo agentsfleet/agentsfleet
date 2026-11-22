@@ -34,7 +34,7 @@ const EVENT_CHECKOUT_STOPPED: &str = "repository_checkout_stopped";
 /// What a run checks out: its repositories, under its workspace's id.
 #[derive(Debug)]
 pub(super) struct Plan<'p> {
-    wanted: Vec<Checkout<'p>>,
+    pub(super) wanted: Vec<Checkout<'p>>,
     scope: Uuid7,
 }
 

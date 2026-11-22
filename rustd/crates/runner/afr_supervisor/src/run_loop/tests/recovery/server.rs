@@ -16,14 +16,14 @@ use axum::{
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-pub(super) struct Server {
-    pub(super) plane: Option<ControlPlane>,
-    pub(super) archive: Arc<Mutex<Archive>>,
+pub(in crate::run_loop) struct Server {
+    pub(in crate::run_loop) plane: Option<ControlPlane>,
+    pub(in crate::run_loop) archive: Arc<Mutex<Archive>>,
     worker: tokio::task::JoinHandle<()>,
     _native: crate::test_support::Calls,
 }
 impl Server {
-    pub(super) async fn start(refusal: Refusal) -> Self {
+    pub(in crate::run_loop) async fn start(refusal: Refusal) -> Self {
         let archive = Arc::new(Mutex::new(Archive::new(refusal)));
         let owned = Arc::clone(&archive);
         let app = axum::Router::new().fallback(
@@ -61,7 +61,7 @@ impl Server {
             worker,
         }
     }
-    pub(super) fn stop(self) {
+    pub(in crate::run_loop) fn stop(self) {
         self.worker.abort();
     }
 }

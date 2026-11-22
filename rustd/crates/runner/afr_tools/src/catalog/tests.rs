@@ -208,6 +208,10 @@ fn guffbolts_subagent_tools_are_offered_by_their_own_names() {
         assert!(matches!(offered, Offered::Built(_)), "{offered:?}");
         assert_eq!(offered.runtime(), Runtime::Supervisor);
         assert_eq!(published(offered.name()), None);
+        assert!(
+            selection.tool(offered.name()).is_none(),
+            "the catalog hosts no handler for {offered:?}"
+        );
     }
     assert!(!selection.needs_sandbox());
 }
