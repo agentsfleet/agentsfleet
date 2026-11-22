@@ -24,7 +24,7 @@ export function visualWakeupTurns(started: number): FleetTurn[] {
       created_at: at(-30 * 60_000 + 1000), updated_at: at(-30 * 60_000 + 1000)},
     {...base, turn_id: "schedule-fired", request_json: JSON.stringify({message: schedule.message,
       schedule: {schedule_id: schedule.schedule_id, description: schedule.description}}),
-      tool_calls: {omitted_call_count: 0, calls: [
+      tool_calls: {calls: [
         {call_id: "pull-request", name: "exec_command", arguments: {cmd: "gh pr view 58 --json state"}, status: "succeeded", exit_code: 0, duration_ms: 420, output_head: '{"state":"OPEN"}'},
         {call_id: "workflow", name: "exec_command", arguments: {cmd: "gh run list --limit 1 --json conclusion"}, status: "succeeded", exit_code: 0, duration_ms: 380, output_head: '[{"conclusion":"success"}]'},
       ]},
