@@ -6,8 +6,8 @@ const jsonLd = {
   "@type": "SoftwareApplication",
   name: "agentsfleet",
   applicationCategory: "DeveloperApplication",
-  url: "https://agentsfleet.dev/agents",
-  sameAs: ["https://agentsfleet.dev/openapi.json"],
+  url: "https://www.agentsfleet.net/agents",
+  sameAs: ["https://www.agentsfleet.net/openapi.json"],
 };
 
 const bootstrapScript = `# 1. Shell — install the Command-Line Interface (CLI)

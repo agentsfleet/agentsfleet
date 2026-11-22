@@ -1,13 +1,12 @@
 import { lazy, Suspense } from "react";
 import { Link, Route, Routes, ScrollRestoration, useLocation } from "react-router-dom";
 import { BrandMark, Button, Nav } from "@agentsfleet/design-system";
-import Home from "./pages/Home";
+import Examples from "./pages/Examples";
 import Footer from "./components/Footer";
 import { PUBLIC_ACCESS_URL, DOCS_URL, GITHUB_URL } from "./config";
 import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog";
 
-/* Secondary routes ship as their own chunks so the landing (/) first-load
- * stays lean. Vite code-splits each React.lazy import by default. */
+/* Secondary routes load their own chunks when opened. */
 const Fleets = lazy(() => import("./pages/Fleets"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
@@ -27,6 +26,7 @@ export default function App() {
       <header className="topbar">
         <div className="wrap flex flex-wrap items-center justify-between gap-4 py-4">
           <Link
+            reloadDocument
             to="/"
             className="flex min-h-11 items-center gap-3 font-sans text-body font-medium text-text"
             data-testid="brand-link"
@@ -42,7 +42,7 @@ export default function App() {
       <main id="main-content" tabIndex={-1}>
         <Suspense fallback={null}>
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/examples" element={<Examples />} />
             <Route path="/agents" element={<Fleets />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
@@ -59,7 +59,7 @@ export default function App() {
 function PrimaryNavigation() {
   return (
     <Nav aria-label="Primary" className="primary-navigation order-last flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2 md:order-none md:w-auto md:gap-6">
-      <Link to="/#how-it-works" className={NAV_LINK_CLASS} onClick={() => trackNavigationClicked({ source: "header_nav_product", surface: "header", target: "example" })}>
+      <Link reloadDocument to="/#how-it-works" className={NAV_LINK_CLASS} onClick={() => trackNavigationClicked({ source: "header_nav_product", surface: "header", target: "example" })}>
         Product
       </Link>
       <a href={PUBLIC_ACCESS_URL} target="_blank" rel="noopener noreferrer" className={NAV_LINK_CLASS}

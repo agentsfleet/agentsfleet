@@ -26,9 +26,9 @@ describe("llms text builders", () => {
     expect(body).toContain(MARKETING_POSITIONING_SUMMARY);
     expect(body).toContain("## Product");
     expect(body).toContain("## Resources");
-    expect(body).toContain(`https://agentsfleet.net/#${LOOP_ANCHOR_ID}`);
+    expect(body).toContain(`https://www.agentsfleet.net/#${LOOP_ANCHOR_ID}`);
     expect(body).toContain(PRICING_COPY.note);
-    expect(body).toContain("produce an evidence-backed result");
+    expect(body).toContain("shows what it found");
     expect(body).not.toContain("Each one opens a fix");
     expect(body).toContain(PRICING_COPY.status);
     expect(body).not.toMatch(/starter credit|zero markup|unlimited/i);
@@ -58,7 +58,7 @@ describe("llms text builders", () => {
 
   it("should render llms-full.txt with pillars, loop, sources, and links", () => {
     const body = buildLlmsFullText(inputs);
-    expect(body).toContain("Some runs end with diagnosis");
+    expect(body).toContain("A repair fleet with write access opens a draft pull request. Leah reviews and deploys it.");
     expect(body).not.toContain("Each one opens a fix");
     for (const token of PILLAR_TOKENS) {
       expect(body).toContain(`- ${token}`);

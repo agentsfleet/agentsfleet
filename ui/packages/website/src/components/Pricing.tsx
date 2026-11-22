@@ -23,8 +23,6 @@ export default function Pricing() {
           <Card className="flex flex-col gap-5">
             <p data-testid="pricing-early-access-banner" className="m-0 text-body-sm font-medium text-pulse ph-no-capture">{PRICING_COPY.status}</p>
             <h3 className="m-0 font-sans text-heading font-medium">What to expect on cost</h3>
-            <p className="m-0 text-body-sm text-text-muted">{PRICING_COPY.runtime}</p>
-            <p className="m-0 text-body-sm text-text-muted">{PRICING_COPY.models}</p>
             <p className="m-0 border-t border-border pt-4 text-body-sm text-text">{PRICING_COPY.note}</p>
           </Card>
         </div>

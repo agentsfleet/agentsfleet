@@ -9,7 +9,7 @@ export default function NotFound() {
         <DisplayXL className="text-fluid-display-lg max-w-narrow">This page isn’t here.</DisplayXL>
         <p className="max-w-measure text-body-lg text-text-muted">The link may have changed. Head home or browse agent resources.</p>
         <div className="flex flex-wrap gap-md">
-          <Button asChild><Link to="/">Back to home</Link></Button>
+          <Button asChild><Link reloadDocument to="/">Back to home</Link></Button>
           <Button asChild variant="outline"><Link to="/agents">Explore agents</Link></Button>
         </div>
       </div>

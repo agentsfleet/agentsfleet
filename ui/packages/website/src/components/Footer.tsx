@@ -53,7 +53,7 @@ function FooterColumns() {
       <div>
         <h2 className={COL_LABEL}>product</h2>
         <List variant={COL_VARIANT} className={COL_LIST}>
-          <ListItem><Link to={`/#${LOOP_ANCHOR_ID}`} className={COL_LINK} onClick={() => trackFooter("use_cases", "example")}>use cases</Link></ListItem>
+          <ListItem><Link to={`/examples#${LOOP_ANCHOR_ID}`} className={COL_LINK} onClick={() => trackFooter("use_cases", "example")}>use cases</Link></ListItem>
           <ListItem><a href={PUBLIC_ACCESS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL} className={COL_LINK} onClick={() => trackFooter("sign_in", "sign_in")}>join waitlist</a></ListItem>
         </List>
       </div>

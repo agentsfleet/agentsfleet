@@ -38,7 +38,7 @@ describe("Footer", () => {
   it("renders product column with links", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^Use cases$/i })).toHaveAttribute("href", "/#how-it-works");
+    expect(screen.getByRole("link", { name: /^Use cases$/i })).toHaveAttribute("href", "/examples#how-it-works");
     expect(screen.queryByRole("link", { name: /^early access$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^join waitlist$/i })).toHaveAttribute("href", PUBLIC_ACCESS_URL);
   });

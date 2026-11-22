@@ -38,7 +38,6 @@ export default function Terms() {
       <List className="pl-6 text-text-muted m-0">
         <ListItem>{PRICING_COPY.note}</ListItem>
         <ListItem>{PRICING_COPY.runtime}</ListItem>
-        <ListItem>{PRICING_COPY.models}</ListItem>
       </List>
 
       <LiabilityAndContact />

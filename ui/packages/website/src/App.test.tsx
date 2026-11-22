@@ -12,7 +12,7 @@ import App from "./App";
 import { HERO_HEADLINE } from "./lib/marketing-copy";
 import { PUBLIC_ACCESS_URL } from "./config";
 
-function renderApp(initialRoute = "/") {
+function renderApp(initialRoute = "/examples") {
   const router = createMemoryRouter(
     [{ path: "*", element: <App /> }],
     { initialEntries: [initialRoute] }
@@ -31,12 +31,11 @@ const APP_TEST_TIMEOUT_MS = 20_000;
 const LAZY_ROUTE_TIMEOUT_MS = 10_000;
 
 describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
-  it("offers recovery from an unknown URL and follows its home link", async () => {
+  it("offers recovery from an unknown URL with a link to the homepage", async () => {
     renderApp("/missing-page");
     await screen.findByRole("heading", { name: "This page isn’t here." }, { timeout: LAZY_ROUTE_TIMEOUT_MS });
     expect(screen.getByRole("link", { name: "Explore agents" })).toHaveAttribute("href", "/agents");
-    fireEvent.click(screen.getByRole("link", { name: "Back to home" }));
-    expect(await screen.findByRole("heading", { name: HERO_HEADLINE }, { timeout: LAZY_ROUTE_TIMEOUT_MS })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to home" })).toHaveAttribute("href", "/");
   });
 
   beforeEach(() => {
@@ -103,8 +102,8 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     });
   });
 
-  it("renders home hero by default", () => {
-    renderApp("/");
+  it("renders the job composer at /examples", () => {
+    renderApp("/examples");
     expect(screen.getByTestId("hero")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 1, name: HERO_HEADLINE }),
@@ -143,7 +142,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
   });
 
   it("renders footer on all routes", () => {
-    renderApp("/");
+    renderApp("/examples");
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
   });
 
@@ -171,7 +170,7 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     });
 
     it("scrolls #pricing into view when arriving directly at /#pricing", () => {
-      renderApp("/#pricing");
+      renderApp("/examples#pricing");
       const pricingBlock = screen.getByTestId("pricing-block");
       expect(scrollIntoViewSpy).toHaveBeenCalled();
       // The element scrolled into view IS the #pricing section
@@ -180,12 +179,12 @@ describe("App", { timeout: APP_TEST_TIMEOUT_MS }, () => {
     });
 
     it("does not call scrollIntoView when location has no hash", () => {
-      renderApp("/");
+      renderApp("/examples");
       expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     });
 
     it("does not crash when the hash targets an id that is not in the DOM", () => {
-      renderApp("/#does-not-exist");
+      renderApp("/examples#does-not-exist");
       // Hook should bail silently — no scroll, no throw.
       expect(scrollIntoViewSpy).not.toHaveBeenCalled();
     });

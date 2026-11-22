@@ -9,7 +9,7 @@ for (const width of [320, 375, 768, 1440]) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     // A direct fragment URL starts tab order at that fragment. Check the
     // homepage's skip link before entering the example through its real link.
-    await page.goto("/");
+    await page.goto("/examples");
     const skip = page.getByRole("link", {name: "Skip to content", exact: true});
     await expect(skip).toBeAttached();
     await page.keyboard.press("Tab");
@@ -42,7 +42,7 @@ for (const width of [390, 1440]) {
   test(`text zoom and reduced motion retain access at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+    await page.goto("/examples");
     await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.getByRole("link", { name: /Automate recurring work/ }).scrollIntoViewIfNeeded();

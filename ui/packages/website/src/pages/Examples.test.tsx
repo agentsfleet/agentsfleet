@@ -1,20 +1,20 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Link, MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import Home from "./Home";
+import Examples from "./Examples";
 import { DEFAULT_JOB, EXAMPLE_JOBS } from "../lib/example-jobs";
 
 const PRIVATE_REQUEST = "Investigate something else";
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
 const INCIDENT_LINK = /Investigate an incident.*Explore example run/;
-const BACK_LINK = "Back to home";
+const BACK_LINK = "Back to examples";
 const CONTEXTUAL_EXAMPLES = [
   { job: EXAMPLE_JOBS[1], link: "Explore a test regression example" },
   { job: EXAMPLE_JOBS[2], link: "Explore a recurring work example" },
 ] as const;
-const renderHome = (path = "/") => render(<MemoryRouter initialEntries={[path]}><Home /></MemoryRouter>);
+const renderHome = (path = "/") => render(<MemoryRouter initialEntries={[path]}><Examples /></MemoryRouter>);
 
-describe("Homepage conversation entrance", () => {
+describe("Example conversation entrance", () => {
   it("starts with one composer and useful examples without setup chrome", () => {
     renderHome();
     const composer = screen.getByRole("textbox");
@@ -67,13 +67,13 @@ describe("Homepage conversation entrance", () => {
     expect(screen.getByRole("textbox")).toHaveValue(PRIVATE_REQUEST);
   });
   it("keeps the open conversation when navigation moves to another page anchor", () => {
-    render(<MemoryRouter initialEntries={["/#how-it-works"]}><Link to="/#main-content">Skip to content</Link><Home /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={["/#how-it-works"]}><Link to="/#main-content">Skip to content</Link><Examples /></MemoryRouter>);
     const conversation = screen.getByRole("figure");
     fireEvent.click(screen.getByRole("link", { name: "Skip to content" }));
     expect(screen.getByRole("figure")).toBe(conversation);
   });
   it("restores the private composer when the home link clears the example anchor", () => {
-    render(<MemoryRouter><Link to="/">Home</Link><Home /></MemoryRouter>);
+    render(<MemoryRouter><Link to="/">Home</Link><Examples /></MemoryRouter>);
     fireEvent.change(screen.getByRole("textbox"), { target: { value: PRIVATE_REQUEST } });
     fireEvent.click(screen.getByRole("link", { name: INCIDENT_LINK }));
     expect(screen.queryByRole("textbox")).toBeNull();

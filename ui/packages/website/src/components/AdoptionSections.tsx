@@ -20,7 +20,7 @@ export function AudienceSection() {
       </div>
       <div className="wrap source-strip"><span>Built in the open. Inspect the runtime.</span><a href={GITHUB_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
         onClick={() => trackNavigationClicked({ source: "source_github", surface: SOURCE_SURFACE, target: "github" })}>GitHub ↗</a><span><a href={PUBLIC_ACCESS_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
-        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Hosted waitlist ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
+        onClick={() => trackSignupStarted({ source: "source_early_access", surface: SOURCE_SURFACE, mode: "humans" })}>Join waitlist ↗</a> · <a href={SELF_HOSTED_URL} target={EXTERNAL_TARGET} rel={EXTERNAL_REL}
         onClick={() => trackNavigationClicked({ source: "source_self_hosted", surface: SOURCE_SURFACE, target: "self_hosted" })}>Self hosting in your infrastructure ↗</a></span></div>
     </section></Section>
   );

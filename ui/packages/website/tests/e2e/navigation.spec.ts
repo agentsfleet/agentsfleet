@@ -24,7 +24,7 @@ test.describe("Footer navigation", () => {
   test("footer use cases link opens the example conversation", async ({ page }) => {
     await page.goto("/agents");
     await page.getByRole("contentinfo").getByRole("link", { name: /^Use cases$/i }).click();
-    await expect(page).toHaveURL(/\/#how-it-works$/);
+    await expect(page).toHaveURL(/\/examples#how-it-works$/);
     await expect(page.getByRole("figure")).toBeVisible();
     await expect(page.getByRole("textbox", { name: "What should your fleet handle?" })).toHaveCount(0);
   });

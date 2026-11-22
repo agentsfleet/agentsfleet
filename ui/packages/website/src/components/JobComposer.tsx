@@ -37,7 +37,7 @@ export function JobComposer({ request, onRequest, job, onJob }: JobComposerProps
       <JobSuggestions onJob={onJob} />
       {request.trim() && <Nav aria-label="Conversation context" className="entrance-links">
         <Button asChild variant="ghost" size="sm">
-          <Link to={`/#${EXAMPLE_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "composer_example", surface: "hero", target: job.id })}>{exampleLabel}</Link>
+          <Link to={`#${EXAMPLE_ANCHOR}`} onClick={() => trackNavigationClicked({ source: "composer_example", surface: "hero", target: job.id })}>{exampleLabel}</Link>
         </Button>
       </Nav>}
       <p id={`${id}-privacy`} className="signup-continuity">Keep requests general. The waitlist opens in a new tab; your text stays on this page.</p>

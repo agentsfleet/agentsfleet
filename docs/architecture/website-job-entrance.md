@@ -3,7 +3,15 @@
 Read this when changing the public composer, sample conversation, signup boundary, or shared brand assets.
 The website illustrates the [chat authoring experience](high_level.md#fleet-authoring-and-runtime); the illustration does not author, install, or run a fleet.
 
-## Experience and component boundaries
+## Marketing homepage
+
+At `/`, the example starts with a Slack message about frozen chat. Mira asks Scout to check Grafana. After an engineer reviews and ships a fix, Mira replies to the original thread with before-and-after measurements. The ticket, timings, and results are illustrative.
+
+`src/pages/Home.tsx` composes the page from the website's `src/landing/` components. The Vite build renders this route to HTML so a visitor or crawler can read the full story before JavaScript loads. React adds playback controls. Reduced motion shows the full investigation. The FAQ and its structured data use the same questions and answers.
+
+The website imports the shared brand mark, navigation, buttons, heading components, and font tokens. Its marketing stylesheet loads only in the homepage document. Vercel serves the other website routes through `app.html`; the previous job composer is available at `/examples`.
+
+## Examples page and component boundaries
 
 “What should your fleet handle?” is the welcome's one question, and one composer sits below it.
 Investigate an incident, Catch test regressions, and Automate recurring work open their own animated examples directly.
@@ -23,10 +31,10 @@ Opening an example hides the composer and keeps the person's unsent request. Bac
 | `use-chat-scroll` | Follow appended output, keep the manual reading position, and jump to latest |
 
 These components use existing design-system primitives and charcoal, off-white, and mint tokens.
-Bricolage Grotesque provides headings, Instrument Sans provides messages, and Commit Mono provides commands and code.
+Manrope provides headings and messages. Commit Mono provides commands and code.
 Small signal icons connect welcome, assistant replies, and the working loader.
 
-## What the animation shows
+## What the examples page animation shows
 
 ```text
 Describe the job --> clarify --> /schedule --> review setup --> chat Save
@@ -73,9 +81,7 @@ The animation makes no claim that it performs automatic repair, GitHub posting o
 
 ## Signup and installer boundaries
 
-Public hosted-access links open the waitlist in a new tab.
-`VITE_WAITLIST_URL` overrides the default `https://accounts.agentsfleet.net/waitlist` in the website's `config.ts`.
-All access links use `PUBLIC_ACCESS_URL`, keeping the original page and request when the visitor closes the waitlist.
+The homepage and the examples page use the same waitlist destination. `VITE_WAITLIST_URL` overrides the default `https://accounts.agentsfleet.net/waitlist`. Links from the examples page open the waitlist in a new tab to preserve the visitor's request.
 
 The request stays in React memory; reload clears it.
 Private input is not placed in URL parameters, analytics, session storage, or local storage.
@@ -100,12 +106,11 @@ The [website event catalog](product_analytics.md#website-marketing) defines even
 Events contain the source, surface, fixed target or mode, and pathname. They never contain request text, clipboard text, query parameters, or the hash.
 The shared Terminal exposes a copy-click callback; the website owns the analytics handler.
 
-Indy approved “$0 to start · $25 credit included” on 2026-10-14, replacing the earlier early-access copy.
-The welcome and pricing card share this offer. The card explains that included credit runs the first jobs and using a personal key bills the provider directly.
+The homepage and examples show a $0 starting price. Customers who bring a model key pay their provider directly.
 
-Join waitlist opens the configured waitlist. The source strip uses “Hosted waitlist ↗,” “Self hosting in your infrastructure ↗,” and plain “GitHub ↗” without an icon.
+The primary homepage button, “Join waitlist,” opens the configured waitlist. “View on GitHub” opens the public repository. The examples page also links to the waitlist, repository, and setup guide.
 
-Pricing copy does not promise unlimited usage or behavior after the credit is spent. The pricing banner emits no custom event and excludes automatic capture.
+The pricing banner emits no custom event and excludes automatic capture.
 
 The footer's use cases link opens the existing example conversation.
 

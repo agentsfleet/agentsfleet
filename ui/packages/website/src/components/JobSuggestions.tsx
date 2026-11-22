@@ -10,7 +10,7 @@ function trackSuggestion(job: ExampleJob) {
 export function JobSuggestions({ onJob }: { onJob: (job: ExampleJob) => void }) {
   return <div className="job-suggestions" aria-label="Ideas for your fleet">
     {EXAMPLE_JOBS.map((job) => <Button key={job.id} asChild variant={job.id === JOB_ID.incident ? "default" : "outline"} size="sm">
-      <Link to={`/#${EXAMPLE_ANCHOR}`} onClick={() => { onJob(job); trackSuggestion(job); }}>
+      <Link to={`#${EXAMPLE_ANCHOR}`} onClick={() => { onJob(job); trackSuggestion(job); }}>
         <SuggestionIcon icon={job.id} /><span className="suggestion-copy"><span>{job.label}</span><span>Explore example run →</span></span>
       </Link>
     </Button>)}

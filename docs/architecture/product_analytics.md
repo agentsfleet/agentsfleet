@@ -120,10 +120,11 @@ those requests bypass the event filter and can carry initial URLs.
 
 | Event | Sources | Meaning |
 |---|---|---|
-| `signup_started` | `header_early_access`, `composer_create_fleet`, `example_create_fleet`, `source_early_access`, `pricing_early_access` | Click intent to enter app signup; count each entrance separately |
+| `signup_started` | `header_signup`, `hero_signup`, `pricing_signup`, `header_early_access`, `composer_create_fleet`, `example_create_fleet`, `source_early_access`, `pricing_early_access` | Click intent to enter app signup; count each entrance separately |
 | `interaction_clicked` | `hero_suggestion_incident`, `hero_suggestion_tests`, `hero_suggestion_agent` | Click one of the three job suggestions; `target` is the fixed example identifier |
 | `interaction_clicked` | `cli_install_copy` | Click Copy on the installer Terminal, including a denied clipboard write |
 | `interaction_clicked` | `example_read_full` | Read full conversation |
+| `navigation_clicked` | `hero_github`, `pricing_quickstart` | Homepage repository link and quickstart guide |
 | `navigation_clicked` | `cli_install_guide`, `cli_self_hosted` | Installation guide and repository self-hosting links |
 | `navigation_clicked` | `source_github`, `source_self_hosted`, `continuity_docs` | Source-strip and product-documentation links |
 | `navigation_clicked` | `composer_example`, `example_back`, `example_repository` | Explore an example, return home, or inspect its real repository |
@@ -134,10 +135,10 @@ those requests bypass the event filter and can carry initial URLs.
 Filter the explicit event by `source` to count a particular button or link.
 Automatic capture remains enabled for general website exploration; do not add
 its click count to the explicit count for the same action.
-The “$0 to start · $25 credit included” banner has no custom handler and uses `ph-no-capture`.
+The “$0 to start” banner has no custom handler and uses `ph-no-capture`.
 
 The `header_early_access`, `source_early_access`, and `pricing_early_access` identifiers remain stable for historical comparisons.
-Current hosted-access labels and destinations belong to [Website job entrance](website-job-entrance.md#signup-and-installer-boundaries).
+Current signup labels and destinations belong to [Website job entrance](website-job-entrance.md#signup-and-installer-boundaries).
 
 The website reads `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` from the existing deployment configuration.
 The [bootstrap mapping](../../playbooks/founding/01_bootstrap/02_vercel_env.sh) selects the same development and production PostHog projects as the app.

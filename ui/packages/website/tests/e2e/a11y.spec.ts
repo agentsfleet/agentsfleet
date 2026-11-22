@@ -12,10 +12,11 @@ const ROUTES: Array<{ path: string; label: string }> = [
 const VIEWPORTS = [1440, 390, 320];
 
 for (const { path, label } of ROUTES) {
-  for (const theme of ["dark", "light"]) {
+  for (const theme of ["dark", "light"] as const) {
   for (const width of VIEWPORTS) {
   test(`${label} (${path}) has zero axe violations in ${theme} at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: path === "/" ? "reduce" : "no-preference" });
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.evaluate((value) => document.documentElement.setAttribute("data-theme", value), theme);

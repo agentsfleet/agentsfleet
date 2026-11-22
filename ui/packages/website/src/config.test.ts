@@ -7,7 +7,7 @@ import App from "./App";
 // Pin the user-facing destination independently of the configuration export.
 const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 const PREVIEW_WAITLIST = "https://accounts-preview.agentsfleet.net/waitlist";
-const ACCESS_LINKS = [/^Early access$/i, /^Hosted waitlist ↗$/, /^Join waitlist/i];
+const ACCESS_LINKS = [/^Early access$/i, /^Join waitlist/i];
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -32,7 +32,7 @@ describe("Public access follows the configured waitlist destination", () => {
 });
 
 describe("Public access destinations in the local website", () => {
-  it.each(["/", "/#how-it-works"])("opens the waitlist from every entrance on %s", (path) => {
+  it.each(["/examples", "/examples#how-it-works"])("opens the waitlist from every entrance on %s", (path) => {
     const router = createMemoryRouter([{ path: "*", element: createElement(App) }], { initialEntries: [path] });
     render(createElement(RouterProvider, { router }));
     for (const name of ACCESS_LINKS) {

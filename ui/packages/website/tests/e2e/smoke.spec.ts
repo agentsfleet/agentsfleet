@@ -35,9 +35,9 @@ test.describe("Smoke", () => {
     await expect(page.getByTestId("pricing-block")).toBeVisible();
     await expect(page.getByTestId("pricing-cta-early-access")).toBeVisible();
     // pin test: approved pricing and direct provider-billing wording.
-    await expect(page.getByTestId("pricing-block")).toContainText(/if you bring your own key, usage is billed by your provider directly/i);
-    await expect(page.getByTestId("pricing-early-access-banner")).toContainText("$0 to start · $25 credit included");
-    await expect(page.getByTestId("pricing-block")).not.toContainText(/starter credit|start free|unlimited/i);
+    await expect(page.getByTestId("pricing-block")).toContainText("If you bring your own model key, your provider bills model usage directly");
+    await expect(page.getByTestId("pricing-block")).toContainText("Fleet runtime starts at $0.");
+    await expect(page.getByTestId("pricing-block")).not.toContainText(/credit|\$25|start free|unlimited/i);
   });
 
   test("llms surfaces are generated and reachable", async ({ page }) => {
@@ -76,9 +76,10 @@ test.describe("Smoke", () => {
     await page.goto("/");
     const nav = page.getByRole("navigation", { name: /primary/i });
     await expect(nav.getByRole("link", { name: /^Product$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^Early access$/i })).toBeVisible();
-    await expect(nav.getByRole("link", { name: /^GitHub ↗$/ })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^Pricing$/i })).toBeVisible();
+    await expect(nav.getByRole("link", { name: /^GitHub$/ })).toBeVisible();
     await expect(nav.getByRole("link", { name: /^docs$/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /^sign in$/i })).toHaveCount(0);
   });
 
   test("footer renders on all routes", async ({ page }) => {
@@ -104,9 +105,30 @@ test.describe("Smoke", () => {
   test("reduced motion leaves the investigation static", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    await expect(page.locator(".signal-field > g")).toHaveCSS("animation-name", "none");
-    await page.getByRole("link", { name: /Investigate an incident.*Explore example run/ }).click();
-    await expect(page.getByTestId("how-it-works")).toHaveAttribute("data-running", "false");
-    await expect(page.getByTestId("hero-headline")).toBeVisible();
+    await expect(page.getByRole("button", { name: /pause demo/i })).toHaveCount(0);
+    for (const scene of [".opening", ".investigation", ".returning"]) {
+      await expect(page.locator(scene)).toBeVisible();
+    }
+    await expect(page.locator(".verify")).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+  });
+});
+
+test.describe("Crawler view", () => {
+  test.use({ javaScriptEnabled: false });
+  test("the homepage explains the incident and exposes its answers without JavaScript", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator(".opening")).toContainText("@agentfleet");
+    await expect(page.locator(".investigation")).toContainText("Grafana");
+    await expect(page.locator(".verify")).toContainText("95% of replies started within 2.8 seconds, down from 15.1 seconds.");
+    const answers = await page.locator(".faq-item").evaluateAll(items => items.map(item => ({
+      question: item.querySelector("h3")!.innerText,
+      answer: item.querySelector("p")!.innerText,
+    })));
+    const schema = JSON.parse((await page.locator('script[type="application/ld+json"]').textContent())!);
+    const faq = schema["@graph"].find((entry: { "@type": string }) => entry["@type"] === "FAQPage");
+    expect(answers.length).toBeGreaterThan(0);
+    expect(faq.mainEntity.map((entry: { name: string; acceptedAnswer: { text: string } }) => ({
+      question: entry.name, answer: entry.acceptedAnswer.text,
+    }))).toEqual(answers);
   });
 });

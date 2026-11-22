@@ -10,7 +10,7 @@ const HISTORY_SCROLL_DISTANCE = 120;
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
 const WAITLIST = "https://accounts.agentsfleet.net/waitlist";
 const INCIDENT_LINK = /Investigate an incident.*Explore example run/;
-const BACK_LINK = "Back to home";
+const BACK_LINK = "Back to examples";
 const BROWSER_TIMEOUT_DEFAULT = "Number(process.env.BROWSER_TIMEOUT) || 5";
 const SAMPLE_TIMEOUT_LOG = "Browser has been open for more than 5 minutes.";
 const INCIDENT_REQUEST_PREFIX = "Watch agentsfleet/linkwarden";
@@ -18,7 +18,7 @@ const CONTEXTUAL_EXAMPLES = [
   { job: EXAMPLE_JOBS[1], link: "Explore a test regression example" },
   { job: EXAMPLE_JOBS[2], link: "Explore a recurring work example" },
 ] as const;
-test.beforeEach(async ({ page }) => { await page.emulateMedia({ reducedMotion: "reduce" }); await page.goto("/#how-it-works"); });
+test.beforeEach(async ({ page }) => { await page.emulateMedia({ reducedMotion: "reduce" }); await page.goto("/examples#how-it-works"); });
 
 async function startMotion(page: Page) {
   await page.clock.install({ time: MOTION_CLOCK_TIME });
@@ -55,7 +55,7 @@ test("visitors inspect the full planned journey without connecting or running an
 test("signup cancellation preserves private text without sending or storing it", async ({ page, context }) => {
   await context.route(WAITLIST, route => route.fulfill({ contentType: "text/html", body: "<p>Sign-up cancelled</p>" }));
   const request = "Keep my private investigation request";
-  await page.goto("/");
+  await page.goto("/examples");
   await page.getByRole("textbox").fill(request);
   await page.getByRole("link", { name: INCIDENT_LINK }).click();
   await expect(page.getByRole("textbox")).toHaveCount(0);
@@ -73,23 +73,20 @@ test("signup cancellation preserves private text without sending or storing it",
   await expect(page.getByRole("textbox")).toHaveValue(request);
   await expect(page.getByRole("figure")).toHaveCount(0);
 });
-for (const destination of ["brand", "browser back"] as const) {
-  test(`${destination} restores the home composer and its private draft`, async ({ page }) => {
-    await page.goto("/");
-    const request = "Preserve this draft on return home";
-    await page.getByRole("textbox").fill(request);
-    await page.getByRole("link", { name: INCIDENT_LINK }).click();
-    await expect(page.getByRole("figure")).toBeVisible();
-    if (destination === "brand") await page.getByTestId("brand-link").click();
-    else await page.goBack();
-    await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("figure")).toHaveCount(0);
-    await expect(page.getByRole("textbox")).toHaveValue(request);
-  });
-}
+test("browser back restores the examples composer and its private draft", async ({ page }) => {
+  await page.goto("/examples");
+  const request = "Preserve this draft on return";
+  await page.getByRole("textbox").fill(request);
+  await page.getByRole("link", { name: INCIDENT_LINK }).click();
+  await expect(page.getByRole("figure")).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/examples$/);
+  await expect(page.getByRole("figure")).toHaveCount(0);
+  await expect(page.getByRole("textbox")).toHaveValue(request);
+});
 for (const job of EXAMPLE_JOBS) {
   test(`${job.label} starts its own animated conversation directly`, async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/examples");
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await startMotion(page);
     await page.getByRole("link", { name: new RegExp(job.label) }).click();
@@ -188,7 +185,7 @@ test("scrolling through earlier messages keeps the animation running without dra
 });
 for (const { job, link } of CONTEXTUAL_EXAMPLES) {
   test(`${job.label} opens its own example and restores the private draft on return`, async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/examples");
     const composer = page.getByRole("textbox");
     const request = "Keep this request while exploring";
     await expect(composer).toHaveCount(1);

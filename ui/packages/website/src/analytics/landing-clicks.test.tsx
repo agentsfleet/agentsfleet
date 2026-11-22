@@ -13,7 +13,7 @@ const SIGNUP = "signup_started";
 const INTERACTION = "interaction_clicked";
 const PRIVATE_REQUEST = "Investigate private-customer-outage-742";
 const INSTALL_COMMAND = "curl -fsSL https://agentsfleet.dev | bash";
-const EXAMPLE_PATH = "/#how-it-works";
+const EXAMPLE_PATH = "/examples#how-it-works";
 const LINKS = [
   { area: "hero", name: /Installation guide/, source: "cli_install_guide", surface: "cli_quickstart", target: "installation" },
   { area: "hero", name: /Self hosting in your infrastructure/, source: "cli_self_hosted", surface: "cli_quickstart", target: "self_hosted" },
@@ -39,7 +39,7 @@ const SUGGESTIONS = [
   { role: "link", name: /Automate recurring work/, target: "agent" },
 ] as const;
 
-function renderLanding(path = "/") {
+function renderLanding(path = "/examples") {
   const router = createMemoryRouter([{ path: "*", element: <App /> }], { initialEntries: [path] });
   return render(<RouterProvider router={router} />);
 }
@@ -110,7 +110,7 @@ describe("website click attribution", () => {
     expect(JSON.stringify(sdk.capture.mock.calls)).not.toContain(PRIVATE_REQUEST);
   });
   it.each([
-    { area: "audience-section", name: /^Hosted waitlist ↗$/, source: "source_early_access", surface: "source_strip" },
+    { area: "audience-section", name: /^Join waitlist ↗$/, source: "source_early_access", surface: "source_strip" },
     { area: "pricing-block", name: /Join waitlist/, source: "pricing_early_access", surface: "pricing" },
   ])("tracks $source signup intent", async ({ area, name, ...props }) => {
     renderLanding();
@@ -128,7 +128,7 @@ describe("website click attribution", () => {
     fireEvent.click(screen.getByRole("link", { name: "Explore an example run" }));
     await expectEvent(NAVIGATION, { source: "composer_example", surface: "hero", target: "incident" });
     sdk.capture.mockClear();
-    fireEvent.click(screen.getByRole("link", { name: "Back to home" }));
+    fireEvent.click(screen.getByRole("link", { name: "Back to examples" }));
     await expectEvent(NAVIGATION, { source: "example_back", surface: "example", target: "home" });
     expect(screen.getByRole("textbox")).toHaveValue(PRIVATE_REQUEST);
     expect(JSON.stringify(sdk.capture.mock.calls)).not.toContain(PRIVATE_REQUEST);
@@ -149,11 +149,11 @@ describe("website click attribution", () => {
     fireEvent.click(screen.getByRole("link", { name: /agentsfleet\/linkwarden/ }));
     await expectEvent(NAVIGATION, { source: "example_repository", surface: "example", target: "github" });
   });
-  it("keeps the starting price and included credit informational", async () => {
+  it("keeps the starting price informational", async () => {
     renderLanding();
     fireEvent.click(screen.getByTestId("pricing-early-access-banner"));
     await flushAnalyticsForTests();
-    expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start · $25 credit included");
+    expect(screen.getByTestId("pricing-early-access-banner")).toHaveTextContent("$0 to start");
     expect(screen.getByTestId("pricing-early-access-banner")).toHaveClass("ph-no-capture");
     expect(sdk.capture).not.toHaveBeenCalled();
   });
