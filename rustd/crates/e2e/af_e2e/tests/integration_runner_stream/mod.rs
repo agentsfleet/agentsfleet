@@ -9,7 +9,6 @@ mod authority;
 mod heartbeat;
 
 mod drain;
-mod fairness;
 mod lifecycle;
 pub(crate) mod raw;
 mod renewal;

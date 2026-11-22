@@ -3,7 +3,6 @@
 mod commit_failure;
 mod connectors;
 mod editor;
-mod editor_bytes;
 mod execution;
 pub(super) mod fault;
 mod filtering;

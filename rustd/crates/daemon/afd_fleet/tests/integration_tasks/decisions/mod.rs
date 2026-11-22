@@ -44,7 +44,6 @@ mod report_completion;
 mod report_wait;
 mod reservation_refusals;
 mod source;
-mod source_capacity;
 mod stale_interpretation;
 mod timeouts;
 mod unpriced;

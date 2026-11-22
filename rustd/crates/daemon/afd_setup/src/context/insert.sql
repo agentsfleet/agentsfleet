@@ -1,1 +1,0 @@
--- Unused: every save is fenced (fenced_insert.sql).
