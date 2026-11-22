@@ -5,9 +5,11 @@ The website illustrates the [chat authoring experience](high_level.md#fleet-auth
 
 ## Marketing homepage
 
-At `/`, the example starts with a Slack message about frozen chat. Mira asks Scout to check Grafana. After an engineer reviews and ships a fix, Mira replies to the original thread with before-and-after measurements. The ticket, timings, and results are illustrative.
+At `/`, a Slack message about frozen chat prompts Mira to ask Scout to check Grafana. After an engineer reviews and ships a fix, Mira posts the before-and-after measurements in the thread. The ticket and measurements are illustrative.
 
-`src/pages/Home.tsx` composes the page from the website's `src/landing/` components. The Vite build renders this route to HTML so a visitor or crawler can read the full story before JavaScript loads. React adds playback controls. Reduced motion shows the full investigation. The FAQ and its structured data use the same questions and answers.
+`src/pages/Home.tsx` composes the page from the website's `src/landing/` components. The Vite build renders this route to HTML so a visitor or crawler can read the full story before JavaScript loads.
+
+React adds playback controls, and reduced motion shows the full investigation. The FAQ and its structured data use the same questions and answers.
 
 The website imports the shared brand mark, navigation, buttons, heading components, and font tokens. Its marketing stylesheet loads only in the homepage document. Vercel serves the other website routes through `app.html`; the previous job composer is available at `/examples`.
 
@@ -31,7 +33,7 @@ Opening an example hides the composer and keeps the person's unsent request. Bac
 | `use-chat-scroll` | Follow appended output, keep the manual reading position, and jump to latest |
 
 These components use existing design-system primitives and charcoal, off-white, and mint tokens.
-Manrope provides headings and messages. Commit Mono provides commands and code.
+Headings and messages use Manrope, and commands and code use Commit Mono.
 Small signal icons connect welcome, assistant replies, and the working loader.
 
 ## What the examples page animation shows
