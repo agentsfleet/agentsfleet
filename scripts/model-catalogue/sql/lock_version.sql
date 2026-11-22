@@ -1,4 +1,4 @@
-SELECT resource_version::text
-FROM model.catalogue_version
+SELECT number::text
+FROM model.revision
 WHERE id = 1
 FOR UPDATE;
