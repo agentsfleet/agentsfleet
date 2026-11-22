@@ -19,6 +19,8 @@ use afd_db::Db;
 use crate::error::Result;
 use crate::fixture::RunPrefix;
 
+/// A run's runners' runs, which outlive a runner's deletion, by the runner's prefix.
+const DELETE_RUNS: &str = include_str!("sql/delete_runs.sql");
 /// A run's runners, by the prefix in their host id.
 const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
 
@@ -58,6 +60,7 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     // Runners carry the prefix in `host_id` rather than a name: enrolment owns
     // that row's shape and there is no name column to put it in.
     for statement in [
+        DELETE_RUNS,
         DELETE_RUNNERS,
         DELETE_FLEETS,
         DELETE_WORKSPACES,

@@ -12,10 +12,11 @@
 ///
 /// One statement rather than a SELECT then a DELETE, so an operator revoking
 /// concurrently cannot slip between the check and the write. The row's
-/// runs and events cascade and its threads clear, all declared in schema; the
-/// daemon deletes nothing else by hand. A run still active would take with
-/// it the row the liveness sweep releases the fleet's thread through, so the
-/// delete waits for the sweep or the run's expiry. The single result row says
+/// events cascade, its runs stay as history naming no runner, and its threads
+/// clear, all declared in schema; the daemon deletes nothing else by hand. A
+/// run still active would lose the runner the liveness sweep releases the
+/// fleet's thread through, so the delete waits for the sweep or the run's
+/// expiry. The single result row says
 /// which of the three things happened, and its absence says there was no such
 /// runner. `$1` runner, `$2` the revoked status, `$3` the active run status.
 pub const DELETE_RUNNER_IF_IN_STATE: &str = include_str!("delete_runner_if_in_state.sql");

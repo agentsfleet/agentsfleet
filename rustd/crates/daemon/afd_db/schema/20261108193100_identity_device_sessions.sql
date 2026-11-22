@@ -24,8 +24,6 @@ CREATE TABLE identity.device_sessions (
 
 CREATE INDEX idx_device_sessions_approver_subject ON identity.device_sessions (approver_subject);
 
-CREATE INDEX idx_device_sessions_expires_at ON identity.device_sessions (expires_at);
-
 GRANT SELECT, INSERT, UPDATE, DELETE ON identity.device_sessions TO api_runtime;
 
 -- The sealed ciphertext and code digest stay off the operator read paths.

@@ -39,9 +39,6 @@ CREATE INDEX idx_drafts_user_id ON setup.drafts (user_id);
 -- work waiting (`afd_fleet/src/run/sql/run/select_waiting_work.sql`).
 CREATE INDEX idx_drafts_tenant_id ON setup.drafts (tenant_id);
 
-CREATE INDEX idx_drafts_expires_at_id
-    ON setup.drafts (expires_at, id) WHERE expires_at IS NOT NULL;
-
 CREATE INDEX idx_drafts_fleet_id ON setup.drafts (fleet_id) WHERE fleet_id IS NOT NULL;
 
 CREATE INDEX idx_drafts_source_fleet_revision_id

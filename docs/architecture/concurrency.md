@@ -333,7 +333,7 @@ A setup run's renewal takes the runner row exclusively while it counts capacity 
 
 The setup assignment is the one path that holds a host and then asks for a draft. It never waits for the draft (below).
 
-Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its cascade deletes that runner's `thread.runs` rows and clears `thread.threads.last_runner_id`. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
+Retiring a revoked runner (`afd_runner`'s `delete_revoked`) holds the runner row while its foreign keys set that runner's `thread.runs.runner_id` and `thread.threads.last_runner_id` to NULL. Assignment and both renewal kinds take the runner row first, and no report takes it, so they lock in the delete's order. The delete also refuses a runner with a live run or an unbilled runtime tail (`delete_runner_if_in_state.sql`).
 
 Runtime reports take the run row and never the runner or setup rows. The statement that logs a report's or a renewal's usage lines also writes their daily rollup rows in key order, then debits the payer's wallet row, last and in tenant order (the `billing.usage_lines` triggers). The wallet row stays locked from that statement to the commit, so a tenant's concurrent writes of usage take turns on it.
 

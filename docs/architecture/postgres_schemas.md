@@ -271,9 +271,11 @@ Run counts per runner are a metric, `agentsfleet_runner_runs_total`, and no tabl
 Degraded and self-test pass are derived on read (`degraded_reason IS NOT NULL`, every check passed),
 keeping "no self-test yet" distinct from "self-test failed".
 
-`idx_runs_run_expires_at_unbilled`, partial on `last_metered_at < run_expires_at`, served the
-metering sweep that billed an expired run's unbilled tail. That sweep went in M253_003, so no
-statement reads the index, and a dead run's last slice after its final renewal is not billed.
+`idx_runs_run_expires_at_unbilled`, `(runner_id, run_expires_at)` partial on
+`last_metered_at < run_expires_at`, served the metering sweep that billed an expired run's
+unbilled tail. That sweep went in M253_003, and a dead run's last slice after its final renewal
+is not billed. A runner's retirement reads the index now: it refuses a runner that still owes
+such a tail (`delete_runner_if_in_state.sql`).
 
 ## connector
 
@@ -332,11 +334,11 @@ that reads them (rule 7).
 | Draft (user delete) | its thread, turns and runs, the proposals it still owns, its compaction | usage lines, replay receipts, installed revisions | none |
 | User | their drafts (as above), memberships, CLI credentials | api keys they created, usage lines | none |
 | Fleet (purge) | revisions, its thread, turns, items, gates, deliveries, schedules, grants, channels, memory, live (`active`) runs; task objectives, interpreted text, input replies, private effect targets (cleared on the kept effect), turn and task checkpoints with their pages, pins and refs | usage lines; settled runs, kept until a retention policy is chosen; opaque decision/effect receipts and the adoption and checkpoint-allocation replay receipts; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
-| Workspace | drafts, fleets (as above), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect receipts, replay receipts and checkpoint purges | Each removed object first records its location for remote cleanup |
-| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their runs and history | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
+| Workspace | drafts, fleets (as above, which is how its items and deliveries go: neither table holds a workspace foreign key), installs, secrets; private repository bases/pages, identity keys, object keys/metadata | usage lines; opaque task/effect receipts, replay receipts and checkpoint purges | Each removed object first records its location for remote cleanup |
+| Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys, runners with their history (their runs stay, naming no runner) | usage lines, daily usage and run rows, registration receipts (opaque identifiers only) | none |
 | Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
 | OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
-| Runner (record retired after revoke) | runs, history | usage lines; threads (`last_runner_id` set NULL) | none |
+| Runner (record retired after revoke) | history | usage lines; its settled runs (`runner_id` set NULL); threads (`last_runner_id` set NULL) | none |
 
 ## vault and memory
 

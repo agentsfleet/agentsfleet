@@ -43,8 +43,11 @@ CREATE TABLE billing.usage_lines (
 CREATE INDEX idx_usage_lines_tenant_id_created_at_id
     ON billing.usage_lines (tenant_id, created_at DESC, id DESC);
 
+-- INCLUDE lets the spend check sum a fleet's window without visiting the table
+-- (`afd_billing/src/limits/select_fleet_spend.sql`).
 CREATE INDEX idx_usage_lines_fleet_id_created_at
-    ON billing.usage_lines (fleet_id, created_at) WHERE fleet_id IS NOT NULL;
+    ON billing.usage_lines (fleet_id, created_at) INCLUDE (workspace_id, charged_nanos)
+    WHERE fleet_id IS NOT NULL;
 
 -- INCLUDE lets a turn's cost be summed without visiting the table.
 CREATE INDEX idx_usage_lines_fleet_id_turn_id

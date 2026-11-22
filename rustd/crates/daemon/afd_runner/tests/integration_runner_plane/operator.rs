@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::runner::{BindMode, ExtraBind, RunnerLiveness};
 use afd_api_wire::admin::{AdminState, RunnerAdminAction, RunnerEventType};
@@ -214,15 +215,15 @@ async fn test_an_edit_stores_its_binds_in_the_sandbox_configuration() {
 }
 
 /// The deletion matrix: a revoked runner's record retires even after it ran a
-/// setup run, and that run goes with it. A setup run holds no money: its usage
-/// lines name the run and outlive it.
+/// setup run, and that run stays as history naming no runner. A setup run holds
+/// no money: its usage lines name the run and outlive it.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_retiring_a_runner_that_ran_a_setup_run_removes_its_runs() {
+async fn test_retiring_a_runner_that_ran_a_setup_run_keeps_its_runs() {
     let mut fixture = Fixture::create().await;
     let runner = fixture.enrol().await;
     let mut connection = fixture.owner.acquire().await.expect("a seed connection");
-    rows::setup_run(
+    let run = rows::setup_run(
         &mut connection,
         (&runner, &mint_id(), &mint_id()),
         SetupRunRow {
@@ -250,7 +251,19 @@ async fn test_retiring_a_runner_that_ran_a_setup_run_removes_its_runs() {
         .fetch_one(&mut *connection)
         .await
         .expect("the retired runner's runs read");
-    assert_eq!(left, 0, "a setup run goes with the runner that held it");
+    assert_eq!(left, 0, "no run names the retired runner");
+    let kept: Vec<Option<Uuid7>> =
+        sqlx::query_scalar("SELECT runner_id FROM thread.runs WHERE id = $1")
+            .bind(&run)
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the setup run reads");
+    assert_eq!(kept, vec![None], "the setup run stays, naming no runner");
+    sqlx::query("DELETE FROM thread.runs WHERE id = $1")
+        .bind(&run)
+        .execute(&mut *connection)
+        .await
+        .expect("the kept run cleans up");
     drop(connection);
     fixture.cleanup().await;
 }

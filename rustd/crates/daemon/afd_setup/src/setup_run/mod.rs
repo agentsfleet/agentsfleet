@@ -144,9 +144,9 @@ impl Drafts {
     /// cannot read each fail the message durably and pass the draft, so one
     /// draft's fault never stalls the walk.
     ///
-    /// A running head is reassigned whether or not a run row still names it:
-    /// a runner's deletion cascades its runs away, and the head would
-    /// otherwise wait forever.
+    /// A running head is reassigned whether or not a live run still names it:
+    /// a runner's deletion leaves its lapsed run naming no runner, and the
+    /// head would otherwise wait forever.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.

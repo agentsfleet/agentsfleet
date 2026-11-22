@@ -3,8 +3,8 @@
 --
 -- The head is the oldest message still queued or running; a stopped one is cancelled. A running
 -- head is taken again once its thread holds no live run: its run lapsed, or its runner was
--- deleted and the run went with it (`thread.runs.runner_id` cascades), so this assignment
--- reassigns it. Without the second, a deleted runner's head would wait forever.
+-- deleted while its run had lapsed (the run stays as history, naming no runner), so this
+-- assignment reassigns it. Without the second, a deleted runner's head would wait forever.
 --
 -- $1 the editing draft status · $2 the queued message status · $3 the running message status ·
 -- $4 limit · $5 the polling runner

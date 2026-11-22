@@ -133,7 +133,7 @@ One row per try at a turn. It replaces `runner.leases` and `setup.attempts`.
 | `id` | `UUID` PK | no | `leases.id` | the run id |
 | `thread_id` | `UUID` | no | `leases.fleet_id` / `draft_id` | FK `thread.threads(id)` ON DELETE CASCADE |
 | `turn_id` | `UUID` | no | `leases.event_id` | FK `thread.turns(id)` ON DELETE CASCADE: the turn the run was assigned for |
-| `runner_id` | `UUID` | no | `leases.runner_id` | FK `runner.runners(id)` ON DELETE CASCADE, as today |
+| `runner_id` | `UUID` | yes | `leases.runner_id` | FK `runner.runners(id)` ON DELETE SET NULL: a retired runner's settled runs stay as history |
 | `workspace_id`, `tenant_id` | `UUID` | no | `leases` | FKs to `identity.workspaces` and `identity.tenants` ON DELETE CASCADE |
 | `fencing_token` | `BIGINT` | no | `leases.fencing_token` | unique with `thread_id`: one run per fence |
 | `status` | `TEXT` | no | `leases.status` | `active`, `reported`, `expired`, `stopped` |
@@ -158,7 +158,7 @@ One row per thing a run did. It replaces `fleet.tool_calls`.
 | `id` | `UUID` PK | no | `tool_calls.id` | the item id |
 | `run_id` | `UUID` | yes | `event_id` + `fencing_token` | FK `thread.runs(id)` ON DELETE SET NULL: NULL once the run row is deleted |
 | `turn_id` | `UUID` | no | `event_id` | FK `thread.turns(id)` ON DELETE CASCADE: the turn newest when the item's step began |
-| `thread_id`, `workspace_id` | `UUID` | no | `fleet_id`, `workspace_id` | FKs ON DELETE CASCADE: the detail route authorizes without a join |
+| `thread_id`, `workspace_id` | `UUID` | no | `fleet_id`, `workspace_id` | `fleet_id` is a FK ON DELETE CASCADE; `workspace_id` is a copy, no FK, since a workspace's deletion reaches items through its fleets: the detail route authorizes without a join |
 | `sequence` | `BIGINT` | no | `sequence` | order within the run; unique with `run_id`, which makes a retried post write once |
 | `kind` | `TEXT` | no | new | `tool_call`, `edit`, `integration`, `approval`, `agent` |
 | `tool` | `TEXT` | yes | trace JSON | the tool's name |
@@ -168,7 +168,7 @@ One row per thing a run did. It replaces `fleet.tool_calls`.
 
 An item is written when its call finishes, as records are posted today. When a resumed run settles a turn, the report deletes that turn's items from every other run.
 
-An item lives as long as its turn. When its run row is deleted, as a runner's deletion cascades to its runs, the item stays with `run_id` set to NULL. The item detail then finds the run's head turn by the fence the run stamped on that turn.
+An item lives as long as its turn. When its run row is deleted, the item stays with `run_id` set to NULL; a runner's deletion leaves the run, naming no runner. The item detail then finds the run's head turn by the fence the run stamped on that turn.
 
 ## thread.deliveries
 
@@ -178,7 +178,7 @@ One row per answer owed to one destination.
 |--------|------|------|-----------|-----|
 | `id` | `UUID` PK | no | `obligations.id` | the delivery id |
 | `turn_id` | `UUID` | no | `event_id` (no FK today) | FK `thread.turns(id)` ON DELETE CASCADE: a delivery needs its turn |
-| `thread_id`, `workspace_id` | `UUID` | no | `fleet_id`, `workspace_id` | FKs ON DELETE CASCADE |
+| `thread_id`, `workspace_id` | `UUID` | no | `fleet_id`, `workspace_id` | `fleet_id` is a FK ON DELETE CASCADE; `workspace_id` names the lane, no FK, since a workspace's deletion reaches deliveries through its fleets |
 | `sequence` | `BIGINT` | no | `sequence` | lane order |
 | `provider`, `destination` | `TEXT` | no | as today | `slack` or `email`, and where |
 | `answer` | `TEXT` | no | as today | the text sent |

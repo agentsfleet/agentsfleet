@@ -15,7 +15,4 @@ CREATE TABLE identity.api_keys (
     CONSTRAINT uq_api_keys_key_hash UNIQUE (key_hash)
 );
 
-CREATE INDEX idx_api_keys_tenant_id_live
-    ON identity.api_keys (tenant_id) WHERE revoked_at IS NULL;
-
 GRANT SELECT, INSERT, UPDATE, DELETE ON identity.api_keys TO api_runtime;

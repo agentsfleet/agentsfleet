@@ -32,9 +32,7 @@ CREATE INDEX idx_approval_gates_fleet_id_turn_id
 
 CREATE INDEX idx_approval_gates_fleet_id_status ON fleet.approval_gates (fleet_id, status);
 
-CREATE INDEX idx_approval_gates_expires_at_pending
-    ON fleet.approval_gates (expires_at) WHERE resolved_at IS NULL;
-
+-- The gate page's ordered seek when no status filters it (`afd_approval/src/sql/select_gate_page.sql`).
 CREATE INDEX idx_approval_gates_workspace_id_created_at_id
     ON fleet.approval_gates (workspace_id, created_at, id);
 

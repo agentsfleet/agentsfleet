@@ -4,9 +4,11 @@
 -- `COALESCE(fleet_id, draft_id)`; `fleet_id` alone is read by the fleet's own statements.
 -- No foreign key to fleets, drafts or turns: a settled run is history that outlives its
 -- owner. The insert proves scope, and an owner's deletion deletes its active runs itself.
+-- The runner is history the same way: its deletion, refused while it holds a run or owes
+-- metering, leaves its settled runs naming no runner.
 CREATE TABLE thread.runs (
     id                          UUID PRIMARY KEY,
-    runner_id                   UUID    NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
+    runner_id                   UUID    REFERENCES runner.runners(id) ON DELETE SET NULL,
     fleet_id                    UUID,
     draft_id                    UUID,
     workspace_id                UUID    NOT NULL,
@@ -64,10 +66,10 @@ CREATE INDEX idx_runs_runner_id_status_run_expires_at
     ON thread.runs (runner_id, status, run_expires_at);
 
 -- Partial, so it holds only the metering backlog: expired runs not yet billed to expiry.
+-- Keyed by runner, so a runner's delete asks whether it still owes metering without
+-- reading its whole history (`afd_runner/src/sql/runner_admin/delete_runner_if_in_state.sql`).
 CREATE INDEX idx_runs_run_expires_at_unbilled
-    ON thread.runs (run_expires_at)
+    ON thread.runs (runner_id, run_expires_at)
     WHERE last_metered_at < run_expires_at;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON thread.runs TO api_runtime;
-
-CREATE INDEX idx_runner_runs_durable_task ON thread.runs (durable_task_id) WHERE durable_task_id IS NOT NULL;

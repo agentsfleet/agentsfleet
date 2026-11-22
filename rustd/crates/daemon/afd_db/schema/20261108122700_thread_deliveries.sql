@@ -1,11 +1,12 @@
 -- An answer owed to a destination until delivered or abandoned. A lane is one (provider,
 -- workspace) pair ordered by `sequence`. Every claim writes a fresh `receipt` and every later
--- write matches it, so a lapsed holder's late write changes nothing.
+-- write matches it, so a lapsed holder's late write changes nothing. `workspace_id` names the
+-- lane and is no foreign key: a workspace's deletion reaches its deliveries through its fleets.
 CREATE TABLE thread.deliveries (
     id              UUID PRIMARY KEY,
     sequence        BIGINT GENERATED ALWAYS AS IDENTITY,
     fleet_id        UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
-    workspace_id    UUID   NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
+    workspace_id    UUID   NOT NULL,
     provider        TEXT   NOT NULL,
     destination     TEXT   NOT NULL,
     turn_id         UUID   NOT NULL,

@@ -19,10 +19,11 @@ fn edit_post(fence: u64, turn: &str) -> String {
     )
 }
 
-// Value: protects=a turn's item history survives its run's deletion; fails_when=the
-// items foreign key cascades again, or the detail read still requires the run row;
-// why_new=items were erased with their run; seam=the runner row's deletion, which
-// cascades to its runs, and the item detail read over live Postgres.
+// Value: protects=a turn's item history survives its runner's and then its run's deletion;
+// fails_when=`thread.runs.runner_id` cascades again, the items foreign key cascades, or the
+// detail read requires the run row; why_new=a runner's deletion erased its run history;
+// seam=the runner row's deletion, the run row's deletion and the item detail read over live
+// Postgres.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn deleting_a_settled_run_keeps_its_items_and_their_detail() {
@@ -50,14 +51,35 @@ async fn deleting_a_settled_run_keeps_its_items_and_their_detail() {
         .await
         .expect("the run settles");
     assert_eq!(settled.rows_affected(), 1);
-    // `thread.runs.runner_id` cascades: the runner's deletion takes its runs.
+    // `thread.runs.runner_id` is set NULL: the runner's deletion keeps its runs as history.
     held.fixtures.delete_runner(&held.runner).await;
-    let runs: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE id = $1")
-        .bind(&run)
-        .fetch_one(&mut *connection)
+    let runners: Vec<Option<Uuid7>> =
+        sqlx::query_scalar("SELECT runner_id FROM thread.runs WHERE id = $1")
+            .bind(&run)
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the run's runner");
+    assert_eq!(runners, vec![None], "the run stays, naming no runner");
+    let through_run = History::new(held.fixtures.database.clone())
+        .tool_call(
+            &held.acquired.workspace_id,
+            &held.fleet,
+            &held.turn_id,
+            CallAddress {
+                fence: i64::try_from(held.fence.as_u64()).expect("a fence fits i64"),
+                call_number: 1,
+            },
+        )
         .await
-        .expect("the run count");
-    assert_eq!(runs, 0, "the run went with its runner");
+        .expect("the detail read answers");
+    assert!(through_run.is_some(), "the item still reads through its run");
+
+    let deleted = sqlx::query("DELETE FROM thread.runs WHERE id = $1")
+        .bind(&run)
+        .execute(&mut *connection)
+        .await
+        .expect("the run row is deleted");
+    assert_eq!(deleted.rows_affected(), 1);
 
     let kept: Vec<(Option<Uuid7>, Uuid7, i64, String)> = sqlx::query_as(
         "SELECT run_id, turn_id, sequence, kind FROM thread.items WHERE fleet_id = $1",

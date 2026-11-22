@@ -209,7 +209,7 @@ Each table's own index slot closes that. Every recurring control-plane read belo
 | Workspace turn keyset page | Index scan plus a post-filter on the tiebreak column; under a cached generic plan the cursor and `since` fell behind their `IS NULL` guards into filters | One text per scope, cursor and actor filter; `idx_turns_workspace_id_created_at_id` with the workspace, cursor and `since` in its index condition, walked in order |
 | Fleet turn page and chat thread | A cached generic plan multiplied the workspace and fleet selectivities, expected one row, and read the fleet's whole history into a bitmap scan plus sort | `idx_turns_thread_id_created_at_id` walked in order, because `stx_turns_workspace_id_thread_id` tells the planner the thread implies the workspace. An actor-filtered page still sorts its matches |
 | Fleet list page | Unserved: the existing index is partial on `status='active'` and the list is not status-filtered | `idx_fleets_workspace_id_created_at_id` |
-| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (slot 1800), and `identity.api_keys` keeps only `idx_api_keys_tenant_id_live` (slot 1150) |
+| Runner and api-key list sorts | Sort node per request | Still a sort node: the M154 rebuild left runner list sorts unindexed (slot 1800), and `identity.api_keys` pages ride `uq_api_keys_tenant_id_name` (slot 1150) |
 
 **Queue discovery:** the unsettled partial index avoids settled turn history. Each pass still examines eligible active fleets; size Postgres against both fleet count and pass rate.
 

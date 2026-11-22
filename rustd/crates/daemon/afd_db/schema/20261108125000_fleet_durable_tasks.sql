@@ -68,9 +68,6 @@ CREATE TABLE fleet.durable_tasks (
 CREATE UNIQUE INDEX uq_durable_tasks_wait_owner_run_id ON fleet.durable_tasks (wait_owner_run_id)
     WHERE wait_owner_run_id IS NOT NULL;
 
-CREATE INDEX idx_durable_tasks_fleet_unfinished ON fleet.durable_tasks (fleet_id, id)
-    WHERE terminal_at IS NULL;
-
 CREATE INDEX idx_durable_tasks_fleet_created_at_id ON fleet.durable_tasks (fleet_id, created_at DESC, id DESC);
 
 CREATE INDEX idx_durable_tasks_expires_at_unfinished ON fleet.durable_tasks (expires_at, id)
@@ -82,16 +79,8 @@ CREATE INDEX idx_durable_tasks_unfinished_created
     ON fleet.durable_tasks (fleet_id, created_at DESC, id DESC)
     WHERE terminal_at IS NULL;
 
-CREATE INDEX idx_durable_tasks_checkpoint_id ON fleet.durable_tasks (checkpoint_id) WHERE checkpoint_id IS NOT NULL;
-
 CREATE INDEX idx_durable_task_checkpoint_cleanup ON fleet.durable_tasks (checkpoint_cleanup_at, id)
     WHERE checkpoint_cleanup_at IS NOT NULL;
-
-CREATE INDEX idx_durable_tasks_dependency_target ON fleet.durable_tasks USING gin (target jsonb_path_ops)
-    WHERE terminal_at IS NULL;
-
-CREATE INDEX idx_durable_tasks_unfinished_attempt_limit ON fleet.durable_tasks (id)
-    WHERE terminal_at IS NULL AND used_runs >= max_runs;
 
 -- Deferred, so an item's task is assigned in the transaction that creates the task.
 ALTER TABLE fleet.durable_task_items

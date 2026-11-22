@@ -191,24 +191,25 @@ async fn a_revoked_creators_queued_turn_is_cancelled_and_not_run() {
     case.cleanup().await;
 }
 
-// Value: protects=a turn whose run went with its deleted runner is run again, not
-// stranded; fails_when=the scan or the head read requires a run row for a running
-// head again; why_new=a deleted runner's turn waited forever; seam=the production
-// poll over live Postgres, the run row removed as the runner's cascade removes it.
+// Value: protects=a turn whose runner was deleted is run again, not stranded;
+// fails_when=the scan or the head read requires the run's runner again; why_new=a
+// deleted runner's turn waited forever; seam=the production poll over live Postgres,
+// the run row left as the runner's deletion leaves it (expired, naming no runner).
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_running_turn_whose_run_went_with_its_runner_is_assigned_again() {
+async fn a_running_turn_whose_runner_was_deleted_is_assigned_again() {
     let case = Case::queued().await;
     let first = case.take_on_host().await;
     case.lapse(&first.run_id()).await;
-    // `thread.runs.runner_id` cascades: a deleted runner leaves its running
-    // turn with no run row at all, which is what this delete leaves.
-    let gone = sqlx::query("DELETE FROM thread.runs WHERE id = $1")
+    // `thread.runs.runner_id` is set NULL: a runner retired after its run lapsed leaves
+    // that run as expired history naming no runner, which is what this update leaves.
+    let orphaned = sqlx::query("UPDATE thread.runs SET status = $2, runner_id = NULL WHERE id = $1")
         .bind(first.run_id())
+        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
         .execute(&mut *case.connection().await)
         .await
-        .expect("the run goes");
-    assert_eq!(gone.rows_affected(), 1);
+        .expect("the run loses its runner");
+    assert_eq!(orphaned.rows_affected(), 1);
     assert_eq!(case.turn(&first.turn_id()).await.status, "running");
 
     let again = case.take_on_host().await;
@@ -216,7 +217,10 @@ async fn a_running_turn_whose_run_went_with_its_runner_is_assigned_again() {
     assert_eq!(again.fence, 2, "at the thread's next fence");
     assert_eq!(
         case.runs().await,
-        vec![(2, afd_state::sql::RUN_STATUS_ACTIVE.to_owned())]
+        vec![
+            (1, afd_state::sql::RUN_STATUS_EXPIRED.to_owned()),
+            (2, afd_state::sql::RUN_STATUS_ACTIVE.to_owned())
+        ]
     );
     case.cleanup().await;
 }

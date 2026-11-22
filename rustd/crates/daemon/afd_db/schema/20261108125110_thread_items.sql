@@ -1,7 +1,9 @@
 -- One row per thing a run did. It lives as long as the turn it names: when the run row is
--- deleted, as a runner's deletion cascades to its runs, `run_id` reads NULL and the item stays.
+-- deleted, `run_id` reads NULL and the item stays.
 -- `fleet_id` and `workspace_id` copy the run's scope, written once with it, so the detail
--- endpoint authorizes without joining the turn. `fencing_token` is the run's fence, which
+-- endpoint authorizes without joining the turn. Only `fleet_id` is a foreign key: a
+-- workspace's deletion reaches its items through its fleets, so a second cascade from the
+-- workspace would only add a check to every insert. `fencing_token` is the run's fence, which
 -- finds the run's head turn once `run_id` is NULL. `sequence` orders calls within one run. `turn_id` is the turn newest when the item's step began: the
 -- run's own, or one its conversation folded in. `kind` and `status` hold the words
 -- `af_wire::tool_detail::{ItemKind, ItemStatus}` spell; `tool` names the tool called, NULL for
@@ -10,7 +12,7 @@
 -- (`afd_turns/src/view/history/select_tool_call.sql`).
 CREATE TABLE thread.items (
     id                   UUID PRIMARY KEY,
-    workspace_id         UUID    NOT NULL REFERENCES identity.workspaces(id) ON DELETE CASCADE,
+    workspace_id         UUID    NOT NULL,
     fleet_id             UUID    NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
     run_id               UUID,
     turn_id              UUID    NOT NULL,
@@ -38,8 +40,6 @@ CREATE TABLE thread.items (
     CONSTRAINT uq_items_run_id_sequence
         UNIQUE (run_id, sequence)
 );
-
-CREATE INDEX idx_items_workspace_id ON thread.items (workspace_id);
 
 CREATE INDEX idx_items_fleet_id ON thread.items (fleet_id);
 
