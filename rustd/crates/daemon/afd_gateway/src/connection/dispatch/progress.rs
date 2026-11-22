@@ -36,23 +36,21 @@ impl ConnectionServices {
             return Ok(());
         };
         // A slow cosmetic publisher never holds control, renewal or report workers.
-        if let Err(error) = self
+        // `operation` observes a failure; cosmetic progress never returns one.
+        let _observed: Result<()> = self
             .operation(Operation::Progress, async {
                 Ok(self
                     .runs
                     .activity_for_target(&self.handle.runner, &id, &target, &request.frames)
                     .await?)
             })
-            .await
-        {
-            crate::Gateway::observe(&error, Operation::Progress);
-        }
+            .await;
         Ok(())
     }
 
     /// A draft run's answer chunks and compaction progress, republished on
     /// its draft's private stream as `message.delta` and `context.progress`.
-    /// Cosmetic: a refused publish is observed, never returned.
+    /// Cosmetic: a refused publish is observed by `operation`, never returned.
     async fn setup_preview(&self, run: &Uuid7, frames: &[ActivityFrame<'_>]) -> Result<()> {
         let compaction: Vec<ContextProgress> = frames
             .iter()
@@ -76,7 +74,7 @@ impl ConnectionServices {
                 _ => None,
             })
             .collect();
-        if let Err(error) = self
+        let _observed: Result<()> = self
             .operation(Operation::Progress, async {
                 self.drafts
                     .publish_setup_context(&self.handle.runner, run, &compaction)
@@ -86,10 +84,7 @@ impl ConnectionServices {
                     .publish_setup_preview(&self.handle.runner, run, &chunks)
                     .await?)
             })
-            .await
-        {
-            crate::Gateway::observe(&error, Operation::Progress);
-        }
+            .await;
         Ok(())
     }
 

@@ -11,7 +11,9 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_core::turn::status;
 use af_wire::protocol::{Down, MESSAGE_BYTES_MAX};
-use af_wire::run::{ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, RunPayload, TaggedRun, Turn};
+use af_wire::run::{
+    ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, EarlierCall, RunPayload, TaggedRun, Turn,
+};
 use af_wire::tool_detail::ItemStatus;
 use af_wire::turn::TurnKind;
 use afd_turns::view::Cursor;
@@ -19,8 +21,8 @@ use jiff::Timestamp;
 use serde_json::json;
 
 use super::{
-    CallRow, EVENT_HISTORY_CUT, EVENT_HISTORY_UNAVAILABLE, FRAME_ENVELOPE_BYTES, FinishedTurn,
-    HISTORY_PAGE_TURNS, Thread, fit_frame, turn, turns_before,
+    CALL_CUT, CallRow, EVENT_HISTORY_CUT, EVENT_HISTORY_UNAVAILABLE, FRAME_ENVELOPE_BYTES,
+    FinishedTurn, HISTORY_PAGE_TURNS, Thread, fit_frame, turn, turns_before,
 };
 
 /// The workspace, fleet and event every read here names.
@@ -493,6 +495,48 @@ async fn test_a_history_past_the_frame_drops_its_oldest_turns() {
     let logged = capture.only(EVENT_HISTORY_CUT);
     assert_eq!(logged.field("fleet_id"), Some(FLEET));
     assert_eq!(metrics.sum(CUTS, &[("reason", "frame")]), before + 1);
+}
+
+/// Finished calls past the run frame, with no history left to drop, give up
+/// their oldest bodies until the framed assignment fits; every call keeps its
+/// id and tool, and the newest keeps its output.
+#[tokio::test]
+async fn a_payload_whose_finished_calls_pass_the_frame_is_cut_to_fit() {
+    const CALLS: u64 = 40;
+    let _counted_alone = COUNTED.lock().await;
+    // Forty 1 MiB outputs pass the 32 MiB frame.
+    let output = "o".repeat(1 << 20);
+    let mut payload = payload(Vec::new());
+    payload.finished_calls = (1..=CALLS)
+        .map(|number| EarlierCall {
+            call_id: format!("4:{number}").into(),
+            tool: "message".into(),
+            arguments: json!({"text": "hi"}).as_object().cloned().unwrap(),
+            output: output.clone().into(),
+            status: ItemStatus::Succeeded,
+        })
+        .collect();
+
+    let fitted = fit_frame(payload);
+
+    let framed = af_validate::serialized_len(&fitted).unwrap() + FRAME_ENVELOPE_BYTES;
+    assert!(framed <= MESSAGE_BYTES_MAX, "{framed} bytes framed");
+    let ids: Vec<String> = fitted
+        .finished_calls
+        .iter()
+        .map(|call| call.call_id.to_string())
+        .collect();
+    let every: Vec<String> = (1..=CALLS).map(|number| format!("4:{number}")).collect();
+    assert_eq!(ids, every, "every call is still named");
+    assert_eq!(
+        fitted.finished_calls[0].output, CALL_CUT,
+        "the oldest is cut"
+    );
+    assert_eq!(
+        fitted.finished_calls.last().map(|call| call.output.len()),
+        Some(output.len()),
+        "the newest keeps its output"
+    );
 }
 
 /// Every chat run's read bytes are observed, and a failed read counts as

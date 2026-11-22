@@ -351,8 +351,8 @@ async fn fleet_progress_the_datastore_cannot_retain_is_observed_not_returned() -
                 && event.field("operation") == Some("progress")
         })
         .collect();
-    // The operation wrapper observes the failure, and the progress handler again.
-    assert_eq!(observed.len(), 2, "{observed:?}");
+    // The operation wrapper observes the failure once; the handler adds none.
+    assert_eq!(observed.len(), 1, "{observed:?}");
     assert!(
         observed
             .iter()

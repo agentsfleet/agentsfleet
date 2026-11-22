@@ -226,3 +226,63 @@ async fn a_resumed_run_note_lists_the_dead_runs_posts() {
     assert_eq!(post.call_id, format!("{}:1", held.fence.as_u64()));
     held.fixtures.cleanup().await;
 }
+
+/// Run 1 posts and dies; run 2 takes the turn over and records its own calls,
+/// then dies before it reports. A third run still lists run 1's post: only
+/// settlement drops a dead run's items, so no takeover forgets an effect.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_second_takeover_still_lists_the_first_dead_runs_posts() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let standing = standing(&held).await;
+    let posts = std::sync::atomic::AtomicU32::new(0);
+    let one = item();
+    send(&plane, &standing, message(&held, &one, 1), &posts).await;
+
+    held.fixtures
+        .lapse_holder(&held.issued.run_id, &held.fleet)
+        .await;
+    let reassigned = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
+        .await
+        .expect("a lapsed assignment is winnable");
+    let second = held
+        .runs
+        .issue(
+            &held.spare,
+            &reassigned,
+            Billed {
+                tenant_id: &held.tenant,
+                posture: POSTURE,
+                provider: PROVIDER,
+                model: MODEL,
+            },
+            held.fixtures.enrolled_at(),
+        )
+        .await
+        .expect("the reassigned run row must be written")
+        .expect("the assignment is still held");
+    let records = format!(
+        r#"{{"fencing_token":{},"calls":[{{"call_number":1,"arguments":{{}},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false,"turn_id":"{}","kind":"tool_call","tool":"shell","status":"succeeded"}}]}}"#,
+        reassigned.fence.as_u64(),
+        held.turn_id.as_str()
+    );
+    let records: af_wire::tool_detail::ToolCallRecordsRequest<'_> =
+        serde_json::from_str(&records).expect("a well-formed post");
+    plane
+        .record_tool_calls(&held.spare, second.run_id.as_str(), &records, held.now)
+        .await
+        .expect("run 2 records its calls");
+
+    // The third run's own id only excludes its items; it has none yet.
+    let third = item();
+    let finished = held
+        .runs
+        .finished_calls(&held.fleet, &held.turn_id, &third)
+        .await
+        .expect("the dead runs' calls read");
+
+    let tools: Vec<&str> = finished.iter().map(|call| call.tool.as_ref()).collect();
+    assert_eq!(tools, [MESSAGE, "shell"], "run 1's post survives run 2's");
+    held.fixtures.cleanup().await;
+}

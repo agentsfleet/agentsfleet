@@ -11,8 +11,8 @@
 //! A record keeps the call's whole output and arguments: no field cap, no
 //! budget per run, and no post cap beyond the runner frame the route reads a
 //! body up to. Settlement keeps one run's records (the report statement drops
-//! the rest, as `DELETE_OTHER_FENCES` does for a post), so the set an operator
-//! can open is one run's.
+//! the rest), so the set an operator can open is one run's. A post drops
+//! none: a run taking a dead run's turn over reads every dead run's calls.
 //!
 //! # Each record names a turn the run serves
 //!

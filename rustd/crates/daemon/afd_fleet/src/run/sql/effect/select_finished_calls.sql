@@ -1,6 +1,6 @@
 -- Every call another run of the turn finished, in the order made: what a run that takes the
 -- turn over reconciles before it acts. The turn's settlement deletes them
--- (`delete_other_fences.sql`), so a settled turn reads none.
+-- (`commit_report.sql`), so a settled turn reads none.
 --
 -- $1 fleet · $2 turn · $3 the run taking it over
 SELECT i.turn_id, i.fencing_token, i.sequence, i.tool, i.status,

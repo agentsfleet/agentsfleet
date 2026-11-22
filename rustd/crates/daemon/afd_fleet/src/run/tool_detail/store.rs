@@ -1,6 +1,5 @@
-//! The statements behind the tool-call record verb, and the dead-fence delete
-//! a post runs. Split from [`super`] at the length cap: that file
-//! decides what is kept, this one writes it.
+//! The statements behind the tool-call record verb. Split from [`super`] at
+//! the length cap: that file decides what is kept, this one writes it.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -20,13 +19,10 @@ use crate::run::store::Runs;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_KEEP: &str = "tool detail keep";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_DROP: &str = "tool detail dead fence drop";
-
 impl Runs {
-    /// One post, in one transaction: lock the run, check its fence, clear
-    /// dead runs' records, and write the records that name a turn the run
-    /// serves.
+    /// One post, in one transaction: lock the run, check its fence, and
+    /// write the records that name a turn the run serves. Dead runs' records
+    /// stay until settlement, so a later takeover still reads them.
     ///
     /// The run row stays locked until the commit, so nothing can supersede
     /// the run between the fence check and the write (`SELECT_LIVE_RUN`).
@@ -46,7 +42,6 @@ impl Runs {
         if !target.holds(presented) {
             return Ok(Kept::Fenced(target));
         }
-        drop_others(&mut transaction, &target, run_id).await?;
         let named = named_turns(&candidates);
         let served = served_turns(&mut transaction, &target, run_id, &named).await?;
         let (kept, unserved) = serving(candidates, &served);
@@ -152,22 +147,6 @@ async fn served_turns(
         .await
         .map_err(query(CONTEXT_KEEP))?;
     Ok(served.iter().map(|turn| turn.as_str().to_owned()).collect())
-}
-
-/// Delete every record another run of `target`'s turn kept.
-async fn drop_others(
-    connection: &mut PgConnection,
-    target: &LiveRun,
-    run_id: &Uuid7,
-) -> Result<()> {
-    sqlx::query(statement::DELETE_OTHER_FENCES)
-        .bind(&target.fleet_id)
-        .bind(&target.turn_id)
-        .bind(run_id)
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT_DROP))?;
-    Ok(())
 }
 
 /// An edit's changes as the `changes` column holds them, the wire's own

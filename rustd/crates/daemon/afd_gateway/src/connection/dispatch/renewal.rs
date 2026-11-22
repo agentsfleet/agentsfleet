@@ -176,8 +176,8 @@ impl ConnectionServices {
                 });
             match &outcome {
                 Ok(response) => self.cache.renew(&entry.run_id, response.run_expires_at),
+                // `operation_until` observed the failure.
                 Err(error) => {
-                    crate::Gateway::observe(error, Operation::Renewal);
                     if !error.retryable() {
                         self.cache.forget(&entry.run_id);
                     }

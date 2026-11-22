@@ -167,11 +167,6 @@ impl Session {
         tokio::time::timeout(af_core::timing::STREAM_ANSWER_TIMEOUT, &mut self.owner).await???;
         Ok(())
     }
-
-    /// Interrupt native I/O while an integration test retains its outstanding request future.
-    pub fn disconnect(&self) {
-        self.halt.stop();
-    }
 }
 
 impl Drop for Session {

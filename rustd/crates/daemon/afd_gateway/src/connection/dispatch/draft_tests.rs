@@ -272,14 +272,16 @@ async fn a_cancelled_draft_run_is_refused_and_forgotten() -> TestResult {
         !seated.holds_draft(&run),
         "a refused draft run is forgotten"
     );
-    assert!(
-        capture.events().iter().any(|event| {
+    let observed = capture
+        .events()
+        .iter()
+        .filter(|event| {
             event.field("event") == Some("runner_stream_operation_failed")
                 && event.field("operation") == Some("renewal")
                 && event.field("error_code") == Some(error_code::RUN_CANCELLED.as_str())
-        }),
-        "the refusal is observed"
-    );
+        })
+        .count();
+    assert_eq!(observed, 1, "the refusal is observed once");
     seated.close().await
 }
 
@@ -298,13 +300,15 @@ async fn a_draft_preview_the_datastore_cannot_take_is_observed_not_returned() ->
     let text = frame.to_string();
     let message: Up<'_> = serde_json::from_str(&text)?;
     seated.connection.send(&message).await?;
-    assert!(
-        capture.events().iter().any(|event| {
+    let observed = capture
+        .events()
+        .iter()
+        .filter(|event| {
             event.field("event") == Some("runner_stream_operation_failed")
                 && event.field("operation") == Some("progress")
-        }),
-        "the failed preview is observed"
-    );
+        })
+        .count();
+    assert_eq!(observed, 1, "the failed preview is observed once");
     seated.close().await
 }
 

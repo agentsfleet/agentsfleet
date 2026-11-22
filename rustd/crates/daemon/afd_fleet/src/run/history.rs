@@ -12,8 +12,8 @@
 //! and the model's window is the in-run compaction's (`af_context`). The run
 //! frame ([`MESSAGE_BYTES_MAX`]) is the one bound, a transport limit: the read
 //! stops at the turn whose calls pass one frame, so it never holds more than a
-//! frame and that turn, and [`fit_frame`] drops an assignment's oldest turns
-//! until it fits one, and logs it.
+//! frame and that turn, and [`fit_frame`] drops an assignment's oldest turns,
+//! then empties its oldest finished calls, until it fits one, and logs it.
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -40,6 +40,8 @@ use crate::run::sql::history::{SELECT_CALLS_OF, SELECT_FINISHED_BEFORE};
 pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "run_history_unavailable";
 /// The event an assignment whose oldest turns the frame cut is logged under.
 pub(super) const EVENT_HISTORY_CUT: &str = "run_history_cut_to_frame";
+/// What a finished call the frame emptied answers, in place of its output.
+const CALL_CUT: &str = "[cut to fit the run frame]";
 /// The finished turns one read takes, unless `[turns] history_page_size` says.
 ///
 /// A bound on one statement's cost, not on the history, which is read page
@@ -335,12 +337,12 @@ pub(super) fn call(row: CallRow) -> Option<EarlierCall<'static>> {
     })
 }
 
-/// `payload` with its oldest turns dropped until the assignment fits one run
-/// frame.
+/// `payload` with its oldest turns dropped, then its oldest finished calls'
+/// arguments and output, until the assignment fits one run frame.
 ///
 /// The frame is a transport limit, so the cut is logged and counted. A
-/// payload past the frame without any history is left for the gateway, which
-/// fails its run as too large.
+/// payload still past the frame is left for the gateway, which fails its run
+/// as too large.
 #[must_use]
 pub fn fit_frame(mut payload: RunPayload<'_>) -> RunPayload<'_> {
     let room = MESSAGE_BYTES_MAX.saturating_sub(FRAME_ENVELOPE_BYTES);
@@ -367,12 +369,23 @@ pub fn fit_frame(mut payload: RunPayload<'_>) -> RunPayload<'_> {
         payload.history.drain(..take.min(payload.history.len()));
         dropped += take;
     }
-    if dropped > 0 {
+    // History gone, the oldest finished calls give up their bodies; each
+    // keeps its tool and id, so the recovery note still names every call.
+    let mut emptied = 0_usize;
+    while af_validate::serialized_len(&payload).is_ok_and(|total| total > room) {
+        let Some(call) = payload.finished_calls.get_mut(emptied) else {
+            break;
+        };
+        call.output = Cow::Borrowed(CALL_CUT);
+        call.arguments.clear();
+        emptied += 1;
+    }
+    if dropped > 0 || emptied > 0 {
         metrics::cut(HistoryCut::Frame);
         let (run_id, fleet_id) = (payload.run_id.as_ref(), payload.event.fleet_id.as_ref());
         let kept = payload.history.len();
         let event = EVENT_HISTORY_CUT;
-        tracing::warn!(run_id, fleet_id, dropped, kept, event);
+        tracing::warn!(run_id, fleet_id, dropped, kept, emptied, event);
     }
     payload
 }

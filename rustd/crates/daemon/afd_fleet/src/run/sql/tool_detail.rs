@@ -48,15 +48,3 @@ pub const SELECT_SERVED_TURNS: &str = include_str!("select_served_turns.sql");
 /// `$11` truncated, `$13` turns, `$14` kinds, `$15` tools, `$16` statuses,
 /// `$17` changes as JSON text or NULL. Both stamps are `now()`.
 pub const UPSERT_RECORDS: &str = include_str!("upsert_tool_calls.sql");
-
-/// Deletes the records every other run of the run's turn kept.
-///
-/// A post runs it, holding a run that is the fleet's current one, so a turn
-/// reassigned many times before it settles keeps one run's records rather
-/// than a set per reassignment. The report statement deletes the
-/// same records inline when it settles, because a reassigned run re-ran the
-/// turn and numbered its calls from 1 again, so only the settling run's
-/// records describe the run whose answer stands.
-///
-/// `$1` fleet, `$2` the run's own turn, `$3` the current run.
-pub const DELETE_OTHER_FENCES: &str = include_str!("delete_other_fences.sql");
