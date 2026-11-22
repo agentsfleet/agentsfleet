@@ -203,12 +203,13 @@ async fn a_running_turn_whose_runner_was_deleted_is_assigned_again() {
     case.lapse(&first.run_id()).await;
     // `thread.runs.runner_id` is set NULL: a runner retired after its run lapsed leaves
     // that run as expired history naming no runner, which is what this update leaves.
-    let orphaned = sqlx::query("UPDATE thread.runs SET status = $2, runner_id = NULL WHERE id = $1")
-        .bind(first.run_id())
-        .bind(afd_state::sql::RUN_STATUS_EXPIRED)
-        .execute(&mut *case.connection().await)
-        .await
-        .expect("the run loses its runner");
+    let orphaned =
+        sqlx::query("UPDATE thread.runs SET status = $2, runner_id = NULL WHERE id = $1")
+            .bind(first.run_id())
+            .bind(afd_state::sql::RUN_STATUS_EXPIRED)
+            .execute(&mut *case.connection().await)
+            .await
+            .expect("the run loses its runner");
     assert_eq!(orphaned.rows_affected(), 1);
     assert_eq!(case.turn(&first.turn_id()).await.status, "running");
 

@@ -72,7 +72,10 @@ async fn deleting_a_settled_run_keeps_its_items_and_their_detail() {
         )
         .await
         .expect("the detail read answers");
-    assert!(through_run.is_some(), "the item still reads through its run");
+    assert!(
+        through_run.is_some(),
+        "the item still reads through its run"
+    );
 
     let deleted = sqlx::query("DELETE FROM thread.runs WHERE id = $1")
         .bind(&run)

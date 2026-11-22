@@ -67,3 +67,32 @@ async fn a_second_answer_restores_what_the_first_answer_saved() -> Checked {
     case.fixtures.cleanup().await;
     Ok(())
 }
+
+// Value: protects=a resume cycle cannot hang or misdirect the owner read;
+// fails_when=the walk over resumes_turn_id has no cycle guard; why_new=every
+// answer case walked an acyclic chain; seam=Runs::turn_resume over live
+// Postgres, two answers resuming each other.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn answers_that_resume_each_other_end_the_walk() -> Checked {
+    let case = Case::new().await?;
+    let store = TurnCheckpoints::new(Arc::new(Kek::from_hex(
+        crate::report_seed::FIXTURE_KEK_HEX,
+    )?));
+    let first = answer(&case, &case.acquired.turn_id).await?;
+    publish(&case, &store, &root(&case, TurnWorkspace::ApiOnly)).await?;
+    let second = answer(&case, &first).await?;
+    sqlx::query("UPDATE thread.turns SET resumes_turn_id = $2 WHERE id = $1")
+        .bind(&first)
+        .bind(&second)
+        .execute(&mut *case.fixtures.database.acquire().await?)
+        .await?;
+
+    assert_eq!(
+        case.runs.turn_resume(case.run()).await?,
+        None,
+        "the cycle ends on the first answer, which saved nothing"
+    );
+    case.fixtures.cleanup().await;
+    Ok(())
+}
