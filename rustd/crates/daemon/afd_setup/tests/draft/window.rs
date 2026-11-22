@@ -28,8 +28,8 @@ WITH old AS (
  RETURNING *
 )
 INSERT INTO setup.replay_receipts
- (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-SELECT id,workspace_id,$3,scope,operation_id,request_digest,resource_id,
+ (id,user_id,scope,operation_id,request_digest,resource_id,created_at)
+SELECT id,$3,scope,operation_id,request_digest,resource_id,
        statement_timestamp() - $4::interval
   FROM old";
 

@@ -241,7 +241,6 @@ pub(crate) async fn insert(connection: &mut PgConnection, insertion: Insertion<'
         &mut *connection,
         replay::Reservation {
             receipt_id: insertion.receipt,
-            workspace: insertion.workspace,
             person: insertion.person,
             scope: &scope(insertion.workspace, insertion.draft),
             operation: insertion.operation,

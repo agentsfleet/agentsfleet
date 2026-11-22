@@ -2,8 +2,6 @@
 CREATE TABLE fleet.durable_task_checkpoint_operations (
     durable_task_checkpoint_id UUID PRIMARY KEY,
     durable_task_id UUID NOT NULL,
-    fleet_id UUID NOT NULL,
-    workspace_id UUID NOT NULL,
     operation_id UUID NOT NULL,
     request_digest TEXT NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,

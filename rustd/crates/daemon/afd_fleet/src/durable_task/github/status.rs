@@ -26,11 +26,6 @@ impl Snapshot {
             && self.checks.iter().all(|check| check.status == "completed")
     }
 
-    pub(in crate::durable_task) fn digest(&self) -> Result<String> {
-        Ok(af_core::etag::sha256_hex(
-            &serde_json::to_vec(self).map_err(af_core::json::Unreadable::from)?,
-        ))
-    }
     pub(in crate::durable_task) fn green(&self, target: &BoundPr) -> bool {
         self.open
             && self.head == target.head

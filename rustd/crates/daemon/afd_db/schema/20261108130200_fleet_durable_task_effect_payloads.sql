@@ -5,7 +5,6 @@ CREATE TABLE fleet.durable_task_effect_payloads (
     fleet_id UUID NOT NULL,
     workspace_id UUID NOT NULL,
     target JSONB NOT NULL,
-    request JSONB NOT NULL,
     created_at TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT fk_effect_payloads_durable_task FOREIGN KEY (durable_task_id, fleet_id, workspace_id)
         REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE CASCADE

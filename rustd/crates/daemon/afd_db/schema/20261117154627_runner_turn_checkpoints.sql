@@ -12,7 +12,6 @@ CREATE TABLE runner.turn_checkpoints (
     format_version INTEGER NOT NULL CHECK (format_version > 0),
     has_workspace BOOLEAN NOT NULL,
     toolbox_digest TEXT,
-    page_count INTEGER NOT NULL CHECK (page_count >= 0),
     page_ids UUID[] NOT NULL,
     upload_budget_bytes BIGINT NOT NULL CHECK (upload_budget_bytes >= 0),
     uploaded_bytes BIGINT NOT NULL CHECK (uploaded_bytes >= 0 AND uploaded_bytes <= upload_budget_bytes),
@@ -38,8 +37,7 @@ CREATE TABLE runner.turn_checkpoints (
     CONSTRAINT uq_turn_checkpoint_workspace UNIQUE (id, workspace_id),
     CONSTRAINT uq_turn_checkpoint_generation UNIQUE (turn_id, generation),
     CONSTRAINT ck_turn_checkpoint_api_only CHECK (has_workspace OR (
-        page_count = 0 AND logical_bytes = 0 AND entry_count = 0 AND upload_budget_bytes = 0)),
-    CONSTRAINT ck_turn_checkpoint_pages CHECK (cardinality(page_ids) = page_count),
+        cardinality(page_ids) = 0 AND logical_bytes = 0 AND entry_count = 0 AND upload_budget_bytes = 0)),
     CONSTRAINT ck_turn_checkpoint_workspace CHECK (has_workspace = (toolbox_digest IS NOT NULL)),
     CONSTRAINT ck_turn_checkpoint_folds CHECK (
         (covered_fold_ids IS NULL) = (covered_fold_sequences IS NULL)

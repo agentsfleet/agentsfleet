@@ -29,9 +29,8 @@ WITH prior AS MATERIALIZED (
     RETURNING id
 ), receipt AS (
     INSERT INTO setup.replay_receipts
-        (id, workspace_id, user_id, scope, operation_id, request_digest,
-         resource_id, created_at)
-    SELECT $8, $9, $10, $11, $4, $12, m.id, now()
+        (id, user_id, scope, operation_id, request_digest, resource_id, created_at)
+    SELECT $8, $10, $11, $4, $12, m.id, now()
       FROM message m
     ON CONFLICT (scope, operation_id) DO NOTHING
     RETURNING id

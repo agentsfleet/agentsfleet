@@ -18,5 +18,5 @@ SELECT $1, t.id, $3, $4,
 FROM counter t
 RETURNING id
 )
-INSERT INTO fleet.durable_task_checkpoint_operations (durable_task_checkpoint_id, durable_task_id, fleet_id, workspace_id, operation_id, request_digest, created_at)
-SELECT id, $2, $3, $4, $8, $9, now() FROM checkpoint
+INSERT INTO fleet.durable_task_checkpoint_operations (durable_task_checkpoint_id, durable_task_id, operation_id, request_digest, created_at)
+SELECT id, $2, $8, $9, now() FROM checkpoint

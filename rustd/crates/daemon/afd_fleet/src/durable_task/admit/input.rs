@@ -146,7 +146,6 @@ pub(super) async fn accept(
                 .ok_or(DurableTaskRefusal::InputAmbiguous)?,
         )
         .bind(item.interpretation())
-        .bind(generation)
         .execute(connection)
         .await
         .map_err(query("retain accepted text and input interpretation"))?;

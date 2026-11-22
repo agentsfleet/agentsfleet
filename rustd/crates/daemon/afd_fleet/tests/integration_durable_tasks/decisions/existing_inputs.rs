@@ -211,7 +211,7 @@ async fn assert_input(case: &Case, task: &Uuid7, action: DurableTaskInputAction)
         .acquire()
         .await
         .expect("accepted input observer");
-    let rows: Vec<(i64, String, String, i64)> = sqlx::query_as("SELECT sequence,accepted_text,interpretation,generation FROM fleet.durable_task_inputs WHERE durable_task_id=$1")
+    let rows: Vec<(i64, String, String)> = sqlx::query_as("SELECT sequence,accepted_text,interpretation FROM fleet.durable_task_inputs WHERE durable_task_id=$1")
         .bind(task).fetch_all(&mut *connection).await.expect("accepted input custody");
     assert_eq!(
         rows,
@@ -219,7 +219,6 @@ async fn assert_input(case: &Case, task: &Uuid7, action: DurableTaskInputAction)
             1,
             "Repair".to_owned(),
             "Preserve title decoding behavior".to_owned(),
-            1
         )]
     );
     let state: (String, i64, i64, i64) = sqlx::query_as("SELECT status,generation,input_sequence,(SELECT count(*) FROM thread.turns WHERE thread_id=$2) FROM fleet.durable_tasks WHERE id=$1")

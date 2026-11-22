@@ -115,7 +115,6 @@ pub(super) async fn reserve(
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
         .bind(target.target)
-        .bind(request)
         .execute(&mut *tx)
         .await
         .map_err(query("retain private publication target"))?;

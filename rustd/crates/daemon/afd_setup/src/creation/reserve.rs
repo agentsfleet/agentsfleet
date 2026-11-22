@@ -100,7 +100,6 @@ impl Creations {
             &mut tx,
             replay::Reservation {
                 receipt_id: &self.setup.drafts.mint(now)?,
-                workspace: access.workspace,
                 person: &person,
                 scope: &scope,
                 operation,

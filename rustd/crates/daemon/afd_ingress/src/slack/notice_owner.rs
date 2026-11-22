@@ -6,8 +6,6 @@ use af_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 
-/// New channel bindings carry only deterministic notices.
-pub const KIND_NOTICE_OWNER: &str = "notice_owner";
 const CONTEXT_OWNER: &str = "resolve channel notice owner";
 const CONTEXT_BIND: &str = "bind channel notice owner";
 
@@ -70,7 +68,6 @@ impl Ingress {
             .bind(team)
             .bind(channel.as_str())
             .bind(fleet)
-            .bind(KIND_NOTICE_OWNER)
             .bind(workspace)
             .fetch_optional(connection.as_mut())
             .await

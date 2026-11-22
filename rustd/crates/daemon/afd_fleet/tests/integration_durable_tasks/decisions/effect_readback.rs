@@ -227,9 +227,9 @@ pub(super) async fn seed(case: &Case, task: &Uuid7, ordinal: i64, state: &str) -
         .bind(i64::try_from(case.run().fencing_token).expect("fixture fence")).bind(ordinal).bind(mint_id())
         .bind("0".repeat(40)).bind("1".repeat(40)).bind("a".repeat(64))
         .execute(&mut *transaction).await.expect("preexisting immutable publication intent");
-    sqlx::query("INSERT INTO fleet.durable_task_effect_states (durable_task_effect_id,status,issued_at,created_at,updated_at) VALUES ($1,$2,CASE WHEN $2 IN ('issued','unknown') THEN now() END,now(),now())")
+    sqlx::query("INSERT INTO fleet.durable_task_effect_states (durable_task_effect_id,status,created_at,updated_at) VALUES ($1,$2,now(),now())")
         .bind(&effect).bind(state).execute(&mut *transaction).await.expect("unconfirmed state");
-    sqlx::query("INSERT INTO fleet.durable_task_effect_payloads (durable_task_effect_id,durable_task_id,fleet_id,workspace_id,target,request,created_at) SELECT $1,id,fleet_id,workspace_id,target,'{}'::jsonb,now() FROM fleet.durable_tasks WHERE id=$2")
+    sqlx::query("INSERT INTO fleet.durable_task_effect_payloads (durable_task_effect_id,durable_task_id,fleet_id,workspace_id,target,created_at) SELECT $1,id,fleet_id,workspace_id,target,now() FROM fleet.durable_tasks WHERE id=$2")
         .bind(&effect).bind(task).execute(&mut *transaction).await.expect("private recovery target");
     transaction
         .commit()

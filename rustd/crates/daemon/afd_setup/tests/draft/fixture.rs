@@ -222,9 +222,9 @@ impl Fixture {
             "DELETE FROM setup.drafts WHERE workspace_id=$1",
             &self.workspace,
         );
-        self.cleanup.record(
-            "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
-            &self.workspace,
+        self.cleanup.record_text(
+            "DELETE FROM setup.replay_receipts WHERE scope LIKE $1",
+            &format!("{}:%", self.workspace),
         );
         self.cleanup
             .record("DELETE FROM fleet.fleets WHERE tenant_id=$1", &self.tenant);

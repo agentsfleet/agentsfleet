@@ -134,7 +134,6 @@ pub(crate) fn decide(
 
 pub(crate) struct Reservation<'a> {
     pub(crate) receipt_id: &'a Uuid7,
-    pub(crate) workspace: &'a Uuid7,
     pub(crate) person: &'a Person,
     pub(crate) scope: &'a str,
     pub(crate) operation: &'a Uuid7,
@@ -163,7 +162,6 @@ pub(crate) async fn reserve(
         .map_err(query(CONTEXT))?;
     let inserted = sqlx::query(sql::INSERT)
         .bind(reservation.receipt_id)
-        .bind(reservation.workspace)
         .bind(&reservation.person.id)
         .bind(reservation.scope)
         .bind(reservation.operation)

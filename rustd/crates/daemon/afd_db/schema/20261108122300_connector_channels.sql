@@ -5,7 +5,6 @@ CREATE TABLE connector.channels (
     external_account_id  TEXT   NOT NULL,
     external_channel_id  TEXT   NOT NULL,
     fleet_id             UUID   NOT NULL REFERENCES fleet.fleets(id) ON DELETE CASCADE,
-    binding_type         TEXT   NOT NULL,
     created_at           TIMESTAMPTZ(3) NOT NULL,
     updated_at           TIMESTAMPTZ(3) NOT NULL,
     CONSTRAINT uq_channels_provider_external_account_id_external_channel_id
@@ -16,4 +15,4 @@ CREATE INDEX idx_channels_fleet_id ON connector.channels (fleet_id);
 
 GRANT SELECT, INSERT ON connector.channels TO api_runtime;
 
-GRANT UPDATE (fleet_id, binding_type, updated_at) ON connector.channels TO api_runtime;
+GRANT UPDATE (fleet_id, updated_at) ON connector.channels TO api_runtime;

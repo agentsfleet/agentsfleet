@@ -93,7 +93,7 @@ async fn state(case: &Case, effect: &Uuid7) -> Value {
 }
 
 async fn assert_unspent(case: &Case, task: &Uuid7) {
-    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.durable_task_effects WHERE durable_task_id=$1),(SELECT issued_at IS NULL FROM fleet.durable_task_effect_states s JOIN fleet.durable_task_effects e ON e.id=s.durable_task_effect_id WHERE e.durable_task_id=$1) FROM fleet.durable_tasks WHERE id=$1")
+    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.durable_task_effects WHERE durable_task_id=$1),(SELECT s.status IN ('prepared','refused') FROM fleet.durable_task_effect_states s JOIN fleet.durable_task_effects e ON e.id=s.durable_task_effect_id WHERE e.durable_task_id=$1) FROM fleet.durable_tasks WHERE id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("publication accounting observer"))
         .await.expect("unissued original allocation");
     assert_eq!(row, (0, 1, 1, true));

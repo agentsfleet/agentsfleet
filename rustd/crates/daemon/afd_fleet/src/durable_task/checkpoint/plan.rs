@@ -331,10 +331,6 @@ async fn base(
             "checkpoint format_version",
         )?)
         .bind(&input.toolbox_digest)
-        .bind(sql_small_counter(
-            input.page_count,
-            "checkpoint page_count",
-        )?)
         .bind(&*pages)
         .bind(sql_counter(
             input.logical_bytes,

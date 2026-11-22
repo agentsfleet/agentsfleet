@@ -32,10 +32,11 @@ async fn fixture_unwind_removes_only_registered_account_and_private_rows() {
         "SELECT \
         (SELECT count(*) FROM identity.tenants WHERE id=$1), \
         (SELECT count(*) FROM setup.drafts WHERE workspace_id=$2), \
-        (SELECT count(*) FROM setup.replay_receipts WHERE workspace_id=$2)",
+        (SELECT count(*) FROM setup.replay_receipts WHERE scope LIKE $3)",
     )
     .bind(&tenant)
     .bind(&workspace)
+    .bind(format!("{workspace}:%"))
     .fetch_one(&mut *db.acquire().await.expect("observer connection"))
     .await
     .expect("observe completed unwind cleanup");

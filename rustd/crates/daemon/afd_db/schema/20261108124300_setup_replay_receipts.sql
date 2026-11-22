@@ -3,7 +3,6 @@
 -- a key must outlive erasure of what it created, or a late retry would create it again.
 CREATE TABLE setup.replay_receipts (
     id              UUID PRIMARY KEY,
-    workspace_id    UUID   NOT NULL,
     user_id         UUID   NOT NULL,
     scope           TEXT   NOT NULL,
     operation_id    UUID   NOT NULL,

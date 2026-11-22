@@ -26,21 +26,8 @@ pub(in crate::durable_task) async fn arm(
         .bind(&id)
         .bind(task)
         .bind(run)
-        .bind(
-            i64::try_from(target.installation_id)
-                .map_err(crate::error::durable_task_target_counter("installation_id"))?,
-        )
-        .bind(
-            i64::try_from(target.repository_id)
-                .map_err(crate::error::durable_task_target_counter("repository_id"))?,
-        )
-        .bind(
-            i32::try_from(target.number)
-                .map_err(crate::error::durable_task_target_counter("number"))?,
-        )
         .bind(&target.head)
         .bind(Json(&dependency.checks))
-        .bind(dependency.digest()?)
         .execute(connection)
         .await
         .map_err(query("arm exact-head wait before releasing execution"))?;

@@ -79,7 +79,7 @@ pub const SELECT_APP_SUBSCRIBERS: &str = include_str!("select_app_subscribers.sq
 /// `$1` workspace, `$2` the statuses a subscriber can be read in.
 pub const SELECT_MENTION_CANDIDATES: &str = include_str!("select_mention_candidates.sql");
 
-/// Existing channel notice carrier, scoped to the resolved workspace regardless of binding kind.
+/// Existing channel notice carrier, scoped to the resolved workspace.
 /// `$1` provider, `$2` team, `$3` channel, `$4` workspace.
 pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 
@@ -87,5 +87,5 @@ pub const SELECT_NOTICE_OWNER: &str = include_str!("select_notice_owner.sql");
 ///
 /// A moved team's prior-workspace binding is repointed, never reused.
 ///
-/// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` kind, `$7` workspace.
+/// `$1` id, `$2` provider, `$3` team, `$4` channel, `$5` fleet, `$6` workspace.
 pub const INSERT_NOTICE_OWNER: &str = include_str!("insert_notice_owner.sql");

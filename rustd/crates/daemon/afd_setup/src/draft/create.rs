@@ -106,7 +106,6 @@ impl Drafts {
             connection,
             replay::Reservation {
                 receipt_id: &receipt,
-                workspace: new.access.workspace,
                 person: new.person,
                 scope: new.scope,
                 operation: &new.request.operation_id,

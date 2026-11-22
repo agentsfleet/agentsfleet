@@ -9,7 +9,6 @@ CREATE TABLE fleet.durable_task_inputs (
     sequence            BIGINT NOT NULL CHECK (sequence > 0),
     accepted_text       TEXT NOT NULL,
     interpretation      TEXT NOT NULL,
-    generation          BIGINT NOT NULL CHECK (generation > 0),
     answered_at         TIMESTAMPTZ(3),
     created_at          TIMESTAMPTZ(3) NOT NULL,
     updated_at          TIMESTAMPTZ(3) NOT NULL,

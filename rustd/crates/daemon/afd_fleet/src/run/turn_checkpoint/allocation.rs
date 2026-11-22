@@ -135,7 +135,6 @@ async fn insert(
         )
         .bind(toolbox.is_some())
         .bind(toolbox)
-        .bind(i32::try_from(input.page_count).map_err(|_overflow| TurnCheckpointRefusal::Limit)?)
         .bind(pages)
         .bind(
             i64::try_from(input.upload_budget_bytes)

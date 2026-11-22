@@ -107,7 +107,7 @@ async fn concurrent_outcome(fixture: &Fixture, first: &str, before: Value) {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn prior_kind_binding_remains_owner_when_subscribers_change() {
+async fn a_bound_carrier_remains_owner_when_subscribers_change() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     fixture
@@ -123,18 +123,6 @@ async fn prior_kind_binding_remains_owner_when_subscribers_change() {
         )
         .await;
     bind(&fixture, &carrier).await;
-    let mut connection = fixture
-        .database()
-        .acquire()
-        .await
-        .expect("legacy binding fixture");
-    sqlx::query("UPDATE connector.channels SET binding_type=$1 WHERE fleet_id=$2")
-        .bind("resident")
-        .bind(&carrier)
-        .execute(&mut *connection)
-        .await
-        .expect("historical kind");
-    drop(connection);
     fixture
         .fleet(
             &document("triage", CHANNEL, None),

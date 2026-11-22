@@ -43,7 +43,6 @@ CREATE TABLE thread.turns (
     interpreted_at    TIMESTAMPTZ(3),
     settled_at        TIMESTAMPTZ(3),
     durable_task_id           UUID,
-    durable_task_item_id      UUID,
     -- Frozen separately from the run fence, and kept when cleanup clears `durable_task_id`.
     durable_task_generation   BIGINT,
     -- Public task progress, kept apart from private recovery so it survives reconnects.
@@ -69,8 +68,6 @@ CREATE TABLE thread.turns (
         REFERENCES thread.turns (id) ON DELETE SET NULL,
     CONSTRAINT fk_turns_durable_task_id_scope FOREIGN KEY (durable_task_id, thread_id, workspace_id)
         REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id) ON DELETE SET NULL (durable_task_id),
-    CONSTRAINT fk_turns_durable_task_item_id_scope FOREIGN KEY (durable_task_item_id, thread_id, workspace_id)
-        REFERENCES fleet.durable_task_items (id, fleet_id, workspace_id) ON DELETE SET NULL (durable_task_item_id),
     CONSTRAINT fk_turns_tenant_model_id FOREIGN KEY (tenant_model_id)
         REFERENCES model.tenant_models (id) ON DELETE SET NULL,
     CONSTRAINT fk_turns_candidate_id FOREIGN KEY (candidate_id)
@@ -112,9 +109,6 @@ CREATE INDEX idx_turns_thread_id_sequence_unsettled
 CREATE INDEX idx_turns_thread_id_reply_sequence_unsettled
     ON thread.turns (thread_id, reply_provider, reply_address, sequence)
     WHERE settled_at IS NULL;
-
-CREATE INDEX idx_turns_durable_task_item_id ON thread.turns (durable_task_item_id)
-    WHERE durable_task_item_id IS NOT NULL;
 
 CREATE INDEX idx_turns_tenant_model_id ON thread.turns (tenant_model_id)
     WHERE tenant_model_id IS NOT NULL;

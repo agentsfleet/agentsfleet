@@ -12,7 +12,6 @@ CREATE TABLE thread.deliveries (
     answer          TEXT   NOT NULL,
     receipt         UUID NOT NULL,
     claim_expires_at TIMESTAMPTZ(3) NOT NULL,
-    next_attempt_at TIMESTAMPTZ(3),
     delivered_at    TIMESTAMPTZ(3),
     attempt_count   BIGINT NOT NULL,
     abandoned_at    TIMESTAMPTZ(3),

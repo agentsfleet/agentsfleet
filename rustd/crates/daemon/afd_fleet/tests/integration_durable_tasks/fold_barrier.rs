@@ -68,7 +68,7 @@ async fn clear_durable_task_binding(case: &Case) {
         "WITH reset AS (UPDATE thread.runs SET durable_task_id = NULL, durable_task_generation = NULL, \
          durable_task_stop_generation = NULL, durable_task_started_at = NULL, durable_task_runtime_accounted_at = NULL, \
          durable_task_execution_deadline_at = NULL WHERE id = $1 RETURNING turn_id) \
-         UPDATE thread.turns a SET durable_task_id = NULL, durable_task_item_id = NULL, durable_task_generation = NULL \
+         UPDATE thread.turns a SET durable_task_id = NULL, durable_task_generation = NULL \
          FROM reset WHERE a.id = reset.turn_id",
     )
     .bind(&case.held.issued.run_id)

@@ -195,7 +195,7 @@ there is no generic repository trait.
 | `durable_task_inputs` | Accepted task input and its consumption order, separate from queue delivery | unique task/item and task/sequence |
 | `durable_task_interpretations` | Complete private source message and accepted plan | append-only; survives turn settlement and cascades with fleet |
 | `durable_task_input_receipts` | Immutable apply, queued and original-reply outcomes | unique item/mode and fleet/operation; private replies cascade with item |
-| `durable_task_waits` | One native exact-head dependency owner | scoped task/generation/stop, separate read claim deadline and monotonic signal cursor; one continuation consumes the wait |
+| `durable_task_waits` | One native exact-head dependency owner | scoped task and generation, the arming run, the expected head and the checks read when it was armed; one continuation consumes the wait |
 | `durable_task_completions` | Verified workflow completion inbox | immutable scoped run/attempt evidence; early-race backup; acknowledged rows collect after three days |
 | `durable_task_completion_fanout` | Durable signal-delivery cursor for immutable completion evidence | bounded supervisor fanout; one wait lock per transaction; cannot allocate a run |
 | `durable_task_effects` | Immutable native expected-head publication authority | kept opaque task/ordinal and task/operation identities |
@@ -242,7 +242,7 @@ omit its model and review then resolves the tenant default.
 | `turns` | One input on a thread and its answer; the fleet's sole work queue | `UNIQUE (producer, producer_key)` so retries cannot duplicate work; `UNIQUE (thread_id, sequence)`; assignments and reports fence each row; `input_run_id` and `input_fence` stamp a message a live run took; `durable_task_activity` keeps at most 128 public stages / 120 KB |
 | `runs` | One turn handed to one runner. Settled history outlives a purge; the insert proves scope in the same transaction | non-secret decision snapshot; no foreign key to fleet, draft, turn, task or historical model revision |
 | `items` | Full arguments and output of each tool call a run made | `UNIQUE (turn_id, fencing_token, sequence)`; cascades with its turn |
-| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` is no longer written: a delivery whose inline attempts fail is abandoned |
+| `deliveries` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; a delivery whose inline attempts fail is abandoned |
 
 `runs.turn_created_at` is the producer's instant billing uses, copied so billing reads it without a join.
 The run's `actor` and turn `kind` come from a join to `thread.turns`, as reassignment already does.
@@ -411,6 +411,19 @@ Added by this milestone:
   - `fleet.durable_task_effect_states.confirmed_at`, `fleet.durable_task_waits.consumed_admission_id`, `fleet.durable_tasks.last_transition_at`.
   - `fleet.durable_task_inputs` and `fleet.durable_task_interpretations`: `accepting_run_id`, `accepting_fence`.
   - `fleet.durable_task_storage_purges.delete_after_at`.
+- **Write-only columns dropped by the M253 audit.** Each was written by a statement and read by none, or written by none.
+  - `connector.channels.binding_type`, always `notice_owner`; `thread.deliveries.next_attempt_at`.
+  - `setup.replay_receipts.workspace_id`: every `scope` begins with the workspace.
+  - `thread.turns.durable_task_item_id`, with its foreign key and index.
+  - `fleet.durable_task_inputs.generation`, `fleet.durable_task_effect_states.issued_at`, `fleet.durable_task_effect_payloads.request`.
+  - `fleet.durable_task_checkpoint_operations`: `fleet_id`, `workspace_id`.
+  - `fleet.durable_task_waits`: the polling and claim columns the passes M253_003 removed kept up. They are
+    `durable_task_generation`, `stop_generation`, `github_installation_id`, `github_repository_id`, `pull_request_number`,
+    `baseline_digest`, `due_at`, `expires_at`, `cooldown_expires_at`, `fallback_count`, `initial_read_at`, `signalled_at`,
+    `signal_sequence`, `observed_signal_sequence`, `claim_id` and `claim_expires_at`. Their indexes
+    `idx_durable_task_wait_due` and `idx_durable_task_wait_completion` and the check `ck_durable_task_wait_claim` went with them.
+- **Duplicates dropped by the M253 audit.** `fleet.durable_task_bases.page_count` and `runner.turn_checkpoints.page_count`
+  restated `cardinality(page_ids)`, and each check now reads the array.
 - **Write-only by name, kept by evidence.** `identity.api_keys.display_suffix` is read by the key list and shown in the API
   and the dashboard. `fleet.durable_task_effects.source_item_id` is a field of the public task-effect input.
 

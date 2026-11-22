@@ -61,9 +61,9 @@ async fn refused(c: &Case, key: &Uuid7, request: &SaveFleet, why: &str) -> afd_s
 /// Receipts written under `key`: a spent Save key has exactly one.
 async fn receipts(c: &Case, key: &Uuid7) -> i64 {
     sqlx::query_scalar(
-        "SELECT count(*) FROM setup.replay_receipts WHERE workspace_id=$1 AND operation_id=$2",
+        "SELECT count(*) FROM setup.replay_receipts WHERE scope LIKE $1 AND operation_id=$2",
     )
-    .bind(&c.base.workspace)
+    .bind(format!("{}:%", c.base.workspace))
     .bind(key)
     .fetch_one(&mut *c.base.connection().await)
     .await

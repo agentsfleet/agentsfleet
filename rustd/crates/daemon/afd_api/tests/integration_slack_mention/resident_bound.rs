@@ -5,7 +5,6 @@ use super::notice::owed;
 use super::*;
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::KIND_NOTICE_OWNER;
 
 pub(super) fn owner_document() -> String {
     document("notice-carrier", CHANNEL, None)
@@ -13,9 +12,9 @@ pub(super) fn owner_document() -> String {
 
 pub(super) async fn bind(fixture: &Fixture, fleet: &Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("connection");
-    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,now(),now())")
+    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,now(),now())")
         .bind(mint_id()).bind(PROVIDER.id()).bind(&fixture.team).bind(CHANNEL)
-        .bind(fleet).bind(KIND_NOTICE_OWNER)
+        .bind(fleet)
         .execute(&mut *connection).await.expect("binding seeds");
 }
 

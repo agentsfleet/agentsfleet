@@ -182,7 +182,7 @@ One row per answer owed to one destination. It replaces `fleet.obligations`.
 | `answer` | `TEXT` | no | as today | the text sent |
 | `receipt` | `UUID` | yes | as today | the worker holding it |
 | `taken_until` | `TIMESTAMPTZ(3)` | yes | `claim_expires_at` | the worker's hold |
-| `next_attempt_at`, `attempt_count`, `delivered_at`, `abandoned_at` | as today | as today | as today | delivery state. Nothing writes `next_attempt_at` since M253_003: a delivery whose inline attempts fail is abandoned |
+| `attempt_count`, `delivered_at`, `abandoned_at` | as today | as today | as today | delivery state; a delivery whose inline attempts fail is abandoned |
 
 Unique `(turn_id, provider, destination)`, so one turn can owe a Slack answer and an email to each recipient.
 

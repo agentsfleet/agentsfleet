@@ -133,7 +133,6 @@ pub(super) async fn bind_turn(
                 .as_ref()
                 .ok_or(DurableTaskRefusal::InvalidTarget)?,
         )
-        .bind(&binding.item_id)
         .bind(turn)
         .execute(connection)
         .await

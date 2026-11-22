@@ -42,9 +42,9 @@ impl Fixture {
             catalogue: mint(),
             token: format!("agt_t{}{}", mint(), mint()).replace('-', ""),
         };
-        f.cleanup.record(
-            "DELETE FROM setup.replay_receipts WHERE workspace_id=$1",
-            &f.workspace,
+        f.cleanup.record_text(
+            "DELETE FROM setup.replay_receipts WHERE scope LIKE $1",
+            &format!("{}:%", f.workspace),
         );
         f.cleanup.record(
             "DELETE FROM fleet.fleets WHERE workspace_id=$1",

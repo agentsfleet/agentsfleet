@@ -21,12 +21,12 @@ use std::time::Duration;
 const POLL: Duration = Duration::from_millis(10);
 const POLLS: usize = 100;
 
-/// Files a receipt for key `$4` in scope `$3` as the racing writer; `$1` id,
-/// `$2` workspace, `$5` user, `$6` resource.
+/// Files a receipt for key `$3` in scope `$2` as the racing writer; `$1` id,
+/// `$4` user, `$5` resource.
 const RACER: &str = "\
 INSERT INTO setup.replay_receipts
- (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-VALUES ($1,$2,$5,$3,$4,'racer',$6,now())";
+ (id,user_id,scope,operation_id,request_digest,resource_id,created_at)
+VALUES ($1,$4,$2,$3,'racer',$5,now())";
 
 /// Backends waiting on a lock held by backend `$1`.
 const BLOCKED: &str = "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
@@ -102,7 +102,6 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
         .expect("racing writer's backend");
     sqlx::query(RACER)
         .bind(mint())
-        .bind(&f.workspace)
         .bind(&scope)
         .bind(&key)
         .bind(&f.owner)

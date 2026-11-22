@@ -23,7 +23,7 @@ mod route;
 pub use self::admit::MentionTurn;
 pub use self::message::{Composed, THREAD_HEADING, THREAD_UNAVAILABLE, compose};
 pub use self::notice::{NoticeOwed, notice_text};
-pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
+pub use self::notice_owner::NoticeOwner;
 pub use self::route::{Notice, Route, route};
 /// The channel type used by mention routing and notice ownership.
 pub(crate) use af_fleet_runtime::config::ChannelId;

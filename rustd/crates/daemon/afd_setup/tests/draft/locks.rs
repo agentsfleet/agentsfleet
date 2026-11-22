@@ -45,8 +45,8 @@ impl Fixture {
         operation: &Uuid7,
     ) -> (PoolConnection<sqlx::Postgres>, i32) {
         const RECEIPT: &str = "INSERT INTO setup.replay_receipts \
-             (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at) \
-             VALUES($1,$2,$3,$4,$5,'setup:v1:sha256:foreign', \
+             (id,user_id,scope,operation_id,request_digest,resource_id,created_at) \
+             VALUES($1,$2,$3,$4,'setup:v1:sha256:foreign', \
              $1,now()-interval '2 days')";
         let mut holder = self.connection().await;
         sqlx::query("BEGIN")
@@ -59,7 +59,6 @@ impl Fixture {
             .expect("holder session");
         sqlx::query(RECEIPT)
             .bind(mint())
-            .bind(&self.workspace)
             .bind(&self.owner)
             .bind(scope)
             .bind(operation)
