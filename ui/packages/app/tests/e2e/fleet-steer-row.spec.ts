@@ -1,9 +1,9 @@
 import chief from "../../../../../tests/fixtures/fleets/chief-of-staff/definition.json";
-import specialist from "../../../../../tests/fixtures/fleets/scout/definition.json";
+import specialist from "../../../../../tests/fixtures/fleets/runner-link-watch/definition.json";
 import { expect } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 
-// The fixture's one event: `chief-of-staff` steered `scout`, and the turn waits for a runner.
+// The fixture's one event: `chief-of-staff` steered `runner-link-watch`, and the turn waits for a runner.
 const SENDER_LINE = "[from fleet chief-of-staff, fleet_id 0199a801-1000-7000-8000-0000000000c0; answer with fleet_steer to that id]";
 const STEER_TEXT = "Run the hourly runner link check and send me its first lines.";
 
@@ -26,12 +26,12 @@ test("fleet_thread_renders_a_fleet_steer_row", async ({page, chatProbe}) => {
 test("the chief's conversation shows the requested check, the specialist's report and the chief's summary", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?fleetSteer=report`);
   await page.reload();
-  await expect(page.getByText("Have scout run its check and tell me the result.", {exact: true})).toBeVisible();
-  await expect(page.getByText("I asked @scout to check the connection. It will report back here.", {exact: true})).toBeVisible();
+  await expect(page.getByText("Have runner-link-watch run its check and tell me the result.", {exact: true})).toBeVisible();
+  await expect(page.getByText("I asked @runner-link-watch to check the connection. It will report back here.", {exact: true})).toBeVisible();
   const report = page.locator('[data-role="user"]').filter({hasText: "The runner link stayed connected"});
   await expect(report.getByTestId("fleet-message-sender")).toHaveText(`@${specialist.config.name}`);
   await expect(report).toContainText("No action needed. The runner link stayed connected during this check.");
-  await expect(page.getByText("Scout found no interruptions. No action is needed.", {exact: true})).toBeVisible();
+  await expect(page.getByText("Runner Link Watch found no interruptions. No action is needed.", {exact: true})).toBeVisible();
   await expect(page.getByText(/answer with fleet_steer/)).toHaveCount(0);
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => document.documentElement.setAttribute("data-theme", value), theme);

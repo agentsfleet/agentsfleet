@@ -12,39 +12,39 @@ Two fleets, both saved from fixtures under `tests/fixtures/fleets/`.
 
 | Fleet | What it does | Tools |
 |---|---|---|
-| `scout` | Reads Grafana, read-only, and writes one report on the runner link. | `http_request`, memory, `fleet_steer` to report back |
+| `runner-link-watch` | Reads Grafana, read-only, and writes one report on the runner link. | `http_request`, memory, `fleet_steer` to report back |
 | `chief-of-staff` | The one fleet the owner talks to. It reads every fleet and hands work on. | `fleet_activity`, `fleet_steer` |
 
 ## 1. A person reaches a fleet by name
 
 ```text
-command line   agentsfleet fleet steer @scout "Hourly runner link check"
-dashboard      in any fleet's chat:   @scout Hourly runner link check
-                                      the browser opens scout's chat
-Slack          @agentsfleet-dev scout: Hourly runner link check
+command line   agentsfleet fleet steer @runner-link-watch "Hourly runner link check"
+dashboard      in any fleet's chat:   @runner-link-watch Hourly runner link check
+                                      the browser opens runner-link-watch's chat
+Slack          @agentsfleet-dev runner-link-watch: Hourly runner link check
 ```
 
 The name is the fleet's saved name, the one the sidebar shows. The command line and the dashboard look it up with `GET …/fleets?name=`, then send an ordinary message. Slack has one bot for every fleet, so there the first word after the bot names the fleet.
 
 In the dashboard, type `@` to see active fleets in the current workspace. Use the arrow keys and Enter, or tap a fleet. The composer keeps the rest of the draft.
 
-Fleet conversations are stacked in the sidebar, with an **Edit** link beneath each editable fleet. In an interactive named CLI conversation, the prompt shows the recipient, for example `@scout> `.
+Fleet conversations are stacked in the sidebar, with an **Edit** link beneath each editable fleet. In an interactive named CLI conversation, the prompt shows the recipient, for example `@runner-link-watch> `.
 
 ## 2. A fleet hands work to a fleet, and hears back
 
 ```text
-owner, in the chief's chat:  "have scout run its check and tell me the result"
+owner, in the chief's chat:  "have runner-link-watch run its check and tell me the result"
 
-chief-of-staff      fleet_activity()                       find scout's id
-                    fleet_steer(<specialist id>, "run the hourly check")
-                    answers at once: "asked scout"          it does not wait
+chief-of-staff      fleet_activity()                       find runner-link-watch's id
+                    fleet_steer(<watch id>, "run the hourly check")
+                    answers at once: "asked runner-link-watch"          it does not wait
 
-scout   runs under its own grants and budget
+runner-link-watch   runs under its own grants and budget
                     its message begins: [from fleet chief-of-staff, fleet_id <id>; …]
                     writes its report, then
                     fleet_steer(<chief id>, "✅ No action needed · lost 0.2 % · …")
 
-chief-of-staff      wakes for a second run:  "scout: no action needed"
+chief-of-staff      wakes for a second run:  "runner-link-watch: no action needed"
 ```
 
 On the receiving fleet, the incoming message shows `@chief-of-staff`. Back in Chief’s conversation, the report shows the specialist’s name and Chief’s summary.
