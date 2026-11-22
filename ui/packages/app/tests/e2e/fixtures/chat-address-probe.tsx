@@ -20,9 +20,9 @@ import { FLEET_ID, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 
 const VIEWER = "fixture-owner";
 const OPEN_FLEET = "support-triage";
-const WATCH = "runner-link-watch";
+const SCOUT = "scout";
 const CHIEF = "chief-of-staff";
-const WATCH_REPORT = "No action needed. The runner link stayed connected during this check.";
+const SCOUT_REPORT = "No action needed. The runner link stayed connected during this check.";
 const CHIEF_ID = "0199a801-1000-7000-8000-0000000000c0";
 const STEER_TEXT = "Run the hourly runner link check and send me its first lines.";
 const router = {bfcacheId: "address-fixture", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
@@ -64,11 +64,11 @@ export function ChatAddressFixture({workspaceId = WORKSPACE, fleetId = FLEET_ID,
 
 /** Recorded-shape examples of the dispatch and the report, rendered through the production thread. */
 export function FleetSteerRowFixture({report}: {report: boolean}) {
-  const recipient = report ? CHIEF : WATCH;
+  const recipient = report ? CHIEF : SCOUT;
   const recipientId = report ? CHIEF_ID : FLEET_ID;
   const senderId = report ? FLEET_ID : CHIEF_ID;
-  const sender = report ? WATCH : CHIEF;
-  const words = report ? WATCH_REPORT : STEER_TEXT;
+  const sender = report ? SCOUT : CHIEF;
+  const words = report ? SCOUT_REPORT : STEER_TEXT;
   const [events] = useState(() => {
     const handoff = rowToEvent({...SCHEDULE_EVENT, fleet_id: recipientId,
       event_id: "0199a801-1000-7000-8000-0000000000e1", actor: `fleet:${senderId}`, event_type: "chat",
@@ -77,14 +77,14 @@ export function FleetSteerRowFixture({report}: {report: boolean}) {
         text: words, sender_fleet_id: senderId, sender_fleet_name: sender, sender_event_id: "0199a801-1000-7000-8000-0000000000e0"}),
       ...(report ? {wall_ms: 2000, tool_calls: {omitted_call_count: 0, calls: [{call_id: "2:1", name: "fleet_activity",
         status: "succeeded", arguments: {fleet_id: senderId}, duration_ms: 53, output_head: "Check completed", output_line_count: 1}]}} : {}),
-      response_text: report ? "Runner Link Watch found no interruptions. No action is needed." : null});
+      response_text: report ? "Scout found no interruptions. No action is needed." : null});
     if (!report) return [handoff];
     const request = rowToEvent({...SCHEDULE_EVENT, fleet_id: CHIEF_ID,
       event_id: "0199a801-1000-7000-8000-0000000000cf", actor: `steer:${VIEWER}`, event_type: "chat",
-      request_json: JSON.stringify({message: "Have runner-link-watch run its check and tell me the result."}),
+      request_json: JSON.stringify({message: "Have scout run its check and tell me the result."}),
       wall_ms: 3000, tool_calls: {omitted_call_count: 0, calls: [{call_id: "1:1", name: "fleet_steer", status: "succeeded",
         arguments: {fleet_id: FLEET_ID, text: STEER_TEXT}, duration_ms: 70, output_head: "Request accepted", output_line_count: 1}]},
-      response_text: "I asked @runner-link-watch to check the connection. It will report back here."});
+      response_text: "I asked @scout to check the connection. It will report back here."});
     return [request, handoff];
   });
   return <RecordedFleetThread events={events} fleetId={recipientId} fleetName={recipient} />;
