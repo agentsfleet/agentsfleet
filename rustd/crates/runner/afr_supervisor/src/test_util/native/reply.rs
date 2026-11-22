@@ -56,9 +56,9 @@ pub(super) fn answer(healthy: &Healthy, message: &Up<'_>) -> Option<Value> {
             run_id,
             request,
         } => json!({"type":"context_saved", "request_id":request_id, "run_id":run_id,
-            "answer":{"status":"ok", "response":af_wire::context::ContextSaveResponse {
-                resource_version: request.resource_version.saturating_add(1),
-            }}}),
+        "answer":{"status":"ok", "response":af_wire::context::ContextSaveResponse {
+            resource_version: request.resource_version.saturating_add(1),
+        }}}),
     };
     Some(response)
 }
