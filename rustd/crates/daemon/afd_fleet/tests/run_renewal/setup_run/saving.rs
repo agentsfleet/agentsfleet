@@ -22,10 +22,11 @@ async fn schedules(case: &Case, fleet: &Uuid7) -> Vec<(String, String, String)> 
     .expect("the fleet's schedules")
 }
 
-/// The saved fleet's head revision: its number and the candidate it saved.
+/// The saved fleet's head revision: its number and the proposal it is, since
+/// Save installs a draft's proposal rather than copying it.
 async fn head_revision(case: &Case, fleet: &Uuid7) -> (i64, Option<Uuid7>) {
     sqlx::query_as(
-        "SELECT r.revision, r.source_candidate_id FROM fleet.fleets f \
+        "SELECT r.revision, r.id FROM fleet.fleets f \
          JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1",
     )
     .bind(fleet)
@@ -66,7 +67,10 @@ async fn a_save_requested_setup_turn_saves_the_head_candidate() {
         .await
         .expect("the save turn's report saved a fleet");
     let (count, head) = case.candidates().await;
-    assert_eq!(count, 1, "the save turn wrote no candidate");
+    assert_eq!(
+        count, 0,
+        "the save turn wrote no candidate, and its head left the draft for the fleet"
+    );
     assert_eq!(
         head_revision(&case, &fleet).await,
         (1, head.clone()),

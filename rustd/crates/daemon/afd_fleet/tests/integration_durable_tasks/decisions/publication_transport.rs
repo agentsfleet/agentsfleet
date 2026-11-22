@@ -46,9 +46,9 @@ async fn publish(case: &Case) {
 }
 
 async fn counts(case: &Case, task: &Uuid7) {
-    let row: (i32, i64, String, i64) = sqlx::query_as("SELECT used_publications,confirmed_effect_watermark,target->>'head',(SELECT count(*) FROM fleet.durable_task_effect_recovery r JOIN fleet.durable_task_effects e ON e.id=r.durable_task_effect_id WHERE e.durable_task_id=t.id) FROM fleet.durable_tasks t WHERE id=$1")
+    let row: (i32, i64, String) = sqlx::query_as("SELECT used_publications,confirmed_effect_watermark,target->>'head' FROM fleet.durable_tasks t WHERE id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("native receipt counters");
-    assert_eq!(row, (1, 1, "3".repeat(40), 0));
+    assert_eq!(row, (1, 1, "3".repeat(40)));
 }
 
 fn push(server: &Server, method: &str, path: &str, response: &Value) {

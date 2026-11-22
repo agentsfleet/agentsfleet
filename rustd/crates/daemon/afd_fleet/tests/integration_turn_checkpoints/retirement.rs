@@ -220,10 +220,12 @@ async fn age_source(files: &Files) -> Checked {
     Ok(())
 }
 
+/// The turn row less its recovery head, which retention is there to erase.
 async fn public_source(files: &Files) -> Checked<String> {
     let mut connection = files.case.fixtures.database.acquire().await?;
     Ok(sqlx::query_scalar(
-        "SELECT to_jsonb(t)::text FROM thread.turns t WHERE t.id=$1 AND t.opened_at IS NOT NULL",
+        "SELECT (to_jsonb(t) - 'head_checkpoint_id' - 'next_checkpoint_generation')::text
+         FROM thread.turns t WHERE t.id=$1 AND t.opened_at IS NOT NULL",
     )
     .bind(&files.case.acquired.turn_id)
     .fetch_one(&mut *connection)

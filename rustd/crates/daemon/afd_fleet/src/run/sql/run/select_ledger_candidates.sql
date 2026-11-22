@@ -37,7 +37,7 @@ WITH instant AS MATERIALIZED (
 SELECT z.id AS fleet_id, head.id AS turn_id, head.created_at AS turn_created_at
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at, a.created_at, a.durable_task_id
+  SELECT a.id, a.parked_at, a.created_at, a.durable_task_id, a.head_checkpoint_id
   FROM thread.turns a
   WHERE a.thread_id = z.id AND a.settled_at IS NULL
     AND ((a.durable_task_id IS NULL AND a.durable_task_generation IS NULL) OR (z.durable_task_capable AND EXISTS (

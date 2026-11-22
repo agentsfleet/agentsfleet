@@ -28,6 +28,12 @@ const BALANCE: i64 = 42_000;
 /// line debits its payer's wallet, so the balance reads this much less.
 const SEEDED_SPEND: i64 = 14;
 
+/// The instant every seeded line is written at, setup's included.
+///
+/// `billing.usage_lines` is append-only, so a tie is seeded, never stamped
+/// after: one instant makes a charge page order by UUID alone.
+const LINE_WRITTEN_AT: f64 = 101.0;
+
 /// The caller's wallet, and the first page of its charges, one row long.
 const BILLING: &str = "/v1/tenants/me/billing";
 const FIRST_CHARGE: &str = "/v1/tenants/me/billing/charges?limit=1";
@@ -264,7 +270,7 @@ impl Fixture {
                     runtime_ms, unpriced_token_count, charged_nanos, created_at) \
                  VALUES ($1, 'fleet_run', $1, 0, 'model', $2, $2, $6, $7, \
                          $3, 'anthropic', $4, 'platform', to_timestamp($5), 11, 2, 0, 0, 0, 13, \
-                         17, 0, 7, to_timestamp($5))",
+                         17, 0, 7, to_timestamp($8))",
             )
             .bind(id)
             .bind(&self.tenant)
@@ -273,6 +279,7 @@ impl Fixture {
             .bind(instant)
             .bind(&charged_fleet)
             .bind(CHARGED_FLEET_NAME)
+            .bind(LINE_WRITTEN_AT)
             .execute(&mut *connection)
             .await
             .expect("the charge row seeds");

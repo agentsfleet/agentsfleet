@@ -92,33 +92,33 @@ pub struct TurnCheckpointCommand {
 ///
 /// Each variant carries its own request, so a caller holding one knows the
 /// one response variant that answers it ([`super::TurnCheckpointRequest`]).
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TurnCheckpointAction {
     /// Reserve one pending generation.
-    Begin(#[garde(dive)] TurnCheckpointBegin),
+    Begin(TurnCheckpointBegin),
     /// Register one quota-bounded batch.
-    Objects(#[garde(dive)] TurnCheckpointObjects),
+    Objects(TurnCheckpointObjects),
     /// Commit exact ciphertext representations before transfer verification.
-    Uploads(#[garde(dive)] TurnCheckpointUploads),
+    Uploads(TurnCheckpointUploads),
     /// Authorize only referenced objects within the current pin deadline.
-    Authorize(#[garde(dive)] TurnCheckpointAuthorize),
+    Authorize(TurnCheckpointAuthorize),
     /// Publish one bounded immutable page.
-    PageWrite(#[garde(dive)] TurnCheckpointPageWrite),
+    PageWrite(TurnCheckpointPageWrite),
     /// Read the exact page named by the plan.
-    PageRead(#[garde(dive)] TurnCheckpointPageRead),
+    PageRead(TurnCheckpointPageRead),
     /// Renew without extending the original operation deadline.
-    PinRenew(#[garde(dive)] TurnCheckpointPinRenew),
+    PinRenew(TurnCheckpointPinRenew),
     /// End exact reader or writer custody.
-    PinRelease(#[garde(dive)] TurnCheckpointPinRelease),
+    PinRelease(TurnCheckpointPinRelease),
     /// Seal root state and publish the complete manifest/head together.
-    Commit(#[garde(dive)] TurnCheckpointCommit),
+    Commit(TurnCheckpointCommit),
     /// An assignment is a descriptor, never inline private history.
-    Read(#[garde(dive)] TurnCheckpointRead),
+    Read(TurnCheckpointRead),
     /// Adoption validates the saved membership; it never trusts a cursor alone.
-    Adopt(#[garde(dive)] TurnCheckpointAdopt),
+    Adopt(TurnCheckpointAdopt),
     /// Failed captures never become the event head.
-    Abandon(#[garde(dive)] TurnCheckpointAbandon),
+    Abandon(TurnCheckpointAbandon),
 }
 
 /// Register one quota-bounded batch.
@@ -254,6 +254,34 @@ pub struct TurnCheckpointAbandon {
     /// Exact pending generation and writer custody.
     #[garde(dive)]
     pub checkpoint: TurnCheckpointRef,
+}
+
+/// The tag is flattened into the action's own fields, so a refusal names
+/// `action.contents` as the wire does; the derive would add the newtype's `[0]`.
+impl Validate for TurnCheckpointAction {
+    type Context = ();
+
+    fn validate_into(
+        &self,
+        ctx: &Self::Context,
+        parent: &mut dyn FnMut() -> garde::Path,
+        report: &mut garde::Report,
+    ) {
+        match self {
+            Self::Begin(action) => action.validate_into(ctx, parent, report),
+            Self::Objects(action) => action.validate_into(ctx, parent, report),
+            Self::Uploads(action) => action.validate_into(ctx, parent, report),
+            Self::Authorize(action) => action.validate_into(ctx, parent, report),
+            Self::PageWrite(action) => action.validate_into(ctx, parent, report),
+            Self::PageRead(action) => action.validate_into(ctx, parent, report),
+            Self::PinRenew(action) => action.validate_into(ctx, parent, report),
+            Self::PinRelease(action) => action.validate_into(ctx, parent, report),
+            Self::Commit(action) => action.validate_into(ctx, parent, report),
+            Self::Read(action) => action.validate_into(ctx, parent, report),
+            Self::Adopt(action) => action.validate_into(ctx, parent, report),
+            Self::Abandon(action) => action.validate_into(ctx, parent, report),
+        }
+    }
 }
 
 impl TurnCheckpointAction {

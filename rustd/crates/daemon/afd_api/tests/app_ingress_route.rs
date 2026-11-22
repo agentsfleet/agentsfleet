@@ -21,10 +21,7 @@
 //!
 //! # No datastore, and that is a property of the seam
 //!
-//! Pull-request fanout uses the scripted installation and subscription answers.
-//! Workflow completions also write through the native task owner: the outage
-//! case keeps that store unreachable, while `integration_app_ingress_live.rs`
-//! proves completion retention and replay against the runtime database role.
+//! Fanout uses the scripted installation and subscription answers.
 
 #![cfg(feature = "test-util")]
 
@@ -42,8 +39,8 @@ use serde_json::Value;
 
 /// A delivery an App sends for an installation, carrying its own id.
 ///
-/// Its `installation.id` is [`signed::INSTALLATION`], which lets the scripted
-/// lookup reach the native completion owner after signature verification.
+/// Its `installation.id` is [`signed::INSTALLATION`], the one the scripted
+/// lookup answers for after signature verification.
 pub(crate) const APP_RUN_FAILURE: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// What an App sends to prove the endpoint answers.

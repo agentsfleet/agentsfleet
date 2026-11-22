@@ -112,12 +112,13 @@ impl Creations {
             if row.status == ARCHIVED {
                 return Err(ErrorKind::State { current: ARCHIVED }.into());
             }
+            // The proposal is installed in place, so it keeps its id as the fleet's revision.
             self.write_improvement(
                 connection,
                 &row,
                 &captured,
                 &checked,
-                &self.setup.drafts.mint(turn.now)?,
+                &captured.candidate.id,
                 turn.now,
             )
             .await

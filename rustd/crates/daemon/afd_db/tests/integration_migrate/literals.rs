@@ -55,12 +55,16 @@ const GATE_REFUSAL: &str = "approval_gates resolved row is immutable";
 /// The runner ownership guard's refusal. No caller matches on it.
 const RUNNER_OWNER_REFUSAL: &str = "runner ownership is fixed at registration";
 
+/// The revision install guard's refusal. No caller matches on it.
+const REVISION_REFUSAL: &str = "a revision changes only when it is installed";
+
 /// Whether `literal` is exception text: `<table> is append-only` or a guard's
 /// refusal. No caller matches on any of them.
 fn is_exception_text(literal: &str) -> bool {
     literal.ends_with(" is append-only")
         || literal == GATE_REFUSAL
         || literal == RUNNER_OWNER_REFUSAL
+        || literal == REVISION_REFUSAL
 }
 
 /// Every single-quoted literal in `text`, with `''` read as one quote.

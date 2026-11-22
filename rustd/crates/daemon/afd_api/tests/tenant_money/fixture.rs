@@ -59,18 +59,12 @@ impl Setup {
             .zip([17_i64, 19_i64])
         {
             // A setup run's charge is its usage line, as the report logs it.
-            sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,run_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,created_at) VALUES($1,$5,$2,0, 'model',$4,$6,$2,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp(101))")
+            sqlx::query("INSERT INTO billing.usage_lines(id,work_type,work_id,seq, kind,tenant_id,workspace_id,run_id,provider,model,posture,requested_at,input_token_count,cached_input_token_count,cache_write_token_count,cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms,unpriced_token_count,charged_nanos,created_at) VALUES($1,$5,$2,0, 'model',$4,$6,$2,'setup','setup-model','platform',to_timestamp(101),23,0,0,0,0,29,31,0,$3,to_timestamp($7))")
                 .bind(settlement).bind(run).bind(charged)
                 .bind(&owner.tenant).bind(afd_billing::sql::work::SETUP_RUN).bind(&setup.workspace)
+                .bind(LINE_WRITTEN_AT)
                 .execute(&mut *connection).await.expect("a setup line, including a paid failed run");
         }
-        sqlx::query(
-            "UPDATE billing.usage_lines SET created_at=to_timestamp(101) WHERE tenant_id=$1",
-        )
-        .bind(&owner.tenant)
-        .execute(&mut *connection)
-        .await
-        .expect("tied timestamps across charge sources");
         setup
     }
 

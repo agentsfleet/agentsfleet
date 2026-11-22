@@ -79,7 +79,6 @@ const LEDGER_SHAPE: &[&str] = &[
     "unpriced_token_count",
     "charged_nanos",
     "created_at",
-    "updated_at",
 ];
 
 /// The columns one captured memory entry carries.
