@@ -262,14 +262,14 @@ impl Bus for Refusing {
 async fn a_page_whose_subscription_was_refused_reopens_and_hears_the_next_change() {
     let live = Live::over(1, |inner| {
         Handle::new(Refusing {
-            refusals: AtomicUsize::new(1),
+            refusals: AtomicUsize::new(4),
             inner,
         })
     })
     .await;
     let mut body = live.open().await;
-    // The retry is due within the first backoff; wait it out.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // Four refusals back off 0.25 + 0.5 + 1 + 2 s; the page waits on each retry.
+    tokio::time::sleep(Duration::from_secs(5)).await;
     live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
         .await;
     live.publish(&json!({ "changed": live.draft }));

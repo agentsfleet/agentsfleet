@@ -159,11 +159,7 @@ impl Renewals {
                     // round one interval on, a retry one answer bound on or one interval
                     // when that is shorter.
                     period = *advertised.borrow_and_update();
-                    due = sent + if retrying {
-                        period.min(af_core::timing::STREAM_ANSWER_TIMEOUT)
-                    } else {
-                        period
-                    };
+                    due = next_due(sent, period, retrying);
                     continue;
                 }
                 changed = sessions.changed() => {
@@ -185,7 +181,6 @@ impl Renewals {
                 result = self.batch(handle) => result,
             };
             period = *advertised.borrow_and_update();
-            let retry = period.min(af_core::timing::STREAM_ANSWER_TIMEOUT);
             retrying = match renewed {
                 Ok(Settled::All) => false,
                 Ok(Settled::RetryLater) => true,
@@ -196,7 +191,7 @@ impl Renewals {
                 }
                 Err(error) => return Err(error),
             };
-            due = sent + if retrying { retry } else { period };
+            due = next_due(sent, period, retrying);
         }
     }
 
@@ -269,6 +264,16 @@ impl Renewals {
             }
         }
         retry
+    }
+}
+
+/// When the round after one sent at `sent` is due: one `period` on, or, for a retry,
+/// one answer bound on or one period when that is shorter.
+fn next_due(sent: Instant, period: Duration, retrying: bool) -> Instant {
+    sent + if retrying {
+        period.min(af_core::timing::STREAM_ANSWER_TIMEOUT)
+    } else {
+        period
     }
 }
 

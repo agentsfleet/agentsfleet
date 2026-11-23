@@ -259,6 +259,8 @@ async fn a_worker_with_no_wake_never_reports_a_ping() {
 #[derive(Debug)]
 struct Swapping {
     first: std::sync::Mutex<Option<afd_bus::Handle>>,
+    /// Subscribes refused after the first, before `then` serves.
+    refusals: std::sync::atomic::AtomicUsize,
     then: afd_bus::Handle,
 }
 
@@ -278,10 +280,26 @@ impl afd_bus::Bus for Swapping {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
-        match first {
-            Some(first) => first.subscribe(subject).await,
-            None => self.then.subscribe(subject).await,
+        if let Some(first) = first {
+            return first.subscribe(subject).await;
         }
+        let refusing = self
+            .refusals
+            .try_update(
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+                |left| left.checked_sub(1),
+            )
+            .is_ok();
+        if refusing {
+            // A transient refusal, as a timed-out subscribe is: the worker retries.
+            if let Err(elapsed) =
+                tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
+            {
+                return Err(elapsed.into());
+            }
+        }
+        self.then.subscribe(subject).await
     }
 
     async fn subscribe_thread_wakes(&self) -> afd_bus::Result<afd_bus::Subscription> {
@@ -293,8 +311,8 @@ impl afd_bus::Bus for Swapping {
     }
 }
 
-/// A wake subscription that closes is opened again on a backoff, and the reopen is
-/// logged with its attempt.
+/// A wake subscription that closes is opened again on a backoff: a refused retry is
+/// logged with its attempt, and the reopen that follows with the next.
 #[tokio::test(start_paused = true)]
 async fn a_closed_wake_is_opened_again_on_a_backoff() -> TestResult {
     let capture = Capture::install();
@@ -302,6 +320,7 @@ async fn a_closed_wake_is_opened_again_on_a_backoff() -> TestResult {
     let (then, _then_server) = afd_bus::test_util::detached()?;
     let bus = afd_bus::Handle::new(Swapping {
         first: std::sync::Mutex::new(Some(first.clone())),
+        refusals: std::sync::atomic::AtomicUsize::new(1),
         then,
     });
     let worker = Worker::new(
@@ -326,7 +345,9 @@ async fn a_closed_wake_is_opened_again_on_a_backoff() -> TestResult {
     );
     closed?;
     assert_unpinged(&capture, EVENT_WAKE_CLOSED);
+    let refused = capture.only(EVENT_WAKE_SUBSCRIBE_FAILED);
+    assert_eq!(refused.field("attempt"), Some("1"));
     let reopened = capture.only(EVENT_WAKE_REOPENED);
-    assert_eq!(reopened.field("attempt"), Some("1"));
+    assert_eq!(reopened.field("attempt"), Some("2"));
     Ok(())
 }
