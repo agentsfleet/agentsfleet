@@ -136,3 +136,18 @@ async fn a_second_lag_inside_the_pace_re_announces_when_it_ends() {
     );
     wall.close().await;
 }
+
+/// A wall whose bus shuts down ends, so its client reconnects to a serving replica.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_wall_ends_when_its_bus_shuts_down() {
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let mut wall = Wall::open_over(Fixture::create().await, bus.clone()).await;
+    wall.stays_quiet().await;
+    bus.shutdown().await.expect("the bus shuts down");
+    assert!(
+        crate::integration_fleet_streams::fixture::stream_ends(&mut wall.body).await,
+        "the wall ends with its bus"
+    );
+    wall.close().await;
+}

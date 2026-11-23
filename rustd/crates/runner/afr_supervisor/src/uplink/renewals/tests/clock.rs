@@ -233,3 +233,31 @@ async fn a_pending_retry_keeps_its_time_when_a_longer_interval_arrives() -> crat
     ran?;
     observed
 }
+
+/// A pending retry moves up when a shorter interval is advertised: one interval when
+/// that is shorter than the answer bound.
+#[tokio::test(start_paused = true)]
+async fn a_pending_retry_moves_up_to_a_shorter_interval() -> crate::Result<()> {
+    let registry = Arc::new(Renewals::default());
+    let (handle, mut peer) = RenewalPeer::new();
+    let _held = held(&registry)?;
+    registry.advertised(TEN);
+    let started = Instant::now();
+    let stop = CancellationToken::new();
+    let running = registry.run(&handle, stop.clone());
+    let three = Duration::from_secs(3);
+    let observed = async {
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, TEN);
+        answer(&peer, request, &run, false).await?;
+        registry.advertised(three);
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, TEN + three, "the retry follows the shorter interval");
+        answer(&peer, request, &run, true).await?;
+        stop.cancel();
+        Ok::<(), crate::Error>(())
+    };
+    let (ran, observed) = tokio::join!(running, observed);
+    ran?;
+    observed
+}

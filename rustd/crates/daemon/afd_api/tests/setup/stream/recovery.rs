@@ -207,3 +207,82 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
     assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
+
+/// A bus that refuses the first `refusals` subscribes to a draft's items subject, then
+/// serves them; every other subject passes through.
+#[derive(Debug)]
+struct Refusing {
+    refusals: AtomicUsize,
+    inner: Handle,
+}
+
+#[async_trait::async_trait]
+impl Bus for Refusing {
+    async fn publish(&self, subject: &Subject, payload: &str) -> afd_bus::Result<()> {
+        self.inner.publish(subject, payload).await
+    }
+
+    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> afd_bus::Result<()> {
+        self.inner.publish_batch(subject, payloads).await
+    }
+
+    async fn subscribe(&self, subject: &Subject) -> afd_bus::Result<Subscription> {
+        let refusing = matches!(subject, Subject::ThreadItems(_))
+            && self
+                .refusals
+                .try_update(Ordering::AcqRel, Ordering::Acquire, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok();
+        if refusing {
+            // A transient refusal, as a timed-out subscribe is: the link retries.
+            if let Err(elapsed) =
+                tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
+            {
+                return Err(elapsed.into());
+            }
+        }
+        self.inner.subscribe(subject).await
+    }
+
+    async fn subscribe_thread_wakes(&self) -> afd_bus::Result<Subscription> {
+        self.inner.subscribe_thread_wakes().await
+    }
+
+    async fn shutdown(&self) -> afd_bus::Result<()> {
+        self.inner.shutdown().await
+    }
+}
+
+/// A page whose subscription was refused at open keeps its heartbeat, reopens the
+/// subscription on its retry without reading on the retry itself, and then hears the
+/// next change on its notice.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_page_whose_subscription_was_refused_reopens_and_hears_the_next_change() {
+    let live = Live::over(1, |inner| {
+        Handle::new(Refusing {
+            refusals: AtomicUsize::new(1),
+            inner,
+        })
+    })
+    .await;
+    let mut body = live.open().await;
+    // The retry is due within the first backoff; wait it out.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    live.mutate("UPDATE thread.turns SET status='completed' WHERE thread_id=$1")
+        .await;
+    live.publish(&json!({ "changed": live.draft }));
+    let mut seen = Vec::new();
+    loop {
+        let chunk = frame(&mut body).await;
+        let done = chunk.contains("event: message.completed\n");
+        seen.push(chunk);
+        if done {
+            break;
+        }
+        assert!(seen.len() < 4, "the change arrives on its notice: {seen:?}");
+    }
+    drop(body);
+    live.cleanup().await;
+}

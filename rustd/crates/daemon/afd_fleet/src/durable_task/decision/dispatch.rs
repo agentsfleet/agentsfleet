@@ -93,7 +93,9 @@ impl Issuance<'_> {
     /// daemon afterwards. A request dropped while it waits on a lock can therefore still
     /// commit its call, which that operation's retry then reads as `existing`.
     async fn once(&self) -> Result<Option<Answered>, Raced> {
-        let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
+        let mut connection = transaction::acquire(self.tasks.runs.pool())
+            .await
+            .map_err(Raced::Other)?;
         let answered = self.statement(&mut connection).await;
         transaction::recycle(connection);
         answered
@@ -103,7 +105,7 @@ impl Issuance<'_> {
         &self,
         connection: &mut sqlx::PgConnection,
     ) -> Result<Option<Answered>, Raced> {
-        let bound = self.bind()?;
+        let bound = self.bind().map_err(Raced::Other)?;
         bound
             .fetch_optional(connection)
             .await
@@ -138,16 +140,16 @@ impl Issuance<'_> {
     /// No row: the run lost its standing, which the run read answers with its own
     /// refusal, or another state the reads relied on moved.
     async fn refusal(&self) -> crate::Error {
-        let mut connection = match transaction::acquire(self.tasks.runs.pool()).await {
-            Ok(connection) => connection,
-            Err(error) => return error,
-        };
-        let standing = ownership::context(&mut connection, self.run).await;
-        transaction::recycle(connection);
-        match standing {
-            Err(error) => error,
-            Ok(_) => DurableTaskRefusal::StaleState.into(),
+        let standing = async {
+            let mut connection = transaction::acquire(self.tasks.runs.pool()).await?;
+            let standing = ownership::context(&mut connection, self.run).await;
+            transaction::recycle(connection);
+            standing
         }
+        .await;
+        standing
+            .err()
+            .unwrap_or_else(|| DurableTaskRefusal::StaleState.into())
     }
 
     fn issued(&self, id: &Uuid7, expires_at: jiff::Timestamp) -> Result<ReservedDecision> {
@@ -197,12 +199,6 @@ enum Raced {
     /// Another call took this assessment, or this retry of its parent.
     Assessment,
     Other(crate::Error),
-}
-
-impl From<crate::Error> for Raced {
-    fn from(error: crate::Error) -> Self {
-        Self::Other(error)
-    }
 }
 
 impl Raced {

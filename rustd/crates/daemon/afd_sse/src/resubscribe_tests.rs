@@ -322,7 +322,7 @@ async fn a_link_wakes_changed_on_a_message_and_on_a_gap() -> TestResult {
 async fn a_lost_link_wakes_changed_once_it_reopens() -> TestResult {
     let (live_bus, _server) = afd_bus::test_util::detached()?;
     let flaky = Handle::new(Flaky {
-        refusals: AtomicUsize::new(1),
+        refusals: AtomicUsize::new(2),
         live: live_bus,
     });
     let live = Live::new(flaky, StreamLimit::new(4));
@@ -331,9 +331,15 @@ async fn a_lost_link_wakes_changed_once_it_reopens() -> TestResult {
         link.subscription().is_none(),
         "the first subscribe was refused"
     );
+    assert!(link.retry_at().is_some(), "a refused link is retrying");
+    // The first retry is refused too; the link keeps waiting and wakes only once open.
     let woke = tokio::time::timeout(Duration::from_secs(60), link.changed()).await?;
     assert_eq!(woke, super::Wake::Changed);
-    assert!(link.subscription().is_some(), "the retry reopened it");
+    assert!(
+        link.subscription().is_some(),
+        "the second retry reopened it"
+    );
+    assert!(link.retry_at().is_none(), "an open link has no retry");
     Ok(())
 }
 

@@ -163,8 +163,8 @@ impl<S: Deliver + 'static> Worker<S> {
                 // A finished job may have freed its lane's next row.
                 () = lanes.finished() => Via::Scan,
                 // A claim another replica stopped renewing is now claimable.
-                () = sleep_until(lapse), if lapse.is_some() => { lapse = None; Via::Scan }
-                () = sleep_until(reopen_at), if reopen_at.is_some() => {
+                () = sleep_until(lapse) => { lapse = None; Via::Scan }
+                () = sleep_until(reopen_at) => {
                     reopen_at = None;
                     reopen_attempt = reopen_attempt.saturating_add(1);
                     let attempt = reopen_attempt;

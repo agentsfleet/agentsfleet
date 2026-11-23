@@ -170,9 +170,8 @@ impl Link {
                 }
                 continue;
             }
-            if let Some(due) = self.retry_due() {
-                tokio::time::sleep_until(due).await;
-            }
+            // Retrying here: a closed link returned above, and an open one read.
+            crate::sleep_until_some(self.retry_due()).await;
             if self.reopen_if_due().await {
                 return Wake::Changed;
             }

@@ -66,6 +66,8 @@ tokio-util = { workspace = true, features = ["rt"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# The worker suite's bus that closes its first wake subscription implements `Bus`.
+async-trait.workspace = true
 # Reads agentsfleet_outbound_claims_total back in the claim suite.
 af_observability = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }

@@ -74,6 +74,20 @@ async fn every_draft_writer_publishes_one_changed_notice() {
     f.stop(&draft, 1).await.expect("the stop commits");
     one_changed(&mut notices, &draft, "a Stop").await;
 
+    // A Stop that finds the turn already cancelled changes nothing and says nothing.
+    let again = f.stop(&draft, 1).await.expect("the second stop answers");
+    assert!(
+        matches!(
+            again.map(|stopped| stopped.stop),
+            Some(afd_turns::view::stop::Stop::AlreadyCancelled)
+        ),
+        "the turn was already cancelled"
+    );
+    assert!(
+        tokio::time::timeout(NO_MORE, notices.recv()).await.is_err(),
+        "a Stop that stopped nothing publishes nothing"
+    );
+
     f.drafts
         .delete(f.access(), &draft)
         .await

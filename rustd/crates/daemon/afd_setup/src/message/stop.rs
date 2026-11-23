@@ -44,7 +44,14 @@ impl Drafts {
             .await
             .map_err(query(CONTEXT))?;
         tx.commit().await.map_err(query(CONTEXT))?;
-        if stopped.is_some() {
+        // Only a Stop that cancelled the turn changed what the page shows.
+        if matches!(
+            &stopped,
+            Some(Stopped {
+                stop: Stop::Cancelled { .. },
+                ..
+            })
+        ) {
             self.changed(id).await;
         }
         if let Some(Stopped {
