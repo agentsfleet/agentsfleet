@@ -1,5 +1,7 @@
 //! The fleet's memory as `guffbolt`'s memory store: the run's [`Loaded`]
-//! memory, locked for one read or write, never across a call.
+//! memory, shared by its readers and exclusive to a store or a forget. A recall
+//! can wait on the network, so it reads under a shared lock and concurrent
+//! recalls of one run never queue behind each other.
 //!
 //! The translation is one to one, so the memory tools read what they read
 //! when they called the memory themselves: a store without a category
@@ -16,7 +18,7 @@ use guffbolt::tools::code;
 use guffbolt::tools::memory::{
     CORE_CATEGORY, Forgot, Memory, MemoryFuture, MemoryRefused, MemoryStore, Reach, Remembered,
 };
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 // The default category needs no figure checked against the wire's: a store
 // under the harness's default is kept under the wire's pinned one by name,
@@ -26,7 +28,7 @@ use tokio::sync::Mutex;
 /// supervisor pushes before the report.
 #[derive(Debug)]
 pub struct RunMemory<'run> {
-    loaded: Mutex<Loaded<'run>>,
+    loaded: RwLock<Loaded<'run>>,
 }
 
 impl<'run> RunMemory<'run> {
@@ -34,14 +36,14 @@ impl<'run> RunMemory<'run> {
     #[must_use]
     pub fn new(loaded: Loaded<'run>) -> Self {
         Self {
-            loaded: Mutex::new(loaded),
+            loaded: RwLock::new(loaded),
         }
     }
 
     /// The entries the final push would carry, as they stand: what a mid-run
     /// checkpoint writes back while the run keeps its memory.
     pub async fn pending(&self) -> Vec<MemoryDelta<'static>> {
-        let loaded = self.loaded.lock().await;
+        let loaded = self.loaded.read().await;
         loaded
             .pending()
             .into_iter()
@@ -54,7 +56,7 @@ impl<'run> RunMemory<'run> {
     /// # Errors
     /// The overlay exceeds its declared bounds.
     pub async fn snapshot(&self) -> afr_memory::Result<MemoryRecovery> {
-        self.loaded.lock().await.snapshot()
+        self.loaded.read().await.snapshot()
     }
 
     /// The entries the supervisor still has to push, fenced, before the
@@ -113,14 +115,14 @@ fn delta(memory: Memory) -> MemoryDelta<'static> {
 impl MemoryStore for RunMemory<'_> {
     fn store(&self, memory: Memory) -> MemoryFuture<'_, ()> {
         Box::pin(async move {
-            let stored = self.loaded.lock().await.store(delta(memory));
+            let stored = self.loaded.write().await.store(delta(memory));
             stored.map_err(|failure| refused(&failure))
         })
     }
 
     fn recall<'a>(&'a self, query: &'a str, limit: usize) -> MemoryFuture<'a, Vec<Remembered>> {
         Box::pin(async move {
-            let loaded = self.loaded.lock().await;
+            let loaded = self.loaded.read().await;
             match loaded.recall(query, limit).await {
                 Ok(recalled) => Ok(recalled.iter().map(remembered).collect()),
                 Err(failure) => Err(refused(&failure)),
@@ -130,14 +132,14 @@ impl MemoryStore for RunMemory<'_> {
 
     fn list<'a>(&'a self, category: Option<&'a str>) -> MemoryFuture<'a, Vec<Remembered>> {
         Box::pin(async move {
-            let loaded = self.loaded.lock().await;
+            let loaded = self.loaded.read().await;
             Ok(loaded.list(category).iter().map(remembered).collect())
         })
     }
 
     fn forget<'a>(&'a self, key: &'a str) -> MemoryFuture<'a, Forgot> {
         Box::pin(async move {
-            let forgotten = self.loaded.lock().await.forget(key);
+            let forgotten = self.loaded.write().await.forget(key);
             Ok(match forgotten {
                 Forgotten::ForThisRun => Forgot::ForThisRun,
                 Forgotten::Unknown => Forgot::Unknown,

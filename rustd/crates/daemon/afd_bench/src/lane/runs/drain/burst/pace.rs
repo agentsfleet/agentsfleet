@@ -4,7 +4,7 @@ use core::time::Duration;
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tokio::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use tokio::time::{Instant, MissedTickBehavior};
 
 use crate::error::Result;
@@ -97,7 +97,10 @@ impl Pickups {
             return Ok(false);
         };
         self.held.fetch_add(1, Ordering::Relaxed);
-        self.waited.lock().await.record(at.elapsed())?;
+        self.waited
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .record(at.elapsed())?;
         Ok(true)
     }
 
@@ -113,7 +116,10 @@ impl Pickups {
 
     /// The pickup waits recorded so far.
     pub(super) async fn waits(&self) -> Latency {
-        self.waited.lock().await.clone()
+        self.waited
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 

@@ -154,7 +154,10 @@ async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, p
     record(
         report,
         counted,
-        &*appends.took.lock().await,
+        &*appends
+            .took
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner),
         &pickups.waits().await,
     );
 }
@@ -205,7 +208,13 @@ async fn append_one(
             appends.accepted.fetch_add(1, Ordering::Relaxed);
             // A histogram that will not hold one append's time loses that one
             // sample, never the steer: the pickup is still timed below.
-            drop(appends.took.lock().await.record(returned - started));
+            drop(
+                appends
+                    .took
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .record(returned - started),
+            );
             pickups.appended(steered.turn_id, returned).await;
         }
         Err(_refused) => {
