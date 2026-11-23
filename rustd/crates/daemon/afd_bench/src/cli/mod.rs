@@ -71,7 +71,7 @@ pub fn finish(
 ) -> Result<String> {
     let mut report = measured?;
     // ADDED to what the lane already swept itself, never written over it: the
-    // outbound lane removes its own entries by id before it returns, and the
+    // delivery lane removes its own entries by id before it returns, and the
     // caller's prefix sweep is the fallback that finds whatever that missed.
     report.fixture.swept += swept?;
     let path = lane.result_path(profile);

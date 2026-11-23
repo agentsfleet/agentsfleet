@@ -8,7 +8,7 @@
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use afd_admission::Admissions;
+use afd_turns::Turns;
 
 use crate::inbox::Inbox;
 
@@ -25,18 +25,18 @@ async fn a_failed_wake_reason_carries_no_code_prefix() {
     let inbox = Inbox::new(
         database.clone(),
         bus.clone(),
-        Admissions::new(database, bus, Entropy::new()),
+        Turns::new(database, bus, Entropy::new()),
     );
 
     inbox
         .wake_parked_delivery(&af_core::id::Uuid7::parse(FLEET).expect("canonical fleet"))
         .await;
 
-    let logged = capture.only("admission_wake_ring_failed");
+    let logged = capture.only("turn_wake_ring_failed");
     assert_eq!(
         logged.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
-    assert_eq!(logged.field("fleet_id"), Some(FLEET));
+    assert_eq!(logged.field("thread_id"), Some(FLEET));
     logged.assert_uncoded_reason();
 }

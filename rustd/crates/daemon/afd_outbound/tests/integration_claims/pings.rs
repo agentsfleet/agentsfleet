@@ -1,17 +1,13 @@
-//! How a worker hears of owed answers: a ping claims at once, a full batch
-//! drains without waiting, and a closed bus leaves the claim pass alone, so
-//! a lost ping costs latency and never an answer.
+//! How a worker hears of owed answers: a ping claims at once, and a full batch
+//! drains without waiting. The worker runs no timed pass.
 
 use std::time::Duration;
 
 use afd_bus::Subject;
 use tokio_util::sync::CancellationToken;
 
+use crate::Ledger;
 use crate::poster::Recorder;
-use crate::{Ledger, POLL};
-
-/// A pass long enough that only a ping, or a drain, can explain a claim.
-const NEVER: Duration = Duration::from_secs(3_600);
 
 /// Lanes enough that one claim cannot take them all.
 const LANES: i64 = 12;
@@ -25,7 +21,7 @@ async fn a_ping_claims_a_full_backlog_without_a_pass() {
     let (bus, server) = afd_bus::test_util::detached().expect("a detached bus");
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker_on(bus, &poster, NEVER).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker_on(bus, &poster).run(token.clone()));
     // Let the opening claim find nothing and the subscription settle.
     tokio::time::sleep(Duration::from_millis(200)).await;
     let before = pings();
@@ -34,26 +30,26 @@ async fn a_ping_claims_a_full_backlog_without_a_pass() {
         let lane = ledger.lane().await;
         ledger.owe(&lane, "pinged").await;
     }
-    server.publish(&Subject::OutboundWake, "");
+    server.publish(&Subject::DeliveryWake, "");
     // One ping: a full batch claims again at once, so every lane drains.
     ledger.until_delivered(LANES).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert!(pings() - before >= 1, "the ping, not a pass, claimed");
+    assert!(pings() - before >= 1, "the ping claimed");
     ledger.cleanup().await;
 }
 
 // Current-thread: the capture is per thread, and the worker runs on this one.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_claim_the_database_refuses_is_logged_and_retried() {
+async fn a_claim_the_database_refuses_is_logged() {
     let capture = af_core::test_util::trace::Capture::install();
     let ledger = Ledger::create().await;
     ledger.database.close().await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     crate::until(|| {
         capture
@@ -61,7 +57,7 @@ async fn a_claim_the_database_refuses_is_logged_and_retried() {
             .iter()
             .filter(|event| event.field("event") == Some("outbound_claim_failed"))
             .count()
-            >= 2
+            >= 1
     })
     .await;
     token.cancel();
@@ -93,7 +89,7 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
     ledger.owe(&lane, "claimed").await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster).await.run(token.clone()));
 
     ledger.until_delivered(1).await;
     token.cancel();
@@ -104,30 +100,5 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
             && event.field("claimed") == Some("1")
     });
     assert!(took_one, "the claim that took the row logs its count");
-    ledger.cleanup().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_closed_bus_leaves_the_claim_pass() {
-    let ledger = Ledger::create().await;
-    let bus = ledger.bus().await;
-    let poster = Recorder::default();
-    let token = CancellationToken::new();
-    let worker = tokio::spawn(
-        ledger
-            .worker_on(bus.clone(), &poster, Duration::from_millis(200))
-            .run(token.clone()),
-    );
-    tokio::time::sleep(POLL * 5).await;
-    bus.shutdown().await.expect("the bus closes");
-
-    let lane = ledger.lane().await;
-    let event = ledger.owe(&lane, "after the bus").await;
-    ledger.until_delivered(1).await;
-    token.cancel();
-    worker.await.expect("the worker stops");
-
-    assert_eq!(poster.delivered_to(&lane.workspace), vec![event]);
     ledger.cleanup().await;
 }

@@ -5,7 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
 import { WorkApprovals, WorkChanges, WorkOutputs, WorkSources } from "@/components/domain/conversation/summary/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail, TASK_IDS } from "./helpers/task-reads";
+import { detail, DURABLE_TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
 
 it("projects only explicitly saved repository policy and rejects malformed repository links", () => {
@@ -36,11 +36,11 @@ function tool(over: Partial<FleetToolCall>): FleetToolCall {
 it("changes contain recorded writes, exclude reads and failed or unconfirmed mutations, and never render a diff", () => {
   const ignored = [tool({name: "file_read"}), tool({status: "failed"}), tool({status: "interrupted"}), tool({status: undefined}), tool({args: {path: 42}}), tool({args: {path: " "}}), tool({args: undefined})];
   expect(recordedChanges([evt(), evt({tools: ignored})])).toEqual([]);
-  const events = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
-  expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false, lines: {kind: "unknown"}}, {path: "src/test.ts", running: true, lines: {kind: "unknown"}}]);
-  const view = render(<WorkChanges events={[]} />);
+  const turns = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
+  expect(recordedChanges(turns)).toEqual([{path: "src/repair.ts", running: false, lines: {kind: "unknown"}}, {path: "src/test.ts", running: true, lines: {kind: "unknown"}}]);
+  const view = render(<WorkChanges turns={[]} />);
   expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
-  view.rerender(<WorkChanges events={events} />);
+  view.rerender(<WorkChanges turns={turns} />);
   fireEvent.click(screen.getByText("2 files"));
   const changes = within(screen.getByRole("dialog", {name: "Recorded changes"}));
   expect(changes.getByText("Write in progress")).toBeTruthy();
@@ -49,7 +49,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   expect(changes.getByText(/Counts describe recorded edits; repository diffs and publication may differ/)).toBeTruthy();
   expect(changes.getAllByText("Line totals unavailable")).toHaveLength(3);
   expect(screen.queryByRole("link")).toBeNull();
-  view.rerender(<WorkChanges events={[evt({tools: [tool({})]})]} />);
+  view.rerender(<WorkChanges turns={[evt({tools: [tool({})]})]} />);
   expect(screen.getByText("1 file")).toBeTruthy();
 });
 
@@ -74,7 +74,7 @@ it("lists a confirmed publication only as an output while retaining other relate
   const task = detail();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
   const related = {...task, context: {...task.context, target}};
-  const published = {...related, publication: {effect_id: TASK_IDS[0], ordinal: 1, state: "confirmed" as const,
+  const published = {...related, publication: {effect_id: DURABLE_TASK_IDS[0], ordinal: 1, state: "confirmed" as const,
     expected_head: target.head, tested_tree: target.tree, commit: "c".repeat(40), pull_request_url: target.url}};
   const other = {...related, context: {...related.context, target: {...target, number: 124, url: "https://github.com/a/b/pull/124"}}};
   render(<WorkOutputs details={new Map([

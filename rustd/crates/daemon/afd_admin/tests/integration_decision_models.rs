@@ -133,12 +133,14 @@ async fn reject_historical_revision(models: &Models, second: &Model) {
 
 async fn assert_coding_schedule(scenario: &Scenario) {
     let database = &scenario.database;
-    let coding_id: Uuid7 =
-        sqlx::query_scalar("SELECT id FROM model.platform_model_prices WHERE platform_model_id=$1")
-            .bind(&scenario.model.id)
-            .fetch_one(&mut *database.acquire().await.expect("rate connection"))
-            .await
-            .expect("coding rate identity");
+    let coding_id: Uuid7 = sqlx::query_scalar(
+        "SELECT id FROM model.platform_model_prices \
+             WHERE platform_model_id=$1 AND decision_revision_id IS NULL",
+    )
+    .bind(&scenario.model.id)
+    .fetch_one(&mut *database.acquire().await.expect("rate connection"))
+    .await
+    .expect("coding rate identity");
     let book = PriceBook::load(
         &mut *database.acquire().await.expect("book connection"),
         "typesafe",

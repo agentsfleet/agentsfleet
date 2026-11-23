@@ -1,4 +1,4 @@
-//! Dimension 1.1 and 3.3: the Postgres store, reached through `Memories`,
+//! The Postgres store, reached through `Memories`,
 //! keeps today's window, upsert, sweep and eviction, and skips a share from a
 //! fleet that may not publish.
 #![expect(
@@ -6,7 +6,7 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::memory::{MAX_ENTRIES_PER_FLEET, PINNED_CATEGORY, Visibility};
+use af_wire::memory::{PINNED_CATEGORY, Visibility};
 use afd_memory::window::DAILY_RETENTION;
 
 use crate::workspace::{Grants, Workspace, delta};
@@ -45,8 +45,8 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         )
         .await
         .expect("a re-capture");
-    let hydrated = memories.hydrate(&fleet).await.expect("a hydrate");
-    let keys: Vec<_> = hydrated
+    let loaded = memories.load(&fleet).await.expect("a load");
+    let keys: Vec<_> = loaded
         .memory
         .iter()
         .map(|entry| entry.key.as_ref())
@@ -63,7 +63,7 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
     rest.sort_unstable();
     assert_eq!(rest, ["pinned", "scratch"], "{keys:?}");
     assert!(
-        hydrated.shared.is_empty() && !hydrated.publish,
+        loaded.shared.is_empty() && !loaded.publish,
         "no grant, no change"
     );
 
@@ -78,34 +78,6 @@ async fn test_postgres_store_keeps_fleet_memory_behaviour() {
         .expect("an empty capture");
     assert_eq!(swept.swept, 1, "the expired daily entry is swept");
 
-    // Eviction: past the cap, the coldest non-core rows go and core stays.
-    let filler: Vec<_> = (0..MAX_ENTRIES_PER_FLEET)
-        .map(|at| delta(&format!("f{at:04}"), CONVERSATION, Visibility::Fleet))
-        .collect();
-    let capped = memories
-        .capture(
-            &fleet,
-            &filler,
-            af_core::clock::after(
-                START_AT,
-                DAILY_RETENTION + std::time::Duration::from_millis(3),
-            ),
-        )
-        .await
-        .expect("a capture to the cap");
-    assert_eq!(
-        capped.evicted, 2,
-        "two rows past the cap of {MAX_ENTRIES_PER_FLEET}"
-    );
-    let window = memories.hydrate(&fleet).await.expect("a hydrate");
-    assert!(
-        window.memory.iter().any(|entry| entry.key == "pinned"),
-        "the pinned entry survives eviction"
-    );
-    assert!(
-        window.memory.iter().all(|entry| entry.key != "chat"),
-        "the oldest non-core entry was evicted"
-    );
     space.cleanup().await;
 }
 
@@ -127,12 +99,63 @@ async fn test_push_skips_an_unpublished_share() {
 
     assert_eq!((captured.stored, captured.skipped), (1, 1));
     assert_eq!(captured.unpublished, 1, "the skip is the share");
-    let hydrated = space.memories.hydrate(&fleet).await.expect("a hydrate");
-    let keys: Vec<_> = hydrated
+    let loaded = space.memories.load(&fleet).await.expect("a load");
+    let keys: Vec<_> = loaded
         .memory
         .iter()
         .map(|entry| entry.key.as_ref())
         .collect();
     assert_eq!(keys, ["own"]);
+    space.cleanup().await;
+}
+
+/// The store's own upsert writes every entry in one transaction and sweeps
+/// the expired scratch notes on a later write.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_the_store_upsert_writes_entries_and_sweeps_expired_scratch_notes() {
+    let space = Workspace::create().await;
+    let fleet = space.fleet("upserter", Grants::default()).await;
+    let store =
+        afd_memory::PgStore::new(space.database.clone(), af_crypto::entropy::Entropy::new());
+    let owner = afd_memory::Owner {
+        workspace: &space.id,
+        fleet: &fleet,
+    };
+    let pinned = delta("pinned", PINNED_CATEGORY, Visibility::Fleet);
+    let scratch = delta("scratch", DAILY, Visibility::Fleet);
+
+    let written = store
+        .upsert(owner, &[&pinned, &scratch], START_AT)
+        .await
+        .expect("an upsert for a fleet that exists");
+    assert_eq!(written.swept, 0, "nothing was old enough to sweep");
+    let mut keys: Vec<String> = store
+        .window(owner, false)
+        .await
+        .expect("a window")
+        .into_iter()
+        .map(|record| record.key)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["pinned", "scratch"]);
+
+    let later = af_core::clock::after(
+        START_AT,
+        DAILY_RETENTION + std::time::Duration::from_millis(1),
+    );
+    let swept = store
+        .upsert(owner, &[], later)
+        .await
+        .expect("an empty upsert");
+    assert_eq!(swept.swept, 1, "the expired scratch note is swept");
+    let kept: Vec<String> = store
+        .window(owner, false)
+        .await
+        .expect("a window")
+        .into_iter()
+        .map(|record| record.key)
+        .collect();
+    assert_eq!(kept, ["pinned"]);
     space.cleanup().await;
 }

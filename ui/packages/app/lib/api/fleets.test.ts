@@ -188,16 +188,16 @@ describe("deleteFleet", () => {
 });
 
 describe("steerFleet", () => {
-  it("POSTs {message, operation_id} to /v1/workspaces/:ws/fleets/:id/messages and returns event_id", async () => {
+  it("POSTs {message, operation_id} to /v1/workspaces/:ws/fleets/:id/messages and returns turn_id", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 202,
-      json: async () => ({ event_id: "evt_steer_1" }),
+      json: async () => ({ turn_id: "evt_steer_1" }),
     });
     const { steerFleet } = await import("./fleets");
     const request = { message: "howdy", operation_id: "op-howdy-1" };
     const result = await steerFleet("ws_1", "zom_1", request, "tok");
-    expect(result).toEqual({ event_id: "evt_steer_1" });
+    expect(result).toEqual({ turn_id: "evt_steer_1" });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1/messages"),
       expect.objectContaining({

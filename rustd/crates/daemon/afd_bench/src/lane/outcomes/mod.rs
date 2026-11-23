@@ -1,6 +1,6 @@
 //! What a driver task did in its window, in vocabulary every lane shares.
 //!
-//! A lease is issued or missed, a steer is accepted, a poll is refused by a
+//! A run is issued or missed, a steer is accepted, a poll is refused by a
 //! datastore that would not answer: three lanes, one shape. The counts are
 //! the same three whatever the verb, and the latency lives in a histogram
 //! from the first sample — each task records into its own, constant-time,
@@ -15,7 +15,7 @@ use crate::report::{Latency, ratio};
 /// One task's window, or every task's folded together.
 #[derive(Debug)]
 pub struct Outcomes {
-    /// Operations that did what the lane measures: a lease issued, a steer
+    /// Operations that did what the lane measures: a run issued, a steer
     /// accepted, a job delivered.
     pub successes: u64,
     /// Operations that ran and found nothing to do.
@@ -88,7 +88,7 @@ impl Outcomes {
     ///
     /// Measured from OUTSIDE the path, which does not publish a per-operation
     /// reason: under contention a miss is dominated by work another task took
-    /// first, so this is an upper bound on wasted claims, not a count.
+    /// first, so this is an upper bound on wasted assignments, not a count.
     #[must_use]
     pub fn wasted_fraction(&self) -> f64 {
         ratio(self.misses, self.attempts())

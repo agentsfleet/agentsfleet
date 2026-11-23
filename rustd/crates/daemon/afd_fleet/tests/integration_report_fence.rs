@@ -1,11 +1,11 @@
-//! §7 against live datastores — an empty claim commits none of the four.
+//! An empty assignment commits none of the four.
 //!
-//! Dimension 7.3's other half. The fence is what a transaction could silently
-//! break: wrap four writes around a claim and it is easy to end up committing
-//! the three that carry no guard of their own. Both cases here drive a claim
+//! The fence is what a transaction could silently
+//! break: wrap four writes around an assignment and it is easy to end up committing
+//! the three that carry no guard of their own. Both cases here drive an assignment
 //! that matches no row and assert the same emptiness; what differs is WHY the
-//! claim missed, which is the distinction the disposition read exists to make
-//! and the reason neither is answered the way a settled lease is.
+//! assignment missed, which is the distinction the disposition read exists to make
+//! and the reason neither is answered the way a settled run is.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing datastores, and `make test-integration-rustd` — which runs
@@ -16,44 +16,44 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_fleet::lease::Committed;
+use afd_fleet::run::Committed;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, assert_nothing_landed, report};
 use crate::report_seed::held;
 use crate::rows::{LAPSE, Row};
 
-/// Dimension 7.3 — a superseded report commits nothing, by either route.
+/// A superseded report commits nothing, by either route.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_superseded_report_commits_nothing() {
     let held = held().await;
-    let lease_id = &held.issued.lease_id;
-    let leases = held.fixtures.leases_with_dead_bus();
-    let lease = leases
-        .load_for_report(lease_id, &held.runner)
+    let run_id = &held.issued.run_id;
+    let runs = held.fixtures.runs_with_dead_bus();
+    let run = runs
+        .load_for_report(run_id, &held.runner)
         .await
-        .expect("the lease load must reach the datastore")
-        .expect("the seeded lease belongs to the seeded runner");
+        .expect("the run load must reach the datastore")
+        .expect("the seeded run belongs to the seeded runner");
 
     // The holder dies and its work is taken back, which bumps the fleet's
-    // fencing sequence past the token the first lease carries.
+    // fencing sequence past the token the first run carries.
     held.fixtures
-        .age(Row::Slot(&held.fleet), "lease_expires_at", LAPSE)
+        .age(Row::Thread(&held.fleet), "run_expires_at", LAPSE)
         .await;
-    let reclaimed = crate::seed::select_fleet(&held.leases, &held.spare, &held.fleet)
+    let reassigned = crate::seed::select_fleet(&held.runs, &held.spare, &held.fleet)
         .await
-        .expect("a lapsed claim is winnable");
+        .expect("a lapsed assignment is winnable");
     assert!(
-        reclaimed.fence > held.fence,
-        "the reclaim must outrank the holder it displaced, or this test proves nothing"
+        reassigned.fence > held.fence,
+        "the reassignment must outrank the holder it displaced, or this test proves nothing"
     );
 
-    let fenced = leases
+    let fenced = runs
         .commit_report(report(
-            lease_id,
+            run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             held.now,
         ))
@@ -65,17 +65,17 @@ async fn test_a_superseded_report_commits_nothing() {
     );
     assert_nothing_landed(&held, "a superseded holder writes none of the four").await;
 
-    // The same empty claim for a different reason: the retention sweep removed
-    // the row while this very late report was in flight. There is nothing left
+    // The same empty assignment for a different reason: the row was deleted
+    // while this very late report was in flight. There is nothing left
     // to report against and nothing stored to hand back, so it is refused like
-    // a lost fence rather than acknowledged like a settled lease.
-    held.fixtures.delete_lease(lease_id).await;
-    let vanished = leases
+    // a lost fence rather than acknowledged like a settled run.
+    held.fixtures.delete_run(run_id).await;
+    let vanished = runs
         .commit_report(report(
-            lease_id,
+            run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             held.now,
         ))
@@ -83,9 +83,9 @@ async fn test_a_superseded_report_commits_nothing() {
         .expect("a report against a row that is gone is an answer, not a fault");
     assert!(
         matches!(vanished, Committed::Fenced { .. }),
-        "a lease that no longer exists cannot have settled, so it is refused and not acknowledged"
+        "a run that no longer exists cannot have settled, so it is refused and not acknowledged"
     );
-    assert_nothing_landed(&held, "a lease row that is gone writes none of the four").await;
+    assert_nothing_landed(&held, "a run row that is gone writes none of the four").await;
 
     held.fixtures.cleanup().await;
 }

@@ -19,18 +19,16 @@ use afd_db::Db;
 use crate::error::Result;
 use crate::fixture::RunPrefix;
 
+/// A run's runners' runs, which outlive a runner's deletion, by the runner's prefix.
+const DELETE_RUNS: &str = include_str!("sql/delete_runs.sql");
 /// A run's runners, by the prefix in their host id.
 const DELETE_RUNNERS: &str = include_str!("sql/delete_runners.sql");
 
 /// A run's owed answers, by row id.
-const DELETE_OBLIGATIONS: &str = include_str!("sql/delete_obligations.sql");
+const DELETE_DELIVERIES: &str = include_str!("sql/delete_deliveries.sql");
 
-/// A run's fleets; their revisions, events and slots go with them.
+/// A run's fleets; their revisions, events and threads go with them.
 const DELETE_FLEETS: &str = include_str!("sql/delete_fleets.sql");
-
-/// A run's setup chat attempts, which hold no key to the workspace (money
-/// outlives it), so no cascade removes them.
-const DELETE_ATTEMPTS: &str = include_str!("sql/delete_attempts.sql");
 
 /// A run's workspaces; their sealed secrets and drafts go with them.
 const DELETE_WORKSPACES: &str = include_str!("sql/delete_workspaces.sql");
@@ -62,9 +60,9 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
     // Runners carry the prefix in `host_id` rather than a name: enrolment owns
     // that row's shape and there is no name column to put it in.
     for statement in [
+        DELETE_RUNS,
         DELETE_RUNNERS,
         DELETE_FLEETS,
-        DELETE_ATTEMPTS,
         DELETE_WORKSPACES,
         DELETE_TENANTS,
     ] {
@@ -81,17 +79,17 @@ async fn rows(database: &Db, pattern: &str) -> Result<u64> {
 ///
 /// The happy path: the lane holds every id it owed, so it removes exactly
 /// those. A run that failed before it could is covered by [`everything`]:
-/// deleting the run's fleets cascades to their obligations.
+/// deleting the run's fleets cascades to their deliveries.
 ///
 /// # Errors
 ///
 /// Whatever Postgres refused.
-pub async fn outbound_obligations(database: &Db, ids: &[Uuid7]) -> Result<u64> {
+pub async fn outbound_deliveries(database: &Db, ids: &[Uuid7]) -> Result<u64> {
     if ids.is_empty() {
         return Ok(0);
     }
     let mut connection = database.acquire().await?;
-    let removed = sqlx::query(DELETE_OBLIGATIONS)
+    let removed = sqlx::query(DELETE_DELIVERIES)
         .bind(ids)
         .execute(&mut *connection)
         .await?;

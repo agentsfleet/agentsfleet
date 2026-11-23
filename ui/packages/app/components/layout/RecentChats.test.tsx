@@ -20,9 +20,9 @@ const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) 
   const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   calls.push({path, init});
   if (path.includes("/drafts")) return response({items: [
-    {...DRAFT, updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: null, candidate_revision: 1, setup_revision: null, publication_revision: null},
-    {...DRAFT, id: SECOND_ID, title: "Saved setup must not duplicate fleet", state: "closed", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 1, setup_revision: 1, publication_revision: null},
-    {...DRAFT, id: EDIT_ID, title: "Unfinished fleet edit", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 2, setup_revision: 1, publication_revision: null},
+    {...DRAFT, updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: null, candidate_revision: 1, setup_revision: null},
+    {...DRAFT, id: SECOND_ID, title: "Saved setup must not duplicate fleet", state: "closed", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 1, setup_revision: 1},
+    {...DRAFT, id: EDIT_ID, title: "Unfinished fleet edit", updated_at: "1970-01-01T00:00:00Z", expires_at: null, linked_fleet_id: FLEET_ID, candidate_revision: 2, setup_revision: 1},
   ], next_cursor: null});
   if (path.endsWith("/fleets?limit=50")) return response({items: [active, archived], total: null, next_cursor: null});
   if (readStatus !== 200) return response({user_message: "Fleet could not be read. Try again."}, readStatus);

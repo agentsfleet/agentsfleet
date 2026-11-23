@@ -1,10 +1,10 @@
-//! Where a placeholder's value comes from, for one lease.
+//! Where a placeholder's value comes from, for one run.
 //!
 //! A static credential is read from `secrets_map`. A mintable one is minted
 //! through the daemon the first time a request needs it and kept until shortly
 //! before it expires, so three calls needing `github` mint once. The cache is
-//! a plain map the lease owns: a lease's calls run one after another, lent
-//! the lease by `&mut`, so no two can race to mint and no lock is needed.
+//! a plain map the run owns: a run's calls run one after another, lent
+//! the run by `&mut`, so no two can race to mint and no lock is needed.
 //!
 //! Every minted token joins one masker, built with the same [`Scrub`] the loop
 //! applies, so a response echoing a token reads `«secret:NAME.token»` before
@@ -17,10 +17,10 @@ use std::time::Duration;
 use af_core::clock::{self, Clock};
 use af_secrets::{FIELD_TOKEN, Scrub, Secret};
 
-use crate::admission::Admission;
 use crate::error::{Result, raise};
 use crate::mint::{Mint, Minted};
 use crate::placeholder::{self, SecretRef};
+use crate::policy::EgressPolicy;
 
 /// How long before its expiry a minted token is minted again, so a request
 /// never leaves carrying a token the daemon is about to stop honouring.
@@ -29,26 +29,26 @@ const REFRESH_MARGIN: Duration = Duration::from_secs(30);
 /// The event a mint logs under.
 const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
 
-/// One lease's credentials.
+/// One run's credentials.
 #[derive(Debug)]
 pub(crate) struct Vault<'run> {
-    lease_id: &'run str,
+    run_id: &'run str,
     mint: &'run dyn Mint,
     clock: &'run dyn Clock,
     minted: HashMap<String, Minted>,
     /// Tokens a re-mint replaced. The upstream may honour one until it
-    /// expires, so the masker keeps every token this lease was handed.
+    /// expires, so the masker keeps every token this run was handed.
     retired: Vec<(String, Minted)>,
     /// Masks every minted token; `None` until the first mint.
     masker: Option<Scrub>,
 }
 
 impl<'run> Vault<'run> {
-    /// Lease `lease_id`'s vault, minting through `mint`, its tokens expiring
+    /// Run `run_id`'s vault, minting through `mint`, its tokens expiring
     /// against `clock`.
-    pub(crate) fn new(lease_id: &'run str, mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
+    pub(crate) fn new(run_id: &'run str, mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
         Self {
-            lease_id,
+            run_id,
             mint,
             clock,
             minted: HashMap::new(),
@@ -58,20 +58,20 @@ impl<'run> Vault<'run> {
     }
 
     /// `template` with every placeholder replaced by its value, minting what
-    /// `admission` says is minted and is not yet held fresh.
+    /// `policy` says is minted and is not yet held fresh.
     pub(crate) async fn fill(
         &mut self,
-        admission: Admission<'_>,
+        policy: EgressPolicy<'_>,
         template: &str,
     ) -> Result<Secret> {
         let wanted = placeholder::parse(template).unwrap_or_default();
         for secret in &wanted {
-            if let Some(mintable) = admission.mints(secret.name) {
+            if let Some(mintable) = policy.mints(secret.name) {
                 self.hold(secret.name, &mintable.integration).await?;
             }
         }
-        let statics = admission.statics();
-        let value = |secret: SecretRef<'_>| match admission.mints(secret.name) {
+        let statics = policy.statics();
+        let value = |secret: SecretRef<'_>| match policy.mints(secret.name) {
             Some(_minted) if secret.field == FIELD_TOKEN => {
                 self.minted.get(secret.name).map(Minted::expose)
             }
@@ -79,7 +79,7 @@ impl<'run> Vault<'run> {
             None => statics.field(secret.name, secret.field),
         };
         if let Some(missing) = wanted.iter().find(|secret| value(**secret).is_none()) {
-            return Err(admission.unknown(*missing));
+            return Err(policy.unknown(*missing));
         }
         Ok(Secret::new(
             placeholder::substitute(template, value).into_owned(),
@@ -117,9 +117,9 @@ impl<'run> Vault<'run> {
         )
         .map_err(raise::unmaskable)?;
         let expires_at = minted.expires_at();
-        let lease_id = self.lease_id;
+        let run_id = self.run_id;
         let event = EVENT_CREDENTIAL_MINTED;
-        tracing::info!(lease_id, integration, %expires_at, event);
+        tracing::info!(run_id, integration, %expires_at, event);
         if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
             self.retired.push((name.to_owned(), replaced));
         }

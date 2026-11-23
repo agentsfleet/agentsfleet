@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::{Result, error::ErrorKind};
 
 /// Adapter limits, proven by [`Tuning::prove`] before any connection uses them.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Validate)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct Tuning {
     /// Messages a slow local reader may fall behind before it is told how

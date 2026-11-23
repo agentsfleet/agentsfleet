@@ -227,8 +227,8 @@ impl Lane {
     pub(crate) async fn seed_model_entry(&self, model_id: &str, secret_ref: &str) {
         sqlx::query(
             "INSERT INTO model.tenant_models \
-               (id, tenant_id, model_name, secret_ref, workspace_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, now(), now())",
+               (id, tenant_id, model_name, secret_ref, workspace_id, selected, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, false, now(), now())",
         )
         .bind(mint_id())
         .bind(&self.tenant)

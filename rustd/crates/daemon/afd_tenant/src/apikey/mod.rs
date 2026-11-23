@@ -35,12 +35,12 @@ use crate::sql::apikey as sql;
 use crate::{Result, error};
 use afd_auth::minted::Minted;
 
-pub use self::name::{Deactivation, Description, KeyName};
+pub use self::name::{Deactivation, KeyName};
 pub use self::sort::ApiKeySort;
 
 /// The index that holds a tenant to one key per name.
 ///
-/// Must equal the name in `schema/20261108120700_identity_api_keys.sql`: a key-hash or
+/// Must equal the name in `afd_db/schema/20261108120700_identity_api_keys.sql`: a key-hash or
 /// primary-key collision is unique too, and is not a name the caller can change.
 const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_name";
 const DISPLAY_SUFFIX_CHARS: usize = 4;
@@ -82,7 +82,6 @@ impl ApiKeys {
             .bind(&id)
             .bind(request.tenant)
             .bind(request.name.as_str())
-            .bind(request.description.as_str())
             .bind(credential.digest().as_str())
             .bind(&display_suffix)
             .bind(request.created_by)
@@ -220,13 +219,11 @@ pub struct MintRequest<'a> {
     pub tenant: &'a Uuid7,
     /// What it is called, already parsed.
     pub name: KeyName<'a>,
-    /// The free text beside it, already bounded.
-    pub description: Description<'a>,
     /// The identity provider's subject for whoever minted it.
     ///
     /// A `&str` rather than a parsed subject, because `created_by_subject` is
     /// `TEXT NOT NULL` holding the claim directly — a key outlives the admin who
-    /// made it, as `schema/20261108120700_identity_api_keys.sql` says, and it is why the
+    /// made it, as `afd_db/schema/20261108120700_identity_api_keys.sql` says, and it is why the
     /// credential lookup does not join `identity.users` for this class.
     pub created_by: &'a str,
 }
@@ -257,7 +254,7 @@ pub struct Revoked {
 }
 
 /// A cursor's boundary row, which must be an identifier this daemon minted.
-fn boundary_id(id: &str) -> crate::Result<Uuid7> {
+fn boundary_id(id: &str) -> Result<Uuid7> {
     Uuid7::parse(id).map_err(|_forged| error::cursor_invalid())
 }
 

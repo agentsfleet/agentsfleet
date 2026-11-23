@@ -71,7 +71,7 @@ fn inference_errors_keep_safe_details_and_typed_causes() -> Result<(), &'static 
             dialect: dialect.map(str::to_owned),
             max_output_tokens: output,
         };
-        let cause = af_inference::Configured::new(&settings, 64)
+        let cause = af_providers::settings::Configured::new(&settings, 64)
             .err()
             .ok_or("the invalid inference fixture unexpectedly validated")?;
         let error = Error::from(cause);
@@ -83,7 +83,7 @@ fn inference_errors_keep_safe_details_and_typed_causes() -> Result<(), &'static 
         assert!(
             error
                 .source()
-                .and_then(|source| source.downcast_ref::<af_inference::Error>())
+                .and_then(|source| source.downcast_ref::<af_providers::Error>())
                 .is_some()
         );
         for rendered in [

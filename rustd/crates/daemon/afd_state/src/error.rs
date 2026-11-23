@@ -28,7 +28,7 @@
 //! is slow" and "this credential is bad" have to stay distinguishable, and a
 //! richer error here is how they stop being.
 
-pub use afd_auth::error::Unavailable;
+pub(crate) use afd_auth::error::Unavailable;
 
 /// The result every fallible function in this crate returns.
 ///

@@ -3,17 +3,39 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use af_secrets::Clean;
+use af_wire::protocol::MESSAGE_BYTES_MAX;
 use af_wire::tool_detail::{
-    DETAIL_FIELD_MAX_BYTES, DETAIL_POST_MAX_BYTES, RawToolCallRecord, ToolCallRecordsRequest,
+    ItemKind, ItemStatus, RawToolCallRecord, ToolCallRecord, ToolCallRecordsRequest,
 };
-use serde_json::json;
+use af_wire::tool_trace::FileChange;
+use serde_json::{Value, json};
 
-use super::{post_envelope_bytes, record};
+use super::{Item, post_envelope_bytes};
 use crate::fixture::{clean, clean_json};
 use af_wire::tool_trace::encoded_len;
 
+/// The run's own turn, as the payload names it.
+const TURN: &str = "019f0000-0000-7000-8000-000000000001";
+
+/// A `web_fetch` call of the run's own turn that succeeded.
+fn fetched() -> Item {
+    Item {
+        turn_id: TURN.to_owned(),
+        kind: ItemKind::ToolCall,
+        tool: "web_fetch".to_owned(),
+        status: ItemStatus::Succeeded,
+        changes: Vec::new(),
+    }
+}
+
+/// Call `number`'s record as a [`fetched`] call.
+fn record(number: u64, arguments: Clean<Value>, output: &Clean<String>) -> ToolCallRecord<'static> {
+    super::record(number, arguments, output, fetched())
+}
+
 /// Whether the daemon would keep `record`, judged by the wire's own narrow.
-fn accepted(record: &af_wire::tool_detail::ToolCallRecord<'_>) -> bool {
+fn accepted(record: &ToolCallRecord<'_>) -> bool {
     let text = serde_json::to_string(record).unwrap();
     serde_json::from_str::<RawToolCallRecord<'_>>(&text)
         .unwrap()
@@ -36,73 +58,76 @@ fn should_keep_a_small_call_whole() {
     assert!(accepted(&kept));
 }
 
+/// Past the 64 KiB a record was once cut to: output and arguments are kept
+/// whole, and every line is counted.
 #[test]
-fn should_cut_an_output_past_its_field_bound_and_count_every_line() {
-    let output = "line\n".repeat(DETAIL_FIELD_MAX_BYTES / 4);
+fn should_keep_a_large_output_and_its_arguments_whole() {
+    let output = "line\n".repeat(200 * 1024 / 5);
+    let arguments = json!({"body": "x".repeat(200 * 1024)});
 
-    let cut = record(1, clean_json(json!({})), &clean(&output));
+    let kept = record(1, clean_json(arguments), &clean(&output));
 
-    assert!(cut.truncated && cut.output.len() <= DETAIL_FIELD_MAX_BYTES);
-    assert_eq!(cut.output_line_count, (DETAIL_FIELD_MAX_BYTES / 4) as u64);
-    assert!(accepted(&cut));
+    assert!(!kept.truncated && !kept.truncated_arguments);
+    assert_eq!(kept.output, output);
+    assert_eq!(kept.output_line_count, (200 * 1024 / 5) as u64);
+    assert!(accepted(&kept));
 }
 
 #[test]
-fn should_empty_arguments_past_their_field_bound() {
-    let arguments = json!({"body": "x".repeat(DETAIL_FIELD_MAX_BYTES)});
+fn should_empty_arguments_that_alone_would_not_fit_one_post() {
+    let arguments = json!({"body": "x".repeat(MESSAGE_BYTES_MAX)});
 
     let cut = record(1, clean_json(arguments), &clean("ok"));
 
     assert!(cut.truncated_arguments && cut.arguments.is_empty());
+    assert_eq!(cut.output, "ok");
     assert!(accepted(&cut));
 }
 
 #[test]
 fn should_cut_an_output_that_escapes_past_one_post() {
-    let output = "\u{1}".repeat(DETAIL_FIELD_MAX_BYTES);
+    // Each control character escapes to six bytes: 48 MiB of JSON.
+    let output = "\u{1}".repeat(MESSAGE_BYTES_MAX / 4);
 
     let cut = record(1, clean_json(json!({})), &clean(&output));
 
     let encoded = serde_json::to_vec(&cut).unwrap().len();
-    assert!(cut.truncated && encoded + post_envelope_bytes() <= DETAIL_POST_MAX_BYTES);
+    assert!(cut.truncated && encoded + post_envelope_bytes() <= MESSAGE_BYTES_MAX);
     assert_eq!(
         cut.output.len(),
-        DETAIL_FIELD_MAX_BYTES / 2,
+        MESSAGE_BYTES_MAX / 8,
         "halved once, not emptied"
     );
     assert!(accepted(&cut));
 }
 
-/// An output whose uncut record encodes to exactly `target` bytes: control
-/// characters escape to six bytes each, letters to one.
+/// An output whose uncut record encodes to exactly `target` bytes.
 fn encoding_to(target: usize) -> String {
     let base = encoded_len(&record(1, clean_json(json!({})), &clean("")));
-    let escaped = (target - base - DETAIL_FIELD_MAX_BYTES).div_ceil(5);
-    let plain = target - base - 6 * escaped;
-    format!("{}{}", "\u{1}".repeat(escaped), "a".repeat(plain))
+    "a".repeat(target - base)
 }
 
 #[test]
 fn should_keep_a_record_that_exactly_fits_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes());
+    let output = encoding_to(MESSAGE_BYTES_MAX - post_envelope_bytes());
 
     let kept = record(1, clean_json(json!({})), &clean(&output));
 
     assert!(!kept.truncated, "{} output bytes", output.len());
     assert_eq!(kept.output, output);
     // The envelope is measured, not guessed: sealed alone at the largest
-    // fencing token, the kept record is a post of exactly the daemon's cap.
+    // fencing token, the kept record is a post of exactly one frame.
     let text = serde_json::to_string(&kept).unwrap();
     let post = ToolCallRecordsRequest {
         fencing_token: u64::MAX,
         calls: vec![serde_json::from_str::<RawToolCallRecord<'_>>(&text).unwrap()],
     };
-    assert_eq!(encoded_len(&post), DETAIL_POST_MAX_BYTES);
+    assert_eq!(encoded_len(&post), MESSAGE_BYTES_MAX);
 }
 
 #[test]
 fn should_cut_a_record_one_byte_past_one_post() {
-    let output = encoding_to(DETAIL_POST_MAX_BYTES - post_envelope_bytes() + 1);
+    let output = encoding_to(MESSAGE_BYTES_MAX - post_envelope_bytes() + 1);
 
     let cut = record(1, clean_json(json!({})), &clean(&output));
 
@@ -114,4 +139,48 @@ fn should_record_no_arguments_for_a_call_whose_arguments_are_not_an_object() {
     let kept = record(1, clean_json(json!("bare")), &clean("ok"));
 
     assert!(kept.arguments.is_empty() && !kept.truncated_arguments);
+}
+
+#[test]
+fn should_carry_an_edits_turn_kind_and_counts() {
+    let edited = Item {
+        turn_id: "019f0000-0000-7000-8000-000000000002".to_owned(),
+        kind: ItemKind::Edit,
+        tool: "apply_patch".to_owned(),
+        status: ItemStatus::Succeeded,
+        changes: vec![FileChange {
+            path: "src/a.rs".into(),
+            added: 24,
+            removed: 8,
+        }],
+    };
+
+    let kept = super::record(4, clean_json(json!({"patch": "…"})), &clean("done"), edited);
+
+    assert_eq!(kept.turn_id, "019f0000-0000-7000-8000-000000000002");
+    assert_eq!(
+        (kept.kind, kept.tool.as_ref(), kept.status),
+        (ItemKind::Edit, "apply_patch", ItemStatus::Succeeded)
+    );
+    assert_eq!(kept.changes.len(), 1);
+    assert!(accepted(&kept), "the daemon keeps an edit's record");
+}
+
+#[test]
+fn should_record_a_failed_call_with_no_changes() {
+    let failed = Item {
+        status: ItemStatus::Failed,
+        ..fetched()
+    };
+
+    let kept = super::record(
+        2,
+        clean_json(json!({})),
+        &clean("[file_not_found] gone"),
+        failed,
+    );
+
+    assert_eq!(kept.status, ItemStatus::Failed);
+    assert_eq!(kept.changes, Vec::new());
+    assert!(accepted(&kept));
 }

@@ -1,19 +1,20 @@
 //! Creator-only draft collection and current candidate reads.
 
-use super::{DraftPath, access, attach, id, render};
+use super::{DraftPath, access, id, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{CursorPage, Draft, DraftCard};
-use afd_authoring::types::ListQuery;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{CursorPage, Draft, DraftCard};
+use afd_http::handler::{Refusal, setup_refusal};
+use afd_setup::types::ListQuery;
 use axum::{
     Json,
     extract::{Path, Query, State, rejection::QueryRejection},
     response::{IntoResponse as _, Response},
 };
+use http::header;
 use std::sync::Arc;
 
 /// Lists only the authenticated creator's drafts in this workspace.
@@ -31,7 +32,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -39,10 +40,10 @@ pub(crate) async fn list<D: Services>(
 ) -> Result<Response, Refusal> {
     let Query(query) = query.map_err(|_invalid| Refusal::malformed("Invalid draft list query"))?;
     let page = services
-        .authoring()
+        .drafts()
         .list(access(&owned, &person), query)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(Json(render::page(page, render::card)).into_response())
 }
 
@@ -56,19 +57,17 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn one<D: Services>(
+pub(crate) async fn one<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
     Path(path): Path<DraftPath>,
 ) -> Result<Response, Refusal> {
     let draft = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &id(&path)?)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let tag = draft.etag.clone();
-    let mut response = Json(render::draft(draft)).into_response();
-    attach(&mut response, &tag);
-    Ok(response)
+    Ok(([(header::ETAG, tag)], Json(render::draft(draft))).into_response())
 }

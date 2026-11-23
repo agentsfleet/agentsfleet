@@ -18,10 +18,10 @@ use super::Refusal;
 ///
 /// A conflict rather than a not-found, because the row EXISTS and the caller
 /// may retry in a moment — the two answers send a caller to different places.
-pub use afd_cron::error::detail::SYNC_HELD as DETAIL_HELD;
+use afd_cron::error::detail::SYNC_HELD as DETAIL_HELD;
 
 /// The `current_state` a schedule another syncer holds names.
-pub use afd_cron::error::STATE_SYNCING;
+use afd_cron::error::STATE_SYNCING;
 
 /// The refusal a fleet changing a schedule a person made earns.
 pub const DETAIL_NOT_FLEET_OWNED: &str =

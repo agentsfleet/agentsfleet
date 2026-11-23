@@ -1,5 +1,5 @@
-INSERT INTO model.decision_prices
-    (id, platform_model_id, decision_revision_id, effective_from_at, effective_until_at, prompt_tokens_above,
+INSERT INTO model.platform_model_prices
+    (id, platform_model_id, decision_revision_id, effective_from, effective_until, prompt_tokens_above,
      input_nanos_per_mtok, cached_input_nanos_per_mtok, cache_write_nanos_per_mtok,
      cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok,
      source_url, verified_at, conditions, created_at, updated_at)
@@ -14,8 +14,8 @@ FROM unnest($2::uuid[], $3::timestamptz[], $4::timestamptz[], $5::integer[],
          input_nanos_per_mtok, cached_input_nanos_per_mtok, cache_write_nanos_per_mtok,
          cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok,
          source_url, verified_at, conditions)
-ON CONFLICT (platform_model_id, decision_revision_id, prompt_tokens_above, effective_from_at) DO UPDATE SET
-    effective_until_at = EXCLUDED.effective_until_at,
+ON CONFLICT (platform_model_id, decision_revision_id, prompt_tokens_above, effective_from) DO UPDATE SET
+    effective_until = EXCLUDED.effective_until,
     input_nanos_per_mtok = EXCLUDED.input_nanos_per_mtok,
     cached_input_nanos_per_mtok = EXCLUDED.cached_input_nanos_per_mtok,
     cache_write_nanos_per_mtok = EXCLUDED.cache_write_nanos_per_mtok,

@@ -4,16 +4,18 @@
 
 use std::collections::HashMap;
 
-use af_providers::{Chunk, Connect, Message, Request, ToolSpec};
-use af_wire::lease::Turn;
+use af_providers::Connect;
+use af_wire::run::Turn;
 use afr_tools::catalog::UPDATE_PLAN;
 use futures_util::StreamExt as _;
+use guffbolt::ToolSpec;
+use guffbolt::{Chunk, Message, Request};
 use serde_json::value::RawValue;
 use serde_json::{Value, json};
 
 use super::ANSWER;
 use super::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
-use super::support::{Fake, Reply, connector, engine, lease, run};
+use super::support::{Fake, Reply, connector, engine, payload, run};
 
 /// The model every request here names.
 const MODEL: &str = "model-1";
@@ -25,7 +27,7 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 const PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 /// The field a Messages block or the request carries its cache marker in.
 const CACHE_CONTROL: &str = "cache_control";
-/// What the earlier lease asked, and what the follow-up asks after it.
+/// What the earlier run asked, and what the follow-up asks after it.
 const ASKED: &str = "what is 2+2?";
 const FOLLOW_UP: &str = "and doubled?";
 /// The Messages usage field counting the prompt tokens a turn wrote to the
@@ -67,8 +69,8 @@ async fn sent(wire: Wire) -> Value {
 /// Every chunk of one turn asking [`ASKED`] and offering one tool, sent to
 /// `provider` through `connector`.
 async fn turn(connector: &impl Connect, provider: &str) -> Vec<af_providers::Result<Chunk>> {
-    let leased = lease(provider, &[], ASKED);
-    let provider = connector.connect(&leased).unwrap();
+    let held = payload(provider, &[], ASKED);
+    let provider = connector.connect(&held).unwrap();
     let parameters = json!({ "type": "object", "properties": {} });
     let tools = [ToolSpec {
         name: UPDATE_PLAN.name(),
@@ -132,17 +134,17 @@ async fn test_cache_key_rides_responses_only() {
     }
 }
 
-/// The Responses key is the lease's fleet, as the loop reads it off the
-/// lease: every conversation of one fleet shares a cache, and no other
+/// The Responses key is the run's fleet, as the loop reads it off the
+/// run: every conversation of one fleet shares a cache, and no other
 /// fleet's does.
 #[tokio::test]
 async fn test_responses_cache_key_is_the_fleet_id() {
     let wire = Wire::Responses;
     let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
-    let mut leased = lease(&wire.provider(), &[], ASKED);
-    leased.event.fleet_id = FLEET.into();
+    let mut held = payload(&wire.provider(), &[], ASKED);
+    held.event.fleet_id = FLEET.into();
 
-    let _ran = run(&engine(&fake), &leased).await;
+    let _ran = run(&engine(&fake), &held).await;
 
     let body = fake.seen().remove(0).body;
     assert_eq!(body[PROMPT_CACHE_KEY], FLEET, "{body}");
@@ -255,7 +257,7 @@ fn writes(wire: Wire, event: &str) -> String {
     format!("{head}{DATA}{payload}\n\n")
 }
 
-/// A follow-up's first request repeats the earlier lease's on the wire, byte
+/// A follow-up's first request repeats the earlier run's on the wire, byte
 /// for byte: the same model, tools, system prompt and cache marker or key,
 /// and a conversation opening with every message the earlier request sent,
 /// up to where the provider's moving breakpoint stood, so its cache serves
@@ -265,7 +267,9 @@ async fn test_history_prefix_is_byte_identical_on_the_wire() {
     for (wire, fixed, grows) in CACHING {
         let earlier = first_request(wire, ASKED, Vec::new()).await;
         let turn = Turn {
+            sequence: 1,
             message: ASKED.into(),
+            calls: Vec::new(),
             answer: ANSWER.into(),
         };
         let follow_up = first_request(wire, FOLLOW_UP, vec![turn]).await;
@@ -289,7 +293,7 @@ async fn test_history_prefix_is_byte_identical_on_the_wire() {
     }
 }
 
-/// The top-level fields of the first request `wire` sends for a lease asking
+/// The top-level fields of the first request `wire` sends for a run asking
 /// `message` after `history`, each as the bytes it arrived as.
 async fn first_request(
     wire: Wire,
@@ -297,8 +301,8 @@ async fn first_request(
     history: Vec<Turn<'static>>,
 ) -> HashMap<String, Box<RawValue>> {
     let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
-    let mut leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], message);
-    leased.history = history;
-    let _ran = run(&engine(&fake), &leased).await;
+    let mut held = payload(&wire.provider(), &[UPDATE_PLAN.name()], message);
+    held.history = history;
+    let _ran = run(&engine(&fake), &held).await;
     serde_json::from_slice(&fake.seen().remove(0).raw).unwrap()
 }

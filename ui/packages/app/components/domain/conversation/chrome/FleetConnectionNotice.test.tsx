@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FleetConnectionNotice } from "./FleetConnectionNotice";
-import { CONNECTION_STATUS } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "../stream/useFleetTurnStream";
 
 const RECONNECT_LABEL = "Retry now";
 const NOTICE = "fleet-connection-notice";

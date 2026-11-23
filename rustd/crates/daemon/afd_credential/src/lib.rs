@@ -6,12 +6,12 @@
 //! credential ([`secrets`]), a provider is DIALLED with what came out of the
 //! vault ([`provider`]), and a broker MINTS a short-lived token for the child
 //! that will use it ([`credential`]) — and none of them asks anything of a
-//! lease.
+//! run.
 //!
-//! They looked entangled with the lease plane because one file was misfiled:
+//! They looked entangled with the run plane because one file was misfiled:
 //! `credential/mint.rs` was 266 lines of `impl Plane`, an inherent impl on a
 //! type this crate does not own. Moving it to the plane that owns the type
-//! removed every edge from here to the lease, and what was left is this crate:
+//! removed every edge from here to the run, and what was left is this crate:
 //! a five-level DAG with nothing above it.
 //!
 //! # The vault is `afd_vault`'s

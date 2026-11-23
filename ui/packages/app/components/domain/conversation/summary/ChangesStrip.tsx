@@ -2,15 +2,15 @@
 
 import { CaretUpIcon, GitDiffIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
-import { useFleetTaskView } from "../../tasks/FleetTaskProvider";
+import { useFleetDurableTaskView } from "../../tasks/FleetTaskProvider";
 import type { RecordedChange } from "./recorded-changes";
 import { groupRecordedChanges, recordedChanges, recordedChangeTotals } from "./recorded-changes";
 import { RecordedChangeCounts, RecordedChangesDialog } from "./RecordedChangesDialog";
 
-/** Only confirmed writes from this fleet's recorded events enter the count. */
+/** Only confirmed writes from this fleet's recorded turns enter the count. */
 export function ChangesStrip() {
-  const view = useFleetTaskView();
-  const changes = view?.subject ? recordedChanges(view.events ?? [], {includeRunning: false, repositories: view.changeRepositories}) : [];
+  const view = useFleetDurableTaskView();
+  const changes = view?.subject ? recordedChanges(view.turns ?? [], {includeRunning: false, repositories: view.changeRepositories}) : [];
   return <ChangedFilesFlap changes={changes} />;
 }
 

@@ -1,16 +1,16 @@
-import type { EventDetail } from "@/lib/api/events";
-import { OUTCOME } from "@/lib/events/event-summary";
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { TurnDetail } from "@/lib/api/turns";
+import { OUTCOME } from "@/lib/turns/turn-summary";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 
-// The two rows the frame-reducer suites build on: a durable row as the events
+// The two rows the frame-reducer suites build on: a durable row as the turns
 // list serves it, and a rendered turn as the timeline holds it. Shared so the
 // three suites that split by concern agree on one fixture.
 
 export const MS_PER_SECOND = 1000 as const;
 
-export function row(over: Partial<EventDetail> = {}): EventDetail {
+export function row(over: Partial<TurnDetail> = {}): TurnDetail {
   return {
-    event_id: "e1",
+    turn_id: "e1",
     fleet_id: "z1",
     workspace_id: "ws1",
     actor: "fleet",
@@ -21,14 +21,14 @@ export function row(over: Partial<EventDetail> = {}): EventDetail {
     tokens: null,
     wall_ms: null,
     failure_label: null,
-    resumes_event_id: null,
+    resumes_turn_id: null,
     created_at: "1970-01-01T00:00:01Z",
     updated_at: "1970-01-01T00:00:01Z",
     ...over,
-  } as EventDetail;
+  } as TurnDetail;
 }
 
-export function evt(over: Partial<FleetEvent> = {}): FleetEvent {
+export function evt(over: Partial<FleetTurn> = {}): FleetTurn {
   return {
     id: "e0",
     role: "assistant",

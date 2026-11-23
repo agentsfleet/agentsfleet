@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@agentsfleet/design-system";
-import { controlTask, type TaskChange, type TaskControl, type TaskDetail } from "@/lib/api/tasks";
+import { controlDurableTask, type DurableTaskChange, type DurableTaskControl, type DurableTaskDetail } from "@/lib/api/tasks";
 
-type Props = {workspaceId: string; fleetId: string; detail: TaskDetail; enabled: boolean; onChanged: () => void};
-type Action = {state: TaskControl; label: string};
+type Props = {workspaceId: string; fleetId: string; detail: DurableTaskDetail; enabled: boolean; onChanged: () => void};
+type Action = {state: DurableTaskControl; label: string};
 type Status = {kind: "idle"} | {kind: "sending"; label: string} | {kind: "failed"; message: string};
 
-export function TaskControls({workspaceId, fleetId, detail, enabled, onChanged}: Props) {
+export function DurableTaskControls({workspaceId, fleetId, detail, enabled, onChanged}: Props) {
   const [status, setStatus] = useState<Status>({kind: "idle"});
   const active = useRef<AbortController | null>(null);
   useEffect(() => () => active.current?.abort(), []);
@@ -23,7 +23,7 @@ export function TaskControls({workspaceId, fleetId, detail, enabled, onChanged}:
     const pending = new AbortController();
     active.current = pending;
     setStatus({kind: "sending", label: action.label});
-    const result = await controlTask(workspaceId, fleetId, detail, action.state, pending.signal);
+    const result = await controlDurableTask(workspaceId, fleetId, detail, action.state, pending.signal);
     active.current = null;
     if (pending.signal.aborted) return;
     if (result.kind === "confirmed") {
@@ -42,7 +42,7 @@ export function TaskControls({workspaceId, fleetId, detail, enabled, onChanged}:
   </div>;
 }
 
-function failure(result: Extract<TaskChange, {kind: "failed"}>): string {
+function failure(result: Extract<DurableTaskChange, {kind: "failed"}>): string {
   switch (result.reason) {
     case "access": return "You don’t have access to change this work. Sign in or ask a workspace owner.";
     case "changed": return "This work changed. Refresh its progress before choosing an action.";

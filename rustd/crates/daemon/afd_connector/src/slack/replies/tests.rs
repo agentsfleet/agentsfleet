@@ -1,4 +1,4 @@
-//! The thread read's pure half: flattening, the window and the page shape.
+//! The thread read's pure half: flattening and the page shape.
 //!
 //! The requests themselves are proved over a socket in `tests/slack_replies.rs`.
 
@@ -7,23 +7,14 @@
     reason = "a test asserts by panicking; the restriction set is for the daemon"
 )]
 
-use super::{MAX_MESSAGES, Message, Page, Posted, Unavailable, Window, flatten};
+use super::{Page, Posted, Unavailable, flatten};
 
 /// One posted message, parsed from Slack's own rendering.
 fn posted(json: &str) -> Posted {
     serde_json::from_str(json).expect("the fixture is a Slack message")
 }
 
-/// A message `ts` saying `text`, as the window holds it.
-fn said(ts: usize) -> Message {
-    Message {
-        ts: ts.to_string(),
-        author: "U01".to_owned(),
-        text: format!("message {ts}"),
-    }
-}
-
-/// Dimension 4.2 — a CI announcement whose run link sits only in an
+/// A CI announcement whose run link sits only in an
 /// attachment's `title_link` still carries that link after flattening.
 #[test]
 fn attachment_links_survive_flattening() {
@@ -77,34 +68,6 @@ fn a_message_with_nothing_shown_flattens_to_empty() {
     let message = flatten(posted(r#"{"ts":"1","attachments":[{"color":"good"}]}"#));
     assert_eq!(message.author, "");
     assert_eq!(message.text, "");
-}
-
-/// A thread of thirty keeps the parent and the latest nineteen, oldest first,
-/// and remembers it saw thirty.
-#[test]
-fn the_window_keeps_the_parent_and_the_latest_replies() {
-    let mut window = Window::default();
-    (1..=30).map(said).for_each(|message| window.push(message));
-    let replies = window.into_replies();
-
-    assert_eq!(replies.seen, 30);
-    assert_eq!(replies.messages.len(), MAX_MESSAGES);
-    let order: Vec<&str> = replies.messages.iter().map(|m| m.ts.as_str()).collect();
-    let expected: Vec<String> = std::iter::once(1)
-        .chain(12..=30)
-        .map(|ts| ts.to_string())
-        .collect();
-    assert_eq!(order, expected, "the parent, then replies 12 through 30");
-}
-
-/// A thread shorter than the window is kept whole.
-#[test]
-fn a_short_thread_is_kept_whole() {
-    let mut window = Window::default();
-    (1..=3).map(said).for_each(|message| window.push(message));
-    let replies = window.into_replies();
-    assert_eq!(replies.seen, 3);
-    assert_eq!(replies.messages, vec![said(1), said(2), said(3)]);
 }
 
 /// A 200 that is JSON but not Slack's answer reads as not ok, never as an

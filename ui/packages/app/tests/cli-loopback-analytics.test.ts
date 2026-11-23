@@ -262,9 +262,11 @@ describe("authentication telemetry exclusion", () => {
     expect(client.capture).toHaveBeenCalledExactlyOnceWith("fresh-owned-event", { path: "/workspaces" });
   });
 
-  it("bounds traversal and handles cycles without emitting oversized payloads", () => {
+  it("handles cycles and delivers an event past 1,000 values whole", () => {
     const cyclic: { self?: unknown } = {}; cyclic.self = cyclic;
     expect(filterAuthenticationEvent(cyclic)).toBe(cyclic);
-    expect(filterAuthenticationEvent(Array.from({ length: 1_001 }, () => 1))).toBeNull();
+    const large = Array.from({ length: 1_001 }, () => 1);
+    expect(filterAuthenticationEvent(large)).toBe(large);
+    expect(filterAuthenticationEvent([...large, "/sign-in"])).toBeNull();
   });
 });

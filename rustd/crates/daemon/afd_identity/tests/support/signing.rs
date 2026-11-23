@@ -131,9 +131,14 @@ fn verify_signed_at(
         VerifierConfig::new(ISSUER, AUDIENCE),
         Arc::new(FixedClock::at(now)) as Arc<dyn Clock>,
     );
+    block_on(verifier.verify(token))
+}
+
+/// Drives `future` to its end on a runtime of its own.
+fn block_on<F: Future>(future: F) -> F::Output {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("a current-thread runtime")
-        .block_on(verifier.verify(token))
+        .block_on(future)
 }

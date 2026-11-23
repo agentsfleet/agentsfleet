@@ -3,9 +3,7 @@
 use super::Session;
 use crate::{Result, error};
 use af_core::id::Uuid7;
-use af_wire::task::{
-    CHECKPOINT_PAGE_BYTES, CHECKPOINT_PAGES, CheckpointEntry, CheckpointReadQuery,
-};
+use af_wire::durable_task::{CHECKPOINT_PAGE_BYTES, CheckpointEntry, CheckpointReadQuery};
 use std::collections::BTreeMap;
 
 impl Session<'_> {
@@ -38,7 +36,7 @@ impl Session<'_> {
         let history = self
             .pages(&ids, &expected, &mut entries, &mut bytes)
             .await?;
-        let total = entries
+        entries
             .values()
             .try_fold(0_u64, |sum, entry| {
                 sum.checked_add(match entry {
@@ -49,9 +47,6 @@ impl Session<'_> {
                 })
             })
             .ok_or_else(|| error::config("checkpoint expanded size overflow"))?;
-        if total > 24 * 1024 * 1024 * 1024 || entries.len() > 200_000 {
-            return Err(error::config("checkpoint expanded bounds exceeded"));
-        }
         Ok((entries, history, base_paths))
     }
 
@@ -62,9 +57,6 @@ impl Session<'_> {
         entries: &mut BTreeMap<String, CheckpointEntry>,
         bytes: &mut usize,
     ) -> Result<Vec<String>> {
-        if ids.len() > usize::try_from(CHECKPOINT_PAGES).unwrap_or(usize::MAX) {
-            return Err(error::config("checkpoint page count exceeds its bound"));
-        }
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
         let mut digests = Vec::new();
         let mut history = Vec::new();
@@ -73,8 +65,8 @@ impl Session<'_> {
             self.renew().await?;
             let page = self
                 .plane
-                .task_checkpoint_page(
-                    self.lease,
+                .durable_task_checkpoint_page(
+                    self.run,
                     &checkpoint,
                     &Uuid7::parse(id)?,
                     &CheckpointReadQuery {

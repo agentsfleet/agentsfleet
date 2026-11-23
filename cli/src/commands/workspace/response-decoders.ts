@@ -1,8 +1,6 @@
 import { isString } from "../../lib/guards.ts";
 import { isInstant } from "../../lib/instant.ts";
 
-const WORKSPACE_LIST_PAGE_LIMIT = 100;
-
 export interface WorkspaceWireItem {
   readonly id: string;
   readonly name: string | null;
@@ -53,7 +51,6 @@ export const decodeWorkspacePage = (
   if (
     !isNonEmptyString(value.tenant_id) ||
     !Array.isArray(value.items) ||
-    value.items.length > WORKSPACE_LIST_PAGE_LIMIT ||
     value.total !== null ||
     !Object.hasOwn(value, "next_cursor")
   ) {

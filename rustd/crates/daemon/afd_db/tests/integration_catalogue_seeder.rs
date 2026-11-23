@@ -5,9 +5,9 @@
     reason = "a seeder the lane cannot run fails the test loudly"
 )]
 
-use std::path::Path;
 use std::time::Duration;
 
+use af_core::env::{EnvSource as _, ProcessEnv};
 use afd_db::Migrator;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -15,25 +15,29 @@ use tokio::process::Command;
 
 const BUN: &str = "bun";
 const CATALOGUE_DATABASE_URL: &str = "TEST_CATALOGUE_DATABASE_URL";
+/// The seeder suite's directory, which the integration lane exports: the suite
+/// is TypeScript under `scripts/`, outside this crate.
+const CATALOGUE_SUITE: &str = "TEST_CATALOGUE_SUITE";
 const TIMEOUT: Duration = Duration::from_secs(120);
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_catalogue_seeder_uses_registered_schema_and_rolls_back_failures() {
+    let suite = ProcessEnv.get(CATALOGUE_SUITE).unwrap_or_else(|| {
+        panic!("{CATALOGUE_SUITE} is unset: run through make test-integration-rustd")
+    });
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     let migrated = Migrator::new().run(&db).await;
     db.close().await;
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
     let output = if migrated.is_ok() {
         tokio::time::timeout(
             TIMEOUT,
             Command::new(BUN)
                 .arg("test")
                 .arg("--coverage")
-                .arg("scripts/model-catalogue")
                 .env(CATALOGUE_DATABASE_URL, database.url())
-                .current_dir(root)
+                .current_dir(suite)
                 .kill_on_drop(true)
                 .output(),
         )

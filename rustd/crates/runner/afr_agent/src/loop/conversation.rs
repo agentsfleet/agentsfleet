@@ -1,66 +1,46 @@
 //! A loop's conversation between turns: what a parent sent, what the model
-//! said, what the memory checkpoint wrote back, and the cap's last word; and
-//! the loop as `guffbolt` drives it.
+//! said, what the memory checkpoint wrote back; and the loop as `guffbolt`
+//! drives it.
 
-use af_providers::{Call, Message, Replay};
-use af_wire::memory::MemoryDelta;
-use guffbolt::{Prepared, Sampled};
+use guffbolt::{
+    Call, CallRef, Fitted, Input, Mark, Request, ToolFuture, ToolSpec, Transcript, Window,
+};
+use tokio_util::sync::CancellationToken;
 
-use super::{EVENT_CHECKPOINT_FAILED, Harness, INPUT_JOIN};
-use crate::nested::Tether;
-use crate::turn::Turn;
+use super::{EVENT_CHECKPOINT_FAILED, Harness};
+use crate::router::Lent;
 
 impl Harness<'_, '_> {
-    /// What a parent sent a child since the child's last turn.
-    fn sent_by_parent(tether: &mut Tether<'_, '_>) -> Vec<String> {
-        let mut sent = Vec::new();
-        while let Ok(text) = tether.input.try_recv() {
-            sent.push(text);
-        }
-        sent
-    }
-
-    /// The messages a person sent the fleet since the root's last claim,
-    /// claimed for this run; a stopped loop claims none, and neither does an
-    /// ask the lease's claim already answered.
-    async fn claim_folded(&mut self) -> Vec<String> {
-        if std::mem::take(&mut self.claim_answered) {
+    /// The messages a person sent the fleet since the root's last
+    /// assignment, assigned to this run, each marked with its turn; a stopped
+    /// loop is assigned none, and neither is an ask the run's assignment
+    /// already answered.
+    async fn assign_folded(&mut self) -> Vec<Input> {
+        if std::mem::take(&mut self.assignment_answered) {
             return Vec::new();
         }
         let shared = self.shared;
-        let mut claimed = tokio::select! {
+        let mut assigned = tokio::select! {
             biased;
             () = self.stop.cancelled() => return Vec::new(),
-            claimed = shared.inbox.claim(self.folded_through) => claimed,
+            assigned = shared.inbox.assign(self.folded_through) => assigned,
         };
         // An inbox that replays a message must not join it twice.
-        claimed.retain(|folded| folded.sequence > self.folded_through);
-        if let Some(last) = claimed.iter().map(|folded| folded.sequence).max() {
+        assigned.retain(|folded| folded.sequence > self.folded_through);
+        if let Some(last) = assigned.iter().map(|folded| folded.sequence).max() {
             self.folded_through = last;
         }
-        claimed
+        assigned
             .into_iter()
             .map(|folded| {
+                let mark = Mark::new(folded.turn_id.as_str());
                 self.folded_inputs.push(crate::engine::FoldRef {
-                    event_id: af_wire::lease::TurnId(folded.event_id),
+                    turn_id: af_wire::run::CheckpointOperationId(folded.turn_id),
                     sequence: folded.sequence,
                 });
-                folded.text
+                Input::marked(folded.text, mark)
             })
             .collect()
-    }
-
-    /// Adds `text` to the conversation, scrubbed like anything the model
-    /// wrote, joined onto a user message already waiting so no provider sees
-    /// two in a row.
-    fn join_user(&mut self, text: String) {
-        let text = self.shared.scrub.clean(text).into_inner();
-        if let Some(Message::User(waiting)) = self.messages.last_mut() {
-            waiting.push_str(INPUT_JOIN);
-            waiting.push_str(&text);
-        } else {
-            self.messages.push(Message::User(text));
-        }
     }
 
     /// The last folded message a completed model call read, once the loop
@@ -75,15 +55,11 @@ impl Harness<'_, '_> {
         }
     }
 
-    /// Writes the memory stored so far back, when any is; a stopped lease
+    /// Writes the memory stored so far back, when any is; a stopped run
     /// does not wait for it. A push that fails is logged and the run goes on:
     /// the push before the report carries every entry again.
     pub(super) async fn checkpoint(&self) {
-        let pending: Vec<MemoryDelta<'static>> = (self.shared.lease.memory.lock().await)
-            .pending()
-            .into_iter()
-            .map(MemoryDelta::into_owned)
-            .collect();
+        let pending = self.shared.run.memory.pending().await;
         if pending.is_empty() {
             return;
         }
@@ -94,100 +70,119 @@ impl Harness<'_, '_> {
         };
         if let Err(failure) = pushed {
             let error_code = failure.code().as_str();
-            let lease_id = self.shared.lease_id;
+            let run_id = self.shared.run_id;
             let event = EVENT_CHECKPOINT_FAILED;
-            tracing::warn!(error_code, lease_id, event);
-        }
-    }
-
-    /// What the model said and called, as the conversation keeps it: scrubbed,
-    /// so no secret value is ever sent to the model, whoever wrote it. The
-    /// router ran each call with the arguments as the model wrote them. The
-    /// provider's replay goes back unopened: it is the provider's own record
-    /// of its reasoning, signed where the provider signs it.
-    pub(super) fn remembered(&self, text: String, calls: Vec<Call>, replay: Replay) -> Message {
-        let scrub = self.shared.scrub;
-        let calls = calls
-            .into_iter()
-            .map(|call| Call {
-                arguments: scrub.clean_json(call.arguments).into_inner(),
-                ..call
-            })
-            .collect();
-        Message::Assistant {
-            text: scrub.clean(text).into_inner(),
-            calls,
-            replay,
+            tracing::warn!(error_code, run_id, event);
         }
     }
 }
 
 impl guffbolt::Conversation for Harness<'_, '_> {
-    type Turn = Turn;
-    type Results = Vec<Message>;
     type Failure = af_providers::Error;
+    type Model = af_providers::Provider;
+    type Observer = Self;
 
-    async fn take_input(&mut self) -> bool {
-        let sent = match self.child.as_mut() {
-            Some(tether) => Self::sent_by_parent(tether),
-            None => self.claim_folded().await,
+    fn transcript(&mut self) -> &mut Transcript {
+        &mut self.transcript
+    }
+
+    /// The messages a person sent the root, each marked with its turn and
+    /// scrubbed like anything the model wrote. A child's input is its task
+    /// and what its parent sent it, which `guffbolt` hands it itself, so a
+    /// child takes none of the root's.
+    async fn take_input(&mut self) -> Vec<Input> {
+        let sent = if self.depth == 0 {
+            self.assign_folded().await
+        } else {
+            Vec::new()
         };
-        let took = !sent.is_empty();
-        for text in sent {
-            self.join_user(text);
-        }
-        took
+        let scrub = self.shared.scrub;
+        sent.into_iter()
+            .map(|Input { text, mark }| Input {
+                text: scrub.clean(text).into_inner(),
+                mark,
+            })
+            .collect()
     }
 
-    async fn prepare(&mut self) -> Prepared<af_providers::Error> {
+    /// The window `context` fits for the next call: the last compaction's
+    /// notes, the groups that still fit, and the message the loop answers,
+    /// which is never compacted. A fit the stop cut short ends the loop
+    /// stopped; any other failure fails the run as a turn lost mid-way.
+    async fn window(&mut self) -> Fitted<af_providers::Error> {
         match self.preflight().await {
-            Ok(()) => Prepared::Ready,
-            Err(_) if self.stop.is_cancelled() => Prepared::Stopped,
-            Err(error) => Prepared::Failed(af_providers::Error::lost(error)),
+            Ok(window) => Fitted::Ready(window),
+            Err(_) if self.stop.is_cancelled() => Fitted::Stopped,
+            Err(error) => Fitted::Failed(af_providers::Error::lost(error)),
         }
     }
 
-    fn begin_group(&mut self) {
-        self.group_start = self.messages.len();
+    fn model(&self) -> &af_providers::Provider {
+        self.shared.provider
     }
 
-    async fn sample(&mut self, number: u64) -> Sampled<Turn, af_providers::Error> {
-        match self.turn(number, false).await {
-            Some(Ok(turn)) => Sampled::Turn(turn),
-            Some(Err(failure)) => Sampled::Failed(failure),
-            None => Sampled::Stopped,
+    /// The loop itself, which logs, counts and traces each turn and keeps
+    /// each call in the run's ledger.
+    fn observer(&self) -> &Self {
+        self
+    }
+
+    fn offered(&self) -> Vec<ToolSpec<'_>> {
+        self.router.specs()
+    }
+
+    /// What the window's estimate measured is what is sent.
+    fn request<'a>(&'a self, window: &'a Window, tools: &'a [ToolSpec<'a>]) -> Request<'a> {
+        let shared = self.shared;
+        Request {
+            model: shared.model,
+            instructions: &shared.instructions,
+            messages: &window.messages,
+            tools,
+            hosted: &self.hosted,
+            cache_key: shared.fleet_id,
+            max_output_tokens: window.max_output_tokens,
+            single_attempt: false,
         }
     }
 
-    async fn run_calls(&mut self, turn: &Turn) -> Vec<Message> {
-        let mut results = Vec::with_capacity(turn.calls.len());
-        for call in &turn.calls {
-            match self.call(call, turn.cut).await {
-                Some(result) => results.push(result),
-                None => break,
-            }
-            if self.checkpoints.due() {
-                self.checkpoint().await;
-            }
+    /// Lends the call the loop and its place, which a catalog handler is
+    /// lent in turn.
+    fn dispatch<'a>(&'a self, call: &'a Call, call_ref: &'a CallRef) -> ToolFuture<'a> {
+        let lent = Lent {
+            harness: self,
+            call_ref,
+        };
+        self.router.dispatch(&call.name, &call.arguments, lent)
+    }
+
+    /// What the model said and called, as the transcript keeps it: scrubbed,
+    /// so no secret value is ever sent to the model, whoever wrote it. The
+    /// router ran each call with the arguments as the model wrote them. The
+    /// provider's replay goes back unopened: it is the provider's own record
+    /// of its reasoning, signed where the provider signs it.
+    fn scrub(&self, text: &mut String, calls: &mut [Call]) {
+        let scrub = self.shared.scrub;
+        *text = scrub.clean(std::mem::take(text)).into_inner();
+        for call in calls {
+            call.arguments = scrub
+                .clean_json(std::mem::take(&mut call.arguments))
+                .into_inner();
         }
-        results
     }
 
-    fn remember(&mut self, turn: Turn, results: Vec<Message>) {
-        let said = self.remembered(turn.text, turn.calls, turn.replay);
-        self.messages.push(said);
-        self.messages.extend(results);
-    }
-
-    fn push_user(&mut self, text: String) {
-        self.messages.push(Message::User(text));
-    }
-
-    fn stopped(&self) -> bool {
-        self.stop.is_cancelled()
+    /// The run's token for the root, its own for a child.
+    fn stop(&self) -> &CancellationToken {
+        &self.stop
     }
 
     fn silent(&self, cut: bool) -> af_providers::Error {
         af_providers::Error::silent(cut)
+    }
+
+    async fn called(&mut self) {
+        if self.checkpoints.due() {
+            self.checkpoint().await;
+        }
     }
 }

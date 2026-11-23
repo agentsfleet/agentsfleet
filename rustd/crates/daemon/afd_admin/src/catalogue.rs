@@ -2,11 +2,12 @@
 //! the one writer of a model's price schedule.
 //!
 //! `model.platform_models` carries one identity per model and
-//! `model.platform_model_prices` its dated tiers. Both are scalar columns, so
-//! they decode through `FromRow` by column name: a renamed field fails the
-//! decode instead of reading as a silent NULL. The tenant picker and the
-//! credential registry reuse these types rather than spelling the columns
-//! again.
+//! `model.platform_model_prices` its dated tiers: the coding schedule under a
+//! NULL decision revision, and each decision revision's quotes under its own
+//! id. Both are scalar columns, so they decode through `FromRow` by column
+//! name: a renamed field fails the decode instead of reading as a silent NULL.
+//! The tenant picker and the credential registry reuse these types rather than
+//! spelling the columns again.
 
 use std::collections::HashMap;
 

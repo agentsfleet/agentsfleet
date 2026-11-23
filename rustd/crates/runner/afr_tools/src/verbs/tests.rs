@@ -2,13 +2,13 @@
 
 use af_core::error_code::{self, ErrorCode};
 
-use super::{CLOSED, LeaseVerbs as _, ScheduleCall, Unanswered, answered};
+use super::{CLOSED, RunVerbs as _, ScheduleCall, Unanswered, answered};
 use crate::runtime::ToolErrorCode;
 
-/// The five codes a model acts on differently each name their own tool error.
+/// The four codes a model acts on differently each name their own tool error.
 #[test]
 fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
-    let cases: [(ErrorCode, ToolErrorCode); 5] = [
+    let cases: [(ErrorCode, ToolErrorCode); 4] = [
         (
             error_code::SCHEDULE_CAP_REACHED,
             ToolErrorCode::ScheduleCapReached,
@@ -24,10 +24,6 @@ fn the_codes_a_model_acts_on_each_have_their_own_tool_error() {
         (
             error_code::MESSAGE_NO_CHANNEL,
             ToolErrorCode::MessageNoChannel,
-        ),
-        (
-            error_code::MESSAGE_LIMIT_REACHED,
-            ToolErrorCode::MessageLimitReached,
         ),
     ];
     for (code, tool) in cases {
@@ -77,7 +73,10 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     let refused = answered(Err(Unanswered::Refused(Some(
         error_code::MESSAGE_NO_CHANNEL,
     ))));
-    assert_eq!(refused.error_code, Some(ToolErrorCode::MessageNoChannel));
+    assert_eq!(
+        refused.error_code,
+        Some(ToolErrorCode::MessageNoChannel.into())
+    );
     assert!(
         refused.text.starts_with("[message_no_channel] UZ-RUN-019"),
         "{}",
@@ -85,90 +84,97 @@ fn a_refusal_is_the_tool_error_with_its_detail() {
     );
 }
 
-/// A lease with nothing behind it says so for every verb.
+/// A run with nothing behind it says so for every verb.
 #[tokio::test]
 async fn closed_verbs_answer_nothing() {
     assert_eq!(
         CLOSED.schedules(ScheduleCall::List).await,
         Err(Unanswered::Unreachable)
     );
-    assert_eq!(CLOSED.message("hello").await, Err(Unanswered::Unreachable));
+    assert_eq!(
+        CLOSED.message(1, "hello").await,
+        Err(Unanswered::Unreachable)
+    );
 }
 
 const ID: &str = "019f0000-0000-7000-8000-000000000001";
 
-fn task_version() -> af_wire::task::DecisionTaskVersion {
-    af_wire::task::DecisionTaskVersion {
-        task_id: ID.to_owned(),
+fn durable_task_version() -> af_wire::durable_task::DecisionDurableTaskVersion {
+    af_wire::durable_task::DecisionDurableTaskVersion {
+        durable_task_id: ID.to_owned(),
         generation: 1,
     }
 }
 
 /// A verbs implementation that names only the two required verbs refuses every task verb.
 #[tokio::test]
-async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
-    use af_wire::task::{
-        DecisionAssessment, DecisionReservationInput, TaskBindingsInput, TaskEffectInput,
-        TaskEffectsQuery, TaskInputMode, TaskInputReceiptInput, TaskInputsQuery,
+async fn the_durable_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
+    use af_wire::durable_task::{
+        DecisionAssessment, DecisionReservationInput, DurableTaskBindingsInput,
+        DurableTaskEffectInput, DurableTaskEffectsQuery, DurableTaskInputMode,
+        DurableTaskInputReceiptInput, DurableTaskInputsQuery,
     };
     let refused = Some(Unanswered::Refused(None));
-    let inputs = TaskInputsQuery {
+    let inputs = DurableTaskInputsQuery {
         fencing_token: 1,
         starting_after: None,
         after_input_sequence: None,
         limit: 1,
     };
-    assert_eq!(CLOSED.task_inputs(inputs).await.err(), refused);
-    let bindings = TaskBindingsInput {
+    assert_eq!(CLOSED.durable_task_inputs(inputs).await.err(), refused);
+    let bindings = DurableTaskBindingsInput {
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         accepted_revision_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         message_decision_call_id: ID.to_owned(),
         items: Vec::new(),
     };
-    assert_eq!(CLOSED.task_bindings(bindings).await.err(), refused);
-    let receipt = TaskInputReceiptInput {
+    assert_eq!(CLOSED.durable_task_bindings(bindings).await.err(), refused);
+    let receipt = DurableTaskInputReceiptInput {
         fencing_token: 1,
         operation_id: ID.to_owned(),
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         plan_digest: "0".repeat(64),
         item_id: ID.to_owned(),
-        task: None,
-        mode: TaskInputMode::Queued,
+        durable_task: None,
+        mode: DurableTaskInputMode::Queued,
         response_text: None,
     };
-    assert_eq!(CLOSED.task_input_receipt(receipt).await.err(), refused);
+    assert_eq!(
+        CLOSED.durable_task_input_receipt(receipt).await.err(),
+        refused
+    );
     let decision = DecisionReservationInput {
         operation_id: ID.to_owned(),
         fencing_token: 1,
-        source_admission_id: ID.to_owned(),
+        source_turn_id: ID.to_owned(),
         assessment: DecisionAssessment::Message,
-        task: Some(task_version()),
+        durable_task: Some(durable_task_version()),
         retry_of: None,
         evidence: serde_json::Value::Null,
     };
-    assert_eq!(CLOSED.task_decision(decision).await.err(), refused);
-    let publish = TaskEffectInput {
+    assert_eq!(CLOSED.durable_task_decision(decision).await.err(), refused);
+    let publish = DurableTaskEffectInput {
         operation_id: ID.to_owned(),
         fencing_token: 1,
-        task: task_version(),
+        durable_task: durable_task_version(),
         source_item_id: ID.to_owned(),
         covered_input_sequence: 0,
         expected_head: "0".repeat(40),
         tested_tree: "0".repeat(40),
         changes: Vec::new(),
     };
-    assert_eq!(CLOSED.task_publish(publish).await.err(), refused);
-    assert_eq!(CLOSED.task_effect(ID).await.err(), refused);
-    let effects = TaskEffectsQuery {
+    assert_eq!(CLOSED.durable_task_publish(publish).await.err(), refused);
+    assert_eq!(CLOSED.durable_task_effect(ID).await.err(), refused);
+    let effects = DurableTaskEffectsQuery {
         fencing_token: 1,
-        task_id: ID.to_owned(),
+        durable_task_id: ID.to_owned(),
         ordinal_after: 0,
         starting_after: None,
         limit: 1,
     };
-    assert_eq!(CLOSED.task_effects(effects).await.err(), refused);
+    assert_eq!(CLOSED.durable_task_effects(effects).await.err(), refused);
 }
 
 /// A decision's debug view says whether a receipt exists without printing it.
@@ -176,11 +182,34 @@ async fn the_task_verbs_a_seam_leaves_out_refuse_without_a_code() {
 fn a_decision_evaluation_debug_view_omits_the_recorded_receipt() {
     let evaluation = super::DecisionEvaluation {
         call_id: ID.to_owned(),
-        state: af_wire::task::DecisionCallState::Unknown,
+        state: af_wire::durable_task::DecisionCallState::Unknown,
         recorded: None,
     };
     assert_eq!(
         format!("{evaluation:?}"),
         format!("DecisionEvaluation {{ call_id: {ID:?}, state: Unknown, recorded: false }}")
     );
+}
+
+/// The fleet and context verbs a seam leaves out refuse without a code, so a
+/// tool reads `agentsfleetd` refused rather than a guessed answer.
+#[tokio::test]
+async fn the_fleet_and_context_verbs_a_seam_leaves_out_refuse_without_a_code() {
+    let refused = Some(Unanswered::Refused(None));
+    let fleet = af_core::id::Uuid7::parse(ID).unwrap_or_else(|_| unreachable!("a fixed id"));
+    let listed = CLOSED
+        .fleets(super::FleetsCall::List {
+            limit: Some(1),
+            starting_after: None,
+        })
+        .await;
+    assert_eq!(listed.err(), refused);
+    assert_eq!(CLOSED.fleet_steer(&fleet, "hello").await.err(), refused);
+    assert_eq!(CLOSED.context_load().await.err(), refused);
+    let save = af_wire::context::ContextSaveRequest {
+        fencing_token: 1,
+        resource_version: 0,
+        checkpoint: serde_json::json!({}),
+    };
+    assert_eq!(CLOSED.context_save(save).await.err(), refused);
 }

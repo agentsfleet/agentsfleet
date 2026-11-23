@@ -85,7 +85,7 @@ async fn refused(status: StatusCode, code: ErrorCode) -> Proof {
     let _stop_on_exit = stop.clone().drop_guard();
     let mut server = serve(listener, status, code, Arc::clone(&census), &stop)?;
     let config = configured(&origin, &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     let result = tokio::time::timeout(Duration::from_secs(8), downlink.run(&halt)).await?;
     let failure = result.err().ok_or("the refused opening was accepted")?;
@@ -230,7 +230,7 @@ async fn events_after(
 ) -> Proof<crate::Result<Progress>> {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let requests = Requests::new();
     let stop = CancellationToken::new();
     let (queues, _receivers) = Queues::new();
@@ -238,14 +238,15 @@ async fn events_after(
         requests: Arc::clone(&requests),
         queues,
         budget: Budget::default(),
+        ceilings: af_stream::Ceilings::PROTOCOL,
         stop: stop.clone(),
     };
     let mut dispatch = Dispatch {
         requests: &requests,
         running: &downlink.running,
-        offers: &downlink.offers,
-        offer_budget: &downlink.offer_budget,
         assignments: &downlink.assignments,
+        assignment_budget: &downlink.assignment_budget,
+        policies: &downlink.policies,
         stop: &stop,
         early_cancel: std::collections::HashSet::new(),
     };
@@ -300,7 +301,7 @@ fn a_runner_credential_no_header_can_carry_is_refused_before_any_opening() -> Pr
 fn a_drained_connection_retries_without_stopping_the_runner() -> Proof {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     let mut outage = super::observation::Outage::new();
     downlink.retry(
@@ -319,10 +320,67 @@ fn a_drained_connection_retries_without_stopping_the_runner() -> Proof {
 async fn a_runner_stopped_before_its_first_attempt_opens_no_session() -> Proof {
     let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
     let config = configured("https://localhost:1", &identity.root())?;
-    let (_handle, downlink, _offers) = Downlink::new(&config)?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
     let halt = Halt::new(CancellationToken::new());
     halt.stop();
     downlink.sessions(&halt).await?;
     assert!(downlink.current.borrow().is_none());
+    Ok(())
+}
+
+async fn control_frame(message: serde_json::Value) -> af_stream::Result<af_stream::OwnedFrame> {
+    af_stream::encode(
+        &message,
+        &Budget::default(),
+        StreamKind::Control,
+        &CancellationToken::new(),
+        Instant::now() + Duration::from_secs(1),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn control_drains_to_its_go_away_and_misplaced_or_opening_frames_are_protocol_faults() -> Proof
+{
+    let identity = IdentityFixture::new(vec!["localhost".to_owned()])?;
+    let config = configured("https://localhost:1", &identity.root())?;
+    let (_handle, downlink, _assignments) = Downlink::new(&config)?;
+    let requests = Requests::new();
+    let stop = CancellationToken::new();
+    let mut dispatch = Dispatch {
+        requests: &requests,
+        running: &downlink.running,
+        assignments: &downlink.assignments,
+        assignment_budget: &downlink.assignment_budget,
+        policies: &downlink.policies,
+        stop: &stop,
+        early_cancel: std::collections::HashSet::new(),
+    };
+    let run = "019f0000-0000-7000-8000-000000000001";
+    let (control_tx, mut control) = mpsc::channel(2);
+    let cancel = serde_json::json!({"type":"cancel", "run_id":run,
+        "error_code":error_code::RUN_CANCELLED.as_str()});
+    control_tx
+        .send((StreamKind::Control, control_frame(cancel).await?))
+        .await?;
+    let drain = serde_json::json!({"type":"go_away", "error_code":null});
+    control_tx
+        .send((StreamKind::Control, control_frame(drain.clone()).await?))
+        .await?;
+    // A lane that ended cleanly is still a lost session until control says why.
+    let progress = dispatch.until_control_ends(&mut control, Ok(())).await?;
+    assert!(matches!(progress, Progress::Reconnect));
+    assert!(
+        dispatch
+            .early_cancel
+            .contains(&af_core::id::Uuid7::parse(run)?)
+    );
+
+    let misplaced = dispatch.frame(StreamKind::Work, control_frame(drain).await?);
+    assert!(misplaced.is_err_and(|error| matches!(error.kind(), ErrorKind::StreamProtocol)));
+    let prepared = serde_json::json!({"type":"prepared", "request_id":1,
+        "connection_id":run, "previous_connection_id":null});
+    let opening = dispatch.frame(StreamKind::Control, control_frame(prepared).await?);
+    assert!(opening.is_err_and(|error| matches!(error.kind(), ErrorKind::StreamProtocol)));
     Ok(())
 }

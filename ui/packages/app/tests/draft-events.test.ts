@@ -55,7 +55,7 @@ it("keeps one quiet connection without repeated reads or two-second reconnects",
   await vi.advanceTimersByTimeAsync(QUIET_WINDOW_MS);
   expect(current.reconcile).toHaveBeenCalledTimes(1);
   expect(FakeEventSource.instances).toHaveLength(1); expect(current.source.closed).toBe(false);
-  expect(current.source.url).toBe(`${PATH}/events/stream`);
+  expect(current.source.url).toBe(`${PATH}/turns/stream`);
   current.owner.abort(); await current.pending; expect(current.source.closed).toBe(true);
 });
 

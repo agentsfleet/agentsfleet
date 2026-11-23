@@ -127,6 +127,28 @@ pub struct Connectors {
     pub(crate) database: Db,
     /// Where a nonce is drawn from.
     pub(crate) entropy: Entropy,
+    /// How long a connect's state verifies and a thread read may take.
+    pub(crate) timing: Timing,
+}
+
+/// A deployment's connect-flow and thread-read bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timing {
+    /// How long a connect round-trip may take before its state stops
+    /// verifying; see [`crate::STATE_TTL_SECONDS`].
+    pub state_ttl: std::time::Duration,
+    /// How long reading a Slack thread may take; see
+    /// [`crate::slack::READ_DEADLINE`].
+    pub slack_read: std::time::Duration,
+}
+
+impl Default for Timing {
+    fn default() -> Self {
+        Self {
+            state_ttl: std::time::Duration::from_secs(u64::from(crate::STATE_TTL_SECONDS)),
+            slack_read: crate::slack::READ_DEADLINE,
+        }
+    }
 }
 
 impl Connectors {
@@ -140,7 +162,7 @@ impl Connectors {
 
     /// Binds the flow to its stores, its vendor client and its entropy.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         app: PlatformApp,
         grants: Grants,
         exchange: Exchange,
@@ -155,7 +177,15 @@ impl Connectors {
             client,
             database,
             entropy,
+            timing: Timing::default(),
         }
+    }
+
+    /// This flow under a deployment's own state lifetime and read bound.
+    #[must_use]
+    pub const fn with_timing(mut self, timing: Timing) -> Self {
+        self.timing = timing;
+        self
     }
 
     /// Starts a connect: a remembered nonce, a signed state, a consent URL.
@@ -183,8 +213,17 @@ impl Connectors {
 
         let binding = provider.state_binding();
         let nonce = nonce::mint(&self.entropy)?;
-        let state = state::sign(binding, secret, workspace.as_str(), subject, &nonce, now);
-        nonce::remember(&self.database, &self.entropy, provider, &nonce, now).await?;
+        let ttl = self.timing.state_ttl;
+        let state = state::sign(
+            binding,
+            secret,
+            workspace.as_str(),
+            subject,
+            &nonce,
+            now,
+            ttl,
+        );
+        nonce::remember(&self.database, &self.entropy, provider, &nonce, now, ttl).await?;
 
         // Both archetypes start the same way — a consent screen carrying a
         // signed state — and differ only in what the code is redeemed FOR. The

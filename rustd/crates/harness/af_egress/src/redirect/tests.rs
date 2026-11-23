@@ -6,12 +6,18 @@ use reqwest::header::{HeaderMap, HeaderValue, LOCATION};
 use super::{Chain, Stop, Target, follows};
 use crate::testing::{inbound, redirected};
 
+/// Redirects every chain here follows.
+const HOPS: crate::Limits = crate::Limits {
+    max_redirects: 3,
+    ..crate::Limits::DEFAULT
+};
+
 const FIRST: &str = "https://api.github.com/start";
 
 #[test]
 fn should_bound_total_redirect_work() {
     let first = Url::parse(FIRST).expect("fixture URL");
-    let mut chain = Chain::new(&first, Vec::new());
+    let mut chain = Chain::new(&first, Vec::new(), HOPS);
     let mut current = first;
     for index in 1..=3 {
         let mut reply = redirected(302, &current, &format!("/hop/{index}"));
@@ -29,9 +35,30 @@ fn should_bound_total_redirect_work() {
 }
 
 #[test]
+fn a_chosen_redirect_count_stops_the_chain_sooner() {
+    let first = Url::parse(FIRST).expect("fixture URL");
+    let mut chain = Chain::new(
+        &first,
+        Vec::new(),
+        crate::Limits {
+            max_redirects: 1,
+            ..crate::Limits::DEFAULT
+        },
+    );
+    let mut reply = redirected(302, &first, "/hop/1");
+    let draft = chain
+        .next(&mut reply)
+        .expect("bounded hop")
+        .expect("continuation");
+    let current = Url::parse(&draft.url).expect("draft URL");
+    let mut second = redirected(302, &current, "/hop/2");
+    assert!(matches!(chain.next(&mut second), Err(Stop::HopLimit)));
+}
+
+#[test]
 fn should_refuse_repeated_normalized_targets_before_the_hop_limit() {
     let first = Url::parse("https://API.GITHUB.COM:443/start#initial").expect("fixture URL");
-    let mut chain = Chain::new(&first, Vec::new());
+    let mut chain = Chain::new(&first, Vec::new(), HOPS);
     let mut fragment = redirected(301, &first, "/start#changed");
     assert!(matches!(chain.next(&mut fragment), Err(Stop::Loop)));
     for index in 1..=3 {
@@ -63,7 +90,7 @@ fn should_refuse_invalid_or_ambiguous_locations() {
     headers.append(LOCATION, HeaderValue::from_static("/one"));
     headers.append(LOCATION, HeaderValue::from_static("/two"));
     assert!(Target::from_headers(&base, &headers).is_none());
-    let mut chain = Chain::new(&base, Vec::new());
+    let mut chain = Chain::new(&base, Vec::new(), HOPS);
     assert!(matches!(
         chain.next(&mut inbound(302, "")),
         Err(Stop::InvalidTarget)
@@ -75,7 +102,7 @@ fn should_emit_one_terminal_outcome_at_its_severity() {
     let capture = af_core::test_util::trace::Capture::install();
     let first = Url::parse(FIRST).expect("URL");
     for status in [200, 403] {
-        let mut chain = Chain::new(&first, Vec::new());
+        let mut chain = Chain::new(&first, Vec::new(), HOPS);
         chain
             .next(&mut redirected(302, &first, "/download"))
             .expect("hop");
@@ -98,7 +125,11 @@ fn should_emit_one_terminal_outcome_at_its_severity() {
 #[test]
 fn should_drop_modeled_headers_permanently_after_an_origin_change() {
     let base = Url::parse(FIRST).expect("fixture URL");
-    let mut chain = Chain::new(&base, vec![("Authorization".into(), "original".into())]);
+    let mut chain = Chain::new(
+        &base,
+        vec![("Authorization".into(), "original".into())],
+        HOPS,
+    );
     let mut relative = redirected(301, &base, "/same-origin");
     assert_eq!(
         chain

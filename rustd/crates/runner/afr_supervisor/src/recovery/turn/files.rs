@@ -7,8 +7,8 @@ use super::super::{
 use super::session::TurnSession;
 use crate::{Result, error};
 use af_wire::{
-    lease::{TurnCheckpointAction as Action, TurnCheckpointResponse as Response, TurnId},
-    task::{CheckpointEntry, CheckpointTransferPurpose},
+    durable_task::{CheckpointEntry, CheckpointTransferPurpose},
+    run::{CheckpointOperationId, TurnCheckpointPageRead},
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, stream};
 use garde::Validate as _;
@@ -18,18 +18,10 @@ use std::{
     sync::Arc,
 };
 
-#[derive(garde::Validate)]
-struct Bounds {
-    #[garde(range(max = 25_769_803_776))]
-    bytes: u64,
-    #[garde(range(max = 200_000))]
-    entries: usize,
-}
-
 impl TurnSession<'_, '_> {
     pub(super) async fn restore_files(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
         destination: (PathBuf, (u32, u32)),
         permit: Option<&afr_agent::FileRecoveryPermit>,
@@ -55,7 +47,7 @@ impl TurnSession<'_, '_> {
 
     async fn manifest(
         &mut self,
-        pages: &[TurnId],
+        pages: &[CheckpointOperationId],
         digest: &str,
     ) -> Result<BTreeMap<String, CheckpointEntry>> {
         if pages.is_empty() {
@@ -67,25 +59,17 @@ impl TurnSession<'_, '_> {
         let mut bytes = 0_u64;
         for (number, id) in pages.iter().enumerate() {
             self.renew().await?;
-            let Response::PageRead(page) = self
+            let page = self
                 .native
-                .command(Action::PageRead {
+                .command(TurnCheckpointPageRead {
                     checkpoint: self.reference.clone(),
                     page_id: id.clone(),
                 })
-                .await?
-            else {
-                return Err(error::config(
-                    "turn page read returned another command's response",
-                ));
-            };
+                .await?;
             page.validate()?;
             if usize::try_from(page.page_number).ok() != Some(number)
                 || !page.history_objects.is_empty()
-                || !af_wire::decision::serialized_within(
-                    &page,
-                    af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES,
-                )
+                || !af_validate::serialized_within(&page, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
             {
                 return Err(error::config(
                     "turn manifest page has invalid layout or size",
@@ -96,11 +80,6 @@ impl TurnSession<'_, '_> {
                 af_core::etag::sha256_hex(&serde_json::to_vec(&page).map_err(error::encode)?),
             ));
             append(&mut entries, &mut previous, &mut bytes, page.entries)?;
-            Bounds {
-                bytes,
-                entries: entries.len(),
-            }
-            .validate()?;
         }
         if af_crypto::checkpoint_digest::manifest_root(
             digests
@@ -108,7 +87,9 @@ impl TurnSession<'_, '_> {
                 .map(|(id, digest)| (id.as_str(), digest.as_str())),
         ) != digest
         {
-            return Err(error::config("turn manifest differs from the offered root"));
+            return Err(error::config(
+                "turn manifest differs from the assigned root",
+            ));
         }
         Ok(entries)
     }
@@ -127,7 +108,7 @@ impl TurnSession<'_, '_> {
         let workspace = &self.workspace;
         // Every GET in this bounded batch starts under the same freshly proved pin.
         let chunks: BTreeMap<_, _> = stream::iter(objects)
-            .map(|mut object| async move {
+            .map(async |mut object| {
                 let bytes = transfers.download(&object).await?;
                 let plaintext = transfer::open(workspace, &mut object, bytes)?;
                 Ok::<_, crate::Error>((object.object_id.clone(), Arc::new(plaintext)))

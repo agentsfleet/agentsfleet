@@ -8,7 +8,7 @@ use super::{MAX_ADMITTED_SLOTS, ROW, SDK_STREAM_CARDINALITY_DEFAULT, census, dec
 use crate::error::ErrorKind;
 use crate::metrics::registry::{Family, Policy, Registry};
 
-/// Dimension 3.6 — a label nothing bounds by construction is bounded by
+/// A label nothing bounds by construction is bounded by
 /// admission, and nothing else claims a ceiling it cannot justify.
 ///
 /// `runner_id` is the one census label a customer supplies, so it is the one

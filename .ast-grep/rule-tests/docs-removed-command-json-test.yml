@@ -12,6 +12,8 @@ invalid:
   - |
     {"description": "Run agentsfleet library list."}
   - |
+    {"description": "Run agentsfleet plugins list."}
+  - |
     {"description": "Run agentsfleet platform keys set."}
   - |
     {"description": "Run agentsfleet fleet kill x."}

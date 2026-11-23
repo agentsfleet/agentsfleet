@@ -15,15 +15,17 @@ use crate::error::{self, Result};
 
 mod runtime;
 mod stream;
+mod tuning;
 pub use runtime::{RuntimePolicy, RuntimeSettings};
 pub use stream::{ENV_STREAM_CA, ENV_STREAM_URL, StreamConfig};
+pub use tuning::{CALL_TIMEOUT_MIN_SECONDS, Tuning};
 
 /// The daemon's base address.
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";
 /// The runner's `agt_r` token, minted once by a platform admin.
 pub const ENV_RUNNER_TOKEN: &str = "AGENTSFLEET_RUNNER_TOKEN";
 /// The host-local root for git mirrors, the toolbox and
-/// lease sandboxes.
+/// run sandboxes.
 pub const ENV_STORAGE_HOME: &str = "RUNNER_STORAGE_HOME";
 /// Where the storage home lives when none is set: a directory that survives a
 /// reboot for sandbox recovery and repository mirrors.
@@ -46,6 +48,7 @@ pub struct Config {
     storage_home: PathBuf,
     stream: StreamConfig,
     runtime: RuntimePolicy,
+    tuning: Tuning,
 }
 
 impl Config {
@@ -79,6 +82,7 @@ impl Config {
             storage_home,
             stream: StreamConfig::from_env(env)?,
             runtime: RuntimePolicy::DEFAULT,
+            tuning: Tuning::DEFAULT,
         })
     }
 
@@ -106,6 +110,19 @@ impl Config {
     pub const fn with_runtime(mut self, runtime: RuntimePolicy) -> Self {
         self.runtime = runtime;
         self
+    }
+
+    /// Applies the bounds the runner's file chose before opening a connection.
+    #[must_use]
+    pub const fn with_tuning(mut self, tuning: Tuning) -> Self {
+        self.tuning = tuning;
+        self
+    }
+
+    /// The bounds the runner's file chose.
+    #[must_use]
+    pub const fn tuning(&self) -> Tuning {
+        self.tuning
     }
 
     /// Runner-local settings; worker capacity is assigned by the daemon.

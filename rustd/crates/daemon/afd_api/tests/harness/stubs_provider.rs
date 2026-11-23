@@ -25,7 +25,7 @@
 //! file.
 
 use af_core::id::Uuid7;
-use afd_api::services::{TenantModelEntries, TenantProviders};
+use afd_api_tenant::services::{TenantModelEntries, TenantProviders};
 use afd_credential::Result as CredentialResult;
 use afd_credential::provider::KeyRef;
 use afd_credential::provider::{
@@ -65,7 +65,7 @@ impl HarnessProviders {
 }
 
 impl TenantProviders for HarnessProviders {
-    async fn selection(&self, tenant: &Uuid7) -> CredentialResult<Option<Selection>> {
+    async fn selection(&self, tenant: &Uuid7) -> CredentialResult<Selection> {
         self.store().selection(tenant).await
     }
 

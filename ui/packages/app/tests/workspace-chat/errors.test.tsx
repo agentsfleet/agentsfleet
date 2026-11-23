@@ -30,7 +30,7 @@ it.each([503, 200])("retries a failed initial read with status %i without claimi
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.queryByText(/Add a model to this workspace/)).toBeNull();
   fireEvent.click(within(composer).getByRole("button", {name: "Retry models"}));
-  await waitFor(() => expect(within(composer).getByRole("combobox", {name: "Authoring model"})).toHaveProperty("disabled", false));
+  await waitFor(() => expect(within(composer).getByRole("combobox", {name: "Setup model"})).toHaveProperty("disabled", false));
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
   expect(fixture.writes()).toHaveLength(0);
 });
@@ -47,7 +47,7 @@ it("retries only the model list on a resumed draft and keeps the unsent message"
   initialModels.resolve(response({}, 503));
   const composer = screen.getByRole("form", {name: "Setup chat composer"});
   const retry = await within(composer).findByRole("button", {name: "Retry models"});
-  const picker = within(composer).getByRole("combobox", {name: "Authoring model"});
+  const picker = within(composer).getByRole("combobox", {name: "Setup model"});
   expect(picker).toHaveProperty("disabled", true);
   expect(screen.queryByText("Setup needs attention")).toBeNull();
   const before = fixture.fetch.mock.calls.length;
@@ -89,22 +89,30 @@ it("reloads unavailable unfinished setups from their own recovery action without
 });
 
 
-it("shows an oversized message refusal inside the chat without creating a draft", async () => {
+it("sends a long message whole and shows the daemon's refusal inside the chat", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const ceiling = "Input exceeds the maximum length of 1,048,576 characters.";
+  const refused = {error_code: "UZ-REQ-004", detail: ceiling, user_message: ceiling};
+  const base = fixture.fetch.getMockImplementation();
+  if (!base) throw new Error("Chat fetch fixture is not installed");
+  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST"
+    ? Promise.resolve(response(refused, 400)) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByRole("textbox", {name: "What would you like your fleet to do?"});
   await waitFor(() => expect(screen.getByRole("button", {name: /Watch a pull request/})).toHaveProperty("disabled", false));
-  fireEvent.change(input, {target: {value: "🌱".repeat(8_193)}});
+  const long = "🌱".repeat(8_193);
+  fireEvent.change(input, {target: {value: long}});
   fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   expect((await screen.findByRole("alert")).textContent).toContain("Couldn’t complete this request");
-  fireEvent.change(input, {target: {value: "Review the callback regression"}});
-  expect(screen.getByLabelText("Setup status").textContent).toContain("Setup needs attention");
-  expect(screen.getByRole("alert").textContent).toContain("Couldn’t complete this request");
-  expect(input).toHaveProperty("value", "Review the callback regression");
-  expect(fixture.writes()).toEqual([]);
+  const posts = fixture.fetch.mock.calls.filter(([input, init]) =>
+    typeof input === "string" && input.endsWith("/drafts") && init?.method === "POST");
+  expect(posts, "the app sends the long message once, whole").toHaveLength(1);
+  const body = posts[0]?.[1]?.body;
+  if (typeof body !== "string") throw new Error("the draft POST carries a JSON string body");
+  expect(JSON.parse(body)).toMatchObject({message: long});
 });
 
-it("offers model settings when a successful list confirms there are no authoring models", async () => {
+it("offers model settings when a successful list confirms there are no setup models", async () => {
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
@@ -120,7 +128,7 @@ it("explains configured but ineligible models and prevents an empty model menu",
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
-    ? Promise.resolve(response({items: [{...MODEL, eligibility: {authoring: false, runtime: true}}], next_cursor: null})) : base(input, init));
+    ? Promise.resolve(response({items: [{...MODEL, eligibility: {setup: false, runtime: true}}], next_cursor: null})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
   expect((await screen.findByRole("status", {name: "Setup status"})).textContent).toContain("No chat model available");
   expect(screen.queryByRole("alert")).toBeNull();
@@ -129,18 +137,13 @@ it("explains configured but ineligible models and prevents an empty model menu",
   expect(fixture.writes()).toEqual([]);
 });
 
-it("keeps an incomplete model search distinct from a workspace with no configured models", async () => {
+it("keeps a model search whose cursor repeats distinct from a workspace with no configured models", async () => {
   const base = fixture.fetch.getMockImplementation();
   if (!base) throw new Error("Chat fetch fixture is not installed");
   fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
     ? Promise.resolve(response({items: [], next_cursor: "next-model-page"})) : base(input, init));
   render(<WorkspaceChat {...CHAT_PROPS} />);
-  expect((await screen.findByRole("status", {name: "Setup status"})).textContent).toBe("Load more models to find one for chat");
-  expect(screen.queryByText("No chat model yet")).toBeNull();
-  expect(screen.getByRole("button", {name: /Load more models/})).toBeTruthy();
-  const reads = fixture.fetch.mock.calls.length;
-  fireEvent.click(screen.getByRole("button", {name: /Load more models/}));
-  await waitFor(() => expect(fixture.fetch.mock.calls.length).toBeGreaterThan(reads));
+  await waitFor(() => expect(fixture.fetch.mock.calls.filter(([input]) => typeof input === "string" && input.includes("/models?"))).toHaveLength(2));
   expect(screen.queryByText("No chat model yet")).toBeNull();
   expect(fixture.writes()).toEqual([]);
 });
@@ -154,7 +157,7 @@ it("reopens the current fleet setup after an initial read fails without creating
   const unavailable = "Current setup is temporarily unavailable";
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (path.endsWith(`/fleets/${FLEET_ID}/authoring-context`)) {
+    if (path.endsWith(`/fleets/${FLEET_ID}/setup-context`)) {
       reads += 1;
       return Promise.resolve(reads === 1 ? response({user_message: unavailable}, 503) : response({fleet: FLEET_DETAIL,
         conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null}));
@@ -180,7 +183,7 @@ it("loads the new saved revision when the same fleet source changes in place", a
   let current = FLEET_DETAIL;
   fixture.fetch.mockImplementation((input, init) => {
     const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    return path.endsWith(`/fleets/${FLEET_ID}/authoring-context`) ? Promise.resolve(response({fleet: current,
+    return path.endsWith(`/fleets/${FLEET_ID}/setup-context`) ? Promise.resolve(response({fleet: current,
       conversations: [], activities: {items: [], next_cursor: null}, next_cursor: null})) : base(input, init);
   });
   const page = render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "1"}} />);

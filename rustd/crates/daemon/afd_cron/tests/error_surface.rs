@@ -50,13 +50,13 @@ fn the_error_surface_holds() {
     let samples = one_of_each_kind();
     assert_eq!(
         samples.len(),
-        19,
+        21,
         "a kind was added or dropped without its sample"
     );
     grade(
         &samples,
         Expect {
-            with_source: 8,
+            with_source: 10,
             distinct_codes: 5,
         },
     );
@@ -65,9 +65,9 @@ fn the_error_surface_holds() {
 #[test]
 fn every_sentence_is_one_of_the_declared_details() {
     let declared = [
-        detail::DATABASE_UNAVAILABLE,
-        detail::DATABASE_ERROR,
-        detail::OPERATION_FAILED,
+        af_core::error::DETAIL_DATABASE_UNAVAILABLE,
+        af_core::error::DETAIL_DATABASE_ERROR,
+        af_core::error::DETAIL_OPERATION_FAILED,
         detail::UPSTREAM_UNAVAILABLE,
         detail::RETIRE_HELD,
         detail::FIRE_UNVERIFIED,
@@ -153,4 +153,38 @@ fn only_a_refused_fire_reads_under_a_refusal_word() {
             error.refusal_word()
         );
     }
+}
+
+/// A bag read the vault failed inside itself tells the caller the database's
+/// own sentence, under the vault's code, not the generic operation failure.
+#[test]
+fn a_bag_read_the_vault_failed_answers_as_a_database_error() {
+    let kinds = one_of_each_kind();
+    let refused = kinds
+        .iter()
+        .find(|(label, _)| *label == "bag unminted")
+        .map(|(_, error)| error)
+        .expect("the sample declares a failed bag read");
+
+    assert_eq!(refused.code(), af_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(refused.detail(), af_core::error::DETAIL_DATABASE_ERROR);
+    assert!(
+        !refused.is_retryable(),
+        "a failed mint does not heal on a wait"
+    );
+}
+
+/// An inherited schedule that will not encode is the stored row's fault, so it
+/// answers as a database error rather than a caller's mistake.
+#[test]
+fn an_unencodable_inherited_schedule_answers_as_a_database_error() {
+    let kinds = one_of_each_kind();
+    let json = kinds
+        .iter()
+        .find(|(label, _)| *label == "json")
+        .map(|(_, error)| error)
+        .expect("the sample declares the encoding kind");
+
+    assert_eq!(json.code(), af_core::error_code::INTERNAL_DB_QUERY);
+    assert_eq!(json.detail(), af_core::error::DETAIL_DATABASE_ERROR);
 }

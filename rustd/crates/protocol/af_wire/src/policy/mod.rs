@@ -1,4 +1,4 @@
-//! The resolved per-execution policy that travels on a lease.
+//! The resolved per-execution policy that travels on a run.
 //!
 //! Set once per execution and invariant for its lifetime: where the run may
 //! reach on the network, which tools it may call, the inline secrets, and the

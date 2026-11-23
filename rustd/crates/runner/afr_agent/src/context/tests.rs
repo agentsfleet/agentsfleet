@@ -1,15 +1,15 @@
 use super::Checkpoints;
-use crate::fixture::lease;
+use crate::fixture::payload;
 
 #[test]
 fn should_never_checkpoint_at_a_zero_cadence_and_every_n_calls_otherwise() {
     let cadence = |every: u32| {
-        let lease = lease(
+        let run = payload(
             &[],
             serde_json::json!({"tool_window": 0, "memory_checkpoint_every": every,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0}),
         );
-        let mut checkpoints = Checkpoints::new(&lease.policy.context);
+        let mut checkpoints = Checkpoints::new(&run.policy.context);
         (0..6).map(|_call| checkpoints.due()).collect::<Vec<_>>()
     };
 

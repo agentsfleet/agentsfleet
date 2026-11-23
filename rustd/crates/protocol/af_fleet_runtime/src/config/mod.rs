@@ -1,4 +1,4 @@
-//! A stored authoring document, turned once into the policy every gate reads.
+//! A stored setup document, turned once into the policy every gate reads.
 //!
 //! # The shape of the read
 //!
@@ -11,11 +11,10 @@
 //! # Parse once, share the result
 //!
 //! [`FleetConfig`] is `Send + Sync` and holds no borrow of the document it was
-//! read from, so a claim can parse it once and hand every downstream gate an
+//! read from, so an assignment can parse it once and hand every downstream gate an
 //! `Arc` of the same value. A gate that needs one field reads it off that
 //! value rather than parsing the whole document again per request.
 
-mod anomaly;
 mod attach;
 mod binding_match;
 pub mod budget;
@@ -32,7 +31,6 @@ use garde::Validate as _;
 use crate::error::{Error, ErrorKind, Result, missing};
 use crate::name::{CredentialName, FleetName};
 
-pub use self::anomaly::{AnomalyRule, Pattern};
 pub use self::budget::{Budget, BudgetCeiling};
 pub use self::condition::Condition;
 pub use self::decision::DecisionPolicy;
@@ -43,9 +41,9 @@ pub use self::repository::{
     Access, Reach, Recorded, RepositoryBinding, RepositoryPublication, ValidationWorkflow,
 };
 pub use self::trigger::{
-    ChannelId, Cron, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS, Trigger,
-    VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,
-    WEBHOOK_SOURCE_LINEAR, WEBHOOK_SOURCE_SLACK, Webhook, WebhookVerifier,
+    ChannelId, Cron, CronSchedule, KIND_CRON, KIND_MENTION, KIND_WEBHOOK, Mention, TRIGGER_KINDS,
+    Trigger, VERIFIED_WEBHOOK_SOURCES, WEBHOOK_SOURCE_APPROVAL, WEBHOOK_SOURCE_GITHUB,
+    WEBHOOK_SOURCE_LINEAR, WEBHOOK_SOURCE_SLACK, Webhook, WebhookVerifier, check_schedule,
 };
 
 /// The key naming the fleet.
@@ -114,7 +112,7 @@ pub struct FleetConfig {
 impl FleetConfig {
     /// Goal adoption can change owner wording while retaining every execution policy bound.
     #[must_use]
-    pub fn same_task_authority(&self, other: &Self) -> bool {
+    pub fn same_durable_task_authority(&self, other: &Self) -> bool {
         let mut compared = self.clone();
         compared.name = other.name.clone();
         compared.decision_policy.clone_from(&other.decision_policy);
@@ -341,8 +339,8 @@ pub(crate) fn runtime_key(key: &str) -> Option<&'static str> {
     RUNTIME_KEYS.into_iter().find(|known| *known == key)
 }
 
-/// Declarable signing recipes shared with authoring surfaces.
-pub use af_webhook::Family as WebhookFamily;
+/// Declarable signing recipes shared with setup surfaces.
+pub(crate) use af_webhook::Family as WebhookFamily;
 
 #[cfg(test)]
 mod tests {

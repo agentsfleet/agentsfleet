@@ -59,9 +59,9 @@ impl Providers {
     /// trusts it, because only the handler can perform that comparison.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, a stored row this daemon
-    /// cannot read, and a selection pointing at no readable entry. A credential
-    /// deleted out of band is not an error — its row lists degraded.
+    /// Reports a datastore that would not answer and a stored row this daemon
+    /// cannot read. A credential deleted out of band is not an error — its row
+    /// lists degraded.
     pub async fn registry_page(
         &self,
         tenant: &Uuid7,
@@ -82,7 +82,7 @@ impl Providers {
                 let credential = credentials.get(&entry.id).cloned();
                 let rate = rate_for(&rates, credential.as_ref(), &entry.model_name);
                 RegistryRow {
-                    active: is_active(&entry, chosen.as_ref()),
+                    active: is_active(&entry, &chosen),
                     credential,
                     rate,
                     entry,

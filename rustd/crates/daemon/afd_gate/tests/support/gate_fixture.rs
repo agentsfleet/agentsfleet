@@ -35,10 +35,6 @@ pub(crate) fn config(repository_write: bool) -> FleetConfig {
     FleetConfig::stored(&document).expect("the stored fixture config resolves")
 }
 
-/// A runaway rule: the second identical chat in a minute archives the fleet.
-pub(crate) const RUNAWAY_AT_TWO: &str =
-    r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#;
-
 pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     let document = format!(
         r#"{{"name":"gate-fixture","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"1000000000"}},"gates":{gates}}}}}"#
@@ -76,29 +72,26 @@ impl Fixture {
         }
     }
 
+    /// The lane database this fixture writes to, for a test that must reach
+    /// the server as its owner or open a pool of its own.
+    pub(crate) const fn lane(&self) -> &TestDatabase {
+        &self.lane
+    }
+
     pub(crate) const fn check<'fixture>(
         &'fixture self,
-        event_id: &'fixture Uuid7,
+        turn_id: &'fixture Uuid7,
         config: &'fixture FleetConfig,
     ) -> Check<'fixture> {
         Check {
             fleet_id: &self.fleet,
             workspace_id: &self.workspace,
-            event_id,
+            turn_id,
             event_type: "chat",
             actor: "user:fixture",
             request_json: r#"{"proposed_action":"update dependency","evidence":{"pr":7}}"#,
             config,
         }
-    }
-
-    /// The fleet's stored status, read back after a gate decided.
-    pub(crate) async fn status(&self) -> String {
-        sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
-            .bind(&self.fleet)
-            .fetch_one(&mut *self.database.acquire().await.expect("live database"))
-            .await
-            .expect("the archived fleet stays readable")
     }
 
     pub(crate) async fn seed(&self) {
@@ -124,7 +117,7 @@ impl Fixture {
         .expect("the gate scope seeds");
     }
 
-    pub(crate) async fn resolve(&self, event_id: &Uuid7, status: &str) {
+    pub(crate) async fn resolve(&self, turn_id: &Uuid7, status: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let changed = sqlx::query(
             "UPDATE fleet.approval_gates \
@@ -132,12 +125,12 @@ impl Fixture {
                  resolved_at = now(), updated_at = now() \
              WHERE id = ( \
                SELECT id FROM fleet.approval_gates \
-               WHERE fleet_id = $1 AND event_id = $2 AND resolved_at IS NULL \
+               WHERE fleet_id = $1 AND turn_id = $2 AND resolved_at IS NULL \
                ORDER BY created_at DESC, id DESC LIMIT 1 \
              )",
         )
         .bind(&self.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .bind(status)
         .execute(&mut *connection)
         .await
@@ -145,17 +138,17 @@ impl Fixture {
         assert_eq!(changed.rows_affected(), 1);
     }
 
-    /// Moves the pending gate `event_id` holds behind the database's clock, as
+    /// Moves the pending gate `turn_id` holds behind the database's clock, as
     /// a deadline passing would.
-    pub(crate) async fn lapse(&self, event_id: &Uuid7) {
+    pub(crate) async fn lapse(&self, turn_id: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let changed = sqlx::query(
             "UPDATE fleet.approval_gates \
              SET expires_at = now() - interval '1 second', updated_at = now() \
-             WHERE fleet_id = $1 AND event_id = $2 AND resolved_at IS NULL",
+             WHERE fleet_id = $1 AND turn_id = $2 AND resolved_at IS NULL",
         )
         .bind(&self.fleet)
-        .bind(event_id)
+        .bind(turn_id)
         .execute(&mut *connection)
         .await
         .expect("a pending gate's deadline can move");

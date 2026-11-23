@@ -3,8 +3,8 @@ import type { FleetModelOwner } from "@/components/domain/models/useFleetModel";
 import { DraftClientFixture } from "./draft-client-fixture";
 import { CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_DETAIL, FLEET_ID, MODEL, MODEL_REF, REVIEW, WORKSPACE, response } from "./draft-fixtures";
 
-export const RUNTIME_MODEL = {...MODEL, ref: "model:runtime", label: "Runtime model", eligibility: {authoring: false, runtime: true}};
-export const AUTHORING_MODEL = {...MODEL, ref: "model:helper", label: "Setup helper", eligibility: {authoring: true, runtime: false}};
+export const RUNTIME_MODEL = {...MODEL, ref: "model:runtime", label: "Runtime model", eligibility: {setup: false, runtime: true}};
+export const SETUP_MODEL = {...MODEL, ref: "model:helper", label: "Setup helper", eligibility: {setup: true, runtime: false}};
 export const MODEL_OWNER: FleetModelOwner = {account: "owner-account", workspace: WORKSPACE, subject: "creator", fleet: FLEET_ID, revision: "1", model: MODEL_REF};
 const NativeModelSchema = z.object({runtime_model_ref: z.string()});
 const CreateModelDraftSchema = z.object({operation_id: z.string()});
@@ -26,7 +26,7 @@ export class FleetModelFixture extends DraftClientFixture {
     this.revision = "1"; this.cleanupFails = false;
     this.#seed();
     this.override = async (call) => {
-      if (call.path.endsWith("/models")) return response({items: [MODEL, RUNTIME_MODEL, AUTHORING_MODEL], next_cursor: null});
+      if (call.path.endsWith("/models")) return response({items: [MODEL, RUNTIME_MODEL, SETUP_MODEL], next_cursor: null});
       if (call.path.endsWith(`/fleets/${FLEET_ID}`)) return response({...FLEET_DETAIL, status: "active", setup_revision: this.revision});
       if (call.path.endsWith(`/drafts/${DRAFT_ID}`) && call.method === "DELETE") return response(null, this.cleanupFails ? 500 : 204);
       if (call.path.endsWith("/drafts") && call.method === "POST") {

@@ -1,7 +1,8 @@
 //! The committed native setup corpus, and the verdict each document earns.
 //!
-//! Every Definition under `tests/fixtures/fleets/` is loaded here and
-//! pinned to the verdict the shared parser reaches. The table below is the
+//! Every parser case in `cases.rs`, and every fleet under
+//! `tests/fixtures/fleets/`, is pinned to the verdict the shared parser
+//! reaches. The table below is the
 //! whole claim; the FIELD-VALUE half lives in `fields.rs`.
 
 #![expect(
@@ -12,7 +13,8 @@
 use af_fleet_runtime::config::{HttpEgress, Reach};
 use af_fleet_runtime::{CredentialName, Definition};
 
-use crate::support::{FIRST_PARTY, MODEL_VALUE, definition, definition_path, fixture, raw_fixture};
+use super::cases;
+use crate::support::{FIRST_PARTY, definition, definition_path, filled};
 
 /// What one corpus document must answer, named by the sentence a reviewer
 /// reads rather than a crate-private kind.
@@ -24,21 +26,28 @@ enum Verdict {
     Refuses(&'static str),
 }
 
-/// Every purpose-built document, with the verdict its bytes must earn.
-const CORPUS_CASES: [(&str, Verdict); 6] = [
-    ("definition/minimal.json", Verdict::Accepts),
-    ("definition/full.json", Verdict::Accepts),
-    ("definition/with_model_and_context.json", Verdict::Accepts),
+/// Every parser case, with the verdict its bytes must earn.
+const CORPUS_CASES: [(&str, &str, Verdict); 6] = [
+    ("minimal", cases::MINIMAL, Verdict::Accepts),
+    ("full", cases::FULL, Verdict::Accepts),
     (
-        "definition/missing_name.json",
+        "with_model_and_context",
+        cases::WITH_MODEL_AND_CONTEXT,
+        Verdict::Accepts,
+    ),
+    (
+        "missing_name",
+        cases::MISSING_NAME,
         Verdict::Refuses("`name` is required"),
     ),
     (
-        "definition/runtime_at_top_level.json",
+        "runtime_at_top_level",
+        cases::RUNTIME_AT_TOP_LEVEL,
         Verdict::Refuses("belongs under the `x-agentsfleet` block"),
     ),
     (
-        "definition/unknown_runtime_key.json",
+        "unknown_runtime_key",
+        cases::UNKNOWN_RUNTIME_KEY,
         Verdict::Refuses("`contxt` is not a known `x-agentsfleet` key"),
     ),
 ];
@@ -49,8 +58,8 @@ const CORPUS_CASES: [(&str, Verdict); 6] = [
 /// added to the corpus and not to this list reads as a missing row.
 #[test]
 fn test_definition_corpus_verdicts() {
-    for (relative, expected) in CORPUS_CASES {
-        match (Definition::parse(&fixture(relative)), expected) {
+    for (relative, text, expected) in CORPUS_CASES {
+        match (Definition::parse(&filled(text)), expected) {
             (Ok(_parsed), Verdict::Accepts) => {}
             (Err(failure), Verdict::Refuses(names)) => assert!(
                 failure.to_string().contains(names),
@@ -87,24 +96,14 @@ fn every_first_party_definition_agrees_with_its_directory_name() {
     }
 }
 
-/// The templated setups parse once their placeholders are filled.
-#[test]
-fn the_templated_definitions_parse_once_their_placeholders_are_filled() {
-    for slug in ["platform-ops", "steer-probe"] {
-        let parsed = definition(&definition_path(slug));
-
-        assert_eq!(parsed.runtime().model(), Some(MODEL_VALUE), "{slug}");
-    }
-}
-
 /// The raw templated document does NOT parse, which is what makes the
 /// substitution above load-bearing rather than decorative.
 #[test]
 fn an_unsubstituted_template_is_refused() {
-    let raw = raw_fixture(&definition_path("steer-probe"));
+    let raw = cases::WITH_MODEL_AND_CONTEXT;
 
     assert!(
-        Definition::parse(&raw).is_err(),
+        Definition::parse(raw).is_err(),
         "a quoted context-ceiling placeholder is not a number"
     );
 }

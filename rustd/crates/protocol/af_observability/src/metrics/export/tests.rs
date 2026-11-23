@@ -1,4 +1,4 @@
-//! Dimension 3.3, unit half — what the counter counts, and what resets it.
+//! The unit half: what the counter counts, and what resets it.
 //!
 //! The property that a failing exporter never BLOCKS a recording call needs a
 //! real provider and a real reader, so it is proven in `tests/otlp_outage.rs`

@@ -19,6 +19,8 @@ mod orphans;
 mod processes;
 #[path = "protocol.rs"]
 mod protocol;
+#[path = "search.rs"]
+mod search;
 #[path = "support.rs"]
 mod support;
 #[path = "terminal.rs"]

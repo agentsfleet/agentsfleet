@@ -1,0 +1,125 @@
+//! Mutation bodies retain the original native identities across HTTP serialization.
+use super::*;
+
+fn binding() -> Value {
+    json!({"fencing_token":FENCE,"source_turn_id":ID,"accepted_revision_id":ID,
+        "plan_digest":"a".repeat(64),"message_decision_call_id":EFFECT,
+        "items":[{"proposed":{"source_start":0,"source_end":5,"action":"conversation","durable_task_id":null,"title":"Reply","interpretation":"Answer the question","target":null},"decision_call_id":null}]})
+}
+fn receipt() -> Value {
+    json!({"fencing_token":FENCE,"operation_id":EFFECT,"source_turn_id":ID,
+        "plan_digest":"a".repeat(64),"item_id":ID,"durable_task":{"durable_task_id":ID,"generation":7},
+        "mode":"answered","response_text":"Private source answer"})
+}
+fn publication() -> Value {
+    json!({"operation_id":EFFECT,"fencing_token":FENCE,"durable_task":{"durable_task_id":ID,"generation":7},
+        "source_item_id":ID,"covered_input_sequence":9,"expected_head":"a".repeat(40),
+        "tested_tree":"b".repeat(40),"changes":[{"path":"src/fix.rs","contents":"Zml4"}]})
+}
+#[tokio::test]
+async fn typed_bindings_and_receipts_preserve_complete_native_request_and_replay() {
+    let bound = json!({"items":[],"current_durable_task":null,"replayed":true});
+    let answered =
+        json!({"item_id":ID,"mode":"answered","covered_input_sequence":9,"replayed":true});
+    let server = Server::start(vec![
+        request(Method::POST, "bindings", binding(), bound.clone()),
+        request(Method::POST, "input-receipts", receipt(), answered.clone()),
+    ])
+    .await;
+    let run = Uuid7::parse(ID).unwrap();
+    let result = server
+        .plane
+        .durable_task_bindings(&run, &serde_json::from_value(binding()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(result).unwrap(), bound);
+    let result = server
+        .plane
+        .durable_task_input_receipt(&run, &serde_json::from_value(receipt()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(result).unwrap(), answered);
+    server.finish();
+}
+#[tokio::test]
+async fn typed_publication_retains_tested_tree_and_operation_identity() {
+    let server = Server::start(vec![request(
+        Method::POST,
+        "effects",
+        publication(),
+        effect(),
+    )])
+    .await;
+    let result = server
+        .plane
+        .durable_task_publish(
+            &Uuid7::parse(ID).unwrap(),
+            &serde_json::from_value(publication()).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(serde_json::to_value(result).unwrap(), effect());
+    server.finish();
+}
+
+#[tokio::test]
+async fn a_native_publication_refusal_is_not_redispatched_or_reinterpreted() {
+    let mut refused = request(
+        Method::POST,
+        "effects",
+        publication(),
+        json!({"error_code":"UZ-RUN-011"}),
+    );
+    refused.status = StatusCode::CONFLICT;
+    let server = Server::start(vec![refused]).await;
+    let failure = server
+        .plane
+        .durable_task_publish(
+            &Uuid7::parse(ID).unwrap(),
+            &serde_json::from_value(publication()).unwrap(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(failure.refusal_status(), Some(409));
+    assert_eq!(failure.refusal_code(), Some(af_core::error_code::RUN_LOST));
+    server.finish();
+}
+
+#[tokio::test]
+async fn a_success_body_that_is_not_the_read_or_binding_it_answers_is_refused() {
+    let server = Server::start(vec![
+        request(
+            Method::GET,
+            "inputs?fencing_token=31&limit=4",
+            Value::Null,
+            json!({"unexpected":true}),
+        ),
+        request(
+            Method::POST,
+            "bindings",
+            binding(),
+            json!({"unexpected":true}),
+        ),
+    ])
+    .await;
+    let run = Uuid7::parse(ID).unwrap();
+    let read = server
+        .plane
+        .durable_task_inputs(
+            &run,
+            &DurableTaskInputsQuery {
+                fencing_token: FENCE,
+                starting_after: None,
+                after_input_sequence: None,
+                limit: 4,
+            },
+        )
+        .await;
+    assert!(read.is_err(), "a malformed input page was accepted");
+    let bound = server
+        .plane
+        .durable_task_bindings(&run, &serde_json::from_value(binding()).unwrap())
+        .await;
+    assert!(bound.is_err(), "a malformed binding receipt was accepted");
+    server.finish();
+}

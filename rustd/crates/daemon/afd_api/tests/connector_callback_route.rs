@@ -17,7 +17,7 @@
 //! of the vault: an unshipped provider, a callback with no state, one with no
 //! code, and a deployment with no platform admin workspace. Those four are
 //! here. Everything past that point — a forged, expired, spent or foreign
-//! state, which is the rest of Dimension 4.2 — needs a vault the fixture cannot
+//! state, which is the rest of the callback's checks — needs a vault the fixture cannot
 //! serve, and belongs to the integration lane. Splitting there is deliberate:
 //! it is the last line at which the handler has touched no store.
 
@@ -178,4 +178,24 @@ async fn a_deployment_with_no_admin_workspace_cannot_start_a_connect() {
         "a deployment holding no admin workspace can configure no app, and \
          answers that rather than a refusal about the caller"
     );
+}
+
+/// A provider value whose percent-escape is broken is refused as a bad query,
+/// for each parameter the callback reads, before any store.
+#[tokio::test]
+async fn a_callback_parameter_with_a_broken_escape_is_refused() {
+    for query in [
+        format!("code={CODE}&state=%ZZ"),
+        format!("code=%E&state={FORGED_STATE}"),
+        format!("code={CODE}&state={FORGED_STATE}&location=%G1"),
+        format!("code={CODE}&state={FORGED_STATE}&installation_id=%"),
+    ] {
+        let response = dashboard(SHIPPED, &query).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+        assert_eq!(
+            harness::refusal_code(response).await,
+            error_code::INVALID_REQUEST.as_str(),
+            "{query}"
+        );
+    }
 }

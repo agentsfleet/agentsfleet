@@ -11,8 +11,8 @@ pub(super) async fn removed(
     connection: &mut PgConnection,
     rows: &[Stored],
     set: &RecipeSet<'_>,
-) -> Result<afd_events::activity::Announcement> {
-    let mut announcement = afd_events::activity::Announcement::default();
+) -> Result<afd_turns::view::activity::Announcement> {
+    let mut announcement = afd_turns::view::activity::Announcement::default();
     for row in rows {
         if usize::try_from(row.slot).map_or(true, |slot| slot >= set.recipes.len()) {
             let retired = sqlx::query_as::<_, Schedule>(sql::RETIRE)

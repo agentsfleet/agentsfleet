@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 
 import { FleetConnectionIndicator } from "./FleetConnectionIndicator";
-import { CONNECTION_STATUS } from "../stream/useFleetEventStream";
+import { CONNECTION_STATUS } from "../stream/useFleetTurnStream";
 
 afterEach(() => {
   cleanup();

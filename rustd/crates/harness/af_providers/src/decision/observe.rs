@@ -140,7 +140,13 @@ fn outcome(result: &Result<DecisionResult>) -> DecisionOutcome {
             ErrorKind::DecisionEndpoint { .. }
             | ErrorKind::DecisionBuild { .. }
             | ErrorKind::DecisionPreflight { .. }
-            | ErrorKind::Configuration { .. } => DecisionOutcome::NotSent,
+            | ErrorKind::Configuration { .. }
+            | ErrorKind::Route { .. }
+            | ErrorKind::Bounds { .. }
+            | ErrorKind::Url { .. }
+            | ErrorKind::Endpoint
+            | ErrorKind::DecisionCapabilities
+            | ErrorKind::Unroutable { .. } => DecisionOutcome::NotSent,
             ErrorKind::DecisionStatus {
                 status: 429 | 529, ..
             } => DecisionOutcome::RateLimited,
@@ -162,8 +168,7 @@ fn outcome(result: &Result<DecisionResult>) -> DecisionOutcome {
             | ErrorKind::Wire { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::BlockedEndpoint { .. }
-            | ErrorKind::Unsendable { .. }
-            | ErrorKind::Unnamed { .. }
+            | ErrorKind::Conversation { .. }
             | ErrorKind::Client { .. } => DecisionOutcome::Unknown,
         },
     }

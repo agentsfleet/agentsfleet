@@ -30,10 +30,9 @@
               precondition, and failing loudly on it is the correct outcome"
 )]
 
-use af_wire::event::{OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES, SteerRequest};
-use af_wire::runner::{
-    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SelftestCheck, SelftestReport,
-};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::runner::{SelftestCheck, SelftestReport};
+use af_wire::turn::{OPERATION_ID_MAX_BYTES, SteerRequest};
 use garde::Validate as _;
 
 /// How many mutations the parser survives per seed corpus entry.
@@ -187,10 +186,8 @@ fn a_mutation_that_parses_is_still_held_to_its_bounds() {
         let probe = mutate(&mut rng, source);
 
         if let Ok(check) = serde_json::from_slice::<SelftestCheck<'_>>(&probe) {
-            let within = check.name.len() <= CHECK_NAME_MAX_BYTES
-                && !check.name.is_empty()
-                && check.detail.len() <= CHECK_DETAIL_MAX_BYTES
-                && !check.detail.is_empty();
+            let within = (1..=TEXT_MAX_CHARS).contains(&check.name.chars().count())
+                && (1..=TEXT_MAX_CHARS).contains(&check.detail.chars().count());
             assert_eq!(
                 check.validate().is_ok(),
                 within,
@@ -199,7 +196,7 @@ fn a_mutation_that_parses_is_still_held_to_its_bounds() {
         }
 
         if let Ok(steer) = serde_json::from_slice::<SteerRequest<'_>>(&probe) {
-            let within = (1..=STEER_MESSAGE_MAX_BYTES).contains(&steer.message.len())
+            let within = (1..=TEXT_MAX_CHARS).contains(&steer.message.chars().count())
                 && !steer.message.contains('\0')
                 && steer.operation_id.as_ref().is_none_or(|id| {
                     (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && !id.contains('\0')

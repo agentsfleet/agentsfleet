@@ -31,6 +31,15 @@ fn test_told_is_the_sentence_then_each_cause_without_the_code() {
     assert!(!told.contains(failure.code().as_str()), "{told}");
 }
 
+/// A failure that is not an egress or toolbox refusal names neither.
+#[test]
+fn test_a_cgroup_failure_names_no_egress_or_toolbox_refusal() {
+    let failure = cgroup_unreadable(FILE)(std::io::Error::other("gone"));
+
+    assert_eq!(failure.egress_refusal(), None);
+    assert_eq!(failure.toolbox_refusal(), None);
+}
+
 /// Each egress refusal says the sentence an operator has always read for it,
 /// byte for byte, whatever value a test or a log line tells it apart by.
 #[test]
@@ -62,10 +71,6 @@ fn test_each_egress_refusal_keeps_its_sentence() {
             "another runner process owns this host's egress tables and links",
         ),
         (
-            EgressRefusal::TooManyAddresses(257),
-            "257 addresses, past the 256 a lease may reach",
-        ),
-        (
             EgressRefusal::NoScope,
             "the sandbox was built to no allowlist, so it has no addresses to replace",
         ),
@@ -78,7 +83,7 @@ fn test_each_egress_refusal_keeps_its_sentence() {
         // pin test: literal is the contract
         assert_eq!(
             failure.detail(),
-            format!("the lease's egress was refused: {sentence}"),
+            format!("the run's egress was refused: {sentence}"),
             "{label}"
         );
         assert_eq!(failure.egress_refusal(), Some(&refusal));
@@ -96,7 +101,6 @@ fn test_each_egress_refusal_is_logged_under_its_own_name() {
         (EgressRefusal::NoNamespace, "no_namespace"),
         (EgressRefusal::NoSlot, "no_slot"),
         (EgressRefusal::HeldElsewhere, "held_elsewhere"),
-        (EgressRefusal::TooManyAddresses(0), "too_many_addresses"),
         (EgressRefusal::NoScope, "no_scope"),
     ];
 

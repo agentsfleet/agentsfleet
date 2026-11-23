@@ -1,55 +1,39 @@
-//! Durable fleet memory: the hydrate and capture halves, and their byte budgets.
+//! Durable fleet memory: the load and capture halves, and their byte budgets.
 
 use std::borrow::Cow;
 
-use af_validate::nul_free;
+use af_validate::{TEXT_MAX_CHARS, nul_free};
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-/// Longest stored key, in bytes.
+/// Longest stored key or category, in bytes: what one btree index row holds.
+///
+/// Both are indexed beside `fleet_id` and a timestamp on `memory.entries`
+/// (`(fleet_id, created_at, key)` and `(fleet_id, category, updated_at)`).
+/// Postgres refuses an index row past 2,704 bytes; less its 8-byte tuple
+/// header, the 16-byte `uuid`, the 8-byte `timestamptz` and the text's 4-byte
+/// varlena header, 2,668 remain.
 ///
 /// The operator surface bounds a path segment by it before decoding one: a key
 /// too long to have been stored cannot name a row.
-pub const MAX_KEY_LEN: usize = 255;
+pub const INDEXED_TEXT_MAX_BYTES: usize = 2704 - 8 - 16 - 8 - 4;
 
-/// Longest stored content, in bytes.
-pub const MAX_CONTENT_LEN: usize = 16 * 1024;
-
-/// Longest stored category, in bytes. The column carries no CHECK, so this is
-/// the only bound on a category label.
-pub const MAX_CATEGORY_LEN: usize = 64;
-
-/// The one category that hydrates before recency is considered, and that
-/// eviction protects. It is also the category a runner stores under when the
+/// The one category that loads before recency is considered, and that
+/// is never swept. It is also the category a runner stores under when the
 /// model names none.
 pub const PINNED_CATEGORY: &str = "core";
 
-/// Total memory bytes one push may carry, summed over every delta.
-///
-/// The runner caps what it surfaces and the control plane rejects beyond this.
-/// Oversized memory is truncated and logged, never silently dropped whole.
-pub const MAX_PUSH_BYTES: usize = 256 * 1024;
-
-/// Ceiling on durable entries one fleet may accumulate across all its runs.
-///
-/// A backstop, not the primary bound — stable-key overwrite and explicit
-/// forgetting are the fleet's own. Eviction beyond this is tier-ordered.
-pub const MAX_ENTRIES_PER_FLEET: usize = 1000;
-
-/// Byte budget for one hydration window.
+/// Byte budget for one load window.
 ///
 /// Bounds the payload a run seeds into the child regardless of how large the
-/// durable set has grown; dropped entries stay durable, just unhydrated.
-pub const HYDRATE_WINDOW_BYTES: usize = 256 * 1024;
+/// durable set has grown; dropped entries stay durable, just not loaded.
+pub const LOAD_WINDOW_BYTES: usize = 256 * 1024;
 
-/// Byte budget for the workspace's shared entries one hydrate carries.
+/// Byte budget for the workspace's shared entries one load carries.
 ///
 /// A quarter of the fleet's own window, spent after it: what other fleets
 /// published informs a run and never crowds out what the fleet itself learned.
-pub const HYDRATE_SHARED_BYTES: usize = HYDRATE_WINDOW_BYTES.div_euclid(4);
-
-/// The most entries of each kind one recall answers with.
-pub const RECALL_LIMIT_MAX: usize = 50;
+pub const LOAD_SHARED_BYTES: usize = LOAD_WINDOW_BYTES.div_euclid(4);
 
 /// Who reads a stored entry: its own fleet, or every fleet in the workspace
 /// granted to read shared memory.
@@ -82,7 +66,7 @@ impl Visibility {
 /// One durable memory item — the unit of both reading and writing.
 //
 // Carries no scope: the fleet is a path segment, validated server-side against
-// the runner's live lease. The bounds are declared here, so the daemon's push
+// the runner's live run. The bounds are declared here, so the daemon's push
 // and the runner's store refuse the same entries. NUL is refused on every text
 // field because Postgres cannot store it in `text`: one such delta would fail
 // the whole push's statement instead of being skipped as malformed.
@@ -91,15 +75,15 @@ impl Visibility {
 pub struct MemoryDelta<'a> {
     /// Stable key. A repeated key overwrites rather than accumulating.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN), custom(nul_free))]
+    #[garde(length(bytes, min = 1, max = INDEXED_TEXT_MAX_BYTES), custom(nul_free))]
     pub key: Cow<'a, str>,
     /// The remembered content.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_CONTENT_LEN), custom(nul_free))]
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub content: Cow<'a, str>,
-    /// Retention category, which decides eviction order.
+    /// Retention category, which decides load order and retention.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_CATEGORY_LEN), custom(nul_free))]
+    #[garde(length(bytes, min = 1, max = INDEXED_TEXT_MAX_BYTES), custom(nul_free))]
     pub category: Cow<'a, str>,
     /// Who reads it; absent means the writing fleet alone. Left off the wire
     /// at that default, so a delta that shares nothing reads as it always did.
@@ -109,8 +93,8 @@ pub struct MemoryDelta<'a> {
 }
 
 impl MemoryDelta<'_> {
-    /// The bytes this entry charges against a memory budget: the hydration
-    /// window, the push cap and the dropped-bytes count all charge the same.
+    /// The bytes this entry charges against a memory budget: the load
+    /// window and the dropped-bytes count charge the same.
     #[must_use]
     pub fn bytes(&self) -> usize {
         self.key.len() + self.content.len() + self.category.len()
@@ -142,18 +126,18 @@ impl MemoryDelta<'_> {
 
 /// `POST /v1/runners/me/memory/{fleet_id}` request.
 //
-// The lease and fencing token ride the body exactly as they do on a report: the
-// control plane loads that lease, verifies the runner owns it, cross-checks the
+// The run and fencing token ride the body exactly as they do on a report: the
+// control plane loads that run, verifies the runner owns it, cross-checks the
 // fleet against the path, and fences the write. Each delta is upserted, so a
 // retried push is idempotent.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryPushRequest<'a> {
-    /// The lease authorizing this write.
+    /// The run authorizing this write.
     #[serde(borrow)]
-    pub lease_id: Cow<'a, str>,
-    /// Monotonic guard; a reclaimed holder is rejected.
+    pub run_id: Cow<'a, str>,
+    /// Monotonic guard; a holder a reassignment superseded is rejected.
     pub fencing_token: u64,
     /// The items to remember.
     #[serde(borrow)]
@@ -185,7 +169,7 @@ pub struct SharedMemory<'a> {
 }
 
 impl SharedMemory<'_> {
-    /// The bytes this entry charges against the shared hydration budget.
+    /// The bytes this entry charges against the shared load budget.
     #[must_use]
     pub fn bytes(&self) -> usize {
         self.key.len() + self.content.len() + self.category.len() + self.writer_fleet_name.len()
@@ -209,7 +193,7 @@ impl SharedMemory<'_> {
 /// What a fleet remembers, compacted to fit one window.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MemoryHydrateResponse<'a> {
+pub struct MemoryLoadResponse<'a> {
     /// The window's items.
     #[serde(borrow)]
     pub memory: Vec<MemoryDelta<'a>>,
@@ -235,25 +219,25 @@ const fn is_false(granted: &bool) -> bool {
 
 /// `POST /v1/runners/me/memory/{fleet_id}/recall` request.
 //
-// Fenced like a push: a holder a reclaim superseded reads nothing.
+// Fenced like a push: a holder a reassignment superseded reads nothing.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryRecallRequest<'a> {
-    /// The lease authorizing this read.
+    /// The run authorizing this read.
     #[serde(borrow)]
-    #[garde(length(bytes, min = 1, max = MAX_KEY_LEN))]
-    pub lease_id: Cow<'a, str>,
-    /// Monotonic guard; a reclaimed holder is rejected.
+    #[garde(length(chars, min = 1, max = TEXT_MAX_CHARS))]
+    pub run_id: Cow<'a, str>,
+    /// Monotonic guard; a holder a reassignment superseded is rejected.
     #[garde(skip)]
     pub fencing_token: u64,
     /// Text to find in a key or content, ignoring case; empty matches all.
     #[serde(borrow)]
-    #[garde(length(bytes, max = MAX_CONTENT_LEN), custom(nul_free))]
+    #[garde(length(chars, max = TEXT_MAX_CHARS), custom(nul_free))]
     pub query: Cow<'a, str>,
     /// The most entries of each kind to answer with.
-    #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 50))]
-    #[garde(range(min = 1, max = RECALL_LIMIT_MAX))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
+    #[garde(range(min = 1))]
     pub limit: usize,
 }
 
@@ -274,8 +258,8 @@ pub struct MemoryRecallResponse<'a> {
 //
 // A runner acts on both numbers: `stored` says its memory landed, `skipped`
 // says some was refused for shape and it should look at what it sends. The
-// sweep and eviction counts the control plane also computes stay in the log —
-// they are the daemon's housekeeping, not a fact about this request.
+// sweep count the control plane also computes stays in the log —
+// it is the daemon's housekeeping, not a fact about this request.
 //
 // Declared here rather than assembled inline at the handler, which is where it
 // used to live. What the inline version claimed was that a response body could
@@ -310,7 +294,7 @@ pub struct MemoryEntry<'a> {
     /// What it remembers.
     #[serde(borrow)]
     pub content: Cow<'a, str>,
-    /// The retention category, which decides eviction order.
+    /// The retention category, which decides load order and retention.
     #[serde(borrow)]
     pub category: Cow<'a, str>,
     /// When it was last written.

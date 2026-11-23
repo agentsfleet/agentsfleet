@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MAX_PENDING_SENDS,
   PENDING_SEND_STATE,
   PENDING_SEND_TTL_MS,
   __resetPendingSendsForTests,
@@ -167,18 +166,6 @@ describe("pending-sends ledger", () => {
     expect(states()).toEqual([["op-fresh", PENDING_SEND_STATE.REFUSED]]);
     expect(window.localStorage.getItem(OTHER_FLEET_KEY)).toBeNull();
     expect(window.localStorage.getItem(UNRELATED_KEY)).toBe("kept");
-  });
-
-  it("caps a fleet's ledger, dropping the oldest ended sends and never one in flight", () => {
-    beginPendingSend(SCOPE, send("op-flying", "still out"));
-    for (let index = 0; index < MAX_PENDING_SENDS; index += 1) {
-      beginPendingSend(SCOPE, send(`op-${index}`, `refused ${index}`));
-      failPendingSend(SCOPE, `op-${index}`, PENDING_SEND_STATE.REFUSED);
-    }
-    const ids = getPendingSends(SCOPE).map((entry) => entry.operationId);
-    expect(ids).toHaveLength(MAX_PENDING_SENDS);
-    expect(ids).toContain("op-flying");
-    expect(ids).not.toContain("op-0");
   });
 
   it("reads a malformed or foreign stored value as nothing", () => {

@@ -8,11 +8,11 @@ The architecture optimises for one generic operational runtime, not bespoke type
 
 Principles. Each links to where it's enforced; when a spec contradicts one of these, the spec is wrong:
 
-- **One Fleet is a durable runtime, not a one-shot prompt.** The lease model enforces it. `agentsfleetd` hands a runner one event at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each lease ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
+- **One Fleet is a durable runtime, not a one-shot prompt.** The run model enforces it. `agentsfleetd` hands a runner one turn at a time. Fleet state survives runner restarts in the fleet's memory, loaded at each run ([`runner_fleet.md`](./runner_fleet.md) §"Memory continuity").
 
   See [`high_level.md`](./high_level.md) §1 and [`data_flow.md`](./data_flow.md) §"The coding fleet and the Fleet runtime".
 
-- **All trigger sources enter the same event-processing path.** Webhook, cron, steer, and continuation all commit to `fleet.admissions`; the lease/run path treats every actor alike. See the [admission and run flows](./data_flow.md).
+- **All trigger sources enter the same turn-processing path.** Webhook, cron, steer, and continuation all commit to `thread.turns`; the assign/run path treats every actor alike. See the [intake and run flows](./data_flow.md).
 
 - **Behaviour is defined mainly in natural language, through chat, into one reviewed Definition**. It holds a one-line `description`, `instructions_md` and a `config` policy document.
 
@@ -24,7 +24,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`data_flow.md`](./data_flow.md) §`C. EXECUTE`, [`capabilities.md`](./capabilities.md) §3 "Secret vault" row, and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2 (api_key visibility boundary).
 
-- **History is durable with actor provenance.** Every event lands in the Fleet event store (`fleet.events`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
+- **History is durable with actor provenance.** Every turn lands in the turn store (`thread.turns`) with its actor. Actors read `steer:<user>`, `webhook:<source>`, `github-app`, `cron:<schedule>`, `continuation:<original>` or `slack:<user>`. See [`data_flow.md`](./data_flow.md) §"The five durable stores".
 
 - **Conversation checkpoints preserve current working notes.** Private setup and runtime share [conversation compaction](./context_lifecycle.md). Semantic memory supplies facts for later runs; see [semantic memory](./capabilities.md#semantic-memory-remains-separate).
 
@@ -32,7 +32,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
 - **Approvals are first-class.** Risky actions block at the gate; the state machine survives runner restarts. See [`capabilities.md`](./capabilities.md) §3 "Approval gating" row and [`data_flow.md`](./data_flow.md) §`C. EXECUTE`.
 
-- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the lease, before the run starts (`afd_fleet`'s lease pull). The instructions may ask for approval explicitly.
+- **Destructive actions are never assumed safe just because the model suggested them.** The `gates` policy lives in the fleet's reviewed `config`. `agentsfleetd` enforces it when it issues the run, before the run starts (`afd_fleet`'s run pull). The instructions may ask for approval explicitly.
 
   See [`capabilities.md`](./capabilities.md) §3 "Approval gating".
 
@@ -42,7 +42,7 @@ Principles. Each links to where it's enforced; when a spec contradicts one of th
 
   See [`capabilities.md`](./capabilities.md) §4 (memory checkpoint layer).
 
-- **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns admission and fixed notices.
+- **Slack uses the existing runtime.** Configured fleet subscriptions select the recipient; connecting Slack creates no fallback agent. [Mention routing](scenarios/slack-incident-responder.md#4-routing-a-mention) owns intake and fixed notices.
 
 The runtime keeps only a thin typed envelope:
 
@@ -64,6 +64,6 @@ The runtime keeps only a thin typed envelope:
 
 Everything else stays prompt-driven and is iterated in chat, then applied as a reviewed setup revision.
 
-A Plugin entry is reusable setup above the runtime, not a second runtime entity. It is an immutable revision a person explicitly published, which a new fleet pins at Save. Prose cannot grant capabilities.
+Prose cannot grant capabilities.
 
-Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on lease. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.
+Only the reviewed `config` plus approved workspace grants become `ExecutionPolicy` on run. Runners remain infrastructure capacity; they run Fleets but are not child resources of a customer Fleet.

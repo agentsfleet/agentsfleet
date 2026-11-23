@@ -6,7 +6,7 @@
 //! A fleet's behaviour is authored in chat as a typed JSON Definition — a
 //! description, instructions and a configuration document — and the configuration
 //! is stored as the `config` key of the head `fleet.revisions.definition`. At
-//! claim time the daemon has to turn that document into decisions: what may
+//! assignment time the daemon has to turn that document into decisions: what may
 //! wake this fleet, what it may spend, which of its actions need a human, how
 //! far its credentials reach.
 //! This crate is that transformation, and nothing else. It opens no socket,
@@ -24,10 +24,9 @@
 //! triggers may not share a source, a repository binding is optional as a WHOLE
 //! rather than key by key.
 //!
-//! Four verdicts are worth knowing before reading a refusal, and each is
-//! declared in [`error`]: a malformed field never reports as a missing one, a
-//! non-string `model` is never silently dropped, a gate failure keeps its own
-//! class, and a threshold is bounded by a constant named for what it bounds.
+//! Two verdicts are worth knowing before reading a refusal, and each is
+//! declared in [`error`]: a malformed field never reports as a missing one,
+//! and a non-string `model` is never silently dropped.
 //! [`Definition`] adds one more: a key outside the supported setup is refused,
 //! because setup a reviewer cannot see must not reach a runner.
 //!
@@ -52,6 +51,7 @@ pub mod name;
 #[cfg(feature = "openapi")]
 mod openapi;
 mod optional;
+pub mod setup;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 

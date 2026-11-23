@@ -1,4 +1,4 @@
-//! Dimension 2.6 — every instant is `TIMESTAMPTZ(3)` and every instant column
+//! Every instant is `TIMESTAMPTZ(3)` and every instant column
 //! ends `_at`, apart from the two price-range names Indy approved in #771.
 //! Both directions still enforce the type and precision of every instant.
 

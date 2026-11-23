@@ -183,7 +183,7 @@ impl Error {
             | ErrorKind::TokenRefused => error_code::RUN_INVALID_RUNNER_TOKEN,
             ErrorKind::Refused {
                 verb: Verb::Renew, ..
-            } => error_code::RUN_LEASE_LOST,
+            } => error_code::RUN_LOST,
             ErrorKind::Transport { verb, .. }
             | ErrorKind::Unavailable { verb, .. }
             | ErrorKind::Refused { verb, .. }

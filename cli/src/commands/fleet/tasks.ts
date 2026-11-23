@@ -2,10 +2,10 @@
 
 import { Effect } from "effect";
 import { Output } from "../../services/output.ts";
-import type { TaskDetail } from "./task-read.ts";
+import type { DurableTaskDetail } from "./task-read.ts";
 import { activityText } from "./task-activity.ts";
 
-export function renderRepository(detail: TaskDetail) {
+export function renderRepository(detail: DurableTaskDetail) {
   return Effect.gen(function* () {
     const output = yield* Output;
     const target = detail.context.target;

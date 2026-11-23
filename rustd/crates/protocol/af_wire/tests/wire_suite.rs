@@ -12,12 +12,9 @@
 //! `TestDatabase::shared` — `afd_runner` and `afd_tenant` — are deliberately
 //! NOT aggregated for that reason.
 
-mod authoring_compaction;
-mod claim_selection;
+mod assignment_selection;
 mod decision_receipts;
 
-#[path = "inference_images.rs"]
-mod inference_images;
 #[path = "instants.rs"]
 mod instants;
 #[path = "memory_shapes.rs"]
@@ -27,6 +24,9 @@ mod policy_shapes;
 #[path = "redaction.rs"]
 mod redaction;
 // Every runner route template, pinned in one reviewed snapshot.
+mod durable_task_owned;
+mod durable_task_progress;
+mod durable_task_validation;
 mod native_requests;
 mod protocol;
 #[path = "routes.rs"]
@@ -34,9 +34,6 @@ mod routes;
 mod runner_policy;
 #[path = "strictness.rs"]
 mod strictness;
-mod task_owned;
-mod task_progress;
-mod task_validation;
 mod turn_checkpoint;
 // Declared bounds at their exact limits, the steer request's own rows, and a
 // seeded mutation corpus the parser must survive without panicking.
@@ -44,9 +41,12 @@ mod turn_checkpoint;
 mod validation;
 #[path = "validation_holds.rs"]
 mod validation_holds;
-#[path = "validation_lease.rs"]
-mod validation_lease;
 #[path = "validation_mutation.rs"]
 mod validation_mutation;
+#[path = "validation_run.rs"]
+mod validation_run;
+// The setup report admits every Definition the Definition parser admits.
+#[path = "validation_setup.rs"]
+mod validation_setup;
 #[path = "validation_steer.rs"]
 mod validation_steer;

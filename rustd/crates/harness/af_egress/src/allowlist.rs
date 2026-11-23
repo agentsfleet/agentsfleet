@@ -8,8 +8,8 @@
 //! `config/raw/predicate.rs` `is_token`). So an entry is read as a URL, under
 //! `https://` when it names no scheme, and only its host is kept. The
 //! supervisor resolves that host into the addresses its sandbox reaches
-//! (`afr_supervisor` `egress.rs`); admission compares it to the host of the URL
-//! a tool asks for (`admission.rs`).
+//! (`afr_supervisor` `egress.rs`); the egress policy compares it to the host of the URL
+//! a tool asks for (`policy/mod.rs`).
 
 use url::{Host, Url};
 

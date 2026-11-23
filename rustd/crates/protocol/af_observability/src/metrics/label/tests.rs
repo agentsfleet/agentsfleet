@@ -6,20 +6,20 @@
 )]
 
 use crate::metrics::declared::{
-    billing, bus, database, fleet, http, library, outbound, scheduler, task,
+    billing, bus, database, durable_task, fleet, http, library, outbound, scheduler,
 };
 use crate::metrics::label::billing as billing_labels;
 use crate::metrics::label::bus as bus_labels;
 use crate::metrics::label::database as database_labels;
+use crate::metrics::label::durable_task as durable_task_labels;
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
 use crate::metrics::label::outbound as outbound_labels;
 use crate::metrics::label::scheduler as scheduler_labels;
-use crate::metrics::label::task as task_labels;
 use crate::metrics::registry::{Policy, Registry};
 
-/// Where a sent message went, and the folds a live run claimed and settled.
+/// Where a sent message went, and the folds a live run was assigned and settled.
 fn fold_products() -> [(&'static str, usize); 2] {
     [
         (
@@ -27,7 +27,7 @@ fn fold_products() -> [(&'static str, usize); 2] {
             fleet_labels::SteerPlaced::ALL.len(),
         ),
         (
-            fleet::LEASE_FOLDS_TOTAL.wire_name(),
+            fleet::RUN_FOLDS_TOTAL.wire_name(),
             fleet_labels::FoldOutcome::ALL.len(),
         ),
     ]
@@ -44,7 +44,7 @@ fn label_products() -> Vec<(&'static str, usize)> {
     products.extend(fold_products());
     products.extend(stream_products());
     products.extend(transport_products());
-    products.extend(task_products());
+    products.extend(durable_task_products());
     products.extend(billing_products());
     products.extend(http_products());
     products.extend(fleet_products());
@@ -167,42 +167,26 @@ fn every_declared_ceiling_admits_its_label_product() {
     }
 }
 
-fn task_products() -> [(&'static str, usize); 3] {
+fn durable_task_products() -> [(&'static str, usize); 2] {
     [
         (
-            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
-            task_labels::DecisionRecoveryOutcome::ALL.len(),
+            durable_task::DURABLE_TASK_OPERATIONS_TOTAL.wire_name(),
+            durable_task_labels::DurableTaskOperation::ALL.len()
+                * durable_task_labels::DurableTaskOutcome::ALL.len(),
         ),
         (
-            task::TASK_OPERATIONS_TOTAL.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
-        ),
-        (
-            task::TASK_OPERATION_SECONDS.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+            durable_task::DURABLE_TASK_OPERATION_SECONDS.wire_name(),
+            durable_task_labels::DurableTaskOperation::ALL.len()
+                * durable_task_labels::DurableTaskOutcome::ALL.len(),
         ),
     ]
 }
 
-fn billing_products() -> [(&'static str, usize); 4] {
-    [
-        (
-            billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SETTLE_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len(),
-        ),
-        (
-            billing::BILLING_UNSETTLED_NANOS.wire_name(),
-            billing_labels::WorkType::ALL.len(),
-        ),
-    ]
+fn billing_products() -> [(&'static str, usize); 1] {
+    [(
+        billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
+        billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
+    )]
 }
 
 fn http_products() -> [(&'static str, usize); 2] {
@@ -218,27 +202,23 @@ fn http_products() -> [(&'static str, usize); 2] {
     ]
 }
 
-fn fleet_products() -> [(&'static str, usize); 10] {
+fn fleet_products() -> [(&'static str, usize); 9] {
     [
         (
             fleet::RUNNER_CORDON_CHANGES_TOTAL.wire_name(),
             fleet_labels::CordonChange::ALL.len(),
         ),
         (
-            fleet::LEASE_CACHE_LOOKUPS_TOTAL.wire_name(),
-            fleet_labels::LeaseCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),
+            fleet::RUN_CACHE_LOOKUPS_TOTAL.wire_name(),
+            fleet_labels::RunCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),
         ),
         (
             fleet::SIGNUP_FAILED_TOTAL.wire_name(),
             fleet_labels::SignupFailure::ALL.len(),
         ),
         (
-            fleet::ADMISSIONS_TOTAL.wire_name(),
-            fleet_labels::AdmissionOutcome::ALL.len(),
-        ),
-        (
-            fleet::FLEETS.wire_name(),
-            fleet_labels::FleetStatusLabel::ALL.len(),
+            fleet::TURNS_TOTAL.wire_name(),
+            fleet_labels::IncomingTurnOutcome::ALL.len(),
         ),
         (
             fleet::FLEET_RUNS_STARTED_TOTAL.wire_name(),
@@ -253,12 +233,12 @@ fn fleet_products() -> [(&'static str, usize); 10] {
             fleet_labels::ReportAnswer::ALL.len(),
         ),
         (
-            fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
+            fleet::RUN_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),
         (
-            fleet::LEASE_HELD_CLAIMS_TOTAL.wire_name(),
-            fleet_labels::HeldClaim::ALL.len(),
+            fleet::RUN_HELD_ASSIGNMENTS_TOTAL.wire_name(),
+            fleet_labels::HeldAssignment::ALL.len(),
         ),
     ]
 }

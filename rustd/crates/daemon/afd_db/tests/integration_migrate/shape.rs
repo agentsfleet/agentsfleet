@@ -1,4 +1,4 @@
-//! Dimension 2.1 — migrating an empty database builds the nine owned schemas,
+//! Migrating an empty database builds the nine owned schemas,
 //! each holding a table, and no table anywhere else.
 //!
 //! `schema/*.sql` is the only record of each table's columns, so nothing here
@@ -8,11 +8,12 @@
 use super::*;
 
 /// The nine owned schemas. `audit` holds only sqlx's ledger.
-const OWNED_SCHEMAS: [&str; 9] = [
+const OWNED_SCHEMAS: [&str; 10] = [
     "identity",
-    "authoring",
+    "setup",
     "fleet",
     "runner",
+    "thread",
     "connector",
     "model",
     "billing",

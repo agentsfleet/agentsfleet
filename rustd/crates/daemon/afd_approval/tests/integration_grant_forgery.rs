@@ -25,7 +25,7 @@
 //! It is the one thing on the row a fleet cannot reach. `REQUEST_GRANT` writes
 //! NULL there by construction (Invariant 5 — a continuation event beside a
 //! still-leasable delivery would run the work twice), and every rules-path gate
-//! carries a real one, because `afd_gate`'s insert binds `event_id: &str` rather
+//! carries a real one, because `afd_gate`'s insert binds `turn_id: &str` rather
 //! than an `Option`. There is no way to author a card that is both fleet-raised
 //! and event-less.
 //!
@@ -56,9 +56,6 @@ const SERVICE: &str = "github";
 /// Who the fixture records as answering a card.
 const REVIEWER: &str = "operator@fixture";
 
-/// An event id, which every rules-path card carries and no grant card does.
-const FORGED_EVENT: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-
 /// The card a fleet-authored rule of this kind would produce.
 ///
 /// `REQUEST_GRANT`'s own column list, so a row that is accepted or refused here
@@ -69,7 +66,7 @@ const FORGED_CARD: &str = "\
 INSERT INTO fleet.approval_gates
   (id, fleet_id, workspace_id, action_id, tool_name, action_name,
    gate_type, proposed_action, evidence, blast_radius, expires_at,
-   status, detail, created_at, updated_at, event_id)
+   status, detail, created_at, updated_at, turn_id)
 VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8, $9::jsonb, $10, now() + $11::interval,
         $12, '', now(), now(), $13)";
@@ -98,7 +95,9 @@ async fn raise_honest_grant(lane: &Lane) {
 /// can be driven from here, it is whether the RESOLVE would honour such a row —
 /// so the row is written in its most favourable form and the resolve is asked.
 async fn insert_forged_card(lane: &Lane, action: &Uuid7) {
-    let forged_event = Uuid7::parse(FORGED_EVENT).expect("the forged event id is a UUIDv7");
+    // A turn id, which every rules-path card carries and no grant card does.
+    let forged_event = mint();
+    lane.seed_turn(&forged_event).await;
     sqlx::query(FORGED_CARD)
         .bind(mint())
         .bind(&lane.fleet)

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Readable, Writable } from "node:stream";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
@@ -17,7 +17,7 @@ import { ValidationError } from "../src/errors/index.ts";
 const WS_ID = "0195b4ba-8d3a-7f13-8abc-000000000010";
 const FLEET_ID = "0195b4ba-8d3a-7f13-8abc-000000000020";
 const TOKEN = "test-token";
-const EVENT_ID = "1729874000000-0";
+const TURN_ID = "1729874000000-0";
 const API_URL = "https://api.test.local";
 const DASHBOARD_URL = "https://dash.test.local";
 const POST = "POST";
@@ -54,7 +54,7 @@ const makeRecorder = (): Recorder => ({
   streamSignals: [],
 });
 
-const defaultReply = <T = unknown>(): T => ({ event_id: EVENT_ID } as T);
+const defaultReply = <T = unknown>(): T => ({ turn_id: TURN_ID } as T);
 
 const testLayer = (
   rec: Recorder,
@@ -109,7 +109,7 @@ const completeStream = (rec: Recorder) =>
     options?: { signal?: AbortSignal },
   ): Promise<void> => {
     if (options?.signal) rec.streamSignals.push(options.signal);
-    onEvent({ id: null, type: "event_complete", data: { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } });
+    onEvent({ id: null, type: "turn_complete", data: { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } });
   };
 
 describe("steerEffectFromArgs REPL dispatch", () => {
@@ -137,7 +137,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([{ message: "howdy" }]);
     expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET"]);
-    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`);
+    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns/${TURN_ID}`);
     // Subscribe-first: even a single-shot turn opens its tail before the
     // POST, and the tail always carries an abort signal for close ownership.
     expect(rec.streamSignals).toHaveLength(1);
@@ -160,7 +160,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     ]);
     expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET", POST, "GET"]);
     expect(rec.requests.filter(request => request.method !== POST).map(request => request.path)).toEqual(
-      Array(2).fill(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`),
+      Array(2).fill(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns/${TURN_ID}`),
     );
     expect(rec.streamSignals).toHaveLength(2);
   });
@@ -178,7 +178,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.requests.filter(request => request.method === POST).map(request => request.body)).toEqual([{ message: "explicit" }]);
     expect(rec.requests.map(request => request.method ?? "GET")).toEqual([POST, "GET"]);
-    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events/${EVENT_ID}`);
+    expect(rec.requests[1]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns/${TURN_ID}`);
   });
 
   test("REPL turn failure is reported and later turns continue", async () => {
@@ -191,7 +191,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       { stdin: streamFrom(["first\nsecond\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
     ).pipe(Effect.provide(testLayer(rec, <T>() => {
       replies += 1;
-      return (replies === 1 ? {} : { event_id: EVENT_ID }) as T;
+      return (replies === 1 ? {} : { turn_id: TURN_ID }) as T;
     })));
 
     const exit = await Effect.runPromiseExit(effect);
@@ -200,9 +200,9 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       { message: "first" },
       { message: "second" },
     ]);
-    expect(rec.stderr.join("\n")).toContain("messages response missing event_id");
+    expect(rec.stderr.join("\n")).toContain("messages response missing turn_id");
     // Subscribe-first: the failed turn opened a tail too (before its POST
-    // came back without an event_id) — and the failure closed it.
+    // came back without an turn_id) — and the failure closed it.
     expect(rec.streamSignals).toHaveLength(2);
     expect(rec.streamSignals[0]?.aborted).toBe(true);
   });
@@ -246,7 +246,7 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       { forceTty: true },
       { stdin: streamFrom(["howdy\n"], false), stdout: nullOutput(), streamGet: noTerminalStream, signalSource },
     ).pipe(Effect.provide(testLayer(rec, <T>(input: HttpRequestInput) => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
+      if (input.method === POST) return { turn_id: TURN_ID } as T;
       polls += 1;
       signalSource.emit(SIGINT);
       return { items: [] } as T;

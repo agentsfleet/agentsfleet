@@ -8,15 +8,17 @@ WITH model AS (
     RETURNING id
 ), price AS (
     INSERT INTO model.platform_model_prices
-        (id, platform_model_id, effective_from, effective_until, prompt_tokens_above,
+        (id, platform_model_id, decision_revision_id, effective_from, effective_until,
+         prompt_tokens_above,
          input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
          source_url, verified_at, conditions, created_at, updated_at)
-    SELECT $6, m.id, $5, NULL, 0, 0, 0, 0,
+    SELECT $6, m.id, NULL::uuid, $5, NULL, 0, 0, 0, 0,
            'https://fixtures.agentsfleet.net/pricing', $5,
            'Zero-priced test fixture; not a provider quotation.', now(), now()
       FROM model m
      WHERE NOT EXISTS (
-           SELECT 1 FROM model.platform_model_prices p WHERE p.platform_model_id = m.id
+           SELECT 1 FROM model.platform_model_prices p
+            WHERE p.platform_model_id = m.id AND p.decision_revision_id IS NULL
      )
 )
 INSERT INTO model.platform_defaults (provider, source_workspace_id, active, platform_model_id, created_at, updated_at)

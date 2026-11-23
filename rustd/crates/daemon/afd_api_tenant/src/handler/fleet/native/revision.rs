@@ -1,15 +1,15 @@
 //! Apply accepts only the native domain's checked, replayable replacement.
 
-use super::{access, render::attach};
+use super::access;
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
     handler::fleet::detail::FleetPath,
     handler::{Refusal, input},
-    services::Services,
+    services::TenantPlane,
 };
 use afd_api_wire::fleet as wire;
-use afd_authoring::types::{AppliedRevision, ApplyRevision};
-use afd_http::handler::authoring_refusal;
+use afd_http::handler::setup_refusal;
+use afd_setup::types::{AppliedRevision, ApplyRevision};
 use axum::{
     Json,
     body::Bytes,
@@ -30,7 +30,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn apply<D: Services>(
+pub(crate) async fn apply<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -55,12 +55,12 @@ pub(crate) async fn apply<D: Services>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let current = services
         .creations()
         .read(access(&owned, &person), &fleet)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let schedules = super::schedules::after_activation(
         services.as_ref(),
         &owned.workspace,
@@ -89,8 +89,10 @@ fn created(
         review_digest: applied.review_digest,
         schedules: crate::handler::schedule::views(schedules, now),
     };
-    let mut response = (StatusCode::CREATED, Json(value)).into_response();
-    attach(&mut response, header::ETAG, &tag);
-    attach(&mut response, header::LOCATION, location);
-    response
+    (
+        StatusCode::CREATED,
+        [(header::ETAG, tag), (header::LOCATION, location.to_owned())],
+        Json(value),
+    )
+        .into_response()
 }

@@ -11,10 +11,10 @@ use crate::{Message, Received, Subject};
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
 const FLEET: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011";
-const PHYSICAL: &str = "af.fleet.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011.tail";
+const PHYSICAL: &str = "af.thread.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011.items";
 
 fn subject() -> Result<Subject, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(Subject::FleetTail(Uuid7::parse(FLEET)?))
+    Ok(Subject::ThreadItems(Uuid7::parse(FLEET)?))
 }
 
 fn native(payload: &'static [u8], headers: Option<HeaderMap>) -> async_nats::Message {
@@ -48,17 +48,20 @@ fn marked() -> HeaderMap {
 #[test]
 fn marker_needs_the_header_not_the_payload() -> TestResult {
     let subject = subject()?;
-    let Some(Delivery::Message(message)) = classify(&subject, &native(b"", None)) else {
+    let Some(Delivery::Message(message)) = classify(subject.clone(), &native(b"", None)) else {
         return Err("an empty body with no header is a message".into());
     };
     assert_eq!(message.payload.as_str(), "");
     assert!(matches!(
-        classify(&subject, &native(b"", Some(marked()))),
+        classify(subject.clone(), &native(b"", Some(marked()))),
         Some(Delivery::Gap)
     ));
     assert!(
         matches!(
-            classify(&subject, &native(b"{\"kind\":\"x\"}", Some(marked()))),
+            classify(
+                subject.clone(),
+                &native(b"{\"kind\":\"x\"}", Some(marked()))
+            ),
             Some(Delivery::Gap)
         ),
         "the header wins over any payload"
@@ -66,7 +69,7 @@ fn marker_needs_the_header_not_the_payload() -> TestResult {
     let mut other = HeaderMap::new();
     other.insert(GAP_HEADER, "0");
     assert!(matches!(
-        classify(&subject, &native(b"", Some(other))),
+        classify(subject, &native(b"", Some(other))),
         Some(Delivery::Message(_))
     ));
     Ok(())
@@ -74,7 +77,7 @@ fn marker_needs_the_header_not_the_payload() -> TestResult {
 
 #[test]
 fn a_payload_that_is_not_utf8_is_dropped() -> TestResult {
-    assert!(classify(&subject()?, &native(b"\xff\xfe", None)).is_none());
+    assert!(classify(subject()?, &native(b"\xff\xfe", None)).is_none());
     Ok(())
 }
 
@@ -153,7 +156,7 @@ async fn a_gap_reaches_every_reader_of_every_subject() -> TestResult {
     let mut readers = vec![
         channels.open(PHYSICAL).reader,
         channels.open(PHYSICAL).reader,
-        channels.open("af.wake.3").reader,
+        channels.open("af.thread.3.wake").reader,
     ];
     assert_eq!(channels.gap_all(), 3);
     for reader in &mut readers {
@@ -342,5 +345,47 @@ async fn joiners_fail_when_their_opener_gives_up() -> TestResult {
         };
         assert_eq!(crate::Error::from(source).reason(), "backend");
     }
+    Ok(())
+}
+
+/// A native subscription that ends — its client gave up on the server —
+/// stops the pump and ends the channel, so its readers see it close.
+#[tokio::test]
+async fn a_pump_whose_native_subscription_ends_closes_its_channel() -> TestResult {
+    // Port 1 is reserved and unbound: one dial, then the client gives up and
+    // every subscription it opened ends.
+    let client = async_nats::ConnectOptions::new()
+        .retry_on_initial_connect()
+        .max_reconnects(1)
+        .connect("nats://127.0.0.1:1")
+        .await?;
+    let native = client.subscribe(PHYSICAL).await?;
+    let channels = Arc::new(Channels::new(8));
+    let opened = channels.open(PHYSICAL);
+    let Pump {
+        sender, generation, ..
+    } = opened.pump.ok_or("opened")?;
+    let mut reader = opened.reader;
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        super::pump(
+            native,
+            sender,
+            super::super::Reads::One(subject()?),
+            Arc::clone(&channels),
+            PHYSICAL.to_owned(),
+            generation,
+        ),
+    )
+    .await?;
+
+    let Err(_) = reader.recv().await else {
+        return Err("an ended pump closes its readers".into());
+    };
+    assert!(
+        channels.open(PHYSICAL).pump.is_some(),
+        "the ended channel is gone, so the next reader starts a pump"
+    );
     Ok(())
 }

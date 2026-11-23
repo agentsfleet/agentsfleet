@@ -105,7 +105,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(agentsfleet_admissions_total{outcome=~\"accepted|replayed\"}[$__range])) / sum(increase(agentsfleet_admissions_total{outcome!=\"over_budget\"}[$__range]))",
+          "expr": "sum(increase(agentsfleet_turns_total{outcome=~\"accepted|replayed\"}[$__range])) / sum(increase(agentsfleet_turns_total{outcome!=\"over_budget\"}[$__range]))",
           "legendFormat": "availability",
           "refId": "A"
         }
@@ -134,7 +134,7 @@
           "editorMode": "code",
           "instant": false,
           "legendFormat": "success",
-          "expr": "sum(increase(agentsfleet_runner_executions_total{outcome=\"processed\"}[$__range])) / sum(increase(agentsfleet_runner_executions_total[$__range]))"
+          "expr": "sum(increase(agentsfleet_runner_runs_total{outcome=\"succeeded\"}[$__range])) / sum(increase(agentsfleet_runner_runs_total{outcome=~\"succeeded|failed\"}[$__range]))"
         }
       ],
       "options": {
@@ -203,7 +203,7 @@
       },
       "targets": [
         {
-          "expr": "max(agentsfleet_admission_backlog_oldest_age_seconds)",
+          "expr": "max(agentsfleet_turn_backlog_oldest_age_seconds)",
           "legendFormat": "oldest unfinished request",
           "refId": "A"
         }
@@ -245,7 +245,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (outcome) (rate(agentsfleet_runner_executions_total[$__rate_interval]))",
+          "expr": "sum by (outcome) (rate(agentsfleet_runner_runs_total[$__rate_interval]))",
           "legendFormat": "{{outcome}}",
           "refId": "A"
         },
@@ -348,7 +348,7 @@
       },
       "targets": [
         {
-          "expr": "max(agentsfleet_admission_backlog)",
+          "expr": "max(agentsfleet_turn_backlog)",
           "legendFormat": "unfinished requests",
           "refId": "A"
         }

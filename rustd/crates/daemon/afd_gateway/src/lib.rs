@@ -1,7 +1,8 @@
-//! One connection owner orchestrates existing runner, fleet and authoring services.
+//! One connection owner orchestrates existing runner, fleet and setup services.
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 #![deny(clippy::self_named_module_files)]
 
+mod binding;
 mod connection;
 mod error;
 mod observations;
@@ -9,44 +10,47 @@ mod operation;
 mod registry;
 mod scheduler;
 mod service;
-mod session;
 mod stream_headers;
 
 use std::sync::Arc;
 
 use af_core::clock::Clock;
 use af_stream::Budget;
-use afd_authoring::Drafts;
 use afd_bus::{Handle, wake::Wake};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_runner::Runners;
+use afd_setup::Drafts;
 use afd_sse::StreamLimit;
 use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-pub use connection::ConnectionContext;
+pub use binding::ConnectionContext;
 pub use error::{Error, Result};
 pub use operation::Operation;
 
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
+#[cfg(test)]
+mod fixture;
+#[cfg(test)]
+#[path = "gateway_tests.rs"]
+mod tests;
+
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
-    /// Recovery budgets resolved before registering native sessions.
+    /// Recovery budgets resolved before registering native connections.
     pub recovery: RecoverySettings,
-    /// Existing shared pool for gateway-owned recovery, cache and session registration SQL.
+    /// Existing shared pool for gateway-owned recovery, cache and connection registration SQL.
     pub database: afd_db::Db,
     /// Host policy, liveness and guarded connection ownership.
     pub runners: Runners,
     /// Existing fleet placement, billing, activity and report owner.
-    pub leases: LeaseService,
-    /// Existing private authoring owner.
+    pub runs: RunService,
+    /// The setup drafts a setup run's assignment, preview and context read.
     pub drafts: Drafts,
-    /// Scoped provider invocations share the daemon's key owner and dispatch ledger.
-    pub models: afd_authoring::ModelCalls,
-    /// Authoring completion retains native Save/Apply and accounting behavior.
-    pub creations: afd_authoring::Creations,
+    /// A setup run's report finishes its turn and any Save it asked for.
+    pub creations: afd_setup::Creations,
     /// The same bus used by every production publisher.
     pub bus: Handle,
     /// The same stream ceiling used by browser streams.
@@ -55,27 +59,51 @@ pub struct GatewayDependencies {
     pub wake: Wake,
     /// Per-replica frame budgets resolved and validated before accepting connections.
     pub frame_memory: af_stream::MemoryLimits,
-    /// Wall time for identifiers and cached lease expiry; timeouts use monotonic instants.
+    /// Wall time for identifiers and cached run expiry; timeouts use monotonic instants.
     pub wall_clock: Arc<dyn Clock>,
     /// Product completion events reuse the daemon's configured sink.
     pub analytics: af_observability::Analytics,
+    /// The frame ceilings a runner is told when it connects.
+    pub frames: FrameCeilings,
 }
 
-/// Bounded daemon scheduler work; one session still owns one claim at a time.
+/// The largest frames the runner link carries, sent in every welcome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameCeilings {
+    /// Largest frame on the work, reports and progress streams.
+    pub message_bytes: u32,
+    /// Largest frame on the control stream.
+    pub control_message_bytes: u32,
+}
+
+impl Default for FrameCeilings {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "both protocol ceilings are a few MiB, far below u32::MAX"
+    )]
+    fn default() -> Self {
+        Self {
+            message_bytes: af_wire::protocol::MESSAGE_BYTES_MAX as u32,
+            control_message_bytes: af_wire::protocol::CONTROL_MESSAGE_BYTES_MAX as u32,
+        }
+    }
+}
+
+/// Bounded daemon scheduler work; one connection still owns one assignment at a time.
 #[derive(Debug, Clone, Copy)]
 pub struct RecoverySettings {
-    /// Maximum active claims across credited hosts.
-    pub max_concurrent_claims: std::num::NonZeroUsize,
-    /// Independent lost-notification probe cadence.
-    pub offer_fallback: std::time::Duration,
+    /// Maximum active assignments across credited hosts.
+    pub max_concurrent_assignments: std::num::NonZeroUsize,
+    /// The longest wait between two broker subscription repairs.
+    pub max_repair_backoff: std::time::Duration,
 }
 
 impl Default for RecoverySettings {
     fn default() -> Self {
-        const CLAIMS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
+        const ASSIGNMENTS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(8).unwrap();
         Self {
-            max_concurrent_claims: CLAIMS,
-            offer_fallback: af_core::timing::OFFER_FALLBACK_TICK,
+            max_concurrent_assignments: ASSIGNMENTS,
+            max_repair_backoff: scheduler::REPAIR_BACKOFF_MAX,
         }
     }
 }
@@ -97,7 +125,7 @@ pub(crate) struct Inner {
     accounting_stop: CancellationToken,
 }
 
-/// Cloneable session opening and shutdown owner for one daemon replica.
+/// Cloneable connection opening and shutdown owner for one daemon replica.
 #[derive(Clone)]
 pub struct Gateway {
     inner: Arc<Inner>,
@@ -133,18 +161,21 @@ impl Gateway {
         }
     }
 
-    /// Own wake subscriptions, scheduling and the independent database backstop.
+    /// Own wake subscriptions, scheduling and the independent database backstop,
+    /// until `stop`.
     ///
     /// # Errors
-    /// Preserves scheduler failures; broker outages do not disable database recovery.
+    /// None: a broker outage is repaired and never disables database recovery,
+    /// and a failed probe or pass waits for the next wake.
     pub async fn run(&self, stop: CancellationToken) -> Result<()> {
-        scheduler::run(self.clone(), stop).await
+        scheduler::run(self.clone(), stop).await;
+        Ok(())
     }
 
-    /// Stop offers, finish accepted requests and close every session by one deadline.
+    /// Stop assigning, finish accepted requests and close every connection by one deadline.
     ///
     /// # Errors
-    /// Returns the drain timeout after cancelling any session still serving.
+    /// Returns the drain timeout after cancelling any connection still serving.
     pub async fn drain(&self, deadline: Instant) -> Result<()> {
         self.inner.registry.begin_drain();
         self.inner.tasks.close();
@@ -167,7 +198,7 @@ impl afd_http::services::RunnerStreams for Gateway {
         runner: afd_auth::principal::Runner,
         request: axum::extract::Request,
     ) -> axum::response::Response {
-        match session::open(self, runner, request).await {
+        match connection::open(self, runner, request).await {
             Ok(response) => response,
             Err(error) => {
                 Self::observe(&error, Operation::Opening);

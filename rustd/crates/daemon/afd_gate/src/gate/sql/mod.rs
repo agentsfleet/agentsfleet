@@ -1,13 +1,12 @@
 //! The statements a raised gate is written and read through.
 //!
-//! The lease path recovers an event's reference and reads its gate status.
+//! The run path recovers an event's reference and reads its gate status.
 //! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
-//! database's: the row is stamped `now()`, its deadline is `now()` plus the
-//! rule's timeout, and whether that deadline has passed is read against
-//! `statement_timestamp()`.
+//! (`afd_db/schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
+//! database's: the row is stamped `now()`, and its deadline, which a card
+//! shows and nothing enforces, is `now()` plus the rule's timeout.
 
 use std::time::Duration;
 
@@ -18,8 +17,7 @@ use sqlx::query::QueryScalar;
 
 use crate::gate::{Claim, Stated};
 
-/// The durable status of one approval gate, and whether its deadline has
-/// passed on the database clock.
+/// The durable status of one approval gate.
 ///
 /// `ORDER BY created_at DESC, id DESC LIMIT 1` rather than a bare lookup, and
 /// it is not defensive: `action_id` carries no unique constraint, so a
@@ -27,11 +25,6 @@ use crate::gate::{Claim, Stated};
 /// is the one a poll must honour. Dropping the ordering would resolve against
 /// whichever row the scan reached first; the `id` tie-break orders two raised
 /// in one millisecond by the order they were minted.
-///
-/// The lapse rides the same read because a pending gate is the one a poll
-/// reaches this statement for — its answer is not in the mirror yet — so the
-/// deadline comparison costs no round trip of its own and reads the clock that
-/// stamped the deadline.
 ///
 /// `$1` action.
 pub const SELECT_GATE_STATUS: &str = include_str!("select_gate_status.sql");
@@ -65,16 +58,6 @@ pub const SELECT_EVENT_GATE: &str = include_str!("select_event_gate.sql");
 /// `$10` blast radius, `$11` timeout, `$12` status, `$13` event.
 pub const INSERT_GATE: &str = include_str!("insert_gate.sql");
 
-/// Archive a fleet, so nothing else of its work is admitted.
-///
-/// Written by a tripped anomaly rule, the gate's only archive, and by nothing
-/// else in this crate. Kept here with
-/// the crate's other statements, per RULE SQLMOD, so every statement it runs
-/// can be reviewed in one place.
-///
-/// `$1` the archived status, `$2` fleet.
-pub const ARCHIVE_FLEET: &str = include_str!("archive_fleet.sql");
-
 /// One pending gate, bound to [`INSERT_GATE`] in `$n` order.
 ///
 /// The shape a high-arity statement takes in this workspace (see
@@ -100,7 +83,7 @@ pub struct PendingRow<'a> {
     /// What the fleet's model claims — bounded and card-safe by construction.
     pub claim: &'a Claim,
     /// The event this question is about.
-    pub event_id: &'a Uuid7,
+    pub turn_id: &'a Uuid7,
 }
 
 impl<'a> PendingRow<'a> {
@@ -124,7 +107,7 @@ impl<'a> PendingRow<'a> {
             .bind(self.stated.radius)
             .bind(timeout(self.stated.timeout))
             .bind(GateStatus::Pending.as_str())
-            .bind(self.event_id)
+            .bind(self.turn_id)
     }
 }
 

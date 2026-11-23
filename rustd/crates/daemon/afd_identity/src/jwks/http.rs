@@ -12,19 +12,12 @@
 use afd_auth::verifier::VerifyError;
 
 use crate::Result;
-use crate::capped::{CapBreak, read_capped};
-use crate::jwks::source::{KeySetSource, MAX_REDIRECTS, MAX_RESPONSE_BYTES};
+use crate::jwks::source::KeySetSource;
 
 /// Appended to an issuer to form its key-set endpoint.
 ///
 /// The `OpenID` Connect convention for publishing signing keys.
 const WELL_KNOWN_SUFFIX: &str = "/.well-known/jwks.json";
-
-/// What the body buffer starts at before the capped read grows it.
-///
-/// A key set is a few kilobytes, so this is one allocation for the common case
-/// rather than a bound — `MAX_RESPONSE_BYTES` is the bound.
-const INITIAL_BODY_BYTES: usize = 8 * 1024;
 
 /// Whitespace trimmed from a configured issuer or override.
 const TRIMMED: [char; 4] = [' ', '\t', '\r', '\n'];
@@ -81,7 +74,6 @@ impl HttpKeySet {
     ) -> Result<Self, VerifyError> {
         let client = transport
             .builder(timeout)
-            .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
             .build()
             .map_err(|_unbuildable| VerifyError::KeySetUnavailable)?;
         Ok(Self {
@@ -94,25 +86,6 @@ impl HttpKeySet {
     #[must_use]
     pub fn url(&self) -> &str {
         &self.url
-    }
-
-    /// Reads the body, refusing past [`MAX_RESPONSE_BYTES`].
-    async fn read_body(response: reqwest::Response) -> Result<Vec<u8>, VerifyError> {
-        read_capped(response, MAX_RESPONSE_BYTES, INITIAL_BODY_BYTES)
-            .await
-            .map_err(|broke| {
-                if broke == CapBreak::TooLarge {
-                    let cap = MAX_RESPONSE_BYTES;
-                    {
-                        let (event, message) = (
-                            &"jwks_response_too_large",
-                            format_args!("refusing the key set"),
-                        );
-                        tracing::warn!(message, cap, event);
-                    };
-                }
-                VerifyError::KeySetUnavailable
-            })
     }
 }
 
@@ -143,6 +116,15 @@ impl KeySetSource for HttpKeySet {
             tracing::warn!(url, code, event = "jwks_fetch_rejected");
             return Err(VerifyError::KeySetUnavailable);
         }
-        Self::read_body(response).await
+        let body = response
+            .bytes()
+            .await
+            .inspect_err(|failure| {
+                let cause = failure.to_string();
+                let url = self.url.clone();
+                tracing::warn!(url, cause, event = "jwks_fetch_failed");
+            })
+            .map_err(|_logged| VerifyError::KeySetUnavailable)?;
+        Ok(body.to_vec())
     }
 }

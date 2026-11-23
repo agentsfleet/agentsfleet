@@ -1,6 +1,6 @@
 //! The `runner.runners` row a suite seeds, spelled once.
 //!
-//! Six crates' suites enrol a runner by hand to hang leases, holds or a
+//! Six crates' suites enrol a runner by hand to hang runs, holds or a
 //! heartbeat from, each with its own column list. They build a [`RunnerSeed`]
 //! instead, the way [`super::FleetSeed`] seeds a fleet, and the column list
 //! changes here alone.
@@ -28,8 +28,8 @@ const EMPTY_LIST: &str = "[]";
 /// The worker ceiling a runner is enrolled with when the seed names none.
 const ONE_WORKER: i32 = 1;
 
-/// The lease-type counter a fresh runner starts at.
-const FIRST_LEASE_VERSION: i64 = 0;
+/// The run-type counter a fresh runner starts at.
+const FIRST_RUN_VERSION: i64 = 0;
 
 /// The policy a runner is assigned, as the two columns that store it.
 #[derive(Debug, Clone, Copy)]
@@ -128,7 +128,7 @@ impl<'a> RunnerSeed<'a> {
             .bind(self.worker_count)
             .bind(self.degraded_reason)
             .bind(self.last_seen_at.map(Timestamp::to_sqlx))
-            .bind(FIRST_LEASE_VERSION)
+            .bind(FIRST_RUN_VERSION)
             .bind(self.created_at.map(Timestamp::to_sqlx))
             .bind(self.token_hash)
             .bind(self.id.as_str())

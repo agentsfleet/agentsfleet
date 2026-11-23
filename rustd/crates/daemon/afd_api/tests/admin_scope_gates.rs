@@ -2,10 +2,10 @@
 #![expect(clippy::expect_used, reason = "tests inspect gate decisions")]
 
 use af_core::id::Uuid7;
-use afd_api::route::{AdminRoute, Verb};
 use afd_auth::principal::{Person, PersonCredential, Principal, Subject};
 use afd_auth::require_scope;
 use afd_auth::scope::parse_claim;
+use afd_http::route::{AdminRoute, Verb};
 use http::Method;
 
 const TENANT_ID: &str = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";

@@ -1,10 +1,10 @@
 //! How the runner stops, at three depths, and the one place each is decided.
 //!
 //! ```text
-//!   stop_leasing  take no new lease; the heartbeat and leases in flight go on
-//!   shutdown      (the caller's token) also stop beating; leases in flight
+//!   stop_running  take no new run; the heartbeat and runs in flight go on
+//!   shutdown      (the caller's token) also stop beating; runs in flight
 //!                 retain work and report delivery for the supervisor's bounded grace
-//!   stop          also end leases in flight: the daemon said stop, or it
+//!   stop          also end runs in flight: the daemon said stop, or it
 //!                 refused this runner's token and no call can succeed
 //! ```
 
@@ -20,17 +20,17 @@ const EVENT_TOKEN_REFUSED: &str = "runner_token_refused";
 #[derive(Debug)]
 pub(crate) struct Halt {
     serving: CancellationToken,
-    leasing: CancellationToken,
+    taking_runs: CancellationToken,
     running: CancellationToken,
     stopped: CancellationToken,
     refused: AtomicBool,
 }
 
 impl Halt {
-    /// Signals under the caller's `shutdown`, which stops serving and leasing.
+    /// Signals under the caller's `shutdown`, which stops serving and running.
     pub(crate) fn new(shutdown: CancellationToken) -> Self {
         Self {
-            leasing: shutdown.child_token(),
+            taking_runs: shutdown.child_token(),
             serving: shutdown,
             running: CancellationToken::new(),
             stopped: CancellationToken::new(),
@@ -38,17 +38,17 @@ impl Halt {
         }
     }
 
-    /// Cancelled once the runner should stop beating and taking offers.
+    /// Cancelled once the runner should stop beating and taking assignments.
     pub(crate) const fn serving(&self) -> &CancellationToken {
         &self.serving
     }
 
-    /// Cancelled once the runner should take no new lease.
-    pub(crate) const fn leasing(&self) -> &CancellationToken {
-        &self.leasing
+    /// Cancelled once the runner should take no new run.
+    pub(crate) const fn taking_runs(&self) -> &CancellationToken {
+        &self.taking_runs
     }
 
-    /// Cancelled once leases in flight should end.
+    /// Cancelled once runs in flight should end.
     pub(crate) const fn running(&self) -> &CancellationToken {
         &self.running
     }
@@ -58,7 +58,7 @@ impl Halt {
         &self.stopped
     }
 
-    /// Ends everything, leases in flight included.
+    /// Ends everything, runs in flight included.
     pub(crate) fn stop(&self) {
         self.stopped.cancel();
         self.running.cancel();

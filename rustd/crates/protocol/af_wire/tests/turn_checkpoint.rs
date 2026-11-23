@@ -1,8 +1,7 @@
 //! Ordinary recovery refuses ambiguous authority and never prints private root contents.
 
-use af_wire::lease::{
-    TURN_CHECKPOINT_BYTES, TurnCheckpointCommand, TurnCheckpointKind, TurnPrivateRoot,
-};
+use af_wire::protocol::MESSAGE_BYTES_MAX;
+use af_wire::run::{TurnCheckpointCommand, TurnCheckpointKind, TurnPrivateRoot};
 use garde::Validate;
 use serde_json::json;
 
@@ -39,16 +38,16 @@ fn begin() -> serde_json::Value {
 #[test]
 fn native_turn_commands_use_reports_and_count_escaped_envelope_bytes() -> Checked {
     use af_wire::{
-        lease::TurnMessageSize,
         protocol::{Down, StreamKind, Up},
+        run::TurnMessageSize,
     };
-    let value = json!({"type":"turn_checkpoint","request_id":2,"lease_id":ID,"request":begin()});
+    let value = json!({"type":"turn_checkpoint","request_id":2,"run_id":ID,"request":begin()});
     let encoded = serde_json::to_string(&value)?;
     let request: Up<'_> = serde_json::from_str(&encoded)?;
     request.validate()?;
     assert_eq!(request.stream_kind(), StreamKind::Reports);
     assert_eq!(request.request_id().map(std::num::NonZeroU64::get), Some(2));
-    let response = json!({"type":"turn_checkpoint","request_id":2,"lease_id":ID,"operation_id":ID,"kind":"abandon",
+    let response = json!({"type":"turn_checkpoint","request_id":2,"run_id":ID,"operation_id":ID,"kind":"abandon",
         "answer":{"status":"ok","response":{"kind":"abandoned"}}});
     let encoded = serde_json::to_string(&response)?;
     let response: Down<'_> = serde_json::from_str(&encoded)?;
@@ -58,18 +57,18 @@ fn native_turn_commands_use_reports_and_count_escaped_envelope_bytes() -> Checke
         Some(2)
     );
     TurnMessageSize {
-        bytes: TURN_CHECKPOINT_BYTES,
+        bytes: MESSAGE_BYTES_MAX,
     }
     .validate()?;
     assert!(
         TurnMessageSize {
-            bytes: TURN_CHECKPOINT_BYTES + 1
+            bytes: MESSAGE_BYTES_MAX + 1
         }
         .validate()
         .is_err()
     );
     let root = TurnPrivateRoot {
-        history: "\u{0001}".repeat(TURN_CHECKPOINT_BYTES / 4),
+        history: "\u{0001}".repeat(MESSAGE_BYTES_MAX / 4),
     };
     root.validate()?;
     let encoded = serde_json::to_vec(&root)?;
@@ -90,7 +89,7 @@ fn capture_authority_cannot_name_another_event_or_bucket() -> Checked {
     parsed.validate()?;
     assert_eq!(parsed.action.kind(), TurnCheckpointKind::Begin);
     for extra in [
-        "event_id",
+        "turn_id",
         "fleet_id",
         "workspace_id",
         "bucket",
@@ -190,8 +189,31 @@ fn checkpoint_debug_output_does_not_quote_root_history() -> Checked {
     request.validate()?;
     assert!(!format!("{request:?}").contains(private));
     let too_large = TurnPrivateRoot {
-        history: "x".repeat(TURN_CHECKPOINT_BYTES + 1),
+        history: "x".repeat(MESSAGE_BYTES_MAX + 1),
     };
     assert_eq!(paths(too_large.validate()), vec!["history"]);
+    Ok(())
+}
+
+/// A page write naming `objects` copies of one history object.
+fn page_write(objects: usize) -> serde_json::Result<TurnCheckpointCommand> {
+    serde_json::from_value(json!({
+        "fencing_token":7,"operation_id":ID,"action":{
+            "kind":"page_write","checkpoint":{"checkpoint_id":ID,"pin_id":ID},
+            "page_id":ID,"digest":"a".repeat(64),
+            "contents":{"page_number":0,"entries":[],"history_objects":vec![ID; objects]}
+        }
+    }))
+}
+
+#[test]
+fn a_page_write_over_the_page_byte_limit_is_refused_at_its_contents() -> serde_json::Result<()> {
+    // 13,000 quoted identifiers encode to about 507 KiB, under the 512 KiB
+    // page limit; 14,000 encode to about 533 KiB, over it.
+    page_write(13_000)?
+        .validate()
+        .map_err(<serde_json::Error as serde::de::Error>::custom)?;
+    let refused = page_write(14_000)?.validate();
+    assert_eq!(paths(refused), vec!["action.contents"]);
     Ok(())
 }

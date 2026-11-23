@@ -49,7 +49,7 @@ fn an_undeclared_family_cannot_be_claimed() {
 #[test]
 fn a_family_claimed_as_the_wrong_kind_is_refused() {
     let instruments = instruments();
-    let miscast: Declared<CounterKind> = Declared::new(http::API_IN_FLIGHT_REQUESTS.wire_name());
+    let miscast: Declared<CounterKind> = Declared::new(http::SSE_IN_FLIGHT_STREAMS.wire_name());
 
     let refusal = instruments
         .counter_u64(&miscast)
@@ -93,7 +93,7 @@ fn a_histogram_is_built_and_claimed() {
     let outstanding = instruments.unclaimed().len();
 
     let _histogram = instruments
-        .histogram_f64(&fleet::LEASE_HISTORY_BYTES)
+        .histogram_f64(&fleet::RUN_HISTORY_BYTES)
         .expect("the census declares this a histogram in f64");
 
     assert_eq!(

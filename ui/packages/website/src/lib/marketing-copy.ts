@@ -42,7 +42,7 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
 // Machine-readable explanation of the same incident example shown on the homepage.
 export const LOOP_STEPS = [
   { number: "01", title: "Find the delay", description: "Leah reports a frozen chat in Slack. Mira asks Scout to check reply times and connection errors in Grafana." },
-  { number: "02", title: "Review the fix", description: "A repair fleet with write access opens a draft pull request with a test. Leah reviews and ships the change." },
+  { number: "02", title: "Review the fix", description: "A repair fleet with an approved write grant opens a draft pull request with a test. Leah reviews and ships the change." },
   { number: "03", title: "Check the result", description: "Scout compares an hour before the fix with an hour after it. Mira reports the change in reply times and packet loss in Leah’s thread." },
 ] as const;
 

@@ -3,11 +3,13 @@
 use super::{Session, catalog::Catalog, files::Workspace, transfer::Transfers};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
-use af_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use af_wire::task::{
+use af_wire::activity::{
+    DurableTaskActivityOperation as Operation, DurableTaskActivityPhase as Phase,
+};
+use af_wire::durable_task::{
     CHECKPOINT_BATCH, CHECKPOINT_FORMAT, CheckpointCommitInput, CheckpointMode,
     CheckpointObjectStatus, CheckpointPageInput, CheckpointPlan, CheckpointPlanInput,
-    DecisionTaskVersion, TaskContext, TaskTarget,
+    DecisionDurableTaskVersion, DurableTaskContext, DurableTaskTarget,
 };
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use zeroize::Zeroizing;
@@ -16,10 +18,10 @@ use zeroize::Zeroizing;
 pub(crate) struct Capture<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) transfers: &'a Transfers,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
-    pub(crate) task: &'a TaskContext<'a>,
+    pub(crate) task: &'a DurableTaskContext<'a>,
     pub(crate) toolbox: &'a str,
     pub(crate) mode: CheckpointMode,
     pub(crate) base: Option<&'a CheckpointPlan>,
@@ -40,8 +42,8 @@ impl Capture<'_> {
             .to_string();
         super::activity::emit(
             self.plane,
-            self.lease,
-            &self.task.task_id,
+            self.run,
+            &self.task.durable_task_id,
             &activity,
             Operation::Capture,
             Phase::Preparing,
@@ -59,8 +61,8 @@ impl Capture<'_> {
         };
         super::activity::emit(
             self.plane,
-            self.lease,
-            &self.task.task_id,
+            self.run,
+            &self.task.durable_task_id,
             &activity,
             Operation::Capture,
             phase,
@@ -84,8 +86,8 @@ impl Capture<'_> {
         let stop = self.stop.clone();
         super::activity::emit(
             self.plane,
-            self.lease,
-            &self.task.task_id,
+            self.run,
+            &self.task.durable_task_id,
             activity,
             Operation::Capture,
             Phase::Scanning,
@@ -116,7 +118,7 @@ impl Capture<'_> {
         }
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,
@@ -144,9 +146,9 @@ impl Capture<'_> {
         &self,
         activity: &str,
         catalog: &Catalog,
-    ) -> Result<(DecisionTaskVersion, CheckpointPlan)> {
-        let task = DecisionTaskVersion {
-            task_id: self.task.task_id.to_string(),
+    ) -> Result<(DecisionDurableTaskVersion, CheckpointPlan)> {
+        let task = DecisionDurableTaskVersion {
+            durable_task_id: self.task.durable_task_id.to_string(),
             generation: self.task.generation,
         };
         let allowance = match self.mode {
@@ -162,23 +164,23 @@ impl Capture<'_> {
             .ok_or_else(|| error::config("checkpoint upload allowance overflow"))?;
         let plan = self
             .plane
-            .task_checkpoint_plan(
-                self.lease,
+            .durable_task_checkpoint_plan(
+                self.run,
                 &CheckpointPlanInput {
                     fencing_token: self.fence,
                     operation_id: activity.to_owned(),
-                    task: task.clone(),
+                    durable_task: task.clone(),
                     mode: self.mode,
                     base_id: self.base.and_then(|base| base.base_id.clone()),
                     commit_oid: match &self.task.target {
-                        TaskTarget::ApiOnly => None,
-                        TaskTarget::ExistingPr { head, .. } => Some(head.clone()),
+                        DurableTaskTarget::ApiOnly => None,
+                        DurableTaskTarget::ExistingPr { head, .. } => Some(head.clone()),
                     },
                     format_version: CHECKPOINT_FORMAT,
                     toolbox_digest: self.toolbox.to_owned(),
                     page_count: u32::try_from(
                         catalog
-                            .pages(None, af_wire::task::CHECKPOINT_PAGE_BYTES)?
+                            .pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?
                             .len(),
                     )
                     .map_err(|source| error::boundary("checkpoint count overflow", source))?,
@@ -253,9 +255,9 @@ impl Session<'_> {
         &mut self,
         catalog: &Catalog,
         ids: &BTreeMap<String, String>,
-        task: &TaskContext<'_>,
+        task: &DurableTaskContext<'_>,
     ) -> Result<CheckpointPlan> {
-        let pages = catalog.pages(Some(ids), af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+        let pages = catalog.pages(Some(ids), af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
         if pages.len() != self.plan.page_ids.len() {
             return Err(error::config(
                 "checkpoint page layout changed after registration",
@@ -266,7 +268,7 @@ impl Session<'_> {
         self.renew().await?;
         let input = CheckpointCommitInput {
             fencing_token: self.fence,
-            task: self.task.clone(),
+            durable_task: self.task.clone(),
             pin_id: self.plan.pin.id.clone(),
             manifest_root: af_crypto::checkpoint_digest::manifest_root(
                 digests
@@ -279,7 +281,7 @@ impl Session<'_> {
         };
         let saved = self
             .plane
-            .task_checkpoint_commit(self.lease, &checkpoint, &input)
+            .durable_task_checkpoint_commit(self.run, &checkpoint, &input)
             .await?;
         if saved.checkpoint_id != self.plan.checkpoint_id
             || saved.base_id != self.plan.base_id
@@ -303,7 +305,7 @@ impl Session<'_> {
     async fn write_pages(
         &mut self,
         checkpoint: &Uuid7,
-        pages: Vec<af_wire::task::CheckpointPage>,
+        pages: Vec<af_wire::durable_task::CheckpointPage>,
     ) -> Result<Vec<(String, String)>> {
         let mut digests = Vec::with_capacity(pages.len());
         for (page_id, contents) in self.plan.page_ids.clone().into_iter().zip(pages) {
@@ -312,13 +314,13 @@ impl Session<'_> {
                 af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
             let accepted = self
                 .plane
-                .task_checkpoint_page_write(
-                    self.lease,
+                .durable_task_checkpoint_page_write(
+                    self.run,
                     checkpoint,
                     &Uuid7::parse(&page_id)?,
                     &CheckpointPageInput {
                         fencing_token: self.fence,
-                        task: self.task.clone(),
+                        durable_task: self.task.clone(),
                         pin_id: self.plan.pin.id.clone(),
                         digest: digest.clone(),
                         contents,

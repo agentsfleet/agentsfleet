@@ -127,7 +127,7 @@ describe("setup_chat_never_calls_runtime_steer", () => {
   const messages = `/v1/workspaces/${WORKSPACE_ID}/fleets/${FLEET_ID}/messages`;
 
   test("chat --fleet edits setup through drafts only", async () => {
-    const run = await record(["chat", "--fleet", FLEET_ID, "--setup-revision", "1", "--model", "authoring-default", "--message", "x", "--no-input"]);
+    const run = await record(["chat", "--fleet", FLEET_ID, "--setup-revision", "1", "--model", "setup-default", "--message", "x", "--no-input"]);
     expect(run.calls.length).toBeGreaterThan(0);
     for (const call of run.calls) {
       expect(call.split(" ")[1]?.startsWith(drafts)).toBe(true);

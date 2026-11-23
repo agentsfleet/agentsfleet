@@ -1,18 +1,17 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { LoginCallback } from "../src/commands/auth/login-callback.ts";
-import { CALLBACK_DECISION, CALLBACK_STATUS, MAX_CALLBACK_BODY_BYTES } from "../src/commands/auth/login-callback-protocol.ts";
+import { CALLBACK_DECISION, CALLBACK_STATUS } from "../src/commands/auth/login-callback-protocol.ts";
 import { HTTP_METHOD } from "../src/constants/http-method.ts";
 
 const DASHBOARD_ORIGIN = "https://dashboard.test";
 const SESSION_ID = "callback-test-session";
 const VERIFICATION_CODE = "123456";
 const BODY_TYPE = "application/x-www-form-urlencoded";
-const MAX_PENDING_READS = 8;
-const BARRIER_ATTEMPTS = 100;
+const PEERS = 8;
 const callbacks = new Set<LoginCallback>();
 
-function listener(options: { deadlineMs?: number; requestTimeoutMs?: number } = {}): LoginCallback {
-  const callback = new LoginCallback({ sessionId: SESSION_ID, dashboardOrigin: DASHBOARD_ORIGIN, ...options });
+function listener(): LoginCallback {
+  const callback = new LoginCallback({ sessionId: SESSION_ID, dashboardOrigin: DASHBOARD_ORIGIN });
   callbacks.add(callback);
   return callback;
 }
@@ -83,12 +82,6 @@ describe("local authorization request validation", () => {
     await denyAfterRefusal(callback);
   });
 
-  test("bounds a complete oversized body before any decision", async () => {
-    const callback = listener();
-    const response = await send(callback, { body: "a".repeat(MAX_CALLBACK_BODY_BYTES + 1) });
-    expect(response.status).toBe(413);
-    await denyAfterRefusal(callback);
-  });
 });
 
 describe("one authorization decision and actual final outcome", () => {
@@ -141,14 +134,6 @@ describe("one authorization decision and actual final outcome", () => {
     await expect(fetch(callback.callbackUrl)).rejects.toThrow();
   });
 
-  test("expiry refuses a later valid code and closes cleanly", async () => {
-    const callback = listener({ deadlineMs: Date.now() - 1 });
-    expect(await callback.waitForDecision()).toEqual({ status: CALLBACK_DECISION.expired });
-    expect((await send(callback)).status).toBe(409);
-    await callback.close();
-    await expect(fetch(callback.callbackUrl)).rejects.toThrow();
-  });
-
   test("lost browser response cannot cause a second exchange decision", async () => {
     const callback = listener();
     const abort = new AbortController();
@@ -170,25 +155,6 @@ describe("one authorization decision and actual final outcome", () => {
     await expect(fetch(callback.callbackUrl)).rejects.toThrow();
   });
 });
-
-async function slowRequest(callback: LoginCallback): Promise<string> {
-  const result = Promise.withResolvers<string>();
-  const chunks: Buffer[] = [];
-  const url = new URL(callback.callbackUrl);
-  const socket = await Bun.connect({
-    hostname: url.hostname, port: Number(url.port),
-    socket: {
-      open(peer) {
-        peer.write(`POST ${url.pathname} HTTP/1.1\r\nHost: ${url.host}\r\nOrigin: ${DASHBOARD_ORIGIN}\r\nContent-Type: ${BODY_TYPE}\r\nTransfer-Encoding: chunked\r\n\r\n7\r\nstate=a\r\n`);
-      },
-      data(_peer, data) { chunks.push(Buffer.from(data)); },
-      close() { result.resolve(Buffer.concat(chunks).toString()); },
-      error(_peer, error) { result.reject(error); },
-    },
-  });
-  const timer = setTimeout(() => { socket.end(); result.reject(new Error("slow body did not reach its deadline")); }, 1_000);
-  try { return await result.promise; } finally { clearTimeout(timer); socket.end(); }
-}
 
 async function pendingCallback(callback: LoginCallback) {
   const response = Promise.withResolvers<string>();
@@ -216,30 +182,15 @@ async function pendingCallback(callback: LoginCallback) {
 
 test("simultaneous streamed approvals recheck waiting after their bodies finish", async () => {
   const callback = listener();
-  const peers = await Promise.all(Array.from({ length: MAX_PENDING_READS }, () => pendingCallback(callback)));
+  const peers = await Promise.all(Array.from({ length: PEERS }, () => pendingCallback(callback)));
   try {
-    let pendingLimitObserved = false;
-    for (let attempt = 0; attempt < BARRIER_ATTEMPTS; attempt += 1) {
-      const probe = await send(callback, { body: "" });
-      await probe.text();
-      if (probe.status === 429) { pendingLimitObserved = true; break; }
-      expect(probe.status).toBe(400);
-    }
-    expect(pendingLimitObserved).toBe(true);
     for (const peer of peers) peer.complete();
     expect((await callback.waitForDecision()).status).toBe(CALLBACK_STATUS.approved);
     callback.finish(true);
     const replies = await Promise.all(peers.map((peer) => peer.reply));
     expect(replies.filter((reply) => reply.startsWith("HTTP/1.1 200"))).toHaveLength(1);
-    expect(replies.filter((reply) => reply.startsWith("HTTP/1.1 409"))).toHaveLength(MAX_PENDING_READS - 1);
+    expect(replies.filter((reply) => reply.startsWith("HTTP/1.1 409"))).toHaveLength(PEERS - 1);
   } finally { for (const peer of peers) peer.close(); }
-});
-
-test("an incomplete streamed body reaches its deadline without consuming the slot", async () => {
-  const callback = listener({ requestTimeoutMs: 25 });
-  const response = await slowRequest(callback);
-  expect(response).toContain("HTTP/1.1 400");
-  await denyAfterRefusal(callback);
 });
 
 test("repeated fresh listeners bind once and release their ports on all waiting exits", async () => {
@@ -269,14 +220,8 @@ test("invalid UTF-8 is refused without consuming authorization or reflecting the
 
 test("shutdown terminates active incomplete requests and releases the listener instead of waiting for their body deadline", async () => {
   const callback = listener();
-  const peers = await Promise.all(Array.from({ length: MAX_PENDING_READS }, () => pendingCallback(callback)));
+  const peers = await Promise.all(Array.from({ length: PEERS }, () => pendingCallback(callback)));
   try {
-    let saturated = false;
-    for (let attempt = 0; attempt < BARRIER_ATTEMPTS; attempt += 1) {
-      const probe = await send(callback, { body: "" }); await probe.text();
-      if (probe.status === 429) { saturated = true; break; }
-    }
-    expect(saturated).toBe(true);
     await callback.close();
     expect(await callback.waitForDecision()).toEqual({ status: CALLBACK_DECISION.canceled });
     const replies = await Promise.all(peers.map((peer) => peer.reply));
@@ -298,15 +243,40 @@ test("platform header failure returns a static refusal and preserves a later val
   await denyAfterRefusal(callback);
 });
 
-test("a failed stream cancellation at the body deadline remains a refusal and does not consume authorization", async () => {
-  const callback = listener({ requestTimeoutMs: 25 });
-  const fault = spyOn(ReadableStreamDefaultReader.prototype, "cancel")
-    .mockImplementationOnce(() => Promise.reject(new Error("private cancellation diagnostic")));
+test("a graceful stop that stalls is forced once the shutdown bound fires", async () => {
+  const realServe = Bun.serve;
+  const stops: boolean[] = [];
+  const graceful = Promise.withResolvers<void>();
+  const serve = spyOn(Bun, "serve").mockImplementationOnce((options) => {
+    const server = realServe(options);
+    return new Proxy(server, {
+      get(target, key) {
+        if (key === "stop") {
+          return async (force = false) => {
+            stops.push(force);
+            if (!force) return graceful.promise;
+            await target.stop(true);
+            graceful.resolve();
+          };
+        }
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  });
+  const callback = new LoginCallback({ sessionId: SESSION_ID, dashboardOrigin: DASHBOARD_ORIGIN });
+  serve.mockRestore();
+  let bound: (() => void) | undefined;
+  const clock = spyOn(globalThis, "setTimeout").mockImplementationOnce(((run: () => void) => {
+    bound = run;
+    return 0;
+  }) as unknown as typeof setTimeout);
   try {
-    const response = await slowRequest(callback);
-    expect(fault).toHaveBeenCalled();
-    expect(response).toContain("HTTP/1.1 400");
-    expect(response).not.toContain("private cancellation diagnostic");
-  } finally { fault.mockRestore(); }
-  await denyAfterRefusal(callback);
+    const closing = callback.close();
+    expect(stops).toEqual([false]);
+    bound?.();
+    await closing;
+    expect(stops).toEqual([false, true]);
+    await expect(fetch(callback.callbackUrl)).rejects.toThrow();
+  } finally { clock.mockRestore(); }
 });

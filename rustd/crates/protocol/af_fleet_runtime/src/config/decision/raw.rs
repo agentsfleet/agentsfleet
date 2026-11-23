@@ -1,14 +1,15 @@
-//! Authoring shapes; requiredness is resolved after serde and garde succeed.
+//! The shapes a person writes; requiredness is resolved after serde and garde succeed.
 
 use std::collections::BTreeMap;
 
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+use super::MAX_STATEMENT_ID_BYTES;
 #[cfg(feature = "openapi")]
 use super::STATEMENT_ID_PATTERN;
 use super::bounds::{self, nonblank, statement_char};
-use super::{MAX_QUESTION_TEXT_BYTES, MAX_STATEMENT_ID_BYTES};
+use af_validate::TEXT_MAX_CHARS;
 
 /// Editable decision questions, saved inside the existing fleet setup revision.
 #[derive(Debug, Deserialize, Serialize, Validate)]
@@ -35,7 +36,7 @@ pub(crate) struct Routing {
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false, value_type = super::schema::IntentQuestion))]
     #[serde(default, deserialize_with = "present_object")]
     pub(super) intent: Option<Question>,
-    /// Criteria keys: `matching_task`, `new_work`, unclear. Candidate IDs stay native.
+    /// Criteria keys: `matching_durable_task`, `new_work`, unclear. Candidate IDs stay native.
     #[garde(dive)]
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false, value_type = super::schema::AssociationQuestion))]
     #[serde(default, deserialize_with = "present_object")]
@@ -51,7 +52,7 @@ pub(crate) struct Routing {
 #[derive(Debug, Deserialize, Serialize, Validate)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema), schema(as = DefinitionCompletionQuestions))]
 pub(crate) struct Completion {
-    /// One to six required statements, with unique stable IDs.
+    /// At least one required statement, each with a unique stable ID.
     #[garde(dive)]
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     #[serde(default, deserialize_with = "statement_objects")]
@@ -63,18 +64,18 @@ pub(crate) struct Completion {
     pub(super) next_action: Option<Question>,
 }
 
-/// A question and complete per-answer criteria, at most 1 KiB as authored JSON.
+/// A question and complete per-answer criteria.
 #[derive(Debug, Deserialize, Serialize, Validate)]
 pub(crate) struct Question {
-    /// Nonblank, NUL-free wording, at most 512 UTF-8 bytes; rendered request limits also apply.
+    /// Nonblank, NUL-free wording; rendered request limits also apply.
     #[garde(inner(
-        length(bytes, min = 1, max = MAX_QUESTION_TEXT_BYTES),
+        length(chars, min = 1, max = TEXT_MAX_CHARS),
         custom(nonblank),
         custom(af_validate::rules::nul_free)
     ))]
     #[serde(default, deserialize_with = "crate::optional::present")]
     pub(super) question: Option<String>,
-    /// Exact native role keys, each with nonblank, NUL-free text up to 512 UTF-8 bytes.
+    /// Exact native role keys, each with nonblank, NUL-free text.
     #[garde(inner(length(min = 2, max = 6), custom(bounds::criteria)))]
     #[serde(default, deserialize_with = "crate::optional::present")]
     pub(super) criteria: Option<BTreeMap<String, String>>,
@@ -91,7 +92,7 @@ pub(crate) struct Statement {
     pub(super) id: Option<String>,
     /// The completion question to assess against the task's accepted objective.
     #[garde(inner(
-        length(bytes, min = 1, max = MAX_QUESTION_TEXT_BYTES),
+        length(chars, min = 1, max = TEXT_MAX_CHARS),
         custom(nonblank),
         custom(af_validate::rules::nul_free)
     ))]
@@ -127,7 +128,7 @@ pub(crate) fn published() -> [crate::openapi::Published; 4] {
                 "statements",
                 Bound::List {
                     min: 1,
-                    max: super::MAX_COMPLETION_STATEMENTS,
+                    max: None,
                     entry: None,
                 },
             )],
@@ -140,7 +141,7 @@ pub(crate) fn published() -> [crate::openapi::Published; 4] {
                     "question",
                     Bound::Text(Text {
                         min: 1,
-                        max: MAX_QUESTION_TEXT_BYTES,
+                        max: TEXT_MAX_CHARS,
                         pattern: Some(super::schema::TEXT_PATTERN),
                     }),
                 ),

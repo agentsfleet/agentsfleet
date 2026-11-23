@@ -9,6 +9,7 @@ use af_providers::{
     testing::{Observed, Tally, scoped},
 };
 use af_wire::decision::{DecisionApi, DecisionInvalid, DecisionOutcome};
+use af_wire::protocol::MESSAGE_BYTES_MAX as REPLY_MAX_BYTES;
 use serde_json::json;
 
 use super::fixture::{self, Reply, Server};
@@ -20,11 +21,18 @@ async fn physical_failures_are_bounded_and_never_retried_implicitly() {
     let cases = vec![
         (Reply::Bytes(exact), MeasuredOutcome::Oversize),
         (
-            Reply::Chunks(vec![vec![b' '; 40 * 1024], vec![b' '; 40 * 1024]]),
+            Reply::Chunks(vec![
+                vec![b' '; REPLY_MAX_BYTES / 2 + 1],
+                vec![b' '; REPLY_MAX_BYTES / 2 + 1],
+            ]),
             MeasuredOutcome::Oversize,
         ),
         (Reply::Bytes(b"{".to_vec()), MeasuredOutcome::Malformed),
         (Reply::Broken, MeasuredOutcome::Unknown),
+        (
+            Reply::Cut(b"{\"result\":".to_vec()),
+            MeasuredOutcome::Unknown,
+        ),
         (Reply::Status(429, Some("1")), MeasuredOutcome::RateLimited),
         (Reply::Status(529, Some("1")), MeasuredOutcome::RateLimited),
         (
@@ -179,7 +187,7 @@ async fn missing_usage_and_provider_refusal_remain_separate_from_answers() {
 
 async fn exact_response_succeeds() -> Vec<u8> {
     let mut exact = serde_json::to_vec(&fixture::native_reply()).expect("fixture JSON");
-    exact.resize(64 * 1024, b' ');
+    exact.resize(REPLY_MAX_BYTES, b' ');
     let mut valid = Server::start(vec![Reply::Bytes(exact.clone())]).await;
     assert!(
         DecisionClient::with_client(

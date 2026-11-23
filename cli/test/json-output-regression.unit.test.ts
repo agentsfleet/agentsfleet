@@ -16,20 +16,11 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const FLEET_ID = "01900000-0000-7000-8000-0000000f1ee7";
 const ENTRY_ID = "01900000-0000-7000-8000-00000011b111";
-const REVISION_ID = "01900000-0000-7000-8000-00000011b112";
 const CREATED_AT = "2023-11-14T22:13:20Z";
 
 // An age renders as digits plus one unit letter. If any of these reach a JSON
 // payload, the text renderer has leaked into the machine register.
 const AGE_SHAPED = /"\d+[smhdy]"/;
-
-// The Plugin read decodes the full card (src/commands/plugins-read.ts),
-// so a partial row would be refused before the JSON register is reached.
-const PLUGIN_CARD = {
-  id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests",
-  created_at: CREATED_AT, requirements: {}, required_credentials_reasons: {},
-  head_revision_id: REVISION_ID, etag: '"plugin-1"',
-};
 
 const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/secrets`]: () =>
@@ -37,8 +28,6 @@ const routes: MockRoutes = {
   [`GET /v1/workspaces/${WS_ID}/fleets`]: () =>
     jsonResponse(200, { items: [{ id: FLEET_ID, name: "reviewer", status: "active", created_at: CREATED_AT,
       events_processed: "0", budget_used_nanos: "0" }], next_cursor: null }),
-  [`GET /v1/workspaces/${WS_ID}/plugins`]: () =>
-    jsonResponse(200, { items: [PLUGIN_CARD], next_cursor: null }),
   "GET /v1/api-keys": () =>
     jsonResponse(200, { items: [{ id: ENTRY_ID, key_name: "ci", active: true, created_at: CREATED_AT }] }),
   "GET /v1/workspaces": () =>
@@ -70,7 +59,6 @@ describe("the table reshape did not reach the machine register", () => {
   test.each([
     ["secret list", ["secrets", "list"]],
     ["fleet list", ["fleet", "list"]],
-    ["plugins", ["plugins"]],
     ["api-key list", ["api-keys", "list"]],
   ])("%s --json keeps the raw wire instant and no rendered age", async (_label, argv) => {
     const text = await runJson(argv as ReadonlyArray<string>);

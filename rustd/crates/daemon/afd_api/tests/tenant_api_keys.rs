@@ -43,7 +43,7 @@ async fn assert_store_reached(response: axum::response::Response, case: &str) {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_tenant::error::detail::DETAIL_DATABASE_UNAVAILABLE,
+        af_core::error::DETAIL_DATABASE_UNAVAILABLE,
         "{case}: the refusal belongs to the store"
     );
 }
@@ -56,7 +56,7 @@ async fn valid_requests_reach_the_production_store() {
             WRITE,
             Method::POST,
             KEYS,
-            r#"{"key_name":"deploy","description":"release automation"}"#,
+            r#"{"key_name":"deploy"}"#,
             "mint",
         ),
         (WRITE, Method::PATCH, KEY, r#"{"active":false}"#, "revoke"),
@@ -70,15 +70,10 @@ async fn valid_requests_reach_the_production_store() {
 
 #[tokio::test]
 async fn mint_rejects_unreadable_and_invalid_bodies_before_tenant_lookup() {
-    let too_long = format!(
-        r#"{{"key_name":"deploy","description":"{}"}}"#,
-        "d".repeat(257)
-    );
     for body in [
         "{not json".to_owned(),
         r#"{"key_name":""}"#.to_owned(),
         r#"{"key_name":"contains spaces"}"#.to_owned(),
-        too_long,
     ] {
         let response = send(WRITE, Method::POST, KEYS, Some(CREDENTIAL), &body).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");

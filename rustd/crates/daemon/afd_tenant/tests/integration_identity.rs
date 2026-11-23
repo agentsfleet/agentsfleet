@@ -135,13 +135,13 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
-               INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1, $2, now(), now()) \
+               INSERT INTO identity.tenants (id, name, created_at) \
+               VALUES ($1, $2, now()) \
              ) \
              INSERT INTO identity.users \
-               (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3, $1, $4, $5, $6, now(), now()), \
-                    ($7, $1, $8, $9, NULL, now(), now())",
+               (id, tenant_id, oidc_subject, email, display_name, created_at) \
+             VALUES ($3, $1, $4, $5, $6, now()), \
+                    ($7, $1, $8, $9, NULL, now())",
         )
         .bind(&self.tenant)
         .bind(TENANT_NAME)

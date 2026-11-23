@@ -17,10 +17,10 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     live(&fixtures, &holder).await;
     hold(
-        &leases,
+        &runs,
         &fixtures,
         &fleet,
         &holder,
@@ -28,8 +28,8 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
     )
     .await;
     let named = [fleet.clone()];
-    assert!(leases.select(&other, &named).await.expect("poll").is_none());
-    let acquired = leases
+    assert!(runs.select(&other, &named).await.expect("poll").is_none());
+    let acquired = runs
         .select(&holder, &named)
         .await
         .expect("poll")
@@ -44,7 +44,7 @@ async fn test_an_idle_poll_examines_no_candidates() {
     let fixtures = Fixtures::create().await;
     let (fleet, _, _, [holder]) = seeded_parts::<1>(&fixtures).await;
     let (polled, cost) = fixtures
-        .leases()
+        .runs()
         .select_measured(&holder, std::slice::from_ref(&fleet))
         .await;
     assert!(polled.expect("poll").is_none());
@@ -63,8 +63,8 @@ async fn test_a_stale_notification_does_not_hide_unnotified_work() {
     } = seeded::<1>(&fixtures).await;
     let bell = Wake::default();
     bell.ring(mint_id());
-    let leases = fixtures.leases().with_wake(bell);
-    let acquired = leases
+    let runs = fixtures.runs().with_wake(bell);
+    let acquired = runs
         .select(&runner, &[])
         .await
         .expect("fallback probe")

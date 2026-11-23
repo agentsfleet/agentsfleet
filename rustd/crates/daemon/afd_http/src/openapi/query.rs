@@ -48,19 +48,6 @@ pub struct OperatorPage {
     pub limit: Option<String>,
 }
 
-/// A keyset page, as the Plugin collections spell it.
-///
-/// The tenant spelling with this family's bounds, which the sentence states
-/// because a caller sizing a gallery page needs the ceiling.
-#[derive(Debug, IntoParams)]
-#[into_params(parameter_in = Query)]
-pub struct PluginPage {
-    /// Use this collection's previous `next_cursor` unchanged.
-    pub starting_after: Option<String>,
-    /// Page size, 1..100; default 50.
-    pub limit: Option<u32>,
-}
-
 /// What a fleet's memory listing is narrowed by, and how it pages.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -75,10 +62,10 @@ pub struct MemoryFilter {
     pub limit: Option<String>,
 }
 
-/// What an event history is narrowed by.
+/// What a turn history is narrowed by.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
-pub struct EventFilter {
+pub struct TurnFilter {
     /// Use the returned `next_cursor` unchanged. Cannot be combined with `since`.
     pub cursor: Option<String>,
     /// Glob filter against the row's actor. `*` is a wildcard.
@@ -139,19 +126,19 @@ pub struct ConnectorCallback {
     pub location: Option<String>,
 }
 
-/// The fence a lease-addressed read or delete carries, having no body.
+/// The fence a run-addressed read or delete carries, having no body.
 #[derive(Debug, Clone, Copy, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct Fence {
-    /// Attempt token returned with the lease. Replaced assignments are refused.
+    /// Attempt token returned with the run. Replaced assignments are refused.
     pub fencing_token: u64,
 }
 
-/// One schedule's runs, newest first, as a keyset page under the lease's fence.
+/// One schedule's runs, newest first, as a keyset page under the run's fence.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Query)]
 pub struct ScheduleRunsPage {
-    /// Attempt token returned with the lease. Replaced assignments are refused.
+    /// Attempt token returned with the run. Replaced assignments are refused.
     pub fencing_token: u64,
     /// The `next_cursor` of the previous page. Omit it for the first page.
     pub starting_after: Option<String>,

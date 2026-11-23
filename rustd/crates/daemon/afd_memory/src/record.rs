@@ -31,7 +31,7 @@ pub struct Record {
     pub key: String,
     /// What it remembers.
     pub content: String,
-    /// The retention category, which decides eviction order.
+    /// The retention category, which decides load order and retention.
     pub category: String,
     /// Who reads it.
     pub visibility: Visibility,
@@ -65,6 +65,4 @@ impl Record {
 pub struct Housekept {
     /// Rows the retention sweep removed.
     pub swept: u64,
-    /// Rows evicted to bring the fleet back under its cap.
-    pub evicted: u64,
 }

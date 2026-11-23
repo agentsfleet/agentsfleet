@@ -278,7 +278,7 @@ impl Lane {
 /// The catalogue's version, which every platform key cache is keyed on.
 async fn catalogue_version(lane: &Lane) -> i64 {
     let mut connection = lane.database.acquire().await.expect("an API connection");
-    sqlx::query_scalar("SELECT resource_version FROM model.catalogue_version WHERE id = 1")
+    sqlx::query_scalar("SELECT number FROM model.revision WHERE id = 1")
         .fetch_one(&mut *connection)
         .await
         .expect("the catalogue singleton reads")

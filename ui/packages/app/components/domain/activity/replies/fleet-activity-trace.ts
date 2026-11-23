@@ -1,5 +1,5 @@
 import * as v from "valibot";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { observeRunTool, type RunResource } from "../../conversation/summary/recorded-run-resources";
 import { TOOL_NAME } from "../tools/presentation/tool-call-shape";
@@ -19,15 +19,15 @@ export function readActivityTrace(data: unknown): ActivityTraceRow[] {
 
 type BatchKind = "files" | "images" | "edits";
 type Batch = {kind: BatchKind; paths: Set<string>; commands: string[]};
-const READ: ReadonlySet<string> = new Set([TOOL_NAME.FILE_READ, TOOL_NAME.FILE_READ_HASHED]);
-const EDIT: ReadonlySet<string> = new Set([TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_APPEND]);
+const READ: ReadonlySet<string> = new Set([TOOL_NAME.FILE_READ]);
+const EDIT: ReadonlySet<string> = new Set([TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_WRITE]);
 
 /** Only confirmed, related calls share a row. The unabridged calls, including failures, stay in Worked. */
-export function recordedActivityTrace(event: Pick<FleetEvent, "tools" | "id" | "status">): ActivityTraceRow[] {
+export function recordedActivityTrace(turn: Pick<FleetTurn, "tools" | "id" | "status">): ActivityTraceRow[] {
   const rows: ActivityTraceRow[] = [];
   const resources = new Map<string, RunResource>();
   const terminalAgents = new Set<string>();
-  const state = event.status === "received" ? "Running" : "Last seen running";
+  const state = turn.status === "received" ? "Running" : "Last seen running";
   let batch: Batch | undefined;
   function flush() {
     if (batch) {
@@ -36,7 +36,7 @@ export function recordedActivityTrace(event: Pick<FleetEvent, "tools" | "id" | "
       batch = undefined;
     }
   }
-  for (const tool of event.tools ?? []) {
+  for (const tool of turn.tools ?? []) {
     if (!tool.done || tool.status !== TOOL_CALL_STATUS.SUCCEEDED) {flush(); continue;}
     const kind = READ.has(tool.name) ? "files" : tool.name === TOOL_NAME.IMAGE ? "images" : EDIT.has(tool.name) ? "edits" : undefined;
     const path = kind ? pathArg(tool.args) : "";
@@ -51,7 +51,7 @@ export function recordedActivityTrace(event: Pick<FleetEvent, "tools" | "id" | "
       continue;
     }
     flush();
-    const observed = observeRunTool(tool, event.id, state, resources);
+    const observed = observeRunTool(tool, turn.id, state, resources);
     const row = resourceRow(tool, observed, terminalAgents) ?? githubRow(tool);
     if (row) rows.push(row);
   }

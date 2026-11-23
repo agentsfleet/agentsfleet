@@ -1,7 +1,7 @@
 [package]
 name = "af_secrets"
 autotests = false
-description = "The runner's secrets: a token held in memory, a lease's static credentials, and the scrub that masks every known value before text leaves the run."
+description = "The runner's secrets: a token held in memory, a run's static credentials, and the scrub that masks every known value before text leaves the run."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -24,7 +24,7 @@ test-util = []
 [dependencies]
 # `error_shell!` and the registry code a scrub that cannot be built is logged under.
 af_core.workspace = true
-# The policy a lease's static credentials and provider key are read from.
+# The policy a run's static credentials and provider key are read from.
 af_wire.workspace = true
 # Every secret value masked in one pass over a frame, an output or a reply.
 aho-corasick.workspace = true

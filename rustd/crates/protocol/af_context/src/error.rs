@@ -14,6 +14,8 @@ pub(crate) enum ErrorKind {
     Window,
     #[error("the context source or checkpoint changed")]
     Stale,
+    #[error("the run saving the context no longer holds its draft at that fence")]
+    StaleFence,
     #[error("context preparation was cancelled")]
     Cancelled,
     #[error("the compaction response is not a bounded complete summary")]
@@ -58,6 +60,20 @@ impl Error {
         ErrorKind::Stale.into()
     }
 
+    /// Whether a fenced save was refused because its run no longer holds the
+    /// draft at the fence it named.
+    #[must_use]
+    pub const fn is_stale_fence(&self) -> bool {
+        matches!(self.kind(), ErrorKind::StaleFence)
+    }
+
+    /// A fenced save whose run a reassignment superseded, or that holds no
+    /// draft at all: nothing was written.
+    #[must_use]
+    pub fn stale_fence() -> Self {
+        ErrorKind::StaleFence.into()
+    }
+
     /// The caller stopped before another effect could be authorized.
     #[must_use]
     pub fn cancelled() -> Self {
@@ -70,9 +86,19 @@ impl Error {
         ErrorKind::Summary.into()
     }
 
-    /// Stable existing classification for an internal context operation.
+    /// Stable classification: a superseded run's save is the run plane's
+    /// stale-fence refusal, so the verb answers what a superseded report
+    /// answers; every other failure is an internal context operation.
     #[must_use]
     pub const fn code(&self) -> af_core::error_code::ErrorCode {
-        af_core::error_code::INTERNAL_OPERATION_FAILED
+        match self.kind() {
+            ErrorKind::StaleFence => af_core::error_code::RUN_STALE_FENCING_TOKEN,
+            ErrorKind::Window
+            | ErrorKind::Stale
+            | ErrorKind::Cancelled
+            | ErrorKind::Summary
+            | ErrorKind::Document { .. }
+            | ErrorKind::Boundary { .. } => af_core::error_code::INTERNAL_OPERATION_FAILED,
+        }
     }
 }

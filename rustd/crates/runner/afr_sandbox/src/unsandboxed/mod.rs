@@ -9,17 +9,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use afr_executor::{Client, Executor};
+use afr_executor::{Client, Executor, Sizes};
 use tokio::task::JoinHandle;
 
 use crate::engine::{Engine, HostWorkspace, Killed, Sandbox, SandboxRequest};
 use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
 use crate::network::Allowlist;
 
-/// The executor's socket in each lease's scratch directory: with no sandbox
+/// The executor's socket in each run's scratch directory: with no sandbox
 /// to inherit a pair, the executor listens on a path.
 pub(crate) const SOCKET_NAME: &str = "executor.sock";
-/// The workspace directory inside each lease's scratch directory.
+/// The workspace directory inside each run's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
 /// How long the in-process executor may take to bind its socket.
 const CONNECT_WITHIN: Duration = Duration::from_secs(1);
@@ -30,21 +30,34 @@ const NO_FREEZER: &str = "its processes run under no cgroup to freeze";
 /// Why a kill here proves nothing.
 const NO_CGROUP_KILL: &str = "its processes run under no cgroup that a kill could prove empty";
 
-/// Builds an unconfined "sandbox" per lease under a scratch directory.
+/// Builds an unconfined "sandbox" per run under a scratch directory.
 #[derive(Debug)]
 pub struct UnsandboxedEngine {
     base: PathBuf,
+    /// What each run's executor serves with and its client connects with.
+    sizes: Sizes,
 }
 
 impl UnsandboxedEngine {
-    /// An engine whose leases live under `base`. Keep `base` short: a Unix
+    /// An engine whose runs live under `base`. Keep `base` short: a Unix
     /// socket's path is capped near a hundred bytes.
     ///
     /// # Errors
     /// Always in a release build.
     pub fn new(base: PathBuf) -> Result<Self> {
         permitted(cfg!(debug_assertions))?;
-        Ok(Self { base })
+        Ok(Self {
+            base,
+            sizes: Sizes::DEFAULT,
+        })
+    }
+
+    /// The same engine, each run's executor serving with `sizes` and its
+    /// client connecting with them.
+    #[must_use]
+    pub const fn with_sizes(mut self, sizes: Sizes) -> Self {
+        self.sizes = sizes;
+        self
     }
 }
 
@@ -65,11 +78,17 @@ impl Engine for UnsandboxedEngine {
         fs::create_dir_all(&workspace)?;
         let workspace_root = workspace.clone();
         let socket = dir.join(SOCKET_NAME);
+        let sizes = self.sizes;
         let server = tokio::spawn({
             let socket = socket.clone();
-            async move { afr_executor::serve(&socket, &workspace).await }
+            async move {
+                afr_executor::bind(&socket)?
+                    .with_sizes(sizes)
+                    .serve(&workspace)
+                    .await
+            }
         });
-        match connect(&socket).await {
+        match connect(&socket, sizes).await {
             Ok(client) => Ok(Box::new(Unconfined {
                 dir,
                 workspace: workspace_root,
@@ -85,9 +104,10 @@ impl Engine for UnsandboxedEngine {
     }
 }
 
-/// Connects once the executor has bound its socket.
-async fn connect(socket: &Path) -> Result<Client> {
-    Ok(Client::connect_within(socket, CONNECT_WITHIN).await?)
+/// Connects once the executor has bound its socket, holding the link to the
+/// `sizes` it serves with.
+async fn connect(socket: &Path, sizes: Sizes) -> Result<Client> {
+    Ok(Client::connect_within(socket, CONNECT_WITHIN, sizes).await?)
 }
 
 /// A scratch directory with an executor serving it.

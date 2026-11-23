@@ -3,7 +3,7 @@
 //! # Why this hands back COLUMNS and not a wire payload
 //!
 //! `af_wire`'s payloads borrow (`Cow<'a, str>` behind `#[serde(borrow)]`),
-//! which is what keeps the lease path from allocating per field. A store that
+//! which is what keeps the run path from allocating per field. A store that
 //! returned one would have to own every byte it borrows — either by leaking, or
 //! by growing an owned mirror of each wire type, which is sixty lines of near
 //! duplicate whose only job is to be converted away one line later.

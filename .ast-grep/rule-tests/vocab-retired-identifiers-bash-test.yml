@@ -1,0 +1,16 @@
+id: vocab-retired-identifiers-bash
+valid:
+  - |
+      cargo test -p afd_turns
+  - |
+      echo afd_events_v2
+invalid:
+  - |
+      cargo test -p afd_authoring
+  - |
+      echo "TaggedLease"
+  - |
+      echo 'RUN_LEASE_CANCELLED'
+  - |
+      # afd_events
+      true

@@ -34,9 +34,9 @@ async fn a_finalize_from_a_syncer_that_lost_the_row_does_not_land() {
         .expect("the lane answers")
         .expect("the first claim takes an unheld row");
 
-    // The lease runs out and a successor takes the row, exactly as it would if
+    // The run runs out and a successor takes the row, exactly as it would if
     // the first syncer's process had stopped mid-push.
-    lane.expire_lease(&created.schedule_id).await;
+    lane.expire_run(&created.schedule_id).await;
     let winner = CronLane::token();
     lane.store
         .claim_current(&fleet, &created.schedule_id, &winner)
@@ -98,7 +98,7 @@ async fn a_finalize_from_the_holder_releases_the_fence_and_records_success() {
     assert!(
         released.sync_token.is_none(),
         "a released fence must not still name a holder, or the next claim waits \
-         out a lease nobody is using"
+         out a run nobody is using"
     );
     assert!(
         released.last_error.is_none(),
@@ -139,7 +139,7 @@ async fn a_failed_push_keeps_its_reason_and_stays_retryable() {
     );
     assert!(
         released.sync_token.is_none(),
-        "a failure releases the fence too, or the retry would wait out a lease"
+        "a failure releases the fence too, or the retry would wait out a run"
     );
 
     // Retryable means exactly this: the next claim takes it.
@@ -171,7 +171,7 @@ async fn a_delete_from_a_syncer_that_lost_the_row_removes_nothing() {
         .expect("the lane answers")
         .expect("an unheld schedule is claimable");
 
-    lane.expire_lease(&created.schedule_id).await;
+    lane.expire_run(&created.schedule_id).await;
     let winner = CronLane::token();
     lane.store
         .claim_current(&fleet, &created.schedule_id, &winner)

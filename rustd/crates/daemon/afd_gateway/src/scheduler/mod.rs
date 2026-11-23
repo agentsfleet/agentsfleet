@@ -1,24 +1,31 @@
-//! Notifications schedule offers. A separate, replica-wide recovery probe covers lost notifications.
+//! Notifications schedule assignments; no timer probes for work a lost notification left waiting.
 
+mod lapse;
 mod recovery;
 mod subscriptions;
 
+pub(crate) use lapse::{deadline, recheck_at};
+pub(crate) use subscriptions::REPAIR_BACKOFF_MAX;
+
 use crate::{
     Gateway, Result,
+    connection::{AssignMode, AssignOutcome, ConnectionHandle},
     registry::Registry,
-    session::{OfferMode, OfferOutcome, SessionHandle},
 };
 use af_core::id::Uuid7;
 use afd_bus::wake::Wake;
 use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-/// Subscription repair, notification handling and recovery keep independent progress.
-pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
+/// Subscription repair, notification handling and the boot read keep
+/// independent progress. None fails: a lost broker is repaired, a failed probe
+/// or pass is observed and the next wake tries again, and a failed boot read is
+/// observed once.
+pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) {
     let _cancel_on_exit = stop.clone().drop_guard();
-    tokio::try_join!(
+    tokio::join!(
+        lapse::outstanding(&gateway, &stop),
         subscriptions::run(gateway.clone(), stop.clone()),
-        recovery::run(gateway.clone(), stop.clone()),
         notifications(
             &gateway.inner.registry,
             &gateway.inner.dependencies.wake,
@@ -26,7 +33,7 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
                 .inner
                 .dependencies
                 .recovery
-                .max_concurrent_claims
+                .max_concurrent_assignments
                 .get(),
             stop.clone(),
             |runners| {
@@ -41,31 +48,29 @@ pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
                 }
             },
         )
-    )?;
-    Ok(())
+    );
 }
 
 /// One ordinary probe can skip every tenant runner with no eligible work.
 #[derive(Debug)]
 pub(crate) enum Probe {
-    /// No session can claim pending work.
+    /// No connection can take pending work.
     Nothing,
-    /// Work waits; these tenant runners cannot claim it.
+    /// Work waits; these tenant runners cannot take it.
     Waiting(HashSet<Uuid7>),
 }
 
 async fn notifications<F: Future<Output = Result<Probe>>>(
     registry: &Registry,
     wake: &Wake,
-    claims: usize,
+    assignments: usize,
     stop: CancellationToken,
     pending: impl FnMut(Vec<Uuid7>) -> F,
-) -> Result<()> {
-    tokio::try_join!(
+) {
+    tokio::join!(
         ordinary_notifications(registry, wake, &stop, pending),
-        recovery::notifications(registry, wake, claims, &stop),
-    )?;
-    Ok(())
+        recovery::notifications(registry, wake, assignments, &stop),
+    );
 }
 
 async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
@@ -73,15 +78,15 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
     wake: &Wake,
     stop: &CancellationToken,
     mut pending: impl FnMut(Vec<Uuid7>) -> F,
-) -> Result<()> {
+) {
     let mut generations = wake.generations();
     let mut observed = generations.borrow_and_update().rings();
     loop {
         tokio::select! {
             biased;
-            () = stop.cancelled() => return Ok(()),
+            () = stop.cancelled() => return,
             changed = generations.changed() => {
-                if changed.is_err() { return Ok(()); }
+                if changed.is_err() { return; }
             }
         }
         let current = generations.borrow_and_update().rings();
@@ -94,28 +99,28 @@ async fn ordinary_notifications<F: Future<Output = Result<Probe>>>(
             Ok(Probe::Waiting(runners)) => runners,
             Ok(Probe::Nothing) => continue,
             Err(error) => {
-                Gateway::observe(&error, crate::Operation::Offer);
+                Gateway::observe(&error, crate::Operation::Assign);
                 HashSet::new()
             }
         };
-        let sessions = registry.candidates(&wake.fleets(), &idle);
+        let connections = registry.candidates(&wake.fleets(), &idle);
         tokio::select! {
             biased;
-            () = stop.cancelled() => return Ok(()),
-            result = pass(sessions, budget) => {
+            () = stop.cancelled() => return,
+            result = pass(connections, budget) => {
                 if let Err(error) = result {
-                    Gateway::observe(&error, crate::Operation::Offer);
+                    Gateway::observe(&error, crate::Operation::Assign);
                 }
             }
         }
     }
 }
 
-/// Empty claims advance the walk; successful claims spend the pass's lease budget.
-async fn pass(sessions: Vec<Arc<SessionHandle>>, mut budget: u64) -> Result<()> {
-    for session in sessions {
+/// Empty assignments advance the walk; successful ones spend the pass's run budget.
+async fn pass(connections: Vec<Arc<ConnectionHandle>>, mut budget: u64) -> Result<()> {
+    for connection in connections {
         while budget > 0 {
-            if session.claim(OfferMode::Ordinary).await? != OfferOutcome::Issued {
+            if connection.assign(AssignMode::Ordinary).await? != AssignOutcome::Issued {
                 break;
             }
             budget -= 1;

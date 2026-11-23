@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use af_wire::runner::{LABEL_MAX_BYTES, LABELS_MAX};
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate as _;
 
 use super::{PlatformKeyPut, RunnerAdminPatchRequest, RunnerEventType};
@@ -11,8 +11,8 @@ fn every_runner_history_value_serializes_as_the_spelling_postgres_stores() {
         (RunnerEventType::RunnerRegistered, "runner_registered"),
         (RunnerEventType::RunnerOnline, "runner_online"),
         (RunnerEventType::RunnerOffline, "runner_offline"),
-        (RunnerEventType::LeaseAcquired, "lease_acquired"),
-        (RunnerEventType::LeaseReleased, "lease_released"),
+        (RunnerEventType::RunAcquired, "run_acquired"),
+        (RunnerEventType::RunReleased, "run_released"),
         (RunnerEventType::RunnerCordoned, "runner_cordoned"),
         (RunnerEventType::RunnerUncordoned, "runner_uncordoned"),
         (RunnerEventType::RunnerDraining, "runner_draining"),
@@ -77,21 +77,12 @@ fn a_runner_patch_proves_the_enrolment_label_bounds() {
     assert_eq!(
         [
             proved(None),
-            proved(Some(vec![Cow::Borrowed("gpu"); LABELS_MAX])),
-            proved(Some(vec![Cow::Borrowed("gpu"); LABELS_MAX + 1])),
-            proved(Some(vec![Cow::Owned("l".repeat(LABEL_MAX_BYTES))])),
-            proved(Some(vec![Cow::Owned("l".repeat(LABEL_MAX_BYTES + 1))])),
+            proved(Some(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS))])),
+            proved(Some(vec![Cow::Owned("l".repeat(TEXT_MAX_CHARS + 1))])),
         ],
-        [true, true, false, true, false],
-        "absent, at the count cap, past it, at the byte cap, past it"
+        [true, true, false],
+        "absent, at the text ceiling, past it"
     );
-}
-
-/// The field description publishes the two bounds as numbers, so a change to
-/// either constant must change that sentence too. This is what fails first.
-#[test]
-fn the_published_label_bounds_match_the_constants() {
-    assert_eq!((LABELS_MAX, LABEL_MAX_BYTES), (32, 64));
 }
 
 /// Postgres refuses NUL inside `text`, so a NUL in the provider or the model

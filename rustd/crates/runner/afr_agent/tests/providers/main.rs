@@ -36,7 +36,7 @@ use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
 
 use self::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
-use self::support::{Fake, LEASE_ID, Reply, engine, lease, run};
+use self::support::{Fake, RUN_ID, Reply, engine, payload, run};
 
 /// The answer every scripted run ends on.
 const ANSWER: &str = "It is 4.";
@@ -60,9 +60,9 @@ async fn test_each_provider_drives_a_tool_turn() {
         ])
         .await;
         let provider = wire.provider();
-        let leased = lease(&provider, &[UPDATE_PLAN.name()], "what is 2+2?");
+        let held = payload(&provider, &[UPDATE_PLAN.name()], "what is 2+2?");
 
-        let (output, _frames) = run(&engine(&fake), &leased).await;
+        let (output, _frames) = run(&engine(&fake), &held).await;
 
         assert!(
             matches!(output.result.outcome, ResultOutcome::Completed(_)),
@@ -107,10 +107,10 @@ async fn test_provider_retry_honours_retry_after() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[], "hello");
+    let held = payload(&wire.provider(), &[], "hello");
     let started = Instant::now();
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let asked = Duration::from_secs(RETRY_AFTER.parse().unwrap());
     assert!(started.elapsed() >= asked, "the wait was honoured");
@@ -122,7 +122,7 @@ async fn test_provider_retry_honours_retry_after() {
     assert_eq!(retried.field("attempt"), Some("1"));
     let asked_ms = asked.as_millis().to_string();
     assert_eq!(retried.field("wait_ms"), Some(asked_ms.as_str()));
-    assert_eq!(retried.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(retried.field("run_id"), Some(RUN_ID));
     assert_eq!(retried.field("provider"), Some("anthropic"));
 }
 
@@ -133,9 +133,9 @@ async fn a_refusal_ends_the_run_on_its_first_answer_naming_the_status() {
         retry_after: None,
     }])
     .await;
-    let leased = lease(&Wire::Responses.provider(), &[], "hello");
+    let held = payload(&Wire::Responses.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a refused turn fails the run");
@@ -152,9 +152,9 @@ async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
         retry_after: Some("0"),
     };
     let mut fake = Fake::serve(vec![fault.clone(), fault.clone(), fault]).await;
-    let leased = lease(&Wire::Chat.provider(), &[], "hello");
+    let held = payload(&Wire::Chat.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("an unanswered turn fails the run");
@@ -167,9 +167,9 @@ async fn a_fault_is_retried_three_sends_and_then_ends_naming_its_status() {
 async fn test_web_search_is_a_hosted_spec() {
     for wire in [Wire::Messages, Wire::Responses] {
         let mut fake = Fake::serve(vec![wire.answer(ANSWER)]).await;
-        let leased = lease(&wire.provider(), &[WEB_SEARCH.name()], "search");
+        let held = payload(&wire.provider(), &[WEB_SEARCH.name()], "search");
 
-        let (output, _frames) = run(&engine(&fake), &leased).await;
+        let (output, _frames) = run(&engine(&fake), &held).await;
 
         assert_eq!(output.result.content, ANSWER, "{wire:?}");
         let offered = wire.offered(&fake.seen()[0].body);
@@ -184,9 +184,9 @@ async fn test_web_search_is_a_hosted_spec() {
         wire.answer(ANSWER),
     ])
     .await;
-    let leased = lease(&wire.provider(), &[WEB_SEARCH.name()], "search");
+    let held = payload(&wire.provider(), &[WEB_SEARCH.name()], "search");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let seen = fake.seen();
     assert!(
@@ -220,9 +220,9 @@ async fn a_stream_cut_before_its_turn_ended_is_opened_again_then_a_lost_connecti
         events.truncate(silent);
         let cut = Reply::Stream(events);
         let mut fake = Fake::serve(vec![cut; ATTEMPTS]).await;
-        let leased = lease(&wire.provider(), &[], "hello");
+        let held = payload(&wire.provider(), &[], "hello");
 
-        let (output, _frames) = run(&engine(&fake), &leased).await;
+        let (output, _frames) = run(&engine(&fake), &held).await;
 
         let ResultOutcome::Failed(failure) = output.result.outcome else {
             panic!("{wire:?}: a cut turn is no answer");
@@ -245,9 +245,9 @@ async fn a_stream_cut_after_its_text_showed_is_lost_without_opening_again() {
     };
     events.truncate(1);
     let mut fake = Fake::serve(vec![Reply::Stream(events), wire.answer(ANSWER)]).await;
-    let leased = lease(&wire.provider(), &[], "hello");
+    let held = payload(&wire.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("a cut turn is no answer");
@@ -269,9 +269,9 @@ async fn a_cut_turn_that_ends_whole_on_its_second_opening_answers() {
     };
     cut.clear();
     let mut fake = Fake::serve(vec![Reply::Stream(cut), wire.answer(ANSWER)]).await;
-    let leased = lease(&wire.provider(), &[], "hello");
+    let held = payload(&wire.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     assert_eq!(output.result.content, ANSWER);
     assert_eq!(fake.seen().len(), 2);
@@ -281,9 +281,9 @@ async fn a_cut_turn_that_ends_whole_on_its_second_opening_answers() {
 async fn a_provider_error_mid_stream_ends_the_turn_as_a_transport_loss() {
     let error = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"busy\"}}\n\n";
     let fake = Fake::serve(vec![Reply::Stream(vec![error.to_owned()])]).await;
-    let leased = lease(&Wire::Messages.provider(), &[], "hello");
+    let held = payload(&Wire::Messages.provider(), &[], "hello");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, _frames) = run(&engine(&fake), &held).await;
 
     let ResultOutcome::Failed(failure) = output.result.outcome else {
         panic!("an ended turn is no answer");

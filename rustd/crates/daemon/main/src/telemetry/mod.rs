@@ -14,7 +14,7 @@
 use af_observability::metrics::instrument::Instruments;
 use af_observability::metrics::registry::Registry;
 use af_observability::semconv;
-use af_otlp::{Builder, OtlpConfig, Service};
+use af_otlp::{Builder, Exports, OtlpConfig, Service};
 
 use crate::error::BootFailure;
 
@@ -22,7 +22,6 @@ mod flush;
 mod resident;
 
 pub use self::flush::flush_within;
-pub use af_otlp::{COLLECT_INTERVAL, Exports};
 
 #[cfg(test)]
 mod tests;

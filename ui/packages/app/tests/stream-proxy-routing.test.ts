@@ -10,11 +10,11 @@
 import { describe, expect, it, vi } from "vitest";
 import nextConfig from "../next.config";
 import {
-  backfillFleetEventsUrl,
-  fleetEventDetailUrl,
-  fleetToolCallUrl,
-  streamFleetEventsUrl,
-} from "@/lib/api/events-types";
+  backfillFleetTurnsUrl,
+  fleetTurnDetailUrl,
+  fleetTurnItemUrl,
+  streamFleetTurnsUrl,
+} from "@/lib/api/turns-types";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 
 // The handlers load their credential and API origin at import; neither is
@@ -24,20 +24,20 @@ vi.mock("@/lib/api/client", () => ({ API_ORIGIN: "https://api.example.test", req
 
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "z_1";
-const EVENT_ID = "1790573387481-566";
+const TURN_ID = "1790573387481-566";
 const CALL_ID = "7:3";
-const WORKSPACE_EVENTS_PROXY = `/live/v1/workspaces/${WORKSPACE_ID}/events`;
+const WORKSPACE_TURNS_PROXY = `/live/v1/workspaces/${WORKSPACE_ID}/turns`;
 
 // Every browser-facing URL whose request MUST be intercepted by a Route
 // Handler that injects the api-audience Bearer server-side, with the method
 // the browser sends it.
 const PROXY_ROUTES: ReadonlyArray<readonly [string, "GET" | "POST"]> = [
-  [`${WORKSPACE_EVENTS_PROXY}/stream`, "GET"],
-  [streamFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
-  [WORKSPACE_EVENTS_PROXY, "GET"],
-  [backfillFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
-  [fleetEventDetailUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID), "GET"],
-  [fleetToolCallUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID, CALL_ID), "GET"],
+  [`${WORKSPACE_TURNS_PROXY}/stream`, "GET"],
+  [streamFleetTurnsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
+  [WORKSPACE_TURNS_PROXY, "GET"],
+  [backfillFleetTurnsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
+  [fleetTurnDetailUrl(WORKSPACE_ID, FLEET_ID, TURN_ID), "GET"],
+  [fleetTurnItemUrl(WORKSPACE_ID, FLEET_ID, TURN_ID, CALL_ID), "GET"],
   [steerMessagesUrl(WORKSPACE_ID, FLEET_ID), "POST"],
 ];
 const PROXY_URLS = PROXY_ROUTES.map(([url]) => url);
@@ -47,8 +47,8 @@ const PROXY_URLS = PROXY_ROUTES.map(([url]) => url);
 const SEGMENTS: ReadonlyArray<readonly [string, string]> = [
   [WORKSPACE_ID, "[workspaceId]"],
   [FLEET_ID, "[fleetId]"],
-  [EVENT_ID, "[eventId]"],
-  [encodeURIComponent(CALL_ID), "[callId]"],
+  [TURN_ID, "[turnId]"],
+  [encodeURIComponent(CALL_ID), "[itemId]"],
 ];
 
 function routeModule(url: string): string {

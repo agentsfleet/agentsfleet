@@ -1,6 +1,6 @@
 use super::*;
 use crate::recovery::Restore;
-use af_wire::task::CheckpointFile;
+use af_wire::durable_task::CheckpointFile;
 use std::{
     fs,
     os::unix::fs::{MetadataExt as _, PermissionsExt as _},
@@ -39,7 +39,7 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
             permit: None,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -57,7 +57,7 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
         assert!(
             !requests
                 .iter()
-                .any(|call| call.verb == Verb::TaskCheckpointPage)
+                .any(|call| call.verb == Verb::DurableTaskCheckpointPage)
         );
         assert_eq!(phases(&requests).last().map(String::as_str), Some("failed"));
     }
@@ -90,7 +90,7 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
             permit: None,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -130,7 +130,7 @@ async fn files_require_a_workspace_and_existing_files_are_never_overwritten() ->
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
             permit: None,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -178,7 +178,7 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
             plane: &plane,
             transfers: &crate::recovery::Transfers::new()?,
             permit: None,
-            lease: &identity,
+            run: &identity,
             workspace: &identity,
             fence: FENCE,
             task: &task,
@@ -200,7 +200,7 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
         assert!(
             !requests
                 .iter()
-                .any(|call| call.verb == Verb::TaskCheckpointPage)
+                .any(|call| call.verb == Verb::DurableTaskCheckpointPage)
         );
         assert_eq!(phases(&requests).last().map(String::as_str), Some("failed"));
     }
@@ -217,7 +217,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
         plane: &plane,
         transfers: &crate::recovery::Transfers::new()?,
         permit: None,
-        lease: &identity,
+        run: &identity,
         workspace: &identity,
         fence: FENCE,
         task: &task,
@@ -251,8 +251,8 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     Ok(())
 }
 
-fn changed_pin_reply(call: &Call, archive: &mut Archive, fault: &str) -> Option<Answer> {
-    if fault == "renewal" && call.verb == Verb::TaskCheckpointPin {
+fn changed_pin_reply(call: &Call, archive: &Archive, fault: &str) -> Option<Answer> {
+    if fault == "renewal" && call.verb == Verb::DurableTaskCheckpointPin {
         let mut pin = archive.plan.pin.clone();
         pin.operation_deadline = clock::after(pin.operation_deadline, Duration::from_secs(1));
         return Some(json(&pin));

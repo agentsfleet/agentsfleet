@@ -10,7 +10,7 @@
 //!
 //! # Measurements are a map, and that is deliberate
 //!
-//! Four lanes report four different things — round trips per lease, retry
+//! Four lanes report four different things — round trips per run, retry
 //! occupancy, memory per fleet — and a struct per lane would mean a comparison
 //! per lane. One open map with named keys keeps a single reader, a single
 //! comparison, and a rubric that greps the same path in every file.
@@ -19,7 +19,7 @@
 //!
 //! These numbers are synthetic, and the daemon's own instruments carry no
 //! attribute distinguishing a bench run from real traffic
-//! (`af_observability::producers::fleet::lease_polled` records with an empty
+//! (`af_observability::producers::fleet::run_polled` records with an empty
 //! attribute set). Publishing a lane's p95 as a series would therefore be
 //! indistinguishable from production latency on an operator's dashboard. A
 //! file cannot be mistaken for one.

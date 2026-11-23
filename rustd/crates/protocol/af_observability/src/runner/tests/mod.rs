@@ -1,4 +1,4 @@
-//! Dimensions 6.4 and 3.2: a caller-supplied label cannot grow this table
+//! A caller-supplied label cannot grow this table
 //! without end, and what it overflows into is spelled deliberately.
 //!
 //! The property is memory, and memory is not directly assertable — so what is
@@ -26,10 +26,21 @@ fn runner(index: usize) -> String {
 fn a_runner_gets_its_own_series_until_the_table_is_full() {
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        let _admitted = metrics.admit(&runner(index));
+        let _tracked = metrics.track(&runner(index));
     }
     assert_eq!(metrics.series_count(), MAX_SERIES);
     assert_eq!(metrics.overflowed(), 0, "the table was not yet full");
+}
+
+/// A configured capacity, not the default, is where the overflow starts.
+#[test]
+fn a_configured_capacity_bounds_the_table() {
+    let metrics = RunnerMetrics::with_capacity(2);
+    for index in 0..3 {
+        let _tracked = metrics.track(&runner(index));
+    }
+    assert_eq!(metrics.series_count(), 2);
+    assert_eq!(metrics.overflowed(), 1);
 }
 
 #[test]
@@ -40,12 +51,12 @@ fn past_the_capacity_everything_lands_in_one_series() {
     // explain why.
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        let _admitted = metrics.admit(&runner(index));
+        let _tracked = metrics.track(&runner(index));
     }
 
     let beyond = 10_000;
     for index in MAX_SERIES..MAX_SERIES + beyond {
-        let _admitted = metrics.admit(&runner(index));
+        let _tracked = metrics.track(&runner(index));
     }
 
     assert_eq!(
@@ -67,11 +78,11 @@ fn an_overflowed_runner_is_counted_without_taking_a_series() {
     // per-runner attribution would not help with.
     let metrics = RunnerMetrics::new();
     for index in 0..MAX_SERIES {
-        let _admitted = metrics.admit(&runner(index));
+        let _tracked = metrics.track(&runner(index));
     }
 
-    let _admitted = metrics.admit(&runner(MAX_SERIES + 1));
-    let _label = metrics.admit(&runner(MAX_SERIES + 2));
+    let _tracked = metrics.track(&runner(MAX_SERIES + 1));
+    let _label = metrics.track(&runner(MAX_SERIES + 2));
 
     // Two records, from two different overflowed runners, each admitted once.
     assert_eq!(metrics.overflowed(), 2);
@@ -84,7 +95,7 @@ fn a_repeated_runner_reuses_its_series() {
     // healthy deployment: a host recording ten thousand runs holds one series.
     let metrics = RunnerMetrics::new();
     for _run in 0..10_000 {
-        let _admitted = metrics.admit(&runner(1));
+        let _tracked = metrics.track(&runner(1));
     }
     assert_eq!(metrics.series_count(), 1);
     assert_eq!(metrics.overflowed(), 0);
@@ -101,7 +112,7 @@ fn concurrent_first_records_of_one_runner_produce_one_series() {
             let metrics = Arc::clone(&metrics);
             std::thread::spawn(move || {
                 for _record in 0..64 {
-                    let _admitted = metrics.admit(&runner(7));
+                    let _tracked = metrics.track(&runner(7));
                 }
             })
         })
@@ -119,10 +130,10 @@ fn admission_recheck_returns_the_series_that_won_the_race() {
     let metrics = RunnerMetrics::new();
     let runner_id = runner(7);
     let first = metrics
-        .admit_new(&runner_id)
+        .track_new(&runner_id)
         .expect("the empty table admits the runner");
     let rechecked = metrics
-        .admit_new(&runner_id)
+        .track_new(&runner_id)
         .expect("an already-admitted runner reuses its series");
 
     assert!(Arc::ptr_eq(&first, &rechecked));

@@ -2,10 +2,10 @@
 //!
 //! # Why this module cannot move money
 //!
-//! Only settlement debits the wallet: the billing relay settles the usage that
-//! renewals and reports log, and a setup chat settles its own. Signup bootstrap
-//! adds the starter grant. This module holds none of those
-//! writes; it is the read side those movements are
+//! Only a usage line debits the wallet, in the statement that writes it:
+//! renewals, reports and a setup chat log their lines through the ledger or
+//! their own statements. Signup bootstrap adds the starter grant. This module
+//! holds none of those writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so
 //! it is stated where somebody adding a write will read it.
@@ -37,16 +37,6 @@ const CONTEXT_SNAPSHOT: &str = "read tenant wallet";
 /// The context the charges walk reports under.
 const CONTEXT_CHARGES: &str = "list tenant charges";
 
-/// The most rows one charges page may carry.
-///
-/// Public because the HANDLER owns the refusal sentence for a limit past this,
-/// and a sentence naming a number the store does not enforce would be two
-/// truths (RULE UFS).
-pub const CHARGES_LIMIT_MAX: u32 = 200;
-
-/// The page size a caller naming nothing gets.
-pub const CHARGES_LIMIT_DEFAULT: u32 = 50;
-
 /// The tenant's billing reads.
 #[derive(Debug, Clone)]
 pub struct Billing {
@@ -60,7 +50,7 @@ impl Billing {
         Self { database }
     }
 
-    /// Full-period settled totals, spending groups and filter choices.
+    /// Full-period totals, spending groups and filter choices.
     ///
     /// # Errors
     /// Reports an unavailable datastore or an unreadable rollup row.
@@ -144,16 +134,16 @@ where
         None => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_FIRST))
             .bind(tenant)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::CHARGE_TYPE_SETUP)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
         Some(after) => sqlx::query_as(wrap(sql::SELECT_TENANT_CHARGES_AFTER))
             .bind(tenant)
             .bind(after.created_at.to_sqlx())
             .bind(&after.id)
             .bind(i64::from(limit))
-            .bind(sql::CHARGE_TYPE_AUTHORING)
-            .bind(sql::work::FLEET_LEASE)
+            .bind(sql::CHARGE_TYPE_SETUP)
+            .bind(sql::work::FLEET_RUN)
             .bind(sql::charge::STAGE),
     }
 }
@@ -180,12 +170,12 @@ pub struct ChargeRow {
     /// the charge landed leaves its identifier here, equal to `fleet_id`. A
     /// setup settlement's is the saved fleet's current name.
     pub fleet_name: Option<String>,
-    /// The event that triggered the work; a setup chat has none.
-    pub event_id: Option<Uuid7>,
-    /// The setup attempt a settlement paid for; a fleet charge has none.
-    pub authoring_attempt_id: Option<Uuid7>,
+    /// The turn that triggered the work; a setup chat has none.
+    pub turn_id: Option<Uuid7>,
+    /// The setup run a settlement paid for; a fleet charge has none.
+    pub run_id: Option<Uuid7>,
     /// `stage` for one usage line of a fleet run, or
-    /// [`sql::CHARGE_TYPE_AUTHORING`] for a setup chat.
+    /// [`sql::CHARGE_TYPE_SETUP`] for a setup chat.
     pub charge_type: String,
     /// Whose model bill the tokens landed on.
     pub posture: String,

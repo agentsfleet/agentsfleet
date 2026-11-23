@@ -24,14 +24,14 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 /// run.
 pub const RUN_STALE_FENCING_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-005");
 
-/// No lease with that id belongs to the presenting runner.
+/// No run with that id belongs to the presenting runner.
 ///
-/// One code for two facts, deliberately: a lease that never existed and a lease
+/// One code for two facts, deliberately: a run that never existed and a run
 /// belonging to ANOTHER runner both answer this. The load is scoped by
-/// `runner_id`, so a runner asking about a peer's lease gets the same 404 a
+/// `runner_id`, so a runner asking about a peer's run gets the same 404 a
 /// missing row gets — the scope IS the ownership check, and distinguishing the
-/// two would turn this endpoint into an oracle for which lease ids are live.
-pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
+/// two would turn this endpoint into an oracle for which run ids are live.
+pub const RUN_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
 
 /// The runner is known and its administrative state bars the runner plane.
 ///
@@ -40,22 +40,13 @@ pub const RUN_LEASE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-006");
 /// out of service — the heartbeat reply is unconditionally `ok`.
 pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
-/// The lease reached the hard ceiling on how long one run may take.
-///
-/// Distinct from [`RUN_LEASE_LOST`] even though both are 409s and both end the
-/// run: this one says the runner did nothing wrong and its result is still
-/// wanted — it stops the child and reports. Lost says the lease is somebody
-/// else's now and the result will be refused. Collapsing them would throw away
-/// a completed run's output at the cap.
-pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN-010");
-
-/// The lease moved to another runner before this renewal.
+/// The run moved to another runner before this renewal.
 ///
 /// Reached when the fence no longer holds or the row is no longer `active`, and
-/// also when the lease row advanced but the affinity slot did not — a
-/// half-applied renewal is reported LOST rather than renewed, because the slot
-/// can be reclaimed before the deadline the reply would name.
-pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
+/// also when the run row advanced but the thread did not — a
+/// half-applied renewal is reported LOST rather than renewed, because the thread
+/// can be reassigned before the deadline the reply would name.
+pub const RUN_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 
 /// The tenant's credit pool cannot fund another slice of this run.
 ///
@@ -63,16 +54,16 @@ pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 /// a renew refusal by status AND code. The two 402s are different pools — this
 /// is the TENANT's balance, that is the FLEET's own declared ceiling — and an
 /// operator tops up for one and revises the fleet's reviewed setup for the other.
-pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
+pub const RUN_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-012");
 
 /// A renewal sent a body this daemon cannot read.
 ///
 /// ANSWERED only for the cumulative totals a runner sent before usage moved to
-/// one line per provider request: a 400 naming the field, and the lease does not
+/// one line per provider request: a 400 naming the field, and the run does not
 /// renew. A runner speaking that shape can never have its usage recorded, and
 /// its report is refused for the same field, so renewing would only run it
 /// unbilled to a result nobody keeps. Every other unreadable body is LOGGED
-/// under this code rather than answered: the lease renews, no line is recorded,
+/// under this code rather than answered: the run renews, no line is recorded,
 /// and the runner sends its lines again.
 pub const RUN_RENEW_BODY_MALFORMED: ErrorCode = ErrorCode::declare("UZ-RUN-013");
 
@@ -112,19 +103,11 @@ pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 /// tool hands the code to the model, which says it in the report instead.
 pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 
-/// The lease already posted as many messages as one run may.
-///
-/// A 409 carrying `current_state`, and per lease rather than per window: the
-/// bound is on how much one run says to a person's thread, so waiting does not
-/// lift it and a 429 would tell a client to retry into the same refusal. A
-/// reclaimed lease starts its own count.
-pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
-
 /// A newer connection owns this runner; the superseded process must halt.
 pub const RUN_STREAM_SUPERSEDED: ErrorCode = ErrorCode::declare("UZ-RUN-021");
 
-/// An operator durably cancelled this lease.
-pub const RUN_LEASE_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
+/// An operator durably cancelled this run.
+pub const RUN_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
 
 /// Runner and daemon do not speak the same application protocol.
 pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023");
@@ -132,22 +115,16 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
-/// A runner registration's Idempotency-Key was reused for a different request.
-///
-/// A replay of the same request answers the runner it created; a different body
-/// under the same key is a client mistake, refused rather than guessed at.
-pub const RUNNER_REGISTRATION_KEY_REUSED: ErrorCode = ErrorCode::declare("UZ-RUN-025");
-
 /// A platform caller asked to mint a tenant runner's token.
 ///
 /// A new token would hand the platform a working credential for a host its
 /// tenant holds; the tenant rotates its own runners.
 pub const RUNNER_TENANT_MANAGED: ErrorCode = ErrorCode::declare("UZ-RUN-026");
 
-/// Issue refused a placement the claim should already have filtered.
+/// Issue refused a placement the assignment should already have filtered.
 ///
-/// Log-only: a foreign tenant's runner, or a tenant runner offered work that
-/// would carry a platform model key. Any occurrence means the claim has a hole.
+/// Log-only: a foreign tenant's runner, or a tenant runner assigned work that
+/// would carry a platform model key. Any occurrence means the assignment has a hole.
 pub const RUNNER_PLACEMENT_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-027");
 
 /// Present recovery state cannot run under the replacement's current setup.
@@ -162,9 +139,22 @@ pub const RUN_CHECKPOINT_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-RUN-030
 /// A checkpoint exceeds a declared state, manifest, transfer or custody bound.
 pub const RUN_CHECKPOINT_LIMIT: ErrorCode = ErrorCode::declare("UZ-RUN-031");
 
+/// A run's assignment would not fit the runner protocol's frame
+/// (`af_wire::protocol::MESSAGE_BYTES_MAX`), so its turn fails at assignment
+/// instead of lapsing on a runner that never received it.
+pub const RUN_FRAME_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-RUN-032");
+
+/// A tenant or the platform registered a host it already registered.
+///
+/// A host registers once per owner: `(tenant_id, host_id)` is unique on the
+/// runner row, nulls not distinct. The refusal names the runner, and its owner
+/// recovers it by rotating its token rather than minting a second runner for
+/// one machine.
+pub const RUNNER_HOST_REGISTERED: ErrorCode = ErrorCode::declare("UZ-RUN-033");
+
 /// A fleet declared a credential the vault does not hold.
 ///
-/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it
+/// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the run path, where it
 /// is LOGGED rather than answered: a fleet that names a credential nobody
 /// stored cannot run, so the event is ended with a terminal row and the asking
 /// runner is told there is no work. The code is what an operator correlates the
@@ -174,7 +164,7 @@ pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT
 /// This workspace already holds a fleet under the requested name.
 ///
 /// Only ever answered for a name the CALLER chose. An install that named
-/// nothing takes the Plugin entry's own name, and a collision there is
+/// nothing takes its setup's own name, and a collision there is
 /// re-drawn with a suffix rather than reported — "taken" would name a conflict
 /// the caller cannot see, on a value they never typed.
 pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
@@ -202,16 +192,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 /// [`AUTH_FORBIDDEN`]; the two axes are separate and both are checked.
 pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
 
-/// The install could not be finished, and nothing was kept.
-///
-/// The promise this code carries is the one the caller can act on: retrying is
-/// safe, because the row was removed. It is answered only after the rollback
-/// has been attempted — an install that could not roll back logs
-/// `row_orphaned_manual_recovery` and still answers this, because from the
-/// caller's side the fleet is equally unusable either way and no client action
-/// distinguishes them.
-pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AGT-013");
-
 /// The fleet's source moved on since the editor read it.
 ///
 /// A 412 whose response carries the CURRENT `ETag`, so an editor holding a
@@ -236,7 +216,7 @@ pub const AGENTSFLEET_NOT_ACTIVE: ErrorCode = ErrorCode::declare("UZ-AGT-012");
 /// predicate and hands back one empty result for all three. A code that told
 /// them apart would be disclosing across a tenant boundary what a caller is not
 /// entitled to ask.
-pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
+pub const TURN_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 
 /// A steer's `operation_id` names a message this fleet already admitted with
 /// different text, or by another sender.
@@ -250,7 +230,7 @@ pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT
 /// No kept record for that tool call, on that event, in that fleet and
 /// workspace.
 ///
-/// The sibling of [`EVENT_NOT_FOUND`], and one code for the same reasons: an
+/// The sibling of [`TURN_NOT_FOUND`], and one code for the same reasons: an
 /// unknown call, a call id that is not one, a call whose full output was never
 /// posted, and a call of another workspace's fleet all answer alike, because
 /// the statement carries the scope as a predicate. Telling them apart would
@@ -265,6 +245,15 @@ pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 /// row. Archive is terminal, so the client's next step is delete or a new
 /// fleet, never a retry.
 pub const AGENTSFLEET_ARCHIVED: ErrorCode = ErrorCode::declare("UZ-AGT-020");
+
+/// Stop named a turn that already finished: answered, failed, or recorded.
+///
+/// A 409 carrying `current_state`, the turn's stored status, so a client tells
+/// "the answer won the race" from "this turn never ran" without re-reading it.
+/// The answer stands: Stop never rewrites a settled turn. A turn already
+/// cancelled is not this refusal; Stop answers it 200, because a retried Stop
+/// must see the state it asked for.
+pub const TURN_FINISHED: ErrorCode = ErrorCode::declare("UZ-AGT-021");
 
 /// A fleet asked to steer itself.
 ///
@@ -301,7 +290,7 @@ pub const MEM_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-MEM-003");
 /// A 404 rather than a silent 204, and that is the whole of why the code
 /// exists: an operator removing a lesson the fleet learned wrong has to find
 /// out they mistyped the key, because the alternative is believing the entry is
-/// gone while the next hydrate seeds it into another run.
+/// gone while the next load seeds it into another run.
 pub const MEM_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-004");
 
 /// The instance is already serving as many requests as it admits.

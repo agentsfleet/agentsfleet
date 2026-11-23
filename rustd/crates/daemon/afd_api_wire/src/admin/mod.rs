@@ -18,7 +18,7 @@ use garde::Validate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AdminState {
-    /// Admitted; may lease and report.
+    /// Admitted; may run and report.
     Active,
     /// Refused new work, existing work untouched.
     Cordoned,
@@ -83,7 +83,7 @@ pub struct RunnerAdminPatchRequest<'a> {
     #[serde(borrow)]
     #[garde(skip)]
     pub assigned_policy: Option<AssignedPolicy<'a>>,
-    /// Replaces all runner labels: at most 32 labels of 64 bytes each. Duplicates are removed
+    /// Replaces all runner labels, each at most 1,048,576 characters. Duplicates are removed
     /// in their original order. An empty list clears labels.
     #[serde(borrow)]
     #[garde(inner(custom(label_list)))]
@@ -140,10 +140,10 @@ pub enum RunnerEventType {
     RunnerOnline,
     /// Stopped being reachable.
     RunnerOffline,
-    /// Took a lease.
-    LeaseAcquired,
-    /// Released a lease.
-    LeaseReleased,
+    /// Took a run.
+    RunAcquired,
+    /// Released a run.
+    RunReleased,
     /// Stopped taking new work.
     RunnerCordoned,
     /// Continuous proved healthy heartbeats lifted automatic quarantine.

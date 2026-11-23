@@ -13,7 +13,10 @@
 use std::collections::HashSet;
 
 use af_crypto::entropy::Entropy;
-use afd_api::{RequestId, UNKNOWN_REQUEST_ID};
+use afd_http::request_id::{RequestId, UNKNOWN_REQUEST_ID};
+use http::{HeaderName, Method, StatusCode};
+
+use crate::harness::{self, Fleet};
 
 /// Characters after the `req_` prefix.
 const HEX_LEN: usize = 12;
@@ -125,4 +128,65 @@ fn test_every_reading_of_an_id_is_the_same_text() {
     assert_eq!(borrowed, "req_0123456789ab");
     assert_eq!(displayed, borrowed);
     assert_eq!(owned, borrowed);
+}
+
+/// A guarded path a request without a credential is refused on.
+const REFUSING_PATH: &str = "/v1/connectors/github/callback";
+
+/// The response's `x-request-id` and its problem body's `request_id`.
+async fn ids(incoming: Option<&str>) -> (String, String) {
+    let header = HeaderName::from_static("x-request-id");
+    let sent: Vec<(HeaderName, &str)> = incoming
+        .map(|id| (header.clone(), id))
+        .into_iter()
+        .collect();
+    let router = Fleet::new().router();
+    let refused =
+        harness::send_with_headers(&router, Method::GET, REFUSING_PATH, None, "", &sent).await;
+    assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
+    let echoed = refused
+        .headers()
+        .get(&header)
+        .and_then(|value| value.to_str().ok())
+        .expect("every response carries an x-request-id")
+        .to_owned();
+    let body = harness::json_body(refused).await;
+    let carried = body
+        .get("request_id")
+        .and_then(serde_json::Value::as_str)
+        .expect("a refusal carries its id")
+        .to_owned();
+    (echoed, carried)
+}
+
+/// Whether `id` is `req_` and twelve lowercase hex characters.
+fn is_ours(id: &str) -> bool {
+    id.strip_prefix("req_").is_some_and(|hex| {
+        hex.len() == HEX_LEN
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+/// A response names its request in our format, in the header AND the body.
+#[tokio::test]
+async fn test_a_response_carries_its_request_id() {
+    let (echoed, carried) = ids(None).await;
+    assert!(
+        is_ours(&echoed),
+        "id {echoed} is not req_ and twelve lowercase hex characters"
+    );
+    assert_eq!(carried, echoed, "the body and the header name one request");
+}
+
+/// An id the caller sends is never accepted: the response carries a fresh one.
+#[tokio::test]
+async fn test_an_incoming_id_is_replaced_by_a_fresh_one() {
+    for incoming in ["anything", "req_0123456789ab"] {
+        let (echoed, carried) = ids(Some(incoming)).await;
+        assert_ne!(echoed, incoming);
+        assert!(is_ours(&echoed), "{incoming} -> {echoed}");
+        assert_eq!(carried, echoed, "the body and the header name one request");
+    }
 }

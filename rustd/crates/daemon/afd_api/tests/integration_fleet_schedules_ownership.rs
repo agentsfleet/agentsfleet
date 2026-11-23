@@ -26,8 +26,7 @@
 use crate::harness;
 
 use af_core::id::Uuid7;
-use afd_api::Services as _;
-use afd_api::services::FleetSchedules as _;
+use afd_api_tenant::services::TenantPlane as _;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -36,6 +35,8 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{
     ApiKeySeed, FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id,
 };
+use afd_http::services::FleetSchedules as _;
+use afd_http::services::Shared as _;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 

@@ -1,5 +1,5 @@
-//! The host's renewal statement takes the host row before any slot, as an
-//! issue and the per-lease renewal do, so the two never wait on each other in
+//! The host's renewal statement takes the host row before any thread, as an
+//! issue and the per-run renewal do, so the two never wait on each other in
 //! a cycle.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
@@ -13,19 +13,19 @@ use std::time::Duration;
 
 use af_wire::report::RenewRequest;
 use afd_db::config::DbRole;
-use afd_fleet::lease::renew::Renewals;
+use afd_fleet::run::renew::Renewals;
 use sqlx::Connection as _;
 
 use crate::report_seed::{Held, held};
 
-/// What an issue holds while it places a lease: the host row, exclusively.
+/// What an issue holds while it places a run: the host row, exclusively.
 const HOLD_HOST: &str = "SELECT pg_backend_pid() FROM runner.runners WHERE id = $1 FOR UPDATE";
 
 /// The backend `$1` is blocking, if any.
 const BLOCKED_BY: &str = "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
 
-/// A slot lock that refuses to wait: it fails while another holds the slot.
-const TRY_SLOT: &str = "SELECT 1 FROM runner.slots WHERE fleet_id = $1 FOR UPDATE NOWAIT";
+/// A thread lock that refuses to wait: it fails while another holds the thread.
+const TRY_THREAD: &str = "SELECT 1 FROM thread.threads WHERE fleet_id = $1 FOR UPDATE NOWAIT";
 
 /// How long a wait may take before the test calls it a hang.
 const WAIT_LIMIT: Duration = Duration::from_secs(10);
@@ -51,14 +51,14 @@ async fn blocked_by(held: &Held, pid: i32) {
         .expect("the renewal reaches the held host row");
 }
 
-// Value: protects=a renewal frame waiting on a held host row holds no slot;
-// fails_when=the statement locks its slots before the host row, and an issue
-// holding the host and wanting a slot deadlocks against it; why_new=the host
-// batch statement replaced the per-lease path's host-first lock; seam=none;
-// no_claim=the lease rows, which the statement locks after its slots.
+// Value: protects=a renewal frame waiting on a held host row holds no thread;
+// fails_when=the statement locks its threads before the host row, and an issue
+// holding the host and wanting a thread deadlocks against it; why_new=the host
+// batch statement replaced the per-run path's host-first lock; seam=none;
+// no_claim=the run rows, which the statement locks after its threads.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_waiting_renewal_holds_no_slot() {
+async fn a_waiting_renewal_holds_no_thread() {
     let held = held().await;
     let owner = held.fixtures.open(DbRole::Migrator).await;
     let mut host_connection = owner.acquire().await.expect("host holder");
@@ -74,26 +74,32 @@ async fn a_waiting_renewal_holds_no_slot() {
 
     let renewing = plane.renew_batch(Renewals {
         runner_id: &held.runner,
-        leases: vec![(held.issued.lease_id.clone(), RenewRequest::default())],
+        runs: vec![(held.issued.run_id.clone(), RenewRequest::default())],
         funds_due: false,
         now: held.now,
         kept: std::collections::HashMap::new(),
     });
     let probing = async {
         blocked_by(&held, host_pid).await;
-        let mut slot_connection = prober.acquire().await.expect("slot prober");
-        let mut slot = slot_connection.begin().await.expect("open the slot probe");
-        let free = sqlx::query(TRY_SLOT)
+        let mut thread_connection = prober.acquire().await.expect("thread prober");
+        let mut thread = thread_connection
+            .begin()
+            .await
+            .expect("open the thread probe");
+        let free = sqlx::query(TRY_THREAD)
             .bind(&held.fleet)
-            .execute(&mut *slot)
+            .execute(&mut *thread)
             .await;
-        slot.rollback().await.expect("release the slot probe");
+        thread.rollback().await.expect("release the thread probe");
         host.rollback().await.expect("release the host row");
         free
     };
     let (answers, free) = tokio::join!(renewing, probing);
 
-    assert!(free.is_ok(), "the waiting renewal holds the slot: {free:?}");
+    assert!(
+        free.is_ok(),
+        "the waiting renewal holds the thread: {free:?}"
+    );
     assert!(
         answers.iter().all(Result::is_ok),
         "the renewal extends once the host is free: {answers:?}"

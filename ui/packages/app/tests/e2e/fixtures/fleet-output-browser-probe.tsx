@@ -26,7 +26,7 @@ function OutputProbe() {
     frame.current = requestAnimationFrame(observe);
   };
   return open ? <Profiler id="full-output" onRender={(_id, _stage, actualDuration) => window.outputMeasurement.renders.push(actualDuration)}>
-    <FleetToolOutputDialog scope={{workspaceId: "ws_probe", fleetId: "fleet_probe"}} eventId="event_probe" callId="call:1"
+    <FleetToolOutputDialog scope={{workspaceId: "ws_probe", fleetId: "fleet_probe"}} turnId="event_probe" callId="call:1"
       name="http_request" verb="Ran command" target="GET https://example.test/log" outcome={undefined} onClose={close} />
   </Profiler> : <Button onClick={show}>Open output</Button>;
 }

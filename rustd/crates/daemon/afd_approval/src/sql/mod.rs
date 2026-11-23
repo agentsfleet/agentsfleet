@@ -2,7 +2,7 @@
 //! grant half's statements live in [`super::grant_sql`].
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/20261108122600_fleet_approval_gates.sql`). Every statement that answers a
+//! (`afd_db/schema/20261108122600_fleet_approval_gates.sql`). Every statement that answers a
 //! gate is guarded on it, stamps it with `now()`, and counts what still waits
 //! by it, so the `status` word and the marker cannot disagree about which rows
 //! are open.
@@ -57,21 +57,27 @@
 /// usually one fleet but rarely one decider.
 ///
 /// `$1` workspace, `$2` status filter, `$3` fleet filter, `$4` type filter,
-/// `$5` has-cursor, `$6` cursor instant, `$7` cursor id, `$8` limit.
+/// `$5` has-cursor, `$6` cursor instant, `$7` cursor id, `$8` limit, `$9` the
+/// status an unanswered gate past its deadline reads as.
 pub(crate) const SELECT_GATE_PAGE: &str = include_str!("select_gate_page.sql");
 
 /// One gate by row id, workspace-scoped.
 ///
 /// The scope is an AUTHORIZATION and not a filter: a valid gate id belonging to
 /// another workspace resolves to no row, so a cross-tenant lookup leaks nothing
-/// beyond "not found". `$1` gate, `$2` workspace.
+/// beyond "not found". `$1` gate, `$2` workspace, `$3` the status an
+/// unanswered gate past its deadline reads as.
 pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql");
 
 /// Resolves one gate, and any integration grant the decision implies.
 ///
 /// Two things about it are load-bearing:
 ///
-/// The `WHERE resolved_at IS NULL` on the UPDATE is the whole race decision.
+/// The `WHERE resolved_at IS NULL` on the UPDATE is the whole race decision,
+/// and it admits a gate past its deadline: nothing expires a gate, so an
+/// answer two hours late lands as one on time does. A gate whose fleet is
+/// archived is not updated; [`SELECT_GATE_BY_ACTION`] then finds it
+/// unanswered.
 /// Two operators answering one gate at the same instant both run this
 /// statement, and exactly one updates a row — the loser's `RETURNING` is empty,
 /// which is how the caller tells "I decided this" from "somebody already had".
@@ -82,7 +88,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// transaction, or a crash between them would leave a gate saying yes over a
 /// grant that never heard.
 ///
-/// **`r.event_id IS NULL` is an authorisation predicate, not a filter.** Without
+/// **`r.turn_id IS NULL` is an authorisation predicate, not a filter.** Without
 /// it this arm trusts two columns a fleet controls. `gate_type` is copied
 /// verbatim from the matched rule (`afd_gate::gate::detail::Stated::under`) and
 /// the raw config validates it for length alone, while `evidence` is read out
@@ -95,7 +101,7 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 /// The event column is the discriminator because it is the one thing on this
 /// row a fleet cannot reach. [`super::grant_sql::REQUEST_GRANT`] writes NULL
 /// there by construction, and every rules-path gate carries a real one:
-/// `afd_gate`'s insert binds `event_id: &str`, not an `Option`, so a card raised
+/// `afd_gate`'s insert binds `turn_id: &str`, not an `Option`, so a card raised
 /// from an event can never be NULL. A forged type moves no grant.
 ///
 /// The trailing count is how many of the fleet's gates still wait once this
@@ -109,30 +115,15 @@ pub(crate) const SELECT_GATE_BY_ID: &str = include_str!("select_gate_by_id.sql")
 ///
 /// `$1` status, `$2` detail, `$3` resolver, `$4` action, `$5` fleet filter
 /// (empty disables), `$6` approved status, `$7` grant approved, `$8` grant
-/// revoked, `$9` grant gate type.
+/// revoked, `$9` grant gate type, `$10` the archived fleet status.
 pub(crate) const RESOLVE_GATE: &str = include_str!("resolve_gate.sql");
 
 /// The gate an action already holds, newest first.
 ///
 /// Read only when [`RESOLVE_GATE`] updated nothing, to tell a gate somebody
-/// else already answered from one that was never there. Any row it finds is
-/// resolved — a pending one would have matched the update — so its
-/// `resolved_at` is set; `updated_at` stands in only so the decode is total.
+/// else already answered from one that was never there. A row found
+/// `unanswered` is one the update skipped because its fleet is archived;
+/// `updated_at` stands in for its `resolved_at`, and an empty resolver for its
+/// `resolved_by`, only so the decode is total.
 /// `$1` action, `$2` fleet filter (empty disables).
 pub(crate) const SELECT_GATE_BY_ACTION: &str = include_str!("select_gate_by_action.sql");
-
-/// Expires every gate whose deadline has passed, on the database clock.
-///
-/// The sweeper's whole statement. `resolved_at IS NULL` keeps it to PENDING
-/// rows, so a gate a person answered one millisecond before the deadline is not
-/// overwritten by the sweep — the operator's decision outranks the clock's.
-///
-/// Returns the fleet and event beside the id, and how many of that fleet's
-/// gates still wait once the sweep lands, so each swept gate is announced on
-/// its fleet's live tail without a read per row. The sweep and the count run
-/// on one snapshot (PostgreSQL, "Data-Modifying Statements in WITH"), so the
-/// count still sees the swept rows as pending; excluding what `swept` holds
-/// is what makes it the state after the sweep.
-///
-/// `$1` expired status, `$2` resolver attribution, `$3` detail.
-pub(crate) const EXPIRE_GATES: &str = include_str!("expire_gates.sql");

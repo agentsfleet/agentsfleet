@@ -2,23 +2,23 @@
 
 use crate::{
     handler::Refusal,
-    services::{FleetSchedules as _, Services},
+    services::{FleetSchedules as _, TenantPlane},
 };
 use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::Trigger;
 use afd_api_wire::fleet::{FleetResponse, WebhookUrl};
-use afd_authoring::SavedFleet;
+use afd_setup::SavedFleet;
 use axum::{
     Json,
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderValue, StatusCode, header};
+use http::{StatusCode, header};
 use std::borrow::Cow;
 
 const EVENT_SCHEDULES: &str = "fleet_setup_schedules_read_failed";
 
-pub(super) async fn response<D: Services>(
+pub(super) async fn response<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     saved: SavedFleet,
@@ -32,22 +32,25 @@ pub(super) async fn response<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_SCHEDULES))?;
     let payload = payload(services, saved, &schedules);
-    let mut response = (status, Json(payload)).into_response();
-    attach(&mut response, header::ETAG, &etag);
     if status == StatusCode::CREATED {
-        attach(&mut response, header::LOCATION, &location);
+        return Ok((
+            status,
+            [(header::ETAG, etag), (header::LOCATION, location)],
+            Json(payload),
+        )
+            .into_response());
     }
-    Ok(response)
+    Ok((status, [(header::ETAG, etag)], Json(payload)).into_response())
 }
 
 pub(super) type NativeFleet<'s> = FleetResponse<
     af_fleet_runtime::Definition,
-    afd_authoring::SetupProgress,
-    afd_authoring::types::StartOutcome,
+    afd_setup::SetupProgress,
+    afd_setup::types::StartOutcome,
     afd_api_wire::schedule::View<'s>,
 >;
 
-pub(super) fn payload<'s, D: Services>(
+pub(super) fn payload<'s, D: TenantPlane>(
     services: &D,
     saved: SavedFleet,
     schedules: &'s [afd_cron::Schedule],
@@ -97,14 +100,6 @@ fn webhook_urls(deployment: &str, fleet: &Uuid7, config: &FleetConfig) -> Vec<We
             Trigger::Cron(_) | Trigger::Mention(_) => None,
         })
         .collect()
-}
-
-/// Sets `name` when `value` is a legal header value; a value that is not is
-/// left off rather than failing a response that already succeeded.
-pub(super) fn attach(response: &mut Response, name: header::HeaderName, value: &str) {
-    if let Ok(value) = HeaderValue::from_str(value) {
-        response.headers_mut().insert(name, value);
-    }
 }
 
 #[cfg(test)]

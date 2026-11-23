@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use afr_tools::catalog::PUBLISHED;
+use afr_tools::catalog::{CHILDREN, PUBLISHED};
 
 use super::{
     FrameDrop, OTHER, PushFailure, SandboxBuild, SandboxRelease, SandboxStart, SandboxWait, Tool,
@@ -14,7 +14,7 @@ use super::{
 fn a_tool_is_its_catalog_name_or_other() {
     assert_eq!(Tool::of("file_read").as_str(), "file_read");
     assert_eq!(Tool::of("rm_rf_slash").as_str(), OTHER);
-    assert_eq!(Tool::COUNT, PUBLISHED.len() + 1);
+    assert_eq!(Tool::COUNT, PUBLISHED.len() + CHILDREN + 1);
 }
 
 /// No closed set spells two members alike, and none spells `_other`, which

@@ -10,7 +10,7 @@
 //!
 //! # Split from `integration_inbox.rs`
 //!
-//! That suite is the resolve race, the workspace scope and the sweep. Reading a
+//! That suite is the resolve race, the workspace scope and a late gate's read. Reading a
 //! page is a separate concern and, at RULE FLL's cap, a separate file.
 
 #![expect(

@@ -9,7 +9,7 @@ WITH current_runner AS (
   WHERE r.id = c.id AND c.status <> $3::text
   RETURNING r.id
 ), event AS (
-  INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
+  INSERT INTO runner.history (id, runner_id, event_type, metadata, last_seen_at, created_at)
   SELECT $4, id, $5::text, jsonb_build_object($6::text, $7::text), NULL, now()
   FROM updated
   RETURNING id

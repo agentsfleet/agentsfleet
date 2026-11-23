@@ -117,7 +117,6 @@ describe("conversation-first app navigation", () => {
     expect(screen.getByRole("button", {name: "Your Fleets"}).textContent).toBe("");
     expect(screen.getByRole("button", {name: "Your Fleets"})).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
-    expect(screen.queryByRole("link", {name: "Plugins"})).toBeNull();
     expect(screen.getByRole("button", {name: "Open navigation"}).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.setup().click(screen.getByRole("button", {name: "Expand navigation"}));

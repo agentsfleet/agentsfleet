@@ -17,7 +17,6 @@ export const EVENTS = {
   provider_reset: "provider_reset",
   platform_default_set: "platform_default_set",
   secret_added: "secret_added",
-  fleet_plugin_onboarded: "fleet_plugin_onboarded",
   fleet_viewed: "fleet_viewed",
   // A platform operator opened one runner's detail page (once per mount,
   // mirroring fleet_viewed). Props carry the runner id and the coarse states
@@ -52,11 +51,6 @@ export type EventProps = {
   [EVENTS.provider_reset]: { from_provider: string };
   [EVENTS.platform_default_set]: { provider: string; model: string; is_custom: boolean };
   [EVENTS.secret_added]: { secret_name: string };
-  [EVENTS.fleet_plugin_onboarded]: {
-    workspace_id: string;
-    source_kind: string;
-    outcome: string;
-  };
   [EVENTS.fleet_viewed]: { fleet_id: string; status: string };
   [EVENTS.runner_viewed]: { runner_id: string; liveness: string; admin_state: string };
   // Saving setup is the one edit that changes what the fleet does on
@@ -95,7 +89,6 @@ export const EVENT_PROP_KEYS = {
   [EVENTS.provider_reset]: ["from_provider"],
   [EVENTS.platform_default_set]: ["provider", "model", "is_custom"],
   [EVENTS.secret_added]: ["secret_name"],
-  [EVENTS.fleet_plugin_onboarded]: ["workspace_id", "source_kind", "outcome"],
   [EVENTS.fleet_viewed]: ["fleet_id", "status"],
   [EVENTS.runner_viewed]: ["runner_id", "liveness", "admin_state"],
   [EVENTS.fleet_source_saved]: ["fleet_id", "field", "outcome"],

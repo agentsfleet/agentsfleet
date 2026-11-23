@@ -46,6 +46,12 @@ sha2.workspace = true
 hex.workspace = true
 serde_ignored.workspace = true
 thiserror.workspace = true
+# The cron grammar. Zero dependencies, std-only. This crate PARSES a trigger's
+# schedule with it; `config::check_schedule` adds only the three refusals for
+# expressions it accepts and the external scheduler will not honour as
+# written. The daemon's schedule routes call the same check, so this is the
+# one parser in the workspace.
+philiprehberger-cron-parser = "0.3.0"
 # The schema compiler, off by default: only the OpenAPI document build turns it on.
 utoipa = { workspace = true, optional = true }
 

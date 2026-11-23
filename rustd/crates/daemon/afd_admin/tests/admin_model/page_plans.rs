@@ -151,7 +151,8 @@ async fn seed_prices(connection: &mut sqlx::PgConnection, models: &[Uuid7], orig
                 p.prompt_tokens_above, p.input_nanos_per_mtok, p.cached_input_nanos_per_mtok,
                 p.output_nanos_per_mtok, p.source_url, p.verified_at, p.conditions, now(), now()
          FROM unnest($1, $2) AS seeds(id, model)
-         CROSS JOIN model.platform_model_prices p WHERE p.platform_model_id = $3",
+         CROSS JOIN model.platform_model_prices p
+         WHERE p.platform_model_id = $3 AND p.decision_revision_id IS NULL",
     )
     .bind(ids)
     .bind(models)

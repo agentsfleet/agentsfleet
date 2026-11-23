@@ -1,4 +1,4 @@
-//! Dimension 6.1 — a span carries the route template, never the raw path.
+//! A span carries the route template, never the raw path.
 //!
 //! Asserted by capturing real spans through a `tracing` subscriber rather than
 //! by reading the middleware's source, because the property is about what
@@ -21,6 +21,10 @@ use tower::ServiceExt as _;
 use self::harness::Fleet;
 
 /// Drives one request and returns every span it opened.
+#[expect(
+    clippy::future_not_send,
+    reason = "a thread-local trace `Capture` lives across `.await`; one thread polls it"
+)]
 async fn spans_for(method: Method, path: &str) -> Vec<CapturedSpan> {
     let capture = Capture::install();
     let router = Fleet::new().router();
@@ -76,7 +80,7 @@ fn test_span_fields_are_the_semconv_keys() {
 async fn test_an_unmatched_request_opens_no_server_span() {
     // Workspace-SHAPED but not in the route table, which is the interesting
     // case: a path that looks like a template must not be granted one. The
-    // fixture was `…/secrets` until §4 mounted that family; a fixture that is
+    // fixture was `…/secrets` until the vault routes mounted that family; a fixture that is
     // a real-but-unserved route would go the same way when its section lands,
     // so this names a segment the table has never held.
     let spans = spans_for(Method::GET, "/v1/workspaces/secret-id/not-a-route").await;
@@ -90,7 +94,7 @@ async fn test_an_unmatched_request_opens_no_server_span() {
 /// No span attribute ever carries a value from the request line.
 ///
 /// The point of the whole dimension, stated as a search rather than a spot
-/// check: a concrete path holds workspace, fleet and lease identifiers, and a
+/// check: a concrete path holds workspace, fleet and run identifiers, and a
 /// span attribute is exported to a third-party backend.
 #[tokio::test]
 async fn test_no_span_attribute_carries_a_concrete_path() {
@@ -137,7 +141,7 @@ async fn test_a_parameterised_route_reports_its_template() {
     let router = axum::Router::new()
         .route(
             "/v1/workspaces/{workspace_id}/secrets/{secret_name}",
-            axum::routing::get(|| async { "" }),
+            axum::routing::get(async || ""),
         )
         .route_layer(axum::middleware::from_fn(afd_api::router::trace_requests));
 

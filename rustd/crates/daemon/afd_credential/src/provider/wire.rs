@@ -1,10 +1,10 @@
-//! Selected model identity and validated endpoint travel together on the lease.
+//! Selected model identity and validated endpoint travel together on the run.
 
 use std::borrow::Cow;
 
 use super::resolved::Resolved;
 
-/// What the lease tells the engine to dial.
+/// What the run tells the engine to dial.
 ///
 /// Three fields that must agree, so they are produced together by one function
 /// rather than read off three call sites.

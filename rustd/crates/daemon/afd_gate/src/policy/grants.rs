@@ -3,12 +3,12 @@
 //! # Why a type, and not a slice of names
 //!
 //! The assembly fails closed: a mintable credential whose integration has no
-//! standing grant parks the lease rather than degrading to "not available".
+//! standing grant parks the run rather than degrading to "not available".
 //! That reading is only safe if the caller cannot reach it by accident, and a
 //! bare `&[Box<str>]` spells two different facts the same way — `&[]` is both
 //! "this workspace has granted nothing" and "nobody has read the grant rows
 //! yet". A caller that forgot the read would get the safe behaviour without
-//! ever learning it forgot, and the bug would surface as leases parking on
+//! ever learning it forgot, and the bug would surface as runs parking on
 //! integrations an operator can see are granted.
 //!
 //! [`Grants`] has no zero-argument constructor. The empty set is spelled
@@ -125,23 +125,24 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &Grants::none(),
         )
         .expect("an ungranted mint is a park, not a refusal");
 
-        match parked {
-            Assembled::Ungranted {
-                credential,
-                integration,
-            } => {
-                // Both halves, because "a grant is missing" is unactionable
-                // and "`github` for `gh`" is a button someone can press.
-                assert_eq!(credential, "gh");
-                assert_eq!(integration, "github");
-            }
-            Assembled::Ready(_) => panic!("an ungranted mint must not assemble"),
-        }
+        // Both halves, because "a grant is missing" is unactionable and
+        // "`github` for `gh`" is a button someone can press.
+        assert!(
+            matches!(
+                parked,
+                Assembled::Ungranted {
+                    credential: "gh",
+                    integration: "github",
+                }
+            ),
+            "an ungranted mint parks naming both halves: {parked:?}"
+        );
     }
 
     #[test]
@@ -157,6 +158,7 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &granted,
         )
@@ -168,7 +170,7 @@ mod tests {
         let carried = policy
             .mintable
             .first()
-            .expect("a granted mint reaches the lease");
+            .expect("a granted mint reaches the run");
         assert_eq!(policy.mintable.len(), 1);
         assert_eq!(carried.name, "gh");
         assert_eq!(carried.integration, "github");
@@ -192,14 +194,21 @@ mod tests {
                 provider: &resolved,
                 declared: &declared,
                 repair_branch: None,
+                windows: crate::policy::context::ToolWindows::default(),
             },
             &granted,
         )
         .expect("an ungranted mint is a park, not a refusal");
 
-        match parked {
-            Assembled::Ungranted { integration, .. } => assert_eq!(integration, "zoho"),
-            Assembled::Ready(_) => panic!("the ungranted sibling must still park"),
-        }
+        assert!(
+            matches!(
+                parked,
+                Assembled::Ungranted {
+                    integration: "zoho",
+                    ..
+                }
+            ),
+            "the ungranted sibling must still park: {parked:?}"
+        );
     }
 }

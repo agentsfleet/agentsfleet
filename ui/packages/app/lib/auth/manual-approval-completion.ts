@@ -5,10 +5,6 @@ type ReadOutcome = { kind: "waiting"; expiresAt: number | null } | { kind: "comp
 
 const POLL_MS = 2_000;
 const JITTER_MS = 400;
-const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_WAIT_MS = 300_000;
-const MAX_READS = 150;
-const MAX_RESPONSE_BYTES = 4_096;
 const SESSION_CONSUMED_CODE = "UZ-AUTH-012";
 const EXPIRED_MESSAGE = "This sign-in expired. Start a new sign-in from your terminal.";
 const FAILED_MESSAGE = "This sign-in could not be confirmed. Check your terminal, or start a new sign-in.";
@@ -19,30 +15,30 @@ const WaitingSchema = v.object({ status: v.picklist(["pending", "verification_pe
 /** The session read exposes completion without releasing any credential material. */
 export async function watchManualApprovalCompletion(sessionId: string,
   signal: AbortSignal, update: (result: ManualCompletion) => void): Promise<void> {
-  // Approval renews server expiry; the pre-approval session deadline is stale.
-  const hardDeadline = Date.now() + MAX_WAIT_MS;
-  let deadline = hardDeadline;
+  // The watch ends when the session settles, the server's expiry passes or the
+  // caller stops it. Approval renews that expiry, so the latest read's wins.
+  let deadline = Number.POSITIVE_INFINITY;
   const stopped = (): boolean => signal.aborted;
-  for (let attempt = 0; attempt < MAX_READS && !stopped(); attempt += 1) {
+  while (!stopped()) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) { update({ kind: "failed", message: EXPIRED_MESSAGE }); return; }
     await wait(Math.min(POLL_MS + Math.random() * JITTER_MS, remaining), signal);
     if (stopped()) return;
     if (Date.now() >= deadline) { update({ kind: "failed", message: EXPIRED_MESSAGE }); return; }
     try {
-      const owner = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1,
-        Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())))]);
+      // A read outliving the server's expiry could only report an expired session.
+      const owner = Number.isFinite(deadline)
+        ? AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]) : signal;
       const result = await readCompletion(sessionId, owner);
       if (stopped()) return;
       if (result.kind === "completed") { update({ kind: "completed" }); return; }
       if (result.kind === "failed") { update({ kind: "failed", message: FAILED_MESSAGE }); return; }
-      if (result.expiresAt !== null) deadline = Math.min(hardDeadline, result.expiresAt);
+      if (result.expiresAt !== null) deadline = result.expiresAt;
     } catch {
       // A lost status read must leave the verification code available.
       if (stopped()) return;
     }
   }
-  if (!stopped()) update({ kind: "failed", message: FAILED_MESSAGE });
 }
 
 async function readCompletion(sessionId: string, signal: AbortSignal): Promise<ReadOutcome> {
@@ -51,11 +47,11 @@ async function readCompletion(sessionId: string, signal: AbortSignal): Promise<R
   });
   if (response.redirected) { await response.body?.cancel(); return { kind: "failed" }; }
   if (response.status === 200) {
-    const body = v.parse(WaitingSchema, await boundedJson(response, signal));
+    const body = v.parse(WaitingSchema, await readJson(response, signal));
     return { kind: "waiting", expiresAt: body.expires_at };
   }
   if (response.status === 410) {
-    const body = v.safeParse(RefusalSchema, await boundedJson(response, signal));
+    const body = v.safeParse(RefusalSchema, await readJson(response, signal));
     return { kind: body.success && body.output.error_code === SESSION_CONSUMED_CODE ? "completed" : "failed" };
   }
   await response.body?.cancel();
@@ -63,19 +59,16 @@ async function readCompletion(sessionId: string, signal: AbortSignal): Promise<R
     ? { kind: "failed" } : { kind: "waiting", expiresAt: null };
 }
 
-async function boundedJson(response: Response, signal: AbortSignal): Promise<unknown> {
+async function readJson(response: Response, signal: AbortSignal): Promise<unknown> {
   const reader = response.body?.getReader();
   if (!reader) throw new Error("Missing sign-in status response");
   const cancel = (): void => { void reader.cancel().catch(() => undefined); };
   signal.addEventListener("abort", cancel, { once: true });
   const decoder = new TextDecoder();
-  let size = 0;
   let text = "";
   try {
     signal.throwIfAborted();
     for (let part = await reader.read(); !part.done; part = await reader.read()) {
-      size += part.value.byteLength;
-      if (size > MAX_RESPONSE_BYTES) throw new Error("Sign-in status response exceeds its limit");
       text += decoder.decode(part.value, { stream: true });
     }
     signal.throwIfAborted();

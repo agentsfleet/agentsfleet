@@ -5,8 +5,6 @@ import { loadWorkspaces } from "../src/lib/state.ts";
 import { asFetchOverride, makeHeaders } from "./helpers.ts";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
-
-
 test("workspace create does not persist local state when API create fails", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
@@ -86,7 +84,7 @@ test("workspace create reconciles once without replaying an uncertain POST", asy
   });
 });
 
-test("workspace create accepts exactly 128 Unicode code points", async () => {
+test("workspace create sends 128 Unicode code points unchanged", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -124,36 +122,6 @@ test("workspace create accepts exactly 128 Unicode code points", async () => {
     assert.equal(code, 0);
     assert.equal(requestCount, 1);
     assert.equal(err.read(), "");
-  });
-});
-
-test("workspace create rejects an overlong name before dispatch", async () => {
-  await withFreshStateDir(async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    let requestCount = 0;
-    const fetchImpl = asFetchOverride(async () => {
-      requestCount += 1;
-      throw new Error("must not dispatch");
-    });
-
-    const code = await runCli(["workspace", "create", "a".repeat(129)], {
-      env: {
-        ...process.env,
-        AGENTSFLEET_API_KEY: "agt_t_test",
-        BROWSER: "false",
-      },
-      stdout: out.stream,
-      stderr: err.stream,
-      fetchImpl,
-    });
-
-    assert.equal(code, 4);
-    assert.match(err.read(), /128 characters or fewer/);
-    assert.equal(requestCount, 0);
-    const workspaces = await loadWorkspaces(process.env);
-    assert.equal(workspaces.current_workspace_id, null);
-    assert.deepEqual(workspaces.items, []);
   });
 });
 

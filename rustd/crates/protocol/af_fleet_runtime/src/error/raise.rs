@@ -137,14 +137,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         (
-            "invalid threshold",
-            ErrorKind::InvalidThreshold {
-                field: "threshold_count",
-                reason: REASON,
-            }
-            .into(),
-        ),
-        (
             "invalid trigger set",
             ErrorKind::InvalidTriggerSet { reason: REASON }.into(),
         ),

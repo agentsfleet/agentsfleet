@@ -7,12 +7,13 @@
 //! a compromised host can lie, so placement trust stays operator-assigned.
 //!
 //! Every bound an enrolment, an assignment or a capability report must meet
-//! is declared on its type with garde; the caps, the two grammar rules and the
+//! is declared on its type with garde; the bounds, the two grammar rules and the
 //! shared label-list rule live in [`rules`](self::rules), and a reader proves
 //! them by validating.
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
@@ -24,15 +25,11 @@ mod selftest;
 pub use self::capability::CapabilityReport;
 pub use self::holds::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 pub use self::rules::{
-    BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, CONTROLLER_NAME_MAX_BYTES,
-    EXTRA_BINDS_MAX, HOST_ID_MAX_BYTES, LABEL_MAX_BYTES, LABELS_MAX, REGISTRY_ENTRIES_MAX,
-    REGISTRY_ENTRY_MAX_BYTES, REGISTRY_PORT_MAX_DIGITS, REPORT_CONTROLLERS_MAX, label_list,
+    BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, HOST_ID_MAX_BYTES, REGISTRY_ENTRY_MAX_BYTES,
+    REGISTRY_PORT_MAX_DIGITS, label_list,
 };
 use self::rules::{bind_path, registry_entry};
-pub use self::selftest::{
-    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SELFTEST_CHECKS_MAX, SELFTEST_POLICY_MAX_BYTES,
-    SelftestCheck, SelftestReport,
-};
+pub use self::selftest::{SelftestCheck, SelftestReport};
 
 /// The isolation strength assigned to a runner.
 //
@@ -80,7 +77,7 @@ pub enum BindMode {
     ReadWrite,
 }
 
-/// One host path bound into every lease's sandbox, in addition to the baseline.
+/// One host path bound into every run's sandbox, in addition to the baseline.
 ///
 /// An operator may ADD a path a host needs; never remove or re-mode one the
 /// sandbox depends on.
@@ -99,12 +96,9 @@ pub struct ExtraBind<'a> {
     pub mode: BindMode,
     /// Operator note explaining why the bind exists.
     #[serde(borrow)]
-    #[garde(length(bytes, max = BIND_NOTE_MAX_BYTES))]
+    #[garde(length(chars, max = TEXT_MAX_CHARS))]
     pub note: Cow<'a, str>,
 }
-
-/// Whether newly assigned runners accept durable task work.
-pub const DURABLE_TASKS_DEFAULT_ENABLED: bool = true;
 
 /// Sandbox isolation, outgoing network access, and concurrency settings assigned to this
 /// runner.
@@ -114,7 +108,7 @@ pub const DURABLE_TASKS_DEFAULT_ENABLED: bool = true;
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct AssignedPolicy<'a> {
-    /// Permit new durable task leases; existing leases retain their issued mode.
+    /// Permit new durable task runs; existing runs retain their issued mode.
     #[garde(skip)]
     pub durable_tasks_enabled: bool,
     /// Canonical `UUIDv7` of the platform decision model; absent disables decisions.
@@ -131,21 +125,18 @@ pub struct AssignedPolicy<'a> {
     /// Default package registries added to each assignment's allowed network hosts. An empty
     /// list uses the runner's defaults.
     #[serde(borrow)]
-    #[garde(
-        length(max = REGISTRY_ENTRIES_MAX),
-        inner(
-            length(bytes, min = 1, max = REGISTRY_ENTRY_MAX_BYTES),
-            custom(registry_entry)
-        )
-    )]
+    #[garde(inner(
+        length(bytes, min = 1, max = REGISTRY_ENTRY_MAX_BYTES),
+        custom(registry_entry)
+    ))]
     pub registry_allowlist: Vec<Cow<'a, str>>,
     /// Concurrent workers the runner may start. Clamped on both sides.
     // Clamped, never refused, so it carries no bound: `WorkerCount::clamping`.
     #[garde(skip)]
     pub worker_count: u32,
-    /// Extra host paths bound into every lease's sandbox.
+    /// Extra host paths bound into every run's sandbox.
     #[serde(borrow)]
-    #[garde(length(max = EXTRA_BINDS_MAX), dive)]
+    #[garde(dive)]
     pub extra_binds: Vec<ExtraBind<'a>>,
 }
 
@@ -157,9 +148,9 @@ pub struct AssignedPolicy<'a> {
 pub enum RunnerLiveness {
     /// Minted, never connected.
     Registered,
-    /// Holds a live lease. Takes precedence over `Offline`.
+    /// Holds a live run. Takes precedence over `Offline`.
     Busy,
-    /// Heartbeat fresh, no live lease.
+    /// Heartbeat fresh, no live run.
     Online,
     /// Heartbeat stale beyond the lapse threshold.
     Offline,
@@ -218,23 +209,6 @@ pub struct RegisterResponse<'a> {
     pub assigned_policy: AssignedPolicy<'a>,
 }
 
-/// A repeated tenant registration under the same Idempotency-Key and body.
-///
-/// The first response revealed the runner's one-time token, which is never
-/// stored, so the replay answers everything else; the caller rotates the token
-/// to recover it.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RegistrationReplay<'a> {
-    /// The runner the first request registered.
-    #[serde(borrow)]
-    pub runner_id: Cow<'a, str>,
-    /// The assignment as first registered; a later edit is read from the runner.
-    #[serde(borrow)]
-    pub assigned_policy: AssignedPolicy<'a>,
-}
-
 /// Host liveness carried by the control stream.
 ///
 /// The capability report rides the first beat and any beat where the probe
@@ -284,7 +258,7 @@ pub struct HeartbeatResponse<'a> {
     /// assignment does — one interval, no second endpoint, no host visit.
     pub selftest_requested: bool,
     /// Fleets among the beat's `holds` the runner should let go of: no longer
-    /// active, or leased by another runner since. The runner destroys their
+    /// active, or held by another runner since. The runner destroys their
     /// sandboxes.
     #[serde(borrow)]
     pub release_holds: Vec<Cow<'a, str>>,

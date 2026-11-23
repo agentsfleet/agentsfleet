@@ -2,7 +2,7 @@
 
 use crate::{
     handler::Refusal,
-    services::{FleetSchedules as _, Services},
+    services::{FleetSchedules as _, TenantPlane},
 };
 use af_core::id::Uuid7;
 use afd_cron::Schedule;
@@ -11,7 +11,7 @@ const EVENT_READ: &str = "fleet_setup_schedules_read_failed";
 
 /// The fleet's schedules, once an active fleet's trigger schedules have had
 /// their one bounded registration; an inactive fleet's are only read.
-pub(crate) async fn after_activation<D: Services>(
+pub(crate) async fn after_activation<D: TenantPlane>(
     services: &D,
     workspace: &Uuid7,
     fleet: &Uuid7,

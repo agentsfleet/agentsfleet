@@ -1,8 +1,8 @@
-//! A routed mention becomes one admission, owed back to its thread.
+//! A routed mention becomes one turn, owed back to its thread.
 
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admitted, Key, Producer, Reply};
+use af_wire::turn::TurnKind;
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply};
 
 use crate::Ingress;
 use crate::error::Result;
@@ -13,7 +13,7 @@ use crate::error::Result;
 /// team and the event, or the address and the body, admits a wrong row and
 /// compiles clean.
 #[derive(Debug, Clone, Copy)]
-pub struct MentionAdmission<'a> {
+pub struct MentionTurn<'a> {
     /// The fleet routing chose.
     pub fleet: &'a Uuid7,
     /// The workspace the team resolved to.
@@ -39,14 +39,14 @@ impl Ingress {
     ///
     /// Keyed `<team_id>:<event_id>`: the provider signs the body the event id
     /// rides in and repeats it on every retry, so a retry answers the first
-    /// admission and a forged repeat cannot vary the key without breaking the
+    /// turn and a forged repeat cannot vary the key without breaking the
     /// signature. The reply destination is the thread, so the answer is owed
     /// back to where the question was asked.
     ///
     /// # Errors
     /// Reports a database that would not record the acceptance.
-    pub async fn admit_mention(&self, mention: MentionAdmission<'_>) -> Result<Admitted> {
-        let MentionAdmission {
+    pub async fn admit_mention(&self, mention: MentionTurn<'_>) -> Result<Admitted> {
+        let MentionTurn {
             fleet,
             workspace,
             team_id,
@@ -59,14 +59,14 @@ impl Ingress {
         let key = format!("{team_id}:{event_id}");
         let actor = format!("{connector}:{team_id}:{user}");
         Ok(self
-            .admissions
-            .admit(Admission {
+            .turns
+            .admit(IncomingTurn {
                 producer: Producer::SlackMention,
                 key: Key::Repeated(&key),
                 fleet,
                 workspace,
                 actor: &actor,
-                event_type: EventType::Chat,
+                event_type: TurnKind::Chat,
                 request_json,
                 reply: Reply::To { connector, address },
             })

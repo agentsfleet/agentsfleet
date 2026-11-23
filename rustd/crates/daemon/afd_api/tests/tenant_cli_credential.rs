@@ -1,4 +1,4 @@
-//! Dimension 2.2 — who may manage a command-line credential, and who may not.
+//! Who may manage a command-line credential, and who may not.
 //!
 //! # Why this suite is about the REFUSALS and not the mint
 //!
@@ -97,7 +97,7 @@ async fn a_tenant_key_cannot_mint_a_command_line_credential() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_SESSION_REQUIRED,
+        afd_http::auth::DETAIL_SESSION_REQUIRED,
         "minting checks the mode first, so a non-session class earns the \
          freshness sentence whichever non-session class it is"
     );
@@ -129,7 +129,7 @@ async fn a_tenant_key_cannot_revoke_a_command_line_credential() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_PERSON_REQUIRED,
+        afd_http::auth::DETAIL_PERSON_REQUIRED,
         "the person rule, not the freshness one"
     );
 }
@@ -168,7 +168,7 @@ async fn a_command_line_credential_cannot_mint_another() {
     );
     assert_eq!(
         detail_of(response).await,
-        afd_api::auth::DETAIL_SESSION_REQUIRED,
+        afd_http::auth::DETAIL_SESSION_REQUIRED,
         "this must be the FRESHNESS refusal; the person refusal here would mean \
          the rule is gone and an afc_ credential fell through to the wider check"
     );
@@ -225,4 +225,26 @@ async fn a_malformed_mint_body_is_refused() {
         StatusCode::FORBIDDEN,
         "the class check precedes the body parse"
     );
+}
+
+/// A browser session gets past the class check, so its body is the first
+/// thing that can refuse: an unreadable one is a malformed request, answered
+/// before the machine name is read or any credential is minted.
+#[tokio::test]
+async fn a_fresh_session_sending_an_unreadable_mint_body_is_refused_as_malformed() {
+    const SESSION: &str = "session";
+    let router = Fleet::new().with_dashboard(SUBJECT).router();
+    for body in ["{not json", r#"{"machine_name":7}"#, ""] {
+        let response = harness::send(&router, Method::POST, CREDENTIALS, Some(SESSION), body).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(
+            detail_of(response).await,
+            afd_api_tenant::tenant::DETAIL_MALFORMED_BODY,
+            "{body}"
+        );
+    }
+    // The same session with a readable body reaches the store.
+    let response =
+        harness::send(&router, Method::POST, CREDENTIALS, Some(SESSION), GOOD_BODY).await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 }

@@ -1,9 +1,9 @@
 //! A shared daemon seam, with routing, retry and real transport behavior separate.
 #![expect(clippy::unwrap_used, reason = "test fixtures must fail loudly")]
 
+mod durable_task;
 mod retry;
 mod routing;
-mod task;
 mod transport;
 
 use super::{Call, HttpRunnerApi, RunnerApi, Verb};
@@ -34,7 +34,7 @@ async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
                 let header = |name| {
                     headers
                         .get(name)
-                        .map(|value: &axum::http::HeaderValue| value.to_str().unwrap().to_owned())
+                        .map(|value: &http::HeaderValue| value.to_str().unwrap().to_owned())
                 };
                 let path = uri.path().to_owned();
                 let status = path
@@ -90,7 +90,7 @@ fn test_reply_body_is_a_zeroing_buffer() {
         &body.bytes
     }
     let body = super::Body {
-        verb: super::Verb::Heartbeat,
+        verb: Verb::Heartbeat,
         bytes: zeroize::Zeroizing::new(b"{}".to_vec()),
     };
     assert_eq!(bytes_of(&body).as_slice(), b"{}");

@@ -10,7 +10,7 @@
 //!
 //! # Where the mint attaches
 //!
-//! Not here. [`Connector`] answers what the LEASE path asks — what is this
+//! Not here. [`Connector`] answers what the RUN path asks — what is this
 //! called, and does the runner receive its credential or come back for one. The
 //! exchange itself (a GitHub App JWT, an OAuth refresh round trip) belongs to
 //! the broker behind `POST /credentials/mint`, and it arrives as a second trait
@@ -24,7 +24,7 @@ use serde_json::Value;
 
 /// The vault-handle field carrying the connector's name.
 ///
-/// Shared with the broker, and the one field the lease path reads out of a
+/// Shared with the broker, and the one field the run path reads out of a
 /// stored handle. Everything else in that object is the credential itself.
 pub const FIELD_INTEGRATION: &str = "integration";
 /// Stored Slack grants are used directly and still require a bound bot identity.
@@ -47,7 +47,7 @@ pub enum Supply {
     OnDemand,
 }
 
-/// What the lease path needs to know about one connector.
+/// What the run path needs to know about one connector.
 ///
 /// Object-safe on purpose: a registry holds these as `dyn`, so a declared
 /// descriptor and a crate-backed implementation are interchangeable to every
@@ -165,7 +165,7 @@ impl Connector for Descriptor {
     // never declared alongside it. The two are the same fact asked twice —
     // anything with an exchange to perform is fetched on demand, and the one
     // thing without an exchange ships as it stands. Storing both would let a
-    // row say `Stored` and `OnDemand` at once, and the lease path and the
+    // row say `Stored` and `OnDemand` at once, and the run path and the
     // broker would then disagree about the same connector.
 }
 

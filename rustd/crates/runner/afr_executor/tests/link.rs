@@ -15,7 +15,7 @@ use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::support::{
-    INTERNAL_ERROR, KIB, MIB, PATH_REFUSED, PATIENCE, finish, is_lost, refused_with, scratch,
+    INTERNAL_ERROR, MIB, PATH_REFUSED, PATIENCE, finish, is_lost, refused_with, scratch,
 };
 
 /// The executor's side of the socket, driven line by line.
@@ -43,7 +43,9 @@ impl Fake {
 async fn connect() -> (tempfile::TempDir, Client, Fake) {
     let (scratch, socket, _root) = scratch();
     let listener = UnixListener::bind(&socket).unwrap();
-    let client = Client::connect_within(&socket, PATIENCE).await.unwrap();
+    let client = Client::connect_within(&socket, PATIENCE, afr_executor::Sizes::DEFAULT)
+        .await
+        .unwrap();
     let (stream, _peer): (UnixStream, _) = listener.accept().await.unwrap();
     let (read, writer) = stream.into_split();
     (
@@ -292,11 +294,9 @@ async fn oversized_chunks_warn_once_per_connection_then_whisper() {
     );
 }
 
-/// A refusal whose message runs to a mebibyte reaches the caller cut to the
-/// cap: the executor shares its sandbox with tenant code, and what it says
-/// about a failed call is read by a model.
+/// A refusal whose message runs to a mebibyte reaches the caller whole.
 #[tokio::test]
-async fn a_refusals_message_longer_than_the_cap_is_cut() {
+async fn a_refusals_message_reaches_the_caller_whole() {
     let (_scratch, client, mut fake) = connect().await;
     let reading = tokio::spawn(async move { client.read_file("x", 1).await });
     let id = fake.request().await["id"].clone();
@@ -309,14 +309,16 @@ async fn a_refusals_message_longer_than_the_cap_is_cut() {
     let refused = reading.await.unwrap().unwrap_err();
 
     assert!(refused_with(&refused, INTERNAL_ERROR), "{refused}");
-    assert_eq!(refused.wire_message().len(), 4 * KIB);
+    assert!(
+        refused.wire_message().contains(&flood),
+        "the message is cut"
+    );
 }
 
 /// A result that puts a mebibyte where a boolean belongs reaches the caller
-/// as a decode failure cut to the cap: the decoder echoes the value it
-/// refused, and that value is the sandbox's.
+/// as a decode failure.
 #[tokio::test]
-async fn a_result_that_does_not_decode_echoes_at_most_the_cap() {
+async fn a_result_that_does_not_decode_is_a_decode_failure() {
     let (_scratch, client, mut fake) = connect().await;
     let reading = tokio::spawn(async move { client.read_file("x", 1).await });
     let id = fake.request().await["id"].clone();
@@ -329,5 +331,4 @@ async fn a_result_that_does_not_decode_echoes_at_most_the_cap() {
     let refused = reading.await.unwrap().unwrap_err();
 
     assert!(refused.to_string().contains("did not decode"), "{refused}");
-    assert_eq!(refused.wire_message().len(), 4 * KIB);
 }

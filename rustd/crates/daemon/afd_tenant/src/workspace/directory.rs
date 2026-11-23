@@ -32,7 +32,7 @@ const CONTEXT_TENANT: &str = "check tenant exists";
 
 /// The index that arbitrates a per-tenant name.
 ///
-/// Must equal the name in `schema/20261108120300_identity_workspaces.sql`, because classification
+/// Must equal the name in `afd_db/schema/20261108120300_identity_workspaces.sql`, because classification
 /// is by exact constraint: a rename landing on one side turns a duplicate-name
 /// conflict into a 500.
 const NAME_CONSTRAINT: &str = "uq_workspaces_tenant_id_name";

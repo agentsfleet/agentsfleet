@@ -69,9 +69,6 @@ const SCHEDULE_ID: &str = "fleet-schedule-019329c5-0000-7000-8000-0000000000b1";
 /// The reason a fire naming no schedule at all is dropped.
 const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
 
-/// The body cap this surface enforces, from `webhook::MAX_BODY_SIZE`.
-const MAX_BODY_SIZE: usize = 1024 * 1024;
-
 /// The claims a fire token carries, as the scheduler mints them.
 #[derive(Serialize)]
 pub(crate) struct FireClaims {
@@ -160,10 +157,10 @@ pub(crate) async fn fire(
 }
 
 #[tokio::test]
-async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
-    // The cap is checked first on purpose: a deployment must not be made to run
-    // a signature verification over a megabyte a stranger chose.
-    let oversized = "x".repeat(MAX_BODY_SIZE + 1);
+async fn a_body_past_the_request_body_bound_is_refused_before_the_token_is_read() {
+    // The transport refuses first: a deployment must not be made to run a
+    // signature verification over more bytes than `[server]` allows.
+    let oversized = "x".repeat(afd_http::body::DEFAULT_MAX_REQUEST_BODY_BYTES + 1);
     let token = mint(&FireClaims::good(&oversized), CURRENT_KEY);
 
     let refused = fire(
@@ -173,10 +170,7 @@ async fn a_body_past_the_cap_is_refused_before_the_token_is_read() {
     )
     .await;
 
-    assert_eq!(
-        refusal_code(refused).await,
-        error_code::WEBHOOK_PAYLOAD_TOO_LARGE.as_str(),
-    );
+    assert_eq!(refused.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
 /// Every fire that does not prove itself earns one answer.

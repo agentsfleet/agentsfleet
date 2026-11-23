@@ -6,7 +6,6 @@
 //! each step in it constructs.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
@@ -19,20 +18,6 @@ use crate::error::BootFailure;
 use crate::plane::Shared;
 use crate::preflight::BootConfig;
 use crate::supervisor::Supervisor;
-
-/// How long boot spends establishing the pool's floor before it serves.
-///
-/// `floor × establishment`, with room for an establishment far slower than the
-/// 147-337 ms this lane measures — a cross-region TLS handshake against a
-/// loaded server is seconds, not milliseconds, and a deadline that fits only
-/// the fast case silently ships a cold pool. Fifteen seconds covers the floor
-/// a production ceiling implies at a handshake cost several times the lane's.
-///
-/// It is a deadline and not a requirement: [`Db::warm`] cannot fail, and a pool
-/// that did not fill is a slower pool rather than a broken one — the datastore
-/// was already proven reachable by `Db::connect`. Boot proceeds either way, and
-/// `pool_warm_incomplete` is what says it did.
-const POOL_WARM_DEADLINE: Duration = Duration::from_secs(15);
 
 pub(super) struct Runtime {
     pub(super) database: Db,
@@ -62,12 +47,12 @@ pub(super) async fn open_runtime(
 ) -> Result<Runtime, BootFailure> {
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
-    let clients = Clients::open()?.with_inference(config.runtime.operations.inference)?;
-    let authoring_transport = clients.authoring;
-    #[cfg(feature = "test-util")]
-    let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
+    let clients = Clients::open()?;
     let database = open_database(config).await?;
-    let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
+    let (capabilities, sessions, signup_writeback) = crate::identity::resolve(
+        config.identity(),
+        config.runtime.operations.tuning.identity(),
+    );
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
     let broker = open_broker(config, &database, &kek, clients.broker).await;
@@ -83,7 +68,6 @@ pub(super) async fn open_runtime(
         identity: (capabilities, sessions, signup_writeback),
         broker,
         live,
-        authoring_transport,
         storage_client: clients.storage,
         vendor_client: clients.plane,
         schedule_client: clients.schedule,
@@ -116,7 +100,7 @@ async fn open_database(config: &BootConfig) -> Result<Db, BootFailure> {
     // sqlx does not do this itself: it bootstraps `min_connections` only when
     // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
     // both. `warm` reports its shortfall through `pool_warm_incomplete`.
-    database.warm(POOL_WARM_DEADLINE).await;
+    database.warm().await;
     Ok(database)
 }
 
@@ -129,13 +113,10 @@ async fn open_broker(
     client: reqwest::Client,
 ) -> Arc<afd_credential::credential::Broker> {
     let broker = crate::credentials::resolve(
-        &afd_vault::Vault::new(
-            database.clone(),
-            Arc::clone(kek),
-            af_crypto::entropy::Entropy::new(),
-        ),
+        &afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
         config.platform_admin_workspace(),
         client,
+        config.runtime.operations.tuning.minting(),
     )
     .await;
     #[cfg(feature = "test-util")]
@@ -173,6 +154,7 @@ fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane
     crate::plane::ScheduleConfig {
         client,
         api_url: config.api_url().into(),
+        retries: config.runtime.operations.scheduler_retries,
     }
 }
 
@@ -197,8 +179,7 @@ pub(super) async fn spawn_background(
             );
         }
     });
-    // The connector answer-delivery worker, beside the sweepers `serve`
-    // spawned just before this, and for the same reason. It claims from
+    // The connector answer-delivery worker. It claims from
     // Postgres and is pinged over the bus — see `crate::outbound`. It opens its
     // own grant store over the SAME key the plane seals with, which is why the
     // KEK arrives shared rather than rebuilt here.
@@ -219,7 +200,173 @@ pub(super) async fn spawn_background(
 
 #[cfg(test)]
 mod tests {
-    use super::live_over;
+    use std::pin::Pin;
+    use std::sync::Arc;
+
+    use af_core::env::MapEnv;
+    use af_core::test_util::trace::Capture;
+    use afd_bus::{Bus, Handle, Subject, Subscription};
+
+    use super::{identity_webhook_secret, live_over, spawn_background};
+    use crate::preflight::runner_listener::{TLS_CERT_FILE, TLS_KEY_FILE};
+    use crate::supervisor::Supervisor;
+
+    /// The secret an identity provider signs signup deliveries with.
+    const WEBHOOK_SECRET: &str = "whsec_fixture-not-a-credential";
+
+    /// A configuration preflight resolves, carrying `extra` beside what it
+    /// requires before it will answer at all.
+    #[expect(
+        clippy::expect_used,
+        reason = "a fixture environment preflight refuses should stop the test"
+    )]
+    fn configured(extra: &[(&'static str, &'static str)]) -> crate::preflight::BootConfig {
+        let mut pairs = vec![
+            (
+                "DATABASE_URL_API",
+                "postgres://afd:afd@127.0.0.1:5432/agentsfleet",
+            ),
+            ("NATS_URL", "nats://127.0.0.1:4222"),
+            (
+                "ENCRYPTION_MASTER_KEY",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            ),
+            (
+                "AUTH_SESSION_CODE_PEPPER",
+                "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            ),
+            ("OIDC_ISSUER", "https://identity.fixture.test"),
+            ("OIDC_AUDIENCE", "agentsfleetd-lane"),
+            ("CLERK_API_BASE", "https://api.identity.fixture.test"),
+            (
+                "CLERK_SECRET_KEY",
+                "fixture-provider-secret-not-a-credential",
+            ),
+            (TLS_CERT_FILE, "/run/runner/chain.pem"),
+            (TLS_KEY_FILE, "/run/runner/leaf.pem"),
+        ];
+        pairs.extend(extra.iter().copied());
+        crate::preflight::preflight(&MapEnv::from_pairs(pairs))
+            .expect("the fixture environment resolves")
+    }
+
+    /// A configured secret reaches the signup wall byte for byte; none leaves
+    /// the wall refusing every delivery.
+    #[test]
+    fn the_signup_wall_verifies_against_the_configured_secret_only() {
+        let secret = identity_webhook_secret(&configured(&[(
+            crate::preflight::IDENTITY_WEBHOOK_SECRET_KNOB,
+            WEBHOOK_SECRET,
+        )]));
+
+        assert_eq!(
+            secret.as_ref().map(af_crypto::secret::SecretBytes::expose),
+            Some(WEBHOOK_SECRET.as_bytes())
+        );
+        assert!(identity_webhook_secret(&configured(&[])).is_none());
+    }
+
+    /// The futures `async_trait` hands back, spelled out so this test needs no
+    /// macro of its own.
+    type Answer<'a, T> = Pin<Box<dyn Future<Output = afd_bus::Result<T>> + Send + 'a>>;
+
+    /// A broker that will not drain when the daemon stops; every other call
+    /// fails as a disconnected one does.
+    #[derive(Debug)]
+    struct Undrainable(Handle);
+
+    impl Bus for Undrainable {
+        fn publish<'life0, 'life1, 'life2, 'async_trait>(
+            &'life0 self,
+            subject: &'life1 Subject,
+            payload: &'life2 str,
+        ) -> Answer<'async_trait, ()>
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            'life2: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(self.0.publish(subject, payload))
+        }
+
+        fn subscribe<'life0, 'life1, 'async_trait>(
+            &'life0 self,
+            subject: &'life1 Subject,
+        ) -> Answer<'async_trait, Subscription>
+        where
+            'life0: 'async_trait,
+            'life1: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(self.0.subscribe(subject))
+        }
+
+        fn subscribe_thread_wakes<'life0, 'async_trait>(
+            &'life0 self,
+        ) -> Answer<'async_trait, Subscription>
+        where
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(self.0.subscribe_thread_wakes())
+        }
+
+        fn shutdown<'life0, 'async_trait>(&'life0 self) -> Answer<'async_trait, ()>
+        where
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            // Text is no number, so this is always the refusal.
+            let refused = serde_json::from_str::<u8>("not a frame")
+                .map(drop)
+                .map_err(afd_bus::Error::from);
+            Box::pin(std::future::ready(refused))
+        }
+
+        fn connected<'life0, 'async_trait>(
+            &'life0 self,
+        ) -> Pin<Box<dyn Future<Output = bool> + Send + 'async_trait>>
+        where
+            'life0: 'async_trait,
+            Self: 'async_trait,
+        {
+            Box::pin(std::future::ready(false))
+        }
+    }
+
+    /// A bus that fails to drain at shutdown does not stop the daemon from
+    /// stopping; it leaves one line naming the failure.
+    #[tokio::test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the outbound client is built only to be handed over; it never sends"
+    )]
+    async fn a_bus_that_will_not_drain_at_shutdown_leaves_a_line() {
+        let config = configured(&[]);
+        let mut supervisor = Supervisor::new();
+        let capture = Capture::install();
+
+        spawn_background(
+            &mut supervisor,
+            &config,
+            &afd_db::test_util::unreachable_db(),
+            &Arc::new(af_crypto::secret::Kek::from_bytes([0x2a; 32])),
+            Handle::new(Undrainable(afd_bus::test_util::unreachable())),
+            reqwest::Client::new(),
+        )
+        .await;
+        let _report = supervisor.shutdown().await;
+
+        let logged = capture.only("notification_bus_shutdown_failed");
+        assert!(
+            logged
+                .field("error_code")
+                .is_some_and(|code| !code.is_empty()),
+            "the line names its code"
+        );
+        logged.assert_uncoded_reason();
+    }
 
     #[tokio::test]
     async fn the_live_surface_rides_the_booted_bus_at_its_capacity() -> afd_bus::Result<()> {

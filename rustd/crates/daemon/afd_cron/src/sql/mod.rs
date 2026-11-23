@@ -13,19 +13,19 @@
 //!
 //! # Why the claim and the finalize are separate statements
 //!
-//! `schema/20261108122800_fleet_schedules.sql` gives this table a `resource_version`, a
-//! `sync_token` and a `sync_lease_expires_at` so one syncer at a time can push
+//! `afd_db/schema/20261108122800_fleet_schedules.sql` gives this table a `resource_version`, a
+//! `sync_token` and a `sync_run_expires_at` so one syncer at a time can push
 //! a schedule. The claim takes the fence and bumps the version; the finalize
 //! releases it and is conditioned on BOTH the version and the token it was
-//! given. A syncer whose lease expired and whose row was taken by another
+//! given. A syncer whose run expired and whose row was taken by another
 //! finalizes nothing — its `WHERE` matches no row — rather than overwriting
 //! the newer state.
 //!
 //! # Whose clock
 //!
 //! Postgres stamps every row: `created_at` and `updated_at` are `now()`. A
-//! lease is set and judged on `clock_timestamp()`, the instant the statement
-//! actually runs, because a claim may have waited on the row lock and a lease
+//! run is set and judged on `clock_timestamp()`, the instant the statement
+//! actually runs, because a claim may have waited on the row lock and a run
 //! that ran out during that wait has run out.
 
 /// Whether this fleet belongs to the workspace the caller was proven in.
@@ -38,19 +38,29 @@
 /// `Schedules::holds_fleet` before the schedule is read or claimed.
 pub const FLEET_IN_WORKSPACE: &str = include_str!("fleet_in_workspace.sql");
 
-/// Takes the fleet's row for the length of a create.
+/// Takes the fleet's turn among its schedule writers for the length of a
+/// create.
 ///
-/// `FOR UPDATE` on the FLEET rather than on the schedules, because what is
-/// being protected is a count over rows that do not exist yet: two concurrent
-/// creates both counting 31 would both insert and leave 33. Locking the parent
-/// is how a count-then-insert becomes atomic.
+/// What is protected is a count over rows that do not exist yet: two
+/// concurrent creates both counting 31 would both insert and leave 33. A
+/// transaction-scoped advisory lock keyed by the fleet makes the
+/// count-then-insert atomic with no writer's lock on the fleet row, so the
+/// fleet's intake, reports and items never wait on a create. The row is held
+/// `FOR KEY SHARE` first, which conflicts only with a writer holding it
+/// exclusively.
+///
+/// The cap is a count rather than a constraint because the setup's recipe
+/// replacement writes into the same cap, many rows at once and in place, and
+/// must serialize with an edit of one of its schedules anyway; see
+/// `docs/architecture/concurrency.md`.
 pub const LOCK_FLEET: &str = include_str!("lock_fleet.sql");
 
-/// Takes the fleet's row, scoped to the caller's workspace, for an edit or a
+/// [`LOCK_FLEET`]'s turn, scoped to the caller's workspace, for an edit or a
 /// setup's recipe replacement.
 ///
-/// The same parent lock both take, so a recipe replacement and an edit of one
-/// of its schedules serialize; no row means a fleet outside the workspace.
+/// The same turn a create takes, so a recipe replacement, an edit of one of
+/// its schedules and a create serialize; no row means a fleet outside the
+/// workspace, and takes no turn.
 pub const LOCK_FLEET_IN_WORKSPACE: &str = include_str!("lock_fleet_in_workspace.sql");
 
 /// How many schedules this fleet already holds.
@@ -99,7 +109,7 @@ pub const INSERT: &str = include_str!("insert.sql");
 /// Each `COALESCE` is a field the caller may leave alone, which is what makes a
 /// partial edit one round trip rather than a read followed by a write that
 /// could race the read. The trailing predicate is the fence: an unheld row, or
-/// one whose lease has run out, may be claimed; one another syncer holds may
+/// one whose run has run out, may be claimed; one another syncer holds may
 /// not, and the statement matches nothing rather than stealing it.
 pub const CLAIM_MUTATION: &str = include_str!("claim_mutation.sql");
 

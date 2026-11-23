@@ -57,7 +57,7 @@ impl Routed {
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(self.fixture.workspace.clone())
-        .with_native_authoring(self.fixture.database.clone())
+        .with_native_setup(self.fixture.database.clone())
     }
 
     async fn cleanup(self) {
@@ -77,35 +77,53 @@ impl Routed {
     }
 }
 
+/// The runner protocol is v4 alone. A runner speaking v2, the
+/// revision that kept the daemon-side setup run, v3, which no runner shipped,
+/// or a version no daemon knows is refused at hello with `UZ-RUN-023`: it
+/// owns no connection, so it is assigned no run.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn an_unknown_protocol_version_is_refused() {
+async fn a_runner_on_another_protocol_version_is_refused() {
     let enrolled = Routed::create().await;
     let router = enrolled.services().router();
-    let response = Session::opening(&router, &enrolled.token, "agentsfleet.runner.v9").await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let document = harness::json_body(response).await;
-    assert_eq!(
-        document.get("error_code"),
-        Some(&json!(error_code::RUN_PROTOCOL_UNSUPPORTED.as_str()))
-    );
+    for version in [
+        "agentsfleet.runner.v2",
+        "agentsfleet.runner.v3",
+        "agentsfleet.runner.v9",
+    ] {
+        let response = Session::opening(&router, &enrolled.token, version).await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{version}");
+        let document = harness::json_body(response).await;
+        assert_eq!(
+            document.get("error_code"),
+            Some(&json!(error_code::RUN_PROTOCOL_UNSUPPORTED.as_str())),
+            "{version}"
+        );
+    }
+    assert_eq!(error_code::RUN_PROTOCOL_UNSUPPORTED.as_str(), "UZ-RUN-023");
+    let mut connection = enrolled
+        .fixture
+        .database
+        .acquire()
+        .await
+        .expect("owner observer");
     let owner: Option<Uuid7> =
         sqlx::query_scalar("SELECT connection_id FROM runner.runners WHERE id=$1")
             .bind(&enrolled.runner)
-            .fetch_one(
-                &mut *enrolled
-                    .fixture
-                    .database
-                    .acquire()
-                    .await
-                    .expect("owner observer"),
-            )
+            .fetch_one(&mut *connection)
             .await
             .expect("the refused opening leaves the enrolled record readable");
     assert!(
         owner.is_none(),
-        "unsupported protocol cannot acquire ownership"
+        "an unsupported protocol cannot acquire ownership"
     );
+    let assigned: i64 = sqlx::query_scalar("SELECT count(*) FROM thread.runs WHERE runner_id=$1")
+        .bind(&enrolled.runner)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the runner's runs read");
+    assert_eq!(assigned, 0, "a refused runner is assigned no run");
+    drop(connection);
     drop(router);
     enrolled.cleanup().await;
 }

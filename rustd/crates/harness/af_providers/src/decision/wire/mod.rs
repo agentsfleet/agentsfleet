@@ -18,9 +18,9 @@ pub(super) fn encode(
     request: &Valid<DecisionRequest>,
 ) -> Result<Vec<u8>> {
     let document = match profile.api {
-        DecisionApi::Openai => openai::encode(profile, request)?,
+        DecisionApi::Openai => openai::encode(profile, request),
         DecisionApi::Typesafe | DecisionApi::Perplexity | DecisionApi::Cloudflare => {
-            native::encode(profile, request)?
+            native::encode(profile, request)
         }
     };
     let body = serde_json::to_vec(&document)?;
@@ -31,16 +31,6 @@ pub(super) fn encode(
         .into());
     }
     Ok(body)
-}
-
-fn bounded_question(question: Value) -> Result<Value> {
-    if !af_wire::decision::serialized_within(&question, af_wire::decision::QUESTION_MAX_BYTES) {
-        return Err(ErrorKind::DecisionPreflight {
-            reason: "an encoded decision question exceeds its byte bound",
-        }
-        .into());
-    }
-    Ok(question)
 }
 
 pub(super) fn decode(

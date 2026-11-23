@@ -7,13 +7,13 @@
 //! holding the page.
 
 /// The detail for a database that cannot be reached.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
+pub(crate) use af_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
 /// The detail for a database that answered with an error.
-pub use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
 /// The detail for an operation that failed for any other reason.
-pub use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
+pub(crate) use af_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 /// A person may retry after the current schedule sync releases its fence.
 pub const SYNC_HELD: &str = "This schedule is being synchronised. Try again in a moment.";
 
@@ -52,7 +52,7 @@ pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so i
 pub const FIRE_UNVERIFIED: &str = "The schedule callback could not be verified.";
 
 /// Why a deployment's API URL could not become its schedule callback: it is
-/// not a URL, or is past the cap once the ingress path is on it.
+/// it is not an `http` or `https` URL with a host.
 pub const DESTINATION_UNUSABLE: &str = "The configured API URL cannot carry a schedule callback.";
 
 /// Why a deployment's API URL could not become its schedule callback: it

@@ -1,10 +1,10 @@
-//! The runner memory routes: the fleet id in the path, hydration, the recall
+//! The runner memory routes: the fleet id in the path, the load, the recall
 //! bound and capture, each refused or rendered by the handler that owns it.
 
 use afd_auth::directory::Liveness;
 use http::{Method, StatusCode};
 
-use super::{FLEET_ID, LEASE_ID, RUNNER_TOKEN, code_of};
+use super::{FLEET_ID, RUN_ID, RUNNER_TOKEN, code_of};
 use crate::harness::{Fleet, json_body, runner_id, send};
 
 #[tokio::test]
@@ -16,11 +16,11 @@ async fn runner_memory_routes_validate_and_render() {
     a_fleet_id_that_is_not_a_uuid_is_refused(&router).await;
 
     let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
-    let hydrated = send(&router, Method::GET, &memory_path, Some(RUNNER_TOKEN), "").await;
-    assert_eq!(hydrated.status(), StatusCode::OK);
-    // A fleet without grants hydrates in the shape every runner parses:
+    let loaded = send(&router, Method::GET, &memory_path, Some(RUNNER_TOKEN), "").await;
+    assert_eq!(loaded.status(), StatusCode::OK);
+    // A fleet without grants loads in the shape every runner parses:
     // `shared` and `publish` stay off the wire.
-    assert_eq!(json_body(hydrated).await, serde_json::json!({"memory": []}));
+    assert_eq!(json_body(loaded).await, serde_json::json!({"memory": []}));
 
     recall_is_bounded_and_renders_both_shelves(&router, &memory_path).await;
     capture_validates_and_counts(&router, &memory_path).await;
@@ -57,7 +57,7 @@ async fn a_fleet_id_that_is_not_a_uuid_is_refused(router: &axum::Router) {
 async fn recall_is_bounded_and_renders_both_shelves(router: &axum::Router, memory_path: &str) {
     let recall_path = format!("{memory_path}/recall");
     // A body that is not the recall's shape is refused before any store.
-    for body in ["not json", r#"{"query":"x","limit":5,"lease_id":1}"#] {
+    for body in ["not json", r#"{"query":"x","limit":5,"run_id":1}"#] {
         let unreadable = send(router, Method::POST, &recall_path, Some(RUNNER_TOKEN), body).await;
         assert_eq!(unreadable.status(), StatusCode::BAD_REQUEST, "{body}");
         assert_eq!(code_of(unreadable).await, "UZ-REQ-001", "{body}");
@@ -67,7 +67,7 @@ async fn recall_is_bounded_and_renders_both_shelves(router: &axum::Router, memor
         Method::POST,
         &recall_path,
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":1,"query":"x","limit":0}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","fencing_token":1,"query":"x","limit":0}}"#),
     )
     .await;
     assert_eq!(
@@ -80,7 +80,7 @@ async fn recall_is_bounded_and_renders_both_shelves(router: &axum::Router, memor
         Method::POST,
         &recall_path,
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":1,"query":"x","limit":5}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","fencing_token":1,"query":"x","limit":5}}"#),
     )
     .await;
     assert_eq!(recalled.status(), StatusCode::OK);
@@ -90,7 +90,7 @@ async fn recall_is_bounded_and_renders_both_shelves(router: &axum::Router, memor
     );
 }
 
-/// A capture body missing its lease is refused; a fenced one reports what it
+/// A capture body missing its run is refused; a fenced one reports what it
 /// stored and skipped.
 async fn capture_validates_and_counts(router: &axum::Router, memory_path: &str) {
     let malformed = send(router, Method::POST, memory_path, Some(RUNNER_TOKEN), "{}").await;
@@ -102,7 +102,7 @@ async fn capture_validates_and_counts(router: &axum::Router, memory_path: &str) 
         Method::POST,
         memory_path,
         Some(RUNNER_TOKEN),
-        &format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":7,"memory":[]}}"#),
+        &format!(r#"{{"run_id":"{RUN_ID}","fencing_token":7,"memory":[]}}"#),
     )
     .await;
     assert_eq!(captured.status(), StatusCode::OK);

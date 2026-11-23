@@ -72,9 +72,9 @@ pub(crate) enum ErrorKind {
     /// left here is the database refusing the row, which IS a delivery this
     /// daemon did not accept — and a sender told so will send it again.
     #[error("the delivery could not be admitted")]
-    Admission {
+    TurnWrite {
         #[source]
-        source: afd_admission::Error,
+        source: afd_turns::Error,
     },
 
     #[error("the stored fleet document no longer parses")]
@@ -111,9 +111,9 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
-    /// A notice's obligation could not be recorded.
+    /// A notice's delivery could not be recorded.
     #[error("the notice could not be owed")]
-    Obligation {
+    Delivery {
         #[source]
         source: afd_outbound::error::Error,
     },
@@ -136,10 +136,10 @@ impl Error {
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent. It carries the
             // 503-versus-500 distinction the dashboard's retry turns on.
-            ErrorKind::Admission { source } => (source.code(), source.detail()),
+            ErrorKind::TurnWrite { source } => (source.code(), source.detail()),
             // The ledger decided which of its failures is an outage; the
             // sentence follows the code it chose.
-            ErrorKind::Obligation { source } if source.is_datastore_unavailable() => (
+            ErrorKind::Delivery { source } if source.is_datastore_unavailable() => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
@@ -154,7 +154,7 @@ impl Error {
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. }
-            | ErrorKind::Obligation { .. } => (
+            | ErrorKind::Delivery { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
@@ -183,8 +183,8 @@ impl Error {
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
             ErrorKind::Datastore { .. } => true,
-            ErrorKind::Admission { source } => source.is_datastore_unavailable(),
-            ErrorKind::Obligation { source } => source.is_datastore_unavailable(),
+            ErrorKind::TurnWrite { source } => source.is_datastore_unavailable(),
+            ErrorKind::Delivery { source } => source.is_datastore_unavailable(),
             _reachable => false,
         }
     }

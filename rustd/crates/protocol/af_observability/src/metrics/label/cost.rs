@@ -26,7 +26,7 @@ closed_set! {
     /// Which class of debit a charge was.
     ///
     /// One class since every charge became a settlement of usage lines
-    /// through the biller (billing §11): a renewal's slice and a report's final
+    /// through the biller: a renewal's slice and a report's final
     /// slice settle the same way, and the biller that records the spend cannot
     /// tell them apart. Kept as a set so a second class has one place to land.
     ChargeClass {

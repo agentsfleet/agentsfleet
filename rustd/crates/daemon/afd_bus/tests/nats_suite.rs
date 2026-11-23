@@ -20,7 +20,7 @@ use support::{
 const LIVE: &str = "needs live NATS: make test-integration-rustd";
 
 fn fleet(n: u8) -> Fallible<Subject> {
-    Ok(Subject::FleetTail(Uuid7::parse(&format!(
+    Ok(Subject::ThreadItems(Uuid7::parse(&format!(
         "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb0{n:02}"
     ))?))
 }
@@ -209,7 +209,8 @@ async fn failed_publish_sends_a_gap_marker_on_reconnect() -> TestResult {
     settle(&publisher, &subject, &mut [&mut subscription]).await?;
     publisher.publish(&subject, "before").await?;
     proxy.cut().await;
-    let _ = publisher.publish(&subject, "lost").await;
+    // Whether the cut publish errors is timing; the gap marker is what is asserted.
+    drop(publisher.publish(&subject, "lost").await);
     tokio::time::sleep(Duration::from_millis(500)).await;
     proxy.restore();
     let before = until(&publisher, &subject, &mut subscription, "after").await?;
@@ -276,7 +277,7 @@ async fn a_payload_that_is_not_utf8_never_reaches_a_reader() -> TestResult {
     )
     .connect(port_and_host(node)?)
     .await?;
-    let physical = format!("dev.{ns}.af.fleet.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001.tail");
+    let physical = format!("dev.{ns}.af.thread.0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001.items");
     raw.publish(physical.clone(), bytes::Bytes::from_static(b"\xff\xfe"))
         .await?;
     raw.publish(physical, bytes::Bytes::from_static(b"valid"))
@@ -286,6 +287,45 @@ async fn a_payload_that_is_not_utf8_never_reaches_a_reader() -> TestResult {
         return Err("only the valid payload arrives".into());
     };
     assert_eq!(message.payload.as_str(), "valid");
+    subscriber.shutdown().await?;
+    Ok(())
+}
+
+/// A wake on a subject that names no thread is dropped by the wildcard
+/// reader, which keeps reading: the next wake still arrives, named.
+#[tokio::test]
+#[ignore = "needs live NATS: make test-integration-rustd"]
+async fn a_wake_that_names_no_thread_never_reaches_a_reader() -> TestResult {
+    let seeds = seeds()?;
+    let ns = namespace();
+    let node = seeds.first().ok_or("node 1")?;
+    let subscriber = bus(node, &ns, Tuning::default()).await?;
+    let thread = Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb001")?;
+    let wake = Subject::ThreadWake(thread.clone());
+    let mut wakes = subscriber.subscribe_thread_wakes().await?;
+    settle(&subscriber, &wake, &mut [&mut wakes]).await?;
+    let raw = async_nats::ConnectOptions::with_user_and_password(
+        "agentsfleet".to_owned(),
+        "agentsfleet".to_owned(),
+    )
+    .connect(port_and_host(node)?)
+    .await?;
+    raw.publish(
+        format!("dev.{ns}.af.thread.not-a-thread.wake"),
+        bytes::Bytes::from_static(b"stray"),
+    )
+    .await?;
+    raw.publish(
+        format!("dev.{ns}.af.thread.{thread}.wake"),
+        bytes::Bytes::from_static(b"named"),
+    )
+    .await?;
+    raw.flush().await?;
+    let Received::Message(message) = next(&mut wakes).await? else {
+        return Err("only the named wake arrives".into());
+    };
+    assert_eq!(message.payload.as_str(), "named");
+    assert_eq!(message.subject, wake);
     subscriber.shutdown().await?;
     Ok(())
 }

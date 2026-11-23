@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{DecisionApi, DecisionCapabilities};
 
-/// Probability and native confidence requirements, in integer basis points.
+/// Probability and native confidence requirements, in integer basis points:
+/// 10,000 is one, so no requirement exceeds it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +29,7 @@ pub struct DecisionThreshold {
 pub struct IntentDecisionPolicy {
     /// Exact native question revision implemented by this runner generation.
     #[cfg_attr(feature = "openapi", schema(pattern = "^dt-routing-v1$"))]
-    #[garde(pattern(r"^dt-routing-v1$"))]
+    #[garde(custom(af_validate::exactly("dt-routing-v1")))]
     pub questions_revision: String,
     /// Winning route acceptance.
     #[garde(dive)]
@@ -53,7 +54,7 @@ pub struct IntentDecisionPolicy {
 pub struct GoalDecisionPolicy {
     /// Exact native question revision implemented by this runner generation.
     #[cfg_attr(feature = "openapi", schema(pattern = "^dt-goal-v1$"))]
-    #[garde(pattern(r"^dt-goal-v1$"))]
+    #[garde(custom(af_validate::exactly("dt-goal-v1")))]
     pub questions_revision: String,
     /// Every required completion statement must meet this Noul threshold.
     #[cfg_attr(feature = "openapi", schema(maximum = 10000))]
@@ -76,35 +77,47 @@ pub struct GoalDecisionPolicy {
 #[serde(deny_unknown_fields)]
 pub struct DecisionModelSettings {
     /// Immutable reviewed definition revision; changing settings needs a new one.
+    // utoipa reads only a literal: 2676 is `REVISION_MAX_BYTES`, each
+    // 1_048_576 below is `TEXT_MAX_CHARS`, and `tests/durable_task_validation.rs`
+    // pins both against the published schema.
     #[cfg_attr(
         feature = "openapi",
-        schema(min_length = 1, max_length = 128, pattern = "^[A-Za-z0-9_.:-]+$")
+        schema(min_length = 1, max_length = 2676, pattern = "^[A-Za-z0-9_.:-]+$")
     )]
-    #[garde(length(bytes, min = 1, max = 128), pattern(r"^[A-Za-z0-9_.:-]+$"))]
+    #[garde(
+        length(bytes, min = 1, max = super::REVISION_MAX_BYTES),
+        pattern(r"^[A-Za-z0-9_.:-]+$")
+    )]
     pub revision: String,
     /// Native decision API; never inferred from a provider or model name.
     #[garde(skip)]
     pub api: DecisionApi,
     /// Exact reviewed HTTPS endpoint, including its API path.
-    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 2048))]
-    #[garde(length(bytes, min = 1, max = 2048), custom(af_validate::nul_free))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 1_048_576))]
+    #[garde(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::nul_free)
+    )]
     pub endpoint: String,
     /// Provider-reported names supported by this revision's evaluation evidence.
     #[cfg_attr(
         feature = "openapi",
-        schema(min_items = 1, max_items = 8, min_length = 1, max_length = 128)
+        schema(min_items = 1, min_length = 1, max_length = 1_048_576)
     )]
     #[garde(
-        length(min = 1, max = 8),
-        inner(length(bytes, min = 1, max = 128), custom(af_validate::nul_free))
+        length(min = 1),
+        inner(
+            length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+            custom(af_validate::nul_free)
+        )
     )]
     pub accepted_models: Vec<String>,
     /// Question types verified against the provider API for this definition.
     #[garde(skip)]
     pub capabilities: DecisionCapabilities,
     /// Complete encoded-request ceiling established for the provider.
-    #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 24576))]
-    #[garde(range(min = 1, max = 24576))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1))]
+    #[garde(range(min = 1))]
     pub input_max_bytes: u32,
     /// Intent question and threshold policy.
     #[garde(dive)]
@@ -117,8 +130,11 @@ pub struct DecisionModelSettings {
     #[garde(pattern(r"^[0-9a-f]{64}$"))]
     pub evaluation_digest: String,
     /// Evidence location reviewed before activation; it carries no credentials.
-    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 2048))]
-    #[garde(length(bytes, min = 1, max = 2048), custom(af_validate::nul_free))]
+    #[cfg_attr(feature = "openapi", schema(min_length = 1, max_length = 1_048_576))]
+    #[garde(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::nul_free)
+    )]
     pub evaluation_source_url: String,
     /// Recorded evaluation instant; actual activation proof remains an operator duty.
     #[serde(with = "crate::instant")]

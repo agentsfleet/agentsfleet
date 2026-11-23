@@ -152,9 +152,9 @@ async fn an_archived_gate_owes_its_run_nothing() {
     };
 
     assert_eq!(standing.status, status::ARCHIVED);
-    assert!(standing.event_id.is_some(), "the gate held a run");
+    assert!(standing.turn_id.is_some(), "the gate held a run");
     assert_eq!(
-        standing.continuation_event_id, None,
+        standing.continuation_turn_id, None,
         "an archived fleet's run is owed no continuation"
     );
     assert_eq!(lane.status_of(&action).await, status::ARCHIVED);

@@ -4,7 +4,7 @@
  * that runs them.
  *
  * Two sources answer "not yet" without saying anything about the request. The
- * daemon's admission shedding answers 429 and 503 with `Retry-After`, and
+ * daemon's load shedding answers 429 and 503 with `Retry-After`, and
  * `UZ-AUTH-004` rides 503 when the credential directory could not be asked.
  * The Cloudflare edge answers 502 with an HTML page for a daemon still
  * starting after a deploy, which is what turned the Nov 03, 2026 deploy lane
@@ -38,8 +38,7 @@ export const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([
  * The subset a call that is not idempotent may repeat: the daemon shed it
  * (429) or refused it before reading it (425, 503 at acquire). A 502 joins
  * them only when the edge answered it (see `edgeAnswered`); a 502 the daemon
- * answered, a 500, a 504 or a timeout may follow a write that landed, which
- * is the policy `cli/src/lib/http-retry.ts` holds for every POST.
+ * answered, a 500, a 504 or a timeout may follow a write that landed.
  */
 export const UNPROCESSED_STATUSES: ReadonlySet<number> = new Set([
   HTTP_TOO_EARLY,

@@ -26,16 +26,13 @@ const EVENT_PULL_REQUEST: &str = "pull_request";
 pub(super) const RECEIVED_AT: jiff::Timestamp = jiff::Timestamp::constant(1_787_745_600, 0);
 
 /// A failed run — the delivery that wakes a fleet.
-pub(super) const RUN_FAILURE: &str =
-    include_str!("../../../../../../../../tests/fixtures/webhooks/github_run_failure.json");
+pub(super) const RUN_FAILURE: &str = crate::test_util::GITHUB_RUN_FAILURE;
 
 /// A `ping` — the delivery GitHub sends when a hook is first created.
-const PING_DELIVERY: &str =
-    include_str!("../../../../../../../../tests/fixtures/webhooks/github_ping.json");
+const PING_DELIVERY: &str = crate::test_util::GITHUB_PING;
 
 /// The same run, green.
-const RUN_SUCCESS: &str =
-    include_str!("../../../../../../../../tests/fixtures/webhooks/github_run_success.json");
+const RUN_SUCCESS: &str = crate::test_util::GITHUB_RUN_SUCCESS;
 
 fn accepted(ingest: Ingest) -> String {
     match ingest {
@@ -253,8 +250,7 @@ fn an_opened_pull_request_carries_the_twelve_field_digest() {
 /// declares: the digest is only reachable if a REAL delivery deserializes, so
 /// an abridged fixture would prove the reader works on input GitHub never
 /// sends.
-const PULL_REQUEST_DELIVERY: &str =
-    include_str!("../../../../../../../../tests/fixtures/webhooks/github_pull_request.json");
+const PULL_REQUEST_DELIVERY: &str = crate::test_util::GITHUB_PULL_REQUEST;
 
 /// That delivery at `action`.
 fn pull_request_body(action: &str) -> String {

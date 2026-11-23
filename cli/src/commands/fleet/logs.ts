@@ -1,4 +1,4 @@
-// `agentsfleet fleet logs` — paginated event print for a specific fleet.
+// `agentsfleet fleet logs` — paginated turn print for a specific fleet.
 // Accepts `<fleet_id>` positional or `--fleet <id>` flag; `--limit`
 // (default 20) and `--cursor` for pagination.
 
@@ -10,7 +10,7 @@ import { OUTPUT_FORMAT, Output } from "../../services/output.ts";
 import { Workspaces } from "../../services/workspaces.ts";
 import { requireWorkspaceId, resolveAuthToken } from "../workspace/guards.ts";
 import { isString } from "../../lib/guards.ts";
-import { wsFleetEventsPath } from "../../lib/api-paths.ts";
+import { wsFleetTurnsPath } from "../../lib/api-paths.ts";
 import { validateRequiredId } from "../../lib/id.ts";
 import { ui, EMPTY_CELL, instantCell } from "../../output/index.ts";
 import {
@@ -18,7 +18,7 @@ import {
   type CliError,
 } from "../../errors/index.ts";
 
-const LOGS_LISTED = "Fleet event log" as const;
+const LOGS_LISTED = "Fleet turn log" as const;
 const DEFAULT_LOGS_LIMIT = "20";
 // The detail says what is wrong; the suggestion says what to run. Before
 // M171 both carried the same sentence, so the rendered failure repeated
@@ -28,7 +28,7 @@ const USAGE =
   "usage: agentsfleet fleet logs --fleet <id> [--limit <n>] [--cursor <token>]";
 
 
-interface EventRow {
+interface TurnRow {
   readonly created_at?: string | null;
   readonly response_text?: string | null;
   readonly status?: string | null;
@@ -36,7 +36,7 @@ interface EventRow {
 }
 
 interface LogsResponse {
-  readonly items?: ReadonlyArray<EventRow>;
+  readonly items?: ReadonlyArray<TurnRow>;
   readonly next_cursor?: string | null;
 }
 
@@ -87,7 +87,7 @@ export const logsEffectFromFlags = (
     if (isString(flags.cursor) && flags.cursor.length > 0) {
       qs.set("cursor", flags.cursor);
     }
-    const path = `${wsFleetEventsPath(wsId, fleetId)}?${qs.toString()}`;
+    const path = `${wsFleetTurnsPath(wsId, fleetId)}?${qs.toString()}`;
 
     const token = yield* resolveAuthToken;
     const res = yield* http.request<LogsResponse>({ path, token });
@@ -97,20 +97,20 @@ export const logsEffectFromFlags = (
       return;
     }
 
-    const events = res.items ?? [];
-    if (events.length === 0) {
-      yield* output.info("No events yet.");
+    const turns = res.items ?? [];
+    if (turns.length === 0) {
+      yield* output.info("No turns yet.");
       return;
     }
 
-    yield* output.printSection("Event Stream");
-    for (const evt of events) {
-      const ts = instantCell(evt.created_at);
-      const summary = evt.response_text
-        ? evt.response_text.slice(0, 80)
-        : (evt.status ?? "");
+    yield* output.printSection("Turn Stream");
+    for (const turn of turns) {
+      const ts = instantCell(turn.created_at);
+      const summary = turn.response_text
+        ? turn.response_text.slice(0, 80)
+        : (turn.status ?? "");
       yield* output.info(
-        `  ${ui.dim(ts)}  ${evt.actor ?? EMPTY_CELL}  ${summary}`,
+        `  ${ui.dim(ts)}  ${turn.actor ?? EMPTY_CELL}  ${summary}`,
       );
     }
 

@@ -71,7 +71,7 @@ impl JwkKeySet {
 
     /// Whether this set can verify anything at all.
     ///
-    /// The check §7 runs at boot. A set with keys the daemon cannot use is a
+    /// The check the daemon runs at boot. A set with keys the daemon cannot use is a
     /// configuration failure that must refuse startup, not a per-request 401
     /// that looks like every user's token going bad at once.
     #[must_use]

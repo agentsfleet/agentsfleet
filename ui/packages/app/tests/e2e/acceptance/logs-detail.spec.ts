@@ -1,4 +1,4 @@
-/** Fleet detail acceptance: an operator can create and inspect an event. */
+/** Fleet detail acceptance: an operator can create and inspect a turn. */
 import { expect, test } from "@playwright/test";
 import { clientFor } from "./fixtures/api-client";
 import { signInAs } from "./fixtures/auth";
@@ -9,19 +9,19 @@ import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const RENDER_TIMEOUT_MS = 15_000;
 
-// The list is payload-free by design (bodies moved to the single-event
-// route), so settlement is detected by an event row existing and the message
+// The list is payload-free by design (bodies moved to the single-turn
+// route), so settlement is detected by a turn row existing and the message
 // text is proven against the detail read the operator's dialog uses.
-interface EventPage {
-  items: Array<{ event_id: string }>;
+interface TurnPage {
+  items: Array<{ turn_id: string }>;
 }
 
-interface EventDetail {
+interface TurnDetail {
   request_json: string | null;
 }
 
 test.describe("fleet detail logs", () => {
-  test("an operator can open actionable details for a fleet event", async ({ page }) => {
+  test("an operator can open actionable details for a fleet turn", async ({ page }) => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name: `logs-${tag}` });
@@ -44,35 +44,35 @@ test.describe("fleet detail logs", () => {
     const accepted = await persisted;
     expect(accepted.status()).toBe(202);
     const receipt = await accepted.json();
-    expect(receipt).toMatchObject({status: "accepted", replayed: false, event_id: expect.any(String)});
-    const settledEventId = receipt.event_id as string;
+    expect(receipt).toMatchObject({status: "accepted", replayed: false, turn_id: expect.any(String)});
+    const settledTurnId = receipt.turn_id as string;
     const api = clientFor(FIXTURE_KEY.regular);
     await expect
       .poll(
         async () => {
-          const events = await api.get<EventPage>(
-            `/v1/workspaces/${ws}/fleets/${seeded.id}/events?limit=100`,
+          const turns = await api.get<TurnPage>(
+            `/v1/workspaces/${ws}/fleets/${seeded.id}/turns?limit=100`,
           );
-          return events.items.some(event => event.event_id === settledEventId);
+          return turns.items.some(turn => turn.turn_id === settledTurnId);
         },
         { timeout: RENDER_TIMEOUT_MS },
       )
       .toBe(true);
-    // Setup receipts share the timeline; inspect the event this send admitted.
-    const detail = await api.get<EventDetail>(
-      `/v1/workspaces/${ws}/fleets/${seeded.id}/events/${settledEventId}`,
+    // Setup receipts share the timeline; inspect the turn this send admitted.
+    const detail = await api.get<TurnDetail>(
+      `/v1/workspaces/${ws}/fleets/${seeded.id}/turns/${settledTurnId}`,
     );
     expect(detail.request_json ?? "").toContain(message);
 
     // Workspace activity retains inspection after the fleet tabs were removed.
-    await page.goto(workspaceHref(ws, "events"));
-    const events = page.getByRole("table", { name: "Workspace activity" });
-    await expect(events).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await events.getByRole("button", {name: `Inspect event ${settledEventId}`, exact: true}).click();
+    await page.goto(workspaceHref(ws, "turns"));
+    const turns = page.getByRole("table", { name: "Workspace activity" });
+    await expect(turns).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+    await turns.getByRole("button", {name: `Inspect turn ${settledTurnId}`, exact: true}).click();
 
     // The detail keeps the outcome and request context prominent without
     // technical identifiers or clipboard controls in the footer.
-    const dialog = page.getByRole("dialog", { name: "Event details" });
+    const dialog = page.getByRole("dialog", { name: "Turn details" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("ID", { exact: true })).toHaveCount(0);
     await expect(dialog.getByText(/^Source:/)).toBeVisible();

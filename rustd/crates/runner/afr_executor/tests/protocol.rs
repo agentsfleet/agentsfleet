@@ -75,10 +75,6 @@ async fn every_refusal_carries_its_code_and_the_connection_survives_it() {
         (call("fs/read", r#"{"path":"../a","max_bytes":1}"#), -32_010),
         (call("fs/list", r#"{"path":"absent"}"#), -32_012),
         (call("fs/list", "7"), -32_602),
-        (
-            call("fs/append", r#"{"path":"a","content":"%%%"}"#),
-            -32_602,
-        ),
         (call("fs/delete", r#"{"path":"../a"}"#), -32_010),
         (call("fs/delete", r#"{"path":"absent"}"#), -32_012),
     ];
@@ -105,7 +101,7 @@ async fn a_message_past_the_frame_cap_is_refused_and_ends_the_connection() {
     let (read, mut write) = stream.into_split();
     let writing = tokio::spawn(async move {
         // The executor stops reading partway, so this write may fail.
-        let _cut_off = write.write_all(&vec![b'x'; 16 * MIB + 2]).await;
+        let _cut_off = write.write_all(&vec![b'x'; 64 * MIB + 2]).await;
     });
     let mut answers = BufReader::new(read).lines();
 

@@ -15,7 +15,7 @@ use afd_api_wire::approval::GateStatus;
 pub enum Answer {
     /// A human said yes.
     Approved,
-    /// A human said no, or the gate lapsed into one.
+    /// A human said no, or the fleet's archive closed the gate.
     Denied,
 }
 
@@ -31,7 +31,7 @@ pub enum Answer {
 pub(crate) const fn answer(status: GateStatus) -> Option<Answer> {
     match status {
         GateStatus::Pending => None,
-        GateStatus::Approved => Some(Answer::Approved),
+        GateStatus::Approved | GateStatus::Answered => Some(Answer::Approved),
         GateStatus::Denied | GateStatus::TimedOut | GateStatus::Archived => Some(Answer::Denied),
     }
 }
@@ -46,6 +46,7 @@ mod tests {
     #[test]
     fn every_refusing_status_resolves_to_one_denial() {
         assert_eq!(answer(GateStatus::Approved), Some(Answer::Approved));
+        assert_eq!(answer(GateStatus::Answered), Some(Answer::Approved));
         for refusing in [
             GateStatus::Denied,
             GateStatus::TimedOut,

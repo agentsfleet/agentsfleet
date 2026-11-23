@@ -17,10 +17,9 @@ use url::Host;
 use super::knobs::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, IDENTITY_HTTP_PROXY_URL_KNOB,
     OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB,
-    PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT,
-    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_API_URL, WHY_APP_URL,
-    WHY_AUDIENCE, WHY_IDENTITY_PROXY, WHY_ISSUER, WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET,
-    WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
+    PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_KNOB,
+    WHY_API_BASE, WHY_API_BASE_UNSAFE, WHY_API_URL, WHY_APP_URL, WHY_AUDIENCE, WHY_IDENTITY_PROXY,
+    WHY_ISSUER, WHY_KEK, WHY_PLATFORM_ADMIN, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{Fault, IdentityConfig};
 
@@ -228,7 +227,7 @@ pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) 
 /// ceiling they believe they raised exactly where it was.
 pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> usize {
     optional(env, SSE_MAX_STREAMS_KNOB)
-        .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
+        .map_or(Some(afd_sse::MAX_STREAMS_DEFAULT), |raw| {
             classify(
                 faults,
                 true,
@@ -240,20 +239,21 @@ pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<F
                     .ok_or(WHY_SSE_MAX_STREAMS),
             )
         })
-        .unwrap_or(SSE_MAX_STREAMS_DEFAULT)
+        .unwrap_or(afd_sse::MAX_STREAMS_DEFAULT)
 }
 
 /// A set but invalid scheduling capacity refuses boot; it never silently selects another capacity.
 pub(super) fn runner_wake<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
+    bounds: afd_bus::wake::QueueBounds,
 ) -> Option<afd_bus::wake::Wake> {
     classify(
         faults,
         true,
         afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
-        "a scheduling queue capacity between 1 and 65536",
-        afd_bus::wake::Wake::from_env(env),
+        "a scheduling queue capacity between 1 and [nats] max_wake_queue_size",
+        afd_bus::wake::Wake::from_env(env, bounds),
     )
 }
 

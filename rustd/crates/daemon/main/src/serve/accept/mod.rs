@@ -13,7 +13,9 @@
 //! returned on the first one would take the daemon down over a transient the
 //! next call would have shrugged off.
 
-use afd_api::connection_builder;
+use std::time::Duration;
+
+use afd_api::{connection_builder, read_bounded};
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -43,9 +45,13 @@ impl Acceptor for TcpListener {
 }
 
 /// Serves until cancelled, spawning one supervised task per connection.
+///
+/// `read_timeout` is `[server] read_timeout_seconds`: the time a client gets
+/// to send a request's head, and then its body.
 pub(super) async fn accept_loop<A: Acceptor>(
     listener: A,
     router: axum::Router,
+    read_timeout: Duration,
     drain: Drain,
     abort: CancellationToken,
 ) {
@@ -60,7 +66,7 @@ pub(super) async fn accept_loop<A: Acceptor>(
                 continue;
             }
         };
-        spawn_connection(stream, &router, &drain, &abort);
+        spawn_connection(stream, &router, read_timeout, &drain, &abort);
     }
     // Dropped HERE, before the signal, not at the end of the function: a
     // waiter woken by `stopped_accepting` must find a port that has already
@@ -80,7 +86,7 @@ async fn next_accepted<A: Acceptor>(
 ) -> Option<std::io::Result<tokio::net::TcpStream>> {
     tokio::select! {
         // Cancellation is checked against a genuinely blocked accept, not
-        // between iterations — the property Dimension 7.5 exists to prove.
+        // between iterations — the property the supervisor tests exist to prove.
         //
         // The DRAIN's token stops the loop on the graceful path. Stopping
         // drops `listener`, so the port stops answering and a new
@@ -115,10 +121,11 @@ fn log_accept_failure(error: &std::io::Error) {
 fn spawn_connection(
     stream: tokio::net::TcpStream,
     router: &axum::Router,
+    read_timeout: Duration,
     drain: &Drain,
     abort: &CancellationToken,
 ) {
-    let service = router.clone();
+    let service = read_bounded(router.clone(), read_timeout);
     let connection_token = abort.clone();
     // Claimed BEFORE the spawn, deliberately: taken inside, there is a
     // window where the connection exists and is not counted, and a drain
@@ -130,7 +137,7 @@ fn spawn_connection(
         let _guard = guard;
         // Bound to a local, not spelled inline: `serve_connection` BORROWS
         // the builder, where the http1-only one consumed a copy of it.
-        let builder = connection_builder();
+        let builder = connection_builder(read_timeout);
         let served = builder.serve_connection(
             TokioIo::new(stream),
             hyper::service::service_fn(move |request| {
@@ -153,10 +160,11 @@ fn spawn_connection(
 pub async fn serve_accepts<A: Acceptor>(
     listener: A,
     router: axum::Router,
+    read_timeout: Duration,
     drain: Drain,
     abort: CancellationToken,
 ) {
-    accept_loop(listener, router, drain, abort).await;
+    accept_loop(listener, router, read_timeout, drain, abort).await;
 }
 
 #[cfg(test)]

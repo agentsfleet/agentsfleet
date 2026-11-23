@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DRAFT_EVENT } from "@/lib/api/draft-events";
 import { DraftClientFixture } from "./helpers/draft-client-fixture";
 import { FakeEventSource } from "./helpers/fake-event-source";
-import { DRAFT, DRAFT_ID, MESSAGE, response } from "./helpers/draft-fixtures";
+import { DRAFT_ID, MESSAGE, TURN_ID, response } from "./helpers/draft-fixtures";
 
 const fixture = new DraftClientFixture();
 beforeEach(() => fixture.mount());
@@ -26,10 +26,9 @@ it("cancels a stalled watcher read before Stop reads and confirms cancellation",
   let stalled = false;
   const cancelled = vi.fn();
   fixture.override = ({path, method}) => {
-    if (path.endsWith("/cancellations")) {
+    if (method === "PATCH" && path.endsWith(`/drafts/${DRAFT_ID}/turns/${TURN_ID}`)) {
       stopped = true;
-      fixture.current = {...DRAFT, cancelled_through: "1"};
-      return response({cancelled_through: "1", stopped: [{sequence: "1", state: "cancelled"}]});
+      return response({sequence: "1", state: "cancelled"});
     }
     if (path.endsWith("/messages") && method === "GET") {
       if (stalled) return new Response(new ReadableStream({cancel: cancelled}));
@@ -48,16 +47,16 @@ it("cancels a stalled watcher read before Stop reads and confirms cancellation",
   await stopping;
   expect(stopped).toBe(true);
   expect(source?.closed).toBe(true);
-  expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, draft: {cancelled_through: "1"}, messages: [{state: "cancelled"}]});
+  expect(client.getSnapshot()).toMatchObject({busy: false, pending: false, messages: [{state: "cancelled"}]});
 });
 
 it("restarts stream reconciliation when a Stop request fails", async () => {
-  fixture.override = ({path}) => path.endsWith("/messages")
+  fixture.override = ({path, method}) => path.endsWith("/messages")
     ? response({items: [{...MESSAGE, state: "running"}], next_cursor: null})
-    : path.endsWith("/cancellations") ? response({user_message: "Stop unavailable"}, 503) : undefined;
+    : method === "PATCH" ? response({user_message: "Stop unavailable"}, 503) : undefined;
   const client = await fixture.ready(true);
   const first = FakeEventSource.instances[0];
-  await expect(client.stop()).rejects.toMatchObject({status: 503, message: "Stop unavailable"});
+  await expect(client.stop()).rejects.toMatchObject({status: 503, message: "Stop couldn’t be confirmed. Check the conversation, then try again."});
   expect(first?.closed).toBe(true);
   expect(FakeEventSource.instances).toHaveLength(2);
   fixture.override = ({path}) => path.endsWith("/messages") ? response({items: [MESSAGE], next_cursor: null}) : undefined;

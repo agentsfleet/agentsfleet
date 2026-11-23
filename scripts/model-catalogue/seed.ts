@@ -6,7 +6,7 @@ import { BUMP_VERSION, DELETE_MODELS, DELETE_PRICES, LOCK_VERSION, SELECT_ROWS, 
 
 type QueryClient = Pick<SQL, "unsafe">;
 export type SeedResult = { diff: CatalogueDiff; applied: boolean };
-const VERSION_ROWS = z.array(z.object({ resource_version: z.string().regex(/^\d+$/) })).length(1);
+const VERSION_ROWS = z.array(z.object({ number: z.string().regex(/^\d+$/) })).length(1);
 const TIMEOUT_SECONDS = 5;
 const POOL_SIZE = 1;
 

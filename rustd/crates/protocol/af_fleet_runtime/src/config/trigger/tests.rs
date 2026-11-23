@@ -1,8 +1,6 @@
 //! Trigger parsing and set-level uniqueness.
 
-use super::{
-    Cron, MAX_TRIGGERS, Trigger, VERIFIED_WEBHOOK_SOURCES, WebhookVerifier, parse_set, raw,
-};
+use super::{Cron, Trigger, VERIFIED_WEBHOOK_SOURCES, WebhookVerifier, parse_set, raw};
 use crate::Error;
 use crate::error::ErrorKind;
 
@@ -90,19 +88,6 @@ fn an_empty_trigger_set_is_a_message_only_fleet() -> Result<(), Error> {
 
 #[test]
 fn arity_and_required_trigger_fields_fail_closed() {
-    // The count is proved before any entry is read, so nine copies of one
-    // trigger are refused for their number, not their sameness.
-    assert!(matches!(
-        parse_set(
-            std::iter::repeat_with(|| cron("hourly"))
-                .take(MAX_TRIGGERS + 1)
-                .collect(),
-        ),
-        Err(ref refusal) if matches!(
-            refusal.kind(),
-            ErrorKind::InvalidTriggerSet { reason } if *reason == super::set::REASON_SET_TOO_LARGE
-        )
-    ));
     for trigger in [
         webhook("", None),
         raw::Trigger::Cron {

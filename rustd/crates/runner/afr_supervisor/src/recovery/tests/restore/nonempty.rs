@@ -6,7 +6,7 @@ use crate::{
     recovery::{progress::Progress, transfer, transfer::http_tests::server::Server},
     test_support::{self, Answer},
 };
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointAuthorizations, CheckpointFile, CheckpointObject, CheckpointObjectStatus,
     CheckpointPlaintext, CheckpointTransfer,
 };
@@ -75,7 +75,7 @@ fn plan(object: &CheckpointObject) -> CheckpointPlan {
         covered_input_sequence: 3,
         effect_watermark: 2,
         expires_at: expires,
-        pin: af_wire::task::CheckpointPin {
+        pin: af_wire::durable_task::CheckpointPin {
             id: ID.to_owned(),
             resource_version: 1,
             operation_deadline: expires,
@@ -94,8 +94,8 @@ fn native(
         objects: vec![object],
     })?;
     Ok(test_support::plane(move |call| match call.verb {
-        Verb::Activity => test_support::json(&serde_json::json!({})),
-        Verb::TaskCheckpointAuthorizations => {
+        Verb::Progress => test_support::json(&serde_json::json!({})),
+        Verb::DurableTaskCheckpointAuthorizations => {
             let input = call.body.as_ref().and_then(|bytes| {
                 serde_json::from_slice::<CheckpointAuthorizationInput>(bytes).ok()
             });
@@ -119,11 +119,11 @@ fn session<'a>(
 ) -> Session<'a> {
     Session {
         plane,
-        lease: identity,
+        run: identity,
         workspace: identity,
         fence: 31,
-        task: DecisionTaskVersion {
-            task_id: ID.to_owned(),
+        task: DecisionDurableTaskVersion {
+            durable_task_id: ID.to_owned(),
             generation: 7,
         },
         plan,
@@ -136,7 +136,7 @@ fn session<'a>(
 
 async fn server_object(kind: &str, valid: bool) -> TestResult<(Server, CheckpointObject)> {
     let (mut object, bytes) = encrypted(kind)?;
-    let server = Server::start(axum::http::StatusCode::OK, bytes, false).await?;
+    let server = Server::start(http::StatusCode::OK, bytes, false).await?;
     object.transfer = Some(CheckpointTransfer {
         url: server.url.clone(),
         headers: BTreeMap::new(),
@@ -173,14 +173,14 @@ async fn repeated_manifest_ids_share_one_authorization_and_one_authenticated_dow
     );
     assert_eq!(session.progress.bytes.missing, 0);
     let seen = server.seen.recv().await.ok_or("download missing")?;
-    assert_eq!(seen.method, axum::http::Method::GET);
+    assert_eq!(seen.method, http::Method::GET);
     assert!(seen.headers.get("authorization").is_none());
     assert!(seen.headers.get("cookie").is_none());
     server.finish().await?;
     assert_eq!(
         test_support::drain(&mut calls)
             .iter()
-            .filter(|call| call.verb == Verb::TaskCheckpointAuthorizations)
+            .filter(|call| call.verb == Verb::DurableTaskCheckpointAuthorizations)
             .count(),
         1
     );

@@ -74,7 +74,7 @@ impl<S: Send + Sync> FromRequestParts<S> for RunnerIdentity {
 
 /// The refusal for a handler that ran without its guard.
 fn unproven() -> Response {
-    let request_id = RequestId::mint();
+    let request_id = RequestId::current();
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();

@@ -1,6 +1,6 @@
-//! What one lease's sandbox owns, and the one release every path ends with.
+//! What one run's sandbox owns, and the one release every path ends with.
 //!
-//! [`Parts`] is the single owner of a lease's process, cgroup, egress scope,
+//! [`Parts`] is the single owner of a run's process, cgroup, egress scope,
 //! workspace disk and directory. [`Parts::teardown`] releases them and reports what it could
 //! not; dropping `Parts` releases whatever is still held — a cancelled start, a
 //! sandbox nobody destroyed — and logs what it could not. Both run the same
@@ -14,7 +14,7 @@ use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 
-use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
+use crate::cgroup::{CGROUP_PROCS, Freezer, RunCgroup};
 use crate::egress::Scope;
 use crate::engine::Killed;
 use crate::error::{EgressRefusal, Error, Result, cgroup, egress_refused, program, unconfined};
@@ -40,23 +40,23 @@ const EVENT_TEARDOWN_COMPLETED: &str = "sandbox_teardown_completed";
 /// The event a teardown that left something behind is logged under.
 const EVENT_TEARDOWN_FAILED: &str = "sandbox_teardown_failed";
 
-/// Everything one lease's sandbox owns; built a piece at a time, released once.
+/// Everything one run's sandbox owns; built a piece at a time, released once.
 #[derive(Debug)]
 pub(super) struct Parts {
-    lease_id: String,
+    run_id: String,
     dir: Option<PathBuf>,
     disk: Option<WorkspaceDisk>,
-    cgroup: Option<LeaseCgroup>,
+    cgroup: Option<RunCgroup>,
     egress: Option<Scope>,
     child: Option<Child>,
     stderr: Option<JoinHandle<String>>,
 }
 
 impl Parts {
-    /// Nothing built yet, in the lease's own directory.
-    pub(super) fn new(lease_id: &str, dir: PathBuf) -> Self {
+    /// Nothing built yet, in the run's own directory.
+    pub(super) fn new(run_id: &str, dir: PathBuf) -> Self {
         Self {
-            lease_id: lease_id.to_owned(),
+            run_id: run_id.to_owned(),
             dir: Some(dir),
             disk: None,
             cgroup: None,
@@ -66,36 +66,36 @@ impl Parts {
         }
     }
 
-    /// The lease's directory.
+    /// The run's directory.
     pub(super) fn dir(&self) -> &Path {
         self.dir.as_deref().unwrap_or_else(|| Path::new(""))
     }
 
-    /// The lease's `workspace/` on its disk, once it has one.
+    /// The run's `workspace/` on its disk, once it has one.
     pub(super) fn workspace(&self) -> &Path {
         self.disk
             .as_ref()
             .map_or_else(|| Path::new(""), WorkspaceDisk::workspace)
     }
 
-    /// The lease's `tmp/` on its disk, once it has one.
+    /// The run's `tmp/` on its disk, once it has one.
     pub(super) fn tmp(&self) -> &Path {
         self.disk
             .as_ref()
             .map_or_else(|| Path::new(""), WorkspaceDisk::tmp)
     }
 
-    /// Takes ownership of the lease's workspace disk.
+    /// Takes ownership of the run's workspace disk.
     pub(super) fn adopt_disk(&mut self, disk: WorkspaceDisk) -> &WorkspaceDisk {
         self.disk.insert(disk)
     }
 
-    /// The freezer of the lease's cgroup, once it has one.
+    /// The freezer of the run's cgroup, once it has one.
     pub(super) fn freezer(&self) -> Option<Freezer> {
-        self.cgroup.as_ref().map(LeaseCgroup::freezer)
+        self.cgroup.as_ref().map(RunCgroup::freezer)
     }
 
-    /// Reads the tenant subtree while the lease owner holds a confirmed freeze.
+    /// Reads the tenant subtree while the run owner holds a confirmed freeze.
     pub(super) fn tenant_empty(&self) -> Result<bool> {
         self.cgroup
             .as_ref()
@@ -103,17 +103,17 @@ impl Parts {
             .tenant_empty()
     }
 
-    /// Takes ownership of the lease's cgroup.
-    pub(super) fn adopt_cgroup(&mut self, cgroup: LeaseCgroup) -> &LeaseCgroup {
+    /// Takes ownership of the run's cgroup.
+    pub(super) fn adopt_cgroup(&mut self, cgroup: RunCgroup) -> &RunCgroup {
         self.cgroup.insert(cgroup)
     }
 
-    /// Takes ownership of the scope joining the lease's sandbox to the host.
+    /// Takes ownership of the scope joining the run's sandbox to the host.
     pub(super) fn adopt_egress(&mut self, scope: Scope) {
         self.egress = Some(scope);
     }
 
-    /// Holds the lease's scope to `allowlist` in place of the allowlist it
+    /// Holds the run's scope to `allowlist` in place of the allowlist it
     /// was built to, off the async runtime since netlink blocks, then renders
     /// the sandbox's names to match. The scope comes back whatever the swap
     /// did, a panic included ([`off_runtime`]), so a refused swap leaves it as

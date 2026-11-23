@@ -1,0 +1,35 @@
+# The daemon makes no model call: no daemon crate names `af_providers`'
+# connector or the turns it hands back. The daemon reads
+# `af_providers::settings` to prove what an admin saves and what a key may
+# reach; connecting to a provider is the runner's. The spec names this check
+# `no_daemon_crate_names_the_connector`; it lives here because a test never
+# reads the repository (tests-*-repo-read). A name reached through an alias
+# (`use af_providers as p;`) is review's to catch.
+id: rust-daemon-no-connector
+language: Rust
+severity: error
+message: a daemon crate names the model connector; the daemon validates through `af_providers::settings` and never reaches a provider
+files:
+  - rustd/crates/daemon/**/*.rs
+ignores:
+  - "**/target/**"
+utils:
+  connector-path:
+    regex: '^(::)?af_providers\s*::\s*(Connect|Connector|Turns)$'
+rule:
+  any:
+    # `af_providers::Connector::new()`, `use af_providers::Connect;`
+    - kind: scoped_identifier
+      matches: connector-path
+    # `Box<dyn af_providers::Connect>`
+    - kind: scoped_type_identifier
+      matches: connector-path
+    # `use af_providers::{settings, Connector as Reach};`
+    - kind: scoped_use_list
+      regex: '^(::)?af_providers\s*::'
+      has:
+        kind: use_list
+        has:
+          stopBy: end
+          kind: identifier
+          regex: '^(Connect|Connector|Turns)$'

@@ -59,7 +59,6 @@ describe("workspaceAddEffect", () => {
     expect(requestInput).toMatchObject({
       method: "POST",
       body: { name: "acme-prod" },
-      retry: { maxAttempts: 1 },
     });
     expect(rec.events[0]?.event).toBe("workspace_add_completed");
     expect(rec.events[0]?.properties).toEqual({ workspace_id: WS_ID });

@@ -25,6 +25,7 @@ const CARRIAGE_RETURN = "\r";
 // A line ending in a return leaves its text on screen; only text after one overwrites.
 const TRAILING_RETURNS = /\r+$/;
 const UTF8 = new TextEncoder();
+// A one-line preview for the row; opening the call shows its whole arguments.
 const COMPACT_ARGS_MAX_CHARS = 120;
 
 /** Whether a string argument may have been cut by the runner. */
@@ -93,7 +94,7 @@ export function firstLine(text: string): string {
   return mayBeClipped(text) || first.length < text.trimEnd().length ? `${first}${CLIP_MARK}` : first;
 }
 
-/** Arguments as they came, compact and bounded: Codex's `name(arguments)`. */
+/** Arguments as they came, compact and bounded: `name(arguments)`. */
 export function compactArgs(args: ToolArgs): string {
   return `(${truncate(JSON.stringify(args), COMPACT_ARGS_MAX_CHARS)})`;
 }

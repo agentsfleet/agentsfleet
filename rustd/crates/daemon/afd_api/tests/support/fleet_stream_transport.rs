@@ -32,7 +32,7 @@ async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
     let missing = afd_db::test_util::mint_id();
     for _ in 0..3 {
         let path = format!(
-            "/v1/workspaces/{}/fleets/{missing}/events/stream",
+            "/v1/workspaces/{}/fleets/{missing}/turns/stream",
             fixture.workspace
         );
         let response = harness::send(&router, Method::GET, &path, Some(&fixture.token), "").await;
@@ -45,7 +45,7 @@ async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
         );
     }
     let path = format!(
-        "/v1/workspaces/{}/fleets/{}/events/stream",
+        "/v1/workspaces/{}/fleets/{}/turns/stream",
         fixture.workspace, fixture.fleet
     );
     let response = harness::send(&router, Method::GET, &path, Some(&fixture.token), "").await;
@@ -138,8 +138,8 @@ async fn reconnect_recovers_a_missed_completion_from_durable_history() {
     let mut first = [watched.open().await];
     watched.ready(&mut first).await;
     drop(first);
-    let event_id = watched.commit_without_publish().await;
-    let payload = completion(&event_id);
+    let turn_id = watched.commit_without_publish().await;
+    let payload = completion(&turn_id);
     assert_eq!(
         watched.readers(),
         0,
@@ -161,7 +161,7 @@ async fn reconnect_recovers_a_missed_completion_from_durable_history() {
         "one committed row is recovered by one bounded request"
     );
     let recovered = events.first().expect("the missed event exists");
-    assert_eq!(recovered.get("event_id"), Some(&json!(event_id)));
+    assert_eq!(recovered.get("turn_id"), Some(&json!(turn_id)));
     let expected_status = json!(Outcome::Processed.as_str());
     assert_eq!(recovered.get("status"), Some(&expected_status));
     let recovery_us = started.elapsed().as_micros();

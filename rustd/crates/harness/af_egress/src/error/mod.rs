@@ -75,7 +75,7 @@ pub(crate) enum ErrorKind {
 
     /// The host is, or resolves to, an address this runner never reaches.
     #[error("{host} is a private, loopback or reserved address")]
-    AddressNotAllowed {
+    EgressDenied {
         /// The URL's host.
         host: String,
     },
@@ -228,7 +228,7 @@ impl Error {
             ErrorKind::HttpsRequired => Refusal::HttpsRequired,
             ErrorKind::MethodNotAllowed { .. } => Refusal::MethodNotAllowed,
             ErrorKind::HostNotAllowed { .. } => Refusal::HostNotAllowed,
-            ErrorKind::AddressNotAllowed { .. } => Refusal::AddressNotAllowed,
+            ErrorKind::EgressDenied { .. } => Refusal::EgressDenied,
             ErrorKind::PlacementNotAllowed { .. } => Refusal::PlacementNotAllowed,
             ErrorKind::CredentialHostNotAllowed { .. } => Refusal::CredentialHostNotAllowed,
             ErrorKind::SecretNotFound { .. } | ErrorKind::SecretFieldNotFound { .. } => {
@@ -252,7 +252,7 @@ impl Error {
             | ErrorKind::HttpsRequired
             | ErrorKind::MethodNotAllowed { .. }
             | ErrorKind::HostNotAllowed { .. }
-            | ErrorKind::AddressNotAllowed { .. }
+            | ErrorKind::EgressDenied { .. }
             | ErrorKind::PlacementNotAllowed { .. }
             | ErrorKind::CredentialHostNotAllowed { .. }
             | ErrorKind::RequestPolicyNotAllowed { .. } => error_code::INVALID_REQUEST,

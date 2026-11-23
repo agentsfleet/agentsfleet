@@ -25,13 +25,14 @@ pub(super) fn spawn(
         control,
         work,
         reports,
-        activity,
+        progress,
+        ..
     } = connected;
     write_pipes(
         control.writer,
         work.writer,
         reports.writer,
-        activity.writer,
+        progress.writer,
         receivers,
         stop,
         workers,
@@ -48,7 +49,7 @@ pub(super) fn spawn(
     for (kind, pipe) in [
         (StreamKind::Work, work.reader),
         (StreamKind::Reports, reports.reader),
-        (StreamKind::Activity, activity.reader),
+        (StreamKind::Progress, progress.reader),
     ] {
         track(workers, read(pipe, kind, frames.clone(), stop.clone()));
     }
@@ -59,7 +60,7 @@ fn write_pipes(
     control: tokio::io::DuplexStream,
     work: tokio::io::DuplexStream,
     reports: tokio::io::DuplexStream,
-    activity: tokio::io::DuplexStream,
+    progress: tokio::io::DuplexStream,
     receivers: Receivers,
     stop: &CancellationToken,
     workers: &mut JoinSet<Result<()>>,
@@ -69,7 +70,7 @@ fn write_pipes(
         control: ordinary,
         work: work_rx,
         reports: reports_rx,
-        activity: activity_rx,
+        progress: progress_rx,
     } = receivers;
     track(
         workers,
@@ -77,7 +78,7 @@ fn write_pipes(
     );
     track(workers, writer::run(work, work_rx, stop.clone()));
     track(workers, writer::run(reports, reports_rx, stop.clone()));
-    track(workers, writer::run(activity, activity_rx, stop.clone()));
+    track(workers, writer::run(progress, progress_rx, stop.clone()));
 }
 
 async fn read(
@@ -161,18 +162,32 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_task_that_ignores_cancellation_is_aborted_after_one_answer_bound() {
         let mut workers = JoinSet::new();
-        let finished = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let observed = std::sync::Arc::clone(&finished);
-        workers.spawn(async move {
-            std::future::pending::<()>().await;
-            observed.store(true, std::sync::atomic::Ordering::SeqCst);
-            Ok(())
-        });
+        workers.spawn(std::future::pending::<Result<()>>());
         workers.spawn(async { Ok(()) });
         let started = Instant::now();
         join(workers).await;
         assert_eq!(started.elapsed(), af_core::timing::STREAM_ANSWER_TIMEOUT);
-        assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    #[expect(clippy::panic, reason = "the worker under test is the one that panics")]
+    async fn a_worker_that_panicked_is_joined_and_logged_as_failed() {
+        let capture = af_core::test_util::trace::Capture::install();
+        let mut workers = JoinSet::new();
+        workers.spawn(async { panic!("a codec bug") });
+        workers.spawn(async { Ok(()) });
+        let started = Instant::now();
+
+        join(workers).await;
+
+        assert_eq!(started.elapsed(), std::time::Duration::ZERO);
+        let failed = capture.only("runner_stream_worker_failed");
+        assert_eq!(failed.field("is_panic"), Some("true"));
+        assert_eq!(failed.field("is_cancelled"), Some("false"));
+        assert_eq!(
+            failed.field("error_code"),
+            Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
     }
 
     #[tokio::test(start_paused = true)]

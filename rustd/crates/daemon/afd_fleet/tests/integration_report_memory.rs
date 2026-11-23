@@ -1,6 +1,6 @@
 //! A report carrying the run's memory: written before the settle commits,
-//! fenced on the lease's own token as the settle is, cut at the push's byte
-//! cap, and never a reason the answer is lost.
+//! fenced on the run's own token as the settle is, and never a reason the
+//! answer is lost.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -13,16 +13,13 @@ use std::borrow::Cow;
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
+use af_wire::memory::{MemoryDelta, Visibility};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::run::RunService;
 use afd_memory::Memories;
 
-use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_RESPONSE, RESUME_TURN_ID};
 use crate::report_seed::{Held, SLICE_MS, held};
-
-/// The counter a capture's cut entries are counted on.
-const TRUNCATED: &str = "agentsfleet_memory_capture_truncated_total";
 
 /// What the run learned, key and content.
 const LEARNED: [(&str, &str); 2] = [("build", "cargo needs two jobs here"), ("owner", "indy")];
@@ -47,7 +44,7 @@ fn learned() -> Vec<MemoryDelta<'static>> {
     deltas(LEARNED.map(|(key, content)| (Cow::Borrowed(key), Cow::Borrowed(content))))
 }
 
-/// A processed report on `held`'s lease presenting `token`, carrying `memory`.
+/// A processed report on `held`'s run presenting `token`, carrying `memory`.
 pub(crate) fn report<'a>(
     held: &'a Held,
     token: u64,
@@ -55,9 +52,10 @@ pub(crate) fn report<'a>(
 ) -> ReportRequest<'a> {
     ReportRequest {
         folded_through_sequence: None,
-        task: None,
-        lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
-        event_id: Cow::Borrowed(held.event_id.as_str()),
+        setup: None,
+        durable_task: None,
+        run_id: Cow::Borrowed(held.issued.run_id.as_str()),
+        turn_id: Cow::Borrowed(held.turn_id.as_str()),
         fencing_token: token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -71,7 +69,7 @@ pub(crate) fn report<'a>(
             segments: None,
         },
         checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+            last_turn_id: Cow::Borrowed(RESUME_TURN_ID),
             last_response: Cow::Borrowed(RESUME_RESPONSE),
         },
         tool_calls: None,
@@ -85,7 +83,7 @@ async fn stored(held: &Held) -> Vec<(String, String)> {
     let fleet = held.fleet.clone();
     let mut window: Vec<(String, String)> =
         Memories::new(held.fixtures.database.clone(), Entropy::new())
-            .hydrate(&fleet)
+            .load(&fleet)
             .await
             .expect("the store answers")
             .memory
@@ -132,22 +130,17 @@ async fn test_report_memory_lands_before_the_settle() {
     assert_eq!(
         (
             stored(&held).await,
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
             settled.completed_at.is_some_and(|at| at >= held.now),
-            published.field("lease_id"),
+            published.field("run_id"),
         ),
-        (
-            remembered(),
-            true,
-            true,
-            Some(held.issued.lease_id.as_str())
-        )
+        (remembered(), true, true, Some(held.issued.run_id.as_str()))
     );
     held.fixtures.cleanup().await;
 }
 
-/// A lease the fleet has moved past writes neither its memory nor its settle:
-/// the capture is fenced on the lease's own token, as the settle is.
+/// A run the fleet has moved past writes neither its memory nor its settle:
+/// the capture is fenced on the run's own token, as the settle is.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_superseded_report_writes_no_memory() {
@@ -172,7 +165,7 @@ async fn test_superseded_report_writes_no_memory() {
         (
             refused,
             stored(&held).await,
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
         ),
         (Err(error_code::RUN_STALE_FENCING_TOKEN), Vec::new(), false)
     );
@@ -181,51 +174,6 @@ async fn test_superseded_report_writes_no_memory() {
 
 /// Memory past the push's byte cap is cut, newest kept, and the report
 /// settles: a run's answer is never refused for what it remembered.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_oversize_report_memory_is_cut_and_counted() {
-    let held = held().await;
-    let metrics = af_observability::test_util::Capture::install();
-    let truncated_before = metrics.sum(TRUNCATED, &[]);
-    let content = "m".repeat(MAX_CONTENT_LEN);
-    // Twenty full entries, 16 KiB each: fifteen fit the 256 KiB cap.
-    let oversize = deltas((0..20).map(|index| {
-        (
-            Cow::Owned(format!("key-{index:02}")),
-            Cow::Borrowed(content.as_str()),
-        )
-    }));
-
-    held.fixtures
-        .plane()
-        .report_with(
-            &held.runner,
-            &report(&held, held.fence.as_u64(), oversize),
-            held.now,
-            None,
-            &mut af_observability::verb_span::VerbClock::untimed(),
-        )
-        .await
-        .expect("an oversize memory does not refuse the report");
-
-    let kept: Vec<String> = stored(&held)
-        .await
-        .into_iter()
-        .map(|(key, _)| key)
-        .collect();
-    let first_fifteen: Vec<String> = (0..15).map(|index| format!("key-{index:02}")).collect();
-    assert_eq!(
-        (
-            kept,
-            metrics.sum(TRUNCATED, &[]) - truncated_before,
-            held.fixtures.admission_settled(&held.event_id).await,
-        ),
-        (first_fifteen, 5, true),
-        "fifteen kept, five counted as cut, the report settled"
-    );
-    held.fixtures.cleanup().await;
-}
-
 /// A memory store that will not answer costs the run its memory, never its
 /// answer: the report settles and the failure is logged once.
 #[tokio::test]
@@ -234,8 +182,8 @@ async fn test_failed_capture_still_settles() {
     let held = held().await;
     let (entropy, fault) = Entropy::new_mocked();
     fault.fail_next();
-    let forgetful = LeaseService {
-        task_reports: None,
+    let forgetful = RunService {
+        durable_task_reports: None,
         memories: Memories::new(held.fixtures.database.clone(), entropy),
         ..held.fixtures.plane()
     };
@@ -256,13 +204,13 @@ async fn test_failed_capture_still_settles() {
 
     assert_eq!(
         (
-            held.fixtures.admission_settled(&held.event_id).await,
+            held.fixtures.turn_settled(&held.turn_id).await,
             (
                 failed
                     .field("error_code")
                     .is_some_and(|code| code.starts_with("UZ-")),
                 failed.field("fleet_id"),
-                failed.field("lease_id"),
+                failed.field("run_id"),
             ),
             stored(&held).await,
         ),
@@ -271,7 +219,7 @@ async fn test_failed_capture_still_settles() {
             (
                 true,
                 Some(held.fleet.as_str()),
-                Some(held.issued.lease_id.as_str())
+                Some(held.issued.run_id.as_str())
             ),
             Vec::new()
         )
@@ -281,7 +229,7 @@ async fn test_failed_capture_still_settles() {
 }
 
 /// A repeated report, whose first post wrote the run's memory and settled the
-/// lease, skips its capture quietly: the lease is no longer live, the answer
+/// run, skips its capture quietly: the run is no longer live, the answer
 /// is the repeat's, and the store holds the memory once.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -322,16 +270,13 @@ async fn test_a_repeated_report_skips_its_memory_capture() {
     assert_eq!(
         (
             (repeated.repeated, repeated.completed_at),
-            (skipped.field("fleet_id"), skipped.field("lease_id")),
+            (skipped.field("fleet_id"), skipped.field("run_id")),
             failed,
             stored(&held).await,
         ),
         (
             (true, None),
-            (
-                Some(held.fleet.as_str()),
-                Some(held.issued.lease_id.as_str())
-            ),
+            (Some(held.fleet.as_str()), Some(held.issued.run_id.as_str())),
             0,
             remembered(),
         )

@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import { SetupSession, START } from "../../src/commands/chat/setup-session.ts";
-import { DRAFT, REVIEW, FLEET, FLEET_ID, PUBLICATION, CANDIDATE_ID, PLUGIN_ID, withApi, problem } from "./fixture.ts";
+import { DRAFT, REVIEW, FLEET, FLEET_ID, CANDIDATE_ID, withApi, problem } from "./fixture.ts";
 
-test("partial Save continues one exact reviewed operation and does not publish a Plugin entry", async () => {
+test("partial Save continues one exact reviewed operation against the fleets collection", async () => {
   const calls: {path: string; key: string | null; body: unknown}[] = [];
   await withApi(async (request) => {
     calls.push({path: new URL(request.url).pathname, key: request.headers.get("Idempotency-Key"), body: await request.json()});
@@ -39,25 +39,6 @@ test("an unknown Save retains its body and key and a changed initial message can
   });
 });
 
-test("publication and owned revision append are explicit and retain their separate key and Plugin tag", async () => {
-  const calls: {path: string; key: string | null; tag: string | null; body: unknown}[] = [];
-  await withApi(async (request) => {
-    calls.push({path: new URL(request.url).pathname, key: request.headers.get("Idempotency-Key"),
-      tag: request.headers.get("If-Match"), body: await request.json()});
-    return calls.length === 1 ? problem(503) : Response.json(PUBLICATION);
-  }, async (transport) => {
-    const setup = new SetupSession(transport);
-    await Effect.runPromise(Effect.flip(setup.publish(DRAFT, "Argo")));
-    expect(await Effect.runPromise(setup.retryPublication())).toEqual(PUBLICATION);
-    expect(calls[0]).toEqual(calls[1]);
-    await Effect.runPromise(setup.publish(DRAFT, "", {id: PLUGIN_ID, etag: PUBLICATION.etag}));
-    expect(calls[2]?.path).toEndWith(`/${PLUGIN_ID}/revisions`);
-    expect(calls[2]?.tag).toBe(PUBLICATION.etag);
-    expect(calls[2]?.body).toEqual({draft_candidate_id: CANDIDATE_ID});
-    expect(calls[2]?.key).not.toBe(calls[1]?.key);
-  });
-});
-
 test("Apply carries the inspected setup tag, candidate and digest through an uncertain answer", async () => {
   const calls: {path: string; key: string | null; tag: string | null; body: unknown}[] = [];
   const result = {fleet_id: FLEET_ID, setup_revision: "2", setup_etag: '"setup-2"', etag: FLEET.etag, schedules: []};
@@ -82,7 +63,6 @@ test("candidate-less mutations refuse locally and clearing disposes of partial s
     const setup = new SetupSession(transport);
     const {candidate: _candidate, ...blank} = DRAFT;
     await Effect.runPromise(Effect.flip(setup.save(blank, REVIEW, {kind: START.none})));
-    await Effect.runPromise(Effect.flip(setup.publish(blank, "Argo")));
     await Effect.runPromise(Effect.flip(setup.apply(DRAFT, REVIEW, FLEET.setup_etag)));
     expect(requests).toBe(0);
     await Effect.runPromise(setup.save(DRAFT, REVIEW, {kind: START.none}));
@@ -103,7 +83,6 @@ test("an uncertain setup action fences every other mutation until its own retry 
   }, async (transport) => {
     const setup = new SetupSession(transport);
     await Effect.runPromise(Effect.flip(setup.save(DRAFT, REVIEW, {kind: START.none})));
-    await Effect.runPromise(Effect.flip(setup.publish(DRAFT, "Argo")));
     await Effect.runPromise(Effect.flip(setup.apply({...DRAFT, linked_fleet_id: FLEET_ID}, REVIEW, FLEET.setup_etag)));
     expect(paths).toHaveLength(1);
     failing = false;

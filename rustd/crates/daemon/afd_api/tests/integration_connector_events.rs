@@ -176,7 +176,7 @@ async fn a_signed_event_the_route_does_not_act_on_is_acknowledged_and_acted_on_b
     let fixture = Fixture::create().await;
     fixture.seed(Configured::Signing).await;
     let router = fixture.router();
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
 
     let acknowledged = deliver(&router, SIGNING_SECRET, MESSAGE).await;
     let status = acknowledged.status();
@@ -194,7 +194,7 @@ async fn a_signed_event_the_route_does_not_act_on_is_acknowledged_and_acted_on_b
          read it and an operator asking why nothing happened has only this"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "acknowledged is not acted on"
     );
@@ -208,11 +208,11 @@ async fn a_retried_delivery_is_answered_identically_and_still_acts_on_nothing() 
     // A provider's at-least-once delivery, which is the ordinary case rather
     // than an adversarial one. For an event the route does not act on,
     // idempotence is held because nothing is written; a mention's retry is
-    // held by the admission ledger, which `integration_slack_mention` proves.
+    // held by the turns ledger, which `integration_slack_mention` proves.
     let fixture = Fixture::create().await;
     fixture.seed(Configured::Signing).await;
     let router = fixture.router();
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
 
     let first = json_body(deliver(&router, SIGNING_SECRET, MESSAGE).await).await;
     let retried = json_body(deliver(&router, SIGNING_SECRET, MESSAGE).await).await;
@@ -222,7 +222,7 @@ async fn a_retried_delivery_is_answered_identically_and_still_acts_on_nothing() 
          redelivery policy cannot change what this endpoint reports"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "two deliveries, and still nothing acted on either"
     );

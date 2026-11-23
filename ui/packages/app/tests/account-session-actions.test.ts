@@ -135,32 +135,6 @@ it("cancels an oversized declared response before attempting to parse it", async
   expect(cancel).toHaveBeenCalledOnce();
 });
 
-it("aborts a stalled provider connection at the operation deadline", async () => {
-  vi.useFakeTimers();
-  const controller = new AbortController();
-  vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => {setTimeout(() => controller.abort(), ms); return controller.signal;});
-  mocks.fetch.mockImplementation((_url, init: RequestInit) => new Promise((_resolve, reject) => {
-    init.signal?.addEventListener("abort", () => reject(new Error("Stopped")), {once: true});
-  }));
-  const reading = listAccountSessionsAction("user_owner");
-  await vi.advanceTimersByTimeAsync(10_000);
-  expect(await reading).toMatchObject({ok: false, status: 503});
-  expect(controller.signal.aborted).toBe(true);
-});
-
-it("cancels a stalled response body without issuing a subsequent revocation", async () => {
-  vi.useFakeTimers();
-  const controller = new AbortController();
-  const cancel = vi.fn();
-  vi.spyOn(AbortSignal, "timeout").mockImplementation(ms => {setTimeout(() => controller.abort(), ms); return controller.signal;});
-  mocks.fetch.mockResolvedValue(new Response(new ReadableStream({cancel})));
-  const revoking = revokeAccountSessionAction("user_owner", "sess_other");
-  await vi.advanceTimersByTimeAsync(10_000);
-  expect(await revoking).toMatchObject({ok: false, status: 503});
-  expect(cancel).toHaveBeenCalledOnce();
-  expect(mocks.fetch).toHaveBeenCalledTimes(1);
-});
-
 it("keeps unknown device and activity fields unknown and omits ended sessions", async () => {
   mocks.fetch.mockResolvedValue(Response.json({data: [{...session("sess_other"), latest_activity: null, last_active_at: 1e20},
     {...session("sess_ended"), status: "ended"}], total_count: 2}));

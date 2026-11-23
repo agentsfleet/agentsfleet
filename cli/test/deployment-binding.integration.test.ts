@@ -129,7 +129,7 @@ describe("scenario 5 — a named target wins, and a wrong pair fails at the serv
       { workspaceId: WS_ID, sessionId: "sess_bind", apiUrl: DEFAULT_API_URL },
       async () => {
         const routes: MockRoutes = {
-          [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/events`]: () =>
+          [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/turns`]: () =>
             jsonResponse(401, {
               title: "Unauthorized",
               error_code: "UZ-AUTH-001",
@@ -139,7 +139,7 @@ describe("scenario 5 — a named target wins, and a wrong pair fails at the serv
         await withMockApi(routes, async (apiUrl, calls) => {
           const out = bufferStream();
           const err = bufferStream();
-          const code = await runCli(["fleet", "events", FLEET_ID, "--api", apiUrl], {
+          const code = await runCli(["fleet", "turns", FLEET_ID, "--api", apiUrl], {
             stdout: out.stream,
             stderr: err.stream,
             env: cliEnv(),

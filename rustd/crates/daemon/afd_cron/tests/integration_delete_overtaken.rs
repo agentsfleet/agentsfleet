@@ -50,13 +50,13 @@ async fn a_delete_overtaken_mid_removal_leaves_the_row_to_its_new_holder() {
     let (reconciled, ()) = tokio::join!(service.reconcile(&deleting, &loser), async {
         let request = scheduler.arrived().await;
         assert!(request.starts_with("DELETE /schedules/"), "got {request}");
-        // The first syncer stalls past its lease and a second one claims it.
-        lane.expire_lease(&deleting.schedule_id).await;
+        // The first syncer stalls past its run and a second one claims it.
+        lane.expire_run(&deleting.schedule_id).await;
         lane.store
             .claim_current(&lane.fleet_id(), &deleting.schedule_id, &winner)
             .await
             .expect("the lane's Postgres must answer")
-            .expect("an expired lease is reclaimable");
+            .expect("an expired run is reclaimable");
         scheduler.answer(200);
     });
 

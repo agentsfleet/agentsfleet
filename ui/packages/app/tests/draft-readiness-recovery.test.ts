@@ -88,7 +88,7 @@ it("refreshes the editable review after access changes without saving the propos
 // why_new=resume starts a watcher but the fleet edit entrypoint differs; seam=browser EventSource and HTTP only; no_claim=live transport.
 it("follows a running edit when opening the saved fleet's current conversation", async () => {
   let running = true;
-  fixture.override = ({path, method}) => path.endsWith("/authoring-context")
+  fixture.override = ({path, method}) => path.endsWith("/setup-context")
     ? response({fleet: fixture.fleet, conversations: [{draft: fixture.current,
       messages: [{...MESSAGE, state: MESSAGE_STATE.running}], messages_starting_after: null, truncated: false}],
       activities: {items: [], next_cursor: null}, next_cursor: null})

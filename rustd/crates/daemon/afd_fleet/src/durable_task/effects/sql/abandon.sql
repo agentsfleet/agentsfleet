@@ -1,0 +1,13 @@
+UPDATE fleet.durable_task_effects e SET status = $2, updated_at = now()
+WHERE e.id = $1 AND e.status = $3
+  AND (e.issuance_expires_at <= clock_timestamp() OR NOT EXISTS (
+      SELECT 1 FROM thread.runs l
+      JOIN thread.threads h ON h.fleet_id = l.fleet_id
+      JOIN fleet.durable_tasks t ON t.id = e.durable_task_id AND t.fleet_id = e.fleet_id AND t.workspace_id = e.workspace_id
+      WHERE l.id = e.original_run_id AND l.runner_id = e.original_runner_id
+        AND l.fencing_token = e.original_fence AND l.status = $4
+        AND l.run_expires_at > clock_timestamp() AND h.run_expires_at > clock_timestamp()
+        AND h.last_runner_id = l.runner_id AND h.fencing_token = e.original_fence
+        AND t.generation = e.durable_task_generation AND t.stop_generation = e.stop_generation
+        AND t.status = $5 AND t.expires_at > clock_timestamp()
+  ))

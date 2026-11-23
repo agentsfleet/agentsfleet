@@ -1,4 +1,5 @@
-//! Settled usage reports over the existing ledger; no HTTP and no money writes.
+//! Usage reports over the daily rollups the usage lines write; no HTTP and no
+//! money writes.
 
 mod queries;
 mod types;
@@ -16,9 +17,9 @@ pub const BILLING_PERIOD_MONTH: &str = "month";
 pub const BILLING_PERIOD_TODAY: &str = "today";
 /// Seven UTC calendar days ending at the reporting cutoff.
 pub const BILLING_PERIOD_WEEK: &str = "week";
-/// A billed fleet lease, as the reporting API names it.
+/// A billed fleet run, as the reporting API names it.
 pub const BILLING_ACTIVITY_RUNTIME: &str = "runtime";
-/// A private setup attempt, as the reporting API names it.
+/// A setup run, as the reporting API names it.
 pub const BILLING_ACTIVITY_SETUP: &str = "setup";
 
 use af_core::id::Uuid7;
@@ -26,7 +27,7 @@ use afd_db::Db;
 
 use crate::{Result, error};
 
-const CONTEXT_READ: &str = "read settled usage report";
+const CONTEXT_READ: &str = "read usage report";
 
 /// Read the period's totals, groups and choices from the daily usage rollup.
 pub(crate) async fn read(database: &Db, tenant: &Uuid7, request: &Request) -> Result<Report> {

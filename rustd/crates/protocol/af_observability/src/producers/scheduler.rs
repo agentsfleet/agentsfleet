@@ -118,7 +118,7 @@ pub fn counts(values: Option<[u64; 7]>) {
     }
 }
 
-/// Counts the durable admission even if a later one-shot retirement fails.
+/// Counts the durable turn even if a later one-shot retirement fails.
 pub fn fired(replayed: bool) {
     if let Some(producers) = installed() {
         let outcome = if replayed {

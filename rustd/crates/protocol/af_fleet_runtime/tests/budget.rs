@@ -1,5 +1,6 @@
-//! Decimal-string ceilings are exact, bounded and reject legacy/ambiguous input.
+//! Decimal-string ceilings are exact, positive and reject legacy/ambiguous input.
 
+use af_core::money::NANOS_PER_USD;
 use af_fleet_runtime::FleetConfig;
 use serde_json::{Value, json};
 
@@ -10,14 +11,27 @@ fn document(budget: &Value) -> String {
     .to_string()
 }
 
+/// A fleet's own budget is its only ceiling: $50,000 a day is accepted when
+/// authored, stored as written, and read back.
+#[test]
+fn a_fleet_budget_has_no_ceiling_but_its_own() -> Result<(), Box<dyn std::error::Error>> {
+    let daily = 50_000 * NANOS_PER_USD;
+    let authored = FleetConfig::authored(&document(&json!({"daily_nanos":daily.to_string()})))?;
+    let stored = serde_json::to_value(authored.budget())?;
+    assert_eq!(stored, json!({"daily_nanos":daily.to_string()}));
+    let read_back = FleetConfig::stored(&document(&stored))?;
+    assert_eq!(read_back.budget().daily().nanos(), daily);
+    Ok(())
+}
+
 #[test]
 fn test_nanos_accepts_positive_daily_and_optional_monthly_boundaries() {
-    // pin test: literal is the contract — the documented daily range is 1..1000000000000.
-    for daily in ["1", "999999999999", "1000000000000"] {
+    // pin test: literal is the contract — a ceiling is any positive i64 of nanos.
+    for daily in ["1", "1000000000001", "9223372036854775807"] {
         let parsed = FleetConfig::authored(&document(&json!({"daily_nanos":daily})));
         assert!(parsed.is_ok(), "positive ceiling {daily}: {parsed:?}");
     }
-    for monthly in ["1", "10000000000000"] {
+    for monthly in ["1", "10000000000001", "9223372036854775807"] {
         let parsed = FleetConfig::authored(&document(&json!({
             "daily_nanos":"1", "monthly_nanos":monthly
         })));
@@ -37,13 +51,12 @@ fn test_nanos_rejects_zero_signs_fractions_exponents_and_overflow() {
         " 1",
         "1 ",
         "١",
-        "1000000000001",
         "9223372036854775808",
     ] {
         let parsed = FleetConfig::authored(&document(&json!({"daily_nanos":daily})));
         assert!(parsed.is_err(), "invalid ceiling {daily:?} was accepted");
     }
-    for monthly in ["0", "-1", "+1", "1.5", "1e9", "10000000000001"] {
+    for monthly in ["0", "-1", "+1", "1.5", "1e9", "9223372036854775808"] {
         assert!(
             FleetConfig::authored(&document(&json!({
                 "daily_nanos":"1", "monthly_nanos":monthly

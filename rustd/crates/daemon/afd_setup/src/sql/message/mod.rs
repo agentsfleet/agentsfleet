@@ -1,0 +1,55 @@
+//! Request sequence and its selected model are accepted in the draft transaction.
+//!
+//! A message keeps the operation key that queued it, which its page returns;
+//! the 24-hour retry window is `thread.replay_receipts`, swept long before
+//! the message goes. Its usage is its draft runs' usage lines, never a
+//! message column.
+
+/// `$1` id, `$2` draft, `$3` sequence, `$4` operation, `$5` status, `$6` tenant
+/// model (NULL for the platform default), `$7` user text.
+pub(crate) const INSERT: &str = include_str!("insert.sql");
+
+/// Moves the draft's version past a message it admitted. `$1` draft.
+pub(crate) const ADVANCE: &str = include_str!("advance.sql");
+
+/// One page of user and assistant roles, with each message's retry key and
+/// reported usage: its draft runs' usage lines, as [`NOTICES`] reads them.
+///
+/// `$1` draft, `$2` cursor sequence, `$3` cursor role, `$4` and `$5` the
+/// in-flight statuses an answerless assistant role is hidden for, `$6` limit,
+/// `$7` the work type a draft run's lines carry, `$8` the runtime line kind,
+/// `$9` and `$10` the settled run statuses, `$11` the active run status,
+/// live until it expires.
+pub(crate) const PAGE: &str = include_str!("page.sql");
+
+/// Every message's state for a stream poll, newest first, with reported usage:
+/// its draft runs' usage lines.
+///
+/// `$1` draft, `$2` the work type a draft run's lines carry, `$3` the runtime
+/// line kind, `$4` and `$5` the settled run statuses, `$6` the active run
+/// status, live until it expires.
+pub(crate) const NOTICES: &str = include_str!("notices.sql");
+
+/// The running message.
+///
+/// `$1` draft, `$2` running status.
+pub(crate) const RUNNING: &str = include_str!("running.sql");
+
+/// The sequence a replayed message was accepted at.
+///
+/// `$1` message, `$2` draft.
+pub(crate) const SEQUENCE: &str = include_str!("sequence.sql");
+
+/// Fails one message that still holds the expected status, so only the first
+/// writer finishes it.
+///
+/// `$1` draft, `$2` sequence, `$3` the failed status, `$4` reason, `$5` the
+/// status it must still hold.
+pub(crate) const FAIL: &str = include_str!("fail.sql");
+
+/// The draft's thread, held by a Stop or a deletion before its own
+/// statements run, so their snapshots follow any assignment that held the
+/// thread. No row when the draft has no thread.
+///
+/// `$1` draft.
+pub(crate) const HOLD_THREAD: &str = include_str!("hold_thread.sql");

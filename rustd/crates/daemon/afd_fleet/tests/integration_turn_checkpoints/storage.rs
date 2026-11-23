@@ -12,12 +12,12 @@ use af_crypto::{
     secret::{Kek, SecretBytes},
 };
 use af_wire::{
-    lease::{TurnCheckpointAction, TurnCheckpointResponse},
-    task::CheckpointObject,
+    durable_task::CheckpointObject,
+    run::{TurnCheckpointAction, TurnCheckpointResponse},
 };
 use afd_fleet::{
-    lease::turn_checkpoint::TurnCheckpoints,
-    task::storage::{CheckpointStorageConfig, R2CheckpointStore},
+    durable_task::storage::{CheckpointStorageConfig, R2CheckpointStore},
+    run::turn_checkpoint::TurnCheckpoints,
 };
 use afd_vault::{SecretBody, SecretName};
 use base64::{Engine as _, prelude::BASE64_STANDARD};
@@ -80,8 +80,8 @@ impl Files {
         Ok(self
             .store
             .execute(
-                &self.case.leases,
-                self.case.lease(),
+                &self.case.runs,
+                self.case.run(),
                 &valid(command(&self.case, action))?,
             )
             .await?)

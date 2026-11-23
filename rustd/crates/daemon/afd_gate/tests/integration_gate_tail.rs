@@ -1,7 +1,7 @@
 //! What the gate plane tells the fleet's live tail: a human has been asked.
 //!
 //! A park writes its row and its reference and then says so on the fleet's
-//! tail subject, `af.fleet.{id}.tail`, count included, so a console watching the fleet
+//! items subject, `af.thread.{id}.items`, count included, so a console watching the fleet
 //! shows the gate waiting without a read. Beside the lifecycle suite rather
 //! than inside it, so each file stays about one property.
 #![cfg(feature = "test-util")]
@@ -47,7 +47,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let bus = bus().await;
     let gates = Gates::new(fixture.database.clone(), bus.clone(), Entropy::new());
     let mut tail = bus
-        .subscribe(&Subject::FleetTail(fixture.fleet.clone()))
+        .subscribe(&Subject::ThreadItems(fixture.fleet.clone()))
         .await
         .expect("the lane's NATS subscribes");
     let event = mint_id();
@@ -64,7 +64,7 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
 
     let frame = parked_frame(&mut tail).await;
     assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
-    assert_eq!(frame.get("event_id"), Some(&json!(event)));
+    assert_eq!(frame.get("turn_id"), Some(&json!(event)));
     assert!(
         frame
             .get("gate_id")
@@ -99,7 +99,7 @@ async fn parked_frame(tail: &mut afd_bus::Subscription) -> serde_json::Value {
 async fn assert_park_counters(fixture: &Fixture, frame: &serde_json::Value) {
     // The park's frame carries where the fleet stands, read on the insert's
     // own connection: the figures on the wire are the database's.
-    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
+    let counters = afd_turns::view::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(

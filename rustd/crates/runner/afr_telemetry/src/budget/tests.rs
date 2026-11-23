@@ -1,4 +1,4 @@
-//! The span budget: per lease, per second, and the slot a lease gives back.
+//! The span budget: per run, per second, and the slot a run gives back.
 
 #![expect(
     clippy::expect_used,
@@ -17,10 +17,10 @@ use opentelemetry::trace::{
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracerProvider, Span, SpanData, SpanExporter, SpanProcessor};
 
-use super::table::{LeaseTable, SecondWindow};
+use super::table::{RunTable, SecondWindow};
 use super::{
-    LeaseReaper, LeaseSampler, Limits, MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND, Seconds,
-    TRACKED_LEASES, key,
+    Limits, MAX_RUN_SPANS, RUNNER_SPANS_PER_SECOND, RunReaper, RunSampler, Seconds, TRACKED_RUNS,
+    key,
 };
 
 /// The instrumentation scope this suite records under.
@@ -50,7 +50,7 @@ impl SpanExporter for Kept {
 /// The reaper as a processor of its own, as a bare SDK pipeline takes it; the
 /// production pipeline runs it as an observer inside its one processor.
 #[derive(Debug)]
-struct Reaping(LeaseReaper);
+struct Reaping(RunReaper);
 
 impl SpanProcessor for Reaping {
     fn on_start(&self, _span: &mut Span, _cx: &Context) {}
@@ -71,7 +71,7 @@ impl SpanProcessor for Reaping {
 /// A pipeline under `limits`, what it kept, what it shed, and its clock.
 struct Pipeline {
     provider: SdkTracerProvider,
-    sampler: LeaseSampler,
+    sampler: RunSampler,
     kept: Arc<AtomicUsize>,
     shed: Arc<AtomicU64>,
     clock: Hand,
@@ -82,7 +82,7 @@ impl Pipeline {
         let clock = Hand::default();
         let shed = Arc::new(AtomicU64::new(0));
         let counted = Arc::clone(&shed);
-        let sampler = LeaseSampler::new(limits, clock.clone(), move || {
+        let sampler = RunSampler::new(limits, clock.clone(), move || {
             counted.fetch_add(1, Ordering::SeqCst);
         });
         let kept = Kept::default();
@@ -100,17 +100,17 @@ impl Pipeline {
         }
     }
 
-    /// Starts a lease's root span, returning the context its children start in.
-    fn lease(&self) -> Context {
-        let root = self.provider.tracer(SCOPE).start("runner.lease");
+    /// Starts a run's root span, returning the context its children start in.
+    fn run(&self) -> Context {
+        let root = self.provider.tracer(SCOPE).start("runner.run");
         Context::current_with_span(root)
     }
 
-    /// Starts and ends `count` children of `lease`.
-    fn children(&self, lease: &Context, count: u32) {
+    /// Starts and ends `count` children of `run`.
+    fn children(&self, run: &Context, count: u32) {
         let tracer = self.provider.tracer(SCOPE);
         for _call in 0..count {
-            tracer.start_with_context("execute_tool", lease).end();
+            tracer.start_with_context("execute_tool", run).end();
         }
     }
 
@@ -123,28 +123,28 @@ impl Pipeline {
     }
 
     fn held(&self) -> usize {
-        self.sampler.budget.leases.held()
+        self.sampler.budget.runs.held()
     }
 }
 
-/// A lease past `MAX_LEASE_SPANS` exports exactly that many, root included,
+/// A run past `MAX_RUN_SPANS` exports exactly that many, root included,
 /// and counts the rest; its slot is free once its root ends.
 #[test]
-fn test_lease_spans_stop_at_the_budget() {
+fn test_run_spans_stop_at_the_budget() {
     let pipeline = Pipeline::new(Limits {
         per_second: u32::MAX,
         ..Limits::default()
     });
-    let lease = pipeline.lease();
-    assert_eq!(pipeline.held(), 1, "the root claimed its lease's slot");
+    let run = pipeline.run();
+    assert_eq!(pipeline.held(), 1, "the root claimed its run's slot");
 
     // The root is one span, so this is the budget plus ten.
-    pipeline.children(&lease, MAX_LEASE_SPANS + 9);
-    lease.span().end();
+    pipeline.children(&run, MAX_RUN_SPANS + 9);
+    run.span().end();
 
     assert_eq!(
         pipeline.kept(),
-        MAX_LEASE_SPANS as usize,
+        MAX_RUN_SPANS as usize,
         "exactly the budget leaves"
     );
     assert_eq!(pipeline.shed(), 10, "and every span past it is counted");
@@ -152,18 +152,18 @@ fn test_lease_spans_stop_at_the_budget() {
 }
 
 /// A burst past the per-second budget is shed and counted, and the next
-/// second admits again; a shed child costs its lease nothing.
+/// second admits again; a shed child costs its run nothing.
 #[test]
 fn test_span_budget_refills_each_second() {
     let pipeline = Pipeline::new(Limits {
-        per_lease: u32::MAX,
+        per_run: u32::MAX,
         ..Limits::default()
     });
-    let lease = pipeline.lease();
+    let run = pipeline.run();
 
     // The root took one of the second's spans, so the burst is shed past
     // the budget less one.
-    pipeline.children(&lease, RUNNER_SPANS_PER_SECOND + 5);
+    pipeline.children(&run, RUNNER_SPANS_PER_SECOND + 5);
     assert_eq!(pipeline.shed(), 6, "the burst past the second is shed");
     assert_eq!(
         pipeline.kept(),
@@ -172,9 +172,9 @@ fn test_span_budget_refills_each_second() {
     );
 
     pipeline.clock.0.store(1, Ordering::SeqCst);
-    pipeline.children(&lease, 1);
+    pipeline.children(&run, 1);
     assert_eq!(pipeline.shed(), 6, "the next second admits again");
-    lease.span().end();
+    run.span().end();
     assert_eq!(pipeline.kept(), RUNNER_SPANS_PER_SECOND as usize + 1);
 }
 
@@ -184,11 +184,11 @@ fn test_span_budget_refills_each_second() {
 #[test]
 fn a_root_is_charged_to_its_second_and_never_refused() {
     let pipeline = Pipeline::new(Limits {
-        per_lease: u32::MAX,
+        per_run: u32::MAX,
         per_second: 1,
     });
-    let first = pipeline.lease();
-    let second = pipeline.lease();
+    let first = pipeline.run();
+    let second = pipeline.run();
 
     pipeline.children(&first, 1);
     first.span().end();
@@ -211,13 +211,13 @@ fn a_root_is_charged_to_its_second_and_never_refused() {
 #[test]
 fn a_shed_spans_children_are_shed_with_it() {
     let pipeline = Pipeline::new(Limits {
-        per_lease: u32::MAX,
+        per_run: u32::MAX,
         per_second: 2,
     });
     let tracer = pipeline.provider.tracer(SCOPE);
-    let lease = pipeline.lease();
-    let kept = lease.with_span(tracer.start_with_context("invoke_agent", &lease));
-    let shed = lease.with_span(tracer.start_with_context("invoke_agent", &lease));
+    let run = pipeline.run();
+    let kept = run.with_span(tracer.start_with_context("invoke_agent", &run));
+    let shed = run.with_span(tracer.start_with_context("invoke_agent", &run));
     assert_eq!(
         pipeline.shed(),
         1,
@@ -228,7 +228,7 @@ fn a_shed_spans_children_are_shed_with_it() {
     pipeline.children(&shed, 1);
     pipeline.children(&kept, 1);
     kept.span().end();
-    lease.span().end();
+    run.span().end();
 
     assert_eq!(
         pipeline.shed(),
@@ -242,47 +242,43 @@ fn a_shed_spans_children_are_shed_with_it() {
     );
 }
 
-/// Two leases are budgeted apart: one spending its whole budget leaves the
+/// Two runs are budgeted apart: one spending its whole budget leaves the
 /// other's untouched.
 #[test]
-fn two_leases_are_budgeted_apart() {
+fn two_runs_are_budgeted_apart() {
     let pipeline = Pipeline::new(Limits {
-        per_lease: 3,
+        per_run: 3,
         per_second: u32::MAX,
     });
-    let first = pipeline.lease();
-    let second = pipeline.lease();
+    let first = pipeline.run();
+    let second = pipeline.run();
 
     pipeline.children(&first, 5);
     pipeline.children(&second, 2);
 
-    assert_eq!(pipeline.shed(), 3, "only the first lease went over");
+    assert_eq!(pipeline.shed(), 3, "only the first run went over");
     first.span().end();
     second.span().end();
     assert_eq!(pipeline.kept(), 3 + 3);
     assert_eq!(pipeline.held(), 0);
 }
 
-/// A full table keeps every root and sheds the untracked lease's children,
+/// A full table keeps every root and sheds the untracked run's children,
 /// so a leak bounds itself rather than growing.
 #[test]
 fn a_full_table_keeps_the_root_and_sheds_its_children() {
     let pipeline = Pipeline::new(Limits::default());
-    let leases: Vec<Context> = (0..TRACKED_LEASES).map(|_lease| pipeline.lease()).collect();
-    assert_eq!(pipeline.held(), TRACKED_LEASES);
+    let runs: Vec<Context> = (0..TRACKED_RUNS).map(|_run| pipeline.run()).collect();
+    assert_eq!(pipeline.held(), TRACKED_RUNS);
 
-    let untracked = pipeline.lease();
+    let untracked = pipeline.run();
     pipeline.children(&untracked, 2);
     untracked.span().end();
 
-    assert_eq!(
-        pipeline.shed(),
-        2,
-        "the untracked lease's children are shed"
-    );
+    assert_eq!(pipeline.shed(), 2, "the untracked run's children are shed");
     assert_eq!(pipeline.kept(), 1, "its root is kept all the same");
-    for lease in leases {
-        lease.span().end();
+    for run in runs {
+        run.span().end();
     }
     assert_eq!(pipeline.held(), 0);
     let flushed = pipeline.provider.shutdown();
@@ -306,10 +302,10 @@ fn the_window_never_runs_backwards() {
     assert!(!SecondWindow::default().take(0, 0));
 }
 
-/// A lease table finds, frees and refills a slot by key.
+/// A run table finds, frees and refills a slot by key.
 #[test]
 fn a_slot_is_found_freed_and_reused() {
-    let table = LeaseTable::with_capacity(2);
+    let table = RunTable::with_capacity(2);
     assert!(table.open(7));
     assert!(table.find(7).is_some());
     table.close(7);
@@ -333,26 +329,26 @@ fn a_key_is_never_vacant() {
     assert_ne!(key(TraceId::from(42_u128)), 0);
 }
 
-/// Workers released together onto one lease, as a burst of tool calls lands.
+/// Workers released together onto one run, as a burst of tool calls lands.
 const WORKERS: usize = 128;
 
 /// Calls each worker makes.
 const CALLS_PER_WORKER: u32 = 4;
 
 /// Runs `CALLS_PER_WORKER` children on each of `WORKERS` threads, all released
-/// off one barrier, under one lease of `pipeline`; ends the lease after.
+/// off one barrier, under one run of `pipeline`; ends the run after.
 fn contend(pipeline: &Pipeline) {
-    let lease = pipeline.lease();
+    let run = pipeline.run();
     let barrier = Barrier::new(WORKERS);
     std::thread::scope(|scope| {
         for _worker in 0..WORKERS {
             scope.spawn(|| {
                 barrier.wait();
-                pipeline.children(&lease, CALLS_PER_WORKER);
+                pipeline.children(&run, CALLS_PER_WORKER);
             });
         }
     });
-    lease.span().end();
+    run.span().end();
 }
 
 /// Every span started, the root included.
@@ -360,22 +356,22 @@ fn started() -> u64 {
     u64::try_from(WORKERS).unwrap_or(u64::MAX) * u64::from(CALLS_PER_WORKER) + 1
 }
 
-/// A lease under real contention keeps exactly its budget and counts every
+/// A run under real contention keeps exactly its budget and counts every
 /// other span: no reservation lost to a race, none counted twice.
 ///
 /// Repeated, because a lost compare-and-swap shows up as an off-by-some only
 /// on the run where two workers collide.
 #[test]
-fn contended_children_never_overrun_a_lease() {
+fn contended_children_never_overrun_a_run() {
     for _run in 0..5 {
         let pipeline = Pipeline::new(Limits {
-            per_lease: 64,
+            per_run: 64,
             per_second: u32::MAX,
         });
 
         contend(&pipeline);
 
-        assert_eq!(pipeline.kept(), 64, "exactly the lease's budget left");
+        assert_eq!(pipeline.kept(), 64, "exactly the run's budget left");
         assert_eq!(
             u64::try_from(pipeline.kept()).unwrap_or(u64::MAX) + pipeline.shed(),
             started(),
@@ -386,12 +382,12 @@ fn contended_children_never_overrun_a_lease() {
 }
 
 /// The per-second window under the same contention admits exactly its
-/// budget, and a shed child hands its lease reservation back.
+/// budget, and a shed child hands its run reservation back.
 #[test]
 fn contended_children_never_overrun_the_second() {
     for _run in 0..5 {
         let pipeline = Pipeline::new(Limits {
-            per_lease: u32::MAX,
+            per_run: u32::MAX,
             per_second: 100,
         });
 
@@ -409,27 +405,27 @@ fn contended_children_never_overrun_the_second() {
     }
 }
 
-/// Every lease a runner at its worker ceiling holds at once is tracked, so
+/// Every run a runner at its worker ceiling holds at once is tracked, so
 /// none of their children is shed as untracked.
 #[test]
-fn every_lease_a_full_runner_holds_is_tracked() {
+fn every_run_a_full_runner_holds_is_tracked() {
     let pipeline = Pipeline::new(Limits::default());
     let workers = usize::try_from(af_core::limits::MAX_WORKERS).unwrap_or(usize::MAX);
-    let leases: Vec<Context> = (0..workers).map(|_lease| pipeline.lease()).collect();
+    let runs: Vec<Context> = (0..workers).map(|_run| pipeline.run()).collect();
 
-    for lease in &leases {
-        pipeline.children(lease, 1);
+    for run in &runs {
+        pipeline.children(run, 1);
     }
 
-    assert_eq!(pipeline.shed(), 0, "a full runner's every lease has a slot");
-    assert!(TRACKED_LEASES >= workers);
-    for lease in leases {
-        lease.span().end();
+    assert_eq!(pipeline.shed(), 0, "a full runner's every run has a slot");
+    assert!(TRACKED_RUNS >= workers);
+    for run in runs {
+        run.span().end();
     }
 }
 
 /// Two traces sharing their low half get different keys: the key folds both
-/// halves, so two leases never share a slot by sharing half an id.
+/// halves, so two runs never share a slot by sharing half an id.
 #[test]
 fn traces_differing_only_in_their_high_half_get_different_keys() {
     let low = 5_u128;
@@ -442,8 +438,8 @@ fn traces_differing_only_in_their_high_half_get_different_keys() {
 /// A runner at its per-second budget fills less of the pinned span queue than
 /// the queue holds before the next send, so against a collector that keeps up
 /// the queue never drops a span the budget admitted. Roots started in a spent
-/// second are outside this product; one per lease, they are bounded by the
-/// rate leases start at.
+/// second are outside this product; one per run, they are bounded by the
+/// rate runs start at.
 #[test]
 fn the_per_second_budget_fits_the_pinned_queue() {
     let sends_every = usize::try_from(af_otlp::SPAN_SEND_EVERY.as_secs()).unwrap_or(usize::MAX);
@@ -456,22 +452,22 @@ fn the_per_second_budget_fits_the_pinned_queue() {
     );
 }
 
-/// A sampler logged at start-up names the limits it enforces and the leases it
+/// A sampler logged at start-up names the limits it enforces and the runs it
 /// tracks; its clock and its shed counter are callbacks with nothing to show,
 /// and the rendering says so rather than pretending it is whole.
 #[test]
 fn test_a_samplers_debug_names_its_limits_and_marks_what_it_leaves_out() {
     let pipeline = Pipeline::new(Limits {
-        per_lease: 7,
+        per_run: 7,
         per_second: 11,
     });
 
     let rendered = format!("{:?}", pipeline.sampler);
 
     assert!(rendered.contains("Budget"), "{rendered}");
-    assert!(rendered.contains("per_lease: 7"), "{rendered}");
+    assert!(rendered.contains("per_run: 7"), "{rendered}");
     assert!(rendered.contains("per_second: 11"), "{rendered}");
-    assert!(rendered.contains("leases"), "{rendered}");
+    assert!(rendered.contains("runs"), "{rendered}");
     assert!(
         rendered.contains(".."),
         "the callbacks are marked as left out: {rendered}"

@@ -86,7 +86,7 @@ async fn a_limit_that_is_not_a_number_is_refused() {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
         assert_eq!(
             detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_LIMIT_NOT_NUMERIC,
+            afd_api_tenant::tenant::DETAIL_LIMIT_NOT_NUMERIC,
             "a sign or a fraction is not a count on either daemon"
         );
     }
@@ -132,12 +132,13 @@ async fn an_empty_cursor_is_the_first_page() {
 /// A token the charges page issues parses at this boundary — the cursor
 /// claim, made where a client would actually present it.
 #[tokio::test]
-async fn an_issued_cursor_is_accepted() {
+async fn an_issued_cursor_is_accepted() -> Result<(), Box<dyn std::error::Error>> {
     let token = afd_billing::tenant::cursor::render(
         jiff::Timestamp::constant(1_712_924_400, 0),
-        "01924f4e-0000-7000-8000-00000000c4a1",
+        &af_core::id::Uuid7::parse("01924f4e-0000-7000-8000-00000000c4a1")?,
     );
     let path = format!("{CHARGES}?cursor={token}");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
     assert_reached_the_verb(response, "issued cursor").await;
+    Ok(())
 }

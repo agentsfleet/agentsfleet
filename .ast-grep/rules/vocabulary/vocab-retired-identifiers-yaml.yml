@@ -1,0 +1,28 @@
+# A retired identifier from before the thread model never returns: a
+# conversation is a thread of turns, served by runs and recorded as items, and
+# nothing aliases an old name. The spec names this check
+# `retired_identifiers_are_gone`; it lives here because a test never reads the
+# repository (tests-*-repo-read). The same rule in six grammars, because one
+# rule id has one language; TOML and SQL have no grammar here, and a crate
+# named in a manifest is caught where Rust code uses it.
+# History records keep the words they were written with.
+id: vocab-retired-identifiers-yaml
+language: Yaml
+severity: error
+message: names a retired identifier; use the thread model's word (docs/architecture/thread_model.md)
+ignores:
+  - docs/v2/**
+  - docs/reviews/**
+  - bench/baselines/**
+  - CHANGELOG.md
+  - docs/architecture/thread_model.md
+  - playbooks/operations/acceptance/baselines/**
+  - .ast-grep/**
+rule:
+  regex: '\b(LeasePayload|TaggedLease|SessionHandle|FleetTail|DraftEvents|OutboundWake|afd_authoring|afd_admission|afd_events|RUN_LEASE_CANCELLED)\b'
+  any:
+    - kind: string_scalar
+    - kind: double_quote_scalar
+    - kind: single_quote_scalar
+    - kind: block_scalar
+    - kind: comment

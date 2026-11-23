@@ -185,19 +185,13 @@ impl Db {
     /// every connection at once, which is what forces the pool to open one more
     /// each time — so this gathers the guards and drops them together.
     ///
-    /// # On a budget of its own
+    /// # Bounded by each acquire
     ///
-    /// `deadline` is the caller's, and it is deliberately not `acquire_timeout`:
-    /// that one bounds a single acquire, and warming is a boot activity whose
-    /// cost is `floor × establishment`. Every individual acquire is still
-    /// bounded by `acquire_timeout` underneath, so a hung server cannot make
-    /// this outlast its own deadline by much.
-    ///
-    /// That inner bound is why `acquire_timeout` must exceed the handshake:
-    /// warming cannot buy its way past a budget it inherits. A pool whose
-    /// establishment costs more than one acquire budget warms to ZERO however
-    /// generous this deadline is, and then serves every request from an empty
-    /// pool. See `config::ACQUIRE_TIMEOUT_DEFAULT`.
+    /// Every acquire is bounded by `acquire_timeout`, so a hung server costs
+    /// at most one budget before the loop stops. That bound is why
+    /// `acquire_timeout` must exceed the handshake: a pool whose establishment
+    /// costs more than one acquire budget warms to ZERO, and then serves every
+    /// request from an empty pool. See `config::ACQUIRE_TIMEOUT_DEFAULT`.
     ///
     /// # Errors
     /// Never. A pool that could not reach its floor is a slower pool, not a
@@ -205,43 +199,35 @@ impl Db {
     /// probe in [`Self::connect`], and failing boot over a warm-up would trade
     /// the cold start for an outage. The shortfall is returned so the caller
     /// can report it, and logged here so it is visible without one.
-    pub async fn warm(&self, deadline: Duration) -> u32 {
+    pub async fn warm(&self) -> u32 {
         let target = self.min_connections;
         if target == 0 {
             return 0;
         }
 
-        let held = tokio::time::timeout(deadline, async {
-            let mut connections = Vec::with_capacity(usize::try_from(target).unwrap_or_default());
-            // Sequential requests for connections that are all held: the pool
-            // has to open a new one each time, because none is ever returned.
-            for _ in 0..target {
-                match self.pool.acquire().await {
-                    Ok(connection) => connections.push(connection),
-                    Err(_) => break,
-                }
+        let mut connections = Vec::with_capacity(usize::try_from(target).unwrap_or_default());
+        // Sequential requests for connections that are all held: the pool
+        // has to open a new one each time, because none is ever returned.
+        for _ in 0..target {
+            match self.pool.acquire().await {
+                Ok(connection) => connections.push(connection),
+                Err(_) => break,
             }
-            connections
-        })
-        .await
-        .map_or(0, |connections| {
-            let opened = connections.len();
-            drop(connections);
-            u32::try_from(opened).unwrap_or(target)
-        });
+        }
+        let held = u32::try_from(connections.len()).unwrap_or(target);
+        drop(connections);
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let role_tag = self.role.tag();
-        let deadline_ms = deadline.as_millis();
         if held < target {
             {
                 let (role, warmed, event) = (&role_tag, &held, &"pool_warm_incomplete");
-                tracing::warn!(role, warmed, target, deadline_ms, event);
+                tracing::warn!(role, warmed, target, event);
             };
         } else {
             {
                 let (role, warmed, event) = (&role_tag, &held, &"pool_warmed");
-                tracing::info!(role, warmed, deadline_ms, event);
+                tracing::info!(role, warmed, event);
             };
         }
         held
@@ -267,7 +253,7 @@ impl Db {
     ///
     /// Named rather than left to `Drop`: closing is asynchronous, `Drop` cannot
     /// await, and a pool dropped mid-shutdown abandons connections the server
-    /// is still holding open. §7's supervisor calls this in stop order.
+    /// is still holding open. The daemon's supervisor calls this in stop order.
     pub async fn close(&self) {
         self.pool.close().await;
     }

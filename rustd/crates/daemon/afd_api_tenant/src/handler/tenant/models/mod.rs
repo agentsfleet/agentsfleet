@@ -21,19 +21,16 @@ use afd_tenant::models::cursor::{self, Cursor};
 use afd_tenant::models::{LibraryPage, LibraryRow};
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
+use headers::{ETag, HeaderMapExt as _, IfNoneMatch};
 use http::{HeaderMap, HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
-use crate::etag;
 use crate::handler::Refusal;
 use crate::handler::paging::catalogue_limit;
-use crate::services::{ModelCatalogue as _, Services};
+use crate::services::{ModelCatalogue as _, TenantPlane};
 
 /// The scoped event this read's failures are logged under.
 const EVENT_CATALOGUE: &str = "model_catalogue_failed";
-
-/// The refusal a `limit` outside `1..=100` — or not a number — earns.
-pub const DETAIL_CATALOGUE_LIMIT: &str = "limit must be an integer between 1 and 100";
 
 /// The refusal an oversized or unreadable `provider` filter earns.
 ///
@@ -86,7 +83,7 @@ const VARY_VALUE: &str = "Authorization";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn catalogue<D: Services>(
+pub(crate) async fn catalogue<D: TenantPlane>(
     State(services): State<Arc<D>>,
     _identity: PersonIdentity,
     headers: HeaderMap,
@@ -116,13 +113,16 @@ fn outcome_of(read: Result<&Response, &Refusal>) -> ReadOutcome {
 
 /// [`catalogue`] without the outcome recording, so there is one place the
 /// answer is produced and one place it is classified.
-async fn read_catalogue<D: Services>(
+async fn read_catalogue<D: TenantPlane>(
     services: &Arc<D>,
     headers: &HeaderMap,
     query: Option<String>,
 ) -> Result<Response, Refusal> {
     let query = query.unwrap_or_default();
-    let limit = catalogue_limit(input::decoded(&query, QUERY_LIMIT)?.as_deref())?;
+    let limit = catalogue_limit(
+        input::decoded(&query, QUERY_LIMIT)?.as_deref(),
+        services.pages().list,
+    )?;
     let provider = input::normalize_provider(input::decoded(&query, "provider")?)?;
     let advanced = input::parse_advanced(input::decoded(&query, QUERY_ADVANCED)?.as_deref())?;
     let after = input::parse_cursor(
@@ -203,16 +203,17 @@ fn model(row: &LibraryRow) -> CatalogueModel<'_> {
 /// The validators ride BOTH answers: a 304 that omitted them would tell a
 /// cache to stop revalidating the very representation it just revalidated.
 fn respond(headers: &HeaderMap, body: Vec<u8>) -> Response {
-    let tag = etag::compute(&[Some(&body)]);
+    let tag = af_core::etag::compute(&[Some(&body)]);
     let validators = [
         (header::ETAG, tag.clone()),
         (header::CACHE_CONTROL, CACHE_CONTROL_VALUE.to_owned()),
         (header::VARY, VARY_VALUE.to_owned()),
     ];
+    // RFC 9110's weak comparison, `*` and list membership are the crate's.
     let revalidated = headers
-        .get(header::IF_NONE_MATCH)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|candidate| etag::matches_if_none_match(candidate, &tag));
+        .typed_get::<IfNoneMatch>()
+        .zip(tag.parse::<ETag>().ok())
+        .is_some_and(|(condition, current)| !condition.precondition_passes(&current));
 
     let mut response = if revalidated {
         StatusCode::NOT_MODIFIED.into_response()
@@ -251,9 +252,34 @@ mod input;
 
 #[cfg(test)]
 mod tests {
+    use http::{HeaderMap, HeaderValue, StatusCode, header};
     use jiff::Timestamp;
 
-    use super::version_stamp;
+    use super::{respond, version_stamp};
+
+    /// A cache holding the page under the weak form of its tag revalidates.
+    #[test]
+    fn a_matching_weak_etag_answers_304() {
+        let body = b"[]".to_vec();
+        let tag = af_core::etag::compute(&[Some(&body)]);
+        let mut headers = HeaderMap::new();
+        let weak = HeaderValue::from_str(&format!("\"other\", W/{tag}"));
+        headers.insert(
+            header::IF_NONE_MATCH,
+            weak.unwrap_or(HeaderValue::from_static("")),
+        );
+
+        let response = respond(&headers, body);
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+        assert_eq!(
+            response
+                .headers()
+                .get(header::ETAG)
+                .and_then(|v| v.to_str().ok()),
+            Some(tag.as_str()),
+            "the 304 still carries its validator"
+        );
+    }
 
     #[test]
     fn the_version_stamp_renders_the_newest_change_as_a_utc_date() {

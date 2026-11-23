@@ -8,9 +8,11 @@ use super::{
     valid,
 };
 use af_core::id::Uuid7;
-use af_wire::lease::{
-    FoldRef, TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnResume, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, FoldRef, TurnCheckpointAction as Action, TurnCheckpointAdopt,
+    TurnCheckpointBegin, TurnCheckpointCommit, TurnCheckpointPageWrite, TurnCheckpointPinRelease,
+    TurnCheckpointRead, TurnCheckpointRef, TurnCheckpointResponse as Response, TurnResume,
+    TurnWorkspace,
 };
 use sqlx::Connection as _;
 
@@ -21,28 +23,28 @@ const MESSAGE: &str = "Use staging before publishing";
 async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fence() -> Checked {
     let mut files = Files::new().await?;
     let (saved, fold) = publish(&files).await?;
-    let previous = files.case.issued.lease_id.clone();
+    let previous = files.case.issued.run_id.clone();
     files.case.replace().await?;
     let reference = read(&files, saved).await?;
     let Response::Adopted(covered) = files
-        .execute(Action::Adopt {
+        .execute(Action::Adopt(TurnCheckpointAdopt {
             checkpoint: reference.clone(),
-        })
+        }))
         .await?
     else {
         return Err("adopted exact prefix".into());
     };
     assert_eq!(covered, vec![fold.clone()]);
-    let claim = claim(&files, &fold).await?;
-    assert_ne!(claim.owner, previous);
-    assert_eq!(claim.owner, files.case.issued.lease_id);
-    assert_eq!(claim.fence, files.case.acquired.fence.as_i64());
-    assert!(!claim.settled);
+    let assign = assignment(&files, &fold).await?;
+    assert_ne!(assign.owner, previous);
+    assert_eq!(assign.owner, files.case.issued.run_id);
+    assert_eq!(assign.fence, files.case.acquired.fence.as_i64());
+    assert!(!assign.settled);
     assert!(matches!(
         files
-            .execute(Action::PinRelease {
+            .execute(Action::PinRelease(TurnCheckpointPinRelease {
                 checkpoint: reference
-            })
+            }))
             .await?,
         Response::PinReleased
     ));
@@ -52,26 +54,26 @@ async fn file_recovery_adopts_the_saved_nonempty_prefix_under_the_replacement_fe
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() -> Checked {
+async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_assignment() -> Checked {
     let mut files = Files::new().await?;
     let (saved, fold) = publish(&files).await?;
-    let previous = files.case.issued.lease_id.clone();
+    let previous = files.case.issued.run_id.clone();
     files.case.replace().await?;
     let reference = read(&files, saved).await?;
     let mut connection = files.case.fixtures.database.acquire().await?;
     let deadline: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "UPDATE runner.turn_checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at",
+        "UPDATE runner.checkpoint_pins SET expires_at=clock_timestamp()+interval '1400 milliseconds' WHERE id=$1 RETURNING expires_at",
     ).bind(Uuid7::parse(&reference.pin_id.0)?).fetch_one(&mut *connection).await?;
     let mut held = connection.begin().await?;
     let controller: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM fleet.admissions WHERE id=$1 FOR UPDATE")
-            .bind(Uuid7::parse(&fold.event_id.0)?)
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM thread.turns WHERE id=$1 FOR UPDATE")
+            .bind(Uuid7::parse(&fold.turn_id.0)?)
             .fetch_one(&mut *held)
             .await?;
     let (result, released) = tokio::join!(
-        files.execute(Action::Adopt {
+        files.execute(Action::Adopt(TurnCheckpointAdopt {
             checkpoint: reference
-        }),
+        })),
         release_after_expiry(&files, held, controller, deadline.to_jiff())
     );
     released?;
@@ -80,7 +82,7 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() 
             .downcast_ref::<afd_fleet::Error>()
             .is_some_and(|failure| failure.code() == af_core::error_code::RUN_CHECKPOINT_CONFLICT)
     }));
-    assert_eq!(claim(&files, &fold).await?.owner, previous);
+    assert_eq!(assignment(&files, &fold).await?.owner, previous);
     drop(connection);
     files.finish().await;
     Ok(())
@@ -88,10 +90,18 @@ async fn reader_expiry_during_a_fold_lock_wait_rolls_back_every_adopted_claim() 
 
 async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
     let fold = incorporate(files).await?;
+    let Response::Committed(saved) = commit_covering(files, &fold).await? else {
+        return Err("saved complete file generation".into());
+    };
+    Ok((saved, fold))
+}
+
+/// A one-page file capture whose root and Commit both cover `fold`.
+async fn commit_covering(files: &Files, fold: &FoldRef) -> Checked<Response> {
     let workspace = TurnWorkspace::Files {
         toolbox_digest: "a".repeat(64),
     };
-    let history = history(files, workspace.clone(), &fold)?;
+    let history = history(files, workspace.clone(), fold)?;
     let Response::Begun(plan) = files
         .execute(Action::Begin(TurnCheckpointBegin {
             expected_head: None,
@@ -109,42 +119,63 @@ async fn publish(files: &Files) -> Checked<(Box<TurnResume>, FoldRef)> {
     };
     let reference = TurnCheckpointRef {
         checkpoint_id: plan.checkpoint_id,
-        pin_id: TurnId(plan.pin.id),
+        pin_id: CheckpointOperationId(plan.pin.id),
     };
     let manifest = empty_manifest(files, &reference, &plan.page_ids).await?;
-    let Response::Committed(saved) = files
-        .execute(Action::Commit {
+    files
+        .execute(Action::Commit(TurnCheckpointCommit {
             checkpoint: reference,
             root: history,
             manifest_root: manifest,
             folds: vec![fold.clone()],
-        })
-        .await?
-    else {
-        return Err("saved complete file generation".into());
+        }))
+        .await
+}
+
+// Value: protects=a generation covers only inputs folded into the run at the
+// positions they hold; fails_when=commit stops comparing each covered input
+// with its locked row; why_new=a mismatched fold had no case; seam=the
+// production fold assignment, then a Commit claiming that input one position
+// later.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_commit_covering_an_input_at_another_position_conflicts() -> Checked {
+    let files = Files::new().await?;
+    let fold = incorporate(&files).await?;
+    let claimed = FoldRef {
+        sequence: fold.sequence + 1,
+        ..fold
     };
-    Ok((saved, fold))
+    let refused = commit_covering(&files, &claimed).await;
+    assert!(refused.is_err_and(|failure| {
+        failure
+            .downcast_ref::<afd_fleet::Error>()
+            .is_some_and(|failure| failure.code() == af_core::error_code::RUN_CHECKPOINT_CONFLICT)
+    }));
+    assert_eq!(files.case.counts().await?.3, None);
+    files.finish().await;
+    Ok(())
 }
 
 async fn empty_manifest(
     files: &Files,
     reference: &TurnCheckpointRef,
-    page_ids: &[TurnId],
+    page_ids: &[CheckpointOperationId],
 ) -> Checked<String> {
     let page_id = page_ids.first().ok_or("page")?.clone();
-    let page = af_wire::task::CheckpointPage {
+    let page = af_wire::durable_task::CheckpointPage {
         page_number: 0,
         entries: Vec::new(),
         history_objects: Vec::new(),
     };
     let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
     files
-        .execute(Action::PageWrite {
+        .execute(Action::PageWrite(TurnCheckpointPageWrite {
             checkpoint: reference.clone(),
             page_id: page_id.clone(),
             digest: digest.clone(),
             contents: page,
-        })
+        }))
         .await?;
     Ok(af_crypto::checkpoint_digest::manifest_root([(
         page_id.0.as_str(),
@@ -156,7 +187,7 @@ fn history(
     files: &Files,
     workspace: TurnWorkspace,
     fold: &FoldRef,
-) -> Checked<af_wire::lease::TurnPrivateRoot> {
+) -> Checked<af_wire::run::TurnPrivateRoot> {
     let mut history = root(&files.case, workspace);
     let mut encoded: serde_json::Value = serde_json::from_str(&history.history)?;
     *encoded.pointer_mut("/root/folds").ok_or("root folds")? = serde_json::to_value([&fold])?;
@@ -170,49 +201,52 @@ fn history(
 }
 
 async fn incorporate(files: &Files) -> Checked<FoldRef> {
-    let admissions = afd_admission::Admissions::new(
+    let turns = afd_turns::Turns::new(
         files.case.fixtures.database.clone(),
         files.case.fixtures.bus().clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let body = serde_json::json!({"message": MESSAGE}).to_string();
-    let actor = afd_events::steer_actor("checkpoint-owner");
-    let admitted = admissions
-        .admit(afd_admission::Admission {
-            producer: afd_admission::Producer::Steer,
-            key: afd_admission::Key::Unrepeatable,
+    let actor = afd_turns::view::steer_actor("checkpoint-owner");
+    let admitted = turns
+        .admit(afd_turns::IncomingTurn {
+            producer: afd_turns::Producer::Steer,
+            key: afd_turns::Key::Unrepeatable,
             fleet: &files.case.acquired.fleet_id,
             workspace: &files.case.acquired.workspace_id,
             actor: &actor,
-            event_type: af_wire::event::EventType::Chat,
+            event_type: af_wire::turn::TurnKind::Chat,
             request_json: &body,
-            reply: afd_admission::Reply::None,
+            reply: afd_turns::Reply::None,
         })
         .await?;
-    let claimed = files
+    let assigned = files
         .case
-        .leases
-        .claim_folds(
+        .runs
+        .assign_folds(
             &files.case.runner,
-            &files.case.issued.lease_id,
+            &files.case.issued.run_id,
             files.case.acquired.fence.as_u64(),
             0,
         )
         .await?;
-    let input = claimed.inputs.first().ok_or("incorporated follow-up")?;
-    assert_eq!(claimed.inputs.len(), 1);
-    assert_eq!(input.event_id, admitted.stored.id.as_str());
+    let input = assigned.inputs.first().ok_or("incorporated follow-up")?;
+    assert_eq!(assigned.inputs.len(), 1);
+    assert_eq!(input.turn_id, admitted.stored.id.as_str());
     Ok(FoldRef {
-        event_id: TurnId(input.event_id.to_string()),
+        turn_id: CheckpointOperationId(input.turn_id.to_string()),
         sequence: input.sequence,
     })
 }
 
 async fn read(files: &Files, saved: Box<TurnResume>) -> Checked<TurnCheckpointRef> {
-    let request = valid(command(&files.case, Action::Read { descriptor: saved }))?;
+    let request = valid(command(
+        &files.case,
+        Action::Read(TurnCheckpointRead { descriptor: saved }),
+    ))?;
     let Response::Read(read) = files
         .store
-        .execute(&files.case.leases, files.case.lease(), &request)
+        .execute(&files.case.runs, files.case.run(), &request)
         .await?
     else {
         return Err("complete pinned root".into());
@@ -221,19 +255,19 @@ async fn read(files: &Files, saved: Box<TurnResume>) -> Checked<TurnCheckpointRe
     assert_eq!(read.folds.len(), 1);
     Ok(TurnCheckpointRef {
         checkpoint_id: read.descriptor.checkpoint_id,
-        pin_id: TurnId(read.pin.id),
+        pin_id: CheckpointOperationId(read.pin.id),
     })
 }
 
 #[derive(sqlx::FromRow)]
-struct Claim {
+struct Assignment {
     owner: Uuid7,
     fence: i64,
     settled: bool,
 }
 
-async fn claim(files: &Files, fold: &FoldRef) -> Checked<Claim> {
+async fn assignment(files: &Files, fold: &FoldRef) -> Checked<Assignment> {
     let mut connection = files.case.fixtures.database.acquire().await?;
-    Ok(sqlx::query_as("SELECT input_claim_lease_id AS owner,input_claim_fence AS fence,settled_at IS NOT NULL AS settled FROM fleet.admissions WHERE id=$1")
-        .bind(Uuid7::parse(&fold.event_id.0)?).fetch_one(&mut *connection).await?)
+    Ok(sqlx::query_as("SELECT input_run_id AS owner,input_fence AS fence,settled_at IS NOT NULL AS settled FROM thread.turns WHERE id=$1")
+        .bind(Uuid7::parse(&fold.turn_id.0)?).fetch_one(&mut *connection).await?)
 }

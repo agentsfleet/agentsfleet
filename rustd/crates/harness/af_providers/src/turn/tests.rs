@@ -1,10 +1,16 @@
-//! The runtime host counts the immutable request before opening its real SDK stream.
+//! The runtime host's turns: the wire's model under the run's observer, its
+//! failures reported under the run's codes. The wire's own suite is
+//! guffbolt-ai's (`guffbolt_ai::wire::connected`).
+
+#![expect(clippy::unwrap_used, reason = "fixture preconditions must fail loudly")]
+
 use super::*;
+use crate::turn::observer::RunObserver;
 use af_core::test_util::trace::Capture;
-use af_inference::transport::SendRequest;
 use bytes::Bytes;
-use futures_util::future::BoxFuture;
-use rig_core::http_client::{self as rig_http, StreamingResponse};
+use futures_util::stream;
+use guffbolt_ai::wire::transport::{Body, Send, Sent};
+use guffbolt_ai::wire::{Api, Route};
 use std::sync::{Arc, Mutex};
 
 const CONTEXT_TOKENS: u32 = 1024;
@@ -19,40 +25,22 @@ const TYPE: &str = "type";
 const ID: &str = "id";
 const INPUT: &str = "input_tokens";
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Generation {
-    Complete,
-    Silent,
-    Truncated,
-}
-
+/// A Responses provider and its count endpoint, recording each path sent;
+/// a silent one sends its generation's headers and then nothing.
 struct Physical {
     paths: Mutex<Vec<String>>,
-    status: u16,
-    generation: Generation,
+    silent: bool,
 }
 
-impl SendRequest for Physical {
-    fn send(
-        &self,
-        request: http::Request<Bytes>,
-    ) -> BoxFuture<'static, rig_http::Result<StreamingResponse>> {
+impl Send for Physical {
+    fn send(&self, request: http::Request<Bytes>) -> Sent {
         let path = request.uri().path().to_owned();
-        let recorded = self
-            .paths
-            .lock()
-            .map(|mut paths| paths.push(path.clone()))
-            .map_err(|_poisoned| std::io::Error::other("recorder poisoned"));
-        let status = self.status;
-        let silent = self.generation == Generation::Silent;
-        let truncated = self.generation == Generation::Truncated;
+        self.paths.lock().unwrap().push(path.clone());
+        let silent = self.silent;
         Box::pin(async move {
-            recorded.map_err(rig_http::Error::instance)?;
             let counting = path.ends_with(INPUT);
             let body = if counting {
                 r#"{"input_tokens":123}"#.to_owned()
-            } else if truncated {
-                String::new()
             } else {
                 let response = serde_json::json!({TYPE:"response.completed","response":{
                     ID:"r","status":"completed","output":[{TYPE:"message","role":"assistant",
@@ -60,15 +48,12 @@ impl SendRequest for Physical {
                     "usage":{INPUT:123,"output_tokens":2,"total_tokens":125}}});
                 format!("event: response.completed\ndata: {response}\n\n")
             };
-            let streamed: rig_http::BoxedStream = if silent && !counting {
+            let streamed: Body = if silent && !counting {
                 Box::pin(stream::pending())
             } else {
                 Box::pin(stream::once(async move { Ok(Bytes::from(body)) }))
             };
             let mut response = http::Response::new(streamed);
-            *response.status_mut() =
-                http::StatusCode::from_u16(if counting { status } else { 200 })
-                    .map_err(rig_http::Error::instance)?;
             response.headers_mut().insert(
                 http::header::CONTENT_TYPE,
                 http::HeaderValue::from_static(if counting {
@@ -82,43 +67,28 @@ impl SendRequest for Physical {
     }
 }
 
-fn turns(status: u16) -> Result<(Turns, Arc<Physical>)> {
-    turns_with_stream(status, Generation::Complete)
+fn turns(transport: impl Send + 'static) -> Turns {
+    let route = Route::new(
+        Api::Responses,
+        "https://api.openai.com/v1",
+        Some(PROVIDER),
+        37,
+        CONTEXT_TOKENS,
+    )
+    .unwrap();
+    let connected = Connected::new(route, MODEL, KEY, transport)
+        .with_observer(Arc::new(RunObserver::new("run-count", PROVIDER)));
+    Turns::new(connected, "run-count", PROVIDER)
 }
 
-fn turns_with_stream(status: u16, generation: Generation) -> Result<(Turns, Arc<Physical>)> {
-    let settings = ModelInference {
-        api: InferenceApi::Responses,
-        base_url: "https://api.openai.com/v1".into(),
-        dialect: Some(PROVIDER.into()),
-        max_output_tokens: 37,
-    };
-    let physical = Arc::new(Physical {
+fn physical(silent: bool) -> Arc<Physical> {
+    Arc::new(Physical {
         paths: Mutex::default(),
-        status,
-        generation,
-    });
-    let transport = HttpTransport::new(Arc::<Physical>::clone(&physical));
-    let route =
-        af_inference::Configured::new(&settings, CONTEXT_TOKENS).map_err(raise::configuration)?;
-    let model = route.model(MODEL, KEY, transport.clone());
-    Ok((
-        Turns {
-            model,
-            settings,
-            model_context_tokens: CONTEXT_TOKENS,
-            lease_id: "lease-count".into(),
-            provider: PROVIDER.into(),
-            counting_key: SecretString::new(KEY.into()),
-            counting_transport: transport,
-            timeouts: af_inference::Timeouts::DEFAULT,
-            retries: crate::RetryPolicy::DEFAULT,
-        },
-        physical,
-    ))
+        silent,
+    })
 }
 
-fn request(messages: &[crate::provider::Message]) -> Request<'_> {
+fn request(messages: &[guffbolt::Message]) -> Request<'_> {
     Request {
         model: MODEL,
         instructions: "private pinned state",
@@ -132,43 +102,15 @@ fn request(messages: &[crate::provider::Message]) -> Request<'_> {
 }
 
 #[tokio::test]
-async fn configured_opening_budget_stops_truncated_unpaid_generations()
--> Result<(), Box<dyn std::error::Error>> {
-    for openings in [1, 2] {
-        let (turns, physical) = turns_with_stream(200, Generation::Truncated)?;
-        let settings = garde::Unvalidated::new(crate::RetrySettings {
-            max_stream_open_attempts: openings,
-            ..crate::RetrySettings::default()
-        })
-        .validate()?;
-        let turns = turns.with_settings(
-            af_inference::Timeouts::DEFAULT,
-            crate::RetryPolicy::new(&settings),
-        );
-        let messages = [crate::provider::Message::User("probe".into())];
-        let mut request = request(&messages);
-        request.single_attempt = false;
-        let chunks: Vec<_> = turns.stream(request).collect().await;
-        assert!(chunks.iter().any(Result::is_err));
-        let paths = physical
-            .paths
-            .lock()
-            .map_err(|_poisoned| "recorder poisoned")?;
-        assert_eq!(paths.len(), openings);
-        assert!(paths.iter().all(|path| path == "/v1/responses"));
-    }
-    Ok(())
-}
-
-#[tokio::test]
 async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usage()
--> Result<(), Box<dyn std::error::Error>> {
-    let captured = Capture::install_filtered(af_inference::log_filter(
+-> std::result::Result<(), Box<dyn std::error::Error>> {
+    let captured = Capture::install_filtered(crate::settings::log_filter(
         tracing::level_filters::LevelFilter::TRACE,
     ));
-    let (turns, physical) = turns(200)?;
+    let physical = physical(false);
+    let turns = turns(Arc::clone(&physical));
     for text in ["private first source ", "private second source "] {
-        let messages = [crate::provider::Message::User(text.repeat(NEAR_CAPACITY))];
+        let messages = [guffbolt::Message::User(text.repeat(NEAR_CAPACITY))];
         let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(chunks.iter().all(Result::is_ok));
         assert!(
@@ -200,7 +142,8 @@ async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usag
         calibration
             .iter()
             .all(|event| event.field("method") == Some("provider_count")
-                && event.field("actual_input_tokens") == Some("123"))
+                && event.field("actual_input_tokens") == Some("123")
+                && event.field("correlation_id") == Some("run-count"))
     );
     let rendered = format!("{:?}{turns:?}", captured.events());
     assert!(!rendered.contains("private "));
@@ -208,41 +151,15 @@ async fn runtime_confirms_each_current_request_and_calibrates_authoritative_usag
     Ok(())
 }
 
-#[tokio::test]
-async fn refused_native_counts_never_open_a_paid_runtime_attempt()
--> Result<(), Box<dyn std::error::Error>> {
-    for status in [400, 401, 429, 500] {
-        let (turns, physical) = turns(status)?;
-        let messages = [crate::provider::Message::User(
-            "private source ".repeat(NEAR_CAPACITY),
-        )];
-        let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
-        assert_eq!(chunks.len(), 1);
-        assert!(chunks.first().is_some_and(Result::is_err));
-        assert_eq!(
-            *physical
-                .paths
-                .lock()
-                .map_err(|_poisoned| "recorder poisoned")?,
-            ["/v1/responses/input_tokens"]
-        );
-    }
-    Ok(())
-}
-
 #[tokio::test(start_paused = true)]
-#[expect(
-    clippy::expect_used,
-    reason = "a completed silent response must fail this cancellation proof"
-)]
 async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
--> Result<(), Box<dyn std::error::Error>> {
+-> std::result::Result<(), Box<dyn std::error::Error>> {
     use crate::observe::labels::CallOutcome;
     use crate::testing::{Observed, Tally, scoped};
     let (recorder, received) = Tally::new();
     scoped(recorder, async {
-        let (turns, _physical) = turns_with_stream(200, Generation::Silent)?;
-        let messages = [crate::provider::Message::User("probe".into())];
+        let turns = turns(physical(true));
+        let messages = [guffbolt::Message::User("probe".into())];
         let expired: Vec<_> = turns.stream(request(&messages)).collect().await;
         assert!(expired.iter().any(Result::is_err));
         let cancelled = tokio::time::timeout(
@@ -250,7 +167,10 @@ async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
             turns.stream(request(&messages)).collect::<Vec<_>>(),
         )
         .await;
-        cancelled.expect_err("caller cancellation must stop the silent stream");
+        assert!(
+            cancelled.is_err(),
+            "caller cancellation must stop the silent stream"
+        );
         Ok::<(), Box<dyn std::error::Error>>(())
     })
     .await?;
@@ -263,4 +183,99 @@ async fn a_silent_runtime_call_records_deadline_and_cancellation_once()
         .collect();
     assert_eq!(outcomes, [CallOutcome::Deadline, CallOutcome::Cancelled]);
     Ok(())
+}
+
+#[test]
+fn a_conversation_that_cannot_be_sent_keeps_the_wires_words() {
+    let turns = turns(physical(false));
+    let messages = [guffbolt::Message::ToolResult {
+        call_id: "call-nobody-made".into(),
+        output: "4".into(),
+        image: None,
+    }];
+
+    let refused = turns.measure(request(&messages)).unwrap_err();
+
+    assert_eq!(
+        refused.detail(),
+        "the conversation cannot be sent: the result for call call-nobody-made answers no call"
+    );
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert_eq!(refused.failure_class(), None);
+}
+
+#[tokio::test]
+async fn an_input_that_leaves_no_output_is_the_fleets_configuration() {
+    let route = Route::new(Api::Chat, "https://gateway.example/v1", None, 37, 64).unwrap();
+    let physical = physical(false);
+    let connected = Connected::new(route, MODEL, KEY, Arc::clone(&physical));
+    let turns = Turns::new(connected, "run-window", PROVIDER);
+    let messages = [guffbolt::Message::User("private source ".repeat(64))];
+
+    let chunks: Vec<_> = turns.stream(request(&messages)).collect().await;
+
+    let failure = chunks.into_iter().find_map(Result::err).unwrap();
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::AGENTSFLEET_INVALID_CONFIG
+    );
+    assert_eq!(failure.failure_class(), None);
+    assert!(
+        physical.paths.lock().unwrap().is_empty(),
+        "nothing was sent"
+    );
+}
+
+/// A transport whose guard refuses every destination, counting its sends.
+#[derive(Default)]
+struct Refusing {
+    sends: std::sync::atomic::AtomicUsize,
+}
+
+impl Send for Refusing {
+    fn send(&self, _: http::Request<Bytes>) -> Sent {
+        self.sends.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Box::pin(async {
+            Err(guffbolt_ai::wire::transport::SendError::Refused(Box::new(
+                af_egress::BlockedAddress,
+            )))
+        })
+    }
+}
+
+// Value: an endpoint the egress guard refused is the policy's error, named by
+// its provider, and the adapter sends it once: neither the retry nor a
+// reopening repeats a refusal no second send changes.
+#[tokio::test]
+async fn a_send_the_guard_refused_is_not_retried_and_names_the_policys_endpoint() {
+    let provider = "custom:https://models.internal.example/v1";
+    let route = Route::new(
+        Api::Chat,
+        "https://models.internal.example/v1",
+        None,
+        37,
+        1024,
+    )
+    .unwrap();
+    let guard = Arc::new(Refusing::default());
+    let connected = Connected::new(route, MODEL, KEY, Arc::clone(&guard));
+    let turns = Turns::new(connected, "run-refused", provider);
+    let messages = [guffbolt::Message::User("hello".into())];
+    let mut asked = request(&messages);
+    asked.single_attempt = false;
+
+    let chunks: Vec<_> = turns.stream(asked).collect().await;
+
+    let refused = chunks.into_iter().find_map(Result::err).unwrap();
+    assert_eq!(
+        refused.code(),
+        af_core::error_code::AGENTSFLEET_INVALID_CONFIG
+    );
+    assert_eq!(refused.failure_class(), None);
+    assert_eq!(refused.unhosted_provider(), None);
+    assert!(refused.detail().contains(provider), "{}", refused.detail());
+    assert_eq!(guard.sends.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

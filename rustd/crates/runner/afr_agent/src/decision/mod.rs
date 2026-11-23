@@ -6,38 +6,41 @@ pub(crate) mod interpretation;
 mod interpretation_tests;
 mod reply;
 mod routing;
+#[cfg(test)]
+mod routing_tests;
 
 use crate::{Meter, Result};
 use af_wire::{
-    lease::LeasePayload,
-    task::{
-        DecisionAssessment, DecisionReservationInput, DecisionTaskVersion, TaskBindingItem,
-        TaskBindingsInput, TaskBindingsResponse, TaskContext, TaskInputAction, TaskInputsQuery,
-        TaskInputsResponse, TaskItemBinding,
+    durable_task::{
+        DecisionAssessment, DecisionDurableTaskVersion, DecisionReservationInput,
+        DurableTaskBindingItem, DurableTaskBindingsInput, DurableTaskBindingsResponse,
+        DurableTaskContext, DurableTaskInputAction, DurableTaskInputsQuery,
+        DurableTaskInputsResponse, DurableTaskItemBinding,
     },
+    run::RunPayload,
 };
-use afr_tools::LeaseVerbs;
+use afr_tools::RunVerbs;
 
 /// Native inputs and accepted meaning prepared before any sandbox is built.
 #[derive(Debug, Clone)]
-pub struct PreparedTask {
-    /// Immutable native lease execution ceiling, narrowed by accepted task binding.
+pub struct PreparedDurableTask {
+    /// Immutable native run execution ceiling, narrowed by accepted task binding.
     pub execution_deadline: Option<jiff::Timestamp>,
     /// Complete native read, including current ownership and recovery cursors.
-    pub inputs: TaskInputsResponse<'static>,
-    /// True only when native binding permits an action on this lease's task.
+    pub inputs: DurableTaskInputsResponse<'static>,
+    /// True only when native binding permits an action on this run's task.
     pub allow_actions: bool,
 }
 
 pub(crate) fn unavailable() -> crate::Error {
-    crate::error::ErrorKind::TaskDecision.into()
+    crate::error::ErrorKind::DurableTaskDecision.into()
 }
 
 pub(crate) fn boundary(
     context: &'static str,
     source: impl std::error::Error + Send + Sync + 'static,
 ) -> crate::Error {
-    crate::error::ErrorKind::TaskBoundary {
+    crate::error::ErrorKind::DurableTaskBoundary {
         context,
         source: Box::new(source),
     }
@@ -45,7 +48,17 @@ pub(crate) fn boundary(
 }
 
 pub(crate) fn native(reason: afr_tools::verbs::Unanswered) -> crate::Error {
-    crate::error::ErrorKind::TaskNative { reason }.into()
+    crate::error::ErrorKind::DurableTaskNative { reason }.into()
+}
+
+/// Whether `agentsfleetd` refused a decision only because the request does
+/// not fit what the decision model reads whole. It answers that refusal under
+/// the shared byte-bound code before reserving, funding or sending any call,
+/// so a shorter description of the same evidence may still be assessed.
+pub(crate) fn exceeds_input(failure: &crate::Error) -> bool {
+    matches!(failure.kind(), crate::error::ErrorKind::DurableTaskNative {
+        reason: afr_tools::verbs::Unanswered::Refused(Some(code)),
+    } if *code == af_core::error_code::PAYLOAD_TOO_LARGE)
 }
 
 pub(crate) fn identity() -> Result<String> {
@@ -55,24 +68,24 @@ pub(crate) fn identity() -> Result<String> {
 }
 
 pub(crate) async fn prepare(
-    lease: &LeasePayload<'_>,
-    verbs: &dyn LeaseVerbs,
-    provider: &dyn af_providers::Provider,
+    run: &RunPayload<'_>,
+    verbs: &dyn RunVerbs,
+    provider: &af_providers::Provider,
     meter: &Meter,
     stop: &tokio_util::sync::CancellationToken,
-) -> Result<PreparedTask> {
+) -> Result<PreparedDurableTask> {
     let inputs = verbs
-        .task_inputs(TaskInputsQuery {
-            fencing_token: lease.fencing_token,
+        .durable_task_inputs(DurableTaskInputsQuery {
+            fencing_token: run.fencing_token,
             starting_after: None,
             after_input_sequence: None,
             limit: 4,
         })
         .await
         .map_err(native)?;
-    let mut prepared = PreparedTask {
+    let mut prepared = PreparedDurableTask {
         execution_deadline: inputs.execution_deadline,
-        allow_actions: inputs.current_message.is_none() && inputs.current_task.is_some(),
+        allow_actions: inputs.current_message.is_none() && inputs.current_durable_task.is_some(),
         inputs,
     };
     if let Some(accepted) = &prepared.inputs.current_interpretation {
@@ -83,17 +96,13 @@ pub(crate) async fn prepare(
         return Ok(prepared);
     };
     let accepted = Intake {
-        lease,
+        run,
         verbs,
         provider,
         meter,
         stop,
     }
-    .bind(
-        &prepared.inputs,
-        &prepared.inputs.source_admission_id,
-        message,
-    )
+    .bind(&prepared.inputs, &prepared.inputs.source_turn_id, message)
     .await;
     if let Ok(binding) = &accepted {
         prepared.execution_deadline = binding.execution_deadline;
@@ -112,8 +121,8 @@ pub(crate) async fn prepare(
     }
     // Read the immutable interpretation back, including native item identities.
     prepared.inputs = verbs
-        .task_inputs(TaskInputsQuery {
-            fencing_token: lease.fencing_token,
+        .durable_task_inputs(DurableTaskInputsQuery {
+            fencing_token: run.fencing_token,
             starting_after: None,
             after_input_sequence: None,
             limit: 4,
@@ -131,9 +140,9 @@ pub(crate) async fn prepare(
 
 /// One root's existing coding/decision seams; no additional worker or queue.
 pub(crate) struct Intake<'a> {
-    pub(crate) lease: &'a LeasePayload<'a>,
-    pub(crate) verbs: &'a dyn LeaseVerbs,
-    pub(crate) provider: &'a dyn af_providers::Provider,
+    pub(crate) run: &'a RunPayload<'a>,
+    pub(crate) verbs: &'a dyn RunVerbs,
+    pub(crate) provider: &'a af_providers::Provider,
     pub(crate) meter: &'a Meter,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
 }
@@ -141,25 +150,25 @@ pub(crate) struct Intake<'a> {
 impl Intake<'_> {
     pub(crate) async fn bind(
         &self,
-        inputs: &TaskInputsResponse<'_>,
+        inputs: &DurableTaskInputsResponse<'_>,
         source: &str,
         message: &str,
-    ) -> Result<TaskBindingsResponse<'static>> {
+    ) -> Result<DurableTaskBindingsResponse<'static>> {
         let Self {
-            lease,
+            run,
             verbs,
             provider,
             meter,
             stop,
         } = *self;
-        let assignment = lease.decision.as_ref().ok_or_else(unavailable)?;
+        let assignment = run.decision.as_ref().ok_or_else(unavailable)?;
         let evaluated = verbs
-            .task_decision(DecisionReservationInput {
+            .durable_task_decision(DecisionReservationInput {
                 operation_id: identity()?,
-                fencing_token: lease.fencing_token,
-                source_admission_id: source.to_owned(),
+                fencing_token: run.fencing_token,
+                source_turn_id: source.to_owned(),
                 assessment: DecisionAssessment::Message,
-                task: inputs.current_task.as_ref().map(version),
+                durable_task: inputs.current_durable_task.as_ref().map(version),
                 retry_of: None,
                 evidence: serde_json::json!({}),
             })
@@ -167,12 +176,19 @@ impl Intake<'_> {
             .map_err(native)?;
         let answers = routing::answers(&evaluated)?;
         let count = routing::multiplicity(answers, &assignment.intent)?;
-        let proposed =
-            interpretation::propose(lease, provider, meter, stop, message, &inputs.tasks, count)
-                .await?;
-        let mut binding = TaskBindingsInput {
-            fencing_token: lease.fencing_token,
-            source_admission_id: source.to_owned(),
+        let proposed = interpretation::propose(
+            run,
+            provider,
+            meter,
+            stop,
+            message,
+            &inputs.durable_tasks,
+            count,
+        )
+        .await?;
+        let mut binding = DurableTaskBindingsInput {
+            fencing_token: run.fencing_token,
+            source_turn_id: source.to_owned(),
             accepted_revision_id: inputs
                 .accepted_revision_id
                 .clone()
@@ -181,7 +197,7 @@ impl Intake<'_> {
             message_decision_call_id: evaluated.call_id.clone(),
             items: proposed
                 .into_iter()
-                .map(|proposed| TaskBindingItem {
+                .map(|proposed| DurableTaskBindingItem {
                     proposed,
                     decision_call_id: None,
                 })
@@ -189,24 +205,23 @@ impl Intake<'_> {
         };
         let interpretation = serde_json::to_vec(&binding.interpretation())?;
         binding.plan_digest = af_core::etag::sha256_hex(&interpretation);
-        for (ordinal, item) in binding.items.iter_mut().enumerate() {
+        // `propose` admits four items at most, so every one has a `u8` ordinal.
+        for (ordinal, item) in (0..=u8::MAX).zip(binding.items.iter_mut()) {
             if count == routing::Multiplicity::Single {
                 routing::check(&evaluated, &item.proposed, &assignment.intent)?;
             } else {
                 let item_call = verbs
-                    .task_decision(DecisionReservationInput {
+                    .durable_task_decision(DecisionReservationInput {
                         operation_id: identity()?,
-                        fencing_token: lease.fencing_token,
-                        source_admission_id: binding.source_admission_id.clone(),
+                        fencing_token: run.fencing_token,
+                        source_turn_id: binding.source_turn_id.clone(),
                         assessment: DecisionAssessment::Item {
-                            ordinal: u8::try_from(ordinal).map_err(|source| {
-                                boundary("interpretation item ordinal", source)
-                            })?,
+                            ordinal,
                             interpretation_digest: binding.plan_digest.clone(),
                             source_start: item.proposed.source_start,
                             source_end: item.proposed.source_end,
                         },
-                        task: inputs.current_task.as_ref().map(version),
+                        durable_task: inputs.current_durable_task.as_ref().map(version),
                         retry_of: None,
                         evidence: serde_json::to_value(&item.proposed)?,
                     })
@@ -216,22 +231,24 @@ impl Intake<'_> {
                 item.decision_call_id = Some(item_call.call_id);
             }
         }
-        verbs.task_bindings(binding).await.map_err(native)
+        verbs.durable_task_bindings(binding).await.map_err(native)
     }
 }
 
-const fn actionable(item: &TaskItemBinding) -> bool {
+const fn actionable(item: &DurableTaskItemBinding) -> bool {
     item.applies_here
-        && item.task_id.is_some()
+        && item.durable_task_id.is_some()
         && matches!(
             item.action,
-            TaskInputAction::NewWork | TaskInputAction::Steer | TaskInputAction::Refresh
+            DurableTaskInputAction::NewWork
+                | DurableTaskInputAction::Steer
+                | DurableTaskInputAction::Refresh
         )
 }
 
-pub(crate) fn version(task: &TaskContext<'_>) -> DecisionTaskVersion {
-    DecisionTaskVersion {
-        task_id: task.task_id.to_string(),
+pub(crate) fn version(task: &DurableTaskContext<'_>) -> DecisionDurableTaskVersion {
+    DecisionDurableTaskVersion {
+        durable_task_id: task.durable_task_id.to_string(),
         generation: task.generation,
     }
 }

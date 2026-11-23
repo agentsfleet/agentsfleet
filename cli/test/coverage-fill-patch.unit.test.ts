@@ -77,13 +77,13 @@ test("apiRequest maps an RFC 7807 body onto ApiError", async () => {
     statusText: "Failed Dependency",
     headers: { get: () => null },
     text: async () => JSON.stringify({
-      error_code: "UZ-AUTHOR-006",
+      error_code: "UZ-SETUP-006",
       detail: "Review this draft before saving",
       request_id: "req_review",
     }),
   }));
   await expect(apiRequest("https://x", { fetchImpl })).rejects.toMatchObject({
-    code: "UZ-AUTHOR-006",
+    code: "UZ-SETUP-006",
     message: "Review this draft before saving",
     requestId: "req_review",
   });

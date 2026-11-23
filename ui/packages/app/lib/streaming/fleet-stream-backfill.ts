@@ -1,8 +1,8 @@
-import { type EventRow, type EventsPage } from "@/lib/api/events";
-import { backfillFleetEventsUrl } from "@/lib/api/events-types";
+import { type TurnRow, type TurnsPage } from "@/lib/api/turns";
+import { backfillFleetTurnsUrl } from "@/lib/api/turns-types";
 import type { Entry } from "./fleet-stream-entry";
 import { maxServerCreatedAt, rfc3339Seconds } from "./fleet-stream-frames";
-import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "./fleet-stream-row";
 
 // The reconnect gap-recovery walk. Split out of the registry's lifecycle file
 // so that file stays under the LENGTH GATE and the walk is testable without a
@@ -12,14 +12,6 @@ import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 // second-granular RFC 3339: a frame sharing the truncated second must not be
 // skipped. mergeBackfill's id-dedupe absorbs the overlap (RULE KYS boundary).
 const BACKFILL_OVERLAP_MS = 2_000;
-// The upstream page maximum.
-const BACKFILL_PAGE_LIMIT = 200;
-// A hung proxy response must not pin the promise across a flapping network;
-// the next reconnect retries anyway.
-const BACKFILL_TIMEOUT_MS = 10_000;
-// Bounds the cursor-follow walk. 10 × 200 rows covers any realistic outage;
-// exhausting it is a real truncation and is surfaced, not swallowed.
-const BACKFILL_MAX_PAGES = 10;
 
 // A backfill failure is deliberately swallowed (live frames have already
 // resumed; the next reconnect retries), so this console line is its only
@@ -43,7 +35,7 @@ export type BackfillRequest = {
   /** False once the owning entry has been torn down mid-flight. */
   stillCurrent: () => boolean;
   /** Every row the walk fetched, all pages in one call, once per walk. */
-  onPage: (rows: EventRow[]) => void;
+  onPage: (rows: TurnRow[]) => void;
 };
 
 // One page of the backfill list, or null when the fetch failed (already
@@ -51,13 +43,13 @@ export type BackfillRequest = {
 // sends exactly one of them.
 async function fetchBackfillPage(
   url: string,
-): Promise<EventsPage | null> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(BACKFILL_TIMEOUT_MS) });
+): Promise<TurnsPage | null> {
+  const res = await fetch(url);
   if (!res.ok) {
     warnBackfillFailure(`HTTP ${res.status}`);
     return null;
   }
-  const page = (await res.json()) as EventsPage;
+  const page = (await res.json()) as TurnsPage;
   if (!Array.isArray(page.items)) {
     warnBackfillFailure("malformed page body");
     return null;
@@ -66,7 +58,7 @@ async function fetchBackfillPage(
 }
 
 // Rows arrive newest-first (`created_at DESC`), so the last one is the oldest.
-function oldestCreatedAt(rows: EventRow[]): number | null {
+function oldestCreatedAt(rows: TurnRow[]): number | null {
   const last = rows[rows.length - 1];
   return last === undefined ? null : Date.parse(last.created_at);
 }
@@ -83,7 +75,7 @@ function oldestCreatedAt(rows: EventRow[]): number | null {
 export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome> {
   // Notify once even when recovery needs several pages. A later failure
   // still delivers the rows already fetched to a live owner.
-  const fetched: EventRow[] = [];
+  const fetched: TurnRow[] = [];
   try {
     return await walkPages(req, fetched);
   } finally {
@@ -91,22 +83,23 @@ export async function runBackfill(req: BackfillRequest): Promise<BackfillOutcome
   }
 }
 
-async function walkPages(req: BackfillRequest, fetched: EventRow[]): Promise<BackfillOutcome> {
+async function walkPages(req: BackfillRequest, fetched: TurnRow[]): Promise<BackfillOutcome> {
   const { anchorMs, stillCurrent, workspaceId, fleetId } = req;
   const floorMs = anchorMs === null ? null : Math.max(anchorMs - BACKFILL_OVERLAP_MS, 0);
   let watermark = req.watermarkMs === undefined ? anchorMs : req.watermarkMs;
   let cursor: string | undefined;
+  // The walk ends when the server reports no next page or the anchor is
+  // reached; a cursor it already followed would replay forever, so that fails
+  // the window and the next reconnect retries it.
+  const followed = new Set<string>();
 
-  for (let page = 0; page < BACKFILL_MAX_PAGES; page += 1) {
+  for (;;) {
     const query =
       cursor === undefined
-        ? {
-            since: floorMs === null ? undefined : rfc3339Seconds(floorMs),
-            limit: BACKFILL_PAGE_LIMIT,
-          }
-        : { cursor, limit: BACKFILL_PAGE_LIMIT };
+        ? { since: floorMs === null ? undefined : rfc3339Seconds(floorMs) }
+        : { cursor };
 
-    const body = await fetchBackfillPage(backfillFleetEventsUrl(workspaceId, fleetId, query));
+    const body = await fetchBackfillPage(backfillFleetTurnsUrl(workspaceId, fleetId, query));
     if (body === null) return { ok: false };
     if (!stillCurrent()) return { ok: false };
 
@@ -117,13 +110,13 @@ async function walkPages(req: BackfillRequest, fetched: EventRow[]): Promise<Bac
     if (!body.next_cursor || floorMs === null || oldest === null || oldest <= floorMs) {
       return { ok: true, watermark };
     }
+    if (followed.has(body.next_cursor)) {
+      warnBackfillFailure(`recovery repeated page cursor ${body.next_cursor}`);
+      return { ok: false };
+    }
+    followed.add(body.next_cursor);
     cursor = body.next_cursor;
   }
-
-  // Budget exhausted with the anchor still below us: the oldest missed frames
-  // are genuinely unrecovered. Say so — never present it as a full recovery.
-  warnBackfillFailure(`recovery truncated at ${BACKFILL_MAX_PAGES} pages`);
-  return { ok: true, watermark };
 }
 
 type EntryWalk = Pick<BackfillRequest, "stillCurrent" | "onPage"> & {
@@ -179,16 +172,16 @@ async function walkEntry(entry: Entry, fleetId: string, walk: EntryWalk): Promis
   }
 }
 
-// A waiting row's history row carries its admission time, so a message leased
+// A waiting row's history row carries its intake time, so a message held
 // during an outage lands below the watermark when it waited longer than the
 // overlap. The walk reaches back to the oldest message this thread still shows
 // as waiting; the watermark itself never moves back for it.
 function recoveryAnchorMs(entry: Entry): number | null {
   let anchor = entry.serverSinceMs;
   if (anchor === null) return null;
-  for (const event of entry.snapshot.events) {
-    if (event.status === AGENTSFLEET_EVENT_STATUS.QUEUED) {
-      anchor = Math.min(anchor, event.createdAt.getTime());
+  for (const turn of entry.snapshot.turns) {
+    if (turn.status === AGENTSFLEET_TURN_STATUS.QUEUED) {
+      anchor = Math.min(anchor, turn.createdAt.getTime());
     }
   }
   return anchor;

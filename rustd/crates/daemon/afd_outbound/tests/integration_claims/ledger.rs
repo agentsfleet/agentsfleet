@@ -9,7 +9,7 @@ use afd_connector::Provider;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
-use afd_outbound::obligation::{self, Delivery};
+use afd_outbound::delivery::{self, Delivery};
 use afd_outbound::{Posters, Worker};
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 
@@ -81,7 +81,7 @@ impl Ledger {
     pub(super) async fn owe(&self, lane: &Lane, answer: &str) -> Uuid7 {
         let event = mint_id();
         let mut connection = self.database.acquire().await.expect("a connection");
-        let written = obligation::owe(
+        let written = delivery::owe(
             &mut connection,
             &mint_id(),
             &mint_id(),
@@ -90,7 +90,7 @@ impl Ledger {
                 workspace_id: &lane.workspace,
                 provider: Provider::Slack,
                 destination: DESTINATION,
-                event_id: &event,
+                turn_id: &event,
                 answer,
             },
         )
@@ -102,7 +102,7 @@ impl Ledger {
 
     pub(super) async fn delivered(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("a connection");
-        sqlx::query_scalar("SELECT count(*) FROM fleet.obligations WHERE delivered_at IS NOT NULL")
+        sqlx::query_scalar("SELECT count(*) FROM thread.deliveries WHERE delivered_at IS NOT NULL")
             .fetch_one(&mut *connection)
             .await
             .expect("the count reads")
@@ -124,9 +124,8 @@ impl Ledger {
         sqlx::query_as(
             "SELECT delivered_at IS NOT NULL AS delivered, abandoned_at IS NOT NULL AS abandoned, \
              attempt_count, receipt, \
-             COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
              extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
-             FROM fleet.obligations WHERE event_id = $1",
+             FROM thread.deliveries WHERE turn_id = $1",
         )
         .bind(event)
         .fetch_one(&mut *connection)
@@ -135,7 +134,11 @@ impl Ledger {
     }
 
     /// Polls `event`'s row until `done` holds.
-    pub(super) async fn until(&self, event: &Uuid7, done: impl Fn(&Row) -> bool) -> Row {
+    pub(super) async fn until(
+        &self,
+        event: &Uuid7,
+        done: impl Fn(&Row) -> bool + Send + Sync,
+    ) -> Row {
         tokio::time::timeout(PATIENCE, async {
             loop {
                 let row = self.row(event).await;
@@ -153,16 +156,16 @@ impl Ledger {
     pub(super) async fn steal(&self, event: &Uuid7) {
         sql(
             &self.database,
-            "UPDATE fleet.obligations SET receipt = $2 WHERE event_id = $1",
+            "UPDATE thread.deliveries SET receipt = $2 WHERE turn_id = $1",
             &[event, &thief()],
         )
         .await;
     }
 
-    /// A worker pinged over the lane's NATS under this test's namespace,
-    /// claiming every `pass`. Every worker of one test shares the namespace.
-    pub(super) async fn worker(&self, poster: &Recorder, pass: Duration) -> Worker<Recorder> {
-        self.worker_on(self.bus().await, poster, pass)
+    /// A worker pinged over the lane's NATS under this test's namespace.
+    /// Every worker of one test shares the namespace.
+    pub(super) async fn worker(&self, poster: &Recorder) -> Worker<Recorder> {
+        self.worker_on(self.bus().await, poster)
     }
 
     /// A connection to the lane's NATS under this test's namespace.
@@ -173,12 +176,7 @@ impl Ledger {
     }
 
     /// [`Ledger::worker`], pinged over `bus`.
-    pub(super) fn worker_on(
-        &self,
-        bus: afd_bus::Handle,
-        poster: &Recorder,
-        pass: Duration,
-    ) -> Worker<Recorder> {
+    pub(super) fn worker_on(&self, bus: afd_bus::Handle, poster: &Recorder) -> Worker<Recorder> {
         Worker::new(
             self.database.clone(),
             bus,
@@ -187,7 +185,6 @@ impl Ledger {
             },
             Entropy::new(),
         )
-        .with_claim_pass(pass)
     }
 
     pub(super) async fn cleanup(self) {
@@ -202,13 +199,11 @@ pub(super) struct Row {
     pub(super) abandoned: bool,
     pub(super) attempt_count: i64,
     pub(super) receipt: Uuid7,
-    /// Released with the cycle backoff still ahead of it.
-    pub(super) due_later: bool,
     pub(super) claim_expires: f64,
 }
 
 /// Polls until `done` holds.
-pub(super) async fn until(done: impl Fn() -> bool) {
+pub(super) async fn until(done: impl Fn() -> bool + Send + Sync) {
     tokio::time::timeout(PATIENCE, async {
         while !done() {
             tokio::time::sleep(POLL).await;

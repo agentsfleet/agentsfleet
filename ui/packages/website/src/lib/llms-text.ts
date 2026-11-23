@@ -10,7 +10,7 @@ import {
   SOURCE_CATEGORIES,
 } from "./marketing-copy";
 
-const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet. Publishing a reusable Plugin is a separate action.";
+const NATIVE_SETUP_SUMMARY = "Describe and review a job in workspace chat. Save creates a fleet.";
 
 export const MARKETING_POSITIONING_SUMMARY =
   `Open-source software for running AI agents on your infrastructure or through the hosted service. A fleet checks the logs and code you allow and shows what it found. A separate fleet with write access can draft a fix. Your team reviews and ships it. ${NATIVE_SETUP_SUMMARY} The homepage uses sample data.`;

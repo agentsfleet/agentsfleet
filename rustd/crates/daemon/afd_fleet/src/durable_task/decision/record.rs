@@ -1,0 +1,230 @@
+//! Late accounting is authorized by retained original ownership, not a live task.
+
+use af_core::id::Uuid7;
+use af_wire::durable_task::{
+    DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult, DecisionRecordDisposition,
+};
+use sqlx::PgConnection;
+
+use super::{
+    account,
+    journal::{Recording, Written},
+    row::{self, Call, Lookup, Payload},
+    semantic,
+};
+use crate::{
+    Result,
+    durable_task::{
+        DurableTaskRefusal, DurableTaskRun, DurableTaskScope, DurableTasks, transaction,
+    },
+    error::{Error, ErrorKind, query, stale_fence},
+};
+
+pub(super) async fn record(
+    tasks: &DurableTasks,
+    durable_task_run: DurableTaskRun<'_>,
+    id: &Uuid7,
+    input: &garde::Valid<DecisionReceiptInput>,
+) -> Result<DecisionReceiptResult> {
+    if input.fencing_token != durable_task_run.fencing_token {
+        return Err(stale_fence());
+    }
+    tokio::time::timeout(
+        tasks.times().operation_timeout,
+        run(tasks, durable_task_run, id, &input.receipt),
+    )
+    .await
+    .map_err(|source| Error::from(ErrorKind::DecisionDeadline { source }))?
+}
+
+async fn run(
+    tasks: &DurableTasks,
+    durable_task_run: DurableTaskRun<'_>,
+    id: &Uuid7,
+    receipt: &DecisionReceipt,
+) -> Result<DecisionReceiptResult> {
+    let digest = receipt_digest(receipt)?;
+    let (written, payload) = commit(tasks, durable_task_run, id, receipt, &digest).await?;
+    after_commit(tasks, written, payload, receipt).await
+}
+
+pub(super) fn receipt_digest(receipt: &DecisionReceipt) -> Result<String> {
+    Ok(af_core::etag::sha256_hex(
+        &serde_json::to_vec(receipt).map_err(af_core::json::Unreadable::from)?,
+    ))
+}
+
+async fn after_commit(
+    tasks: &DurableTasks,
+    written: Written,
+    payload: Option<Payload>,
+    receipt: &DecisionReceipt,
+) -> Result<DecisionReceiptResult> {
+    let disposition = disposition(tasks, &written.call, payload.as_ref(), receipt).await;
+    changed(tasks, &written).await?;
+    let result = response(&written, disposition)?;
+    let call_age_ms = af_core::clock::now()
+        .duration_since(written.call.created_at)
+        .as_millis();
+    let (decision_call_id, assessment_id, state) = (
+        result.call_id.as_str(),
+        written.call.assessment_id.as_str(),
+        result.state.as_str(),
+    );
+    let (purpose, replayed, disposition) = (
+        written.call.purpose.as_str(),
+        result.replayed,
+        &result.disposition,
+    );
+    let (charged_nanos, reserved_nanos) = (
+        result.charged_nanos.as_deref(),
+        result.reserved_nanos.as_str(),
+    );
+    {
+        let event = &"dt_decision_recorded";
+        tracing::info!(
+            event,
+            decision_call_id,
+            assessment_id,
+            state,
+            call_age_ms,
+            purpose,
+            replayed,
+            ?disposition,
+            charged_nanos,
+            reserved_nanos
+        );
+    };
+    Ok(result)
+}
+
+async fn commit(
+    tasks: &DurableTasks,
+    durable_task_run: DurableTaskRun<'_>,
+    id: &Uuid7,
+    receipt: &DecisionReceipt,
+    digest: &str,
+) -> Result<(Written, Option<Payload>)> {
+    let call = row::peek(tasks.runs.pool(), Lookup::Id(id))
+        .await?
+        .ok_or(DurableTaskRefusal::NotFound)?;
+    if !call.owned_by(durable_task_run) {
+        return Err(stale_fence());
+    }
+    let mut connection = transaction::acquire(tasks.runs.pool()).await?;
+    let result = commit_on(
+        &mut connection,
+        tasks,
+        durable_task_run,
+        &call,
+        receipt,
+        digest,
+    )
+    .await;
+    transaction::recycle(connection);
+    result
+}
+
+async fn commit_on(
+    connection: &mut PgConnection,
+    tasks: &DurableTasks,
+    durable_task_run: DurableTaskRun<'_>,
+    call: &Call,
+    receipt: &DecisionReceipt,
+    digest: &str,
+) -> Result<(Written, Option<Payload>)> {
+    let mut transaction = transaction::begin(connection).await?;
+    // Match lifecycle lock order, including when either live parent is gone.
+    super::locks::parents(&mut transaction, call).await?;
+    let call = owned(&mut transaction, durable_task_run, &call.id).await?;
+    let plan = account::classify(&call, receipt, digest)?;
+    let written = Recording {
+        call: &call,
+        receipt,
+        digest,
+    }
+    .write(&mut transaction, tasks.runs.entropy(), plan)
+    .await?;
+    let payload = row::payload(&mut transaction, &call.id).await?;
+    transaction
+        .commit()
+        .await
+        .map_err(query("commit decision charge and original-owner receipt"))?;
+    Ok((written, payload))
+}
+
+async fn owned(
+    connection: &mut PgConnection,
+    durable_task_run: DurableTaskRun<'_>,
+    id: &Uuid7,
+) -> Result<Call> {
+    let call = row::find(connection, Lookup::Id(id))
+        .await?
+        .ok_or(DurableTaskRefusal::NotFound)?;
+    if !call.owned_by(durable_task_run) {
+        return Err(stale_fence());
+    }
+    Ok(call)
+}
+
+async fn disposition(
+    tasks: &DurableTasks,
+    call: &Call,
+    payload: Option<&Payload>,
+    receipt: &DecisionReceipt,
+) -> DecisionRecordDisposition {
+    match (payload, receipt) {
+        (Some(payload), DecisionReceipt::Provider { result }) => {
+            semantic::disposition(tasks, call, &payload.request.0, result).await
+        }
+        _ => DecisionRecordDisposition::Unusable,
+    }
+}
+
+pub(super) async fn changed(tasks: &DurableTasks, written: &Written) -> Result<()> {
+    if let Some((task, version)) = written
+        .call
+        .durable_task_id
+        .as_ref()
+        .zip(written.durable_task_version)
+    {
+        let scope = DurableTaskScope {
+            fleet_id: written.call.fleet_id.clone(),
+            workspace_id: written.call.workspace_id.clone(),
+        };
+        tasks
+            .publish_changed(
+                &scope,
+                task,
+                crate::durable_task::row::counter(version, "resource_version")?,
+            )
+            .await;
+    }
+    Ok(())
+}
+
+fn response(
+    written: &Written,
+    disposition: DecisionRecordDisposition,
+) -> Result<DecisionReceiptResult> {
+    let call = &written.call;
+    Ok(DecisionReceiptResult {
+        call_id: call.id.clone().into(),
+        state: call.state()?,
+        replayed: written.replayed,
+        disposition,
+        usage: call.known_usage.as_ref().map(|usage| usage.0),
+        charged_nanos: call.charged_nanos.map(|charged| charged.to_string()),
+        overage_nanos: call.charged_nanos.map(|charged| {
+            charged
+                .saturating_sub(call.reserved_nanos)
+                .max(0)
+                .to_string()
+        }),
+        reserved_nanos: if call.accounted {
+            "0".to_owned()
+        } else {
+            call.reserved_nanos.to_string()
+        },
+    })
+}

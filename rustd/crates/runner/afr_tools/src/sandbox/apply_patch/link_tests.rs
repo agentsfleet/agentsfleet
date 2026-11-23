@@ -52,7 +52,13 @@ async fn should_keep_both_edits_when_a_patch_names_one_file_through_a_link_and_i
             .is_symlink(),
         "the link was written through, not replaced"
     );
-    assert!(applied.text.ends_with("+2 \u{2212}2"), "{}", applied.text);
+    assert!(
+        applied
+            .text
+            .ends_with("Lines changed:\n\"src/keep.txt\" +1 -1\n\"src/alias.txt\" +1 -1"),
+        "{}",
+        applied.text
+    );
     live.stop().await;
 }
 
@@ -81,7 +87,7 @@ async fn should_refuse_at_landing_when_the_hunk_through_the_link_no_longer_appli
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::PatchInvalid),
+        Some(ToolErrorCode::PatchInvalid.into()),
         "{refused:?}"
     );
     assert!(refused.text.contains(ALIAS), "{}", refused.text);
@@ -114,7 +120,7 @@ async fn should_read_file_not_found_at_landing_when_an_earlier_hunk_deleted_the_
 
     assert_eq!(
         refused.error_code,
-        Some(ToolErrorCode::FileNotFound),
+        Some(ToolErrorCode::FileNotFound.into()),
         "{refused:?}"
     );
     assert!(

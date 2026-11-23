@@ -50,7 +50,7 @@ async fn recovery_idle_preserves_the_executors_explicit_busy_and_idle_answers() 
 /// A client whose calls wait [`SHORT`], and the executor's end of its socket.
 fn silent() -> (Client, UnixStream) {
     let (ours, theirs) = UnixStream::pair().unwrap();
-    (Client::over(ours, SHORT), theirs)
+    (Client::over(ours, SHORT, crate::Sizes::DEFAULT), theirs)
 }
 
 /// The next call the client sent `executor`.
@@ -90,7 +90,7 @@ fn nothing_listed() -> Value {
 /// A client whose calls wait [`PATIENCE`], and a process it started.
 pub(super) async fn started() -> (Client, BufReader<UnixStream>, crate::api::Process) {
     let (ours, theirs) = UnixStream::pair().unwrap();
-    let client = Client::over(ours, PATIENCE);
+    let client = Client::over(ours, PATIENCE, crate::Sizes::DEFAULT);
     let mut executor = BufReader::new(theirs);
     let spawning = Spawn::program(PROGRAM);
     let (spawned, ()) = tokio::join!(

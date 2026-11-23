@@ -1,8 +1,8 @@
 //! Shared request parsing and refusal rendering for every API plane.
 
-mod authoring;
 pub mod encoding;
-pub use authoring::authoring_refusal;
+mod setup;
+pub use setup::setup_refusal;
 mod id_path;
 pub use self::encoding::BrokenEscape;
 pub use self::id_path::{IdPath, IdSegment};
@@ -96,7 +96,7 @@ pub fn malformed(detail: &'static str) -> Response {
 /// Writes a registry refusal whose detail only the call site knows.
 #[must_use]
 pub fn reject(code: af_core::error_code::ErrorCode, detail: &'static str) -> Response {
-    crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::mint())
+    crate::envelope::ProblemResponse::new(code, detail, crate::request_id::RequestId::current())
         .into_response()
 }
 
@@ -241,10 +241,10 @@ mod tests {
         );
     }
 
-    /// A caller's credential, its role, a missing row and a slow dependency
-    /// each keep the outcome their status names.
+    /// A caller's credential, its role and a missing row each keep the outcome
+    /// their status names.
     #[test]
-    fn each_mapped_caller_and_timeout_status_keeps_its_own_outcome() {
+    fn each_mapped_caller_status_keeps_its_own_outcome() {
         let cases = [
             (
                 Refusal::unauthorized("the session expired"),
@@ -255,12 +255,8 @@ mod tests {
                 ReadOutcome::Forbidden,
             ),
             (
-                Refusal::coded(error_code::TASK_NOT_FOUND, "no such task"),
+                Refusal::coded(error_code::DURABLE_TASK_NOT_FOUND, "no such task"),
                 ReadOutcome::NotFound,
-            ),
-            (
-                Refusal::coded(error_code::AUTHORING_TIMEOUT, "the attempt timed out"),
-                ReadOutcome::Timeout,
             ),
         ];
         for (refusal, outcome) in cases {

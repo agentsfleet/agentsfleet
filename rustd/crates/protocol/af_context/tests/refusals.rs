@@ -120,7 +120,7 @@ async fn should_refuse_oversized_and_non_progressing_source_pages() {
 #[tokio::test]
 async fn should_refuse_a_checkpoint_whose_covered_history_has_disappeared() {
     let checkpoint = task()
-        .finish_with(summary(), |_, _| async { Ok(()) })
+        .finish_with(summary(), async |_, _| Ok(()))
         .await
         .unwrap();
     let mut source = Source::new(0, 0);
@@ -181,4 +181,23 @@ fn should_use_the_physical_window_when_the_operating_allowance_is_zero() {
     assert_eq!(window.trigger_tokens(), 9_000);
     assert!(!window.needs_compaction(8_999));
     assert!(window.needs_compaction(9_000));
+}
+
+// Value: a superseded setup run's context save answers the run plane's stale-fence
+// code, the one a superseded report answers, so the runner reads both refusals alike.
+#[test]
+fn a_stale_fence_refusal_answers_the_run_planes_code() {
+    let error = af_context::Error::stale_fence();
+    assert_eq!(error.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
+    assert!(error.is_stale_fence());
+    assert!(!error.is_stale(), "a stale fence is not a stale version");
+}
+
+// Value: a save that lost the version race keeps the internal code, so a stale
+// version is never read as a superseded run.
+#[test]
+fn a_stale_version_refusal_is_not_a_stale_fence() {
+    let error = af_context::Error::stale();
+    assert_eq!(error.code(), af_core::error_code::INTERNAL_OPERATION_FAILED);
+    assert!(!error.is_stale_fence());
 }

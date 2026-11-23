@@ -1,4 +1,4 @@
-//! A hold's policy key: the same lease policy files the same key, and a
+//! A hold's policy key: the same run policy files the same key, and a
 //! change to any field it carries files another.
 #![expect(
     clippy::unwrap_used,
@@ -13,9 +13,9 @@ use afr_sandbox::Allowlist;
 
 use super::BuiltUnder;
 use crate::egress::Bound;
-use crate::test_support::{FLEET_ID, LEASE_ID, lease};
+use crate::test_support::{FLEET_ID, RUN_ID, payload};
 
-/// A host the fixture lease does not reach.
+/// A host the fixture run does not reach.
 const HOST: &str = "api.github.com";
 /// A path a read-only tool may POST a query to.
 const QUERY_PATH: &str = "/graphql";
@@ -26,12 +26,12 @@ const OTHER_REPOSITORY: &str = "agentsfleet/docs";
 const BRANCH: &str = "main";
 const OTHER_BRANCH: &str = "release";
 
-/// A policy change, applied to the fixture lease's.
+/// A policy change, applied to the fixture run's.
 type Change = fn(&mut ExecutionPolicy<'static>);
 
-/// The key the fixture lease's policy files once `change` is applied.
+/// The key the fixture run's policy files once `change` is applied.
 fn key(change: Change) -> BuiltUnder {
-    let mut policy = lease(LEASE_ID, FLEET_ID).policy;
+    let mut policy = payload(RUN_ID, FLEET_ID).policy;
     change(&mut policy);
     BuiltUnder::of(&policy, &Bound::Isolated)
 }
@@ -106,11 +106,11 @@ fn a_change_to_the_repository_binding_files_another_key() {
     }
 }
 
-/// The runner's egress is part of the key: the same lease policy under
+/// The runner's egress is part of the key: the same run policy under
 /// another network the runner was assigned files another key.
 #[test]
 fn a_change_to_the_runners_egress_files_another_key() {
-    let policy = lease(LEASE_ID, FLEET_ID).policy;
+    let policy = payload(RUN_ID, FLEET_ID).policy;
     let under = |egress: Bound| BuiltUnder::of(&policy, &egress);
 
     assert_eq!(under(Bound::Host), under(Bound::Host));
@@ -122,7 +122,7 @@ fn a_change_to_the_runners_egress_files_another_key() {
 /// sandbox takes the new addresses; another name files another key.
 #[test]
 fn an_allowlist_files_its_key_by_name_not_address() {
-    let policy = lease(LEASE_ID, FLEET_ID).policy;
+    let policy = payload(RUN_ID, FLEET_ID).policy;
     let reaching = |names: &[&str], last: u8| {
         let entries = names
             .iter()

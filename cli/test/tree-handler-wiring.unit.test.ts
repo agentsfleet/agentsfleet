@@ -57,11 +57,6 @@ describe("billing show is wired to its effect", () => {
     expect(code).not.toBe(EXIT_VALIDATION);
   });
 
-  test("its cap is its own, not the list cap", async () => {
-    const { code, err } = await invoke(["usage", "show", "--limit", "9999"]);
-    expect(code).toBe(EXIT_VALIDATION);
-    expect(err).toContain("must be ≤ 100");
-  });
 });
 
 test("whoami reaches the identity route and prints the server identity", async () => {

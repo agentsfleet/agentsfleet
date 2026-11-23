@@ -10,7 +10,6 @@ import { readProviderSessions, readProviderSession, revokeProviderSession } from
 const ownerSchema = z.string().min(1).max(256);
 const pageSchema = z.number().int().min(0).max(10_000);
 const sessionIdSchema = z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/);
-const ACCOUNT_REQUEST_TIMEOUT_MS = 10_000;
 const ENDED = new Set(["revoked", "ended", "removed", "expired", "abandoned"]);
 const CHANGED = "Your signed-in account changed. Reload this page before continuing.";
 
@@ -125,7 +124,7 @@ export async function readAccountSessions(expectedSubject: string, offset: numbe
   if (!ownerSchema.safeParse(expectedSubject).success || identity.subject !== expectedSubject) return failure(409, CHANGED);
   if (!pageSchema.safeParse(offset).success) return failure(400, "Invalid session page.");
   try {
-    const page = await readProviderSessions(identity.subject, offset, AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS));
+    const page = await readProviderSessions(identity.subject, offset, unbounded());
     if (page.data.some(session => session.user_id !== identity.subject)) return failure(503, "Your sessions could not be loaded.");
     const more = offset + page.data.length < page.total_count;
     if (more && page.data.length === 0) return failure(503, "Your session page could not be confirmed.");
@@ -144,7 +143,7 @@ export async function revokeAccountSession(expectedSubject: string, id: string) 
   if (id === identity.sessionId) return failure(409, "Use Sign out to end the session on this device.");
   if (!identity.recentlyVerified) return reverificationError("strict");
   try {
-    const signal = AbortSignal.timeout(ACCOUNT_REQUEST_TIMEOUT_MS);
+    const signal = unbounded();
     const session = await readProviderSession(id, signal);
     if (session.user_id !== identity.subject || session.id !== id) return failure(404, "This session is not available.");
     if (ENDED.has(session.status)) return {ok: true as const, data: {id}};
@@ -153,6 +152,11 @@ export async function revokeAccountSession(expectedSubject: string, id: string) 
     if (result.id === id && result.user_id === identity.subject && ENDED.has(result.status)) return {ok: true as const, data: {id}};
   } catch { /* A lost response cannot establish whether revocation completed. */ }
   return failure(503, "Session sign-out could not be confirmed. Refresh the list before trying again.");
+}
+
+/** A signal no deadline of ours aborts: the provider read ends when the provider answers. */
+function unbounded(): AbortSignal {
+  return new AbortController().signal;
 }
 
 function sessionView(session: IdentitySession, currentId: string): AccountSession {

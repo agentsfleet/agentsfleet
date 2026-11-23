@@ -6,7 +6,7 @@ import { TOOL_NAME } from "@/components/domain/activity/tools/presentation/tool-
 import { recordedPatchChanges, recordedWorkspacePath } from "./recorded-patch-changes";
 
 type ToolWrite = {path: string; running: boolean; lines: PatchChange["lines"]};
-const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT, TOOL_NAME.FILE_EDIT_HASHED, TOOL_NAME.FILE_APPEND, TOOL_NAME.FILE_DELETE]);
+const WRITES: ReadonlySet<string> = new Set([TOOL_NAME.FILE_WRITE, TOOL_NAME.FILE_EDIT]);
 
 /** Stream reducers replace changed calls; weak keys retain neither old turns nor repository context. */
 export class RecordedToolWrites {
@@ -23,6 +23,10 @@ export class RecordedToolWrites {
 }
 
 function normalize(tool: FleetToolCall, running: boolean): ToolWrite[] {
+  // The runner's file tools record each file they changed and its line counts.
+  if (tool.changes?.length) return tool.changes.map(change => ({
+    path: recordedWorkspacePath(change.path), running, lines: {added: change.added, removed: change.removed},
+  }));
   if (tool.name === TOOL_NAME.APPLY_PATCH) return recordedPatchChanges(tool, running).map(change => ({
     ...change, running,
   }));

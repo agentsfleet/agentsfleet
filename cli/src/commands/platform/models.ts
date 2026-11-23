@@ -5,8 +5,6 @@ import { ADMIN_MODELS_PATH, decodePlatform, invalidInput, platformInput, platfor
 import { PlatformModelCreateSchema, PlatformModelPageSchema, PlatformModelSchema, PlatformModelSettingsSchema, PlatformModelUpdatedSchema } from "./model-schema.ts";
 import type { RunnerPaging } from "./runners.ts";
 
-const MAX_CATALOGUE_PAGES = 1000;
-
 export const platformModelsList = Effect.fn("platform.models.list")(function* (options: RunnerPaging) {
   const response = yield* modelPage(options);
   const output = yield* Output;
@@ -17,10 +15,13 @@ export const platformModelsList = Effect.fn("platform.models.list")(function* (o
   if (response.next_cursor) yield* output.info(`Next page: --starting-after ${response.next_cursor}`);
 });
 
+// Walks the catalogue until the row appears or the server reports no next
+// page. A cursor already followed would replay the same pages forever, so a
+// repeat fails the read; no page count does.
 export const platformModelShow = Effect.fn("platform.models.show")(function* (id: string) {
   let startingAfter: string | undefined;
   const seen = new Set<string>();
-  for (let page = 0; page < MAX_CATALOGUE_PAGES; page += 1) {
+  for (;;) {
     const response = yield* modelPage({startingAfter});
     const model = response.models.find((row) => row.id === id);
     if (model) return yield* platformResult(model, model.metadata.display_name, {
@@ -29,10 +30,9 @@ export const platformModelShow = Effect.fn("platform.models.show")(function* (id
       "Verified at": model.metadata.context_verified_at,
     });
     if (response.next_cursor === null) return yield* Effect.fail(invalidInput("This model was not found in the platform catalogue"));
-    if (seen.has(response.next_cursor)) break;
+    if (seen.has(response.next_cursor)) return yield* Effect.fail(invalidInput("The platform catalogue could not be read completely"));
     seen.add(response.next_cursor); startingAfter = response.next_cursor;
   }
-  return yield* Effect.fail(invalidInput("The platform catalogue could not be read completely"));
 });
 
 export const platformModelWrite = Effect.fn("platform.models.write")(function* (file: string, id?: string) {

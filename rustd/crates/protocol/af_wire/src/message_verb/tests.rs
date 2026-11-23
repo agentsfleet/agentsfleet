@@ -1,4 +1,4 @@
-//! The messages verb's body: the bound the runner and the daemon share.
+//! The messages verb's body: what the runner and the daemon both refuse.
 
 #![expect(
     clippy::expect_used,
@@ -9,24 +9,28 @@ use std::borrow::Cow;
 
 use garde::Validate as _;
 
-use super::{MESSAGE_MAX_BYTES, MessagePosted, MessageRequest};
+use super::{MessagePosted, MessageRequest};
+
+/// The item every request here names.
+const ITEM: &str = "0199a0b0-0000-7000-8000-0000000000aa";
 
 /// A request carrying `text`.
 fn request(text: String) -> MessageRequest<'static> {
     MessageRequest {
         fencing_token: 1,
+        item_id: Cow::Borrowed(ITEM),
+        call_number: 1,
         text: Cow::Owned(text),
     }
 }
 
+/// No length bound: a line far past the old 4,096 bytes passes, and the
+/// channel decides whether it can take it.
 #[test]
-fn a_message_at_the_cap_passes_and_one_byte_more_does_not() {
-    request("a".repeat(MESSAGE_MAX_BYTES))
+fn a_long_message_passes() {
+    request("a".repeat(10_000))
         .validate()
-        .expect("a message at the cap passes");
-    let _refused = request("a".repeat(MESSAGE_MAX_BYTES + 1))
-        .validate()
-        .expect_err("one byte more is refused");
+        .expect("a 10,000-byte message passes");
 }
 
 #[test]
@@ -46,7 +50,7 @@ fn a_message_holding_a_nul_is_refused() {
 
 #[test]
 fn a_message_naming_anything_else_is_refused() {
-    let body = r#"{"fencing_token":1,"text":"hi","channel":"C1"}"#;
+    let body = r#"{"fencing_token":1,"item_id":"0199a0b0-0000-7000-8000-0000000000aa","call_number":1,"text":"hi","channel":"C1"}"#;
     let _refused =
         serde_json::from_str::<MessageRequest<'_>>(body).expect_err("the body is refused");
 }

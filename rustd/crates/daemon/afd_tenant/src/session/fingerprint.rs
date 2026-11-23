@@ -28,7 +28,7 @@ const FIELD_SEPARATOR: u8 = 0x00;
 ///
 /// Holds the digest bytes, the form `identity.device_sessions` stores and
 /// compares.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fingerprint([u8; 32]);
 
 impl Fingerprint {

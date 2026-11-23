@@ -1,0 +1,150 @@
+//! The row itself: the id an event is named by and the clock that stamps it.
+//!
+//! Each case reads the row back with its own SQL rather than through the
+//! crate, because what is under test is what Postgres holds, and a read through
+//! the same statements the crate writes with would agree with them by
+//! construction.
+
+use af_core::id::Uuid7;
+use af_wire::turn::TurnKind;
+use afd_db::test_util::mint_id;
+use afd_turns::{Admitted, IncomingTurn, Key, Producer, Reply as ReplyTo, Turns};
+use jiff::Timestamp;
+use sqlx::Connection as _;
+
+use super::{Fallible, lane::Lane, queue::over_lane};
+
+/// A connector and a thread, as a producer owning a reply surface states them.
+pub(super) const CONNECTOR: &str = "slack";
+pub(super) const THREAD: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
+
+/// The instants and the sequence Postgres stamped one row with.
+#[derive(Debug, sqlx::FromRow)]
+struct Stamps {
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    updated_at: Timestamp,
+    sequence: i64,
+}
+
+/// A steer on the lane's fleet under `key`, replying where `reply` says.
+pub(super) fn steer<'a>(lane: &'a Lane, key: &'a str, reply: ReplyTo<'a>) -> IncomingTurn<'a> {
+    IncomingTurn {
+        producer: Producer::Steer,
+        key: Key::Repeated(key),
+        fleet: &lane.fleet,
+        workspace: &lane.workspace,
+        actor: "fixture:ledger",
+        event_type: TurnKind::Chat,
+        request_json: r#"{"message":"ledger fixture"}"#,
+        reply,
+    }
+}
+
+pub(super) async fn admit(turns: &Turns, turn: IncomingTurn<'_>) -> Fallible<Admitted> {
+    Ok(turns.admit(turn).await?)
+}
+
+async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
+    Ok(sqlx::query_as(
+        "SELECT created_at, updated_at, sequence \
+         FROM thread.turns WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_one(&mut *lane.database.acquire().await?)
+    .await?)
+}
+
+/// The event id a turn answers with is its row's `UUIDv7`, and a retry
+/// under the same key answers the same one.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
+    let lane = Lane::seed().await?;
+    let turns = over_lane(&lane).await?;
+    let key = mint_id();
+
+    let first = admit(&turns, steer(&lane, key.as_str(), ReplyTo::None)).await?;
+    let retried = admit(&turns, steer(&lane, key.as_str(), ReplyTo::None)).await?;
+
+    let row: Uuid7 = sqlx::query_scalar("SELECT id FROM thread.turns WHERE producer_key = $1")
+        .bind(key.as_str())
+        .fetch_one(&mut *lane.database.acquire().await?)
+        .await?;
+    assert_eq!(first.stored.id, row, "the event id is the row id");
+    assert!(retried.replayed);
+    assert_eq!(
+        retried.stored.id, first.stored.id,
+        "a retry answers the first id"
+    );
+    lane.cleanup().await;
+    Ok(())
+}
+
+/// Every instant on the row is the database's: one `now()` for both, and the
+/// one the producer was answered with.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
+    let lane = Lane::seed().await?;
+    let turns = over_lane(&lane).await?;
+
+    let admitted = admit(&turns, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
+    let row = stamps(&lane, &admitted.stored.id).await?;
+
+    assert!(
+        row.updated_at >= row.created_at,
+        "the ledger timestamps do not move backwards"
+    );
+    assert_eq!(admitted.stored.created_at, row.created_at);
+    lane.cleanup().await;
+    Ok(())
+}
+
+/// Two turns staged in one transaction share its `now()` to the
+/// microsecond, and still sort in the order they were inserted: inside one
+/// instant, `sequence` decides.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn two_turns_in_one_instant_order_by_their_sequence() -> Fallible {
+    let lane = Lane::seed().await?;
+    let turns = over_lane(&lane).await?;
+    let (first_key, second_key) = (mint_id(), mint_id());
+    let first = turns
+        .prepare(steer(&lane, first_key.as_str(), ReplyTo::None))
+        .await?;
+    let second = turns
+        .prepare(steer(&lane, second_key.as_str(), ReplyTo::None))
+        .await?;
+
+    let mut connection = lane.database.acquire().await?;
+    let mut transaction = connection.begin().await?;
+    let first = turns.stage(&mut transaction, first).await?;
+    let second = turns.stage(&mut transaction, second).await?;
+    transaction.commit().await?;
+    drop(connection);
+
+    let (first_row, second_row) = (
+        stamps(&lane, &first.stored.id).await?,
+        stamps(&lane, &second.stored.id).await?,
+    );
+    assert_eq!(
+        first_row.created_at, second_row.created_at,
+        "one transaction, one now()"
+    );
+    assert!(
+        first_row.sequence < second_row.sequence,
+        "the sequence keeps insertion order"
+    );
+    let ordered: Vec<Uuid7> = sqlx::query_scalar(
+        "SELECT id FROM thread.turns WHERE thread_id = $1 AND producer IS NOT NULL \
+         ORDER BY created_at, sequence",
+    )
+    .bind(&lane.fleet)
+    .fetch_all(&mut *lane.database.acquire().await?)
+    .await?;
+    assert_eq!(ordered, [first.stored.id, second.stored.id]);
+    lane.cleanup().await;
+    Ok(())
+}

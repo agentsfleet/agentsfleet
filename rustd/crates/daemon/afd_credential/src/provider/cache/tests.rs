@@ -141,6 +141,20 @@ async fn an_open_window_is_bounded_by_the_time_limit() {
     assert!(cache.get(&key()).await.is_none());
 }
 
+/// A deployment's configured time limit, not the default, ends an entry.
+#[tokio::test]
+async fn a_configured_time_limit_ends_an_entry() {
+    let clock = FixedClock::at(STARTED);
+    let limit = Duration::from_mins(1);
+    let cache = cache_at(&clock).with_ceiling(limit);
+    cache.insert(observed(None), STARTED, resolved()).await;
+
+    clock.advance(limit.saturating_sub(Duration::from_millis(1)));
+    assert!(cache.get(&key()).await.is_some());
+    clock.advance(Duration::from_millis(1));
+    assert!(cache.get(&key()).await.is_none());
+}
+
 /// A window longer than the time limit does not extend it.
 #[tokio::test]
 async fn a_long_window_does_not_outlive_the_time_limit() {

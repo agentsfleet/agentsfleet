@@ -1,6 +1,6 @@
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
-import { launchEditArguments } from "./launch-review-changes";
+import { launchEditArguments, launchEditChanges } from "./launch-review-changes";
 
 export const LAUNCH_REVIEW_ID = "launch-review";
 export const LAUNCH_REQUEST = "Review the launch page, check mobile, and prepare the changes. Include a UI review.";
@@ -11,12 +11,12 @@ export const LAUNCH_REPLIES = [
 ] as const;
 
 /** Modeled tool records for the design example. No network, file or process operation runs here. */
-export function launchReviewEvent(started: number): FleetEvent {
+export function launchReviewTurn(started: number): FleetTurn {
   const tools: FleetToolCall[] = [];
-  function record(name: string, args: ToolArgs, outputHead: string, exitCode?: number) {
+  function record(name: string, args: ToolArgs, outputHead: string, exitCode?: number, changes?: FleetToolCall["changes"]) {
     const index = tools.length;
     tools.push({callId: `launch-tool-${index + 1}`, name, args, outputHead, outputLineCount: outputHead.split("\n").length,
-      status: "succeeded", done: true, ms: 1200, startedAtMs: started - 138_000 + index * 2800, exitCode});
+      status: "succeeded", done: true, ms: 1200, startedAtMs: started - 138_000 + index * 2800, exitCode, ...(changes ? {changes} : {})});
   }
   record("file_read", {path: "LaunchPage.tsx"}, "<main className=\"launch\">…</main>");
   record("file_read", {path: "theme.css"}, ".launch { gap: 4px; }");
@@ -24,12 +24,12 @@ export function launchReviewEvent(started: number): FleetEvent {
   record("image", {path: "desktop-reference.png"}, "Attached desktop-reference.png (7320 bytes, image/png) for your next turn");
   record("image", {path: "mobile-reference.png"}, "Attached mobile-reference.png (4182 bytes, image/png) for your next turn");
   record("spawn", {task: "UI reviewer"}, '{"child_id":7}');
-  record("file_edit", launchEditArguments(0), "Edited src/components/LaunchPage.tsx");
-  record("file_edit", launchEditArguments(1), "Edited src/styles/theme.css");
-  record("file_edit", launchEditArguments(2), "Edited src/components/MobileNav.tsx");
-  record("file_edit", launchEditArguments(3), "Edited src/components/UsageTable.tsx");
-  record("file_edit", launchEditArguments(4), "Edited design-review.md");
-  record("file_edit", launchEditArguments(5), "Edited launch-checklist.md");
+  record("file_edit", launchEditArguments(0), "Edited src/components/LaunchPage.tsx", undefined, launchEditChanges(0));
+  record("file_edit", launchEditArguments(1), "Edited src/styles/theme.css", undefined, launchEditChanges(1));
+  record("file_edit", launchEditArguments(2), "Edited src/components/MobileNav.tsx", undefined, launchEditChanges(2));
+  record("file_edit", launchEditArguments(3), "Edited src/components/UsageTable.tsx", undefined, launchEditChanges(3));
+  record("file_edit", launchEditArguments(4), "Edited design-review.md", undefined, launchEditChanges(4));
+  record("file_edit", launchEditArguments(5), "Edited launch-checklist.md", undefined, launchEditChanges(5));
   record("exec_command", {cmd: "bun run build"}, "Build succeeded", 0);
   record("exec_command", {cmd: "bun run lint"}, "Lint succeeded", 0);
   record("exec_command", {cmd: "bun run test:layout"}, "Layout tests passed", 0);

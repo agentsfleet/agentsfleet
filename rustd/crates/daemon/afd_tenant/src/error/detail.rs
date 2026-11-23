@@ -4,10 +4,10 @@
 //! them and a client prints the rest.
 
 /// The detail a caller is told when the database cannot be reached.
-pub use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
+pub(crate) use af_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
 /// The detail a caller is told when a statement would not run.
-pub use af_core::error::DETAIL_DATABASE_ERROR;
+pub(crate) use af_core::error::DETAIL_DATABASE_ERROR;
 
 /// The device-flow refusal for a public key this daemon will not store.
 pub const DETAIL_SESSION_PUBLIC_KEY: &str = "The supplied public_key is malformed";
@@ -57,9 +57,6 @@ pub const DETAIL_SESSION_CODE_REJECTED: &str = "Verification code did not match"
 /// Its refusal for a name outside the character set or the bound.
 pub const DETAIL_APIKEY_NAME: &str =
     "key_name must be 1-64 chars, alphanumeric + hyphen + underscore";
-
-/// Its refusal for a description past its bound.
-pub const DETAIL_APIKEY_DESCRIPTION: &str = "description must be <=256 chars";
 
 /// Its refusal for an id naming no key this tenant holds.
 pub const DETAIL_APIKEY_NOT_FOUND: &str = "API key not found";

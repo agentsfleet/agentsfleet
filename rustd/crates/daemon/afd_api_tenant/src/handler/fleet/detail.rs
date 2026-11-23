@@ -2,9 +2,9 @@
 
 use crate::auth::{PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceFleets as _};
-use afd_http::handler::authoring_refusal;
-pub use afd_http::handler::{DETAIL_FLEET_ID, FleetPath, parse_fleet_id};
+use crate::services::{TenantPlane, WorkspaceFleets as _};
+use afd_http::handler::setup_refusal;
+pub(crate) use afd_http::handler::{FleetPath, parse_fleet_id};
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, StatusCode};
@@ -36,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn purge<D: Services>(
+pub(crate) async fn purge<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -46,7 +46,7 @@ pub(crate) async fn purge<D: Services>(
     let fleet = parse_fleet_id(&fleet_id)?;
     let expected = crate::handler::input::expected(&headers)?.ok_or_else(|| {
         Refusal::coded(
-            af_core::error_code::AUTHORING_PRECONDITION,
+            af_core::error_code::SETUP_PRECONDITION,
             "Send the current fleet If-Match tag",
         )
     })?;
@@ -55,7 +55,7 @@ pub(crate) async fn purge<D: Services>(
     services
         .creations()
         .delete(
-            afd_authoring::Access {
+            afd_setup::Access {
                 workspace: &owned.workspace,
                 subject: person.subject(),
             },
@@ -63,7 +63,7 @@ pub(crate) async fn purge<D: Services>(
             expected,
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     services
         .fleets()
         .invalidate_live_set(&owned.workspace)

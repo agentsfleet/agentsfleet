@@ -18,9 +18,11 @@ use garde::{Unvalidated, Valid};
 use crate::config::raw;
 use crate::error::{Error, ErrorKind, Result};
 
+mod schedule;
 mod set;
 mod verifier;
 
+pub use self::schedule::{CronSchedule, check_schedule};
 pub(crate) use self::set::parse_set;
 pub use self::verifier::WebhookVerifier;
 
@@ -60,9 +62,6 @@ pub const VERIFIED_WEBHOOK_SOURCES: [&str; Scheme::ALL.len()] = [
 /// The source no webhook trigger may take: its URL segment is the
 /// approval-decision route's.
 pub const WEBHOOK_SOURCE_APPROVAL: &str = "approval";
-
-/// Most triggers one fleet may declare.
-pub(crate) const MAX_TRIGGERS: usize = 8;
 
 /// Why a webhook trigger was refused.
 const REASON_NO_SOURCE: &str = "a webhook trigger names no source";
@@ -250,20 +249,7 @@ impl Trigger {
                 schedule,
                 timezone,
                 message,
-            } => Ok(Self::Cron(Cron {
-                schedule: schedule
-                    .filter(|value| !value.is_empty())
-                    .ok_or(Error::from(ErrorKind::InvalidTriggerSet {
-                        reason: REASON_NO_SCHEDULE,
-                    }))?
-                    .into(),
-                timezone: timezone
-                    .unwrap_or_else(|| DEFAULT_CRON_TIMEZONE.to_owned())
-                    .into(),
-                message: message
-                    .unwrap_or_else(|| DEFAULT_CRON_MESSAGE.to_owned())
-                    .into(),
-            })),
+            } => Cron::parse(schedule, timezone, message).map(Self::Cron),
             raw::Trigger::Mention { source, channels } => {
                 let refuse = |reason| Error::from(ErrorKind::InvalidTriggerSet { reason });
                 let source = source

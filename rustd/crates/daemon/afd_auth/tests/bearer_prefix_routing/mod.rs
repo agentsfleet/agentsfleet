@@ -1,4 +1,4 @@
-//! Dimension 4.1 — which credential class a presented value routes to, and
+//! Which credential class a presented value routes to, and
 //! what each class does with it.
 //!
 //! Routing and resolution are one procedure, so one file covers both, and

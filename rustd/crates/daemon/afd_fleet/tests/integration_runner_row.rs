@@ -1,4 +1,4 @@
-//! §1 against a live datastore — what enrolment writes, and what a beat moves.
+//! What enrolment writes, and what a beat moves.
 //!
 //! The other half of `afd_api/tests/runner_plane/mod.rs`. That suite proves the
 //! GUARD — who is admitted and who is refused — through the production router
@@ -25,7 +25,7 @@ use self::requests::enrolment;
 use self::support::Fixtures;
 use crate::rows::Row;
 
-/// Dimension 1.3 (second half) — enrolment stores the DIGEST and never the token.
+/// Enrolment stores the DIGEST and never the token.
 ///
 /// The property the whole credential design rests on: the value is revealed in
 /// one response and the row keeps a hash of it, so a database read — a backup, a
@@ -132,7 +132,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 /// A cage tier opens DEGRADED, and its enrolment event lands in the same write.
 ///
 /// The fail-closed window: between minting a token and the host's first beat
-/// there is no evidence, so the lease gate refuses work rather than assuming
+/// there is no evidence, so the run gate refuses work rather than assuming
 /// the cage exists.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -199,7 +199,7 @@ async fn test_the_self_read_never_bumps_liveness() {
 
     assert_eq!(row.id, enrolled.runner_id);
     assert_eq!(row.status, "active");
-    assert_eq!(row.host_id, "host-01.fixture.test");
+    assert_eq!(row.host_id, request.host_id);
     assert_eq!(row.last_seen_at, afd_runner::sql::NEVER_SEEN);
     let assigned = row
         .assignment

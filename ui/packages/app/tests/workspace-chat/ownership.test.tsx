@@ -72,7 +72,7 @@ it.each(["saved", "updated"])("recovers failed schedule registration from the ow
   });
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />, {wrapper: TooltipProvider});
   if (source === "updated") {
-    fireEvent.click(await screen.findByRole("button", {name: "Save and publish"}));
+    fireEvent.click(await screen.findByRole("button", {name: "Save"}));
     await screen.findByRole("link", {name: "Open fleet"});
   }
   fireEvent.click(await screen.findByRole("button", {name: "Retry registration"}));

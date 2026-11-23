@@ -1,5 +1,5 @@
-//! What a lease's sandbox reaches: the egress the daemon assigned this
-//! runner, made concrete for one lease when it binds.
+//! What a run's sandbox reaches: the egress the daemon assigned this
+//! runner, made concrete for one run when it binds.
 //!
 //! `allow_all` shares the host's network and `deny_all_egress` reaches
 //! nothing. `allow_list_egress` reaches the operator's registry baseline, or
@@ -34,7 +34,7 @@ use crate::error::{self, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Egress {
     policy: NetworkPolicy,
-    /// The registry hosts every `allow_list_egress` lease reaches: the
+    /// The registry hosts every `allow_list_egress` run reaches: the
     /// operator's, or [`PACKAGE_MANAGER_DOMAINS`] when the operator named none.
     registry: Arc<[Box<str>]>,
 }
@@ -66,7 +66,7 @@ impl Egress {
         }
     }
 
-    /// The hosts an `allow_list_egress` lease under `fleet` reaches, each with
+    /// The hosts an `allow_list_egress` run under `fleet` reaches, each with
     /// who named it: the registry, then the fleet's own unless it is
     /// read-only, each cut to its host and named once, in the order first
     /// named. A host named by both is the registry's.
@@ -90,12 +90,12 @@ impl Egress {
             .collect()
     }
 
-    /// What a lease under `fleet` reaches, resolved through `resolver`.
+    /// What a run under `fleet` reaches, resolved through `resolver`.
     ///
     /// # Errors
     /// A host that does not resolve, or resolves to no IPv4 address, a host
     /// the fleet names that resolves to a blocked address, and an allowlist
-    /// the sandbox engine will not take: each refuses the lease before its
+    /// the sandbox engine will not take: each refuses the run before its
     /// sandbox is built.
     pub(crate) async fn bind(
         &self,
@@ -121,7 +121,7 @@ impl Egress {
     }
 }
 
-/// One lease's egress, resolved: what its sandbox is built to reach, and what
+/// One run's egress, resolved: what its sandbox is built to reach, and what
 /// a held sandbox must have been built to reach to serve it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Bound {
@@ -154,7 +154,7 @@ impl Bound {
 }
 
 /// What a sandbox was built to reach, by name: what a held sandbox is filed
-/// under, so a lease whose hosts resolved to new addresses still finds it and
+/// under, so a run whose hosts resolved to new addresses still finds it and
 /// the sandbox takes the new addresses in place.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Reach {
@@ -204,7 +204,7 @@ async fn ipv4(resolver: &dyn Resolve, host: &str, named: Named) -> Result<Vec<(S
 /// without its brackets. The kernel set admits addresses alone, so only the
 /// host is resolved, and `[::1]:80` is resolved, and judged, as the address
 /// `::1`. An entry no host can be read from is resolved as written, and
-/// refuses the lease naming it.
+/// refuses the run naming it.
 fn host_of(entry: &str) -> Cow<'_, str> {
     allowlist_host(entry).map_or(Cow::Borrowed(entry), Cow::Owned)
 }

@@ -1,10 +1,8 @@
 //! Runtime effects retain the shared ordering and the run's real usage meter.
 use super::super::shared::Shared;
 use af_context::{Checkpoint, CheckpointStore, Compaction, PortFuture, Summarizer, Summary};
-use af_providers::{Message, Request};
+use guffbolt::{Message, Request, Step};
 use tracing::Instrument as _;
-
-mod progress;
 
 pub(super) async fn compact(
     shared: &Shared<'_>,
@@ -14,8 +12,8 @@ pub(super) async fn compact(
     visible: bool,
 ) -> af_context::Result<Checkpoint> {
     let mut trace =
-        af_context::Trace::start(shared.lease_id.into(), af_context::Host::Runtime, &task);
-    let mut progress = progress::Notifications::new(shared.events, &task, visible);
+        af_context::Trace::start(shared.run_id.into(), af_context::Host::Runtime, &task);
+    let mut progress = crate::events::compaction::Notifications::new(shared.events, &task, visible);
     let result = af_context::execute(
         task,
         &mut Model { shared, stop },
@@ -51,11 +49,12 @@ impl Summarizer for Model<'_, '_> {
                 max_output_tokens: Some(task.output_tokens),
                 single_attempt: true,
             };
-            let mut live = crate::events::Live::silent(self.shared.scrub, self.shared.started);
+            // A summary is private: nothing of it streams live, and only its
+            // spend is heard, by the run's meter.
             let turn = tokio::select! {
                 biased;
                 () = self.stop.cancelled() => return Err(af_context::Error::cancelled()),
-                turn = crate::turn::take(self.shared.provider.stream(request), &mut live, self.shared.meter) => turn.map_err(af_context::Error::boundary)?,
+                step = Step::read(self.shared.provider.stream(request), self.shared.meter) => step.map_err(af_context::Error::boundary)?,
             };
             if turn.cut
                 || !turn.finished
@@ -87,5 +86,50 @@ impl CheckpointStore for Store {
         } else {
             Err(af_context::Error::stale())
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_context::{Checkpoint, CheckpointStore as _};
+    use serde_json::json;
+
+    use super::Store;
+
+    /// A run's checkpoint at `generation`.
+    fn checkpoint(generation: u64) -> serde_json::Result<Checkpoint> {
+        serde_json::from_value(json!({
+            "format_version": 1,
+            "identity": {"scope": "run:019f0000-0000-7000-8000-0000000000a1",
+                "model": "m", "pinned": "p"},
+            "generation": generation,
+            "covered_through": 2,
+            "source_digest": "a".repeat(64),
+            "summary": {"goal": "a daily support check", "constraints": [], "decisions": [],
+                "completed": [], "remaining": [], "references": []},
+        }))
+    }
+
+    #[tokio::test]
+    async fn a_commit_at_the_runs_generation_advances_it() -> serde_json::Result<()> {
+        let mut store = Store { generation: 4 };
+
+        let committed = store.commit(4, checkpoint(5)?).await;
+
+        assert_eq!(committed.ok(), Some(()));
+        assert_eq!(store.generation, 5);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_commit_over_another_generation_is_stale_and_moves_nothing() -> serde_json::Result<()>
+    {
+        let mut store = Store { generation: 4 };
+
+        let committed = store.commit(3, checkpoint(5)?).await;
+
+        assert!(committed.is_err_and(|failure| failure.is_stale()));
+        assert_eq!(store.generation, 4);
+        Ok(())
     }
 }

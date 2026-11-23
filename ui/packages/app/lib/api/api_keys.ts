@@ -56,10 +56,7 @@ export async function listApiKeys(token: string, sort: ApiKeySort = DEFAULT_SORT
   return { items: walked.items, total: walked.total, next_cursor: null };
 }
 
-export async function createApiKey(
-  token: string,
-  body: { key_name: string; description?: string },
-): Promise<CreatedApiKey> {
+export async function createApiKey(token: string, body: { key_name: string }): Promise<CreatedApiKey> {
   return request<CreatedApiKey>(`/v1/api-keys`, { method: "POST", body: JSON.stringify(body) }, token);
 }
 

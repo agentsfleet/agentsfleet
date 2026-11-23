@@ -26,7 +26,7 @@ Unit tests that must reach a private item stay in `src/` behind `#[cfg(test)]`. 
 
 `test-unit-rustd` is three targets, one per group of layer folders, run in this order:
 
-- `test-unit-rustd-runner`: the `runner/` and `harness/` layers;
+- `test-unit-rustd-runner`: the `runner/` and `harness/` layers, and `guffbolt`, which sits beside them;
 
 - `test-unit-rustd-daemon`: the `agentsfleetd` binary and its suites;
 
@@ -132,9 +132,9 @@ The failure these rules codify had no error in it. Every red was a query that su
 
 - a count of 2 where a test expected 0, because the rows were a sibling's;
 
-- a gate correctly marked `timed_out`, because a sibling ran the sweeper;
+- a gate correctly marked `timed_out`, because a sibling ran the approval sweeper, since deleted;
 
-- a chunk delivered to the right subscriber, because a sibling's daemon had leased this test's event.
+- a chunk delivered to the right subscriber, because a sibling's daemon had held this test's event.
 
 Shared test data read concurrently gives correct answers to the wrong question, and the assertion is what breaks.
 
@@ -144,11 +144,11 @@ Shared test data read concurrently gives correct answers to the wrong question, 
 
 **ISO-2: Placement reads a deployment-wide set.**
 
-A lease poll can choose any eligible fleet in its database.
+A run poll can choose any eligible fleet in its database.
 A test that asserts absence or exact placement needs a private database or uniquely required runner labels.
 A minted fleet identity alone cannot isolate a global candidate scan.
 
-**ISO-3: Exclude global work by design.** `Inbox::expire` runs `UPDATE fleet.approval_gates … WHERE resolved_at IS NULL AND expires_at <= now()` with no workspace or fleet filter, because the sweeper is system-wide.
+**ISO-3: Exclude global work by design.** A booted daemon's outbound worker claims open lane heads of `thread.deliveries` in every workspace (`afd_outbound/src/delivery/sql/lock_lanes.sql` and `claim_heads.sql`), because the worker is system-wide.
 
 The actor and tests that depend on its input must both take the same named lock.
 Hold the lock for the entire test body. Prefer a fixture-owned guard; `Scenario` holds the placement guard as its last field.
@@ -172,7 +172,7 @@ The target is **100%**, project-wide and per flag. TypeScript gates at that targ
 
 | Flag | Paths | Gate |
 |---|---|---|
-| `rust-afd` | `rustd/crates/` | 98% project · 95% patch |
+| `rust-afd` | `rustd/crates/`, `rustd/guffbolt/` | 98% project · 95% patch |
 | `typescript` | `app`, `website`, `cli` | 100% |
 
 Every threshold is 0%, so a gate has no give. A patch status grades only the lines a diff touched, so on a small diff one unhit line reds the build. That is intended, and the answer is a test, never absorbed slack.
@@ -185,7 +185,7 @@ Postgres, NATS, HTTP and runtime code are part of the denominator. So each shard
 
 Locally, `make test-coverage-rustd` without `RUSTD_SHARD` runs every shard in sequence. It grades with the same script, `scripts/rustd_coverage.py`, and Codecov grades the same merged report.
 
-The line floor is `RUSTD_COVERAGE_FLOOR`, 98% today, and later milestones raise it toward 100%. The same script grades the patch, the Rust lines a branch adds, against `RUSTD_PATCH_FLOOR`. That floor is 95%, Codecov's `rust-afd` patch target, and moves with it.
+The floor is `RUSTD_COVERAGE_FLOOR`, 98% today, and later milestones raise it toward 100%. It is declared once: the same script grades the patch, the Rust lines a branch adds, against it, and Codecov reports Rust without a status. There is no per-file floor.
 
 Coverage builds differ from normal development builds on purpose. Continuous Integration disables Cargo incremental compilation for this job. No edit-build loop would reuse it, and caching incremental object trees only moves stale gigabytes between runners.
 

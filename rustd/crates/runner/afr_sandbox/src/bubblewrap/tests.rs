@@ -6,11 +6,21 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
+use afr_executor::Sizes;
+
 use super::{Layout, NetworkLayout, arguments};
+use crate::serve::Entry;
 use crate::tenant::{Inherited, TenantDescriptors};
 
 /// What a test's `/dev/shm` may hold.
 const SHARED_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// What a test's executor serves with: neither size its default.
+const SIZES: Sizes = Sizes {
+    max_read_bytes: 1024 * 1024,
+    max_frame_bytes: 16 * 1024 * 1024,
+    ..Sizes::DEFAULT
+};
 
 /// The numbers a test's tenant leaf and executor link are named under.
 const INHERITED: Inherited = Inherited {
@@ -33,12 +43,13 @@ fn with_network(level: Option<&str>, network: NetworkLayout<'_>) -> Vec<String> 
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
-        workspace: Path::new("/srv/leases/l1/workspace/workspace"),
-        tmp: Path::new("/srv/leases/l1/workspace/tmp"),
+        workspace: Path::new("/srv/runs/l1/workspace/workspace"),
+        tmp: Path::new("/srv/runs/l1/workspace/tmp"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
         inherited: INHERITED,
+        sizes: SIZES,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network,
     })
@@ -124,8 +135,8 @@ fn test_the_toolbox_is_the_read_only_root_and_the_workspace_is_writable() {
         ["--ro-bind", "/srv/toolbox/abc", "/"]
     );
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace/workspace"),
-        ["--bind", "/srv/leases/l1/workspace/workspace", "/workspace"]
+        after(&argv, "--bind", "/srv/runs/l1/workspace/workspace"),
+        ["--bind", "/srv/runs/l1/workspace/workspace", "/workspace"]
     );
     assert!(
         !argv.iter().any(|part| part.starts_with("/run/")),
@@ -146,7 +157,7 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
     let argv = argv();
 
     assert_eq!(
-        argv[argv.len() - 9..],
+        argv[argv.len() - 13..],
         [
             "--",
             "/opt/agentsfleet/agentsfleet-runner",
@@ -156,7 +167,11 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
             "--tenant-events",
             "9",
             "--executor",
-            "11"
+            "11",
+            "--max-read-bytes",
+            "1048576",
+            "--max-frame-bytes",
+            "16777216"
         ]
     );
     // The executor owns `PATH`; the only variable passed in is the log level.
@@ -193,8 +208,8 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
     let argv = argv();
 
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace/tmp"),
-        ["--bind", "/srv/leases/l1/workspace/tmp", "/tmp"]
+        after(&argv, "--bind", "/srv/runs/l1/workspace/tmp"),
+        ["--bind", "/srv/runs/l1/workspace/tmp", "/tmp"]
     );
     let tmpfs_at_tmp = argv
         .windows(2)
@@ -203,7 +218,7 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
 }
 
 #[test]
-fn test_the_entry_reads_back_the_descriptors_it_was_named() {
+fn test_the_entry_reads_back_the_descriptors_and_sizes_it_was_named() {
     let argv = arguments(&Layout {
         toolbox: Path::new("/t"),
         workspace: Path::new("/w"),
@@ -212,6 +227,7 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
         entry_args: &[],
         log_level: None,
         inherited: INHERITED,
+        sizes: SIZES,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
         network: NetworkLayout::Isolated,
     });
@@ -221,9 +237,18 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
         .rposition(|part| part == "/opt/agentsfleet/agentsfleet-runner")
         .unwrap_or_else(|| unreachable!("no entry in {argv:?}"));
 
-    let parsed = Inherited::parse_from(argv[entry..].iter().cloned());
+    let parsed = Entry::parse_from(argv[entry..].iter().cloned()).ok();
 
-    assert_eq!(parsed.ok(), Some(INHERITED), "the flags round-trip");
+    assert_eq!(
+        parsed,
+        Some(Entry::new(INHERITED, SIZES)),
+        "the flags round-trip"
+    );
+    assert_eq!(
+        parsed.map(Entry::sizes),
+        Some(SIZES),
+        "the executor serves the sizes the runner sent"
+    );
 }
 
 /// Each policy gets its namespace: `allow_all` shares the host's, and every
@@ -232,8 +257,8 @@ fn test_the_entry_reads_back_the_descriptors_it_was_named() {
 #[test]
 fn test_bubblewrap_network_flag_per_policy() {
     let allowed = NetworkLayout::Allowed {
-        hosts: Path::new("/srv/leases/l1/hosts"),
-        resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+        hosts: Path::new("/srv/runs/l1/hosts"),
+        resolv_conf: Path::new("/srv/runs/l1/resolv.conf"),
     };
     let unshares = |network| {
         with_network(None, network)
@@ -255,24 +280,20 @@ fn test_resolver_files_follow_the_network() {
     let allowed = with_network(
         None,
         NetworkLayout::Allowed {
-            hosts: Path::new("/srv/leases/l1/hosts"),
-            resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+            hosts: Path::new("/srv/runs/l1/hosts"),
+            resolv_conf: Path::new("/srv/runs/l1/resolv.conf"),
         },
     );
     let host = with_network(None, NetworkLayout::Host);
     let isolated = with_network(None, NetworkLayout::Isolated);
 
     assert_eq!(
-        after(&allowed, "--ro-bind", "/srv/leases/l1/hosts"),
-        ["--ro-bind", "/srv/leases/l1/hosts", "/etc/hosts"]
+        after(&allowed, "--ro-bind", "/srv/runs/l1/hosts"),
+        ["--ro-bind", "/srv/runs/l1/hosts", "/etc/hosts"]
     );
     assert_eq!(
-        after(&allowed, "--ro-bind", "/srv/leases/l1/resolv.conf"),
-        [
-            "--ro-bind",
-            "/srv/leases/l1/resolv.conf",
-            "/etc/resolv.conf"
-        ]
+        after(&allowed, "--ro-bind", "/srv/runs/l1/resolv.conf"),
+        ["--ro-bind", "/srv/runs/l1/resolv.conf", "/etc/resolv.conf"]
     );
     for path in ["/etc/hosts", "/etc/resolv.conf"] {
         assert_eq!(

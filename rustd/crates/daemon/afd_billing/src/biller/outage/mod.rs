@@ -1,15 +1,14 @@
 //! What work does when its biller cannot answer.
 
-use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
+use super::{Account, Ask, Balance, Biller, Funds};
 use crate::Result;
 
 /// Any [`Biller`], admitting work whose funds check it cannot answer.
 ///
-/// The work runs and its lines are logged and settle when the biller is back:
+/// The work runs and its lines are logged and charged as it writes them:
 /// early adoption favours the optimistic path, so an outage does not stop a
 /// fleet that is otherwise healthy. Only `check` gates work, so only `check` is
-/// changed: a failed `settle` leaves the lines logged and unsettled, and the
-/// relay retries them.
+/// changed.
 #[derive(Debug)]
 pub struct FailOpen<B> {
     inner: B,
@@ -40,16 +39,12 @@ impl<B: Biller> Biller for FailOpen<B> {
                     work_type,
                     work_id,
                     event = "billing_check_unconfirmed",
-                    "the biller could not answer; the work runs and settles later"
+                    "the biller could not answer; the work runs and is charged as it logs"
                 );
                 Ok(Funds::Unconfirmed)
             }
             answer => answer,
         }
-    }
-
-    async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
-        self.inner.settle(settlement).await
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {

@@ -17,7 +17,7 @@ use axum::response::{IntoResponse as _, Response};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
-use crate::services::{FleetSchedules as _, Services};
+use crate::services::{FleetSchedules as _, TenantPlane};
 
 use super::EVENT_READ;
 use super::support::SchedulePath;
@@ -54,7 +54,7 @@ pub(crate) fn views(schedules: &[afd_cron::Schedule], now: jiff::Timestamp) -> V
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -103,7 +103,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn one<D: Services>(
+pub(crate) async fn one<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(SchedulePath {

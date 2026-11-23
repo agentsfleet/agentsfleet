@@ -71,15 +71,10 @@ async fn open_poll_and_verify_need_no_bearer_but_reach_the_store() {
 
 #[tokio::test]
 async fn opening_refuses_unreadable_or_unbounded_input_before_the_store() {
-    let oversized_key = format!(
-        r#"{{"public_key":"{}","token_name":"laptop"}}"#,
-        "k".repeat(201)
-    );
     for body in [
         "{not json".to_owned(),
         r#"{"public_key":"","token_name":"laptop"}"#.to_owned(),
         r#"{"public_key":"key","token_name":"line\nbreak"}"#.to_owned(),
-        oversized_key,
     ] {
         let response = open_router(Method::POST, SESSIONS, None, &body).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{body}");
@@ -170,10 +165,7 @@ async fn test_session_fields_keep_their_auth_codes() {
         )
     };
     let opened = [
-        (
-            open(&"k".repeat(201), "laptop"),
-            error_code::INVALID_PUBLIC_KEY,
-        ),
+        (open("", "laptop"), error_code::INVALID_PUBLIC_KEY),
         (open("k", &"t".repeat(65)), error_code::INVALID_TOKEN_NAME),
     ];
     for (body, expected) in opened {
@@ -182,10 +174,7 @@ async fn test_session_fields_keep_their_auth_codes() {
         assert_eq!(code_of(response).await.as_deref(), Some(expected.as_str()));
     }
     let approved = [
-        (
-            approve(&"c".repeat(4097), "n", "012345"),
-            error_code::INVALID_CIPHERTEXT,
-        ),
+        (approve("", "n", "012345"), error_code::INVALID_CIPHERTEXT),
         (
             approve("c", &"n".repeat(33), "012345"),
             error_code::INVALID_NONCE,

@@ -9,7 +9,7 @@ let fixture: ChatFixture;
 beforeEach(() => {fixture = new ChatFixture(); fixture.mount();});
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
 
-it("opens Edit setup on the full authoring page at the saved revision", () => {
+it("opens Edit setup on the full setup page at the saved revision", () => {
   render(<FleetSetupWorkspace {...CHAT_PROPS} fleet={FLEET_ID} revision="3" viewer="creator"
     header={<EditSetupButton workspace={WORKSPACE} fleet={FLEET_ID} revision="3" />}><p>Fleet conversation</p></FleetSetupWorkspace>);
   expect(screen.getByRole("link", {name: "Edit setup"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?fleet=${FLEET_ID}&setup_revision=3`);

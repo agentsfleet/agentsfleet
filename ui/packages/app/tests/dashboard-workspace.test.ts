@@ -66,8 +66,8 @@ vi.mock("@/lib/api/tenant_billing", async () =>
 vi.mock("@/lib/api/tenant_provider", async () =>
   (await import("./helpers/dashboard-app-mocks")).tenantProviderMock(),
 );
-vi.mock("@/lib/api/events", async () =>
-  (await import("./helpers/dashboard-app-mocks")).eventsMock(),
+vi.mock("@/lib/api/turns", async () =>
+  (await import("./helpers/dashboard-app-mocks")).turnsMock(),
 );
 vi.mock("@/lib/api/secrets", async () =>
   (await import("./helpers/dashboard-app-mocks")).secretsApiMock(),

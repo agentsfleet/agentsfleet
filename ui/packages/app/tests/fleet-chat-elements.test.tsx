@@ -1,17 +1,17 @@
-import { ev, mockStream, renderThread, useFleetEventStreamMock, WS, ZID } from "./fleet-thread/harness";
+import { ev, mockStream, renderThread, useFleetTurnStreamMock, WS, ZID } from "./fleet-thread/harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { convertEvent, CONNECTION_STATUS, type FleetEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { convertTurn, CONNECTION_STATUS, type FleetTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { ApprovalActivityElement } from "@/components/domain/activity/messages/FleetActivityElements";
 import { FleetChatElementView } from "@/components/domain/activity/messages/FleetChatElements";
 import { GROUP_META } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR, OUTCOME } from "@/lib/events/event-summary";
+import { ACTOR, OUTCOME } from "@/lib/turns/turn-summary";
 import type { ActivityElementData } from "@/components/domain/activity/messages/fleet-chat-elements";
-import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, FLEET_ACTIVITY } from "@/lib/turns/fleet-activity";
 import { SCHEDULE_SNAPSHOT } from "./helpers/schedule-activity";
 
 const APPROVAL: ActivityElementData = {
-  eventId: "access-request", actor: ACTOR.GATE_BLOCKED, status: "gate_blocked",
+  turnId: "access-request", actor: ACTOR.GATE_BLOCKED, status: "gate_blocked",
   createdAt: new Date("2026-11-11T09:00:00Z"), headline: "Slack access needs approval",
   outcome: OUTCOME.WAITING_APPROVAL, failed: false, details: {kind: "none"}, source: null,
 };
@@ -23,7 +23,7 @@ describe("registered fleet chat elements", () => {
     renderThread();
     expect(screen.getByText("Scheduled wake-up")).toBeTruthy();
     expect(screen.getByText(`${SCHEDULE_SNAPSHOT.message} · ${SCHEDULE_SNAPSHOT.description}`)).toBeTruthy();
-    expect(screen.queryByRole("button", {name: "View event"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "View turn"})).toBeNull();
   });
   it("renders mixed recorded outcomes through the real transcript", async () => {
     mockStream([
@@ -104,12 +104,12 @@ describe("registered fleet chat elements", () => {
 });
 
 function mockMalformedGroup(members: unknown, text = "Invalid grouped activity") {
-  const event = ev({id: "bad-group", role: "system", actor: "webhook:github", text});
-  useFleetEventStreamMock.mockReturnValue({
-    events: [event], connectionStatus: CONNECTION_STATUS.LIVE, isRunning: false,
+  const turn = ev({id: "bad-group", role: "system", actor: "webhook:github", text});
+  useFleetTurnStreamMock.mockReturnValue({
+    turns: [turn], connectionStatus: CONNECTION_STATUS.LIVE, isRunning: false,
     appendOptimistic: vi.fn(), reconcileOptimistic: vi.fn(), discardOptimistic: vi.fn(), retryConnection: vi.fn(),
-    convertEvent: (record: FleetEvent) => ({
-      ...convertEvent(record), metadata: {custom: {[GROUP_META.MEMBERS]: members}},
+    convertTurn: (record: FleetTurn) => ({
+      ...convertTurn(record), metadata: {custom: {[GROUP_META.MEMBERS]: members}},
     }),
   });
 }

@@ -3,11 +3,11 @@ import { Instant } from "./decode";
 import { fleetPath } from "./fleet-paths";
 import { nanosSchema } from "./nanos";
 
-export const TASK_STATUS = {
+export const DURABLE_TASK_STATUS = {
   ready: "ready", running: "running", waiting: "waiting", blocked: "blocked",
   paused: "paused", done: "done", cancelled: "cancelled", exhausted: "exhausted",
 } as const;
-const Status = z.enum(Object.values(TASK_STATUS));
+const Status = z.enum(Object.values(DURABLE_TASK_STATUS));
 const Count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const Identity = z.uuidv7();
 const GitOid = z.string().regex(/^[0-9a-f]{40}$/u);
@@ -28,9 +28,9 @@ const Summary = z.object({
   id: Identity, title: z.string().min(1), status: Status, resource_version: Count,
   generation: Count, accepted_revision_id: Identity, created_at: Instant, expires_at: Instant,
 });
-// Native admission permits sixteen unfinished tasks. Asking for 100 returns
-// the whole panel; a continuation would mean an incomplete response, not no work.
-const Page = z.object({items: z.array(Summary).max(100), next_cursor: z.null()});
+// The panel reads one page; a continuation would mean an incomplete
+// response, not no work, so a page that names one is refused.
+const Page = z.object({items: z.array(Summary), next_cursor: z.null()});
 const Detail = z.object({
   publication: z.object({effect_id: Identity, ordinal: Count,
     state: z.enum(["prepared", "issued", "confirmed", "unknown", "refused"]),
@@ -41,37 +41,37 @@ const Detail = z.object({
   etag: z.string().regex(/^"[0-9a-f]{64}"$/u).optional(),
   context: z.object({
     target: Target.optional(),
-    task_id: Identity, generation: Count, stop_generation: Count,
+    durable_task_id: Identity, generation: Count, stop_generation: Count,
     accepted_revision_id: Identity, objective: z.string(), goal_digest: z.string(),
-    questions: z.array(Statement).min(1).max(6), state: Status,
+    questions: z.array(Statement).min(1), state: Status,
     covered_input_sequence: Count, effect_cursor: Count, confirmed_effect_watermark: Count,
     checkpoint_id: Identity.nullable(), expires_at: Instant,
     limits: z.object({model_nanos: nanosSchema, wall_seconds: Count, running_seconds: Count,
-      leases: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
-    usage: z.object({model_nanos: nanosSchema, reserved_model_nanos: nanosSchema,
-      running_nanos: Count, leases: Count, publications: Count, decision_calls: Count, fallback_reads: Count}),
+      runs: Count, publications: Count, decision_calls: Count}),
+    usage: z.object({model_nanos: nanosSchema,
+      running_nanos: Count, runs: Count, publications: Count, decision_calls: Count}),
   }),
 });
 
-export type TaskStatus = z.infer<typeof Status>;
-export type TaskSummary = z.infer<typeof Summary>;
-export type TaskPage = z.infer<typeof Page>;
-export type TaskDetail = z.infer<typeof Detail>;
-export type TaskControl = "paused" | "ready" | "cancelled";
-export type TaskChange = {kind: "confirmed"; value: TaskDetail} | {kind: "failed"; reason: "access" | "changed" | "limited" | "unconfirmed" | "invalid"};
-export type TaskReadFailure = "access" | "missing" | "timeout" | "unreachable" | "invalid";
-export type TaskRead<T> = {kind: "ready"; value: T} | {kind: "failed"; reason: TaskReadFailure};
+export type DurableTaskStatus = z.infer<typeof Status>;
+export type DurableTaskSummary = z.infer<typeof Summary>;
+export type DurableTaskPage = z.infer<typeof Page>;
+export type DurableTaskDetail = z.infer<typeof Detail>;
+export type DurableTaskControl = "paused" | "ready" | "cancelled";
+export type DurableTaskChange = {kind: "confirmed"; value: DurableTaskDetail} | {kind: "failed"; reason: "access" | "changed" | "limited" | "unconfirmed" | "invalid"};
+export type DurableTaskReadFailure = "access" | "missing" | "timeout" | "unreachable" | "invalid";
+export type DurableTaskRead<T> = {kind: "ready"; value: T} | {kind: "failed"; reason: DurableTaskReadFailure};
 
 /** Browser reads stay on authenticated same-origin routes; no bearer enters the UI. */
-export function readTasks(workspaceId: string, fleetId: string, signal: AbortSignal): Promise<TaskRead<TaskPage>> {
-  return read(`/live${fleetPath(workspaceId, fleetId)}/tasks?limit=100`, Page, signal);
+export function readDurableTasks(workspaceId: string, fleetId: string, signal: AbortSignal): Promise<DurableTaskRead<DurableTaskPage>> {
+  return read(`/live${fleetPath(workspaceId, fleetId)}/durable_tasks?limit=100`, Page, signal);
 }
 
-export function readTask(workspaceId: string, fleetId: string, taskId: string, signal: AbortSignal): Promise<TaskRead<TaskDetail>> {
-  return read(`/live${fleetPath(workspaceId, fleetId)}/tasks/${encodeURIComponent(taskId)}`, Detail, signal, true);
+export function readDurableTask(workspaceId: string, fleetId: string, durableTaskId: string, signal: AbortSignal): Promise<DurableTaskRead<DurableTaskDetail>> {
+  return read(`/live${fleetPath(workspaceId, fleetId)}/durable_tasks/${encodeURIComponent(durableTaskId)}`, Detail, signal, true);
 }
 
-async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, tagged = false): Promise<TaskRead<T>> {
+async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, tagged = false): Promise<DurableTaskRead<T>> {
   const timeout = AbortSignal.timeout(10_000);
   const bounded = AbortSignal.any([signal, timeout]);
   let response: Response;
@@ -95,21 +95,21 @@ async function read<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, 
 }
 
 /** Mutations use the exact read version, never retry automatically, and wait for native confirmation. */
-export function controlTask(workspace: string, fleet: string, task: TaskDetail, state: TaskControl,
-  signal: AbortSignal): Promise<TaskChange> {
-  return changeTask(workspace, fleet, task, {state}, signal);
+export function controlDurableTask(workspace: string, fleet: string, task: DurableTaskDetail, state: DurableTaskControl,
+  signal: AbortSignal): Promise<DurableTaskChange> {
+  return changeDurableTask(workspace, fleet, task, {state}, signal);
 }
 
-export function adoptTaskGoal(workspace: string, fleet: string, task: TaskDetail, revision: string, operation: string,
-  signal: AbortSignal): Promise<TaskChange> {
-  return changeTask(workspace, fleet, task, {goal_revision_id: revision, operation_id: operation}, signal);
+export function adoptDurableTaskGoal(workspace: string, fleet: string, task: DurableTaskDetail, revision: string, operation: string,
+  signal: AbortSignal): Promise<DurableTaskChange> {
+  return changeDurableTask(workspace, fleet, task, {goal_revision_id: revision, operation_id: operation}, signal);
 }
 
-async function changeTask(workspace: string, fleet: string, task: TaskDetail,
-  mutation: {state: TaskControl} | {goal_revision_id: string; operation_id: string}, signal: AbortSignal): Promise<TaskChange> {
+async function changeDurableTask(workspace: string, fleet: string, task: DurableTaskDetail,
+  mutation: {state: DurableTaskControl} | {goal_revision_id: string; operation_id: string}, signal: AbortSignal): Promise<DurableTaskChange> {
   if (!task.etag) return {kind: "failed", reason: "changed"};
   try {
-    const response = await fetch(`/live${fleetPath(workspace, fleet)}/tasks/${encodeURIComponent(task.context.task_id)}`, {
+    const response = await fetch(`/live${fleetPath(workspace, fleet)}/durable_tasks/${encodeURIComponent(task.context.durable_task_id)}`, {
       method: "PATCH", redirect: "manual", cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
       headers: {"Content-Type": "application/json", "If-Match": task.etag},
       body: JSON.stringify({...mutation, expected_generation: task.context.generation}),

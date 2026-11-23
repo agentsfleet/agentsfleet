@@ -2,29 +2,29 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 import { SCHEDULE } from "@/tests/helpers/draft-fixtures";
 import { useState } from "react";
 import { RENDER_KIND_KEY, RENDER_KIND } from "@/components/domain/conversation/thread/useFleetThreadEntries";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { SenderLabelProvider } from "@/components/domain/activity/messages/FleetMessageRow";
-import { TASK_IDS } from "@/tests/helpers/task-reads";
-import { FleetTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
+import { DURABLE_TASK_IDS } from "@/tests/helpers/task-reads";
+import { FleetDurableTaskProvider } from "@/components/domain/tasks/FleetTaskProvider";
 import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { FleetThreadViewport } from "@/components/domain/conversation/thread/FleetThreadViewport";
 import { FleetConversationLayout } from "@/components/domain/shared/summary/FleetWorkSidebar";
-import { TaskPanel } from "@/components/domain/tasks/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { DurableTaskPanel } from "@/components/domain/tasks/TaskPanel";
+import { CONNECTION_STATUS } from "@/components/domain/conversation/stream/useFleetTurnStream";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { TooltipProvider } from "@agentsfleet/design-system";
 
 const router = {bfcacheId: "task-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {}};
 
-const TASK_ACTIVITY = {items: [{kind: "task_transfer_progress", progress: {activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}], truncated: false};
+const DURABLE_TASK_ACTIVITY = {items: [{kind: "durable_task_transfer_progress", progress: {activity_id: DURABLE_TASK_IDS[0], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "capture", phase: "saved", provider: null, model: null, completed: 1, total: 1}}], truncated: false};
 const MESSAGES: ThreadMessageLike[] = [
   {id: "operator", role: "user", content: "Repair these three Linkwarden pull requests. Keep the regression checks.",
     metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner`}}},
-  {id: "operator:reply", role: "assistant", content: "The login repair is waiting for checks. I’m working on duplicate bookmarks next; the import repair is queued.", metadata: {custom: {taskActivity: TASK_ACTIVITY}}},
+  {id: "operator:reply", role: "assistant", content: "The login repair is waiting for checks. I’m working on duplicate bookmarks next; the import repair is queued.", metadata: {custom: {durableTaskActivity: DURABLE_TASK_ACTIVITY}}},
 ];
 
 /** Production chat components; Playwright supplies only the task HTTP boundary. */
-export function TaskFixture() {
+export function DurableTaskFixture() {
   const [schedules] = useState(() => new URLSearchParams(location.search).has("wakeups") ? [{...SCHEDULE, fleet_id: "linkwarden",
     description: "Every 30 minutes", next_run_at: new Date(Date.now() + 30 * 60_000).toISOString()}] : undefined);
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({messages: MESSAGES,
@@ -32,11 +32,11 @@ export function TaskFixture() {
   return <AppRouterContext value={router}><TooltipProvider><main className="flex h-dvh flex-col bg-background text-foreground">
     <header className="shrink-0 border-b border-border px-xl py-lg"><h1 className="font-semibold">Linkwarden repairs</h1></header>
     <AssistantRuntimeProvider runtime={runtime}><SenderLabelProvider senderLabel="Linkwarden repair fleet across connected repositories">
-      <FleetTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
-      <FleetConversationLayout work={<TaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport eventsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
+      <FleetDurableTaskProvider workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}}>
+      <FleetConversationLayout work={<DurableTaskPanel workspaceId="workspace" fleetId="linkwarden" subject="fixture-owner" revision={0} schedules={schedules} sources={{repositories: ["linkwarden/linkwarden"], access: "write", publication: "existing_pr"}} />}><FleetThreadViewport turnsCount={2} connectionStatus={CONNECTION_STATUS.LIVE}
         pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}}
         onRestored={() => {}} onDraft={() => {}} modelLabel="Selected coding model" /></FleetConversationLayout>
-      </FleetTaskProvider>
+      </FleetDurableTaskProvider>
     </SenderLabelProvider></AssistantRuntimeProvider>
   </main></TooltipProvider></AppRouterContext>;
 }

@@ -1,0 +1,167 @@
+//! Retained financial identity is independent of cascading private payloads.
+
+use af_core::id::Uuid7;
+use af_wire::{
+    decision::{DecisionAssignment, DecisionRequest, DecisionUsage},
+    durable_task::{DecisionCallState, DecisionReceipt, DecisionUnavailableCause},
+};
+use serde::Deserialize;
+use sqlx::{PgConnection, Postgres, postgres::PgArguments, query::QueryAs, types::Json};
+
+use super::{context::AssessedContext, quote::FrozenQuote, sql};
+use crate::{
+    Result,
+    error::{Error, ErrorKind, query},
+};
+
+#[derive(Debug, sqlx::FromRow)]
+pub(super) struct Call {
+    pub id: Uuid7,
+    pub original_runner_id: Uuid7,
+    pub original_run_id: Uuid7,
+    pub source_turn_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
+    pub tenant_id: Uuid7,
+    pub durable_task_id: Option<Uuid7>,
+    pub fencing_token: i64,
+    pub request_digest: String,
+    pub assessment_id: Uuid7,
+    pub assessment_key: String,
+    #[sqlx(try_from = "i16")]
+    pub attempt_number: u8,
+    pub retry_of_decision_call_id: Option<Uuid7>,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub logical_expires_at: jiff::Timestamp,
+    pub purpose: String,
+    pub status: String,
+    pub provider: String,
+    pub fleet_name: String,
+    pub profile_snapshot: Json<DecisionAssignment>,
+    pub price_snapshot: Json<FrozenQuote>,
+    pub context_snapshot: Json<AssessedContext>,
+    pub usage_sequence: i64,
+    pub reserved_nanos: i64,
+    pub issued: bool,
+    pub accounted: bool,
+    pub known_usage: Option<Json<DecisionUsage>>,
+    pub charged_nanos: Option<i64>,
+    pub canonical_receipt_digest: Option<String>,
+    pub failure_receipt_digest: Option<String>,
+    pub failure_reason: Option<Json<DecisionUnavailableCause>>,
+    pub failure_age_ms: Option<i64>,
+    pub remaining_ms: i64,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub created_at: jiff::Timestamp,
+}
+
+#[derive(sqlx::FromRow)]
+pub(super) struct Payload {
+    pub request: Json<DecisionRequest>,
+    pub result: Option<Json<DecisionReceipt>>,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Lookup<'a> {
+    Id(&'a Uuid7),
+    Operation {
+        run: &'a Uuid7,
+        operation: &'a Uuid7,
+    },
+    Assessment {
+        key: &'a str,
+        attempt: i16,
+    },
+}
+
+pub(super) async fn find(
+    connection: &mut PgConnection,
+    lookup: Lookup<'_>,
+) -> Result<Option<Call>> {
+    statement(sql::FIND_CALL, lookup)
+        .fetch_optional(connection)
+        .await
+        .map_err(query("lock retained physical decision"))
+}
+
+pub(super) async fn read_on(connection: &mut PgConnection, id: &Uuid7) -> Result<Option<Call>> {
+    statement(sql::PEEK_CALL, Lookup::Id(id))
+        .fetch_optional(connection)
+        .await
+        .map_err(query(
+            "read immutable accounted decision for task acceptance",
+        ))
+}
+
+pub(super) async fn peek(database: &afd_db::Db, lookup: Lookup<'_>) -> Result<Option<Call>> {
+    Ok(crate::durable_task::fetch::rows(
+        database,
+        statement(sql::PEEK_CALL, lookup),
+        None,
+        "read retained physical decision",
+    )
+    .await?
+    .into_iter()
+    .next())
+}
+
+/// The call once it is issued or accounted: what a replay answers from,
+/// read without a lock.
+pub(super) async fn issued(database: &afd_db::Db, id: &Uuid7) -> Result<Option<Call>> {
+    Ok(peek(database, Lookup::Id(id))
+        .await?
+        .filter(|call| call.issued || call.accounted))
+}
+
+fn statement<'a>(
+    sql: &'static str,
+    lookup: Lookup<'a>,
+) -> QueryAs<'a, Postgres, Call, PgArguments> {
+    let (id, run, operation, key, attempt) = match lookup {
+        Lookup::Id(id) => (Some(id), None, None, None, None),
+        Lookup::Operation { run, operation } => (None, Some(run), Some(operation), None, None),
+        Lookup::Assessment { key, attempt } => (None, None, None, Some(key), Some(attempt)),
+    };
+    sqlx::query_as(sql)
+        .bind(id)
+        .bind(run)
+        .bind(operation)
+        .bind(key)
+        .bind(attempt)
+}
+
+pub(super) async fn payload(
+    connection: &mut PgConnection,
+    call: &Uuid7,
+) -> Result<Option<Payload>> {
+    sqlx::query_as(sql::PAYLOAD)
+        .bind(call)
+        .fetch_optional(connection)
+        .await
+        .map_err(query("read private saved decision payload"))
+}
+
+pub(super) async fn saved_payload(database: &afd_db::Db, call: &Uuid7) -> Result<Option<Payload>> {
+    Ok(crate::durable_task::fetch::rows(
+        database,
+        sqlx::query_as(sql::PAYLOAD).bind(call),
+        None,
+        "read saved private decision data",
+    )
+    .await?
+    .into_iter()
+    .next())
+}
+
+impl Call {
+    pub(super) fn state(&self) -> Result<DecisionCallState> {
+        DecisionCallState::deserialize(serde::de::value::StrDeserializer::new(self.status.as_str()))
+            .map_err(|source| Error::from(ErrorKind::DurableTaskState { source }))
+    }
+
+    pub(super) fn owned_by(&self, run: crate::durable_task::DurableTaskRun<'_>) -> bool {
+        self.original_runner_id == run.runner_id.as_str()
+            && self.original_run_id == run.run_id.as_str()
+            && u64::try_from(self.fencing_token).ok() == Some(run.fencing_token)
+    }
+}

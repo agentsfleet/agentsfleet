@@ -49,7 +49,7 @@ test_should_fail_when_io_controller_is_not_delegated() {
     ok "$name"
   fi
 }
-# A host with forwarding off runs a healthy-looking service that leases no
+# A host with forwarding off runs a healthy-looking service that runs no
 # allowlisted-egress work, so verification names it.
 test_should_fail_when_ipv4_forwarding_is_off() {
   local name="test_should_fail_when_ipv4_forwarding_is_off"

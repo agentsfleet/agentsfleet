@@ -4,10 +4,12 @@ use super::{Object, Session, transfer::Transfers, window};
 use crate::{Result, client::ControlPlane, error};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
-use af_wire::activity::{TaskActivityOperation as Operation, TaskActivityPhase as Phase};
-use af_wire::task::{
+use af_wire::activity::{
+    DurableTaskActivityOperation as Operation, DurableTaskActivityPhase as Phase,
+};
+use af_wire::durable_task::{
     CHECKPOINT_FORMAT, CheckpointAuthorizationInput, CheckpointEntry, CheckpointMode,
-    CheckpointPlan, CheckpointTransferPurpose, DecisionTaskVersion, TaskContext,
+    CheckpointPlan, CheckpointTransferPurpose, DecisionDurableTaskVersion, DurableTaskContext,
 };
 use std::{collections::BTreeMap, path::PathBuf};
 use zeroize::Zeroizing;
@@ -17,10 +19,10 @@ pub(crate) struct Restore<'a> {
     pub(crate) plane: &'a ControlPlane,
     pub(crate) transfers: &'a Transfers,
     pub(crate) permit: Option<&'a afr_agent::FileRecoveryPermit>,
-    pub(crate) lease: &'a Uuid7,
+    pub(crate) run: &'a Uuid7,
     pub(crate) workspace: &'a Uuid7,
     pub(crate) fence: u64,
-    pub(crate) task: &'a TaskContext<'a>,
+    pub(crate) task: &'a DurableTaskContext<'a>,
     pub(crate) toolbox: &'a str,
     pub(crate) stop: &'a tokio_util::sync::CancellationToken,
 }
@@ -36,18 +38,18 @@ impl Restore<'_> {
     /// Inspect the authenticated retained manifest, including on cross-task reuse.
     pub(crate) async fn base_paths(&self, base: &CheckpointPlan) -> Result<Vec<String>> {
         let checkpoint = Uuid7::parse(&base.checkpoint_id)?;
-        let task = DecisionTaskVersion {
-            task_id: self.task.task_id.to_string(),
+        let task = DecisionDurableTaskVersion {
+            durable_task_id: self.task.durable_task_id.to_string(),
             generation: self.task.generation,
         };
         let response = self
             .plane
-            .task_checkpoint_authorizations(
-                self.lease,
+            .durable_task_checkpoint_authorizations(
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
-                    task: task.clone(),
+                    durable_task: task.clone(),
                     purpose: CheckpointTransferPurpose::Restore,
                     pin_id: None,
                     object_ids: Vec::new(),
@@ -77,7 +79,7 @@ impl Restore<'_> {
         let mut progress = super::progress::Progress::default();
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,
@@ -95,7 +97,7 @@ impl Restore<'_> {
             .ok_or_else(|| error::config("retained base is incomplete"))?;
         let mut entries = BTreeMap::new();
         let history = session.pages(&ids, &expected, &mut entries, &mut 0).await?;
-        if !history.is_empty() || entries.len() > 200_000 {
+        if !history.is_empty() {
             return Err(error::config("retained base manifest is incompatible"));
         }
         Ok(entries.into_keys().collect())
@@ -107,8 +109,8 @@ impl Restore<'_> {
             .to_string();
         super::activity::emit(
             self.plane,
-            self.lease,
-            &self.task.task_id,
+            self.run,
+            &self.task.durable_task_id,
             &activity,
             Operation::Restore,
             Phase::Preparing,
@@ -124,8 +126,8 @@ impl Restore<'_> {
         };
         super::activity::emit(
             self.plane,
-            self.lease,
-            &self.task.task_id,
+            self.run,
+            &self.task.durable_task_id,
             &activity,
             Operation::Restore,
             phase,
@@ -138,7 +140,7 @@ impl Restore<'_> {
     fn checked_plan(
         &self,
         checkpoint: &Uuid7,
-        response: af_wire::task::CheckpointAuthorizations,
+        response: af_wire::durable_task::CheckpointAuthorizations,
     ) -> Result<CheckpointPlan> {
         let unexpected = !response.objects.is_empty();
         // Wrapped so each unexpected object's data key is wiped as it drops.
@@ -175,18 +177,18 @@ impl Restore<'_> {
                 .as_deref()
                 .ok_or_else(|| error::config("task has no recovery checkpoint"))?,
         )?;
-        let task = DecisionTaskVersion {
-            task_id: self.task.task_id.to_string(),
+        let task = DecisionDurableTaskVersion {
+            durable_task_id: self.task.durable_task_id.to_string(),
             generation: self.task.generation,
         };
         let response = self
             .plane
-            .task_checkpoint_authorizations(
-                self.lease,
+            .durable_task_checkpoint_authorizations(
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
-                    task: task.clone(),
+                    durable_task: task.clone(),
                     purpose: CheckpointTransferPurpose::Restore,
                     pin_id: None,
                     object_ids: Vec::new(),
@@ -196,7 +198,7 @@ impl Restore<'_> {
         let plan = self.checked_plan(&checkpoint, response)?;
         let mut session = Session {
             plane: self.plane,
-            lease: self.lease,
+            run: self.run,
             workspace: self.workspace,
             fence: self.fence,
             task,
@@ -262,9 +264,6 @@ impl Session<'_> {
         for batch in ids.chunks(4) {
             let chunks = self.download_batch(batch).await?;
             for (id, bytes) in batch.iter().zip(chunks) {
-                if history.len().saturating_add(bytes.expose().len()) > 64 * 1024 * 1024 {
-                    return Err(error::config("checkpoint history expanded bound exceeded"));
-                }
                 digests.push((
                     id.clone(),
                     af_core::etag::sha256_hex(bytes.expose()),

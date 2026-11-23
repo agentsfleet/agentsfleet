@@ -33,6 +33,7 @@ async fn nonce_spends_once_under_contention() {
         Provider::Jira,
         &fresh,
         Timestamp::now(),
+        afd_connector::Timing::default().state_ttl,
     )
     .await
     .expect("the nonce is remembered");
@@ -79,6 +80,7 @@ async fn one_providers_nonce_never_spends_under_another() {
         Provider::Slack,
         &fresh,
         Timestamp::now(),
+        afd_connector::Timing::default().state_ttl,
     )
     .await
     .expect("the nonce is remembered");

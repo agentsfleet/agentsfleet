@@ -1,4 +1,4 @@
-//! Dimension 5.5 — a person's credentials resolve, and an unmatched digest is none.
+//! A person's credentials resolve, and an unmatched digest is none.
 //!
 //! The runner class is `runners.rs`; the outage half of the distinction below
 //! is `outages.rs`.

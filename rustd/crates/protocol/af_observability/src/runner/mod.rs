@@ -10,15 +10,14 @@
 //! or a hostile one, produces unbounded distinct label values, and a metric
 //! registry that grew a series per value would consume memory until the process
 //! died — with no request ever failing to explain why. So the table has a fixed
-//! capacity, and everything past it accumulates into ONE overflow series
-//! (Dimension 6.4).
+//! capacity, and everything past it accumulates into ONE overflow series.
 //!
 //! Overflow keeps the reason and the outcome and loses only WHICH runner: a
 //! deployment past four thousand distinct runners has an operational problem
 //! that per-runner attribution would not help with, and the failure totals stay
 //! correct either way.
 //!
-//! # The overflow spelling, settled (M181 §3)
+//! # The overflow spelling, settled
 //!
 //! This module used to defer the overflow series' NAME to the milestone that
 //! configures the metrics pipeline. That milestone is M181, and the answer is
@@ -79,7 +78,7 @@ pub const OVERFLOW_RUNNER: &str = "_other";
 /// failed to do its job.
 pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 
-/// How many distinct runners get their own series.
+/// How many distinct runners get their own series when nothing configures it.
 ///
 /// The number is not the point — the bound is. Four thousand is far past any
 /// real deployment's host count and far below anything that threatens memory.
@@ -104,13 +103,13 @@ pub const MAX_SERIES: usize = 4096;
 struct Counters {
     /// When this runner was last heard from.
     last_seen: LastSeen,
-    /// How many leases it is believed to hold.
+    /// How many runs it is believed to hold.
     ///
-    /// Best effort, and knowingly: a lease abandoned by a dead runner expires
+    /// Best effort, and knowingly: a run abandoned by a dead runner expires
     /// by the clock with no report to decrement against, so a crashed host's
     /// gauge stays high until the process restarts. The liveness sweeper's row
     /// is the authority; this is a hint next to it.
-    active_leases: AtomicI64,
+    active_runs: AtomicI64,
 }
 
 /// The per-runner metric families this process holds.
@@ -120,17 +119,17 @@ struct Counters {
 /// other test is counting.
 #[derive(Debug)]
 pub struct RunnerMetrics {
-    /// One entry per runner, up to [`MAX_SERIES`].
+    /// One entry per runner, up to its capacity.
     ///
     /// Behind an `Arc` so a publisher can drop the shard it looked up in
     /// before it writes — which is what keeps a slow publisher from blocking a
     /// fast one, and what makes the write path lock-free in the common case.
     ///
-    /// Sharded rather than one map behind one lock: every lease poll, beat and
+    /// Sharded rather than one map behind one lock: every run poll, beat and
     /// release looks a runner up here, so the table is read from every request
     /// task in the process at once, and admitting a new runner took a lock
     /// over the WHOLE table to insert one key. Nothing is ever removed, which
-    /// is why [`RunnerMetrics::admitted`] can stand in for its length.
+    /// is why [`RunnerMetrics::tracked`] can stand in for its length.
     series: DashMap<Box<str>, Arc<Counters>>,
     /// How many series have been handed out.
     ///
@@ -147,6 +146,8 @@ pub struct RunnerMetrics {
     /// it is happening — a series that silently merged would look like a quiet
     /// fleet rather than an exhausted table.
     overflowed: AtomicU64,
+    /// How many runners get a series of their own; see [`MAX_SERIES`].
+    capacity: usize,
 }
 
 impl Default for RunnerMetrics {
@@ -159,10 +160,17 @@ impl RunnerMetrics {
     /// An empty table.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_capacity(MAX_SERIES)
+    }
+
+    /// An empty table giving at most `capacity` runners a series.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             series: DashMap::new(),
             admitted: AtomicUsize::new(0),
             overflowed: AtomicU64::new(0),
+            capacity,
         }
     }
 
@@ -174,11 +182,11 @@ impl RunnerMetrics {
     /// having overflowed. A caller that recorded against the raw identifier
     /// instead would make the ceiling a suggestion, which is why the label is
     /// answered by the table rather than chosen by the caller.
-    pub fn admit<'id>(&self, runner_id: &'id str) -> &'id str {
+    pub fn track<'id>(&self, runner_id: &'id str) -> &'id str {
         if self.existing(runner_id).is_some() {
             return runner_id;
         }
-        if self.admit_new(runner_id).is_some() {
+        if self.track_new(runner_id).is_some() {
             return runner_id;
         }
         self.overflowed.fetch_add(1, Ordering::Relaxed);
@@ -197,24 +205,24 @@ impl RunnerMetrics {
         }
     }
 
-    /// Records that a runner took a lease.
-    pub fn leased(&self, runner_id: &str) {
+    /// Records that a runner took a run.
+    pub fn held(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_add(1, Ordering::Relaxed);
+            counters.active_runs.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     /// Records that a runner gave one back.
     pub fn released(&self, runner_id: &str) {
         if let Some(counters) = self.existing(runner_id) {
-            counters.active_leases.fetch_sub(1, Ordering::Relaxed);
+            counters.active_runs.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
     /// How many distinct runners currently hold a series.
     ///
-    /// Never above [`MAX_SERIES`], which is the property Dimension 6.4 asks
-    /// for and the reason this is public.
+    /// Never above its capacity, which is the property the table's capacity
+    /// exists for and the reason this is public.
     #[must_use]
     pub fn series_count(&self) -> usize {
         self.series.len()
@@ -242,7 +250,7 @@ impl RunnerMetrics {
 
     /// Whether the table could still admit a runner it has not seen.
     fn has_room(&self) -> bool {
-        self.admitted.load(Ordering::Relaxed) < MAX_SERIES
+        self.admitted.load(Ordering::Relaxed) < self.capacity
     }
 
     /// How many records the overflow series absorbed.
@@ -263,7 +271,7 @@ impl RunnerMetrics {
     /// racing the SAME new runner produce one series; the seat taken below is
     /// what stops two threads racing DIFFERENT new runners from both taking
     /// the last one.
-    fn admit_new(&self, runner_id: &str) -> Option<Arc<Counters>> {
+    fn track_new(&self, runner_id: &str) -> Option<Arc<Counters>> {
         match self.series.entry(Box::from(runner_id)) {
             // Another thread admitted this very runner between the lookup in
             // `admit` and this line.
@@ -279,7 +287,7 @@ impl RunnerMetrics {
         }
     }
 
-    /// Claims one of the table's [`MAX_SERIES`] seats, or `None` when they are
+    /// Claims one of the table's seats, or `None` when they are
     /// all taken.
     ///
     /// The compare-and-swap IS the cap. Reading a length and then inserting
@@ -288,7 +296,7 @@ impl RunnerMetrics {
     fn take_a_seat(&self) -> Option<()> {
         self.admitted
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |taken| {
-                (taken < MAX_SERIES).then_some(taken + 1)
+                (taken < self.capacity).then_some(taken + 1)
             })
             .ok()
             .map(|_previous| ())

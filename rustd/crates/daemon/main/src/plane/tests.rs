@@ -14,11 +14,15 @@ use std::sync::Arc;
 use af_core::test_util::trace::Capture;
 use af_crypto::secret::{Kek, SecretBytes};
 use af_observability::Analytics;
-use afd_api::{Services as _, TenantSurface as _};
+use afd_api_ingress::services::IngressPlane;
+use afd_api_operator::OperatorPlane;
+use afd_api_runner::services::RunnerPlane;
+use afd_api_tenant::services::TenantPlane;
 use afd_auth::{NoCapabilitySource, NoVerifier};
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
+use afd_http::services::Shared;
 use afd_sse::{Live, StreamLimit};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
@@ -42,16 +46,21 @@ fn plane() -> ServingPlane {
 }
 
 fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
+    plane_storing(admin, None)
+}
+
+fn plane_storing(
+    admin: Option<af_core::id::Uuid7>,
+    checkpoint_storage: Option<
+        garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig>,
+    >,
+) -> ServingPlane {
     let database = afd_db::test_util::unreachable_db();
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
         runtime: crate::preflight::runtime::read(&af_core::env::MapEnv::default())
             .expect("default runtime settings"),
-        authoring_transport: afd_authoring::Network::new()
-            .expect("fixed transport builds without a network request"),
-        storage_client: afd_authoring::Network::new()
-            .expect("storage transport builds without a request")
-            .guarded_client(),
+        storage_client: reqwest::Client::new(),
         database,
         bus: afd_bus::test_util::unreachable(),
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
@@ -69,7 +78,7 @@ fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
         // which is what this fixture is for — the plane must map every service
         // to its own store whether or not one is present.
         platform_admin_workspace: admin,
-        checkpoint_storage: None,
+        checkpoint_storage,
         identity_webhook_secret: None,
         schedule: schedule(),
         analytics: Analytics::silent(),
@@ -88,6 +97,7 @@ fn schedule() -> crate::plane::ScheduleConfig {
     crate::plane::ScheduleConfig {
         client: reqwest::Client::new(),
         api_url: DEPLOYMENT.into(),
+        retries: afd_cron::qstash::RetryPolicy::default(),
     }
 }
 
@@ -95,53 +105,134 @@ fn schedule() -> crate::plane::ScheduleConfig {
 async fn production_plane_maps_every_service_to_its_owned_store() {
     let plane = plane();
 
-    assert!(same(plane.authenticator(), &plane.authenticator));
-    assert!(same(plane.signup_metadata(), &plane.signup_writeback));
-    assert!(same(plane.runners(), &plane.runners));
-    assert!(same(plane.leases(), &plane.leases));
-    assert!(same(plane.sessions(), &plane.login.logins));
-    assert!(same(plane.workspaces(), &plane.tenant.workspaces));
-    assert!(same(plane.workspace_directory(), &plane.tenant.workspaces));
-    assert!(same(plane.api_keys(), &plane.tenant.api_keys));
-    assert!(same(plane.cli_credentials(), &plane.tenant.cli_credentials));
-    assert!(same(plane.fleets(), &plane.tenant.fleets));
-    assert!(same(plane.preferences(), &plane.tenant.preferences));
-    assert!(same(plane.approvals(), &plane.activity.approvals));
-    assert!(same(plane.grants(), &plane.activity.grants));
-    assert!(same(plane.events(), &plane.activity.events));
-    assert!(same(plane.live(), &plane.live));
-    assert!(same(plane.analytics(), &plane.analytics));
-    assert!(same(plane.steering(), &plane.activity.steering));
-    assert!(same(plane.memories(), &plane.leases.memories));
-    assert!(same(plane.secrets(), &plane.tenant.secrets));
-    assert!(same(plane.billing(), &plane.tenant.billing));
-    assert!(same(plane.catalogue(), &plane.tenant.models));
+    assert!(same(Shared::authenticator(&plane), &plane.authenticator));
     assert!(same(
-        plane.runner_lease_history(),
-        &plane.admin.runner_lease_history
+        IngressPlane::signup_metadata(&plane),
+        &plane.signup_writeback
     ));
-    assert!(same(plane.models(), &plane.admin.models));
-    assert!(same(plane.platform_keys(), &plane.admin.platform_keys));
-    assert_eq!(plane.deployment(), DEPLOYMENT);
-    assert!(plane.now() > jiff::Timestamp::UNIX_EPOCH);
+    assert!(same(RunnerPlane::runners(&plane), &plane.runners));
+    assert!(same(OperatorPlane::runners(&plane), &plane.runners));
+    assert!(same(RunnerPlane::runs(&plane), &plane.runs));
+    assert!(same(TenantPlane::sessions(&plane), &plane.login.logins));
+    assert!(same(Shared::workspaces(&plane), &plane.tenant.workspaces));
+    assert!(same(
+        TenantPlane::workspace_directory(&plane),
+        &plane.tenant.workspaces
+    ));
+    assert!(same(TenantPlane::api_keys(&plane), &plane.tenant.api_keys));
+    assert!(same(
+        TenantPlane::cli_credentials(&plane),
+        &plane.tenant.cli_credentials
+    ));
+    assert!(same(TenantPlane::fleets(&plane), &plane.tenant.fleets));
+    assert!(same(RunnerPlane::fleets(&plane), &plane.tenant.fleets));
 }
 
-/// The authoring, outbound and tenant surfaces each hand a route the store the
+/// The tenant and runner planes drive native tasks through one owner, so a task
+/// bound on one plane is the task the other reports against.
+#[tokio::test]
+async fn every_plane_drives_native_durable_tasks_through_the_one_durable_task_owner() {
+    let plane = plane();
+
+    assert!(std::ptr::addr_eq(
+        TenantPlane::tasks(&plane),
+        &raw const plane.tasks
+    ));
+    assert!(std::ptr::addr_eq(
+        RunnerPlane::tasks(&plane),
+        &raw const plane.tasks
+    ));
+}
+
+/// The second half of the service map: the stores the tenant, runner and
+/// operator planes each reach for activity, money and administration.
+#[tokio::test]
+async fn production_plane_maps_every_activity_and_admin_service_to_its_owned_store() {
+    let plane = plane();
+
+    assert!(same(
+        TenantPlane::onboarding(&plane),
+        &plane.tenant.onboarding
+    ));
+    assert!(same(
+        TenantPlane::approvals(&plane),
+        &plane.activity.approvals
+    ));
+    assert!(same(
+        IngressPlane::approvals(&plane),
+        &plane.activity.approvals
+    ));
+    assert!(same(TenantPlane::grants(&plane), &plane.activity.grants));
+    assert!(same(TenantPlane::events(&plane), &plane.activity.events));
+    assert!(same(RunnerPlane::events(&plane), &plane.activity.events));
+    assert!(same(TenantPlane::live(&plane), &plane.live));
+    assert!(same(TenantPlane::analytics(&plane), &plane.analytics));
+    assert!(same(
+        TenantPlane::steering(&plane),
+        &plane.activity.steering
+    ));
+    assert!(same(
+        RunnerPlane::steering(&plane),
+        &plane.activity.steering
+    ));
+    assert!(same(TenantPlane::memories(&plane), &plane.runs.memories));
+    assert!(same(TenantPlane::secrets(&plane), &plane.tenant.secrets));
+    assert!(same(TenantPlane::billing(&plane), &plane.tenant.billing));
+    assert!(same(TenantPlane::catalogue(&plane), &plane.tenant.models));
+    assert!(same(
+        OperatorPlane::runner_run_history(&plane),
+        &plane.admin.runner_run_history
+    ));
+    assert!(same(OperatorPlane::models(&plane), &plane.admin.models));
+    assert!(same(
+        OperatorPlane::platform_keys(&plane),
+        &plane.admin.platform_keys
+    ));
+    assert_eq!(TenantPlane::deployment(&plane), DEPLOYMENT);
+    assert!(Shared::now(&plane) > jiff::Timestamp::UNIX_EPOCH);
+}
+
+/// The setup, outbound and tenant surfaces each hand a route the store the
 /// plane built for it, so no two routes share one by accident.
 #[tokio::test]
 async fn production_plane_maps_every_surface_to_its_owned_store() {
     let plane = plane();
 
-    assert!(same(plane.authoring(), &plane.authoring.drafts));
-    assert!(same(plane.authoring_setup(), &plane.authoring.setup));
-    assert!(same(plane.creations(), &plane.authoring.creations));
-    assert!(same(plane.ingress(), &plane.activity.ingress));
-    assert!(same(plane.schedules(), &plane.outbound.schedules));
-    assert!(same(plane.connectors(), &plane.outbound.connectors));
-    assert!(same(plane.interjector(), &plane.outbound.interjector));
-    assert!(same(plane.invite_mail(), &plane.tenant.invite_mail));
-    assert!(same(plane.signups(), &plane.tenant.signups));
-    assert!(same(plane.team(), &plane.tenant.team));
+    assert!(same(TenantPlane::drafts(&plane), &plane.setup.drafts));
+    assert!(same(TenantPlane::setup(&plane), &plane.setup.setup));
+    assert!(same(TenantPlane::creations(&plane), &plane.setup.creations));
+    assert!(same(TenantPlane::ingress(&plane), &plane.activity.ingress));
+    assert!(same(IngressPlane::ingress(&plane), &plane.activity.ingress));
+    assert!(same(
+        TenantPlane::schedules(&plane),
+        &plane.outbound.schedules
+    ));
+    assert!(same(
+        RunnerPlane::schedules(&plane),
+        &plane.outbound.schedules
+    ));
+    assert!(same(
+        IngressPlane::schedules(&plane),
+        &plane.outbound.schedules
+    ));
+    assert!(same(
+        TenantPlane::connectors(&plane),
+        &plane.outbound.connectors
+    ));
+    assert!(same(
+        IngressPlane::connectors(&plane),
+        &plane.outbound.connectors
+    ));
+    assert!(same(
+        RunnerPlane::interjector(&plane),
+        &plane.outbound.interjector
+    ));
+    assert!(same(
+        TenantPlane::invite_mail(&plane),
+        &plane.tenant.invite_mail
+    ));
+    assert!(same(IngressPlane::signups(&plane), &plane.tenant.signups));
+    assert!(same(TenantPlane::team(&plane), &plane.tenant.team));
 }
 
 /// Each deployment fact reaches the route that needs it as it was booted: the
@@ -152,16 +243,20 @@ async fn production_plane_maps_every_surface_to_its_owned_store() {
 async fn production_plane_hands_each_route_its_deployment_facts() {
     let plane = plane();
 
-    assert_eq!(plane.dashboard().as_str(), format!("{DASHBOARD}/"));
-    assert_ne!(plane.dashboard().as_str(), plane.deployment());
-    let fire = plane.scheduler().verify(FIRE, b"{}").await;
+    assert_eq!(
+        TenantPlane::dashboard(&plane).as_str(),
+        format!("{DASHBOARD}/")
+    );
+    assert_ne!(TenantPlane::dashboard(&plane).as_str(), plane.deployment());
+    let fire = IngressPlane::scheduler(&plane).verify(FIRE, b"{}").await;
     assert_eq!(
         fire.as_ref().err().and_then(afd_cron::Error::bag_fault),
         Some(afd_vault::bag::BagFault::Absent),
         "no admin workspace means no `qstash` bag, refused before the vault is read"
     );
-    assert!(plane.identity_webhook_secret().is_none());
-    assert!(plane.platform_admin_workspace().is_none());
+    assert!(IngressPlane::identity_webhook_secret(&plane).is_none());
+    assert!(TenantPlane::platform_admin_workspace(&plane).is_none());
+    assert!(IngressPlane::platform_admin_workspace(&plane).is_none());
 }
 
 /// With an admin workspace the scheduler reads its bag from the vault, so a
@@ -203,6 +298,7 @@ async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
         crate::plane::ScheduleConfig {
             client: reqwest::Client::new(),
             api_url: "not a url".into(),
+            retries: afd_cron::qstash::RetryPolicy::default(),
         },
     );
 
@@ -214,9 +310,9 @@ async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
 }
 
 /// The wake listener `ServingPlane::new` builds hears the NATS wake ring: a
-/// ring published on a shard's subject (`af.wake.<shard>`) reaches it. This proves
+/// ring published on a thread's subject (`af.thread.<id>.wake`) reaches it. This proves
 /// the helper the plane calls, not that the plane hands its result to the
-/// lease store; that hand-off is one line beside it in `plane/mod.rs`.
+/// run store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_wake_queue_hears_the_shared_bus() {
@@ -231,7 +327,7 @@ async fn test_the_wake_queue_hears_the_shared_bus() {
     let stop = tokio_util::sync::CancellationToken::new();
     let _listeners = wake.listen(&bus, &stop).await.expect("wake subscriptions");
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
-    server.publish(&Subject::Wake(6), rung.as_str());
+    server.publish(&Subject::ThreadWake(rung.clone()), rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;
@@ -244,4 +340,32 @@ async fn test_the_wake_queue_hears_the_shared_bus() {
         Some(rung),
         "the daemon's wake listener hears the wake ring"
     );
+}
+
+/// A private R2 location the operator configured, valid by preflight's rules.
+fn checkpoint_storage() -> garde::Valid<afd_fleet::durable_task::storage::CheckpointStorageConfig> {
+    garde::Unvalidated::new(afd_fleet::durable_task::storage::CheckpointStorageConfig {
+        endpoint: format!("https://{}.r2.cloudflarestorage.com", "a".repeat(32)),
+        bucket: "fleet-checkpoints".into(),
+        credential_name: "r2_checkpoints".into(),
+    })
+    .validate()
+    .expect("a fixture location preflight accepts")
+}
+
+/// Checkpoint storage needs the platform Secrets workspace that holds its
+/// credential: with both, native tasks write files to R2; with the location
+/// but no workspace there is no vault row to read, so tasks get no store.
+#[tokio::test]
+async fn native_tasks_store_checkpoints_only_with_a_location_and_an_admin_workspace() {
+    const STORE: &str = "R2CheckpointStore(private)";
+    let admin = af_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
+        .expect("a fixture identifier");
+
+    let stored = plane_storing(Some(admin), Some(checkpoint_storage()));
+    let unowned = plane_storing(None, Some(checkpoint_storage()));
+
+    assert!(format!("{:?}", stored.tasks).contains(STORE));
+    assert!(!format!("{:?}", unowned.tasks).contains(STORE));
+    assert!(!format!("{:?}", plane().tasks).contains(STORE));
 }

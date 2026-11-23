@@ -7,10 +7,11 @@
 
 use std::borrow::Cow;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate as _;
 
 use super::{FLEET_ID_BYTES, FleetSteerAccepted, FleetSteerRequest};
-use crate::event::{FleetSteerBody, STEER_MESSAGE_MAX_BYTES, message_of, sender_line};
+use crate::turn::{FleetSteerBody, message_of, sender_line};
 
 const FLEET: &str = "0190d5c2-7e1a-7000-8000-00000000f001";
 const SENDER: &str = "0190d5c2-7e1a-7000-8000-00000000f002";
@@ -31,16 +32,17 @@ fn refused_fields(request: &FleetSteerRequest<'_>) -> Vec<String> {
     })
 }
 
-/// The bound half: a text at the cap passes; one byte more, an
-/// empty text and a NUL are refused on `text`, a short id on `fleet_id`; an
-/// unknown field is refused by the strict body before `garde` ever runs.
+/// The bound half: a text at the ceiling passes, counted in characters; one
+/// character more, an empty text and a NUL are refused on `text`, a short id
+/// on `fleet_id`; an unknown field is refused by the strict body before
+/// `garde` ever runs.
 #[test]
 fn fleet_steer_request_refuses_bad_bodies() {
-    request(FLEET, "a".repeat(STEER_MESSAGE_MAX_BYTES))
+    request(FLEET, "é".repeat(TEXT_MAX_CHARS))
         .validate()
-        .expect("a text at the cap passes");
+        .expect("a text at the ceiling passes");
     for (text, why) in [
-        ("a".repeat(STEER_MESSAGE_MAX_BYTES + 1), "8193 bytes"),
+        ("é".repeat(TEXT_MAX_CHARS + 1), "1,048,577 characters"),
         (String::new(), "an empty text"),
         ("a\0b".to_owned(), "a NUL"),
     ] {
@@ -81,7 +83,20 @@ fn a_fleet_steer_body_leads_with_the_sender_line() {
 #[test]
 fn the_accepted_reply_tolerates_a_new_field() {
     let reply: FleetSteerAccepted<'_> =
-        serde_json::from_str(r#"{"event_id":"e","replayed":true,"later":1}"#)
+        serde_json::from_str(r#"{"turn_id":"e","replayed":true,"later":1}"#)
             .expect("a newer reply decodes");
     assert!(reply.replayed);
+}
+
+/// The published schema states the ceiling garde holds, so a client
+/// validating against it builds no text the verb refuses.
+#[cfg(feature = "openapi")]
+#[test]
+fn the_published_text_bound_is_the_ceiling() {
+    let schema = serde_json::to_value(<FleetSteerRequest<'_> as utoipa::PartialSchema>::schema())
+        .expect("the schema serializes");
+    assert_eq!(
+        schema.pointer("/properties/text/maxLength"),
+        Some(&serde_json::json!(TEXT_MAX_CHARS))
+    );
 }

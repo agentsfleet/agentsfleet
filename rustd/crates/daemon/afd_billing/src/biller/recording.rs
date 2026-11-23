@@ -1,35 +1,37 @@
 //! An in-memory [`Biller`] for domain tests: the same answers as the built-in
-//! biller, with no datastore, and every call kept for assertions.
+//! biller, with no datastore.
 //!
-//! It has no usage log, so a check here weighs only the balance: lines a test
-//! wants counted against a check are settled through it first.
+//! It has no usage log: a test sets the balance a check weighs with
+//! [`RecordingBiller::fund`].
 
-use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
 use af_core::id::Uuid7;
-use af_wire::usage::LineKind;
 use jiff::Timestamp;
 
-use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
-use crate::error::{billing_wallet_missing, charge_overflow};
+use super::{Account, Ask, Balance, Biller, Funds};
+use crate::error::billing_wallet_missing;
 use crate::{Nanos, Result};
 
-/// Everything the biller remembers.
+/// One tenant's wallet.
+#[derive(Debug)]
+struct Wallet {
+    tenant: Uuid7,
+    balance: i64,
+    exhausted_at: Option<Timestamp>,
+}
+
+/// Every wallet the biller holds.
 #[derive(Debug, Default)]
 struct State {
-    tenants: Vec<Uuid7>,
-    balances: Vec<i64>,
-    exhausted_at: Vec<Option<Timestamp>>,
-    /// A line is settled once per work, kind and number, as the usage log's own
-    /// unique key says: a model line and a runtime line may share a number.
-    settled: HashSet<(WorkKey, LineKind, u32)>,
-    settlements: Vec<Settlement>,
+    wallets: Vec<Wallet>,
 }
 
 impl State {
-    fn tenant(&self, tenant: &Uuid7) -> Option<usize> {
-        self.tenants.iter().position(|known| known == tenant)
+    fn wallet(&mut self, tenant: &Uuid7) -> Option<&mut Wallet> {
+        self.wallets
+            .iter_mut()
+            .find(|wallet| wallet.tenant == *tenant)
     }
 }
 
@@ -46,25 +48,21 @@ impl RecordingBiller {
         Self::default()
     }
 
-    /// Gives `tenant` a balance of `balance`, creating its wallet if needed.
+    /// Gives `tenant` a balance of `balance`, creating its wallet if needed. A
+    /// balance at or below zero records that it ran out, as a debit there does.
     pub fn fund(&self, tenant: &Uuid7, balance: Nanos) {
         let mut state = self.lock();
-        if let Some(slot) = state
-            .tenant(tenant)
-            .and_then(|index| state.balances.get_mut(index))
-        {
-            *slot = balance.as_i64();
+        let ran_out = (balance.as_i64() <= 0).then(af_core::clock::now);
+        if let Some(wallet) = state.wallet(tenant) {
+            wallet.balance = balance.as_i64();
+            wallet.exhausted_at = ran_out.map(|now| wallet.exhausted_at.unwrap_or(now));
         } else {
-            state.tenants.push(tenant.clone());
-            state.balances.push(balance.as_i64());
-            state.exhausted_at.push(None);
+            state.wallets.push(Wallet {
+                tenant: tenant.clone(),
+                balance: balance.as_i64(),
+                exhausted_at: ran_out,
+            });
         }
-    }
-
-    /// Every settlement this biller was asked to charge, in order.
-    #[must_use]
-    pub fn settlements(&self) -> Vec<Settlement> {
-        self.lock().settlements.clone()
     }
 
     #[expect(
@@ -81,59 +79,61 @@ impl RecordingBiller {
 #[async_trait::async_trait]
 impl Biller for RecordingBiller {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
-        let state = self.lock();
-        let index = state
-            .tenant(&ask.payer.tenant)
-            .ok_or_else(billing_wallet_missing)?;
-        let left = Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default());
-        Ok(Funds::of(left, ask.next))
-    }
-
-    async fn settle(&self, settlement: &Settlement) -> Result<Receipt> {
-        let mut state = self.lock();
-        let index = state
-            .tenant(&settlement.payer.tenant)
-            .ok_or_else(billing_wallet_missing)?;
-        state.settlements.push(settlement.clone());
-        let mut receipt = Receipt::default();
-        let mut total: i64 = 0;
-        for line in &settlement.lines {
-            if state
-                .settled
-                .insert((settlement.work.clone(), line.usage.kind, line.usage.seq))
-            {
-                total = total
-                    .checked_add(line.charged.as_i64())
-                    .ok_or_else(charge_overflow)?;
-                receipt.settled_lines += 1;
-            }
-        }
-        if total == 0 {
-            return Ok(receipt);
-        }
-        // The whole charge, past zero if it must: as the built-in biller's
-        // debit, which also stamps when the balance ran out.
-        if let Some(balance) = state.balances.get_mut(index) {
-            *balance = balance.checked_sub(total).ok_or_else(charge_overflow)?;
-            let left = *balance;
-            if let Some(since) = state.exhausted_at.get_mut(index) {
-                *since = (left <= 0).then(|| since.unwrap_or_else(af_core::clock::now));
-            }
-        }
-        receipt.charged = Nanos::from_i64(total);
-        receipt.taken = receipt.charged;
-        Ok(receipt)
+        let balance = self.balance(&ask.payer).await?;
+        Ok(Funds::of(balance.balance, ask.next))
     }
 
     async fn balance(&self, payer: &Account) -> Result<Balance> {
-        let state = self.lock();
-        let index = state
-            .tenant(&payer.tenant)
+        let mut state = self.lock();
+        let wallet = state
+            .wallet(&payer.tenant)
             .ok_or_else(billing_wallet_missing)?;
         Ok(Balance {
-            balance: Nanos::from_i64(state.balances.get(index).copied().unwrap_or_default()),
-            unsettled: Nanos::ZERO,
-            exhausted_at: state.exhausted_at.get(index).copied().flatten(),
+            balance: Nanos::from_i64(wallet.balance),
+            exhausted_at: wallet.exhausted_at,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_core::id::{ENTROPY_LEN, Uuid7};
+
+    use super::RecordingBiller;
+    use crate::Nanos;
+    use crate::biller::{Account, Biller as _};
+
+    type Checked = Result<(), Box<dyn std::error::Error>>;
+
+    /// A second fund replaces the balance, and a wallet that ran out keeps
+    /// the instant it first did until it holds credit again.
+    #[tokio::test]
+    async fn refunding_a_wallet_replaces_its_balance_and_keeps_when_it_ran_out() -> Checked {
+        let tenant = Uuid7::encode(jiff::Timestamp::UNIX_EPOCH, [2; ENTROPY_LEN])?;
+        let payer = Account {
+            tenant: tenant.clone(),
+            workspace: tenant.clone(),
+        };
+        let biller = RecordingBiller::new();
+        biller.fund(&tenant, Nanos::from_i64(500));
+        assert_eq!(biller.balance(&payer).await?.exhausted_at, None);
+
+        biller.fund(&tenant, Nanos::ZERO);
+        let ran_out = biller.balance(&payer).await?;
+        assert_eq!(ran_out.balance, Nanos::ZERO);
+        let since = ran_out.exhausted_at.ok_or("a spent wallet records when")?;
+
+        biller.fund(&tenant, Nanos::from_i64(-40));
+        let owing = biller.balance(&payer).await?;
+        assert_eq!(owing.balance, Nanos::from_i64(-40));
+        assert_eq!(owing.exhausted_at, Some(since), "still the first instant");
+
+        biller.fund(&tenant, Nanos::from_i64(75));
+        let funded = biller.balance(&payer).await?;
+        assert_eq!(
+            (funded.balance, funded.exhausted_at),
+            (Nanos::from_i64(75), None)
+        );
+        Ok(())
     }
 }

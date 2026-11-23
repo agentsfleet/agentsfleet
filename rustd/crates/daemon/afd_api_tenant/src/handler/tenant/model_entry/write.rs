@@ -30,7 +30,7 @@ use crate::handler::Refusal;
 // bootstrap never produced a workspace (RULE UFS).
 use crate::handler::tenant::provider::{DETAIL_MALFORMED_BODY, DETAIL_NO_PRIMARY_WORKSPACE};
 use crate::handler::tenant::{DETAIL_TENANT_REQUIRED, tenant_of};
-use crate::services::{Services, TenantModelEntries as _};
+use crate::services::{TenantModelEntries as _, TenantPlane};
 
 use super::input::{bound_refusal, parse_entry_id};
 use super::render::stored;
@@ -62,7 +62,7 @@ use super::{
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -135,7 +135,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn update<D: Services>(
+pub(crate) async fn update<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(entry_id): Path<String>,
@@ -196,7 +196,7 @@ pub(crate) async fn update<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn remove<D: Services>(
+pub(crate) async fn remove<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(entry_id): Path<String>,

@@ -2,10 +2,10 @@
 //!
 //! Every label is a closed set: a provider is a bounded public vendor name or
 //! `_other`, and every outcome and reason is an enum. A label written from a
-//! string a lease chose would be one more series than the census admits.
+//! string a run chose would be one more series than the census admits.
 
 /// Terminal outcome of one provider stream request.
-pub use af_observability::metrics::label::models::CallOutcome;
+pub(crate) use af_observability::metrics::label::models::CallOutcome;
 
 /// The label key a provider is attributed under.
 pub const LABEL_PROVIDER: &str = "provider";
@@ -33,7 +33,7 @@ impl Provider {
         af_observability::semconv::provider::count() + 1
     }
 
-    /// The label for the provider a lease configured.
+    /// The label for the provider a run configured.
     #[must_use]
     pub fn of(configured: &str) -> Self {
         Self(af_observability::semconv::provider::normalize(configured).unwrap_or(OTHER))

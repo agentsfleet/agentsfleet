@@ -10,7 +10,6 @@ export const DRAFT_EVENT = {
   cancelled: "message.cancelled", failed: "message.failed", timedOut: "message.timed_out",
   candidate: "candidate.changed", closed: "draft.closed", deleted: "draft.deleted",
 } as const;
-const MAX_HINT_CHARACTERS = 64 * 1024;
 const ACCOUNTING_POLL_MS = 5_000;
 const ACCOUNTING_POLL_JITTER_MS = 1_000;
 const HintSchema = z.object({draft_id: z.uuidv7(), sequence: z.unknown().optional()});
@@ -46,7 +45,7 @@ class DraftProgress {
   constructor(path: string, draft: string, reconcile: () => Promise<boolean>, needsPolling: () => boolean, progress?: DraftProgressCallbacks) {
     this.#draft = draft; this.#reconcile = reconcile; this.#needsPolling = needsPolling;
     this.#source = new ChatConnection({
-      url: `${path}/events/stream`,
+      url: `${path}/turns/stream`,
       events: [...Object.values(DRAFT_EVENT), DRAFT_DELTA_EVENT, DRAFT_RESYNC_EVENT, DRAFT_CONTEXT_EVENT],
       onOpen: () => {
         clearTimeout(this.#retryTimer); this.#retryTimer = undefined;
@@ -110,7 +109,7 @@ class DraftProgress {
   }
 
   #hint(name: string, data: string, progress?: DraftProgressCallbacks): boolean {
-    if (this.#closed || data.length > MAX_HINT_CHARACTERS || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
+    if (this.#closed || !Object.values<string>(DRAFT_EVENT).includes(name)) return false;
     let value: unknown;
     try { value = JSON.parse(data); } catch { return false; }
     const hint = HintSchema.safeParse(value);

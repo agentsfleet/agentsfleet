@@ -1,4 +1,4 @@
-//! The three shapes a schema derive over THIS crate's types could have failed on.
+//! The two shapes a schema derive over THIS crate's types could have failed on.
 //!
 //! # Why a spike, and why it is over real types
 //!
@@ -26,7 +26,6 @@
 
 use af_wire::{policy, runner};
 use afd_api_wire::ingress::{AppIngressAnswer, IdentityAnswer};
-use afd_api_wire::preference::PreferencesResponse;
 use afd_api_wire::secret::{StoreSecretRequest, StoredSecretResponse};
 use utoipa::{PartialSchema, ToSchema};
 
@@ -79,23 +78,10 @@ fn a_type_carrying_only_borrowed_text_still_emits_an_object() {
     );
 }
 
-/// A map of borrowed keys to unparsed values publishes as a free-form object.
-///
-/// The third suspect shape, and the one the preferences bag actually is.
-#[test]
-fn a_map_of_borrowed_keys_to_raw_values_publishes_as_an_object() {
-    let schema = schema_of::<PreferencesResponse<'_>>();
-
-    assert_eq!(
-        schema["properties"]["prefs"]["type"], "object",
-        "the preferences bag must publish as an object: {schema}"
-    );
-}
-
 /// The two `NetworkPolicy` types publish under two names.
 ///
 /// utoipa keys components by name alone, so two types spelled alike collapse
-/// into one entry and whichever registered second wins. The lease's egress
+/// into one entry and whichever registered second wins. The run's egress
 /// rules were published as the runner's three-word posture that way, and the
 /// reference-resolves gate could not see it: the name resolved.
 #[test]

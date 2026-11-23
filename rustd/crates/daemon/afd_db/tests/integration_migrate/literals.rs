@@ -1,4 +1,4 @@
-//! Dimension 2.2 — no schema object carries a vocabulary literal (RULE STS).
+//! No schema object carries a vocabulary literal (RULE STS).
 //!
 //! Every string literal in a CHECK, an index predicate, a column default or a
 //! trigger function is read out of the catalog and held to the structural
@@ -10,11 +10,12 @@ use super::*;
 
 /// The schemas whose objects are held to the rule. `audit` holds only sqlx's
 /// own ledger, which is not ours to shape.
-const PRODUCT_SCHEMAS: [&str; 9] = [
+const PRODUCT_SCHEMAS: [&str; 10] = [
     "identity",
-    "authoring",
+    "setup",
     "fleet",
     "runner",
+    "thread",
     "connector",
     "model",
     "billing",
@@ -54,12 +55,16 @@ const GATE_REFUSAL: &str = "approval_gates resolved row is immutable";
 /// The runner ownership guard's refusal. No caller matches on it.
 const RUNNER_OWNER_REFUSAL: &str = "runner ownership is fixed at registration";
 
+/// The revision install guard's refusal. No caller matches on it.
+const REVISION_REFUSAL: &str = "a revision changes only when it is installed";
+
 /// Whether `literal` is exception text: `<table> is append-only` or a guard's
 /// refusal. No caller matches on any of them.
 fn is_exception_text(literal: &str) -> bool {
     literal.ends_with(" is append-only")
         || literal == GATE_REFUSAL
         || literal == RUNNER_OWNER_REFUSAL
+        || literal == REVISION_REFUSAL
 }
 
 /// Every single-quoted literal in `text`, with `''` read as one quote.
@@ -135,8 +140,7 @@ fn reviewed_structural_literal(name: &str, text: &str, literal: &str) -> bool {
             text.contains(&format!("~ '{literal}'"))
                 && text.matches(&format!("'{literal}'")).count() == 1
         }
-        ("function task_checkpoint_pages_freeze", "completed checkpoint pages are immutable")
-        | ("function task_base_pages_freeze", "completed base pages are immutable") => {
+        ("function checkpoint_pages_freeze", "completed checkpoint pages are immutable") => {
             text.contains(&format!("RAISE EXCEPTION '{literal}'"))
                 && text.matches(&format!("'{literal}'")).count() == 1
         }
@@ -181,17 +185,17 @@ fn reviewed_shapes_do_not_admit_runtime_vocabulary() {
     ));
     let diagnostic = "completed checkpoint pages are immutable";
     assert!(reviewed_structural_literal(
-        "function task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("RAISE EXCEPTION '{diagnostic}';"),
         diagnostic
     ));
     assert!(!reviewed_structural_literal(
-        "function task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("SELECT status = '{diagnostic}';"),
         diagnostic
     ));
     assert!(!reviewed_structural_literal(
-        "function task_checkpoint_pages_freeze",
+        "function checkpoint_pages_freeze",
         &format!("IF status = '{diagnostic}' THEN RAISE EXCEPTION '{diagnostic}'; END IF;"),
         diagnostic
     ));

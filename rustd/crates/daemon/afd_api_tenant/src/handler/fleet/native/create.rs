@@ -3,9 +3,9 @@
 use super::{access, input, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{body::Bytes, extract::State, response::Response};
 use http::{HeaderMap, StatusCode};
 use std::sync::Arc;
@@ -14,9 +14,9 @@ use std::sync::Arc;
     post, path = "/v1/workspaces/{workspace_id}/fleets", operation_id = "create_fleet",
     tag = afd_http::openapi::tag::FLEETS, summary = "Save a reviewed fleet",
     description = concat!(
-        "Saves a reviewed private draft or selected Plugin revision as a fleet. Inspect ",
-        "the source's complete `review` before copying `review.review_digest`. For a ",
-        "draft, read `candidate.id` from `GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. ",
+        "Saves a reviewed private draft as a fleet. Inspect the draft's complete `review` ",
+        "before copying `review.review_digest`, and read `candidate.id` from ",
+        "`GET /v1/workspaces/{workspace_id}/drafts/{draft_id}`. ",
         "Setup progress names missing prerequisites. Retry within 24 hours using the same ",
         "`Idempotency-Key` and unchanged request to recover the same fleet and initial event. ",
         "After that window, inspect existing resources before creating again. A requested ",
@@ -31,7 +31,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn save<D: Services>(
+pub(crate) async fn save<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -44,7 +44,7 @@ pub(crate) async fn save<D: Services>(
         .creations()
         .save(access(&owned, &person), &operation, request, services.now())
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     super::schedules::after_activation(
         services.as_ref(),
         &owned.workspace,

@@ -47,7 +47,7 @@ If you do not see it, stop and record the step as a defect.
 6. Switch to the second tab without reloading.
    You must see this fleet's tile showing the activity, and every other tile unchanged.
 7. Sign in as the operator identity, open **Admin → Runners**, and press the runner that took the work.
-   You must see a **Runner leases** row naming your fleet with a finished lease, not a failure sentence.
+   You must see a **Runner runs** row naming your fleet with a finished run, not a failure sentence.
 8. Return to the fleet, open **Fleet actions** and press **Archive**.
    You must see the fleet page read archived, and its **Fleets** row read **archived**.
    Then press **Delete fleet** in **Fleet actions**; you must land on **Fleets** with its row gone.

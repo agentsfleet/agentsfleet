@@ -134,7 +134,7 @@ dev_infra_up() {
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      # A service the snapshot does not declare (dragonfly before M244) is an orphan.
+      # A service the snapshot does not declare is an orphan.
       if ! grep -qxF "$service" <<<"$services"; then orphans=1; continue; fi
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi

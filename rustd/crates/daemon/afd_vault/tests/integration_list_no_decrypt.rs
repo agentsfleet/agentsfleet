@@ -1,4 +1,4 @@
-//! §4 Dimension 4.1 — the round trip, and a list that performs zero decrypts.
+//! The round trip, and a list that performs zero decrypts.
 //!
 //! `#[ignore]`d so `make test-unit-all` compiles and lints these without a
 //! datastore; `make test-integration-rustd` runs them against compose Postgres.

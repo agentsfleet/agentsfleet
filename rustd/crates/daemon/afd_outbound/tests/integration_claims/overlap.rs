@@ -2,7 +2,7 @@
 //! first has written its claim and not committed it.
 
 use afd_db::test_util::mint_id;
-use afd_outbound::obligation;
+use afd_outbound::delivery;
 
 use crate::{Lane, Ledger, owe_uncommitted};
 
@@ -10,7 +10,7 @@ use crate::{Lane, Ledger, owe_uncommitted};
 async fn live_claims(ledger: &Ledger, lane: &Lane) -> i64 {
     let mut connection = ledger.database.acquire().await.expect("a connection");
     sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.obligations \
+        "SELECT count(*) FROM thread.deliveries \
          WHERE workspace_id = $1 AND claim_expires_at > clock_timestamp()",
     )
     .bind(&lane.workspace)
@@ -36,19 +36,19 @@ async fn a_claim_beside_an_uncommitted_claim_takes_nothing_from_its_lane()
     let mut first = sqlx::Transaction::begin(connection, None)
         .await
         .expect("the first claim's transaction");
-    let held = obligation::claim_in(&mut first, 8, &mint_id())
+    let held = delivery::claim_in(&mut first, 8, &mint_id())
         .await
         .expect("the first claim");
     let [held] = held.as_slice() else {
         return Err("the first claim takes the committed row");
     };
-    assert_eq!(held.outgoing.event_id, late_event);
+    assert_eq!(held.outgoing.turn_id, late_event);
     early.commit().await.expect("the earlier report commits");
 
-    let beside = obligation::claim(&ledger.database, 8, &mint_id())
+    let beside = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the overlapping claim");
-    let taken: Vec<_> = beside.iter().map(|job| &job.outgoing.event_id).collect();
+    let taken: Vec<_> = beside.iter().map(|job| &job.outgoing.turn_id).collect();
     assert!(
         taken.is_empty(),
         "a lane whose claim is still being written offers nothing, took {taken:?} \
@@ -56,7 +56,7 @@ async fn a_claim_beside_an_uncommitted_claim_takes_nothing_from_its_lane()
     );
     first.commit().await.expect("the first claim commits");
 
-    let after = obligation::claim(&ledger.database, 8, &mint_id())
+    let after = delivery::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the claim after both");
     assert!(after.is_empty(), "the committed claim holds the lane");

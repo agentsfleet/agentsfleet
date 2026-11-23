@@ -10,7 +10,7 @@
 //! rebuilt all of it and nothing else could compile until it finished.
 //!
 //! The cut is where the dependency graph actually separates. The runner plane's
-//! modules are mutually circular (`lease → credential → lease`,
+//! modules are mutually circular (`run → credential → run`,
 //! `provider ↔ vault ↔ secrets`) and cannot be split by moving files at all;
 //! these four had exactly one edge out of the group — `Minted`, which moved
 //! down to `afd_auth` beside the classifier that supplies its marker — and none
@@ -32,7 +32,7 @@ pub mod apikey;
 pub mod cli_credential;
 pub mod error;
 pub mod models;
-pub mod preference;
+pub mod onboarding;
 pub mod session;
 pub mod signup;
 pub mod sql;

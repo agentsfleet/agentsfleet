@@ -6,12 +6,7 @@ use std::{borrow::Cow, num::NonZeroU64};
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub(super) enum Other<
-    'a,
-    D: Clone = serde_json::Value,
-    O: Clone = serde_json::Value,
-    I: Clone = serde_json::Value,
-> {
+pub(super) enum Other<'a> {
     Hello {
         request_id: NonZeroU64,
         accepted_kinds: AcceptedKinds,
@@ -29,7 +24,7 @@ pub(super) enum Other<
     Ready {
         credits: usize,
         revision: NonZeroU64,
-        observed_offers: u64,
+        observed_assignments: u64,
     },
     Heartbeat {
         request_id: NonZeroU64,
@@ -42,49 +37,37 @@ pub(super) enum Other<
     RenewBatch {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        leases: Vec<Renewal<'a>>,
+        runs: Vec<Renewal<'a>>,
     },
-    AuthoringModel {
-        request_id: NonZeroU64,
+    Progress {
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::ModelCall<D, O, I>>,
-    },
-    AuthoringActivity {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::ActivityRequest<D, O, I>>,
-    },
-    AuthoringRenew {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: crate::authoring::Renew,
-    },
-    AuthoringReport {
-        request_id: NonZeroU64,
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: Cow<'a, crate::authoring::Report>,
-    },
-    Activity {
-        #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         #[serde(borrow)]
         request: ActivityRequest<'a>,
     },
     Folds {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
+        run_id: Cow<'a, str>,
         request: FoldRequest,
     },
     TurnCheckpoint {
         request_id: NonZeroU64,
         #[serde(borrow)]
-        lease_id: Cow<'a, str>,
-        request: Cow<'a, crate::lease::TurnCheckpointCommand>,
+        run_id: Cow<'a, str>,
+        request: Cow<'a, crate::run::TurnCheckpointCommand>,
+    },
+    ContextLoad {
+        request_id: NonZeroU64,
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        request: crate::context::ContextLoadRequest,
+    },
+    ContextSave {
+        request_id: NonZeroU64,
+        #[serde(borrow)]
+        run_id: Cow<'a, str>,
+        request: Cow<'a, crate::context::ContextSaveRequest>,
     },
 }
 
@@ -95,8 +78,8 @@ macro_rules! forward {
     };
 }
 
-impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O, I> {
-    fn from(value: Other<'a, D, O, I>) -> Self {
+impl<'a> From<Other<'a>> for Up<'a> {
+    fn from(value: Other<'a>) -> Self {
         forward!(
             value,
             Hello {
@@ -113,43 +96,33 @@ impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O,
             Ready {
                 credits,
                 revision,
-                observed_offers
+                observed_assignments
             },
             Heartbeat {
                 request_id,
                 request
             },
             Ping { request_id },
-            RenewBatch { request_id, leases },
-            AuthoringModel {
-                request_id,
-                lease_id,
-                request
-            },
-            AuthoringActivity {
-                request_id,
-                lease_id,
-                request
-            },
-            AuthoringRenew {
-                request_id,
-                lease_id,
-                request
-            },
-            AuthoringReport {
-                request_id,
-                lease_id,
-                request
-            },
-            Activity { lease_id, request },
+            RenewBatch { request_id, runs },
+            Progress { run_id, request },
             Folds {
                 request_id,
-                lease_id,
+                run_id,
                 request
             },
             TurnCheckpoint {
                 request_id,
-                lease_id,
+                run_id,
+                request
+            },
+            ContextLoad {
+                request_id,
+                run_id,
+                request
+            },
+            ContextSave {
+                request_id,
+                run_id,
                 request
             },
         )

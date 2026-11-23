@@ -1,12 +1,12 @@
 //! The one client every egress tool sends through.
 //!
-//! Built once per runner and shared by every lease. Its resolver refuses a
+//! Built once per runner and shared by every run. Its resolver refuses a
 //! name any of whose addresses is private, loopback or reserved
 //! (`af_core::net`), so an allowlisted host that resolves inside the host's
 //! network is never reached; the check runs on each new connection's lookup,
 //! which also covers a name that changes its answer between calls. It follows
 //! no redirect and reads no proxy from the environment (either would send the
-//! request somewhere admission never saw), sends HTTPS only, gives up after a
+//! request somewhere the egress policy never saw), sends HTTPS only, gives up after a
 //! fixed time, and reads at most [`RESPONSE_MAX_BYTES`] of a response.
 //!
 //! The refusal holds for an allowlisted host too: a runner serves many tenants
@@ -32,11 +32,38 @@ use crate::transport::{Inbound, Outbound, Transport};
 /// The most of one response a tool reads: the published tools page's 1 MiB.
 pub const RESPONSE_MAX_BYTES: usize = 1 << 20;
 
-/// How long one request may take, connection to last byte.
+/// How long one request may take, connection to last byte, unless the
+/// runner chooses another ([`Limits::request_timeout`]).
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-/// How long connecting may take.
+/// How long connecting may take, unless the runner chooses another.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const _: () = assert!(CONNECT_TIMEOUT.as_secs() <= REQUEST_TIMEOUT.as_secs());
+
+/// The bounds every egress request is held to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// How long connecting may take; no longer than `request_timeout`.
+    pub connect_timeout: Duration,
+    /// How long one request may take, connection to last byte; a GET's whole
+    /// redirect chain shares it.
+    pub request_timeout: Duration,
+    /// Redirects a GET follows before it gives up.
+    pub max_redirects: u8,
+    /// Memory the automaton masking a redirect's secrets in its response may
+    /// build; past it the response is refused.
+    pub mask_matcher_bytes: usize,
+}
+
+impl Limits {
+    /// The bounds egress held before the runner could choose them.
+    pub const DEFAULT: Self = Self {
+        connect_timeout: CONNECT_TIMEOUT,
+        request_timeout: REQUEST_TIMEOUT,
+        max_redirects: redirect::MAX_REDIRECTS,
+        mask_matcher_bytes: redirect::MASK_MATCHER_BYTES,
+    };
+}
+
 /// What the runner calls itself; GitHub refuses a request that names nothing.
 const USER_AGENT: &str = concat!("agentsfleet-runner/", env!("CARGO_PKG_VERSION"));
 
@@ -49,6 +76,7 @@ const NOT_READ: &str = "the response could not be read";
 #[derive(Debug, Clone)]
 pub struct Network {
     client: Client,
+    limits: Limits,
 }
 
 impl Network {
@@ -56,12 +84,20 @@ impl Network {
     ///
     /// # Errors
     /// The TLS backend or the client refused the configuration.
+    pub fn new() -> Result<Self> {
+        Self::limited(Limits::DEFAULT)
+    }
+
+    /// The production client, holding every request to `limits`.
+    ///
+    /// # Errors
+    /// As [`Network::new`].
     #[expect(
         clippy::disallowed_methods,
         reason = "this is the runner's egress owner: guarded_by wraps the builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on and carries no guard"
     )]
-    pub fn new() -> Result<Self> {
-        Self::build(Client::builder(), Arc::new(SystemResolver))
+    pub fn limited(limits: Limits) -> Result<Self> {
+        Self::build(Client::builder(), Arc::new(SystemResolver), limits)
     }
 
     /// A client that reaches each `(host, address)` at that address and
@@ -82,27 +118,39 @@ impl Network {
             .fold(Client::builder(), |builder, (host, address)| {
                 builder.resolve(host, *address)
             });
-        Self::build(builder.add_root_certificate(root), Arc::new(SystemResolver))
+        Self::build(
+            builder.add_root_certificate(root),
+            Arc::new(SystemResolver),
+            Limits::DEFAULT,
+        )
     }
 
-    fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> Result<Self> {
-        let client = tool_client(builder, resolver).build()?;
-        Ok(Self { client })
+    fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>, limits: Limits) -> Result<Self> {
+        let client = tool_client(builder, resolver, limits).build()?;
+        Ok(Self { client, limits })
     }
 }
 
 /// The tool transport's configuration, separate from inference's guarded client.
-fn tool_client(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> ClientBuilder {
+fn tool_client(
+    builder: ClientBuilder,
+    resolver: Arc<dyn Resolve>,
+    limits: Limits,
+) -> ClientBuilder {
     guarded_by(builder, resolver)
         .https_only(true)
-        .timeout(REQUEST_TIMEOUT)
-        .connect_timeout(CONNECT_TIMEOUT)
+        .timeout(limits.request_timeout)
+        .connect_timeout(limits.connect_timeout)
         .retry(reqwest::retry::never())
         .user_agent(USER_AGENT)
 }
 
 #[async_trait::async_trait]
 impl Transport for Network {
+    fn limits(&self) -> Limits {
+        self.limits
+    }
+
     async fn send(&self, outbound: Outbound) -> Result<Inbound> {
         let discard_redirect_body = outbound.discard_redirect_body;
         let host = outbound.host().to_owned();
@@ -167,7 +215,7 @@ fn origin_of(request: &Url, target: &str) -> Option<String> {
 /// The refusal a failed send answers with.
 fn unreached(host: &str, failed: &reqwest::Error) -> Error {
     if blocked_address(failed) {
-        raise::address_not_allowed(host)
+        raise::egress_denied(host)
     } else if failed.is_timeout() {
         raise::upstream_unreachable(host, TIMED_OUT)
     } else {
@@ -264,5 +312,5 @@ impl Capped {
 mod tests;
 
 #[cfg(test)]
-#[path = "admission/tests.rs"]
+#[path = "policy/tests.rs"]
 mod public_scope_tests;

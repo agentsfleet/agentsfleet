@@ -132,9 +132,8 @@ async fn should_issue_one_invite_when_two_owners_invite_same_address_concurrentl
     let fixture = Fixture::create().await;
     for round in 0..RACE_ROUNDS {
         let address = format!("dave+{}@example.test", mint_id());
-        let (first, second) =
-            tokio::join!(fixture.invite(&address, NOW), fixture.invite(&address, NOW),);
-        let outcomes = [first, second];
+        let outcomes: [_; 2] =
+            tokio::join!(fixture.invite(&address, NOW), fixture.invite(&address, NOW),).into();
         let issued = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
         let refused: Vec<_> = outcomes
             .iter()

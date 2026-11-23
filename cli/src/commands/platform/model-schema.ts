@@ -25,7 +25,7 @@ const decision = Schema.Struct({enabled: Schema.Boolean, profile: DecisionProfil
 const codingPrices = Schema.Array(price).check(Schema.isMaxLength(64), Schema.makeFilter(rows => rows.length === 0 || validSchedule(rows)));
 export const PlatformModelSettingsSchema = Schema.Struct({metadata, prices: codingPrices, inference: Schema.optionalKey(inference), decision: Schema.optionalKey(decision)});
 export const PlatformModelCreateSchema = Schema.Struct({
-  ...PlatformModelSettingsSchema.fields, provider: text.check(Schema.isMaxLength(64)), model_id: text.check(Schema.isMaxLength(256)),
+  ...PlatformModelSettingsSchema.fields, provider: text.check(Schema.isMaxLength(64)), model_id: text.check(Schema.isMaxLength(2595)),
 }).check(Schema.makeFilter(row => row.prices.length > 0 || (row.inference === undefined && row.decision !== undefined)));
 export const PlatformModelSchema = Schema.Struct({
   ...PlatformModelCreateSchema.fields, id: text, prices: Schema.Array(price),

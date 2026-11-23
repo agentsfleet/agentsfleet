@@ -4,7 +4,7 @@ use super::authority;
 use af_core::id::Uuid7;
 use afd_auth::directory::Digest;
 
-/// The claim owner, proved under the same host lock as the physical capacity.
+/// The assignment owner, proved under the same host lock as the physical capacity.
 pub enum Guard<'a> {
     /// A trusted domain call for an enrolled host.
     Enrolled(&'a Uuid7),
@@ -64,5 +64,23 @@ pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Op
             connection,
             digest,
         } => (runner, Some(digest.as_str()), Some(connection)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use af_core::id::Uuid7;
+
+    use super::Guard;
+
+    /// An enrolled guard names its host; there is no credential to withhold.
+    #[test]
+    fn an_enrolled_guard_renders_its_host() -> af_core::error::Result<()> {
+        let runner = Uuid7::parse("0190d5c2-7e1a-7000-8000-00000000a001")?;
+        assert_eq!(
+            format!("{:?}", Guard::from(&runner)),
+            format!("Enrolled({runner:?})")
+        );
+        Ok(())
     }
 }

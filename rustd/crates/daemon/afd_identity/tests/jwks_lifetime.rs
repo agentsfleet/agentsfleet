@@ -3,6 +3,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use af_core::clock::{Clock, FixedClock};
 use afd_auth::credential::Presented;
@@ -34,12 +35,15 @@ impl KeySetSource for Source {
 }
 
 fn verifier() -> (JwksVerifier<Source>, Arc<FixedClock>, Presented) {
+    verifier_with(VerifierConfig::new(signing::ISSUER, signing::AUDIENCE))
+}
+
+fn verifier_with(config: VerifierConfig) -> (JwksVerifier<Source>, Arc<FixedClock>, Presented) {
     let clock = Arc::new(FixedClock::at(signing::NOW));
     let source = Source {
         offline: AtomicBool::new(false),
         document: Mutex::new(signing::key_set().into_bytes()),
     };
-    let config = VerifierConfig::new(signing::ISSUER, signing::AUDIENCE);
     let verifier = JwksVerifier::new(source, config, Arc::clone(&clock) as Arc<dyn Clock>);
     let payload = serde_json::json!({
         "sub": "user_key_lifetime", "iss": signing::ISSUER,
@@ -72,6 +76,32 @@ async fn repeated_outages_do_not_extend_the_last_confirmed_keys_lifetime() {
             .verify(&token)
             .await
             .expect_err("the stale ceiling was exceeded"),
+        VerifyError::KeySetUnavailable
+    );
+}
+
+/// A deployment's configured lifetime and grace, not the defaults, decide when
+/// held keys stop verifying through an outage.
+#[tokio::test]
+async fn a_configured_lifetime_and_grace_bound_the_held_keys() {
+    let mut config = VerifierConfig::new(signing::ISSUER, signing::AUDIENCE);
+    config.ttl = Duration::from_mins(1);
+    config.stale_grace = Duration::from_secs(10);
+    config.refresh_min_interval = Duration::from_secs(1);
+    let (verifier, clock, token) = verifier_with(config);
+    verifier.verify(&token).await.expect("warm the cache");
+    verifier.source().offline.store(true, Ordering::SeqCst);
+    clock.advance(Duration::from_secs(70));
+    verifier
+        .verify(&token)
+        .await
+        .expect("the configured ceiling itself remains usable");
+    clock.advance(ONE_MS);
+    assert_eq!(
+        verifier
+            .verify(&token)
+            .await
+            .expect_err("the configured stale ceiling was exceeded"),
         VerifyError::KeySetUnavailable
     );
 }

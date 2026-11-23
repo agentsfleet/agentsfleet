@@ -1,6 +1,6 @@
 [package]
 name = "afd_api_runner"
-description = "Runner-control HTTP handlers over host and lease services."
+description = "Runner-control HTTP handlers over host and run services."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -20,12 +20,17 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "af_wire/op
 
 [dependencies]
 af_core.workspace = true
+# The run verbs' seam: minted credentials, captured memory, interim posts.
+afd_credential.workspace = true
+afd_memory.workspace = true
+afd_outbound.workspace = true
+jiff.workspace = true
 # Refusal sentences and route descriptions spell the caps from their constants.
 const_format.workspace = true
 # The schedule store and its vocabulary, which the schedules verb drives.
 afd_cron.workspace = true
 # A schedule's runs are its events, read through the history listing.
-afd_events.workspace = true
+afd_turns.workspace = true
 afd_fleet.workspace = true
 # Run-now refuses a fleet that is not taking work, as the QStash callback does.
 afd_fleet_lifecycle.workspace = true
@@ -34,6 +39,8 @@ afd_runner.workspace = true
 # The runs page's `?limit`, bounded as every keyset list is.
 af_validate.workspace = true
 afd_api_wire.workspace = true
+# The tail batch a fleet's admitted message is kept to on its live frame.
+afd_bus.workspace = true
 af_wire.workspace = true
 # A recall body is checked against the bounds `af_wire` declares on it.
 garde.workspace = true

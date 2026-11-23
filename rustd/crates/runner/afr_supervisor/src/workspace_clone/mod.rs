@@ -1,4 +1,4 @@
-//! The fleet's repository, checked out into the lease's workspace from the
+//! The fleet's repository, checked out into the run's workspace from the
 //! host side, so the token that fetched it never enters the sandbox.
 //!
 //! ```text
@@ -9,7 +9,7 @@
 //! ```
 //!
 //! One mirror per workspace and repository lives under the runner's storage
-//! home, so a later lease fetches only what changed. The workspace gets a copy,
+//! home, so a later run fetches only what changed. The workspace gets a copy,
 //! never a link: nothing outside the sandbox resolves inside it. Two workers
 //! never fetch into one mirror at once; each mirror has its own lock.
 
@@ -44,7 +44,7 @@ const STEP_CHECKOUT: &str = "checked out";
 /// What a request's `Debug` shows in place of its token.
 const REDACTED: &str = "[redacted]";
 /// Why a checkout stopped before it took its mirror.
-const WAIT_STOPPED: &str = "stopped while another lease held the repository's mirror";
+const WAIT_STOPPED: &str = "stopped while another run held the repository's mirror";
 
 /// The repository mirrors on this host, and a lock per mirror.
 #[derive(Debug)]
@@ -58,13 +58,13 @@ pub struct Mirrors {
 /// request formatted into a log line or a panic never prints it.
 #[derive(Clone, Copy)]
 pub struct Request<'a> {
-    /// The workspace the lease's fleet belongs to, which keys its mirrors.
+    /// The workspace the run's fleet belongs to, which keys its mirrors.
     pub scope: &'a str,
     /// Which repository, at which branch.
     pub checkout: Checkout<'a>,
     /// The token the fetch presents; it stays on this host.
     pub token: &'a str,
-    /// The lease's workspace, as the host sees it.
+    /// The run's workspace, as the host sees it.
     pub workspace: HostWorkspace<'a>,
 }
 
@@ -91,7 +91,7 @@ impl Mirrors {
     }
 
     /// Brings `request`'s mirror up to date and checks the repository out
-    /// into the lease's workspace; what the fetch found.
+    /// into the run's workspace; what the fetch found.
     ///
     /// # Errors
     /// The fetch or the checkout failed, or `interrupt` stopped it.
@@ -114,7 +114,7 @@ impl Mirrors {
         let url = format!("{}{repository}{GIT_SUFFIX}", self.origin);
         let header = authorization(request.token);
         let lock = self.lock(&mirror);
-        // Another lease's clone can hold the mirror for as long as it takes;
+        // Another run's clone can hold the mirror for as long as it takes;
         // an interrupt ends the wait, and the mirror is never taken.
         let _held = tokio::select! {
             held = lock.lock() => held,

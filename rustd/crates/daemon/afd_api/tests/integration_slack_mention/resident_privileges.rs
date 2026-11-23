@@ -12,7 +12,6 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::KIND_NOTICE_OWNER;
 use afd_ingress::sql;
 
 use super::resident_bound::{bind, owner_document};
@@ -50,7 +49,6 @@ async fn a_moved_teams_binding_is_repointed_as_api_runtime() {
         .bind(&fixture.team)
         .bind(CHANNEL)
         .bind(&carrier)
-        .bind(KIND_NOTICE_OWNER)
         .bind(fixture.workspace())
         .fetch_optional(&mut *transaction)
         .await

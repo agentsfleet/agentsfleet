@@ -25,8 +25,8 @@ const EVENT_DESTROY_FAILED: &str = "sandbox_hold_destroy_failed";
 #[derive(Debug)]
 struct Entry {
     key: HoldKey,
-    /// The lease that parked it, which alone may end it as superseded.
-    lease: Uuid7,
+    /// The run that parked it, which alone may end it as superseded.
+    run: Uuid7,
     sandbox: Box<dyn Sandbox>,
     since: Timestamp,
     until: Timestamp,
@@ -39,7 +39,7 @@ pub(super) struct Keeper {
     held: Vec<Entry>,
     workers: usize,
     busy: BTreeMap<Uuid7, Option<Uuid7>>,
-    /// Set once the runner takes no new lease; nothing is held after.
+    /// Set once the runner takes no new run; nothing is held after.
     closed: bool,
     /// Every teardown in flight, so shutdown can wait for each one.
     destroying: JoinSet<()>,
@@ -73,19 +73,19 @@ impl Keeper {
                 }
                 Request::Park {
                     key,
-                    lease,
+                    run,
                     sandbox,
                     reply,
                 } => {
                     let fleet = key.fleet.clone();
-                    match reply.send(self.park(key, lease, sandbox)) {
+                    match reply.send(self.park(key, run, sandbox)) {
                         // Nobody waits for a refused sandbox: its release is
                         // already counted, so it is only torn down here.
                         Err(Parked::Refused(sandbox)) => {
                             self.destroying
                                 .spawn(async move { tear_down(&fleet, sandbox).await });
                         }
-                        // Held for a lease that stopped waiting: no report will
+                        // Held for a run that stopped waiting: no report will
                         // name the hold, so it is superseded now, not at its
                         // lapse.
                         Err(Parked::Held(_)) => self.release(&fleet, Release::Superseded),
@@ -93,20 +93,20 @@ impl Keeper {
                     }
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),
-                Request::Supersede { lease } => self.supersede(&lease),
-                Request::Accepted { lease, until } => self.accept(&lease, until),
+                Request::Supersede { run } => self.supersede(&run),
+                Request::Accepted { run, until } => self.accept(&run, until),
                 Request::Discard {
                     fleet,
                     sandbox,
                     reason,
                 } => self.destroy(&fleet, sandbox, reason),
                 Request::Occupy { occupant } => {
-                    let (lease, fleet) = occupant.parts();
-                    self.busy.insert(lease, fleet);
+                    let (run, fleet) = occupant.parts();
+                    self.busy.insert(run, fleet);
                     self.cap(self.room(), Release::Saturated);
                 }
-                Request::Vacate { lease } => {
-                    self.busy.remove(&lease);
+                Request::Vacate { run } => {
+                    self.busy.remove(&run);
                     self.cap(self.room(), Release::Capped);
                 }
                 Request::Resize { workers } => {
@@ -137,7 +137,7 @@ impl Keeper {
             self.retire(entry, Release::Mismatch);
             return None;
         }
-        let held = af_core::clock::elapsed(entry.since, self.clock.now());
+        let held = clock::elapsed(entry.since, self.clock.now());
         Some(Taken {
             sandbox: entry.sandbox,
             held,
@@ -147,7 +147,7 @@ impl Keeper {
     /// Holds `sandbox` for its fleet until the idle window lapses, after
     /// making room: an older hold of the same fleet goes, then the oldest
     /// until one fewer than the cap remain. A closed keeper holds nothing.
-    fn park(&mut self, key: HoldKey, lease: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
+    fn park(&mut self, key: HoldKey, run: Uuid7, sandbox: Box<dyn Sandbox>) -> Parked {
         if self.closed {
             released(&key.fleet, Release::Shutdown);
             return Parked::Refused(sandbox);
@@ -156,9 +156,9 @@ impl Keeper {
             let stale = self.held.remove(at);
             self.retire(stale, Release::Superseded);
         }
-        // A successful park consumes this lease's busy reservation atomically.
+        // A successful park consumes this run's busy reservation atomically.
         // Its guard may still be alive while the report awaits acknowledgement.
-        let transfers = self.busy.get(&lease).and_then(Option::as_ref) == Some(&key.fleet);
+        let transfers = self.busy.get(&run).and_then(Option::as_ref) == Some(&key.fleet);
         let busy = self.busy.len() - usize::from(transfers);
         let room = self.workers.saturating_sub(busy).saturating_sub(1);
         if room == 0 {
@@ -166,19 +166,19 @@ impl Keeper {
             return Parked::Refused(sandbox);
         }
         if transfers {
-            self.busy.remove(&lease);
+            self.busy.remove(&run);
         }
         self.cap(room - 1, Release::Capped);
         let since = self.clock.now();
         let until = clock::after(since, SANDBOX_HOLD_IDLE);
-        let lease_id = lease.as_str();
+        let run_id = run.as_str();
         let fleet_id = key.fleet.as_str();
         let event = EVENT_HELD;
-        tracing::info!(lease_id, fleet_id, deadline = %until, event);
+        tracing::info!(run_id, fleet_id, deadline = %until, event);
         record::sandbox_hold(SandboxHold::Parked);
         self.held.push(Entry {
             key,
-            lease,
+            run,
             sandbox,
             since,
             until,
@@ -199,17 +199,17 @@ impl Keeper {
         }
     }
 
-    /// Ends the hold `lease` parked, for a superseded report; a hold a later
-    /// lease parked is that lease's.
-    fn supersede(&mut self, lease: &Uuid7) {
-        if let Some(at) = self.held.iter().position(|entry| entry.lease == *lease) {
+    /// Ends the hold `run` parked, for a superseded report; a hold a later
+    /// run parked is that run's.
+    fn supersede(&mut self, run: &Uuid7) {
+        if let Some(at) = self.held.iter().position(|entry| entry.run == *run) {
             let entry = self.held.remove(at);
             self.retire(entry, Release::Superseded);
         }
     }
 
-    fn accept(&mut self, lease: &Uuid7, until: Timestamp) {
-        if let Some(entry) = self.held.iter_mut().find(|entry| entry.lease == *lease)
+    fn accept(&mut self, run: &Uuid7, until: Timestamp) {
+        if let Some(entry) = self.held.iter_mut().find(|entry| entry.run == *run)
             && until < entry.until
         {
             entry.until = until;

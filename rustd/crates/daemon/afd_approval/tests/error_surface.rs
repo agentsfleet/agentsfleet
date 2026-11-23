@@ -8,7 +8,7 @@
 //! # What this crate has that the others do not
 //!
 //! Every kind here carries a source, and that is the property worth pinning:
-//! this crate wraps admission and the datastore, so a lift replaced by a
+//! this crate wraps the turn ledger and the datastore, so a lift replaced by a
 //! stringify would leave an operator with no chain to follow.
 //!
 //! Every count below was MEASURED against the sample set, not chosen. Each is a

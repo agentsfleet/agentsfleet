@@ -1,4 +1,4 @@
-//! Dimension 2.3 — a table whose rows change carries `updated_at`; an immutable
+//! A table whose rows change carries `updated_at`; an immutable
 //! table lacks it, grants no runtime role UPDATE, and refuses UPDATE by trigger,
 //! while a cascade from its parent still deletes it (rule 9).
 
@@ -7,31 +7,18 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 24] = [
-    "authoring.activity_receipts",
-    "authoring.answer_receipts",
-    "authoring.candidates",
-    "authoring.plugin_revisions",
-    "authoring.replay_receipts",
-    "billing.authoring_report_receipts",
+const IMMUTABLE: [&str; 11] = [
+    "billing.usage_lines",
     "connector.oauth_nonces",
-    "fleet.revisions",
-    "fleet.task_adoptions",
-    "fleet.task_checkpoint_operations",
-    "fleet.task_completions",
-    "fleet.task_effect_payloads",
-    "fleet.task_effects",
-    "fleet.task_input_receipts",
-    "fleet.task_interpretations",
-    "fleet.task_items",
-    "fleet.task_object_refs",
     "identity.memberships",
+    "identity.tenants",
+    "identity.users",
     "identity.workspaces",
     "model.decision_revisions",
-    "runner.events",
-    "runner.registration_receipts",
-    "runner.turn_checkpoint_operations",
-    "runner.turn_checkpoint_refs",
+    "runner.checkpoint_identity_keys",
+    "runner.checkpoint_object_refs",
+    "runner.history",
+    "thread.replay_receipts",
 ];
 
 /// Every runtime role, none of which may update an immutable table.
@@ -107,7 +94,7 @@ async fn test_immutable_tables_refuse_update() {
 async fn assert_refused_yet_cascaded(connection: &mut PgConnection) {
     let tenant = mint_id();
     let workspace = mint_id();
-    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())")
+    sqlx::query("INSERT INTO identity.tenants (id, name, created_at) VALUES ($1, $2, now())")
         .bind(&tenant)
         .bind("tenant")
         .execute(&mut *connection)

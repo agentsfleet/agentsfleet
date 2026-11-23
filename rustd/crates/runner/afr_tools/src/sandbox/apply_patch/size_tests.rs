@@ -72,7 +72,7 @@ async fn test_chained_patch_past_read_cap_is_refused_whole() {
 
     assert_eq!(
         applied.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{applied:?}"
     );
     assert!(applied.text.contains(BIG), "{}", applied.text);
@@ -95,7 +95,7 @@ async fn test_update_past_read_cap_is_refused() {
 
     assert_eq!(
         applied.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{applied:?}"
     );
     assert_eq!(
@@ -137,7 +137,7 @@ async fn test_link_alias_past_read_cap_is_refused() {
 
     assert_eq!(
         applied.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{applied:?}"
     );
     assert!(applied.text.contains(KEEP), "{}", applied.text);
@@ -177,7 +177,7 @@ async fn test_link_alias_growths_past_read_cap_stop_at_landing() {
 
     assert_eq!(
         applied.error_code,
-        Some(ToolErrorCode::FileTooLarge),
+        Some(ToolErrorCode::FileTooLarge.into()),
         "{applied:?}"
     );
     assert!(applied.text.contains(ALIAS), "{}", applied.text);

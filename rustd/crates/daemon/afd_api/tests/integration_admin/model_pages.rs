@@ -94,7 +94,7 @@ async fn invalid_pages(router: &Router, token: &str) {
         if query.starts_with("limit=") {
             assert_eq!(
                 body.get("detail").expect("detail field"),
-                afd_api_operator::test_util::MODEL_PAGE_LIMIT_DETAIL
+                afd_api_operator::test_util::model_page_limit_detail().as_str()
             );
         }
     }

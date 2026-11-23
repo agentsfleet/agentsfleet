@@ -50,7 +50,7 @@ async fn mailpit_fetch(url: reqwest::Url) -> Value {
     serde_json::from_str(&body).expect("Mailpit answers JSON")
 }
 
-/// Dimension 2.1: one message reaches Mailpit from the bag's address, naming
+/// One message reaches Mailpit from the bag's address, naming
 /// John and his account and carrying the accept link; the invite reads `sent`.
 #[tokio::test]
 #[ignore = "needs live Postgres and Mailpit: make test-integration-rustd"]

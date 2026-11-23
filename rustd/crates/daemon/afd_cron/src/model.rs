@@ -2,7 +2,7 @@
 //!
 //! # Why these are enums and not the strings the column holds
 //!
-//! `schema/20261108122800_fleet_schedules.sql` stores `source`, `desired_status` and
+//! `afd_db/schema/20261108122800_fleet_schedules.sql` stores `source`, `desired_status` and
 //! `sync_status` as `TEXT` with no `CHECK`, deliberately — RULE STS bans a
 //! frozen vocabulary in the schema, because changing one then means a migration
 //! rather than a release. The vocabulary still has to be closed SOMEWHERE, and
@@ -51,7 +51,7 @@ pub enum Source {
     Api,
     /// Derived from a `cron` trigger in the fleet's stored document.
     Trigger,
-    /// Created by the fleet itself, through the lease it was running under.
+    /// Created by the fleet itself, through the run it was running under.
     ///
     /// The only source a fleet may change or delete: the other two belong to
     /// a person, and a fleet that could rewrite them could undo what its
@@ -180,11 +180,11 @@ impl SyncStatus {
 
 /// One schedule, as the row holds it.
 ///
-/// # Why `resource_version`, `sync_token` and `sync_lease_expires_at` are on the value
+/// # Why `resource_version`, `sync_token` and `sync_run_expires_at` are on the value
 ///
 /// They are not decoration on the row, they are the fence. `resource_version` is the
 /// optimistic-concurrency counter a finalize compares against, and the token
-/// plus the lease are what stop two syncers pushing the same schedule at once.
+/// plus the run are what stop two syncers pushing the same schedule at once.
 /// A value type that dropped them would let a caller finalize a claim it no
 /// longer holds — which is the one failure this table's design exists to
 /// prevent.
@@ -221,7 +221,7 @@ pub struct Schedule {
     /// The syncer holding this row, when one does.
     pub sync_token: Option<Uuid7>,
     /// When that hold expires, so a syncer that died does not hold forever.
-    pub sync_lease_expires_at: Option<Timestamp>,
+    pub sync_run_expires_at: Option<Timestamp>,
     /// How the last attempt failed, when one did.
     pub last_error: Option<String>,
     /// When the row was written, on the database's clock.

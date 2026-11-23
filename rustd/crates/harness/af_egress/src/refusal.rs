@@ -21,14 +21,14 @@ pub enum Refusal {
     /// The host is not in the fleet's network allowlist.
     HostNotAllowed,
     /// The host is, or resolves to, an address this runner never reaches.
-    AddressNotAllowed,
+    EgressDenied,
     /// A placeholder, or a header, stands where none may.
     PlacementNotAllowed,
     /// A credential named by a placeholder may not be sent to this host.
     CredentialHostNotAllowed,
     /// A placeholder names a secret this fleet does not have.
     SecretNotFound,
-    /// The host's origin rules admit no request of this shape.
+    /// The host's origin rules allow no request of this shape.
     RequestPolicyNotAllowed,
     /// The daemon would not mint the credential, or its token could not be
     /// masked.

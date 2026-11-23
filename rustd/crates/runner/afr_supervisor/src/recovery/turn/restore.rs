@@ -2,9 +2,9 @@
 
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
-use af_wire::lease::{
-    LeasePayload, TurnCheckpointAction as Action, TurnCheckpointRead, TurnCheckpointRef,
-    TurnCheckpointResponse as Response, TurnId, TurnWorkspace,
+use af_wire::run::{
+    CheckpointOperationId, RunPayload, TurnCheckpointPinRelease, TurnCheckpointRead,
+    TurnCheckpointRef, TurnCheckpointSaved, TurnWorkspace,
 };
 use afr_agent::TurnRecovery;
 use garde::Validate as _;
@@ -15,13 +15,13 @@ use zeroize::Zeroizing;
 impl NativeTurn<'_> {
     pub(crate) async fn restore(
         &self,
-        offer: &LeasePayload<'_>,
+        assignment: &RunPayload<'_>,
         workspace: TurnWorkspace,
         destination: Option<(PathBuf, (u32, u32))>,
         stop: &CancellationToken,
         permit: Option<&afr_agent::FileRecoveryPermit>,
     ) -> Result<Option<TurnRecovery>> {
-        let Some(descriptor) = &offer.turn_resume else {
+        let Some(descriptor) = &assignment.turn_resume else {
             return Ok(None);
         };
         if descriptor.scope.workspace != workspace
@@ -31,22 +31,17 @@ impl NativeTurn<'_> {
                 "ordinary restore has no matching actual workspace",
             ));
         }
-        let Response::Read(saved) = self
-            .command(Action::Read {
+        let saved = self
+            .command(TurnCheckpointRead {
                 descriptor: Box::new(descriptor.clone()),
             })
-            .await?
-        else {
-            return Err(error::config(
-                "turn read returned another command's response",
-            ));
-        };
+            .await?;
         let reference = TurnCheckpointRef {
             checkpoint_id: saved.descriptor.checkpoint_id.clone(),
-            pin_id: TurnId(saved.pin.id.clone()),
+            pin_id: CheckpointOperationId(saved.pin.id.clone()),
         };
         let checked = async {
-            validate(&saved, offer, &workspace)?;
+            validate(&saved, assignment, &workspace)?;
             if let Some(destination) = destination {
                 let mut session = TurnSession::new(
                     self,
@@ -74,17 +69,17 @@ impl NativeTurn<'_> {
         .await;
         if let Err(failure) = checked {
             let _cleanup = self
-                .command(Action::PinRelease {
+                .command(TurnCheckpointPinRelease {
                     checkpoint: reference,
                 })
                 .await;
             return Err(failure);
         }
-        self.adopt(offer, *saved, workspace).await.map(Some)
+        self.adopt(assignment, *saved, workspace).await.map(Some)
     }
 }
 
-fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
+fn require_empty_manifest(saved: &TurnCheckpointSaved) -> Result<()> {
     let empty = af_crypto::checkpoint_digest::manifest_root(std::iter::empty::<(&str, &str)>());
     if !saved.page_ids.is_empty() || saved.descriptor.manifest_root != empty {
         return Err(error::config(
@@ -95,8 +90,8 @@ fn require_empty_manifest(saved: &TurnCheckpointRead) -> Result<()> {
 }
 
 fn validate(
-    saved: &TurnCheckpointRead,
-    offer: &LeasePayload<'_>,
+    saved: &TurnCheckpointSaved,
+    assignment: &RunPayload<'_>,
     workspace: &TurnWorkspace,
 ) -> Result<()> {
     saved.validate()?;
@@ -107,6 +102,6 @@ fn validate(
         workspace: workspace.clone(),
     };
     proof
-        .validate_for(offer)
+        .validate_for(assignment)
         .map_err(|source| error::boundary("ordinary root validation refused restore", source))
 }

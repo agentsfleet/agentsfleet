@@ -26,26 +26,26 @@ afd_http::plane_collector! {
     struct Plane;
     paths(
         crate::handler::runner::credential::handle,
-        crate::handler::runner::task_checkpoints::plan::handle,
-        crate::handler::runner::task_checkpoints::page_write::handle,
-        crate::handler::runner::task_checkpoints::page_read::handle,
-        crate::handler::runner::task_checkpoints::objects_register::handle,
-        crate::handler::runner::task_checkpoints::objects_read::handle,
-        crate::handler::runner::task_checkpoints::uploads::handle,
-        crate::handler::runner::task_checkpoints::authorize::handle,
-        crate::handler::runner::task_checkpoints::pin::handle,
-        crate::handler::runner::task_checkpoints::commit::handle,
-        crate::handler::runner::task_input_receipts::handle,
-        crate::handler::runner::task_inputs::read,
-        crate::handler::runner::task_bindings::accept,
-        crate::handler::runner::task_effects::publish,
-        crate::handler::runner::task_effects::read,
-        crate::handler::runner::task_effects::list,
+        crate::handler::runner::durable_task_checkpoints::plan::handle,
+        crate::handler::runner::durable_task_checkpoints::page_write::handle,
+        crate::handler::runner::durable_task_checkpoints::page_read::handle,
+        crate::handler::runner::durable_task_checkpoints::objects_register::handle,
+        crate::handler::runner::durable_task_checkpoints::objects_read::handle,
+        crate::handler::runner::durable_task_checkpoints::uploads::handle,
+        crate::handler::runner::durable_task_checkpoints::authorize::handle,
+        crate::handler::runner::durable_task_checkpoints::pin::handle,
+        crate::handler::runner::durable_task_checkpoints::commit::handle,
+        crate::handler::runner::durable_task_input_receipts::handle,
+        crate::handler::runner::durable_task_inputs::read,
+        crate::handler::runner::durable_task_bindings::accept,
+        crate::handler::runner::durable_task_effects::publish,
+        crate::handler::runner::durable_task_effects::read,
+        crate::handler::runner::durable_task_effects::list,
         crate::handler::runner::decisions::reserve,
         crate::handler::runner::decisions::record,
         crate::handler::runner::memory::capture,
         crate::handler::runner::tool_call::handle,
-        crate::handler::runner::memory::hydrate,
+        crate::handler::runner::memory::load,
         crate::handler::runner::memory::recall,
         crate::handler::runner::message::handle,
         crate::handler::runner::fleet_steer::handle,
@@ -64,7 +64,7 @@ afd_http::plane_collector! {
 
 /// What the runner plane serves, as an `OpenAPI` document.
 ///
-/// A runner speaking for itself: liveness, the lease it runs, and what it reports back.
+/// A runner speaking for itself: liveness, the run it runs, and what it reports back.
 #[must_use]
 pub fn document() -> utoipa::openapi::OpenApi {
     Plane::openapi()

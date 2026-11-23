@@ -10,9 +10,9 @@ use http::Method;
 /// would be a route no runner could ever call.
 #[test]
 fn test_runner_scopes_satisfy_every_runner_route() {
-    for route in afd_api::Route::all() {
+    for route in afd_http::route::Route::all() {
         let meta = route.meta();
-        if meta.guard != afd_api::Guard::RunnerBearer {
+        if meta.guard != afd_http::route::Guard::RunnerBearer {
             continue;
         }
         for method in [Method::GET, Method::POST, Method::DELETE] {

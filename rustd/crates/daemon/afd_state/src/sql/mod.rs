@@ -8,7 +8,7 @@
 //! # Why one of them joins and two do not
 //!
 //! `identity.api_keys.created_by_subject` holds the identity provider's subject
-//! claim directly (`schema/20261108120700_identity_api_keys.sql`).
+//! claim directly (`afd_db/schema/20261108120700_identity_api_keys.sql`).
 //! `identity.cli_credentials.user_id` is a foreign key into `identity.users`,
 //! so the subject has to be joined for. The asymmetry is in the schema, not in
 //! this file, and a join added to the first would resolve nothing.
@@ -30,41 +30,49 @@ pub const SELECT_CLI_CREDENTIAL: &str = include_str!("select_cli_credential.sql"
 
 /// `agt_r` — a host runner's machine credential.
 ///
-/// `degraded` rides the same indexed single-row read: the lease gate used to
+/// `degraded` rides the same indexed single-row read: the run gate used to
 /// re-read this exact row for that one flag, doubling every idle poll's cost. A
 /// runner is degraded when it holds a reason (`degraded_reason IS NOT NULL`).
 pub const SELECT_RUNNER_TOKEN: &str = include_str!("select_runner_token.sql");
 
-/// The status a `runner.leases` row opens in.
+/// The status a `thread.runs` row opens in.
 ///
 /// Declared here rather than at the write site because a report flips a row
 /// OUT of this value and its predicate has to name the same spelling the issue
 /// wrote (RULE UFS) — two spellings would mean a report that fences correctly
 /// and updates nothing.
-pub const LEASE_STATUS_ACTIVE: &str = "active";
+pub const RUN_STATUS_ACTIVE: &str = "active";
 
 /// The `fleet.fleets.status` a leasable fleet carries.
 ///
-/// Declared here, beside the lease statuses, because two crates compare
-/// against it: the lease pass, which offers only active fleets, and the
+/// Declared here, beside the run statuses, because two crates compare
+/// against it: the run pass, which assigns only active fleets, and the
 /// heartbeat, which tells a runner to drop the sandbox it holds for a fleet
 /// that is no longer active (RULE UFS).
 pub const FLEET_STATUS_ACTIVE: &str = "active";
 
-/// The status a REPORTED lease is flipped into.
+/// The status a REPORTED run is flipped into.
 ///
-/// The claim-and-settle statement is the sole `active` → `reported` writer,
+/// The report's settle statement is the sole `active` → `reported` writer,
 /// and it flips this row in the same statement that charges the final slice —
-/// so a lease can never be `reported` with its last slice unbilled, nor billed
+/// so a run can never be `reported` with its last slice unbilled, nor billed
 /// twice by a retry that finds the row already flipped.
-pub const LEASE_STATUS_REPORTED: &str = "reported";
+pub const RUN_STATUS_REPORTED: &str = "reported";
 
-/// The status a reclaimed lease is flipped INTO.
+/// The status a run lost to reassignment is flipped INTO.
 ///
-/// The reclaim statement is the sole `active` → `expired` writer, so this
-/// spelling and [`LEASE_STATUS_ACTIVE`] are the two halves of one predicate and
+/// The expiry statement is the sole `active` → `expired` writer, so this
+/// spelling and [`RUN_STATUS_ACTIVE`] are the two halves of one predicate and
 /// belong beside each other.
-pub const LEASE_STATUS_EXPIRED: &str = "expired";
+pub const RUN_STATUS_EXPIRED: &str = "expired";
+
+/// The status a run whose turn a person stopped is reported INTO.
+///
+/// The report statement writes it in place of [`RUN_STATUS_REPORTED`] when
+/// the runner reports `Outcome::Stopped`, and both are settled: the report
+/// billed the run either way, so every reader that treats `reported` as done
+/// names both.
+pub const RUN_STATUS_STOPPED: &str = "stopped";
 
 /// The `runner.runners.status` value that permits the runner plane.
 ///
@@ -83,7 +91,7 @@ pub const RUNNER_STATUS_ACTIVE: &str = "active";
 /// vocabularies together, so neither can be renamed without the other.
 pub const RUNNER_STATUS_DRAINING: &str = "draining";
 
-/// The status a drain completes into, once the runner's last lease is gone.
+/// The status a drain completes into, once the runner's last run is gone.
 pub const RUNNER_STATUS_DRAINED: &str = "drained";
 
 #[cfg(test)]

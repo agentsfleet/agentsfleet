@@ -3,48 +3,49 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use af_wire::lease::LeasePayload;
+use af_wire::run::RunPayload;
 
 use super::{Connect as _, Connector};
 use af_wire::inference::{InferenceApi, ModelInference};
 
 /// A key no rendering may show.
 const KEY: &str = "sk-never-printed";
-/// The instant every lease here is stamped with: one millisecond past the epoch.
+/// The instant every run here is stamped with: one millisecond past the epoch.
 const AT: &str = "1970-01-01T00:00:00.001Z";
 
-/// A lease naming `provider`, with [`KEY`].
-fn lease(provider: &str) -> LeasePayload<'static> {
+/// A run naming `provider`, with [`KEY`].
+fn payload(provider: &str) -> RunPayload<'static> {
     let document = serde_json::json!({
-        "lease_id": "lease-1", "fencing_token": 1, "lease_expires_at": AT,
-        "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
+        "run_id": "run-1", "fencing_token": 1, "run_expires_at": AT,
+        "event": {"turn_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": "{}", "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
             "tools": [], "secrets_map": null, "mintable": [], "provider": provider,
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 200_000}},
-        "instructions": "", "history": [], "resume_hold": false, "inputs_waiting": true
+        "instructions": "", "history": [], "resume_hold": false, "inputs_waiting": true,
+        "owner": {"kind": "fleet", "fleet_id": "f"}
     });
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
     serde_json::from_str(text).unwrap()
 }
 
-fn configured(api: InferenceApi) -> LeasePayload<'static> {
-    let mut lease = lease("workspace-provider");
-    lease.policy.inference = Some(ModelInference {
+fn configured(api: InferenceApi) -> RunPayload<'static> {
+    let mut run = payload("workspace-provider");
+    run.policy.inference = Some(ModelInference {
         api,
         base_url: "https://models.example.com/v1".into(),
         dialect: None,
         max_output_tokens: 1234,
     });
-    lease
+    run
 }
 
 #[test]
 fn should_refuse_missing_or_invalid_settings_before_connecting() {
     let connector = Connector::new().unwrap();
-    let absent = lease("unconfigured");
+    let absent = payload("unconfigured");
     assert_eq!(
         connector
             .admit(&absent.policy)
@@ -61,11 +62,11 @@ fn should_refuse_missing_or_invalid_settings_before_connecting() {
         "https://127.0.0.1",
         "https://[::1]",
     ] {
-        let mut lease = configured(InferenceApi::Chat);
-        lease.policy.inference.as_mut().unwrap().base_url = base.into();
-        assert!(connector.admit(&lease.policy).is_err());
+        let mut run = configured(InferenceApi::Chat);
+        run.policy.inference.as_mut().unwrap().base_url = base.into();
+        assert!(connector.admit(&run.policy).is_err());
         assert_eq!(
-            connector.connect(&lease).unwrap_err().code(),
+            connector.connect(&run).unwrap_err().code(),
             af_core::error_code::AGENTSFLEET_INVALID_CONFIG
         );
     }
@@ -79,9 +80,9 @@ fn should_connect_every_explicit_api_and_never_print_the_key() {
         InferenceApi::Responses,
         InferenceApi::Messages,
     ] {
-        let lease = configured(api);
-        connector.admit(&lease.policy).unwrap();
-        let rendered = format!("{:?}", connector.connect(&lease).unwrap());
+        let run = configured(api);
+        connector.admit(&run.policy).unwrap();
+        let rendered = format!("{:?}", connector.connect(&run).unwrap());
         assert!(rendered.contains(&format!("{api:?}")), "{rendered}");
         assert!(!rendered.contains(KEY), "{rendered}");
     }
@@ -90,13 +91,13 @@ fn should_connect_every_explicit_api_and_never_print_the_key() {
 #[test]
 fn should_reject_unknown_dialects_and_output_limits_above_context() {
     let connector = Connector::new().unwrap();
-    let mut lease = configured(InferenceApi::Messages);
-    lease.policy.inference.as_mut().unwrap().dialect = Some("unknown".into());
-    assert!(connector.admit(&lease.policy).is_err());
-    lease.policy.inference.as_mut().unwrap().dialect = None;
-    lease.policy.inference.as_mut().unwrap().max_output_tokens = 200_001;
+    let mut run = configured(InferenceApi::Messages);
+    run.policy.inference.as_mut().unwrap().dialect = Some("unknown".into());
+    assert!(connector.admit(&run.policy).is_err());
+    run.policy.inference.as_mut().unwrap().dialect = None;
+    run.policy.inference.as_mut().unwrap().max_output_tokens = 200_001;
     assert_eq!(
-        connector.connect(&lease).unwrap_err().code(),
+        connector.connect(&run).unwrap_err().code(),
         af_core::error_code::AGENTSFLEET_INVALID_CONFIG
     );
 }

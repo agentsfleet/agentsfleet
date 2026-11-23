@@ -90,7 +90,7 @@ fn assert_attempts(spans: &[&Value], first: &Value, restored: &Value) {
         spans.iter().any(|span| {
             text(span, "traceId") == text(root, "traceId")
                 && text(span, "parentSpanId") == text(root, "spanId")
-                && attribute(span, "operation") == Some(operation)
+                && attribute(span, "operation").is_some_and(|named| named == operation)
                 && carrier.is_none_or(|carrier| attribute(span, "transport") == Some(carrier))
                 && attribute(span, "outcome").is_some_and(|outcome| {
                     if success {

@@ -23,18 +23,6 @@
 //!                       Binding::read_for_source, then
 //!                       serves_repository + admits          ──► fan-out
 //! ```
-//!
-//! # Why the ceiling is on the MATCHED set
-//!
-//! The document half of the match is [`Binding`]'s, so the ceiling is counted
-//! here, after [`Binding::serves_repository`] and [`Binding::admits`] have
-//! run, rather than on the rows Postgres returns. What it bounds is the number
-//! of fleets one delivery wakes.
-//!
-//! What the ceiling is FOR is worth stating, because it is not a performance
-//! guard. One delivery becoming a hundred fleet runs is a hundred model spends
-//! from a single HTTP request. A workspace that has wired itself past that has
-//! a configuration incident, and a loud refusal surfaces it before the invoice.
 
 use af_core::id::Uuid7;
 use afd_api_wire::grant::status;
@@ -51,22 +39,13 @@ const CONTEXT_INSTALL: &str = "resolve an App installation";
 /// The context a failed subscriber read reports under.
 const CONTEXT_SUBSCRIBERS: &str = "resolve App ingress subscribers";
 
-/// The most fleets one App delivery may wake.
-///
-/// See the module note on what it protects — it is a spend bound, not a
-/// latency one.
-pub const MAX_FANOUT: usize = 100;
-
 /// Where one App delivery is going.
 ///
-/// Three states rather than a `Vec` a caller has to interpret: an empty vector
-/// and a hundred-and-one-entry vector are both "do not fan out", and they are
-/// different answers on the wire — one is a 200 saying nobody subscribed, the
-/// other is a refusal. Separate variants mean a route cannot answer one while
-/// meaning the other, and [`Self::To`] can never be empty.
+/// Two states rather than a `Vec` a caller has to interpret: an empty vector
+/// is a 200 saying nobody subscribed, and [`Self::To`] can never be empty.
 #[derive(Debug)]
 pub enum Fanout {
-    /// The fleets to wake — at least one, never more than [`MAX_FANOUT`].
+    /// The fleets to wake — at least one.
     To(Vec<Binding>),
     /// Nobody subscribed to this repository and event.
     ///
@@ -74,8 +53,6 @@ pub enum Fanout {
     /// every event for every repository in an installation, and a workspace
     /// subscribes a handful of fleets to a handful of them.
     Nobody,
-    /// More fleets matched than one delivery may wake.
-    TooMany(usize),
 }
 
 impl Ingress {
@@ -195,12 +172,12 @@ struct SubscriberRow {
     document: String,
 }
 
-/// The matched set, as the three answers a route can act on.
+/// The matched set, as the two answers a route can act on.
 fn fanout(matched: Vec<Binding>) -> Fanout {
-    match matched.len() {
-        0 => Fanout::Nobody,
-        count if count > MAX_FANOUT => Fanout::TooMany(count),
-        _ => Fanout::To(matched),
+    if matched.is_empty() {
+        Fanout::Nobody
+    } else {
+        Fanout::To(matched)
     }
 }
 

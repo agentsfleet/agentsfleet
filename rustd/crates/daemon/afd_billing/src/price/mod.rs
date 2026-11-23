@@ -1,7 +1,7 @@
 //! What a request costs: the catalogue's dated tiers for one model, and the pure
 //! [`Rater`] that turns one usage line into nanos.
 //!
-//! Pricing is split from money movement on purpose (billing §11): every biller
+//! Pricing is split from money movement on purpose, per the billing design: every biller
 //! receives the same priced lines, whichever system moves the money. Nothing in
 //! [`rate`] reaches a datastore, so the arithmetic is proven without one.
 
@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgExecutor;
 
 use crate::error::query;
-use crate::nanos::TOKENS_PER_MTOK;
 use crate::{Result, sql};
 
 mod rate;
@@ -106,7 +105,7 @@ impl PriceBook {
         })
     }
 
-    /// Reads the dated tiers for the lease's saved model/revision identity.
+    /// Reads the dated tiers for the run's saved model/revision identity.
     /// It does not follow the model's current revision pointer or coding rates.
     /// Callers retain this book before dispatch and rate later receipts from it.
     ///
@@ -130,45 +129,6 @@ impl PriceBook {
 
     fn from_rows(rows: Vec<PriceColumns>) -> Self {
         Self::from_tiers(rows.into_iter().map(PriceColumns::tier).collect())
-    }
-
-    /// Provisional native-decision reservation across every active prompt tier.
-    /// Cache categories partition input, so its most expensive category bounds them all.
-    /// Absence or arithmetic overflow cannot authorize dispatch.
-    #[must_use]
-    pub fn decision_reservation(
-        &self,
-        at: Timestamp,
-        input: u32,
-        output: u32,
-    ) -> Option<crate::Nanos> {
-        self.tiers
-            .iter()
-            .filter(|tier| tier.covers(at))
-            .map(|tier| {
-                let price = &tier.price;
-                let input_rate = [
-                    price.input_nanos_per_mtok,
-                    price.cached_input_nanos_per_mtok,
-                    price
-                        .cache_write_nanos_per_mtok
-                        .unwrap_or(price.input_nanos_per_mtok),
-                ]
-                .into_iter()
-                .max()?;
-                let million = i128::from(TOKENS_PER_MTOK);
-                let input =
-                    (i128::from(input) * i128::from(input_rate) + million - 1) / million + 2;
-                let output =
-                    (i128::from(output) * i128::from(price.output_nanos_per_mtok) + million - 1)
-                        / million;
-                i64::try_from(input + output)
-                    .ok()
-                    .map(crate::Nanos::from_i64)
-            })
-            .collect::<Option<Vec<_>>>()?
-            .into_iter()
-            .max()
     }
 
     /// The tier a request of `whole_prompt` tokens made at `at` is priced at.

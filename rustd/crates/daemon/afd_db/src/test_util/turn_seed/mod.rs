@@ -1,0 +1,123 @@
+//! The opened `thread.turns` row a suite seeds as a fleet event, spelled once.
+//!
+//! A runner run names the turn it executes, so every suite that seeds a run
+//! first needs a turn row. They build a
+//! [`TurnSeed`] rather than each spelling the insert, and the column list
+//! changes here alone.
+//!
+//! The actor, type and status are arguments because their spellings live above
+//! this crate; the request body is an empty object, which every reader of the
+//! column accepts. A run names the event by its turn's `id`, the table's key.
+//! The row has no producer behind it, so it is written settled: no assignment
+//! takes it.
+
+use af_core::id::Uuid7;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+use sqlx::PgExecutor;
+
+use crate::{Result, error};
+
+/// Every column an event seed sets.
+const INSERT_TURN: &str = include_str!("sql/insert.sql");
+
+const CONTEXT: &str = "seed a fleet event";
+
+/// The request body an event is seeded with.
+const EMPTY_REQUEST: &str = "{}";
+
+/// Who sent an event, what kind it is, and where it stands.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnFacts<'a> {
+    /// The actor, as the column stores it.
+    pub actor: &'a str,
+    /// The event type, as its stored spelling.
+    pub event_type: &'a str,
+    /// The status, as its stored spelling.
+    pub status: &'a str,
+}
+
+/// The facts of a turn a fixture needs only to exist: a gate's held turn, or
+/// the turn a seeded run answers.
+pub const SEEDED_TURN: TurnFacts<'static> = TurnFacts {
+    actor: "test",
+    event_type: "chat",
+    status: "received",
+};
+
+/// One event row under a fleet.
+#[derive(Debug, Clone, Copy)]
+#[must_use = "a seed writes nothing until `insert` runs"]
+pub struct TurnSeed<'a> {
+    fleet_id: &'a Uuid7,
+    workspace_id: &'a Uuid7,
+    turn_id: &'a Uuid7,
+    kind: TurnFacts<'a>,
+    created_at: Option<Timestamp>,
+}
+
+impl<'a> TurnSeed<'a> {
+    /// The event `turn_id`, stamped by the database's `now()`.
+    pub const fn new(
+        fleet_id: &'a Uuid7,
+        workspace_id: &'a Uuid7,
+        turn_id: &'a Uuid7,
+        kind: TurnFacts<'a>,
+    ) -> Self {
+        Self {
+            fleet_id,
+            workspace_id,
+            turn_id,
+            kind,
+            created_at: None,
+        }
+    }
+
+    /// Stamps `created_at` and `updated_at` with `instant`.
+    pub const fn at(mut self, instant: Timestamp) -> Self {
+        self.created_at = Some(instant);
+        self
+    }
+
+    /// Writes the row and answers its `turn_id`.
+    ///
+    /// # Errors
+    /// [`crate::Error`] when the insert fails: a missing fleet or workspace, or
+    /// a producer identifier the fleet already holds.
+    pub async fn insert<'e>(self, executor: impl PgExecutor<'e>) -> Result<Uuid7> {
+        sqlx::query_scalar(INSERT_TURN)
+            .bind(self.fleet_id)
+            .bind(self.workspace_id)
+            .bind(self.turn_id)
+            .bind(self.kind.actor)
+            .bind(self.kind.event_type)
+            .bind(self.kind.status)
+            .bind(EMPTY_REQUEST)
+            .bind(self.created_at.map(Timestamp::to_sqlx))
+            .fetch_one(executor)
+            .await
+            .map_err(|source| error::query(CONTEXT, source))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TurnFacts, TurnSeed};
+
+    #[test]
+    fn a_seed_stamps_nothing_until_the_suite_backdates_it() {
+        let kind = TurnFacts {
+            actor: "test",
+            event_type: "chat",
+            status: "received",
+        };
+        let (fleet, workspace, event) = (
+            crate::test_util::mint_id(),
+            crate::test_util::mint_id(),
+            crate::test_util::mint_id(),
+        );
+        let seed = TurnSeed::new(&fleet, &workspace, &event, kind);
+
+        assert_eq!((seed.turn_id, seed.created_at), (&event, None));
+    }
+}

@@ -5,7 +5,7 @@
 //! `M-MOCKABLE-SYSCALLS` names the category — anything "reliant on external
 //! state" — and all three seams are that.
 //!
-//! These are what make Dimension 4.1 provable. One shared set, rather than a
+//! These are what make credential routing provable. One shared set, rather than a
 //! hand-written mock per test file, means the routing table is exercised
 //! against the same directory the liveness branches are, rather than against
 //! three that could disagree.

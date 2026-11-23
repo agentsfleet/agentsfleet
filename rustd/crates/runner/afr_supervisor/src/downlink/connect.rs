@@ -2,7 +2,7 @@
 
 use std::num::NonZeroU64;
 
-use af_stream::{Budget, Connection, IncomingReader, Outgoing, Reader};
+use af_stream::{Budget, Ceilings, Connection, IncomingReader, Outgoing, Reader};
 use af_wire::protocol::{self, Down, StreamKind, Up};
 use http::{
     Request,
@@ -24,6 +24,11 @@ use crate::{
     error::{self, ErrorKind},
 };
 
+/// The protocol revision this runner speaks: v4, so the daemon assigns it a
+/// setup draft's turn as a draft-owned run (`crate::setup_run`) and answers
+/// its context verb.
+const SPOKEN: &str = protocol::VERSION;
+
 pub(crate) struct Pipe {
     pub(crate) writer: DuplexStream,
     pub(crate) reader: Reader<IncomingReader>,
@@ -31,10 +36,12 @@ pub(crate) struct Pipe {
 
 pub(crate) struct Connected {
     pub(crate) connection: Connection,
+    /// The frame ceilings the daemon's welcome announced.
+    pub(crate) ceilings: Ceilings,
     pub(crate) control: Pipe,
     pub(crate) work: Pipe,
     pub(crate) reports: Pipe,
-    pub(crate) activity: Pipe,
+    pub(crate) progress: Pipe,
 }
 
 #[derive(Clone, Copy)]
@@ -59,12 +66,13 @@ impl Opening<'_> {
             .await?;
         let result = self.attach(&mut connection, resume).await;
         match result {
-            Ok((control, work, reports, activity)) => Ok(Connected {
+            Ok(((control, work, reports, progress), ceilings)) => Ok(Connected {
                 connection,
+                ceilings,
                 control,
                 work,
                 reports,
-                activity,
+                progress,
             }),
             Err(error) => {
                 let closed = connection.close(self.deadline).await;
@@ -82,7 +90,7 @@ impl Opening<'_> {
         &self,
         connection: &mut Connection,
         resume: &mut Resume,
-    ) -> Result<(Pipe, Pipe, Pipe, Pipe)> {
+    ) -> Result<((Pipe, Pipe, Pipe, Pipe), Ceilings)> {
         let streams = Self {
             deadline: self
                 .deadline
@@ -96,17 +104,19 @@ impl Opening<'_> {
         &self,
         connection: &mut Connection,
         resume: &mut Resume,
-    ) -> Result<(Pipe, Pipe, Pipe, Pipe)> {
+    ) -> Result<((Pipe, Pipe, Pipe, Pipe), Ceilings)> {
         let mut control = self.hello(connection, resume).await?;
-        let owner = self.confirm(&mut control, resume).await?;
-        let work = self.secondary(connection, StreamKind::Work, &owner).await?;
-        let reports = self
-            .secondary(connection, StreamKind::Reports, &owner)
-            .await?;
-        let activity = self
-            .secondary(connection, StreamKind::Activity, &owner)
-            .await?;
-        Ok((control, work, reports, activity))
+        let (owner, ceilings) = self.confirm(&mut control, resume).await?;
+        control.reader.limit(ceilings.of(StreamKind::Control));
+        let mut secondary = async |kind| {
+            let mut pipe = self.secondary(connection, kind, &owner).await?;
+            pipe.reader.limit(ceilings.of(kind));
+            Ok::<_, crate::Error>(pipe)
+        };
+        let work = secondary(StreamKind::Work).await?;
+        let reports = secondary(StreamKind::Reports).await?;
+        let progress = secondary(StreamKind::Progress).await?;
+        Ok(((control, work, reports, progress), ceilings))
     }
 
     fn request(
@@ -116,10 +126,10 @@ impl Opening<'_> {
         body: Outgoing,
     ) -> Result<Request<Outgoing>> {
         let mut request = Request::post(self.config.endpoint.uri().clone())
-            .header(protocol::VERSION_HEADER, protocol::VERSION)
+            .header(protocol::VERSION_HEADER, SPOKEN)
             .header(protocol::STREAM_KIND_HEADER, kind.as_str());
         if let Some(owner) = owner {
-            request = request.header(protocol::SESSION_HEADER, owner.as_str());
+            request = request.header(protocol::CONNECTION_HEADER, owner.as_str());
         }
         if kind == StreamKind::Control {
             request = request.header(AUTHORIZATION, self.authorization);
@@ -135,7 +145,7 @@ impl Opening<'_> {
         let running = self.running.snapshot();
         let hello: Up<'_> = Up::Hello {
             request_id: NonZeroU64::MIN,
-            accepted_kinds: af_wire::lease::AcceptedKinds::ALL,
+            accepted_kinds: af_wire::run::AcceptedKinds::ALL,
             running: running.iter().map(|id| id.as_str().into()).collect(),
             credits: 0,
             unconfirmed_connection_id: resume.unconfirmed().map(|id| id.as_str().into()),
@@ -179,7 +189,13 @@ impl Opening<'_> {
         Ok(Pipe { writer, reader })
     }
 
-    async fn confirm(&self, control: &mut Pipe, resume: &mut Resume) -> Result<af_core::id::Uuid7> {
+    /// Confirms the proposed connection, and reads the frame ceilings its
+    /// welcome announced: 32 MiB and 2 MiB from a daemon that names none.
+    async fn confirm(
+        &self,
+        control: &mut Pipe,
+        resume: &mut Resume,
+    ) -> Result<(af_core::id::Uuid7, Ceilings)> {
         let proposed = resume
             .unconfirmed()
             .ok_or(ErrorKind::StreamProtocol)?
@@ -203,6 +219,8 @@ impl Opening<'_> {
         let Down::Welcome {
             request_id,
             connection_id,
+            max_message_bytes,
+            max_control_message_bytes,
             ..
         } = frame.decode::<Down<'_>>()?
         else {
@@ -213,7 +231,10 @@ impl Opening<'_> {
         }
         tracing::Span::current().record("connection_id", proposed.as_str());
         *resume = Resume::Confirmed(proposed.clone());
-        Ok(proposed)
+        Ok((
+            proposed,
+            Ceilings::announced(max_message_bytes, max_control_message_bytes),
+        ))
     }
 
     async fn secondary(
@@ -264,7 +285,7 @@ impl Opening<'_> {
             .headers()
             .get(protocol::VERSION_HEADER)
             .and_then(|value| value.to_str().ok())
-            != Some(protocol::VERSION)
+            != Some(SPOKEN)
         {
             return Err(ErrorKind::StreamProtocol.into());
         }
@@ -281,3 +302,7 @@ impl Opening<'_> {
 #[cfg(all(test, feature = "test-util"))]
 #[path = "connect_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-util"))]
+#[path = "opening_tests.rs"]
+mod opening_tests;

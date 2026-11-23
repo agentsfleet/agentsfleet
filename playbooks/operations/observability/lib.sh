@@ -154,22 +154,22 @@ obs_runner_offline_seconds() {
   # threshold from the same line keeps the alert and the sweep from disagreeing
   # about when a runner is gone.
   local constants="$OBS_REPO_ROOT/rustd/crates/foundation/af_core/src/timing.rs"
-  local lease_seconds multiplier
-  lease_seconds="$(
+  local run_seconds multiplier
+  run_seconds="$(
     sed -n \
-      's/^pub const LEASE_TTL: Duration = Duration::from_secs(\([0-9_]*\));/\1/p' \
+      's/^pub const RUN_TTL: Duration = Duration::from_secs(\([0-9_]*\));/\1/p' \
       "$constants" | tr -d '_'
   )"
   multiplier="$(
     sed -n \
-      's/^pub const RUNNER_OFFLINE_AFTER: Duration = LEASE_TTL.saturating_mul(\([0-9]*\));/\1/p' \
+      's/^pub const RUNNER_OFFLINE_AFTER: Duration = RUN_TTL.saturating_mul(\([0-9]*\));/\1/p' \
       "$constants"
   )"
-  if [[ ! "$lease_seconds" =~ ^[0-9]+$ ]] || [[ ! "$multiplier" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$run_seconds" =~ ^[0-9]+$ ]] || [[ ! "$multiplier" =~ ^[0-9]+$ ]]; then
     echo "ERROR: cannot derive runner offline threshold" >&2
     exit 1
   fi
-  printf '%d' "$((lease_seconds * multiplier))"
+  printf '%d' "$((run_seconds * multiplier))"
 }
 
 # Renders the dashboard asset into $1, resolving every placeholder.

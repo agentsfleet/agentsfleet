@@ -101,7 +101,7 @@ async fn reading_a_secret_list_does_not_confer_the_authority_to_write_one() {
     // Two rungs on one surface, and the split is the point: an operator who may
     // see WHICH credentials a workspace holds is not thereby able to replace
     // one. Only the read verb admits a read-only principal.
-    let read_only = |method: Method, path: String, body: &'static str| async move {
+    let read_only = async |method: Method, path: String, body: &'static str| {
         send(SECRET_READ, method, &path, Some(TENANT_KEY), body).await
     };
 
@@ -170,6 +170,42 @@ async fn deleting_a_connection_by_its_name_needs_connector_write_as_well() {
         "plain secret",
     )
     .await;
+}
+
+/// The fleet-access read is a detail of the list: when it cannot be read, the
+/// failure is logged under its own event and code, and only for a caller who
+/// may read fleets. The list's own store answers the request either way.
+#[tokio::test]
+async fn an_unreadable_fleet_access_is_logged_only_for_a_fleet_reader() {
+    use af_core::error_code;
+    use af_core::test_util::trace::Capture;
+    const EVENT_ACCESS: &str = "secret_access_failed";
+    for (scopes, logged) in [
+        (
+            ScopeSet::from_scopes(&[Scope::SecretRead, Scope::FleetRead]),
+            true,
+        ),
+        (SECRET_READ, false),
+    ] {
+        let capture = Capture::install();
+        let response = send(scopes, Method::GET, &collection(), Some(TENANT_KEY), "").await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let access: Vec<_> = capture
+            .events()
+            .into_iter()
+            .filter(|event| event.field("event") == Some(EVENT_ACCESS))
+            .collect();
+        if logged {
+            assert_eq!(access.len(), 1, "one access fault per list");
+            assert_eq!(
+                access.first().and_then(|event| event.field("error_code")),
+                Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+            );
+        } else {
+            assert!(access.is_empty(), "access is never read without fleet:read");
+        }
+        drop(capture);
+    }
 }
 
 mod input;

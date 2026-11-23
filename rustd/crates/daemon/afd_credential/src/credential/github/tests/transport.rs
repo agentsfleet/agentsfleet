@@ -19,6 +19,21 @@ use super::fake_github::{
 };
 use crate::credential::outcome::{Outcome, Retry};
 
+/// A deployment's configured token lifetime, not the hour default, is the
+/// expiry the broker caches against.
+#[tokio::test]
+async fn a_configured_token_lifetime_sets_the_expiry() {
+    let token = r#"{"token":"ghs_fixture","expires_at":"2026-01-01T00:00:00Z","permissions":{"contents":"read","actions":"read","checks":"read","metadata":"read"},"repositories":[{"full_name":"acme/widgets"}]}"#;
+    let github = FakeGithub::answering((OK, HOLDS_EVERYTHING), (CREATED, token)).await;
+    let lifetime = std::time::Duration::from_mins(20);
+    let outcome = github.mint_for(lifetime).await;
+    let minted = outcome.minted().expect("the narrow response mints");
+    assert_eq!(
+        minted.expires_at,
+        af_core::clock::after(super::fake_github::NOW, lifetime)
+    );
+}
+
 #[tokio::test]
 async fn a_narrowed_response_is_delivered_with_the_local_expiry_ceiling() {
     let token = r#"{"token":"ghs_fixture","expires_at":"2026-01-01T00:00:00Z","permissions":{"contents":"read","actions":"read","checks":"read","metadata":"read"},"repositories":[{"full_name":"acme/widgets"}]}"#;
@@ -35,7 +50,7 @@ async fn a_narrowed_response_is_delivered_with_the_local_expiry_ceiling() {
     );
 }
 
-/// Dimension 1.6 — the App as registered today holds no Checks. The mint asks
+/// The App as registered today holds no Checks. The mint asks
 /// without it and succeeds, where asking for it failed every mint.
 #[tokio::test]
 async fn an_installation_without_checks_mints_without_asking_for_them() {
@@ -80,7 +95,7 @@ async fn a_successful_but_overreaching_response_is_discarded() {
     );
 }
 
-/// Dimension 1.7 — a failed installation read is classified as the token
+/// A failed installation read is classified as the token
 /// request would be, and no token is asked for after it.
 #[tokio::test]
 async fn an_installation_read_failure_keeps_its_retry_posture() {

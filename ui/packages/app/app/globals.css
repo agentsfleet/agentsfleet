@@ -107,14 +107,14 @@ code, pre, kbd { font-family: var(--ff-mono); }
 }
 
 
-.app-shell:not(:has([data-fleet-workspace], [data-fleet-authoring])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
+.app-shell:not(:has([data-fleet-workspace], [data-fleet-setup])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
 /* Fleet workspaces share the approved edge-to-edge chat frame. */
-.app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas {
+.app-shell:has([data-fleet-workspace], [data-fleet-setup]) .app-dashboard-canvas {
   padding: 0;
   scrollbar-gutter: auto;
   overflow: hidden;
 }
-.app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-dashboard-canvas > div {
+.app-shell:has([data-fleet-workspace], [data-fleet-setup]) .app-dashboard-canvas > div {
   height: 100%;
   min-height: 0;
 }

@@ -1,0 +1,123 @@
+//! Production turns and an unsupported event fixture, both stored in the ledger.
+#![allow(
+    dead_code,
+    reason = "test support: shared by several test binaries, each using a subset"
+)]
+#![expect(
+    clippy::expect_used,
+    reason = "test support: an unmet precondition should fail the test loudly"
+)]
+
+use af_core::id::Uuid7;
+use af_crypto::entropy::Entropy;
+use af_wire::turn::TurnKind;
+use afd_turns::{IncomingTurn, Key, Producer, Turns};
+use agentsfleetd::serve::Booted;
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx as _;
+
+use crate::e2e::{ACTOR, REQUEST_JSON};
+
+/// The digest a hand-written row carries. Never compared: the ledger checks
+/// it only on a REPEATED key, and this row's key is its own id.
+const UNCHECKED_DIGEST: &str = "fixture";
+
+/// Admits one event on the fleet and answers the ledger's logical id.
+///
+/// The type is an [`TurnKind`] rather than a string because the ledger takes
+/// one: the set is CLOSED, and a scenario that wants a spelling the daemon
+/// cannot name is testing a different thing — see [`enqueue_unsupported`].
+pub(crate) async fn enqueue(
+    booted: &Booted,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: TurnKind,
+) -> Uuid7 {
+    enqueue_over(booted, booted.bus.clone(), fleet, workspace, event_type).await
+}
+
+/// [`enqueue`], with the turn's wake published on `bus`, such as one
+/// that loses it.
+pub(crate) async fn enqueue_over(
+    booted: &Booted,
+    bus: afd_bus::Handle,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: TurnKind,
+) -> Uuid7 {
+    let admitted = Turns::for_tests(booted.database.clone(), bus)
+        .admit(IncomingTurn {
+            producer: Producer::Steer,
+            key: Key::Unrepeatable,
+            fleet,
+            workspace,
+            actor: ACTOR,
+            event_type,
+            request_json: REQUEST_JSON,
+            reply: afd_turns::Reply::None,
+        })
+        .await
+        .expect("the ledger must admit the event");
+    assert!(
+        !admitted.replayed,
+        "an unrepeatable key is minted per call and cannot replay"
+    );
+    admitted.stored.id
+}
+
+/// Bypasses the closed producer enum to exercise refusal of an unknown event type.
+pub(crate) async fn enqueue_unsupported(
+    booted: &Booted,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: &str,
+    now: Timestamp,
+) -> Uuid7 {
+    let event = insert_turn(booted, fleet, workspace, event_type, now).await;
+    // Mirror intake's post-commit hint; the recovery cadence exceeds the refusal window.
+    afd_bus::wake::publish(&booted.bus, fleet.clone()).await;
+    event
+}
+
+/// The ledger row for [`enqueue_unsupported`]: its id, which is the event's.
+async fn insert_turn(
+    booted: &Booted,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event_type: &str,
+    now: Timestamp,
+) -> Uuid7 {
+    let row_id = Uuid7::encode(
+        now,
+        Entropy::new()
+            .uuid_randomness()
+            .expect("the host's entropy must answer"),
+    )
+    .expect("a version-7 id");
+    sqlx::query(
+        "INSERT INTO thread.turns
+           (id, thread_id, workspace_id, producer, producer_key, payload_digest,
+            actor, kind, status, request_json, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $1, $5, $6, $7, $10, $8::jsonb, $9, $9)",
+    )
+    .bind(&row_id)
+    .bind(fleet)
+    .bind(workspace)
+    .bind(Producer::Steer.as_str())
+    .bind(UNCHECKED_DIGEST)
+    .bind(ACTOR)
+    .bind(event_type)
+    .bind(REQUEST_JSON)
+    .bind(now.to_sqlx())
+    .bind(af_core::turn::status::QUEUED)
+    .execute(
+        &mut *booted
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection"),
+    )
+    .await
+    .expect("the turn row must insert");
+    row_id
+}

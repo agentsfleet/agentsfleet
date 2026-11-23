@@ -14,9 +14,8 @@ use serde_json::{Map, Value};
 
 use super::predicate::{is_branch_name, is_repository, is_token};
 use super::{
-    Access, Budget, Context, Gates, MAX_BASE_BRANCH_LEN, MAX_CREDENTIAL_LEN, MAX_CREDENTIALS,
-    MAX_REFERENCE_LEN, MAX_REPOSITORIES, MAX_REPOSITORY_LEN, MAX_TOOL_LEN, MAX_TOOLS, Network,
-    Trigger,
+    Access, Budget, Context, Gates, MAX_BASE_BRANCH_LEN, MAX_CREDENTIAL_LEN, MAX_REFERENCE_LEN,
+    MAX_REPOSITORY_LEN, MAX_TOOL_LEN, Network, Trigger,
 };
 
 /// The `config` member of a Definition: the fleet's name and its runtime settings.
@@ -63,15 +62,12 @@ pub(crate) struct Runtime {
     #[cfg_attr(feature = "openapi", schema(nullable = false))]
     pub(crate) triggers: Option<Vec<Trigger>>,
     /// The tools this fleet may call. An empty list means the fleet only answers.
-    #[garde(inner(
-        length(max = MAX_TOOLS),
-        inner(length(chars, min = 1, max = MAX_TOOL_LEN), custom(is_token))
-    ))]
+    #[garde(inner(inner(length(chars, min = 1, max = MAX_TOOL_LEN), custom(is_token))))]
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) tools: Option<Vec<String>>,
     /// The workspace secrets this fleet may read, by name.
     // Their CHARSET is `CredentialName`'s.
-    #[garde(inner(length(max = MAX_CREDENTIALS), inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN))))]
+    #[garde(inner(inner(length(chars, min = 1, max = MAX_CREDENTIAL_LEN))))]
     pub(crate) credentials: Option<Vec<String>>,
     /// The hosts this fleet may reach.
     #[garde(dive)]
@@ -80,7 +76,7 @@ pub(crate) struct Runtime {
     #[garde(dive)]
     #[cfg_attr(feature = "openapi", schema(required = true, nullable = false))]
     pub(crate) budget: Option<Budget>,
-    /// Which tool actions need a person's approval, and which repeated actions stop a run.
+    /// Which tool actions need a person's approval.
     #[garde(dive)]
     pub(crate) gates: Option<Gates>,
     /// The model this fleet runs on, passed to the runner unchanged.
@@ -103,7 +99,7 @@ pub(crate) struct Runtime {
     // Refuses an empty list: a binding that names nothing is not "every
     // repository", and a token scoped to nothing cannot mint.
     #[garde(inner(
-        length(min = 1, max = MAX_REPOSITORIES),
+        length(min = 1),
         inner(length(chars, min = 1, max = MAX_REPOSITORY_LEN), custom(is_repository))
     ))]
     pub(crate) repositories: Option<Vec<String>>,

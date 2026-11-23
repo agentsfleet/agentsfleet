@@ -1,13 +1,14 @@
 //! Safe caller-facing sentences for every native failure.
 
+use af_core::error::{DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE};
+
 use super::super::{
     DETAIL_BUDGET_EXHAUSTED, DETAIL_CONFIG_UNREADABLE, DETAIL_CONNECTOR_MINT_FAILED,
-    DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
-    DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
-    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT,
-    DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_CONNECTOR_RECONNECT, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
+    DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED,
+    DETAIL_MINT_UNCONFIGURED, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_RUN_LOST, DETAIL_RUN_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error,
+    ErrorKind,
 };
 
 impl Error {
@@ -26,42 +27,41 @@ impl Error {
     #[must_use]
     pub fn detail(&self) -> &'static str {
         match self.inner.kind {
-            ErrorKind::TaskStorage { .. } | ErrorKind::TaskStorageSigning { .. } | ErrorKind::TaskStorageSigningParameters { .. } | ErrorKind::TaskStorageRequest { .. } | ErrorKind::TaskStorageDeadline { .. } => crate::task::TaskRefusal::StorageUnavailable.detail(),
-            ErrorKind::TaskRemote { .. } | ErrorKind::TaskRemoteStatus { .. } | ErrorKind::TaskRemoteDeadline { .. } | ErrorKind::TaskRemoteCooldown { .. } => crate::task::TaskRefusal::EffectUncertain.detail(),
-            ErrorKind::TaskMutation { ref source, .. } => source.detail(),
-            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::task::TaskRefusal::DecisionUnavailable.detail(),
+            ErrorKind::DurableTaskStorage { .. } | ErrorKind::DurableTaskStorageSigning { .. } | ErrorKind::DurableTaskStorageSigningParameters { .. } | ErrorKind::DurableTaskStorageRequest { .. } => crate::durable_task::DurableTaskRefusal::StorageUnavailable.detail(),
+            ErrorKind::DurableTaskRemote { .. } | ErrorKind::DurableTaskRemoteStatus { .. } | ErrorKind::DurableTaskRemoteCooldown { .. } => crate::durable_task::DurableTaskRefusal::EffectUncertain.detail(),
+            ErrorKind::DurableTaskMutation { ref source, .. } => source.detail(),
+            ErrorKind::DecisionRequest { .. } | ErrorKind::DecisionDeadline { .. } => crate::durable_task::DurableTaskRefusal::DecisionUnavailable.detail(),
             // The one kind whose sentence the CALL SITE chose: a rejection
             // names the field it refused. Every other kind's sentence is
             // decided here or by the crate it delegates to, so no handler can
             // describe one failure two ways.
             ErrorKind::Rejected { detail } => detail,
-            ErrorKind::TaskPrecondition { .. } => "the task resource version changed",
-            ErrorKind::TaskControlConflict { .. } => crate::task::TaskRefusal::StaleState.detail(),
-            ErrorKind::TaskRefused { reason } => reason.detail(),
+            ErrorKind::DurableTaskPrecondition { .. } => "the task resource version changed",
+            ErrorKind::DurableTaskControlConflict { .. } => crate::durable_task::DurableTaskRefusal::StaleState.detail(),
+            ErrorKind::DurableTaskRefused { reason } => reason.detail(),
             ErrorKind::TurnCheckpointRefused { reason } | ErrorKind::TurnCheckpointFailure { reason, .. } => reason.detail(),
-            ErrorKind::TaskTargetCounter { .. } => crate::task::TaskRefusal::InvalidTarget.detail(),
             ErrorKind::Memory { ref source } => source.detail(),
             ErrorKind::Runner { ref source } => source.detail(),
-            ErrorKind::Authoring { ref source } => source.detail(),
-            ErrorKind::Admission { ref source } | ErrorKind::TaskControlAdmission { ref source, .. } => source.detail(),
-            ErrorKind::Datastore { .. } | ErrorKind::TaskReadTimeout { .. } | ErrorKind::TaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
+            ErrorKind::Setup { ref source } => source.detail(),
+            ErrorKind::TurnWrite { ref source } | ErrorKind::DurableTaskControlTurn { ref source, .. } => source.detail(),
+            ErrorKind::Datastore { .. } | ErrorKind::DurableTaskReadTimeout { .. } | ErrorKind::DurableTaskStatementCancelled { .. } => DETAIL_DATABASE_UNAVAILABLE,
             // A corrupt sequence joins the two row faults: all three are the
             // database holding something this daemon cannot use, and a caller
             // is told the same thing because there is nothing it can do about
             // any of them.
             ErrorKind::Context { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskState { .. }
-            | ErrorKind::TaskDocument { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskState { .. }
+            | ErrorKind::DurableTaskDocument { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
-            // The obligation is a PostgreSQL row, so a ledger fault reads as a
+            // The delivery is a PostgreSQL row, so a ledger fault reads as a
             // database error and not a queue one. `afd_outbound::Error` can
             // also carry a QUEUE failure, but not on any path that reaches
-            // here: this crate calls only `obligation::owe` and
-            // `obligation::receipt`, and neither touches the stream.
+            // here: this crate calls only `delivery::owe` and
+            // `delivery::receipt`, and neither touches the stream.
             | ErrorKind::Outbound { .. }
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt => DETAIL_DATABASE_ERROR,
@@ -74,14 +74,12 @@ impl Error {
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
             ErrorKind::SetupUnavailable => "The fleet needs a reviewed native setup before it can run",
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
-            ErrorKind::LeaseNotFound => DETAIL_LEASE_NOT_FOUND,
-            ErrorKind::LeaseLost => DETAIL_LEASE_LOST,
-            ErrorKind::LeaseCancelled => super::super::DETAIL_LEASE_CANCELLED,
-            ErrorKind::LeaseMaxRuntime => DETAIL_LEASE_MAX_RUNTIME,
+            ErrorKind::RunNotFound => DETAIL_RUN_NOT_FOUND,
+            ErrorKind::RunLost => DETAIL_RUN_LOST,
+            ErrorKind::RunCancelled => super::super::DETAIL_RUN_CANCELLED,
             ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
             ErrorKind::MessageNoChannel => DETAIL_MESSAGE_NO_CHANNEL,
-            ErrorKind::MessageLimitReached => DETAIL_MESSAGE_LIMIT,
             ErrorKind::IntegrationNotConnected => DETAIL_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => DETAIL_MINT_UNCONFIGURED,
             ErrorKind::GithubReconnectRequired => DETAIL_GITHUB_RECONNECT,

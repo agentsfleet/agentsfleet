@@ -70,7 +70,7 @@ async fn a_purge_commits_its_database_deletion() {
 }
 
 /// Serialises fixture DDL with every other suite's, so two trigger installs on
-/// one table cannot deadlock; the value is the one the authoring fixture takes.
+/// one table cannot deadlock; the value is the one the setup fixture takes.
 const FIXTURE_DDL_LOCK: i64 = 0x6166_645f_6974;
 
 /// Runs `statements` as one transaction under [`FIXTURE_DDL_LOCK`], as the

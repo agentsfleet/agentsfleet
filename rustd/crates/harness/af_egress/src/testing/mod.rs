@@ -1,10 +1,10 @@
 //! Fakes for the suites that drive egress without a socket or a daemon.
 //!
 //! [`CountingMint`] answers one token and counts how often it was asked, so a
-//! suite proves a lease mints once. [`RecordingTransport`] records what would
+//! suite proves a run mints once. [`RecordingTransport`] records what would
 //! have reached the wire, credentials in place, and answers what its closure
 //! says, so a suite proves both what was sent and that nothing was.
-//! [`closed`] is a guard that admits nothing, for a suite whose tools never
+//! [`closed`] is a guard that allows nothing, for a suite whose tools never
 //! send. [`FakeResolver`] answers names from a table, for a suite that drives
 //! resolution without DNS.
 
@@ -81,7 +81,7 @@ impl CountingMint {
         Self::with(Answer::Refused(detail.to_owned()), clock)
     }
 
-    /// A mint for a suite whose leases mint nothing: it refuses, and a suite
+    /// A mint for a suite whose runs mint nothing: it refuses, and a suite
     /// that wants to prove no mint happened reads [`CountingMint::asked`].
     #[must_use]
     pub fn never() -> Self {
@@ -238,7 +238,7 @@ pub fn redirected(status: u16, from: &reqwest::Url, target: &str) -> Inbound {
     response
 }
 
-/// The policy a closed guard admits under: no host, no credential.
+/// The policy a closed guard checks requests under: no host, no credential.
 static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
     inference: None,
     model_context_tokens: 0,
@@ -269,7 +269,7 @@ static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPo
 /// The same refusing mint used by suites that expect no credential access.
 static CLOSED_MINT: LazyLock<CountingMint> = LazyLock::new(CountingMint::never);
 
-/// A guard that admits nothing and mints nothing.
+/// A guard that allows nothing and mints nothing.
 #[must_use]
 pub fn closed() -> Egress<'static> {
     Egress::new("", &CLOSED, &*CLOSED_MINT, &SystemClock)

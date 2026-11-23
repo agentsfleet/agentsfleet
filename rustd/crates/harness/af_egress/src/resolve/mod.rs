@@ -2,7 +2,7 @@
 //! answer to: a name any of whose addresses is blocked is refused whole.
 //!
 //! Two paths read it. The supervisor resolves `network.allow` into the kernel
-//! set a lease's sandbox reaches (`afr_supervisor` `egress.rs`), and the
+//! set a run's sandbox reaches (`afr_supervisor` `egress.rs`), and the
 //! guarded client resolves each connection `http_request` or a model provider
 //! makes ([`crate::guarded`]). Both resolve through [`Resolve`] and judge the
 //! answer with [`unblocked`], so a host one path refuses is never a host the
@@ -68,7 +68,7 @@ pub fn unblocked(addresses: Vec<IpAddr>) -> Result<Vec<IpAddr>, BlockedAddress> 
 /// Whether `url` names an address literal [`unblocked`] would refuse.
 ///
 /// A name answers `false`: it is judged by the resolver once it is dialled,
-/// whereas a literal never reaches a resolver, so whoever admits a URL asks
+/// whereas a literal never reaches a resolver, so whoever allows a URL asks
 /// this first. The caller keeps its own refusal.
 #[must_use]
 pub fn blocked_literal(url: &Url) -> bool {

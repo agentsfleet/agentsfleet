@@ -60,7 +60,7 @@ async fn a_job_waiting_for_a_permit_at_shutdown_gives_its_claim_back_unstarted()
             .count()
     };
     assert_eq!(
-        named("outbound_obligation_attempt_failed"),
+        named("outbound_delivery_attempt_failed"),
         IN_FLIGHT_DELIVERIES,
         "only the started jobs counted a cycle"
     );

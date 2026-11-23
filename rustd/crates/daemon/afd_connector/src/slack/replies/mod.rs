@@ -4,8 +4,7 @@
 //! page at a time. The fleet needs the parent — in an incident channel that is
 //! the CI announcement carrying the run link — and the latest replies, which
 //! is what the people in the thread have said since. So every page is read and
-//! a bounded window keeps the parent and the newest [`MAX_MESSAGES`] minus one
-//! replies; a thread of any length costs the same memory.
+//! every message is kept.
 //!
 //! # One deadline for the whole read
 //!
@@ -34,7 +33,7 @@ use af_crypto::secret::SecretString;
 use serde::Deserialize;
 use serde_json::Value;
 
-use self::shown::{Window, flatten};
+use self::shown::flatten;
 use super::answered::MessageMetadata;
 use super::{SLACK_API_BASE, Thread};
 use crate::connect::Connectors;
@@ -46,9 +45,6 @@ pub(super) const METHOD_CONVERSATIONS_REPLIES: &str = "/conversations.replies";
 
 /// How long the whole read may take, every page included.
 pub const READ_DEADLINE: Duration = Duration::from_millis(1_500);
-
-/// The most messages one read keeps: the parent and the latest replies.
-pub const MAX_MESSAGES: usize = 20;
 
 /// How many messages one page asks for; Slack advises no more than 200.
 const PAGE_LIMIT: &str = "200";
@@ -110,13 +106,11 @@ pub struct Message {
     pub text: String,
 }
 
-/// A thread as read: the parent, then the latest replies.
+/// A thread as read: the parent, then every reply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Replies {
-    /// At most [`MAX_MESSAGES`], oldest first.
+    /// Every message the thread held, oldest first.
     pub messages: Vec<Message>,
-    /// Every message the thread held, kept or not.
-    pub seen: usize,
 }
 
 /// One page of Slack's answer. Every field defaults, so a 200 that is JSON
@@ -170,11 +164,19 @@ impl Connectors {
         token: &SecretString,
         thread: &Thread,
     ) -> Result<Replies, Unavailable> {
-        replies(&self.client, self.exchange.pinned_endpoint(), token, thread).await
+        replies(
+            &self.client,
+            self.exchange.pinned_endpoint(),
+            token,
+            thread,
+            self.timing.slack_read,
+        )
+        .await
     }
 }
 
-/// Reads `thread`: every page, under [`READ_DEADLINE`].
+/// Reads `thread`: every page, under `deadline` (the deployment's
+/// `[connectors.slack] read_timeout_ms`).
 ///
 /// # Errors
 /// The [`Unavailable`] reason the read failed for. A pin that is not a usable
@@ -185,31 +187,29 @@ pub async fn replies(
     pinned: Option<&str>,
     token: &SecretString,
     thread: &Thread,
+    deadline: Duration,
 ) -> Result<Replies, Unavailable> {
     let vendor = format!("{SLACK_API_BASE}{METHOD_CONVERSATIONS_REPLIES}");
     let endpoint = endpoint::redirected(&vendor, pinned).ok_or(Unavailable::Unreachable)?;
-    tokio::time::timeout(
-        READ_DEADLINE,
-        pages(client, &endpoint, token.expose(), thread),
-    )
-    .await
-    .unwrap_or(Err(Unavailable::Timeout))
+    tokio::time::timeout(deadline, pages(client, &endpoint, token.expose(), thread))
+        .await
+        .unwrap_or(Err(Unavailable::Timeout))
 }
 
-/// Every page of the thread, folded into the parent and the latest replies.
+/// Every page of the thread, flattened in thread order.
 async fn pages(
     client: &reqwest::Client,
     endpoint: &str,
     token: &str,
     thread: &Thread,
 ) -> Result<Replies, Unavailable> {
-    let mut window = Window::default();
+    let mut messages = Vec::new();
     walk(client, endpoint, token, thread, None, |posted| {
-        window.push(flatten(posted));
+        messages.push(flatten(posted));
         ControlFlow::Continue(())
     })
     .await?;
-    Ok(window.into_replies())
+    Ok(Replies { messages })
 }
 
 /// Hands every message of the thread to `visit`, oldest first and a page at
@@ -218,8 +218,8 @@ async fn pages(
 /// `oldest`, a Slack timestamp, starts the read there instead of at the
 /// thread's first message.
 ///
-/// The one cursor loop both readers share: the mention's, which keeps a
-/// window, and the answer check, which stops at the first marker it knows.
+/// The one cursor loop both readers share: the mention's, which keeps every
+/// message, and the answer check, which stops at the first marker it knows.
 pub(super) async fn walk(
     client: &reqwest::Client,
     endpoint: &str,

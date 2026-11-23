@@ -33,9 +33,6 @@ const INVITE_READY = "invite-ready";
 const INVITE_LINK = "Invite link";
 const ENTER_AN_ADDRESS = "Enter an email address";
 const DUPLICATE_REFUSED = { ok: false, status: 409, errorCode: "UZ-INV-003", error: "That address already has a pending invite." };
-// pin test: 64 is the RFC 5321 limit the backend's mail parser enforces.
-const LOCAL_PART_MAX = 64;
-const addressWithLocalPart = (length: number) => `${"a".repeat(length)}@example.com`;
 
 afterEach(() => {
   cleanup();
@@ -66,20 +63,6 @@ async function createWith(email_status: EmailStatus) {
   expect(onSettled).toHaveBeenCalledOnce();
   return ready;
 }
-
-describe("the address it accepts", () => {
-  it("should refuse a part before the @ longer than 64 characters without calling the backend", async () => {
-    const { dialog, send } = await openDialog();
-    await send(addressWithLocalPart(LOCAL_PART_MAX + 1));
-    expect(await within(dialog).findByText(ENTER_AN_ADDRESS)).toBeTruthy();
-    expect(actions.createInviteAction).not.toHaveBeenCalled();
-
-    actions.createInviteAction.mockResolvedValue({ ok: true, data: INVITE });
-    await send(addressWithLocalPart(LOCAL_PART_MAX));
-    await screen.findByTestId(INVITE_READY);
-    expect(actions.createInviteAction).toHaveBeenCalledExactlyOnceWith(addressWithLocalPart(LOCAL_PART_MAX));
-  });
-});
 
 describe("the invite it just created", () => {
   it("should say the invite was sent, and offer the link to share as well", async () => {

@@ -12,7 +12,7 @@ it("keeps unavailable definitions and instructions explicit", () => {
   expect(screen.getByText("New fleet")).toBeTruthy();
   expect(screen.getAllByText("Runtime model unavailable in this view").length).toBeGreaterThan(0);
   expect(screen.getByText("Source revision unavailable")).toBeTruthy();
-  expect(screen.getByText("Add instructions before saving or publishing.")).toBeTruthy();
+  expect(screen.getByText("Add instructions before saving.")).toBeTruthy();
   expect(screen.queryByRole("list", {name: "Current readiness"})).toBeNull();
 });
 

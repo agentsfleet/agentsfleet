@@ -1,9 +1,9 @@
-// Model choices and private chats hold one bounded page; the next loads only when asked.
+// Model choices and private chats hold one page; the next loads only when asked.
 
 import type { z } from "zod";
 import type { Draft, DraftCard, WorkspaceModel } from "./draft-types";
 import { DraftCardsSchema, ModelsSchema } from "./draft-types";
-import { losesAccess, setupRequest } from "./draft-request";
+import { losesAccess, setupRequest, SetupUnavailable } from "./draft-request";
 import { DRAFT_LIST, DRAFT_LIST_STATUS, LIST_PAGE_LIMIT, type DraftList, type DraftListsView } from "./draft-list-types";
 type Page<T> = {readonly items: readonly T[]; readonly next_cursor: string | null};
 type ListUpdates = {
@@ -11,14 +11,11 @@ type ListUpdates = {
   failed: (list: DraftList, cause: unknown) => void;
 };
 
-// Stop a bounded search once chat has a choice; retain other configured models for setup review.
-const MAX_MODEL_PAGES_PER_LOAD = 4;
 const RESOURCE = {models: "models", drafts: "drafts"} as const;
 
 export class DraftLists {
   readonly #base: string;
   readonly #removed = new Set<string>();
-  readonly #publications = new Map<string, string | undefined>();
   readonly #loading = new Map<DraftList, Promise<DraftListsView | null>>();
   #models: readonly WorkspaceModel[] = [];
   #cards: readonly DraftCard[] = [];
@@ -33,26 +30,21 @@ export class DraftLists {
   }
 
   clear(): void {
-    this.#generation += 1; this.#loading.clear(); this.#removed.clear(); this.#publications.clear();
+    this.#generation += 1; this.#loading.clear(); this.#removed.clear();
     this.#models = []; this.#cards = []; this.#modelCursor = null; this.#cardCursor = null;
   }
 
   remove(id: string): DraftListsView {
     this.#removed.add(id);
-    this.#publications.delete(id);
     this.#cards = this.#cards.filter((card) => card.id !== id);
     return this.view;
   }
 
   updateDraft(draft: Draft): DraftListsView {
-    const publication = draft.publication?.revision_id;
     this.#cards = this.#cards.map((card) => card.id === draft.id
       ? {...card, title: draft.title, state: draft.state, etag: draft.etag, linked_fleet_id: draft.linked_fleet_id ?? null,
         candidate_revision: summaryRevision(draft.candidate?.revision),
-        setup_revision: card.linked_fleet_id === draft.linked_fleet_id ? card.setup_revision : null,
-        publication_revision: publication && (this.#publications.has(draft.id)
-          ? this.#publications.get(draft.id) === publication : card.etag === draft.etag) ? card.publication_revision : null} : card);
-    this.#publications.set(draft.id, publication);
+        setup_revision: card.linked_fleet_id === draft.linked_fleet_id ? card.setup_revision : null} : card);
     return this.view;
   }
 
@@ -62,7 +54,7 @@ export class DraftLists {
     return this.view;
   }
 
-  /** A completed creation or publication refreshes one summary without moving existing rows or its cursor. */
+  /** A completed creation refreshes one summary without moving existing rows or its cursor. */
   async refreshDraft(id: string, signal: AbortSignal): Promise<DraftListsView> {
     const generation = this.#generation;
     const page = await this.#cardPage(null, signal);
@@ -133,7 +125,12 @@ export class DraftLists {
   async #modelPage(cursor: string | null, signal: AbortSignal): Promise<Page<WorkspaceModel>> {
     let page = await this.#page(DRAFT_LIST.models, ModelsSchema, cursor, signal);
     let items = page.items;
-    for (let read = 1; !items.some(model => model.eligibility.authoring) && page.next_cursor !== null && read < MAX_MODEL_PAGES_PER_LOAD; read += 1) {
+    // Read on until chat has a choice or the server reports no next page; the
+    // other configured models stay for setup review.
+    const followed = new Set<string>();
+    while (!items.some(model => model.eligibility.setup) && page.next_cursor !== null) {
+      if (followed.has(page.next_cursor)) throw new SetupUnavailable("The model list repeated a page. Refresh to load it again.", 502, {list: DRAFT_LIST.models});
+      followed.add(page.next_cursor);
       page = await this.#page(DRAFT_LIST.models, ModelsSchema, page.next_cursor, signal);
       items = appendNew(items, page.items, model => model.ref);
     }

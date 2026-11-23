@@ -3,7 +3,7 @@ use crate::catalogue::{ModelRow, PriceProtocol, prices_for};
 use crate::error::{Result, query};
 use crate::{Model, Models, sql};
 use af_core::id::Uuid7;
-use af_core::paging::{MAX_LIMIT, struct_cursor};
+use af_core::paging::struct_cursor;
 use serde::{Deserialize, Serialize};
 use sqlx::Connection as _;
 const CONTEXT_LIST: &str = "list admin models";
@@ -31,12 +31,13 @@ pub struct ModelPage {
     pub next_cursor: Option<String>,
 }
 impl Models {
-    /// Reads a bounded page. A catalogue edit invalidates continuation tokens.
+    /// Reads a page of `limit` rows, which the caller has already held to its
+    /// list page (`[api]`). A catalogue edit invalidates continuation tokens.
     ///
     /// # Errors
     /// Refuses invalid bounds, malformed/mismatched/stale cursors and datastore failures.
     pub async fn page(&self, limit: u32, starting_after: Option<&str>) -> Result<ModelPage> {
-        if !(1..=MAX_LIMIT).contains(&limit) {
+        if limit == 0 {
             return Err(crate::error::page());
         }
         let cursor = starting_after

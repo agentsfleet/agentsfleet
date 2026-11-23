@@ -1,4 +1,4 @@
-//! One lease's outbound guard: what its tools send passes here first.
+//! One run's outbound guard: what its tools send passes here first.
 
 use std::borrow::Cow;
 
@@ -7,71 +7,71 @@ use af_secrets::StaticSecrets;
 use af_wire::policy::ExecutionPolicy;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
-use crate::admission::{Admission, Draft};
 use crate::error::{Result, raise};
 use crate::mint::Mint;
+use crate::policy::{Draft, EgressPolicy};
 use crate::transport::Outbound;
 use crate::vault::Vault;
 
-/// What every call of one lease sends through.
+/// What every call of one run sends through.
 #[derive(Debug)]
 pub struct Egress<'run> {
-    lease_id: &'run str,
-    admission: Admission<'run>,
+    run_id: &'run str,
+    policy: EgressPolicy<'run>,
     vault: Vault<'run>,
 }
 
 impl<'run> Egress<'run> {
-    /// The guard for lease `lease_id` under `policy`, minting through
+    /// The guard for run `run_id` under `policy`, minting through
     /// `mint`, its minted tokens expiring against `clock`.
     #[must_use]
     pub fn new(
-        lease_id: &'run str,
+        run_id: &'run str,
         policy: &'run ExecutionPolicy<'run>,
         mint: &'run dyn Mint,
         clock: &'run dyn Clock,
     ) -> Self {
         Self {
-            lease_id,
-            admission: Admission::new(policy),
-            vault: Vault::new(lease_id, mint, clock),
+            run_id,
+            policy: EgressPolicy::new(policy),
+            vault: Vault::new(run_id, mint, clock),
         }
     }
 
-    /// `draft`, admitted and with its credentials in place, ready for a
+    /// `draft`, allowed and with its credentials in place, ready for a
     /// transport.
     ///
     /// # Errors
     /// The policy refuses the request, a placeholder names a secret the fleet
     /// lacks, or the daemon would not mint the credential it names.
     pub async fn prepare(&mut self, draft: Draft) -> Result<Outbound> {
-        let admitted = self.admission.admit(draft)?;
-        let headers = self.headers(admitted.headers).await?;
+        let allowed = self.policy.allow(draft)?;
+        let headers = self.headers(allowed.headers).await?;
         Ok(Outbound {
-            method: admitted.method,
-            url: admitted.url,
+            method: allowed.method,
+            url: allowed.url,
             headers,
-            body: admitted.body,
+            body: allowed.body,
             discard_redirect_body: false,
         })
     }
 
-    /// The lease this guard belongs to, for the lines its tools log.
+    /// The run this guard belongs to, for the lines its tools log.
     #[must_use]
-    pub const fn lease_id(&self) -> &'run str {
-        self.lease_id
+    pub const fn run_id(&self) -> &'run str {
+        self.run_id
     }
 
-    /// `text` with every token this lease minted masked.
+    /// `text` with every token this run minted masked.
     #[must_use]
     pub fn mask<'t>(&self, text: &'t str) -> Cow<'t, str> {
         self.vault.mask(text)
     }
 
-    /// The lease's static credentials, for a tool that reads its own.
+    /// The run's static credentials, for a tool that reads its own.
     #[must_use]
     pub const fn statics(&self) -> StaticSecrets<'run> {
-        self.admission.statics()
+        self.policy.statics()
     }
 
     /// The written headers as HTTP carries them, `Authorization` filled in
@@ -83,7 +83,7 @@ impl<'run> Egress<'run> {
                 .map_err(|_invalid| raise::invalid_header(&name))?;
             let sensitive = header == AUTHORIZATION;
             let mut sent = if sensitive {
-                let filled = self.vault.fill(self.admission, &value).await?;
+                let filled = self.vault.fill(self.policy, &value).await?;
                 HeaderValue::from_str(filled.expose())
             } else {
                 HeaderValue::from_str(&value)

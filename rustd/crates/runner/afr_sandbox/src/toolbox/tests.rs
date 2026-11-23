@@ -18,7 +18,7 @@ fn an_adopted_root_is_used_as_given() {
     assert_eq!(toolbox.digest(), "abc");
 }
 
-/// Admission reads the image through one descriptor and refuses before any
+/// Verification reads the image through one descriptor and refuses before any
 /// loop device or mount is needed, so these run unprivileged.
 #[cfg(target_os = "linux")]
 mod refusals {
@@ -40,7 +40,7 @@ mod refusals {
     fn refusal(image: &std::path::Path) -> Option<ToolboxRefusal> {
         let mounts = tempfile::tempdir().unwrap();
         let manifest = Signer::new().manifest(IMAGE);
-        let refused = Toolbox::admit_now(&manifest, image, mounts.path()).err()?;
+        let refused = Toolbox::verify_now(&manifest, image, mounts.path()).err()?;
         refused.toolbox_refusal()
     }
 
@@ -72,7 +72,7 @@ mod refusals {
         assert_eq!(refusal(&other), Some(ToolboxRefusal::Digest));
     }
 
-    /// A path with nothing at it fails the admission as an input/output
+    /// A path with nothing at it fails the verification as an input/output
     /// failure, not a refusal: no image was offered to judge.
     #[test]
     fn should_fail_without_refusing_an_image_that_is_not_there() {
@@ -80,7 +80,7 @@ mod refusals {
         let mounts = tempfile::tempdir().unwrap();
         let manifest = Signer::new().manifest(IMAGE);
 
-        let failed = Toolbox::admit_now(&manifest, &dir.path().join("absent"), mounts.path());
+        let failed = Toolbox::verify_now(&manifest, &dir.path().join("absent"), mounts.path());
 
         assert_eq!(failed.unwrap_err().toolbox_refusal(), None);
     }
@@ -92,10 +92,10 @@ mod refusals {
         let dir = tempfile::tempdir().unwrap();
         let written = fs::File::create(dir.path().join("write-only")).unwrap();
 
-        crate::toolbox::admit::sha256_of(&written).unwrap_err();
+        crate::toolbox::verify::sha256_of(&written).unwrap_err();
     }
 
-    /// A buffered device admits its toolbox, and the admission names the
+    /// A buffered device verifies its toolbox, and the verification names the
     /// caching it took.
     #[test]
     fn test_toolbox_buffered_fallback_is_logged() {
@@ -105,16 +105,16 @@ mod refusals {
             "digest".to_owned(),
         );
 
-        let admitted =
-            crate::toolbox::admit::logged("digest", Ok((toolbox, Some(Caching::Buffered))));
+        let verified =
+            crate::toolbox::verify::logged("digest", Ok((toolbox, Some(Caching::Buffered))));
 
         assert_eq!(
-            admitted.unwrap().root(),
+            verified.unwrap().root(),
             std::path::Path::new("/mounts/digest")
         );
         assert_eq!(
             capture
-                .only("sandbox_toolbox_admission_completed")
+                .only("sandbox_toolbox_verify_completed")
                 .field("caching"),
             Some("buffered")
         );

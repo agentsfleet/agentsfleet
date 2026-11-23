@@ -1,6 +1,6 @@
 import { isPreviewCommand } from "@/lib/streaming/fleet-preview-command";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
-import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import { AGENTSFLEET_TURN_STATUS } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../../activity/tools/presentation/tool-call-shape";
 
@@ -9,33 +9,33 @@ export type RunResource = {key: string; kind: "agent" | "process"; label: string
 type RunResources = {rows: RunResource[]; previews: string[]};
 const CHILD_STATES = new Map<string, ResourceState>([["done", "Done"], ["failed", "Failed"], ["interrupted", "Interrupted"]]);
 const EMPTY: RunResources = {rows: [], previews: []};
-const cache = new WeakMap<FleetEvent, RunResources>();
+const cache = new WeakMap<FleetTurn, RunResources>();
 
 /** Child and terminal session identifiers belong to the run that created them. */
-export function recordedRunResources(event: FleetEvent): RunResources {
-  const known = cache.get(event);
+export function recordedRunResources(turn: FleetTurn): RunResources {
+  const known = cache.get(turn);
   if (known) return known;
-  if (!event.tools?.length) return EMPTY;
+  if (!turn.tools?.length) return EMPTY;
   const rows = new Map<string, RunResource>();
-  const running = event.status === AGENTSFLEET_EVENT_STATUS.RECEIVED ? "Running" : "Last seen running";
+  const running = turn.status === AGENTSFLEET_TURN_STATUS.RECEIVED ? "Running" : "Last seen running";
   const previews = new Set<string>();
-  for (const tool of event.tools) {
-    const row = observeRunTool(tool, event.id, running, rows);
+  for (const tool of turn.tools) {
+    const row = observeRunTool(tool, turn.id, running, rows);
     if (row?.kind === "process" && row.label === "Preview server") {
       // A background server may first print its URL in a subsequent poll.
-      for (const href of previewLinks([tool.outputHead, tool.outputTail].join("\n"), event.reply)) previews.add(href);
+      for (const href of previewLinks([tool.outputHead, tool.outputTail].join("\n"), turn.reply)) previews.add(href);
     }
   }
   const result = rows.size ? {rows: [...rows.values()], previews: [...previews]} : EMPTY;
-  cache.set(event, result);
+  cache.set(turn, result);
   return result;
 }
 
-export function observeRunTool(tool: FleetToolCall, eventId: string, running: "Running" | "Last seen running", rows: Map<string, RunResource>): RunResource | undefined {
+export function observeRunTool(tool: FleetToolCall, turnId: string, running: "Running" | "Last seen running", rows: Map<string, RunResource>): RunResource | undefined {
   const {name, args} = tool;
   if (name === TOOL_NAME.WRITE_STDIN && (tool.status === TOOL_CALL_STATUS.SUCCEEDED || tool.status === TOOL_CALL_STATUS.FAILED)) {
     if (typeof args?.session_id !== "number") return;
-    const row = rows.get(eventId + ":process:" + args.session_id);
+    const row = rows.get(turnId + ":process:" + args.session_id);
     if (!row) return;
     if (tool.exitCode !== undefined) return record(rows, {...row, state: tool.exitCode === 0 ? "Done" : "Failed"});
     if (tool.status === TOOL_CALL_STATUS.FAILED) {
@@ -52,7 +52,7 @@ export function observeRunTool(tool: FleetToolCall, eventId: string, running: "R
     if (!output) return;
     const id = name === TOOL_NAME.SPAWN ? output.child_id : args?.child_id;
     if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return;
-    const key = eventId + ":agent:" + id;
+    const key = turnId + ":agent:" + id;
     if (name === TOOL_NAME.SPAWN) {
       const task = typeof args?.task === "string" ? args.task.trim() : "";
       return record(rows, {key, kind: "agent", label: task || "Agent " + id, state: running, detail: task});
@@ -65,7 +65,7 @@ export function observeRunTool(tool: FleetToolCall, eventId: string, running: "R
       }
     }
   } else if (name === TOOL_NAME.EXEC_COMMAND) {
-    return observeProcess(tool, eventId, running, rows);
+    return observeProcess(tool, turnId, running, rows);
   }
 }
 
@@ -92,12 +92,12 @@ function clippedChildState(tool: FleetToolCall): Record<string, unknown> | null 
   return null;
 }
 
-function observeProcess(tool: FleetToolCall, eventId: string, running: ResourceState, rows: Map<string, RunResource>) {
+function observeProcess(tool: FleetToolCall, turnId: string, running: ResourceState, rows: Map<string, RunResource>) {
   const output = [tool.outputHead, tool.outputTail].filter(Boolean).join("\n").trim();
   const session = /(?:^|\n)Process running with session ID (\d+)$/.exec(output);
   if (session && typeof tool.args?.cmd === "string") {
     const command = tool.args.cmd;
-    const key = eventId + ":process:" + session[1];
+    const key = turnId + ":process:" + session[1];
     const label = isPreviewCommand(command) ? "Preview server" : command.split("\n")[0] || "Command";
     return record(rows, {key, kind: "process", label, state: running, detail: command + "\n" + output});
   }

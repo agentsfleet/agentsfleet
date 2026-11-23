@@ -1,4 +1,4 @@
-//! Dimension 5.4 — error responses keep the envelope clients already read.
+//! Error responses keep the envelope clients already read.
 //!
 //! The envelope is a fixed surface for clients that already exist: the
 //! dashboard reads `user_message`, the CLI reads `error_code`, and support reads
@@ -13,7 +13,7 @@
 )]
 
 use af_core::error_code;
-use afd_api::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
+use afd_http::envelope::{CONTENT_TYPE_PROBLEM_JSON, ProblemResponse};
 
 /// A detail long enough that a truncating envelope would be caught.
 ///
@@ -258,10 +258,10 @@ async fn test_every_code_answers_its_registered_status() {
 /// the refusal rather than issuing another write.
 #[tokio::test]
 async fn test_an_effect_conflict_carries_the_saved_effect() {
-    let effect = af_wire::task::TaskEffect {
+    let effect = af_wire::durable_task::DurableTaskEffect {
         effect_id: "019f0000-0000-7000-8000-000000000001".to_owned(),
         ordinal: 3,
-        state: af_wire::task::TaskEffectState::Unknown,
+        state: af_wire::durable_task::DurableTaskEffectState::Unknown,
         expected_head: "a".repeat(40),
         tested_tree: "b".repeat(40),
         commit: None,

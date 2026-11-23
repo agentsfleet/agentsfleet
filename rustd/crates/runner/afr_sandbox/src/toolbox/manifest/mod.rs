@@ -43,17 +43,10 @@ const EROFS_FEATURES: [&str; 8] = [
     "fragments",
     "dedupe",
 ];
-/// The most bytes a manifest or its signature may hold; a real manifest is
-/// tens of kilobytes and a signature under a hundred bytes.
-pub(crate) const MANIFEST_MAX_BYTES: usize = 1024 * 1024;
-/// The longest architecture name, digest, feature or version a manifest may
-/// carry, and the most features and versions it may list.
-const FIELD_MAX: usize = 128;
 /// A SHA-256 in hexadecimal: sixty-four digits.
 const SHA256_HEX_LEN: usize = 64;
-const LIST_MAX: usize = 64;
 
-/// What admission holds a release to: the key it must be signed with, and the
+/// What verification holds a release to: the key it must be signed with, and the
 /// architecture and runner version this host serves.
 #[derive(Debug, Clone)]
 pub struct Release {
@@ -118,11 +111,6 @@ impl Release {
     /// key's over `manifest`.
     fn check_signature(&self, manifest: &[u8], signature: &[u8]) -> Result<()> {
         let refuse = |detail: &str| toolbox_refused(ToolboxRefusal::Signature, detail);
-        if manifest.len() > MANIFEST_MAX_BYTES || signature.len() > MANIFEST_MAX_BYTES {
-            return Err(refuse(
-                "the manifest or its signature is too large to be one",
-            ));
-        }
         let der = base64::engine::general_purpose::STANDARD
             .decode(signature.trim_ascii())
             .map_err(toolbox_unreadable(
@@ -159,15 +147,15 @@ impl Release {
     }
 }
 
-/// The facts of one release admission checks the image against.
+/// The facts of one release verification checks the image against.
 ///
 /// The manifest records more, every package, the vendored binaries, the
-/// snapshot and the builder, which the release keeps and admission does not
+/// snapshot and the builder, which the release keeps and verification does not
 /// read.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, garde::Validate)]
 pub struct Manifest {
     /// The architecture it was built for.
-    #[garde(length(min = 1, max = FIELD_MAX))]
+    #[garde(length(min = 1))]
     arch: String,
     /// The image's length in bytes.
     #[garde(range(min = 1))]
@@ -177,10 +165,10 @@ pub struct Manifest {
     #[garde(length(bytes, equal = SHA256_HEX_LEN), custom(charset(lower_hex::is_digit)))]
     sha256: String,
     /// The EROFS features the image uses.
-    #[garde(length(max = LIST_MAX), inner(length(min = 1, max = FIELD_MAX)))]
+    #[garde(inner(length(min = 1)))]
     erofs_features: Vec<String>,
     /// The runner versions it serves.
-    #[garde(length(min = 1, max = LIST_MAX), inner(length(min = 1, max = FIELD_MAX)))]
+    #[garde(length(min = 1), inner(length(min = 1)))]
     runner_versions: Vec<String>,
 }
 

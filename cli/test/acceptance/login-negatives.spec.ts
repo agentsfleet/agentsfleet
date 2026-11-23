@@ -58,7 +58,7 @@ const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 const CODE_PROMPT_RE = /6-digit verification code/i;
-const RETRY_WARN_RE = /didn't match|one more try/i;
+const RETRY_WARN_RE = /didn't match|try again/i;
 const WRONG_CODE = "000000";
 const HANDSHAKE_TIMEOUT_MS = 60_000;
 const INTERRUPT_EXIT_CODE = 130;
@@ -331,7 +331,7 @@ if (!isLive) {
           cli.writeLine(WRONG_CODE);
 
           // Server 400 UZ-AUTH-011 → VerificationFailedError → the CLI warns
-          // and loops back to the prompt (one wrong-code strike spent).
+          // and loops back to the prompt; the server counts wrong codes.
           await cli.waitForLine((line) => RETRY_WARN_RE.test(line), HANDSHAKE_TIMEOUT_MS);
           cli.writeLine(realCode);
 

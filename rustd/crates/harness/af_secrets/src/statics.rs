@@ -1,4 +1,4 @@
-//! A lease's static credentials, read the one way every caller reads them.
+//! A run's static credentials, read the one way every caller reads them.
 //!
 //! `secrets_map` is free-form by design: `{"github": {"token": "…", "host":
 //! "api.github.com"}}`. A credential is an object of string fields, and its
@@ -18,10 +18,10 @@ pub const FIELD_HOST: &str = "host";
 /// only field, and the one a static credential's handler reads.
 pub const FIELD_TOKEN: &str = "token";
 
-/// The static credentials one lease carries.
+/// The static credentials one run carries.
 ///
 /// Its `Debug` names the credentials and prints none of their fields, so a
-/// lease or a tool context logged whole holds no secret.
+/// run or a tool context logged whole holds no secret.
 #[derive(Clone, Copy, Default)]
 pub struct StaticSecrets<'p> {
     credentials: Option<&'p Map<String, Value>>,

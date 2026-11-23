@@ -21,7 +21,7 @@ use futures_util::stream::BoxStream;
 use tokio::time::Instant;
 
 use super::revocable::{Membership, Recheck, STREAM_FLEET, Turn, Verdict, Watch, until_revoked};
-use crate::services::Services;
+use crate::services::TenantPlane;
 
 /// How often an open fleet stream re-asks its caller's access.
 ///
@@ -37,7 +37,7 @@ struct Guard<R> {
 }
 
 /// `frames`, ended with `access_revoked` once `principal` loses `workspace`.
-pub(super) fn guarded<D: Services>(
+pub(super) fn guarded<D: TenantPlane>(
     frames: BoxStream<'static, Frame>,
     services: Arc<D>,
     principal: Principal,
@@ -64,7 +64,7 @@ async fn step<R: Recheck>(mut guard: Guard<R>) -> Option<Turn<Guard<R>>> {
             () = tokio::time::sleep_until(guard.next_check) => {
                 guard.next_check = Instant::now() + RECHECK_INTERVAL;
                 match guard.watch.verdict().await {
-                    Verdict::Admitted | Verdict::Deferred => {}
+                    Verdict::Admitted => {}
                     Verdict::Revoked => return Some(Turn::Revoked),
                     // An outage is not a revocation: the stream ends with no
                     // frame, and the reconnect is authorized at open.

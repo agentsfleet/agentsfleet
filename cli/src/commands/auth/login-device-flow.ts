@@ -50,12 +50,6 @@ import {
 } from "./login-device-flow-types.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 
-// Wrong-code budget for the interactive verify prompt. Only a wrong code
-// (UZ-AUTH-011 → VerificationFailedError) spends a strike; the 6-digit shape
-// is validated client-side before submit, so a malformed code never reaches
-// the server. Separate from the server's session-level MAX_VERIFY_ATTEMPTS (5).
-const MAX_CLI_VERIFY_ATTEMPTS = 2;
-
 // Server code for a malformed verification code (not 6 digits). Identifier
 // matches ERR_INVALID_VERIFICATION_CODE, declared in
 // rustd/crates/foundation/af_core/src/error_code/auth.rs.
@@ -245,8 +239,8 @@ export const verifyAndDecrypt = (
 
 // Interactive code submission. The 6-digit shape is validated client-side
 // (promptVerificationCode), so only a wrong code (UZ-AUTH-011 →
-// VerificationFailedError) reaches here and spends one of
-// MAX_CLI_VERIFY_ATTEMPTS strikes. DecryptError and terminal-state
+// VerificationFailedError) reaches here and prompts again: the server counts
+// wrong codes and ends the session, answering 410. DecryptError and terminal-state
 // ServerErrors (410 expired/aborted) propagate without retry — protocol or
 // session breakage, not a human typo. SIGINT/EOF at the prompt surfaces as
 // InterruptedError. --no-input aborts before any prompt — the verification
@@ -266,7 +260,7 @@ export const verifyAndDecryptWithRetry = (
       );
     }
     const output = yield* Output;
-    const submit = (strikesLeft: number): Effect.Effect<string, CliError, HttpClient | Input | Output> =>
+    const submit = (): Effect.Effect<string, CliError, HttpClient | Input | Output> =>
       Effect.gen(function* () {
       const code = yield* promptVerificationCode(opts.signal);
       const attempt = yield* verifyAndDecrypt(sessionId, keypair, code).pipe(
@@ -276,11 +270,9 @@ export const verifyAndDecryptWithRetry = (
         ),
       );
       if (attempt.kind === STATUS_OK) return attempt.token;
-      const remaining = strikesLeft - 1;
-      if (remaining <= 0) return yield* Effect.fail(attempt.err);
-      yield* output.warn("verification code didn't match — one more try");
-        return yield* submit(remaining);
+      yield* output.warn("verification code didn't match — try again");
+        return yield* submit();
       });
-    return yield* submit(MAX_CLI_VERIFY_ATTEMPTS);
+    return yield* submit();
   });
 const STATUS_OK = "ok" as const;

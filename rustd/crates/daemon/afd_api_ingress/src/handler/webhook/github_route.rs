@@ -28,7 +28,7 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use afd_http::handler::{FleetPath, parse_fleet_id};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
@@ -80,14 +80,13 @@ const SOURCE: &str = "github";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
-    webhook::within_cap(&body)?;
     // The claim key is the BODY's digest, and never the delivery header.
     //
     // GitHub signs the body alone, so `x-github-delivery` is unauthenticated:
@@ -123,17 +122,6 @@ pub(crate) async fn receive<D: Services>(
     let delivery = super::github::Delivery::read(&event, &proven.body).map_err(|_unreadable| {
         Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER)
     })?;
-    let scope = afd_fleet::task::TaskScope {
-        fleet_id: fleet.clone(),
-        workspace_id: proven.binding.workspace().clone(),
-    };
-    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Fleet(scope)) {
-        services
-            .tasks()
-            .record_github_completion(&completion)
-            .await
-            .map_err(Refusal::at(EVENT_APPEND))?;
-    }
     let ingest = delivery.classify(Policy::Manual, services.now());
 
     let digest = match ingest {
@@ -159,7 +147,7 @@ pub(crate) async fn receive<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.stored.id.as_str().into(),
+            turn_id: appended.stored.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )

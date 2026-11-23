@@ -29,7 +29,6 @@ const API_KEYS_LISTED = "API keys" as const;
 
 export interface ApiKeyCreateArgs {
   readonly name: string | undefined;
-  readonly description: string | undefined;
 }
 
 export interface ApiKeyListArgs {
@@ -71,10 +70,8 @@ const API_KEY_ID = "api_key_id" as const;
 const QUERY_STARTING_AFTER = "starting_after" as const;
 const QUERY_SORT = "sort" as const;
 // The list has no paging controls; the client follows next_cursor until the
-// server reports the end. The bound exists so a server that never returns a
-// null cursor cannot spin the walk forever — at the server's default page of
-// 50 it covers 2,000 keys, far past any real tenant.
-const MAX_LIST_WALK_REQUESTS = 40;
+// server reports the end. A cursor already followed would replay the same
+// pages forever, so a repeat fails the walk; no page count does.
 const STATUS_ACTIVE = "active" as const;
 const STATUS_REVOKED = "revoked" as const;
 const TIME_MISSING = "-" as const;
@@ -128,7 +125,7 @@ export const apiKeyCreateEffectFromArgs = (
     const res = yield* http.request<CreatedApiKey>({
       path: TENANT_API_KEYS_PATH,
       method: "POST",
-      body: { key_name: name, description: args.description ?? "" },
+      body: { key_name: name },
       token,
     });
 
@@ -168,10 +165,10 @@ export const apiKeyListEffectFromArgs = (
     // server reports the end. Each page arrives in the requested sort, so
     // the concatenation preserves the global order.
     const keys: ApiKeyRow[] = [];
+    const cursors = new Set<string>();
     let total: number | null = null;
     let cursor: string | undefined;
-    let completed = false;
-    for (let requests = 0; requests < MAX_LIST_WALK_REQUESTS && !completed; requests += 1) {
+    for (;;) {
       const res = yield* http.request<ApiKeyListResponse>({
         path: queryForList(sort, cursor),
         token,
@@ -179,16 +176,17 @@ export const apiKeyListEffectFromArgs = (
       keys.push(...(res.items ?? []));
       total = res.total ?? total;
       const next = res.next_cursor ?? null;
-      if (next === null) completed = true;
-      else cursor = next;
-    }
-    if (!completed) {
-      return yield* Effect.fail(
-        new UnexpectedError({
-          detail: `the API key list did not end after ${MAX_LIST_WALK_REQUESTS} pages`,
-          suggestion: "retry; if it persists, report the server's runaway next_cursor",
-        }),
-      );
+      if (next === null) break;
+      if (cursors.has(next)) {
+        return yield* Effect.fail(
+          new UnexpectedError({
+            detail: `the API key list repeated page cursor ${next}`,
+            suggestion: "retry; if it persists, report the server's repeating next_cursor",
+          }),
+        );
+      }
+      cursors.add(next);
+      cursor = next;
     }
 
     if (output.format !== OUTPUT_FORMAT.text) {

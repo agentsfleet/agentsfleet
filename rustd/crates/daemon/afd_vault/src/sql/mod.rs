@@ -114,7 +114,7 @@ pub(crate) const SELECT_SECRET_ENVELOPE: &str = include_str!("select_secret_enve
 //
 //   1. `vault.secrets (workspace_id, key_name)`          FOR UPDATE
 //   2. `model.tenant_models` for that ref, by id         FOR UPDATE
-//   3. `model.tenant_selections` for the tenant          FOR UPDATE
+//   3. `model.tenant_models` the tenant selected         FOR UPDATE
 //
 // Order is the deadlock-freedom argument, and it is why these live together
 // rather than being spelled at each call site: a protocol every caller
@@ -151,15 +151,15 @@ pub(crate) const OWNING_TENANT: &str = include_str!("owning_tenant.sql");
 /// opposite orders deadlock each other.
 pub(crate) const LOCK_ENTRIES: &str = include_str!("lock_entries.sql");
 
-/// Step 3. The tenant's active selection, locked.
+/// Step 3. The tenant's selected `model.tenant_models` row, locked.
 ///
 /// `$1` tenant.
 ///
 /// Locked even when the caller does not intend to write it: activation and
 /// deletion both read it to decide, and a decision made against an unlocked row
 /// is a decision made against a row that can change before the commit. Zero
-/// rows is normal — a tenant that has never chosen a model — and the lock is
-/// then a no-op.
+/// rows is normal — a tenant on the platform default — and the lock is then a
+/// no-op.
 pub(crate) const LOCK_SELECTION: &str = include_str!("lock_selection.sql");
 
 /// Removes the credential, inside the transaction that locked it.

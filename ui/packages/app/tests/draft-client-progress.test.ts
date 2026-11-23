@@ -90,7 +90,7 @@ it("ignores an empty cached snapshot while loading an authorized draft", async (
   const client = await fixture.ready();
   await client.resume(DRAFT.id, {draft: null, messages: [], model: "foreign-model", truncated: true});
   expect(client.getSnapshot()).toMatchObject({draft: DRAFT, truncated: false});
-  expect(client.getSnapshot().model).toBe(DRAFT.authoring_model_ref);
+  expect(client.getSnapshot().model).toBe(DRAFT.setup_model_ref);
 });
 
 it("shows cached history immediately while its authoritative draft read is pending", async () => {
@@ -102,7 +102,7 @@ it("shows cached history immediately while its authoritative draft read is pendi
     return undefined;
   };
   const loading = client.resume(DRAFT.id, {draft: DRAFT, messages: [{...MESSAGE, text: "Cached history"}],
-    model: DRAFT.authoring_model_ref, truncated: false});
+    model: DRAFT.setup_model_ref, truncated: false});
   expect(client.getSnapshot().messages[0]?.text).toBe("Cached history");
   pending.resolve(response(DRAFT));
   await loading;

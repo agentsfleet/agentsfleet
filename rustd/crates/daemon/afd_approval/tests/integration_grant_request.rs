@@ -81,10 +81,10 @@ async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
 }
 
 /// Every gate this suite's kind raised on the lane's fleet, as
-/// `(action_id, evidence service, event_id)`.
+/// `(action_id, evidence service, turn_id)`.
 async fn cards(lane: &Lane) -> Vec<(Uuid7, Option<String>, Option<Uuid7>)> {
     sqlx::query_as(
-        "SELECT action_id, evidence->>'service', event_id
+        "SELECT action_id, evidence->>'service', turn_id
            FROM fleet.approval_gates
           WHERE fleet_id = $1 AND gate_type = $2",
     )
@@ -235,7 +235,7 @@ async fn approving_the_card_grants_the_integration() {
 /// Denying the card revokes the grant rather than leaving it pending.
 ///
 /// The half that ends a parked event: the delivery reads `revoked` on its next
-/// poll and writes a terminal row instead of parking again. Proven on the lease
+/// poll and writes a terminal row instead of parking again. Proven on the run
 /// path in `afd_fleet`; proven HERE as the column transition it depends on.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

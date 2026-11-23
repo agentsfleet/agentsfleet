@@ -1,4 +1,4 @@
-//! Setup and recipe changes serialize on the same parent and child rows.
+//! Setup and recipe changes serialize on the fleet's writer turn and the schedule rows.
 
 use super::{Inherited, Recipe, RecipeSet, guard, retire};
 use crate::{Result, Schedules, error::ErrorKind};
@@ -14,9 +14,9 @@ impl Schedules {
         &self,
         connection: &mut PgConnection,
         set: RecipeSet<'_>,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let rows = guard::lock(connection, &set).await?;
-        let mut announcement = afd_events::activity::Announcement::default();
+        let mut announcement = afd_turns::view::activity::Announcement::default();
         for (index, recipe) in set.recipes.iter().enumerate() {
             let slot = i64::try_from(index).map_err(|_overflow| ErrorKind::Exhausted)?;
             let old = rows.iter().find(|row| row.slot == slot);

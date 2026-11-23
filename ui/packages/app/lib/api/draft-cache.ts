@@ -1,6 +1,8 @@
 import type { DraftView } from "./draft-state";
 
 export type CachedDraft = Pick<DraftView, "draft" | "messages" | "model" | "truncated">;
+// An in-memory cache of recently opened chats, sized to the tab, not to any
+// server rule; a miss reads the chat from the server again.
 const MAX_CHATS = 5;
 const MAX_BYTES = 1024 * 1024;
 const RETAIN_MS = 120_000;

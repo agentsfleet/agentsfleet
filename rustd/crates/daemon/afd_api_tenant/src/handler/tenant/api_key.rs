@@ -3,14 +3,14 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::{Boundary as _, CEILING, Page};
+use af_core::paging::{Boundary as _, Page};
 use afd_api_wire::tenant::{
     ApiKeySummary, MintApiKeyRequest, MintedApiKeyResponse, PageResponse, PatchApiKeyRequest,
     RevokedApiKeyResponse,
 };
 use afd_http::handler::parse_id;
 use afd_tenant::apikey::{
-    ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
+    ApiKeySort, Deactivation, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
 use axum::Json;
 use axum::body::Bytes;
@@ -20,7 +20,7 @@ use http::{HeaderValue, StatusCode, header};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantKeys as _};
+use crate::services::{TenantKeys as _, TenantPlane};
 
 use super::{DETAIL_MALFORMED_BODY, parameter, tenant_of};
 
@@ -68,7 +68,7 @@ const DETAIL_NO_TENANT: &str =
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn mint<D: Services>(
+pub(crate) async fn mint<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     body: Bytes,
@@ -76,18 +76,12 @@ pub(crate) async fn mint<D: Services>(
     let person = identity.person();
     let request = afd_http::handler::read_body::<MintApiKeyRequest<'_>>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_BODY))?;
-    let (name, description) = KeyName::parse(&request.key_name)
-        .and_then(|name| {
-            Description::parse(request.description.as_deref())
-                .map(|description| (name, description))
-        })
-        .map_err(Refusal::at(EVENT_MINT))?;
+    let name = KeyName::parse(&request.key_name).map_err(Refusal::at(EVENT_MINT))?;
 
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
     let mint = MintRequest {
         tenant: &tenant,
         name,
-        description,
         created_by: person.subject().as_str(),
     };
 
@@ -121,15 +115,16 @@ pub(crate) async fn mint<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name), CEILING)
-        .map_err(|refusal| Refusal::malformed(refusal.detail()))?;
+    let ceiling = services.pages().list;
+    let page = Page::<ApiKeySort>::parse(|name| parameter(&query, name), ceiling)
+        .map_err(|refusal| afd_http::paging::refused(refusal, ceiling))?;
 
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 
@@ -165,7 +160,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn revoke<D: Services>(
+pub(crate) async fn revoke<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(key_id): Path<String>,
@@ -211,7 +206,7 @@ pub(crate) async fn revoke<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     Path(key_id): Path<String>,

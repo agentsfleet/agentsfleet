@@ -28,8 +28,8 @@ pub use self::egress::EgressRefusal;
 #[cfg(target_os = "linux")]
 pub use self::egress::Step;
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, egress_refused, lease_id_unsafe,
-    not_inherited, program, refused, toolbox_refused, toolbox_unreadable, unconfined,
+    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, egress_refused, not_inherited,
+    program, refused, run_id_unsafe, toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{netlink, not_ready};
@@ -51,14 +51,14 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    /// The host lacks something every sandbox needs, so no lease runs here.
+    /// The host lacks something every sandbox needs, so no run runs here.
     #[error("this host cannot build a sandbox: {missing} is unavailable")]
     Refused {
         /// The missing mechanism, as the capability report names it.
         missing: &'static str,
     },
 
-    /// A toolbox release failed one of admission's checks, before anything
+    /// A toolbox release failed one of verification's checks, before anything
     /// of it was mounted.
     #[error("the toolbox release was refused ({refusal}): {detail}")]
     ToolboxRefused {
@@ -174,20 +174,20 @@ pub(crate) enum ErrorKind {
         detail: &'static str,
     },
 
-    /// A lease identifier that is not one plain path component.
-    #[error("the lease identifier {lease_id:?} is not a single path component")]
-    LeaseIdUnsafe {
+    /// A run identifier that is not one plain path component.
+    #[error("the run identifier {run_id:?} is not a single path component")]
+    RunIdUnsafe {
         /// The identifier as it arrived.
-        lease_id: String,
+        run_id: String,
     },
 
     /// The unsandboxed engine was asked for in a release build.
     #[error("a release build never runs a tool call unsandboxed")]
     UnsandboxedInRelease,
 
-    /// A lease's egress cannot be held to what its policy allows, so the lease
+    /// A run's egress cannot be held to what its policy allows, so the run
     /// is refused before its sandbox runs anything.
-    #[error("the lease's egress was refused: {refusal}")]
+    #[error("the run's egress was refused: {refusal}")]
     EgressRefused {
         /// Why.
         refusal: EgressRefusal,
@@ -262,7 +262,7 @@ impl Error {
             | ErrorKind::Task { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::RunIdUnsafe { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(target_os = "linux")]
@@ -299,7 +299,7 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::RunIdUnsafe { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => None,
             #[cfg(target_os = "linux")]
@@ -312,7 +312,7 @@ impl Error {
         }
     }
 
-    /// Which admission check a toolbox release failed, when that is the
+    /// Which verification check a toolbox release failed, when that is the
     /// failure.
     #[must_use]
     pub const fn toolbox_refusal(&self) -> Option<ToolboxRefusal> {
@@ -330,7 +330,7 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::RunIdUnsafe { .. }
             | ErrorKind::UnsandboxedInRelease
             | ErrorKind::EgressRefused { .. } => None,
             #[cfg(target_os = "linux")]
@@ -343,7 +343,7 @@ impl Error {
         }
     }
 
-    /// Why the lease's egress was refused, when that is the failure.
+    /// Why the run's egress was refused, when that is the failure.
     #[must_use]
     pub const fn egress_refusal(&self) -> Option<&EgressRefusal> {
         match self.kind() {
@@ -361,7 +361,7 @@ impl Error {
             | ErrorKind::Executor { .. }
             | ErrorKind::NotInherited { .. }
             | ErrorKind::Unconfined { .. }
-            | ErrorKind::LeaseIdUnsafe { .. }
+            | ErrorKind::RunIdUnsafe { .. }
             | ErrorKind::UnsandboxedInRelease => None,
             #[cfg(target_os = "linux")]
             ErrorKind::NotReady { .. }

@@ -58,7 +58,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantModelEntries as _};
+use crate::services::{TenantModelEntries as _, TenantPlane};
 
 // A query string this daemon cannot decode has no refusal on this surface:
 // `RawQuery` hands over the raw text and `parameter` cannot fail. One fewer
@@ -88,7 +88,7 @@ pub const DETAIL_ENTRY_ID: &str = "id must be a valid UUIDv7";
 pub const DETAIL_MODEL_ID_REQUIRED: &str = "model_id is required";
 
 /// The refusal a model name past its bound earns.
-pub const DETAIL_MODEL_ID_TOO_LONG: &str = "model_id must be at most 256 chars";
+pub const DETAIL_MODEL_ID_TOO_LONG: &str = "model_id must be at most 2595 chars";
 
 /// The refusal a body naming no credential earns.
 ///
@@ -160,7 +160,7 @@ impl StructCursor for Cursor {
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
@@ -181,13 +181,13 @@ const SURFACE: Surface = Surface::TenantModels;
 
 /// [`list`] without the outcome recording, so there is one place the answer is
 /// produced and one place it is classified.
-async fn read_registry<D: Services>(
+async fn read_registry<D: TenantPlane>(
     services: &Arc<D>,
     identity: &PersonIdentity,
     query: Option<String>,
 ) -> Result<Response, Refusal> {
     let raw = query.unwrap_or_default();
-    let limit = requested_limit(&raw)?;
+    let limit = requested_limit(&raw, services.pages().list)?;
     let tenant = tenant_of(
         services,
         identity.person(),

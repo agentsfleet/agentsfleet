@@ -22,7 +22,7 @@ pub(super) const FLEET_A: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 pub(super) const FLEET_B: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const FLEET_C: &str = "01890a5d-ac96-774b-bcce-b302099a80a3";
 const FLEET_D: &str = "01890a5d-ac96-774b-bcce-b302099a80a4";
-pub(super) const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
+pub(super) const RUN: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 const WORKSPACE: &str = "01890a5d-ac96-774b-bcce-b302099a80c1";
 /// The host the filed hold's policy reaches, and one it does not.
 const GITHUB: &str = "api.github.com";
@@ -53,14 +53,14 @@ pub(super) fn holds(workers: usize) -> (Holds, FixedClock) {
 }
 
 pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
-    let request = SandboxRequest::new(LEASE, Limits::default());
+    let request = SandboxRequest::new(RUN, Limits::default());
     engine.prepare(request).await.unwrap()
 }
 
 /// Parks a fresh sandbox for `fleet`, and answers as the keeper did: a
 /// sandbox it refuses is still the caller's to end.
 pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Parked {
-    let parked = holds.park(key(fleet), id(LEASE), sandbox(engine).await);
+    let parked = holds.park(key(fleet), id(RUN), sandbox(engine).await);
     bounded("the keeper's answer to a park", parked).await
 }
 
@@ -98,7 +98,7 @@ pub(super) async fn fleets(holds: &Holds) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_lease() {
+async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_run() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, clock) = holds(2);
@@ -115,7 +115,7 @@ async fn test_a_parked_sandbox_is_taken_by_its_fleets_next_lease() {
     );
     let held = capture.only("sandbox_held");
     assert_eq!(held.field("fleet_id"), Some(FLEET_A));
-    assert_eq!(held.field("lease_id"), Some(LEASE));
+    assert_eq!(held.field("run_id"), Some(RUN));
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 0);
 }
 
@@ -146,7 +146,7 @@ async fn test_mismatch_destroys_the_hold() {
 }
 
 #[tokio::test]
-async fn test_another_fleets_lease_never_takes_or_ends_a_hold() {
+async fn test_another_fleets_run_never_takes_or_ends_a_hold() {
     let capture = Capture::install();
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(2);
@@ -188,7 +188,7 @@ async fn test_saturation_releases_holds() {
     hold(&holds, &engine, FLEET_B).await;
 
     let _first = holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_C),
+        run: id(FLEET_C),
         fleet: id(FLEET_C),
     });
     assert_eq!(
@@ -197,7 +197,7 @@ async fn test_saturation_releases_holds() {
         "one free worker stays reserved"
     );
     let _last = holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_D),
+        run: id(FLEET_D),
         fleet: id(FLEET_D),
     });
     let told = tokio::time::timeout(PROMPT, holds.saturated().notified()).await;
@@ -222,11 +222,11 @@ async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
     hold(&holds, &engine, FLEET_B).await;
 
     let _first = holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_A),
+        run: id(FLEET_A),
         fleet: id(FLEET_A),
     });
     let _last = holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_C),
+        run: id(FLEET_C),
         fleet: id(FLEET_C),
     });
 
@@ -234,17 +234,17 @@ async fn test_the_last_free_worker_keeps_the_hold_of_the_fleet_it_serves() {
 }
 
 #[tokio::test]
-async fn test_a_finished_lease_frees_its_worker() {
+async fn test_a_finished_run_frees_its_worker() {
     let engine = FakeEngine::default();
     let (holds, _clock) = holds(3);
     hold(&holds, &engine, FLEET_A).await;
 
     drop(holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_C),
+        run: id(FLEET_C),
         fleet: id(FLEET_C),
     }));
     let _only = holds.occupy(super::Occupant::Fleet {
-        lease: id(FLEET_D),
+        run: id(FLEET_D),
         fleet: id(FLEET_D),
     });
 

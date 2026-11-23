@@ -32,8 +32,7 @@ use http::{Method, StatusCode};
 use serde_json::Value;
 
 /// A failed run delivered through an App installation.
-const RUN_FAILURE_APP: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_failure_app.json");
+const RUN_FAILURE_APP: &str = afd_api_ingress::test_util::GITHUB_RUN_FAILURE_APP;
 
 /// Where one App's deliveries arrive.
 const PATH: &str = "/v1/ingress/github";
@@ -64,11 +63,9 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
     // approved grant and then by each stored document's repository list.
     let fixture = Fixture::create().await;
     fixture.seed(Mapped::ToWorkspace).await;
-    fixture.seed_completion_owner().await;
     let router = fixture.router();
 
     let body = fixture.delivery(RUN_FAILURE_APP);
-    assert_eq!(fixture.completion_receipts().await, 0);
     let woken = deliver(&router, &body, APP_SECRET).await;
     let status = woken.status();
     let document = json_body(woken).await;
@@ -86,13 +83,11 @@ async fn an_app_delivery_wakes_the_fleet_the_joins_route_it_to() {
          dropped after the routing said it belonged somewhere: {document}"
     );
 
-    assert_eq!(fixture.completion_receipts().await, 1);
     let replay = deliver(&router, &body, APP_SECRET).await;
     let status = replay.status();
     let document = json_body(replay).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{document}");
     assert_eq!(document.get("enqueued").and_then(Value::as_u64), Some(0));
-    assert_eq!(fixture.completion_receipts().await, 1);
 
     fixture.cleanup().await;
 }
@@ -108,7 +103,7 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
     fixture.seed(Mapped::Nowhere).await;
     let router = fixture.router();
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let dropped = deliver(&router, &fixture.delivery(RUN_FAILURE_APP), APP_SECRET).await;
     let status = dropped.status();
     let document = json_body(dropped).await;
@@ -119,7 +114,7 @@ async fn an_installation_this_deployment_never_mapped_is_dropped_not_refused() {
         "{document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "an unmapped installation must wake nothing"
     );
@@ -146,7 +141,7 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
         "the fixture substitution must actually change the repository"
     );
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let dropped = deliver(&router, &elsewhere, APP_SECRET).await;
     let status = dropped.status();
     let document = json_body(dropped).await;
@@ -157,7 +152,7 @@ async fn a_repository_no_fleet_subscribed_to_wakes_nobody() {
         "{document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "a repository nobody subscribed to must wake nothing"
     );
@@ -175,7 +170,7 @@ async fn a_delivery_signed_with_the_wrong_secret_never_reaches_the_joins() {
     fixture.seed(Mapped::ToWorkspace).await;
     let router = fixture.router();
 
-    let before = fixture.fleet_events().await;
+    let before = fixture.fleet_turns().await;
     let refused = deliver(&router, &fixture.delivery(RUN_FAILURE_APP), WRONG_SECRET).await;
     let status = refused.status();
     let document = json_body(refused).await;
@@ -190,7 +185,7 @@ async fn a_delivery_signed_with_the_wrong_secret_never_reaches_the_joins() {
          {document}"
     );
     assert_eq!(
-        fixture.fleet_events().await,
+        fixture.fleet_turns().await,
         before,
         "an unproven delivery must wake nothing"
     );

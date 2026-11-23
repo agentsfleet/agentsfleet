@@ -216,13 +216,24 @@ impl Fixture {
     }
 
     /// Returns the person to having never set a display name.
+    ///
+    /// Replaced rather than updated: `identity.users` is append-only, so the
+    /// same person is written again without the name, in one transaction.
     async fn clear_display_name(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1")
-            .bind(&self.user)
-            .execute(&mut *connection)
+        let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
-            .expect("the display name clears");
+            .expect("the replacement transaction opens");
+        sqlx::query("DELETE FROM identity.users WHERE id = $1")
+            .bind(&self.user)
+            .execute(&mut *transaction)
+            .await
+            .expect("the named row clears");
+        UserSeed::new(&self.user, &self.tenant, &self.subject, EMAIL)
+            .insert(&mut *transaction)
+            .await
+            .expect("the nameless row seeds");
+        transaction.commit().await.expect("the replacement commits");
     }
 
     async fn cleanup(self) {

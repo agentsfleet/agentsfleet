@@ -1,4 +1,4 @@
-// aiToolLayer — resolves the tool (Claude Code, Cursor, etc.) wrapping
+// aiToolLayer — resolves the coding agent, if any, wrapping
 // this Command-Line Interface (CLI) invocation via @vercel/detect-agent
 // (environment-variable inspection of well-known tool signals). Mirrors supabase
 // apps/cli/src/shared/telemetry/ai-tool.layer.ts; adds a 250ms timeout

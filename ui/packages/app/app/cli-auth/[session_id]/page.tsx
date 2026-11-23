@@ -17,7 +17,6 @@ import { CliLoopbackApproval, type ApprovalRequest, type ApprovalResult } from "
 import { watchManualApprovalCompletion } from "@/lib/auth/manual-approval-completion";
 
 const JSON_CONTENT_TYPE = "application/json";
-const REQUEST_TIMEOUT_MS = 15_000;
 
 type UpdateLoad = (state: LoadState) => void;
 type UpdateApproval = (state: ApproveState) => void;
@@ -158,7 +157,7 @@ async function approveLocal(handoff: LoopbackHandoff, request: ApprovalRequest,
     const response = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(handoff.sessionId)}/approve`, {
       method: "PATCH", headers: { "Content-Type": JSON_CONTENT_TYPE, Authorization: `Bearer ${sessionToken}` },
       body: JSON.stringify({ dashboard_public_key: dashboard.publicKeyBase64Url, ...encrypted, verification_code: verificationCode }),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]), redirect: "error",
+      signal, redirect: "error",
     });
     if (response.ok && !response.redirected && !signal.aborted) return { ok: true, verificationCode };
   } catch {

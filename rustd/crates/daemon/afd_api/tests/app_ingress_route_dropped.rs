@@ -28,8 +28,7 @@ use http::StatusCode;
 use serde_json::Value;
 
 /// The same run as [`APP_RUN_FAILURE`], green.
-const APP_RUN_SUCCESS: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_run_success.json");
+const APP_RUN_SUCCESS: &str = afd_api_ingress::test_util::GITHUB_RUN_SUCCESS;
 
 /// A terminal production deployment, as an App sends it.
 ///
@@ -39,8 +38,7 @@ const APP_RUN_SUCCESS: &str =
 /// installation this deployment's scripted lookup answers for, and a repository
 /// a subscriber could match. The payload is here to be classified, and the
 /// point of the test is that classification has nowhere to send it.
-const APP_DEPLOYMENT_STATUS: &str =
-    include_str!("../../../../../tests/fixtures/webhooks/github_deployment_status_app.json");
+const APP_DEPLOYMENT_STATUS: &str = afd_api_ingress::test_util::GITHUB_DEPLOYMENT_STATUS_APP;
 
 /// The kind a production deployment result is.
 ///
@@ -50,30 +48,6 @@ const EVENT_DEPLOYMENT_STATUS: &str = "deployment_status";
 
 /// The reason a delivery no rule classifies is answered with.
 const REASON_UNSUPPORTED: &str = "unsupported_event";
-
-#[tokio::test]
-async fn a_verified_workflow_completion_fails_closed_when_its_store_is_unavailable() {
-    let ingress = deployment(vec![subscriber(signed::FLEET)]);
-    let response = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_WORKFLOW_RUN,
-        APP_SECRET,
-        APP_RUN_FAILURE,
-    )
-    .await;
-    let status = response.status();
-    let document = json_body(response).await;
-    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{document}");
-    assert_eq!(
-        harness::error_code(&document),
-        Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
-    );
-    assert!(
-        ingress.deliveries().is_empty(),
-        "a completion must be retained before investigation fanout"
-    );
-}
 
 /// The reason a 200 carries, which is the whole answer on this surface.
 async fn dropped_for(response: axum::response::Response) -> String {

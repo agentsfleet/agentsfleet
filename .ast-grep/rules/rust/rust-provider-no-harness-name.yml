@@ -1,0 +1,23 @@
+# Provider code states the fact it rests on, never the agent harness it was
+# read from: a comment citing another harness rots when that harness moves,
+# and a reader of a published crate needs the fact, not the lineage. The spec
+# names this check `no_provider_source_names_another_harness`; it lives here
+# because a test never reads the repository (tests-*-repo-read). Manifests and
+# the catalogue rows are TOML and JSON, which carry model ids such as
+# `gpt-5.3-codex`, and stay outside it.
+id: rust-provider-no-harness-name
+language: Rust
+severity: error
+message: provider code names another agent harness; state the fact it rests on instead
+files:
+  - rustd/guffbolt-ai/**/*.rs
+  - rustd/crates/harness/af_providers/**/*.rs
+ignores:
+  - "**/target/**"
+rule:
+  regex: '(?i)\b(ironclaw(_llm)?|codex-rs|pi-ai|pi-agent-core)\b'
+  any:
+    - kind: identifier
+    - kind: string_content
+    - kind: line_comment
+    - kind: block_comment

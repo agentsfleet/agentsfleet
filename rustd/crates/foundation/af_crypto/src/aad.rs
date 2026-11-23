@@ -79,18 +79,6 @@ impl Aad {
         Self(bytes)
     }
 
-    /// Domain-separated ephemeral read custody for one issued external effect.
-    #[must_use]
-    pub fn effect_recovery(workspace: &af_core::id::Uuid7, effect: &af_core::id::Uuid7) -> Self {
-        let mut bytes = b"\0agentsfleet.effect-recovery.v1\0".to_vec();
-        bytes.extend_from_slice(workspace.as_str().as_bytes());
-        bytes.push(0);
-        bytes.extend_from_slice(effect.as_str().as_bytes());
-        bytes.push(0);
-        bytes.extend_from_slice(KEK_VERSION.to_string().as_bytes());
-        Self(bytes)
-    }
-
     /// Builds associated data for the current KEK version.
     #[must_use]
     pub fn new(workspace_id: &str, key_name: &str) -> Self {

@@ -1,5 +1,7 @@
-//! The operator's side of an approval gate: read the queue, answer one, expire
-//! the ones nobody answered.
+//! The operator's side of an approval gate: read the queue and answer one.
+//!
+//! Nothing expires a gate. A read reports `timed_out` for an unanswered gate
+//! past its `expires_at`, and the gate stays answerable.
 //!
 //! # Two sides of one table, and they are not symmetric
 //!
@@ -20,7 +22,7 @@
 //!
 //! # A resolved gate never reopens the row it blocked
 //!
-//! Nothing here writes back to `fleet.events`. The blocked row is
+//! Nothing here writes back to the blocked turn. The blocked row is
 //! terminal by design: a resolved gate lands a NEW event carrying
 //! `actor=continuation:<original>`, so the history keeps both the run that was
 //! stopped and the run that followed from the answer. Re-opening the first
@@ -29,18 +31,15 @@
 mod announce;
 mod resolve;
 mod row;
-mod sweep;
 
 use af_core::id::Uuid7;
-use afd_admission::Admissions;
 use afd_api_wire::approval::GateStatus;
 use afd_bus::Handle;
 use afd_db::Db;
+use afd_turns::Turns;
 use jiff_sqlx::ToSqlx as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
-#[cfg(feature = "test-util")]
-pub use self::sweep::SweptParts;
 
 use self::row::StoredGate;
 use crate::sql;
@@ -64,18 +63,18 @@ pub struct Inbox {
     /// Where an approved gate's continuation is accepted, before anything is
     /// queued. Distinct from [`Self::bus`], which still publishes the
     /// answer frame a watcher sees.
-    admissions: Admissions,
+    turns: Turns,
 }
 
 impl Inbox {
     /// A queue over `database`, continuing approved runs through
-    /// `admissions` and announcing them on `queue`.
+    /// `turns` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, bus: Handle, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, bus: Handle, turns: Turns) -> Self {
         Self {
             database,
             bus,
-            admissions,
+            turns,
         }
     }
 
@@ -106,6 +105,7 @@ impl Inbox {
             .bind(cursor.map(|at| at.created_at.to_sqlx()))
             .bind(cursor.map(|at| at.gate_id))
             .bind(limit)
+            .bind(GateStatus::TimedOut.as_str())
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_PAGE))?;
@@ -126,6 +126,7 @@ impl Inbox {
         let row = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_BY_ID)
             .bind(gate)
             .bind(workspace)
+            .bind(GateStatus::TimedOut.as_str())
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ONE))?;

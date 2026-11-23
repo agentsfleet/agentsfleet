@@ -1,0 +1,28 @@
+id: rust-provider-no-harness-name
+valid:
+  # The fact itself, and words that only contain a name.
+  - |
+    /// Stream idle: 300 s, a silent provider's end.
+    const STREAM_IDLE: Duration = Duration::from_secs(300);
+  - |
+    let model = "gpt-5.3-codex";
+  - |
+    // openapi-ai and api-aisle are other words
+    fn f() {}
+invalid:
+  - |
+    // IronClaw builds its provider layer on the same library.
+    fn f() {}
+  - |
+    use ironclaw_llm::Provider;
+  - |
+    /// Codex's default (`codex-rs/model-provider-info/src/lib.rs:73`).
+    const IDLE: u64 = 300;
+  - |
+    /* as pi-ai does */
+    fn g() {}
+  - |
+    let source = "pi-agent-core";
+  - |
+    // ironclaw keeps the same shape
+    fn h() {}

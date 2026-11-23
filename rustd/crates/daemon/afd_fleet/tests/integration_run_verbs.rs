@@ -1,0 +1,361 @@
+//! The run verbs a run calls mid-flight, against live datastores: its
+//! standing, an interim message, its tool-call records and the write fence a
+//! schedule write proves itself with. Each reads the run through
+//! `live_run.sql` on the database's clock, so a lapsed or superseded holder
+//! is refused the same way by all four.
+//!
+//! Marked `#[ignore]`; `make test-integration-rustd` runs them.
+#![cfg(feature = "test-util")]
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
+use std::borrow::Cow;
+
+use af_wire::message_verb::MessageRequest;
+use af_wire::tool_detail::ToolCallRecordsRequest;
+use afd_connector::Provider;
+use afd_db::Precondition as _;
+use afd_fleet::run::write_fence::WriteFence;
+use afd_turns::{Producer, Reply};
+use sqlx::Connection as _;
+
+use crate::integration_report_owes_destination::stage::stage;
+use crate::report_seed::held;
+use crate::rows::{LAPSE, Row};
+
+/// The thread a message-capable event was asked from.
+const THREAD: &str = "C0FIXTURE/1700000000.000100";
+
+/// How long a message may take while its run row is held by another
+/// transaction, so one that queued behind the holder fails instead of
+/// hanging where no lock timeout is set.
+const HELD_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// One finished call's record of `turn`, as a runner posts it.
+fn record(turn: &str) -> String {
+    format!(
+        r#"{{"call_number":1,"arguments":{{}},"truncated_arguments":false,"output":"ok","output_line_count":1,"truncated":false,"turn_id":"{turn}","kind":"tool_call","tool":"shell","status":"succeeded"}}"#
+    )
+}
+
+/// The runner's own live run answers its standing; another token, another
+/// runner and a lapsed run are each refused.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_standing_answers_only_the_live_holder() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let run = held.issued.run_id.clone();
+    let token = held.fence.as_u64();
+
+    let standing = plane
+        .standing(&held.runner, run.clone(), token)
+        .await
+        .expect("the live holder stands");
+    let stale = plane.standing(&held.runner, run.clone(), token + 1).await;
+    let foreign = plane.standing(&held.spare, run.clone(), token).await;
+    held.fixtures
+        .age(Row::Run(&run), "run_expires_at", LAPSE)
+        .await;
+    let lapsed = plane.standing(&held.runner, run, token).await;
+
+    assert_eq!(standing.fleet_id.as_str(), held.fleet);
+    assert_eq!(standing.turn_id, held.turn_id);
+    let code = |answer: afd_fleet::Result<_>| answer.err().map(|error| error.code());
+    assert_eq!(code(stale), Some(afd_fleet::Error::stale_fence().code()));
+    let not_found = Some(afd_fleet::Error::run_not_found().code());
+    assert_eq!(
+        code(foreign),
+        not_found,
+        "another runner's run reads as none"
+    );
+    assert_eq!(code(lapsed), not_found, "a lapsed run reads as none");
+    held.fixtures.cleanup().await;
+}
+
+/// A run asked from a thread may speak into it, each message under its own
+/// call's line; a run with nowhere to speak is refused before its text is
+/// read.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_messages_speak_for_the_live_holder() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "speaks", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let plane = stage.fixtures.plane();
+    let say = |call_number: u64, text: &'static str| MessageRequest {
+        fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number,
+        text: Cow::Borrowed(text),
+    };
+
+    let first = plane
+        .message(&stage.runner, run_id.clone(), &say(1, "working on it"))
+        .await
+        .expect("the live holder speaks into its thread");
+    let second = plane
+        .message(&stage.runner, run_id, &say(2, "nearly there"))
+        .await
+        .expect("and again");
+
+    assert_eq!(
+        (first.part, second.part),
+        (1, 2),
+        "each message takes its call's line"
+    );
+    assert_eq!(first.destination, THREAD);
+    let silent = held().await;
+    let refused = silent
+        .fixtures
+        .plane()
+        .message(
+            &silent.runner,
+            silent.issued.run_id.clone(),
+            &MessageRequest {
+                fencing_token: silent.fence.as_u64(),
+                item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+                call_number: 1,
+                text: Cow::Borrowed("hello?"),
+            },
+        )
+        .await
+        .err()
+        .map(|error| error.code());
+    assert_eq!(refused, Some(af_core::error_code::MESSAGE_NO_CHANNEL));
+    silent.fixtures.cleanup().await;
+    stage.fixtures.cleanup().await;
+}
+
+/// No count caps a run's lines: the ninth and tenth are said like the
+/// first, and a line far past 4,096 bytes is prepared whole.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_run_speaks_past_eight_lines_each_numbered() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "chatty", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let plane = stage.fixtures.plane();
+    let long = "w".repeat(10_000);
+
+    for part in 1..=10_u64 {
+        let request = MessageRequest {
+            fencing_token: run.fence.as_u64(),
+            item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+            call_number: part,
+            text: Cow::Borrowed(long.as_str()),
+        };
+        let said = plane
+            .message(&stage.runner, run_id.clone(), &request)
+            .await
+            .expect("every line is said");
+        assert_eq!(said.part, part);
+        assert_eq!(said.text.len(), 10_000);
+    }
+    stage.fixtures.cleanup().await;
+}
+
+/// A message reads its run unlocked and writes nothing to it, so a report, a
+/// renewal or a tool-call post holding the run row does not hold the line up.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_message_is_said_while_its_run_is_held() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "held", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let request = MessageRequest {
+        fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 1,
+        text: Cow::Borrowed("still on it"),
+    };
+    let mut connection = stage.fixtures.database.acquire().await.expect("holder");
+    let mut holder = connection.begin().await.expect("holder transaction");
+    sqlx::query("SELECT 1 FROM thread.runs WHERE id = $1 FOR UPDATE")
+        .bind(&run_id)
+        .execute(&mut *holder)
+        .await
+        .expect("the run row is held");
+
+    let said = tokio::time::timeout(
+        HELD_LIMIT,
+        stage
+            .fixtures
+            .plane()
+            .message(&stage.runner, run_id.clone(), &request),
+    )
+    .await
+    .expect("the line does not wait for the holder")
+    .expect("the live holder speaks");
+    holder.rollback().await.expect("the holder lets go");
+
+    assert_eq!((said.part, said.destination.as_str()), (1, THREAD));
+    stage.fixtures.cleanup().await;
+}
+
+// Value: protects=a call retried after its line posted and its record was lost
+// names the line it may already have posted, so the thread check finds it;
+// fails_when=the part is the run's message count again; why_new=every message
+// case sent a new call; seam=RunService::message over live Postgres, the same
+// call said twice.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_repeated_call_number_names_the_same_part() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    stage.admit(Producer::Webhook, "retries", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let plane = stage.fixtures.plane();
+    let request = MessageRequest {
+        fencing_token: run.fence.as_u64(),
+        item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+        call_number: 3,
+        text: Cow::Borrowed("working on it"),
+    };
+
+    let first = plane
+        .message(&stage.runner, run_id.clone(), &request)
+        .await
+        .expect("the live holder speaks into its thread");
+    let retried = plane
+        .message(&stage.runner, run_id, &request)
+        .await
+        .expect("the retry is prepared again");
+
+    assert_eq!((first.part, retried.part), (3, 3), "one call, one line");
+    stage.fixtures.cleanup().await;
+}
+
+/// A record posted under the live fence is kept; the same post under a token
+/// the fleet has moved past is refused.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_tool_call_records_keep_only_under_the_live_fence() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let run = held.issued.run_id.as_str();
+    let record = record(held.turn_id.as_str());
+    let post = |token: u64| format!(r#"{{"fencing_token":{token},"calls":[{record}]}}"#);
+    let (live, stale) = (post(held.fence.as_u64()), post(held.fence.as_u64() + 1));
+    let live: ToolCallRecordsRequest<'_> = serde_json::from_str(&live).expect("a well-formed post");
+    let stale: ToolCallRecordsRequest<'_> =
+        serde_json::from_str(&stale).expect("a well-formed post");
+
+    let kept = plane
+        .record_tool_calls(&held.runner, run, &live, held.now)
+        .await
+        .expect("the live holder's record is kept");
+    let refused = plane
+        .record_tool_calls(&held.runner, run, &stale, held.now)
+        .await
+        .err()
+        .map(|error| error.code());
+
+    assert_eq!(kept.stored_count, 1);
+    assert_eq!(refused, Some(afd_fleet::Error::stale_fence().code()));
+    held.fixtures.cleanup().await;
+}
+
+/// The write fence holds for the live holder's own token and for no other.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_the_write_fence_holds_only_for_the_live_token() {
+    let held = held().await;
+    let token = held.fence.as_u64();
+    let fence =
+        |presented| WriteFence::new(held.runner.clone(), held.issued.run_id.clone(), presented);
+    let mut connection = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a connection");
+
+    let live = fence(token)
+        .holds(&mut connection)
+        .await
+        .expect("the fence reads");
+    let stale = fence(token + 1)
+        .holds(&mut connection)
+        .await
+        .expect("the fence reads");
+    drop(connection);
+
+    assert!(live, "the live holder's token passes");
+    assert!(!stale, "a token the fleet never issued does not");
+    held.fixtures.cleanup().await;
+}
+
+/// A thread whose recorded connector no connector answers to is owed nothing:
+/// the message is refused as having no channel, and the stale spelling is
+/// logged once with the fleet and event it was found on.
+// Value: protects=an out-of-band connector id never routes an answer anywhere,
+// and an operator can find it; fails_when=the unknown spelling is delivered,
+// or refused silently; why_new=no test stored a connector no connector owns;
+// seam=`RunService::message` over live Postgres, the turn's connector edited.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_retired_connector_owes_a_message_nowhere_and_is_logged() {
+    let stage = stage().await;
+    let reply = Reply::To {
+        connector: Provider::Slack.id(),
+        address: THREAD,
+    };
+    let turn = stage.admit(Producer::Webhook, "retired", reply).await;
+    let (run_id, run) = stage.assign_next(stage.fixtures.enrolled_at()).await;
+    let edited = sqlx::query("UPDATE thread.turns SET reply_provider = 'retired' WHERE id = $1")
+        .bind(&turn)
+        .execute(
+            &mut *stage
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a connection"),
+        )
+        .await
+        .expect("the connector is edited out of band");
+    assert_eq!(edited.rows_affected(), 1);
+
+    let log = af_core::test_util::trace::Capture::install();
+    let refused = stage
+        .fixtures
+        .plane()
+        .message(
+            &stage.runner,
+            run_id,
+            &MessageRequest {
+                fencing_token: run.fence.as_u64(),
+                item_id: Cow::Borrowed("0199a0b0-0000-7000-8000-0000000000aa"),
+                call_number: 1,
+                text: Cow::Borrowed("anyone there?"),
+            },
+        )
+        .await
+        .err()
+        .map(|error| error.code());
+    let line = log.only("report_reply_provider_unknown");
+    drop(log);
+
+    assert_eq!(refused, Some(af_core::error_code::MESSAGE_NO_CHANNEL));
+    assert_eq!(line.field("fleet_id"), Some(stage.fleet.as_str()));
+    assert_eq!(line.field("agentsfleet_turn_id"), Some(turn.as_str()));
+    stage.fixtures.cleanup().await;
+}

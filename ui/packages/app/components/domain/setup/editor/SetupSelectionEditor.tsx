@@ -27,7 +27,7 @@ function RepositorySelection({selected, onApply, ...actions}: Props) {
   return <SelectionForm {...actions} disabled={actions.disabled || conflict} onApply={() => onApply([...new Set(names.split(/\r?\n/).map(name => name.trim()).filter(Boolean))])}>
     {conflict ? <Alert variant="warning">The repositories changed. Your edits are still here. Close this editor to review the latest setup.</Alert> : null}
     <Label htmlFor={inputId}>Repositories</Label>
-    <Textarea id={inputId} value={names} onChange={event => setNames(event.target.value)} rows={5} maxLength={4096} placeholder="owner/repository" />
+    <Textarea id={inputId} value={names} onChange={event => setNames(event.target.value)} rows={5} placeholder="owner/repository" />
     <p className="text-label text-muted-foreground">One repository per line. The setup review checks its access.</p>
     <p className="text-eyebrow text-muted-foreground">New bindings use read access. Existing write access stays unchanged.</p>
   </SelectionForm>;

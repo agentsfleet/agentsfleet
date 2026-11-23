@@ -42,15 +42,15 @@ async fn test_a_forget_removes_the_fleets_own_entry_and_never_anothers() {
         .await
         .expect("the fleet's own entry is forgotten");
 
-    let keys = |hydrated: af_wire::memory::MemoryHydrateResponse<'static>| {
-        hydrated
+    let keys = |loaded: af_wire::memory::MemoryLoadResponse<'static>| {
+        loaded
             .memory
             .into_iter()
             .map(|entry| entry.key.into_owned())
             .collect::<Vec<_>>()
     };
-    let mine = space.memories.hydrate(&own).await.expect("a hydrate");
-    let theirs = space.memories.hydrate(&other).await.expect("a hydrate");
+    let mine = space.memories.load(&own).await.expect("a load");
+    let theirs = space.memories.load(&other).await.expect("a load");
     assert!(keys(mine).is_empty(), "the forgotten entry is gone");
     assert_eq!(
         keys(theirs),
@@ -105,7 +105,7 @@ async fn test_every_operator_verb_refuses_a_fleet_outside_the_workspace_alike() 
             .map(drop),
         memories.forget(&space.id, &ghost, KEY).await.map(drop),
         memories.capture(&ghost, &[], AT).await.map(drop),
-        memories.hydrate(&ghost).await.map(drop),
+        memories.load(&ghost).await.map(drop),
     ];
 
     for refused in refusals {
@@ -141,7 +141,7 @@ async fn test_a_grant_change_answers_both_grants_and_holds_for_the_next_read() {
             publish: false
         }
     );
-    let hydrated = space.memories.hydrate(&fleet).await.expect("a hydrate");
-    assert!(!hydrated.publish, "publish was not named, so it stands");
+    let loaded = space.memories.load(&fleet).await.expect("a load");
+    assert!(!loaded.publish, "publish was not named, so it stands");
     space.cleanup().await;
 }

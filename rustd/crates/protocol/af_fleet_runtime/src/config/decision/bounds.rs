@@ -2,19 +2,16 @@
 
 use std::collections::BTreeMap;
 
+use af_validate::TEXT_MAX_CHARS;
 use garde::Validate;
-use serde::Serialize;
 
-use super::{MAX_COMPLETION_STATEMENTS, MAX_QUESTION_TEXT_BYTES, raw};
+use super::raw;
 use crate::Result;
-
-/// Authored representation; the rendered provider request is proved separately.
-const MAX_AUTHORED_QUESTION_BYTES: usize = 1024;
 
 #[derive(Validate)]
 struct Text<'a> {
     #[garde(
-        length(bytes, min = 1, max = MAX_QUESTION_TEXT_BYTES),
+        length(chars, min = 1, max = TEXT_MAX_CHARS),
         custom(nonblank),
         custom(af_validate::rules::nul_free)
     )]
@@ -22,14 +19,8 @@ struct Text<'a> {
 }
 
 #[derive(Validate)]
-struct Encoded<'a, T: Serialize> {
-    #[garde(custom(encoded))]
-    value: &'a T,
-}
-
-#[derive(Validate)]
 struct Statements<'a> {
-    #[garde(length(min = 1, max = MAX_COMPLETION_STATEMENTS))]
+    #[garde(length(min = 1))]
     values: &'a [raw::Statement],
 }
 
@@ -58,21 +49,6 @@ pub(super) fn criteria<C: ?Sized>(
             ));
         }
     }
-    Ok(())
-}
-
-fn encoded<T: Serialize, C: ?Sized>(value: &T, _context: &C) -> garde::Result {
-    if af_validate::serialized_within(value, MAX_AUTHORED_QUESTION_BYTES) {
-        Ok(())
-    } else {
-        Err(garde::Error::new(
-            "complete authored question exceeds 1 KiB",
-        ))
-    }
-}
-
-pub(super) fn question<T: Serialize>(value: &T) -> Result<()> {
-    garde::Unvalidated::new(Encoded { value }).validate()?;
     Ok(())
 }
 

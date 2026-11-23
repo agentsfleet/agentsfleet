@@ -5,7 +5,7 @@ use std::sync::Arc;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_credential::provider::KeyRef;
-use afd_credential::provider::{Activation, Added, Entry, Providers, registered_model};
+use afd_credential::provider::{Activation, Added, Entry, Providers, Selection, registered_model};
 use afd_db::test_util::{ModelSeed, WorkspaceSeed, mint_id};
 use afd_vault::{Deleted, Directory, SecretBody, SecretName, Vault};
 
@@ -144,6 +144,11 @@ async fn same_named_keys_remain_independent_when_switching_the_active_model() {
         .await
         .expect("registered metadata reads")
         .expect("the staged model remains available");
+    // An entry is named by its UUIDv7 id: any other reference names none.
+    let unnamed = registered_model(&mut connection, &fixture.tenant, "staging-model")
+        .await
+        .expect("a reference that is not an id reads nothing");
+    assert!(unnamed.is_none(), "{unnamed:?}");
     let key = store
         .registered_key(&mut connection, &fixture.tenant, &pinned)
         .await
@@ -214,13 +219,76 @@ async fn another_accounts_workspace_cannot_supply_a_model_credential() {
             .len(),
         0
     );
-    assert!(
+    assert_eq!(
         store
             .selection(&other.tenant)
             .await
-            .expect("selection reads")
-            .is_none()
+            .expect("selection reads"),
+        Selection::Platform
     );
     other.cleanup().await;
     owner.cleanup().await;
+}
+
+/// A registered model resolves only while its saved inference settings route:
+/// settings an administrator has not saved, or ones whose output does not fit
+/// the model's context, read as no model rather than a route to nowhere.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_model_whose_settings_do_not_route_is_not_registered() {
+    const CONTEXT: i32 = 64_000;
+    const ROUTES: &str =
+        r#"{"api":"responses","base_url":"https://api.openai.com/v1","max_output_tokens":8192}"#;
+    const OVERFLOWS: &str =
+        r#"{"api":"responses","base_url":"https://api.openai.com/v1","max_output_tokens":128000}"#;
+    let fixture = Fixture::create().await;
+    save_key(&fixture, &fixture.workspace, MAIN_KEY).await;
+    let model = format!("unrouted-model-{}", mint_id());
+    let row = mint_id();
+    let seed = |inference| {
+        ModelSeed::new(&row, "openai", &model, CONTEXT)
+            .verified_at(NOW)
+            .inference(inference)
+    };
+    let mut connection = fixture
+        .database
+        .acquire()
+        .await
+        .expect("catalogue connection");
+    seed(ROUTES)
+        .insert(&mut *connection)
+        .await
+        .expect("a routable priced model seeds");
+    let store = providers(&fixture);
+    let entry = register(&store, &fixture, &fixture.workspace, &model).await;
+    let read = async |connection: &mut sqlx::PgConnection| {
+        registered_model(connection, &fixture.tenant, entry.id.as_str())
+            .await
+            .expect("registered metadata reads")
+    };
+    assert!(
+        read(&mut connection).await.is_some(),
+        "routable settings register"
+    );
+
+    seed(OVERFLOWS)
+        .insert(&mut *connection)
+        .await
+        .expect("the settings are replaced");
+    assert!(
+        read(&mut connection).await.is_none(),
+        "an output past the context does not route"
+    );
+
+    sqlx::query("UPDATE model.platform_models SET inference = NULL WHERE id = $1")
+        .bind(&row)
+        .execute(&mut *connection)
+        .await
+        .expect("the settings are cleared");
+    assert!(
+        read(&mut connection).await.is_none(),
+        "a model with no saved settings does not route"
+    );
+    drop(connection);
+    fixture.cleanup().await;
 }

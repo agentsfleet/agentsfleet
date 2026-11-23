@@ -1,0 +1,3 @@
+UPDATE runner.checkpoints
+SET abandoned_at = COALESCE(abandoned_at, clock_timestamp()), updated_at = now()
+WHERE id = $1 AND ready_at IS NULL

@@ -1,26 +1,27 @@
 //! Giving up on an answer nobody can take.
 //!
 //! The lanes reach this for a claimed job whose destination refused it for
-//! good, or whose cycles ran out. Stamping the row is what keeps every later
+//! good, or whose inline attempts all failed. Stamping the row is what keeps every later
 //! claim from offering it again.
 
 use afd_db::Db;
 
-use crate::obligation::{self, AbandonReason, Claimed};
+use crate::delivery::{self, AbandonReason, Claimed};
 
-/// Logged when an answer is given up on — once per obligation.
+/// Logged when an answer is given up on — once per delivery.
 const EVENT_ABANDONED: &str = "outbound_delivery_abandoned";
 
 /// Logged when the abandon stamp could not be written.
-const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
+const EVENT_ABANDON_FAILED: &str = "outbound_delivery_abandon_failed";
 
 /// Stamps a claimed job's row abandoned and announces it — only when THIS call
 /// stamped it, so an answer already given up on says nothing twice.
 ///
 /// A stamp that fails is reported and nothing else: the claim lapses and the
-/// row is offered again, the at-least-once direction rather than a lost answer.
+/// row is offered to a later claim, the at-least-once direction rather than a
+/// lost answer.
 pub(crate) async fn delivery(database: &Db, job: &Claimed, reason: AbandonReason) {
-    match obligation::abandon(database, job).await {
+    match delivery::abandon(database, job).await {
         Ok(Some(attempt_count)) => Abandoned {
             provider: &job.outgoing.provider,
             fleet_id: job.outgoing.fleet_id.as_str(),
@@ -67,9 +68,9 @@ impl Abandoned<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::obligation::Outgoing;
+    use crate::delivery::Outgoing;
 
-    /// Dimension 4.4 — what an abandonment announces carries the connector, the
+    /// What an abandonment announces carries the connector, the
     /// fleet, the reason and the count, and neither the answer nor the address.
     ///
     /// The job below carries both, and the announcement is built from the same
@@ -85,7 +86,7 @@ mod tests {
                     .to_owned(),
                 workspace_id: afd_db::test_util::mint_id(),
                 fleet_id: afd_db::test_util::mint_id(),
-                event_id: afd_db::test_util::mint_id(),
+                turn_id: afd_db::test_util::mint_id(),
                 answer: "the private answer text".to_owned(),
             },
         };
@@ -93,7 +94,7 @@ mod tests {
         let announced = Abandoned {
             provider: &job.outgoing.provider,
             fleet_id: job.outgoing.fleet_id.as_str(),
-            reason: AbandonReason::CyclesExhausted.as_str(),
+            reason: AbandonReason::AttemptsExhausted.as_str(),
             attempt_count: 12,
         };
         let rendered = format!("{announced:?}");
@@ -107,7 +108,7 @@ mod tests {
                 "the announcement carries `{private}`: {rendered}"
             );
         }
-        assert!(rendered.contains("cycles_exhausted") && rendered.contains("12"));
+        assert!(rendered.contains("attempts_exhausted") && rendered.contains("12"));
     }
 
     /// Every reason has its own logged spelling, so an operator filtering on
@@ -116,7 +117,7 @@ mod tests {
     fn every_abandon_reason_spells_itself_apart() {
         let spellings = [
             AbandonReason::Refused.as_str(),
-            AbandonReason::CyclesExhausted.as_str(),
+            AbandonReason::AttemptsExhausted.as_str(),
             AbandonReason::Unaddressable.as_str(),
         ];
         let distinct: std::collections::BTreeSet<&str> = spellings.into_iter().collect();

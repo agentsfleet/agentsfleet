@@ -3,7 +3,7 @@
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { ApprovalsListResponse, ListApprovalsOpts, ResolveOutcome } from "@/lib/api/approvals";
 import { withToken } from "@/lib/actions/with-token";
-import { approveApproval as apiApproveApproval, denyApproval as apiDenyApproval, listApprovals as apiListApprovals } from "@/lib/api/approvals";
+import { answerApproval as apiAnswerApproval, approveApproval as apiApproveApproval, denyApproval as apiDenyApproval, listApprovals as apiListApprovals } from "@/lib/api/approvals";
 
 /** Read fleet approval requests using the current authenticated session. */
 export async function listApprovalsAction(
@@ -27,4 +27,12 @@ export async function denyApprovalAction(
   reason?: string,
 ): Promise<ActionResult<ResolveOutcome>> {
   return withToken((t) => apiDenyApproval(workspaceId, gateId, t, reason));
+}
+
+export async function answerApprovalAction(
+  workspaceId: string,
+  gateId: string,
+  answer: string,
+): Promise<ActionResult<ResolveOutcome>> {
+  return withToken((t) => apiAnswerApproval(workspaceId, gateId, t, answer));
 }

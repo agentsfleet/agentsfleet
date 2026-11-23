@@ -37,7 +37,7 @@ use serde::Deserialize;
 use crate::auth::{Acting, PersonIdentity, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{
-    Services, WorkspaceConnectors as _, WorkspaceFleets as _, WorkspaceSecrets as _,
+    TenantPlane, WorkspaceConnectors as _, WorkspaceFleets as _, WorkspaceSecrets as _,
 };
 
 mod support;
@@ -117,7 +117,7 @@ pub(crate) type StoredSecret = StoredSecretResponse<'static>;
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn store<D: Services>(
+pub(crate) async fn store<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     body: Bytes,
@@ -169,7 +169,7 @@ pub(crate) async fn store<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     WorkspaceContext(owned): WorkspaceContext,
@@ -248,7 +248,7 @@ pub(crate) async fn list<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn replace<D: Services>(
+pub(crate) async fn replace<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(SecretPath { name }): Path<SecretPath>,
@@ -310,7 +310,7 @@ pub(crate) async fn replace<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn remove<D: Services>(
+pub(crate) async fn remove<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Acting(principal): Acting,

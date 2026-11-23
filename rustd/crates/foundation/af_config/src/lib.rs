@@ -27,7 +27,7 @@ pub trait FileSource {
 }
 
 /// Local files used during process startup.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct LocalFiles;
 
 impl FileSource for LocalFiles {

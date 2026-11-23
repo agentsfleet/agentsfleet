@@ -9,11 +9,11 @@ import {
 } from "./helpers-billing-effect.ts";
 
 const SETUP_ROWS = [
-  { id: "settlement-1", authoring_attempt_id: "attempt-1", fleet_id: null, event_id: null,
-    charge_type: CHARGE_TYPE.authoring, credit_deducted_nanos: String(17_000_000),
+  { id: "settlement-1", run_id: "attempt-1", fleet_id: null, turn_id: null,
+    charge_type: CHARGE_TYPE.setup, credit_deducted_nanos: String(17_000_000),
     token_count_input: 23, token_count_output: 29, recorded_at: "1970-01-01T00:00:00.101Z" },
-  { id: "settlement-2", authoring_attempt_id: "attempt-2", fleet_id: null, event_id: null,
-    charge_type: CHARGE_TYPE.authoring, credit_deducted_nanos: String(19_000_000),
+  { id: "settlement-2", run_id: "attempt-2", fleet_id: null, turn_id: null,
+    charge_type: CHARGE_TYPE.setup, credit_deducted_nanos: String(19_000_000),
     token_count_input: 31, token_count_output: 37, recorded_at: "1970-01-01T00:00:00.100Z" },
 ];
 
@@ -44,12 +44,12 @@ describe("billing setup costs", () => {
     const body = JSON.parse(rec.stdout[0] ?? "{}");
     expect(body.events).toHaveLength(2);
     expect(body.events.map((e: { total_nanos: string }) => e.total_nanos)).toEqual(["17000000", "19000000"]);
-    expect(body.events.map((e: { authoring_attempt_id: string }) => e.authoring_attempt_id)).toEqual(["attempt-1", "attempt-2"]);
+    expect(body.events.map((e: { run_id: string }) => e.run_id)).toEqual(["attempt-1", "attempt-2"]);
     expect(body.events[0].token_count_input).toBe(23);
     expect(body.events[1].token_count_output).toBe(37);
   });
 
-  test("shows setup costs as setup rather than free fleet events", async () => {
+  test("shows setup costs as setup rather than free fleet turns", async () => {
     const rec = makeRecorder();
     const result = await runWith(billingShowEffectFromArgs({ limit: undefined, cursor: undefined }).pipe(
       Effect.provide(configLayer()), Effect.provide(credentialsLayer()),

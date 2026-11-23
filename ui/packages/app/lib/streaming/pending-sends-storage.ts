@@ -71,28 +71,11 @@ export type StoredLedger = { entries: PendingSend[]; foreign: ForeignEntry[] };
 const MS_PER_HOUR = 3_600_000;
 const HOURS_PER_DAY = 24;
 /** How long an unresolved send stays recoverable. */
+// Kept: it is the only eviction for dismissal tombstones, which would otherwise fill the origin's storage quota.
 export const PENDING_SEND_TTL_MS = HOURS_PER_DAY * MS_PER_HOUR;
-/** The most unresolved sends one fleet keeps; the oldest ended ones go first,
- * and tombstones only after every other ended send. */
-export const MAX_PENDING_SENDS = 20;
 
 export function live<T extends { submittedAtMs: number }>(entries: readonly T[], nowMs: number): T[] {
   return entries.filter((entry) => nowMs - entry.submittedAtMs < PENDING_SEND_TTL_MS);
-}
-
-// The newest `MAX_PENDING_SENDS`, never dropping a send still in flight. A
-// tombstone goes last: dropped, it would let a dismissed send's late ending
-// write the send back.
-export function capped(entries: PendingSend[]): PendingSend[] {
-  const excess = entries.length - MAX_PENDING_SENDS;
-  if (excess <= 0) return entries;
-  const ended = entries.filter((entry) => entry.state !== PENDING_SEND_STATE.SENDING);
-  const byEviction = [
-    ...ended.filter((entry) => entry.state !== PENDING_SEND_STATE.DISMISSED),
-    ...ended.filter((entry) => entry.state === PENDING_SEND_STATE.DISMISSED),
-  ];
-  const dropped = new Set(byEviction.slice(0, excess).map((entry) => entry.operationId));
-  return entries.filter((entry) => !dropped.has(entry.operationId));
 }
 
 /** Whose ledger, for which fleet. `subject` is null until the user is known. */

@@ -1,18 +1,18 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { afterEach, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
-import { formatCompactCount, formatRunDuration } from "@/lib/events/run-figures-format";
+import { formatCompactCount, formatRunDuration } from "@/lib/turns/run-figures-format";
 import { formatDollars } from "@/lib/money";
 import { FleetToolGroup } from "@/components/domain/activity/tools/FleetToolGroup";
 import { renderFleetMessage } from "@/components/domain/activity/messages/fleetMessageRenderers";
 import { toReplyMessage } from "@/components/domain/activity/replies/fleetReplyMessage";
-import { convertEvent } from "@/components/domain/conversation/stream/useFleetEventStream";
+import { convertTurn } from "@/components/domain/conversation/stream/useFleetTurnStream";
 
-// The event stream orders every tool before the answer. Native parts can still
+// The turn stream orders every tool before the answer. Native parts can still
 // arrive as [tool, text, tool], so the order is set on the converted message.
 const WALL_MS = 65_000;
 const TOKENS = 12_400;
@@ -25,14 +25,14 @@ afterEach(cleanup);
 const call = (id: string): FleetToolCall => ({startedAtMs: 1_000, name: "file_read", callId: id, args: {path: `src/${id}.ts`}, done: true,
   status: TOOL_CALL_STATUS.SUCCEEDED, ms: 10, outputHead: id});
 
-function Reply({tools, after, status = "processed"}: {tools: readonly FleetToolCall[]; after: number; status?: FleetEvent["status"]}) {
-  const event: FleetEvent = {id: "split-run", role: "assistant", actor: "fleet", text: "", reply: "Between the calls.", outcome: "", failureLabel: null,
+function Reply({tools, after, status = "processed"}: {tools: readonly FleetToolCall[]; after: number; status?: FleetTurn["status"]}) {
+  const turn: FleetTurn = {id: "split-run", role: "assistant", actor: "fleet", text: "", reply: "Between the calls.", outcome: "", failureLabel: null,
     failureDetail: null, createdAt: new Date(0), status, tools: [...tools], wallMs: WALL_MS, tokens: TOKENS, costNanos: COST_NANOS};
-  const runtime = useExternalStoreRuntime<FleetEvent>({
+  const runtime = useExternalStoreRuntime<FleetTurn>({
     isRunning: false,
-    messages: [event],
+    messages: [turn],
     convertMessage: row => {
-      const message = toReplyMessage(convertEvent(row), row);
+      const message = toReplyMessage(convertTurn(row), row);
       const parts = Array.isArray(message.content) ? message.content : [];
       const text = parts.filter(part => part.type === "text"), calls = parts.filter(part => part.type === "tool-call");
       return {...message, content: [...calls.slice(0, after), ...text, ...calls.slice(after)]};
@@ -71,7 +71,7 @@ it("moves the entry to the newest group without remounting an open one", () => {
     toolName: "file_read", args: {path: `src/${id}.ts`}, argsText: JSON.stringify({path: `src/${id}.ts`}), result: {status: "succeeded"}});
   const firstCalls = [nativeCall("a"), nativeCall("b")];
   function Groups({content}: {content: MessageState["content"]}) {
-    const props = {content, running: false, eventId: "stable-calls", wallMs: WALL_MS,
+    const props = {content, running: false, turnId: "stable-calls", wallMs: WALL_MS,
       figures: {wallMs: WALL_MS, tokens: TOKENS, costNanos: COST_NANOS}};
     return <><FleetToolGroup {...props} indices={[0, 1]}>Earlier calls</FleetToolGroup>
       {content.length > 2 ? <FleetToolGroup {...props} indices={[3]}>New call</FleetToolGroup> : null}</>;

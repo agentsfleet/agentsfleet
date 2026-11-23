@@ -8,7 +8,6 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::KIND_NOTICE_OWNER;
 
 use super::resident_bound::owner_document;
 use super::*;
@@ -75,16 +74,15 @@ async fn write_uncommitted_binding(
 ) {
     sqlx::query(
         "INSERT INTO connector.channels \
-           (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, \
+           (id, provider, external_account_id, external_channel_id, fleet_id, \
             created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
+         VALUES ($1, $2, $3, $4, $5, now(), now())",
     )
     .bind(mint_id())
     .bind(PROVIDER.id())
     .bind(&fixture.team)
     .bind(CHANNEL)
     .bind(winner)
-    .bind(KIND_NOTICE_OWNER)
     .execute(&mut *connection)
     .await
     .expect("the concurrent binding is written, not yet committed");
@@ -99,7 +97,7 @@ fn spawn_latecomer_bind(
     let ingress = fixture.ingress();
     let workspace = fixture.workspace().clone();
     let team = fixture.team.clone();
-    let channel: afd_ingress::slack::ChannelId = CHANNEL.parse().expect("a channel id");
+    let channel: af_fleet_runtime::config::ChannelId = CHANNEL.parse().expect("a channel id");
     tokio::spawn(async move {
         ingress
             .bind_notice_owner(

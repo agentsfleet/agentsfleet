@@ -1,6 +1,6 @@
 [package]
 name = "afd_billing"
-description = "What a lease costs, what a tenant has, and what a fleet has already spent."
+description = "What a run costs, what a tenant has, and what a fleet has already spent."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -16,8 +16,6 @@ workspace = true
 
 [dependencies]
 # The clock a window opens against, and the registry codes.
-# The charges cursor is base64url on the wire.
-base64.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
@@ -27,8 +25,8 @@ af_crypto.workspace = true
 af_fleet_runtime.workspace = true
 # The usage line a runner reports, which the rater prices.
 af_wire.workspace = true
-# The billing families: every reservation and settlement is counted where the
-# biller is called, the one place both products and the sweeper pass through.
+# The billing families: every funds check is counted where the biller is
+# called, the one place both products pass through.
 af_observability.workspace = true
 # `Biller` is held as `Arc<dyn Biller>`, and its methods are async.
 async-trait.workspace = true
@@ -51,8 +49,11 @@ tracing.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util"]
 
 [dev-dependencies]
-af_observability = { workspace = true, features = ["test-util"] }
-# The integration suite races two reservations on one task.
+# `test-util`: the ledger tests fail an identifier mint on purpose.
+af_crypto = { workspace = true, features = ["test-util"] }
+# The cursor tests spell tokens out as base64url bytes.
+base64.workspace = true
+# The debt suite starts ten runs' funds checks at once.
 futures-util.workspace = true
 serde_json.workspace = true
 sqlx = { workspace = true, features = ["json"] }

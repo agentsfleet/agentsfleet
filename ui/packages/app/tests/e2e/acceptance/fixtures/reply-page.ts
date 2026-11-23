@@ -3,9 +3,9 @@
  * it made from the composer. */
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import type { EventsPage } from "@/lib/api/events";
+import type { TurnsPage } from "@/lib/api/turns";
 import { STEER_DISPOSITION, steerMessagesUrl, type SteerAccepted } from "@/lib/api/fleets-types";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { fixtureSubject, signInAs } from "./auth";
 import { FIXTURE_KEY } from "./constants";
 import { workspaceHref } from "./nav";
@@ -13,7 +13,7 @@ import { pageEventStream, type ScheduledStream } from "./page-event-stream";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./seed";
 import { assertDestructiveTargetIsSafe, purgeFixtureFleet } from "./teardown";
 
-const EMPTY_HISTORY: EventsPage = { items: [], next_cursor: null };
+const EMPTY_HISTORY: TurnsPage = { items: [], next_cursor: null };
 const CHAT_LABEL = "Fleet chat";
 const TRANSCRIPT_LABEL = "Chat";
 const COMPOSER_LABEL = "Chat composer";
@@ -22,7 +22,7 @@ const HTTP_ACCEPTED = 202;
 const STEER_ACCEPTED = "accepted";
 
 /** `ownActor` is the signed-in operator's steer actor. `sendOwn` sends from
- * this tab's composer and answers the steer with a 202 naming `eventId`, so
+ * this tab's composer and answers the steer with a 202 naming `turnId`, so
  * the frames a test writes under `ownActor` next land on a turn this tab sent:
  * the one the thread anchors while its reply runs. The same actor arriving by
  * frame alone is the operator's turn from another tab. */
@@ -32,7 +32,7 @@ export type ReplyPage = {
   chat: Locator;
   stream: ScheduledStream;
   ownActor: string;
-  sendOwn: (text: string, eventId: string) => Promise<void>;
+  sendOwn: (text: string, turnId: string) => Promise<void>;
 };
 
 export async function withReplyPage(
@@ -42,7 +42,7 @@ export async function withReplyPage(
 ): Promise<void> {
   const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: purpose });
-  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/events/stream`;
+  const streamPath = `/live/v1/workspaces/${workspaceId}/fleets/${fleet.id}/turns/stream`;
   const historyPath = streamPath.replace(/\/stream$/, "");
   const stream = await pageEventStream(page, streamPath);
   const errors: string[] = [];
@@ -56,7 +56,7 @@ export async function withReplyPage(
     await expect(chat).toBeVisible();
     await stream.connected;
     const ownActor = `${ACTOR.STEER_PREFIX}${fixtureSubject(FIXTURE_KEY.regular)}`;
-    const sendOwn = (text: string, eventId: string) => sendFromComposer(page, steerMessagesUrl(workspaceId, fleet.id), text, eventId);
+    const sendOwn = (text: string, turnId: string) => sendFromComposer(page, steerMessagesUrl(workspaceId, fleet.id), text, turnId);
     await body({ workspaceId, fleetId: fleet.id, chat, stream, ownActor, sendOwn });
     expect(errors).toEqual([]);
   } finally {
@@ -69,9 +69,9 @@ export async function withReplyPage(
 
 // The steer never reaches the daemon: the test writes every frame of the turn,
 // so the 202 is answered here and resolves once the page has been given it.
-async function sendFromComposer(page: Page, steerPath: string, text: string, eventId: string): Promise<void> {
+async function sendFromComposer(page: Page, steerPath: string, text: string, turnId: string): Promise<void> {
   const admitted = Promise.withResolvers<void>();
-  const receipt: SteerAccepted = { status: STEER_ACCEPTED, event_id: eventId, replayed: false, disposition: STEER_DISPOSITION.STARTED, folded_into_event_id: null };
+  const receipt: SteerAccepted = { status: STEER_ACCEPTED, turn_id: turnId, replayed: false, disposition: STEER_DISPOSITION.STARTED, folded_into_turn_id: null };
   await page.route((url) => url.pathname === steerPath, async (route) => {
     await route.fulfill({ status: HTTP_ACCEPTED, json: receipt });
     admitted.resolve();

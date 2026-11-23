@@ -1,4 +1,4 @@
-//! A sandbox-side call made while the lease's build runs waits for it, then
+//! A sandbox-side call made while the run's build runs waits for it, then
 //! runs in that sandbox or answers why there is none; a supervisor-side call
 //! never waits, and a call after the build records no wait.
 
@@ -15,12 +15,11 @@ use afr_executor::{ExecutorSlot, Unavailable};
 use afr_telemetry::labels::SandboxWait;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN};
-use afr_tools::{Lease, ToolErrorCode};
+use afr_tools::{Run, ToolErrorCode};
 
-use super::Router;
-use super::tests::{Counting, catalog};
+use super::tests::{Counting, catalog, first_call, routed};
 
-/// How long the lease's build takes in each test.
+/// How long the run's build takes in each test.
 const BUILD_TAKES: Duration = Duration::from_millis(40);
 /// How long a test lets a call run. On a paused clock it ends the moment the
 /// runtime goes idle, so a call nobody woke fails rather than hangs.
@@ -48,10 +47,11 @@ async fn a_sandbox_call_mid_build_waits_then_runs_in_that_sandbox() {
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::pending();
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
-    let (arguments, lease) = (serde_json::json!({}), Lease::default());
-    let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+    let (arguments, run) = (serde_json::json!({}), Run::default());
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let build = async {
         tokio::time::sleep(BUILD_TAKES).await;
         slot.fill(Ok(&executor))
@@ -75,10 +75,11 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
         let catalog = catalog();
         let selection = catalog.select(&[FILE_READ.name()]).unwrap();
         let slot = ExecutorSlot::pending();
-        let router = Router::new(&selection, &slot);
+        let tool = routed(&selection, &FILE_READ);
         let (tally, recorded) = Tally::new();
-        let (arguments, lease) = (serde_json::json!({}), Lease::default());
-        let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+        let (arguments, run) = (serde_json::json!({}), Run::default());
+        let at = first_call();
+        let call = tool.run(&arguments, &slot, &run, &at);
         let build = async {
             tokio::time::sleep(BUILD_TAKES).await;
             slot.fill(Err(class))
@@ -86,7 +87,10 @@ async fn a_sandbox_call_mid_build_answers_the_failures_class() {
 
         let (output, _filled) = bounded(scoped(tally, async { tokio::join!(call, build) })).await;
 
-        assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
+        assert_eq!(
+            output.error_code,
+            Some(ToolErrorCode::SandboxUnavailable.into())
+        );
         assert!(
             output.text.contains(FILE_READ.name()) && output.text.ends_with(class.reason()),
             "{class:?} names its class: {}",
@@ -101,11 +105,12 @@ async fn a_supervisor_call_never_waits_on_the_build() {
     let catalog = catalog();
     let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
     let slot = ExecutorSlot::pending();
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &UPDATE_PLAN);
 
-    let (arguments, lease) = (serde_json::json!({}), Lease::default());
+    let (arguments, run) = (serde_json::json!({}), Run::default());
 
-    let call = router.dispatch(UPDATE_PLAN.name(), &arguments, &lease);
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let output = tokio::time::timeout(BUILD_TAKES, call).await;
 
     assert!(
@@ -120,12 +125,13 @@ async fn a_sandbox_call_after_the_build_records_no_wait() {
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
     let executor = Counting::default();
     let slot = ExecutorSlot::ready(&executor);
-    let router = Router::new(&selection, &slot);
+    let tool = routed(&selection, &FILE_READ);
     let (tally, recorded) = Tally::new();
 
-    let (arguments, lease) = (serde_json::json!({}), Lease::default());
+    let (arguments, run) = (serde_json::json!({}), Run::default());
 
-    let call = router.dispatch(FILE_READ.name(), &arguments, &lease);
+    let at = first_call();
+    let call = tool.run(&arguments, &slot, &run, &at);
     let output = bounded(scoped(tally, call)).await;
 
     assert_eq!(output.error_code, None, "{}", output.text);

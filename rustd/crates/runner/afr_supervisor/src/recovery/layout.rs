@@ -1,7 +1,7 @@
 //! Page packing uses the receiving owner's byte ceiling before native allocation.
 
 use crate::{Result, error};
-use af_wire::task::{CheckpointEntry, CheckpointPage};
+use af_wire::durable_task::{CheckpointEntry, CheckpointPage};
 
 pub(super) struct Pages {
     items: Vec<CheckpointPage>,
@@ -21,13 +21,6 @@ impl Pages {
     }
 
     fn next(&mut self) -> Result<()> {
-        if self.items.len()
-            >= usize::try_from(af_wire::task::CHECKPOINT_PAGES).unwrap_or(usize::MAX)
-        {
-            return Err(error::capture_limit(
-                "checkpoint manifest exceeds its page bound",
-            ));
-        }
         let page = CheckpointPage {
             page_number: u32::try_from(self.items.len())
                 .map_err(|source| error::boundary("checkpoint page count overflow", source))?,
@@ -70,7 +63,7 @@ impl Pages {
             .last_mut()
             .ok_or_else(|| error::config("checkpoint page is absent"))?;
         page.history_objects = history;
-        if !af_wire::decision::serialized_within(page, self.ceiling) {
+        if !af_validate::serialized_within(page, self.ceiling) {
             let history = std::mem::take(&mut page.history_objects);
             self.next()?;
             self.items
@@ -80,7 +73,7 @@ impl Pages {
         }
         for page in &self.items {
             garde::Validate::validate(page)?;
-            if !af_wire::decision::serialized_within(page, self.ceiling) {
+            if !af_validate::serialized_within(page, self.ceiling) {
                 return Err(error::capture_limit(
                     "checkpoint entry exceeds a manifest page",
                 ));

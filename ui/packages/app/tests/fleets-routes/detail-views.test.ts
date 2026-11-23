@@ -76,7 +76,7 @@ describe("fleets routes — detail views", () => {
       }
       // `/messages` is the chat's thread read — the one request that replaced
       // the events-list-plus-per-turn-detail fan-out this view used to issue.
-      if (url.includes("/messages") || url.includes("/events")) {
+      if (url.includes("/messages") || url.includes("/turns")) {
         throw new Error("summary down");
       }
       return detailResponse({ pending_approvals: 2 });

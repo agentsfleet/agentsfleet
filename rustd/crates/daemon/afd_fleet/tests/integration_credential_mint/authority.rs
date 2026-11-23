@@ -11,7 +11,7 @@ async fn mint_static(
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
+            &requests::mint(owner.run.as_str(), CONNECTOR_STATIC),
             fixtures.enrolled_at(),
         )
         .await
@@ -70,7 +70,7 @@ async fn runner_mint_requires_the_issued_and_current_credential_declarations() {
     assert_eq!(
         mint_static(&fixtures, &unassigned)
             .await
-            .expect_err("a new head cannot widen a lease")
+            .expect_err("a new head cannot widen a run")
             .code(),
         error_code::CRED_INTEGRATION_NOT_CONNECTED
     );
@@ -94,7 +94,7 @@ async fn approved_connectors_and_unreadable_setup_do_not_bypass_declarations() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
+            &requests::mint(owner.run.as_str(), CONNECTOR_GITHUB),
             fixtures.enrolled_at(),
         )
         .await
@@ -124,8 +124,8 @@ async fn cancellation_committed_before_a_new_mint_withholds_credentials() {
     mint_static(&fixtures, &owner)
         .await
         .expect("active control");
-    sqlx::query("UPDATE runner.leases SET cancel_requested_at=clock_timestamp() WHERE id=$1")
-        .bind(&owner.lease)
+    sqlx::query("UPDATE thread.runs SET cancel_requested_at=clock_timestamp() WHERE id=$1")
+        .bind(&owner.run)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await
         .expect("durable cancellation");
@@ -134,25 +134,25 @@ async fn cancellation_committed_before_a_new_mint_withholds_credentials() {
             .await
             .expect_err("cancellation removes authority")
             .code(),
-        error_code::RUN_LEASE_NOT_FOUND
+        error_code::RUN_NOT_FOUND
     );
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_lease_without_its_issued_setup_cannot_inherit_the_current_credentials() {
+async fn a_run_without_its_issued_setup_cannot_inherit_the_current_credentials() {
     let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, &config(&["static"])).await;
     seed_static(&fixtures, &owner).await;
     mint_static(&fixtures, &owner)
         .await
         .expect("issued control");
-    sqlx::query("UPDATE runner.leases SET setup_revision_id=NULL WHERE id=$1")
-        .bind(&owner.lease)
+    sqlx::query("UPDATE thread.runs SET setup_revision_id=NULL WHERE id=$1")
+        .bind(&owner.run)
         .execute(&mut *fixtures.database.acquire().await.expect("connection"))
         .await
-        .expect("legacy lease without assignment witness");
+        .expect("legacy run without assignment witness");
     assert_eq!(
         mint_static(&fixtures, &owner)
             .await
@@ -184,7 +184,7 @@ async fn editing_repository_scope_cannot_widen_an_existing_runners_mint() {
     )
     .await;
     let plane = fixtures.plane();
-    let request = requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB);
+    let request = requests::mint(owner.run.as_str(), CONNECTOR_GITHUB);
     let control = plane
         .mint(&owner.runner, &request, fixtures.enrolled_at())
         .await

@@ -1,14 +1,14 @@
 //! Dispatch already verified deliveries; each route supplies its authenticated replay identity.
 use super::{DETAIL_EVENT_HEADER, actor, verify::Verified};
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use af_core::error_code;
 use afd_ingress::{Delivery, Surface};
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-pub(super) async fn deliver<D: Services>(
+pub(super) async fn deliver<D: IngressPlane>(
     services: &D,
     proven: Verified,
     event_id: &str,
@@ -44,7 +44,7 @@ pub(super) async fn deliver<D: Services>(
     Ok((
         StatusCode::ACCEPTED,
         Json(webhook::Accepted {
-            event_id: appended.stored.id.as_str().into(),
+            turn_id: appended.stored.id.as_str().into(),
             replayed: appended.replayed,
         }),
     )

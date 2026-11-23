@@ -51,13 +51,7 @@ export const GATE_FIELD = {
 // client already truncated — a client-side filter over one page of 50 reports
 // "nothing waiting" for a workspace whose gate is on page two.
 export const GATE_QUERY = {
-  limit: "limit",
   cursor: "cursor",
   status: FIELD_STATUS,
   fleetId: "fleet_id",
 } as const;
-
-// The daemon caps `limit` at 200 and defaults to 50; asking for the cap is
-// fewer round trips for the same answer.
-export const GATE_PAGE_LIMIT = 200;
-export const GATE_MAX_PAGES = 50;

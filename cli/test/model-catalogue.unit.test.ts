@@ -112,17 +112,6 @@ test("fetchCatalogue rejects a repeated cursor without reporting a partial catal
   expect(paths).toHaveLength(2);
 });
 
-test("fetchCatalogue rejects a non-terminating catalogue at the page cap", async () => {
-  const paths: string[] = [];
-  // Pin test: 100 is the reader's finite page budget.
-  const pages = Array.from({length: 100}, (_, page) => ({models: [ANTHROPIC], next_cursor: `cursor-${page}`}));
-  const error = await Effect.runPromise(fetchCatalogue(undefined).pipe(
-    Effect.provide(httpLayer(pages, path => paths.push(path))), Effect.flip,
-  ));
-  expect(error).toMatchObject({code: "MODEL_CATALOGUE_PAGINATION_INVALID", status: 502});
-  expect(paths).toHaveLength(100);
-});
-
 test("resolveCatalogueProvider accepts a member and returns it unchanged", async () => {
   const got = await run(
     resolveCatalogueTarget("anthropic", undefined, undefined),

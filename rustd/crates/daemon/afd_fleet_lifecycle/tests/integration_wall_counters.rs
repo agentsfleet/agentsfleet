@@ -46,7 +46,7 @@ pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCou
     owner.close().await;
 }
 
-/// Dimension 2.2. A fleet with no counter row still lists, with zeros: the
+/// A fleet with no counter row still lists, with zeros: the
 /// page reads the counters by key under `COALESCE`, where an inner join would
 /// drop the fleet from the wall the moment it was installed.
 #[tokio::test(flavor = "multi_thread")]

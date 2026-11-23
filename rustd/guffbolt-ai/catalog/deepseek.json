@@ -1,0 +1,4 @@
+[
+  {"id": "deepseek-flash", "context_tokens": 1048576, "max_output_tokens": 393216, "images": true},
+  {"id": "deepseek-v4-pro", "context_tokens": 1048576, "max_output_tokens": 393216, "images": false}
+]

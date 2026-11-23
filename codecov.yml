@@ -1,12 +1,11 @@
 coverage:
   status:
+    # Rust carries no Codecov status: its floor lives once, as
+    # RUSTD_COVERAGE_FLOOR in make/test-integration-rustd.mk, and CI's
+    # test-integration-rustd merge job grades the overall and patch coverage
+    # with it (Indy, Nov 23, 2026: "make the change in 1 place and it fixes
+    # across"). Codecov still reports the rust-afd flag.
     project:
-      rust-afd:
-        flags:
-          - rust-afd
-        target: 98%
-        threshold: 0%
-        informational: false
       typescript:
         flags:
           - app
@@ -15,25 +14,7 @@ coverage:
         target: 100%
         threshold: 0%
         informational: false
-    # Grade changed lines per language using the same floors as local lanes.
-    # Indy reset Rust floors on Nov 06, 2026 to the verified M236 baseline:
-    # 98.5561% overall and 94.3990% patch. Later milestones raise these floors.
-    # Patch raised to 97.5% on Nov 08, 2026 (Indy: "move the coverage from 94 to
-    # 97.5"), on #816's measured 97.67%.
-    # Project lowered to 98% on Nov 08, 2026 (Indy: "move the coverage down to 98
-    # on the safer side"), after #817 measured 98.4981% and 98.4991% with no Rust change.
-    # Patch lowered to 95% on Nov 10, 2026 (Indy: "to 95%", "i want the CI gate to
-    # pass too"), on #819's measured 95.9156%.
-    # RUSTD_PATCH_FLOOR and RUSTD_COVERAGE_FLOOR use the same values locally.
-    # TypeScript remains at 100%; measurement paths and exclusions are unchanged.
     patch:
-      rust-afd:
-        flags:
-          - rust-afd
-        target: 95%
-        threshold: 0%
-        informational: false
-
       typescript:
         flags:
           - app
@@ -50,8 +31,13 @@ coverage:
 
 flags:
   rust-afd:
+    # Every workspace member, the layer crates and the agent harness beside
+    # them (`rustd/Cargo.toml`), so this flag measures what the lane's own judge
+    # grades.
     paths:
       - rustd/crates/
+      - rustd/guffbolt/
+      - rustd/guffbolt-ai/
 
 comment:
   layout: "reach,diff,flags,tree"
@@ -59,7 +45,7 @@ comment:
   require_changes: false
 
 ignore:
-  - "schema/**"
+  - "rustd/crates/daemon/afd_db/schema/**"
   - "tests/**"
   - "rustd/target/**"
   # The bench crate is a measuring instrument, not shipped code, and leaves

@@ -1,6 +1,6 @@
 //! Every scheme against every way a delivery can fail to prove itself.
 //!
-//! Dimension 1.1's matrix: each scheme × {valid, wrong key, tampered body,
+//! The matrix: each scheme × {valid, wrong key, tampered body,
 //! missing header, malformed header} lands on the documented verdict. Written
 //! as a matrix rather than as three near-identical suites so a scheme added
 //! without a row is visible as an absence, and so the verdicts can be read
@@ -163,7 +163,7 @@ fn a_malformed_signature_header_is_refused_on_every_scheme() {
 
 #[test]
 fn an_empty_secret_is_refused_as_unconfigured_before_any_comparison() {
-    // Dimension 1.4. An empty HMAC key is deterministic and attacker-
+    // An empty HMAC key is deterministic and attacker-
     // computable, so a blank vault row must never reach a comparison — and it
     // is reported as a misconfiguration rather than as a bad signature, because
     // the remedy is the operator's, not the sender's.
@@ -180,7 +180,7 @@ fn an_empty_secret_is_refused_as_unconfigured_before_any_comparison() {
 
 #[test]
 fn only_the_timestamped_scheme_binds_a_window() {
-    // Dimension 1.2, and the reason the schemes are separate arms: a scheme
+    // The reason the schemes are separate arms: a scheme
     // with no timestamp header cannot answer StaleTimestamp at all, and one
     // with a timestamp header must answer it at the documented edge.
     for &scheme in SCHEMES {

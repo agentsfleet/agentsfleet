@@ -1,5 +1,5 @@
 //! What a sandbox's network reaches: the egress policy the daemon assigned
-//! this runner, made concrete for one lease.
+//! this runner, made concrete for one run.
 //!
 //! `allow_all` shares the host's network namespace. `deny_all_egress`, and the
 //! fail-closed answer to a missing assignment, gives the sandbox a namespace
@@ -13,12 +13,8 @@ use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::net::Ipv4Addr;
 
-use crate::error::{EgressRefusal, Result, egress_refused};
+use crate::error::Result;
 
-/// The most addresses one lease's allowlist may hold: the host-side set is
-/// built in one netlink transaction, and a list this long is a mistake, not
-/// a fleet's needs.
-pub const ALLOWLIST_ADDRESSES_MAX: usize = 256;
 /// Where the rendered names file is bound inside the sandbox.
 pub const SANDBOX_HOSTS: &str = "/etc/hosts";
 /// Where the resolver-less resolver file is bound inside the sandbox.
@@ -31,7 +27,7 @@ pub const RESOLV_CONF: &str =
 /// `localhost` through `/etc/hosts` alone still finds it.
 const HOSTS_PREAMBLE: &str = "127.0.0.1 localhost\n::1 localhost\n";
 
-/// What one lease's sandbox can reach.
+/// What one run's sandbox can reach.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network<'a> {
     /// The host's own network, shared.
@@ -42,7 +38,7 @@ pub enum Network<'a> {
     Allowed(&'a Allowlist),
 }
 
-/// One lease's egress allowlist, resolved at bind: each name and the IPv4
+/// One run's egress allowlist, resolved at bind: each name and the IPv4
 /// addresses it resolved to, names in the order they were merged.
 ///
 /// Each name's addresses are kept sorted and once each, so two resolutions
@@ -64,8 +60,8 @@ impl Allowlist {
     /// to. A name with several addresses appears once per address.
     ///
     /// # Errors
-    /// More distinct addresses than [`ALLOWLIST_ADDRESSES_MAX`]: the lease is
-    /// refused before any rule is installed.
+    /// None today: every list of entries is an allowlist. Callers on the
+    /// kernel path already carry the `Result`, so it stays.
     pub fn new(mut entries: Vec<(String, Ipv4Addr)>) -> Result<Self> {
         let mut first_seen: HashMap<String, usize> = HashMap::new();
         for (name, _address) in &entries {
@@ -80,10 +76,6 @@ impl Allowlist {
             .map(|(_name, address)| *address)
             .filter(|address| seen.insert(*address))
             .collect();
-        if addresses.len() > ALLOWLIST_ADDRESSES_MAX {
-            let refusal = EgressRefusal::TooManyAddresses(addresses.len());
-            return Err(egress_refused(refusal));
-        }
         let mut names: Vec<(String, usize)> = first_seen.into_iter().collect();
         names.sort_unstable_by_key(|(_name, order)| *order);
         Ok(Self {

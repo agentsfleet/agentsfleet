@@ -1,0 +1,13 @@
+SELECT EXISTS (
+    SELECT 1 FROM runner.decision_calls c
+    WHERE c.fleet_id = $4 AND c.workspace_id = $5
+      AND c.charged_nanos > c.reserved_nanos
+      AND (
+          c.original_run_id = $1 OR c.source_turn_id = $2
+          OR c.durable_task_id = $3 OR c.source_turn_id IN (
+              SELECT i.turn_id FROM fleet.durable_task_items i
+              WHERE i.durable_task_id = $3 AND i.fleet_id = c.fleet_id
+                AND i.workspace_id = c.workspace_id
+          )
+      )
+)

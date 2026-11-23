@@ -36,7 +36,7 @@ use axum::{Json, body::Bytes};
 use http::{HeaderMap, StatusCode};
 
 use crate::handler::{Refusal, webhook};
-use crate::services::{Services, WebhookIngress as _};
+use crate::services::{IngressPlane, WebhookIngress as _};
 use webhook::{DETAIL_EVENT_HEADER, HEADER_EVENT, text};
 
 use super::github::{self, Ingest, Policy};
@@ -74,9 +74,6 @@ const EVENT_PING: &str = "ping";
 /// The refusal a path naming no served provider earns.
 const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown App ingress provider";
 
-/// The refusal a delivery matching more fleets than the ceiling earns.
-const DETAIL_TOO_MANY: &str = "This delivery matches more fleets than one event may wake.";
-
 /// What a `ping` is answered with.
 const STATUS_PONG: &str = "pong";
 
@@ -90,8 +87,8 @@ const ACTOR_APP_GITHUB: &str = "github-app";
 /// `POST /v1/ingress/{provider}`.
 ///
 /// # Errors
-/// `UZ-CONN-004` for a provider this daemon serves no App for, `UZ-WH-030` for
-/// a body past the cap, the wall's own refusals, `UZ-WH-002` for a verified
+/// `UZ-CONN-004` for a provider this daemon serves no App for, the
+/// wall's own refusals, `UZ-WH-002` for a verified
 /// body that is not the event its header claims, and `UZ-WH-022` for a delivery
 /// matching more fleets than one event may wake.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -103,8 +100,7 @@ const ACTOR_APP_GITHUB: &str = "github-app";
     description = concat!(
         "Receives signed GitHub events and starts runs for matching subscribed fleets. ",
         "Duplicate deliveries do not start another run. Repair pull requests, workflow ",
-        "results, and `deployment_status` deliveries do not start unrelated investigations. ",
-        "Verified workflow completions may request an independent read for an existing task wait.",
+        "results, and `deployment_status` deliveries do not start unrelated investigations.",
     ),
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
@@ -125,7 +121,7 @@ const ACTOR_APP_GITHUB: &str = "github-app";
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(provider): Path<String>,
     headers: HeaderMap,
@@ -137,11 +133,6 @@ pub(crate) async fn receive<D: Services>(
             DETAIL_UNKNOWN_PROVIDER,
         ));
     }
-
-    // Before the hash, and so before any work this delivery could have asked
-    // for. `Bytes::len` is the buffered length; `webhook::BUFFER_CEILING` is
-    // the layer that stopped a larger one from being buffered at all.
-    webhook::within_cap(&body)?;
 
     let event = text(&headers, HEADER_EVENT)
         .ok_or_else(|| Refusal::coded(error_code::WEBHOOK_MALFORMED, DETAIL_EVENT_HEADER))?
@@ -177,7 +168,7 @@ pub(crate) async fn receive<D: Services>(
 /// Split from [`receive`] so the wall crossing and the routing read as the two
 /// separate concerns they are: everything here runs on a body that has already
 /// proved itself, and nothing here can reach the body that has not.
-async fn route<D: Services>(
+async fn route<D: IngressPlane>(
     services: &Arc<D>,
     event: &str,
     body: Bytes,
@@ -207,16 +198,6 @@ async fn route<D: Services>(
         ));
     };
 
-    if let Some(completion) = delivery.completion(afd_fleet::task::CompletionScope::Workspace(
-        workspace.clone(),
-    )) {
-        services
-            .tasks()
-            .record_github_completion(&completion)
-            .await
-            .map_err(Refusal::at(EVENT_DROPPED))?;
-    }
-
     let digest = match delivery.classify(Policy::AppIngress, services.now()) {
         Ingest::Accept(digest) => digest,
         Ingest::Ignore(reason) => return Ok(dropped(event, reason)),
@@ -237,15 +218,6 @@ async fn route<D: Services>(
                 error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND.as_str(),
             ));
         }
-        // Refused rather than truncated. Waking the first hundred of a hundred
-        // and one is a silent, order-dependent choice about whose fleet runs,
-        // and the operator who wired it that way is the one who has to know.
-        Fanout::TooMany(_matched) => {
-            return Err(Refusal::coded(
-                error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND,
-                DETAIL_TOO_MANY,
-            ));
-        }
     };
 
     fan_out(services, &fleets, &digest, &body).await
@@ -253,10 +225,9 @@ async fn route<D: Services>(
 
 /// Appends the delivery once per subscribed fleet.
 ///
-/// Sequential rather than concurrent: the fan-out is bounded at
-/// [`afd_ingress::MAX_FANOUT`] and each append is one round trip, so the
-/// latency this saves is not worth a hundred simultaneous claims against one
-/// connection pool on a public endpoint.
+/// Sequential rather than concurrent: each append is one round trip, and
+/// simultaneous claims against one connection pool on a public endpoint cost
+/// more than the latency they would save.
 ///
 /// A single failed append fails the whole delivery. That is deliberate and it
 /// is what makes a REDELIVERY safe: the claim is per fleet, so the fleets that
@@ -267,14 +238,14 @@ async fn route<D: Services>(
 /// failed webhook — a delivery fails when this handler is down or takes longer
 /// than ten seconds, and recovering it is a manual click in the App's delivery
 /// log or an operator script walking the REST API. So a leg that fails BEFORE
-/// its admission row commits, and every leg after it in this loop, is not
+/// its turn row commits, and every leg after it in this loop, is not
 /// merely delayed: nothing holds that work and no sender will offer it again.
 ///
 /// Which makes the loop's order load-bearing and the ten seconds a deadline
 /// rather than a target — signature verification, fleet resolution and one
-/// admission per subscribed fleet all spend the same budget, and fan-out width
+/// turn per subscribed fleet all spend the same budget, and fan-out width
 /// is what spends it fastest.
-async fn fan_out<D: Services>(
+async fn fan_out<D: IngressPlane>(
     services: &Arc<D>,
     fleets: &[afd_ingress::Binding],
     digest: &str,

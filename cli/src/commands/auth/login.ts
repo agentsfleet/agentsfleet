@@ -39,7 +39,6 @@ import {
 } from "./login-exchange.ts";
 import { rollbackOnIdentityFailure } from "./login-identity-rollback.ts";
 import { browserLogin } from "./login-browser-flow.ts";
-import { MAX_LOGIN_WAIT_MS } from "./login-callback-protocol.ts";
 import {
   readIdentity,
   type CallerIdentity,
@@ -170,14 +169,13 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
 
   const keypair = yield* generateKeypair;
   const tokenName = flags.tokenName ?? defaultTokenName();
-  const deadlineMs = Date.now() + MAX_LOGIN_WAIT_MS;
   const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
   const serverLoginUrl = created.login_url?.trim();
   const loginUrl = serverLoginUrl ? serverLoginUrl : buildLoginUrl(config.dashboardUrl, created.session_id);
 
   const identity = yield* flags.noOpen || config.noOpen
     ? manualLogin(created.session_id, keypair, loginUrl, flags.noInput)
-    : browserLogin({ sessionId: created.session_id, keypair, dashboardUrl: config.dashboardUrl, loginUrl, deadlineMs },
+    : browserLogin({ sessionId: created.session_id, keypair, dashboardUrl: config.dashboardUrl, loginUrl },
       (token) => completeLogin(created.session_id, token));
   yield* renderSuccess(created.session_id, identity);
 });

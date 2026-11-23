@@ -4,7 +4,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
-import { HTTP_METHOD } from "@/lib/api/retry";
+import { HTTP_METHOD } from "@/lib/api/client";
 import { SECRET_KIND } from "@/lib/api/secrets-types";
 import { CATALOGUE_MODEL, VERIFIED_AT } from "./helpers/catalogue-fixtures";
 import ModelsRegistryTable from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable";

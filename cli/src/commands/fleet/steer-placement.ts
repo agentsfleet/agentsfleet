@@ -11,9 +11,9 @@ export const DISPOSITION_QUEUED = "queued" as const;
 // rather than failing a send the daemon already holds. It stays absent in the
 // decoded value: `--json` output for such a daemon is a pinned shape.
 const MessagesResponseSchema = Schema.Struct({
-  event_id: Schema.optionalKey(Schema.String),
+  turn_id: Schema.optionalKey(Schema.String),
   disposition: Schema.optionalKey(Schema.Literals([DISPOSITION_STARTED, DISPOSITION_FOLDED, DISPOSITION_QUEUED])),
-  folded_into_event_id: Schema.optionalKey(Schema.String),
+  folded_into_turn_id: Schema.optionalKey(Schema.String),
 });
 
 export type MessagesResponse = typeof MessagesResponseSchema.Type;

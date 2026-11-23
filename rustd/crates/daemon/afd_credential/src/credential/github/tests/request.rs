@@ -14,7 +14,7 @@ fn sent(request: &ScopedRequest) -> serde_json::Value {
     serde_json::to_value(request).expect("the request serialises")["permissions"].clone()
 }
 
-/// Dimension 1.1 — a read mint asks for the repository and the CI evidence,
+/// A read mint asks for the repository and the CI evidence,
 /// all at read, and nothing else: no write, no `pull_requests`, no `workflows`.
 #[test]
 fn read_mint_requests_ci_evidence_reads() {
@@ -29,7 +29,7 @@ fn read_mint_requests_ci_evidence_reads() {
     );
 }
 
-/// Dimension 1.3 — a write mint keeps the evidence reads, raises `contents` to
+/// A write mint keeps the evidence reads, raises `contents` to
 /// write and adds `pull_requests` write, and still asks for no `workflows`.
 #[test]
 fn write_mint_keeps_the_evidence_reads() {
@@ -44,7 +44,7 @@ fn write_mint_keeps_the_evidence_reads() {
     );
 }
 
-/// Dimension 1.4 — an evidence read the installation does not hold is left out
+/// An evidence read the installation does not hold is left out
 /// of the request, so the mint still succeeds and only that read answers 403.
 #[test]
 fn evidence_reads_follow_what_the_installation_holds() {
@@ -76,7 +76,7 @@ fn evidence_reads_follow_what_the_installation_holds() {
     }
 }
 
-/// Dimension 1.5 — the binding's own reach is asked for even where the
+/// The binding's own reach is asked for even where the
 /// installation lacks it, so a repair it cannot make fails at the mint rather
 /// than arriving as a narrower token.
 #[test]

@@ -46,8 +46,8 @@
 //! reason logged. An error status would make Slack retry-loop the same
 //! delivery.
 //!
-//! The exceptions are the three things a sender or an operator genuinely
-//! controls: a path naming no connector, a body past the cap, and a signature
+//! The exceptions are the two things a sender or an operator genuinely
+//! controls: a path naming no connector and a signature
 //! that did not verify.
 
 use std::sync::Arc;
@@ -65,7 +65,7 @@ use http::{HeaderMap, StatusCode};
 
 use crate::handler::mention::{self, Outcome, Parsed};
 use crate::handler::{Refusal, webhook};
-use crate::services::Services;
+use crate::services::IngressPlane;
 
 use super::provider_of;
 /// The two documents a 200 carries. Public wire.
@@ -141,7 +141,7 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
 ///
 /// # Errors
 /// `UZ-CONN-004` for a path naming no shipped connector, or one that delivers
-/// no events; `UZ-WH-030` for a body past the cap; and the wall's own
+/// no events; and the wall's own
 /// refusals — `UZ-WH-020` for a deployment holding no signing secret for this
 /// connector, `UZ-WH-010` for a signature that did not match, `UZ-WH-011` for
 /// one outside its window.
@@ -172,7 +172,7 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
     ),
 ))]
-pub(crate) async fn receive<D: Services>(
+pub(crate) async fn receive<D: IngressPlane>(
     State(services): State<Arc<D>>,
     Path(segment): Path<String>,
     headers: HeaderMap,
@@ -196,8 +196,6 @@ pub(crate) async fn receive<D: Services>(
         ));
     };
 
-    webhook::within_cap(&body)?;
-
     // Nothing above this line has read the body as anything but bytes.
     let proven =
         webhook::verified_connector_events(&services, provider, scheme, &headers, body).await?;
@@ -218,7 +216,7 @@ pub(crate) async fn receive<D: Services>(
 ///
 /// # Errors
 /// A datastore that would not answer while resolving or admitting.
-async fn mentioned<D: Services>(
+async fn mentioned<D: IngressPlane>(
     services: &D,
     provider: Provider,
     ingress: &EventIngress,

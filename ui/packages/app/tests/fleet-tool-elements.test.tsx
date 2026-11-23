@@ -1,4 +1,4 @@
-import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import type { FleetToolCall, FleetTurnStatus } from "@/lib/streaming/fleet-stream-row";
 import { expect, it, vi, afterEach } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
@@ -9,15 +9,17 @@ it("keeps commands, reads, edits and a new tool readable inside one reply", () =
   const {container} = renderTools([
     {name: "exec_command", args: {cmd: "printf ready\nprintf checked"}, status: TOOL_CALL_STATUS.FAILED, outputHead: "permission denied", exitCode: 2},
     {name: "file_read", args: {path: "/workspace/app.ts"}, outputHead: "export const ready = true;"},
-    {name: "file_edit", args: {path: "/workspace/app.ts", old_text: "ready = false", new_text: "ready = true"}},
+    {name: "file_edit", args: {path: "/workspace/app.ts", edits: [{old_text: "ready = false", new_text: "ready = true"}]},
+      changes: [{path: "app.ts", added: 1, removed: 1}]},
     {name: "custom_release_report", args: {release: "秋"}, outputHead: "Release report recorded"},
   ]);
   const command = screen.getByLabelText("Command result");
   expect(command.querySelector("code")?.textContent).toBe("printf ready\nprintf checked");
   expect(screen.getByText("permission denied")).toBeTruthy();
   expect(screen.getByText("export const ready = true;")).toBeTruthy();
-  expect(container.querySelector('[data-diff="removed"]')?.textContent).toContain("ready = false");
-  expect(container.querySelector('[data-diff="added"]')?.textContent).toContain("ready = true");
+  const edit = container.querySelector('[data-tool="file_edit"]');
+  expect(edit?.querySelector("[data-changed-file]")?.textContent).toBe("app.ts");
+  expect(edit?.textContent).toContain("app.ts +1 −1");
   expect(screen.getByText("Release report recorded")).toBeTruthy();
   expect(container.textContent).not.toMatch(/not supported|unsupported/i);
   const failed = container.querySelector('[data-tool="exec_command"]');
@@ -26,7 +28,9 @@ it("keeps commands, reads, edits and a new tool readable inside one reply", () =
 });
 
 it("announces the number of lines actually added and removed by a completed edit", () => {
-  renderTools([{name: "file_edit", args: {path: "list.txt", old_text: "first\nsecond", new_text: "one\ntwo\nthree"}}]);
+  // The counts are the runner's recorded changes, never worked out from the arguments.
+  renderTools([{name: "file_edit", args: {path: "list.txt", edits: [{old_text: "first\nsecond", new_text: "one\ntwo\nthree"}]},
+    changes: [{path: "list.txt", added: 3, removed: 2}]}]);
   expect(screen.getByLabelText("3 additions, 2 deletions")).toBeTruthy();
 });
 
@@ -54,12 +58,14 @@ it("renders command and output markup as code and text without executing it", ()
 });
 
 it("does not claim success when the runner returns no outcome status", () => {
-  const {container} = renderTools([{name: "file_edit", args: {path: "a.ts", old_text: "old", new_text: "new"}, status: undefined}]);
+  const {container} = renderTools([{name: "file_edit", args: {path: "a.ts", edits: [{old_text: "old", new_text: "new"}]}, status: undefined}]);
   const cell = container.querySelector('[data-tool="file_edit"]');
   expect(cell?.getAttribute("data-state")).toBe("settled");
   expect(cell?.textContent).not.toContain("Success");
   expect(screen.getByText("a.ts · Requested changes")).toBeTruthy();
   expect(cell?.querySelector('[data-diff="added"]')?.textContent).toContain("new");
+  // No change recorded: the requested lines show, but no counts worked out of the arguments.
+  expect(cell?.textContent).not.toMatch(/\+\d+ −\d+/);
 });
 
 it("keeps an unfinished command unconfirmed while its output is still arriving", () => {
@@ -104,7 +110,7 @@ it("offers the existing full-output view when a command's returned output is tru
   expect(await screen.findByText("Full command output")).toBeTruthy();
 });
 
-function renderTools(tools: (Partial<FleetToolCall> & {name: string})[], status: FleetEventStatus = "processed") {
+function renderTools(tools: (Partial<FleetToolCall> & {name: string})[], status: FleetTurnStatus = "processed") {
   mockStream([ev({id: "outcomes", role: "user", actor: "operator", text: "Review release", reply: "Recorded results.", status,
     tools: tools.map((tool, index) => ({startedAtMs: 1000, ms: 10, done: true, status: TOOL_CALL_STATUS.SUCCEEDED, callId: `call-${index}`, ...tool})),
   })]);

@@ -1,27 +1,28 @@
-import {launchReviewEvent} from "./launch-review-activity";
-import {deployFailureEvent} from "./deploy-failure-data";
-import {visualWakeupEvents} from "./refresh-wakeup-data";
-import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
-import type { TaskPage } from "@/lib/api/tasks";
-import { detail, summary, TASK_IDS } from "@/tests/helpers/task-reads";
-import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
+import {launchReviewTurn} from "./launch-review-activity";
+import {deployFailureTurn} from "./deploy-failure-data";
+import {visualWakeupTurns} from "./refresh-wakeup-data";
+import type { FleetTurn, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
+import type { DurableTaskPage } from "@/lib/api/tasks";
+import { detail, summary, DURABLE_TASK_IDS } from "@/tests/helpers/task-reads";
+import { TOOL_CALL_STATUS, type ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 
 export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "wake-up", "error"] as const;
 export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 
 /** Explicit sample records, shared by the transcript and its Summary readers. */
-export function visualEvents(scenario: VisualScenario, started: number, includeCode = false): FleetEvent[] {
+export function visualTurns(scenario: VisualScenario, started: number, includeCode = false): FleetTurn[] {
   if (scenario === "empty") return [];
-  if (scenario === "wake-up") return visualWakeupEvents(started);
-  if (scenario === "error") return [deployFailureEvent(started)];
-  if (scenario === "activity") return [launchReviewEvent(started)];
+  if (scenario === "wake-up") return visualWakeupTurns(started);
+  if (scenario === "error") return [deployFailureTurn(started)];
+  if (scenario === "activity") return [launchReviewTurn(started)];
   const completed = scenario === "completed";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running"),
     ...(completed ? [
       tool("file", "file_read", {path: "release.yaml"}, started),
-      tool("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}, started),
+      {...tool("edit", "file_edit", {path: "release.yaml", edits: [{old_text: "ready: false", new_text: "ready: true"}]}, started),
+        changes: [{path: "release.yaml", added: 1, removed: 1}]},
       tool("report", "custom_release_report", {release: "current"}, started),
       tool("manifest", "file_write", {path: "runner-image.yaml"}, started),
       tool("notes", "file_write", {path: "release-notes.md"}, started),
@@ -34,25 +35,25 @@ export function visualEvents(scenario: VisualScenario, started: number, includeC
     createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : "processed",
     wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
-    ...(completed ? {taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
-      activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+    ...(completed ? {durableTaskActivity: {truncated: false, items: [{kind: "durable_task_decision_completed" as const, progress: {
+      activity_id: DURABLE_TASK_IDS[1], durable_task_id: DURABLE_TASK_IDS[0], source_turn_id: null, operation: "goal" as const,
       phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}} : {})}];
 }
 
-export function visualTaskPage(scenario: VisualScenario, started: number, parity = false): TaskPage {
+export function visualDurableTaskPage(scenario: VisualScenario, started: number, parity = false): DurableTaskPage {
   return {items: scenario === "empty" || scenario === "activity" ? [] : [{...summary(undefined, scenario === "running" ? "running" : scenario === "error" ? "blocked" : "waiting"),
     title: scenario === "error" ? "Deploy connection expired" : scenario === "wake-up" ? "Watch pull request #58" : parity ? "Update runner image" : "Release readiness", created_at: new Date(started - 138_000).toISOString()}], next_cursor: null};
 }
 
-export function visualTaskDetail(scenario: VisualScenario, started: number, parity = false) {
-  const task = visualTaskPage(scenario, started, parity).items[0] ?? summary();
+export function visualDurableTaskDetail(scenario: VisualScenario, started: number, parity = false) {
+  const task = visualDurableTaskPage(scenario, started, parity).items[0] ?? summary();
   const saved = detail(task);
-  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: scenario === "error" ? "Verify the latest deployment health." : scenario === "wake-up" ? "Watch pull request #58 and report its build after it merges." : "Update the runner image, run the scans, and ask before publishing.",
+  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: DURABLE_TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: scenario === "error" ? "Verify the latest deployment health." : scenario === "wake-up" ? "Watch pull request #58 and report its build after it merges." : "Update the runner image, run the scans, and ask before publishing.",
     target: (scenario === "completed" || scenario === "activity") ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,
       branch: "runner-refresh", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/agentsfleet/platform-images/pull/58", workflows: []} : saved.context.target}};
 }
 
-function tool(callId: string, name: string, args: Record<string, string>, started: number, running = false): FleetToolCall {
+function tool(callId: string, name: string, args: ToolArgs, started: number, running = false): FleetToolCall {
   return {callId, name, args, startedAtMs: started - 138_000, ms: running ? null : 2000, done: !running,
     ...(running ? {} : {status: TOOL_CALL_STATUS.SUCCEEDED, outputHead: "Recorded example result", outputLineCount: 1})};
 }

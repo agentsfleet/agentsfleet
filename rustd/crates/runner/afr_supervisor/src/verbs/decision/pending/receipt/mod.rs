@@ -3,7 +3,7 @@
 //! Receipts hold fences, usage counts, a model name and answer probabilities: no credential or
 //! tenant text, so they are not wiped (Indy, Nov 10, 2026).
 
-use af_wire::task::DecisionReceiptInput;
+use af_wire::durable_task::DecisionReceiptInput;
 
 pub(in super::super) struct Receipt(DecisionReceiptInput);
 

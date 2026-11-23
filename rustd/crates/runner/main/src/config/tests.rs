@@ -4,34 +4,74 @@ use std::io::Write as _;
 
 type Checked = Result<(), Box<dyn std::error::Error>>;
 
+/// The values an installed runner's profile carries, written out here so the
+/// test owns its input: each equals the built-in default.
+const DEFAULT_PROFILE: &str = r"
+[inference]
+connect_timeout_seconds = 10
+stream_idle_timeout_seconds = 300
+[provider_retries]
+max_attempts = 3
+max_stream_open_attempts = 3
+initial_backoff_ms = 1000
+max_retry_after_seconds = 60
+[supervisor]
+daemon_max_attempts = 5
+daemon_initial_backoff_ms = 250
+daemon_max_backoff_ms = 30_000
+renewal_interval_ms = 5000
+max_concurrent_file_operations = 2
+";
+
+/// Reads `text` as the selected profile.
+fn profile(text: &str) -> Result<Settings, Box<dyn std::error::Error>> {
+    let mut file = tempfile::NamedTempFile::new()?;
+    file.write_all(text.as_bytes())?;
+    let path = file
+        .path()
+        .to_str()
+        .ok_or("temp path is not UTF-8")?
+        .to_owned();
+    read(&MapEnv::from_pairs([(ENV_CONFIG_FILE, path.as_str())]))
+        .map_err(|status| format!("profile refused: {status:?}").into())
+}
+
 #[test]
-fn installed_runner_profile_preserves_defaults() -> Checked {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../../deploy/baremetal/agentsfleet-runner.toml"
+fn a_profile_of_the_defaults_selects_the_defaults() -> Checked {
+    let selected = profile(DEFAULT_PROFILE)?;
+    assert_eq!(
+        selected.inference,
+        af_providers::settings::Timeouts::DEFAULT
     );
-    let selected = read(&MapEnv::from_pairs([(ENV_CONFIG_FILE, path)]))
-        .map_err(|status| format!("installed profile refused: {status:?}"))?;
-    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
     assert_eq!(
         selected.provider_retries,
-        af_providers::RetryPolicy::DEFAULT
+        af_providers::settings::RetryPolicy::DEFAULT
     );
     assert_eq!(
         selected.supervisor,
         afr_supervisor::config::RuntimePolicy::DEFAULT
     );
-    let defaults =
-        read(&MapEnv::default()).map_err(|status| format!("defaults refused: {status:?}"))?;
-    assert_eq!(defaults.supervisor, selected.supervisor);
     Ok(())
+}
+
+#[test]
+fn a_profile_naming_an_unknown_key_is_refused() {
+    assert!(profile("[supervisor]\nrenewal_interval = 5000\n").is_err());
+}
+
+#[test]
+fn a_profile_with_a_value_of_the_wrong_type_is_refused() {
+    assert!(profile("[inference]\nconnect_timeout_seconds = \"ten\"\n").is_err());
 }
 
 #[test]
 fn a_blank_profile_variable_selects_the_defaults() -> Checked {
     let selected = read(&MapEnv::from_pairs([(ENV_CONFIG_FILE, "  ")]))
         .map_err(|status| format!("blank profile variable refused: {status:?}"))?;
-    assert_eq!(selected.inference, af_inference::Timeouts::DEFAULT);
+    assert_eq!(
+        selected.inference,
+        af_providers::settings::Timeouts::DEFAULT
+    );
     assert_eq!(
         selected.supervisor,
         afr_supervisor::config::RuntimePolicy::DEFAULT
@@ -54,7 +94,7 @@ fn custom_profile_reaches_component_policies() -> Checked {
     assert_eq!(selected.inference.stream_idle().as_secs(), 7);
     assert_ne!(
         selected.provider_retries,
-        af_providers::RetryPolicy::DEFAULT
+        af_providers::settings::RetryPolicy::DEFAULT
     );
     assert_eq!(selected.supervisor.settings().daemon_max_attempts, 2);
     assert_eq!(selected.supervisor.settings().renewal_interval_ms, 1000);

@@ -22,19 +22,15 @@
 //! always emitted.
 //!
 //! `total` is always null, and that is not a gap. Counting a keyset page costs
-//! the scan the pagination exists to avoid, and §3 declares null to mean "not
+//! the scan the pagination exists to avoid, and the paging rule declares null to mean "not
 //! computed" rather than letting the key vanish.
 
+// The longest model identifier is the wire's, one rule on both request types,
+// so the bound cannot hold on the create and not on the change. The refusal
+// sentence spells the same number; both move together.
+use af_wire::inference::MODEL_ID_MAX_BYTES;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-
-/// The longest model identifier this surface accepts.
-///
-/// One rule and two request types, so the bound cannot hold on the create and
-/// not on the change — which is exactly how `model_id` ended up bounded on the
-/// catalogue route and unbounded on this one. The refusal sentence spells the
-/// same number in words; both move together or neither does.
-pub const MODEL_ID_MAX_BYTES: usize = 256;
 
 /// One configured model, as the registry page shows it.
 ///
@@ -293,7 +289,7 @@ mod tests {
 
     #[test]
     fn an_empty_page_still_carries_both_navigation_keys() {
-        // §3 requires `total` and `next_cursor` to be present on EVERY page
+        // The paging rule requires `total` and `next_cursor` to be present on EVERY page
         // including the last, so a client can read them without branching on
         // their absence first. They are the two nulls that stay on this wire.
         let body = serde_json::to_string(&ModelEntriesResponse {

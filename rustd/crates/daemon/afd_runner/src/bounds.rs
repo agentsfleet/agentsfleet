@@ -2,10 +2,8 @@
 //!
 //! A runner token authenticates a machine that reports two things nobody can
 //! check from here: what its kernel can enforce, and how its own probe went.
-//! Both are stored, so both are a persistence-amplification channel if they are
-//! unbounded — a mebibyte of JSONB the runner page then re-reads on every load.
-//! The caps are drawn from the probe's fixed vocabulary rather than from a
-//! guess. Both reports declare their bounds on the wire type with garde; the
+//! Both are stored, and every text either carries is held to the text ceiling.
+//! Both reports declare their bounds on the wire type with garde; the
 //! capability report has nothing more to judge, so the heartbeat validates it directly, and this
 //! module keeps the verdict's one cross-field rule.
 //!
@@ -36,28 +34,7 @@ use garde::Validate as _;
 
 use crate::error::{Result, rejected};
 
-// The four caps below are the wire type's own, under the names this crate and
-// its suite already spell them by. Aliases rather than second definitions: the
-// bound is DECLARED on `SelftestReport` where `garde` proves it, and a local
-// copy would let the cap move on the type while a case kept asserting the old
-// number and still passing.
-
-/// Most checks one verdict may carry.
-///
-/// Sized to the probe's vocabulary plus room for a per-operator-bind check
-/// each, not to a guess.
-pub const MAX_SELFTEST_CHECKS: usize = af_wire::runner::SELFTEST_CHECKS_MAX;
-
-/// Longest a check's name may be.
-pub const MAX_CHECK_NAME_LEN: usize = af_wire::runner::CHECK_NAME_MAX_BYTES;
-
-/// Longest a check's prose cause may be.
-pub const MAX_CHECK_DETAIL_LEN: usize = af_wire::runner::CHECK_DETAIL_MAX_BYTES;
-
-/// Longest the policy strings travelling with a verdict may be.
-pub const MAX_SELFTEST_POLICY_LEN: usize = af_wire::runner::SELFTEST_POLICY_MAX_BYTES;
-
-/// Why a verdict past a cap, or carrying an empty name, detail or policy
+/// Why a verdict past the text ceiling, or carrying an empty name, detail or policy
 /// string, was refused.
 ///
 /// Neither refusal carries a fragment of what was refused: a runner token can
@@ -75,10 +52,10 @@ pub const DETAIL_SELFTEST_ALL_OK_DISAGREES: &str = "all_ok disagrees with the re
 /// a partially stored self-test is a verdict nobody reasoned about.
 ///
 /// # Errors
-/// A rejection reading [`DETAIL_SELFTEST_UNBOUNDED`] when any cap is exceeded
+/// A rejection reading [`DETAIL_SELFTEST_UNBOUNDED`] when any text passes the ceiling
 /// or any required string is empty, and [`DETAIL_SELFTEST_ALL_OK_DISAGREES`]
 /// when the summary contradicts the checks. That second one is the incident
-/// this exists for: a host reading healthy while every lease dies inside its
+/// this exists for: a host reading healthy while every run dies inside its
 /// sandbox.
 pub fn accept(report: &SelftestReport<'_>) -> Result<()> {
     // Every bound is declared on the wire type, including the per-check ones
@@ -107,6 +84,7 @@ mod tests {
     )]
     use std::borrow::Cow;
 
+    use af_validate::TEXT_MAX_CHARS;
     use af_wire::runner::SelftestCheck;
 
     use super::*;
@@ -171,11 +149,11 @@ mod tests {
             ..passing()
         };
         let long_name = SelftestCheck {
-            name: Cow::Owned("n".repeat(MAX_CHECK_NAME_LEN + 1)),
+            name: Cow::Owned("n".repeat(TEXT_MAX_CHARS + 1)),
             ..passing()
         };
         let long_detail = SelftestCheck {
-            detail: Cow::Owned("d".repeat(MAX_CHECK_DETAIL_LEN + 1)),
+            detail: Cow::Owned("d".repeat(TEXT_MAX_CHARS + 1)),
             ..passing()
         };
 
@@ -184,7 +162,6 @@ mod tests {
             report(vec![unexplained], true),
             report(vec![long_name], true),
             report(vec![long_detail], true),
-            report(vec![passing(); MAX_SELFTEST_CHECKS + 1], true),
             // An empty policy string cannot be compared against the row for
             // staleness, so a verdict carrying one says nothing.
             SelftestReport {
@@ -196,7 +173,7 @@ mod tests {
                 ..report(vec![passing()], true)
             },
             SelftestReport {
-                sandbox_tier: Cow::Owned("t".repeat(MAX_SELFTEST_POLICY_LEN + 1)),
+                sandbox_tier: Cow::Owned("t".repeat(TEXT_MAX_CHARS + 1)),
                 ..report(vec![passing()], true)
             },
         ] {

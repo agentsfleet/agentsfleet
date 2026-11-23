@@ -1,20 +1,12 @@
-// Which Fleets are waiting on a decision, and why a steer stopped producing
-// output.
+// Which Fleets are waiting on a decision.
 //
 // A Fleet whose trigger declares a write capability opens an approval gate per
-// run and waits. Before this lookup the only signal in the terminal was the
-// sixty-second timeout, which reads as "the daemon is slow" and is not — the
-// run is parked, deliberately, on a decision nobody has been asked to make.
-//
-// The lookup runs on the failure path only, so a healthy steer pays nothing for
-// it, and a failed one spends one request to turn a dead end into a next step.
+// run and waits, deliberately, on a decision somebody has to make.
 
 import { Effect, Exit, type Redacted } from "effect";
 import { HttpClient } from "../../services/http-client.ts";
 import { GATE_STATUS } from "../../constants/approvals.ts";
 import { fetchGates, type ApprovalGate } from "./approvals.ts";
-
-const ONE_GATE = 1;
 
 /** Every pending gate in the workspace, or an empty list when the inbox cannot
  *  be read.
@@ -25,7 +17,7 @@ const ONE_GATE = 1;
  *  behind a page of decided ones — a confident wrong answer, which is the
  *  failure this whole diagnosis replaces.
  *
- *  Best-effort at both call sites: a failed diagnosis must never replace the
+ *  Best-effort: a failed diagnosis must never replace the
  *  thing being diagnosed, and `Effect.exit` survives a defect (a thrown
  *  TypeError in the transport) as well as a typed refusal.
  *
@@ -69,24 +61,4 @@ export const pendingGateCounts = (
       counts.set(fleetId, (counts.get(fleetId) ?? 0) + 1);
     }
     return counts;
-  });
-
-/** The sentence naming the gate, or null when nothing is holding this Fleet. */
-export const parkedGateHint = (
-  wsId: string,
-  fleetId: string,
-  token: Redacted.Redacted<string>,
-  signal?: AbortSignal,
-): Effect.Effect<string | null, never, HttpClient> =>
-  Effect.gen(function* () {
-    const all = yield* pendingGates(wsId, token, signal);
-    // Unreadable inbox: the caller keeps the failure it already has and its
-    // ordinary suggestion. Silence is honest here; "nothing is waiting" is not.
-    if (all === null) return null;
-    const pending = all.filter((gate) => gate.fleet_id === fleetId);
-    const first = pending[0];
-    if (first === undefined) return null;
-    return pending.length === ONE_GATE
-      ? `waiting on approval gate ${first.gate_id ?? ""} — decide it with: agentsfleet fleet approvals approve ${first.gate_id ?? ""}`
-      : `waiting on ${pending.length} approval gates — list them with: agentsfleet fleet approvals list --fleet ${fleetId}`;
   });

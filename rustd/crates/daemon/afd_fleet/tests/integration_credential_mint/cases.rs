@@ -6,48 +6,46 @@ use crate::rows::{LAPSE, Row};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
-async fn test_mint_scope_is_the_presenting_runners_lease() {
+async fn test_mint_scope_is_the_presenting_runners_run() {
     // Invariant 2, and the whole reason the wire carries no workspace: a
-    // prompt-injected child has nothing to forge, because a lease that is not
+    // prompt-injected child has nothing to forge, because a run that is not
     // this runner's resolves to NO ROW rather than to another tenant's
     // workspace.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     let stranger = bound(&fixtures, "{}").await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
 
-    let scope = leases
-        .mint_scope(&owner.runner, &owner.lease)
+    let scope = runs
+        .mint_scope(&owner.runner, &owner.run)
         .await
         .expect("the read must succeed")
-        .expect("the owner's own lease resolves");
+        .expect("the owner's own run resolves");
     assert_eq!(scope.workspace_id, owner.workspace);
     assert_eq!(scope.fleet_id, owner.fleet);
-    assert_eq!(&*scope.event_id, owner.event.as_str());
+    assert_eq!(&*scope.turn_id, owner.event.as_str());
 
-    // The IDOR negative: a real, live lease belonging to somebody else.
+    // The IDOR negative: a real, live run belonging to somebody else.
     assert!(
-        leases
-            .mint_scope(&stranger.runner, &owner.lease)
+        runs.mint_scope(&stranger.runner, &owner.run)
             .await
             .expect("the read must succeed")
             .is_none(),
-        "a foreign lease resolved to a scope"
+        "a foreign run resolved to a scope"
     );
 
-    // And the lease's own lifetime bounds the authority: past its expiry the
+    // And the run's own lifetime bounds the authority: past its expiry the
     // same runner presenting the same id resolves to nothing.
     fixtures
-        .age(Row::Lease(&owner.lease), "lease_expires_at", LAPSE)
+        .age(Row::Run(&owner.run), "run_expires_at", LAPSE)
         .await;
     assert!(
-        leases
-            .mint_scope(&owner.runner, &owner.lease)
+        runs.mint_scope(&owner.runner, &owner.run)
             .await
             .expect("the read must succeed")
             .is_none(),
-        "an expired lease still authorised a mint"
+        "an expired run still authorised a mint"
     );
 
     fixtures.cleanup().await;
@@ -55,10 +53,10 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
-async fn test_mint_refuses_a_superseded_active_lease() {
-    // A reclaim moves the fleet's sequence past a lease before the issue that
+async fn test_mint_refuses_a_superseded_active_run() {
+    // A reassignment moves the fleet's sequence past a run before the issue that
     // expires its row, so a row that is `active` and unexpired is not proof
-    // the lease still holds the fleet. The mint scope is checked against the
+    // the run still holds the fleet. The mint scope is checked against the
     // affinity row's sequence, as the memory fence and report are.
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
@@ -70,44 +68,42 @@ async fn test_mint_refuses_a_superseded_active_lease() {
         &format!(r#"{{"integration":"static","token":"{OWNER_TOKEN}"}}"#),
     )
     .await;
-    let leases = fixtures.leases();
+    let runs = fixtures.runs();
     let now = fixtures.enrolled_at();
     assert!(
-        leases
-            .mint_scope(&owner.runner, &owner.lease)
+        runs.mint_scope(&owner.runner, &owner.run)
             .await
             .expect("the read must succeed")
             .is_some(),
-        "the control: the lease mints while it holds the fleet"
+        "the control: the run mints while it holds the fleet"
     );
 
     supersede(&fixtures, &owner.fleet).await;
 
     assert!(
-        leases
-            .mint_scope(&owner.runner, &owner.lease)
+        runs.mint_scope(&owner.runner, &owner.run)
             .await
             .expect("the read must succeed")
             .is_none(),
-        "a lease the fleet moved past still resolved a mint scope"
+        "a run the fleet moved past still resolved a mint scope"
     );
     let refused = fixtures
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
+            &requests::mint(owner.run.as_str(), CONNECTOR_STATIC),
             now,
         )
         .await
-        .expect_err("a superseded lease mints nothing");
-    assert_eq!(refused.code(), error_code::RUN_LEASE_NOT_FOUND);
+        .expect_err("a superseded run mints nothing");
+    assert_eq!(refused.code(), error_code::RUN_NOT_FOUND);
 
     fixtures.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
-async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
+async fn test_a_static_handle_mints_from_the_runs_own_workspace() {
     // The positive, and the scope proof: the token's VALUE is what
     // distinguishes the owner's workspace from any other, so a mint that
     // resolved the wrong workspace fails here rather than passing on presence.
@@ -126,7 +122,7 @@ async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
+            &requests::mint(owner.run.as_str(), CONNECTOR_STATIC),
             fixtures.enrolled_at(),
         )
         .await
@@ -164,7 +160,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
             .plane()
             .mint(
                 &owner.runner,
-                &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
+                &requests::mint(owner.run.as_str(), CONNECTOR_GITHUB),
                 fixtures.enrolled_at(),
             )
             .await
@@ -194,7 +190,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
         .plane()
         .mint(
             &owner.runner,
-            &requests::mint(owner.lease.as_str(), CONNECTOR_GITHUB),
+            &requests::mint(owner.run.as_str(), CONNECTOR_GITHUB),
             fixtures.enrolled_at(),
         )
         .await

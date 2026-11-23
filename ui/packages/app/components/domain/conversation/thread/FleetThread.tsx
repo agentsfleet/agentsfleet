@@ -4,7 +4,7 @@ import type { FleetSources } from "@/lib/fleet-sources";
 import type { Schedule } from "@/lib/api/draft-types";
 
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/turns/fleet-activity";
 import {
   AssistantRuntimeProvider,
   useExternalStoreRuntime,
@@ -15,26 +15,27 @@ import {
 } from "@agentsfleet/design-system";
 import {
   CONNECTION_STATUS,
-  useFleetEventStream,
-} from "../stream/useFleetEventStream";
+  useFleetTurnStream,
+} from "../stream/useFleetTurnStream";
 import { useFleetThreadEntries } from "./useFleetThreadEntries";
 import { mergePreviewEntries, useFleetUploadPreviews, type FleetConversationEntry } from "../composer/useFleetUploadPreviews";
-import type { EventRow } from "@/lib/api/events";
+import type { TurnRow } from "@/lib/api/turns";
 import { SenderLabelProvider } from "../../activity/messages/FleetMessageRow";
 import { SenderNamesProvider } from "../../shared/identity/SenderNames";
-import { senderNamesFrom, type SenderName } from "@/lib/events/sender-names";
+import { senderNamesFrom, type SenderName } from "@/lib/turns/sender-names";
 import { FleetConnectionIndicator, useArrivalCue } from "../chrome/FleetConnectionIndicator";
 import { useFleetPendingSends } from "../delivery/useFleetPendingSends";
 import { useCurrentUser } from "@/lib/auth/client";
-import { ACTOR } from "@/lib/events/event-summary";
+import { ACTOR } from "@/lib/turns/turn-summary";
 import { useMessageDelivery, useOpenFleet } from "../delivery/useFleetMessageDelivery";
 import { useFleetSteerQueue } from "../delivery/useFleetSteerQueue";
+import { useTurnStop } from "../composer/useTurnStop";
 import { reportsOwnRun } from "../../activity/replies/fleetReplyMessage";
 import { FleetConversationLayout } from "../../shared/summary/FleetWorkSidebar";
 import { FleetThreadViewport } from "./FleetThreadViewport";
 import { FleetScopeProvider } from "../stream/FleetScope";
-import { FleetTaskProvider } from "../../tasks/FleetTaskProvider";
-import { TaskPanel } from "../../tasks/TaskPanel";
+import { FleetDurableTaskProvider } from "../../tasks/FleetTaskProvider";
+import { DurableTaskPanel } from "../../tasks/TaskPanel";
 import { FLEET_CHAT_CONFIG } from "../../activity/tools/FleetToolRegistry";
 
 export type FleetThreadProps = {
@@ -51,11 +52,11 @@ export type FleetThreadProps = {
   /** The console's own fleet — the name a fleet reply is labelled with. */
   senderLabel: string;
   /**
-   * Server-rendered initial event rows. The browser holds no credential —
+   * Server-rendered initial turn rows. The browser holds no credential —
    * this data is fetched in the parent Server Component and passed as a
    * prop; live updates arrive over the cookie-authed SSE route handler.
    */
-  initial: EventRow[];
+  initial: TurnRow[];
   /**
    * The signed-in user as the server rendered the page. The pending-send
    * ledger is keyed by user, and the client learns the user only once its
@@ -69,9 +70,9 @@ export type FleetThreadProps = {
 };
 
 /**
- * Operator-facing chat surface backed by the durable event log. Wraps
- * `@assistant-ui/react` over `useFleetEventStream` + `postSteer` (the same-origin
- * `/live` steer route); `fleetMessageRenderers` paints each durable event as the
+ * Operator-facing chat surface backed by the durable turn log. Wraps
+ * `@assistant-ui/react` over `useFleetTurnStream` + `postSteer` (the same-origin
+ * `/live` steer route); `fleetMessageRenderers` paints each durable turn as the
  * approved conversation row.
  *
  * The runtime is told the thread runs while the newest turn is one this tab
@@ -89,12 +90,13 @@ export function FleetThread(props: FleetThreadProps) {
 }
 
 function OwnedFleetThread(props: FleetThreadProps) {
-  const {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount, files} = useThreadRuntime(props);
+  const {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount, files} = useThreadRuntime(props);
+  const turnStop = useTurnStop(props.workspaceId, props.fleetId, stream.turns, stream.reconcileRows);
   const settledLive = stream.connectionStatus === CONNECTION_STATUS.LIVE && !arrived;
-  const taskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
-  const {workEvents} = stream;
-  const work = useMemo(() => <TaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
-    subject={taskSubject} revision={stream.tasksSeq} events={workEvents} sources={props.sources} readOnly={props.archived} showRepositories={!props.setupSummary} />, [props.sources, props.workspaceId, props.fleetId, taskSubject, stream.tasksSeq, workEvents, props.archived, props.setupSummary]);
+  const durableTaskSubject = stream.connectionStatus === CONNECTION_STATUS.REVOKED ? null : subject;
+  const {workTurns} = stream;
+  const work = useMemo(() => <DurableTaskPanel workspaceId={props.workspaceId} fleetId={props.fleetId}
+    subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} readOnly={props.archived} showRepositories={!props.setupSummary} />, [props.sources, props.workspaceId, props.fleetId, durableTaskSubject, stream.durableTasksSeq, workTurns, props.archived, props.setupSummary]);
   return (
     <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}>
       <FleetScopeProvider workspaceId={props.workspaceId} fleetId={props.fleetId}>
@@ -106,13 +108,13 @@ function OwnedFleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={workEvents} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
-              <FleetConversationLayout summary={props.setupSummary ? "setup" : "current-work"} work={taskSubject && props.setupSummary ? <div className="space-y-lg">{props.setupSummary}{work}</div> : work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+              <FleetDurableTaskProvider files={files} workspaceId={props.workspaceId} fleetId={props.fleetId} subject={durableTaskSubject} revision={stream.durableTasksSeq} turns={workTurns} sources={props.sources} schedules={props.schedules} approvals={props.approvals} approvalRevision={stream.approvalsSeq} readOnly={props.archived}>
+              <FleetConversationLayout summary={props.setupSummary ? "setup" : "current-work"} work={durableTaskSubject && props.setupSummary ? <div className="space-y-lg">{props.setupSummary}{work}</div> : work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupTurnId={setupTurnId}
                 archived={props.archived}
-                eventsCount={stream.events.length + previewCount} connectionStatus={stream.connectionStatus}
+                turnsCount={stream.turns.length + previewCount} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
-                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} /></FleetConversationLayout>
-              </FleetTaskProvider>
+                onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} turnStop={turnStop} /></FleetConversationLayout>
+              </FleetDurableTaskProvider>
             </DashboardPanel>
           </SenderNamesProvider>
         </SenderLabelProvider>
@@ -122,7 +124,7 @@ function OwnedFleetThread(props: FleetThreadProps) {
 }
 
 function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, senderNames, setupRevision, archived = false}: FleetThreadProps) {
-  const stream = useFleetEventStream(workspaceId, fleetId, initial);
+  const stream = useFleetTurnStream(workspaceId, fleetId, initial);
   // Connection chrome disappears after its arrival cue settles.
   const arrived = useArrivalCue(stream.connectionStatus);
   // The signed-in identity scopes the durable pending-send ledger.
@@ -144,21 +146,21 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
   });
   // The runtime built below: its composer takes a refused draft back, and an upload reads what it sends.
   const runtimeRef = useRef<AssistantRuntime | null>(null);
-  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, events: stream.events, onNew: delivery.onNew, runtime: runtimeRef});
-  const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent, previews.groupBreaks);
-  const setupEventId = useMemo(() => stream.events.findLast(event => {
-    if (event.status !== FLEET_ACTIVITY.status) return false;
-    const activity = readFleetActivity(event.custom?.requestJson ?? "");
+  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, turns: stream.turns, onNew: delivery.onNew, runtime: runtimeRef});
+  const { entries, convertEntry } = useFleetThreadEntries(stream.turns, stream.convertTurn, previews.groupBreaks);
+  const setupTurnId = useMemo(() => stream.turns.findLast(turn => {
+    if (turn.status !== FLEET_ACTIVITY.status) return false;
+    const activity = readFleetActivity(turn.custom?.requestJson ?? "");
     return activity
       && activity.kind === ACTIVITY_KIND.setupSaved
       && activity.revision === setupRevision;
-  })?.id, [stream.events, setupRevision]);
+  })?.id, [stream.turns, setupRevision]);
   const messages = useMemo(() => mergePreviewEntries(entries, previews.entries), [entries, previews.entries]);
   const convertMessage = useCallback((entry: FleetConversationEntry) => entry.kind === "upload-preview" ? entry.message : convertEntry(entry), [convertEntry]);
   const adapters = useMemo(() => ({attachments: previews.attachments}), [previews.attachments]);
   // Queueing permits another send while this viewer's newest reply runs.
   const queue = useFleetSteerQueue(previews.onNew, runtimeRef);
-  const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
+  const isRunning = useMemo(() => reportsOwnRun(stream.turns, subject), [stream.turns, subject]);
   const adapter = useMemo(
     () => ({ isDisabled: archived, isRunning, messages, convertMessage, onNew: previews.onNew, queue, adapters }),
     [archived, isRunning, messages, convertMessage, previews.onNew, queue, adapters],
@@ -168,5 +170,5 @@ function useThreadRuntime({workspaceId, fleetId, senderLabel, initial, viewer, s
     runtimeRef.current = runtime;
     return () => { runtimeRef.current = null; };
   }, [runtime]);
-  return {stream, arrived, names, ledger, delivery, runtime, setupEventId, subject, previewCount: previews.entries.length, files: previews.files};
+  return {stream, arrived, names, ledger, delivery, runtime, setupTurnId, subject, previewCount: previews.entries.length, files: previews.files};
 }

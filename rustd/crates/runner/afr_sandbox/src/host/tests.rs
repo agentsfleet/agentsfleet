@@ -46,13 +46,10 @@ async fn test_a_program_that_is_not_there_is_an_input_output_failure() {
 }
 
 #[test]
-fn test_tail_keeps_the_end_and_cuts_on_a_character() {
+fn test_tail_keeps_the_whole_stream_without_trailing_space() {
     let long = "é".repeat(3_000);
 
-    let kept = tail(long.as_bytes());
-
-    assert!(kept.len() <= 2_048 && kept.len() >= 2_046, "{}", kept.len());
-    assert!(kept.chars().all(|letter| letter == 'é'));
+    assert_eq!(tail(long.as_bytes()), long);
     assert_eq!(tail(b"short\n\n"), "short");
 }
 
@@ -64,7 +61,7 @@ fn test_default_tools_are_where_debian_puts_them() {
     assert_eq!(tools.bwrap, Path::new(crate::probe::BWRAP_PATH));
 }
 
-/// The owner a lease's workspace disk is formatted for.
+/// The owner a run's workspace disk is formatted for.
 const USER: u32 = 1000;
 /// Its group.
 const GROUP: u32 = 100;

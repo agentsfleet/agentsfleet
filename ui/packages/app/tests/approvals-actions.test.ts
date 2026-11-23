@@ -10,11 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static actions import, so the mock fns must be
 // created via vi.hoisted() to exist when the factories run.
-const { withTokenMock, listApprovalsMock, approveApprovalMock, denyApprovalMock } = vi.hoisted(() => ({
+const { withTokenMock, listApprovalsMock, approveApprovalMock, denyApprovalMock, answerApprovalMock } = vi.hoisted(() => ({
   withTokenMock: vi.fn(),
   listApprovalsMock: vi.fn(),
   approveApprovalMock: vi.fn(),
   denyApprovalMock: vi.fn(),
+  answerApprovalMock: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/with-token", () => ({ withToken: withTokenMock }));
@@ -22,12 +23,14 @@ vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
   approveApproval: approveApprovalMock,
   denyApproval: denyApprovalMock,
+  answerApproval: answerApprovalMock,
 }));
 
 import {
   listApprovalsAction,
   approveApprovalAction,
   denyApprovalAction,
+  answerApprovalAction,
 } from "@/lib/actions/fleet-approvals";
 
 beforeEach(() => {
@@ -97,5 +100,14 @@ describe("approval server actions — thin forwarders", () => {
     const r = await denyApprovalAction("ws-1", "g-4");
     expect(r).toEqual({ ok: true, data: outcome });
     expect(denyApprovalMock).toHaveBeenCalledWith("ws-1", "g-4", "tok", undefined);
+  });
+
+  it("answerApprovalAction forwards workspaceId + gateId + token with the answer", async () => {
+    const outcome = { kind: "resolved", data: { gate_id: "g-5" } };
+    answerApprovalMock.mockResolvedValueOnce(outcome);
+    const r = await answerApprovalAction("ws-1", "g-5", "Yes, rotate it");
+    expect(r).toEqual({ ok: true, data: outcome });
+    expect(answerApprovalMock).toHaveBeenCalledWith("ws-1", "g-5", "tok", "Yes, rotate it");
+    expect(approveApprovalMock).not.toHaveBeenCalled();
   });
 });

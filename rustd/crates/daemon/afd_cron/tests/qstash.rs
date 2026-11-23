@@ -22,7 +22,7 @@
 )]
 
 use afd_cron::error::detail::{DESTINATION_NOT_PLAIN_ORIGIN, DESTINATION_UNUSABLE};
-use afd_cron::qstash::{INGRESS_PATH, MAX_DESTINATION_BYTES, destination_url};
+use afd_cron::qstash::{INGRESS_PATH, destination_url};
 
 /// The sentence `url`'s refusal tells, so each case names WHICH refusal.
 fn refusal(url: &str) -> &'static str {
@@ -106,39 +106,6 @@ fn a_value_that_is_not_a_url_at_all_is_unusable() {
             "`{candidate}` is not a URL this daemon can register a callback on"
         );
     }
-}
-
-/// A destination past the cap is refused, not registered and truncated.
-#[test]
-fn a_destination_over_the_cap_is_refused() {
-    let long = format!("{API}/{}", "a".repeat(MAX_DESTINATION_BYTES));
-
-    assert_eq!(
-        refusal(&long),
-        DESTINATION_UNUSABLE,
-        "a destination longer than the cap must not be registered"
-    );
-}
-
-/// The cap is measured on the FINAL destination, not on the configured URL.
-///
-/// A URL that fits on its own but not once the ingress path is appended is the
-/// case a check on the input alone would let through.
-#[test]
-fn the_cap_is_measured_after_the_path_is_appended() {
-    let filler = MAX_DESTINATION_BYTES - API.len() - INGRESS_PATH.len();
-    let just_over = format!("{API}/{}", "a".repeat(filler));
-
-    assert!(
-        just_over.len() <= MAX_DESTINATION_BYTES,
-        "the configured URL itself is within the cap: {}",
-        just_over.len()
-    );
-    assert_eq!(
-        refusal(&just_over),
-        DESTINATION_UNUSABLE,
-        "it is only over once the ingress path is on it"
-    );
 }
 
 /// The ingress path is half of the claim a fire token is verified against.

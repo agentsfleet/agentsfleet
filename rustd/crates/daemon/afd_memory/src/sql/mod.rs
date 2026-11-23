@@ -17,37 +17,28 @@ pub(crate) const ASSUME_MEMORY_ROLE: &str = include_str!("assume_memory_role.sql
 /// Upsert one entry.
 ///
 /// The stable `(fleet_id, key)` pair is the fleet's own overwrite mechanism —
-/// a repeated key replaces rather than accumulates, which is the PRIMARY bound
-/// on a fleet's memory growth. The cap below is only a backstop.
+/// a repeated key replaces rather than accumulates, which is what bounds a
+/// fleet's memory growth.
 ///
 /// `$1` row id, `$2` key, `$3` content, `$4` category, `$5` fleet,
 /// `$6` workspace, `$7` workspace-visible, `$8` now.
 pub(crate) const UPSERT_ENTRY: &str = include_str!("upsert_entry.sql");
-
-/// Evict past the cap, keeping pinned and recent entries.
-///
-/// `ORDER BY (category = $3) DESC` sorts the protected category first, so
-/// `OFFSET $2` drops the coldest non-core rows and reaches a `core` row only
-/// when no other remains. `$3` is the category hydration pins on, which is
-/// what stops eviction deleting what hydration promises.
-///
-/// `$1` fleet, `$2` the cap, `$3` the protected category.
-pub(crate) const EVICT_PAST_CAP: &str = include_str!("evict_past_cap.sql");
 
 /// Retention sweep for one category — scratch notes older than a cutoff.
 ///
 /// `$1` fleet, `$2` category, `$3` cutoff.
 pub(crate) const DELETE_AGED_IN_CATEGORY: &str = include_str!("delete_aged_in_category.sql");
 
-/// A fleet's whole memory set, newest first — hydration's input, unbounded
+/// A fleet's whole memory set, newest first — the load's input, unbounded
 /// because the window spends the budget, not the statement.
 ///
 /// `$1` fleet.
 pub(crate) const SELECT_ALL_FOR_FLEET: &str = include_str!("select_all_for_fleet.sql");
 
-/// Other fleets' shared entries in a workspace, newest first.
+/// Other fleets' shared entries in a workspace, newest first, unbounded
+/// because the window spends the shared budget, not the statement.
 ///
-/// `$1` workspace, `$2` the reading fleet, `$3` the most rows to read.
+/// `$1` workspace, `$2` the reading fleet.
 pub(crate) const SELECT_SHARED_IN_WORKSPACE: &str = include_str!("select_shared_in_workspace.sql");
 
 /// A fleet's own entries matching a pattern, key matches first.

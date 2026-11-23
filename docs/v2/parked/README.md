@@ -5,6 +5,8 @@ These records are deferred, not completed. The repository stores deferred specif
 | Parked item | Record | Reopen when |
 |---|---|---|
 | M249_003: Fleet-library to Plugin rename workstream | [Specification](../done/M249_003_P1_API_CLI_DOCS_UI_PLUGIN_AND_ARCHIVED_VOCABULARY.md) | The owner resumes the Fleet/template/Plugin discussion |
+| M253_003 Section 5: A settled turn's answer can be emailed | [Section 5](../done/M253_003_SECTION_5_EMAIL_ANSWERS.md) | The owner wants unwatched fleets to reach people outside the dashboard |
+| M253_003 Section 7: The daemon runs no sweeper | [Section 7](../done/M253_003_SECTION_7_NO_TIMED_LOOPS.md) | The owner decides what replaces each deleted loop after testing |
 | M249_004 Section 5: Measured context budget | [Section and Dimension 5.1](../done/M249_004_SECTION_5_MEASURED_CONTEXT_BUDGET.md) | Its producer and measurement semantics are agreed |
 
 The rest of [M249_004](../done/M249_004_P1_API_DOCS_UI_RECORDED_DATA_COMPLETION.md) remains valid, including the single-call Usage investigation.

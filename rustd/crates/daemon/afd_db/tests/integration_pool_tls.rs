@@ -111,7 +111,8 @@ impl TempCert {
 
 impl Drop for TempCert {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        // Cleanup is best effort: a leftover temp file fails nothing.
+        drop(std::fs::remove_file(&self.0));
     }
 }
 

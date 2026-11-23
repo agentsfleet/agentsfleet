@@ -28,18 +28,19 @@ use tokio::net::unix::OwnedWriteHalf;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
+pub(crate) use self::files::MAX_LISTING_BYTES;
 use self::files::Workspace;
 pub use self::launch::Tenant;
 use self::launch::{Inherit, Placement};
 use self::session::Session;
 use crate::error::Result;
+use crate::sizes::Sizes;
 
 /// Where the workspace disk is mounted inside every sandbox.
 pub const WORKSPACE_ROOT: &str = "/workspace";
 /// Output lines that may wait for the writer, across every process on the
 /// connection: 64 pipe reads, about 1 MiB of output. Past it a process's
-/// output waits, as Codex's exec-server waits on its bounded notification
-/// queue (`exec-server/src/local_process.rs`, `NOTIFICATION_CHANNEL_CAPACITY`).
+/// output waits.
 const OUTPUT_LINES_IN_FLIGHT: usize = 64;
 
 /// The executor took its socket and waits for the supervisor.
@@ -75,6 +76,9 @@ pub struct Server {
     /// Where every process it starts is placed: where the executor runs,
     /// unless [`Server::with_tenant`] names a leaf.
     placement: Arc<dyn Placement>,
+    /// The read clamp and the frame cap: the defaults, unless
+    /// [`Server::with_sizes`] names its starter's.
+    sizes: Sizes,
 }
 
 /// Claims `socket` for the executor, which serves the first connection.
@@ -108,6 +112,7 @@ impl Server {
         Self {
             link,
             placement: Arc::new(Inherit),
+            sizes: Sizes::DEFAULT,
         }
     }
 
@@ -121,6 +126,15 @@ impl Server {
         }
     }
 
+    /// Clamps every read to `sizes.max_read_bytes` and reads no line longer
+    /// than `sizes.max_frame_bytes`: what the runner that started it chose,
+    /// and connects its client with.
+    #[must_use]
+    pub const fn with_sizes(mut self, sizes: Sizes) -> Self {
+        self.sizes = sizes;
+        self
+    }
+
     /// Serves one supervisor connection, confining file calls and working
     /// directories to `root`, until the connection closes.
     ///
@@ -132,7 +146,7 @@ impl Server {
     pub async fn serve(self, root: &Path) -> Result<()> {
         let event = EVENT_SERVE_STARTED;
         tracing::info!(event, "the executor is waiting for its supervisor");
-        let served = accept(self.link, self.placement, root).await;
+        let served = accept(self.link, self.placement, self.sizes, root).await;
         match &served {
             Ok(()) => {
                 let event = EVENT_SERVE_COMPLETED;
@@ -158,14 +172,19 @@ pub async fn serve(socket: &Path, root: &Path) -> Result<()> {
 }
 
 /// Takes the one connection and serves it to its end.
-async fn accept(link: Link, placement: Arc<dyn Placement>, root: &Path) -> Result<()> {
+async fn accept(
+    link: Link,
+    placement: Arc<dyn Placement>,
+    sizes: Sizes,
+    root: &Path,
+) -> Result<()> {
     let workspace = Arc::new(Workspace::open(root)?);
     let stream = link.connection().await?;
     let (read, write) = stream.into_split();
     let (answers, answered) = mpsc::unbounded_channel();
     let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);
     let writer = tokio::spawn(write_lines(write, answered, said));
-    Session::new(workspace, placement, answers, output)
+    Session::new(workspace, placement, answers, output, sizes)
         .run(read)
         .await;
     // The session dropped the last senders, so the writer drains and ends.

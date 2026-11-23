@@ -1,0 +1,57 @@
+//! The selected Definition is the whole of what an assignment installs.
+
+use super::definition;
+use crate::{seed::seeded, support::Fixtures};
+use afd_fleet::run::FRESH_CONTEXT;
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn native_instructions_and_model_survive_the_assignment_without_markdown_parsing() {
+    let fixtures = Fixtures::create().await;
+    let held = seeded::<0>(&fixtures).await;
+    let definition = definition();
+    fixtures.native_definition(&held.fleet, &definition).await;
+    let installed = fixtures
+        .runs()
+        .installed(&held.fleet)
+        .await
+        .expect("assignment read")
+        .expect("runnable");
+    assert_eq!(installed.instructions, definition.instructions_md());
+    assert_eq!(&installed.config, definition.runtime());
+    assert_eq!(installed.context_json, FRESH_CONTEXT);
+    assert_eq!(
+        installed.runtime_model_ref,
+        afd_credential::provider::PLATFORM_MODEL_REF
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn archived_and_missing_fleets_do_not_issue_work() {
+    let fixtures = Fixtures::create().await;
+    let held = seeded::<0>(&fixtures).await;
+    fixtures.native_definition(&held.fleet, &definition()).await;
+    sqlx::query("UPDATE fleet.fleets SET status='archived' WHERE id=$1")
+        .bind(&held.fleet)
+        .execute(&mut *fixtures.database.acquire().await.expect("connection"))
+        .await
+        .expect("archive owned fleet");
+    assert!(
+        fixtures
+            .runs()
+            .installed(&held.fleet)
+            .await
+            .expect("archived read")
+            .is_none()
+    );
+    let absent = afd_db::test_util::mint_id();
+    assert!(
+        fixtures
+            .runs()
+            .installed(&absent)
+            .await
+            .expect("absent read")
+            .is_none()
+    );
+}

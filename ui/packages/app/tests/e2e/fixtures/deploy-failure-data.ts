@@ -1,9 +1,9 @@
-import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import type { FleetTurn } from "@/lib/streaming/fleet-stream-row";
 
 export const DEPLOY_CHECK = "Check the latest deploy and tell me whether the service is healthy.";
 
-/** Native event and tool shapes, with explicit sample observations for the connection failure. */
-export function deployFailureEvent(started: number): FleetEvent {
+/** Native turn and tool shapes, with explicit sample observations for the connection failure. */
+export function deployFailureTurn(started: number): FleetTurn {
   const created = started - 11_000;
   return {id: "deploy-health-check", actor: "steer:fixture-owner", role: "user", text: DEPLOY_CHECK,
     reply: "I checked the release record. I couldn’t finish the health check because the deployment connection expired.",

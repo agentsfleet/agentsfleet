@@ -103,16 +103,11 @@ async fn an_empty_catalogue_has_no_continuation() {
 }
 
 async fn invalid_pages(lane: &Lane) {
-    for limit in [0, 101, u32::MAX] {
-        assert_eq!(
-            lane.models
-                .page(limit, None)
-                .await
-                .expect_err("bound")
-                .code(),
-            error_code::INVALID_REQUEST
-        );
-    }
+    // The upper bound is the caller's `[api]` list page; the store refuses only zero.
+    assert_eq!(
+        lane.models.page(0, None).await.expect_err("bound").code(),
+        error_code::INVALID_REQUEST
+    );
     for token in ["", "not-a-cursor", "e30"] {
         assert_eq!(
             lane.models

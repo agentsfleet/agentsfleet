@@ -1,7 +1,3 @@
-# =============================================================================
-# DRY — Playwright page-render lanes (website + app), no Clerk auth
-# =============================================================================
-
 .PHONY: dry dry-app dry-app-smoke dry-website dry-website-smoke
 
 dry-website:  ## Run the website dry lane — Playwright page renders, no login

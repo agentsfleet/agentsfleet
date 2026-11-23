@@ -2,8 +2,8 @@
 //! directory and in the host's network namespace, removed before this one
 //! builds anything.
 //!
-//! A runner killed mid-lease leaves its sandboxes' cgroups, mounted workspace
-//! disks and directories behind. Each lease directory's name is its cgroup's,
+//! A runner killed mid-run leaves its sandboxes' cgroups, mounted workspace
+//! disks and directories behind. Each run directory's name is its cgroup's,
 //! so one walk finds all three. What cannot be removed is logged and kept: a
 //! disk that will not unmount keeps its image, and its directory, so a loop
 //! device is never left on a file nobody can name.
@@ -14,18 +14,18 @@ use std::path::Path;
 use af_core::error_code::{Coded as _, Logged};
 
 use super::BubblewrapEngine;
-use crate::cgroup::LeaseCgroup;
+use crate::cgroup::RunCgroup;
 use crate::egress::{self, Kernel};
 use crate::error::Result;
 use crate::workspace_disk::WorkspaceDisk;
 
-/// The event one swept lease is logged under.
+/// The event one swept run is logged under.
 const EVENT_SWEPT: &str = "sandbox_swept";
-/// The event a lease the sweep could not remove is logged under.
+/// The event a run the sweep could not remove is logged under.
 const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 
 impl BubblewrapEngine {
-    /// Removes every lease a previous run left, logging each one, and, on a
+    /// Removes every run a previous run left, logging each one, and, on a
     /// host that holds sandboxes to allowlists, every egress table and link
     /// `kernel` lists.
     pub(super) fn sweep(&self, kernel: Option<&impl Kernel>) {
@@ -50,16 +50,16 @@ impl BubblewrapEngine {
                 continue;
             }
             let name = entry.file_name();
-            let lease_id = name.to_string_lossy();
+            let run_id = name.to_string_lossy();
             match sweep_one(&dir, &self.config.cgroup_root.join(&name)) {
                 Ok(()) => {
                     let event = EVENT_SWEPT;
-                    tracing::info!(%lease_id, event);
+                    tracing::info!(%run_id, event);
                 }
                 Err(error) => {
                     let Logged { error_code, reason } = error.logged();
                     let event = EVENT_SWEEP_FAILED;
-                    tracing::warn!(%lease_id, error_code, reason, event);
+                    tracing::warn!(%run_id, error_code, reason, event);
                 }
             }
         }
@@ -70,7 +70,7 @@ impl BubblewrapEngine {
 /// the parts of a live sandbox are released in.
 fn sweep_one(dir: &Path, cgroup: &Path) -> Result<()> {
     if cgroup.is_dir() {
-        LeaseCgroup::leftover(cgroup.to_owned()).remove()?;
+        RunCgroup::leftover(cgroup.to_owned()).remove()?;
     }
     WorkspaceDisk::leftover(dir).release_leftover()?;
     fs::remove_dir_all(dir)?;

@@ -16,11 +16,9 @@
 //!
 //! # What this module does not do
 //!
-//! It does not park an event, raise a card, count an anomaly, or read a
-//! recorded gate. Every one of those is Postgres or the bus, and every one of
-//! them is downstream of a decision made here — [`park`](Gates::park),
-//! [`archive`](Gates::archive) and [`anomaly`](Gates::anomaly) are the sibling
-//! modules that do them. [`route`] is the ordering those I/O outcomes compose
+//! It does not park an event, raise a card, or read a recorded gate. Each of
+//! those is Postgres or the bus, and each is downstream of a decision made
+//! here — [`park`](Gates::park) is the sibling module that does them. [`route`] is the ordering those I/O outcomes compose
 //! through, and it is pure for the same reason: the ORDER in which a recorded
 //! gate and the current policy bind is a security property, and a security
 //! property should be pinned by a unit test rather than by a live datastore.
@@ -32,8 +30,6 @@
 //! That boundary is the type signature of everything downstream, including the
 //! renderer that lands in a later milestone.
 
-mod anomaly;
-mod archive;
 mod claim;
 mod decision;
 mod detail;
@@ -50,8 +46,7 @@ mod store;
 use af_fleet_runtime::config::{Condition, GatePolicy, GateRule};
 use serde_json::Value;
 
-pub use self::anomaly::Anomaly;
-pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
+pub use self::claim::{Claim, NO_EVIDENCE};
 pub use self::decision::Answer;
 pub use self::detail::Stated;
 pub use self::park::{Park, Parked};
@@ -160,7 +155,7 @@ mod tests {
     }
 
     fn policy(rules: Vec<GateRule>) -> GatePolicy {
-        GatePolicy::from_parts(rules, Vec::new(), Duration::from_mins(15))
+        GatePolicy::from_parts(rules, Duration::from_mins(15))
     }
 
     #[test]

@@ -66,6 +66,17 @@ async fn should_estimate_a_self_managed_run_at_nothing_without_the_catalogue() {
         .await
         .expect("a self-managed estimate needs no catalogue");
     assert_eq!(estimate, Estimate::Priced(Nanos::ZERO));
+    let mut connection = lane.pool.acquire().await.expect("the lane answers");
+    let on_transaction = afd_billing::Accounts::estimate_on(
+        &mut connection,
+        Posture::SelfManaged,
+        PROVIDER,
+        "any-model",
+        NOW,
+    )
+    .await
+    .expect("the caller's connection prices it the same");
+    assert_eq!(on_transaction, Estimate::Priced(Nanos::ZERO));
 }
 
 #[tokio::test]

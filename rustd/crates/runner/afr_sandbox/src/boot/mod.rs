@@ -11,7 +11,7 @@ use crate::{Engine, HostProbe, ProbePaths, Result, probe};
 pub struct HostPaths {
     /// Service root delegated by the host manager.
     pub cgroup_root: PathBuf,
-    /// Storage for this host's lease sandboxes.
+    /// Storage for this host's run sandboxes.
     pub state_dir: PathBuf,
 }
 
@@ -47,7 +47,7 @@ pub trait Backend {
 /// An engine and the backend's resources, dropped in that order.
 #[derive(Debug)]
 pub struct Started<E: Engine> {
-    /// Builds each lease's sandbox.
+    /// Builds each run's sandbox.
     pub engine: E,
     /// Kept alive until every sandbox has stopped.
     pub resources: Box<dyn Resources>,

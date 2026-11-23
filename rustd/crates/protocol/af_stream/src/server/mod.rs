@@ -15,6 +15,7 @@ use crate::{Incoming, Outgoing, Result, Transport, tls::Identity};
 /// Extra draws port zero gets when the port TCP picked is already held by another UDP socket.
 /// The kernel hands out TCP and UDP ephemeral ports independently, so concurrent listeners on
 /// one host collide now and then; each retry draws a fresh pair.
+/// Kept: one draw would fail a port-zero bind at random, and no count leaves the loop unbounded.
 const PORT_ZERO_RETRIES: usize = 15;
 
 /// Server-owned identity for one native connection, shared by its four streams.

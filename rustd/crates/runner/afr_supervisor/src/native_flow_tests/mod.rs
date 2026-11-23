@@ -99,7 +99,7 @@ impl Native {
             let seen = seen.clone();
             let release = blocked.clone();
             async move {
-                let activity = kind(&frame) == Some("activity");
+                let activity = kind(&frame) == Some("progress");
                 let _seen = seen.send(frame);
                 if activity {
                     release.cancelled().await;
@@ -213,7 +213,7 @@ async fn an_activity_flood_does_not_delay_renewal() -> TestResult {
     let mut native = Native::idle().await?;
     let mut session = Session::connect(&native.config).await?;
     native.frames.ready(0).await?;
-    let lease = Uuid7::parse(crate::test_util::LEASE_ID)?;
+    let run = Uuid7::parse(crate::test_util::RUN_ID)?;
     let activity = ActivityRequest {
         frames: vec![ActivityFrame::ToolCallProgress(ToolCallProgress {
             name: "shell".into(),
@@ -221,27 +221,27 @@ async fn an_activity_flood_does_not_delay_renewal() -> TestResult {
             call_id: "activity-fixture".into(),
         })],
     };
-    session.activity(&lease, &activity).await?;
-    assert_eq!(kind(&native.frames.next().await?), Some("activity"));
+    session.activity(&run, &activity).await?;
+    assert_eq!(kind(&native.frames.next().await?), Some("progress"));
     for _ in 1..1000 {
-        session.activity(&lease, &activity).await?;
+        session.activity(&run, &activity).await?;
     }
     let renewed = session
-        .renew(&lease, &af_wire::report::RenewRequest::default())
+        .renew(&run, &af_wire::report::RenewRequest::default())
         .await?;
     assert_eq!(
         kind(&native.frames.next().await?),
         Some("renew_batch"),
         "control renewals reach the wire while the activity stream is blocked"
     );
-    assert_eq!(renewed.lease_expires_at, healthy().granted_until);
+    assert_eq!(renewed.run_expires_at, healthy().granted_until);
     native.release_activity.cancel();
     session.close().await?;
     native.close().await
 }
 
 #[tokio::test]
-async fn an_idle_runner_sends_no_lease_request_over_sixty_seconds() -> TestResult {
+async fn an_idle_runner_sends_no_run_request_over_sixty_seconds() -> TestResult {
     let logs = Capture::install();
     let mut native = Native::idle().await?;
     let (mut running, shutdown) = native.runner()?;

@@ -1,4 +1,4 @@
-//! Dimension 4.6 for invites: `resolved_at` is the one pending marker. Every
+//! For invites: `resolved_at` is the one pending marker. Every
 //! resolving statement is guarded on it, and the one-pending-invite index reads
 //! it, so an accepted invite is never resolved again and a second pending
 //! invite for one address is refused by Postgres itself, not only by the

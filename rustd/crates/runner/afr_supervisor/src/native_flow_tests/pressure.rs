@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use super::{TestResult, kind};
 use crate::{
     config::{Config, ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STREAM_CA, ENV_STREAM_URL},
-    test_support::{FLEET_ID, LEASE_ID, healthy, lease, report_body},
+    test_support::{FLEET_ID, RUN_ID, healthy, payload, report_body},
     test_util::{NativeDaemon, Session},
 };
 
@@ -45,7 +45,7 @@ impl Blocked {
                 self.report_bytes.store(bytes, Ordering::SeqCst);
                 self.report.cancel();
             }
-            Some("activity") => self.activity.cancel(),
+            Some("progress") => self.activity.cancel(),
             _ => return,
         }
         self.release.cancelled().await;
@@ -80,9 +80,9 @@ async fn exercise(transport: Transport, logs: &Capture) -> TestResult {
     let blocked = Arc::new(Blocked::default());
     let observed = Arc::clone(&blocked);
     let _release_on_exit = blocked.release.clone().drop_guard();
-    let payload = serde_json::to_value(af_wire::lease::TaggedLease::<Value>::Fleet(Box::new(
-        lease(LEASE_ID, FLEET_ID),
-    )))?;
+    let payload = serde_json::to_value(af_wire::run::TaggedRun::Fleet(Box::new(payload(
+        RUN_ID, FLEET_ID,
+    ))))?;
     let mut daemon = NativeDaemon::serve(healthy(), payload, move |frame| {
         let blocked = Arc::clone(&observed);
         async move { blocked.observe(frame).await }
@@ -98,8 +98,8 @@ async fn exercise(transport: Transport, logs: &Capture) -> TestResult {
     let connected_after = logs.events().len();
     let mut session = Session::connect(&configured(&daemon, origin)?).await?;
     session.capacity(1);
-    let offer = tokio::time::timeout(Duration::from_secs(5), session.offer()).await??;
-    assert_ne!(offer.as_bytes(), b"");
+    let assignment = tokio::time::timeout(Duration::from_secs(5), session.assign()).await??;
+    assert_ne!(assignment.as_bytes(), b"");
     assert_carrier(logs, connected_after, transport);
     simultaneous(&session, &daemon, &blocked, logs).await?;
     session.close().await?;
@@ -136,24 +136,24 @@ async fn simultaneous(
     blocked: &Blocked,
     logs: &Capture,
 ) -> TestResult {
-    let lease = Uuid7::parse(LEASE_ID)?;
+    let run = Uuid7::parse(RUN_ID)?;
     let cancelled = session
-        .lease_cancellation(&lease)
-        .ok_or("the native offer has no cancellation owner")?;
+        .run_cancellation(&run)
+        .ok_or("the native assignment has no cancellation owner")?;
     let bytes = large_report()?;
     let mut reporting = Box::pin(session.report(&bytes));
     assert!(poll!(&mut reporting).is_pending());
     tokio::time::timeout(Duration::from_secs(5), blocked.report.cancelled()).await?;
-    saturate(session, &lease, blocked, logs).await?;
+    saturate(session, &run, blocked, logs).await?;
     blocked.assert_pending();
     assert!(poll!(&mut reporting).is_pending());
-    daemon.cancel_after_renewal(&lease);
+    daemon.cancel_after_renewal(&run);
     let renewed = tokio::time::timeout(
         Duration::from_secs(5),
-        session.renew(&lease, &af_wire::report::RenewRequest::default()),
+        session.renew(&run, &af_wire::report::RenewRequest::default()),
     )
     .await??;
-    assert_eq!(renewed.lease_expires_at, healthy().granted_until);
+    assert_eq!(renewed.run_expires_at, healthy().granted_until);
     tokio::time::timeout(Duration::from_secs(5), cancelled.cancelled()).await?;
     blocked.assert_pending();
     assert!(poll!(&mut reporting).is_pending());
@@ -163,12 +163,7 @@ async fn simultaneous(
     Ok(())
 }
 
-async fn saturate(
-    session: &Session,
-    lease: &Uuid7,
-    blocked: &Blocked,
-    logs: &Capture,
-) -> TestResult {
+async fn saturate(session: &Session, run: &Uuid7, blocked: &Blocked, logs: &Capture) -> TestResult {
     let arguments = serde_json::to_string(&serde_json::json!({
         "input":"a".repeat(ACTIVITY_BYTES)
     }))?;
@@ -180,12 +175,12 @@ async fn saturate(
         })],
     };
     let after = logs.events().len();
-    session.activity(lease, &activity).await?;
+    session.activity(run, &activity).await?;
     tokio::time::timeout(Duration::from_secs(5), blocked.activity.cancelled()).await?;
     for _ in 0..1000 {
-        session.activity(lease, &activity).await?;
+        session.activity(run, &activity).await?;
         if logs.events().iter().skip(after).any(|event| {
-            event.field("event") == Some("runner_stream_activity_dropped")
+            event.field("event") == Some("runner_stream_progress_dropped")
                 && event.field("reason") == Some("queue_capacity")
         }) {
             return Ok(());

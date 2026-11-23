@@ -3,7 +3,7 @@
 //! `model.platform_models.context_cap_tokens` is `int4`; a ceiling is a count.
 //! So the value narrows on the way out of the column, and a stored negative —
 //! a row nothing in this daemon could have written, which the schema permits
-//! because bounds are the application's (RULE STS) — clamps to zero. A lease is
+//! because bounds are the application's (RULE STS) — clamps to zero. A run is
 //! already in flight on that path and the ceiling is one input among several,
 //! so the run proceeds against a ceiling the engine will refuse loudly; the
 //! alternative, failing the resolution, takes down a tenant's whole fleet over

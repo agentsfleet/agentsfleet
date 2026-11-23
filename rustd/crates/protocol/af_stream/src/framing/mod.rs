@@ -19,7 +19,7 @@ pub use memory::{
     MemoryLimits, MemorySettings,
 };
 pub use reader::Reader;
-pub use writer::{encode, write};
+pub use writer::{encode, encode_within, write};
 
 /// An owned payload whose memory remains charged until its last use ends.
 pub struct OwnedFrame {

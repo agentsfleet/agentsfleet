@@ -17,8 +17,8 @@ export const RUNNER = {
   achievable: null, degraded: false, degraded_reason: null,
 };
 export const RUNNER_DETAIL = {
-  ...RUNNER, active_lease_count: 0, active_fleet_count: 0, leases_acquired: 0, leases_succeeded: 0,
-  leases_failed: 0, leases_expired: 0, selftest_requested_at: null, selftest_completed_at: null, selftest: null,
+  ...RUNNER, active_run_count: 0, active_fleet_count: 0,
+  selftest_requested_at: null, selftest_completed_at: null, selftest: null,
 };
 export const MODEL = {
   id: RUNNER_ID, provider: "example", model_id: "reasoning-model", metadata: {

@@ -40,11 +40,10 @@ pub const REFUSED: [libc::c_long; 12] = [
 /// The bit an x86-64 kernel reads as "this is an x32 call".
 ///
 /// The kernel's filter sees the number with the bit set and the same
-/// architecture, so a
-/// filter keyed on numbers alone — `seccompiler`'s, and Codex's, which builds
-/// on it — is walked around by `keyctl | X32_SYSCALL_BIT` wherever x32 is
-/// enabled. No architecture numbers a real call this high, so every call that
-/// carries the bit is refused, on every architecture.
+/// architecture, so a filter keyed on numbers alone — `seccompiler`'s — is
+/// walked around by `keyctl | X32_SYSCALL_BIT` wherever x32 is enabled. No
+/// architecture numbers a real call this high, so every call that carries the
+/// bit is refused, on every architecture.
 pub const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 
 /// Reads everywhere; writes only beneath [`WRITABLE`] and to [`WRITABLE_DEVICES`].

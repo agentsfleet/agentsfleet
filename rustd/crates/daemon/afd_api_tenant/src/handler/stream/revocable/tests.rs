@@ -43,6 +43,6 @@ async fn should_send_access_revoked_last_and_run_no_turn_after_it() {
 /// A stream whose frames run out ends without claiming the access was lost.
 #[tokio::test]
 async fn should_end_quietly_when_the_frames_run_out() {
-    let stream = until_revoked((), |()| async { None });
+    let stream = until_revoked((), async |()| None);
     assert_eq!(kinds(stream).await, [] as [String; 0]);
 }

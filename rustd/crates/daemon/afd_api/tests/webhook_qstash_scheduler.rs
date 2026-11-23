@@ -58,6 +58,7 @@ impl afd_cron::Scheduler for Failing {
 
 #[tokio::test]
 async fn an_unusable_scheduler_bag_is_refused_as_a_forged_fire_is() {
+    let captured = af_core::test_util::trace::Capture::install();
     let token = mint(&FireClaims::good(BODY), CURRENT_KEY);
     let router = Fleet::new()
         .with_scheduler(std::sync::Arc::new(Failing("bag unusable")))
@@ -70,6 +71,18 @@ async fn an_unusable_scheduler_bag_is_refused_as_a_forged_fire_is() {
         refusal_code(refused).await,
         error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),
         "telling a prober the bag is missing would say this daemon is misconfigured"
+    );
+    // The operator, unlike the sender, is told why: the drop logs its reason.
+    let dropped = captured.only("schedule_fire_dropped");
+    assert_eq!(
+        dropped.field("error_code"),
+        Some(error_code::WEBHOOK_SIGNATURE_INVALID.as_str())
+    );
+    assert!(
+        dropped
+            .field("reason")
+            .is_some_and(|reason| !reason.is_empty()),
+        "{dropped:?}"
     );
 }
 

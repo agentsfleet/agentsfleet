@@ -9,8 +9,8 @@
 use std::borrow::Cow;
 
 use af_wire::memory::{
-    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, MemoryRecallRequest,
-    PINNED_CATEGORY, RECALL_LIMIT_MAX, SharedMemory, Visibility,
+    MemoryCaptureResponse, MemoryDelta, MemoryLoadResponse, MemoryRecallRequest, PINNED_CATEGORY,
+    SharedMemory, Visibility,
 };
 use garde::Validate as _;
 
@@ -45,14 +45,14 @@ fn test_a_capture_reply_round_trips() {
     assert_eq!(back, reply);
 }
 
-/// A fleet with no grant hydrates in the shape every runner already parses.
+/// A fleet with no grant loads in the shape every runner already parses.
 ///
 /// `agentsfleet-runner` reads this reply strictly, so a field it does not know
-/// would leave every lease with empty memory. `shared` and `publish` appear
+/// would leave every run with empty memory. `shared` and `publish` appear
 /// only once a grant makes them mean something.
 #[test]
-fn test_a_hydrate_reply_without_grants_keeps_the_shape_runners_parse() {
-    let reply = MemoryHydrateResponse {
+fn test_a_load_reply_without_grants_keeps_the_shape_runners_parse() {
+    let reply = MemoryLoadResponse {
         memory: Vec::new(),
         shared: Vec::new(),
         publish: false,
@@ -66,7 +66,7 @@ fn test_a_hydrate_reply_without_grants_keeps_the_shape_runners_parse() {
 /// A granted fleet's reply carries what it reads and that it may publish,
 /// and a reply without them reads back as no grant.
 #[test]
-fn test_a_hydrate_reply_carries_grants_only_when_given() {
+fn test_a_load_reply_carries_grants_only_when_given() {
     let shared = SharedMemory {
         key: Cow::Borrowed("incident:41"),
         content: Cow::Borrowed("escalated"),
@@ -75,7 +75,7 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
         writer_fleet_name: Cow::Borrowed("triage"),
         updated_at: jiff::Timestamp::from_millisecond(7).unwrap_or(jiff::Timestamp::UNIX_EPOCH),
     };
-    let reply = MemoryHydrateResponse {
+    let reply = MemoryLoadResponse {
         memory: Vec::new(),
         shared: vec![shared],
         publish: true,
@@ -92,13 +92,14 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
         Some("triage")
     );
 
-    let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
+    let bare: MemoryLoadResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
     assert_eq!(bare.shared, [] as [SharedMemory<'_>; 0]);
 }
 
 /// The published recall `limit` is the range the request type proves, so a
-/// client generated from the spec never sends a limit the daemon refuses.
+/// client generated from the spec never sends a limit the daemon refuses: at
+/// least one, and no ceiling.
 #[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_recall_limit_is_the_proved_range() {
@@ -110,11 +111,7 @@ fn test_the_published_recall_limit_is_the_proved_range() {
             .and_then(serde_json::Value::as_u64)
     };
     assert_eq!(limit("minimum"), Some(1), "{schema}");
-    assert_eq!(
-        limit("maximum").and_then(|max| usize::try_from(max).ok()),
-        Some(RECALL_LIMIT_MAX),
-        "{schema}"
-    );
+    assert_eq!(limit("maximum"), None, "{schema}");
 }
 
 /// A recall query holding NUL is malformed, named on `query`: the search runs
@@ -123,7 +120,7 @@ fn test_the_published_recall_limit_is_the_proved_range() {
 #[test]
 fn test_a_recall_query_holding_nul_is_malformed() {
     let clean = MemoryRecallRequest {
-        lease_id: Cow::Borrowed("lease-1"),
+        run_id: Cow::Borrowed("run-1"),
         fencing_token: 1,
         query: Cow::Borrowed("deploy"),
         limit: 1,

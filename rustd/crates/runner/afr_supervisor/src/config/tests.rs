@@ -42,9 +42,9 @@ fn a_path_prefix_survives_as_a_directory_routes_join_under() {
         (ENV_RUNNER_TOKEN, TOKEN),
     ])
     .unwrap();
-    let joined = config.api_url().join("v1/runners/me/leases").unwrap();
+    let joined = config.api_url().join("v1/runners/me/runs").unwrap();
 
-    assert_eq!(joined.as_str(), "https://h.test/api/v1/runners/me/leases");
+    assert_eq!(joined.as_str(), "https://h.test/api/v1/runners/me/runs");
 }
 
 #[test]

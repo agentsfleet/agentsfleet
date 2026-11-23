@@ -168,7 +168,7 @@ check_metrics_are_source_owned() {
   local census metric base
   census="$(
     awk -F'\t' '!/^#/ && NF > 1 && $1 != "name" {print $1}' \
-      "$REPO_ROOT/docs/metrics.census.tsv" "$REPO_ROOT/docs/metrics.runner.census.tsv" | tr '.' '_' | sort -u
+      "$REPO_ROOT/rustd/crates/protocol/af_observability/src/metrics/census.tsv" "$REPO_ROOT/rustd/crates/runner/afr_telemetry/src/families/census.tsv" | tr '.' '_' | sort -u
   )"
   # Matched in-shell, not through `printf | grep -Fxq`. Under `set -o pipefail`
   # that pipeline reports the WRITER's status too, and `grep -q` exits the

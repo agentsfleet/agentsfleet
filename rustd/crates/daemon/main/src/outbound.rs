@@ -1,9 +1,9 @@
 //! The connector answer-delivery worker, spawned here and nowhere else.
 //!
-//! `afd_outbound` knows what a delivery IS and how a failed one is retried;
-//! this file knows that this daemon runs one, and what it is built over. The
-//! split is [`crate::sweepers`]': the service crate stays unaware that a daemon
-//! process exists, and the process decides what it starts.
+//! `afd_outbound` knows what a delivery IS and how a failed one ends; this file
+//! knows that this daemon runs one, and what it is built over. The service
+//! crate stays unaware that a daemon process exists, and the process decides
+//! what it starts.
 
 use af_crypto::entropy::Entropy;
 use afd_connector::Grants;
@@ -17,8 +17,8 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 
 /// Starts the answer-delivery worker under `supervisor`.
 ///
-/// It claims owed answers from `fleet.obligations` when `bus` pings it and on
-/// its own pass, so it needs no connection of its own.
+/// It claims owed answers from `thread.deliveries` at start, when `bus` pings
+/// it and when a delivery finishes; it runs no timed pass.
 pub(crate) fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,
@@ -32,17 +32,11 @@ pub(crate) fn spawn(
         database.clone(),
         bus,
         Posters {
-            slack: SlackPoster::new(grants, vendor_client, slack_api_base),
+            slack: SlackPoster::new(grants, vendor_client, slack_api_base)
+                .with_deadlines(settings.tuning.slack_deadlines()),
         },
         Entropy::new(),
     )
-    .with_claim_pass(std::time::Duration::from_secs(
-        settings
-            .maintenance
-            .loops
-            .outbound_delivery
-            .interval_seconds,
-    ))
     .with_retries(settings.outbound_retries);
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));
 }

@@ -1,4 +1,4 @@
-//! The plane's writes under a runner's lease.
+//! The plane's writes under a runner's run.
 //!
 //! The guard is proved on the write's own transaction (`afd_cron`'s
 //! `store::guarded`), and only a write that landed is reconciled.
@@ -11,10 +11,13 @@ use jiff::Timestamp;
 use super::SchedulePlane;
 
 impl SchedulePlane {
-    /// Creates a fleet's schedule under `guard` and registers it upstream.
+    /// Creates a fleet's schedule under `guard`, keyed by `schedule`, and
+    /// registers it upstream. A retry finds its first attempt's row claimed
+    /// under this token and pushes it again under the same scheduler id.
     pub(super) async fn create_under(
         &self,
         workspace: &Uuid7,
+        schedule: &Uuid7,
         new: NewSchedule<'_>,
         now: Timestamp,
         guard: &dyn Precondition,
@@ -22,7 +25,7 @@ impl SchedulePlane {
         let token = self.token(now)?;
         match self
             .store()
-            .create_guarded(workspace, new, &token, now, guard)
+            .create_guarded(workspace, schedule, new, &token, now, guard)
             .await?
         {
             Err(refused) => Ok(Err(refused)),

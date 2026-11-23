@@ -1,0 +1,132 @@
+//! What the model is told about a tool.
+
+use std::borrow::Cow;
+
+use schemars::JsonSchema;
+use schemars::generate::SchemaSettings;
+use serde::{Deserialize, Deserializer};
+
+use guffbolt_ai::ToolSpec;
+
+/// The key a generated schema names its type under, which no provider reads.
+const TITLE: &str = "title";
+
+/// A tool's description and its parameters' JSON Schema.
+///
+/// Provider-neutral: each provider wraps it in its own function-calling wire.
+/// Built only by [`Schema::of`], so what a model is told a tool takes is always
+/// derived from the type the tool's arguments parse into, never hand-written
+/// beside it. A tool built with a bound its words quote rewords them with
+/// [`Schema::with_description`] and [`Schema::with_argument`], so the model
+/// reads the bound the tool holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Schema {
+    /// What the tool does, as the model reads it.
+    description: Cow<'static, str>,
+    /// The arguments' JSON Schema, an object schema.
+    parameters: serde_json::Value,
+}
+
+impl Schema {
+    /// What the tool does, as the model reads it.
+    #[must_use]
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+
+    /// The arguments' JSON Schema: one flat object schema.
+    #[must_use]
+    pub const fn parameters(&self) -> &serde_json::Value {
+        &self.parameters
+    }
+
+    /// The tool named `name` under this schema, as the model is offered it.
+    #[must_use]
+    pub fn spec<'a>(&'a self, name: &'a str) -> ToolSpec<'a> {
+        ToolSpec {
+            name,
+            description: &self.description,
+            parameters: &self.parameters,
+        }
+    }
+
+    /// The schema of `T`, the type a call's arguments parse into: one flat
+    /// object, with no meta-schema line and no definitions to resolve, which
+    /// every provider's function-calling wire reads.
+    #[must_use]
+    pub fn of<T: JsonSchema>(description: &'static str) -> Self {
+        let mut parameters = SchemaSettings::draft2020_12()
+            .with(|settings| {
+                settings.meta_schema = None;
+                settings.inline_subschemas = true;
+            })
+            .into_generator()
+            .into_root_schema_for::<T>();
+        parameters.remove(TITLE);
+        Self {
+            description: Cow::Borrowed(description),
+            parameters: parameters.to_value(),
+        }
+    }
+
+    /// The same schema, the tool described to the model as `description`.
+    #[must_use]
+    pub fn with_description(mut self, description: String) -> Self {
+        self.description = Cow::Owned(description);
+        self
+    }
+
+    /// The same schema, its argument `name` described to the model as
+    /// `description`; unchanged when it takes no argument of that name.
+    #[must_use]
+    pub fn with_argument(mut self, name: &str, description: String) -> Self {
+        if let Some(argument) = self
+            .parameters
+            .get_mut("properties")
+            .and_then(|properties| properties.get_mut(name))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            argument.insert("description".to_owned(), description.into());
+        }
+        self
+    }
+}
+
+// The arguments a tool that reads none takes, `list_agents` and every test
+// tool among them: its schema is the empty object that refuses every key,
+// derived like a real tool's rather than written as JSON beside it. The doc
+// line below is what schemars hands the model as the schema's description,
+// so it is written for the model.
+/// Takes no arguments.
+#[derive(Debug, Clone, Copy, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
+)]
+pub struct NoArguments {}
+
+impl<'de> Deserialize<'de> for NoArguments {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        empty_object(deserializer).map(|()| Self {})
+    }
+}
+
+/// Reads the empty object and refuses every key by name, in the words serde's
+/// own `deny_unknown_fields` uses for a struct with no fields. Written by hand
+/// because that derive expands to a variantless enum, which the lints refuse.
+fn empty_object<'de, D: Deserializer<'de>>(deserializer: D) -> Result<(), D::Error> {
+    std::collections::BTreeMap::<UnknownField, serde_json::Value>::deserialize(deserializer)
+        .map(|_keys| ())
+}
+
+/// A key type with no values: reading one is the refusal.
+#[derive(Eq, Ord, PartialEq, PartialOrd)]
+struct UnknownField(!);
+
+impl<'de> Deserialize<'de> for UnknownField {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let name = Cow::<str>::deserialize(deserializer)?;
+        Err(serde::de::Error::unknown_field(&name, &[]))
+    }
+}

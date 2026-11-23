@@ -206,3 +206,26 @@ fn only_a_bare_https_origin_is_accepted() {
         assert!(Endpoint::parse(origin).is_err(), "{origin}");
     }
 }
+
+#[tokio::test]
+async fn http3_refuses_a_proxied_origin_before_dialing_it() -> Result<()> {
+    let env = MapEnv::from_pairs([("HTTPS_PROXY", "http://proxy.test:8080")]);
+    let endpoint = Endpoint::parse("https://daemon.internal:4443")?.with_environment_route(&env)?;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let refused = crate::Connection::connect(
+        crate::Transport::H3,
+        &endpoint,
+        &crate::tls::Trust::default(),
+        &tokio_util::sync::CancellationToken::new(),
+        deadline,
+    )
+    .await
+    .err()
+    .ok_or(crate::error::ErrorKind::Protocol)?;
+    assert_eq!(refused.reason(), Reason::Protocol);
+    assert!(
+        std::error::Error::source(&refused).is_none(),
+        "the refusal is the transport's own, not a failed dial's"
+    );
+    Ok(())
+}

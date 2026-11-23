@@ -10,10 +10,9 @@ use utoipa::{
     },
 };
 
-use super::{
-    ASSOCIATION_CRITERIA, INTENT_OPTIONS, MAX_QUESTION_TEXT_BYTES, NEXT_ACTION_OPTIONS,
-    NOUL_CRITERIA,
-};
+use af_validate::TEXT_MAX_CHARS;
+
+use super::{ASSOCIATION_CRITERIA, INTENT_OPTIONS, NEXT_ACTION_OPTIONS, NOUL_CRITERIA};
 
 pub(super) const TEXT_PATTERN: &str = r"^[^\x00]*[^\s\x00][^\x00]*$";
 
@@ -85,11 +84,16 @@ impl ToSchema for NoulCriteria {
 }
 
 fn question(keys: &[&str]) -> RefOr<Schema> {
-    ObjectBuilder::new().schema_type(Type::Object)
+    ObjectBuilder::new()
+        .schema_type(Type::Object)
         .additional_properties(Some(AdditionalProperties::FreeForm(false)))
-        .property("question", text()).required("question")
-        .property("criteria", criteria(keys)).required("criteria")
-        .description(Some("Owner-reviewed wording and exact native role criteria; complete authored JSON is at most 1 KiB."))
+        .property("question", text())
+        .required("question")
+        .property("criteria", criteria(keys))
+        .required("criteria")
+        .description(Some(
+            "Owner-reviewed wording and exact native role criteria.",
+        ))
         .into()
 }
 
@@ -104,8 +108,10 @@ fn criteria(keys: &[&str]) -> ObjectBuilder {
 }
 
 fn text() -> ObjectBuilder {
-    ObjectBuilder::new().schema_type(Type::String).min_length(Some(1))
-        .max_length(Some(MAX_QUESTION_TEXT_BYTES))
+    ObjectBuilder::new()
+        .schema_type(Type::String)
+        .min_length(Some(1))
+        .max_length(Some(TEXT_MAX_CHARS))
         .pattern(Some(TEXT_PATTERN))
-        .description(Some("Nonblank, NUL-free text, at most 512 UTF-8 bytes. The server also checks the encoded byte length."))
+        .description(Some("Nonblank, NUL-free text."))
 }

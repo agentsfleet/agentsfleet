@@ -1,4 +1,4 @@
-//! The Postgres store: the window, the upsert with its sweep and cap, recall,
+//! The Postgres store: the window, the upsert with its sweep, recall,
 //! the operator page, and forget. Reads live in `read`, writes in `write`.
 //!
 //! A store holds rows and answers for them; it decides nothing about who may

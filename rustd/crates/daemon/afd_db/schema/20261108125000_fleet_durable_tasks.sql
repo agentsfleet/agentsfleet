@@ -1,0 +1,89 @@
+CREATE TABLE fleet.durable_tasks (
+    id                      UUID PRIMARY KEY,
+    fleet_id                UUID NOT NULL,
+    workspace_id            UUID NOT NULL,
+    tenant_id               UUID NOT NULL,
+    originating_durable_task_item_id UUID NOT NULL,
+    accepted_revision_id    UUID NOT NULL,
+    title                   TEXT NOT NULL,
+    objective               TEXT NOT NULL,
+    questions               JSONB NOT NULL,
+    goal_digest             TEXT NOT NULL,
+    target                  JSONB NOT NULL,
+    status                  TEXT NOT NULL,
+    resource_version        BIGINT NOT NULL CHECK (resource_version > 0),
+    generation              BIGINT NOT NULL CHECK (generation > 0),
+    stop_generation         BIGINT NOT NULL CHECK (stop_generation >= 0),
+    input_sequence          BIGINT NOT NULL CHECK (input_sequence >= 0),
+    covered_input_sequence  BIGINT NOT NULL CHECK (covered_input_sequence >= 0),
+    effect_cursor           BIGINT NOT NULL CHECK (effect_cursor >= 0),
+    confirmed_effect_watermark BIGINT NOT NULL CHECK (confirmed_effect_watermark >= 0),
+    max_model_nanos         BIGINT NOT NULL CHECK (max_model_nanos >= 0),
+    used_model_nanos        BIGINT NOT NULL CHECK (used_model_nanos >= 0),
+    max_running_nanos       BIGINT NOT NULL CHECK (max_running_nanos >= 0),
+    used_running_nanos      BIGINT NOT NULL CHECK (used_running_nanos >= 0),
+    max_runs              INTEGER NOT NULL CHECK (max_runs > 0),
+    used_runs             INTEGER NOT NULL CHECK (used_runs >= 0),
+    max_publications        INTEGER NOT NULL CHECK (max_publications > 0),
+    used_publications       INTEGER NOT NULL CHECK (used_publications >= 0),
+    max_decision_calls      INTEGER NOT NULL CHECK (max_decision_calls > 0),
+    used_decision_calls     INTEGER NOT NULL CHECK (used_decision_calls >= 0),
+    reply_provider          TEXT,
+    reply_address           TEXT,
+    expires_at              TIMESTAMPTZ(3) NOT NULL,
+    terminal_at             TIMESTAMPTZ(3),
+    created_at              TIMESTAMPTZ(3) NOT NULL,
+    updated_at              TIMESTAMPTZ(3) NOT NULL,
+    CONSTRAINT fk_durable_tasks_fleet_scope FOREIGN KEY (fleet_id, workspace_id, tenant_id)
+        REFERENCES fleet.fleets (id, workspace_id, tenant_id) ON DELETE CASCADE,
+    CONSTRAINT fk_durable_tasks_item FOREIGN KEY (originating_durable_task_item_id, fleet_id, workspace_id)
+        REFERENCES fleet.durable_task_items (id, fleet_id, workspace_id) ON DELETE CASCADE,
+    CONSTRAINT fk_durable_tasks_revision FOREIGN KEY (accepted_revision_id, fleet_id)
+        REFERENCES fleet.revisions (id, fleet_id),
+    CONSTRAINT uq_durable_tasks_originating_item UNIQUE (originating_durable_task_item_id),
+    CONSTRAINT uq_durable_tasks_id_scope UNIQUE (id, fleet_id, workspace_id),
+    CONSTRAINT ck_durable_tasks_reply_both_or_neither
+        CHECK ((reply_provider IS NULL) = (reply_address IS NULL)),
+    CONSTRAINT ck_durable_tasks_input_coverage CHECK (covered_input_sequence <= input_sequence),
+    CONSTRAINT ck_durable_tasks_effect_coverage CHECK (confirmed_effect_watermark <= effect_cursor),
+    -- Its foreign key closes a cycle and is added with the checkpoint table.
+    checkpoint_id UUID,
+    -- NULL means no plan allocated yet; otherwise a monotonic cursor.
+    checkpoint_sequence BIGINT CHECK (checkpoint_sequence >= 0),
+    checkpoint_cleanup_at TIMESTAMPTZ(3),
+    -- The one exact-head wait, NULL until first armed: its monotonic generation, arming run, head,
+    -- checks read at arming and readback instant; `wait_cancelled_at` marks it cancelled. Arming
+    -- replaces a cancelled wait (`durable_task/waits/sql/`); `durable_task/sql/read.sql` reads it.
+    wait_sequence BIGINT CHECK (wait_sequence > 0),
+    wait_owner_run_id UUID,
+    wait_expected_head TEXT,
+    wait_checks JSONB,
+    wait_cancelled_at TIMESTAMPTZ(3),
+    wait_updated_at TIMESTAMPTZ(3),
+    CONSTRAINT ck_durable_tasks_wait_all_or_none CHECK (num_nulls(wait_sequence, wait_owner_run_id,
+        wait_expected_head, wait_checks, wait_updated_at) IN (0, 5)
+        AND (wait_cancelled_at IS NULL OR wait_sequence IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX uq_durable_tasks_wait_owner_run_id ON fleet.durable_tasks (wait_owner_run_id)
+    WHERE wait_owner_run_id IS NOT NULL;
+
+CREATE INDEX idx_durable_tasks_fleet_created_at_id ON fleet.durable_tasks (fleet_id, created_at DESC, id DESC);
+
+CREATE INDEX idx_durable_tasks_expires_at_unfinished ON fleet.durable_tasks (expires_at, id)
+    WHERE terminal_at IS NULL;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.durable_tasks TO api_runtime;
+
+CREATE INDEX idx_durable_tasks_unfinished_created
+    ON fleet.durable_tasks (fleet_id, created_at DESC, id DESC)
+    WHERE terminal_at IS NULL;
+
+CREATE INDEX idx_durable_task_checkpoint_cleanup ON fleet.durable_tasks (checkpoint_cleanup_at, id)
+    WHERE checkpoint_cleanup_at IS NOT NULL;
+
+-- Deferred, so an item's task is assigned in the transaction that creates the task.
+ALTER TABLE fleet.durable_task_items
+    ADD CONSTRAINT fk_durable_task_items_durable_task_scope FOREIGN KEY (durable_task_id, fleet_id, workspace_id)
+    REFERENCES fleet.durable_tasks (id, fleet_id, workspace_id)
+    DEFERRABLE INITIALLY DEFERRED;

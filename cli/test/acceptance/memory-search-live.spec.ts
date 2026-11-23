@@ -63,7 +63,7 @@ const STATUS_PROCESSED = "processed" as const;
 // af_core/src/error_code/fleet.rs: memory asked of a fleet that is not there.
 const CODE_FLEET_NOT_FOUND = "UZ-MEM-002" as const;
 
-const SteerSchema = Schema.Struct({ event_id: Schema.String, status: Schema.String });
+const SteerSchema = Schema.Struct({ turn_id: Schema.String, status: Schema.String });
 const EntrySchema = Schema.Struct({
   key: Schema.String,
   content: Schema.String,
@@ -145,7 +145,7 @@ if (!isLive) {
       const found = await memoryPage(["search", word]);
       const entry = found.items.find((item) => item.key === MEMORY_KEY);
       if (entry === undefined) {
-        const events = await run(["fleet", "events", fleetId, JSON_FLAG]);
+        const events = await run(["fleet", "turns", fleetId, JSON_FLAG]);
         assert.fail(`search for ${word} found no ${MEMORY_KEY}: ${JSON.stringify(found)}; events=${events.stdout}`);
       }
       assert.ok(entry.content.includes(word), `the stored fact lost the word searched for: ${entry.content}`);

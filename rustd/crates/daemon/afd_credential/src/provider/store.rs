@@ -1,6 +1,6 @@
 //! The store provider resolution reads through: one pool and the vault that opens its rows.
 //!
-//! Same shape as [`afd_billing::Accounts`] and [`crate::lease::Leases`], for
+//! Same shape as [`afd_billing::Accounts`] and [`crate::run::Runs`], for
 //! the same reason: the pool is OWNED here and [`Providers::pool`] is
 //! `pub(crate)`, so nothing outside this crate can run a statement that is not
 //! in [`crate::sql::provider`], and the side-by-side parity read of that module
@@ -46,6 +46,13 @@ impl Providers {
             entropy,
             platform_keys: super::cache::PlatformKeys::default(),
         }
+    }
+
+    /// This store holding a platform resolution no longer than `ceiling`.
+    #[must_use]
+    pub fn with_platform_key_ttl(mut self, ceiling: std::time::Duration) -> Self {
+        self.platform_keys = self.platform_keys.with_ceiling(ceiling);
+        self
     }
 
     /// This store with its platform key cache telling time by `clock`, so a

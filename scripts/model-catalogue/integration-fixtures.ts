@@ -22,11 +22,11 @@ export async function snapshot(database: SQL): Promise<unknown> {
   return database`SELECT
     (SELECT jsonb_agg(m ORDER BY id) FROM model.platform_models m) AS models,
     (SELECT jsonb_agg(p ORDER BY id) FROM model.platform_model_prices p) AS prices,
-    (SELECT resource_version::text FROM model.catalogue_version WHERE id = 1) AS version`;
+    (SELECT number::text FROM model.revision WHERE id = 1) AS version`;
 }
 
 export async function version(database: SQL): Promise<string> {
-  const result: unknown = await database`SELECT resource_version::text AS version FROM model.catalogue_version WHERE id = 1`;
+  const result: unknown = await database`SELECT number::text AS version FROM model.revision WHERE id = 1`;
   return z.tuple([z.object({ version: z.string() })]).parse(result)[0].version;
 }
 
@@ -48,7 +48,7 @@ export async function waitForClientCount(database: SQL, expected: unknown): Prom
   expect(await clients()).toEqual(expected);
 }
 
-type Target = "model.platform_models" | "model.platform_model_prices" | "model.catalogue_version";
+type Target = "model.platform_models" | "model.platform_model_prices" | "model.revision";
 type Operation = "insert" | "delete" | "update" | typeof COMMIT_OPERATION;
 
 /** Real PostgreSQL triggers fail a chosen write, including deferred COMMIT. */

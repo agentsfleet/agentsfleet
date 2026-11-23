@@ -1,4 +1,6 @@
-//! Bounded recent-work queue; a missed notification is recovered by the replica probe.
+//! Bounded recent-work queue; a lost or unreadable notification calls
+//! [`Wake::recheck`], which starts a pass over every eligible session that
+//! reads ready work from Postgres.
 
 mod config;
 mod publish;
@@ -11,13 +13,12 @@ use af_observability::{metrics::label::fleet::ReadyWake, producers};
 use tokio::{sync::watch, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
-use crate::{Handle, Received, Result, Subject};
+use crate::{Handle, Received, Result};
 
-pub use config::{DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY};
+pub use config::{
+    DEFAULT_WAKE_QUEUE_CAPACITY, ENV_WAKE_QUEUE_CAPACITY, MAX_WAKE_QUEUE_CAPACITY, QueueBounds,
+};
 pub use publish::publish;
-
-/// Independent subjects distribute notifications across the broker's shard slots.
-pub const SHARDS: u16 = 16;
 
 /// Identity of an independent recovery request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +33,7 @@ pub struct Generation {
 }
 
 impl Generation {
-    /// Ordinary rings grant an equal number of successful offers.
+    /// Ordinary rings grant an equal number of successful assignments.
     #[must_use]
     pub const fn rings(self) -> u64 {
         self.rings
@@ -63,20 +64,16 @@ impl Default for Wake {
 }
 
 impl Wake {
-    /// Resolve the capacity once during daemon boot, before accepting sessions.
+    /// Resolve the capacity once during daemon boot, before accepting
+    /// sessions, under the deployment's `[nats]` default and ceiling.
     ///
     /// # Errors
-    /// Refuses malformed, zero or excessive capacities without allocating the queue.
-    pub fn from_env(env: &(impl af_core::env::EnvSource + ?Sized)) -> Result<Self> {
-        Ok(Self::bounded(config::resolve(env)?))
-    }
-
-    /// Construct an isolated replica queue for an explicitly configured capacity.
-    ///
-    /// # Errors
-    /// Refuses zero or more than [`MAX_WAKE_QUEUE_CAPACITY`] entries before allocation.
-    pub fn with_capacity(capacity: usize) -> Result<Self> {
-        Ok(Self::bounded(config::prove(capacity)?))
+    /// Refuses malformed, zero or above-`bounds.max` capacities without allocating the queue.
+    pub fn from_env(
+        env: &(impl af_core::env::EnvSource + ?Sized),
+        bounds: QueueBounds,
+    ) -> Result<Self> {
+        Ok(Self::bounded(config::resolve(env, bounds)?))
     }
 
     fn bounded(capacity: usize) -> Self {
@@ -86,7 +83,7 @@ impl Wake {
         }
     }
 
-    /// Enqueue the fleet before notifying sessions; duplicate admissions still notify.
+    /// Enqueue the fleet before notifying sessions; duplicate turns still notify.
     pub fn ring(&self, fleet: Uuid7) {
         let outcome = self.lock().ring(fleet);
         producers::fleet::runner::stream::wake_queue(outcome);
@@ -126,7 +123,7 @@ impl Wake {
         self.lock().take()
     }
 
-    /// Scheduling reads locality preferences without consuming the claim's reminder.
+    /// Scheduling reads locality preferences without consuming the assignment's reminder.
     #[must_use]
     pub fn fleets(&self) -> std::collections::HashSet<Uuid7> {
         self.lock().fleets()
@@ -142,7 +139,7 @@ impl Wake {
                 self.queue.clear_poison();
                 producers::fleet::ready_wake_failed(ReadyWake::Gap);
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                tracing::warn!(event = "admission_wake_queue_recovered", error_code);
+                tracing::warn!(event = "turn_wake_queue_recovered", error_code);
                 queue
             }
         }
@@ -154,16 +151,15 @@ impl Wake {
         self.generation.subscribe()
     }
 
-    /// Own all shard listeners in the returned task set; dropping it aborts them.
+    /// Own the one listener over every thread's wake in the returned task
+    /// set; dropping it aborts the listener.
     ///
     /// # Errors
-    /// Returns a failed subscription and drops any listeners already opened.
+    /// Returns a failed subscription.
     pub async fn listen(&self, bus: &Handle, stop: &CancellationToken) -> Result<JoinSet<()>> {
+        let subscription = bus.subscribe_thread_wakes().await?;
         let mut workers = JoinSet::new();
-        for shard in 0..SHARDS {
-            let subscription = bus.subscribe(&Subject::Wake(shard)).await?;
-            workers.spawn(receive(self.clone(), subscription, stop.clone()));
-        }
+        workers.spawn(receive(self.clone(), subscription, stop.clone()));
         Ok(workers)
     }
 }
@@ -180,7 +176,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                         wake.recheck();
                         producers::fleet::ready_wake_failed(ReadyWake::Gap);
                         let error_code = error.code().as_str();
-                        tracing::warn!(event = "admission_wake_invalid_notification", error_code);
+                        tracing::warn!(event = "turn_wake_invalid_notification", error_code);
                     }
                 },
                 Ok(Received::Lagged(_) | Received::Gap) => {
@@ -191,7 +187,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                     wake.recheck();
                     producers::fleet::ready_wake_failed(ReadyWake::Gap);
                     let error_code = error.code().as_str();
-                    tracing::warn!(event = "admission_wake_subscription_closed", error_code);
+                    tracing::warn!(event = "turn_wake_subscription_closed", error_code);
                     return;
                 }
             }

@@ -4,10 +4,13 @@ mod harness;
 
 mod build_stamp;
 
-#[path = "admission_ceiling.rs"]
-mod admission_ceiling;
+#[path = "credential_header_text.rs"]
+mod credential_header_text;
+
 #[path = "header_limit.rs"]
 mod header_limit;
+#[path = "in_flight_ceiling.rs"]
+mod in_flight_ceiling;
 #[path = "person_policy.rs"]
 mod person_policy;
 #[path = "problem_json_envelope.rs"]
@@ -27,14 +30,14 @@ mod openapi_codes;
 #[path = "openapi_coverage.rs"]
 mod openapi_coverage;
 #[cfg(feature = "openapi")]
+#[path = "openapi_durable_task_shapes.rs"]
+mod openapi_durable_task_shapes;
+#[cfg(feature = "openapi")]
 #[path = "openapi_problem.rs"]
 mod openapi_problem;
 #[cfg(feature = "openapi")]
 #[path = "openapi_stream_frames.rs"]
 mod openapi_stream_frames;
-#[cfg(feature = "openapi")]
-#[path = "openapi_task_shapes.rs"]
-mod openapi_task_shapes;
 
 #[path = "openapi_balance.rs"]
 mod openapi_balance;

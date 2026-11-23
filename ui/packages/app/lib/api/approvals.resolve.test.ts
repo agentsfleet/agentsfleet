@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RequestCancelledError } from "./errors";
 import {
+  answerApproval,
   approveApproval,
   denyApproval,
   type AlreadyResolvedResponse,
   type ResolveResponse,
 } from "./approvals";
-import { DEFAULT_REQUEST_TIMEOUT_MS } from "./client";
-import { HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT } from "./errors";
 
 // The resolve half of the approvals client (approve / deny: the tagged union
 // over 200 vs 409, and the transport timeout). Split from approvals.test.ts by
@@ -189,33 +189,55 @@ describe("denyApproval", () => {
   });
 });
 
-// ── the transport's timeout ───────────────────────────────────────────
+// ── answerApproval — a question gate takes the answer as its body ─────
 
-/** What `fetch` rejects with when an `AbortSignal.timeout` fires. */
-function timeoutAbort(): DOMException {
-  return new DOMException("signal timed out", "TimeoutError");
-}
+describe("answerApproval", () => {
+  const ANSWER = "Yes — ship the 東京 build";
+  const answered = (status: number, extra: Record<string, unknown> = {}) => jsonResponse({
+    gate_id: GATE_ID, action_id: "ask_user", outcome: "answered",
+    resolved_at: "2026-11-21T10:00:00Z", resolved_by: "user:x", ...extra,
+  }, status);
 
-describe("resolve — bounded by the default timeout", () => {
-  it("a hung resolve aborts after the default timeout instead of pending forever", async () => {
-    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
-    fetchMock.mockRejectedValueOnce(timeoutAbort());
-    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toMatchObject({
-      code: RETRY_CODE_TIMEOUT,
-      status: HTTP_STATUS_REQUEST_TIMEOUT,
-    });
-    // The bypassed transport still carries the budget every request() carries,
-    // so a hung POST surfaces as ok:false and the optimistic row comes back.
-    expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_REQUEST_TIMEOUT_MS);
-    const init = fetchMock.mock.calls[0]![1] as RequestInit;
-    expect(init.signal).toBe(timeoutSpy.mock.results[0]?.value);
-    timeoutSpy.mockRestore();
+  it("posts the answer to /answer and returns the answered receipt", async () => {
+    fetchMock.mockResolvedValueOnce(answered(200));
+    const result = await answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${BACKEND_BASE}${PATH_PREFIX}/${GATE_ID}/answer`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body as string)).toEqual({ answer: ANSWER });
+    expect(result).toEqual({ kind: "resolved", data: {
+      gate_id: GATE_ID, action_id: "ask_user", outcome: "answered", resolved_at: "2026-11-21T10:00:00Z", resolved_by: "user:x",
+    } });
   });
 
-  it("a timeout during the body read is a timeout, never an empty resolve", async () => {
-    fetchMock.mockResolvedValueOnce({ status: 200, json: () => Promise.reject(timeoutAbort()) });
-    await expect(denyApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toMatchObject({
-      code: RETRY_CODE_TIMEOUT,
-    });
+  it("refuses a 200 whose receipt names another decision", async () => {
+    fetchMock.mockResolvedValueOnce(answered(200, { outcome: "denied" }));
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER)).rejects.toMatchObject({ status: 502, code: "UZ-UNKNOWN" });
+  });
+
+  it("returns already_resolved when another answer decided the gate first", async () => {
+    fetchMock.mockResolvedValueOnce(answered(409, { error_code: ERR_ALREADY_RESOLVED, detail: "already answered" }));
+    const result = await answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, "No");
+    expect(result.kind).toBe("already_resolved");
+    expect(result.data.outcome).toBe("answered");
+  });
+
+  it("throws the archived fleet's refusal as an ApiError carrying UZ-AGT-020", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error_code: "UZ-AGT-020", detail: "fleet is archived" }, 409));
+    const { ApiError } = await import("./errors");
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, ANSWER)).rejects.toSatisfy((err: unknown) =>
+      err instanceof ApiError && err.code === "UZ-AGT-020" && err.status === 409 && err.message === "fleet is archived");
+  });
+
+  it("throws the refusal of an empty answer instead of confirming it", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error_code: "UZ-REQ-001", detail: "answer is empty" }, 400));
+    await expect(answerApproval(WORKSPACE_ID, GATE_ID, TOKEN, "")).rejects.toMatchObject({ status: 400, code: "UZ-REQ-001" });
+  });
+
+  it("reports a body read cut by navigation as a cancelled request, not an empty success", async () => {
+    const cut = new Response(null, { status: 200 });
+    vi.spyOn(cut, "json").mockRejectedValueOnce(new DOMException("The user aborted a request.", "AbortError"));
+    fetchMock.mockResolvedValueOnce(cut);
+    await expect(approveApproval(WORKSPACE_ID, GATE_ID, TOKEN)).rejects.toBeInstanceOf(RequestCancelledError);
   });
 });

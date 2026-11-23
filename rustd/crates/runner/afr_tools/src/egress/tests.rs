@@ -1,7 +1,8 @@
 use af_egress::Refusal;
 use af_egress::error::one_of_each_kind;
+use guffbolt::ToolOutput;
 
-use super::{answered, refused};
+use super::refused;
 use crate::catalog::HTTP_REQUEST;
 use crate::runtime::ToolErrorCode;
 
@@ -14,26 +15,15 @@ fn should_hand_every_refusal_back_as_an_error_under_its_own_code() {
             .refusal()
             .map_or(ToolErrorCode::UpstreamUnreachable, ToolErrorCode::from);
 
-        let output = refused(&HTTP_REQUEST, "lease-1", &failure);
+        let output = ToolOutput::from(refused(HTTP_REQUEST.name(), "run-1", &failure));
 
-        assert_eq!(output.error_code, Some(code), "{name}");
+        assert_eq!(output.error_code, Some(code.into()), "{name}");
         assert_eq!(
             output.text,
             format!("[{code}] {}", failure.detail()),
             "{name}"
         );
         assert!(!output.text.contains(failure.code().as_str()), "{name}");
-    }
-}
-
-#[test]
-fn should_answer_2xx_as_succeeded_and_anything_else_as_upstream_status() {
-    assert_eq!(answered(204, "Status: 204".to_owned()).error_code, None);
-    for status in [199, 301, 404, 500] {
-        assert_eq!(
-            answered(status, String::new()).error_code,
-            Some(ToolErrorCode::UpstreamStatus)
-        );
     }
 }
 
@@ -45,7 +35,7 @@ fn should_map_every_refusal_to_its_code() {
         (Refusal::HttpsRequired, ToolErrorCode::HttpsRequired),
         (Refusal::MethodNotAllowed, ToolErrorCode::MethodNotAllowed),
         (Refusal::HostNotAllowed, ToolErrorCode::HostNotAllowed),
-        (Refusal::AddressNotAllowed, ToolErrorCode::AddressNotAllowed),
+        (Refusal::EgressDenied, ToolErrorCode::EgressDenied),
         (
             Refusal::PlacementNotAllowed,
             ToolErrorCode::CredentialPlacementNotAllowed,
@@ -72,4 +62,34 @@ fn should_map_every_refusal_to_its_code() {
     for (refusal, code) in cases {
         assert_eq!(ToolErrorCode::from(refusal), code, "{refusal:?}");
     }
+}
+
+/// An MCP connection is admitted by the run's own policy: an allowed host
+/// connects with no header added, any other is refused under the guard's
+/// code before anything is sent.
+#[tokio::test]
+async fn should_admit_an_mcp_connection_only_to_a_host_the_policy_allows() {
+    use guffbolt::tools::outbound::Outbound as _;
+
+    let fixture = crate::testing::RunFixture::new(false);
+    let run = fixture.run();
+    let egressed = super::Egressed::new(None, &run);
+
+    let Ok(admitted) = egressed
+        .connect("mcp", "https://demo-grafana.internal/mcp")
+        .await
+    else {
+        unreachable!("the policy allows the host");
+    };
+    let Err(refused) = egressed
+        .connect("mcp", "https://elsewhere.example/mcp")
+        .await
+    else {
+        unreachable!("the policy names no such host");
+    };
+
+    assert_eq!(admitted.url, "https://demo-grafana.internal/mcp");
+    assert_eq!(admitted.headers, Vec::<(String, String)>::new());
+    assert_eq!(refused.code, ToolErrorCode::HostNotAllowed.into());
+    assert_eq!(fixture.mint.asked(), 0, "a connection mints nothing");
 }

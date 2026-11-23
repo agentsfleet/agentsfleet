@@ -63,9 +63,7 @@ fn field_kinds() -> Vec<(&'static str, Error)> {
     ] {
         kinds.push(("session field", super::session_field(field)));
     }
-    for field in [ApiKeyField::Name, ApiKeyField::Description] {
-        kinds.push(("api-key field", super::apikey_field(field)));
-    }
+    kinds.push(("api-key field", super::apikey_field(ApiKeyField::Name)));
     kinds
 }
 
@@ -139,7 +137,7 @@ fn an_invite_conflict_says_which_one() {
 #[test]
 fn every_data_only_failure_has_a_registered_public_contract() {
     let kinds = data_only_kinds();
-    assert_eq!(kinds.len(), 35, "the table must grow with the enum");
+    assert_eq!(kinds.len(), 34, "the table must grow with the enum");
 
     for (label, failure) in kinds {
         assert!(!failure.code().as_str().is_empty(), "{label}: code");
@@ -165,7 +163,6 @@ fn field_names_render_as_the_wire_spells_them() {
         assert_eq!(field.to_string(), expected);
     }
     assert_eq!(ApiKeyField::Name.to_string(), "key_name");
-    assert_eq!(ApiKeyField::Description.to_string(), "description");
 }
 
 #[test]

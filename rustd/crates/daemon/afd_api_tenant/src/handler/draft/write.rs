@@ -1,21 +1,21 @@
 //! Native draft writes share the same service and replay semantics for both clients.
 
-use super::{DraftPath, access, attach, id, input, location, render};
+use super::{DraftPath, access, id, input, location, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::CreateDraftRequest;
-use afd_api_wire::authoring::Created;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::CreateDraftRequest;
+use afd_api_wire::setup::Created;
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     Json,
     body::Bytes,
     extract::{Path, State},
     response::{IntoResponse as _, Response},
 };
-use http::{HeaderMap, StatusCode};
+use http::{HeaderMap, StatusCode, header};
 use std::sync::Arc;
 
 /// Creates the draft and optional first message in one durable transaction.
@@ -35,7 +35,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -44,29 +44,32 @@ pub(crate) async fn create<D: Services>(
 ) -> Result<Response, Refusal> {
     input::body_key(&headers)?;
     let mut created = services
-        .authoring()
+        .drafts()
         .create(
             access(&owned, &person),
             input::create(&body)?,
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     created.draft = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &created.draft.id)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let id = created.draft.id.clone();
     let tag = created.draft.etag.clone();
     let payload = Created {
         draft: render::draft(created.draft),
         accepted: created.accepted.map(render::accepted),
     };
-    let mut response = (StatusCode::CREATED, Json(payload)).into_response();
-    attach(&mut response, &tag);
-    location(&mut response, &owned.workspace, &id, "");
-    Ok(response)
+    let location = location(&owned.workspace, &id, "");
+    Ok((
+        StatusCode::CREATED,
+        [(header::ETAG, tag), (header::LOCATION, location)],
+        Json(payload),
+    )
+        .into_response())
 }
 
 /// Deletes creator-private text and retains bounded content-free replay identity.
@@ -79,16 +82,16 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn delete<D: Services>(
+pub(crate) async fn delete<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
     Path(path): Path<DraftPath>,
 ) -> Result<Response, Refusal> {
     services
-        .authoring()
+        .drafts()
         .delete(access(&owned, &person), &id(&path)?)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }

@@ -31,10 +31,10 @@ pub(crate) const METHOD_READ_FILE: &str = "fs/read";
 pub(crate) const METHOD_WRITE_FILE: &str = "fs/write";
 /// `fs/list`: list a directory.
 pub(crate) const METHOD_LIST_DIR: &str = "fs/list";
-/// `fs/append`: add to the end of a file, making it when absent.
-pub(crate) const METHOD_APPEND_FILE: &str = "fs/append";
 /// `fs/delete`: remove a file.
 pub(crate) const METHOD_DELETE_FILE: &str = "fs/delete";
+/// `fs/search`: walk below a path and answer its files or matching lines.
+pub(crate) const METHOD_SEARCH: &str = "fs/search";
 /// An ordered proof that no earlier file operation is still executing.
 pub(crate) const METHOD_RECOVERY_IDLE: &str = "fs/recovery_idle";
 /// The notification carrying a chunk of a process's output.
@@ -42,14 +42,15 @@ pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
 pub(crate) const NOTIFY_EXITED: &str = "process/exited";
 
-/// The longest line either end reads. A write of a file is the largest
-/// message, and this caps it before base64 expands it by a third.
-pub(crate) const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+/// The longest line either end reads when its starter names none
+/// ([`crate::Sizes`]): 64 MiB. A write of a file is the largest message, and
+/// this caps it before base64 expands it by a third.
+pub(crate) const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 /// What ends every message on the wire.
 pub(crate) const DELIMITER: u8 = b'\n';
-/// The most a single read answers with, so the reply fits in one frame. A
-/// caller that must have the whole file reads up to it and refuses a file
-/// the read cut.
+/// The most a single read answers with when its starter names none
+/// ([`crate::Sizes`]), so the reply fits in one frame. A caller that must
+/// have the whole file reads up to it and refuses a file the read cut.
 pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
 /// A path that leaves the workspace. Clear of the codes `jsonrpsee-types`
@@ -60,16 +61,6 @@ pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
 /// A file or directory the workspace does not have: the one caller's mistake
 /// a handler names to the model, so it is told from the rest.
 pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
-/// The most `Error::wire_message` renders, whatever kind it carries. A
-/// refusal's message and a decode failure's echo of the value it choked on
-/// both come from the socket, which the executor shares with tenant code,
-/// and the sentence reaches a model's context through every handler's
-/// failure path (`afr_tools::sandbox::unavailable`,
-/// `afr_tools::sandbox::files::failed`): one cap at the rendering bounds all
-/// of them. Four kibibytes is one `PATH_MAX`, so a sentence quoting a path is
-/// kept whole.
-pub(crate) const WIRE_MESSAGE_MAX_BYTES: usize = 4096;
-
 /// `process/spawn` parameters: borrowed where the client sends them, owned
 /// where the executor reads them.
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,7 +106,7 @@ pub(crate) struct KillParams {
 pub(crate) struct ReadParams<'a> {
     /// The file, inside the workspace.
     pub(crate) path: Cow<'a, str>,
-    /// The most to read; clamped to [`MAX_READ_BYTES`].
+    /// The most to read; clamped to the executor's read size.
     pub(crate) max_bytes: u64,
 }
 
@@ -129,7 +120,7 @@ pub(crate) struct ReadResult {
     pub(crate) truncated: bool,
 }
 
-/// `fs/write` and `fs/append` parameters.
+/// `fs/write` parameters.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct WriteFileParams<'a> {
     /// The file, inside the workspace.

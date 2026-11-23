@@ -32,23 +32,27 @@ pub(crate) const SELECT_DECISION_REVISION: &str = include_str!("select_decision_
 pub(crate) const SELECT_PLATFORM_MODEL_INFERENCE: &str =
     include_str!("select_platform_model_inference.sql");
 
-/// Writes dated prices, one array per column. `$1` model id · `$2` the minted
-/// row ids · `$3`–`$14` the price columns in table order. A row that exists
-/// keeps its id.
+/// Writes dated coding prices (a NULL decision revision), one array per
+/// column. `$1` model id · `$2` the minted row ids · `$3`–`$14` the price
+/// columns in table order. A row that exists keeps its id.
 pub(crate) const UPSERT_PLATFORM_MODEL_PRICES: &str =
     include_str!("upsert_platform_model_prices.sql");
 
-/// Removes tiers absent from the complete replacement. `$1` model id · `$2`
-/// prompt thresholds · `$3` range starts, pairwise.
+/// Removes coding tiers absent from the complete replacement, leaving every
+/// decision quote. `$1` model id · `$2` prompt thresholds · `$3` range starts,
+/// pairwise.
 pub(crate) const DELETE_PLATFORM_MODEL_PRICES: &str =
     include_str!("delete_platform_model_prices.sql");
 
-/// Every price row of `$1`'s model ids, ordered by model, tier and start.
+/// Every coding price row of `$1`'s model ids, ordered by model, tier and
+/// start.
 pub(crate) const SELECT_MODEL_PRICES: &str = include_str!("select_model_prices.sql");
 
-/// Current reviewed decision quotes, with the same price columns as coding.
+/// Quotes of each model's current reviewed decision revision, from the same
+/// table and columns as coding.
 pub(crate) const SELECT_DECISION_PRICES: &str = include_str!("select_decision_prices.sql");
-/// Decision schedule writes add `$15`, its reviewed definition revision.
+/// Decision schedule writes add `$15`, the reviewed definition revision their
+/// rows name.
 pub(crate) const UPSERT_DECISION_PRICES: &str = include_str!("upsert_decision_prices.sql");
 /// Prunes one decision revision's absent tiers; `$4` is its revision.
 pub(crate) const DELETE_DECISION_PRICES: &str = include_str!("delete_decision_prices.sql");

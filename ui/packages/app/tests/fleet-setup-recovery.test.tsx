@@ -66,7 +66,7 @@ it("shows the scope recovery message instead of internal continuation detail", a
   expect(screen.getByRole("alert").textContent).not.toContain("Internal continuation");
 });
 
-it("shows recovery only for unfinished setup or first-run admission", async () => {
+it("shows recovery only for unfinished setup or first-run turn", async () => {
   const view = render(<FleetRecovery fleet={{...FLEET, status: "archived"}} workspace={WORKSPACE} />);
   expect(screen.queryByRole("link")).toBeNull();
   view.rerender(<FleetRecovery fleet={{...FLEET, status: "active", start: {kind: "run_now", state: "pending"}}} workspace={WORKSPACE} />);

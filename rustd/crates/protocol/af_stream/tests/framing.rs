@@ -3,7 +3,7 @@
 use std::{error::Error as _, time::Duration};
 
 use af_stream::{Budget, Reader, Reason, write};
-use af_wire::protocol::{MESSAGE_BYTES_MAX, StreamKind, Up};
+use af_wire::protocol::{CONTROL_MESSAGE_BYTES_MAX, MESSAGE_BYTES_MAX, StreamKind, Up};
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt as _},
     time::Instant,
@@ -151,7 +151,8 @@ async fn malformed_json_preserves_its_cause_without_exposing_the_payload() -> Re
 #[tokio::test]
 async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiters() -> Result {
     let fixture = Fixture {
-        budget: Budget::new(MESSAGE_BYTES_MAX * 2, MESSAGE_BYTES_MAX * 2)?,
+        // A maximum frame fills the whole data pool, and is charged only its length.
+        budget: Budget::new(CONTROL_MESSAGE_BYTES_MAX, MESSAGE_BYTES_MAX)?,
         ..Fixture::default()
     };
     let reason = {
@@ -175,11 +176,11 @@ async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiter
     assert_eq!(reason, Reason::Cancelled);
     assert_eq!(
         fixture.budget.available(StreamKind::Control),
-        MESSAGE_BYTES_MAX * 2
+        CONTROL_MESSAGE_BYTES_MAX
     );
     assert_eq!(
         fixture.budget.available(StreamKind::Reports),
-        MESSAGE_BYTES_MAX * 2
+        MESSAGE_BYTES_MAX
     );
     Ok(())
 }

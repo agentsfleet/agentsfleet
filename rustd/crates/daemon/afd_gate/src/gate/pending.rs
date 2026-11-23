@@ -3,11 +3,10 @@
 //! # No thread waits for a human
 //!
 //! Parking an event writes a durable `fleet.approval_gates` row naming the
-//! action it is waiting on. Every later lease poll finds that row and
-//! re-evaluates it. There is no blocking wait, no parked handler, and no timer
-//! — the deadline is the row's `expires_at`, stamped by the database clock
-//! when the gate was raised and compared against that same clock when a poll
-//! reads the row back.
+//! action it is waiting on. Every later run poll finds that row and
+//! re-evaluates it. There is no blocking wait, no parked handler, and no timer.
+//! The row's `expires_at` is a deadline a card shows; an unanswered gate stays
+//! answerable past it, and the event waits until a person answers.
 
 use af_core::id::Uuid7;
 
@@ -39,33 +38,27 @@ impl GateRef {
 }
 
 /// What one poll made of a recorded gate.
+///
+/// No arm for a lapsed deadline: an unanswered gate stays answerable past
+/// it, so the event keeps waiting and the deadline is only what a card shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Evaluation {
     /// A human said yes; the event runs.
     Approved,
     /// A human said no; the event ends.
     Denied,
-    /// No answer yet and the deadline is ahead — keep answering no-work.
+    /// No answer yet — keep answering no-work.
     Pending,
-    /// No answer and the deadline has passed; the caller resolves it timed out.
-    Expired,
 }
 
-/// What one poll makes of `answer`, given whether the gate's deadline has
-/// `lapsed` on the database clock.
-///
-/// Pure, and separated from the read that feeds it for the reason the rest
-/// of this crate separates verdicts from I/O: the interesting behaviour is the
-/// ordering of "answered" against "lapsed", and it needs no datastore to be
-/// proven. The comparison itself is the database's — see
-/// [`super::sql::SELECT_GATE_STATUS`].
-///
-/// An ANSWER outranks a lapsed deadline. A reviewer who approved at the last
-/// second and a sweeper that has not run yet must not race to opposite
-/// outcomes, and the answer is the one a human actually gave.
+/// What one poll makes of `answer`.
 #[must_use]
-pub const fn evaluate(answer: Option<Answer>, lapsed: bool) -> Evaluation {
-    evaluate_answer(answer, lapsed)
+pub const fn evaluate(answer: Option<Answer>) -> Evaluation {
+    match answer {
+        Some(Answer::Approved) => Evaluation::Approved,
+        Some(Answer::Denied) => Evaluation::Denied,
+        None => Evaluation::Pending,
+    }
 }
 
 /// What a caller's read found about the gate an event already holds.
@@ -86,34 +79,18 @@ pub enum Recorded {
 impl Recorded {
     /// What a read of the reference and its newest row returned.
     ///
-    /// `status` and `lapsed` are absent when the reference's row is gone,
-    /// which only a purge does: the gate is pending, the fail-safe direction.
-    /// A status this build cannot spell is no answer, as the store reads it.
+    /// `status` is absent when the reference's row is gone, which only a
+    /// purge does: the gate is pending, the fail-safe direction. A status
+    /// this build cannot spell is no answer, as the store reads it.
     #[must_use]
-    pub fn observed(
-        action_id: Option<&af_core::id::Uuid7>,
-        status: Option<&str>,
-        lapsed: Option<bool>,
-    ) -> Self {
+    pub fn observed(action_id: Option<&Uuid7>, status: Option<&str>) -> Self {
         if action_id.is_none() {
             return Self::Absent;
         }
-        let Some(lapsed) = lapsed else {
-            return Self::Held(Evaluation::Pending);
-        };
         let answer = status
             .and_then(af_core::spelling::from_spelling::<afd_api_wire::approval::GateStatus>)
             .and_then(crate::gate::decision::answer);
-        Self::Held(evaluate_answer(answer, lapsed))
-    }
-}
-
-const fn evaluate_answer(answer: Option<Answer>, lapsed: bool) -> Evaluation {
-    match answer {
-        Some(Answer::Approved) => Evaluation::Approved,
-        Some(Answer::Denied) => Evaluation::Denied,
-        None if lapsed => Evaluation::Expired,
-        None => Evaluation::Pending,
+        Self::Held(evaluate(answer))
     }
 }
 
@@ -123,17 +100,9 @@ mod tests {
     use crate::gate::decision::Answer;
 
     #[test]
-    fn an_answer_outranks_a_lapsed_deadline() {
-        // The race this settles: a reviewer answering at the last second, and a
-        // sweeper that has not run yet. Reading the deadline first would throw
-        // away an answer a human actually gave.
-        assert_eq!(evaluate(Some(Answer::Approved), true), Evaluation::Approved);
-        assert_eq!(evaluate(Some(Answer::Denied), true), Evaluation::Denied);
-    }
-
-    #[test]
-    fn no_answer_waits_until_the_database_says_the_deadline_passed() {
-        assert_eq!(evaluate(None, false), Evaluation::Pending);
-        assert_eq!(evaluate(None, true), Evaluation::Expired);
+    fn an_answer_decides_and_no_answer_waits_whatever_the_deadline() {
+        assert_eq!(evaluate(Some(Answer::Approved)), Evaluation::Approved);
+        assert_eq!(evaluate(Some(Answer::Denied)), Evaluation::Denied);
+        assert_eq!(evaluate(None), Evaluation::Pending);
     }
 }

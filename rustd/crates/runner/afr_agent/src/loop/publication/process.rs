@@ -1,7 +1,8 @@
 //! Bounded sandbox commands retain definite endings and kill on cancellation.
 
 use afr_executor::{Ending, Executor, ProcessEvent, Spawn, Stream};
-use afr_tools::{ToolErrorCode, ToolOutput};
+use afr_tools::ToolErrorCode;
+use guffbolt::ToolOutput;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 

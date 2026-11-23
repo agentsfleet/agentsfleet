@@ -6,8 +6,8 @@ import { guardedHandler } from "./guarded-handler.ts";
 
 const draftId = Argument.String("draft-id").pipe(Argument.withDescription("Private setup chat identifier"));
 const list = Command.make("list", {
-  search: textFlag("search", "Search your chat titles and message text, 1..200 characters", METAVAR.text),
-  limit: textFlag("limit", "Page size, 1..100 (default 50)", METAVAR.count), cursor: cursorFlag,
+  search: textFlag("search", "Search your chat titles and message text", METAVAR.text),
+  limit: textFlag("limit", "Page size (default 50)", METAVAR.count), cursor: cursorFlag,
   state: Flag.Literals("state", Object.values(DRAFT_STATE)).pipe(Flag.withDescription("Filter by editing, saving or closed"),
     Flag.withMetavar(`<${Object.values(DRAFT_STATE).join("|")}>`), Flag.optional),
   fleet: fleetFlag, workspace: workspaceFlag,

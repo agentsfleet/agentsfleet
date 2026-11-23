@@ -65,7 +65,7 @@ fn test_the_lanes_error_is_reported_before_the_sweeps() {
     let lane_failed: Result<Report, Error> = Err(ErrorKind::TaskLost { role: "runner" }.into());
     let sweep_failed: Result<u64, Error> = Err(ErrorKind::InstrumentPoisoned.into());
 
-    let refused = finish(Lane::Lease, Profile::Rig, lane_failed, sweep_failed)
+    let refused = finish(Lane::Runs, Profile::Rig, lane_failed, sweep_failed)
         .expect_err("two failures still refuse");
 
     assert!(
@@ -76,11 +76,11 @@ fn test_the_lanes_error_is_reported_before_the_sweeps() {
 
 #[test]
 fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
-    let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Runs, Profile::Rig, Provenance::for_test());
     report.fixture.created = 3;
 
     let refused = finish(
-        Lane::Lease,
+        Lane::Runs,
         Profile::Rig,
         Ok(report),
         Err(ErrorKind::InstrumentPoisoned.into()),
@@ -92,20 +92,20 @@ fn test_a_failed_sweep_after_a_good_run_is_still_a_refusal() {
 
 #[test]
 fn test_the_callers_sweep_adds_to_what_the_lane_swept_itself() {
-    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
+    let mut report = Report::new(Lane::Delivery, Profile::Rig, Provenance::for_test());
     report.fixture.created = 200;
     report.fixture.swept = 200;
     let scratch = std::env::temp_dir().join(format!("afd-bench-finish-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("scratch is creatable");
     let previous = std::env::current_dir().expect("a cwd");
     std::env::set_current_dir(&scratch).expect("scratch is enterable");
 
-    let written = finish(Lane::Outbound, Profile::Rig, Ok(report), Ok(0));
+    let written = finish(Lane::Delivery, Profile::Rig, Ok(report), Ok(0));
 
     std::env::set_current_dir(previous).expect("cwd restored");
     let path = written.expect("a finished run writes");
     let read = Report::read(std::path::Path::new(&scratch).join(path).as_path()).expect("readable");
-    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::remove_dir_all(&scratch).expect("scratch is removable");
     assert_eq!(
         read.fixture.swept, 200,
         "a fallback that found nothing must not erase what the lane swept"

@@ -2,12 +2,11 @@
 
 use super::files::{self, Entry, Identity, Workspace};
 use crate::{Result, error};
-use af_wire::task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
+use af_wire::durable_task::{CheckpointEntry, CheckpointFile, CheckpointPage, CheckpointPlaintext};
 use std::{collections::BTreeMap, sync::Arc};
 use zeroize::Zeroizing;
 
 const PLACEHOLDER: &str = "00000000-0000-7000-8000-000000000000";
-const MAX_HISTORY: usize = 64 * 1024 * 1024;
 
 #[derive(Clone)]
 enum Source {
@@ -74,9 +73,6 @@ impl Catalog {
         base_paths: Vec<String>,
         stop: &tokio_util::sync::CancellationToken,
     ) -> Result<Self> {
-        if history.len() > MAX_HISTORY {
-            return Err(error::capture_limit("checkpoint history exceeds its bound"));
-        }
         let inventory = root
             .map(|root| root.inventory(stop))
             .transpose()?
@@ -132,7 +128,7 @@ impl Catalog {
         }
         catalog.add_history(history)?;
         // Validate the complete page layout before allocating any native plan.
-        catalog.pages(None, af_wire::task::CHECKPOINT_PAGE_BYTES)?;
+        catalog.pages(None, af_wire::durable_task::CHECKPOINT_PAGE_BYTES)?;
         Ok(catalog)
     }
 

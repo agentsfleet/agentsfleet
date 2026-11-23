@@ -29,7 +29,7 @@ impl IdSegment for Thing {
 fn router() -> Router {
     Router::new().route(
         "/things/{thing_id}",
-        get(|thing: IdPath<Thing>| async move { thing.id().as_str().to_owned() }),
+        get(async |thing: IdPath<Thing>| thing.id().as_str().to_owned()),
     )
 }
 
@@ -69,7 +69,7 @@ async fn should_refuse_a_segment_that_is_not_an_identifier_with_the_routes_sente
 async fn should_answer_a_route_with_two_segments_as_a_wiring_fault() {
     let router = Router::new().route(
         "/pairs/{left}/{right}",
-        get(|thing: IdPath<Thing>| async move { thing.id().as_str().to_owned() }),
+        get(async |thing: IdPath<Thing>| thing.id().as_str().to_owned()),
     );
     let response = router
         .oneshot(

@@ -63,7 +63,7 @@ pub(crate) const REPOSITORY: &str = "example/platform";
 /// The App installation the App-delivery fixture arrived for.
 ///
 /// A string because that is how it crosses
-/// [`afd_api::services::WebhookIngress::installation_workspace`] — the column
+/// [`afd_http::services::WebhookIngress::installation_workspace`] — the column
 /// it looks up is text, and the provider's own id is an integer, so the
 /// conversion happens at the route and a fixture asserts on the converted form.
 pub(crate) const INSTALLATION: &str = "48765123";

@@ -60,7 +60,7 @@ fn validated(document: &Value) -> String {
     text
 }
 
-/// Dimension 2.3 — the subscription is the channel's identifier: the document
+/// The subscription is the channel's identifier: the document
 /// names no channel NAME, so renaming the channel in Slack changes nothing,
 /// and editing the identifier moves the fleet from one channel to the other.
 #[test]

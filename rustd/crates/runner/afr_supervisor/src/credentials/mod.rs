@@ -1,9 +1,9 @@
-//! Scoped, short-lived credentials a held lease may mint.
+//! Scoped, short-lived credentials a held run may mint.
 //!
 //! The supervisor mints; a sandbox never asks the daemon for anything. A token
-//! minted here lives in the lease's egress vault and reaches a request only in
-//! its `Authorization` header (`af_egress`). [`LeaseMint`] is the seam the
-//! vault mints through: one held lease, over the control plane.
+//! minted here lives in the run's egress vault and reaches a request only in
+//! its `Authorization` header (`af_egress`). [`RunMint`] is the seam the
+//! vault mints through: one held run, over the control plane.
 
 use std::borrow::Cow;
 
@@ -18,24 +18,24 @@ use crate::error::{Error, Result};
 /// What a mint that never reached the daemon reads as.
 const UNREACHED: &str = "the daemon could not be reached to mint the credential";
 
-/// Mints for one held lease, over the control plane.
+/// Mints for one held run, over the control plane.
 #[derive(Debug)]
-pub(crate) struct LeaseMint<'a> {
+pub(crate) struct RunMint<'a> {
     plane: &'a ControlPlane,
-    lease_id: &'a Uuid7,
+    run_id: &'a Uuid7,
 }
 
-impl<'a> LeaseMint<'a> {
-    /// The mint of the lease `lease_id`, asking through `plane`.
-    pub(crate) const fn new(plane: &'a ControlPlane, lease_id: &'a Uuid7) -> Self {
-        Self { plane, lease_id }
+impl<'a> RunMint<'a> {
+    /// The mint of the run `run_id`, asking through `plane`.
+    pub(crate) const fn new(plane: &'a ControlPlane, run_id: &'a Uuid7) -> Self {
+        Self { plane, run_id }
     }
 }
 
 #[async_trait::async_trait]
-impl Mint for LeaseMint<'_> {
+impl Mint for RunMint<'_> {
     async fn mint(&self, integration: &str) -> af_egress::Result<Minted> {
-        mint(self.plane, self.lease_id, integration, None)
+        mint(self.plane, self.run_id, integration, None)
             .await
             .map_err(|refused| af_egress::Error::mint_refused(refused.code(), detail(&refused)))
     }
@@ -53,19 +53,19 @@ fn detail(refused: &Error) -> String {
     }
 }
 
-/// Mints a credential for `integration` under the held lease.
+/// Mints a credential for `integration` under the held run.
 ///
 /// # Errors
-/// A refusal — an ungranted integration, a lease no longer held — or a
+/// A refusal — an ungranted integration, a run no longer held — or a
 /// transport failure. Minting is not retried: the caller decides.
 pub(crate) async fn mint(
     plane: &ControlPlane,
-    lease_id: &Uuid7,
+    run_id: &Uuid7,
     integration: &str,
     scope: Option<&str>,
 ) -> Result<Minted> {
     let request = MintCredentialRequest {
-        lease_id: Cow::Borrowed(lease_id.as_str()),
+        run_id: Cow::Borrowed(run_id.as_str()),
         integration: Cow::Borrowed(integration),
         scope: scope.map(Cow::Borrowed),
     };

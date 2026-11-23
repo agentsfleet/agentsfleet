@@ -6,7 +6,7 @@
 
 use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionResult, DecisionUsage},
-    task::{DecisionReceipt, DecisionReceiptInput},
+    durable_task::{DecisionReceipt, DecisionReceiptInput},
 };
 use serde_json::{Value, json};
 
@@ -112,5 +112,43 @@ fn complete_receipt() -> DecisionReceiptInput {
                 },
             },
         },
+    }
+}
+
+/// An unknown receipt whose cause records HTTP `status`.
+fn unknown_status(status: u16) -> Value {
+    json!({"fencing_token":7,"receipt":{"outcome":"unknown","cause":{
+        "reason":"provider_status","status":status,"retry_delay":{"kind":"unspecified"}
+    }}})
+}
+
+#[test]
+fn an_unknown_receipt_is_refused_when_its_cause_names_no_http_status() {
+    use garde::Validate;
+    for status in [100, 599] {
+        let receipt: DecisionReceiptInput =
+            serde_json::from_value(unknown_status(status)).expect("a bounded cause decodes");
+        assert!(
+            receipt.validate().is_ok(),
+            "status {status} is an HTTP status"
+        );
+    }
+    for status in [0, 99, 600] {
+        let receipt: DecisionReceiptInput =
+            serde_json::from_value(unknown_status(status)).expect("the cause decodes unbounded");
+        let report = receipt
+            .validate()
+            .expect_err("a status outside 100..=599 is refused");
+        let refused: Vec<(String, String)> = report
+            .iter()
+            .map(|(path, error)| (path.to_string(), error.to_string()))
+            .collect();
+        assert_eq!(
+            refused,
+            vec![(
+                "receipt".to_owned(),
+                "decision failure metadata exceeds its bounds".to_owned()
+            )]
+        );
     }
 }

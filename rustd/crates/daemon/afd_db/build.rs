@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// The schema directory, from this crate's manifest.
-const SCHEMA: &str = "../../../../schema";
+const SCHEMA: &str = "schema";
 
 /// The file `tests/migrations.rs` includes.
 const LISTING: &str = "schema_files.rs";
@@ -53,7 +53,7 @@ fn main() -> std::io::Result<()> {
     let mut listing = String::from("&[\n");
     for name in schema_files() {
         // `{:?}` writes a Rust string literal, escapes included.
-        let _ = writeln!(listing, "    {name:?},");
+        writeln!(listing, "    {name:?},").map_err(std::io::Error::other)?;
     }
     listing.push_str("]\n");
     std::fs::write(Path::new(&out).join(LISTING), listing)

@@ -32,10 +32,10 @@ fn env_with(extra: [(&str, &str); 2]) -> MapEnv {
     MapEnv::from_pairs(
         extra
             .into_iter()
-            .chain(crate::support::SESSION_PEPPER)
-            .chain(crate::support::BUS)
-            .chain(crate::support::runner_stream::environment())
-            .chain(crate::support::IDENTITY),
+            .chain(agentsfleetd::test_util::SESSION_PEPPER)
+            .chain(agentsfleetd::test_util::BUS)
+            .chain(agentsfleetd::test_util::runner_stream::environment())
+            .chain(agentsfleetd::test_util::IDENTITY),
     )
 }
 
@@ -65,8 +65,8 @@ fn test_preflight_lists_missing() {
         TLS_CERT_FILE,
         TLS_KEY_FILE,
     ];
-    expected.extend(crate::support::BUS.map(|(name, _value)| name));
-    expected.extend(crate::support::IDENTITY.map(|(knob, _value)| knob));
+    expected.extend(agentsfleetd::test_util::BUS.map(|(name, _value)| name));
+    expected.extend(agentsfleetd::test_util::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
         knobs, expected,
@@ -188,9 +188,9 @@ fn test_preflight_requires_the_login_pepper() {
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
-        .chain(crate::support::BUS)
-        .chain(crate::support::runner_stream::environment())
-        .chain(crate::support::IDENTITY),
+        .chain(agentsfleetd::test_util::BUS)
+        .chain(agentsfleetd::test_util::runner_stream::environment())
+        .chain(agentsfleetd::test_util::IDENTITY),
     );
 
     let refusal =
@@ -228,7 +228,7 @@ fn test_preflight_resolves_a_complete_environment() {
     // treatment: it reaches boot, and it does not reach a log line.
     assert!(
         !format!("{:?}", config.session_code_pepper())
-            .contains(crate::support::SESSION_PEPPER[0].1),
+            .contains(agentsfleetd::test_util::SESSION_PEPPER[0].1),
         "a resolved login pepper must not render its own material"
     );
 }

@@ -4,8 +4,13 @@ import type {MemberSummary} from "@/lib/api/tenant-members";
 import type {InviteSummary} from "@/lib/api/invites";
 import type {Secret} from "@/lib/api/secrets";
 import type {TenantModelEntryPageResult} from "@/lib/api/tenant_model_entries";
+import type {ListApprovalsOpts} from "@/lib/api/approvals";
+import {listApprovals} from "@/lib/api/approvals";
+import {ApiError} from "@/lib/api/errors";
 import {CATALOGUE_MODEL} from "@/tests/helpers/catalogue-fixtures";
 import {WORKSPACE, FLEET_ID} from "@/tests/helpers/draft-fixtures";
+
+const FIXTURE_TOKEN = "fixture-token";
 
 export const SAMPLE_MEMBERS: MemberSummary[] = [
   {user_id: VISUAL_VIEWER_ID, display_name: "Kishore Neelamegam", email: "you@example.test", role: "owner", joined_at: "2026-11-01T10:00:00Z"},
@@ -24,12 +29,22 @@ export async function getModelLibraryAction() {return {ok: true, data: {version:
 export async function listSecretsAction() {return {ok: true, data: {secrets: visualParity() ? SECRETS.map(secret => ({...secret, name: "OpenAI workspace", provider: "openai"})) : SECRETS}};}
 export async function listModelEntriesAction() {return {ok: true, data: visualModels(SAMPLE_MODELS)};}
 export async function loadTeamAction() {return {ok: true, data: {members: visualMembers(SAMPLE_MEMBERS), invites: visualInvites(SAMPLE_INVITES)}};}
-export async function listApprovalsAction() {return {ok: true, data: {items: new URLSearchParams(location.search).get("state") === "completed" ? [{gate_id: "sample-release-approval", workspace_id: WORKSPACE, fleet_id: FLEET_ID,
-  status: "pending", proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"}] : [], next_cursor: null}};}
+export async function listApprovalsAction(workspace: string, opts: ListApprovalsOpts = {}) {
+  const query = new URLSearchParams(location.search);
+  // `approvalRoute` sends the read through the real client, so a browser test answers it with `page.route`.
+  if (query.has("approvalRoute")) {
+    try {return {ok: true, data: await listApprovals(workspace, FIXTURE_TOKEN, opts)} as const;}
+    catch (error) {return {ok: false, status: error instanceof ApiError ? error.status : 503, error: "Approvals unavailable"} as const;}
+  }
+  const items = query.get("state") === "completed" ? [{gate_id: "sample-release-approval", workspace_id: WORKSPACE, fleet_id: FLEET_ID, gate_type: "destructive_action",
+    status: "pending", proposed_action: "Publish runner image", tool_name: "registry", action_name: "publish", blast_radius: "Production registry · Release tag"}] : [];
+  return {ok: true, data: {items, next_cursor: null}} as const;
+}
 async function refuse(): Promise<ActionResult<never>> {return {ok: false, status: 503, error: "Read-only component fixture. No changes were sent."};}
 export const resetProviderAction = refuse;
 export const approveApprovalAction = refuse;
 export const denyApprovalAction = refuse;
+export const answerApprovalAction = refuse;
 export const setProviderSelfManagedAction = refuse;
 export const deleteModelEntryAction = refuse;
 export const createModelEntryAction = refuse;

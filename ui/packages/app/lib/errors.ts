@@ -35,7 +35,7 @@ export interface ErrorInput {
   /**
    * What the operator was trying to do, in present-tense lowercase. Used
    * to construct the fallback when no errorCode matches. Examples:
-   *   "delete this Fleet", "store the credential", "load more events".
+   *   "delete this Fleet", "store the credential", "load more turns".
    */
   action: string;
 }
@@ -84,7 +84,7 @@ const CODE_MAP = {
     title: "You need an additional scope for that",
     body: "Ask an agentsfleet admin to grant the scope this action requires.",
   },
-  // Minted in lib/api/client.ts when the per-attempt timeout fires: the
+  // Minted in lib/api/client.ts when a caller's timeout signal fires: the
   // backend never answered, so there is no user_message to prefer. The raw
   // ApiError message names the backend path for logs; this entry keeps that
   // path out of what the operator reads.

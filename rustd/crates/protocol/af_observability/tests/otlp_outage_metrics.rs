@@ -1,4 +1,4 @@
-//! Dimension 3.3 — the metric half of the same outage.
+//! The metric half of the same outage.
 //!
 //! A sibling module of the span half rather than a second `tests/*.rs`, because
 //! it is one claim about one failure and a second file would be a second test

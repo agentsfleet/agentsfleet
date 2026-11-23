@@ -2,7 +2,7 @@ import type { MessageState } from "@assistant-ui/react";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { CellState } from "../copy/tool-call-copy";
 import { readToolResult, type ToolResult } from "../../replies/fleetReplyMessage";
-import { formatElapsed } from "@/lib/events/run-figures-format";
+import { formatElapsed } from "@/lib/turns/run-figures-format";
 import { CELL_STATE, cellState, toolCopy } from "../copy/tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
 import { pathArg, stringArg } from "./tool-call-text";
@@ -69,9 +69,9 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
 function describe(name: string, args: ToolArgs | undefined): Description {
   const target = args === undefined ? ARGS_NOT_RECORDED : pathArg(args);
   switch (name) {
-    case TOOL_NAME.FILE_READ: case TOOL_NAME.FILE_READ_HASHED:
+    case TOOL_NAME.FILE_READ:
       return {running: "Reading file", done: "Read file", target, kind: "read"};
-    case TOOL_NAME.FILE_WRITE: case TOOL_NAME.FILE_APPEND: case TOOL_NAME.FILE_EDIT: case TOOL_NAME.FILE_EDIT_HASHED: case TOOL_NAME.FILE_DELETE:
+    case TOOL_NAME.FILE_WRITE: case TOOL_NAME.FILE_EDIT:
       return {...toolCopy(name, undefined).verbs, target, kind: "write"};
     case TOOL_NAME.APPLY_PATCH: return {running: "Editing files", done: "Edited files", target: "", kind: "write"};
     case TOOL_NAME.EXEC_COMMAND: case TOOL_NAME.SHELL:

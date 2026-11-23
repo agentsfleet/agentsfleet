@@ -2,11 +2,12 @@
 
 use super::{Checked, publication::root, storage::Files};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointPlan, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnWorkspace,
+    durable_task::{CheckpointEntry, CheckpointPage},
+    run::{
+        CheckpointOperationId, TurnCheckpointAction as Action, TurnCheckpointCommit,
+        TurnCheckpointPageWrite, TurnCheckpointPlan, TurnCheckpointRef,
+        TurnCheckpointResponse as Response, TurnPrivateRoot, TurnWorkspace,
     },
-    task::{CheckpointEntry, CheckpointPage},
 };
 
 pub(super) struct Pending {
@@ -27,7 +28,7 @@ impl Pending {
         files: &Files,
         pages: &[Vec<CheckpointEntry>],
         workspace: TurnWorkspace,
-        expected_head: Option<TurnId>,
+        expected_head: Option<CheckpointOperationId>,
     ) -> Checked<Self> {
         let history = root(&files.case, workspace.clone());
         let mut command = files.case.command();
@@ -45,7 +46,7 @@ impl Pending {
         Ok(Self {
             reference: TurnCheckpointRef {
                 checkpoint_id: plan.checkpoint_id.clone(),
-                pin_id: TurnId(plan.pin.id.clone()),
+                pin_id: CheckpointOperationId(plan.pin.id.clone()),
             },
             plan: *plan,
             root: history,
@@ -55,7 +56,7 @@ impl Pending {
     pub(super) async fn write(
         &self,
         files: &Files,
-        id: TurnId,
+        id: CheckpointOperationId,
         number: u32,
         entries: Vec<CheckpointEntry>,
     ) -> Checked<(String, String)> {
@@ -66,12 +67,12 @@ impl Pending {
         };
         let digest = af_core::etag::sha256_hex(&serde_json::to_vec(&page)?);
         let response = files
-            .execute(Action::PageWrite {
+            .execute(Action::PageWrite(TurnCheckpointPageWrite {
                 checkpoint: self.reference.clone(),
                 page_id: id.clone(),
                 digest: digest.clone(),
                 contents: page,
-            })
+            }))
             .await?;
         assert!(matches!(response, Response::PageWritten(_)));
         Ok((id.0, digest))
@@ -83,7 +84,7 @@ impl Pending {
         pages: &[(String, String)],
     ) -> Checked<Response> {
         files
-            .execute(Action::Commit {
+            .execute(Action::Commit(TurnCheckpointCommit {
                 checkpoint: self.reference.clone(),
                 root: self.root.clone(),
                 manifest_root: af_crypto::checkpoint_digest::manifest_root(
@@ -92,7 +93,7 @@ impl Pending {
                         .map(|(id, digest)| (id.as_str(), digest.as_str())),
                 ),
                 folds: Vec::new(),
-            })
+            }))
             .await
     }
 }
@@ -140,12 +141,12 @@ async fn a_page_cannot_change_its_preallocated_ordinal() -> Checked {
     };
     incompatible(
         files
-            .execute(Action::PageWrite {
+            .execute(Action::PageWrite(TurnCheckpointPageWrite {
                 checkpoint: pending.reference,
                 page_id: id,
                 digest: af_core::etag::sha256_hex(&serde_json::to_vec(&page)?),
                 contents: page,
-            })
+            }))
             .await,
     )?;
     no_head(&files).await?;

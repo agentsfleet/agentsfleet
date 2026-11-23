@@ -11,11 +11,8 @@ readme.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
-[features]
-postgres = ["dep:sqlx"]
-
 [dependencies]
-af_core = { workspace = true, features = ["sqlx"] }
+af_core.workspace = true
 af_validate.workspace = true
 garde.workspace = true
 hex.workspace = true
@@ -24,7 +21,6 @@ serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-sqlx = { workspace = true, optional = true, features = ["json"] }
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }

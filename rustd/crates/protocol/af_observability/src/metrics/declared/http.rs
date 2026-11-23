@@ -15,10 +15,6 @@ use crate::metrics::family::{CounterKind, Declared, GaugeKind};
 pub const API_BACKPRESSURE_REJECTIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_api_backpressure_rejections_total");
 
-/// Approaching `api_max_in_flight_requests`.
-pub const API_IN_FLIGHT_REQUESTS: Declared<GaugeKind> =
-    Declared::new("agentsfleet_api_in_flight_requests");
-
 /// Streams refused at the cap.
 pub const SSE_BACKPRESSURE_REJECTIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_sse_backpressure_rejections_total");

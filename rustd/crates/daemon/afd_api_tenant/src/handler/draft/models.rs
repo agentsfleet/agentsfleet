@@ -3,12 +3,12 @@
 use super::access;
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{CursorPage, WorkspaceModel};
-use afd_authoring::types::ModelsQuery;
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{CursorPage, WorkspaceModel};
+use afd_http::handler::{Refusal, setup_refusal};
+use afd_setup::types::ModelsQuery;
 use axum::{
     Json,
     extract::{Query, State, rejection::QueryRejection},
@@ -25,7 +25,7 @@ use std::sync::Arc;
         "returned.",
     ),
     params(afd_http::openapi::path::Workspace,
-        ("purpose" = Option<String>, Query, description = "authoring or runtime; omit for either"),
+        ("purpose" = Option<String>, Query, description = "setup or runtime; omit for either"),
         ("limit" = Option<u32>, Query, description = "Rows scanned per page, 1..100; default 50"),
         ("starting_after" = Option<String>, Query, description = concat!(
             "Use the previous `next_cursor` unchanged, for the same owner, workspace, person, ",
@@ -36,7 +36,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn list<D: Services>(
+pub(crate) async fn list<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -45,9 +45,9 @@ pub(crate) async fn list<D: Services>(
     let Query(query) =
         query.map_err(|_invalid| Refusal::malformed("Invalid model selection query"))?;
     let page = services
-        .authoring()
+        .drafts()
         .models(access(&owned, &person), query)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     Ok(Json(page).into_response())
 }

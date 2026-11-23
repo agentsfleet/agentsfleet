@@ -1,7 +1,5 @@
 import { ApiError, HTTP_STATUS_REQUEST_TIMEOUT, RETRY_CODE_TIMEOUT, RequestCancelledError } from "./errors";
 import { recordWorkspaceFetchForAcceptance } from "../acceptance/workspace-fetch-audit";
-import { HTTP_METHOD, runWithRetry, type RetryOptions } from "./retry";
-import { classifyFailure } from "./retry-classify";
 
 // Full backend origin — used for display URLs (webhooks) and server-side fetches.
 // No fallback on purpose: a silent api-dev default once pointed env-less
@@ -25,35 +23,13 @@ export const API_ORIGIN = requireApiOrigin();
 // next.config.ts `rewrites` — browser never sees a cross-origin request.
 export const BASE = typeof window === "undefined" ? API_ORIGIN : "/backend";
 
-// Per-attempt ceiling for a request whose caller passes no `signal`: long
-// enough for a slow page read, short enough that a hung backend fails the
-// render instead of pinning it. It matches the window the SSE backfill grants
-// its proxy fetch (`lib/streaming/fleet-stream-backfill.ts`); the two are held
-// equal by the pin in client.defaults.test.ts rather than by one importing the
-// other, so the transport never depends on the streaming module. A caller with
-// a stricter or looser budget passes its own signal and this default does not
-// apply.
-export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
-
-/**
- * The default per-attempt timeout, bounded by what remains of the policy's
- * deadline when the attempt starts: an attempt begun late in the run cannot
- * outlive the deadline by its own ceiling, so the deadline is the total it
- * says it is.
- */
-export function attemptTimeoutMs(remainingMs: number): number {
-  return Math.min(DEFAULT_REQUEST_TIMEOUT_MS, remainingMs);
-}
-// The methods `request()` retries on its own. Narrower than the policy's
-// idempotency gate on purpose: a DELETE is idempotent in effect but not in
-// answer — a 204 lost to the network comes back as a 404 on the replay, and the
-// transport would then report a deletion that happened as a failure. Callers
-// that want DELETE, POST or PATCH replayed say so through `requestWithRetry`.
-const DEFAULT_RETRY_METHODS: ReadonlySet<string> = new Set([
-  HTTP_METHOD.GET,
-  HTTP_METHOD.HEAD,
-  HTTP_METHOD.PUT,
-]);
+/** The HTTP methods the transport and its callers name. */
+export const HTTP_METHOD = {
+  GET: "GET",
+  HEAD: "HEAD",
+  PUT: "PUT",
+  DELETE: "DELETE",
+} as const;
 
 /**
  * Parses a `Retry-After` header value into milliseconds. Honors the
@@ -124,10 +100,8 @@ export function isTransportInterrupt(cause: unknown): boolean {
  * Maps a fetch or body-read rejection to the transport's error classes. A
  * navigation abort is not a failure: rethrowing the raw DOMException leaves
  * every caller to recognise it, and the ones that do not turn a page the user
- * already left into an unhandled rejection. A timeout IS a failure, and a
- * transient one: the retry layer classifies its code as retryable, so a hung
- * read gets its second chance (a hung write does not — the policy's replay
- * gate refuses a POST or PATCH the server may already have processed).
+ * already left into an unhandled rejection. A timeout IS a failure: the
+ * timeout the caller asked for through its own signal.
  * Anything else is returned as it came, for the caller to throw.
  */
 export function classifyTransportFailure(cause: unknown, path: string): unknown {
@@ -154,8 +128,7 @@ type ProblemBody = {
 // mean the same thing, never a success body typed as `T`. A body that is not
 // JSON (an intermediary's HTML 502 page) still needs a status to report, so
 // that case keeps the status text as its detail. A stream that broke before
-// the body ended is neither: it is the socket failure it was, for the policy
-// to classify with the headers already in hand.
+// the body ended is neither: it is the socket failure it was.
 async function readBody(res: Response, path: string): Promise<unknown> {
   try {
     return await res.json();
@@ -175,8 +148,7 @@ export function parseRetryAfterHeaderValue(headerVal: string | null): number | n
 
 // Reads Retry-After off a response. Typed to need only an optional `Headers`
 // so it tolerates header-less duck-typed responses (test doubles, exotic
-// runtimes); a missing Headers reads as "no Retry-After" and the retry layer
-// falls back to exponential backoff rather than throwing.
+// runtimes); a missing Headers reads as "no Retry-After" rather than throwing.
 function retryAfterFrom(res: { headers?: Headers }): number | null {
   return res.headers ? parseRetryAfterHeaderValue(res.headers.get("retry-after")) : null;
 }
@@ -201,99 +173,25 @@ export async function request<T>(
 // catalog row editor): the caller holds the tag and sends it back as `If-Match`
 // on the next write, so a concurrent edit is a 412 rather than a silent
 // overwrite. `etag` is null when the endpoint sets no header.
-//
-// Reads (and the one replay-safe write, PUT) ride the retry policy by default.
-// Every other write keeps one attempt unless its caller opts in through
-// `requestWithRetry`: a timed-out POST may well have been processed, and
-// replaying it is the caller's decision, not the transport's. The single
-// attempt still runs under the policy so a cancel lands the same way.
 export async function requestWithEtag<T>(
   path: string,
   init: RequestInit,
   token: string,
 ): Promise<{ data: T; etag: string | null }> {
-  const method = methodOf(init);
-  recordAudit(path, method);
-  const { data, etag } = await runWithRetry(classifiedAttempt<T>(path, init, token), method, {
-    ...(DEFAULT_RETRY_METHODS.has(method) ? {} : { maxAttempts: 1 }),
-    signal: init.signal ?? undefined,
-    cancelled: cancelledFor(path),
-    statusOf: statusOfAttempt,
-  });
-  return { data, etag };
-}
-
-// What the policy throws when the caller's signal aborts between attempts:
-// the same cancel class a mid-flight abort produces, so a page the operator
-// left is dropped silently whichever moment the navigation landed in.
-function cancelledFor(path: string): () => Error {
-  return () => new RequestCancelledError(path);
-}
-
-/**
- * `request` with an explicit retry configuration, for the callers that own
- * their replay decision — the steer POST, the thread and events reads. The
- * policy is `retry.ts`'s; its idempotency gate still refuses to replay a
- * non-idempotent method on a server 5xx.
- */
-export async function requestWithRetry<T>(
-  path: string,
-  init: RequestInit,
-  token: string,
-  options: RetryOptions = {},
-): Promise<T> {
-  const method = methodOf(init);
-  recordAudit(path, method);
-  // One signal for the fetch and the schedule: a caller that cancels through
-  // the policy's options cuts the request in flight, not only the next one.
-  const signal = init.signal ?? options.signal;
-  const { data } = await runWithRetry(classifiedAttempt<T>(path, { ...init, signal }, token), method, {
-    cancelled: cancelledFor(path),
-    statusOf: statusOfAttempt,
-    ...options,
-    signal,
-  });
-  return data;
+  if (methodOf(init) === HTTP_METHOD.GET) recordWorkspaceFetchForAcceptance(path);
+  const res = await sendRequest(path, init, token);
+  return readResponse<T>(res, path);
 }
 
 function methodOf(init: RequestInit): string {
   return (init.method ?? HTTP_METHOD.GET).toUpperCase();
 }
 
-// Audited once per logical request, never per attempt: the acceptance budget
-// counts what a render asked for, and a transient retry is not a second ask.
-function recordAudit(path: string, method: string): void {
-  if (method === HTTP_METHOD.GET) recordWorkspaceFetchForAcceptance(path);
-}
-
-type Attempt<T> = { data: T; etag: string | null; status: number };
-
-function statusOfAttempt<T>(attempt: Attempt<T>): number {
-  return attempt.status;
-}
-
-// One attempt as the policy sees it: the send and the read each classify
-// their own failure with what only this side knows — whether the response
-// headers had arrived — and the policy reads the provenance off the result.
-function classifiedAttempt<T>(path: string, init: RequestInit, token: string): (remainingMs: number) => Promise<Attempt<T>> {
-  return async (remainingMs: number) => {
-    const res = await sendRequest(path, init, token, remainingMs).catch((cause: unknown) => {
-      throw classifyFailure(cause, false);
-    });
-    return readResponse<T>(res, path).catch((cause: unknown) => {
-      throw classifyFailure(cause, true);
-    });
-  };
-}
-
 // The send: the fetch and the abort classification.
-async function sendRequest(path: string, init: RequestInit, token: string, remainingMs: number): Promise<Response> {
+async function sendRequest(path: string, init: RequestInit, token: string): Promise<Response> {
   try {
     return await fetch(`${BASE}${path}`, {
       ...init,
-      // The caller's signal wins; only a request with none gets the default,
-      // and the default is no longer than the deadline's remainder.
-      signal: init.signal ?? AbortSignal.timeout(attemptTimeoutMs(remainingMs)),
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
@@ -309,10 +207,10 @@ async function sendRequest(path: string, init: RequestInit, token: string, remai
 }
 
 // The read: the status, the ETag, and the RFC 7807 parse.
-async function readResponse<T>(res: Response, path: string): Promise<Attempt<T>> {
+async function readResponse<T>(res: Response, path: string): Promise<{ data: T; etag: string | null }> {
   const etag = etagFrom(res);
 
-  if (res.status === 204) return { data: undefined as T, etag, status: res.status };
+  if (res.status === 204) return { data: undefined as T, etag };
 
   const body = await readBody(res, path);
 
@@ -335,5 +233,5 @@ async function readResponse<T>(res: Response, path: string): Promise<Attempt<T>>
     );
   }
 
-  return { data: body as T, etag, status: res.status };
+  return { data: body as T, etag };
 }

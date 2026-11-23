@@ -11,7 +11,7 @@ use crate::support::CronLane;
 
 const WAIT_BUDGET: Duration = Duration::from_secs(5);
 const LOCK_SCHEDULE: &str = "SELECT pg_backend_pid() FROM fleet.schedules WHERE id=$1 FOR UPDATE";
-const READ_SESSION: &str = "SELECT context_json FROM fleet.sessions WHERE fleet_id=$1";
+const READ_SESSION: &str = "SELECT resume_context FROM thread.threads WHERE id=$1";
 
 // Value: protects=history waits permit a first session's real foreign-key check;
 // fails_when=the parent lock conflicts with KEY SHARE and the insert times out;
@@ -70,7 +70,7 @@ async fn assert_committed(lane: &CronLane, row: &Schedule, finalized: Schedule) 
         .expect("the session committed");
     assert_eq!(
         saved,
-        json!({"last_event_id":"support-review","last_response":"Support queue reviewed."})
+        json!({"last_turn_id":"support-review","last_response":"Support queue reviewed."})
     );
     no_work(lane).await;
 }
@@ -82,26 +82,26 @@ async fn checkpoint_while_finalizer_waits(
 ) {
     let mut observer = lane.connection().await;
     wait_for_blocked_finalizer(&mut observer, pid).await;
+    // Fleet creation writes the thread, so the first save fills its context.
     let absent: Option<Value> = sqlx::query_scalar(READ_SESSION)
         .bind(&lane.fleet)
-        .fetch_optional(&mut *observer)
+        .fetch_one(&mut *observer)
         .await
-        .expect("inspect the first session");
-    assert_eq!(
-        absent, None,
-        "this insert must run the parent foreign-key check"
-    );
+        .expect("inspect the fleet's thread");
+    assert_eq!(absent, None, "the thread holds no saved context yet");
     sqlx::query("SET LOCAL lock_timeout = '1s'")
         .execute(&mut *held)
         .await
         .expect("bound the lock wait");
     let written = sqlx::query(
-        "INSERT INTO fleet.sessions (fleet_id,context_json,created_at,updated_at) \
-        VALUES ($1,$2,now(),now())",
+        "INSERT INTO thread.threads (id,fleet_id,fencing_token,run_expires_at,resume_context,created_at,updated_at) \
+        VALUES ($1,$1,0,now(),$2,now(),now()) \
+        ON CONFLICT (id) DO UPDATE SET fencing_token=0,run_expires_at=now(), \
+        resume_context=EXCLUDED.resume_context,updated_at=now()",
     )
     .bind(&lane.fleet)
     .bind(sqlx::types::Json(
-        json!({"last_event_id":"support-review","last_response":"Support queue reviewed."}),
+        json!({"last_turn_id":"support-review","last_response":"Support queue reviewed."}),
     ))
     .execute(&mut *held)
     .await

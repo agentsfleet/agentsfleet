@@ -22,18 +22,17 @@ afd_bus.workspace = true
 # Where an approved gate's continuation is accepted before anything is
 # queued. Its unique index on the gate's action is what makes a retried
 # resolve continue the run exactly once.
-afd_admission.workspace = true
+afd_turns.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 # Entropy for the identifiers a grant request mints — the grant row, its gate,
 # and the action a person answers about.
 af_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# `fleet.events`. The continuation insert this crate used to carry a
+# `thread.turns`. The continuation insert this crate used to carry a
 # byte-identical COPY of — the copy existed only because reaching the original
-# meant depending on the whole runner plane, and `afd_events` is that reason
+# meant depending on the whole runner plane, and `afd_turns` is that reason
 # removed.
-afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
 # The stored status spellings and the event type a continuation carries. Shared
@@ -58,7 +57,7 @@ tracing.workspace = true
 # M-TEST-UTIL. Unlocks the refusals a stubbed service answers with, so a router
 # suite reaches this crate's seam with no datastore behind it.
 test-util = [
-    "afd_admission/test-util",
+    "afd_turns/test-util",
     "af_core/test-util",
     "afd_bus/test-util",
     "afd_db/test-util",

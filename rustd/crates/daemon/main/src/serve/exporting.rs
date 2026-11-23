@@ -8,7 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use af_observability::producers::GaugeSources;
-use afd_api::Admission;
 
 use crate::error::BootFailure;
 use crate::preflight::BootConfig;
@@ -29,7 +28,7 @@ use crate::supervisor::{JOIN_TIMEOUT, Supervisor};
 /// it: an abandoned task is reported as a failed shutdown and tells an
 /// operator nothing about which signal was lost. Bounded, the join is clean
 /// and the warning below names what did not make it out.
-const FLUSH_BUDGET: Duration = Duration::from_secs(8);
+pub(crate) const FLUSH_BUDGET: Duration = Duration::from_secs(8);
 
 /// The budget only works while it is under the join deadline it is protecting.
 const _: () = assert!(
@@ -47,12 +46,7 @@ const _: () = assert!(
 /// The resident set is NOT here for exactly that reason — it comes from
 /// `/proc`, so the export task samples it and publishes it into a cell the
 /// callback loads.
-pub(super) fn gauge_sources(
-    admission: &Admission,
-    live: &afd_sse::Live,
-    database: &afd_db::Db,
-) -> GaugeSources {
-    let requests = admission.clone();
+pub(super) fn gauge_sources(live: &afd_sse::Live, database: &afd_db::Db) -> GaugeSources {
     let streams = live.clone();
     let database = database.clone();
     GaugeSources {
@@ -90,7 +84,6 @@ pub(super) fn gauge_sources(
                 })
                 .collect()
         }),
-        requests_in_flight: Arc::new(move || u64::try_from(requests.in_flight()).ok()),
         streams_in_flight: Arc::new(move || u64::try_from(streams.carrying()).ok()),
     }
 }
@@ -102,9 +95,10 @@ pub(super) fn gauge_sources(
 /// configured, so re-reading `config.otlp()` there would be an `Option` that
 /// cannot be `None` — an invariant expressed as a panic instead of as a field.
 pub(crate) struct Prepared {
-    exports: crate::telemetry::Exports,
+    exports: af_otlp::Exports,
     instruments: af_observability::metrics::instrument::Instruments,
-    otlp: crate::preflight::OtlpConfig,
+    otlp: af_otlp::OtlpConfig,
+    limits: af_observability::producers::Limits,
 }
 
 /// Delivers what a boot buffered when that boot is not going to finish.
@@ -142,7 +136,7 @@ pub(crate) async fn flush_unsupervised(prepared: Option<Prepared>) {
 /// operator reading the collector for "did this instance warm its pool?" found
 /// nothing and could conclude nothing.
 ///
-/// The gauge producers cannot move here — they read the admission semaphore
+/// The gauge producers cannot move here — they read the database pools
 /// and the live stream handle, which `open_runtime` creates — so they stay in
 /// [`open_telemetry`], which takes what this returns.
 ///
@@ -176,6 +170,7 @@ pub(crate) fn attach_exports(config: &BootConfig) -> Result<Option<Prepared>, Bo
         exports,
         instruments,
         otlp: otlp.clone(),
+        limits: config.runtime.operations.tuning.metric_limits(),
     }))
 }
 
@@ -199,6 +194,7 @@ pub(crate) fn open_telemetry(
         exports,
         instruments,
         otlp,
+        limits,
     }) = prepared
     else {
         return Ok(());
@@ -206,7 +202,7 @@ pub(crate) fn open_telemetry(
     // Announced here rather than beside the pipelines, because the count it
     // reports is the claimed instrument set, and nothing is claimed until the
     // producers are.
-    let installed = af_observability::producers::install(&instruments, sources)?;
+    let installed = af_observability::producers::install_within(&instruments, sources, limits)?;
     crate::telemetry::announce(&otlp, installed, &instruments);
 
     let database = database.clone();
@@ -258,9 +254,8 @@ mod snapshot_tests {
     #[tokio::test]
     async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
         let database = afd_db::test_util::unreachable_db();
-        let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
         let live = afd_sse::Live::detached(afd_sse::StreamLimit::new(1));
-        let sources = gauge_sources(&admission, &live, &database);
+        let sources = gauge_sources(&live, &database);
         let readings = (sources.database_pools)();
         assert_eq!(readings.len(), 5);
         let states: std::collections::BTreeMap<_, _> = readings
@@ -278,7 +273,6 @@ mod snapshot_tests {
         assert_eq!(states.get("used"), Some(&0));
         assert_eq!(states.get("waiting"), Some(&0));
         assert!(states.get("capacity").is_some_and(|value| *value > 0));
-        assert_eq!((sources.requests_in_flight)(), Some(0));
         assert_eq!((sources.streams_in_flight)(), Some(0));
         database.close().await;
         assert_eq!((sources.database_pools)().len(), 0);

@@ -1,7 +1,7 @@
 UPDATE fleet.schedules
    SET sync_status = $4,
        sync_token = NULL,
-       sync_lease_expires_at = NULL,
+       sync_run_expires_at = NULL,
        last_error = NULL,
        updated_at = now(),
        provider_schedule_id = COALESCE($5, provider_schedule_id)
@@ -9,5 +9,5 @@ UPDATE fleet.schedules
 RETURNING
        id, fleet_id, source, provider_schedule_id, cron_expression,
        timezone, message, once, desired_status, sync_status, resource_version,
-       sync_token, sync_lease_expires_at, last_error, created_at, updated_at,
+       sync_token, sync_run_expires_at, last_error, created_at, updated_at,
        fire_at, recipe::text

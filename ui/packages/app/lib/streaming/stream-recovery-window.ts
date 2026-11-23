@@ -3,8 +3,9 @@
 export const HEARTBEAT_EVENT = "heartbeat";
 const STABLE_CONNECTION_MS = 30_000;
 const RENEWAL_GRACE_MS = 25_000;
-const CONNECTION_ATTEMPT_TIMEOUT_MS = 30_000;
 // Three missed 15-second server keepalives tolerate ordinary scheduling jitter.
+// A connection attempt is held to the same silence: EventSource has no connect
+// timeout, so a hung open would otherwise never reconnect.
 export const STREAM_SILENCE_TIMEOUT_MS = 45_000;
 
 export class StreamRecoveryWindow {
@@ -15,7 +16,7 @@ export class StreamRecoveryWindow {
   #connectionTimer: ReturnType<typeof setTimeout> | null = null;
 
   connecting(onTimeout: () => void): void {
-    this.#arm(CONNECTION_ATTEMPT_TIMEOUT_MS, onTimeout);
+    this.#arm(STREAM_SILENCE_TIMEOUT_MS, onTimeout);
   }
 
   opened(onTimeout: () => void): void {

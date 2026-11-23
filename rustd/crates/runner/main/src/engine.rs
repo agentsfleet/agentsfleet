@@ -15,9 +15,13 @@ pub(crate) enum EngineChoice {
 
 impl EngineChoice {
     /// Starts the selected backend; a refusal never selects another engine.
-    pub(crate) fn boot(self, home: &StorageHome) -> Result<Host, ExitCode> {
+    pub(crate) fn boot(
+        self,
+        home: &StorageHome,
+        tuning: afr_sandbox::EngineTuning,
+    ) -> Result<Host, ExitCode> {
         match self {
-            Self::Bubblewrap => Host::production(home),
+            Self::Bubblewrap => Host::production(home, tuning),
         }
     }
 }

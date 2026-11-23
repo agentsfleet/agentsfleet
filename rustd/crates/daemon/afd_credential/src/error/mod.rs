@@ -166,7 +166,7 @@ impl Error {
 
     /// Whether this failure is a stored-configuration fault a human must fix.
     ///
-    /// The question the lease's block path turns on: a permanent fault earns a
+    /// The question the run's block path turns on: a permanent fault earns a
     /// terminal row that puts the fleet in front of a person, where a transient
     /// one leaves the delivery leasable for the next poll.
     ///
@@ -189,6 +189,31 @@ impl Error {
                 | ErrorKind::DecisionCredentialMissing { .. }
                 | ErrorKind::DecisionCredentialInvalid { .. }
         )
+    }
+
+    /// Whether reading again could pass: the datastore would not answer, a
+    /// statement failed in flight, or this host could not draw entropy.
+    ///
+    /// The question a run's assignment turns on. A retryable failure rolls
+    /// its transaction back and leaves the work for the next pass. Anything
+    /// else is the stored selection or key itself, which no retry heals, so
+    /// the caller fails the one turn that named it rather than every pass
+    /// behind it. Exhaustive, so a new kind is classified before it builds.
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
+        match self.kind() {
+            ErrorKind::Datastore { .. } | ErrorKind::Query { .. } | ErrorKind::Entropy { .. } => {
+                true
+            }
+            ErrorKind::Vault { source } => source.is_retryable(),
+            ErrorKind::ProviderMalformed { .. }
+            | ErrorKind::ProviderSecretMissing
+            | ErrorKind::DecisionCredentialMissing { .. }
+            | ErrorKind::DecisionCredentialInvalid { .. }
+            | ErrorKind::ProviderEndpoint { .. }
+            | ErrorKind::VaultDataInvalid
+            | ErrorKind::CredentialMissing => false,
+        }
     }
 
     /// Whether a declared credential simply has no vault row.

@@ -28,7 +28,7 @@ it("does not parse settled history again while ten answer updates render", async
   const client = new DraftClient({account: "owner", workspace: WORKSPACE, subject: "creator"});
   const history: Message[] = Array.from({length: 20}, (_, index) => ({...MESSAGE, sequence: String(index + 1),
     role: index % 2 ? "assistant" : "user", text: `Settled message ${index + 1}`}));
-  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: DRAFT.authoring_model_ref,
+  const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: DRAFT.setup_model_ref,
     messages: [...history, {...MESSAGE, sequence: "21", state: "running" as const}]};
   const mounted = render(<DraftConversation client={client} view={view} workspace={WORKSPACE} />);
   await screen.findByText("Settled message 20");

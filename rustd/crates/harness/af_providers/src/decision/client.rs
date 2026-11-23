@@ -2,50 +2,82 @@
 
 use std::time::Duration;
 
+use crate::transport::REPLY_MAX_BYTES;
 use af_crypto::secret::SecretString;
-use af_wire::decision::{DecisionProfile, DecisionRequest, DecisionResult, REPLY_MAX_BYTES};
+use af_wire::decision::{DecisionProfile, DecisionRequest, DecisionResult};
 use futures_util::{TryStreamExt as _, future::BoxFuture};
 use garde::Valid;
 
 use super::{DecisionEvaluator, document, preflight, wire};
-use crate::retry::retry_after;
 use crate::{
     Result,
     error::{Error, ErrorKind, raise},
 };
+use guffbolt_ai::wire::retry_after;
 
 /// Initial connect bound for a physical decision call.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// A native reservation covers one physical request, including its full reply.
 const PHYSICAL_TIMEOUT: Duration = Duration::from_secs(12);
 
+/// How long a decision call may take to connect, and to finish.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecisionTimeouts {
+    /// Establishing the provider connection.
+    pub connect: Duration,
+    /// One physical request, its full reply included.
+    pub physical: Duration,
+}
+
+impl DecisionTimeouts {
+    /// The bounds a decision call held before the runner could choose them.
+    pub const DEFAULT: Self = Self {
+        connect: CONNECT_TIMEOUT,
+        physical: PHYSICAL_TIMEOUT,
+    };
+}
+
 /// One frozen decision profile and its credential, over pooled guarded HTTP.
 pub struct DecisionClient {
     client: reqwest::Client,
     profile: Valid<DecisionProfile>,
     credential: SecretString,
+    physical: Duration,
 }
 
 impl DecisionClient {
-    /// Construct the same guarded transport used by the runner's coding client.
+    /// Construct the same guarded transport used by the runner's coding client,
+    /// bounded by `timeouts`.
     ///
     /// # Errors
     /// Preserves a client-construction failure without printing credentials.
-    pub fn new(profile: Valid<DecisionProfile>, credential: SecretString) -> Result<Self> {
+    pub fn new(
+        profile: Valid<DecisionProfile>,
+        credential: SecretString,
+        timeouts: DecisionTimeouts,
+    ) -> Result<Self> {
         #[expect(
             clippy::disallowed_methods,
             reason = "runner HTTP construction always passes through the shared DNS/redirect guard"
         )]
         let client = af_egress::guarded(reqwest::Client::builder())
-            .connect_timeout(CONNECT_TIMEOUT)
+            .connect_timeout(timeouts.connect)
             .retry(reqwest::retry::never())
             .build()
             .map_err(raise::client)?;
-        Ok(Self::with_client(client, profile, credential))
+        Ok(Self::with_client(client, profile, credential).with_physical(timeouts.physical))
+    }
+
+    /// The same client, one physical request taking at most `physical`.
+    #[must_use]
+    pub const fn with_physical(mut self, physical: Duration) -> Self {
+        self.physical = physical;
+        self
     }
 
     /// Reuse a configured client; callers preserve guarded DNS, no redirects,
-    /// disabled automatic retry and the three-second connection bound.
+    /// disabled automatic retry and their connection bound; one physical
+    /// request takes at most [`DecisionTimeouts::DEFAULT`]'s.
     #[must_use]
     pub const fn with_client(
         client: reqwest::Client,
@@ -56,6 +88,7 @@ impl DecisionClient {
             client,
             profile,
             credential,
+            physical: PHYSICAL_TIMEOUT,
         }
     }
 
@@ -80,7 +113,7 @@ impl DecisionClient {
             .post(endpoint)
             .bearer_auth(credential.expose())
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .timeout(PHYSICAL_TIMEOUT)
+            .timeout(self.physical)
             .body(body)
             .build()
             .map_err(|source| {

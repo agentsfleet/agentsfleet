@@ -4,7 +4,7 @@
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_outbound::obligation;
+use afd_outbound::delivery;
 
 use crate::{Ledger, sql};
 
@@ -13,8 +13,8 @@ const LANES: usize = 100;
 
 /// 10,100 rows dealt round the private database's fleets, one lane each: the
 /// first 10,000 delivered, the last hundred one open head per lane.
-const SEED_OBLIGATIONS: &str = "INSERT INTO fleet.obligations (id, fleet_id, workspace_id, \
-    provider, destination, event_id, answer, receipt, claim_expires_at, delivered_at, \
+const SEED_DELIVERIES: &str = "INSERT INTO thread.deliveries (id, fleet_id, workspace_id, \
+    provider, destination, turn_id, answer, receipt, claim_expires_at, delivered_at, \
     attempt_count, created_at, updated_at) \
     SELECT ('0195b4ba-8d3a-7a11-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, f.id, \
     f.workspace_id, 'slack', 'd', \
@@ -32,9 +32,9 @@ async fn claim_reads_the_open_lane_index() {
     for _ in 0..LANES {
         ledger.lane().await;
     }
-    sql(&ledger.database, SEED_OBLIGATIONS, &[]).await;
+    sql(&ledger.database, SEED_DELIVERIES, &[]).await;
     let mut connection = ledger.database.acquire().await.expect("a connection");
-    sqlx::query("ANALYZE fleet.obligations")
+    sqlx::query("ANALYZE thread.deliveries")
         .execute(&mut *connection)
         .await
         .expect("statistics refresh");
@@ -62,7 +62,7 @@ async fn claim_reads_the_open_lane_index() {
     )))
     .bind(8_i64)
     .bind(mint_id())
-    .bind(obligation::CLAIM_TTL)
+    .bind(delivery::CLAIM_TTL)
     .bind(&providers)
     .bind(&workspaces)
     .fetch_all(&mut *transaction)
@@ -75,7 +75,7 @@ async fn claim_reads_the_open_lane_index() {
 
     for plan in [lock_plan, claim_plan] {
         let plan = plan.join("\n");
-        assert!(plan.contains("idx_obligations_open_lane"), "{plan}");
+        assert!(plan.contains("idx_deliveries_open_lane"), "{plan}");
     }
     ledger.cleanup().await;
 }

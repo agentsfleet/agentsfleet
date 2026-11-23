@@ -8,19 +8,20 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use af_core::paging::{Ceiling, QUERY_LIMIT};
+use af_core::paging::QUERY_LIMIT;
+use af_validate::Ceiling;
 use af_validate::{Limit, LimitBreak};
 use afd_api_wire::tenant::{BillingResponse, ChargeSummary, ChargesResponse};
 use afd_billing::Wallet;
+use afd_billing::tenant::ChargeRow;
 use afd_billing::tenant::cursor;
-use afd_billing::tenant::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, ChargeRow};
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::PersonIdentity;
 use crate::handler::Refusal;
-use crate::services::{Services, TenantBilling as _};
+use crate::services::{TenantBilling as _, TenantPlane};
 
 use super::{parameter, tenant_of};
 
@@ -31,12 +32,10 @@ const EVENT_TENANT: &str = "billing_tenant_unresolved";
 
 /// The refusal a `limit` that is not a number earns.
 ///
-/// `pub`, like its sibling below: the router suite asserts these sentences by
-/// identity rather than by a respelling that could drift (RULE UFS).
+/// `pub`: the router suite asserts this sentence by identity rather than by a
+/// respelling that could drift (RULE UFS). A limit outside the deployment's
+/// `[api]` page earns `afd_http::paging::limit_sentence`.
 pub const DETAIL_LIMIT_NOT_NUMERIC: &str = "limit must be a positive integer";
-
-/// The refusal a `limit` outside `1..=200` earns.
-pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -54,7 +53,7 @@ pub const DETAIL_LIMIT_RANGE: &str = "limit must be between 1 and 200";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn snapshot<D: Services>(
+pub(crate) async fn snapshot<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
 ) -> Result<Response, Refusal> {
@@ -94,14 +93,14 @@ pub(crate) async fn snapshot<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn charges<D: Services>(
+pub(crate) async fn charges<D: TenantPlane>(
     State(services): State<Arc<D>>,
     identity: PersonIdentity,
     RawQuery(query): RawQuery,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
     let query = query.unwrap_or_default();
-    let limit = charges_limit(parameter(&query, QUERY_LIMIT))?;
+    let limit = charges_limit(parameter(&query, QUERY_LIMIT), services.pages().list)?;
     // `?cursor=` with an empty value is the first page expressed verbosely,
     // not a malformed token.
     let boundary = match parameter(&query, "cursor").filter(|token| !token.is_empty()) {
@@ -152,7 +151,7 @@ fn page_response(rows: &[ChargeRow], limit: u32) -> ChargesResponse<'_> {
     let next_cursor = full
         .then(|| rows.last())
         .flatten()
-        .map(|last| Cow::Owned(cursor::render(last.created_at, last.id.as_str())));
+        .map(|last| Cow::Owned(cursor::render(last.created_at, &last.id)));
     ChargesResponse {
         items: rows.iter().map(summary).collect(),
         next_cursor,
@@ -167,11 +166,8 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
         workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
         fleet_id: row.fleet_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
-        event_id: row.event_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
-        authoring_attempt_id: row
-            .authoring_attempt_id
-            .as_ref()
-            .map(|id| Cow::Borrowed(id.as_str())),
+        turn_id: row.turn_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
+        run_id: row.run_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         charge_type: Cow::Borrowed(&row.charge_type),
         posture: Cow::Borrowed(&row.posture),
         model: Cow::Borrowed(&row.model),
@@ -183,26 +179,24 @@ fn summary(row: &ChargeRow) -> ChargeSummary<'_> {
     }
 }
 
-/// The charges ledger's bound on `?limit`, the store's own two constants.
-const CHARGES_CEILING: Ceiling = Ceiling::new(CHARGES_LIMIT_MAX, CHARGES_LIMIT_DEFAULT);
-
 /// The page size the caller asked for, or the refusal their spelling earns.
 ///
 /// Absent or empty means the default, a non-number is one sentence, and zero
-/// or past the cap is the other. A sign is not a digit, so `-1` lands on the
-/// not-numeric sentence.
-fn charges_limit(raw: Option<&str>) -> Result<u32, Refusal> {
-    Limit::parse(raw, CHARGES_CEILING).map_err(|limit_break| {
-        Refusal::malformed(match limit_break {
-            LimitBreak::NotDigits => DETAIL_LIMIT_NOT_NUMERIC,
-            LimitBreak::OutOfRange => DETAIL_LIMIT_RANGE,
-        })
+/// or past the deployment's `[api]` page is the other. A sign is not a digit,
+/// so `-1` lands on the not-numeric sentence.
+fn charges_limit(raw: Option<&str>, ceiling: Ceiling) -> Result<u32, Refusal> {
+    Limit::parse(raw, ceiling).map_err(|limit_break| match limit_break {
+        LimitBreak::NotDigits => Refusal::malformed(DETAIL_LIMIT_NOT_NUMERIC),
+        LimitBreak::OutOfRange => {
+            Refusal::malformed_sentence(afd_http::paging::limit_sentence("limit must be", ceiling))
+        }
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CHARGES_LIMIT_DEFAULT, CHARGES_LIMIT_MAX, charges_limit};
+    use super::charges_limit;
+    use af_core::paging::CEILING;
 
     // `.ok()` throughout, because a `Refusal` is a rendered response and
     // deliberately not `Debug` — which side of the `Result` a spelling lands
@@ -211,8 +205,9 @@ mod tests {
 
     #[test]
     fn a_missing_or_blank_limit_is_the_default_page_size() {
-        assert_eq!(charges_limit(None).ok(), Some(CHARGES_LIMIT_DEFAULT));
-        assert_eq!(charges_limit(Some("")).ok(), Some(CHARGES_LIMIT_DEFAULT));
+        let default = Some(CEILING.default_rows());
+        assert_eq!(charges_limit(None, CEILING).ok(), default);
+        assert_eq!(charges_limit(Some(""), CEILING).ok(), default);
     }
 
     #[test]
@@ -220,21 +215,27 @@ mod tests {
         // 1 and the cap pass; 0 and one past it do not. The edges are
         // asserted because they are exactly where an off-by-one between the
         // two daemons would live.
-        let past_cap = (CHARGES_LIMIT_MAX + 1).to_string();
-        assert_eq!(charges_limit(Some("1")).ok(), Some(1));
+        let past_cap = (CEILING.max() + 1).to_string();
+        assert_eq!(charges_limit(Some("1"), CEILING).ok(), Some(1));
         assert_eq!(
-            charges_limit(Some(&CHARGES_LIMIT_MAX.to_string())).ok(),
-            Some(CHARGES_LIMIT_MAX)
+            charges_limit(Some(&CEILING.max().to_string()), CEILING).ok(),
+            Some(CEILING.max())
         );
-        assert!(charges_limit(Some("0")).is_err(), "zero rows is not a page");
-        assert!(charges_limit(Some(&past_cap)).is_err(), "past the cap");
+        assert!(
+            charges_limit(Some("0"), CEILING).is_err(),
+            "zero rows is not a page"
+        );
+        assert!(
+            charges_limit(Some(&past_cap), CEILING).is_err(),
+            "past the cap"
+        );
     }
 
     #[test]
     fn everything_that_is_not_a_count_is_refused() {
         for wrong in ["lots", "-1", "1.5"] {
             assert!(
-                charges_limit(Some(wrong)).is_err(),
+                charges_limit(Some(wrong), CEILING).is_err(),
                 "{wrong:?} is not a page size"
             );
         }

@@ -60,7 +60,6 @@ fn every_kind_names_its_setting_in_the_crates_own_spelling() {
         ("invalid name", Some("name")),
         ("invalid credential ref", Some("credentials")),
         ("invalid budget", Some("budget.daily_nanos")),
-        ("invalid threshold", Some("threshold_count")),
         ("invalid trigger set", Some("triggers")),
         ("unverifiable webhook source", Some("triggers")),
         ("invalid signature config", Some("triggers")),

@@ -17,7 +17,7 @@ it.each([
   expect(screen.getByText(label)).toBeTruthy();
 });
 
-it.each(["/w/workspace/plugins", "/w/workspace/fleets/selected", "/w/workspace/fleets/new", "/unknown"])("leaves the existing conversation or unknown chrome at %s", pathname => {
+it.each(["/w/workspace/fleets/selected", "/w/workspace/fleets/new", "/unknown"])("leaves the existing conversation or unknown chrome at %s", pathname => {
   route.pathname = pathname;
   const {container} = render(<ResourceHeader />);
   expect(container.textContent).toBe("");

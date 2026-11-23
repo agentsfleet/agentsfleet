@@ -3,5 +3,5 @@ SELECT platform_model_id, effective_from, effective_until, prompt_tokens_above,
        cache_write_5m_nanos_per_mtok, cache_write_1h_nanos_per_mtok, output_nanos_per_mtok,
        source_url, verified_at, conditions
 FROM model.platform_model_prices
-WHERE platform_model_id = ANY($1)
+WHERE platform_model_id = ANY($1) AND decision_revision_id IS NULL
 ORDER BY platform_model_id, prompt_tokens_above, effective_from

@@ -1,7 +1,7 @@
-//! The cgroup v2 freezer: stopping every process of a lease where it stands,
+//! The cgroup v2 freezer: stopping every process of a run where it stands,
 //! and letting it run on.
 //!
-//! The lease's own cgroup is the one frozen, so its `sandbox` and `tenant`
+//! The run's own cgroup is the one frozen, so its `sandbox` and `tenant`
 //! leaves stop together: a frozen executor with a running tenant process, or
 //! the reverse, never exists. The write is only a request; the kernel reports
 //! the whole subtree settled through the `frozen` key of `cgroup.events`, and
@@ -35,9 +35,10 @@ const THAWED_STATE: &str = "thawed";
 const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// How many checks before the kernel is taken not to settle: one second's
 /// worth, since a freeze waits only for every task to reach a stop point.
+/// Kept: a task stuck in the kernel would otherwise block the freeze, and the worker, forever.
 const SETTLE_TRIES: usize = 200;
 
-/// Freezes and thaws one lease's cgroup. A handle on its path alone, so it can
+/// Freezes and thaws one run's cgroup. A handle on its path alone, so it can
 /// be moved off the async runtime while the sandbox keeps the cgroup.
 #[derive(Debug, Clone)]
 pub struct Freezer {

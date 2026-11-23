@@ -3,7 +3,7 @@
  * answer.
  *
  * One turn is four things a walk must not conflate: the operator's send, the
- * daemon's acknowledgement of it, the runner leasing and finishing the work,
+ * daemon's acknowledgement of it, the runner running and finishing the work,
  * and the reply appearing on screen with its figures. Each is a different
  * failure with a different owner, so each is its own bounded step here and the
  * verdicts come from `execution.ts`'s classifiers rather than from a timeout.
@@ -14,29 +14,29 @@
  * can abort the delivery it is about to wait for.
  */
 import { expect, type Page } from "@playwright/test";
-import type { EventDetail } from "@/lib/api/events";
+import type { TurnDetail } from "@/lib/api/turns";
 import { REPLY_FIGURES_TEST_ID, RUN_DETAILS_LABEL } from "@/components/domain/activity/replies/FleetReplyFigures";
 import { FIXTURE_KEY } from "./constants";
 import {
   anyRunnerLive,
   classifyReportMissing,
   classifyStillRunning,
-  classifyUnleased,
+  classifyIdle,
   countChatTurns,
   failWith,
-  findLeaseFor,
+  findRunFor,
   JOURNEY_LEG,
-  leaseIsSettled,
+  runIsSettled,
   readTerminalChatTurn,
-  type LeaseLocation,
+  type RunLocation,
 } from "./execution";
 import { workspaceHref } from "./nav";
 import { observed, pollFor } from "./observation";
 
 const RENDER_TIMEOUT_MS = 15_000;
-// Delivery → lease is the queue plus the runner heartbeat cadence.
-const LEASE_TIMEOUT_MS = 120_000;
-// Lease → terminal row includes one provider round trip. Sized for a slow
+// Delivery → run is the queue plus the runner heartbeat cadence.
+const RUN_TIMEOUT_MS = 120_000;
+// Run → terminal row includes one provider round trip. Sized for a slow
 // model minute, not a stalled one.
 const EXECUTION_TIMEOUT_MS = 150_000;
 // How long the walk waits for the daemon to acknowledge a send before it trusts
@@ -78,19 +78,19 @@ export async function messageFleet(
  * Wait out the delivery and answer with its terminal row.
  *
  * Never returns for a delivery that did not finish: each way of not finishing
- * has its own verdict, because "no lease at all", "a lease that settled with no
- * report" and "a lease still running" have three different owners.
+ * has its own verdict, because "no run at all", "a run that settled with no
+ * report" and "a run still running" have three different owners.
  */
 export async function awaitTerminalTurn(
   workspaceId: string,
   fleetId: string,
-): Promise<EventDetail> {
-  const lease = await pollFor<LeaseLocation>(
-    () => observed(JOURNEY_LEG.lease, () => findLeaseFor(fleetId)),
-    LEASE_TIMEOUT_MS,
+): Promise<TurnDetail> {
+  const run = await pollFor<RunLocation>(
+    () => observed(JOURNEY_LEG.run, () => findRunFor(fleetId)),
+    RUN_TIMEOUT_MS,
   );
-  if (lease === null) failWith(classifyUnleased(await anyRunnerLive()));
-  const terminal = await pollFor<EventDetail>(
+  if (run === null) failWith(classifyIdle(await anyRunnerLive()));
+  const terminal = await pollFor<TurnDetail>(
     () =>
       observed(JOURNEY_LEG.execute, () =>
         readTerminalChatTurn(FIXTURE_KEY.regular, workspaceId, fleetId),
@@ -98,12 +98,12 @@ export async function awaitTerminalTurn(
     EXECUTION_TIMEOUT_MS,
   );
   if (terminal !== null) return terminal;
-  const settled = await observed(JOURNEY_LEG.execute, () => findLeaseFor(fleetId));
-  if (settled !== null && leaseIsSettled(settled.outcome)) {
+  const settled = await observed(JOURNEY_LEG.execute, () => findRunFor(fleetId));
+  if (settled !== null && runIsSettled(settled.outcome)) {
     failWith(classifyReportMissing(settled.outcome));
   }
   if (settled !== null) failWith(classifyStillRunning(settled.outcome));
-  failWith(classifyUnleased(await anyRunnerLive()));
+  failWith(classifyIdle(await anyRunnerLive()));
 }
 
 /**

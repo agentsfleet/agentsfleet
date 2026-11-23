@@ -29,9 +29,6 @@ it("counts complete recorded edit operations once per file, including repeated e
 const incompleteWrites: Partial<FleetToolCall>[] = [
   {args: {path: "a", old_text: "cat", new_text: ""}, outputHead: "Replaced 3 bytes with 0 bytes in a"},
   {name: "file_write", args: {path: "a", content: "not a before/after diff"}},
-  {name: "file_append", args: {path: "a", content: "the previous last line is unknown"}},
-  {name: "file_delete", args: {path: "a"}},
-  {name: "file_edit_hashed", args: {path: "a", target: "L1:abcd", new_text: "replacement"}},
   {args: {path: "a", new_text: "missing old text"}},
   {args: {path: "a", old_text: "missing new text"}},
   {args: {path: "a", old_text: "x".repeat(257), new_text: "short"}},
@@ -59,13 +56,13 @@ it("never reads large unrelated content or edit payloads covered by a complete i
     old_text: {get() {throw new Error("An unnecessary diff was computed");}},
     new_text: {get() {throw new Error("An unnecessary diff was computed");}},
   });
-  const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 248, removed: 3}}];
+  const repositories: RecordedChangeRepository[] = [{turnId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 248, removed: 3}}];
   expect(recordedChanges([evt({tools: [write({args})]})], {repositories})[0]?.lines).toEqual({kind: "complete", added: 248, removed: 3});
   expect(recordedChanges([evt({tools: [write({name: "file_write", args})]})])[0]?.lines).toEqual(UNKNOWN);
 });
 
 it("uses explicit event/path repository bindings without guessing from directory names", () => {
-  const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB}];
+  const repositories: RecordedChangeRepository[] = [{turnId: "e0", path: "web/page.ts", repository: WEB}];
   const changes = recordedChanges([evt({tools: [write()]}), evt({id: "other-event", tools: [write({args: {path: "docs/page.md"}})]})], {repositories});
   expect(changes.find(change => change.path === "web/page.ts")?.repository).toEqual(WEB);
   expect(changes.find(change => change.path === "docs/page.md")?.repository).toBeUndefined();
@@ -73,7 +70,7 @@ it("uses explicit event/path repository bindings without guessing from directory
 });
 
 it("does not assign confirmed line receipts to a write that is still running", () => {
-  const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
+  const repositories: RecordedChangeRepository[] = [{turnId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
   const changes = recordedChanges([evt({tools: [write({done: false, status: undefined})]})], {repositories});
   expect(changes[0]).toMatchObject({repository: WEB, running: true, lines: UNKNOWN});
 });
@@ -98,7 +95,7 @@ it("normalizes immutable historical writes only once as events stream, without c
   expect(recordedChanges([past])[0]?.lines).toEqual(UNKNOWN);
   expect(reads).toBe(1);
   const next = evt({id: "next", tools: [write({args: {path: "new.ts", old_text: "a", new_text: "b"}})]});
-  const repositories: RecordedChangeRepository[] = [{eventId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
+  const repositories: RecordedChangeRepository[] = [{turnId: "e0", path: "web/page.ts", repository: WEB, lines: {added: 8, removed: 2}}];
   expect(recordedChanges([past, next], {repositories}).find(change => change.path === "web/page.ts"))
     .toMatchObject({repository: WEB, lines: {kind: "complete", added: 8, removed: 2}});
   expect(recordedChanges([past, next]).find(change => change.path === "web/page.ts"))
@@ -110,7 +107,7 @@ it("joins ordinary writes, patches and repository receipts for the same workspac
   const tools = [write({args: {path: "/workspace/src/a.ts", old_text: "cat", new_text: ""}}), patch("./src/a.ts", 1, 2)];
   const events = [evt({tools})];
   expect(recordedChanges(events)).toEqual([{path: "src/a.ts", running: false, lines: {kind: "partial", added: 1, removed: 2}}]);
-  const repositories = [{eventId: "e0", path: "/workspace/./src/a.ts", repository: WEB, lines: {added: 2, removed: 3}}];
+  const repositories = [{turnId: "e0", path: "/workspace/./src/a.ts", repository: WEB, lines: {added: 2, removed: 3}}];
   expect(recordedChanges(events, {repositories})).toEqual([{path: "src/a.ts", running: false, repository: WEB, lines: {kind: "complete", added: 2, removed: 3}}]);
 });
 

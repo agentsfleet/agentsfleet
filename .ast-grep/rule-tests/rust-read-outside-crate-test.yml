@@ -1,0 +1,39 @@
+id: rust-read-outside-crate
+valid:
+  # Climbs that stay inside the crate.
+  - |
+    const SQL: &str = include_str!(concat!("../schema/", "a.sql"));
+  - |
+    #[path = "../../../vendor/apply_patch/mod.rs"]
+    mod apply_patch;
+  - |
+    const VERIFY: &str = include_str!("../../task/checkpoint/sql/verify.sql");
+  - |
+    #[path = "../../tests/support/e2e.rs"]
+    mod e2e;
+  - |
+    const POLICY: &str = include_str!("../tests/fixtures/fleets/a/policy.json");
+  - |
+    let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fleets");
+  # A comment is not a read.
+  - |
+    // was include_str!("../../../../../docs/a.tsv")
+    const A: u8 = 1;
+invalid:
+  - |
+    const CENSUS: &str = include_str!("../../../../../../../docs/metrics.census.tsv");
+  - |
+    const BODY: &[u8] = include_bytes!("../../../../../tests/fixtures/webhooks/a.json");
+  - |
+    fn f() { let sql = include_str!(concat!("../../../../../schema/", "a.sql")); }
+  - |
+    #[path = "../../../../scripts/x.rs"]
+    mod x;
+  - |
+    let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../deploy/fly");
+  - |
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../../deploy/baremetal/a.toml");
+  - |
+    const CORPUS: &str = "../../../../tests/fixtures/fleets";
+  - |
+    const DOC: &str = include_str!(r"../../../../../docs/a.md");

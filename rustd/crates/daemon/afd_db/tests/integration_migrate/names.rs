@@ -1,4 +1,4 @@
-//! Dimension 2.4 — table and key names follow the placement and foreign-key
+//! Table and key names follow the placement and foreign-key
 //! rules: no table repeats its schema's name as a prefix, and every foreign-key
 //! column ends `_id` and names the table it points at, or a stated role.
 
@@ -23,15 +23,12 @@ SELECT src.relname::text, src_col.attname::text, dst.relname::text, dst_col.attn
  WHERE con.contype = 'f'";
 
 /// Pointers whose role name is not their table's name, each stated in its slot.
-const ROLE_NAMED: [(&str, &str); 2] = [
+const ROLE_NAMED: [(&str, &str); 1] = [
     // An approval that activated a grant: the gate names the grant it made live.
     ("active_grant_id", "integration_grants"),
-    // A card's live revision: the counter table names every live pointer
-    // `head_revision_id`, whichever revision table it points into.
-    ("head_revision_id", "plugin_revisions"),
 ];
 
-/// The singular a pointer column is named for: `plugin_entries` → `plugin_entry`.
+/// The singular a pointer column is named for: `deliveries` → `delivery`.
 fn singular(table: &str) -> String {
     table.strip_suffix("ies").map_or_else(
         || table.strip_suffix('s').unwrap_or(table).to_owned(),
@@ -78,13 +75,14 @@ async fn test_table_and_key_names_follow_rules() {
 
 #[test]
 fn test_singular_reads_the_pointer_name_a_table_takes() {
-    assert_eq!(singular("plugin_entries"), "plugin_entry");
+    assert_eq!(singular("deliveries"), "delivery");
     assert_eq!(singular("revisions"), "revision");
-    assert_eq!(singular("slots"), "slot");
+    assert_eq!(singular("threads"), "thread");
 }
 
 /// Scope dimensions repeat their target only inside a composite reference.
-/// The sole primary-id role below closes the task/checkpoint ownership cycle.
+/// The two primary-id roles below close the task/checkpoint and turn/checkpoint
+/// ownership cycles, and a turn's thread stands for the fleet that owns it.
 fn key_names_match(
     table: &str,
     column: &str,
@@ -97,75 +95,95 @@ fn key_names_match(
             && (column.ends_with(&format!("{}_id", singular(target)))
                 || ROLE_NAMED.contains(&(column, target)))
     } else {
-        // `fleet.events` is keyed by `event_id`, and a row that points at one
-        // carries that same name.
-        (arity == 1 && target_column == "event_id" && column == target_column)
-            || (arity > 1
-                && (column == target_column
-                    || (table == "tasks"
+        arity > 1
+            && (column == target_column
+                    // A task's recovery pointer proves the checkpoint is the task's own.
+                    || (table == "durable_tasks"
                         && column == "id"
-                        && target == "task_checkpoints"
-                        && target_column == "task_id")))
+                        && target == "checkpoints"
+                        && target_column == "durable_task_id")
+                    // A turn's recovery head proves the checkpoint is the turn's own.
+                    || (table == "turns"
+                        && column == "id"
+                        && target == "checkpoints"
+                        && target_column == "turn_id")
+                    // A fleet's thread is keyed by the fleet's id, so a turn
+                    // scopes its task by `thread_id`.
+                    || (table == "turns" && column == "thread_id" && target_column == "fleet_id"))
     }
 }
 
 #[test]
 fn composite_scope_columns_preserve_target_identity() {
     assert!(key_names_match(
-        "task_checkpoints",
-        "task_base_id",
-        "task_bases",
+        "checkpoints",
+        "checkpoint_base_id",
+        "checkpoint_bases",
         "id",
         1
     ));
     assert!(key_names_match(
-        "task_checkpoints",
+        "checkpoints",
         "repository",
-        "task_bases",
+        "checkpoint_bases",
         "repository",
         3
     ));
     assert!(key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "checkpoints",
+        "durable_task_id",
         4
     ));
     assert!(!key_names_match(
-        "task_checkpoints",
+        "checkpoints",
         "base_id",
-        "task_bases",
+        "checkpoint_bases",
         "id",
         1
     ));
     assert!(!key_names_match(
-        "task_checkpoints",
+        "checkpoints",
         "wrong_repository",
-        "task_bases",
+        "checkpoint_bases",
         "repository",
         3
     ));
     assert!(!key_names_match(
-        "other_tasks",
+        "other_durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "checkpoints",
+        "durable_task_id",
         4
     ));
     assert!(!key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "other_task_id",
+        "checkpoints",
+        "other_durable_task_id",
         4
+    ));
+    assert!(key_names_match(
+        "turns",
+        "thread_id",
+        "durable_tasks",
+        "fleet_id",
+        3
+    ));
+    assert!(!key_names_match(
+        "turns",
+        "thread_id",
+        "durable_tasks",
+        "fleet_id",
+        1
     ));
     assert!(!key_names_match("members", "email", "users", "email", 1));
     assert!(!key_names_match(
-        "tasks",
+        "durable_tasks",
         "id",
-        "task_checkpoints",
-        "task_id",
+        "checkpoints",
+        "durable_task_id",
         1
     ));
 }

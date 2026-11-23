@@ -35,11 +35,19 @@ pub mod status {
     pub const APPROVED: &str = "approved";
     /// A reviewer refused it.
     pub const DENIED: &str = "denied";
-    /// The deadline passed with no answer.
+    /// The deadline passed with no answer. Derived on read and never
+    /// stored: the gate stays answerable.
     pub const TIMED_OUT: &str = "timed_out";
     /// The fleet was archived or deleted while the gate waited.
     pub const ARCHIVED: &str = "archived";
+    /// A person answered the run's question.
+    pub const ANSWERED: &str = "answered";
 }
+
+/// The `gate_type` of a run's question to the person: raised when a run
+/// reports `waiting`, answered with the `answer` decision, and continued by a
+/// turn that resumes the asking run.
+pub const GATE_TYPE_QUESTION: &str = "question";
 
 /// Every state a gate row's `status` can be in.
 ///
@@ -59,10 +67,12 @@ pub enum GateStatus {
     Approved,
     /// A reviewer refused it.
     Denied,
-    /// The deadline passed with no answer.
+    /// The deadline passed with no answer; still answerable.
     TimedOut,
     /// The fleet was archived or deleted while the gate waited.
     Archived,
+    /// A person answered the run's question.
+    Answered,
 }
 
 impl GateStatus {
@@ -75,6 +85,7 @@ impl GateStatus {
             Self::Denied => status::DENIED,
             Self::TimedOut => status::TIMED_OUT,
             Self::Archived => status::ARCHIVED,
+            Self::Answered => status::ANSWERED,
         }
     }
 }
@@ -161,6 +172,14 @@ pub struct ResolveApprovalRequest<'a> {
     // the same answer, so only a note that was SENT is bounded.
     #[garde(inner(length(bytes, max = APPROVAL_REASON_MAX_BYTES)))]
     pub reason: Option<Cow<'a, str>>,
+    /// The person's answer to a `question` gate, which the `answer`
+    /// decision requires and stores as the gate's `detail`.
+    #[serde(borrow, default)]
+    #[garde(inner(
+        length(chars, min = 1, max = af_validate::TEXT_MAX_CHARS),
+        custom(af_validate::rules::nul_free)
+    ))]
+    pub answer: Option<Cow<'a, str>>,
 }
 
 /// The longest note an operator may file with a gate answer.
@@ -191,12 +210,13 @@ mod tests {
     use super::GateStatus;
 
     /// Every state, in the order the column's lifecycle reaches them.
-    const EVERY: [GateStatus; 5] = [
+    const EVERY: [GateStatus; 6] = [
         GateStatus::Pending,
         GateStatus::Approved,
         GateStatus::Denied,
         GateStatus::TimedOut,
         GateStatus::Archived,
+        GateStatus::Answered,
     ];
 
     /// The spelling written is the spelling read, for every state: a drift
@@ -220,7 +240,14 @@ mod tests {
         // pin test: literal is the contract
         assert_eq!(
             spelled,
-            ["pending", "approved", "denied", "timed_out", "archived"]
+            [
+                "pending",
+                "approved",
+                "denied",
+                "timed_out",
+                "archived",
+                "answered"
+            ]
         );
     }
 

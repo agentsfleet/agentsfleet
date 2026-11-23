@@ -37,7 +37,7 @@ const ASSISTANT_TURN = '[data-role="assistant"]';
 const SENDER_LINE = "fleet-message-sender";
 // A turn another screen sent lands over the live stream, well inside this.
 const LIVE_MS = 15_000;
-// A runner leases the turn and the provider answers inside this.
+// A runner runs the turn and the provider answers inside this.
 const REPLY_MS = 150_000;
 
 const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfleet.net");
@@ -193,7 +193,7 @@ test.describe("teammates join an account", () => {
     try {
       await waitForFleetActive(FIXTURE_KEY.admin, workspaceId, fleet.id);
       // A teammate's turn carries their name when their account has one
-      // (lib/events/sender-names.ts); each sender line is held to what the
+      // (lib/turns/sender-names.ts); each sender line is held to what the
       // backend recorded.
       const johnName = (await owner.get<CurrentUser>(CURRENT_USER)).display_name ?? null;
       const bobName = (await bobApi.get<CurrentUser>(CURRENT_USER)).display_name ?? null;

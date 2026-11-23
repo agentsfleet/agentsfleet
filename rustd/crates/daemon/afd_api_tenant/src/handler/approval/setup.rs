@@ -15,7 +15,7 @@ use afd_approval::{Decision, GateRow, KIND_INTEGRATION_GRANT, Resolution};
 
 use crate::auth::PersonIdentity;
 use crate::handler::fleet::native::schedules::after_activation;
-use crate::services::Services;
+use crate::services::TenantPlane;
 
 /// An approved setup grant whose setup step then failed.
 const EVENT_SETUP_RESUME_FAILED: &str = "approval_setup_resume_failed";
@@ -24,7 +24,7 @@ const EVENT_SCHEDULES_UNSYNCED: &str = "approval_setup_schedules_unsynced";
 
 /// Resumes setup when `resolution` is this request's own approval of a setup
 /// grant; every other answer changes nothing here.
-pub(super) async fn after_resolution<D: Services>(
+pub(super) async fn after_resolution<D: TenantPlane>(
     services: &Arc<D>,
     gate: &GateRow,
     outcome: Decision,
@@ -39,13 +39,13 @@ pub(super) async fn after_resolution<D: Services>(
     }
 }
 
-async fn resume<D: Services>(
+async fn resume<D: TenantPlane>(
     services: &Arc<D>,
     workspace: &Uuid7,
     person: &PersonIdentity,
     fleet: &Uuid7,
 ) {
-    let access = afd_authoring::Access {
+    let access = afd_setup::Access {
         workspace,
         subject: person.subject(),
     };

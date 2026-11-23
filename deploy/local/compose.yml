@@ -3,7 +3,7 @@
 # machine; the datastores stay in local-dev.
 services:
   caddy:
-    image: mirror.gcr.io/library/caddy:2.11.7-alpine
+    image: mirror.gcr.io/library/caddy:2.11.9-alpine
     network_mode: host
     volumes:
       - ${LOCAL_ACCEPTANCE_STATE}/Caddyfile:/etc/caddy/Caddyfile:ro

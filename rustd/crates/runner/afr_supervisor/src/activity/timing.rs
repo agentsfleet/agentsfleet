@@ -126,9 +126,9 @@ impl RunClock {
             }
             ActivityFrame::ToolCallProgress(_)
             | ActivityFrame::ContextProgress(_)
-            | ActivityFrame::TaskDecisionStarted(_)
-            | ActivityFrame::TaskDecisionCompleted(_)
-            | ActivityFrame::TaskTransferProgress(_) => {}
+            | ActivityFrame::DurableTaskDecisionStarted(_)
+            | ActivityFrame::DurableTaskDecisionCompleted(_)
+            | ActivityFrame::DurableTaskTransferProgress(_) => {}
         }
     }
 

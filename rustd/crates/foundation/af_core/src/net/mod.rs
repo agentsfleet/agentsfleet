@@ -1,7 +1,7 @@
 //! Which addresses an outbound request on a tenant's behalf may not reach.
 //!
 //! Two planes ask the same question. `agentsfleetd` refuses an endpoint a
-//! tenant points at an internal address before any lease exists, and the
+//! tenant points at an internal address before any run exists, and the
 //! runner refuses every address a name resolves to before it dials. Keeping
 //! both on one predicate is what stops the control-plane verdict and the
 //! data-plane enforcement from disagreeing.

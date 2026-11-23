@@ -88,7 +88,7 @@ it("keeps a refused save editable and presents its durable safe error code", asy
   expect(saves()).toEqual([]);
 });
 
-it("does not leave admission pending when the following history read fails", async () => {
+it("does not leave the turn pending when the following history read fails", async () => {
   const client = await fixture.ready(true);
   const fallback = fixture.override;
   fixture.override = call => call.method === "GET" && call.path.endsWith("/messages") ? response({}, 502) : fallback(call);
@@ -100,7 +100,7 @@ it("does not leave admission pending when the following history read fails", asy
   expect(saves()).toEqual([]);
 });
 
-it("clears optimistic saving after a definite admission refusal", async () => {
+it("clears optimistic saving after a definite turn refusal", async () => {
   const client = await fixture.ready(true);
   const fallback = fixture.override;
   fixture.override = call => call.method === "POST" && call.path.endsWith("/messages") ? response({}, 409) : fallback(call);
@@ -127,9 +127,8 @@ it("does not restore an old save refusal after a later conversational turn", asy
   expect(saves()).toEqual([]);
 });
 
-it("does not restore saving progress below a persisted Stop watermark", async () => {
-  fixture.current = {...DRAFT, cancelled_through: "1"};
-  messages = [{...MESSAGE, save_requested: true, state: MESSAGE_STATE.running}];
+it("does not restore saving progress for a stopped save request", async () => {
+  messages = [{...MESSAGE, save_requested: true, state: MESSAGE_STATE.cancelled}];
   const client = await fixture.ready(true);
   expect(client.getSnapshot()).toMatchObject({saveOperation: null, pending: false});
   expect(saves()).toEqual([]);

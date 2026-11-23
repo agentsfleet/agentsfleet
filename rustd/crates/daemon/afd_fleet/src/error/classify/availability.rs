@@ -12,38 +12,37 @@ impl Error {
     /// self-termination ceiling and resets that counter on transport failures
     /// (RULE ECL, and `docs/AUTH.md` §Runner token). A wrapped plane's error
     /// decides for itself whether a reached bound is one, and this table asks
-    /// it: the runner host's capacity lock is where a lease verb waits.
+    /// it: the runner host's capacity lock is where a run verb waits.
     #[must_use]
     pub fn is_datastore_unavailable(&self) -> bool {
         match self.inner.kind {
             ErrorKind::Datastore { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. } => true,
-            ErrorKind::TaskControlAdmission { ref source, .. } => source.is_datastore_unavailable(),
-            ErrorKind::TaskMutation { ref source, .. } => source.is_datastore_unavailable(),
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. } => true,
+            ErrorKind::DurableTaskControlTurn { ref source, .. } => {
+                source.is_datastore_unavailable()
+            }
+            ErrorKind::DurableTaskMutation { ref source, .. } => source.is_datastore_unavailable(),
             ErrorKind::Runner { ref source } => source.is_datastore_unavailable(),
-            ErrorKind::Authoring { ref source } => source.is_datastore_unavailable(),
+            ErrorKind::Setup { ref source } => source.is_datastore_unavailable(),
             ErrorKind::Memory { ref source } => source.is_datastore_unavailable(),
-            ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageDeadline { .. }
-            | ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
-            | ErrorKind::TaskRemoteCooldown { .. }
+            ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. }
+            | ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
-            | ErrorKind::TaskDocument { .. }
-            | ErrorKind::TaskState { .. }
+            | ErrorKind::TurnWrite { .. }
+            | ErrorKind::DurableTaskDocument { .. }
+            | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlConflict { .. }
-            | ErrorKind::TaskPrecondition { .. }
-            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskControlConflict { .. }
+            | ErrorKind::DurableTaskPrecondition { .. }
+            | ErrorKind::DurableTaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
@@ -63,14 +62,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -82,37 +79,36 @@ impl Error {
         }
     }
     /// Bounded diagnostic for task-read performance, without query text.
-    pub(crate) fn task_timeout_reason(&self) -> Option<&'static str> {
+    pub(crate) fn durable_task_timeout_reason(&self) -> Option<&'static str> {
         match self.inner.kind {
-            ErrorKind::TaskReadTimeout { .. } => Some("read_deadline"),
-            ErrorKind::TaskStatementCancelled { .. } => Some("statement_deadline"),
-            ErrorKind::TaskStorageDeadline { .. } => Some("storage_deadline"),
-            ErrorKind::TaskRemoteDeadline { .. } => Some("remote_deadline"),
-            ErrorKind::TaskRemote { ref source } if source.is_timeout() => Some("remote_deadline"),
-            ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteCooldown { .. }
+            ErrorKind::DurableTaskReadTimeout { .. } => Some("read_deadline"),
+            ErrorKind::DurableTaskStatementCancelled { .. } => Some("statement_deadline"),
+            ErrorKind::DurableTaskRemote { ref source } if source.is_timeout() => {
+                Some("remote_deadline")
+            }
+            ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. }
+            | ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
+            | ErrorKind::DurableTaskRemoteCooldown { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::Admission { .. }
-            | ErrorKind::TaskDocument { .. }
-            | ErrorKind::TaskState { .. }
+            | ErrorKind::TurnWrite { .. }
+            | ErrorKind::DurableTaskDocument { .. }
+            | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
-            | ErrorKind::TaskMutation { .. }
-            | ErrorKind::TaskControlConflict { .. }
-            | ErrorKind::TaskPrecondition { .. }
-            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskControlTurn { .. }
+            | ErrorKind::DurableTaskMutation { .. }
+            | ErrorKind::DurableTaskControlConflict { .. }
+            | ErrorKind::DurableTaskPrecondition { .. }
+            | ErrorKind::DurableTaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -131,14 +127,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -153,34 +147,31 @@ impl Error {
     /// A provider cooldown is a native deadline, never an immediate retry hint.
     pub(crate) const fn remote_cooldown(&self) -> Option<jiff::Timestamp> {
         match self.inner.kind {
-            ErrorKind::TaskRemoteCooldown { until, .. } => Some(until),
-            ErrorKind::TaskStorageSigning { .. }
-            | ErrorKind::TaskStorageSigningParameters { .. }
-            | ErrorKind::TaskStorageRequest { .. }
-            | ErrorKind::TaskStorage { .. }
-            | ErrorKind::TaskStorageDeadline { .. }
-            | ErrorKind::TaskRemote { .. }
-            | ErrorKind::TaskRemoteStatus { .. }
-            | ErrorKind::TaskRemoteDeadline { .. }
+            ErrorKind::DurableTaskRemoteCooldown { until, .. } => Some(until),
+            ErrorKind::DurableTaskStorageSigning { .. }
+            | ErrorKind::DurableTaskStorageSigningParameters { .. }
+            | ErrorKind::DurableTaskStorageRequest { .. }
+            | ErrorKind::DurableTaskStorage { .. }
+            | ErrorKind::DurableTaskRemote { .. }
+            | ErrorKind::DurableTaskRemoteStatus { .. }
             | ErrorKind::DecisionRequest { .. }
             | ErrorKind::DecisionDeadline { .. }
-            | ErrorKind::TaskReadTimeout { .. }
-            | ErrorKind::TaskStatementCancelled { .. }
-            | ErrorKind::Admission { .. }
-            | ErrorKind::TaskDocument { .. }
-            | ErrorKind::TaskState { .. }
+            | ErrorKind::DurableTaskReadTimeout { .. }
+            | ErrorKind::DurableTaskStatementCancelled { .. }
+            | ErrorKind::TurnWrite { .. }
+            | ErrorKind::DurableTaskDocument { .. }
+            | ErrorKind::DurableTaskState { .. }
             | ErrorKind::UsageCount { .. }
-            | ErrorKind::TaskCounter { .. }
-            | ErrorKind::TaskTargetCounter { .. }
-            | ErrorKind::TaskControlAdmission { .. }
-            | ErrorKind::TaskMutation { .. }
-            | ErrorKind::TaskControlConflict { .. }
-            | ErrorKind::TaskPrecondition { .. }
-            | ErrorKind::TaskRefused { .. }
+            | ErrorKind::DurableTaskCounter { .. }
+            | ErrorKind::DurableTaskControlTurn { .. }
+            | ErrorKind::DurableTaskMutation { .. }
+            | ErrorKind::DurableTaskControlConflict { .. }
+            | ErrorKind::DurableTaskPrecondition { .. }
+            | ErrorKind::DurableTaskRefused { .. }
             | ErrorKind::TurnCheckpointRefused { .. }
             | ErrorKind::TurnCheckpointFailure { .. }
             | ErrorKind::Context { .. }
-            | ErrorKind::Authoring { .. }
+            | ErrorKind::Setup { .. }
             | ErrorKind::Datastore { .. }
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
@@ -199,14 +190,12 @@ impl Error {
             | ErrorKind::SequenceCorrupt
             | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
-            | ErrorKind::LeaseNotFound
-            | ErrorKind::LeaseLost
-            | ErrorKind::LeaseCancelled
-            | ErrorKind::LeaseMaxRuntime
+            | ErrorKind::RunNotFound
+            | ErrorKind::RunLost
+            | ErrorKind::RunCancelled
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
             | ErrorKind::MessageNoChannel
-            | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
@@ -226,8 +215,8 @@ impl Error {
     pub fn is_rejected(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Rejected { .. })
     }
-    /// Whether a lease verb was refused because the fleet moved past the
-    /// lease. The fence logs its own event for it, so a caller that goes on
+    /// Whether a run verb was refused because the fleet moved past the
+    /// run. The fence logs its own event for it, so a caller that goes on
     /// without the write logs nothing more.
     #[must_use]
     pub(crate) fn is_fence_refusal(&self) -> bool {

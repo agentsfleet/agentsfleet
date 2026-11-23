@@ -1,0 +1,18 @@
+[
+  {"id": "MiniMaxAI/MiniMax-M3", "context_tokens": 524288, "max_output_tokens": 524288, "images": true},
+  {"id": "Qwen/Qwen3.5-9B", "context_tokens": 262144, "max_output_tokens": 65536, "images": true},
+  {"id": "Qwen/Qwen3.6-Plus", "context_tokens": 1000000, "max_output_tokens": 65536, "images": false},
+  {"id": "Qwen/Qwen3.7-Max", "context_tokens": 1000000, "max_output_tokens": 131072, "images": false},
+  {"id": "deepseek-ai/DeepSeek-V4-Pro-0813", "context_tokens": 1048576, "max_output_tokens": 384000, "images": false},
+  {"id": "deepseek-ai/DeepSeek-V4.1-Flash", "context_tokens": 1048576, "max_output_tokens": 384000, "images": true},
+  {"id": "meta-models/Muse-Spark-Open-816B-A42B", "context_tokens": 1048576, "max_output_tokens": 131072, "images": true},
+  {"id": "moonshotai/Kimi-K3", "context_tokens": 1048576, "max_output_tokens": 1048576, "images": true},
+  {"id": "moonshotai/Kimi-K3.1-Pro", "context_tokens": 1048576, "max_output_tokens": 1048576, "images": true},
+  {"id": "nvidia/NVIDIA-Nemotron-3.5-Super-VL", "context_tokens": 262144, "max_output_tokens": 262144, "images": true},
+  {"id": "openai/gpt-oss-120b", "context_tokens": 131072, "max_output_tokens": 131072, "images": false},
+  {"id": "reflection/Beam-1.0-501B-A23B", "context_tokens": 1048576, "max_output_tokens": 131072, "images": false},
+  {"id": "thinkingmachines/Inkling", "context_tokens": 524288, "max_output_tokens": 131072, "images": true},
+  {"id": "zai-org/GLM-5.2", "context_tokens": 1048575, "max_output_tokens": 164000, "images": false},
+  {"id": "zai-org/GLM-5.3", "context_tokens": 1048575, "max_output_tokens": 262144, "images": false},
+  {"id": "zai-org/GLM-5.3-Flash", "context_tokens": 1048575, "max_output_tokens": 400000, "images": true}
+]

@@ -7,10 +7,10 @@ import type { Output } from "../../services/output.ts";
 import type { ChatActions } from "./actions.ts";
 import { START } from "./setup-session.ts";
 
-const COMMAND = {quit: "/quit", review: "/review", save: "/save", run: "/run", publish: "/publish",
+const COMMAND = {quit: "/quit", review: "/review", save: "/save", run: "/run",
   stop: "/stop", model: "/model", remove: "/delete", retry: "/retry", apply: "/apply", help: "/help"} as const;
 const PROMPT = "you › ";
-const HELP = "/review [instance-name] · /save · /run <message> · /publish <label> · /apply · /model <ref> · /stop · /retry · /delete · /quit. Ctrl+C stops the reply being followed.";
+const HELP = "/review [instance-name] · /save · /run <message> · /apply · /model <ref> · /stop · /retry · /delete · /quit. Ctrl+C stops the reply being followed.";
 const ACCESS_STATUSES = new Set([401, 403, 404, 410]);
 
 export function runChatRepl(actions: ChatActions, input: Input, output: Output): Effect.Effect<number, CliError> {
@@ -39,10 +39,9 @@ export function dispatch(actions: ChatActions, text: string, output: Output): Ef
     case COMMAND.review: return actions.review(argument || undefined).pipe(Effect.asVoid);
     case COMMAND.save: return actions.save();
     case COMMAND.run: return required(argument, "run message").pipe(Effect.andThen(() => actions.save({kind: START.runNow, message: argument})));
-    case COMMAND.publish: return required(argument, "plugin label").pipe(Effect.andThen(() => actions.publish(argument)));
     case COMMAND.apply: return actions.apply();
     case COMMAND.stop: return actions.stop();
-    case COMMAND.model: return required(argument, "authoring model reference").pipe(Effect.andThen(() => actions.model(argument)));
+    case COMMAND.model: return required(argument, "setup model reference").pipe(Effect.andThen(() => actions.model(argument)));
     case COMMAND.remove: return actions.remove();
     case COMMAND.retry: return actions.retry();
     case COMMAND.help: return output.info(HELP);

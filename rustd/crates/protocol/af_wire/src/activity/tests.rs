@@ -23,16 +23,16 @@ fn chunk(text: &'static str, text_kind: StreamTextKind) -> ActivityFrame<'static
 /// and any other unknown field still refuses the frame.
 #[test]
 fn a_tool_frame_names_its_call_within_the_bound() {
-    use super::{CALL_ID_MAX_BYTES, ToolCallCompleted};
+    use super::{TEXT_MAX_CHARS, ToolCallCompleted};
     let completed = |call_id: String| {
         ActivityFrame::ToolCallCompleted(ToolCallCompleted {
             call_id: Cow::Owned(call_id),
             ..completed_frame()
         })
     };
-    assert!(completed("c".repeat(CALL_ID_MAX_BYTES)).call_id_usable());
+    assert!(completed("c".repeat(TEXT_MAX_CHARS)).call_id_usable());
     assert!(!completed(String::new()).call_id_usable());
-    assert!(!completed("c".repeat(CALL_ID_MAX_BYTES + 1)).call_id_usable());
+    assert!(!completed("c".repeat(TEXT_MAX_CHARS + 1)).call_id_usable());
     assert!(chunk("text", StreamTextKind::Answer).call_id_usable());
     assert_eq!(chunk("text", StreamTextKind::Answer).call_id(), None);
     let unnamed = serde_json::from_str::<ActivityFrame<'_>>(
@@ -55,10 +55,10 @@ fn a_tool_frame_names_its_call_within_the_bound() {
 }
 
 /// Every tool frame bounds its call id on its own type, as a runner posts it:
-/// empty and 65 bytes are malformed, 64 bytes is a call.
+/// empty and one past the text ceiling are malformed, the ceiling is a call.
 #[test]
 fn test_activity_frame_call_id_is_bounded() {
-    use super::CALL_ID_MAX_BYTES;
+    use super::TEXT_MAX_CHARS;
     let frames = |call_id: &str| {
         [
             format!(
@@ -80,8 +80,8 @@ fn test_activity_frame_call_id_is_bounded() {
         })
     };
     assert_eq!(usable(""), [false; 3]);
-    assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES + 1)), [false; 3]);
-    assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES)), [true; 3]);
+    assert_eq!(usable(&"c".repeat(TEXT_MAX_CHARS + 1)), [false; 3]);
+    assert_eq!(usable(&"c".repeat(TEXT_MAX_CHARS)), [true; 3]);
 }
 
 #[test]
@@ -110,6 +110,7 @@ fn completed_frame() -> super::ToolCallCompleted<'static> {
         output_tail: None,
         output_line_count: None,
         exit_code: None,
+        changes: Vec::new(),
     }
 }
 
@@ -181,5 +182,41 @@ fn a_completion_edge_past_its_bound_is_unusable() {
     assert!(
         chunk("text", StreamTextKind::Answer).outcome_usable(),
         "a chunk carries no edges"
+    );
+}
+
+#[test]
+fn a_completed_edit_carries_every_change_and_a_malformed_one_is_unusable() {
+    use crate::tool_trace::FileChange;
+    let change = |path: String| FileChange {
+        path: Cow::Owned(path),
+        added: 24,
+        removed: 8,
+    };
+    let edited = |changes: Vec<FileChange<'static>>| {
+        ActivityFrame::ToolCallCompleted(super::ToolCallCompleted {
+            name: Cow::Borrowed("apply_patch"),
+            changes,
+            ..completed_frame()
+        })
+    };
+    let one = edited(vec![change("src/a.rs".to_owned())]);
+    assert!(one.outcome_usable());
+    let text = serde_json::to_string(&one).expect("encodes");
+    assert!(
+        text.contains(r#""changes":[{"path":"src/a.rs","added":24,"removed":8}]"#),
+        "{text}"
+    );
+    let back: ActivityFrame<'_> = serde_json::from_str(&text).expect("decodes");
+    assert_eq!(back, one);
+    let many = (0..100).map(|file| change(format!("f{file}"))).collect();
+    assert!(edited(many).outcome_usable(), "100 files");
+    assert!(
+        !edited(vec![change(String::new())]).outcome_usable(),
+        "no path"
+    );
+    assert!(
+        !edited(vec![change("a\u{0}.rs".to_owned())]).outcome_usable(),
+        "a NUL in a path"
     );
 }

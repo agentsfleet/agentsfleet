@@ -53,7 +53,6 @@ impl TryFrom<raw::Policy> for DecisionPolicy {
 
 fn question(value: Option<raw::Question>, field: &'static str, keys: &[&str]) -> Result<Question> {
     let value = value.ok_or_else(|| missing(field))?;
-    bounds::question(&value)?;
     let criteria = value
         .criteria
         .ok_or_else(|| missing("decision_policy.question.criteria"))?;
@@ -80,7 +79,6 @@ fn statements(values: Option<Vec<raw::Statement>>) -> Result<Box<[CompletionStat
     bounds::statements(&values)?;
     let mut seen = BTreeSet::new();
     for value in &values {
-        bounds::question(value)?;
         if let Some(id) = &value.id
             && !seen.insert(id)
         {

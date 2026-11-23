@@ -10,7 +10,7 @@ HOST_DEPLOY_SOURCE_DIR="$(cd "$SCRIPT_DIR/../../../deploy/baremetal" && pwd)"
 readonly HOST_DEPLOY_SOURCE_DIR
 
 # What one toolbox set is (toolbox_set_files), as the host's deploy.sh checks
-# it. The runner admits the set's three files together and refuses leases
+# it. The runner admits the set's three files together and refuses runs
 # without them, so a deploy that lacks any of them stops here.
 # shellcheck source=../../../deploy/baremetal/toolbox.sh
 source "$HOST_DEPLOY_SOURCE_DIR/toolbox.sh"

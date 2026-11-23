@@ -14,15 +14,12 @@ use std::path::PathBuf;
 use af_fleet_runtime::Definition;
 
 /// The corpus root, relative to this crate.
-///
-/// The fixtures live at the repository root and cargo runs a test from the
-/// package directory, so the walk up is spelled out rather than assumed.
-const CORPUS: &str = "../../../../tests/fixtures/fleets";
+const CORPUS: &str = "tests/fixtures";
 
 /// The file each first-party fleet directory holds its native setup in.
 const DEFINITION_FILE: &str = "definition.json";
 
-/// The placeholder the `platform-ops` and `steer-probe` setups carry in place
+/// The placeholder `definition/with_model_and_context.json` carries in place
 /// of a runtime model, quoted as the JSON string it stands in.
 const MODEL_PLACEHOLDER: &str = "{{model}}";
 
@@ -41,14 +38,10 @@ pub(crate) const TOOL_HTTP_REQUEST: &str = "http_request";
 
 /// One slug per first-party fleet, and the slug IS the identity: it names the
 /// fixture directory and the `config.name` its Definition declares.
-pub(crate) const FIRST_PARTY: [&str; 9] = [
+pub(crate) const FIRST_PARTY: [&str; 5] = [
+    "runner-link-watch",
     "github-pr-reviewer",
-    "security-reviewer",
-    "zoho-sprint-daily-summarizer",
-    "zoho-recruiter-daily-summarizer",
-    "incident-responder",
     "incident-repairer",
-    "incident-verifier",
     "ci-responder",
     "ci-repairer",
 ];
@@ -68,14 +61,24 @@ pub(crate) fn raw_fixture(relative: &str) -> String {
 /// the context ceiling's number belongs. A harness that forgot the substitution
 /// would report a corpus regression that is really its own bug.
 pub(crate) fn fixture(relative: &str) -> String {
-    raw_fixture(relative)
-        .replace(MODEL_PLACEHOLDER, MODEL_VALUE)
+    filled(&raw_fixture(relative))
+}
+
+/// `text` with its placeholders filled.
+pub(crate) fn filled(text: &str) -> String {
+    text.replace(MODEL_PLACEHOLDER, MODEL_VALUE)
         .replace(CONTEXT_CAP_PLACEHOLDER, &CONTEXT_CAP_VALUE.to_string())
+}
+
+/// A parser case that must parse, with its placeholders filled.
+pub(crate) fn parsed(text: &str) -> Definition {
+    Definition::parse(&filled(text))
+        .unwrap_or_else(|failure| panic!("the case should parse: {failure}"))
 }
 
 /// The relative path of a first-party fleet's native setup.
 pub(crate) fn definition_path(slug: &str) -> String {
-    format!("{slug}/{DEFINITION_FILE}")
+    format!("fleets/{slug}/{DEFINITION_FILE}")
 }
 
 /// A corpus Definition that must parse, with its placeholders filled.

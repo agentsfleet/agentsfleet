@@ -36,7 +36,7 @@ fn schedule(desired: DesiredStatus, sync: SyncStatus, cron: &str) -> Schedule {
         sync_status: sync,
         resource_version: 1,
         sync_token: None,
-        sync_lease_expires_at: None,
+        sync_run_expires_at: None,
         last_error: None,
         created_at: NOW,
         updated_at: NOW,

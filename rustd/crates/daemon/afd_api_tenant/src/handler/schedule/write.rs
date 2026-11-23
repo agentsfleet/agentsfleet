@@ -20,7 +20,7 @@ use http::{HeaderMap, StatusCode};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
-use crate::services::{FleetSchedules as _, Services};
+use crate::services::{FleetSchedules as _, TenantPlane};
 
 use super::support::{Create, SchedulePath};
 use super::{DETAIL_INVALID_BODY, EVENT_WRITE};
@@ -60,7 +60,7 @@ const RECONCILED: &str = "Saved schedule with its registration status";
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn create<D: Services>(
+pub(crate) async fn create<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
@@ -138,7 +138,7 @@ pub(crate) async fn create<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn patch<D: Services>(
+pub(crate) async fn patch<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(SchedulePath {
@@ -199,7 +199,7 @@ pub(crate) async fn patch<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn purge<D: Services>(
+pub(crate) async fn purge<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(SchedulePath {
@@ -256,7 +256,7 @@ pub(crate) async fn purge<D: Services>(
         afd_http::openapi::GuardedFailures,
     ),
 ))]
-pub(crate) async fn sync<D: Services>(
+pub(crate) async fn sync<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     Path(SchedulePath {

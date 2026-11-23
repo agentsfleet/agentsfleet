@@ -1,7 +1,7 @@
 //! A report that waits behind a renewal numbers its runtime line after the
 //! renewal's.
 //!
-//! The metering statement counts the lease's runtime lines to number the next
+//! The metering statement counts the run's runtime lines to number the next
 //! one. Under READ COMMITTED a statement that waits on a row lock re-reads the
 //! locked row but keeps its starting snapshot for everything else, so a report
 //! whose statement began while a renewal was still open counted the lines
@@ -26,8 +26,8 @@
 use std::time::Duration;
 
 use afd_db::config::DbRole;
-use afd_fleet::lease::sql::meter::Metering;
-use afd_fleet::lease::{Committed, Renewed};
+use afd_fleet::run::sql::meter::Metering;
+use afd_fleet::run::{Committed, Renewed};
 use sqlx::Connection as _;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
@@ -40,7 +40,7 @@ const HOLD_COUNTER: &str =
 /// The backend `$1` is blocking, if any.
 const BLOCKED_BY: &str = "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
 
-/// The lease's runtime lines, by number, with the run time each billed.
+/// The run's runtime lines, by number, with the run time each billed.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
      WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
@@ -55,14 +55,14 @@ const REPORT_SLICE: Duration = Duration::from_millis(50);
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
     let held = held().await;
-    let lease_id = &held.issued.lease_id;
+    let run_id = &held.issued.run_id;
     let from = held.run_a_slice().await;
-    let lease = held
-        .leases
-        .load_for_report(lease_id, &held.runner)
+    let run = held
+        .runs
+        .load_for_report(run_id, &held.runner)
         .await
-        .expect("the lease load must reach the datastore")
-        .expect("the seeded lease belongs to the seeded runner");
+        .expect("the run load must reach the datastore")
+        .expect("the seeded run belongs to the seeded runner");
 
     // The blocker is scaffolding, so it holds its row lock as the lane's
     // owner: `FOR UPDATE` asks for `UPDATE` on the counter, which `api_runtime`
@@ -76,23 +76,23 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
         .await
         .expect("the fleet's activity counter exists once an event was received");
 
-    let renew = held.leases.extend(
+    let renew = held.runs.extend(
         Metering {
-            lease_id,
+            run_id,
             runner_id: &held.runner,
             requests: &[],
         },
-        &held.lease_key,
+        &held.run_key,
         &held.pricing,
         held.now,
     );
     let sequenced = async {
         let renewal_pid = blocked_by(&held, blocker_pid).await;
-        let report_pass = held.leases.commit_report(report(
-            lease_id,
+        let report_pass = held.runs.commit_report(report(
+            run_id,
             &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
+            &run,
+            (&held.run_key, &held.pricing),
             RESPONSE_ACCEPTED,
             held.now,
         ));
@@ -169,11 +169,11 @@ async fn blocked_by(held: &Held, pid: i32) -> i32 {
         .expect("the next pass reaches the held lock")
 }
 
-/// The lease's runtime lines as `(seq, runtime_ms)`.
+/// The run's runtime lines as `(seq, runtime_ms)`.
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     let mut connection = held.fixtures.database.acquire().await.expect("read lines");
     sqlx::query_as(RUNTIME_LINES)
-        .bind(&held.issued.lease_id)
+        .bind(&held.issued.run_id)
         .bind(af_wire::usage::LineKind::Runtime.as_str())
         .fetch_all(&mut *connection)
         .await

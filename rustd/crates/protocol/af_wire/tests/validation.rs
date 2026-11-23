@@ -21,10 +21,8 @@
 
 use std::borrow::Cow;
 
-use af_wire::runner::{
-    CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SELFTEST_CHECKS_MAX, SELFTEST_POLICY_MAX_BYTES,
-    SelftestCheck, SelftestReport,
-};
+use af_validate::TEXT_MAX_CHARS;
+use af_wire::runner::{SelftestCheck, SelftestReport};
 use garde::Validate as _;
 
 /// A string of exactly `bytes` ASCII characters.
@@ -53,29 +51,29 @@ const fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'sta
     }
 }
 
-/// A check whose every field sits exactly at its limit is accepted, and one
-/// byte past any of them is refused.
+/// A check whose every field sits exactly at the text ceiling is accepted,
+/// and one character past either is refused.
 ///
 /// `SelftestCheck` is the type a compromised or buggy host has the most direct
 /// reach into: the name and detail are prose it chooses, and they land in an
-/// operator's log. The bound is what stops a host writing a megabyte there.
+/// operator's log. The text ceiling holds there as everywhere else.
 #[test]
 fn a_selftest_check_accepts_its_limits_and_refuses_one_byte_past_them() {
     let at_limit = SelftestCheck {
-        name: Cow::Owned(of_len(CHECK_NAME_MAX_BYTES)),
+        name: Cow::Owned(of_len(TEXT_MAX_CHARS)),
         ok: true,
-        detail: Cow::Owned(of_len(CHECK_DETAIL_MAX_BYTES)),
+        detail: Cow::Owned(of_len(TEXT_MAX_CHARS)),
     };
     assert!(at_limit.validate().is_ok(), "a check at its limits");
 
     let long_name = SelftestCheck {
-        name: Cow::Owned(of_len(CHECK_NAME_MAX_BYTES + 1)),
+        name: Cow::Owned(of_len(TEXT_MAX_CHARS + 1)),
         ..at_limit.clone()
     };
     assert!(long_name.validate().is_err(), "name one byte past its cap");
 
     let long_detail = SelftestCheck {
-        detail: Cow::Owned(of_len(CHECK_DETAIL_MAX_BYTES + 1)),
+        detail: Cow::Owned(of_len(TEXT_MAX_CHARS + 1)),
         ..at_limit.clone()
     };
     assert!(
@@ -102,38 +100,19 @@ fn a_selftest_check_refuses_an_empty_name_or_detail() {
     assert!(empty_detail.validate().is_err(), "an empty detail");
 }
 
-/// A report carrying its maximum number of checks is accepted; one more is not.
-#[test]
-fn a_selftest_report_accepts_its_full_roster_and_refuses_one_more() {
-    let full = report_with(
-        (0..SELFTEST_CHECKS_MAX)
-            .map(|index| check_named(format!("check_{index}")))
-            .collect(),
-    );
-    assert!(full.validate().is_ok(), "a full roster");
-
-    let over = report_with(
-        (0..=SELFTEST_CHECKS_MAX)
-            .map(|index| check_named(format!("check_{index}")))
-            .collect(),
-    );
-    assert!(over.validate().is_err(), "one check past the roster cap");
-}
-
 /// `dive` reaches inside the roster, so a bad check fails the whole report.
 ///
 /// This is the row that proves `dive` is doing something. Without it a report
-/// could carry a check with a megabyte name and pass, because the outer type
-/// only counts the roster.
+/// could carry a check past the text ceiling and pass.
 #[test]
 fn one_oversized_check_inside_a_legal_roster_still_fails_the_report() {
     let smuggled = report_with(vec![
         check_named("fine".to_owned()),
-        check_named(of_len(CHECK_NAME_MAX_BYTES + 1)),
+        check_named(of_len(TEXT_MAX_CHARS + 1)),
     ]);
     assert!(
         smuggled.validate().is_err(),
-        "an oversized check inside a roster within its count"
+        "an oversized check inside a roster"
     );
 }
 
@@ -143,13 +122,13 @@ fn a_selftest_report_bounds_the_policy_strings_it_echoes() {
     let at_limit = SelftestReport {
         checks: vec![check_named("landlock".to_owned())],
         all_ok: true,
-        sandbox_tier: Cow::Owned(of_len(SELFTEST_POLICY_MAX_BYTES)),
-        network_policy: Cow::Owned(of_len(SELFTEST_POLICY_MAX_BYTES)),
+        sandbox_tier: Cow::Owned(of_len(TEXT_MAX_CHARS)),
+        network_policy: Cow::Owned(of_len(TEXT_MAX_CHARS)),
     };
     assert!(at_limit.validate().is_ok(), "policy strings at their limit");
 
     let over = SelftestReport {
-        sandbox_tier: Cow::Owned(of_len(SELFTEST_POLICY_MAX_BYTES + 1)),
+        sandbox_tier: Cow::Owned(of_len(TEXT_MAX_CHARS + 1)),
         ..at_limit.clone()
     };
     assert!(over.validate().is_err(), "a policy string past its cap");

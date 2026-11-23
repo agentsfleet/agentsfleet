@@ -12,9 +12,8 @@ fn two_broken_fields_answer_for_the_first_the_request_carries() {
         refusal(Approval::parse("k", "", &over_nonce, "abc")),
         Some(error_code::INVALID_CIPHERTEXT)
     );
-    let over_key = "k".repeat(PUBLIC_KEY_MAX + 1);
     assert_eq!(
-        refusal(Opening::parse(&over_key, "lap\ntop")),
+        refusal(Opening::parse("", "lap\ntop")),
         Some(error_code::INVALID_PUBLIC_KEY)
     );
     assert_eq!(
@@ -34,16 +33,11 @@ fn refusal<T>(result: Result<T>) -> Option<ErrorCode> {
 }
 
 #[test]
-fn an_empty_field_and_an_oversized_one_answer_one_code() {
-    let long = "k".repeat(PUBLIC_KEY_MAX + 1);
-    for value in ["", long.as_str()] {
-        assert_eq!(
-            refusal(Opening::parse(value, "laptop")),
-            Some(error_code::INVALID_PUBLIC_KEY),
-            "public key {:?}",
-            value.len()
-        );
-    }
+fn an_empty_public_key_is_refused() {
+    assert_eq!(
+        refusal(Opening::parse("", "laptop")),
+        Some(error_code::INVALID_PUBLIC_KEY)
+    );
 }
 
 #[test]
@@ -71,18 +65,10 @@ fn a_code_is_six_digits_and_nothing_else() {
 
 #[test]
 fn each_approval_field_answers_its_own_code() {
-    let over_ciphertext = "c".repeat(CIPHERTEXT_MAX + 1);
     let over_nonce = "n".repeat(NONCE_MAX + 1);
     let cases = [
         ("", "c", "n", "012345", error_code::INVALID_PUBLIC_KEY),
         ("k", "", "n", "012345", error_code::INVALID_CIPHERTEXT),
-        (
-            "k",
-            over_ciphertext.as_str(),
-            "n",
-            "012345",
-            error_code::INVALID_CIPHERTEXT,
-        ),
         ("k", "c", "", "012345", error_code::INVALID_NONCE),
         (
             "k",

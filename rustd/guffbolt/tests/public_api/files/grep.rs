@@ -1,0 +1,201 @@
+//! `grep` over a small tree.
+
+use super::*;
+
+#[tokio::test]
+async fn grep_reads_back_each_matching_line_with_its_place() {
+    let desk = Desk::new();
+    tree(&desk);
+    desk.put("bin.dat", [0xff_u8, b'T', b'O', b'D', b'O']);
+    let tools = desk.tools(false);
+
+    let regex = call(&tools, "grep", json!({"pattern": "fn (alpha|beta)"})).await;
+    let literal = call(
+        &tools,
+        "grep",
+        json!({"pattern": "todo!()", "literal": true}),
+    )
+    .await;
+    let only_text = call(&tools, "grep", json!({"pattern": "TODO", "glob": "*.txt"})).await;
+    let one_file = call(
+        &tools,
+        "grep",
+        json!({"pattern": "TODO", "path": "src/a.rs"}),
+    )
+    .await;
+    let below = call(&tools, "grep", json!({"pattern": "fn", "path": "src/deep"})).await;
+    let accented = call(&tools, "grep", json!({"pattern": "Caf\u{00e9}"})).await;
+    let limited = call(&tools, "grep", json!({"pattern": "fn", "limit": 1})).await;
+
+    assert_eq!(
+        regex.text,
+        "src/a.rs:1: fn alpha() {}\nsrc/b.rs:1: fn beta() {}"
+    );
+    assert_eq!(literal.text, "src/deep/c.rs:1: fn gamma() { todo!() }");
+    assert_eq!(only_text.text, "docs/guide.txt:2: TODO later");
+    assert_eq!(one_file.text, "src/a.rs:2: // TODO: tidy");
+    assert_eq!(
+        below.text, "c.rs:1: fn gamma() { todo!() }",
+        "relative to the path searched"
+    );
+    assert_eq!(accented.text, "docs/guide.txt:1: Caf\u{00e9} guide");
+    assert_eq!(
+        limited.text.lines().count(),
+        2,
+        "one line and the note: {}",
+        limited.text
+    );
+    assert!(limited.text.ends_with(LIMIT_REACHED));
+}
+
+/// `ignore_case` matches a pattern in any case, as the tool's schema says.
+#[tokio::test]
+async fn grep_with_ignore_case_matches_any_case() {
+    let desk = Desk::new();
+    tree(&desk);
+    let tools = desk.tools(false);
+
+    let output = call(
+        &tools,
+        "grep",
+        json!({"pattern": "todo", "ignore_case": true, "glob": "*.txt"}),
+    )
+    .await;
+
+    assert_eq!(output.text, "docs/guide.txt:2: TODO later");
+}
+
+/// The pattern is a regular expression, so a class such as `\\d` matches a
+/// digit.
+#[tokio::test]
+async fn grep_reads_a_digit_class() {
+    let desk = Desk::new();
+    desk.put("n.txt", "none\nport 8080\n");
+    let tools = desk.tools(false);
+
+    let output = call(&tools, "grep", json!({"pattern": "\\d+"})).await;
+
+    assert_eq!(output.text, "n.txt:2: port 8080");
+}
+
+#[tokio::test]
+async fn grep_shows_a_long_line_whole_and_stops_at_the_output_budget() {
+    let desk = Desk::new();
+    let long = format!("hit {}", "\u{00e9}".repeat(600));
+    desk.put("long.txt", format!("{long}\n").repeat(100));
+    let tools = desk.tools(false);
+
+    let output = call(&tools, "grep", json!({"pattern": "hit"})).await;
+
+    let first = output.text.lines().next().expect("a line");
+    assert_eq!(first, format!("long.txt:1: {long}"));
+    let lines = output.text.lines().count();
+    assert!(
+        lines < 100,
+        "the 40,000-byte budget stops it first: {lines} lines"
+    );
+    assert!(output.text.ends_with(LIMIT_REACHED));
+}
+
+#[tokio::test]
+async fn grep_refuses_a_pattern_or_path_it_cannot_use() {
+    let desk = Desk::new();
+    tree(&desk);
+    let tools = desk.tools(false);
+
+    let bad_regex = call(&tools, "grep", json!({"pattern": "fn ("})).await;
+    let outside = call(&tools, "grep", json!({"pattern": "x", "path": "../etc"})).await;
+    let missing_file = call(
+        &tools,
+        "grep",
+        json!({"pattern": "x", "path": "nowhere.rs"}),
+    )
+    .await;
+    let empty = call(&tools, "grep", json!({"pattern": "nothing matches this"})).await;
+
+    assert!(
+        bad_regex
+            .text
+            .starts_with("[invalid_arguments] regex parse error"),
+        "{}",
+        bad_regex.text
+    );
+    assert_eq!(outside.text, format!("[path_not_allowed] ../etc {LEAVES}"));
+    assert_eq!(
+        missing_file.text, "",
+        "a file that cannot be read holds no line"
+    );
+    assert_eq!(empty.text, "");
+}
+
+/// A file the search may not open is passed over; the files it can read are
+/// still searched.
+#[cfg(unix)]
+#[tokio::test]
+async fn grep_passes_over_a_file_it_may_not_open() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let desk = Desk::new();
+    desk.put("open.txt", "TODO open\n");
+    desk.put("locked.txt", "TODO locked\n");
+    std::fs::set_permissions(
+        desk.path("locked.txt"),
+        std::fs::Permissions::from_mode(0o000),
+    )
+    .expect("locked");
+    let unreadable = std::fs::File::open(desk.path("locked.txt")).is_err();
+    let tools = desk.tools(false);
+
+    let found = call(&tools, "grep", json!({"pattern": "TODO"})).await;
+
+    assert!(unreadable, "the lane runs as a user the mode binds");
+    assert_eq!(found.text, "open.txt:1: TODO open");
+}
+
+/// A link under the root to a directory outside it is refused when the
+/// search follows it, as a path that names the outside is.
+#[cfg(unix)]
+#[tokio::test]
+async fn grep_refuses_a_link_that_leaves_the_root() {
+    let desk = Desk::new();
+    tree(&desk);
+    let outside = desk.path("").parent().map(std::path::Path::to_path_buf);
+    std::os::unix::fs::symlink(outside.expect("the root has a parent"), desk.path("out"))
+        .expect("linked");
+    let tools = desk.tools(false);
+
+    let followed = call(&tools, "grep", json!({"pattern": "x", "path": "out"})).await;
+
+    assert_eq!(
+        code(&followed),
+        Some("path_not_allowed"),
+        "{}",
+        followed.text
+    );
+}
+
+/// A file whose matching line is not text holds no line to show, a line
+/// ending `\r\n` reads without it and still ends where `$` holds, and a
+/// socket named alone holds nothing.
+#[tokio::test]
+async fn grep_passes_over_what_is_not_text_and_reads_a_crlf_line_whole() {
+    let desk = Desk::new();
+    desk.put("bin.dat", [0xff_u8, b'T', b'O', b'D', b'O', b'\n']);
+    desk.put("crlf.txt", "TODO here\r\nnone\r\n");
+    #[cfg(unix)]
+    let _listener =
+        std::os::unix::net::UnixListener::bind(desk.path("sock")).expect("a socket file");
+    let tools = desk.tools(false);
+
+    let text = call(&tools, "grep", json!({"pattern": "TODO"})).await;
+    let anchored = call(&tools, "grep", json!({"pattern": "^TODO here$"})).await;
+    let line_end = call(&tools, "grep", json!({"pattern": "a\nb"})).await;
+    #[cfg(unix)]
+    let socket = call(&tools, "grep", json!({"pattern": "x", "path": "sock"})).await;
+
+    assert_eq!(text.text, "crlf.txt:1: TODO here");
+    assert_eq!(anchored.text, "crlf.txt:1: TODO here");
+    assert_eq!(code(&line_end), Some("invalid_arguments"));
+    #[cfg(unix)]
+    assert_eq!(socket.text, "");
+}

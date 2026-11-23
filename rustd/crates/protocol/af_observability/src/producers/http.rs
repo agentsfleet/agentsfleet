@@ -48,11 +48,6 @@ impl Handles {
             attributes_omitted: instruments.counter_u64(&declared::OTEL_ATTRIBUTE_OMITTED_TOTAL)?,
         };
 
-        let in_flight = Arc::clone(&sources.requests_in_flight);
-        instruments.gauge_u64(&declared::API_IN_FLIGHT_REQUESTS, move || {
-            in_flight().into_iter().map(Reading::unlabelled).collect()
-        })?;
-
         let streams = Arc::clone(&sources.streams_in_flight);
         instruments.gauge_u64(&declared::SSE_IN_FLIGHT_STREAMS, move || {
             streams().into_iter().map(Reading::unlabelled).collect()

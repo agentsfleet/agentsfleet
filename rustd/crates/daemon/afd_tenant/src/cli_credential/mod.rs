@@ -71,7 +71,7 @@ const CONTEXT_SUBJECT: &str = "resolve subject user";
 
 /// The partial index that holds a machine to one live credential.
 ///
-/// Must equal the name in `schema/20261108120800_identity_cli_credentials.sql`: a hash or
+/// Must equal the name in `afd_db/schema/20261108120800_identity_cli_credentials.sql`: a hash or
 /// primary-key collision is unique too, and no re-login resolves it.
 const MACHINE_CONSTRAINT: &str = "uq_cli_credentials_user_id_machine_name_live";
 

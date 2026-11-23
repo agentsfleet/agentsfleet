@@ -7,7 +7,6 @@ use af_wire::usage::LineKind;
 use afd_billing::report;
 use afd_db::test_util::TestDatabase;
 use afd_db::{DbRole, Migrator};
-use futures_util::StreamExt as _;
 use serde_json::Value;
 use sqlx::AssertSqlSafe;
 
@@ -22,10 +21,8 @@ const FOREIGN_RUNS: usize = 16;
 const FOREIGN_USAGE: usize = 64;
 /// The tenant's usage rows before the period per in-period run.
 const OLD_USAGE: usize = 4;
-/// Slices in one foreign run: what one relay pass could settle together.
+/// Slices in one foreign run written by one statement.
 const RUN_SLICES: usize = 1_024;
-/// Settlements in flight at once while the tables grow.
-const SETTLING: usize = 16;
 
 #[tokio::test]
 #[ignore = "requires live Postgres: make test-integration-rustd"]
@@ -51,15 +48,15 @@ async fn report_reads_bound_rollup_scans_to_tenant_and_period() {
 }
 
 /// Adds `runs` in-period runs for the tenant, sixteen times as many for the
-/// other tenant, and wider usage rows elsewhere, all through the settle path.
+/// other tenant, and wider usage rows elsewhere, all through the lines' insert.
 async fn grow_by(f: &Fixture, runs: usize) {
     let mut lines: Vec<Line> = (0..runs)
         .map(|_| Line::runtime(&f.tenant, &fixture::id(), 1))
         .collect();
     lines.extend((0..runs * FOREIGN_RUNS).map(|_| Line::runtime(&f.foreign, &fixture::id(), 1)));
     // Long runs whose slices carry many fleet identifiers: many usage rows from
-    // few settlements, which is all this proof needs of them. Each run holds
-    // at most what one relay pass settles, never a month in one statement.
+    // few writes, which is all this proof needs of them. Each run is written
+    // in one statement of at most `RUN_SLICES` lines, never a month at once.
     let foreign: Vec<Vec<Line>> = (0..runs * FOREIGN_USAGE)
         .step_by(RUN_SLICES)
         .map(|from| {
@@ -71,18 +68,10 @@ async fn grow_by(f: &Fixture, runs: usize) {
     old.at = fixture::BEFORE;
     let old = spread(&old, runs * OLD_USAGE);
     fixture::seed(&f.admin, &lines).await;
-    fixture::seed(&f.admin, &foreign.concat()).await;
+    for run in &foreign {
+        fixture::seed(&f.admin, run).await;
+    }
     fixture::seed(&f.admin, &old).await;
-    let works = lines
-        .iter()
-        .chain(foreign.iter().filter_map(|run| run.first()))
-        .chain(old.first())
-        .map(Line::work);
-    futures_util::stream::iter(works)
-        .for_each_concurrent(SETTLING, |work| async move {
-            fixture::settle(&f.biller, &f.admin, &work).await;
-        })
-        .await;
 }
 
 /// `count` runtime slices of `first`'s run, each on a fleet of its own.

@@ -1,8 +1,6 @@
-// HttpClient service — wraps apiRequestWithRetry from lib/http.ts.
+// HttpClient service — wraps apiRequest from lib/http.ts.
 // Returns Effects whose error channel carries NetworkError or
-// ServerError (no raw ApiError leaks). Retry behaviour and
-// Retry-After honoring are unchanged from the existing transport
-// (lib/http.ts is reused verbatim).
+// ServerError (no raw ApiError leaks). Each request is sent once.
 //
 // Authorization is opt-in per request via the `token` option; the
 // Credentials service is responsible for reading the on-disk token
@@ -11,14 +9,12 @@
 import { Effect, Layer, Option, Redacted, Context } from "effect";
 import {
   ApiError,
+  apiRequest,
   authHeaders,
   readProblemDetails,
   type FetchImpl,
 } from "../lib/http.ts";
-import {
-  DROP_CODES, PRE_SEND_CODES, apiRequestWithRetry, isTransientResponse, socketCode,
-  type RetryConfig, type AttemptInfo, type RetryInfo,
-} from "../lib/http-retry.ts";
+import { DROP_CODES, PRE_SEND_CODES, isTransientResponse, socketCode } from "../lib/http-failure.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 import { isString } from "../lib/guards.ts";
@@ -31,7 +27,6 @@ export interface HttpRequestInput {
   readonly headers?: Record<string, string>;
   readonly body?: unknown;
   readonly token?: Redacted.Redacted<string> | undefined;
-  readonly retry?: RetryConfig | null;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal | undefined;
 }
@@ -146,8 +141,7 @@ const buildHeaders = (
 
 // A request that is slow or flaky is the thing an operator needs to see, and
 // until now there was nothing to see: `--log-level` validated a level and then
-// governed no records, because this package emitted none. The retry layer
-// already decides; these only report what it decided.
+// governed no records, because this package emitted none.
 //
 // The path is reported with its identifiers replaced, so a record names the
 // endpoint rather than which fleet someone was looking at. The token never
@@ -169,7 +163,6 @@ const QUERY_PAIR_SEPARATOR = "&";
 const QUERY_ASSIGNMENT = "=";
 const QUERY_VALUE_PLACEHOLDER = "{value}";
 const TRACE_ATTEMPT = "http.attempt";
-const TRACE_RETRY = "http.retry";
 const STATUS_NONE = "none";
 
 /**
@@ -197,14 +190,9 @@ export const endpointOf = (path: string): string => {
   return `${route}${QUERY_SEPARATOR}${named}`;
 };
 
-const attemptRecord = (method: string, path: string, info: AttemptInfo): string =>
+const attemptRecord = (method: string, path: string, status: number | undefined, durationMs: number): string =>
   `${TRACE_ATTEMPT} method=${method} endpoint=${endpointOf(path)} ` +
-  `attempt=${info.attempt} status=${info.status ?? STATUS_NONE} ` +
-  `duration_ms=${info.durationMs} terminal=${info.terminal}`;
-
-const retryRecord = (path: string, info: RetryInfo): string =>
-  `${TRACE_RETRY} endpoint=${endpointOf(path)} attempt=${info.attempt} ` +
-  `status=${info.status ?? STATUS_NONE} reason=${info.reason}`;
+  `status=${status ?? STATUS_NONE} duration_ms=${durationMs}`;
 
 const makeLive = (
   apiUrl: string,
@@ -227,24 +215,27 @@ const makeLive = (
     // fiber whose level `--log-level` set.
     const trace: string[] = [];
     return Effect.tryPromise({
-      try: (signal) =>
-        apiRequestWithRetry(url, {
-          method,
-          signal: input.signal ? AbortSignal.any([input.signal, signal]) : signal,
-          onAttempt: (info: AttemptInfo) => {
-            trace.push(attemptRecord(method, input.path, info));
-          },
-          onRetry: (info: RetryInfo) => {
-            trace.push(retryRecord(input.path, info));
-          },
-          headers,
-          ...(body !== undefined ? { body } : {}),
-          ...(input.retry !== undefined ? { retry: input.retry } : {}),
-          ...(input.timeoutMs !== undefined
-            ? { timeoutMs: input.timeoutMs }
-            : {}),
-          ...(fetchImpl !== undefined ? { fetchImpl } : {}),
-        }) as Promise<T>,
+      try: async (signal) => {
+        const startedAt = Date.now();
+        try {
+          const result = await apiRequest(url, {
+            method,
+            signal: input.signal ? AbortSignal.any([input.signal, signal]) : signal,
+            headers,
+            ...(body !== undefined ? { body } : {}),
+            ...(input.timeoutMs !== undefined
+              ? { timeoutMs: input.timeoutMs }
+              : {}),
+            ...(fetchImpl !== undefined ? { fetchImpl } : {}),
+          });
+          trace.push(attemptRecord(method, input.path, 200, Date.now() - startedAt));
+          return result as T;
+        } catch (err) {
+          const status = err instanceof ApiError ? err.status : undefined;
+          trace.push(attemptRecord(method, input.path, status, Date.now() - startedAt));
+          throw err;
+        }
+      },
       catch: (cause) => toCliError(url, cause),
     }).pipe(
       // ensuring, not tap: a request that failed is the one worth reading.

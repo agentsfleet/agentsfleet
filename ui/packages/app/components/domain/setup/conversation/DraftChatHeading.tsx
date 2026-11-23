@@ -9,7 +9,7 @@ import { ArrowLeftIcon, BookOpenIcon, DotsThreeIcon, NotePencilIcon, StackIcon }
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input, Label, PageTitle } from "@agentsfleet/design-system";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
-import { CHAT_TITLE_LIMIT, chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
+import { chatTitle, firstChatRequest } from "@/lib/api/draft-summary";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 
 type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage?: boolean; returnToFleet?: string; menuItems?: ReactNode};
@@ -43,7 +43,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
       <Title className="sr-only">{label}</Title>
       <form className="flex min-w-0 flex-1 items-center gap-sm" onSubmit={rename}>
         <Label htmlFor={titleId} className="sr-only">Chat name</Label>
-        <Input id={titleId} ref={nameInput} value={title} onChange={event => setTitle(event.target.value)} maxLength={CHAT_TITLE_LIMIT} className="min-w-0 flex-1" />
+        <Input id={titleId} ref={nameInput} value={title} onChange={event => setTitle(event.target.value)} className="min-w-0 flex-1" />
         <Button type="submit" size="sm" disabled={locked || !title.trim()}>Save name</Button>
         <Button type="button" variant="ghost" size="sm" disabled={locked} onClick={() => setTitle(null)}>Cancel</Button>
       </form>

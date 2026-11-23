@@ -2,16 +2,16 @@
 
 import { ArrowUpRightIcon, GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { Card, Skeleton } from "@agentsfleet/design-system";
-import { readTaskActivityHistory } from "@/lib/task-activity";
-import { useFleetLinkedWork, useFleetTaskDetails, type FleetTaskReadState } from "./FleetTaskProvider";
+import { readDurableTaskActivityHistory } from "@/lib/task-activity";
+import { useFleetLinkedWork, useFleetDurableTaskDetails, type FleetDurableTaskReadState } from "./FleetTaskProvider";
 import { accessLost, confirmed } from "./use-task-read";
 
 /** An explicit single native task identity binds this reply to a saved PR target. */
-export function NativeTaskPrBadge({activity}: {activity: unknown}) {
-  const details = useFleetTaskDetails();
+export function NativeDurableTaskPrBadge({activity}: {activity: unknown}) {
+  const details = useFleetDurableTaskDetails();
   const linked = useFleetLinkedWork();
-  const history = readTaskActivityHistory(activity);
-  const ids = new Set(history?.items.flatMap(item => item.progress.task_id ? [item.progress.task_id] : []));
+  const history = readDurableTaskActivityHistory(activity);
+  const ids = new Set(history?.items.flatMap(item => item.progress.durable_task_id ? [item.progress.durable_task_id] : []));
   const entry = ids.values().next();
   if (history?.truncated || entry.done || ids.size > 1) return null;
   const resource = details.get(entry.value);
@@ -40,11 +40,11 @@ export function NativeTaskPrBadge({activity}: {activity: unknown}) {
 }
 
 /** Only the shared reader's selected work can reserve a pending result. */
-function waitingForLinkedWork(read: FleetTaskReadState | null, taskId: string): boolean {
+function waitingForLinkedWork(read: FleetDurableTaskReadState | null, durableTaskId: string): boolean {
   if (!read) return true;
   if (accessLost(read.resource)) return false;
   if (read.resource.kind === "loading" && !confirmed(read.resource)) return true;
-  if (!read.references.some(reference => reference.id === taskId)) return false;
-  const resource = read.details.get(taskId);
+  if (!read.references.some(reference => reference.id === durableTaskId)) return false;
+  const resource = read.details.get(durableTaskId);
   return !resource || resource.kind === "loading" && !confirmed(resource);
 }

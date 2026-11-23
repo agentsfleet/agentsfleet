@@ -1,5 +1,5 @@
 //! Every instant the API publishes is an RFC 3339 string, in the document and
-//! on the wire (Dimension 4.7).
+//! on the wire.
 //!
 //! Two halves, because either can drift alone. A field annotated with the
 //! wrong `value_type` publishes an integer while the handler still writes a

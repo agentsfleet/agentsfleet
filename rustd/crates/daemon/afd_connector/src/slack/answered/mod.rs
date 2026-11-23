@@ -50,7 +50,7 @@ pub const INTERIM_EVENT_TYPE: &str = "agentsfleet_interim";
 /// under the ten seconds a shutdown waits for an attempt in flight.
 pub const ANSWER_CHECK_DEADLINE: Duration = Duration::from_secs(3);
 
-/// How far before the question's admission the read starts, in seconds.
+/// How far before the question's turn the read starts, in seconds.
 ///
 /// The event id's instant is this daemon's clock and a message's `ts` is
 /// Slack's; five minutes covers any skew between the two by a wide margin
@@ -60,13 +60,13 @@ const CLOCK_SKEW_SECONDS: i64 = 300;
 /// Milliseconds in a second, for reading the instant an event id opens with.
 const MILLIS_PER_SECOND: i64 = 1_000;
 
-/// Which owed answer a posted message is: the obligation's own key.
+/// Which owed answer a posted message is: the delivery's own key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnswerMarker {
     /// The fleet that owes it.
     pub fleet_id: String,
     /// The event it answers.
-    pub event_id: String,
+    pub turn_id: String,
     /// Which interim line of the run this is, or `None` for the answer.
     ///
     /// A run may speak before it answers, and every line it says lands in the
@@ -78,17 +78,19 @@ pub struct AnswerMarker {
     pub part: Option<Part>,
 }
 
-/// One interim line's place: the lease that said it, and its number there.
+/// One interim line's place: the run that said it, and the call there that
+/// said it.
 ///
-/// The lease is part of it because the count is the lease's: a reclaimed
-/// lease numbers its lines from one again, and its first line must not read
-/// as the dead lease's first.
+/// The run is part of it because the call's number is the run's: a
+/// reassigned run numbers its calls from one again, and its first line must
+/// not read as the dead run's first. The call is what makes a retried call's
+/// line the same line, so its repeat finds the first attempt's post.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Part {
-    /// The lease that posted the line.
-    pub lease_id: String,
-    /// Which line of that lease it is, from one.
-    pub line: u32,
+    /// The run that posted the line.
+    pub run_id: String,
+    /// The number of the call in that run that said it, from one.
+    pub line: u64,
 }
 
 impl AnswerMarker {
@@ -144,26 +146,44 @@ impl Posted {
     }
 }
 
+/// Where a thread check reads, and with what.
+#[derive(Debug, Clone, Copy)]
+pub struct Check<'a> {
+    /// The client the read goes out on.
+    pub client: &'a reqwest::Client,
+    /// [`super::SLACK_API_BASE`] in a deployment.
+    pub api_base: &'a str,
+    /// The bot's token.
+    pub token: &'a SecretString,
+    /// The thread read.
+    pub thread: &'a Thread,
+}
+
 /// Whether `thread` already holds the answer `marker` names.
 ///
 /// Only a message `author` posted counts: the bot user the grant recorded.
-/// Read through `api_base` ([`super::SLACK_API_BASE`] in a deployment) under
-/// [`ANSWER_CHECK_DEADLINE`], starting at [`since`] the marker's event, and
-/// stopping at the first page that shows the marker.
+/// Read through `check.api_base` ([`super::SLACK_API_BASE`] in a deployment)
+/// under `deadline` (the deployment's `[connectors.slack]
+/// answer_check_timeout_seconds`), starting at [`since`] the marker's event,
+/// and stopping at the first page that shows the marker.
 ///
 /// # Errors
 /// The [`Unavailable`] reason the thread could not be read for; the caller
 /// posts anyway, as the module note says.
 pub async fn holds_answer(
-    client: &reqwest::Client,
-    api_base: &str,
-    token: &SecretString,
-    thread: &Thread,
+    check: Check<'_>,
     marker: &AnswerMarker,
     author: &str,
+    deadline: Duration,
 ) -> Result<bool, Unavailable> {
+    let Check {
+        client,
+        api_base,
+        token,
+        thread,
+    } = check;
     let endpoint = format!("{api_base}{METHOD_CONVERSATIONS_REPLIES}");
-    let oldest = since(&marker.event_id);
+    let oldest = since(&marker.turn_id);
     let mut found = false;
     let read = walk(
         client,
@@ -180,13 +200,13 @@ pub async fn holds_answer(
             }
         },
     );
-    tokio::time::timeout(ANSWER_CHECK_DEADLINE, read)
+    tokio::time::timeout(deadline, read)
         .await
         .unwrap_or(Err(Unavailable::Timeout))?;
     Ok(found)
 }
 
-/// The Slack timestamp a check of `event_id`'s answer reads from:
+/// The Slack timestamp a check of `turn_id`'s answer reads from:
 /// [`CLOCK_SKEW_SECONDS`] before the instant the id opens with.
 ///
 /// `None` for an id that does not open with milliseconds, which reads the
@@ -194,8 +214,8 @@ pub async fn holds_answer(
 // M229: event-id re-key. The `{millis}-{seq}` shape this parses is being
 // re-keyed to a UUIDv7 in its own batch; only the retired `UnixMillis` read is
 // replaced here, with the same truncating division it did.
-fn since(event_id: &str) -> Option<String> {
-    let (millis, _sequence) = event_id.split_once('-')?;
+fn since(turn_id: &str) -> Option<String> {
+    let (millis, _sequence) = turn_id.split_once('-')?;
     let admitted = millis.parse::<i64>().ok()? / MILLIS_PER_SECOND;
     let seconds = admitted.saturating_sub(CLOCK_SKEW_SECONDS).max(0);
     Some(format!("{seconds}.000000"))

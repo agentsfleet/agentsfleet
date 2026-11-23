@@ -173,3 +173,28 @@ fn http3_is_skipped_exactly_while_the_latest_udp_suspicion_is_fresh_after_any_hi
     assert_eq!(checked, histories.len() * after_the_last_step.len());
     Ok(())
 }
+
+/// A reopening after an unconfirmed proposal still names the session it
+/// resumes, never the proposal the daemon did not confirm.
+#[test]
+fn an_unconfirmed_proposal_resumes_the_session_before_it() -> Proof {
+    let before = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-0000000000b1")?;
+    let proposed = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-0000000000b2")?;
+    let resuming = super::Resume::Confirming {
+        previous: Some(before.clone()),
+        proposed: proposed.clone(),
+    };
+    let fresh = super::Resume::Confirming {
+        previous: None,
+        proposed: proposed.clone(),
+    };
+
+    assert_eq!(resuming.previous(), Some(&before));
+    assert_eq!(resuming.unconfirmed(), Some(&proposed));
+    assert_eq!(fresh.previous(), None);
+    assert_eq!(
+        super::Resume::Confirmed(proposed.clone()).previous(),
+        Some(&proposed)
+    );
+    Ok(())
+}

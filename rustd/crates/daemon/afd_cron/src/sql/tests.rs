@@ -7,7 +7,7 @@ use super::{
 /// spells them.
 const ROW_COLUMNS: &str = "id, fleet_id, source, provider_schedule_id, \
      cron_expression, timezone, message, once, desired_status, sync_status, resource_version, \
-     sync_token, sync_lease_expires_at, last_error, created_at, updated_at, fire_at, \
+     sync_token, sync_run_expires_at, last_error, created_at, updated_at, fire_at, \
      recipe::text";
 
 /// `text` with every run of whitespace folded to one space.
@@ -37,22 +37,22 @@ fn every_schedule_statement_returns_the_row_columns() {
 }
 
 /// No statement binds an instant from the caller: rows are stamped by
-/// `now()` and leases set and judged on `clock_timestamp()`.
+/// `now()` and runs set and judged on `clock_timestamp()`.
 #[test]
-fn every_stamp_and_lease_reads_the_database_clock() {
+fn every_stamp_and_run_reads_the_database_clock() {
     for statement in [INSERT, CLAIM_MUTATION, CLAIM_CURRENT] {
         let text = folded(statement);
         assert!(
             text.contains("clock_timestamp() + $"),
-            "lease set: {statement}"
+            "run set: {statement}"
         );
     }
     for statement in [CLAIM_MUTATION, CLAIM_CURRENT] {
         let text = folded(statement);
         assert!(text.contains("updated_at = now()"), "stamp: {statement}");
         assert!(
-            text.contains("sync_lease_expires_at <= clock_timestamp()"),
-            "lease judged: {statement}"
+            text.contains("sync_run_expires_at <= clock_timestamp()"),
+            "run judged: {statement}"
         );
     }
     for statement in [FINALIZE_SUCCESS, FINALIZE_FAILURE] {

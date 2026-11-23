@@ -1,8 +1,8 @@
 import { Button, Time } from "@agentsfleet/design-system";
-import type { TaskDetail } from "@/lib/api/tasks";
+import type { DurableTaskDetail } from "@/lib/api/tasks";
 
 /** Native saved evidence stays distinct from local file edits and new checks. */
-export function TaskRepositoryProgress({detail}: {detail: TaskDetail}) {
+export function DurableTaskRepositoryProgress({detail}: {detail: DurableTaskDetail}) {
   const target = detail.context.target;
   if (!target || target.kind !== "existing_pr") return null;
   const dependency = detail.dependency;

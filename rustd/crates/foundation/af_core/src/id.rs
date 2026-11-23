@@ -160,7 +160,7 @@ impl Uuid7 {
         };
         let minted = uuid::Builder::from_unix_timestamp_millis(millis, &entropy).into_uuid();
         // Into a stack buffer rather than through `to_string`: an identifier is
-        // minted on the lease path, and `parse` copies the text it is handed
+        // minted on the run path, and `parse` copies the text it is handed
         // anyway, so a heap `String` in between would be pure waste.
         let mut text = [0u8; TEXT_LEN];
         Self::parse(minted.hyphenated().encode_lower(&mut text))

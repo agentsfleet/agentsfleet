@@ -18,9 +18,6 @@ const CONTEXT_SELECTION: &str = "tenant model selection";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PLATFORM: &str = "active platform default";
 
-/// A selection pointing at a registry row that came back without its model.
-const FIELD_MODEL_NAME: &str = "model_name";
-
 /// The active platform row carried no model to price against.
 const FIELD_PLATFORM_MODEL: &str = "model";
 
@@ -28,11 +25,11 @@ const FIELD_PLATFORM_MODEL: &str = "model";
 ///
 /// Two states, and the type holds no third: the platform default names no
 /// credential, and a self-managed selection always names one. The column
-/// behind it is one nullable pointer, so there is no stored word to misspell
-/// and no posture/credential pairing to contradict.
+/// behind it is one flag on the tenant's own rows, so there is no stored word
+/// to misspell and no posture/credential pairing to contradict.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Selection {
-    /// The platform default, chosen explicitly: a row with a NULL pointer.
+    /// The platform default: none of the tenant's rows is selected.
     Platform,
     /// One of the tenant's own registry entries.
     SelfManaged(OwnModel),
@@ -52,7 +49,7 @@ impl Selection {
 /// The registry entry a self-managed selection points at, as it resolves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnModel {
-    /// The `model.tenant_models` row the selection points at.
+    /// The selected `model.tenant_models` row.
     pub tenant_model_id: Uuid7,
     /// The model this tenant's runs are priced against.
     pub model: Box<str>,
@@ -86,41 +83,26 @@ pub struct PlatformDefault {
 /// One [`sql::SELECT_TENANT_SELECTION`] row, by the names it gives its columns.
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct SelectionRow {
-    tenant_model_id: Option<Uuid7>,
-    model_name: Option<String>,
-    secret_ref: Option<String>,
+    tenant_model_id: Uuid7,
+    model_name: String,
+    secret_ref: String,
     workspace_id: Option<Uuid7>,
     provider: Option<String>,
     context_cap_tokens: i32,
 }
 
 impl SelectionRow {
-    /// The row, typed.
-    ///
-    /// A NULL pointer is the platform posture. A pointer whose joined entry
-    /// came back without its model or credential name is a row the composite
-    /// foreign key should have made impossible, so it is a PERMANENT
-    /// configuration fault rather than a value to guess at.
-    ///
-    /// # Errors
-    /// Reports a pointer that is not an identifier, and a pointer naming no
-    /// readable entry.
-    pub(crate) fn into_selection(self) -> Result<Selection> {
-        let Some(pointer) = self.tenant_model_id else {
-            return Ok(Selection::Platform);
-        };
-        let tenant_model_id = pointer;
-        let (Some(model), Some(secret_ref)) = (self.model_name, self.secret_ref) else {
-            return Err(provider_malformed(FIELD_MODEL_NAME));
-        };
-        Ok(Selection::SelfManaged(OwnModel {
-            tenant_model_id,
-            model: model.into_boxed_str(),
-            secret_ref: secret_ref.into_boxed_str(),
+    /// The selected row, typed: always the self-managed posture, since the
+    /// platform default is the absence of a selected row.
+    pub(crate) fn into_selection(self) -> Selection {
+        Selection::SelfManaged(OwnModel {
+            tenant_model_id: self.tenant_model_id,
+            model: self.model_name.into_boxed_str(),
+            secret_ref: self.secret_ref.into_boxed_str(),
             workspace_id: self.workspace_id,
             provider: self.provider.map(String::into_boxed_str),
             context_cap_tokens: cap::stored(self.context_cap_tokens),
-        }))
+        })
     }
 }
 
@@ -152,25 +134,22 @@ impl PlatformDefaultRow {
 }
 
 impl Providers {
-    /// What `tenant_id` configured, or nothing if it never has.
-    ///
-    /// `Ok(None)` is not a failure and not a default — it is a tenant who has
-    /// never configured a provider, and it resolves through the platform
-    /// default exactly as [`Selection::Platform`] does.
+    /// What `tenant_id` runs on: its selected model, or the platform default
+    /// when none of its rows is selected — a tenant that never chose and one
+    /// that reset read the same.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a pointer naming no
-    /// readable registry entry — a data-integrity fault to surface rather than
-    /// a value to guess at.
-    pub async fn selection(&self, tenant_id: &Uuid7) -> Result<Option<Selection>> {
+    /// Reports a datastore that would not answer.
+    pub async fn selection(&self, tenant_id: &Uuid7) -> Result<Selection> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query_as::<_, SelectionRow>(sql::SELECT_TENANT_SELECTION)
-            .bind(tenant_id)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_SELECTION))?
-            .map(SelectionRow::into_selection)
-            .transpose()
+        Ok(
+            sqlx::query_as::<_, SelectionRow>(sql::SELECT_TENANT_SELECTION)
+                .bind(tenant_id)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(query(CONTEXT_SELECTION))?
+                .map_or(Selection::Platform, SelectionRow::into_selection),
+        )
     }
 
     /// The active platform default, or nothing if no operator has set one.

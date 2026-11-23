@@ -7,12 +7,13 @@
 //! `runners()` method would be asking a readiness check to know about the
 //! runner plane.
 //!
-//! One file per plane, because the seams are one per plane too: the runner
-//! plane's verbs in [`leasing`], the device-flow login in [`device_flow`], the
-//! tenant's own credentials and ownership in [`tenant`], the tenant's money in
-//! [`billing`], and a workspace's fleets in [`fleets`]. Each trait is
-//! re-exported here, so a handler still names `crate::services::TenantKeys` and
-//! never a file.
+//! Each handler crate declares its own plane trait (`afd_api_tenant::TenantPlane`,
+//! `afd_api_runner::RunnerPlane`, `afd_api_operator::OperatorPlane`,
+//! `afd_api_ingress::IngressPlane`) over [`Shared`], so a handler names only the
+//! services its plane calls. A seam trait lives in the plane crate that alone
+//! uses it; the ones here are the seams more than one plane, or the gateway,
+//! reaches: ownership, fleets, approvals, connectors, schedules, turns, steering,
+//! signed ingress and the native runner stream.
 //!
 //! # Why the state is a trait and not a struct
 //!
@@ -33,54 +34,23 @@
 //! non-deterministic call in the one place a test most needs to pin.
 
 mod approval;
-mod billing;
 mod catalogue;
 mod connector;
-mod device_flow;
-mod event;
 mod fleets;
-mod grant;
 mod ingress;
-mod leasing;
-mod mail;
-mod memory;
-mod model_entry;
-mod preference;
-mod provider;
+mod ownership;
 mod runner_stream;
 mod schedule;
-mod signup;
-mod team;
-mod tenant;
-mod vault;
+mod shared;
+mod turn;
 
 pub use self::approval::WorkspaceApprovals;
-pub use self::billing::TenantBilling;
-pub use self::catalogue::{ModelCatalogue, metadata_store, metadata_wire, price_store, price_wire};
+pub use self::catalogue::{metadata_store, metadata_wire, price_store, price_wire};
 pub use self::connector::WorkspaceConnectors;
-pub use self::device_flow::DeviceFlow;
-pub use self::event::{FleetSteering, WorkspaceEvents};
 pub use self::fleets::WorkspaceFleets;
-pub use self::grant::FleetGrants;
 pub use self::ingress::{APPROVAL_IDENTITY, WebhookIngress};
-pub use self::leasing::Leasing;
-pub use self::mail::InviteMail;
-pub use self::memory::FleetMemories;
-pub use self::model_entry::TenantModelEntries;
-pub use self::preference::WorkspacePreferences;
-pub use self::provider::TenantProviders;
+pub use self::ownership::WorkspaceOwnership;
 pub use self::runner_stream::RunnerStreams;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
-pub use self::signup::{
-    Bootstrapped, IdentityWebhookSecret, MetadataUnwritten, NewAccount, SignupMetadata, Signups,
-    personal_tenant_name,
-};
-pub use self::team::TenantTeam;
-pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
-pub use self::vault::WorkspaceSecrets;
-
-mod http_services;
-mod tenant_surface;
-
-pub use self::http_services::Services;
-pub use self::tenant_surface::TenantSurface;
+pub use self::shared::Shared;
+pub use self::turn::{FleetSteering, WorkspaceTurns};

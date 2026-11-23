@@ -1,16 +1,16 @@
-// Recovery polling and bounded timeout behavior for a submitted fleet event.
-import { describe, expect, test, setSystemTime } from "bun:test";
+// Recovery polling behavior for a submitted fleet event.
+import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Redacted } from "effect";
 import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
-import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-events.ts";
+import { pollTurnTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-turns.ts";
 import { Output } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { ServerError } from "../src/errors/index.ts";
-import { EVENT_STATUS } from "../src/constants/event-status.ts";
+import { TURN_STATUS } from "../src/constants/turn-status.ts";
 import { SIGINT } from "../src/constants/signals.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";
-import { FLEET_ID, EVENT_ID, POST, TOKEN, WS_ID, streamFrom, nullOutput, makeRecorder, makeLayer } from "./helpers-fleet-steer.ts";
+import { FLEET_ID, TURN_ID, POST, TOKEN, WS_ID, streamFrom, nullOutput, makeRecorder, makeLayer } from "./helpers-fleet-steer.ts";
 
 type StreamGetFn = typeof import("../src/lib/sse.ts").streamGet;
 const silentStream: StreamGetFn = async (): Promise<void> => {};
@@ -22,10 +22,10 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     const rec = makeRecorder();
     let pollCount = 0;
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
+      if (input.method === POST) return { turn_id: TURN_ID } as T;
       pollCount += 1;
       if (pollCount >= 2) {
-        return { event_id: EVENT_ID, status: EVENT_STATUS.PROCESSED } as T;
+        return { turn_id: TURN_ID, status: TURN_STATUS.PROCESSED } as T;
       }
       return { items: [] } as T;
     };
@@ -45,7 +45,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     const signalSource = new ReplSignalEmitter();
     let pollCount = 0;
     const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
+      if (input.method === POST) return { turn_id: TURN_ID } as T;
       pollCount += 1;
       signalSource.emit(SIGINT);
       return { items: [] } as T;
@@ -62,7 +62,7 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     expect(pollCount).toBe(1);
   });
 
-  test("poll treats transient request failures as empty results", async () => {
+  test("poll stops once the caller's signal ends the wait", async () => {
     const ctrl = new AbortController();
     let requestCount = 0;
     const failingHttp = Layer.succeed(HttpClient, {
@@ -86,10 +86,10 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
         ),
     });
     const outcome = await Effect.runPromise(
-      pollEventTerminal(
+      pollTurnTerminal(
         WS_ID,
         FLEET_ID,
-        EVENT_ID,
+        TURN_ID,
         Redacted.make(TOKEN),
         ctrl.signal,
       ).pipe(Effect.provide(Layer.merge(failingHttp, Layer.succeed(Output, outputDouble())))),
@@ -97,38 +97,5 @@ describe("steer — poll terminal match (lines 213, 216)", () => {
     expect(outcome.kind).toBe(STATUS_TIMEOUT);
     expect(requestCount).toBe(1);
   });
-});
-
-describe("steer — renderOutcome timeout path", () => {
-  test("poll timeout fails once, carrying 'still in flight' on the failure", async () => {
-    const rec = makeRecorder();
-    let firstPoll = true;
-    const httpReply = <T>(input: HttpRequestInput): T => {
-      if (input.method === POST) return { event_id: EVENT_ID } as T;
-      if (firstPoll) {
-        firstPoll = false;
-        setSystemTime(Date.now() + 120_000); // push past the 60s deadline
-      }
-      return { items: [] } as T;
-    };
-    try {
-      const exit = await Effect.runPromiseExit(
-        steerEffectFromArgs(FLEET_ID, "go", {}, {
-          stdin: streamFrom([], false),
-          stdout: nullOutput(),
-          streamGet: silentStream,
-        }).pipe(Effect.provide(makeLayer(rec, httpReply))),
-      );
-      expect(Exit.isFailure(exit)).toBe(true);
-      // One report of the stall, not two: the message rides the failure, and
-      // nothing is written to standard error ahead of it.
-      expect(JSON.stringify(exit)).toContain("still in flight");
-      expect(rec.stderr.some((m) => m.includes("still in flight"))).toBe(false);
-      // No pending gate in this scenario, so the ordinary suggestion stands.
-      expect(JSON.stringify(exit)).toContain("agentsfleet fleet events");
-    } finally {
-      setSystemTime(); // restore real clock
-    }
-  }, 10_000);
 });
 

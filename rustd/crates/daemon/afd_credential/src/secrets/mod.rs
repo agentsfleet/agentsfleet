@@ -9,7 +9,7 @@
 //!
 //! # The split is a TYPE, which is what makes the invariant hold
 //!
-//! `runBilling` resolves every credential into one list and the lease body then
+//! `runBilling` resolves every credential into one list and the run body then
 //! walks it, calling `mintableId` per entry and appending to one of two
 //! builders. Nothing stops a future edit from appending a mintable handle to
 //! both, and Invariant 1 — a stored App config never reaches the child — is
@@ -56,7 +56,7 @@ pub struct Mintable {
     /// The connector's NAME rather than a handle to the connector itself: this
     /// value is what travels on the execution policy, and the broker resolves
     /// it again through its own registry when the runner asks. A borrowed
-    /// `&dyn Connector` would tie the whole lease to the registry's lifetime
+    /// `&dyn Connector` would tie the whole run to the registry's lifetime
     /// for a string it is about to serialize.
     pub integration: Box<str>,
 }
@@ -65,7 +65,7 @@ pub struct Mintable {
 ///
 /// The two fields are disjoint by construction — see the module note. Order in
 /// both follows the DECLARED order rather than the order Postgres returned the
-/// rows in, because a fleet author reading a lease should see their own list
+/// rows in, because a fleet author reading a run should see their own list
 /// back.
 #[derive(Clone, Default)]
 pub struct Declared {
@@ -76,7 +76,7 @@ pub struct Declared {
     ///
     /// # This holds live tenant credentials
     ///
-    /// It is the one value in the lease that does, and it is why [`Declared`]
+    /// It is the one value in the run that does, and it is why [`Declared`]
     /// has a hand-written [`Debug`]. The stored objects are not wiped on drop
     /// the way a provider key is — they are bound for the wire, and a
     /// `serde_json::Value` tree has nowhere to put a destructor — so what is

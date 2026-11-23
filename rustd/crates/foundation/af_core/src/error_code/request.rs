@@ -21,6 +21,13 @@ pub const PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-REQ-002");
 /// An endpoint the API removed on purpose; it answers `410 Gone` and does not return.
 pub const ENDPOINT_REMOVED: ErrorCode = ErrorCode::declare("UZ-REQ-003");
 
+/// A text passed the one ceiling every text shares, 1,048,576 characters.
+///
+/// The ceiling is `af_validate::TEXT_MAX_CHARS`. The code is its own, apart
+/// from `INVALID_REQUEST`, so its `user_message` can name the ceiling to the
+/// person who typed it.
+pub const INPUT_TOO_LONG: ErrorCode = ErrorCode::declare("UZ-REQ-004");
+
 /// A stored envelope was malformed — wrong component length, or an unsupported version.
 pub const VAULT_DATA_INVALID: ErrorCode = ErrorCode::declare("UZ-VAULT-001");
 
@@ -91,14 +98,6 @@ pub const WEBHOOK_INSTALL_NOT_MAPPED: ErrorCode = ErrorCode::declare("UZ-WH-021"
 /// few of them. Almost every delivery this daemon accepts ends here.
 pub const WEBHOOK_SUBSCRIPTION_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-WH-022");
 
-/// A delivery whose body is past the ingress limit.
-///
-/// Decided on the byte count BEFORE the body is hashed, let alone parsed: the
-/// cap is what bounds the work an unauthenticated request can ask this daemon
-/// to do, so spending an HMAC over a body to find out it was too big would
-/// defeat it.
-pub const WEBHOOK_PAYLOAD_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-WH-030");
-
 /// No approval gate under that id, in that workspace.
 pub const APPROVAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-APPROVAL-002");
 
@@ -157,12 +156,6 @@ pub const SCHEDULE_NOT_FLEET_OWNED: ErrorCode = ErrorCode::declare("UZ-SCHED-010
 /// which may not start another so that a schedule cannot wake its fleet in a
 /// loop. A run-now overrides neither a person's pause nor a retirement.
 pub const SCHEDULE_NOT_RUNNABLE: ErrorCode = ErrorCode::declare("UZ-SCHED-011");
-
-/// The path named a preference key outside the writable registry.
-pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
-
-/// A preference value past the one-kibibyte bound a single toggle may hold.
-pub const PREF_VALUE_TOO_LARGE: ErrorCode = ErrorCode::declare("UZ-PREFS-002");
 
 /// A workspace in this tenant already uses the requested name.
 pub const WORKSPACE_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-WORKSPACE-001");

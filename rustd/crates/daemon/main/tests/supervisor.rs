@@ -1,4 +1,4 @@
-//! Dimensions 7.1 and 7.5 — what shutdown promises, proven rather than assumed.
+//! What shutdown promises, proven rather than assumed.
 //!
 //! Every wait in this file is a handshake, never a sleep. A task reports that
 //! it is running on a channel, and the test does not proceed until it has; a
@@ -27,7 +27,7 @@ use agentsfleetd::{JOIN_TIMEOUT, ShutdownReport, Supervisor};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 
-use crate::support::install_subscriber;
+use agentsfleetd::test_util::install_subscriber;
 
 /// The tasks the join-order fixture supervises, in the order it spawns them.
 const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "bus_shutdown"];
@@ -35,7 +35,7 @@ const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "bus_shutdown
 /// The task that owns a listening socket, and is cancelled while blocked on it.
 const ACCEPT_TASK: &str = "listener_accept";
 
-/// A task that never selects over its token — the bug Dimension 7.5 catches.
+/// A task that never selects over its token — the bug this suite catches.
 const STUBBORN: &str = "ignores_its_token";
 
 /// A task that ends by panicking, so the report's panic row is not an argument.
@@ -59,7 +59,7 @@ enum Outcome {
     Accepted,
 }
 
-/// Dimension 7.1 — every task joins before anything it borrowed can be dropped.
+/// Every task joins before anything it borrowed can be dropped.
 ///
 /// The `Arc` assertion is the load-bearing one. Invariant C2 is "stop, then
 /// join, THEN drop", and the way it fails in practice is a pool closed while a
@@ -77,7 +77,7 @@ async fn test_shutdown_joins_all_tasks() {
     for name in TASK_NAMES {
         let borrowed = Arc::clone(&borrowed);
         let started_tx = started_tx.clone();
-        supervisor.spawn(name, move |token| async move {
+        supervisor.spawn(name, async move |token| {
             started_tx
                 .send(name)
                 .expect("the test outlives every task it spawns");
@@ -141,7 +141,7 @@ async fn test_shutdown_joins_all_tasks() {
     );
 }
 
-/// Dimension 7.5 — the inventory is complete, and cancellation interrupts I/O.
+/// The inventory is complete, and cancellation interrupts I/O.
 ///
 /// The accept task is the point. A task that merely polls its token between
 /// iterations is not cancellable mid-read, and the whole reason the supervisor
@@ -164,7 +164,7 @@ async fn test_task_inventory_and_cancellation() {
     let (parked_tx, mut parked_rx) = mpsc::unbounded_channel();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(ACCEPT_TASK, move |token| async move {
+    supervisor.spawn(ACCEPT_TASK, async move |token| {
         parked_tx
             .send(())
             .expect("the test outlives the task it spawns");
@@ -177,7 +177,7 @@ async fn test_task_inventory_and_cancellation() {
             .expect("the test outlives the task it spawns");
     });
     for name in TASK_NAMES {
-        supervisor.spawn(name, |token| async move { token.cancelled().await });
+        supervisor.spawn(name, async |token| token.cancelled().await);
     }
 
     parked_rx
@@ -216,7 +216,7 @@ async fn test_task_inventory_and_cancellation() {
     );
 }
 
-/// The control for Dimension 7.5: the accept branch is reachable.
+/// The control for this suite: the accept branch is reachable.
 ///
 /// Without this, `test_task_inventory_and_cancellation` would pass just as
 /// happily against a listener that could never produce a connection — a
@@ -236,7 +236,7 @@ async fn test_supervised_accept_completes_when_a_client_connects() {
     let (outcome_tx, mut outcome_rx) = mpsc::unbounded_channel();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(ACCEPT_TASK, move |token| async move {
+    supervisor.spawn(ACCEPT_TASK, async move |token| {
         let outcome = tokio::select! {
             () = token.cancelled() => Outcome::Cancelled,
             _ = listener.accept() => Outcome::Accepted,
@@ -308,7 +308,7 @@ async fn test_shutdown_reports_a_panicking_task() {
     install_subscriber();
 
     let mut supervisor = Supervisor::new();
-    supervisor.spawn(BOOM, |_token| async {
+    supervisor.spawn(BOOM, async |_token| {
         panic!("deliberate: shutdown must REPORT a panicking task, not swallow it")
     });
 

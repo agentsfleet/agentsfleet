@@ -1,6 +1,6 @@
 //! Writing a bound repository — blobs and trees freely, a commit without an
 //! identity of its own, the ref and the Pull Request locked to exactly what
-//! this lease authorised.
+//! this run authorised.
 //!
 //! # A scoped token bounds WHERE, not WHAT
 //!

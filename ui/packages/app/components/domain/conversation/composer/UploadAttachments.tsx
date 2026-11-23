@@ -16,7 +16,7 @@ export function AddUploadPreview() {
 
 export function ComposerUploadAttachments() {
   const [error, setError] = useState<string | null>(null);
-  useAuiEvent("composer.attachmentAddError", event => setError(event.message));
+  useAuiEvent("composer.attachmentAddError", turn => setError(turn.message));
   useAuiEvent("composer.attachmentAdd", () => setError(null));
   return <>
     {error ? <div role="alert" className="flex items-center gap-sm text-label text-destructive">

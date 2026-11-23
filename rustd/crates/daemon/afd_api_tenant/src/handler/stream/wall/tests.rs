@@ -13,7 +13,7 @@ use tokio::time::Instant;
 
 use super::{EVENT_HELLO_COUNTERS_UNREAD, REFRESH_INTERVAL, Recount, counters_unread};
 
-/// Dimension 5.5: fifty lag frames inside one beat cost one counters read in
+/// Fifty lag frames inside one beat cost one counters read in
 /// that beat — the first lag's, taken at once — and whatever they still owe
 /// is one read when the beat ends.
 #[test]

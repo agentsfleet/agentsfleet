@@ -16,7 +16,7 @@ mod budget;
 mod sizing;
 mod tls;
 
-pub use budget::{PoolOverrides, PoolSettings};
+pub use budget::{PoolDefaults, PoolOverrides, PoolSettings};
 
 use self::sizing::{
     ACQUIRE_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_DEFAULT, min_connections_default, pool_size_default,

@@ -4,11 +4,11 @@ use super::super::{catalog::Catalog, files::Workspace, uploads};
 use super::{NativeTurn, session::TurnSession};
 use crate::{Result, error};
 use af_wire::{
-    lease::{
-        TurnCheckpointAction as Action, TurnCheckpointBegin, TurnCheckpointRef,
-        TurnCheckpointResponse as Response, TurnId, TurnPrivateRoot, TurnResume, TurnWorkspace,
+    durable_task::{CheckpointObjectStatus, CheckpointPage},
+    run::{
+        CheckpointOperationId, TurnCheckpointAbandon, TurnCheckpointBegin, TurnCheckpointCommit,
+        TurnCheckpointPageWrite, TurnCheckpointRef, TurnPrivateRoot, TurnResume, TurnWorkspace,
     },
-    task::{CheckpointObjectStatus, CheckpointPage},
 };
 use afr_agent::TurnSnapshot;
 use garde::Validate as _;
@@ -32,15 +32,11 @@ impl NativeTurn<'_> {
         }
         let catalog = catalog(&snapshot, root, stop).await?;
         let begin = intent(&snapshot, catalog.as_ref())?;
-        let Response::Begun(plan) = self.command(Action::Begin(begin.clone())).await? else {
-            return Err(error::config(
-                "turn allocation returned another command's response",
-            ));
-        };
+        let plan = self.command(begin.clone()).await?;
         plan.validate()?;
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let result = async {
             if plan.scope != snapshot.scope
@@ -57,7 +53,7 @@ impl NativeTurn<'_> {
         .await;
         if result.is_err() && self.publication.pending.is_none() {
             let _cleanup = self
-                .command(Action::Abandon {
+                .command(TurnCheckpointAbandon {
                     checkpoint: reference,
                 })
                 .await;
@@ -68,12 +64,12 @@ impl NativeTurn<'_> {
         &mut self,
         snapshot: TurnSnapshot,
         catalog: Option<Catalog>,
-        plan: &af_wire::lease::TurnCheckpointPlan,
+        plan: &af_wire::run::TurnCheckpointPlan,
         stop: &CancellationToken,
     ) -> Result<TurnResume> {
         let reference = TurnCheckpointRef {
             checkpoint_id: plan.checkpoint_id.clone(),
-            pin_id: TurnId(plan.pin.id.clone()),
+            pin_id: CheckpointOperationId(plan.pin.id.clone()),
         };
         let mut session = TurnSession::new(
             self,
@@ -105,7 +101,7 @@ impl NativeTurn<'_> {
             history_digest: plan.history_digest.clone(),
         };
         self.commit_capture(
-            Action::Commit {
+            TurnCheckpointCommit {
                 checkpoint: reference,
                 root: TurnPrivateRoot { history: root },
                 manifest_root: manifest,
@@ -121,11 +117,11 @@ impl TurnSession<'_, '_> {
     async fn capture_files(
         &mut self,
         catalog: Catalog,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
     ) -> Result<Vec<(String, String)>> {
         let mut ids = BTreeMap::new();
         let chunks: Vec<_> = catalog.chunks.iter().collect();
-        for batch in chunks.chunks(af_wire::task::CHECKPOINT_BATCH) {
+        for batch in chunks.chunks(af_wire::durable_task::CHECKPOINT_BATCH) {
             let objects = self
                 .register(
                     batch
@@ -160,13 +156,13 @@ impl TurnSession<'_, '_> {
                 self.upload_batch(pending).await?;
             }
         }
-        let pages = catalog.pages(Some(&ids), af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)?;
+        let pages = catalog.pages(Some(&ids), af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)?;
         self.write_file_pages(page_ids, pages).await
     }
 
     async fn write_file_pages(
         &mut self,
-        page_ids: &[TurnId],
+        page_ids: &[CheckpointOperationId],
         pages: Vec<CheckpointPage>,
     ) -> Result<Vec<(String, String)>> {
         if pages.len() != page_ids.len() {
@@ -177,20 +173,15 @@ impl TurnSession<'_, '_> {
             self.renew().await?;
             let digest =
                 af_core::etag::sha256_hex(&serde_json::to_vec(&contents).map_err(error::encode)?);
-            let Response::PageWritten(saved) = self
+            let saved = self
                 .native
-                .command(Action::PageWrite {
+                .command(TurnCheckpointPageWrite {
                     checkpoint: self.reference.clone(),
                     page_id: page_id.clone(),
                     digest: digest.clone(),
                     contents,
                 })
-                .await?
-            else {
-                return Err(error::config(
-                    "turn page write returned another command's response",
-                ));
-            };
+                .await?;
             if af_core::etag::sha256_hex(&serde_json::to_vec(&saved).map_err(error::encode)?)
                 != digest
             {
@@ -234,7 +225,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
     let count = catalog
         .map(|catalog| {
             catalog
-                .pages(None, af_wire::lease::TURN_CHECKPOINT_PAGE_BYTES)
+                .pages(None, af_wire::run::TURN_CHECKPOINT_PAGE_BYTES)
                 .map(|pages| pages.len())
         })
         .transpose()?
@@ -244,7 +235,7 @@ fn intent(snapshot: &TurnSnapshot, catalog: Option<&Catalog>) -> Result<TurnChec
             .previous
             .as_ref()
             .map(|saved| saved.checkpoint_id.clone()),
-        format_version: af_wire::lease::TURN_CHECKPOINT_FORMAT,
+        format_version: af_wire::run::TURN_CHECKPOINT_FORMAT,
         workspace: snapshot.scope.workspace.clone(),
         history_digest: af_core::etag::sha256_hex(&snapshot.history),
         page_count: u32::try_from(count)

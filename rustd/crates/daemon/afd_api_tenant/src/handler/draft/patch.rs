@@ -1,20 +1,20 @@
 //! An idle draft's edit applies whole against its strong version, or not at all.
 
-use super::{DraftPath, access, attach, id, input, render};
+use super::{DraftPath, access, id, input, render};
 use crate::{
     auth::{PersonIdentity, WorkspaceContext},
-    services::Services,
+    services::TenantPlane,
 };
 #[cfg(feature = "openapi")]
-use afd_api_wire::authoring::{Draft, DraftPatchRequest};
-use afd_http::handler::{Refusal, authoring_refusal};
+use afd_api_wire::setup::{Draft, DraftPatchRequest};
+use afd_http::handler::{Refusal, setup_refusal};
 use axum::{
     Json,
     body::Bytes,
     extract::{Path, State},
     response::{IntoResponse as _, Response},
 };
-use http::HeaderMap;
+use http::{HeaderMap, header};
 use std::sync::Arc;
 
 /// Applies one complete idle edit using the current strong version.
@@ -29,7 +29,7 @@ use std::sync::Arc;
         afd_http::openapi::GuardedFailures,
     )
 ))]
-pub(crate) async fn patch<D: Services>(
+pub(crate) async fn patch<D: TenantPlane>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
     person: PersonIdentity,
@@ -38,7 +38,7 @@ pub(crate) async fn patch<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let draft = services
-        .authoring()
+        .drafts()
         .patch(
             access(&owned, &person),
             &id(&path)?,
@@ -47,14 +47,12 @@ pub(crate) async fn patch<D: Services>(
             services.now(),
         )
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let reviewed = services
-        .authoring_setup()
+        .setup()
         .read_draft(access(&owned, &person), &draft.id)
         .await
-        .map_err(authoring_refusal)?;
+        .map_err(setup_refusal)?;
     let tag = reviewed.etag.clone();
-    let mut response = Json(render::draft(reviewed)).into_response();
-    attach(&mut response, &tag);
-    Ok(response)
+    Ok(([(header::ETAG, tag)], Json(render::draft(reviewed))).into_response())
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { type LiveFrame } from "@/lib/api/turns";
+import { FRAME_KIND } from "@/lib/api/turns-types";
 import { applyLiveFrame, parseLiveFrame } from "./fleet-stream-frames";
 import { TOOL_CALL_STATUS } from "./fleet-stream-tool-trace";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
@@ -12,10 +12,10 @@ const END = 2000;
 const NAME = "file_read";
 const SUCCESS = TOOL_CALL_STATUS.SUCCEEDED;
 function started(call_id = FIRST, args_redacted: unknown = {}): LiveFrame {
-  return {kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: NAME, call_id, args_redacted};
+  return {kind: FRAME_KIND.TOOL_CALL_STARTED, turn_id: "e1", name: NAME, call_id, args_redacted};
 }
 function completed(call_id = FIRST, ms = 700): LiveFrame {
-  return {kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name: NAME, call_id, ms, status: SUCCESS};
+  return {kind: FRAME_KIND.TOOL_CALL_COMPLETED, turn_id: "e1", name: NAME, call_id, ms, status: SUCCESS};
 }
 function wire(payload: Record<string, unknown>): LiveFrame {
   const frame = parseLiveFrame(JSON.stringify(payload));
@@ -32,7 +32,7 @@ describe("tool frames with required identifiers and outcomes", () => {
   });
   it("keeps a progress update on an open call referentially unchanged", () => {
     const open = applyLiveFrame(seed(), started(), START);
-    expect(applyLiveFrame(open, {kind: FRAME_KIND.TOOL_CALL_PROGRESS, event_id: "e1", name: NAME, call_id: FIRST, elapsed_ms: 400}, END)).toBe(open);
+    expect(applyLiveFrame(open, {kind: FRAME_KIND.TOOL_CALL_PROGRESS, turn_id: "e1", name: NAME, call_id: FIRST, elapsed_ms: 400}, END)).toBe(open);
   });
   it("uses identifiers to separate same-name calls even with equal timings", () => {
     const done = applyLiveFrame(applyLiveFrame(seed(), started(), START), completed(), END);
@@ -57,7 +57,7 @@ describe("tool frames with required identifiers and outcomes", () => {
     expect(done[0]?.tools?.[0]).toBe(open[0]?.tools?.[0]);
     expect(done[0]?.tools?.[1]).toMatchObject({callId: SECOND, done: true, status: SUCCESS});
   });
-  it("drops a tool frame without an admitted event", () => {
+  it("drops a tool frame without an admitted turn", () => {
     const empty: ReturnType<typeof seed> = [];
     expect(applyLiveFrame(empty, started(), START)).toBe(empty);
   });

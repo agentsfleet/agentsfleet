@@ -40,13 +40,63 @@ async fn operator_reads_and_mutates_a_real_runner() {
     .router();
     let runner_path = format!("/v1/admin/runners/{}", fixture.runner);
 
-    let enrolled_runner = enrol(&router, &fixture.token).await;
+    let enrolled_runner = enrol(&router, &fixture.token, &unique_host()).await;
     assert_runner_reads(&router, &fixture, &runner_path).await;
     assert_runner_policy_and_actions(&router, &fixture.token, &runner_path).await;
     assert_runner_events(&router, &fixture.token, &runner_path).await;
     assert_terminal_and_missing(&router, &fixture, &runner_path).await;
     retirement::assert_retired(&router, &fixture, &runner_path).await;
     fixture.cleanup(&enrolled_runner).await;
+}
+
+// Value: protects=a platform host registers once, as a tenant's does;
+// fails_when=the unique key treats the platform's null tenant as distinct, or
+// the 409 names no runner; why_new=platform hosts are unique
+// too; seam=none.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_platform_hosts_second_registration_answers_409_naming_the_runner() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    let router = Fleet::live(
+        fixture.database.clone(),
+        SUBJECT,
+        ScopeSet::from_scopes(&Scope::ALL),
+    )
+    .router();
+    let host = unique_host();
+    let runner = enrol(&router, &fixture.token, &host).await;
+
+    let retried = register(&router, &fixture.token, &host).await;
+    assert_eq!(retried.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        retried
+            .headers()
+            .get(http::header::LOCATION)
+            .and_then(|value| value.to_str().ok()),
+        Some(format!("/v1/admin/runners/{runner}").as_str()),
+        "the refusal names the runner the host already is"
+    );
+    let retried = json_body(retried).await;
+    assert_eq!(
+        retried.get("error_code").and_then(Value::as_str),
+        Some("UZ-RUN-033"),
+        "{retried}"
+    );
+    assert_eq!(
+        retried.get("current_state").and_then(Value::as_str),
+        Some("registered"),
+        "{retried}"
+    );
+    let hosts: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM runner.runners WHERE tenant_id IS NULL AND host_id = $1",
+    )
+    .bind(&host)
+    .fetch_one(&mut *fixture.database.acquire().await.expect("an API connection"))
+    .await
+    .expect("the host count reads");
+    assert_eq!(hosts, 1, "a refused registration writes no second runner");
+    fixture.cleanup(&runner).await;
 }
 
 async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_path: &str) {
@@ -119,23 +169,23 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     assert_eq!(detail.status(), StatusCode::OK);
     assert_eq!(text(&json_body(detail).await, "id"), fixture.runner);
 
-    // A runner that has held no lease answers an empty page of its history,
+    // A runner that has held no run answers an empty page of its history,
     // not a refusal: the read is scoped by the path, so the page is this
     // runner's alone.
-    let leases = send(
+    let runs = send(
         router,
         Method::GET,
-        &format!("{runner_path}/leases"),
+        &format!("{runner_path}/runs"),
         Some(&fixture.token),
         "",
     )
     .await;
-    assert_eq!(leases.status(), StatusCode::OK);
-    let leases = json_body(leases).await;
+    assert_eq!(runs.status(), StatusCode::OK);
+    let runs = json_body(runs).await;
     assert_eq!(
-        leases.get("items").and_then(Value::as_array).map(Vec::len),
+        runs.get("items").and_then(Value::as_array).map(Vec::len),
         Some(0),
-        "{leases}"
+        "{runs}"
     );
 }
 
@@ -190,28 +240,41 @@ async fn assert_terminal_and_missing(router: &axum::Router, fixture: &Fixture, r
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
-async fn enrol(router: &axum::Router, token: &str) -> Uuid7 {
-    let enrolled = send(
+/// A host no other case registers: the platform registers each host once.
+fn unique_host() -> String {
+    format!("operator-live-enrolment-{}", mint_id())
+}
+
+/// A platform registration of `host`, unanswered.
+async fn register(
+    router: &axum::Router,
+    token: &str,
+    host: &str,
+) -> http::Response<axum::body::Body> {
+    let body = serde_json::json!({
+        "host_id": host,
+        "assigned_policy": {
+            "sandbox_tier": "dev_none",
+            "network_policy": "allow_all",
+            "registry_allowlist": [],
+            "worker_count": 99,
+            "extra_binds": [],
+            "durable_tasks_enabled": true
+        },
+        "labels": ["live-http"]
+    });
+    send(
         router,
         Method::POST,
         "/v1/admin/runners",
         Some(token),
-        r#"{
-  "host_id": "operator-live-enrolment",
-  "assigned_policy": {
-    "sandbox_tier": "dev_none",
-    "network_policy": "allow_all",
-    "registry_allowlist": [],
-    "worker_count": 99,
-    "extra_binds": [],
-    "durable_tasks_enabled": true
-  },
-  "labels": [
-    "live-http"
-  ]
-}"#,
+        &body.to_string(),
     )
-    .await;
+    .await
+}
+
+async fn enrol(router: &axum::Router, token: &str, host: &str) -> Uuid7 {
+    let enrolled = register(router, token, host).await;
     assert_eq!(enrolled.status(), StatusCode::CREATED);
     let enrolled = json_body(enrolled).await;
     let enrolled_runner =
@@ -231,7 +294,7 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
     let events = send(
         router,
         Method::GET,
-        &format!("{runner_path}/events?limit=2&event_type=runner_revoked,runner_cordoned"),
+        &format!("{runner_path}/history?limit=2&event_type=runner_revoked,runner_cordoned"),
         Some(token),
         "",
     )
@@ -253,9 +316,11 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
         "the history reports the complete filtered count"
     );
 
+    assert_runner_events_page_on(router, token, runner_path).await;
+
     for path in [
-        "/v1/admin/runners/not-a-runner/events".to_owned(),
-        format!("{runner_path}/events?limit=0"),
+        "/v1/admin/runners/not-a-runner/history".to_owned(),
+        format!("{runner_path}/history?limit=0"),
     ] {
         let malformed = send(router, Method::GET, &path, Some(token), "").await;
         assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
@@ -349,4 +414,34 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
+}
+
+/// A one-row history page names where the next one starts, and following it
+/// reads a different, older event of the same filtered history.
+async fn assert_runner_events_page_on(router: &axum::Router, token: &str, runner_path: &str) {
+    let filtered =
+        format!("{runner_path}/history?limit=1&event_type=runner_revoked,runner_cordoned");
+    let first = send(router, Method::GET, &filtered, Some(token), "").await;
+    assert_eq!(first.status(), StatusCode::OK);
+    let first = json_body(first).await;
+    let items = first.get("items").and_then(Value::as_array);
+    assert_eq!(items.map(Vec::len), Some(1), "{first}");
+    let cursor = text(&first, "next_cursor");
+    let next = send(
+        router,
+        Method::GET,
+        &format!("{filtered}&starting_after={cursor}"),
+        Some(token),
+        "",
+    )
+    .await;
+    assert_eq!(next.status(), StatusCode::OK);
+    let next = json_body(next).await;
+    let older = next.get("items").and_then(Value::as_array);
+    assert_eq!(older.map(Vec::len), Some(1), "{next}");
+    assert_ne!(
+        items.and_then(|rows| rows.first()),
+        older.and_then(|rows| rows.first()),
+        "the cursor moves past the first page's event"
+    );
 }

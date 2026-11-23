@@ -27,7 +27,7 @@ use crate::semconv;
 pub struct Spend<'a> {
     /// The model the run was issued against.
     pub model: &'a str,
-    /// The sandbox posture, in the spelling the lease row stored.
+    /// The sandbox posture, in the spelling the run row stored.
     pub posture: &'a str,
     /// Prompt tokens for the whole run, cache reads and writes included.
     pub input_tokens: u64,

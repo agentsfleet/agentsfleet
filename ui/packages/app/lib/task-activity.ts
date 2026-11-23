@@ -1,28 +1,27 @@
 import * as v from "valibot";
 
 const identity = v.pipe(v.string(), v.regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u));
-const count = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(200_000));
-const label = v.pipe(v.string(), v.minLength(1), v.maxLength(256));
-const byteCount = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(68_719_476_736));
+const count = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
+const label = v.pipe(v.string(), v.minLength(1));
 const progress = v.object({
-  sequence: v.optional(v.pipe(v.number(), v.safeInteger(), v.minValue(0))),
-  activity_id: identity, task_id: v.nullable(identity), source_admission_id: v.nullable(identity),
+  sequence: v.optional(count),
+  activity_id: identity, durable_task_id: v.nullable(identity), source_turn_id: v.nullable(identity),
   operation: v.picklist(["intent", "goal", "capture", "restore"]),
   phase: v.picklist(["starting", "recorded", "unavailable", "preparing", "scanning", "uploading", "verifying", "saved", "restoring", "restored", "failed"]),
   provider: v.nullable(label), model: v.nullable(label), completed: count, total: v.nullable(count),
-  bytes: v.optional(v.object({acknowledged: byteCount, missing: byteCount, reused: byteCount})),
+  bytes: v.optional(v.object({acknowledged: count, missing: count, reused: count})),
 });
-const record = v.object({kind: v.picklist(["task_decision_started", "task_decision_completed", "task_transfer_progress"]), progress});
-const history = v.object({items: v.pipe(v.array(record), v.maxLength(128)), truncated: v.boolean()});
-export type TaskActivity = v.InferOutput<typeof record>;
-export type TaskActivityHistory = v.InferOutput<typeof history>;
+const record = v.object({kind: v.picklist(["durable_task_decision_started", "durable_task_decision_completed", "durable_task_transfer_progress"]), progress});
+const history = v.object({items: v.array(record), truncated: v.boolean()});
+export type DurableTaskActivity = v.InferOutput<typeof record>;
+export type DurableTaskActivityHistory = v.InferOutput<typeof history>;
 
-export function readTaskActivity(value: unknown): TaskActivity | undefined {
+export function readDurableTaskActivity(value: unknown): DurableTaskActivity | undefined {
   const parsed = v.safeParse(record, value);
   return parsed.success ? parsed.output : undefined;
 }
 
-export function readTaskActivityHistory(value: unknown): TaskActivityHistory | undefined {
+export function readDurableTaskActivityHistory(value: unknown): DurableTaskActivityHistory | undefined {
   const parsed = v.safeParse(history, value);
   return parsed.success ? parsed.output : undefined;
 }
@@ -30,12 +29,12 @@ export function readTaskActivityHistory(value: unknown): TaskActivityHistory | u
 const rank = {starting: 0, preparing: 0, scanning: 1, uploading: 2, verifying: 3, restoring: 4,
   unavailable: 5, failed: 5, recorded: 6, saved: 6, restored: 6} as const;
 
-function activityKey(item: TaskActivity): string {
+function activityKey(item: DurableTaskActivity): string {
   const p = item.progress;
   return `${item.kind}:${p.activity_id}:${p.operation}:${p.phase}`;
 }
 
-function activityOrder(left: TaskActivity, right: TaskActivity): number {
+function activityOrder(left: DurableTaskActivity, right: DurableTaskActivity): number {
   // UUIDs identify operations; only the server observation sequence orders them.
   const a = left.progress.sequence;
   const b = right.progress.sequence;
@@ -44,7 +43,7 @@ function activityOrder(left: TaskActivity, right: TaskActivity): number {
 }
 
 /** A reconnect retains confirmed stages. Delayed counters cannot move backward. */
-export function addTaskActivity(previous: TaskActivityHistory | undefined, next: TaskActivity): TaskActivityHistory {
+export function addDurableTaskActivity(previous: DurableTaskActivityHistory | undefined, next: DurableTaskActivity): DurableTaskActivityHistory {
   const items = previous?.items ?? [];
   const index = items.findIndex(item => item.kind === next.kind && item.progress.activity_id === next.progress.activity_id
     && item.progress.phase === next.progress.phase && item.progress.operation === next.progress.operation);
@@ -55,11 +54,11 @@ export function addTaskActivity(previous: TaskActivityHistory | undefined, next:
     || (existing.progress.bytes?.reused ?? 0) > (next.progress.bytes?.reused ?? 0)
     || JSON.stringify(existing) === JSON.stringify(next))) return previous;
   const updated = index < 0 ? [...items, next] : items.map((item, at) => at === index ? next : item);
-  return {items: updated.sort(activityOrder).slice(-128), truncated: previous?.truncated === true || updated.length > 128};
+  return {items: updated.sort(activityOrder), truncated: previous?.truncated === true};
 }
 
 /** Saved windows lead. Historical live tails require a shared ordering anchor. */
-export function mergeTaskActivity(previous: TaskActivityHistory | undefined, saved: TaskActivityHistory | undefined): TaskActivityHistory | undefined {
+export function mergeDurableTaskActivity(previous: DurableTaskActivityHistory | undefined, saved: DurableTaskActivityHistory | undefined): DurableTaskActivityHistory | undefined {
   if (!saved || saved.items.length === 0) return previous ?? saved;
   if (!previous) return saved;
   const keys = new Set(saved.items.map(activityKey));
@@ -68,7 +67,7 @@ export function mergeTaskActivity(previous: TaskActivityHistory | undefined, sav
   for (const [index, item] of previous.items.entries()) {
     // Disjoint unsequenced windows cannot establish which live items are newer.
     if (item.progress.sequence !== undefined || keys.has(activityKey(item)) || (anchor >= 0 && index > anchor)) {
-      merged = addTaskActivity(merged, item);
+      merged = addDurableTaskActivity(merged, item);
     }
   }
   if (previous.truncated && !merged.truncated) merged = {...merged, truncated: true};
@@ -76,8 +75,8 @@ export function mergeTaskActivity(previous: TaskActivityHistory | undefined, sav
 }
 
 /** One compact current state per operation; details retain every public stage. */
-export function latestTaskActivity(history: TaskActivityHistory): TaskActivity[] {
-  const latest = new Map<string, TaskActivity>();
+export function latestDurableTaskActivity(history: DurableTaskActivityHistory): DurableTaskActivity[] {
+  const latest = new Map<string, DurableTaskActivity>();
   for (const item of history.items) {
     const key = `${item.progress.activity_id}:${item.progress.operation}`;
     const previous = latest.get(key);
@@ -92,7 +91,7 @@ const labels = {
   saved: "Recovery point saved", restoring: "Restoring saved progress", restored: "Saved progress restored", failed: "Recovery interrupted",
 } as const;
 
-export function taskActivityLabel(item: TaskActivity): string {
+export function durableTaskActivityLabel(item: DurableTaskActivity): string {
   const p = item.progress;
   const purpose = p.operation === "intent" ? "request intent" : p.operation === "goal" ? "goal progress" : "";
   return `${labels[p.phase]}${purpose ? ` · ${purpose}` : ""}${p.model ? ` · ${p.provider ?? ""} / ${p.model}` : ""}`;

@@ -8,7 +8,7 @@ use super::{
 };
 use crate::{Result, error};
 use af_core::{clock, id::Uuid7};
-use af_wire::task::{
+use af_wire::durable_task::{
     CheckpointAuthorizationInput, CheckpointObjectsInput, CheckpointPinInput, CheckpointPlaintext,
     CheckpointTransferPurpose, CheckpointUpload, CheckpointUploadsInput,
 };
@@ -29,13 +29,13 @@ impl Session<'_> {
         let pin = Uuid7::parse(&self.plan.pin.id)?;
         let renewed = self
             .plane
-            .task_checkpoint_pin(
-                self.lease,
+            .durable_task_checkpoint_pin(
+                self.run,
                 &checkpoint,
                 &pin,
                 &CheckpointPinInput {
                     fencing_token: self.fence,
-                    task: self.task.clone(),
+                    durable_task: self.task.clone(),
                     resource_version: self.plan.pin.resource_version,
                 },
             )
@@ -60,12 +60,12 @@ impl Session<'_> {
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
         let response = self
             .plane
-            .task_checkpoint_objects_register(
-                self.lease,
+            .durable_task_checkpoint_objects_register(
+                self.run,
                 &checkpoint,
                 &CheckpointObjectsInput {
                     fencing_token: self.fence,
-                    task: self.task.clone(),
+                    durable_task: self.task.clone(),
                     pin_id: self.plan.pin.id.clone(),
                     objects: descriptors.clone(),
                 },
@@ -102,12 +102,12 @@ impl Session<'_> {
         let checkpoint = Uuid7::parse(&self.plan.checkpoint_id)?;
         let response = self
             .plane
-            .task_checkpoint_uploads(
-                self.lease,
+            .durable_task_checkpoint_uploads(
+                self.run,
                 &checkpoint,
                 &CheckpointUploadsInput {
                     fencing_token: self.fence,
-                    task: self.task.clone(),
+                    durable_task: self.task.clone(),
                     pin_id: self.plan.pin.id.clone(),
                     objects: batch.descriptors.clone(),
                 },
@@ -129,12 +129,12 @@ impl Session<'_> {
         // Even an unknown PUT is read back once. It is never resent blindly.
         let verified = self
             .plane
-            .task_checkpoint_authorizations(
-                self.lease,
+            .durable_task_checkpoint_authorizations(
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
-                    task: self.task.clone(),
+                    durable_task: self.task.clone(),
                     purpose: CheckpointTransferPurpose::Upload,
                     pin_id: Some(self.plan.pin.id.clone()),
                     object_ids: descriptors
@@ -156,8 +156,8 @@ impl Session<'_> {
             complete &= confirmed;
         }
         self.progress(
-            af_wire::activity::TaskActivityOperation::Capture,
-            af_wire::activity::TaskActivityPhase::Uploading,
+            af_wire::activity::DurableTaskActivityOperation::Capture,
+            af_wire::activity::DurableTaskActivityPhase::Uploading,
             None,
         )
         .await;
@@ -181,12 +181,12 @@ impl Session<'_> {
         let unique: std::collections::BTreeSet<_> = ids.iter().cloned().collect();
         let response = self
             .plane
-            .task_checkpoint_authorizations(
-                self.lease,
+            .durable_task_checkpoint_authorizations(
+                self.run,
                 &checkpoint,
                 &CheckpointAuthorizationInput {
                     fencing_token: self.fence,
-                    task: self.task.clone(),
+                    durable_task: self.task.clone(),
                     purpose: CheckpointTransferPurpose::Restore,
                     pin_id: Some(self.plan.pin.id.clone()),
                     object_ids: unique.iter().cloned().collect(),
@@ -229,8 +229,8 @@ impl Session<'_> {
     ) -> Result<Vec<super::window::Chunk>> {
         let objects = self.restore_objects(ids).await?;
         self.progress(
-            af_wire::activity::TaskActivityOperation::Restore,
-            af_wire::activity::TaskActivityPhase::Restoring,
+            af_wire::activity::DurableTaskActivityOperation::Restore,
+            af_wire::activity::DurableTaskActivityPhase::Restoring,
             None,
         )
         .await;
@@ -260,8 +260,8 @@ impl Session<'_> {
             }
         }
         self.progress(
-            af_wire::activity::TaskActivityOperation::Restore,
-            af_wire::activity::TaskActivityPhase::Restoring,
+            af_wire::activity::DurableTaskActivityOperation::Restore,
+            af_wire::activity::DurableTaskActivityPhase::Restoring,
             None,
         )
         .await;

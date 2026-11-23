@@ -3,14 +3,16 @@
 mod process;
 
 use super::Harness;
-use af_providers::ToolSpec;
-use af_wire::task::{TaskEffectInput, TaskFileChange, TaskTarget};
+use crate::router::Lent;
+use af_wire::durable_task::{DurableTaskEffectInput, DurableTaskFileChange, DurableTaskTarget};
 use afr_executor::Spawn;
-use afr_tools::{Schema, ToolErrorCode, ToolOutput};
+use afr_tools::{SandboxEnv, ToolErrorCode};
+use guffbolt::tools::Schema;
+use guffbolt::{Describe, Tool, ToolFuture, ToolOutput, ToolSpec};
 use serde::Deserialize;
 use std::{sync::LazyLock, time::Duration};
 
-pub(super) const NAME: &str = "propose_change";
+const NAME: &str = "propose_change";
 /// The sandbox program used for both pre-validation and post-validation capture.
 const CANDIDATE_SCRIPT: &str = include_str!("candidate.py");
 static SCHEMA: LazyLock<Schema> = LazyLock::new(|| {
@@ -34,14 +36,32 @@ struct Invocation {
 #[serde(deny_unknown_fields)]
 struct Candidate {
     tested_tree: String,
-    changes: Vec<TaskFileChange>,
+    changes: Vec<DurableTaskFileChange>,
 }
 
-pub(super) fn spec() -> ToolSpec<'static> {
-    ToolSpec {
-        name: NAME,
-        description: SCHEMA.description(),
-        parameters: SCHEMA.parameters(),
+/// `propose_change` as a loop holds it. The root of a task that may publish
+/// offers it; every other loop holds it unoffered, so a call the model makes
+/// anyway reads why publication is unavailable rather than that no such tool
+/// exists.
+#[derive(Debug)]
+pub(super) struct Propose;
+
+impl Describe for Propose {
+    fn spec(&self) -> ToolSpec<'_> {
+        SCHEMA.spec(NAME)
+    }
+}
+
+impl<'call, 's, 'run> Tool<Lent<'call, 's, 'run>> for Propose {
+    fn call<'a>(
+        &'a self,
+        arguments: &'a serde_json::Value,
+        cx: Lent<'call, 's, 'run>,
+    ) -> ToolFuture<'a>
+    where
+        Lent<'call, 's, 'run>: 'a,
+    {
+        Box::pin(cx.harness.publish_durable_task(arguments))
     }
 }
 
@@ -81,39 +101,61 @@ fn invalid(arguments: &serde_json::Value) -> Result<Invocation, ToolOutput> {
 
 impl Harness<'_, '_> {
     pub(super) fn publication_allowed(&self) -> bool {
-        self.depth == 0
-            && (self.selection.tool("shell").is_some()
-                || self.selection.tool("exec_command").is_some())
-            && self.task.as_ref().is_some_and(|prepared| {
-                prepared.allow_actions
-                    && prepared
-                        .inputs
-                        .current_task
-                        .as_ref()
-                        .is_some_and(|task| matches!(task.target, TaskTarget::ExistingPr { .. }))
-            })
+        self.publishable().is_some()
     }
 
-    pub(super) async fn publish_task(&self, arguments: &serde_json::Value) -> ToolOutput {
+    /// The task this loop may publish for, and its pull request's
+    /// repository, head and tree: the root, offered a shell, of a task that
+    /// may act on an existing pull request.
+    fn publishable(
+        &self,
+    ) -> Option<(
+        &af_wire::durable_task::DurableTaskContext<'static>,
+        &str,
+        &str,
+        &str,
+    )> {
+        if self.depth != 0
+            || !(self.selection.offers("shell") || self.selection.offers("exec_command"))
+        {
+            return None;
+        }
+        let prepared = self
+            .task
+            .as_ref()
+            .filter(|prepared| prepared.allow_actions)?;
+        let task = prepared.inputs.current_durable_task.as_ref()?;
+        match &task.target {
+            DurableTaskTarget::ExistingPr {
+                repository,
+                head,
+                tree,
+                ..
+            } => Some((task, repository.as_str(), head.as_str(), tree.as_str())),
+            DurableTaskTarget::ApiOnly => None,
+        }
+    }
+
+    async fn publish_durable_task(&self, arguments: &serde_json::Value) -> ToolOutput {
         match self.publication(arguments).await {
             Ok(output) | Err(output) => output,
         }
     }
 
     async fn publication(&self, arguments: &serde_json::Value) -> Result<ToolOutput, ToolOutput> {
-        if !self.publication_allowed() {
+        let Some((task, repository, head, tree)) = self.publishable() else {
             return Err(ToolOutput::failed(
                 ToolErrorCode::NotOffered,
                 "Publication is unavailable for this task.",
             ));
-        }
+        };
         let input = invalid(arguments)?;
         if self
             .shared
             .registry
             .list()
             .iter()
-            .any(|child| child.status.as_str() == "running")
+            .any(|child| child.status == guffbolt::agents::Kind::Running)
         {
             return Err(refused(
                 "Wait for child agents to finish before validating and publishing.",
@@ -125,23 +167,25 @@ impl Harness<'_, '_> {
             .peek()
             .ok_or_else(|| refused("Publication requires the task workspace."))?;
         // No background session may keep editing while this root validates.
-        if self.shared.lease.sessions.close_all(executor).await > 0 {
+        if self
+            .shared
+            .run
+            .sessions
+            .close_all(&SandboxEnv::new(executor))
+            .await
+            > 0
+        {
             return Err(refused(
                 "Open commands were stopped. Review their output, then request validation again.",
             ));
         }
-        let task = self
-            .task
-            .as_ref()
-            .and_then(|prepared| prepared.inputs.current_task.as_ref())
-            .ok_or_else(|| refused("Native task identity is absent."))?;
         let effects = self
             .shared
-            .lease
+            .run
             .verbs
-            .task_effects(af_wire::task::TaskEffectsQuery {
+            .durable_task_effects(af_wire::durable_task::DurableTaskEffectsQuery {
                 fencing_token: self.shared.fencing_token,
-                task_id: task.task_id.to_string(),
+                durable_task_id: task.durable_task_id.to_string(),
                 ordinal_after: self.reconciled_effect_ordinal,
                 starting_after: None,
                 limit: 1,
@@ -159,15 +203,6 @@ impl Harness<'_, '_> {
                 "A previous publication must be reconciled at the next completed action boundary before another attempt.",
             ));
         }
-        let TaskTarget::ExistingPr {
-            repository,
-            head,
-            tree,
-            ..
-        } = &task.target
-        else {
-            return Err(refused("This task has no repository target."));
-        };
         let name = repository
             .split_once('/')
             .map(|(_, name)| name)
@@ -176,8 +211,8 @@ impl Harness<'_, '_> {
             .validated_candidate(executor, name, tree, &input)
             .await?;
         let effect = self.submit_candidate(task, head, before).await?;
-        let confirmed =
-            effect.state == af_wire::task::TaskEffectState::Confirmed && effect.commit.is_some();
+        let confirmed = effect.state == af_wire::durable_task::DurableTaskEffectState::Confirmed
+            && effect.commit.is_some();
         let output = serde_json::json!({ "publication": effect,
             "validation": { "argv": input.validation, "exit_code": 0, "output": String::from_utf8_lossy(&output) } }).to_string();
         Ok(if confirmed {
@@ -189,11 +224,11 @@ impl Harness<'_, '_> {
 
     async fn submit_candidate(
         &self,
-        task: &af_wire::task::TaskContext<'_>,
+        task: &af_wire::durable_task::DurableTaskContext<'_>,
         head: &str,
         before: Candidate,
-    ) -> Result<af_wire::task::TaskEffect, ToolOutput> {
-        let request = TaskEffectInput {
+    ) -> Result<af_wire::durable_task::DurableTaskEffect, ToolOutput> {
+        let request = DurableTaskEffectInput {
             operation_id: crate::decision::identity().map_err(|source| {
                 failed(
                     ToolErrorCode::AgentsfleetdRefused,
@@ -202,8 +237,8 @@ impl Harness<'_, '_> {
                 )
             })?,
             fencing_token: self.shared.fencing_token,
-            task: af_wire::task::DecisionTaskVersion {
-                task_id: task.task_id.to_string(),
+            durable_task: af_wire::durable_task::DecisionDurableTaskVersion {
+                durable_task_id: task.durable_task_id.to_string(),
                 generation: task.generation,
             },
             source_item_id: task.originating_item_id.to_string(),
@@ -219,7 +254,7 @@ impl Harness<'_, '_> {
                 source,
             )
         })?;
-        let effect = self.shared.lease.verbs.task_publish(request).await
+        let effect = self.shared.run.verbs.durable_task_publish(request).await
             .map_err(|source| failed(ToolErrorCode::AgentsfleetdRefused, "Publication did not return a confirmed outcome. Reconcile its native receipt before another attempt.", crate::decision::native(source)))?;
         Ok(effect)
     }

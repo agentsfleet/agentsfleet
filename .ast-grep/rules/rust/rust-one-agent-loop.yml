@@ -1,0 +1,39 @@
+# There is one agent loop, and it is guffbolt's. agentsfleet enters it in two
+# places: `afr_agent`'s run loop (`loop/`) and its setup run (`setup/`). No
+# other crate or module calls `guffbolt::drive`, runs a `guffbolt::Chat` or
+# implements `guffbolt::Conversation`, so no second loop grows beside it.
+# M253_004 Dimension 12.1 names this check, with the `rig only through
+# guffbolt-ai` step of `make lint-rustd`,
+# `agentsfleet_reaches_guffbolt_only_through_its_public_api`; it lives here
+# because a test never reads the repository (tests-*-repo-read). A name
+# reached through an alias (`use guffbolt as g;`) is review's to catch.
+id: rust-one-agent-loop
+language: Rust
+severity: error
+message: guffbolt's loop is entered outside `afr_agent`'s run loop and setup run; drive it there, through `guffbolt::drive`, and nowhere else
+files:
+  - rustd/crates/**/*.rs
+ignores:
+  - "**/target/**"
+  - rustd/crates/runner/afr_agent/src/loop/**
+  - rustd/crates/runner/afr_agent/src/setup/**
+utils:
+  loop-path:
+    regex: '^(::)?guffbolt\s*::\s*(drive|Chat|Conversation)$'
+rule:
+  any:
+    # `guffbolt::drive(..)`, `use guffbolt::Chat;`
+    - kind: scoped_identifier
+      matches: loop-path
+    # `impl guffbolt::Conversation for Loop`, `guffbolt::Chat<M>`
+    - kind: scoped_type_identifier
+      matches: loop-path
+    # `use guffbolt::{Message, drive};`
+    - kind: scoped_use_list
+      regex: '^(::)?guffbolt\s*::'
+      has:
+        kind: use_list
+        has:
+          stopBy: end
+          kind: identifier
+          regex: '^(drive|Chat|Conversation)$'

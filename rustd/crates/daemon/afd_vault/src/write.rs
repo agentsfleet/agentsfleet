@@ -81,7 +81,7 @@ impl Vault {
         name: &SecretName,
         body: &SecretBody,
         now: Timestamp,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let id = self.entropy.uuid7(now)?;
         let projection = body.projection();
@@ -110,9 +110,10 @@ impl Vault {
         if written.rows_affected() == 0 {
             return Err(ErrorKind::NameTaken.into());
         }
-        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
-            .await
-            .map_err(query(CONTEXT_CREATE))?;
+        let fleets =
+            afd_turns::view::activity::record_access_on(transaction, workspace, name.as_str())
+                .await
+                .map_err(query(CONTEXT_CREATE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
@@ -169,7 +170,7 @@ impl Vault {
         workspace: &Uuid7,
         name: &SecretName,
         body: &SecretBody,
-    ) -> Result<afd_events::activity::Announcement> {
+    ) -> Result<afd_turns::view::activity::Announcement> {
         let envelope = self.seal(workspace, name, body)?;
         let projection = body.projection();
 
@@ -188,9 +189,10 @@ impl Vault {
         if rows == 0 {
             return Err(ErrorKind::NotFound.into());
         }
-        let fleets = afd_events::activity::record_access_on(transaction, workspace, name.as_str())
-            .await
-            .map_err(query(CONTEXT_REPLACE))?;
+        let fleets =
+            afd_turns::view::activity::record_access_on(transaction, workspace, name.as_str())
+                .await
+                .map_err(query(CONTEXT_REPLACE))?;
         let workspace_id = workspace.as_str();
         let secret_name = name.as_str();
         let secret_kind = projection.kind.as_str();
