@@ -219,6 +219,8 @@ fn publish(assignment: &watch::Sender<Assignment>, policy: Assignment, halt: &Ha
 }
 
 #[cfg(test)]
+mod clock_tests;
+#[cfg(test)]
 mod closing_tests;
 #[cfg(test)]
 mod durable_policy_tests;

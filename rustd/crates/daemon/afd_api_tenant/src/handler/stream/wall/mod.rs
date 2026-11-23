@@ -47,9 +47,15 @@ use super::revocable::{
 use crate::services::{TenantPlane, WorkspaceFleets as _};
 
 /// The least time between two counter reads a lag asks for. A lag storm on a busy
-/// workspace would otherwise read the counters once per lost frame; this paces it to
-/// the cadence the wall's refresh used before it read on notices.
+/// workspace would otherwise read the counters once per lost frame. The number is
+/// awaiting the owner's ruling (spec M255_001, Discovery); nothing forces 10 s.
 const RECOUNT_PACE: Duration = Duration::from_secs(10);
+
+/// The log event a refresh emits when the workspace's fleet set does not answer.
+const EVENT_SET_UNREAD: &str = "workspace_stream_set_unread";
+
+/// The log event a wall emits when the bus shut down under it.
+const EVENT_BUS_CLOSED: &str = "workspace_stream_bus_closed";
 
 /// The log event a `hello` emits when it goes out without its figures.
 const EVENT_HELLO_COUNTERS_UNREAD: &str = "workspace_stream_hello_counters_unread";
@@ -80,6 +86,8 @@ struct Wall<D> {
     members: Link,
     /// The workspace gained or lost a fleet: re-read the set.
     fleets: Link,
+    /// The reads a wake asked for and the wall has not run yet.
+    owed: Owed,
     /// Whether the opening `hello` has been sent.
     announced: bool,
     /// When a lag may next re-read the counters.
@@ -142,6 +150,36 @@ impl Recount {
     }
 }
 
+/// The reads a wall owes. Each kind of notice owes only its own read; a gap reaches
+/// both links and so owes both.
+#[derive(Debug, Clone, Copy, Default)]
+struct Owed {
+    /// Re-ask the caller's membership.
+    access: bool,
+    /// Re-read the workspace's fleet set.
+    set: bool,
+    /// The last set read failed: the next wake of any kind reads it again.
+    set_retry: bool,
+}
+
+impl Owed {
+    /// Both reads, once: the wall authorized and enumerated before its links opened,
+    /// so a removal or a fleet published in between is read here.
+    const OPENING: Self = Self {
+        access: true,
+        set: true,
+        set_retry: false,
+    };
+
+    /// A wake of any kind settles a failed set read.
+    const fn woke(&mut self) {
+        if self.set_retry {
+            self.set_retry = false;
+            self.set = true;
+        }
+    }
+}
+
 /// Every frame one workspace stream sends, starting with its `hello`.
 pub(super) async fn frames<D: TenantPlane>(
     services: Arc<D>,
@@ -163,6 +201,7 @@ pub(super) async fn frames<D: TenantPlane>(
         fan_in,
         members,
         fleets,
+        owed: Owed::OPENING,
         announced: false,
         recount: Recount::new(now),
     };
@@ -183,15 +222,23 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
             wall.recount.paced(now);
             return Some(announce(wall).await);
         }
+        match settle(&mut wall).await {
+            Tick::Revoked => return Some(Turn::Revoked),
+            // An outage is not a revocation: the wall ends with no frame.
+            Tick::Unverified => return None,
+            Tick::Changed => return Some(announce(wall).await),
+            Tick::Steady => {}
+        }
         // No timer re-reads Postgres: the wall wakes on a frame, on a notice that the
         // account's members or the workspace's fleets changed, or on a gap or lost
         // subscription that may have hidden one. Only an owed counter read sleeps.
         let woke = tokio::select! {
             frame = wall.fan_in.next_frame() => Woke::Frame(frame),
-            wake = wall.members.changed() => Woke::Notice(wake),
-            wake = wall.fleets.changed() => Woke::Notice(wake),
-            () = sleep_until_owed(wall.recount.deadline()) => continue,
+            wake = wall.members.changed() => Woke::Members(wake),
+            wake = wall.fleets.changed() => Woke::Fleets(wake),
+            () = afd_sse::sleep_until_some(wall.recount.deadline()) => continue,
         };
+        wall.owed.woke();
         match woke {
             Woke::Frame(frame) => {
                 // A gap the server could not carry is exactly the frames that
@@ -204,14 +251,12 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
                 return Some(Turn::Frame(frame, wall));
             }
             // The bus shut down: end, so the client reconnects to a serving replica.
-            Woke::Notice(Wake::Closed) => return None,
-            Woke::Notice(Wake::Changed) => match refresh(&mut wall).await {
-                Tick::Revoked => return Some(Turn::Revoked),
-                // An outage is not a revocation: the wall ends with no frame.
-                Tick::Unverified => return None,
-                Tick::Changed => return Some(announce(wall).await),
-                Tick::Steady => {}
-            },
+            Woke::Members(Wake::Closed) | Woke::Fleets(Wake::Closed) => {
+                tracing::debug!(event = EVENT_BUS_CLOSED);
+                return None;
+            }
+            Woke::Members(Wake::Changed) => wall.owed.access = true,
+            Woke::Fleets(Wake::Changed) => wall.owed.set = true,
         }
     }
 }
@@ -219,15 +264,8 @@ async fn step<D: TenantPlane>(mut wall: Wall<D>) -> Option<Turn<Wall<D>>> {
 /// What woke the wall.
 enum Woke {
     Frame(Frame),
-    Notice(Wake),
-}
-
-/// Sleeps until an owed counter read falls due; never when none is owed.
-async fn sleep_until_owed(owed: Option<Instant>) {
-    match owed {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
-    }
+    Members(Wake),
+    Fleets(Wake),
 }
 
 /// The `hello` for the set the wall carries now, which reads the counters.
@@ -271,23 +309,29 @@ fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
     };
 }
 
-/// Re-authorize the caller, then align the attached set with the workspace's.
-async fn refresh<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
-    match wall.watch.verdict().await {
-        Verdict::Admitted => {}
-        Verdict::Unverified => return Tick::Unverified,
-        Verdict::Revoked => {
-            // Detach before returning, so no frame already queued on an
-            // attached channel can still reach a caller who lost the right
-            // to it.
-            wall.fan_in.sync_to(&BTreeSet::new()).await;
-            return Tick::Revoked;
+/// Runs the reads the wall owes: the caller's membership, then the attached set aligned
+/// with the workspace's. A set read that fails keeps the set the wall has, logs, and is
+/// read again at the next wake.
+async fn settle<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
+    if std::mem::take(&mut wall.owed.access) {
+        match wall.watch.verdict().await {
+            Verdict::Admitted => {}
+            Verdict::Unverified => return Tick::Unverified,
+            Verdict::Revoked => {
+                // Detach before returning, so no frame already queued on an
+                // attached channel can still reach a caller who lost the right
+                // to it.
+                wall.fan_in.sync_to(&BTreeSet::new()).await;
+                return Tick::Revoked;
+            }
         }
     }
-
+    if !std::mem::take(&mut wall.owed.set) {
+        return Tick::Steady;
+    }
     let membership = wall.watch.question();
-    let workspace = membership.workspace();
-    match membership.services().fleets().live_set(workspace).await {
+    let workspace = membership.workspace().clone();
+    match membership.services().fleets().live_set(&workspace).await {
         Ok(fleets) => {
             if wall.fan_in.sync_to(&fleets).await.is_change() {
                 Tick::Changed
@@ -295,8 +339,22 @@ async fn refresh<D: TenantPlane>(wall: &mut Wall<D>) -> Tick {
                 Tick::Steady
             }
         }
-        Err(_deferred) => Tick::Steady,
+        Err(error) => {
+            set_unread(&workspace, &error);
+            wall.owed.set_retry = true;
+            Tick::Steady
+        }
     }
+}
+
+/// A set read that did not answer: the wall keeps the set it has.
+fn set_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
+    let workspace_id = workspace.as_str();
+    let Logged { error_code, reason } = error.logged();
+    {
+        let event = &EVENT_SET_UNREAD;
+        tracing::warn!(workspace_id, error_code, reason, event);
+    };
 }
 
 #[cfg(test)]

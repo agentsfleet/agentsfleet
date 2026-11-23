@@ -105,7 +105,7 @@ WITH workspace AS MATERIALIZED (
          -- drew the same number fails `uq_decision_calls_usage`, and its caller runs this again.
          (SELECT COALESCE(MAX(n.usage_sequence) + 1, 0)
             FROM runner.decision_calls n WHERE n.original_run_id = $3),
-         $26, p.at, p.at, p.at, $27, $28
+         $26, p.at, now(), now(), $27, $28
   FROM proved p
   -- A call already saved for this operation is left untouched. A no-op update of it
   -- would write a new row version, whose index entries can wait on a concurrent

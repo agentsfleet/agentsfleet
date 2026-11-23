@@ -39,7 +39,8 @@ macro_rules! access_revoked_data {
     () => {
         concat!(
             "`data: {\"kind\":\"access_revoked\",\"error_code\":\"UZ-AUTH-001\"}` ",
-            "and closes; do not reconnect. Failed access checks close the stream after about ",
+            "and closes; do not reconnect. An access check that cannot be answered closes the ",
+            "stream with no frame; ",
         )
     };
 }
@@ -128,7 +129,7 @@ const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
         "with `kind: heartbeat` and no identifier.\n\n",
         "Access is checked again when the account's members change. `access_revoked` sends ",
         access_revoked_data!(),
-        "one minute; recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
+        "recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
         "includes `Retry-After`. Fetch missed turns before reconnecting.",
     ),
     params(
@@ -190,7 +191,7 @@ pub(crate) async fn fleet<D: TenantPlane>(
         "Access and the fleet set are checked again when the account's members or the ",
         "workspace's fleets change. `access_revoked` sends ",
         access_revoked_data!(),
-        "40 seconds; recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
+        "recover as after a disconnect. At capacity, 503 `UZ-API-002` ",
         "includes `Retry-After`.",
     ),
     params(

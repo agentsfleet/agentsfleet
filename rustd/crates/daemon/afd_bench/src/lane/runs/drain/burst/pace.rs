@@ -115,7 +115,7 @@ impl Pickups {
     }
 
     /// The pickup waits recorded so far.
-    pub(super) async fn waits(&self) -> Latency {
+    pub(super) fn waits(&self) -> Latency {
         self.waited
             .lock()
             .unwrap_or_else(PoisonError::into_inner)

@@ -108,5 +108,14 @@ async fn a_refused_write_publishes_nothing() {
         tokio::time::timeout(NO_MORE, notices.recv()).await.is_err(),
         "a refused edit publishes nothing"
     );
+    // The same subscription hears the edit that commits, so the silence above is the
+    // refusal's, not a deaf subscription's.
+    let patch: DraftPatch =
+        serde_json::from_value(json!({"title": "Current"})).expect("a typed patch");
+    f.drafts
+        .patch(f.access(), &draft, Some(&created.draft.etag), patch, now())
+        .await
+        .expect("the current tag commits");
+    one_changed(&mut notices, &draft, "the accepted edit").await;
     f.cleanup().await;
 }

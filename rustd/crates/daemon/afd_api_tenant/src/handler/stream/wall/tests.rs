@@ -17,7 +17,7 @@ use super::{EVENT_HELLO_COUNTERS_UNREAD, RECOUNT_PACE, Recount, counters_unread}
 /// that beat — the first lag's, taken at once — and whatever they still owe
 /// is one read when the beat ends.
 #[test]
-fn test_wall_lag_reads_counters_once_per_tick() {
+fn test_wall_lag_reads_counters_once_per_pace() {
     let opened = Instant::now();
     let mut recount = Recount::new(opened);
     recount.paid(); // the opening `hello`

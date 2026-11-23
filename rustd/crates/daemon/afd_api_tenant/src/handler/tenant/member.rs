@@ -94,7 +94,7 @@ pub(crate) async fn remove<D: TenantPlane>(
     user: IdPath<MemberSegment>,
     owner: OwnTenant,
 ) -> Result<Response, Refusal> {
-    let removal = services
+    services
         .team()
         .remove(owner.tenant(), user.id())
         .await
@@ -104,13 +104,16 @@ pub(crate) async fn remove<D: TenantPlane>(
                 (error.code() == error_code::MEMBER_LAST_OWNER).then_some(STATE_LAST_OWNER)
             },
         ))?;
-    if removal == afd_tenant::team::Removal::Removed {
-        // After the commit: every open stream in the account re-reads whether its
-        // viewer still belongs, so a removed member's live views end.
-        let notice = afd_bus::Subject::Members(owner.tenant().clone());
-        let sent = services.runner_commands().publish(&notice, "").await;
+    // After the commit, every open stream in the account re-reads whether its viewer
+    // still belongs, so a removed member's live views end. An absent member announces
+    // too: an owner's retry after a lost notice repairs it. Its own task, so a caller
+    // that goes away after the commit does not take the notice with it.
+    let bus = services.runner_commands().clone();
+    let notice = afd_bus::Subject::Members(owner.tenant().clone());
+    tokio::spawn(async move {
+        let sent = bus.publish(&notice, "").await;
         afd_bus::observe_notification(&notice, sent);
-    }
+    });
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 

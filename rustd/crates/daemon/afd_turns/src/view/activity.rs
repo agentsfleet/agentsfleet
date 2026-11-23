@@ -50,9 +50,9 @@ impl Notices {
 pub struct Announcement {
     fleets: Vec<Uuid7>,
     /// Workspaces whose set of fleets this transaction changed.
-    workspaces: Vec<Uuid7>,
+    workspaces: std::collections::BTreeSet<Uuid7>,
     /// Setup drafts whose durable state this transaction changed.
-    drafts: Vec<Uuid7>,
+    drafts: std::collections::BTreeSet<Uuid7>,
 }
 
 impl Announcement {
@@ -66,13 +66,13 @@ impl Announcement {
     /// Announces after the commit that `draft`'s durable state changed, so its open
     /// setup page reads it again.
     pub fn draft_changed(&mut self, draft: &Uuid7) {
-        self.drafts.push(draft.clone());
+        self.drafts.insert(draft.clone());
     }
 
     /// Announces after the commit that `workspace` gained or lost a fleet, so its
     /// open walls re-read the set.
     pub fn fleet_set(&mut self, workspace: &Uuid7) {
-        self.workspaces.push(workspace.clone());
+        self.workspaces.insert(workspace.clone());
     }
 }
 
@@ -88,10 +88,6 @@ pub async fn commit(
     transaction.commit().await?;
     announcement.fleets.sort_unstable();
     announcement.fleets.dedup();
-    announcement.workspaces.sort_unstable();
-    announcement.workspaces.dedup();
-    announcement.drafts.sort_unstable();
-    announcement.drafts.dedup();
     if let Some(notices) = notices {
         for workspace in &announcement.workspaces {
             fleets_changed(notices.streams(), workspace).await;
@@ -137,8 +133,8 @@ pub async fn record_on(
     // A fresh identity never meets a conflict, so every write is a new receipt.
     Ok(Announcement {
         fleets: vec![fleet.clone()],
-        workspaces: Vec::new(),
-        drafts: Vec::new(),
+        workspaces: std::collections::BTreeSet::new(),
+        drafts: std::collections::BTreeSet::new(),
     })
 }
 
@@ -164,8 +160,8 @@ pub async fn record_access_on(
         .await?;
     Ok(Announcement {
         fleets,
-        workspaces: Vec::new(),
-        drafts: Vec::new(),
+        workspaces: std::collections::BTreeSet::new(),
+        drafts: std::collections::BTreeSet::new(),
     })
 }
 

@@ -147,19 +147,19 @@ impl Renewals {
         let mut sent = Instant::now();
         let mut period = *advertised.borrow_and_update();
         let mut due = sent + period;
+        // A retry after a refusal keeps its own, shorter, due time when the interval moves.
+        let mut retrying = false;
         loop {
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return Ok(()),
                 changed = advertised.changed() => {
                     if changed.is_err() { return Ok(()); }
-                    // A new interval re-arms the round from the last one sent; a
-                    // retry after a refusal keeps its own, shorter, due time.
-                    let interval = *advertised.borrow_and_update();
-                    if due == sent + period {
-                        due = sent + interval;
+                    // A new interval re-arms a regular round from the last one sent.
+                    period = *advertised.borrow_and_update();
+                    if !retrying {
+                        due = sent + period;
                     }
-                    period = interval;
                     continue;
                 }
                 changed = sessions.changed() => {
@@ -182,16 +182,17 @@ impl Renewals {
             };
             period = *advertised.borrow_and_update();
             let retry = period.min(af_core::timing::STREAM_ANSWER_TIMEOUT);
-            due = match renewed {
-                Ok(Settled::All) => sent + period,
-                Ok(Settled::RetryLater) => sent + retry,
+            retrying = match renewed {
+                Ok(Settled::All) => false,
+                Ok(Settled::RetryLater) => true,
                 Err(error) if error.is_retryable() => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "renew_failed_retry", error_code);
-                    sent + retry
+                    true
                 }
                 Err(error) => return Err(error),
             };
+            due = sent + if retrying { retry } else { period };
         }
     }
 

@@ -397,11 +397,7 @@ async fn a_booting_daemons_gap_reaches_every_replicas_subscriptions() -> TestRes
     let replica = bus(seeds.first().ok_or("node 1")?, &ns, Tuning::default()).await?;
     let publisher = bus(seeds.get(1).ok_or("node 2")?, &ns, Tuning::default()).await?;
     let id = Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0bb0aa")?;
-    let subjects = [
-        fleet(7)?,
-        Subject::Members(id.clone()),
-        Subject::Fleets(id),
-    ];
+    let subjects = [fleet(7)?, Subject::Members(id.clone()), Subject::Fleets(id)];
     let mut subscriptions = Vec::new();
     for subject in &subjects {
         let mut subscription = replica.subscribe(subject).await?;

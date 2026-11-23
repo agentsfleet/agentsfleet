@@ -135,8 +135,8 @@ impl Issuance<'_> {
         }
     }
 
-    /// No row: the run lost its standing, which the run read answers as it does
-    /// today, or another state the reads relied on moved.
+    /// No row: the run lost its standing, which the run read answers with its own
+    /// refusal, or another state the reads relied on moved.
     async fn refusal(&self) -> crate::Error {
         let mut connection = match transaction::acquire(self.tasks.runs.pool()).await {
             Ok(connection) => connection,
@@ -176,7 +176,7 @@ impl Issuance<'_> {
             call_id: id.clone().into(),
             dispatch: Box::new(DecisionDispatch {
                 assessment_id: ready.attempt.assessment_id().clone().into(),
-                attempt: u8::try_from(ready.attempt.number()).unwrap_or(u8::MAX),
+                attempt: ready.attempt.ordinal(),
                 assignment: ready.prepared.assignment.clone(),
                 request: ready.attempt.request(&ready.prepared.request).clone(),
                 api_key: Cow::Borrowed(self.key.expose()),

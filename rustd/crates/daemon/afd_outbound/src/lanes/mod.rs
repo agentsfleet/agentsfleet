@@ -61,7 +61,6 @@
 //! [`CLAIM_TTL`](crate::delivery::CLAIM_TTL) lapses.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_db::Db;
 use dashmap::DashMap;
@@ -154,7 +153,10 @@ struct Inner<S> {
     /// Rung after every finished job: a lane's next row may now be claimable.
     finished: Notify,
     /// Jobs dispatched and not yet finished, which [`Lanes::room`] reads.
-    held: AtomicUsize,
+    /// The deliveries this replica holds, from dispatch until their lane finishes them:
+    /// their count is the lanes' load, and the claim loop tells its own claims apart
+    /// from another holder's by them.
+    held: dashmap::DashSet<af_core::id::Uuid7>,
 }
 
 impl<S: Deliver + 'static> Lanes<S> {
@@ -202,7 +204,7 @@ impl<S: Deliver + 'static> Lanes<S> {
                 token,
                 renew,
                 finished: Notify::new(),
-                held: AtomicUsize::new(0),
+                held: dashmap::DashSet::new(),
             }),
         }
     }
@@ -216,7 +218,13 @@ impl<S: Deliver + 'static> Lanes<S> {
     /// no dispatched, unfinished job holds.
     #[must_use]
     pub fn room(&self) -> usize {
-        IN_FLIGHT_DELIVERIES.saturating_sub(self.inner.held.load(Ordering::Acquire))
+        IN_FLIGHT_DELIVERIES.saturating_sub(self.inner.held.len())
+    }
+
+    /// The deliveries this replica holds right now.
+    #[must_use]
+    pub fn held(&self) -> Vec<af_core::id::Uuid7> {
+        self.inner.held.iter().map(|id| id.key().clone()).collect()
     }
 
     /// How many lanes currently hold work.
@@ -255,8 +263,8 @@ impl<S: Deliver + 'static> Inner<S> {
 
     /// A job a lane took has ended, however it ended: its slot is free again,
     /// then the worker hears, so the room it reads already counts the slot.
-    fn done(&self) {
-        self.held.fetch_sub(1, Ordering::AcqRel);
+    fn done(&self, job: &Claimed) {
+        self.held.remove(&job.id);
         self.finished.notify_one();
     }
 

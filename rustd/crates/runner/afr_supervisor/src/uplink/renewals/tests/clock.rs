@@ -194,3 +194,42 @@ async fn a_run_in_flight_renews_after_the_last_beat() -> crate::Result<()> {
     ran?;
     observed
 }
+
+/// A retry pending when a longer interval is advertised keeps its own due time, even
+/// when the old interval equalled the retry bound and the two cannot be told apart by
+/// their instants.
+#[tokio::test(start_paused = true)]
+async fn a_pending_retry_keeps_its_time_when_a_longer_interval_arrives() -> crate::Result<()> {
+    let registry = Arc::new(Renewals::default());
+    let (handle, mut peer) = RenewalPeer::new();
+    let _held = held(&registry)?;
+    registry.advertised(FIVE);
+    let started = Instant::now();
+    let stop = CancellationToken::new();
+    let running = registry.run(&handle, stop.clone());
+    let observed = async {
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(at, FIVE);
+        answer(&peer, request, &run, false).await?;
+        registry.advertised(TEN);
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(
+            at,
+            FIVE + FIVE,
+            "the retry is not pushed to the new interval"
+        );
+        answer(&peer, request, &run, true).await?;
+        let (at, request, run) = next_batch(&mut peer, started).await?;
+        assert_eq!(
+            at,
+            FIVE + FIVE + TEN,
+            "the round after it follows the new interval"
+        );
+        answer(&peer, request, &run, true).await?;
+        stop.cancel();
+        Ok::<(), crate::Error>(())
+    };
+    let (ran, observed) = tokio::join!(running, observed);
+    ran?;
+    observed
+}

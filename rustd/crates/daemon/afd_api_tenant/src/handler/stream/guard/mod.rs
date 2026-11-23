@@ -50,14 +50,21 @@ pub(super) async fn guarded<D: TenantPlane>(
     )
 }
 
-/// What `link` wakes on, as a stream, so a `select!` can hold it across turns.
+/// What `link` wakes on, as a stream, so a `select!` can hold it across turns. It opens
+/// with one wake: access was proved before the link opened, so a removal published in
+/// between is asked about here.
 fn notices(link: Link) -> BoxStream<'static, Wake> {
-    stream::unfold(link, async |mut link| {
+    let following = stream::unfold(link, async |mut link| {
         let wake = link.changed().await;
         Some((wake, link))
-    })
-    .boxed()
+    });
+    stream::once(std::future::ready(Wake::Changed))
+        .chain(following)
+        .boxed()
 }
+
+/// The log event a fleet stream emits when the bus shut down under it.
+const EVENT_BUS_CLOSED: &str = "fleet_stream_bus_closed";
 
 /// `frames`, ended with `access_revoked` once `recheck` says no on a notice.
 fn watched<R: Recheck>(
@@ -88,7 +95,10 @@ async fn step<R: Recheck>(mut guard: Guard<R>) -> Option<Turn<Guard<R>>> {
                 },
                 // The bus shut down: end, so the client reconnects to a serving
                 // replica, whose open check is fresh.
-                Some(Wake::Closed) | None => return None,
+                Some(Wake::Closed) | None => {
+                    tracing::debug!(event = EVENT_BUS_CLOSED);
+                    return None;
+                }
             },
         }
     }

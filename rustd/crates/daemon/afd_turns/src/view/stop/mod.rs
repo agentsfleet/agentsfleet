@@ -40,7 +40,7 @@ pub async fn hold_thread(
     connection: &mut PgConnection,
     workspace: &Uuid7,
     fleet: &Uuid7,
-) -> Result<(), sqlx::Error> {
+) -> crate::error::Result<(), sqlx::Error> {
     sqlx::query(HOLD_THREAD)
         .bind(fleet)
         .bind(workspace)

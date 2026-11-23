@@ -33,7 +33,7 @@ use self::verdict::Answer;
 use crate::error::Result;
 use crate::run::pull::RunService;
 
-pub use af_core::timing::FUNDS_CHECK_TICKS;
+use af_core::timing::FUNDS_CHECK_TICKS;
 
 /// Whether a session's renewal frame `tick`, counted from 0, checks funds.
 ///

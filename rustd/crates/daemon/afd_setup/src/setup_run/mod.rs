@@ -113,21 +113,19 @@ pub enum SetupClaim {
 pub struct SetupOwed {
     steps: Owed,
     /// Drafts whose durable state the transaction changed.
-    drafts: Vec<Uuid7>,
+    drafts: std::collections::BTreeSet<Uuid7>,
 }
 
 impl SetupOwed {
     /// Owes `draft`'s open page a notice that its durable state changed.
     pub fn changed(&mut self, draft: &Uuid7) {
-        self.drafts.push(draft.clone());
+        self.drafts.insert(draft.clone());
     }
 
     /// Reports every owed step and notice. Call only after the transaction
     /// committed.
-    pub async fn settle(mut self, drafts: &Drafts) {
+    pub async fn settle(self, drafts: &Drafts) {
         self.steps.settle(&drafts.analytics);
-        self.drafts.sort_unstable();
-        self.drafts.dedup();
         for draft in &self.drafts {
             drafts.changed(draft).await;
         }

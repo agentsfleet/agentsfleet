@@ -33,12 +33,33 @@ pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>)
 
 pub(crate) struct Calls {
     pub(crate) stopped: tokio_util::sync::CancellationToken,
+    /// Where a test pushes a daemon policy frame, once the scripted stream runs.
+    policy: Option<
+        std::sync::Arc<tokio::sync::watch::Sender<Option<std::sync::Arc<af_stream::OwnedFrame>>>>,
+    >,
     received: mpsc::UnboundedReceiver<Call>,
     /// Each answer that panicked, as the fake daemon reports it.
     failures: mpsc::UnboundedReceiver<String>,
 }
 
 impl Calls {
+    /// Pushes `response` as the daemon's policy frame, as a pushed policy reaches the
+    /// heartbeat loop between beats.
+    pub(crate) async fn push_policy(&self, response: &serde_json::Value) {
+        let frame = af_stream::encode(
+            &serde_json::json!({"type": "policy", "response": response}),
+            &af_stream::Budget::default(),
+            af_wire::protocol::StreamKind::Control,
+            &self.stopped,
+            tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+        )
+        .await
+        .expect("a policy frame encodes");
+        if let Some(policy) = &self.policy {
+            policy.send_replace(Some(std::sync::Arc::new(frame)));
+        }
+    }
+
     pub(crate) async fn recv(&mut self) -> Option<Call> {
         self.received.recv().await
     }
@@ -106,9 +127,10 @@ pub(crate) fn plane<F>(answer: F) -> (ControlPlane, Calls)
 where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
-    let (api, calls) = fake(answer);
+    let (api, mut calls) = fake(answer);
     let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
-    let stream = stream::start(&api, calls.stopped.clone());
+    let (stream, policy) = stream::start(&api, calls.stopped.clone());
+    calls.policy = Some(policy);
     (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
 }
 
@@ -172,6 +194,7 @@ where
             received,
             failures,
             stopped: tokio_util::sync::CancellationToken::new(),
+            policy: None,
         },
     )
 }

@@ -224,3 +224,54 @@ async fn a_payer_with_no_wallet_fails_the_message_for_its_balance() {
     );
     c.cleanup().await;
 }
+
+// Value: protects=an assignment that fails its message tells the open setup page after
+// its commit; fails_when=the failure owes no notice, and the page never shows it;
+// seam=Drafts::assign_setup_turn and SetupOwed::settle over live Postgres.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_assignment_time_failure_publishes_one_changed_notice() {
+    let mut c = funded().await;
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    c.base.drafts = c.base.drafts.clone().with_bus(bus.clone());
+    let draft = queued(&c.base, c.base.access(), "Watch checkout").await;
+    let stale = hint(&c.base, &draft).await;
+    sqlx::query(UNREADABLE_HEAD)
+        .bind(&draft)
+        .bind(super::mint())
+        .execute(&mut *c.base.connection().await)
+        .await
+        .expect("an unreadable head");
+    let mut notices = bus
+        .subscribe(&afd_bus::Subject::ThreadItems(draft.clone()))
+        .await
+        .expect("the draft's subject opens");
+    let mut tx = sqlx::Transaction::begin(c.base.connection().await, None)
+        .await
+        .expect("the assignment opens");
+    let mut owed = afd_setup::setup_run::SetupOwed::default();
+    c.base
+        .drafts
+        .assign_setup_turn(&mut tx, &stale, false, &mut owed)
+        .await
+        .expect("the assignment answers");
+    tx.commit().await.expect("the assignment commits");
+    owed.settle(&c.base.drafts).await;
+    let received = tokio::time::timeout(std::time::Duration::from_secs(1), notices.recv())
+        .await
+        .expect("the failure publishes")
+        .expect("the subscription is open");
+    let afd_bus::Received::Message(message) = received else {
+        panic!("a message, not {received:?}");
+    };
+    let notice: afd_setup::Changed =
+        serde_json::from_str(&message.payload).expect("a `Changed` notice");
+    assert_eq!(notice.changed, draft);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(200), notices.recv())
+            .await
+            .is_err(),
+        "one notice"
+    );
+    c.cleanup().await;
+}

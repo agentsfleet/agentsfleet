@@ -54,6 +54,10 @@ const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
 /// the next start claim for it then.
 const EVENT_WAKE_SUBSCRIBE_FAILED: &str = "outbound_wake_subscribe_failed";
 const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
+/// The wake subscription was opened again after it closed.
+const EVENT_WAKE_REOPENED: &str = "outbound_wake_reopened";
+/// The lapse read failed: the loop keeps the lapse it had, and the next claim reads again.
+const EVENT_LAPSE_UNREAD: &str = "outbound_lapse_unread";
 
 /// What triggered a claim, for the claim counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +130,7 @@ impl<S: Deliver + 'static> Worker<S> {
             backon::ExponentialBuilder::default().without_max_times(),
         );
         let mut reopen_at: Option<tokio::time::Instant> = None;
+        let mut reopen_attempt = 0_u32;
         let mut lapse: Option<tokio::time::Instant> = None;
         let mut via = Via::Scan;
         while !token.is_cancelled() {
@@ -137,7 +142,11 @@ impl<S: Deliver + 'static> Worker<S> {
                         via = Via::Scan;
                         continue;
                     }
-                    Ok(_partial) => lapse = next_lapse(&database).await,
+                    Ok(_partial) => match next_lapse(&database, &lanes).await {
+                        Ok(next) => lapse = next,
+                        // The lapse already known still stands; the next claim reads again.
+                        Err(failure) => report(EVENT_LAPSE_UNREAD, &failure),
+                    },
                     // The next ping or finished delivery claims again.
                     Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
@@ -157,10 +166,17 @@ impl<S: Deliver + 'static> Worker<S> {
                 () = sleep_until(lapse), if lapse.is_some() => { lapse = None; Via::Scan }
                 () = sleep_until(reopen_at), if reopen_at.is_some() => {
                     reopen_at = None;
+                    reopen_attempt = reopen_attempt.saturating_add(1);
+                    let attempt = reopen_attempt;
                     wake = bus.subscribe(&Subject::DeliveryWake).await
-                        .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
+                        .inspect_err(|failure| {
+                            let (error_code, reason) = (failure.code().as_str(), failure.reason());
+                            tracing::warn!(error_code, reason, attempt, event = EVENT_WAKE_SUBSCRIBE_FAILED);
+                        })
                         .ok();
                     if wake.is_some() {
+                        tracing::info!(attempt, event = EVENT_WAKE_REOPENED);
+                        reopen_attempt = 0;
                         resubscribe = backon::BackoffBuilder::build(
                             backon::ExponentialBuilder::default().without_max_times(),
                         );
@@ -231,16 +247,18 @@ async fn pinged(wake: &mut Option<Subscription>) {
     }
 }
 
-/// When the earliest claim another holder took lapses, as an instant on this
-/// replica's clock; `None` when nothing open is held or the read failed.
-async fn next_lapse(database: &Db) -> Option<tokio::time::Instant> {
-    match delivery::next_lapse(database).await {
-        Ok(left) => left.map(|left| tokio::time::Instant::now() + left),
-        Err(failure) => {
-            report(EVENT_CLAIM_FAILED, &failure);
-            None
-        }
-    }
+/// When the earliest claim another holder took lapses, as an instant on this replica's
+/// clock; `None` when no other holder holds an open delivery. The deliveries `lanes` hold
+/// are this replica's own, renewed while they run, so they are left out.
+///
+/// # Errors
+/// The ledger would not answer.
+async fn next_lapse<S: Deliver + 'static>(
+    database: &Db,
+    lanes: &Lanes<S>,
+) -> crate::Result<Option<tokio::time::Instant>> {
+    let left = delivery::next_lapse(database, &lanes.held()).await?;
+    Ok(left.map(|left| tokio::time::Instant::now() + left))
 }
 
 /// Sleeps until `at`; never when there is nothing to wait for.

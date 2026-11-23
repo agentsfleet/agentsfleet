@@ -31,7 +31,7 @@ function copyFor(target: ConfirmTargetActive): { title: string; description: str
   }
   return {
     title: `Remove ${memberName(target.member)}?`,
-    description: "They lose access to every workspace in your account within 15 seconds, including any page they have open.",
+    description: "They lose access to every workspace in your account, including any page they have open.",
     confirmLabel: "Remove",
   };
 }

@@ -1,7 +1,5 @@
 //! Capacity reservation and job publication for one destination.
 
-use std::sync::atomic::Ordering;
-
 use dashmap::DashMap;
 use tokio::sync::mpsc;
 
@@ -23,11 +21,11 @@ impl<S: Deliver + 'static> Lanes<S> {
             };
             // Counted before the lane can take it, so the lane's finish never
             // runs ahead of the count; no await between here and the publish.
-            self.inner.held.fetch_add(1, Ordering::AcqRel);
+            self.inner.held.insert(job.id.clone());
             match publish(&self.inner.lanes, &destination, &lane, permit, job) {
                 Ok(()) => return,
                 Err(mpsc::error::SendError(returned)) => {
-                    self.inner.held.fetch_sub(1, Ordering::AcqRel);
+                    self.inner.held.remove(&returned.id);
                     job = returned;
                 }
             }

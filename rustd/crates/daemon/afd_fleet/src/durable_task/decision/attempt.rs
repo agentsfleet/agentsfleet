@@ -78,6 +78,14 @@ impl Attempt {
         })
     }
 
+    /// The attempt as the dispatch names it: 0 for the original call, 1 for its retry.
+    pub(super) const fn ordinal(&self) -> u8 {
+        match self {
+            Self::Original { .. } => 0,
+            Self::Retry { .. } => 1,
+        }
+    }
+
     pub(super) const fn number(&self) -> i16 {
         match self {
             Self::Original { .. } => 0,

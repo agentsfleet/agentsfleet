@@ -40,7 +40,8 @@ pub(super) const STREAM_FLEET: &str = "fleet";
 /// The `stream` field of a workspace wall's re-check records.
 pub(super) const STREAM_WALL: &str = "wall";
 
-/// The question a live stream re-asks on each beat.
+/// The question a live stream re-asks when a notice says the account's members may have
+/// changed, or a gap may have hidden one.
 pub(super) trait Recheck: Send + Sync + 'static {
     /// What a check that could not answer reports.
     type Error: Refusable + Send;

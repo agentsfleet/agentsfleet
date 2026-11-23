@@ -374,7 +374,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
-- Timers in `af_core`: a grant lasts 35 seconds and renewals run every 5 seconds.
+- Timers in `af_core`: a grant lasts 38 seconds, and the runner renews once per heartbeat interval, 10 seconds by default, in the same round as its heartbeat.
   A run renews at any age; its fleet's budget, its tenant's balance or a person's Stop ends it.
   Heartbeats run every 10 seconds, a runner counts as offline after 114 seconds, and a sandbox hold lasts 10 minutes.
 

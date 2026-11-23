@@ -138,7 +138,7 @@ assignment. Active runs retain their stored deadlines and can reconnect.
 Checkpoint capture continues while resume is disabled.
 
 The deployment clock controls grants, renewals, heartbeat cadence, host quarantine and sandbox holds.
-The run lifetime defaults to 35 seconds.
+The run lifetime defaults to 38 seconds.
 An omitted offline threshold retains three run lifetimes.
 
 A run has no maximum runtime, and none is saved with it.
@@ -147,8 +147,8 @@ A durable task's run keeps its own saved execution deadline, and a renewal past 
 
 | Setting | Default | Checked relationship |
 | --- | ---: | --- |
-| `runner.run.ttl_seconds` | 35 seconds | More than 32 seconds; at most one hour, 3,600 seconds |
-| `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; two intervals remain shorter than the offline threshold |
+| `runner.run.ttl_seconds` | 38 seconds | At least 29 seconds, one round plus the 28-second renewal margin; at most one hour, 3,600 seconds |
+| `runner.health.heartbeat_interval_seconds` | 10 seconds | Positive; at most 24 seconds, `ttl_seconds` − 28 and a third of `ttl_seconds` − 1, since it is also the renewal round; two intervals remain shorter than the offline threshold |
 | `runner.health.offline_after_seconds` | Three run lifetimes | At least one run lifetime; at most three hours, 10,800 seconds |
 | `runner.health.healthy_before_uncordon_seconds` | 30 seconds | Greater than one heartbeat interval and shorter than the offline threshold |
 | `runner.sandboxes.max_idle_hold_seconds` | 600 seconds | From one second through one day, 86,400 seconds |

@@ -42,7 +42,7 @@ pub(super) const STOP: &str = "stop";
 pub(super) const HOLDS_FIELD: &str = "holds";
 
 /// A registry holding nothing, as a runner that has run no run.
-fn idle_holds() -> Holds {
+pub(super) fn idle_holds() -> Holds {
     Holds::start(Arc::new(SystemClock))
 }
 
@@ -60,7 +60,7 @@ pub(super) fn probe() -> HostProbe {
 }
 
 /// The assignment every answer here carries.
-fn policy() -> serde_json::Value {
+pub(super) fn policy() -> serde_json::Value {
     serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "landlock_full", "network_policy": "allow_all",
         "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
 }
@@ -75,7 +75,7 @@ pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
 }
 
 /// The daemon's heartbeat answer, every field spelled once.
-fn answer(
+pub(super) fn answer(
     status: &str,
     assigned: &serde_json::Value,
     selftest: bool,

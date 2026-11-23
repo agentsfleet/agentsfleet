@@ -46,6 +46,8 @@ async fn skip(span: Duration) {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_idle_wall_reads_nothing_for_an_hour() {
     let mut wall = Wall::open(Fixture::create().await).await;
+    // The opening re-check after the links open, then nothing.
+    wall.stays_quiet().await;
     let before = wall.ownership.authorize_calls();
     skip(AN_HOUR).await;
     wall.stays_quiet().await;

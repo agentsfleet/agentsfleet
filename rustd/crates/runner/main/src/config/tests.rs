@@ -125,7 +125,7 @@ const INVALID_PROFILES: &[(&str, &str)] = &[
         "daemon_initial_backoff_ms",
     ),
     (
-        // The runner renews on its heartbeat round; the old cadence key is refused.
+        // The runner renews on its heartbeat round, so no key sets a renewal cadence.
         "[supervisor]\nrenewal_interval_ms = 5000",
         "renewal_interval_ms",
     ),

@@ -159,3 +159,24 @@ async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     );
     wall.close().await;
 }
+
+/// A wall reads its caller's access and its set once more right after its notice
+/// links open, so a removal or a fleet that landed between the opening reads and the
+/// subscriptions is not missed: here, with no notice published at all.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_wall_re_reads_once_after_its_links_open() {
+    let mut wall = Wall::open(Fixture::create().await).await;
+    let second = wall.fixture.seed_second_fleet().await;
+    let changed = wall.next_of("hello").await;
+    assert!(
+        changed.contains(&second),
+        "a fleet created before the links opened is announced: {changed}"
+    );
+    wall.close().await;
+
+    let mut wall = Wall::open(Fixture::create().await).await;
+    wall.ownership.revoke();
+    assert_revoked_wall_closes(&mut wall.body).await;
+    wall.close().await;
+}

@@ -120,9 +120,9 @@ Each key overrides `[database]` and the environment for that role only.
 
 | Key | Default | Change it when… |
 |---|---|---|
-| `run.ttl_seconds` | 35 | A run's lease lapses on a slow link; shorter finds a dead runner sooner |
+| `run.ttl_seconds` | 38 | A run's lease lapses on a slow link; shorter finds a dead runner sooner |
 | `health.heartbeat_interval_seconds` | 10 | Runners should report more or less often |
-| `health.offline_after_seconds` | unset: 3 × `ttl_seconds` (105) | Runners are marked offline too fast or too slow |
+| `health.offline_after_seconds` | unset: 3 × `ttl_seconds` (114) | Runners are marked offline too fast or too slow |
 | `health.healthy_before_uncordon_seconds` | 30 | A recovered runner should get work sooner or later |
 | `sandboxes.max_idle_hold_seconds` | 600 | Frozen sandboxes hold host resources too long, or follow-ups miss a warm sandbox |
 
@@ -413,7 +413,7 @@ The daemon also refuses:
 - `max_in_flight_requests` or `max_sse_streams` over 65,536, and `max_concurrent_recovery_assignments` over 64;
 - `drain_timeout_seconds` under 6, and `background_task_join_timeout_seconds` under 9;
 - `max_message_mib` over 32, and `max_control_message_mib` over 2;
-- `ttl_seconds` outside 33 to 3,600, a heartbeat that does not fit twice inside the offline time, or an uncordon time outside them;
+- `ttl_seconds` outside 29 to 3,600; a heartbeat above the least of 24 seconds, `ttl_seconds` − 28, a third of `ttl_seconds` − 1 and half the offline time − 1, since each heartbeat is also the runner's renewal round; or an uncordon time outside them;
 - `max_udp_payload_bytes` outside 1,200 to 65,507, a control buffer under 12 MiB, or a data buffer under 64 MiB;
 - `lock_max_attempts` over 1,000, or attempts times `lock_retry_interval_ms` over 300,000;
 - `[outbound.retries]` with more than 10 attempts or a backoff over 30,000 ms;

@@ -41,7 +41,7 @@ const CONTEXT_LOAD: &str = "renew run load";
 mod batch;
 mod extend;
 
-pub use self::batch::{FUNDS_CHECK_TICKS, Renewals, funds_due};
+pub use self::batch::{Renewals, funds_due};
 
 /// The run a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]

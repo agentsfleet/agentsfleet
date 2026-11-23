@@ -40,7 +40,7 @@ fn is_heartbeat(frame: &str) -> bool {
 }
 
 /// A minute of an open, idle page runs no statement: four heartbeats go out and
-/// nothing is read. Before notices, it read four statements a second.
+/// nothing is read.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_idle_draft_stream_reads_nothing() {
@@ -132,5 +132,25 @@ async fn a_lost_notice_shows_at_the_next_gap() {
             .any(|frame| frame.contains("event: message.completed\n")),
         "the gap's read finds the change: {shown:?}"
     );
+    live.cleanup().await;
+}
+
+/// A creator removed from the account loses their open page on the members notice
+/// the removal publishes: the read it asks for no longer proves them, and the stream
+/// ends.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_removed_creators_page_ends_on_the_members_notice() {
+    let live = Live::create(1).await;
+    let mut body = live.open().await;
+    tokio::time::sleep(SETTLE).await;
+    sqlx::query("DELETE FROM identity.users WHERE id=$1")
+        .bind(&live.f.owner)
+        .execute(&mut *live.f.db.acquire().await.expect("revocation connection"))
+        .await
+        .expect("remove the creator");
+    live.server
+        .publish(&afd_bus::Subject::Members(live.f.tenant.clone()), "");
+    super::live::closed(&mut body).await;
     live.cleanup().await;
 }

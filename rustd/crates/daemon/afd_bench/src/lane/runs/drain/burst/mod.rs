@@ -151,6 +151,7 @@ async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, p
         folded: pickups.folded_count(),
         backlog_peak: peak,
     };
+    let waits = pickups.waits();
     record(
         report,
         counted,
@@ -158,7 +159,7 @@ async fn record_run(report: &mut Report, appends: &Appends, pickups: &Pickups, p
             .took
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner),
-        &pickups.waits().await,
+        &waits,
     );
 }
 

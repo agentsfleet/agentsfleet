@@ -20,7 +20,7 @@ impl RunService {
     /// The payers this tick's funds check found short, checked once each, against
     /// the floor of the payer's dearest run.
     ///
-    /// Only every [`FUNDS_CHECK_TICKS`](super::FUNDS_CHECK_TICKS)th tick checks:
+    /// Only every [`FUNDS_CHECK_TICKS`](af_core::timing::FUNDS_CHECK_TICKS)th tick checks:
     /// the cadence is the gateway session's, so a reconnect checks on its first
     /// tick.
     pub(super) async fn refusals<'a>(

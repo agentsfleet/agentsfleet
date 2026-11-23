@@ -87,7 +87,10 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
             Waited::Read(pending) => pending,
             Waited::Heartbeat => return Some((Ok(heartbeat()), watch)),
             // The bus shut down: end, so the client reconnects to a serving replica.
-            Waited::Closed => return None,
+            Waited::Closed => {
+                tracing::debug!(event = "draft_stream_bus_closed");
+                return None;
+            }
         };
         let access = Access {
             workspace: &watch.workspace,
@@ -150,7 +153,10 @@ fn heartbeat() -> Event {
 /// Reopen a lost subscription once its retry is due, and tell the viewer to
 /// resync after a loss. A closed bus is never retried.
 async fn recover(watch: &mut Watch) -> Option<Event> {
-    watch.link.reopen_if_due().await;
+    if watch.link.reopen_if_due().await {
+        // What was published while the subscription was lost is unknown: read again.
+        watch.settled = false;
+    }
     if !watch.lost {
         return None;
     }
@@ -196,7 +202,7 @@ async fn wait(watch: &mut Watch, heartbeat_at: Instant) -> Waited {
         // retry reads again once `recover` reopens it.
         return tokio::select! {
             () = tokio::time::sleep_until(heartbeat_at) => Waited::Heartbeat,
-            () = sleep_until_some(retry_at) => Waited::Read(None),
+            () = afd_sse::sleep_until_some(retry_at) => Waited::Read(None),
             wake = watch.members.changed() => members(wake),
         };
     };
@@ -222,14 +228,6 @@ const fn members(wake: afd_sse::Wake) -> Waited {
     match wake {
         afd_sse::Wake::Changed => Waited::Read(None),
         afd_sse::Wake::Closed => Waited::Closed,
-    }
-}
-
-/// Sleeps until `at`; never when there is nothing to wait for.
-async fn sleep_until_some(at: Option<Instant>) {
-    match at {
-        Some(at) => tokio::time::sleep_until(at).await,
-        None => std::future::pending().await,
     }
 }
 
