@@ -1,19 +1,19 @@
 //! Connection-scoped registration; an old owner's drop cannot remove its replacement.
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use dashmap::DashMap;
+use tokio_util::sync::CancellationToken;
 
 use crate::{Result, connection::ConnectionHandle, error::ErrorKind};
 
 #[derive(Debug, Default)]
 pub(crate) struct Registry {
     connections: DashMap<Uuid7, Arc<ConnectionHandle>>,
-    draining: AtomicBool,
+    /// Cancelled once, when the replica starts draining; a one-shot effect a
+    /// departed connection scheduled ends on it.
+    draining: CancellationToken,
 }
 
 impl Registry {
@@ -40,7 +40,7 @@ impl Registry {
     }
 
     fn register(self: &Arc<Self>, connection: &Arc<ConnectionHandle>) -> Result<Registration> {
-        if self.draining.load(Ordering::Acquire) {
+        if self.draining.is_cancelled() {
             return Err(ErrorKind::Closed.into());
         }
         let runner = connection.runner.clone();
@@ -51,7 +51,7 @@ impl Registry {
         {
             old.supersede();
         }
-        if self.draining.load(Ordering::Acquire) {
+        if self.draining.is_cancelled() {
             connection.drain.cancel();
         }
         Ok(Registration {
@@ -113,7 +113,7 @@ impl Registry {
     }
 
     pub(crate) fn begin_drain(&self) {
-        self.draining.store(true, Ordering::Release);
+        self.draining.cancel();
         for connection in &self.connections {
             connection.drain.cancel();
         }
@@ -126,7 +126,12 @@ impl Registry {
     }
 
     pub(crate) fn is_draining(&self) -> bool {
-        self.draining.load(Ordering::Acquire)
+        self.draining.is_cancelled()
+    }
+
+    /// Ends whatever waits on it when the replica starts draining.
+    pub(crate) fn draining(&self) -> CancellationToken {
+        self.draining.clone()
     }
 
     #[cfg(test)]

@@ -154,6 +154,24 @@ fn test_stored_verdict_detects_only_real_movement() {
     );
 }
 
+/// Only a degraded row meeting a healthy verdict is a recovery: a host that
+/// was healthy all along, or is still degraded, cleared nothing.
+#[test]
+fn only_a_healthy_verdict_over_a_degraded_row_clears_it() {
+    let healthy = StoredVerdict { reason: None };
+    let degraded = StoredVerdict {
+        reason: Some(crate::reconcile::REASON_NO_CAPABILITY_REPORT.to_owned()),
+    };
+    let still = Verdict::Degraded {
+        reason: crate::reconcile::REASON_NO_CAPABILITY_REPORT,
+    };
+
+    assert!(degraded.cleared_by(Verdict::Healthy));
+    assert!(!degraded.cleared_by(still), "still degraded");
+    assert!(!healthy.cleared_by(Verdict::Healthy), "never degraded");
+    assert!(!healthy.cleared_by(still), "a fresh degradation");
+}
+
 /// What an edit writes into `sandbox_config` is what every reader decodes.
 #[test]
 fn test_sandbox_config_round_trips_through_its_column() {

@@ -18,6 +18,16 @@ pub(crate) fn gateway(
     bus: afd_bus::Handle,
     wake: afd_bus::wake::Wake,
 ) -> Result<Gateway, Box<dyn std::error::Error + Send + Sync>> {
+    clocked(database, bus, wake, Arc::new(af_core::clock::SystemClock))
+}
+
+/// The same gateway, reading wall time from `wall_clock`.
+pub(crate) fn clocked(
+    database: afd_db::Db,
+    bus: afd_bus::Handle,
+    wake: afd_bus::wake::Wake,
+    wall_clock: Arc<dyn af_core::clock::Clock>,
+) -> Result<Gateway, Box<dyn std::error::Error + Send + Sync>> {
     let key = Arc::new(Kek::from_bytes(KEY));
     let vendors = afd_identity::direct(af_core::timing::STREAM_ANSWER_TIMEOUT).build()?;
     let runs = RunService {
@@ -60,7 +70,7 @@ pub(crate) fn gateway(
         stream_limit: afd_sse::StreamLimit::new(usize::MAX),
         wake,
         frame_memory: af_stream::MemoryLimits::default(),
-        wall_clock: Arc::new(af_core::clock::SystemClock),
+        wall_clock,
         analytics: af_observability::Analytics::silent(),
         frames: FrameCeilings::default(),
     }))

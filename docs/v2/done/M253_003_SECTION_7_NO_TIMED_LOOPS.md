@@ -6,6 +6,10 @@
 
 What shipped instead of this Section: `main/src/sweepers/`, the outbound worker's timed pass, the scheduler's `ASSIGN_FALLBACK_TICK` and every `[maintenance.*]` key are gone; afd_cron's QStash scheduler for fleet schedules stays.
 
+Added Nov 23, 2026. No loop came back; a runner connection that ends with no successor and no replica drain schedules two one-shot effects (`afd_gateway`'s `connection/departure/mod.rs`). One recovery pass runs at the latest deadline of the runs it held, so a dead host's turn moves to another host.
+
+The other is one statement at the runner's last beat plus the offline window (`afd_runner`'s `silence.rs`). It records `runner_offline` once, cordons for `missed_heartbeats` and finishes a requested drain, unless a later beat moved `last_seen_at`. Daemon boot reads the latest outstanding run deadline once and requests one pass at it.
+
 The original Section, kept for reference:
 
 ## §7 — The daemon runs no sweeper

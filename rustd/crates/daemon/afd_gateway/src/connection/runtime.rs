@@ -73,6 +73,7 @@ impl ConfirmedConnection {
         handle.stop.cancel();
         supervisor.jobs.shutdown().await;
         streams.workers.shutdown().await;
+        super::departure::depart(&self.gateway, &handle, &supervisor.services.cache);
         drop(self.permit);
         result
     }

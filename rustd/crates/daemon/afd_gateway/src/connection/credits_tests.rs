@@ -123,17 +123,43 @@ async fn recovery_from_a_policy_recheck_wakes_one_capacity_pass() -> Result<()> 
     let connection_id = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000002")?;
     let connection = super::ConnectionHandle::fixture(runner, connection_id);
     connection.snapshot.lock().degraded = true;
-    connection.apply_policy(false);
+    connection.apply_policy(false, false);
     assert!(matches!(
         futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Ready(())
     ));
-    connection.apply_policy(false);
+    connection.apply_policy(false, false);
     assert!(matches!(
         futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Pending
     ));
-    connection.apply_policy(true);
+    connection.apply_policy(true, false);
+    assert!(matches!(
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
+        std::task::Poll::Pending
+    ));
+    Ok(())
+}
+
+/// A connection that already reads healthy asks for a pass on the beat that
+/// cleared its host's stored degradation, and on no other beat.
+#[tokio::test]
+async fn a_beat_that_cleared_the_stored_verdict_wakes_a_pass_on_a_healthy_connection() -> Result<()>
+{
+    let runner = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000003")?;
+    let connection_id = af_core::id::Uuid7::parse("019f0000-0000-7000-8000-000000000004")?;
+    let connection = super::ConnectionHandle::fixture(runner, connection_id);
+    assert!(!connection.snapshot.lock().degraded);
+    connection.apply_policy(false, false);
+    assert!(matches!(
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
+        std::task::Poll::Pending
+    ));
+    connection.apply_policy(false, true);
+    assert!(matches!(
+        futures_util::poll!(Box::pin(connection.assignments.notified())),
+        std::task::Poll::Ready(())
+    ));
     assert!(matches!(
         futures_util::poll!(Box::pin(connection.assignments.notified())),
         std::task::Poll::Pending

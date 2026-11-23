@@ -41,7 +41,7 @@ impl Runners {
                         .bind(self.clock().uncordon_after())
                         .bind(lift)
                         .bind(crate::cordon::LIFTED)
-                        .bind("reason")
+                        .bind(sql::meta::REASON)
                         .bind(crate::cordon::REASON)
                         .bind(sql::RUNNER_STATUS_ACTIVE)
                         .bind(sqlx::types::Json(health.policy))

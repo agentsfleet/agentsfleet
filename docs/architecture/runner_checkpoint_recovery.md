@@ -260,7 +260,11 @@ The final result and usage settle through the report transaction. [Result and ru
 
 ## How a recovery burst drains
 
-A disposable wake can be lost between the durable turn write and its notification. No timer probes for it. A recovery generation starts when the bus reports a gap or lag, an unreadable notification arrives, the wake subscription opens or is lost, or an ordinary assignment finds a host's recovery request pending (`afd_bus`'s `wake/mod.rs`, `afd_gateway`'s `scheduler/subscriptions.rs`). A wake lost with no such signal waits for the next event.
+A disposable wake can be lost between the durable turn write and its notification. No timer probes for it. A recovery generation starts when the bus reports a gap or lag, an unreadable notification arrives, the wake subscription opens or is lost, or an ordinary assignment finds a host's recovery request pending (`afd_bus`'s `wake/mod.rs`, `afd_gateway`'s `scheduler/subscriptions.rs`).
+
+A run's deadline is a known instant, so the event that learns it schedules one pass at it. A connection that ends with no successor and no replica drain sleeps once to the latest deadline of its live runs (`afd_gateway`'s `connection/departure/mod.rs`). It then requests one recovery pass, and a runner that came back and renewed leaves that pass nothing to issue.
+
+A replica drain ends that wait. At boot, `scheduler/lapse/mod.rs` reads the latest outstanding run deadline once and requests one pass at that instant. A wake lost with no deadline behind it still waits for the next event.
 
 Ordinary rings retain their successful-issue budget and fleet locality.
 

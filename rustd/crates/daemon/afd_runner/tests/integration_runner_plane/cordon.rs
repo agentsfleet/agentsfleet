@@ -5,6 +5,7 @@ use afd_api_wire::{admin::RunnerEventType, operator::CordonReason};
 use afd_runner::capacity::authority::{Authority, Decision};
 
 use super::{Fixture, enrolment, refusal::Refusal};
+mod offline;
 mod return_health;
 
 async fn connected(fixture: &mut Fixture) -> Authority {
@@ -43,8 +44,9 @@ async fn silence(fixture: &Fixture, runner: &Uuid7) {
 }
 
 /// A silent host, cordoned for missed heartbeats. No sweep writes this any
-/// more (Indy, Nov 21, 2026), so the fixture writes the cordon itself and
-/// these tests prove only the heartbeat's lift.
+/// more (Indy, Nov 21, 2026); the connection-end visit does, and `offline.rs`
+/// proves it, so the fixture writes the cordon itself and these tests prove
+/// only the heartbeat's lift.
 async fn quarantined(fixture: &Fixture, runner: &Uuid7) {
     silence(fixture, runner).await;
     sqlx::query(

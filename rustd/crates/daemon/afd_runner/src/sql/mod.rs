@@ -51,6 +51,8 @@ pub mod meta {
     pub const WORKER_COUNT: &str = "worker_count";
     /// The liveness instant a transition event records.
     pub const LAST_SEEN_AT: &str = "last_seen_at";
+    /// Why automatic quarantine was set or lifted.
+    pub const REASON: &str = "reason";
     /// The status a transition event moved OUT of.
     pub const FROM_STATUS: &str = "from_status";
     /// The status it moved INTO.

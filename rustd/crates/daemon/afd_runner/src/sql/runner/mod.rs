@@ -200,3 +200,25 @@ pub const UPDATE_RUNNER_SELFTEST: &str = include_str!("update_runner_selftest.sq
 /// than a beat that writes nothing: the fleet read stays true, and only the
 /// audit trail has a gap.
 pub const TOUCH_RUNNER_LAST_SEEN: &str = include_str!("touch_runner_last_seen.sql");
+
+/// The beat a connection's end counts its runner's offline instant from.
+///
+/// `$1` runner, `$2` the never-seen sentinel, which answers no row.
+pub const SELECT_RUNNER_LAST_SEEN: &str = include_str!("select_runner_last_seen.sql");
+
+/// The liveness visit's compare-and-set and row lock, run once at a silent
+/// runner's offline instant.
+///
+/// Matches only while the beat its connection's end read is still the
+/// runner's last; no row means it beat again or is gone. Cordons an `active`
+/// runner for missed heartbeats and answers whether it newly did.
+pub const MARK_RUNNER_SILENT: &str = include_str!("mark_runner_silent.sql");
+
+/// The episode's `runner_offline` row, written once per `last_seen_at`.
+pub const INSERT_OFFLINE_HISTORY: &str = include_str!("insert_offline_history.sql");
+
+/// One history row beside the change it records.
+pub const INSERT_HISTORY: &str = include_str!("insert_history.sql");
+
+/// A requested drain, finished once no live run remains.
+pub const FINISH_DRAIN: &str = include_str!("finish_drain.sql");

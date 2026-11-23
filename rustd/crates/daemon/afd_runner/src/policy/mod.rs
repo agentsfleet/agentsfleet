@@ -173,6 +173,15 @@ impl StoredVerdict {
     pub fn differs_from(&self, fresh: Verdict) -> bool {
         self.reason.as_deref() != fresh.reason()
     }
+
+    /// Whether `fresh` clears a degradation the row still holds.
+    ///
+    /// The assignment issue reads the row, so work it refused while the row
+    /// read degraded waits for exactly this transition; no timer retries it.
+    #[must_use]
+    pub const fn cleared_by(&self, fresh: Verdict) -> bool {
+        self.is_degraded() && !fresh.is_degraded()
+    }
 }
 
 /// A fieldless wire enum, parsed from the spelling a column stores.

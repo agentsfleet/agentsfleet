@@ -178,6 +178,18 @@ impl RunCache {
         }
     }
 
+    /// The latest deadline among the runs still held at `now`: neither
+    /// cancelled nor expired. A reported run is already forgotten.
+    pub(super) fn last_lapse(&self, now: Timestamp) -> Option<Timestamp> {
+        self.0
+            .read()
+            .records
+            .values()
+            .filter(|record| !record.cancelled && record.expires_at > now)
+            .map(|record| record.expires_at)
+            .max()
+    }
+
     /// Only the runner's opening list needs reconciliation; absent database runs are never replayed.
     pub(super) fn reconciliation(
         &self,

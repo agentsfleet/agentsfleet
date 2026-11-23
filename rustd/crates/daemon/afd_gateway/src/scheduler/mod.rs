@@ -1,8 +1,10 @@
 //! Notifications schedule assignments; no timer probes for work a lost notification left waiting.
 
+mod lapse;
 mod recovery;
 mod subscriptions;
 
+pub(crate) use lapse::{deadline, recheck_at};
 pub(crate) use subscriptions::REPAIR_BACKOFF_MAX;
 
 use crate::{
@@ -15,12 +17,14 @@ use afd_bus::wake::Wake;
 use std::{collections::HashSet, sync::Arc};
 use tokio_util::sync::CancellationToken;
 
-/// Subscription repair and notification handling keep independent progress.
-/// Neither fails: a lost broker is repaired, and a failed probe or pass is
-/// observed and the next wake tries again.
+/// Subscription repair, notification handling and the boot read keep
+/// independent progress. None fails: a lost broker is repaired, a failed probe
+/// or pass is observed and the next wake tries again, and a failed boot read is
+/// observed once.
 pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) {
     let _cancel_on_exit = stop.clone().drop_guard();
     tokio::join!(
+        lapse::outstanding(&gateway, &stop),
         subscriptions::run(gateway.clone(), stop.clone()),
         notifications(
             &gateway.inner.registry,

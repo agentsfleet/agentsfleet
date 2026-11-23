@@ -40,6 +40,7 @@ pub mod record;
 mod register;
 mod rotate;
 mod scope;
+mod silence;
 pub mod spelling;
 pub mod sql;
 pub mod store;

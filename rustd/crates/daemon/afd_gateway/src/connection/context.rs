@@ -91,7 +91,8 @@ impl ConnectionServices {
     }
 
     pub(super) fn apply_policy(&self, beat: &Beat) {
-        self.handle.apply_policy(beat.verdict.is_degraded());
+        self.handle
+            .apply_policy(beat.verdict.is_degraded(), beat.recovered);
     }
 
     pub(super) async fn recheck(&self) -> Result<()> {

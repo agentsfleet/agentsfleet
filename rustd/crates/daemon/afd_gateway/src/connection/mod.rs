@@ -5,6 +5,7 @@ mod assignments;
 pub(crate) mod cache;
 mod commands;
 mod context;
+mod departure;
 mod dispatch;
 mod events;
 pub(crate) mod io;
@@ -120,14 +121,18 @@ pub(crate) struct ConnectionHandle {
 }
 
 impl ConnectionHandle {
-    fn apply_policy(&self, degraded: bool) {
+    /// `cleared` is a beat that lifted the degradation its host's row held.
+    /// This connection can already read healthy by then: the opening's recheck
+    /// reads a verdict it does not store, so a pass it started was refused by
+    /// the row, and only that beat says the row now agrees.
+    fn apply_policy(&self, degraded: bool, cleared: bool) {
         let recovered = {
             let mut state = self.snapshot.lock();
             let recovered = state.degraded && !degraded;
             state.degraded = degraded;
             recovered
         };
-        if recovered {
+        if recovered || cleared {
             self.request_assignment();
         }
     }
