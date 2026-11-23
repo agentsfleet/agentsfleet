@@ -2,11 +2,12 @@
 
 import {
   Alert, AlertDescription, AlertTitle, BrandMark, Button, Card, CardContent, CardDescription,
-  CardFooter, CardHeader, CopyButton, PageTitle,
+  CardFooter, CardHeader, CopyButton, PageTitle, Spinner,
 } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import { CheckIcon, TerminalIcon } from "@phosphor-icons/react/ssr";
 
+export const CLI_SIGN_IN_TITLE = "Sign in to the agentsfleet CLI";
 export const LOAD = { loading: "loading", active: "active", terminal: "terminal", error: "error" } as const;
 export const APPROVE = { idle: "idle", working: "working", approved: "approved", uncertain: "uncertain", completed: "completed", failed: "failed" } as const;
 export const SESSION_STATUS = { pending: "pending", verification_pending: "verification_pending" } as const;
@@ -52,15 +53,15 @@ export function ManualApprovalView({ isLoaded, isSignedIn, load, approve, onAppr
     <p className="mt-xl border-t border-border pt-lg text-eyebrow text-muted-foreground">Waiting for verification in your terminal…</p>
   </Card></PageShell>;
   return <PageShell><Card>
-    <CardHeader><PageTitle>Connect your terminal</PageTitle><CardDescription>
-      Allow your terminal to use your agentsfleet account. Continue only if you started this sign-in.
+    <CardHeader><PageTitle>{CLI_SIGN_IN_TITLE}</PageTitle><CardDescription>
+      Continue only if you started this sign-in.
     </CardDescription></CardHeader>
     <CardContent>{approve.kind === APPROVE.failed ? <Alert variant="destructive">
       <AlertTitle>Could not approve</AlertTitle><AlertDescription>{approve.message}</AlertDescription>
     </Alert> : null}</CardContent>
     <CardFooter className="gap-2"><Button data-testid="cli-auth-approve" onClick={() => onApprove(load.session)}
       disabled={approve.kind === APPROVE.working || approve.kind === APPROVE.failed || load.session.status === SESSION_STATUS.verification_pending}>
-      {approve.kind === APPROVE.working ? "Authorizing…" : "Authorize"}
+      {approve.kind === APPROVE.working ? <Spinner size="sm" label="Authorizing…" /> : "Authorize"}
     </Button></CardFooter>
   </Card></PageShell>;
 }
@@ -68,8 +69,8 @@ export function ManualApprovalView({ isLoaded, isSignedIn, load, approve, onAppr
 function CompletionView() {
   return <PageShell><Card className="mx-auto max-w-auth-card text-center">
     <CardHeader className="items-center gap-lg"><AuthorizationBrand /><AuthorizationIcon><CheckIcon aria-hidden="true" /></AuthorizationIcon>
-      <PageTitle className="font-medium">Unleash your agents.</PageTitle>
-      <CardDescription className="text-body-sm leading-prose">Your terminal is authorized. Return to your terminal to finish signing in.</CardDescription>
+      <PageTitle className="font-medium">Authorization granted</PageTitle>
+      <CardDescription className="text-body-sm leading-prose">Return to your terminal to finish signing in.</CardDescription>
     </CardHeader>
     <CardFooter className="mt-lg justify-center border-t border-border text-eyebrow text-muted-foreground">You can close this tab.</CardFooter>
   </Card></PageShell>;

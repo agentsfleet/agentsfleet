@@ -18,6 +18,9 @@ export type ChatListOptions = WorkspaceOptions & {
 const DRAFT_ID_FIELD = "draft_id";
 const LIST_USAGE = "agentsfleet chat list --help";
 const BUSY_CODE = "UZ-SETUP-002";
+// Cover the default five-second pool acquisition, the API role's five-second
+// statement budget, and request/response transfer for this one-page read.
+const CHAT_LIST_TIMEOUT_MS = 15_000;
 const object = Schema.Record(Schema.String, Schema.Unknown);
 
 const historyTransport = Effect.fn("chat.history.transport")(function* (options: WorkspaceOptions) {
@@ -49,13 +52,14 @@ export const chatListEffect = Effect.fn("chat.list")(function* (options: ChatLis
   const query = yield* listQuery(options);
   const transport = yield* historyTransport(options);
   const output = yield* Output;
-  const body = yield* transport.call({path: `${transport.drafts}?${query}`},
-    object);
+  const body = yield* transport.call({
+    path: `${transport.drafts}?${query}`, timeoutMs: CHAT_LIST_TIMEOUT_MS,
+  }, object);
   const page = yield* decodeChatPage(body);
   if (output.format === OUTPUT_FORMAT.json) return yield* output.printJson(body);
   if (!page.items.length) yield* output.info("No setup chats match this list.");
   else yield* output.printTable([
-    {key: "title", label: "TITLE"}, {key: "id", label: "CHAT"}, {key: "status", label: "STATUS"},
+    {key: "id", label: "ID"}, {key: "title", label: "TITLE"}, {key: "status", label: "STATUS"},
     {key: "versions", label: "VERSIONS"}, {key: "updated", label: "UPDATED"},
   ], page.items.map(row => ({title: row.title, id: row.id, status: chatStatus(row),
     versions: chatVersions(row) || EMPTY_CELL, updated: ago(row.updated_at)})));

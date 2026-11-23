@@ -133,7 +133,7 @@ it("exposes unavailable history after access loss", () => {
 it("distinguishes failed, loading, and empty history", () => {
   const empty = client.getSnapshot();
   const view = render(tree({...empty, busy: true}));
-  expect(screen.getByLabelText("Loading unfinished setups")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
   expect(screen.queryByRole("textbox")).toBeNull();
   view.rerender(tree({...empty, error: "We couldn’t load your models and chats.", listStatus: "unavailable"}));
   expect(screen.getByText(/Unfinished setups could not be loaded/)).toBeTruthy();
@@ -184,14 +184,14 @@ it("keeps a loaded history distinct from a failed or pending chat operation", ()
   view.rerender(tree({...initial, draft: null, error: "Save failed", busy: true}));
   expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
   expect(screen.queryByText(/Unfinished setups could not be loaded/)).toBeNull();
-  expect(screen.queryByLabelText("Loading unfinished setups")).toBeNull();
+  expect(screen.queryByText("Loading unfinished setups")).toBeNull();
 });
 
 it("removes unfinished history when leaving chat and retains completed cards without stale controls", () => {
   const view = render(tree({...initial, draft: null, listStatus: "loading"}));
-  expect(screen.getByLabelText("Loading unfinished setups")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Unfinished setups"})).toBeNull();
   view.rerender(<DraftSidebarProvider>{sidebar}</DraftSidebarProvider>);
-  expect(screen.queryByLabelText("Loading unfinished setups")).toBeNull();
+  expect(screen.queryByText("Loading unfinished setups")).toBeNull();
   view.rerender(tree(initial));
   expect(screen.getByRole("link", {name: DRAFT.title})).toBeTruthy();
   view.rerender(<DraftSidebarProvider>{sidebar}</DraftSidebarProvider>);

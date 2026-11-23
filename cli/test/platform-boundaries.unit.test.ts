@@ -8,7 +8,7 @@ beforeEach(() => {fixture = new PlatformFixture();});
 afterEach(() => fixture.dispose());
 
 test.each(["http://example.test", "https://"])("refuses a malformed platform provider URL %s before a request", async baseUrl => {
-  const result = await fixture.run(["keys", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
+  const result = await fixture.run(["models", "default", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
     "--model", "remote-model", "--base-url", baseUrl]);
   expect(result.code).toBe(4);
   expect(result.stderr).toContain("must be an https URL");
@@ -17,12 +17,12 @@ test.each(["http://example.test", "https://"])("refuses a malformed platform pro
 
 test("uses the common HTTPS provider URL flag and URL metavar", async () => {
   fixture.respond = () => Response.json({provider: "openai-compatible", model: "remote-model", active: true});
-  const result = await fixture.run(["keys", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
+  const result = await fixture.run(["models", "default", "use", "--provider", "openai-compatible", "--workspace", RUNNER_ID,
     "--model", "remote-model", "--base-url", "https://example.test/v1"]);
   expect(result.code).toBe(0);
   expect(fixture.calls).toHaveLength(1);
   expect(fixture.calls[0]?.body).toMatchObject({base_url: "https://example.test/v1"});
-  const help = await fixture.run(["keys", "use", "--help"]);
+  const help = await fixture.run(["models", "default", "use", "--help"]);
   expect(help.stdout).toContain("--base-url <url>");
 });
 
@@ -35,8 +35,9 @@ test.each(["runners", "models"])("renders a %s table and its next cursor in a te
 
 test("renders provider defaults as a terminal table", async () => {
   fixture.respond = () => Response.json({keys: [{provider: "example", source_workspace_id: RUNNER_ID, model: null, active: false, updated_at: INSTANT}]});
-  const keys = await fixture.run(["keys", "list"], "", true);
-  expect(keys.code).toBe(0); expect(keys.stdout).toContain("example"); expect(keys.stdout).toContain("No");
+  const keys = await fixture.run(["models", "default", "list"], "", true);
+  expect(keys.code).toBe(0); expect(keys.stdout).toContain("example"); expect(keys.stdout).toContain("Configured");
+  expect(keys.stdout).toMatch(/^ID\s+MODEL\s+WORKSPACE\s+STATUS/m);
 });
 
 test("renders event history and a continuation cursor", async () => {
@@ -77,10 +78,10 @@ test.each(["missing", "terminal", "malformed"])("refuses %s policy input before 
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
 });
 
-test("refuses a provider key requested from an interactive input", async () => {
-  const result = await fixture.run(["keys", "use", "--provider", "example", "--workspace", RUNNER_ID,
+test("refuses credential flags on model default selection", async () => {
+  const result = await fixture.run(["models", "default", "use", "--provider", "example", "--workspace", RUNNER_ID,
     "--model", "reasoning-model", "--api-key-stdin", "--json"], "", false, true);
-  expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);
+  expect(result.code).toBe(4); expect(result.stderr).toContain("api-key-stdin"); expect(fixture.calls).toEqual([]);
 });
 
 test("releases a reserved token file when private permissions cannot be applied", async () => {

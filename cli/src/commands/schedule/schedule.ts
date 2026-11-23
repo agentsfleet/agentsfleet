@@ -164,7 +164,7 @@ export const scheduleListEffectFromArgs = (
     yield* ctx.output.printEntityTable(
       {
         // A hosted schedule has no name — its identity is the identifier.
-        id: { key: FIELD_SCHEDULE_ID, label: "SCHEDULE_ID" },
+        id: { key: FIELD_SCHEDULE_ID },
         domain: [
           { key: FIELD_DESCRIPTION, label: "SCHEDULE" },
           { key: FIELD_STATUS, label: "STATUS" },

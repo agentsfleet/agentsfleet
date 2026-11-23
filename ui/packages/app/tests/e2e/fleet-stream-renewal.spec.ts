@@ -167,6 +167,37 @@ test("replacement attempts reset the rendered answer and announce once per obser
   await info.attach("checkpoint-restart-rendered", {body: await page.screenshot(), contentType: "image/png"});
 });
 
+test("twenty completed turns use one native stream and no history polling", async ({page}, info) => {
+  const started = performance.now();
+  await startProbe(page);
+  const send = (kind: string, turn_id: string, payload: Record<string, unknown>) => currentStream().write(
+    `event: ${kind}\ndata: ${JSON.stringify({kind, turn_id, fencing_token: "1", ...payload})}\n\n`);
+  currentStream().write(HEARTBEAT);
+  await expect(page.locator("#transport-status")).toHaveText("live");
+
+  for (let turn = 1; turn <= 20; turn += 1) {
+    const id = `019f0000-0000-7000-8000-${String(turn).padStart(12, "0")}`;
+    const created_at = new Date(turn).toISOString();
+    send("turn_received", id, {actor: "steer:browser-owner", event_type: "chat",
+      message: `Runtime request ${turn}`, created_at});
+    const preview = `Provisional response ${turn}`;
+    send("chunk", id, {text: preview, text_kind: "answer", stream_start: true, stream_contiguous: true, stream_seq: 0});
+    await expect(page.getByText(preview, {exact: true})).toBeVisible();
+    const final_reply = `Completed response ${turn}`;
+    send("turn_complete", id, {actor: "steer:browser-owner", event_type: "chat",
+      status: "processed", created_at, updated_at: created_at, final_reply});
+    await expect(page.getByText(final_reply, {exact: true})).toBeVisible();
+  }
+
+  await expect(page.getByText(/^Completed response \d+$/)).toHaveCount(20);
+  expect(streams).toHaveLength(1);
+  expect(peakActive).toBe(1);
+  expect(historyReads).toBe(0);
+  await page.getByRole("button", {name: "Stop", exact: true}).click();
+  await expect.poll(() => active.size).toBe(0);
+  await evidence(info, started);
+});
+
 async function evidence(info: TestInfo, started: number): Promise<void> {
   await info.attach("native-eventsource-evidence", {
     contentType: "application/json",

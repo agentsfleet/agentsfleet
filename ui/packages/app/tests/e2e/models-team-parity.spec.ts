@@ -61,8 +61,8 @@ for (const view of ["Models", "Team"] as const) {
       }
 
       if (isMobile) {
-        const appAnchor = view === "Models" ? page.getByRole("button", {name: "Add another model"}) : page.getByRole("listitem", {name: "sofia.chen@example.com"});
-        const refAnchor = reference.locator(view === "Models" ? ".ask-strip button" : ".invite-row:last-child");
+        const appAnchor = view === "Models" ? page.getByRole("region", {name: "Your models"}) : page.getByRole("listitem", {name: "sofia.chen@example.com"});
+        const refAnchor = reference.locator(view === "Models" ? ".page-note" : ".invite-row:last-child");
         for (const anchor of [appAnchor, refAnchor]) await anchor.evaluate(element => element.scrollIntoView({block: "end"}));
         await capture(page, reference, info, `${view.toLowerCase()}-lower`, palette);
         for (const anchor of [title, designTitle]) await anchor.evaluate(element => {
@@ -148,10 +148,9 @@ async function reviewModels(page: Page, reference: Page) {
   await match(section.getByText("OpenAI", {exact: true}), reference.locator(".resource-copy p"), text);
   await matchGlyph(section.locator("p svg"), reference.locator(".model-row small i"));
   await matchGlyph(section.getByRole("listitem").locator(":scope > span svg"), reference.locator(".model-row .resource-icon i"));
-  await matchGlyph(page.getByRole("button", {name: "Add another model"}).locator("svg"), reference.locator(".ask-strip button i"));
+  await expect(page.getByRole("button", {name: "Add another model"})).toHaveCount(0);
   await match(section.getByText("GPT-4.1", {exact: true}), reference.locator(".resource-copy strong"));
   await match(section.getByText("OpenAI workspace", {exact: false}), reference.locator(".model-row small"));
-  await match(page.getByText("Bring your own provider", {exact: true}), reference.locator(".ask-strip small"));
 }
 
 async function reviewTeam(page: Page, reference: Page, isMobile: boolean) {
@@ -218,7 +217,7 @@ async function useModels(page: Page) {
   await page.getByRole("menuitem", {name: "Remove model"}).press("Enter");
   await expect(page.getByRole("alertdialog").getByRole("heading")).toHaveCSS("font-size", "18px");
   await page.keyboard.press("Escape");
-  await page.getByRole("button", {name: "Add another model"}).press("Enter");
+  await page.getByRole("button", {name: "Create model", exact: true}).press("Enter");
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("combobox", {name: "Provider"}).press("Enter");
   await page.getByRole("option", {name: "OpenAI", exact: true}).press("Enter");

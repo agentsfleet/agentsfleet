@@ -136,7 +136,7 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
       if (url.includes("/v1/workspaces/ws_test/fleets")) {
         return jsonResponse(
-          { error_code: "FORBIDDEN", detail: "Workspace access denied" },
+          { error_code: "UZ-AUTH-001", detail: "Workspace access denied" },
           403,
         );
       }
@@ -154,7 +154,8 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
       (c) => c.name === "workspace_binding_valid",
     );
     assert.equal(binding?.ok, false);
-    assert.match(binding?.detail ?? "", /workspace list/);
+    assert.match(binding?.detail ?? "", /UZ-AUTH-001/);
+    assert.match(binding?.detail ?? "", /workspace this credential can access/);
   });
 });
 

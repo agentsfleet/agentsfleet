@@ -24,9 +24,11 @@ import {
   type TableColumn,
   type TableRow,
   type EntityTableSpec,
+  type FieldTones,
+  type FormatOpts,
 } from "../output/index.ts";
 
-type Stream = NodeJS.WritableStream & {readonly isTTY?: boolean};
+type Stream = NodeJS.WritableStream & {readonly isTTY?: boolean; readonly columns?: number};
 
 /**
  * The registers this CLI writes in.
@@ -100,7 +102,7 @@ export interface OutputShape {
   readonly outro: (msg: string) => Effect.Effect<void>;
   readonly printJson: (payload: unknown) => Effect.Effect<void>;
   readonly printJsonErr: (payload: unknown) => Effect.Effect<void>;
-  readonly printKeyValue: (record: Record<string, string>) => Effect.Effect<void>;
+  readonly printKeyValue: (record: Record<string, string>, tones?: FieldTones) => Effect.Effect<void>;
   readonly printSection: (title: string) => Effect.Effect<void>;
   readonly printTable: (
     columns: ReadonlyArray<TableColumn>,
@@ -132,49 +134,55 @@ const writeLine = (stream: Stream, line: string): void => {
 
 const JSON_INDENT = 2;
 
-export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): OutputShape => ({
-  stdoutIsTty: Boolean((stdout as { readonly isTTY?: boolean }).isTTY),
-  format,
-  intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
-  info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
-  progress: (label, display) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env, display),
-  // The one call that answers both registers. In json the payload IS the
-  // answer, so the human sentence is dropped rather than wrapped — a script
-  // parsing this wants the record, not a record with a message in it.
-  success: (msg, data) =>
-    format === OUTPUT_FORMAT.json
-      ? Effect.sync(() =>
-          writeLine(stdout, JSON.stringify(data ?? { message: msg }, null, JSON_INDENT)),
-        )
-      : Effect.sync(() => writeLine(stdout, defaultUi.ok(msg))),
-  warn: (msg) => Effect.sync(() => writeLine(stderr, defaultUi.warn(msg))),
-  error: (msg, meta) => Effect.sync(() =>
-    writeErrorBlock(stderr, { severity: BLOCK_SEVERITY.error, message: msg, fields: meta?.fields ?? {} })),
-  outro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
-  printJson: (payload) =>
-    Effect.sync(() => writeLine(stdout, JSON.stringify(payload, null, JSON_INDENT))),
-  printJsonErr: (payload) =>
-    Effect.sync(() => writeLine(stderr, JSON.stringify(payload, null, JSON_INDENT))),
-  printKeyValue: (record) =>
-    Effect.sync(() => {
-      printKeyValueRaw(
-        stdout as unknown as Parameters<typeof printKeyValueRaw>[0],
-        record,
-      );
-    }),
-  printSection: (title) =>
-    Effect.sync(() => {
-      printSectionRaw(stdout as unknown as Parameters<typeof printSectionRaw>[0], title);
-    }),
-  printTable: (columns, rows) =>
-    Effect.sync(() => {
-      printTableRaw(stdout as unknown as Parameters<typeof printTableRaw>[0], columns, rows);
-    }),
-  printEntityTable: (spec, rows) =>
-    Effect.sync(() => {
-      printEntityTableRaw(stdout as unknown as Parameters<typeof printEntityTableRaw>[0], spec, rows);
-    }),
-});
+export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): OutputShape => {
+  const tableOptions = (): FormatOpts => ({stream: stdout, warnStream: stderr,
+    ...(env === undefined ? {} : {env}), ...(stdout.columns === undefined ? {} : {widthHint: stdout.columns})});
+  return {
+    stdoutIsTty: isTty(stdout),
+    format,
+    intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
+    info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
+    progress: (label, display) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env, display),
+    // The one call that answers both registers. In json the payload IS the
+    // answer, so the human sentence is dropped rather than wrapped — a script
+    // parsing this wants the record, not a record with a message in it.
+    success: (msg, data) =>
+      format === OUTPUT_FORMAT.json
+        ? Effect.sync(() =>
+            writeLine(stdout, JSON.stringify(data ?? { message: msg }, null, JSON_INDENT)),
+          )
+        : Effect.sync(() => writeLine(stdout, defaultUi.ok(msg))),
+    warn: (msg) => Effect.sync(() => writeLine(stderr, defaultUi.warn(msg))),
+    error: (msg, meta) => Effect.sync(() =>
+      writeErrorBlock(stderr, { severity: BLOCK_SEVERITY.error, message: msg, fields: meta?.fields ?? {} })),
+    outro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
+    printJson: (payload) =>
+      Effect.sync(() => writeLine(stdout, JSON.stringify(payload, null, JSON_INDENT))),
+    printJsonErr: (payload) =>
+      Effect.sync(() => writeLine(stderr, JSON.stringify(payload, null, JSON_INDENT))),
+    printKeyValue: (record, tones) =>
+      Effect.sync(() => {
+        printKeyValueRaw(
+          stdout,
+          record,
+          tableOptions(),
+          tones,
+        );
+      }),
+    printSection: (title) =>
+      Effect.sync(() => {
+        printSectionRaw(stdout, title, tableOptions());
+      }),
+    printTable: (columns, rows) =>
+      Effect.sync(() => {
+        printTableRaw(stdout, columns, rows, tableOptions());
+      }),
+    printEntityTable: (spec, rows) =>
+      Effect.sync(() => {
+        printEntityTableRaw(stdout, spec, rows, tableOptions());
+      }),
+  };
+};
 
 /** The register `--json` selects, as the renderer names it. */
 const formatFor = (jsonMode: boolean): OutputFormat =>

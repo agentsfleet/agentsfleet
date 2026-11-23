@@ -1,3 +1,4 @@
+import { STATUS_TONES } from "../../output/format.ts";
 // Tenant API-key commands. The raw key is printed only on create; list,
 // revoke, and delete never receive or render key material.
 
@@ -98,8 +99,8 @@ const queryForList = (sort: string, startingAfter: string | undefined): string =
 // CREATED becomes the age every table carries.
 const LIST_TABLE_SPEC = {
   name: { key: KEY_NAME, label: "NAME" },
-  id: { key: API_KEY_ID, label: "API_KEY_ID" },
-  domain: [{ key: "status", label: "STATUS" }],
+  id: { key: API_KEY_ID },
+  domain: [{ key: "status", label: "STATUS", tones: STATUS_TONES }],
 } as const;
 
 const listTableRow = (key: ApiKeyRow) => ({
@@ -145,7 +146,7 @@ export const apiKeyCreateEffectFromArgs = (
         { key: "value", label: "" },
       ],
       [
-        { label: API_KEY_ID, value: res.id ?? "" },
+        { label: "ID", value: res.id ?? "" },
         { label: KEY_NAME, value: res.key_name ?? name },
         { label: CREATED_AT, value: instantCell(res.created_at, TIME_MISSING) },
       ],

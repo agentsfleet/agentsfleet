@@ -10,7 +10,7 @@ vi.mock("@clerk/nextjs", () => ({
 import CliAuthPage from "@/app/cli-auth/[session_id]/page";
 
 const SESSION_ID = "0190b3c0-1111-7000-8000-000000000001";
-const HEADING = "Unleash your agents.";
+const HEADING = "Authorization granted";
 let expiresAt: string;
 let approvedExpiresAt: string;
 let poll: ReturnType<typeof vi.fn<() => Promise<Response>>>;
@@ -64,7 +64,7 @@ it("shows completion only after the terminal consumes the verification code", as
   poll.mockResolvedValueOnce(Response.json({ error_code: "UZ-AUTH-012" }, { status: 410 }));
   await readStatus();
   expect(screen.getByRole("heading", { name: HEADING })).toBeTruthy();
-  expect(screen.getByText("Your terminal is authorized. Return to your terminal to finish signing in.")).toBeTruthy();
+  expect(screen.getByText("Return to your terminal to finish signing in.")).toBeTruthy();
   expect(screen.queryByText(/You're signed in/)).toBeNull();
   expect(screen.getByText("You can close this tab.")).toBeTruthy();
   expect(screen.queryByLabelText("Verification code")).toBeNull();

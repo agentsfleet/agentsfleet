@@ -66,16 +66,16 @@ It uses Bun's native Postgres client.
 
 ## Activate a primed model
 
-Priming adds no credential and selects no default. Pipe the provider key from 1Password into the CLI, which stores it and selects the default:
+After applying the catalogue, select the platform default using a provider secret in the administrator workspace. Read the target ID from the environment's administrator item.
+
+Create the named provider secret with the stdin command if it is missing. Then select the model. [Configure inference](../../PRIME.md#configure-inference)
 
 ```bash
-op read "op://$VAULT/<PROVIDER_KEY_ITEM>/credential" \
-  | agentsfleet platform keys use --provider <PROVIDER> --model <MODEL_ID> \
-      --workspace "$(op read "op://$VAULT/agentsfleet-admin/platform_admin_workspace_id")" --api-key-stdin
-agentsfleet platform keys list
+agentsfleet platform models default use --provider <PROVIDER> --model <MODEL_ID> --workspace <ADMIN_WORKSPACE_ID>
+agentsfleet platform models default list
 ```
 
-`keys list` shows the provider and model with `active: true`. Setup chat also needs an SDK route that supports tools.
+The selected provider shows status `Default`. Setup chat needs a model with tool support.
 
 ## Seed the decision model
 
@@ -118,8 +118,8 @@ Sync the `typesafe` bag first, and skip this section when `models list` already 
    ```
 
    ```text
-   NAME              ID        PROVIDER  MODEL
-   Setup edit check  <varies>  typesafe  jev-latest
+   ID        NAME              PROVIDER  MODEL
+   <varies>  Setup edit check  typesafe  jev-latest
    ```
 
 ## Change connection settings or prices

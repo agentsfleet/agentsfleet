@@ -3,13 +3,14 @@
 import type { DraftIdentity, DraftView } from "@/lib/api/draft-state";
 import type { Source } from "@/lib/api/draft-types";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Alert, Button } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import { DraftClient } from "@/lib/api/drafts";
-import { DraftCache } from "@/lib/api/draft-cache";
+import { DraftCache, DraftTitleWrites } from "@/lib/api/draft-cache";
+import { TitleWritesContext } from "@/components/layout/draft-sidebar-state";
 import { chatRecovery } from "@/lib/api/draft-recovery";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { appliedNotice, isRunning } from "@/lib/api/draft-types";
@@ -38,18 +39,20 @@ export function WorkspaceChat(props: Props) {
 
 function ChatSession(props: Props & {identity: DraftIdentity}) {
   const [cache] = useState(() => new DraftCache());
-  useEffect(() => () => cache.clear(), [cache]);
+  const sharedTitleWrites = useContext(TitleWritesContext);
+  const [localTitleWrites] = useState(() => new DraftTitleWrites());
+  useEffect(() => () => {cache.clear(); localTitleWrites.clear();}, [cache, localTitleWrites]);
   const sourceKey = props.source?.kind === SOURCE_KIND.fleet ? {kind: props.source.kind, fleet_id: props.source.fleet_id} : props.source;
-  return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} />;
+  return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} titleWrites={sharedTitleWrites ?? localTitleWrites} />;
 }
 
-function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
+function OwnedChat({identity, draft, source, fleetPage, menuItems, cache, titleWrites}: Props & {identity: DraftIdentity; cache: DraftCache; titleWrites: DraftTitleWrites}) {
   const [session, setSession] = useState<OwnedSession>({kind: "starting"});
   const [selection] = useState(() => ({identity, draft, source}));
   useEffect(() => {
-    const {identity: {account, workspace, subject}, draft, source} = selection;
-    const current = new DraftClient({account, workspace, subject});
-    const unsubscribe = current.subscribe(() => {if (current.getSnapshot().inaccessible) cache.clear();});
+    const {identity, draft, source} = selection;
+    titleWrites.select(identity);
+    const current = new DraftClient(identity, {cache, titleWrites});
     if (source) current.fresh(source);
     let disposed = false;
     const open = async (): Promise<void> => {
@@ -64,8 +67,8 @@ function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props
       } finally {if (!disposed && opening) setSession({kind: "ready", client: current, reload: open});}
     };
     void open().catch(ignore);
-    return () => {disposed = true; unsubscribe(); cache.remember(current.getSnapshot()); current.dispose();};
-  }, [selection, cache]);
+    return () => {disposed = true; cache.remember(current.getSnapshot()); current.dispose();};
+  }, [selection, cache, titleWrites]);
   const initialSourceRevision = selection.source?.kind === SOURCE_KIND.fleet ? selection.source.setup_revision : undefined;
   return session.kind === "starting" ? <RouteLoading label={LOADING_SETUP_CHAT} />
     : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} draftId={draft} fleetPage={fleetPage} menuItems={menuItems} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;

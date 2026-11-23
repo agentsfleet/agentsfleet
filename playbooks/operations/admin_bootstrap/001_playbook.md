@@ -102,7 +102,7 @@ agentsfleet secrets list
 ## Remove or undo
 
 Revoke an unused key with `agentsfleet api-keys revoke`; remove platform scopes in Clerk.
-Deleting the Clerk user leaves database rows; see [user teardown](../teardown/user/001_playbook.md).
+Deleting the Clerk user leaves database rows; see [identity recovery](../recovery/README.md#identity-recovery).
 
 ## Related pages
 

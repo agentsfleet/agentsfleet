@@ -38,21 +38,19 @@ describe("BalanceLink", () => {
     // gate-block until a top-up.
     render(<BalanceLink balanceNanos={balanceNanos} isExhausted />);
     expect(screen.getByText(expected).className).toContain("text-destructive");
-    expect(screen.getByText(expected).className).not.toContain("text-info");
-    // The whole chip turns, not just the figure inside it.
-    expect(link().className).toContain("border-destructive/40");
-    expect(link().className).toContain("bg-destructive/10");
+    expect(screen.getByText(expected).className).not.toContain("text-foreground");
+    expect(link().className).not.toMatch(/\bborder-.*\/40\b/);
     expect(link().className).not.toContain("border-info/40");
     expect(link().dataset.exhausted).toBe("true");
     expect(link().getAttribute("aria-label")).toBe(`${BALANCE_LABEL} ${expected}: ${BALANCE_EXHAUSTED_ARIA_LABEL}`);
   });
 
-  it("distinguishes the available balance with information blue", () => {
+  it("keeps available balance in a plain navigation row", () => {
     render(<BalanceLink balanceNanos="4806600000" isExhausted={false} />);
     expect(link().dataset.exhausted).toBeUndefined();
-    expect(figure().className).toContain("text-info");
+    expect(figure().className).toContain("text-foreground");
     expect(figure().className).toContain("font-semibold");
-    expect(link().className).toContain("border-info/40");
+    expect(link().className).not.toContain("border-info/40");
   });
 
 });

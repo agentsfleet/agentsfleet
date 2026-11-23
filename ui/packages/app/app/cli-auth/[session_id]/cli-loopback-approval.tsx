@@ -4,12 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth, useClerk } from "@clerk/nextjs";
 import {
   Alert, AlertDescription, AlertTitle, Button, Card, CardContent,
-  CardDescription, CardFooter, CardHeader, PageTitle,
+  CardDescription, CardFooter, CardHeader, PageTitle, Spinner,
 } from "@agentsfleet/design-system";
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import { matchingCode, type LoopbackHandoff } from "@/lib/auth/cli-loopback";
 import { clearBrowserHandoff } from "@/lib/auth/cli-loopback-store";
-import { PageShell, VerificationCodeDisplay } from "./cli-auth-ui";
+import { CLI_SIGN_IN_TITLE, PageShell, VerificationCodeDisplay } from "./cli-auth-ui";
 
 const JSON_CONTENT_TYPE = "application/json";
 const FORM_CONTENT_TYPE = "application/x-www-form-urlencoded";
@@ -17,7 +17,8 @@ const RESTART_MESSAGE = "Start a new sign-in from your terminal. No code was sen
 const VIEW = { loading: "loading", ready: "ready", working: "working", failed: "failed" } as const;
 const DECISION = { approved: "approved", denied: "denied" } as const;
 type Decision = (typeof DECISION)[keyof typeof DECISION];
-type View = { kind: typeof VIEW.loading | typeof VIEW.working }
+type View = { kind: typeof VIEW.loading }
+  | { kind: typeof VIEW.working; decision: Decision; code: string }
   | { kind: typeof VIEW.ready; code: string }
   | { kind: typeof VIEW.failed; message: string };
 
@@ -92,10 +93,10 @@ class ApprovalDecision {
   #chosen = false;
   constructor(handoff: LoopbackHandoff, port: ApprovalPort) { this.#handoff = handoff; this.#port = port; }
 
-  decide(decision: Decision): void {
+  decide(decision: Decision, code: string): void {
     if (this.#chosen || this.#port.signal.aborted) return;
     this.#chosen = true;
-    this.#port.update({ kind: VIEW.working });
+    this.#port.update({ kind: VIEW.working, decision, code });
     if (decision === DECISION.approved) { void this.#authorize(); return; }
     try { submitDecision(this.#handoff, DECISION.denied); } catch { this.#fail(RESTART_MESSAGE); }
   }
@@ -151,12 +152,12 @@ export function CliLoopbackApproval({ handoff, approve }: { handoff: LoopbackHan
   const identity = clerk.user?.primaryEmailAddress?.emailAddress ?? clerk.user?.fullName;
   const ready = Boolean(isSignedIn && view.kind === VIEW.ready && identity);
   const decide = (decision: Decision): void => {
-    if (!ready || !displayed || !lifetime.current) return;
+    if (!ready || view.kind !== VIEW.ready || !displayed || !lifetime.current) return;
     actions.current ??= new ApprovalDecision(handoff, {
       approve, displayed, signal: lifetime.current.signal, update: setView,
       current: () => clerk.user && clerk.session ? { userId: clerk.user.id, sessionId: clerk.session.id } : null,
     });
-    actions.current.decide(decision);
+    actions.current.decide(decision, view.code);
   };
   if (!isLoaded || view.kind === VIEW.loading) return <RouteLoading fullScreen />;
   return <ApprovalCard view={view} identity={identity} ready={ready} decide={decision => decide(decision)} />;
@@ -167,24 +168,23 @@ function ApprovalCard({ view, identity, ready, decide }: {
 }) {
   return <PageShell><Card>
     <CardHeader>
-      <PageTitle>Connect your terminal</PageTitle>
+      <PageTitle>{CLI_SIGN_IN_TITLE}</PageTitle>
       <CardDescription>Continue only if you started this sign-in on this computer.</CardDescription>
     </CardHeader>
     <CardContent className="space-y-md">
       {identity ? <p className="text-label text-foreground">Signing in as {identity}</p> : null}
-      {view.kind === VIEW.ready ? <>
-        <p className="text-label text-muted-foreground">Check that this code matches your terminal before authorizing.</p>
+      {view.kind === VIEW.ready || view.kind === VIEW.working ? <>
+        <p className="text-label text-muted-foreground">Confirm this code matches the one in your terminal.</p>
         <VerificationCodeDisplay code={view.code} />
       </> : null}
-      {view.kind === VIEW.working ? <output className="text-label text-muted-foreground">Completing in your terminal…</output> : null}
       {view.kind === VIEW.failed || !identity ? <Alert variant="destructive">
         <AlertTitle>Sign-in unavailable</AlertTitle>
         <AlertDescription>{view.kind === VIEW.failed ? view.message : RESTART_MESSAGE}</AlertDescription>
       </Alert> : null}
     </CardContent>
     <CardFooter className="gap-sm">
-      <Button disabled={!ready} onClick={() => decide(DECISION.approved)}>Authorize</Button>
-      <Button variant="outline" disabled={!ready} onClick={() => decide(DECISION.denied)}>Deny</Button>
+      <Button disabled={!ready} onClick={() => decide(DECISION.approved)}>{view.kind === VIEW.working && view.decision === DECISION.approved ? <Spinner size="sm" label="Authorizing…" /> : "Authorize"}</Button>
+      <Button variant="outline" disabled={!ready} onClick={() => decide(DECISION.denied)}>{view.kind === VIEW.working && view.decision === DECISION.denied ? <Spinner size="sm" label="Denying…" /> : "Deny"}</Button>
     </CardFooter>
   </Card></PageShell>;
 }

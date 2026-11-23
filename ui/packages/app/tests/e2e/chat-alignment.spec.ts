@@ -76,8 +76,13 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await expect(fleet.locator("svg")).toHaveCount(0);
   await expect(edit.locator(":scope > svg:last-child")).toHaveAttribute("width", "14");
   await expect(fleet.locator("span").first()).toHaveCSS("font-weight", "600");
-  const labelEdges = await Promise.all([disclosure, fleet, edit].map(row => row.locator("span").first().boundingBox()));
-  expect(labelEdges.map(box => box?.x)).toEqual(Array(3).fill(labelEdges[0]?.x));
+  const labelEdges = await Promise.all([disclosure, fleet].map(row => row.locator("span").first().boundingBox()));
+  expect(labelEdges[0]?.x).toBe(labelEdges[1]?.x);
+  const [fleetBox, editBox, rail] = await Promise.all([fleet.boundingBox(), edit.boundingBox(), nav.boundingBox()]);
+  if (!fleetBox || !editBox || !rail) throw new Error("The fleet and its edit action should have visible bounds.");
+  expect(editBox.y + editBox.height / 2).toBeCloseTo(fleetBox.y + fleetBox.height / 2, 0);
+  expect(editBox.x).toBeGreaterThan(fleetBox.x);
+  expect(editBox.x + editBox.width).toBeLessThan(rail.x + rail.width);
   await disclosure.focus();
   await page.keyboard.press("Enter");
   await expect(nav.getByRole("link", {name: "Support triage", exact: true})).toBeHidden();
@@ -125,6 +130,35 @@ test("saved setup has the same composer placement, flat header, summary and retu
   }
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(input).toHaveValue("Preserve the existing regression assertions");
+});
+
+test("a private setup title edits in place and saves when focus leaves", async ({page, chatProbe}) => {
+  await page.route("**/live/v1/workspaces/*/models?*", route => route.fulfill({json: {items: [MODEL], next_cursor: null}}));
+  await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({json: {items: [], next_cursor: null}}));
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}/messages?*`, route => route.fulfill({json: {items: [], next_cursor: null}}));
+  let draft = DRAFT;
+  await page.route(`**/live/v1/workspaces/*/drafts/${DRAFT.id}`, route => {
+    if (route.request().method() === "PATCH") {
+      expect(route.request().headers()["if-match"]).toBe(DRAFT.etag);
+      draft = {...DRAFT, title: route.request().postDataJSON().title, etag: '"renamed"'};
+    }
+    return route.fulfill({json: draft});
+  });
+  await page.goto(`${chatProbe}?chatError=1&fleetSave=1`);
+  const heading = page.getByRole("heading", {name: DRAFT.title, exact: true});
+  await expect(heading).toBeVisible();
+  const before = await heading.boundingBox();
+  await heading.press("F2");
+  const field = page.getByRole("textbox", {name: "Chat name", exact: true});
+  await expect(field).toBeFocused();
+  await expect(field).toHaveCSS("border-top-width", "0px");
+  await expect(field).toHaveCSS("text-decoration-line", "underline");
+  const editing = await field.boundingBox();
+  expect(editing?.height ?? 0).toBeGreaterThan(0);
+  expect(editing?.height ?? Infinity).toBeLessThanOrEqual((before?.height ?? 0) + 4);
+  await field.fill("Release checklist");
+  await page.getByRole("form", {name: "Setup chat composer"}).getByRole("textbox").click();
+  await expect(page.getByRole("heading", {name: "Release checklist", exact: true})).toBeVisible();
 });
 
 test("a resumed setup retries model choices beside the picker on both appearances", async ({page, chatProbe}, info) => {

@@ -81,7 +81,7 @@ it("keeps an unsaved proposal conversational without a ready or review heading",
   expect(screen.getByText(/Keep chatting to refine it/)).toBeTruthy();
   expect(screen.queryByRole("region", {name: "Setup instructions"})).toBeNull();
   expect(screen.queryByRole("button", {name: DETAILS})).toBeNull();
-  expect(screen.getByRole("region", {name: SUMMARY}).children).toHaveLength(1);
+  expect(screen.getByRole("region", {name: SUMMARY}).textContent).toContain(REVIEW.effective.instance_name);
 });
 
 it("does not label an unchanged fleet-source chat as having unsaved changes", () => {

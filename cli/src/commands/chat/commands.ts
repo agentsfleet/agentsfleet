@@ -91,22 +91,33 @@ function run(actions: ChatActions, options: ChatOptions, interactive: boolean, i
 
 function validate(options: ChatOptions) {
   return Effect.gen(function* () {
+    const writesSetup = options.save || options.apply;
+    const reviewsSetup = options.review || writesSetup;
+    if (options.stop && (!options.draftId || options.message !== undefined || reviewsSetup)) {
+      return yield* fail("Use --stop by itself with a draft ID", "agentsfleet chat <draft-id> --stop");
+    }
+    if (options.name !== undefined && !reviewsSetup) {
+      return yield* fail("--name requires --review, --save or --apply");
+    }
+    if (options.reviewDigest !== undefined && !writesSetup) {
+      return yield* fail("--review-digest requires --save or --apply");
+    }
     const setupRecovery = Boolean(options.operationId && options.candidateId);
-    if (options.operationId) {
+    if (options.operationId !== undefined) {
       yield* requireValidId(options.operationId, "operation_id", USAGE);
       if (!options.noInput || options.stop || options.review) return yield* fail("--operation-id recovers one --no-input message, draft creation or explicit setup action");
-      if (setupRecovery ? options.message !== undefined || !(options.save || options.apply)
-        : (options.message === undefined && !carriesSetup(options)) || options.save || options.apply) return yield* fail("Choose one original message, draft creation or setup action to recover");
+      if (setupRecovery ? options.message !== undefined || !writesSetup
+        : (options.message === undefined && !carriesSetup(options)) || writesSetup) return yield* fail("Choose one original message, draft creation or setup action to recover");
     }
-    if (options.candidateId) yield* requireValidId(options.candidateId, "draft_candidate_id", USAGE);
-    if (options.candidateId && !options.operationId || options.setupEtag && !(setupRecovery && options.apply)) return yield* fail("Recovery identity fields require their matching --operation-id setup action");
-    if (options.draftId) yield* requireValidId(options.draftId, "draft_id", USAGE);
+    if (options.candidateId !== undefined) yield* requireValidId(options.candidateId, "draft_candidate_id", USAGE);
+    if (options.candidateId && !options.operationId || options.setupEtag !== undefined && !(setupRecovery && options.apply)) return yield* fail("Recovery identity fields require their matching --operation-id setup action");
+    if (options.draftId !== undefined) yield* requireValidId(options.draftId, "draft_id", USAGE);
     if (!setupRecovery && !options.draftId && !options.model) return yield* fail("Choose a setup model with --model");
     if (options.draftId && (options.fleet && !setupRecovery || options.definition !== undefined || options.model)) return yield* fail("A resumed draft keeps its source and model; use /model for future messages");
     if (options.fleet && options.definition !== undefined) return yield* fail("Choose one source: --fleet or --definition");
-    if (options.fleet) yield* requireValidId(options.fleet, "fleet_id", USAGE);
+    if (options.fleet !== undefined) yield* requireValidId(options.fleet, "fleet_id", USAGE);
     if (options.fleet && !setupRecovery && !DECIMAL_REVISION.test(options.setupRevision ?? "")) return yield* fail("--fleet requires --setup-revision <positive-decimal>");
-    if (options.setupRevision && !options.fleet) return yield* fail("Revision selection requires its matching source");
+    if (options.setupRevision !== undefined && !options.fleet) return yield* fail("Revision selection requires its matching source");
     if (options.runNow !== undefined && !options.save) return yield* fail("--run-now requires explicit --save");
     if (options.save && options.apply) return yield* fail("Choose one explicit setup action per invocation");
   });
@@ -145,6 +156,6 @@ function reason(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-function fail(detail: string): Effect.Effect<never, ValidationError> {
-  return Effect.fail(new ValidationError({detail, suggestion: USAGE}));
+function fail(detail: string, suggestion = USAGE): Effect.Effect<never, ValidationError> {
+  return Effect.fail(new ValidationError({detail, suggestion}));
 }

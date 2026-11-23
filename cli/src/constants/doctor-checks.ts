@@ -1,6 +1,4 @@
-// Named check identifiers emitted by `agentsfleet doctor`. The strings
-// appear in the JSON output and in stdout summaries; downstream tools
-// can grep on them. Stable surface — treat like the analytics events.
+// Stable check identifiers in the machine-readable doctor report.
 //
 // RULE UFS.
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
+import { ChatFixture, CHAT_PROPS, chooseSetupAction, editChatTitle } from "./fixture";
 import { WorkspaceChat } from "@/components/domain/setup/conversation/WorkspaceChat";
 import { DraftSidebarProvider } from "@/components/layout/draft-sidebar-state";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
@@ -208,17 +208,17 @@ it("refreshes a draft after an edit refusal while retaining the unsent message",
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   const unsent = "Keep this follow-up question";
   fireEvent.change(input, {target: {value: unsent}});
-  await chooseSetupAction("Rename chat");
+  await editChatTitle();
   fireEvent.change(screen.getByLabelText("Chat name"), {target: {value: "Updated setup conversation"}});
   const refused = "Conversation name could not be saved";
   fixture.fetch.mockResolvedValueOnce(response({user_message: refused}, 503));
-  fireEvent.click(screen.getByRole("button", {name: "Save name"}));
+  fireEvent.blur(screen.getByLabelText("Chat name"));
   await screen.findByText("Couldn’t complete this request");
   fireEvent.click(screen.getByRole("button", {name: "Retry"}));
   await waitFor(() => expect(screen.queryByText("Couldn’t complete this request")).toBeNull());
   expect(input).toHaveProperty("value", unsent);
   expect(input).toHaveProperty("disabled", false);
-  expect(screen.getByRole("button", {name: "Save name"})).toHaveProperty("disabled", false);
+  expect(screen.getByRole("textbox", {name: "Chat name"})).toHaveProperty("readOnly", false);
   expect(fixture.saveAttempts).toBe(0);
   expect(fixture.fetch.mock.calls.filter(([, init]) => init?.method === "PATCH")).toHaveLength(1);
 });

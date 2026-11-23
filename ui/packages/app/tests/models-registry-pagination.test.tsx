@@ -13,7 +13,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
 // A create already in flight can finish while a page read is outstanding.
 // Keep its completion boundary controllable without retesting the create form.
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog", () => ({
-  default: ({onCreated}: {onCreated: () => void}) => { created.current = onCreated; return null; },
+  AddModelEntryDialog: ({onCreated}: {onCreated: () => void}) => { created.current = onCreated; return null; },
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/EditModelEntryDialog", () => ({default: () => null}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog", () => ({default: () => null}));

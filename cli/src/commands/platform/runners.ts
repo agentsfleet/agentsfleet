@@ -1,3 +1,4 @@
+import { STATUS_TONES } from "../../output/format.ts";
 import {RunnerAction, RunnerHistory} from "./runner-vocabulary.ts";
 import { Clock, Effect } from "effect";
 import {instantNanos} from "../../lib/instant.ts";
@@ -23,9 +24,9 @@ export const runnersList = Effect.fn("runners.list")(function* (kind: RunnerKind
   const page = yield* decodePlatform(RunnerPageSchema, yield* platformRequest({path}));
   const output = yield* Output;
   if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
-  yield* output.printEntityTable({name: {key: "host_id", label: "HOST"}, domain: [
-    {key: "id", label: "ID"}, ...(isOperator(kind) ? [{key: "owner", label: "OWNER"}] : []),
-    {key: "status", label: "STATE"}, {key: "liveness", label: "CONNECTION"},
+  yield* output.printEntityTable({id: {key: "id"}, name: {key: "host_id", label: "HOST"}, domain: [
+    ...(isOperator(kind) ? [{key: "owner", label: "OWNER"}] : []),
+    {key: "status", label: "STATE", tones: STATUS_TONES}, {key: "liveness", label: "CONNECTION", tones: STATUS_TONES},
     {key: "cordon", label: "AUTO CORDON"}, {key: "default_engine", label: "DEFAULT ENGINE"},
   ], ageKey: null}, page.items.map(({id, host_id, status, liveness, tenant_id, cordon}) =>
     ({id, host_id, owner: owner(tenant_id), status, liveness, cordon: cordon?.reason ?? "None", default_engine: DEFAULT_ENGINE})));
@@ -46,7 +47,7 @@ export const runnerShow = Effect.fn("runners.show")(function* (kind: RunnerKind,
     "Auto cordon": runner.cordon?.reason ?? "None",
     ...(runner.cordon ? {"Cordoned at": runner.cordon.cordoned_at,
       "Return rule": "30 seconds of continuous healthy heartbeats"} : {}),
-  });
+  }, {State: STATUS_TONES, Connection: STATUS_TONES, Health: STATUS_TONES});
   if (runner.selftest) {
     const output = yield* Output;
     if (output.format === OUTPUT_FORMAT.text && output.stdoutIsTty) {
@@ -69,14 +70,14 @@ export const runnerHistory = Effect.fn("runners.history")(function* (id: string,
   if (kind === RunnerHistory.History) {
     const page = yield* decodePlatform(RunnerHistoryPageSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
-    yield* output.printEntityTable({id: {key: "id", label: "ID"}, domain: [
+    yield* output.printEntityTable({id: {key: "id"}, domain: [
       {key: "event_type", label: "EVENT"}, {key: "occurred_at", label: "OCCURRED"},
     ], ageKey: null}, page.items);
     if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
   } else {
     const page = yield* decodePlatform(RunnerRunsSchema, body);
     if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
-    yield* output.printEntityTable({id: {key: "id", label: "ID"}, name: {key: "fleet", label: "FLEET"}, domain: [
+    yield* output.printEntityTable({id: {key: "id"}, name: {key: "fleet", label: "FLEET"}, domain: [
       {key: "outcome", label: "OUTCOME"}, {key: "kind", label: "KIND"}, {key: "model", label: "MODEL"},
     ], ageKey: null}, page.items.map(row => ({...row, fleet: row.fleet_name ?? row.fleet_id})));
     if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
