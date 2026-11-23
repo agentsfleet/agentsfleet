@@ -1,7 +1,6 @@
 //! Correlation registrations release on answer, timeout, cancellation and disconnect.
 
 use std::{
-    collections::HashMap,
     num::NonZeroU64,
     sync::{
         Arc,
@@ -11,7 +10,7 @@ use std::{
 
 use af_stream::OwnedFrame;
 use af_wire::protocol::{Down, PENDING_MAX};
-use parking_lot::Mutex;
+use dashmap::DashMap;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, oneshot};
 
 use crate::{Result, error::ErrorKind};
@@ -20,6 +19,8 @@ use crate::{Result, error::ErrorKind};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Expected {
     Heartbeat,
+    /// The answer to the test-only `Ping`: the runner sends no ping in production.
+    #[cfg(test)]
     Pong,
     Renewed(Vec<af_core::id::Uuid7>),
     Report(af_core::id::Uuid7),
@@ -41,13 +42,13 @@ struct Pending {
 pub(crate) struct Requests {
     next: AtomicU64,
     capacity: Arc<Semaphore>,
-    entries: Mutex<HashMap<NonZeroU64, Pending>>,
+    entries: DashMap<NonZeroU64, Pending>,
 }
 
 impl std::fmt::Debug for Requests {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Requests")
-            .field("pending", &self.entries.lock().len())
+            .field("pending", &self.entries.len())
             .finish_non_exhaustive()
     }
 }
@@ -58,7 +59,7 @@ impl Requests {
         Arc::new(Self {
             next: AtomicU64::new(2),
             capacity: Arc::new(Semaphore::new(PENDING_MAX)),
-            entries: Mutex::new(HashMap::new()),
+            entries: DashMap::new(),
         })
     }
 
@@ -73,12 +74,13 @@ impl Requests {
             .map_err(|_exhausted_counter| ErrorKind::StreamProtocol)?;
         let id = NonZeroU64::new(next).ok_or(ErrorKind::StreamProtocol)?;
         let (answer, receiver) = oneshot::channel();
-        let mut entries = self.entries.lock();
+        // Insert, then look for a close: a close that came first is seen here and the
+        // entry withdrawn, and one that comes later finds the entry in its sweep.
+        self.entries.insert(id, Pending { expected, answer });
         if self.capacity.is_closed() {
+            self.entries.remove(&id);
             return Err(ErrorKind::Disconnected.into());
         }
-        entries.insert(id, Pending { expected, answer });
-        drop(entries);
         Ok(Registration {
             id,
             requests: Arc::clone(self),
@@ -90,7 +92,7 @@ impl Requests {
     /// Decode once at dispatch, then transfer the charged frame to the waiting caller.
     pub(crate) fn reply(&self, message: &Down<'_>) -> Result<Option<Reply>> {
         let id = message.request_id().ok_or(ErrorKind::StreamProtocol)?;
-        let Some(pending) = self.entries.lock().remove(&id) else {
+        let Some((_, pending)) = self.entries.remove(&id) else {
             tracing::debug!(event = "runner_stream_late_answer");
             return Ok(None);
         };
@@ -103,8 +105,11 @@ impl Requests {
 
     pub(crate) fn close(&self) {
         self.capacity.close();
-        for (_, pending) in self.entries.lock().drain() {
-            drop(pending.answer.send(Err(ErrorKind::Disconnected.into())));
+        let ids: Vec<NonZeroU64> = self.entries.iter().map(|entry| *entry.key()).collect();
+        for id in ids {
+            if let Some((_, pending)) = self.entries.remove(&id) {
+                drop(pending.answer.send(Err(ErrorKind::Disconnected.into())));
+            }
         }
     }
 }
@@ -143,7 +148,9 @@ impl Expected {
                         af_wire::protocol::Answer::Refused { .. } => true,
                     }
             }
-            (Self::Heartbeat, Down::Heartbeat { .. }) | (Self::Pong, Down::Pong { .. }) => true,
+            (Self::Heartbeat, Down::Heartbeat { .. }) => true,
+            #[cfg(test)]
+            (Self::Pong, Down::Pong { .. }) => true,
             (Self::Report(expected), Down::ReportAck { run_id, .. })
             | (Self::Folds(expected), Down::Folded { run_id, .. })
             | (Self::ContextLoad(expected), Down::ContextLoaded { run_id, .. })
@@ -179,7 +186,7 @@ impl Registration {
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        self.requests.entries.lock().remove(&self.id);
+        self.requests.entries.remove(&self.id);
     }
 }
 

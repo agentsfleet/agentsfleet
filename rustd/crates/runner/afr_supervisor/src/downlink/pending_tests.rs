@@ -170,7 +170,7 @@ impl Peer {
     }
 
     fn released(&self) {
-        assert_eq!(self.sender.requests.entries.lock().len(), 0);
+        assert_eq!(self.sender.requests.entries.len(), 0);
         assert_eq!(
             self.sender.requests.capacity.available_permits(),
             PENDING_MAX

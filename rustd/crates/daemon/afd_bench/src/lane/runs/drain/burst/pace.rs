@@ -1,7 +1,7 @@
 //! Pacing steers, and timing each one until a runner holds its run.
 
 use core::time::Duration;
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use tokio::sync::Mutex;
@@ -40,7 +40,7 @@ where
 #[derive(Debug)]
 pub(in crate::lane::runs::drain) struct Pickups {
     /// When each appended event's append returned, by event id.
-    appended: Mutex<HashMap<String, Instant>>,
+    appended: DashMap<String, Instant>,
     /// Append returned → run received, for every burst event a runner took.
     waited: Mutex<Latency>,
     /// Burst events a runner took.
@@ -57,7 +57,7 @@ impl Pickups {
     /// When the latency histogram will not build.
     pub(super) fn new() -> Result<Self> {
         Ok(Self {
-            appended: Mutex::new(HashMap::new()),
+            appended: DashMap::new(),
             waited: Mutex::new(Latency::new()?),
             held: AtomicU64::new(0),
             folded: AtomicU64::new(0),
@@ -66,7 +66,7 @@ impl Pickups {
 
     /// One steer's append returned at `at`.
     pub(super) async fn appended(&self, turn_id: String, at: Instant) {
-        self.appended.lock().await.insert(turn_id, at);
+        self.appended.insert(turn_id, at);
     }
 
     /// A runner received the run for `turn_id`. An event the burst did not
@@ -93,7 +93,7 @@ impl Pickups {
 
     /// Records the pickup of `turn_id`; answers whether the burst appended it.
     async fn took(&self, turn_id: &str) -> Result<bool> {
-        let Some(at) = self.appended.lock().await.remove(turn_id) else {
+        let Some((_, at)) = self.appended.remove(turn_id) else {
             return Ok(false);
         };
         self.held.fetch_add(1, Ordering::Relaxed);

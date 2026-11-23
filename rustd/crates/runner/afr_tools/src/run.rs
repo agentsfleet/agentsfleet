@@ -9,8 +9,7 @@
 //!
 //! [`ToolContext`]: crate::ToolContext
 
-use std::collections::HashMap;
-use std::sync::{Mutex as StdMutex, PoisonError};
+use dashmap::DashMap;
 
 use af_egress::Egress;
 use afr_executor::Sizes;
@@ -60,28 +59,23 @@ pub struct Run<'run> {
 /// ends; a message, schedule or cron call sends its number so `agentsfleetd`
 /// keys the effect by the call's item, and a retry lands once.
 #[derive(Debug, Default)]
-pub struct CallNumbers(StdMutex<HashMap<String, u64>>);
+pub struct CallNumbers(DashMap<String, u64>);
 
 impl CallNumbers {
     /// Call `call_id` opened as the run's `number`th.
     pub fn open(&self, call_id: &str, number: u64) {
-        self.held().insert(call_id.to_owned(), number);
+        self.0.insert(call_id.to_owned(), number);
     }
 
     /// Call `call_id` ended.
     pub fn close(&self, call_id: &str) {
-        self.held().remove(call_id);
+        self.0.remove(call_id);
     }
 
     /// The number of open call `call_id`, if one is open under it.
     #[must_use]
     pub fn of(&self, call_id: &str) -> Option<u64> {
-        self.held().get(call_id).copied()
-    }
-
-    /// The map, whatever a panicking holder left: each entry is written whole.
-    fn held(&self) -> std::sync::MutexGuard<'_, HashMap<String, u64>> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        self.0.get(call_id).map(|number| *number)
     }
 }
 

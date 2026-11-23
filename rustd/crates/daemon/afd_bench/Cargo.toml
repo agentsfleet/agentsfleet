@@ -12,6 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+dashmap.workspace = true
 # The NATS Bus the live items stream and the wakes run over, connected the way the
 # daemon connects it.
 afd_bus.workspace = true
