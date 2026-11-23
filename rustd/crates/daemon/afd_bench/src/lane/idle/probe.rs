@@ -75,6 +75,11 @@ fn candidates<'q, O>(
         .bind(afd_fleet::durable_task::DECISION_POLICY_PATH)
         // The serving generation, as a poll sends it; recovery is the other.
         .bind(false)
+        // No recovery scan, so no key to resume it after.
+        .bind(None::<jiff_sqlx::Timestamp>)
+        .bind(None::<&Uuid7>)
+        // Checkpoint resume off, the deployment default.
+        .bind(false)
         .bind(afd_credential::provider::PLATFORM_MODEL_REF)
 }
 

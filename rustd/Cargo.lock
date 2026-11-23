@@ -684,6 +684,7 @@ dependencies = [
  "futures-util",
  "hdrhistogram",
  "jiff 1.0.2",
+ "jiff-sqlx",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
  "reqwest",

@@ -83,6 +83,8 @@ af_wire = { workspace = true, features = ["test-util"] }
 sqlx.workspace = true
 # The instants the seeds stamp and the clock the paths are handed.
 jiff.workspace = true
+# The candidate probe binds the recovery scan's absent timestamp as the query types it.
+jiff-sqlx.workspace = true
 # Sealing the drain's platform credential through the vault's own write path.
 afd_vault.workspace = true
 # The concurrency the lanes exist to measure.
