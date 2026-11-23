@@ -16,7 +16,7 @@ use afd_billing::limits::SELECT_FLEET_SPEND;
 use afd_db::config::DbRole;
 use sqlx::Row as _;
 
-use crate::report_seed::held;
+use crate::{report_seed::held_in, support::Fixtures};
 
 /// The index the spend read must still be served by.
 const FLEET_INDEX: &str = "idx_usage_lines_fleet_id_created_at";
@@ -53,7 +53,7 @@ const HISTORY_DAYS: i32 = 365;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_fleet_spend_read_is_served_by_its_index() {
-    let held = held().await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let workspace: Uuid7 = {
         let mut connection = held
             .fixtures
