@@ -15,8 +15,12 @@ use super::{WITHIN, enqueue, reassignment::issue, stamps};
 use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 
 const RUNNERS: usize = 100;
+// The paused assignment waits as long as the test holds the barrier: its own
+// lock_timeout (the API login's, `afd_db::login::LOCK_TIMEOUT`) is lifted for
+// this wait only, or 99 slow contenders on a loaded machine would cancel it.
 const PAUSE_ASSIGNMENTS: &str = "CREATE FUNCTION fleet.pause_assignment() RETURNS trigger
     LANGUAGE plpgsql AS $$ BEGIN
+      PERFORM set_config('lock_timeout', '0', true);
       PERFORM pg_advisory_xact_lock_shared(oid::bigint)
       FROM pg_database WHERE datname = current_database();
       RETURN NEW;
