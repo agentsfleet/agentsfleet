@@ -90,7 +90,7 @@ dependencies = [
  "base64 0.23.1",
  "garde",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_ignored",
  "serde_json",
@@ -112,7 +112,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hex",
  "hmac",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -169,7 +169,7 @@ dependencies = [
  "guffbolt-ai",
  "hyper",
  "hyper-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "reqwest",
  "rustls",
@@ -200,7 +200,7 @@ dependencies = [
  "h2",
  "hyper",
  "hyper-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rcgen",
  "regex",
  "regex-automata",
@@ -244,7 +244,7 @@ dependencies = [
  "csv",
  "dashmap",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
  "posthog",
@@ -381,7 +381,7 @@ dependencies = [
  "const_format",
  "garde",
  "insta",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "regex",
  "serde",
  "serde_json",
@@ -400,7 +400,7 @@ dependencies = [
  "afd_billing",
  "afd_db",
  "futures-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -464,7 +464,7 @@ dependencies = [
  "http",
  "hyper",
  "hyper-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jsonwebtoken",
  "reqwest",
  "serde",
@@ -503,7 +503,7 @@ dependencies = [
  "afd_vault",
  "axum",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "tracing",
@@ -527,7 +527,7 @@ dependencies = [
  "axum",
  "garde",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde_json",
  "tracing",
  "utoipa",
@@ -555,7 +555,7 @@ dependencies = [
  "const_format",
  "garde",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "tokio",
  "tracing",
@@ -597,7 +597,7 @@ dependencies = [
  "garde",
  "headers",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "tokio",
@@ -613,7 +613,7 @@ dependencies = [
  "af_validate",
  "af_wire",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "utoipa",
@@ -631,7 +631,7 @@ dependencies = [
  "afd_db",
  "afd_fleet_lifecycle",
  "afd_turns",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde_json",
  "sqlx",
@@ -683,7 +683,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "hdrhistogram",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "opentelemetry 0.33.1",
  "opentelemetry_sdk 0.33.1",
  "reqwest",
@@ -708,7 +708,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "futures-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -753,7 +753,7 @@ dependencies = [
  "base64 0.23.1",
  "garde",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "reqwest",
  "serde",
  "serde_json",
@@ -781,7 +781,7 @@ dependencies = [
  "afd_db",
  "afd_vault",
  "axum",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "jsonwebtoken",
  "moka",
@@ -818,7 +818,7 @@ dependencies = [
  "base64 0.23.1",
  "const_format",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "jsonwebtoken",
  "philiprehberger-cron-parser",
@@ -843,7 +843,7 @@ dependencies = [
  "af_observability",
  "backon",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "sqlx",
@@ -895,7 +895,7 @@ dependencies = [
  "guffbolt",
  "hex",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "jsonwebtoken",
  "moka",
@@ -926,7 +926,7 @@ dependencies = [
  "afd_api_wire",
  "afd_db",
  "afd_state",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -942,7 +942,7 @@ dependencies = [
  "afd_billing",
  "afd_db",
  "afd_state",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -966,7 +966,7 @@ dependencies = [
  "afd_fleet_lifecycle",
  "afd_turns",
  "base64 0.23.1",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde_json",
  "sqlx",
  "thiserror 2.0.21",
@@ -1009,7 +1009,7 @@ dependencies = [
  "garde",
  "http",
  "http-body-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "parking_lot",
  "serde",
@@ -1057,7 +1057,7 @@ dependencies = [
  "garde",
  "hex",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -1078,7 +1078,7 @@ dependencies = [
  "afd_auth",
  "aws-lc-rs",
  "base64 0.23.1",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jsonwebtoken",
  "moka",
  "reqwest",
@@ -1107,7 +1107,7 @@ dependencies = [
  "afd_turns",
  "afd_vault",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "sha2 0.11.1",
@@ -1148,7 +1148,7 @@ dependencies = [
  "afd_db",
  "afd_turns",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "sqlx",
  "thiserror 2.0.21",
@@ -1172,7 +1172,7 @@ dependencies = [
  "dashmap",
  "garde",
  "http",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "reqwest",
  "serde",
  "serde_json",
@@ -1200,7 +1200,7 @@ dependencies = [
  "afd_turns",
  "const_format",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -1240,7 +1240,7 @@ dependencies = [
  "futures-util",
  "garde",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "moka",
  "proc-macro2",
@@ -1302,7 +1302,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-util",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "petname",
  "serde",
@@ -1334,7 +1334,7 @@ dependencies = [
  "base64 0.23.1",
  "futures-util",
  "hex",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -1354,7 +1354,7 @@ dependencies = [
  "afd_db",
  "afd_turns",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "jiff-sqlx",
  "serde",
  "serde_json",
@@ -1393,7 +1393,7 @@ dependencies = [
  "guffbolt-ai",
  "hex",
  "image",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "memmap2",
  "reqwest",
  "schemars 1.2.3",
@@ -1446,7 +1446,7 @@ dependencies = [
  "aho-corasick",
  "async-trait",
  "garde",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1527,7 +1527,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "parking_lot",
  "rcgen",
  "reqwest",
@@ -1586,7 +1586,7 @@ dependencies = [
  "garde",
  "guffbolt",
  "image",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "rustix 1.1.6",
  "schemars 1.2.3",
  "serde",
@@ -1627,7 +1627,7 @@ dependencies = [
  "guffbolt-ai",
  "hex",
  "hyper",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "libc",
  "libtest-mimic",
  "rustix 1.1.6",
@@ -1692,7 +1692,7 @@ dependencies = [
  "garde",
  "hyper",
  "hyper-util",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "opentelemetry 0.33.1",
  "opentelemetry-appender-tracing",
  "rcgen",
@@ -1826,9 +1826,9 @@ checksum = "307f1158c6f649671b2c5b2939b7513de520500dfe92913a49d5d313e44a6ee7"
 
 [[package]]
 name = "anyhow"
-version = "1.0.104"
+version = "1.0.105"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+checksum = "2cb931c189b85683d69a5cfad41d4d418671e1ac413dd209f3f2fc31e3cfd902"
 
 [[package]]
 name = "arc-swap"
@@ -2154,9 +2154,9 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-types"
-version = "1.9.4"
+version = "1.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aff4bf014c512840b2bba80a20417b723cbd6a0a65c02e2d81f50b4268aedfc7"
+checksum = "2085f9721fb3755821f8db7611a67ed15f4d6fdba6785b4db8ed7cd18eebee0f"
 dependencies = [
  "base64-simd",
  "bytes",
@@ -3493,6 +3493,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "faster-hex"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4ede54fe330383a5de28c0a1f06668ff9dbf06c8094e1c5150c39488a5e911d"
+dependencies = [
+ "defmt 0.3.101",
+ "serde",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3982,27 +3992,27 @@ dependencies = [
 
 [[package]]
 name = "gix-bitmap"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "422cd23418fd80e9e965595323975d72abd6364a66ff8f0daade5c105a7f35d2"
+checksum = "9543567ee22142c81fdf75b2811160bec749a5b9f48665e4763f88b1789b8612"
 dependencies = [
  "gix-error",
 ]
 
 [[package]]
 name = "gix-chunk"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc6a775aba54f0d65698126cc4214b6bf8ddb208312e4ef4240dfe34b0697b87"
+checksum = "60cd5f0e47ffae98bad241ccbc031693765004fb4c2a419f7fda2963232af1e3"
 dependencies = [
  "gix-error",
 ]
 
 [[package]]
 name = "gix-command"
-version = "0.12.1"
+version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df63215f103299169e239dfe76f5cfa4a3d6d4adf69a01774085e3e0423cba34"
+checksum = "2986e78ebad43510ccd7dd18bd9f22e9afd52f2de791e2979b9c715bacb6f0a8"
 dependencies = [
  "bstr",
  "gix-error",
@@ -4047,9 +4057,9 @@ dependencies = [
 
 [[package]]
 name = "gix-config-value"
-version = "0.21.1"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cdada8bd9c97dc6522505c08226d9c88f0a1286f2c06b9e1bf51c3bf7ad7b2b"
+checksum = "d7666081ef0ecc5e1dc54bc6ce16dac9d7b9490780f6c130393ef9e50c909d4a"
 dependencies = [
  "bitflags 2.13.2",
  "bstr",
@@ -4152,9 +4162,9 @@ dependencies = [
 
 [[package]]
 name = "gix-error"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d87ff4b3f3daf01234d38d176b0ec00e92de514cc0e3fb8a8898c5cb7ccd22bb"
+checksum = "50ad6c42fa50280f382026ff838a8afa7ab2ad83e92349cab4392972baae69cd"
 dependencies = [
  "bstr",
 ]
@@ -4215,7 +4225,7 @@ version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4802ffb87e051795822bfdaa8ab9075b23e316684f7054e6ce4a246b2b76f4e"
 dependencies = [
- "faster-hex",
+ "faster-hex 0.10.1",
  "gix-error",
  "gix-utils",
  "sha1dc",
@@ -4228,7 +4238,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f66822aee11ccb28d6a2e63b587254e578fb52a138bd5806b58d8560125592b"
 dependencies = [
  "gix-hash",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "parking_lot",
 ]
 
@@ -4247,12 +4257,12 @@ dependencies = [
 
 [[package]]
 name = "gix-imara-diff"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7518b930f6aeb75e871d32ce873c2ae46e35cef19b5a0b039d4337f651d897cd"
+checksum = "23347fa4a29a440eebf045d0bc21da465c0dc70434c2a4bcdfcc658f16c9e27e"
 dependencies = [
  "bstr",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
 ]
 
 [[package]]
@@ -4276,7 +4286,7 @@ dependencies = [
  "gix-traverse",
  "gix-utils",
  "gix-validate",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "itoa",
  "libc",
  "memmap2",
@@ -4298,13 +4308,13 @@ dependencies = [
 
 [[package]]
 name = "gix-macros"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d02e51a52e15255757c06a6873529ae01205711aa9e8f9a1d46b556f1a14a96e"
+checksum = "79ca2ec664aea06d549444f9cd35546dd1732b2ea188b48159cea4fbf2a05848"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.119",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -4405,12 +4415,12 @@ dependencies = [
 
 [[package]]
 name = "gix-packetline"
-version = "0.24.1"
+version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ebb59ef7aff9d435946a5e5c3d9cfb673be7665839fd72961c08c733a934fb7"
+checksum = "6e198121152a397ad1007e3334931b04b393fa17f6af34f17b33e376b15bf5ea"
 dependencies = [
  "bstr",
- "faster-hex",
+ "faster-hex 2.0.0",
  "gix-error",
  "gix-trace",
 ]
@@ -4429,14 +4439,15 @@ dependencies = [
 
 [[package]]
 name = "gix-path"
-version = "0.14.1"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83976e926a485e6fb4b8d9a0d7a30c53c1f607b81b5d310f06f92fd8385bf16a"
+checksum = "615e3ff75800c67022ec8065b67e0846420a88c5f484e6c4fd81c78472e4c77a"
 dependencies = [
  "bstr",
  "gix-error",
  "gix-trace",
  "gix-validate",
+ "winreg",
 ]
 
 [[package]]
@@ -4494,9 +4505,9 @@ dependencies = [
 
 [[package]]
 name = "gix-quote"
-version = "0.10.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2413e65271303e9b674ec4785d469df4c3c36e888dbd165e3035de0405c6d9d1"
+checksum = "5069a7ec021bb47abe9f12dcc075d292e8cf4a9dff5fffd38595b39c6b419aaa"
 dependencies = [
  "bstr",
  "gix-error",
@@ -4649,9 +4660,9 @@ dependencies = [
 
 [[package]]
 name = "gix-trace"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c477c029518d3f235c26db21ff7cccc1fa13c0c31b05c005a55b7affd4ffbd81"
+checksum = "1c96f84d731a96780e6a7ad5ee70b4ecc398499946b62617945fbaeb6ab878f8"
 
 [[package]]
 name = "gix-transport"
@@ -4707,9 +4718,9 @@ dependencies = [
 
 [[package]]
 name = "gix-utils"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11a9446060447e9ec58f5d333b98bed53389dfa10de5d8dd46fc76d01dfc2954"
+checksum = "b5e6d46894c7a4fd9c5e26d233a0fa836002ba0af9a11aef58923d317c486e10"
 dependencies = [
  "bstr",
  "bytes",
@@ -4722,9 +4733,9 @@ dependencies = [
 
 [[package]]
 name = "gix-validate"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02b617c17754bf37ee7a9b48e33ffb806abecbbed779ba415199ac1480acf699"
+checksum = "5d6f293fd8abd9bd9bc1e0a23541f73607e932b5a2bde2246320da38edde5726"
 dependencies = [
  "bstr",
  "gix-error",
@@ -4794,9 +4805,9 @@ dependencies = [
 
 [[package]]
 name = "gix-zlib"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c5b29808570149d86f417184605111ede9dda5aa06015e9ea6da07f0c3ca41e"
+checksum = "81a49a8b263d2a140f1c178ff93375b8d4cc7b1d3252cd87ce1ca88bce62b9b9"
 dependencies = [
  "gix-error",
  "zlib-rs",
@@ -4810,9 +4821,9 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "globset"
-version = "0.4.21"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f98b0d85522dc0a824cfebbc9594ff4a9b289c568bea0370319dfbdf20ccdd2d"
+checksum = "71217a07f20b48b4938c14203b77b610f8a7fa6762c3f75394a10c5f31e5aee0"
 dependencies = [
  "aho-corasick",
  "bstr",
@@ -4868,18 +4879,18 @@ dependencies = [
 
 [[package]]
 name = "grep-matcher"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9417543f4870fc8f1c8e1af870afae2431007626d9e703fce6471c468d33847"
+checksum = "2749f3ee57cd8e3ec525b1e7767303128ee83bd19b3ea2e878e3be793f6484c3"
 dependencies = [
  "memchr",
 ]
 
 [[package]]
 name = "grep-regex"
-version = "0.1.14"
+version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce0c256c3ad82bcc07b812c15a45ec1d398122e8e15124f96695234db7112ef"
+checksum = "a0697a1fa79c8bcd1c86afa18d7361963e80bc47f0b6e75c24d420ad3aadcc07"
 dependencies = [
  "bstr",
  "grep-matcher",
@@ -4890,9 +4901,9 @@ dependencies = [
 
 [[package]]
 name = "grep-searcher"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72348823a0eafc4bc2e9051064f28b5b42cc100b571b3a35d67918d711efcbc6"
+checksum = "10863a5777b86c61ef2b19bd5f34b9983d5093af1758c7f88036e88c3134bf28"
 dependencies = [
  "bstr",
  "encoding_rs",
@@ -4917,7 +4928,7 @@ dependencies = [
  "html2text",
  "ignore",
  "image",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "philiprehberger-cron-parser",
  "rcgen",
  "reqwest",
@@ -5017,9 +5028,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.17.1"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+checksum = "735eaa21a6a5ffb2e84362faaeb90c05ba8e19797ca30428478cb6ea3a4921bc"
 dependencies = [
  "allocator-api2",
  "equivalent",
@@ -5041,7 +5052,7 @@ version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a596f1b20ed2cc5ecac41a164aaebc7258057060f06c0cf7a2ba3991ee7990fb"
 dependencies = [
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
 ]
 
 [[package]]
@@ -5428,9 +5439,9 @@ dependencies = [
 
 [[package]]
 name = "ignore"
-version = "0.4.34"
+version = "0.4.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "484be5657551d7868d67587df967fb4fcbe9d266a761cc855aaa148fda0b3cc7"
+checksum = "df0a7d5f105e76bda602bed0a44af048542d3c9af12ec35aaf16f106c6f34270"
 dependencies = [
  "crossbeam-deque",
  "globset",
@@ -5488,7 +5499,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc4e190f5d26ca7051642629da2c52fc03bde85a03197c99408dcd291734c855"
 dependencies = [
  "equivalent",
- "hashbrown 0.17.1",
+ "hashbrown 0.17.2",
  "serde",
  "serde_core",
 ]
@@ -5622,12 +5633,12 @@ dependencies = [
 
 [[package]]
 name = "jiff"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5d126d72eb017f10b302e73bdeca446bea405ee449af4d9e7866d6b082d83e"
+checksum = "c5e77cbfb9fff4798e283c2d69dff39fc2c45e7da017e5ce95b654e46ea41236"
 dependencies = [
  "jiff-core 1.0.1",
- "jiff-static 1.0.1",
+ "jiff-static 1.0.2",
  "jiff-tzdb-platform 1.0.0",
  "log",
  "portable-atomic",
@@ -5660,7 +5671,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4996ad290ff7f7081becdda47e28556fbebb81618c599eac5d09182b5a60e38"
 dependencies = [
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "sqlx",
 ]
 
@@ -5678,9 +5689,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "1.0.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0127e9bde3c6130d6169e7d8d68676e4be69c4bf7573c308b6f960a5089c428"
+checksum = "e9067a0b23e5be3147d56b2dcf652b18e6b1364caca93fb157653b6fbcab23a9"
 dependencies = [
  "jiff-core 1.0.1",
  "proc-macro2",
@@ -7967,7 +7978,7 @@ dependencies = [
  "indexmap 1.9.3",
  "indexmap 2.14.2",
  "jiff 0.2.46",
- "jiff 1.0.1",
+ "jiff 1.0.2",
  "schemars 0.9.0",
  "schemars 1.2.3",
  "serde_core",
@@ -9739,6 +9750,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3b93199df0ab874cdf0c6a94f0a0dc3423fe41f1cafb62b8bd7b1deb277aef"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winreg"
+version = "0.56.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
+dependencies = [
+ "cfg-if",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
