@@ -1,168 +1,46 @@
-import type { ReactNode } from "react";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { CheckCircleIcon, WarningCircleIcon, CoinsIcon, HashIcon, HourglassIcon, CircleNotchIcon, TimerIcon } from "@phosphor-icons/react/ssr";
-import { cn, StatusLine, StatusLineItem, type StatusLineTone, Time } from "@agentsfleet/design-system";
-import type { RunFigures } from "@/lib/turns/run-summary";
+import { WarningCircleIcon, CoinsIcon, HashIcon, TimerIcon } from "@phosphor-icons/react/ssr";
+import { StatusLine, StatusLineItem } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
-import { formatMs } from "@/lib/utils";
-import { formatCount, runFigure } from "@/lib/turns/run-figures-format";
-import { TURN_STATUS, outcomeFor } from "@/lib/turns/turn-summary";
-import { formatDollars } from "@/lib/money";
 import {
   METRICS_COST_LABEL,
-  METRICS_EMPTY,
   METRICS_OUTCOME_LABEL,
   METRICS_STATUS_LABEL,
   METRICS_STRIP_LABEL,
   METRICS_TIME_LABEL,
-  METRICS_TIME_UNIT,
   METRICS_TOKENS_LABEL,
   METRICS_UNAVAILABLE,
   METRICS_VALUE_UNKNOWN,
 } from "./console-copy";
 
 const ICON_SIZE = 12;
-const TOKENS_UNIT = "tok";
+const FIGURES = [
+  {Icon: HashIcon, label: METRICS_TOKENS_LABEL, tone: undefined},
+  {Icon: CoinsIcon, label: METRICS_COST_LABEL, tone: "foreground"},
+  {Icon: TimerIcon, label: METRICS_TIME_LABEL, tone: undefined},
+] as const;
 
-type OutcomeCell = {
-  text: string;
-  tone: StatusLineTone;
-  Icon: PhosphorIcon;
-  /** True while the run is still going: the glyph turns. */
-  live: boolean;
-  at: Date | null;
-};
-
-// Labels accompany the glyphs for screen readers. Figures come from the
-// turn row, and missing telemetry renders a dash.
-export default function FleetStatusLine({
-  status,
-  latest,
-  summaryAvailable,
-}: {
-  status: string;
-  latest: RunFigures | null;
-  summaryAvailable: boolean;
-}) {
-  const outcome = outcomeCell(latest, summaryAvailable);
-  const OutcomeIcon = outcome.Icon;
-  // No rule of its own: the card above already draws the edge, and a second
-  // hairline 16px under it read as a doubled border.
+/** The fallback shown while the fleet's latest run details are unavailable. */
+export default function FleetStatusLine({status}: {status: string}) {
   return (
-    <StatusLine
-      aria-label={METRICS_STRIP_LABEL}
-      className="flex-wrap gap-x-md gap-y-xs overflow-visible divide-x-0 [&>span]:px-0"
-    >
-      <StatusLineItem
-        tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"}
-        className="normal-case"
-      >
+    <StatusLine aria-label={METRICS_STRIP_LABEL}
+      className="flex-wrap gap-x-md gap-y-xs overflow-visible divide-x-0 [&>span]:px-0">
+      <StatusLineItem tone={status === AGENTSFLEET_STATUS.ACTIVE ? "pulse" : "neutral"} className="normal-case">
         <span className="size-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
-        <HiddenLabel>{METRICS_STATUS_LABEL}</HiddenLabel>
+        <span className="sr-only">{METRICS_STATUS_LABEL} </span>
         {status === AGENTSFLEET_STATUS.ARCHIVED ? "Archived" : status}
       </StatusLineItem>
-      <StatusLineItem tone={outcome.tone} className="min-w-0 max-w-full">
-        <OutcomeIcon
-          size={ICON_SIZE}
-          aria-hidden="true"
-          className={cn("shrink-0", outcome.live && "motion-safe:animate-spin")}
-        />
-        <HiddenLabel>{METRICS_OUTCOME_LABEL}</HiddenLabel>
-        <span className="min-w-0 truncate">{outcome.text}</span>
-        {/* `relative`, not `clock`: a second-precision wall time with no date
-            reads as though the run just happened, and at 03:28:58 AM against a
-            9 PM now it is unreadable. Relative also turns the tooltip on by
-            default, so the absolute instant is one hover away rather than
-            gone. */}
-        {outcome.at ? (
-          <Time value={outcome.at} format="relative" className="text-muted-foreground" />
-        ) : null}
+      <StatusLineItem tone="neutral" className="min-w-0 max-w-full">
+        <WarningCircleIcon size={ICON_SIZE} aria-hidden="true" className="shrink-0" />
+        <span className="sr-only">{METRICS_OUTCOME_LABEL} </span>
+        <span className="min-w-0 truncate">{METRICS_UNAVAILABLE}</span>
       </StatusLineItem>
-      <Figure
-        Icon={HashIcon}
-        label={METRICS_TOKENS_LABEL}
-        value={shownFigure(summaryAvailable, runFigure(latest?.tokens, formatCount))}
-        unit={TOKENS_UNIT}
-      />
-      <Figure
-        Icon={CoinsIcon}
-        label={METRICS_COST_LABEL}
-        value={shownFigure(summaryAvailable, runFigure(latest?.cost_nanos, formatDollars))}
-        tone="foreground"
-      />
-      <Figure
-        Icon={TimerIcon}
-        label={METRICS_TIME_LABEL}
-        value={shownFigure(summaryAvailable, runFigure(latest?.wall_ms, formatMs))}
-        unit={METRICS_TIME_UNIT}
-      />
+      {FIGURES.map(({Icon, label, tone}) => (
+        <StatusLineItem key={label} tone={tone}>
+          <Icon size={ICON_SIZE} aria-hidden="true" className="shrink-0" />
+          <span className="sr-only">{label} </span>
+          <span>{METRICS_VALUE_UNKNOWN}</span>
+        </StatusLineItem>
+      ))}
     </StatusLine>
   );
-}
-
-function HiddenLabel({ children }: { children: ReactNode }) {
-  return <span className="sr-only">{children} </span>;
-}
-
-function Figure({
-  Icon,
-  label,
-  value,
-  unit,
-  tone,
-}: {
-  Icon: PhosphorIcon;
-  label: string;
-  value: string;
-  unit?: string;
-  tone?: StatusLineTone;
-}) {
-  return (
-    <StatusLineItem tone={tone}>
-      <Icon size={ICON_SIZE} aria-hidden="true" className="shrink-0" />
-      <HiddenLabel>{label}</HiddenLabel>
-      <span>{value}</span>
-      {/* No unit beside a dash: "— tok" would read as a figure of nothing. */}
-      {unit && value !== METRICS_VALUE_UNKNOWN ? (
-        <span className="text-muted-foreground">{unit}</span>
-      ) : null}
-    </StatusLineItem>
-  );
-}
-
-// A sentence, never a machine tag. The runner's failure classes read as plain
-// English through the shared vocabulary, so this line cannot say
-// `startup_posture` where the turns table says "Failed a startup safety
-// check". The list read carries no bodies, so the line states the outcome
-// rather than quoting the answer — and, for a processed run, states only that
-// it completed. The tone and glyph follow the same classification the
-// sentence does, so a failure reads red before the words are read.
-function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell {
-  if (!available) {
-    return { text: METRICS_UNAVAILABLE, tone: "neutral", Icon: WarningCircleIcon, live: false, at: null };
-  }
-  if (latest === null) {
-    return { text: METRICS_EMPTY, tone: "neutral", Icon: HourglassIcon, live: false, at: null };
-  }
-  // A row whose stored timestamp does not read as a date still renders its
-  // outcome; the time is dropped instead of showing "Invalid Date".
-  const stamp = new Date(latest.created_at);
-  const at = Number.isFinite(stamp.getTime()) ? stamp : null;
-  const text = outcomeFor(latest);
-  if (latest.status === TURN_STATUS.RECEIVED) {
-    return { text, tone: "foreground", Icon: CircleNotchIcon, live: true, at };
-  }
-  if (latest.failure_label || latest.status === TURN_STATUS.FLEET_ERROR) {
-    return { text, tone: "danger", Icon: WarningCircleIcon, live: false, at };
-  }
-  if (latest.status === TURN_STATUS.GATE_BLOCKED) {
-    return { text, tone: "warning", Icon: HourglassIcon, live: false, at };
-  }
-  return { text, tone: "success", Icon: CheckCircleIcon, live: false, at };
-}
-
-// What a figure cell shows: the figure, or the unknown mark when the read
-// failed or the run did not report it.
-function shownFigure(available: boolean, text: string | null): string {
-  return available ? text ?? METRICS_VALUE_UNKNOWN : METRICS_VALUE_UNKNOWN;
 }
