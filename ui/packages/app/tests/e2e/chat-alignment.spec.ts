@@ -1,6 +1,7 @@
 import { test } from "./fixtures/chat-probe";
 import { expect } from "@playwright/test";
 import { DRAFT, FLEET_DETAIL, MODEL } from "@/tests/helpers/draft-fixtures";
+import { fleetNavigation } from "./acceptance/fixtures/nav";
 
 test("fleet Summary is inline and the composer keeps the approved horizontal alignment", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
@@ -59,12 +60,10 @@ test("the fleet disclosure retains loaded pages when collapsed and reopened", as
   await page.route("**/live/v1/workspaces/*/drafts?*", route => route.fulfill({json: {items: [], next_cursor: null}}));
   await page.goto(`${chatProbe}?setupAlignment=1`);
   if (mobile) {
-    const open = page.getByRole("button", {name: "Open navigation", exact: true});
-    await expect(open).toBeVisible();
+    await expect(page.getByRole("button", {name: "Open navigation", exact: true})).toBeVisible();
     expect(fleetReads).toBe(0);
-    await open.click();
   }
-  const nav = page.getByRole("navigation", {name: mobile ? "Expanded navigation" : "Primary"});
+  const nav = await fleetNavigation(page);
   const fleet = nav.getByRole("link", {name: "Pull request review", exact: true});
   const edit = nav.getByRole("link", {name: "Edit Pull request review", exact: true});
   await expect(fleet).toBeVisible();
