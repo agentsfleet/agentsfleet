@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, privateSaveButton, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, privateSaveButton, setupSummary, unfinishedSetupEntry,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -66,7 +66,7 @@ test.describe("a private fleet setup chat", () => {
 async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draftId: string): Promise<void> {
   await openDraft(page, workspaceId, draftId);
   await page.goto(workspaceHref(workspaceId, NEW_FLEET));
-  await historyEntry(page, draftId).click();
+  await unfinishedSetupEntry(page, draftId).click();
   await expect(page).toHaveURL(new RegExp(`\\?draft=${draftId}$`));
   await expect(setupSummary(page)).toBeVisible();
   await page.reload();

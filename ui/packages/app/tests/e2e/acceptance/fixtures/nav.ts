@@ -66,7 +66,10 @@ export async function fleetNavigation(page: Page): Promise<Locator> {
   }
   const expand = primary.getByRole("button", {name: "Expand navigation", exact: true});
   if (await expand.isVisible()) await expand.click();
-  await expect(primary.getByText("Fleets", {exact: true})).toBeVisible();
+  // The fleet list lives under the "Your Fleets" disclosure in the sidebar.
+  // The primary nav holds "New fleet", "Secrets" and "Connected apps"; a plain
+  // "Fleets" entry is gone, so this waits for the list the fleet links hang off.
+  await expect(primary.getByText("Your Fleets", {exact: true})).toBeVisible();
   return primary;
 }
 
