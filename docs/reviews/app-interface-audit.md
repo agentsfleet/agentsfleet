@@ -43,7 +43,7 @@ The measurement proxy refused the Clerk asset host, so the time to an interactiv
 
 Both pages now send a small loading skeleton with the initial HTML. If Clerk reports a load failure, the loading panel offers a reload action. [Loading panel](../../ui/packages/app/app/%28auth%29/AuthFormLoading.tsx) · [Server markup checks](../../ui/packages/app/tests/app-pages.test.ts)
 
-Server components render the panel and a small client component reads Clerk’s status. Each local production route bundle measured 220.48 kB gzip against a 230.4 kB budget. [Client status](../../ui/packages/app/app/%28auth%29/AuthFormStatus.tsx) · [Route budgets](../../ui/packages/app/.size-limit.mjs)
+Server components render the panel and a small client component reads Clerk’s status. Each local production route bundle measured 220.56 kB gzip against a 230.4 kB budget. [Client status](../../ui/packages/app/app/%28auth%29/AuthFormStatus.tsx) · [Route budgets](../../ui/packages/app/.size-limit.mjs)
 
 ## Fleet Setup and Conversation performance
 
